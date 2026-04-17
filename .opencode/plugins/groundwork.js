@@ -3,13 +3,17 @@
  *
  * Merges:
  * 1. Groundwork workflow skills injection (via config hook + chat.messages.transform)
- * 2. Background task tools (background_task, background_output, background_cancel)
+ * 2. Background task tools (background_task, background_output, background_cancel, background_list)
+ * 3. Session handoff tools (handoff_session, read_session) + /handoff command
  */
 
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { tool } from '@opencode-ai/plugin'
+import fsPromises from 'fs/promises'
 
+const z = tool.schema
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -125,6 +129,110 @@ function buildNotificationText({ task, duration, statusText, allComplete, remain
   const isFailure = statusText !== 'COMPLETED'
   return `<system-reminder>\n[BACKGROUND TASK ${statusText}]\n**ID:** \`${task.id}\`\n**Description:** ${desc}\n**Duration:** ${duration}${errorInfo}\n\n**${remainingCount} task${remainingCount === 1 ? '' : 's'} still in progress.** You WILL be notified when ALL complete.\n${isFailure ? '**ACTION REQUIRED:** This task failed. Check the error and decide whether to retry.' : 'Do NOT poll - continue productive work.'}\n\nUse \`background_output(task_id="${task.id}")\` to retrieve this result when ready.\n</system-reminder>`
 }
+
+function formatTaskList(tasks, sessionID) {
+  if (!tasks.length) {
+    return `# Background Tasks\n\nNo background tasks found for session \`${sessionID}\`.`
+  }
+  const rows = tasks.map(t => {
+    const status = t.status === 'running' ? '🏃 running'
+      : t.status === 'pending' ? '⏳ pending'
+      : t.status === 'completed' ? '✅ completed'
+      : t.status === 'error' ? '❌ error'
+      : t.status === 'cancelled' ? '🚫 cancelled'
+      : t.status === 'interrupt' ? '⚡ interrupt'
+      : t.status
+    const duration = t.status === 'pending'
+      ? formatDuration(t.queuedAt, undefined)
+      : formatDuration(t.startedAt, t.completedAt)
+    const tools = t.progress?.toolCalls ? ` (${t.progress.toolCalls} tools)` : ''
+    return `| \`${t.id}\` | ${t.description} | ${t.agent} | ${status}${tools} | ${duration} |`
+  })
+  return `# Background Tasks (${tasks.length})\n\n| ID | Description | Agent | Status | Duration |\n|---|---|---|---|---|\n${rows.join('\n')}\n\nUse \`background_output(task_id="<id>")\` to retrieve completed results.`
+}
+
+// ─── Handoff helpers ──────────────────────────────────────────────────────────
+
+const FILE_REGEX = /(?:^|[\s(])@(\.{0,2}\/[^\s,;)"'`]+|[a-zA-Z][a-zA-Z0-9._-]*(?:\/[a-zA-Z0-9._-]+){1,}(?:\.[a-zA-Z0-9]+))/g
+
+function parseFileReferences(text) {
+  const fileRefs = new Set()
+  for (const match of text.matchAll(FILE_REGEX)) {
+    if (match[1]) fileRefs.add(match[1])
+  }
+  return fileRefs
+}
+
+function isBinaryBuffer(buffer) {
+  for (let i = 0; i < Math.min(buffer.length, 8192); i++) {
+    const byte = buffer[i]
+    if (byte === 0) return true
+    if (byte < 0x07) return true
+    if (byte > 0x0d && byte < 0x20) return true
+  }
+  return false
+}
+
+async function buildSyntheticFileParts(directory, refs) {
+  const parts = []
+  for (const ref of refs) {
+    const filepath = path.resolve(directory, ref)
+    try {
+      const stats = await fsPromises.stat(filepath)
+      if (!stats.isFile()) continue
+      const buffer = await fsPromises.readFile(filepath)
+      if (isBinaryBuffer(buffer)) continue
+      const content = buffer.toString('utf-8')
+      const lines = content.split('\n')
+      const numbered = lines.map((line, i) => `${i + 1}: ${line}`).join('\n')
+      parts.push({ type: 'text', synthetic: true, text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}` })
+      parts.push({ type: 'text', synthetic: true, text: `<path>${filepath}</path>\n<type>file</type>\n<content>\n${numbered}\n</content>` })
+    } catch {}
+  }
+  return parts
+}
+
+function formatTranscript(messages, limit) {
+  const lines = []
+  for (const msg of messages) {
+    if (msg.info.role === 'user') {
+      lines.push('## User')
+      for (const part of msg.parts) {
+        if (part.type === 'text' && !part.ignored) lines.push(part.text)
+        if (part.type === 'file') lines.push(`[Attached: ${part.filename || 'file'}]`)
+      }
+      lines.push('')
+    }
+    if (msg.info.role === 'assistant') {
+      lines.push('## Assistant')
+      for (const part of msg.parts) {
+        if (part.type === 'text') lines.push(part.text)
+        if (part.type === 'tool' && part.state?.status === 'completed') lines.push(`[Tool: ${part.tool}] ${part.state.title}`)
+      }
+      lines.push('')
+    }
+  }
+  const output = lines.join('\n').trim()
+  if (messages.length >= (limit ?? 100)) return output + `\n\n(Showing ${messages.length} most recent messages. Use a higher 'limit' to see more.)`
+  return output + `\n\n(End of session - ${messages.length} messages)`
+}
+
+const HANDOFF_COMMAND = `GOAL: You are creating a handoff message to continue work in a new session.
+
+When an AI assistant starts a fresh session, it spends significant time exploring the codebase before it can begin actual work. A good handoff frontloads everything the next session needs so it can start implementing immediately.
+
+Analyze this conversation and extract what matters for continuing the work.
+
+1. Identify all relevant files that should be loaded into the next session's context. Include files that will be edited, dependencies being touched, relevant tests, configs, and key reference docs. Target 8-15 files, up to 20 for complex work.
+
+2. Draft the context and goal description. Describe what we're working on and provide whatever context helps continue the work. Preserve decisions, constraints, user preferences, technical patterns. Exclude conversation back-and-forth, dead ends, meta-commentary.
+
+USER: $ARGUMENTS
+
+---
+
+After generating the handoff message, IMMEDIATELY call handoff_session with your prompt and files:
+\`handoff_session(prompt="...", files=["src/foo.ts", "src/bar.ts", ...])\``
 
 // ─── ConcurrencyManager ───────────────────────────────────────────────────────
 
@@ -528,6 +636,7 @@ class BackgroundManager {
 // ─── Plugin export ────────────────────────────────────────────────────────────
 
 const manager = new BackgroundManager()
+const handoffProcessedSessions = new Set()
 
 export const GroundworkPlugin = async ({ client, directory }) => {
   manager.client = client
@@ -539,6 +648,11 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       config.skills.paths = config.skills.paths || []
       if (!config.skills.paths.includes(groundworkSkillsDir)) {
         config.skills.paths.push(groundworkSkillsDir)
+      }
+      config.command = config.command || {}
+      config.command['handoff'] = {
+        description: 'Create a focused handoff prompt for a new session',
+        template: HANDOFF_COMMAND,
       }
     },
 
@@ -553,16 +667,12 @@ export const GroundworkPlugin = async ({ client, directory }) => {
     },
 
     tool: {
-      background_task: {
+      background_task: tool({
         description: 'Run agent task in background. Returns task_id immediately; notifies on completion. Use `background_output` to get results. Prompts MUST be in English.',
-        parameters: {
-          type: 'object',
-          properties: {
-            description: { type: 'string', description: 'Short task description (shown in status)' },
-            prompt: { type: 'string', description: 'Full detailed prompt for the agent' },
-            agent: { type: 'string', description: 'Agent type to use (e.g. "general", "explore", "build")' },
-          },
-          required: ['description', 'prompt', 'agent'],
+        args: {
+          description: z.string().describe('Short task description (3-5 words, shown in status)'),
+          prompt: z.string().describe('Full detailed prompt for the background agent. Must be self-contained with all context needed.'),
+          agent: z.string().describe('Agent type to use (e.g. "general", "explore", "coder")'),
         },
         async execute(args, toolContext) {
           if (!args.agent?.trim()) return '[ERROR] Agent parameter is required.'
@@ -584,18 +694,14 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             return `[ERROR] Failed to launch: ${error instanceof Error ? error.message : String(error)}`
           }
         },
-      },
+      }),
 
-      background_output: {
-        description: 'Get output from background task. ONLY call AFTER receiving a <system-reminder> notification.',
-        parameters: {
-          type: 'object',
-          properties: {
-            task_id: { type: 'string', description: 'Task ID to get output from' },
-            block: { type: 'boolean', description: 'Wait for completion (default: false)' },
-            timeout: { type: 'number', description: 'Max wait time in ms (default: 60000)' },
-          },
-          required: ['task_id'],
+      background_output: tool({
+        description: 'Get output from background task. ONLY call AFTER receiving a <system-reminder> notification. Can also check status of running tasks.',
+        args: {
+          task_id: z.string().describe('Task ID to get output from'),
+          block: z.boolean().optional().describe('Wait for completion (default: false)'),
+          timeout: z.number().optional().describe('Max wait time in ms when blocking (default: 60000, max: 600000)'),
         },
         async execute(args) {
           try {
@@ -620,16 +726,31 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             return `Error getting output: ${error instanceof Error ? error.message : String(error)}`
           }
         },
-      },
+      }),
 
-      background_cancel: {
-        description: 'Cancel running background task(s). Use all=true to cancel ALL.',
-        parameters: {
-          type: 'object',
-          properties: {
-            taskId: { type: 'string', description: 'Task ID to cancel' },
-            all: { type: 'boolean', description: 'Cancel all running background tasks' },
-          },
+      background_list: tool({
+        description: 'List all background tasks for the current session. Shows task IDs, descriptions, agents, status, and duration. Like `pty_list` but for background agent tasks.',
+        args: {
+          include_completed: z.boolean().optional().describe('Include completed/failed tasks (default: false, shows only active)'),
+        },
+        async execute(args, toolContext) {
+          try {
+            const allTasks = manager.getAllDescendantTasks(toolContext.sessionID)
+            const tasks = args.include_completed
+              ? allTasks
+              : allTasks.filter(t => t.status === 'running' || t.status === 'pending')
+            return formatTaskList(tasks, toolContext.sessionID)
+          } catch (error) {
+            return `Error listing tasks: ${error instanceof Error ? error.message : String(error)}`
+          }
+        },
+      }),
+
+      background_cancel: tool({
+        description: 'Cancel running background task(s). Use all=true to cancel ALL tasks for this session.',
+        args: {
+          taskId: z.string().optional().describe('Task ID to cancel'),
+          all: z.boolean().optional().describe('Cancel all running background tasks'),
         },
         async execute(args, toolContext) {
           try {
@@ -654,15 +775,85 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             return `[ERROR] ${error instanceof Error ? error.message : String(error)}`
           }
         },
-      },
+      }),
+
+      handoff_session: tool({
+        description: 'Create a new session with the handoff prompt as an editable draft. Called after /handoff command generates the summary.',
+        args: {
+          prompt: z.string().describe('The generated handoff prompt'),
+          files: z.array(z.string()).optional().describe('Array of file paths to load into the new session context'),
+        },
+        async execute(args, context) {
+          const sessionReference = `Continuing work from session ${context.sessionID}. When you lack specific information you can use read_session to get it.`
+          const fileRefs = args.files?.length
+            ? args.files.map(f => `@${f.replace(/^@/, '')}`).join(' ')
+            : ''
+          const fullPrompt = fileRefs
+            ? `${sessionReference}\n\n${fileRefs}\n\n${args.prompt}`
+            : `${sessionReference}\n\n${args.prompt}`
+          await client.tui.executeCommand({ body: { command: 'session_new' } })
+          await new Promise(r => setTimeout(r, 150))
+          await client.tui.appendPrompt({ body: { text: fullPrompt } })
+          await client.tui.showToast({
+            body: { title: 'Handoff Ready', message: 'Review and edit the draft, then send', variant: 'success', duration: 4000 }
+          })
+          return 'Handoff prompt created in new session. Review and edit before sending.'
+        }
+      }),
+
+      read_session: tool({
+        description: 'Read the conversation transcript from a previous session. Use when you need specific information from the source session not in the handoff summary.',
+        args: {
+          sessionID: z.string().describe('The full session ID (e.g., sess_01jxyz...)'),
+          limit: z.number().optional().describe('Maximum number of messages to read (defaults to 100, max 500)'),
+        },
+        async execute(args) {
+          const limit = Math.min(args.limit ?? 100, 500)
+          try {
+            const response = await client.session.messages({
+              path: { id: args.sessionID },
+              query: { limit }
+            })
+            const messages = extractMessages(response)
+            if (!messages.length) return 'Session has no messages or does not exist.'
+            return formatTranscript(messages, limit)
+          } catch (error) {
+            return `Could not read session ${args.sessionID}: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        }
+      }),
     },
 
     event: async ({ event }) => {
       manager.handleEvent(event)
+      if (event.type === 'session.deleted') {
+        handoffProcessedSessions.delete(event.properties?.info?.id)
+      }
     },
 
     'chat.message': async (_input, output) => {
       manager.injectPendingNotifications(output.parts, _input.sessionID)
+      const sessionID = output.message.sessionID ?? _input.sessionID
+      if (handoffProcessedSessions.has(sessionID)) return
+      const text = output.parts
+        .filter(p => p.type === 'text' && !p.synthetic && typeof p.text === 'string')
+        .map(p => p.text)
+        .join('\n')
+      if (!text.includes('Continuing work from session')) return
+      handoffProcessedSessions.add(sessionID)
+      const fileRefs = parseFileReferences(text)
+      if (fileRefs.size === 0) return
+      const fileParts = await buildSyntheticFileParts(directory, fileRefs)
+      if (fileParts.length === 0) return
+      await client.session.prompt({
+        path: { id: sessionID },
+        body: {
+          noReply: true,
+          model: output.message.model,
+          agent: output.message.agent,
+          parts: fileParts,
+        },
+      })
     },
   }
 }

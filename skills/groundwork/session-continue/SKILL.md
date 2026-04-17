@@ -37,14 +37,15 @@ Good for: short remaining work, user wants continuity, context is dense but mana
 
 ### Option 2: `/handoff`
 
-Use the opencode-handoff plugin to create a new session with the current context as an editable draft.
+Use the built-in `/handoff` command (provided by the groundwork plugin) to create a new session with the current context as an editable draft.
 
 Good for: long remaining work, context overload, starting a new major feature, user preference.
 
 **How to execute:**
 1. Tell the user: "I'll create a handoff prompt. You can edit it before sending."
-2. Invoke `/handoff <brief description of what to continue>`
-3. The handoff plugin opens a new session with the context loaded
+2. The user types `/handoff <brief description of what to continue>` in the TUI
+3. The AI generates a handoff summary, calls `handoff_session` to open a new session
+4. The new session auto-loads file references and can use `read_session` for the full transcript
 
 ## Presentation Template
 

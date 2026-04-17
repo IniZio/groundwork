@@ -1,88 +1,61 @@
 ---
 name: bdd-implement
-description: BDD-first implementation skill for UI changes and bug fixes. Validates from end-user/QA perspective using XCUITest or Playwright — inspect current state, screenshot before, fix, screenshot after, confirm visually. Use for any visible UI change or bug on macOS or web.
+description: BDD-first implementation skill. Validate behavior over implementation — visual inspection for UI, integration/e2e tests for non-UI. Build task graphs for parallel execution efficiency.
 ---
 
 # BDD Implement
 
+## Core Principle
+
+**Validate behavior, not implementation.** Tests should confirm *what the system does* from the user's perspective, not *how the code is structured internally.*
+
+- **UI work:** Visual inspection before/after (screenshots, accessibility snapshots)
+- **Non-UI work:** Integration or end-to-end tests that exercise real behavior paths
+- **Never:** Unit tests that mock internals to verify code structure
+
 ## When to Use
 
-Invoke this skill for:
-- Any bug in a macOS app UI
-- Any bug in a web app UI
-- Any feature that changes visible UI behavior
-- Any time a fix could be "correct" per code but wrong visually
+- Any bug fix (UI or non-UI)
+- Any feature that changes observable behavior
+- Any time a fix could be "correct per code but wrong in practice"
+- When scoping implementation work into parallel execution waves
 
-**Anti-pattern this replaces:** Writing unit tests that verify code behavior when the actual requirement is a visual/UX outcome. Unit tests do not validate "the button looks right" or "the modal closes correctly."
+## Task Graph
+
+Before implementing, decompose work into a **task dependency graph** for maximum parallelism:
+
+1. **List atomic tasks** — each with a clear "done" definition
+2. **Map dependencies** — hard ordering (A must finish before B) vs soft preferences
+3. **Assign waves** — Wave 0 has no predecessors; Wave k requires all predecessors in waves < k
+4. **Identify critical path** — longest chain that determines total time
+5. **Flag resource conflicts** — tasks touching the same file/service must serialize despite parallel eligibility
+
+Execute waves in order; within a wave, run tasks in parallel via `background_task`.
 
 ## Workflow
 
-### Phase 1: Inspect Current State
+### 1. Capture Before State
 
-**macOS app:**
-Use XCUITest to inspect the accessibility tree and capture the current state of UI elements before any changes.
+- **Web:** `playwright_browser_snapshot` + `playwright_browser_take_screenshot` → `before-<description>.png`
+- **macOS native:** XCUITest accessibility snapshot + `screenshot()` → `before-<description>.png`
+- **Non-UI:** Run existing integration/e2e tests to capture baseline behavior. Note what passes/fails.
 
-**Web app:**
-Use `playwright_browser_snapshot` to get current accessibility state.
-Use `playwright_browser_take_screenshot` to capture current visual state.
+### 2. Implement
 
-Document what you find: element labels, positions, states.
+Minimal change. Follow YAGNI. Execute by task graph waves.
 
-### Phase 2: Screenshot Before
+### 3. Capture After State
 
-Capture the **failing or pre-change state** visually.
+Same tools as Step 1. Label: `after-<description>.png` or after-state test results.
 
-**macOS:** Use XCUITest screenshot API: `XCUIScreen.main.screenshot()` or `app.screenshot()`.
-**Web:** `playwright_browser_take_screenshot` with `filename: "before-fix.png"`.
+### 4. Validate
 
-Label it clearly: `before-<issue-description>.png`.
+- **UI:** Side-by-side comparison — does visual output match requirement? Any unexpected changes? Accessibility tree correct?
+- **Non-UI:** Do integration/e2e tests pass? Does observed behavior match the requirement?
+- **Both:** If unexpected changes — stop, diagnose, fix, re-validate.
 
-### Phase 3: Implement
+### 5. Completion Gate
 
-Make the **minimal change** required. Do not over-engineer. Follow YAGNI.
-
-### Phase 4: Screenshot After
-
-Capture the **fixed/changed state** using the same method as Phase 2.
-
-Label it: `after-<issue-description>.png`.
-
-### Phase 5: Compare and Validate
-
-Side-by-side comparison:
-- Does the visual output match the requirement?
-- Did anything else change unexpectedly?
-- Does the accessibility tree reflect the correct semantic state?
-
-If something unexpected changed: stop, diagnose, fix, re-screenshot.
-
-### Phase 6: Advisor Completion Gate
-
-Invoke `advisor-gate` completion gate with:
-- Before screenshot path
-- After screenshot path
-- What was changed
-- What requirement is being met
+Invoke `advisor-gate` with: before state, after state, what changed, what requirement is met.
 
 **Do not declare done without this gate.**
-
-## Tools
-
-| Context | Inspect tool | Screenshot tool |
-|---------|-------------|-----------------|
-| Web app | `playwright_browser_snapshot` | `playwright_browser_take_screenshot` |
-| macOS web view | `playwright_browser_snapshot` | `playwright_browser_take_screenshot` |
-| macOS native | XCUITest accessibility snapshot | XCUITest `screenshot()` API |
-
-## Example Invocation
-
-```
-bdd-implement triggered for: "Button color is wrong in dark mode"
-
-Phase 1: Inspect — accessibility snapshot shows button role=button, label="Submit"
-Phase 2: Screenshot before → before-dark-mode-button.png (button shows #333 on #222 — low contrast)
-Phase 3: Fix → update ColorScheme.swift buttonBackground dark variant to #0A84FF
-Phase 4: Screenshot after → after-dark-mode-button.png (button shows blue on dark — correct)
-Phase 5: Compare → color fixed, no other elements changed
-Phase 6: Completion gate → advisor APPROVE
-```

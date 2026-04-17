@@ -54,17 +54,7 @@ ${content}
 
 // ─── Background task types and helpers ───────────────────────────────────────
 
-const PERSISTENCE_BASE = path.join(process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? '', '.local', 'share'), 'opencode', 'background-tasks')
-
-function hashPath(p) {
-  let hash = 0
-  for (let i = 0; i < p.length; i++) {
-    const char = p.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash |= 0
-  }
-  return Math.abs(hash).toString(36)
-}
+const PERSISTENCE_DIR = '.opencode/background-tasks'
 
 function formatDuration(start, end) {
   if (!start) return 'N/A'
@@ -104,23 +94,33 @@ function formatTaskStatus(task) {
 
 async function formatTaskResult(task, client) {
   if (!task.sessionID) return 'Error: Task has no sessionID'
-  const resp = await client.session.messages({ path: { id: task.sessionID } })
-  const messages = extractMessages(resp)
-  const duration = formatDuration(task.startedAt ?? new Date(), task.completedAt)
-  const header = `Task Result\n\nTask ID: ${task.id}\nDescription: ${task.description}\nDuration: ${duration}\nSession ID: ${task.sessionID}\n\n---\n\n`
-  if (!messages.length) return header + '(No messages found)'
-  const relevant = messages.filter(m => m.info?.role === 'assistant' || m.info?.role === 'tool')
-  if (!relevant.length) return header + '(No assistant or tool response found)'
-  const extracted = []
-  for (const msg of relevant) {
-    for (const part of msg.parts ?? []) {
-      if ((part.type === 'text' || part.type === 'reasoning') && part.text) {
-        extracted.push(part.text)
+  try {
+    const resp = await client.session.messages({ path: { id: task.sessionID } })
+    const messages = extractMessages(resp)
+    const duration = formatDuration(task.startedAt ?? new Date(), task.completedAt)
+    const header = `Task Result\n\nTask ID: ${task.id}\nDescription: ${task.description}\nDuration: ${duration}\nSession ID: ${task.sessionID}\n\n---\n\n`
+    if (!messages.length) return header + '(No messages found)'
+    const relevant = messages.filter(m => m.info?.role === 'assistant' || m.info?.role === 'tool')
+    if (!relevant.length) return header + '(No assistant or tool response found)'
+    const extracted = []
+    for (const msg of relevant) {
+      for (const part of msg.parts ?? []) {
+        if ((part.type === 'text' || part.type === 'reasoning') && part.text) {
+          extracted.push(part.text)
+        } else if (part.type === 'tool' && part.state) {
+          if (part.state.status === 'completed' && part.state.title) {
+            extracted.push(`[Tool: ${part.tool}] ${part.state.title}`)
+          } else if (part.state.status === 'error') {
+            extracted.push(`[Tool: ${part.tool}] ERROR: ${part.state.title || 'unknown error'}`)
+          }
+        }
       }
     }
+    const content = extracted.filter(t => t.length > 0).join('\n\n')
+    return header + (content || '(No text output)')
+  } catch (err) {
+    return `Error extracting task result: ${err instanceof Error ? err.message : String(err)}`
   }
-  const content = extracted.filter(t => t.length > 0).join('\n\n')
-  return header + (content || '(No text output)')
 }
 
 function buildNotificationText({ task, duration, statusText, allComplete, remainingCount, completedTasks, artifactPath }) {
@@ -249,13 +249,10 @@ After generating the handoff message, IMMEDIATELY call handoff_session with your
 // ─── PersistenceLayer ─────────────────────────────────────────────────────────
 
 class PersistenceLayer {
-  constructor(basePath = PERSISTENCE_BASE) {
-    this.basePath = basePath
-  }
+  constructor() {}
 
   artifactPath(taskId, parentSessionID, directory) {
-    const projectId = hashPath(directory)
-    return path.join(this.basePath, projectId, parentSessionID, `${taskId}.md`)
+    return path.join(directory, PERSISTENCE_DIR, parentSessionID, `${taskId}.md`)
   }
 
   artifactDir(taskId, parentSessionID, directory) {
@@ -285,7 +282,7 @@ class PersistenceLayer {
   }
 
   async listForSession(parentSessionID, directory) {
-    const sessionDir = path.join(this.basePath, hashPath(directory), parentSessionID)
+    const sessionDir = path.join(directory, PERSISTENCE_DIR, parentSessionID)
     try {
       const entries = await fsPromises.readdir(sessionDir)
       const results = []
@@ -476,12 +473,11 @@ class BackgroundManager {
   }
 
   async recoverStateForTask(taskId) {
-    const artifactPath = persistence.artifactPath(taskId, '', this.directory)
-    const dir = path.dirname(path.dirname(artifactPath))
+    const baseDir = path.join(this.directory, PERSISTENCE_DIR)
     try {
-      const sessionDirs = await fsPromises.readdir(dir)
+      const sessionDirs = await fsPromises.readdir(baseDir)
       for (const sessionDir of sessionDirs) {
-        const sessionPath = path.join(dir, sessionDir)
+        const sessionPath = path.join(baseDir, sessionDir)
         try {
           const files = await fsPromises.readdir(sessionPath)
           if (files.includes(`${taskId}.md`)) {
@@ -702,7 +698,7 @@ class BackgroundManager {
       if (!task || task.status !== 'running') return
       const existingTimer = this.completionTimers.get(task.id)
       if (existingTimer) return
-      const timer = setTimeout(() => { this.completionTimers.delete(task.id); void this.tryCompleteTask(task, 'session.idle') }, 2000)
+      const timer = setTimeout(() => { this.completionTimers.delete(task.id); void this.tryCompleteTask(task, 'session.idle') }, 5000)
       if (typeof timer?.unref === 'function') timer.unref()
       this.completionTimers.set(task.id, timer)
     }
@@ -831,6 +827,16 @@ export const GroundworkPlugin = async ({ client, directory }) => {
         description: 'Create a focused handoff prompt for a new session',
         template: HANDOFF_COMMAND,
       }
+      try {
+        const gitignorePath = path.join(directory, '.gitignore')
+        const OPENCODE_IGNORE = '.opencode/'
+        let gitignore = ''
+        try { gitignore = await fsPromises.readFile(gitignorePath, 'utf8') } catch {}
+        if (!gitignore.includes(OPENCODE_IGNORE)) {
+          const newContent = gitignore ? (gitignore.endsWith('\n') ? gitignore : gitignore + '\n') + OPENCODE_IGNORE + '\n' : OPENCODE_IGNORE + '\n'
+          await fsPromises.writeFile(gitignorePath, newContent, 'utf8')
+        }
+      } catch {}
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {

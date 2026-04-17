@@ -74,6 +74,35 @@ Advisor returns one of:
 
 **Do not skip the completion gate even if you are confident.** Confidence without verification is an anti-pattern.
 
+## Verification Pushback Rules
+
+When the executor skips or waives any verification step, the advisor MUST challenge the justification before approving. The advisor's default stance when verification was skipped is **GAPS** or **CORRECTION**, not APPROVE.
+
+### What counts as a waived verification
+
+- Skipping e2e or integration tests
+- Not running the test suite at all
+- Claiming a test "cannot be run" or "fixture not ready"
+- Claiming a server or service "isn't up" and therefore cannot be tested against
+- Marking a requirement as met without running the relevant verification command
+- Substituting manual reasoning ("looks correct") for actual execution
+
+### How the advisor must respond
+
+1. **Default to CORRECTION** when any verification step was waived without a demonstrated attempt to resolve the blocker. Use GAPS only when the executor addressed all verification but missed a requirement.
+2. **Require investigation before acceptance.** If the executor says "fixture not ready", the advisor should direct them to investigate how to set up the fixture — not waive the test.
+3. **Require concrete evidence of effort.** "Tried X and it failed with error Y" is acceptable with a suggested alternative. "Couldn't do X" with no detail is not.
+4. **Suggest specific alternatives.** The advisor should research and propose concrete next steps: how to start the server, how to prepare the fixture, how to set up the test environment, which commands to run.
+
+### The only acceptable reason to waive verification
+
+A verification step may only be waived if:
+- The executor demonstrates they attempted at least one concrete approach to enable it, AND
+- The advisor can confirm the blocker is genuinely outside the executor's control (e.g., external service down, missing credentials the user must provide), AND
+- The advisor explicitly documents the gap and flags it to the user as part of the APPROVE.
+
+Otherwise, the advisor must push back.
+
 ## Response Contract
 
 Structure responses in this order:

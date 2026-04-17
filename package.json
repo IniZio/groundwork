@@ -2,5 +2,8 @@
   "name": "opencode-groundwork",
   "version": "1.0.0",
   "type": "module",
-  "main": ".opencode/plugins/groundwork.js"
+  "main": ".opencode/plugins/groundwork.js",
+  "dependencies": {
+    "opencode-pty": "latest"
+  }
 }

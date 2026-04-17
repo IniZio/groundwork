@@ -4,11 +4,13 @@
  * Merges:
  * 1. Groundwork workflow skills injection (via config hook + chat.messages.transform)
  * 2. Background task tools (background_task, background_output, background_cancel)
+ * 3. PTY tools (pty_spawn, pty_write, pty_read, pty_list, pty_kill) via opencode-pty
  */
 
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { PTYPlugin } from 'opencode-pty'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -529,9 +531,13 @@ class BackgroundManager {
 
 const manager = new BackgroundManager()
 
-export const GroundworkPlugin = async ({ client, directory }) => {
+export const GroundworkPlugin = async (ctx) => {
+  const { client, directory } = ctx
   manager.client = client
   manager.directory = directory
+
+  // Load PTY plugin and merge its hooks
+  const ptyHooks = await PTYPlugin(ctx)
 
   return {
     config: async (config) => {
@@ -540,6 +546,7 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       if (!config.skills.paths.includes(groundworkSkillsDir)) {
         config.skills.paths.push(groundworkSkillsDir)
       }
+      if (ptyHooks.config) await ptyHooks.config(config)
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
@@ -553,6 +560,7 @@ export const GroundworkPlugin = async ({ client, directory }) => {
     },
 
     tool: {
+      ...ptyHooks.tool,
       background_task: {
         description: 'Run agent task in background. Returns task_id immediately; notifies on completion. Use `background_output` to get results. Prompts MUST be in English.',
         parameters: {
@@ -657,13 +665,16 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       },
     },
 
-    event: async ({ event }) => {
-      manager.handleEvent(event)
+    event: async (input) => {
+      manager.handleEvent(input.event)
+      if (ptyHooks.event) await ptyHooks.event(input)
     },
 
     'chat.message': async (_input, output) => {
       manager.injectPendingNotifications(output.parts, _input.sessionID)
     },
+
+    'command.execute.before': ptyHooks['command.execute.before'],
   }
 }
 

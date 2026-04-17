@@ -29,7 +29,7 @@ Restart OpenCode. Skills are auto-discovered.
 | `using-workflow` | Bootstrap — loaded every session |
 | `bdd-implement` | Any UI bug or visible UI change |
 | `nested-prd` | Master plan needs change during implementation |
-| `advisor-gate` | Technical uncertainty; always at task completion |
+| `advisor-gate` | Technical uncertainty; always at task completion; verification pushback on waived tests |
 | `consolidate-docs` | Cleaning up PRDs; before handoff |
 | `session-continue` | Context long; want fresh session |
 

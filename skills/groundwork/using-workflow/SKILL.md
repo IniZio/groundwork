@@ -16,6 +16,7 @@ description: Bootstrap skill for the groundwork workflow suite. Loaded at every 
 5. **Advisor nod required before declaring done.** Always invoke the `advisor-gate` completion gate before telling the user a task is complete.
 6. **No self-review.** Use `advisor` subagent for any technical uncertainty, not internal reasoning loops.
 7. **BDD over unit tests for UI.** For any visible UI change or bug, validate with actual visual inspection (XCUITest, Playwright) before and after — not just code assertions.
+8. **Use PTY tools for long-running and interactive commands.** Never use `bash` for commands that serve, watch, or require interactive input. Use `pty_spawn`/`pty_write`/`pty_read`/`pty_kill` instead. Examples that MUST use PTY: `npm run dev`, `npm start`, `yarn dev`, `docker-compose up`, `docker compose up`, `make watch`, any `--watch` flag, `git rebase -i`, `git add -p`, `vim`, `less`, `top`, `ssh`. Rule of thumb: if the command doesn't exit on its own within ~5 seconds, use PTY.
 
 ## Skill Triggers
 
@@ -39,6 +40,7 @@ Invoke the relevant skill tool BEFORE any response or action. 1% chance = invoke
 - Do not use `delegate` — use `background_task` instead
 - Do not end the conversation — use `question` tool to keep going
 - Do not run self-review in place of advisor escalation
+- Do not use `bash` for long-running/interactive commands — use `pty_spawn` and friends
 
 ## Skill Invocation Pattern
 

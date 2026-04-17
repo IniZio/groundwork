@@ -17,6 +17,8 @@ Invoke when ANY of these are true during implementation:
 
 **Never silently update the master PRD during implementation.** Changes discovered during implementation are separate decisions, not corrections.
 
+**However**, not all changes require a child PRD. Small direction adjustments (detail changes, advisor corrections, scope adjustments ≤1 day) should be handled via the Steer Log in the master PRD (see `create-prd` skill). Only invoke this skill when the change is architectural or affects other features.
+
 ## Workflow
 
 ### Step 1: Stop Implementation
@@ -32,16 +34,26 @@ Identify:
 
 ### Step 3: Create Child PRD
 
-Create file: `docs/prds/YYYY-MM-DD-<topic>-child.md`
+Child PRDs nest inside their parent's directory as subdirectories, each containing a `PRD.md` file. This supports arbitrary depth — a child can have its own child PRDs.
 
-Use this template:
+Create directory: `docs/prds/<parent-path>/YYYY-MM-DD-<topic>/`
+
+Create file: `docs/prds/<parent-path>/YYYY-MM-DD-<topic>/PRD.md`
+
+```bash
+mkdir -p docs/prds/<parent-path>/YYYY-MM-DD-<topic>
+```
+
+Use this template (frontmatter schema matches `create-prd/reference.md`):
 
 ```markdown
 ---
-parent_prd: docs/prds/<parent-filename>.md
+type: child
+feature_area: <kebab-case, matches parent>
 date: YYYY-MM-DD
 topic: <short description>
 status: draft
+parent_prd: <parent directory path relative to docs/prds/>
 ---
 
 # Child PRD: <topic>
@@ -84,13 +96,14 @@ If the conflict involves architectural trade-offs, invoke `advisor-gate` before 
 ### Step 6: Resume
 
 After user decision:
-- If master plan adjusts: update master PRD, reference child PRD as the decision record
-- If child PRD becomes active: implement against child PRD, master plan unchanged
-- If change abandoned: document in child PRD and archive it
+- If master plan adjusts: update master PRD (add Steer Log entry per `create-prd` skill), add child PRD directory name to master's `child_prds` frontmatter list, reference child PRD as the decision record
+- If child PRD becomes active: set child `status: active`, implement against child PRD, master plan unchanged
+- If change abandoned: set child `status: abandoned`, document in child PRD
 
 ## Rules
 
 - Child PRDs are never committed to git
-- Child PRD filename always includes date prefix
-- Always link back to parent PRD in frontmatter
+- Child PRD always lives in its own directory under the parent: `YYYY-MM-DD-<topic>/PRD.md`
+- Always link back to parent PRD directory in frontmatter
 - Never have more than one active child PRD per feature at a time
+- Nesting depth is unlimited — a child PRD can have its own child PRDs

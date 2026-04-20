@@ -1,15 +1,18 @@
 # opencode-groundwork
 
-Custom OpenCode workflow plugin providing:
+Custom OpenCode workflow plugin providing structured development practices.
 
-- Groundwork skills suite (BDD-implement, nested-prd, advisor-gate, consolidate-docs, session-continue, using-workflow)
-- Background task tools (`background_task`, `background_output`, `background_cancel`)
+## Features
 
-PTY tools (`pty_spawn`, `pty_write`, `pty_read`, `pty_list`, `pty_kill`) are provided via the companion plugin `opencode-pty`, which must be installed separately (see Installation).
+- **Skills**: PRD-driven development, advisor gates, BDD implementation, context management
+- **Commands**: 9 workflow commands exposed in Cursor
+- **Hooks**: Session bootstrap with workflow rule reinforcement
 
 ## Installation
 
-Add both plugins to `opencode.json`:
+### OpenCode
+
+Add to `opencode.json`:
 
 ```json
 {
@@ -22,16 +25,38 @@ Add both plugins to `opencode.json`:
 
 Restart OpenCode. Skills are auto-discovered.
 
-## Skills
+### Cursor
 
-| Skill | Trigger |
-|-------|---------|
-| `using-workflow` | Bootstrap — loaded every session |
-| `bdd-implement` | Any UI bug or visible UI change |
-| `nested-prd` | Master plan needs change during implementation |
-| `advisor-gate` | Technical uncertainty; always at task completion; verification pushback on waived tests |
-| `consolidate-docs` | Cleaning up PRDs; before handoff |
-| `session-continue` | Context long; want fresh session |
+Install via Cursor plugin marketplace:
+
+```
+/add-plugin groundwork
+```
+
+Or manually copy this repository to your Cursor plugins directory.
+
+## Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `create-prd` | Create master PRD for features |
+| `advisor-gate` | Completion gate and uncertainty escalation |
+| `bdd-implement` | BDD-first implementation |
+| `nested-prd` | Handle scope changes with child PRDs |
+| `consolidate-docs` | Merge PRDs into time-neutral docs |
+| `session-continue` | Handoff and context management |
+| `commit` | Git commit with consistent style |
+| `using-workflow` | Bootstrap workflow rules |
+| `opencode-acp` | Cross-instance control protocol |
+
+## Workflow Rules
+
+1. PRD-first for non-trivial features (≥1 day)
+2. Advisor gate before declaring done
+3. Background tasks for parallel work
+4. No PRD commits to git
+5. No worktrees
+6. PTY tools for long-running commands
 
 ## Updates
 

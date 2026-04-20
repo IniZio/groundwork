@@ -1,0 +1,23 @@
+{
+  "name": "groundwork",
+  "displayName": "Groundwork Workflow",
+  "description": "Structured workflow plugin for Cursor with PRD-driven development, advisor gates, and context management",
+  "version": "0.1.0",
+  "author": {
+    "name": "Groundwork Team"
+  },
+  "homepage": "https://github.com/IniZio/opencode-groundwork",
+  "repository": "https://github.com/IniZio/opencode-groundwork",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "prd",
+    "skills",
+    "agents",
+    "groundwork"
+  ],
+  "skills": "./skills/groundwork/",
+  "agents": "./agents/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks-cursor.json"
+}

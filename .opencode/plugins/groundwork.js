@@ -71,9 +71,15 @@ function truncateText(text, maxLen) {
   return text.slice(0, maxLen) + '…'
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function extractMessages(result) {
   if (Array.isArray(result)) return result
   if (Array.isArray(result?.data)) return result.data
+  if (Array.isArray(result?.data?.messages)) return result.data.messages
+  if (Array.isArray(result?.messages)) return result.messages
   return []
 }
 
@@ -94,33 +100,57 @@ function formatTaskStatus(task) {
 
 async function formatTaskResult(task, client) {
   if (!task.sessionID) return 'Error: Task has no sessionID'
-  try {
-    const resp = await client.session.messages({ path: { id: task.sessionID } })
-    const messages = extractMessages(resp)
-    const duration = formatDuration(task.startedAt ?? new Date(), task.completedAt)
-    const header = `Task Result\n\nTask ID: ${task.id}\nDescription: ${task.description}\nDuration: ${duration}\nSession ID: ${task.sessionID}\n\n---\n\n`
-    if (!messages.length) return header + '(No messages found)'
-    const relevant = messages.filter(m => m.info?.role === 'assistant' || m.info?.role === 'tool')
-    if (!relevant.length) return header + '(No assistant or tool response found)'
-    const extracted = []
-    for (const msg of relevant) {
-      for (const part of msg.parts ?? []) {
-        if ((part.type === 'text' || part.type === 'reasoning') && part.text) {
-          extracted.push(part.text)
-        } else if (part.type === 'tool' && part.state) {
-          if (part.state.status === 'completed' && part.state.title) {
-            extracted.push(`[Tool: ${part.tool}] ${part.state.title}`)
-          } else if (part.state.status === 'error') {
-            extracted.push(`[Tool: ${part.tool}] ERROR: ${part.state.title || 'unknown error'}`)
+  const maxAttempts = 4
+  const duration = formatDuration(task.startedAt ?? new Date(), task.completedAt)
+  const header = `Task Result\n\nTask ID: ${task.id}\nDescription: ${task.description}\nDuration: ${duration}\nSession ID: ${task.sessionID}\n\n---\n\n`
+  let prevMsgCount = -1
+  let bestContent = ''
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      if (attempt > 0) await sleep(3000 * attempt)
+      const resp = await client.session.messages({ path: { id: task.sessionID } })
+      const messages = extractMessages(resp)
+      if (!messages.length) {
+        if (attempt < maxAttempts - 1) continue
+        break
+      }
+      const msgCount = messages.length
+      const relevant = messages.filter(m => m.info?.role === 'assistant' || m.info?.role === 'tool')
+      if (!relevant.length) {
+        if (attempt < maxAttempts - 1) continue
+        break
+      }
+      const extracted = []
+      for (const msg of relevant) {
+        for (const part of msg.parts ?? []) {
+          if (part.type === 'text' && part.text) {
+            extracted.push(part.text)
+          } else if (part.type === 'reasoning' && part.text) {
+            extracted.push(part.text)
+          } else if (part.type === 'thinking' && part.text) {
+            extracted.push(part.text)
+          } else if (part.type === 'tool' && part.state) {
+            if (part.state.status === 'completed' && part.state.title) {
+              extracted.push(`[Tool: ${part.tool}] ${part.state.title}`)
+            } else if (part.state.status === 'error') {
+              extracted.push(`[Tool: ${part.tool}] ERROR: ${part.state.title || 'unknown error'}`)
+            }
           }
         }
       }
+      const content = extracted.filter(t => t.length > 0).join('\n\n')
+      if (content.length > bestContent.length) bestContent = content
+      if (msgCount === prevMsgCount && bestContent) return header + bestContent
+      prevMsgCount = msgCount
+      if (attempt >= maxAttempts - 1) return header + (bestContent || '(No text output)')
+    } catch (err) {
+      if (attempt >= maxAttempts - 1) {
+        if (bestContent) return header + bestContent
+        return `${header}Error extracting task result: ${err instanceof Error ? err.message : String(err)}`
+      }
     }
-    const content = extracted.filter(t => t.length > 0).join('\n\n')
-    return header + (content || '(No text output)')
-  } catch (err) {
-    return `Error extracting task result: ${err instanceof Error ? err.message : String(err)}`
   }
+  return header + (bestContent || '(No text output)')
 }
 
 function buildNotificationText({ task, duration, statusText, allComplete, remainingCount, completedTasks, artifactPath }) {
@@ -421,7 +451,13 @@ class BackgroundManager {
         }
       )
       this.artifactPaths.set(task.id, artifactPath)
-    } catch {}
+    } catch (persistErr) {
+      try {
+        const fallback = `Task Result\n\nTask ID: ${task.id}\nStatus: ${task.status}\nError: persistence failed - ${persistErr instanceof Error ? persistErr.message : String(persistErr)}`
+        const fallbackPath = await persistence.write(task.id, task.parentSessionID, this.directory, fallback, { id: task.id, status: task.status, error: String(persistErr) })
+        this.artifactPaths.set(task.id, fallbackPath)
+      } catch {}
+    }
   }
 
   compactionContext(sessionID) {
@@ -683,6 +719,7 @@ class BackgroundManager {
     if (task.status !== 'running') return
     task.status = 'completed'; task.completedAt = new Date()
     if (task.concurrencyKey) { this.concurrencyManager.release(task.concurrencyKey); task.concurrencyKey = undefined }
+    await sleep(2000)
     await this.persistResult(task)
     this.markForNotification(task)
     try { await this.client.session.abort({ path: { id: task.sessionID } }) } catch {}
@@ -911,7 +948,7 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             if (terminal) {
               manager.markRead(resolvedTask.id)
               const persisted = await persistence.read(resolvedTask.id, resolvedTask.parentSessionID, manager.directory)
-              if (persisted) return persisted
+              if (persisted && !persisted.endsWith('(No text output)') && !persisted.endsWith('(No messages found)') && !persisted.endsWith('(No assistant or tool response found)')) return persisted
               if (resolvedTask.status === 'completed') return await formatTaskResult(resolvedTask, client)
             }
             return formatTaskStatus(resolvedTask)

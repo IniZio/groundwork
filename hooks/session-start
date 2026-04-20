@@ -1,0 +1,5 @@
+#!/bin/bash
+# SessionStart hook for Groundwork plugin
+# Injects workflow reminders into the agent context
+
+echo "[Groundwork] Workflow active: PRD-first | Advisor gate | Background tasks | No PRD commits"

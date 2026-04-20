@@ -1,4 +1,4 @@
-# Installing opencode-groundwork
+# Installing groundwork
 
 Add both plugins to `opencode.json` plugin array:
 
@@ -6,7 +6,7 @@ Add both plugins to `opencode.json` plugin array:
 {
   "plugin": [
     "opencode-pty",
-    "opencode-groundwork@git+https://github.com/IniZio/opencode-groundwork.git"
+    "groundwork@git+https://github.com/IniZio/groundwork.git"
   ]
 }
 ```
@@ -23,4 +23,4 @@ The agent should describe the available skills and PTY tools should be listed.
 ## Updating
 
 Updates automatically on restart (unpinned git URL).
-To pin: `opencode-groundwork@git+https://github.com/IniZio/opencode-groundwork.git#v1.0.0`
+To pin: `groundwork@git+https://github.com/IniZio/groundwork.git#v1.0.0`

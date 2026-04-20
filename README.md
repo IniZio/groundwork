@@ -1,6 +1,6 @@
-# opencode-groundwork
+# groundwork
 
-Custom OpenCode workflow plugin providing structured development practices.
+Workflow plugin for OpenCode and Cursor providing structured development practices.
 
 ## Features
 
@@ -18,7 +18,7 @@ Add to `opencode.json`:
 {
   "plugin": [
     "opencode-pty",
-    "opencode-groundwork@git+https://github.com/IniZio/opencode-groundwork.git"
+    "groundwork@git+https://github.com/IniZio/groundwork.git"
   ]
 }
 ```
@@ -27,13 +27,21 @@ Restart OpenCode. Skills are auto-discovered.
 
 ### Cursor
 
-Install via Cursor plugin marketplace:
+Local install (for development/testing):
 
-```
-/add-plugin groundwork
+```bash
+# Clone the repo
+git clone https://github.com/IniZio/groundwork.git
+
+# Copy to Cursor's local plugins directory (symlinks don't work due to Cursor bug #35)
+cp -R groundwork ~/.cursor/plugins/local/groundwork
+
+# Restart Cursor or run "Developer: Reload Window"
 ```
 
-Or manually copy this repository to your Cursor plugins directory.
+Verify in Cursor: Settings > Plugins > Groundwork Workflow.
+
+**Note:** The plugin is not yet published to the Cursor marketplace. The local install method is the only way to use it currently.
 
 ## Available Commands
 

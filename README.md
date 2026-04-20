@@ -27,21 +27,17 @@ Restart OpenCode. Skills are auto-discovered.
 
 ### Cursor
 
-Local install (for development/testing):
+One-line install:
 
 ```bash
-# Clone the repo
-git clone https://github.com/IniZio/groundwork.git
-
-# Copy to Cursor's local plugins directory (symlinks don't work due to Cursor bug #35)
-cp -R groundwork ~/.cursor/plugins/local/groundwork
-
-# Restart Cursor or run "Developer: Reload Window"
+curl -fsSL https://raw.githubusercontent.com/IniZio/groundwork/main/.cursor-plugin/INSTALL.sh | bash
 ```
 
-Verify in Cursor: Settings > Plugins > Groundwork Workflow.
+Then restart Cursor or run **Developer: Reload Window**.
 
-**Note:** The plugin is not yet published to the Cursor marketplace. The local install method is the only way to use it currently.
+Verify: Settings → Plugins → Groundwork Workflow.
+
+**Note:** Not yet published to the Cursor marketplace. Local install only.
 
 ## Available Commands
 

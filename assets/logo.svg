@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="#1a1a2e"/>
+  
+  <!-- Foundation blocks - bottom layer -->
+  <rect x="48" y="168" width="160" height="24" rx="4" fill="#e94560"/>
+  <rect x="48" y="168" width="160" height="24" rx="4" fill="url(#glow)" opacity="0.3"/>
+  
+  <!-- Middle layer blocks -->
+  <rect x="72" y="132" width="48" height="28" rx="4" fill="#0f3460"/>
+  <rect x="136" y="132" width="48" height="28" rx="4" fill="#0f3460"/>
+  
+  <!-- Top layer block -->
+  <rect x="104" y="96" width="48" height="28" rx="4" fill="#16213e"/>
+  
+  <!-- Connection lines -->
+  <path d="M96 160 L96 132" stroke="#e94560" stroke-width="3" stroke-linecap="round"/>
+  <path d="M160 160 L160 132" stroke="#e94560" stroke-width="3" stroke-linecap="round"/>
+  <path d="M128 132 L128 96" stroke="#0f3460" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Workflow arrows -->
+  <path d="M60 120 Q80 100 100 120" stroke="#e94560" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M156 120 Q176 100 196 120" stroke="#e94560" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  
+  <!-- Small accent dots -->
+  <circle cx="60" cy="120" r="4" fill="#e94560"/>
+  <circle cx="196" cy="120" r="4" fill="#e94560"/>
+  
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="glow" x1="48" y1="168" x2="208" y2="192">
+      <stop offset="0%" stop-color="#e94560" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#ff6b81" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+</svg>

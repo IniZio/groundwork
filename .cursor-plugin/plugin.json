@@ -9,6 +9,7 @@
   "homepage": "https://github.com/IniZio/groundwork",
   "repository": "https://github.com/IniZio/groundwork",
   "license": "MIT",
+  "logo": "assets/logo.svg",
   "keywords": [
     "workflow",
     "prd",

@@ -13,7 +13,7 @@ Invoke when ANY of these are true:
 - User asks to "write a PRD", "create a spec", "document the plan"
 - About to begin implementation of non-trivial work (≥1 day estimated)
 - No master PRD exists for the current feature area
-- `using-workflow` core rules reference PRD creation
+- `use-groundwork` core rules reference PRD creation
 
 **This is always the first PRD skill invoked.** `nested-prd` and `consolidate-docs` operate on PRDs created by this skill.
 

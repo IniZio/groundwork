@@ -141,7 +141,7 @@ draft → active → archived
 
 ## Git Rules
 
-- PRDs are **never** committed to git (core rule from `using-workflow`)
+- PRDs are **never** committed to git (core rule from `use-groundwork`)
 - PRDs are **never** staged
 - The `docs/prds/` directory should be in `.gitignore`
 

@@ -39,14 +39,14 @@ function extractAndStripFrontmatter(content) {
 }
 
 function getBootstrapContent() {
-  const skillPath = path.join(groundworkSkillsDir, 'using-workflow', 'SKILL.md')
+  const skillPath = path.join(groundworkSkillsDir, 'use-groundwork', 'SKILL.md')
   if (!fs.existsSync(skillPath)) return null
   const fullContent = fs.readFileSync(skillPath, 'utf8')
   const { content } = extractAndStripFrontmatter(fullContent)
   return `<EXTREMELY_IMPORTANT>
 You have groundwork workflow skills.
 
-**IMPORTANT: The using-workflow skill content is included below. It is ALREADY LOADED - you are currently following it. Do NOT use the skill tool to load "using-workflow" again.**
+**IMPORTANT: The use-groundwork skill content is included below. It is ALREADY LOADED - you are currently following it. Do NOT use the skill tool to load "use-groundwork" again.**
 
 ${content}
 </EXTREMELY_IMPORTANT>`

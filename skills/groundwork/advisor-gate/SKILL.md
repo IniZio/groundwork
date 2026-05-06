@@ -17,7 +17,7 @@ Executor-first loop with two gate types:
 
 The advisor is a **read-only strategic consultant**. It provides deep technical analysis with pragmatic minimalism — not just approval/denial. It is invoked when the executor hits complexity ceilings that require elevated reasoning.
 
-## Advisor Identity: The Oracle-Advisor
+## Advisor Identity: The Strategic Advisor
 
 The advisor combines the gate-keeping role with the insight-generating role of a strategic consultant. When invoked, it operates with these principles:
 
@@ -58,7 +58,7 @@ The advisor NEVER opens with filler phrases: "Great question!", "That's a great 
 2. Advisor gives guidance only: insight, plan, correction, or stop signal.
 3. Advisor does not own user-facing output and does not run task tools directly.
 4. Advisor is read-only — no sunk cost bias, no implementation attachment.
-5. At escalation checkpoints, invoke the `oracle` subagent for guidance.
+    5. At escalation checkpoints, invoke the `advisor` subagent for guidance.
 6. Escalate only when the executor cannot confidently choose a safe next move.
 7. Record each escalation reason and the chosen follow-up action.
 8. **NEVER declare a task complete without a completion gate advisor nod.**
@@ -68,11 +68,11 @@ The advisor NEVER opens with filler phrases: "Great question!", "That's a great 
 
 1. Start in executor mode and attempt the task normally.
 2. At each checkpoint, ask: "Can I proceed confidently without escalation?"
-3. If no, invoke `oracle` subagent with decision context (see reference.md).
-4. Accept advisor response: Plan / Correction / Stop.
-5. Resume executor mode, implement, and verify outcomes.
-6. **Before claiming done: invoke completion gate (see below).**
-7. Only after advisor nod: declare task complete to user.
+  3. If no, invoke `advisor` subagent with decision context (see reference.md).
+  4. Accept advisor response: Plan / Correction / Stop.
+  5. Resume executor mode, implement, and verify outcomes.
+  6. **Before claiming done: invoke completion gate (see below).**
+  7. Only after advisor nod: declare task complete to user.
 
 ## Decision Escalation Checkpoints
 
@@ -89,10 +89,6 @@ Escalate when any of these are true:
 
 Do not escalate for routine edits, straightforward refactors, or mechanical changes.
 
-### 1% Chance Heuristic
-
-If there is even a 1% chance the current decision is high-impact, irreversible, ambiguous, or likely to cause rework — consult `oracle`. When in doubt, escalate once early.
-
 ### Uncertainty Management
 
 When the request is ambiguous, the advisor must either:
@@ -103,7 +99,7 @@ If two interpretations differ significantly in effort (2x rule), the advisor MUS
 
 ## Completion Gate (MANDATORY)
 
-Before telling the user the task is done, always invoke `oracle` with this finishness check:
+Before telling the user the task is done, always invoke `advisor` with this finishness check:
 
 ```
 ## Completion Gate Request
@@ -192,11 +188,11 @@ The advisor MUST anchor claims to specific artifacts:
 
 ## Implementation Notes
 
-- Invoke the advisor using `background_task` with **`agent: "oracle"`** — not `"advisor"`. The opencode platform restricts the `advisor` agent type from using any tools in subagent contexts. The `oracle` agent has the same strategic advisor identity with full read access.
-- **The oracle agent reads files directly** — point it to files to inspect. It will read and ground its advice in actual code.
+- Invoke the advisor using `background_task` with **`agent: "advisor"`**. The advisor agent has full read access and strategic analysis capabilities.
+  - **The advisor agent reads files directly** — point it to files to inspect. It will read and ground its advice in actual code.
 - **Output is persisted automatically** — `background_output` reads from the persisted artifact at `.opencode/background-tasks/`.
 - Track escalation count; avoid uncontrolled loops (max 3 escalations per task before surfacing to user).
-- Fallback only if `oracle` is unavailable: clearly label "simulated advisor checkpoint" and state why.
+- Fallback only if `advisor` is unavailable: clearly label "simulated advisor checkpoint" and state why.
 
 ## Additional Resources
 

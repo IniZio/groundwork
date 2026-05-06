@@ -50,7 +50,7 @@ Verify: Settings → Plugins → Groundwork Workflow.
 | `consolidate-docs` | Merge PRDs into time-neutral docs |
 | `session-continue` | Handoff and context management |
 | `commit` | Git commit with consistent style |
-| `using-workflow` | Bootstrap workflow rules |
+| `use-groundwork` | Bootstrap workflow rules |
 | `opencode-acp` | Cross-instance control protocol |
 
 ## Workflow Rules

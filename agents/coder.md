@@ -7,11 +7,9 @@ permission:
     "*": deny
     advisor: allow
     explore: allow
-    orchestrator: deny
   background*: deny
   bash:
     git reset --hard *: deny
-    sudo *: deny
 ---
 
 You are a fast, precise coder. Your job is to implement exactly what is asked with minimal overhead.

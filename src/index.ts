@@ -9,13 +9,13 @@ import { LoopMonitor } from './lib/loop-monitor.js'
 
 export { resolvePromptAppend } from './lib/prompt-resolver.js'
 
-import { getBootstrapContent, extractAndStripFrontmatter, detectPtyPlugin, setPtyPluginAvailable } from './lib/skills.js'
+import { getBootstrapContent, getBootstrapForAgent, extractAndStripFrontmatter, detectPtyPlugin, setPtyPluginAvailable } from './lib/skills.js'
 import { parseFileReferences, buildSyntheticFileParts, HANDOFF_COMMAND } from './lib/handoff.js'
 
 import { createHandoffSessionTool } from './tools/handoff-session.js'
 import { createSetGoalTool } from './tools/set-goal.js'
 import type { ToolDeps } from './tools/deps.js'
-import { readGoal, goalReminder } from './lib/goal.js'
+import { readGoal, goalReminder, injectGoalAndBootstrap } from './lib/goal.js'
 import fastEditTool from './tools/fast-edit-edit.js'
 import fastWriteTool from './tools/fast-edit-write.js'
 
@@ -123,22 +123,23 @@ export const GroundworkPlugin = async (input: PluginInput) => {
       } catch {}
     },
 
-    'experimental.chat.system.transform': async (input: any, output: any) => {
-      const bootstrap = getBootstrapContent()
+    'experimental.chat.messages.transform': async (_input: any, output: any) => {
+      const firstUser = output.messages.find((m: any) => m.info.role === 'user')
+      const sessionID = firstUser?.info?.sessionID
+      const agent = firstUser?.info?.agent
+      const bootstrap = agent
+        ? getBootstrapForAgent(agent)
+        : getBootstrapContent()
 
-      if (bootstrap) {
-        (output.system ||= []).push(bootstrap)
-      }
-
-      if (input.sessionID) {
-        const goal = readGoal(directory, input.sessionID)
+      let goalReminderText: string | null = null
+      if (sessionID) {
+        const goal = readGoal(directory, sessionID)
         if (goal?.status === 'active') {
-          const reminder = goalReminder(goal)
-          if (reminder) {
-            (output.system ||= []).push(reminder)
-          }
+          goalReminderText = goalReminder(goal)
         }
       }
+
+      injectGoalAndBootstrap(output.messages, { bootstrap, goalReminder: goalReminderText })
     },
 
     tool: {

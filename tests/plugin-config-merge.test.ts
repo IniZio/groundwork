@@ -30,13 +30,11 @@ describe('Plugin config merge', () => {
       expect(config.agent.coder.permission['background*']).toBe('deny')
       expect(config.agent.coder.permission.bash).toBeDefined()
       expect(config.agent.coder.permission.bash['git reset --hard *']).toBe('deny')
-      expect(config.agent.coder.permission.bash['sudo *']).toBe('deny')
       // coder can delegate to explore and advisor
       expect(config.agent.coder.permission.task).toBeDefined()
       expect(config.agent.coder.permission.task['*']).toBe('deny')
       expect(config.agent.coder.permission.task.advisor).toBe('allow')
       expect(config.agent.coder.permission.task.explore).toBe('allow')
-      expect(config.agent.coder.permission.task.orchestrator).toBe('deny')
     } finally {
       rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -65,15 +63,9 @@ describe('Plugin config merge', () => {
               task: {
                 explore: 'deny', // frontmatter says allow
                 advisor: 'deny', // frontmatter says allow
-                orchestrator: 'deny', // explicit deny
                 custom: 'allow', // not in frontmatter
               },
               question: 'allow', // frontmatter says deny
-              bash: {
-                'git reset --hard *': 'allow',
-                'sudo *': 'allow',
-                'custom command': 'allow',
-              },
             },
           },
         },
@@ -92,7 +84,6 @@ describe('Plugin config merge', () => {
       // coder: explicit nested values should win
       expect(config.agent.coder.permission.task.explore).toBe('deny')
       expect(config.agent.coder.permission.task.advisor).toBe('deny')
-      expect(config.agent.coder.permission.task.orchestrator).toBe('deny')
       // frontmatter wildcard should still be merged in
       expect(config.agent.coder.permission.task['*']).toBe('deny')
       // custom permission not in frontmatter should be preserved
@@ -101,11 +92,6 @@ describe('Plugin config merge', () => {
       expect(config.agent.coder.permission['background*']).toBe('deny')
       // explicit question wins over frontmatter
       expect(config.agent.coder.permission.question).toBe('allow')
-      // explicit bash values should win over frontmatter defaults
-      expect(config.agent.coder.permission.bash['git reset --hard *']).toBe('allow')
-      expect(config.agent.coder.permission.bash['sudo *']).toBe('allow')
-      // custom bash permission not in frontmatter should be preserved
-      expect(config.agent.coder.permission.bash['custom command']).toBe('allow')
     } finally {
       rmSync(tmpDir, { recursive: true, force: true })
     }

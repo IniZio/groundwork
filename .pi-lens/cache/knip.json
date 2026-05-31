@@ -3,16 +3,6 @@
   "issues": [
     {
       "type": "file",
-      "name": "src/pi.ts",
-      "file": "src/pi.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/runtime.ts",
-      "file": "src/runtime.ts"
-    },
-    {
-      "type": "file",
       "name": "src/types.ts",
       "file": "src/types.ts"
     },
@@ -73,16 +63,6 @@
     },
     {
       "type": "file",
-      "name": "src/lib/agent-definitions.ts",
-      "file": "src/lib/agent-definitions.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/lib/agent-setup.ts",
-      "file": "src/lib/agent-setup.ts"
-    },
-    {
-      "type": "file",
       "name": "src/lib/helpers.ts",
       "file": "src/lib/helpers.ts"
     },
@@ -90,26 +70,6 @@
       "type": "file",
       "name": "src/lib/snapshot.ts",
       "file": "src/lib/snapshot.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-commands/goal.ts",
-      "file": "src/pi-commands/goal.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-commands/handoff.ts",
-      "file": "src/pi-commands/handoff.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-tools/handoff-session.ts",
-      "file": "src/pi-tools/handoff-session.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-tools/set-goal.ts",
-      "file": "src/pi-tools/set-goal.ts"
     },
     {
       "type": "file",
@@ -127,6 +87,11 @@
       "file": "src/tools/read-session.ts"
     },
     {
+      "type": "file",
+      "name": "test/helpers/stub-ctx.ts",
+      "file": "test/helpers/stub-ctx.ts"
+    },
+    {
       "type": "dependency",
       "name": "@earendil-works/pi-ai",
       "file": "package.json",
@@ -134,21 +99,9 @@
     },
     {
       "type": "dependency",
-      "name": "@earendil-works/pi-coding-agent",
-      "file": "package.json",
-      "line": 13
-    },
-    {
-      "type": "dependency",
       "name": "@earendil-works/pi-tui",
       "file": "package.json",
       "line": 14
-    },
-    {
-      "type": "dependency",
-      "name": "@sinclair/typebox",
-      "file": "package.json",
-      "line": 15
     },
     {
       "type": "export",
@@ -188,57 +141,15 @@
     },
     {
       "type": "export",
-      "name": "manager",
-      "file": "src/lib/singletons.ts",
-      "line": 5
+      "name": "goalPath",
+      "file": "src/lib/goal.ts",
+      "line": 18
     },
     {
       "type": "export",
-      "name": "ptyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 19
-    },
-    {
-      "type": "export",
-      "name": "setPtyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 21
-    },
-    {
-      "type": "export",
-      "name": "getPtyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 28
-    },
-    {
-      "type": "export",
-      "name": "detectPtyPlugin",
-      "file": "src/lib/skills.ts",
-      "line": 32
-    },
-    {
-      "type": "export",
-      "name": "extractAndStripFrontmatter",
-      "file": "src/lib/skills.ts",
-      "line": 54
-    },
-    {
-      "type": "export",
-      "name": "getBootstrapForAgent",
-      "file": "src/lib/skills.ts",
-      "line": 114
-    },
-    {
-      "type": "export",
-      "name": "getBootstrapContent",
-      "file": "src/lib/skills.ts",
-      "line": 191
-    },
-    {
-      "type": "export",
-      "name": "parseFileReferences",
-      "file": "src/lib/handoff.ts",
-      "line": 7
+      "name": "migrateLegacyGoal",
+      "file": "src/lib/goal.ts",
+      "line": 22
     },
     {
       "type": "export",
@@ -266,33 +177,39 @@
     },
     {
       "type": "export",
-      "name": "goalPath",
-      "file": "src/lib/goal.ts",
-      "line": 18
+      "name": "ptyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 19
     },
     {
       "type": "export",
-      "name": "migrateLegacyGoal",
-      "file": "src/lib/goal.ts",
-      "line": 22
+      "name": "setPtyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 21
     },
     {
       "type": "export",
-      "name": "injectGoalAndBootstrap",
-      "file": "src/lib/goal.ts",
-      "line": 69
+      "name": "getPtyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 28
     },
     {
       "type": "export",
-      "name": "goalReminder",
-      "file": "src/lib/goal.ts",
-      "line": 87
+      "name": "detectPtyPlugin",
+      "file": "src/lib/skills.ts",
+      "line": 32
     },
     {
       "type": "export",
-      "name": "InjectionParams",
-      "file": "src/lib/goal.ts",
-      "line": 64
+      "name": "getBootstrapContent",
+      "file": "src/lib/skills.ts",
+      "line": 191
+    },
+    {
+      "type": "export",
+      "name": "manager",
+      "file": "src/lib/singletons.ts",
+      "line": 5
     },
     {
       "type": "export",
@@ -316,57 +233,15 @@
     },
     {
       "type": "export",
-      "name": "manager",
-      "file": "src/lib/singletons.ts",
-      "line": 5
+      "name": "goalPath",
+      "file": "src/lib/goal.ts",
+      "line": 18
     },
     {
       "type": "export",
-      "name": "ptyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 19
-    },
-    {
-      "type": "export",
-      "name": "setPtyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 21
-    },
-    {
-      "type": "export",
-      "name": "getPtyPluginAvailable",
-      "file": "src/lib/skills.ts",
-      "line": 28
-    },
-    {
-      "type": "export",
-      "name": "detectPtyPlugin",
-      "file": "src/lib/skills.ts",
-      "line": 32
-    },
-    {
-      "type": "export",
-      "name": "extractAndStripFrontmatter",
-      "file": "src/lib/skills.ts",
-      "line": 54
-    },
-    {
-      "type": "export",
-      "name": "getBootstrapForAgent",
-      "file": "src/lib/skills.ts",
-      "line": 114
-    },
-    {
-      "type": "export",
-      "name": "getBootstrapContent",
-      "file": "src/lib/skills.ts",
-      "line": 191
-    },
-    {
-      "type": "export",
-      "name": "parseFileReferences",
-      "file": "src/lib/handoff.ts",
-      "line": 7
+      "name": "migrateLegacyGoal",
+      "file": "src/lib/goal.ts",
+      "line": 22
     },
     {
       "type": "export",
@@ -394,33 +269,39 @@
     },
     {
       "type": "export",
-      "name": "goalPath",
-      "file": "src/lib/goal.ts",
-      "line": 18
+      "name": "ptyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 19
     },
     {
       "type": "export",
-      "name": "migrateLegacyGoal",
-      "file": "src/lib/goal.ts",
-      "line": 22
+      "name": "setPtyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 21
     },
     {
       "type": "export",
-      "name": "injectGoalAndBootstrap",
-      "file": "src/lib/goal.ts",
-      "line": 69
+      "name": "getPtyPluginAvailable",
+      "file": "src/lib/skills.ts",
+      "line": 28
     },
     {
       "type": "export",
-      "name": "goalReminder",
-      "file": "src/lib/goal.ts",
-      "line": 87
+      "name": "detectPtyPlugin",
+      "file": "src/lib/skills.ts",
+      "line": 32
     },
     {
       "type": "export",
-      "name": "InjectionParams",
-      "file": "src/lib/goal.ts",
-      "line": 64
+      "name": "getBootstrapContent",
+      "file": "src/lib/skills.ts",
+      "line": 191
+    },
+    {
+      "type": "export",
+      "name": "manager",
+      "file": "src/lib/singletons.ts",
+      "line": 5
     },
     {
       "type": "export",
@@ -430,16 +311,6 @@
     }
   ],
   "unusedFiles": [
-    {
-      "type": "file",
-      "name": "src/pi.ts",
-      "file": "src/pi.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/runtime.ts",
-      "file": "src/runtime.ts"
-    },
     {
       "type": "file",
       "name": "src/types.ts",
@@ -502,16 +373,6 @@
     },
     {
       "type": "file",
-      "name": "src/lib/agent-definitions.ts",
-      "file": "src/lib/agent-definitions.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/lib/agent-setup.ts",
-      "file": "src/lib/agent-setup.ts"
-    },
-    {
-      "type": "file",
       "name": "src/lib/helpers.ts",
       "file": "src/lib/helpers.ts"
     },
@@ -519,26 +380,6 @@
       "type": "file",
       "name": "src/lib/snapshot.ts",
       "file": "src/lib/snapshot.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-commands/goal.ts",
-      "file": "src/pi-commands/goal.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-commands/handoff.ts",
-      "file": "src/pi-commands/handoff.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-tools/handoff-session.ts",
-      "file": "src/pi-tools/handoff-session.ts"
-    },
-    {
-      "type": "file",
-      "name": "src/pi-tools/set-goal.ts",
-      "file": "src/pi-tools/set-goal.ts"
     },
     {
       "type": "file",
@@ -554,6 +395,11 @@
       "type": "file",
       "name": "src/tools/read-session.ts",
       "file": "src/tools/read-session.ts"
+    },
+    {
+      "type": "file",
+      "name": "test/helpers/stub-ctx.ts",
+      "file": "test/helpers/stub-ctx.ts"
     }
   ],
   "unusedDeps": [
@@ -565,21 +411,9 @@
     },
     {
       "type": "dependency",
-      "name": "@earendil-works/pi-coding-agent",
-      "file": "package.json",
-      "line": 13
-    },
-    {
-      "type": "dependency",
       "name": "@earendil-works/pi-tui",
       "file": "package.json",
       "line": 14
-    },
-    {
-      "type": "dependency",
-      "name": "@sinclair/typebox",
-      "file": "package.json",
-      "line": 15
     }
   ],
   "unlistedDeps": [
@@ -608,5 +442,5 @@
       "line": 4
     }
   ],
-  "summary": "Found 54 issues"
+  "summary": "Found 39 issues"
 }

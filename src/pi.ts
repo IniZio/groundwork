@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ensureAgentsInstalled } from "./lib/agent-setup.js";
-import { getBootstrapForAgent, injectGoalAndBootstrap } from "./lib/skills.js";
-import { readGoal, goalReminder } from "./lib/goal.js";
+import { getBootstrapForAgent } from "./lib/skills.js";
+import { readGoal, goalReminder, injectGoalAndBootstrap } from "./lib/goal.js";
 import { createHandoffSessionTool } from "./pi-tools/handoff-session.js";
 import { createSetGoalTool } from "./pi-tools/set-goal.js";
 import { createHandoffCommand } from "./pi-commands/handoff.js";

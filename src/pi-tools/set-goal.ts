@@ -2,10 +2,10 @@
 
 import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ToolDeps } from "../tools/deps.js";
+import type { PiToolDeps } from "./deps.js";
 import { readGoal, writeGoal, clearGoal, type Goal } from "../lib/goal.js";
 
-export function createSetGoalTool(deps: ToolDeps) {
+export function createSetGoalTool(deps: PiToolDeps) {
   const { directory } = deps;
 
   return defineTool({

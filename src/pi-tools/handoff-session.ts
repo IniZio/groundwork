@@ -2,9 +2,9 @@
 
 import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ToolDeps } from "../tools/deps.js";
+import type { PiToolDeps } from "./deps.js";
 
-export function createHandoffSessionTool(deps: ToolDeps) {
+export function createHandoffSessionTool(_deps: PiToolDeps) {
   return defineTool({
     name: "handoff_session" as const,
     label: "Handoff Session",

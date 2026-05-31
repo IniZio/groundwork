@@ -1,5 +1,2 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-export default function (pi: ExtensionAPI) {
-  // TODO: Phase 0 stub - noop
-}
+// Re-export OpenCode plugin from .opencode/plugins for backward compatibility
+export { GroundworkPlugin as default } from '../.opencode/plugins/groundwork.js'

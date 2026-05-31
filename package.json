@@ -12,6 +12,7 @@
     "@earendil-works/pi-ai": ">=0.75.0",
     "@earendil-works/pi-coding-agent": ">=0.75.0",
     "@earendil-works/pi-tui": ">=0.75.0",
+    "@sinclair/typebox": "^0.34.49",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
@@ -22,7 +23,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./src/pi.ts"
     ],
     "skills": [
       "./.pi/skills"

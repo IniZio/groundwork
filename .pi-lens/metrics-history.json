@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "files": {
+    "src/lib/helpers.ts": {
+      "latest": {
+        "commit": "8af23c8",
+        "timestamp": "2026-05-31T10:22:59.156Z",
+        "mi": 50.7,
+        "cognitive": 16,
+        "nesting": 2,
+        "lines": 23,
+        "maxCyclomatic": 11,
+        "entropy": 4.96
+      },
+      "history": [
+        {
+          "commit": "8af23c8",
+          "timestamp": "2026-05-31T10:22:59.156Z",
+          "mi": 50.7,
+          "cognitive": 16,
+          "nesting": 2,
+          "lines": 23,
+          "maxCyclomatic": 11,
+          "entropy": 4.96
+        }
+      ],
+      "trend": "stable"
+    },
+    "src/lib/singletons.ts": {
+      "latest": {
+        "commit": "8af23c8",
+        "timestamp": "2026-05-31T10:22:59.168Z",
+        "mi": 90.4,
+        "cognitive": 0,
+        "nesting": 0,
+        "lines": 4,
+        "maxCyclomatic": 1,
+        "entropy": 3.02
+      },
+      "history": [
+        {
+          "commit": "8af23c8",
+          "timestamp": "2026-05-31T10:22:59.168Z",
+          "mi": 90.4,
+          "cognitive": 0,
+          "nesting": 0,
+          "lines": 4,
+          "maxCyclomatic": 1,
+          "entropy": 3.02
+        }
+      ],
+      "trend": "stable"
+    },
+    "src/lib/prompt-resolver.ts": {
+      "latest": {
+        "commit": "8af23c8",
+        "timestamp": "2026-05-31T10:22:59.180Z",
+        "mi": 57.8,
+        "cognitive": 18,
+        "nesting": 3,
+        "lines": 36,
+        "maxCyclomatic": 8,
+        "entropy": 4.57
+      },
+      "history": [
+        {
+          "commit": "8af23c8",
+          "timestamp": "2026-05-31T10:22:59.180Z",
+          "mi": 57.8,
+          "cognitive": 18,
+          "nesting": 3,
+          "lines": 36,
+          "maxCyclomatic": 8,
+          "entropy": 4.57
+        }
+      ],
+      "trend": "stable"
+    },
+    "src/tools/deps.ts": {
+      "latest": {
+        "commit": "8af23c8",
+        "timestamp": "2026-05-31T10:30:11.166Z",
+        "mi": 92,
+        "cognitive": 0,
+        "nesting": 0,
+        "lines": 4,
+        "maxCyclomatic": 1,
+        "entropy": 2.81
+      },
+      "history": [
+        {
+          "commit": "8af23c8",
+          "timestamp": "2026-05-31T10:30:11.166Z",
+          "mi": 92,
+          "cognitive": 0,
+          "nesting": 0,
+          "lines": 4,
+          "maxCyclomatic": 1,
+          "entropy": 2.81
+        }
+      ],
+      "trend": "stable"
+    }
+  },
+  "capturedAt": "2026-05-31T10:30:16.167Z"
+}

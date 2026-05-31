@@ -23,7 +23,7 @@ export function createHandoffSessionTool(deps: ToolDeps) {
         ? args.files.map((f: string) => `@${f.replace(/^@/, '')}`).join(' ')
         : ''
 
-      let fullPrompt = fileRefs
+      const fullPrompt = fileRefs
         ? `${sessionReference}\n\n${fileRefs}\n\n${args.prompt}`
         : `${sessionReference}\n\n${args.prompt}`
 

@@ -1,0 +1,6 @@
+{
+  "signature": "src/pi-commands/goal.ts::ℹ️ Advisory — no action required this turn:\nCode-quality warnings introduced/touched this turn: 2 across 1 file(s).\nTop rules: async-noise×1, no-any-type×1\nDetails written to .pi-lens/cache/code-quality-warnings.json\nNo action required unless you are already refactoring these areas.",
+  "sessionId": "lens-mptl4kqc-1fae94d4",
+  "projectSeqStart": 44,
+  "projectSeqEnd": 45
+}

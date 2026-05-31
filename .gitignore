@@ -8,3 +8,6 @@ test-*.ts
 test-*.mjs
 docs/prds/
 .opencode/goals/
+!
+.pi-lens/
+.playwright-mcp/

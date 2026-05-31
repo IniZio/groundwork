@@ -5,6 +5,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { EMBEDDED_AGENTS, GROUNDWORK_VERSION } from "./agent-definitions.js";
 import { extractAndStripFrontmatter } from "./skills.js";
 
@@ -29,6 +30,27 @@ function readManifest(agentsDir: string): Manifest {
 function writeManifest(agentsDir: string, manifest: Manifest): void {
 	const path = join(agentsDir, MANIFEST_FILE);
 	writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+}
+
+function installAgents(agentsDir: string): void {
+	mkdirSync(agentsDir, { recursive: true });
+
+	const manifest = readManifest(agentsDir);
+	let dirty = false;
+
+	for (const agent of EMBEDDED_AGENTS) {
+		const filePath = join(agentsDir, `${agent.name}.md`);
+		if (shouldWrite(filePath, agent.version)) {
+			writeFileSync(filePath, agent.content, "utf8");
+			manifest.agents[agent.name] = agent.version;
+			dirty = true;
+		}
+	}
+
+	if (dirty || manifest.version !== GROUNDWORK_VERSION) {
+		manifest.version = GROUNDWORK_VERSION;
+		writeManifest(agentsDir, manifest);
+	}
 }
 
 function shouldWrite(path: string, pluginVersion: string): boolean {
@@ -56,7 +78,10 @@ function shouldWrite(path: string, pluginVersion: string): boolean {
 }
 
 /**
- * Ensure all embedded agent definitions are installed in .pi/agents/.
+ * Ensure all embedded agent definitions are installed in both:
+ *  - Project:  <cwd>/.pi/agents/
+ *  - Global:   ~/.pi/agent/agents/   (canonical for pi-subagents)
+ *
  * Called from the session_start event handler.
  *
  * Only writes files that:
@@ -66,23 +91,11 @@ function shouldWrite(path: string, pluginVersion: string): boolean {
  * User customizations are preserved if they remove the managed_by marker.
  */
 export function ensureAgentsInstalled(cwd: string): void {
-	const agentsDir = join(cwd, ".pi", "agents");
-	mkdirSync(agentsDir, { recursive: true });
+	// Project-local agents
+	const projectAgentsDir = join(cwd, ".pi", "agents");
+	installAgents(projectAgentsDir);
 
-	const manifest = readManifest(agentsDir);
-	let dirty = false;
-
-	for (const agent of EMBEDDED_AGENTS) {
-		const filePath = join(agentsDir, `${agent.name}.md`);
-		if (shouldWrite(filePath, agent.version)) {
-			writeFileSync(filePath, agent.content, "utf8");
-			manifest.agents[agent.name] = agent.version;
-			dirty = true;
-		}
-	}
-
-	if (dirty || manifest.version !== GROUNDWORK_VERSION) {
-		manifest.version = GROUNDWORK_VERSION;
-		writeManifest(agentsDir, manifest);
-	}
+	// Global agents — canonical location expected by pi-subagents
+	const globalAgentsDir = join(homedir(), ".pi", "agent", "agents");
+	installAgents(globalAgentsDir);
 }

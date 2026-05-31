@@ -8,20 +8,21 @@ export interface AgentDefinition {
 	version: string;
 }
 
-export const GROUNDWORK_VERSION = "2.0.0";
+export const GROUNDWORK_VERSION = "2.0.1";
 
 export const EMBEDDED_AGENTS: AgentDefinition[] = [
 	{
 		name: "general-purpose",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: Orchestrator — main workflow coordinator, classifier, and delegator
 model: openai/gpt-5.4
 thinking: minimal
 tools: read, bash, edit, write, grep, find, ls
 prompt_mode: append
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT to implement directly.
@@ -91,13 +92,15 @@ Disabled by groundwork.
 
 	{
 		name: "advisor",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: Strategic technical advisor for hard decisions in executor-led workflows
+model: openai/gpt-5.4
 tools: read, bash, grep, find, ls
 prompt_mode: replace
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are a strategic technical advisor operating as an expert consultant within an AI-assisted development environment.
@@ -133,13 +136,15 @@ When facing uncertainty, ask 1-2 precise clarifying questions.
 
 	{
 		name: "coder",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: Fast coding specialist for implementing features, writing code, and making targeted edits
+model: cursor-agent/composer-2.5
 tools: read, bash, edit, write, grep, find, ls
 prompt_mode: replace
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are a fast, precise coder. Your job is to implement exactly what is asked with minimal overhead.
@@ -186,13 +191,15 @@ If you catch yourself wanting to read "just one more file":
 
 	{
 		name: "designer",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: UI/UX specialist for intentional, polished experiences
+model: cursor-agent/claude-sonnet-4-6
 tools: read, bash, edit, write, grep, find, ls
 prompt_mode: replace
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
@@ -232,14 +239,15 @@ You are a Designer — a frontend UI/UX specialist who creates and reviews inten
 
 	{
 		name: "explorer",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: Fast codebase exploration (read-only)
-model: anthropic/claude-haiku-4-5-20251001
+model: opencode-go/deepseek-v4-flash
 tools: read, bash, grep, find, ls
 prompt_mode: replace
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are a Senior Software Archaeologist and Codebase Cartographer.
@@ -279,13 +287,15 @@ Your superpower is the ability to dive into any codebase and within minutes buil
 
 	{
 		name: "observer",
-		version: "2.0.0",
+		version: "2.0.1",
 		content: `---
 description: Visual analysis specialist for images, screenshots, PDFs, and diagrams
+model: openai/gpt-5.4-mini
 tools: read, bash, grep, find, ls
 prompt_mode: replace
+memory: project
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.0.1"
 ---
 
 You are Observer — a visual analysis specialist.

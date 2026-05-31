@@ -8,6 +8,12 @@ import { createHandoffCommand } from "./pi-commands/handoff.js";
 import { createGoalCommand } from "./pi-commands/goal.js";
 import { createGroundworkRuntime } from "./runtime.js";
 
+/** True when running inside a subagent child process (depth > 0). */
+function isSubagent(): boolean {
+	const depth = Number(process.env.PI_SUBAGENT_DEPTH ?? "0");
+	return depth > 0;
+}
+
 export default function (pi: ExtensionAPI) {
 	const runtime = createGroundworkRuntime();
 	const directory = process.cwd();
@@ -39,14 +45,33 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	// Bootstrap + goal injection before every LLM call
+	// Inject orchestrator identity into the SYSTEM PROMPT for the main session.
+	// Subagents get their prompts from their agent .md files; skip them here.
+	pi.on("before_agent_start", (event) => {
+		if (isSubagent()) return;
+
+		const bootstrap = getBootstrapForAgent("orchestrator");
+		if (!bootstrap) return;
+
+		const evt = event as any;
+		const original = evt.systemPrompt ?? "";
+		if (original.includes("EXTREMELY_IMPORTANT")) return; // already injected
+
+		evt.systemPrompt = `${bootstrap}\n\n${original}`;
+	});
+
+	// Goal reminders + subagent bootstrap injection via user-message parts.
+	// For subagents this supplements their agent .md system prompt.
 	pi.on("context", (event, ctx) => {
 		const messages = (event as any).messages;
 		if (!Array.isArray(messages)) return;
 
 		const sessionID = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
 		const agent = (ctx as any)?.agent ?? "orchestrator";
-		const bootstrap = getBootstrapForAgent(agent);
+
+		// Only inject bootstrap into user messages for subagents;
+		// the main session gets it via before_agent_start system prompt.
+		const bootstrap = isSubagent() ? getBootstrapForAgent(agent) : null;
 
 		let goalReminderText: string | null = null;
 		if (sessionID) {

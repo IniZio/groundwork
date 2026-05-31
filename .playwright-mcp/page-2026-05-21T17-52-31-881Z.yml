@@ -1,0 +1,42 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - button "Toggle menu" [ref=e8]:
+        - img [ref=e10]
+    - generic [ref=e14]:
+      - navigation "Projects and sessions" [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - button "Open project" [ref=e21]:
+              - img [ref=e23]
+            - generic [ref=e25]:
+              - button "Settings" [ref=e27]:
+                - img [ref=e29]
+              - button "Help" [ref=e32]:
+                - img [ref=e34]
+          - generic [ref=e39]:
+            - generic [ref=e40]:
+              - generic [ref=e41]: No projects open
+              - generic [ref=e42]: Open a project to get started
+            - button "Open project" [ref=e43]:
+              - img [ref=e45]
+              - text: Open project
+      - main [ref=e48]:
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - img [ref=e52] [cursor=pointer]
+            - button "localhost:9877" [ref=e70]: localhost:9877
+          - generic [ref=e72]:
+            - generic [ref=e73]: No recent projects
+            - generic [ref=e74]:
+              - generic [ref=e75] [cursor=pointer]: Ask anything, / for commands, @ for context...
+              - generic [ref=e76]:
+                - button "Open project" [ref=e77]:
+                  - img [ref=e79]
+                  - generic [ref=e81]: Open project
+                - 'button "Model: GPT-5.7 Pro" [ref=e82]':
+                  - img [ref=e84]
+                  - generic [ref=e86]: "Model: GPT-5.7 Pro"
+  - generic:
+    - region "Notifications (alt+T)":
+      - list

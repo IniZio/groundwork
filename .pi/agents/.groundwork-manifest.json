@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "agents": {
+    "general-purpose": "2.0.0",
+    "Explore": "2.0.0",
+    "Plan": "2.0.0",
+    "advisor": "2.0.0",
+    "coder": "2.0.0",
+    "designer": "2.0.0",
+    "explorer": "2.0.0",
+    "observer": "2.0.0"
+  }
+}

@@ -1,6 +1,6 @@
 // ─── Tool Dependency Injection ──────────────────────────────────────────────
 
 export interface ToolDeps {
-  client: any
-  directory: string
+	client: any;
+	directory: string;
 }

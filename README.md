@@ -5,7 +5,7 @@ Workflow plugin for AI coding agents providing structured development practices:
 ## Supports
 
 - **OpenCode** — Install via `opencode.json`
-- **Pi** — Install via `pi install npm:groundwork` (requires `pi-subagents`)
+- **Pi** — Install via `pi install git:github.com/IniZio/groundwork` (requires `pi-subagents`)
 
 ## Install
 
@@ -29,7 +29,7 @@ Add to `opencode.json`:
 pi install npm:@gotgenes/pi-subagents
 
 # Workflow skills and tools
-pi install npm:groundwork
+pi install git:github.com/IniZio/groundwork
 ```
 
 Restart your agent. Skills auto-discover.

@@ -48,7 +48,7 @@ const TEST_CASES: RoutingTestCase[] = [
 	{
 		name: "small-change-risky",
 		prompt:
-			"Modify the shared data model to add a new field used across 5 modules.",
+			"Add an 'avatarUrl' string field to the shared UserModel used across 5 modules.",
 		expectSkills: [],
 		forbidSkills: ["create-prd", "diagnose"],
 		shouldDelegate: true,

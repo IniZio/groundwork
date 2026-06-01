@@ -11,7 +11,7 @@ This file contains orchestrator-specific rules extracted from the use-groundwork
 1. **Am I about to write or edit code?** → STOP. Use `subagent` tool with `agent: "coder"`. NEVER use `edit` or `write` yourself.
 2. **Am I about to run a shell command to explore files?** → STOP. Use `subagent` tool with `agent: "explore"`. NEVER use `bash` to grep/read/glob yourself.
 3. **Am I about to debug or reproduce a bug?** → STOP. Load `diagnose` skill first, then delegate to `coder` subagents.
-4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first, then `create-prd`, then fan out to 5-15 parallel `coder` subagents.
+4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first, then `create-prd`, then fan out to **10-30 parallel `coder` subagents** (EXTREME SLICING — oh-my-claude ultrawork mode).
 
 **The ONLY tools you use directly are:**
 - `subagent` — to delegate ALL work
@@ -118,10 +118,10 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 
 ### Why delegation matters
 
-1. **Velocity**: Fan out aggressively — launch 5-15 parallel coder tasks. More parallelism = faster delivery. Sequential work is the #1 time waste
+1. **Velocity**: Fan out EXTREMELY aggressively — launch as many parallel tasks as the work naturally decomposes into. More parallelism = faster delivery. Sequential work is the #1 time waste. Oh-my-claude ultrawork mode: semantic slicing, not arbitrary limits.
 2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste, observer sees details you'd miss
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
-4. **Model diversity**: Different agents use different models — designer uses kimi for UI taste, advisor uses gpt-5.4 for reasoning, coder uses gpt-5.4-mini for speed
+4. **Model diversity**: Different agents use different models — designer uses kimi for UI taste, advisor uses gpt-5.4 for reasoning, coder uses kimi-for-coding for speed and cost
 
 ### Anti-pattern: The Implementing Orchestrator
 
@@ -129,11 +129,11 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 WRONG:  Classify → read files → write code → run tests → review → advisor-gate
         (orchestrator does everything sequentially)
 
-RIGHT:  Classify → fan out mixed specialists (explore×2, coder×5-15, designer×1-3, observer×1-3)
+RIGHT:  Classify → fan out mixed specialists (explore×3-7, coder×10-30, designer×2-5, observer×2-5)
         → collect all outputs → review → advisor-gate
-        (orchestrator delegates, reviews, orchestrates — MAXIMIZE fan-out width across ALL specialist types)
+        (orchestrator delegates, reviews, orchestrates — EXTREME fan-out width across ALL specialist types)
 
-RIGHT:  UI feature → fan out (designer for styling, coder×3 for logic, observer for comparison)
+RIGHT:  UI feature → fan out (designer×2 for styling, coder×10 for logic, observer×2 for comparison)
         → review all outputs → advisor-gate
         (mix specialist types in the same wave — never wait sequentially for different agent types)
 
@@ -148,23 +148,37 @@ RIGHT:  pty_spawn "gh pr checks --watch" → pty_read on completion notification
 <!-- PTY-ONLY-END -->
 ```
 
-### Fan-Out Maximization
+### Fan-Out Maximization (Ultrawork Mode)
 
-**The orchestrator MUST maximize parallel task dispatch. Aggressive fan-out is the #1 lever for velocity.**
+**The orchestrator MUST maximize parallel task dispatch. EXTREME fan-out is the #1 lever for velocity. Reference: oh-my-claude ultrawork pattern.**
 
 Fan-out targets by specialist type (mix freely in the same wave):
-- **coder:** 5-15 parallel tasks for implementation slices
-- **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
-- **designer:** 1-3 parallel tasks for UI/UX work
-- **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
+- **coder:** as many parallel tasks as the plan decomposes into (often 5-20)
+- **explore:** 3-7 parallel tasks for codebase understanding (one per area/module)
+- **designer:** 2-5 parallel tasks for UI/UX work
+- **advisor:** 1-2 tasks at a time for strategic decisions
+- **observer:** 2-5 parallel tasks for visual analysis, before/after comparisons
 
-Rules:
-1. **Within a wave, launch ALL independent slices simultaneously.** Never wait for Slice A before launching Slice B if they don't share code.
-2. **A wave with only 1 slice is a missed opportunity.** Look harder for decomposition or combine with adjacent waves.
-3. **Sequential execution is only for dependencies.** If Slice B needs output from Slice A, they're in different waves. Everything else is parallel.
-4. **Fan-out first, review second.** Launch everything in parallel, then review all outputs together.
-5. **Send ALL parallel `task` calls in ONE message.** Never send task calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
+**Semantic Slicing Rules (oh-my-claude style):**
+1. **Each task must have ONE clear objective.** "Create auth middleware" is good. "Create auth middleware + login endpoint + logout endpoint" is bad — split into 3 tasks.
+2. **If a task feels complex or touches many files, split it.** There is no magic LOC limit. Use your judgment: if describing the task takes more than 2 sentences, it is probably too big.
+3. **Within a wave, launch ALL independent tasks simultaneously.** Never wait for Task A before launching Task B if they don't share code.
+4. **Sequential execution is only for dependencies.** If Task B needs output from Task A, they're in different waves. Everything else is parallel.
+5. **Fan-out first, review second.** Launch everything in parallel, then review all outputs together.
+6. **Send ALL parallel `subagent` calls in ONE message.** Never send subagent calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
+7. **Use the cheapest capable model for each slice.** coder uses `kimi-for-coding` (fast, cheap). Only escalate to advisor (gpt-5.4) for hard architectural decisions.
+
+**Pre-Delegation Planning (MANDATORY) — inspired by oh-my-claude:**
+
+Before EVERY `subagent` call, DECLARE:
+```
+I will delegate with:
+- **Agent**: [coder / explore / designer / advisor / observer]
+- **Reason**: [why this agent fits]
+- **Expected Outcome**: [success criteria]
+```
+
+THEN make the subagent call. Vague delegation is rejected. Exhaustiveness is required.
 
 ```
 # GOOD: Fan out mixed specialists simultaneously
@@ -310,13 +324,20 @@ implement directly → load skill "advisor-gate" (use `skill` tool, or `read` it
 
 ## Task Scoping for Subagent Tasks
 
-**Rules for decomposing work into subagent tasks:**
+**Rules for decomposing work into subagent tasks (oh-my-claude semantic slicing):**
 
-1. **Max 3 files per task.** If a task needs to create/modify >3 files, split it into multiple tasks.
-2. **Max ~200 LOC per task.** If a single file needs >200 lines, consider if it can be split or if the coder prompt should include the full content inline (not via file reads).
-3. **One responsibility per task.** "Create types.ts" is good. "Create all lib files" is bad — it creates a mega-task that will run for 20+ minutes and likely fail.
-4. **Embed source in prompts.** Subagent tasks cannot reliably read large source files. If a coder needs reference material, embed it directly in the prompt text. Do NOT tell the coder to "read file X" — it may fail.
-5. **Verify task output immediately.** After a task completes, check the result. If it says `(No text output)` or the wrong files were created, relaunch the task with corrections before giving up on it.
+1. **ONE clear objective per task.** "Create auth middleware" is good. "Create auth middleware + login endpoint + logout endpoint" is bad — split into 3 tasks.
+2. **If a task feels complex, split it.** There is no magic LOC limit. Use your judgment: if describing the task takes more than 2 sentences, it is probably too big.
+3. **Embed source in prompts.** Subagent tasks cannot reliably read large source files. If a coder needs reference material, embed it directly in the prompt text. Do NOT tell the coder to "read file X" — it may fail.
+4. **Verify task output immediately.** After a task completes, check the result. If it says `(No text output)` or the wrong files were created, relaunch the task with corrections before giving up on it.
+5. **Pre-Delegation Planning (MANDATORY).** Before EVERY subagent call, declare:
+   ```
+   I will delegate with:
+   - **Agent**: [coder / explore / designer / advisor / observer]
+   - **Reason**: [why this agent fits]
+   - **Expected Outcome**: [success criteria]
+   ```
+   THEN make the call. Vague delegation is rejected. Exhaustiveness is required.
 
 ### Failed Task Recovery
 

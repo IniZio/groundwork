@@ -78,9 +78,8 @@ function shouldWrite(path: string, pluginVersion: string): boolean {
 }
 
 /**
- * Ensure all embedded agent definitions are installed in both:
- *  - Project:  <cwd>/.pi/agents/
- *  - Global:   ~/.pi/agent/agents/   (canonical for pi-subagents)
+ * Ensure all embedded agent definitions are installed ONLY at the global
+ * canonical location: ~/.pi/agent/agents/ (expected by pi-subagents).
  *
  * Called from the session_start event handler.
  *
@@ -90,12 +89,10 @@ function shouldWrite(path: string, pluginVersion: string): boolean {
  *
  * User customizations are preserved if they remove the managed_by marker.
  */
-export function ensureAgentsInstalled(cwd: string): void {
-	// Project-local agents
-	const projectAgentsDir = join(cwd, ".pi", "agents");
-	installAgents(projectAgentsDir);
-
-	// Global agents — canonical location expected by pi-subagents
+export function ensureAgentsInstalled(_cwd: string): void {
+	// Global agents ONLY — canonical location expected by pi-subagents.
+	// Project-local agents are intentionally NOT created to avoid clutter
+	// and ensure consistent agent definitions across all projects.
 	const globalAgentsDir = join(homedir(), ".pi", "agent", "agents");
 	installAgents(globalAgentsDir);
 }

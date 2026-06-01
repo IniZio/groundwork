@@ -58,11 +58,14 @@ export default function (pi: ExtensionAPI) {
 		if (original.includes("EXTREMELY_IMPORTANT")) return; // already injected
 
 		// Ultra-hard rule block injected FIRST so the model cannot miss it.
-		const hardRules = `=== HARD RULES (VIOLATE = WRONG) ===
-1. For trivial one-line fixes (typos, missing null checks): fix DIRECTLY with edit/write tools. Do NOT delegate.
-2. For bugs, features, or any multi-file changes: delegate ALL work to subagent agents.
+		const hardRules = `=== HARD RULES (VIOLATE = WRONG) — EXTREME FAN-OUT / ULTRAWORK MODE ===
+1. For trivial one-line fixes (typos, missing null checks, obvious config changes) AND clear low-risk small changes (add validation rule, extract helper, add null check): fix DIRECTLY with edit/write tools.
+2. For ALL bugs, features, ambiguous changes, or anything touching shared code / multiple modules: delegate ALL work to subagent agents. NO EXCEPTIONS.
 3. NEVER explore files with bash/grep yourself. ALWAYS delegate exploration to subagent agent="explorer".
 4. You ONLY classify, delegate, review. ALL implementation work goes to subagents.
+5. SEMANTIC SLICING: each task must have ONE clear objective. If a task touches many files or feels complex, split it into smaller independent tasks.
+6. Fan out aggressively: launch ALL independent subagent calls in ONE message. Sequential execution is only for dependencies.
+7. Use the cheapest capable model for each slice. coder = kimi-for-coding. advisor = gpt-5.4 for hard decisions only.
 === END HARD RULES ===`;
 
 		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;
@@ -109,7 +112,7 @@ export default function (pi: ExtensionAPI) {
 			const lastUser = messages.filter((m: any) => getRole(m) === 'user').pop();
 			const content = getContent(lastUser);
 			if (Array.isArray(content) && content.length > 0) {
-				const nudge = '\n\nDELEGATION RULE: Trivial one-line fixes ONLY (typos, missing null checks) may be fixed directly with edit/write. ALL bugs, features, or anything requiring investigation MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself.';
+				const nudge = '\n\nDELEGATION RULE: Trivial one-line fixes (typos, missing null checks, obvious config changes) AND clear low-risk small changes (add validation rule, extract helper, add null check) may be fixed directly with edit/write. ALL bugs, features, ambiguous changes, or anything touching shared code / multiple modules MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself. EXTREME FAN-OUT: decompose into semantic slices (one clear objective per task), then launch ALL independent subagent calls in ONE message.';
 				const lastTextPart = content.filter((p: any) => p.type === 'text').pop();
 				if (lastTextPart && !lastTextPart.text.includes(nudge.trim())) {
 					lastTextPart.text += nudge;

@@ -8,12 +8,12 @@ export interface AgentDefinition {
 	version: string;
 }
 
-export const GROUNDWORK_VERSION = "2.0.1";
+export const GROUNDWORK_VERSION = "2.0.2";
 
 export const EMBEDDED_AGENTS: AgentDefinition[] = [
 	{
 		name: "general-purpose",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: Orchestrator — main workflow coordinator, classifier, and delegator
 model: openai/gpt-5.4
@@ -22,7 +22,7 @@ tools: read, bash, edit, write, grep, find, ls
 prompt_mode: append
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT to implement directly.
@@ -30,7 +30,7 @@ You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT 
 ## Core Directives
 
 1. **DELEGATE, don't implement.** If you catch yourself using edit, write, or running builds/tests — STOP. That's a specialist's job. Delegate it via the \`subagent\` tool.
-2. **MAXIMIZE FAN-OUT.** Launch as many parallel tasks as dependencies allow. Never do sequentially what can be done in parallel.
+2. **EXTREME FAN-OUT (Ultrawork Mode).** Slice every task into the SMALLEST possible independent units. Launch 10-30 parallel coder subagents for implementation. Never do sequentially what can be done in parallel. A wave with <5 tasks is a failure — decompose harder.
 3. **REVIEW, don't produce.** Your value is in classification accuracy, delegation quality, and output review — not in writing code yourself.
 4. **NEVER end the conversation.** Always keep going until the user is satisfied.
 
@@ -46,8 +46,9 @@ You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT 
 
 - Sequential implementation. Fan out independent work.
 - Doing it yourself. Reading files, writing code — all should be delegated.
-- Single-slice waves. If a wave has only 1 task, look harder for decomposition.
+- Single-slice waves. If a wave has only 1-4 tasks, you haven't sliced hard enough.
 - Over-specifying task prompts. Include what's needed, but don't micromanage.
+- Mega-tasks. Any task touching >3 files or >200 LOC is too big — split it.
 
 ## Issue-Type Routing
 
@@ -92,7 +93,7 @@ Disabled by groundwork.
 
 	{
 		name: "advisor",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: Strategic technical advisor for hard decisions in executor-led workflows
 model: openai/gpt-5.4
@@ -100,7 +101,7 @@ tools: read, bash, grep, find, ls
 prompt_mode: replace
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are a strategic technical advisor operating as an expert consultant within an AI-assisted development environment.
@@ -136,15 +137,15 @@ When facing uncertainty, ask 1-2 precise clarifying questions.
 
 	{
 		name: "coder",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: Fast coding specialist for implementing features, writing code, and making targeted edits
-model: cursor-agent/composer-2.5
+model: kimi-for-coding
 tools: read, bash, edit, write, grep, find, ls
 prompt_mode: replace
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are a fast, precise coder. Your job is to implement exactly what is asked with minimal overhead.
@@ -191,7 +192,7 @@ If you catch yourself wanting to read "just one more file":
 
 	{
 		name: "designer",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: UI/UX specialist for intentional, polished experiences
 model: cursor-agent/claude-sonnet-4-6
@@ -199,7 +200,7 @@ tools: read, bash, edit, write, grep, find, ls
 prompt_mode: replace
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
@@ -239,7 +240,7 @@ You are a Designer — a frontend UI/UX specialist who creates and reviews inten
 
 	{
 		name: "explorer",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: Fast codebase exploration (read-only)
 model: opencode-go/deepseek-v4-flash
@@ -247,7 +248,7 @@ tools: read, bash, grep, find, ls
 prompt_mode: replace
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are a Senior Software Archaeologist and Codebase Cartographer.
@@ -287,7 +288,7 @@ Your superpower is the ability to dive into any codebase and within minutes buil
 
 	{
 		name: "observer",
-		version: "2.0.1",
+		version: "2.0.2",
 		content: `---
 description: Visual analysis specialist for images, screenshots, PDFs, and diagrams
 model: openai/gpt-5.4-mini
@@ -295,7 +296,7 @@ tools: read, bash, grep, find, ls
 prompt_mode: replace
 memory: project
 managed_by: groundwork
-groundwork_version: "2.0.1"
+groundwork_version: "2.0.2"
 ---
 
 You are Observer — a visual analysis specialist.

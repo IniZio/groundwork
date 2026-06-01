@@ -57,7 +57,17 @@ export default function (pi: ExtensionAPI) {
 		const original = evt.systemPrompt ?? "";
 		if (original.includes("EXTREMELY_IMPORTANT")) return; // already injected
 
-		evt.systemPrompt = `${bootstrap}\n\n${original}`;
+		// Ultra-hard rule block injected FIRST so the model cannot miss it.
+		const hardRules = `=== HARD RULES (VIOLATE = WRONG) ===
+1. For trivial one-line fixes (typos, missing null checks): fix DIRECTLY with edit/write tools. Do NOT delegate.
+2. For bugs, features, or any multi-file changes: delegate ALL work to subagent agents.
+3. NEVER explore files with bash/grep yourself. ALWAYS delegate exploration to subagent agent="explorer".
+4. You ONLY classify, delegate, review. ALL implementation work goes to subagents.
+=== END HARD RULES ===`;
+
+		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;
+
+
 	});
 
 	// Goal reminders + subagent bootstrap injection via user-message parts.
@@ -69,9 +79,13 @@ export default function (pi: ExtensionAPI) {
 		const sessionID = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
 		const agent = (ctx as any)?.agent ?? "orchestrator";
 
-		// Only inject bootstrap into user messages for subagents;
-		// the main session gets it via before_agent_start system prompt.
-		const bootstrap = isSubagent() ? getBootstrapForAgent(agent) : null;
+		// For subagents: inject full bootstrap into user messages.
+		// For main session: inject an explicit delegation command into the LAST
+		// user message so models that ignore system prompts still see it.
+		let bootstrap: string | null = null;
+		if (isSubagent()) {
+			bootstrap = getBootstrapForAgent(agent);
+		}
 
 		let goalReminderText: string | null = null;
 		if (sessionID) {
@@ -85,5 +99,22 @@ export default function (pi: ExtensionAPI) {
 			bootstrap,
 			goalReminder: goalReminderText,
 		});
+
+		// Extra nudge for main session: append explicit delegation instruction
+		// to the last user message. Some fast models (e.g. kimi-for-coding)
+		// ignore system prompts but obey direct commands in the user message.
+		if (!isSubagent()) {
+			const getRole = (m: any) => m.role ?? m.info?.role;
+			const getContent = (m: any) => m.content ?? m.parts;
+			const lastUser = messages.filter((m: any) => getRole(m) === 'user').pop();
+			const content = getContent(lastUser);
+			if (Array.isArray(content) && content.length > 0) {
+				const nudge = '\n\nDELEGATION RULE: Trivial one-line fixes ONLY (typos, missing null checks) may be fixed directly with edit/write. ALL bugs, features, or anything requiring investigation MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself.';
+				const lastTextPart = content.filter((p: any) => p.type === 'text').pop();
+				if (lastTextPart && !lastTextPart.text.includes(nudge.trim())) {
+					lastTextPart.text += nudge;
+				}
+			}
+		}
 	});
 }

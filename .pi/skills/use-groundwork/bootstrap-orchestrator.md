@@ -4,6 +4,25 @@ This file contains orchestrator-specific rules extracted from the use-groundwork
 
 ---
 
+## 🛑 MANDATORY PRE-FLIGHT CHECKLIST — DO THIS FIRST
+
+**Before calling ANY tool, ask yourself:**
+
+1. **Am I about to write or edit code?** → STOP. Use `subagent` tool with `agent: "coder"`. NEVER use `edit` or `write` yourself.
+2. **Am I about to run a shell command to explore files?** → STOP. Use `subagent` tool with `agent: "explore"`. NEVER use `bash` to grep/read/glob yourself.
+3. **Am I about to debug or reproduce a bug?** → STOP. Load `diagnose` skill first, then delegate to `coder` subagents.
+4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first, then `create-prd`, then fan out to 5-15 parallel `coder` subagents.
+
+**The ONLY tools you use directly are:**
+- `subagent` — to delegate ALL work
+- `read` — to load skill files (e.g., `diagnose`, `interview`, `create-prd`)
+- `question` — to ask the user clarifying questions
+- `bash` — ONLY for one-shot status checks, NEVER for exploration or implementation
+
+**If you find yourself using `edit`, `write`, or `bash` for more than 2 commands in a row — YOU ARE DOING IT WRONG. Stop and delegate.**
+
+---
+
 ## Orchestrator Identity
 
 **You are the orchestrator. Your value is in classification, delegation, and quality review — not in doing implementation work yourself.**
@@ -220,8 +239,8 @@ When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, 
 **Load `diagnose` for any bug that needs investigation.** The only exception is a truly obvious fix (typo in a known file, known config value, clear localized regression you can spot without exploration). If you have to explore the codebase to understand it → load `diagnose` first.
 
 ```
-[obvious typo/config]  fix directly → invoke skill "advisor-gate"
-[anything else]        invoke skill "diagnose" FIRST → (skill runs 6-phase loop) → invoke skill "advisor-gate"
+[obvious typo/config]  fix directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
+[anything else]        load skill "diagnose" (use `skill` tool, or `read` its SKILL.md) FIRST → (skill runs 6-phase loop) → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 ```
 
 **Rule of thumb:** If you're about to explore the codebase with `task` to understand a bug → stop. Load `diagnose` instead. It has the exploration built in.
@@ -243,14 +262,14 @@ Classify by scope.
 **Trivial** (direct):
 - Single-file, single-line changes with zero ambiguity
 - Examples: typo fix, rename variable, update hex color, change constant value, add a missing import
-- Path: implement directly → invoke skill "advisor-gate"
+- Path: implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 
 **Small change** — classify by clarity and risk:
 
 *Clear & low-risk* — implement directly:
 - Well-understood, localized changes where the approach and impact are obvious
 - Examples: add a simple validation rule, update a default config value, extract a helper function, add a missing null check, wire up a new field to an existing form
-- Path: implement directly → invoke skill "advisor-gate"
+- Path: implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 
 *Ambiguous or risky* — interview quick → implement:
 - Changes where requirements, scope, or side-effects are unclear; changes that touch shared code, public APIs, auth, or multiple modules
@@ -271,20 +290,20 @@ Classify by scope.
 
 ### Spike / Design Exploration
 ```
-invoke skill "prototype" → feed findings into next skill
+load skill "prototype" (use `skill` tool, or `read` its SKILL.md) → feed findings into next skill
 ```
 - When the approach is uncertain and needs validation before committing
 
 ### Refactor
 ```
-[safe / small scope]  implement directly → invoke skill "advisor-gate"
-[risky / unclear]     invoke skill "interview" → implement → invoke skill "advisor-gate"
-[clearly ≥1d]         invoke skill "interview" → invoke skill "create-prd" → invoke skill "bdd-implement" → invoke skill "advisor-gate"
+[safe / small scope]  implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
+[risky / unclear]     load skill "interview" (use `skill` tool, or `read` its SKILL.md) → implement → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
+[clearly ≥1d]         load skill "interview" (use `skill` tool, or `read` its SKILL.md) → load skill "create-prd" (use `skill` tool, or `read` its SKILL.md) → load skill "bdd-implement" (use `skill` tool, or `read` its SKILL.md) → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 ```
 
 ### Docs-Only Change
 ```
-implement directly → invoke skill "advisor-gate"
+implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 ```
 
 ---

@@ -175,10 +175,24 @@ export function getBootstrapForAgent(agent: string): string | null {
 		? fallbackContent
 		: [universalContent, agentContent].filter(Boolean).join("\n\n");
 
+	// Stripped-down bootstrap for main session — models with short attention spans
+	// need the rules up-front and repeated.
+	const hardRules = `=== ORCHESTRATOR HARD RULES ===
+1. You are the ORCHESTRATOR. You NEVER write/edit code or explore files yourself.
+2. ALWAYS delegate implementation to subagent agent="coder".
+3. ALWAYS delegate exploration to subagent agent="explore".
+4. Bugs → read diagnose SKILL.md → delegate to coder subagents.
+5. Features → read interview SKILL.md → read create-prd SKILL.md → fan out 5-15 parallel coder subagents.
+6. Trivial fixes (typo, 1-liner) → fix directly, then read advisor-gate SKILL.md.
+7. NEVER use edit, write, or bash for exploration/debugging. ONLY subagent and read.
+=== END HARD RULES ===`;
+
 	const bootstrap = `<EXTREMELY_IMPORTANT>
 You have groundwork workflow skills.
 
 **IMPORTANT: The use-groundwork skill content is included below. It is ALREADY LOADED - you are currently following it. Do NOT use the skill tool to load "use-groundwork" again.**
+
+${hardRules}
 
 ${bodyContent}
 </EXTREMELY_IMPORTANT>`;

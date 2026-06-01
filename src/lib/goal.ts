@@ -69,17 +69,24 @@ export interface InjectionParams {
 export function injectGoalAndBootstrap(messages: any[], params: InjectionParams): void {
   if (!messages.length) return
 
-  const firstUser = messages.find((m: any) => m.info?.role === 'user')
-  if (!firstUser?.parts?.length) return
+  // Pi format: { role: 'user', content: [{ type: 'text', text: '...' }] }
+  // opencode format: { info: { role: 'user' }, parts: [{ type: 'text', text: '...' }] }
+  const getRole = (m: any) => m.role ?? m.info?.role
+  const getContent = (m: any) => m.content ?? m.parts
 
-  if (params.bootstrap && !firstUser.parts.some((p: any) => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) {
-    firstUser.parts.unshift({ type: 'text', text: params.bootstrap, synthetic: true })
+  const firstUser = messages.find((m: any) => getRole(m) === 'user')
+  const firstContent = getContent(firstUser)
+  if (!Array.isArray(firstContent) || firstContent.length === 0) return
+
+  if (params.bootstrap && !firstContent.some((p: any) => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) {
+    firstContent.unshift({ type: 'text', text: params.bootstrap, synthetic: true })
   }
 
   if (params.goalReminder) {
-    const lastUser = messages.filter((m: any) => m.info?.role === 'user').pop()
-    if (lastUser?.parts?.length && !lastUser.parts.some((p: any) => p.type === 'text' && p.text.includes('ACTIVE_GOAL'))) {
-      lastUser.parts.push({ type: 'text', text: params.goalReminder, synthetic: true })
+    const lastUser = messages.filter((m: any) => getRole(m) === 'user').pop()
+    const lastContent = getContent(lastUser)
+    if (Array.isArray(lastContent) && lastContent.length > 0 && !lastContent.some((p: any) => p.type === 'text' && p.text.includes('ACTIVE_GOAL'))) {
+      lastContent.push({ type: 'text', text: params.goalReminder, synthetic: true })
     }
   }
 }

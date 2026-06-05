@@ -39,28 +39,21 @@ describe("getBootstrapForAgent aliases", () => {
 		setPtyPluginAvailable(false);
 	});
 
-	test("general-purpose receives orchestrator bootstrap", () => {
+	test("general-purpose receives orchestrator hard rules", () => {
 		const content = getBootstrapForAgent("general-purpose");
 		expect(content).not.toBeNull();
+		expect(content).toContain("ORCHESTRATOR HARD RULES");
+		expect(content).toContain("EXTREMELY_IMPORTANT");
+	});
+
+	test("orchestrator alias receives orchestrator bootstrap", () => {
+		const content = getBootstrapForAgent("orchestrator");
 		expect(content).toContain("Orchestrator Bootstrap");
 		expect(content).toContain("Fan-Out Maximization");
 	});
 
-	test("orchestrator aliases are case-insensitive and normalized", () => {
-		expect(getBootstrapForAgent("General-Purpose")).toContain(
-			"Orchestrator Bootstrap",
-		);
-		expect(getBootstrapForAgent(" general_purpose ")).toContain(
-			"Orchestrator Bootstrap",
-		);
-		expect(getBootstrapForAgent("DEFAULT")).toContain("Orchestrator Bootstrap");
-	});
-
-	test("coder aliases receive coder bootstrap", () => {
-		expect(getBootstrapForAgent("developer")).toContain(
-			"Groundwork Coder Rules",
-		);
-		expect(getBootstrapForAgent("DEV")).toContain("Groundwork Coder Rules");
+	test("coder receives coder bootstrap", () => {
+		expect(getBootstrapForAgent("coder")).toContain("Groundwork Coder Rules");
 	});
 });
 

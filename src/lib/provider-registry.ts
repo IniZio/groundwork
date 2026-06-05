@@ -7,39 +7,25 @@ import type {
  * Groundwork custom model providers.
  *
  * Each entry's key is the provider name used in agent .md `model:` fields
- * (e.g. `neuralwatt/glm-5.1-fast` → provider "neuralwatt", model id "glm-5.1-fast").
+ * (e.g. `kimi-for-coding` → provider "kimi-for-coding", model id "kimi-for-coding").
+ *
+ * The `neuralwatt` provider is NOT registered here — the pi-neuralwatt
+ * extension (installed separately) handles that with dynamic model discovery.
+ * Agent .md files use `neuralwatt/zai-org/GLM-5.1-FP8` as the model string.
  *
  * IMPORTANT: Provider names and model IDs must match agents/*.md files exactly.
  */
 const GROUNDWORK_PROVIDERS: Record<string, ProviderConfig> = {
-	// ── ZhipuAI / GLM (orchestrator model) ──────────────────────────────────
-	neuralwatt: {
-		name: "NeuralWatt (ZhipuAI GLM)",
-		baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-		// Support common aliases. Command-backed auth also lets pi treat the
-		// provider as configured during session model restore.
-		apiKey:
-			"!node -e \"process.stdout.write(process.env.NEURALWATT_API_KEY || process.env.ZHIPU_API_KEY || process.env.BIGMODEL_API_KEY || '')\"",
-		api: "openai-completions",
-		models: [
-			{
-				id: "glm-5.1-fast",
-				name: "GLM 5.1 Fast",
-				reasoning: false,
-				input: ["text"],
-				cost: { input: 0.5, output: 1.5, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 128_000,
-				maxTokens: 16_384,
-			},
-		],
-	},
+	// NOTE: neuralwatt is NOT registered here — the pi-neuralwatt package
+	// (installed separately) registers the neuralwatt provider with dynamic
+	// model discovery from the NeuralWatt API. Agent .md files reference
+	// `neuralwatt/zai-org/GLM-5.1-FP8` which pi-neuralwatt resolves.
 
 	// ── Moonshot / Kimi (coder model) ───────────────────────────────────────
 	"kimi-for-coding": {
 		name: "Kimi for Coding (Moonshot)",
 		baseUrl: "https://api.moonshot.cn/v1",
-		apiKey:
-			"!node -e \"process.stdout.write(process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY || '')\"",
+		apiKey: "$KIMI_API_KEY",
 		api: "openai-completions",
 		models: [
 			{

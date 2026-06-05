@@ -17,7 +17,7 @@ function isSubagent(): boolean {
 
 export default function (pi: ExtensionAPI) {
 	// Register custom model providers so pi-subagents can resolve our model strings
-	// (e.g. "neuralwatt/glm-5.1-fast", "kimi-for-coding", etc.)
+	// (e.g. "kimi-for-coding", "opencode-go/deepseek-v4-flash", etc.)
 	registerGroundworkProviders(pi);
 
 	const runtime = createGroundworkRuntime();

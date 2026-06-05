@@ -11,3 +11,4 @@ docs/prds/
 !
 .pi-lens/
 .playwright-mcp/
+.pi/agents/

@@ -1,12 +1,11 @@
 ---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
+model: neuralwatt/glm-5.1-fast
+thinking: minimal
 mode: primary
-permission:
-  task:
-    orchestrator: deny
-  bash:
-    "git reset --hard *": deny
+systemPromptMode: append
+tools: read, bash, edit, write, grep, find, ls
 ---
 
 # Orchestrator

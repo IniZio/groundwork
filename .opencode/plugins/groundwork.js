@@ -17,6 +17,19 @@ const z = tool.schema
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// ─── Extra agents directory for pi-subagents ────────────────────────────────────
+// Register groundwork's agents/ directory so pi-subagents discovers them as "project" agents
+// without requiring users to copy files into ~/.pi/agent/agents/ or <project>/.pi/agents/
+{
+  const groundworkAgentsDir = path.resolve(__dirname, '../../agents')
+  const existing = process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR || ''
+  const dirs = existing ? existing.split(':') : []
+  if (!dirs.includes(groundworkAgentsDir)) {
+    dirs.push(groundworkAgentsDir)
+    process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = dirs.join(':')
+  }
+}
+
 // ─── Skills injection helpers ─────────────────────────────────────────────────
 
 const groundworkSkillsDir = path.resolve(__dirname, '../../skills/groundwork')
@@ -26,15 +39,43 @@ function extractAndStripFrontmatter(content) {
   if (!match) return { frontmatter: {}, content }
   const frontmatterStr = match[1]
   const body = match[2]
+  const lines = frontmatterStr.split('\n')
   const frontmatter = {}
-  for (const line of frontmatterStr.split('\n')) {
+  const stack = [{ obj: frontmatter, indent: -1 }]
+
+  for (const line of lines) {
+    // Skip empty lines
+    if (!line.trim()) continue
+    
+    // Calculate indentation (2 spaces per level)
+    const indentMatch = line.match(/^(\s*)/)
+    const indent = indentMatch ? Math.floor(indentMatch[1].length / 2) : 0
+    
+    // Find the colon position
     const colonIdx = line.indexOf(':')
-    if (colonIdx > 0) {
-      const key = line.slice(0, colonIdx).trim()
-      const value = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, '')
-      frontmatter[key] = value
+    if (colonIdx === -1) continue
+    
+    const keyRaw = line.slice(indentMatch[1].length, colonIdx).trim()
+    const key = keyRaw.replace(/^["']|["']$/g, '')
+    const valueRaw = line.slice(colonIdx + 1).trim()
+    const value = valueRaw.replace(/^["']|["']$/g, '')
+    
+    // Pop stack until we find the parent with smaller indent
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
+      stack.pop()
+    }
+    
+    const parent = stack[stack.length - 1].obj
+    
+    // If value is empty, this key starts a new nested object
+    if (value === '') {
+      parent[key] = {}
+      stack.push({ obj: parent[key], indent })
+    } else {
+      parent[key] = value
     }
   }
+  
   return { frontmatter, content: body }
 }
 
@@ -365,10 +406,31 @@ class PersistenceLayer {
         const content = await fsPromises.readFile(path.join(sessionDir, entry), 'utf8')
         const match = content.match(/^---\n([\s\S]*?)\n---\n/)
         if (!match) continue
+        const frontmatterStr = match[1]
+        const lines = frontmatterStr.split('\n')
         const meta = {}
-        for (const line of match[1].split('\n')) {
+        const stack = [{ obj: meta, indent: -1 }]
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const indentMatch = line.match(/^(\s*)/)
+          const indent = indentMatch ? Math.floor(indentMatch[1].length / 2) : 0
           const colonIdx = line.indexOf(':')
-          if (colonIdx > 0) meta[line.slice(0, colonIdx).trim()] = line.slice(colonIdx + 1).trim()
+          if (colonIdx === -1) continue
+          const keyRaw = line.slice(indentMatch[1].length, colonIdx).trim()
+          const key = keyRaw.replace(/^["']|["']$/g, '')
+          const valueRaw = line.slice(colonIdx + 1).trim()
+          const value = valueRaw.replace(/^["']|["']$/g, '')
+          while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
+            stack.pop()
+          }
+          const parent = stack[stack.length - 1].obj
+          if (value === '') {
+            parent[key] = {}
+            stack.push({ obj: parent[key], indent })
+          } else {
+            parent[key] = value
+          }
         }
         results.push({ id: entry.replace('.md', ''), ...meta })
       }
@@ -926,6 +988,78 @@ export const GroundworkPlugin = async ({ client, directory }) => {
         template: HANDOFF_COMMAND,
       }
 
+      // Hardcoded permission model based on agent role
+      // pi-subagents frontmatter parser is FLAT only — nested permission blocks are ignored
+      const AGENT_PERMISSIONS = {
+        orchestrator: {
+          task: {
+            orchestrator: 'deny',
+          },
+          bash: {
+            'git reset --hard *': 'deny',
+          },
+        },
+        coder: {
+          question: 'deny',
+          task: {
+            '*': 'deny',
+            advisor: 'allow',
+            explore: 'allow',
+          },
+          'background*': 'deny',
+          bash: {
+            'git reset --hard *': 'deny',
+            'sudo *': 'deny',
+          },
+        },
+        advisor: {
+          question: 'deny',
+          task: {
+            '*': 'deny',
+            explore: 'allow',
+          },
+          'background*': 'deny',
+        },
+        designer: {
+          question: 'deny',
+          task: {
+            '*': 'deny',
+            explore: 'allow',
+          },
+          'background*': 'deny',
+        },
+        explore: {
+          question: 'deny',
+          task: 'deny',
+          'background*': 'deny',
+        },
+        observer: {
+          question: 'deny',
+          task: {
+            '*': 'deny',
+            explore: 'allow',
+          },
+          'background*': 'deny',
+        },
+        oracle: {
+          question: 'deny',
+          task: {
+            '*': 'deny',
+            explore: 'allow',
+          },
+          'background*': 'deny',
+        },
+      }
+
+      function getAgentPermissions(agentName) {
+        const n = (agentName || '').trim().toLowerCase()
+        // Check for orchestrator aliases
+        if (n === 'orchestrator' || n === 'general-purpose' || n === 'general_purpose' || n === 'default') {
+          return AGENT_PERMISSIONS.orchestrator
+        }
+        return AGENT_PERMISSIONS[n]
+      }
+
       // Register agent configs from agents/ directory with alias support
       config.agent = config.agent || {}
       const groundworkAgentsDir = path.resolve(__dirname, '../../agents')
@@ -960,10 +1094,12 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             if (defaults?.temperature !== undefined && config.agent[registeredName].temperature === undefined) {
               config.agent[registeredName].temperature = defaults.temperature
             }
-            if (frontmatter.permission) {
+            // Apply hardcoded permissions based on agent role
+            const rolePermissions = getAgentPermissions(registeredName)
+            if (rolePermissions) {
               config.agent[registeredName].permission = config.agent[registeredName].permission || {}
-              // Deep merge defaults: frontmatter fills in missing keys but doesn't override
-              for (const [key, value] of Object.entries(frontmatter.permission)) {
+              // Deep merge: explicit config wins, then role permissions fill in
+              for (const [key, value] of Object.entries(rolePermissions)) {
                 if (config.agent[registeredName].permission[key] === undefined) {
                   config.agent[registeredName].permission[key] = value
                 } else if (typeof config.agent[registeredName].permission[key] === 'object' && config.agent[registeredName].permission[key] !== null && typeof value === 'object' && value !== null) {

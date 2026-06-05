@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ensureAgentsInstalled } from "./lib/agent-setup.js";
 import { getBootstrapForAgent } from "./lib/skills.js";
 import { readGoal, goalReminder, injectGoalAndBootstrap } from "./lib/goal.js";
+import { registerGroundworkProviders } from "./lib/provider-registry.js";
 import { createHandoffSessionTool } from "./pi-tools/handoff-session.js";
 import { createSetGoalTool } from "./pi-tools/set-goal.js";
 import { createHandoffCommand } from "./pi-commands/handoff.js";
@@ -15,8 +16,16 @@ function isSubagent(): boolean {
 }
 
 export default function (pi: ExtensionAPI) {
+	// Register custom model providers so pi-subagents can resolve our model strings
+	// (e.g. "neuralwatt/glm-5.1-fast", "kimi-for-coding", etc.)
+	registerGroundworkProviders(pi);
+
 	const runtime = createGroundworkRuntime();
 	const directory = process.cwd();
+
+	// Set PI_SUBAGENTS_EXTRA_AGENTS_DIR early so pi-subagents discovers our
+	// package-local agents/ directory. No runtime file writing needed.
+	ensureAgentsInstalled(directory);
 
 	// ---- Tools ----
 	pi.registerTool(createHandoffSessionTool({ directory }));
@@ -29,20 +38,11 @@ export default function (pi: ExtensionAPI) {
 	// ---- Events ----
 	pi.on("session_start", (_event, ctx) => {
 		const cwd = (ctx as any)?.cwd ?? process.cwd();
-		const sessionID = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
 		runtime.cwd = cwd;
-
-		if (sessionID && !runtime.agentsInstalledForSessions.has(sessionID)) {
-			runtime.agentsInstalledForSessions.add(sessionID);
-			ensureAgentsInstalled(cwd);
-		}
 	});
 
-	pi.on("session_shutdown", (_event, ctx) => {
-		const sessionID = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
-		if (sessionID) {
-			runtime.agentsInstalledForSessions.delete(sessionID);
-		}
+	pi.on("session_shutdown", (_event, _ctx) => {
+		// No-op: agent dir is now static (package-local), no per-session cleanup needed.
 	});
 
 	// Inject orchestrator identity into the SYSTEM PROMPT for the main session.
@@ -69,8 +69,6 @@ export default function (pi: ExtensionAPI) {
 === END HARD RULES ===`;
 
 		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;
-
-
 	});
 
 	// Goal reminders + subagent bootstrap injection via user-message parts.
@@ -109,11 +107,14 @@ export default function (pi: ExtensionAPI) {
 		if (!isSubagent()) {
 			const getRole = (m: any) => m.role ?? m.info?.role;
 			const getContent = (m: any) => m.content ?? m.parts;
-			const lastUser = messages.filter((m: any) => getRole(m) === 'user').pop();
+			const lastUser = messages.filter((m: any) => getRole(m) === "user").pop();
 			const content = getContent(lastUser);
 			if (Array.isArray(content) && content.length > 0) {
-				const nudge = '\n\nDELEGATION RULE: Trivial one-line fixes (typos, missing null checks, obvious config changes) AND clear low-risk small changes (add validation rule, extract helper, add null check) may be fixed directly with edit/write. ALL bugs, features, ambiguous changes, or anything touching shared code / multiple modules MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself. EXTREME FAN-OUT: decompose into semantic slices (one clear objective per task), then launch ALL independent subagent calls in ONE message.';
-				const lastTextPart = content.filter((p: any) => p.type === 'text').pop();
+				const nudge =
+					"\n\nDELEGATION RULE: Trivial one-line fixes (typos, missing null checks, obvious config changes) AND clear low-risk small changes (add validation rule, extract helper, add null check) may be fixed directly with edit/write. ALL bugs, features, ambiguous changes, or anything touching shared code / multiple modules MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself. EXTREME FAN-OUT: decompose into semantic slices (one clear objective per task), then launch ALL independent subagent calls in ONE message.";
+				const lastTextPart = content
+					.filter((p: any) => p.type === "text")
+					.pop();
 				if (lastTextPart && !lastTextPart.text.includes(nudge.trim())) {
 					lastTextPart.text += nudge;
 				}

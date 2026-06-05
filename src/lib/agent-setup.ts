@@ -1,98 +1,34 @@
-// ─── Runtime Agent Installation ────────────────────────────────────────────
-// Writes embedded agent definitions to .pi/agents/*.md on session start.
-// Version tracking ensures plugin updates propagate without overwriting
-// user customizations.
+// ─── Package-Local Agent Discovery ─────────────────────────────────────────
+// Sets PI_SUBAGENTS_EXTRA_AGENTS_DIR to point at the agents/ directory shipped
+// with the groundwork plugin package. No runtime file writing — the agent .md
+// files are static, git-tracked, and bundled with the package.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { EMBEDDED_AGENTS, GROUNDWORK_VERSION } from "./agent-definitions.js";
-import { extractAndStripFrontmatter } from "./skills.js";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-interface Manifest {
-	version: string;
-	agents: Record<string, string>;
-}
-
-const MANIFEST_FILE = ".groundwork-manifest.json";
-
-function readManifest(agentsDir: string): Manifest {
-	const path = join(agentsDir, MANIFEST_FILE);
-	if (!existsSync(path)) return { version: "0.0.0", agents: {} };
-	try {
-		const raw = readFileSync(path, "utf8");
-		return JSON.parse(raw) as Manifest;
-	} catch {
-		return { version: "0.0.0", agents: {} };
-	}
-}
-
-function writeManifest(agentsDir: string, manifest: Manifest): void {
-	const path = join(agentsDir, MANIFEST_FILE);
-	writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-}
-
-function installAgents(agentsDir: string): void {
-	mkdirSync(agentsDir, { recursive: true });
-
-	const manifest = readManifest(agentsDir);
-	let dirty = false;
-
-	for (const agent of EMBEDDED_AGENTS) {
-		const filePath = join(agentsDir, `${agent.name}.md`);
-		if (shouldWrite(filePath, agent.version)) {
-			writeFileSync(filePath, agent.content, "utf8");
-			manifest.agents[agent.name] = agent.version;
-			dirty = true;
-		}
-	}
-
-	if (dirty || manifest.version !== GROUNDWORK_VERSION) {
-		manifest.version = GROUNDWORK_VERSION;
-		writeManifest(agentsDir, manifest);
-	}
-}
-
-function shouldWrite(path: string, pluginVersion: string): boolean {
-	if (!existsSync(path)) return true;
-
-	try {
-		const content = readFileSync(path, "utf8");
-		const { frontmatter } = extractAndStripFrontmatter(content);
-
-		// Only update files that are managed by us
-		if (frontmatter.managed_by !== "groundwork") return false;
-
-		// Compare version
-		const fileVersion = String(frontmatter.groundwork_version ?? "0.0.0");
-		const [fMajor, fMinor, fPatch] = fileVersion.split(".").map(Number);
-		const [pMajor, pMinor, pPatch] = pluginVersion.split(".").map(Number);
-
-		if (pMajor > fMajor) return true;
-		if (pMajor === fMajor && pMinor > fMinor) return true;
-		if (pMajor === fMajor && pMinor === fMinor && pPatch > fPatch) return true;
-		return false;
-	} catch {
-		return false;
-	}
+/**
+ * Resolve the package-local agents/ directory.
+ *
+ * In development (tsx), import.meta.url points to the .ts source file under
+ * src/lib/, so we navigate up to the package root. In production (compiled),
+ * the same relative path works because the dist/ structure mirrors src/.
+ */
+function resolveAgentsDir(): string {
+	const thisFile = fileURLToPath(import.meta.url);
+	const thisDir = dirname(thisFile);
+	// From src/lib/ → package root → agents/
+	return join(thisDir, "..", "..", "agents");
 }
 
 /**
- * Ensure all embedded agent definitions are installed ONLY at the global
- * canonical location: ~/.pi/agent/agents/ (expected by pi-subagents).
+ * Ensure pi-subagents can discover our agent .md files by setting the
+ * PI_SUBAGENTS_EXTRA_AGENTS_DIR environment variable to the package-local
+ * agents directory.
  *
- * Called from the session_start event handler.
- *
- * Only writes files that:
- * - Don't exist yet, OR
- * - Have managed_by: groundwork and an older version
- *
- * User customizations are preserved if they remove the managed_by marker.
+ * Called early in the extension setup (before any session starts) so the
+ * env var is available when pi-subagents performs agent discovery.
  */
 export function ensureAgentsInstalled(_cwd: string): void {
-	// Global agents ONLY — canonical location expected by pi-subagents.
-	// Project-local agents are intentionally NOT created to avoid clutter
-	// and ensure consistent agent definitions across all projects.
-	const globalAgentsDir = join(homedir(), ".pi", "agent", "agents");
-	installAgents(globalAgentsDir);
+	const agentsDir = resolveAgentsDir();
+	process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = agentsDir;
 }

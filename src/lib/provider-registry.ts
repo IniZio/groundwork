@@ -16,7 +16,10 @@ const GROUNDWORK_PROVIDERS: Record<string, ProviderConfig> = {
 	neuralwatt: {
 		name: "NeuralWatt (ZhipuAI GLM)",
 		baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-		apiKey: "$NEURALWATT_API_KEY",
+		// Support common aliases. Command-backed auth also lets pi treat the
+		// provider as configured during session model restore.
+		apiKey:
+			"!node -e \"process.stdout.write(process.env.NEURALWATT_API_KEY || process.env.ZHIPU_API_KEY || process.env.BIGMODEL_API_KEY || '')\"",
 		api: "openai-completions",
 		models: [
 			{
@@ -35,7 +38,8 @@ const GROUNDWORK_PROVIDERS: Record<string, ProviderConfig> = {
 	"kimi-for-coding": {
 		name: "Kimi for Coding (Moonshot)",
 		baseUrl: "https://api.moonshot.cn/v1",
-		apiKey: "$MOONSHOT_API_KEY",
+		apiKey:
+			"!node -e \"process.stdout.write(process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY || '')\"",
 		api: "openai-completions",
 		models: [
 			{

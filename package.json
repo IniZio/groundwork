@@ -27,8 +27,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/pi.ts",
-      "./node_modules/pi-subagents/src/extension/index.ts"
+      "./src/pi.ts"
     ],
     "skills": [
       "./.pi/skills"

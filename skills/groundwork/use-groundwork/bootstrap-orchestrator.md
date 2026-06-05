@@ -58,7 +58,7 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | Agent | Model recommendation | Temperature | Best for |
 |-------|---------------------|-------------|----------|
 | `advisor` | `openai/gpt-5.4` (strong reasoning) | 0.1 | Architecture, trade-offs, code review |
-| `coder` | `kimi-for-coding/k2.6` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
+| `coder` | `neuralwatt/glm-5.1-fast` (fast, high reasoning) | 0.2 | Bounded implementation, tests, build verification |
 | `explore` | `openai/gpt-5.4-mini` (fast, cheap) | 0.1 | Codebase search, pattern discovery |
 | `designer` | `kimi-for-coding/k2.6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
 | `observer` | `openai/gpt-5.4-mini` (vision-capable) | 0.1 | Screenshot analysis, visual comparison, PDF interpretation |
@@ -68,7 +68,7 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 {
   "agent": {
     "advisor": { "model": "openai/gpt-5.4" },
-    "coder": { "model": "kimi-for-coding/k2.6" },
+    "coder": { "model": "neuralwatt/glm-5.1-fast" },
     "explore": { "model": "openai/gpt-5.4-mini" },
     "designer": { "model": "kimi-for-coding/k2.6" },
     "observer": { "model": "openai/gpt-5.4-mini" }
@@ -102,7 +102,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 1. **Velocity**: Fan out aggressively — launch 5-15 parallel coder tasks. More parallelism = faster delivery. Sequential work is the #1 time waste
 2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste, observer sees details you'd miss
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
-4. **Model diversity**: Different agents use different models — designer uses kimi for UI taste, advisor uses gpt-5.4 for reasoning, coder uses gpt-5.4-mini for speed
+4. **Model diversity**: Different agents use different models — designer uses kimi for UI taste, advisor uses gpt-5.4 for reasoning, coder uses glm-5.1-fast for speed
 
 ### Anti-pattern: The Implementing Orchestrator
 

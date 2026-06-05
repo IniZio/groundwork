@@ -16,7 +16,7 @@ export const EMBEDDED_AGENTS: AgentDefinition[] = [
 		version: "2.0.2",
 		content: `---
 description: Orchestrator — main workflow coordinator, classifier, and delegator
-model: openai/gpt-5.4
+model: neuralwatt/glm-5.1-fast
 thinking: minimal
 tools: read, bash, edit, write, grep, find, ls
 prompt_mode: append

@@ -1,190 +1,224 @@
-import { describe, test, expect } from 'bun:test'
-import { GroundworkPlugin } from '../src/index.js'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, test, expect } from "bun:test";
+import { GroundworkPlugin } from "../src/index.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
-describe('Plugin config merge', () => {
-  test('frontmatter permissions materialize into runtime agent config', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'groundwork-test-'))
-    try {
-      const plugin = await GroundworkPlugin({
-        client: {} as any,
-        directory: tmpDir,
-      })
+describe("Plugin config merge", () => {
+	test("frontmatter permissions materialize into runtime agent config", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
 
-      const config: any = { agent: {} }
-      await plugin.config(config)
+			const config: any = { agent: {} };
+			await plugin.config(config);
 
-      // explore agent should have frontmatter permissions loaded
-      expect(config.agent.explore).toBeDefined()
-      expect(config.agent.explore.permission).toBeDefined()
-      expect(config.agent.explore.permission.question).toBe('deny')
-      expect(config.agent.explore.permission.task).toBe('deny')
-      expect(config.agent.explore.permission['background*']).toBe('deny')
+			// explore agent should have frontmatter permissions loaded
+			expect(config.agent.explore).toBeDefined();
+			expect(config.agent.explore.permission).toBeDefined();
+			expect(config.agent.explore.permission.question).toBe("deny");
+			expect(config.agent.explore.permission.task).toBe("deny");
+			expect(config.agent.explore.permission["background*"]).toBe("deny");
 
-      // coder agent should have nested task permissions loaded
-      expect(config.agent.coder).toBeDefined()
-      expect(config.agent.coder.permission).toBeDefined()
-      expect(config.agent.coder.permission.question).toBe('deny')
-      expect(config.agent.coder.permission['background*']).toBe('deny')
-      expect(config.agent.coder.permission.bash).toBeDefined()
-      expect(config.agent.coder.permission.bash['git reset --hard *']).toBe('deny')
-      // coder can delegate to explore and advisor
-      expect(config.agent.coder.permission.task).toBeDefined()
-      expect(config.agent.coder.permission.task['*']).toBe('deny')
-      expect(config.agent.coder.permission.task.advisor).toBe('allow')
-      expect(config.agent.coder.permission.task.explore).toBe('allow')
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true })
-    }
-  })
+			// coder agent should have nested task permissions loaded
+			expect(config.agent.coder).toBeDefined();
+			expect(config.agent.coder.permission).toBeDefined();
+			expect(config.agent.coder.permission.question).toBe("deny");
+			expect(config.agent.coder.permission["background*"]).toBe("deny");
+			expect(config.agent.coder.permission.bash).toBeDefined();
+			expect(config.agent.coder.permission.bash["git reset --hard *"]).toBe(
+				"deny",
+			);
+			// coder can delegate to explore and advisor
+			expect(config.agent.coder.permission.task).toBeDefined();
+			expect(config.agent.coder.permission.task["*"]).toBe("deny");
+			expect(config.agent.coder.permission.task.advisor).toBe("allow");
+			expect(config.agent.coder.permission.task.explore).toBe("allow");
 
-  test('explicit config.agent permission values win over frontmatter defaults', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'groundwork-test-'))
-    try {
-      const plugin = await GroundworkPlugin({
-        client: {} as any,
-        directory: tmpDir,
-      })
+			// orchestrator denies self-delegation but allows all other task types
+			expect(config.agent.orchestrator.permission.task.orchestrator).toBe(
+				"deny",
+			);
+			expect(config.agent.orchestrator.permission.task.coder).toBeUndefined(); // no explicit allow needed — only self-delegation is denied
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
 
-      // User explicitly sets some permissions that conflict with frontmatter
-      const config: any = {
-        agent: {
-          explore: {
-            permission: {
-              question: 'allow', // frontmatter says deny
-              task: 'allow', // frontmatter says deny
-              extra: 'deny', // not in frontmatter
-            },
-          },
-          coder: {
-            permission: {
-              task: {
-                explore: 'deny', // frontmatter says allow
-                advisor: 'deny', // frontmatter says allow
-                custom: 'allow', // not in frontmatter
-              },
-              question: 'allow', // frontmatter says deny
-            },
-          },
-        },
-      }
+	test("orchestrator is registered under primary-agent aliases", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
 
-      await plugin.config(config)
+			const config: any = { agent: {} };
+			await plugin.config(config);
 
-      // explore: explicit values should win
-      expect(config.agent.explore.permission.question).toBe('allow')
-      expect(config.agent.explore.permission.task).toBe('allow')
-      // frontmatter value for background* should still be merged in (not overridden)
-      expect(config.agent.explore.permission['background*']).toBe('deny')
-      // extra permission not in frontmatter should be preserved
-      expect(config.agent.explore.permission.extra).toBe('deny')
+			expect(config.agent["general-purpose"].prompt).toContain(
+				"You are the ORCHESTRATOR",
+			);
+			expect(config.agent["general-purpose"].permission.task.orchestrator).toBe(
+				"deny",
+			);
+			expect(config.agent.general_purpose.prompt).toContain(
+				"You are the ORCHESTRATOR",
+			);
+			expect(config.agent.default.prompt).toContain("You are the ORCHESTRATOR");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
 
-      // coder: explicit nested values should win
-      expect(config.agent.coder.permission.task.explore).toBe('deny')
-      expect(config.agent.coder.permission.task.advisor).toBe('deny')
-      // frontmatter wildcard should still be merged in
-      expect(config.agent.coder.permission.task['*']).toBe('deny')
-      // custom permission not in frontmatter should be preserved
-      expect(config.agent.coder.permission.task.custom).toBe('allow')
-      // frontmatter value for background* should still be merged in
-      expect(config.agent.coder.permission['background*']).toBe('deny')
-      // explicit question wins over frontmatter
-      expect(config.agent.coder.permission.question).toBe('allow')
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true })
-    }
-  })
+	test("explicit config.agent permission values win over frontmatter defaults", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
 
-  test('explore is a leaf agent (task deny) while delegating agents can task->explore', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'groundwork-test-'))
-    try {
-      const plugin = await GroundworkPlugin({
-        client: {} as any,
-        directory: tmpDir,
-      })
+			// User explicitly sets some permissions that conflict with frontmatter
+			const config: any = {
+				agent: {
+					explore: {
+						permission: {
+							question: "allow", // frontmatter says deny
+							task: "allow", // frontmatter says deny
+							extra: "deny", // not in frontmatter
+						},
+					},
+					coder: {
+						permission: {
+							task: {
+								explore: "deny", // frontmatter says allow
+								advisor: "deny", // frontmatter says allow
+								custom: "allow", // not in frontmatter
+							},
+							question: "allow", // frontmatter says deny
+						},
+					},
+				},
+			};
 
-      const config: any = { agent: {} }
-      await plugin.config(config)
+			await plugin.config(config);
 
-      // explore is a leaf: cannot delegate to anyone
-      expect(config.agent.explore.permission.task).toBe('deny')
+			// explore: explicit values should win
+			expect(config.agent.explore.permission.question).toBe("allow");
+			expect(config.agent.explore.permission.task).toBe("allow");
+			// frontmatter value for background* should still be merged in (not overridden)
+			expect(config.agent.explore.permission["background*"]).toBe("deny");
+			// extra permission not in frontmatter should be preserved
+			expect(config.agent.explore.permission.extra).toBe("deny");
 
-      // coder can delegate to explore
-      expect(config.agent.coder.permission.task.explore).toBe('allow')
+			// coder: explicit nested values should win
+			expect(config.agent.coder.permission.task.explore).toBe("deny");
+			expect(config.agent.coder.permission.task.advisor).toBe("deny");
+			// frontmatter wildcard should still be merged in
+			expect(config.agent.coder.permission.task["*"]).toBe("deny");
+			// custom permission not in frontmatter should be preserved
+			expect(config.agent.coder.permission.task.custom).toBe("allow");
+			// frontmatter value for background* should still be merged in
+			expect(config.agent.coder.permission["background*"]).toBe("deny");
+			// explicit question wins over frontmatter
+			expect(config.agent.coder.permission.question).toBe("allow");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
 
-      // advisor can delegate to explore
-      expect(config.agent.advisor.permission.task.explore).toBe('allow')
+	test("explore is a leaf agent (task deny) while delegating agents can task->explore", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
 
-      // designer can delegate to explore
-      expect(config.agent.designer.permission.task.explore).toBe('allow')
+			const config: any = { agent: {} };
+			await plugin.config(config);
 
-      // observer can delegate to explore
-      expect(config.agent.observer.permission.task.explore).toBe('allow')
+			// explore is a leaf: cannot delegate to anyone
+			expect(config.agent.explore.permission.task).toBe("deny");
 
-      // Verify explore cannot delegate to advisor (only coder can)
-      expect(config.agent.explore.permission.task).toBe('deny')
-      // coder is the only one that can delegate to advisor
-      expect(config.agent.coder.permission.task.advisor).toBe('allow')
-      expect(config.agent.advisor.permission.task.advisor).toBeUndefined()
-      expect(config.agent.designer.permission.task.advisor).toBeUndefined()
-      expect(config.agent.observer.permission.task.advisor).toBeUndefined()
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true })
-    }
-  })
+			// coder can delegate to explore
+			expect(config.agent.coder.permission.task.explore).toBe("allow");
 
-  test('disabled agents are skipped', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'groundwork-test-'))
-    try {
-      const plugin = await GroundworkPlugin({
-        client: {} as any,
-        directory: tmpDir,
-      })
+			// advisor can delegate to explore
+			expect(config.agent.advisor.permission.task.explore).toBe("allow");
 
-      const config: any = {
-        agent: {
-          explore: { disable: true },
-        },
-      }
+			// designer can delegate to explore
+			expect(config.agent.designer.permission.task.explore).toBe("allow");
 
-      await plugin.config(config)
+			// observer can delegate to explore
+			expect(config.agent.observer.permission.task.explore).toBe("allow");
 
-      // explore should not have been processed
-      expect(config.agent.explore.permission).toBeUndefined()
-      expect(config.agent.explore.prompt).toBeUndefined()
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true })
-    }
-  })
+			// Verify explore cannot delegate to advisor (only coder can)
+			expect(config.agent.explore.permission.task).toBe("deny");
+			// coder is the only one that can delegate to advisor
+			expect(config.agent.coder.permission.task.advisor).toBe("allow");
+			expect(config.agent.advisor.permission.task.advisor).toBeUndefined();
+			expect(config.agent.designer.permission.task.advisor).toBeUndefined();
+			expect(config.agent.observer.permission.task.advisor).toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
 
-  test('default temperatures are applied only when not explicitly set', async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'groundwork-test-'))
-    try {
-      const plugin = await GroundworkPlugin({
-        client: {} as any,
-        directory: tmpDir,
-      })
+	test("disabled agents are skipped", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
 
-      const config: any = {
-        agent: {
-          explore: { temperature: 0.99 },
-        },
-      }
+			const config: any = {
+				agent: {
+					explore: { disable: true },
+				},
+			};
 
-      await plugin.config(config)
+			await plugin.config(config);
 
-      // explicit temperature should win
-      expect(config.agent.explore.temperature).toBe(0.99)
+			// explore should not have been processed
+			expect(config.agent.explore.permission).toBeUndefined();
+			expect(config.agent.explore.prompt).toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
 
-      // other agents should get defaults
-      expect(config.agent.coder.temperature).toBe(0.2)
-      expect(config.agent.advisor.temperature).toBe(0.1)
-      expect(config.agent.designer.temperature).toBe(0.7)
-      expect(config.agent.observer.temperature).toBe(0.1)
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true })
-    }
-  })
-})
+	test("default temperatures are applied only when not explicitly set", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "groundwork-test-"));
+		try {
+			const plugin = await GroundworkPlugin({
+				client: {} as any,
+				directory: tmpDir,
+			});
+
+			const config: any = {
+				agent: {
+					explore: { temperature: 0.99 },
+				},
+			};
+
+			await plugin.config(config);
+
+			// explicit temperature should win
+			expect(config.agent.explore.temperature).toBe(0.99);
+
+			// other agents should get defaults
+			expect(config.agent.coder.temperature).toBe(0.2);
+			expect(config.agent.advisor.temperature).toBe(0.1);
+			expect(config.agent.designer.temperature).toBe(0.7);
+			expect(config.agent.observer.temperature).toBe(0.1);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});

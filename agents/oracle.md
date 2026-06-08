@@ -1,6 +1,6 @@
 ---
 name: oracle
-description: Strategic technical advisor for hard decisions in executor-led workflows. Use proactively when architecture trade-offs, repeated failed attempts, ambiguous requirements, or high-risk operations require higher-quality guidance. Reads files to ground advice in reality.
+description: Mid-task guidance for executor agents (coder, designer) that hit a hard decision, repeated failure, or ambiguous requirement. Called FROM WITHIN a task — not by the orchestrator. Does NOT gate completion. Use when a coder is stuck and needs architectural guidance without abandoning the task.
 model: opus
 pi-model: openai/gpt-5.4
 systemPromptMode: replace

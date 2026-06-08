@@ -1,6 +1,6 @@
 ---
 name: advisor
-description: Strategic technical advisor for hard decisions in executor-led workflows. Use proactively when architecture trade-offs, repeated failed attempts, ambiguous requirements, or high-risk operations require higher-quality guidance. Reads files to ground advice in reality.
+description: Called by the ORCHESTRATOR only — not by executor agents. Gates plan approval and task completion with APPROVE/REVISE/REJECT verdicts. Use for strategic decisions, architecture trade-offs, and as the mandatory final gate before declaring any task complete. Never call from within a coder/designer task — use oracle instead.
 model: opus
 pi-model: openai/gpt-5.4
 systemPromptMode: replace

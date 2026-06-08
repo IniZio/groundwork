@@ -31,12 +31,12 @@
 | "add/update/tweak" (small, clear, <1h, localized) | Small change | `coder` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `coder` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
-| "review", "quality", "SOLID", "check my code" | Code review | `code-reviewer` → `advisor` gate |
+| "review", "quality", "SOLID", "check my code" | Code review | `critic` → `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `security-reviewer` |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
 | "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.omc/plans/*.md` → fan-out `coder` |
 | Visual / UI / styling | Design | `designer` |
-| "how does", "understand", "where is", "trace" | Explore | `explore` |
+| "how does", "understand", "where is", "trace" | Explore | built-in `Explore` (no prefix) |
 | "validate plan", "is this right" | Plan review | `critic` |
 | "is it done", "verify", "confirm" | Completion | `verifier` → `advisor` |
 | Screenshot, image, PDF, visual diff | Visual | `observer` |
@@ -49,14 +49,14 @@ All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ..
 
 ## Explore economy — when to delegate vs read directly
 
-| Use `groundwork:explore` | Use `Read` directly |
+| Use built-in `Explore` agent | Use `Read` directly |
 |---|---|
 | "Which files handle auth?" | You already have the file path |
 | "Summarize the plugin architecture" | Reading a specific known section |
 | "How does X flow through the system?" | Quick look-up of a function |
 | Scanning 5+ files for a pattern | Reading 1–2 files you just located |
 
-Rule: **known path → `Read`; unknown location → `explore`.**
+Rule: **known path → `Read`; unknown location → `Explore` (no `groundwork:` prefix).**
 
 ---
 
@@ -66,8 +66,8 @@ Rule: **known path → `Read`; unknown location → `explore`.**
 
 ```
 # GOOD — all fire simultaneously
-Task(subagent_type="groundwork:explore", prompt="...auth module...")
-Task(subagent_type="groundwork:explore", prompt="...user model...")
+Task(subagent_type="Explore", prompt="...auth module...")
+Task(subagent_type="Explore", prompt="...user model...")
 Task(subagent_type="groundwork:coder", prompt="...slice 1: auth flow...")
 Task(subagent_type="groundwork:coder", prompt="...slice 2: user profile...")
 Task(subagent_type="groundwork:coder", prompt="...slice 3: settings page...")
@@ -117,7 +117,7 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 | UI/UX, styling | `designer` |
 | Test strategy, coverage | `test-engineer` |
 | Root-cause analysis | `debugger` |
-| Code quality, SOLID | `code-reviewer` |
+| Code quality, SOLID, plan validation | `critic` |
 | Security vulnerabilities | `security-reviewer` |
 | Plan/architecture validation | `critic` |
 | Evidence-based completion check | `verifier` |
@@ -138,7 +138,7 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 
 After any implementation, always run in sequence:
 1. `verifier` — fresh evidence only; rejects "should", "probably", "seems to"
-2. `code-reviewer` — if any code changed
+2. `critic` — if any code changed
 3. `advisor` — APPROVE / REVISE / REJECT gate
 
 Never declare done without `advisor` APPROVE.

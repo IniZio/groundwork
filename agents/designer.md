@@ -1,7 +1,7 @@
 ---
 name: designer
 description: UI/UX specialist for intentional, polished experiences. Use for styling, responsive layouts, visual consistency, component architecture, animations, and visual polish. Use when users see it and polish matters. 10x better UI/UX than orchestrator. Best with a model strong at visual taste and high reasoning.
-model: cursor-agent/claude-sonnet-4-6
+model: sonnet
 systemPromptMode: replace
 tools: read, bash, edit, write, grep, find, ls
 ---

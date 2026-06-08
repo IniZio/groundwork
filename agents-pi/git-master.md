@@ -1,8 +1,9 @@
 ---
 name: git-master
 description: Git expert for atomic commits, rebasing, and history management with style detection. Use when committing work, cleaning up history, or managing branches.
-model: sonnet
+model: kimi-for-coding
 prompt_mode: replace
+tools: read, bash, grep, find, ls
 permission:
   task:
     "*": deny

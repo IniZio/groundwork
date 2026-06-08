@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Evidence-based completion gatekeeper. Ensures no task is marked done without fresh, verifiable proof. Rejects claims backed by 'should', 'probably', or 'seems to'. Use as the final check before declaring ANY goal or task complete.
-model: sonnet
+model: openai/gpt-5.4-mini
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

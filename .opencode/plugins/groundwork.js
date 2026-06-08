@@ -17,19 +17,6 @@ const z = tool.schema
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// ─── Extra agents directory for pi-subagents ────────────────────────────────────
-// Register groundwork's agents/ directory so pi-subagents discovers them as "project" agents
-// without requiring users to copy files into ~/.pi/agent/agents/ or <project>/.pi/agents/
-{
-  const groundworkAgentsDir = path.resolve(__dirname, '../../agents')
-  const existing = process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR || ''
-  const dirs = existing ? existing.split(':') : []
-  if (!dirs.includes(groundworkAgentsDir)) {
-    dirs.push(groundworkAgentsDir)
-    process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = dirs.join(':')
-  }
-}
-
 // ─── Skills injection helpers ─────────────────────────────────────────────────
 
 const groundworkSkillsDir = path.resolve(__dirname, '../../skills/groundwork')

@@ -1,6 +1,4 @@
-// ─── Embedded Agent Definitions ────────────────────────────────────────────
-// These are written to .pi/agents/*.md at runtime by agent-setup.ts.
-// Version bumps here trigger auto-updates of existing agent files.
+// ─── Embedded Agent Definitions ─────────────────────────────────────────────
 
 export interface AgentDefinition {
 	name: string;

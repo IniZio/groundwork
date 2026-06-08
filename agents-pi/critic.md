@@ -1,7 +1,7 @@
 ---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions. The last line of defense before work is committed. Use for review of significant changes, plan validation, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
-model: opus
+model: openai/gpt-5.4
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

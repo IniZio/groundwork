@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ensureAgentsInstalled } from "./lib/agent-setup.js";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getBootstrapForAgent } from "./lib/skills.js";
 import { readGoal, goalReminder, injectGoalAndBootstrap } from "./lib/goal.js";
 import { registerGroundworkProviders } from "./lib/provider-registry.js";
@@ -23,9 +24,14 @@ export default function (pi: ExtensionAPI) {
 	const runtime = createGroundworkRuntime();
 	const directory = process.cwd();
 
-	// Set PI_SUBAGENTS_EXTRA_AGENTS_DIR early so pi-subagents discovers our
-	// package-local agents/ directory. No runtime file writing needed.
-	ensureAgentsInstalled(directory);
+	// Point pi-subagents at the Pi-specific agents directory (separate from OpenCode agents).
+	const piAgentsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "agents-pi");
+	const existingDirs = process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR || "";
+	const piDirs = existingDirs ? existingDirs.split(":") : [];
+	if (!piDirs.includes(piAgentsDir)) {
+		piDirs.push(piAgentsDir);
+		process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = piDirs.join(":");
+	}
 
 	// ---- Tools ----
 	pi.registerTool(createHandoffSessionTool({ directory }));

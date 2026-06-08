@@ -1,7 +1,8 @@
 ---
 name: general-purpose
 description: Orchestrator — main workflow coordinator, classifier, and delegator (alias for orchestrator)
-model: neuralwatt/zai-org/GLM-5.1-FP8
+model: sonnet
+pi-model: neuralwatt/zai-org/GLM-5.1-FP8
 thinking: minimal
 tools: read, bash, edit, write, grep, find, ls
 systemPromptMode: append

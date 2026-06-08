@@ -1,7 +1,8 @@
 ---
 name: coder
 description: Fast coding specialist for implementing features, writing code, and making targeted edits. Use proactively for any coding task that doesn't require deep planning or architectural decisions.
-model: kimi-for-coding
+model: sonnet
+pi-model: kimi-for-coding
 systemPromptMode: replace
 tools: read, bash, edit, write, grep, find, ls
 ---

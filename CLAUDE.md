@@ -7,7 +7,7 @@
 ## 🛑 MANDATORY PRE-FLIGHT — before ANY tool call
 
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:coder`. NEVER use Edit/Write yourself.
-2. **Exploring files or grepping?** → STOP. Delegate to `groundwork:explore`. NEVER use Bash to grep/read/glob.
+2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
 4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` → `/groundwork:create-prd` → fan out coders.
 
@@ -25,15 +25,16 @@
 
 | Signal | Classification | Path |
 |---|---|---|
-| "doesn't work", "broken", "error", stack trace | Bug | Load `/groundwork:diagnose` → `advisor` gate |
+| "doesn't work", "broken", "error", stack trace | Bug | `debugger` (root cause) → `coder` (fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity) | Trivial bug | `coder` direct → `advisor` gate |
 | "build X", "implement Y", complex feature | Feature | `interview` → `create-prd` → 5-20 `coder` parallel |
 | "add/update/tweak" (small, clear, <1h, localized) | Small change | `coder` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `coder` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
-| "review", "quality", "SOLID" | Code review | `code-reviewer` |
+| "review", "quality", "SOLID", "check my code" | Code review | `code-reviewer` → `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `security-reviewer` |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
+| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.omc/plans/*.md` → fan-out `coder` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | `explore` |
 | "validate plan", "is this right" | Plan review | `critic` |
@@ -43,6 +44,19 @@
 | Mid-task escalation from coder | Guidance | `oracle` |
 
 All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ...)`.
+
+---
+
+## Explore economy — when to delegate vs read directly
+
+| Use `groundwork:explore` | Use `Read` directly |
+|---|---|
+| "Which files handle auth?" | You already have the file path |
+| "Summarize the plugin architecture" | Reading a specific known section |
+| "How does X flow through the system?" | Quick look-up of a function |
+| Scanning 5+ files for a pattern | Reading 1–2 files you just located |
+
+Rule: **known path → `Read`; unknown location → `explore`.**
 
 ---
 

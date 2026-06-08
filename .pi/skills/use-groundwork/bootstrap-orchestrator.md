@@ -59,13 +59,19 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 
 | Activity | Delegate to | Via |
 |----------|------------|-----|
-| Understanding codebase structure | `explore` agent | `task(subagent_type="explore", ...)` |
+| Discovering unknown files, summarizing patterns | `explore` agent | `task(subagent_type="explore", ...)` — NOT for known-path reads |
 | Writing or editing code | `coder` agent | `task(subagent_type="coder", ...)` |
 | Writing or editing UI/UX code | `designer` agent | `task(subagent_type="designer", ...)` |
-| Debugging / reproduction steps | `coder` agent | `task(subagent_type="coder", ...)` |
+| Root-cause analysis for bugs | `debugger` agent | `task(subagent_type="debugger", ...)` |
 | Strategic analysis / decisions | `advisor` agent | `task(subagent_type="advisor", ...)` |
-| Escalating decisions (coder → advisor) | `advisor` agent | `task(subagent_type="advisor", ...)` |
 | Running tests / builds | `coder` agent | `task(subagent_type="coder", ...)` |
+| Writing or fixing tests, TDD | `test-engineer` agent | `task(subagent_type="test-engineer", ...)` |
+| Code quality, SOLID review | `code-reviewer` agent | `task(subagent_type="code-reviewer", ...)` |
+| Security vulnerabilities | `security-reviewer` agent | `task(subagent_type="security-reviewer", ...)` |
+| Git commits, rebasing, history | `git-master` agent | `task(subagent_type="git-master", ...)` |
+| Plan validation, architecture critique | `critic` agent | `task(subagent_type="critic", ...)` |
+| Evidence-based completion check | `verifier` agent | `task(subagent_type="verifier", ...)` |
+| Strategic planning before features | `planner` agent | `task(subagent_type="planner", ...)` |
 | Visual analysis / screenshots | `observer` agent | `task(subagent_type="observer", ...)` |
 | Before/after visual comparison | `observer` agent | `task(subagent_type="observer", ...)` |
 | Interview Q&A | YOURSELF (interactive) | `question` tool |
@@ -101,8 +107,8 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 
 **DELEGATE (always):**
 - Any `edit`, `write`, or file creation → `coder` (or `designer` for UI work)
-- Any `grep`, `glob`, or codebase exploration → `explore`
-- Any multi-step debugging → `coder`
+- Any discovery across unknown files (grep, glob, "which file handles X?") → `explore` (known paths → use `read` directly)
+- Any bug root-cause analysis → `debugger`
 - Any build/test verification → `coder`
 - Any strategic decision → `advisor`
 - Any UI/UX implementation or styling → `designer`

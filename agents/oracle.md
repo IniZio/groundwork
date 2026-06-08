@@ -1,7 +1,8 @@
 ---
 name: oracle
 description: Strategic technical advisor for hard decisions in executor-led workflows. Use proactively when architecture trade-offs, repeated failed attempts, ambiguous requirements, or high-risk operations require higher-quality guidance. Reads files to ground advice in reality.
-model: openai/gpt-5.4
+model: opus
+pi-model: openai/gpt-5.4
 systemPromptMode: replace
 tools: read, bash, grep, find, ls
 ---

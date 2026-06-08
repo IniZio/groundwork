@@ -1015,11 +1015,6 @@ export const GroundworkPlugin = async ({ client, directory }) => {
           },
           'background*': 'deny',
         },
-        explore: {
-          question: 'deny',
-          task: 'deny',
-          'background*': 'deny',
-        },
         observer: {
           question: 'deny',
           task: {
@@ -1054,7 +1049,6 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       const AGENT_DEFAULTS = {
         advisor: { temperature: 0.1 },
         coder: { temperature: 0.2 },
-        explore: { temperature: 0.1 },
         designer: { temperature: 0.7 },
         observer: { temperature: 0.1 },
       }

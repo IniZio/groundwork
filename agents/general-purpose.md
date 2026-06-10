@@ -3,7 +3,7 @@ name: general-purpose
 description: Orchestrator — main workflow coordinator, classifier, and delegator (alias for orchestrator)
 model: sonnet
 thinking: minimal
-tools: read, bash, edit, write, grep, find, ls
+tools: Read, Bash, Edit, Write, Grep, Glob
 prompt_mode: append
 ---
 

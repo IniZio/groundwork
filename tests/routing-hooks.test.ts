@@ -1,0 +1,242 @@
+/**
+ * Unit tests for hooks/keyword-router.mjs
+ *
+ * Tests keyword detection and routing hint injection without invoking Claude.
+ * Fast, deterministic — runs in milliseconds via bun test.
+ */
+import { describe, test, expect } from 'bun:test'
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const HOOK = path.resolve(__dirname, '../hooks/keyword-router.mjs')
+
+function runHook(prompt: string): { continue: boolean; hookSpecificOutput?: { hookEventName: string; additionalContext: string } } {
+  const input = JSON.stringify({ prompt, role: 'user' })
+  const result = spawnSync('node', [HOOK], {
+    input,
+    encoding: 'utf8',
+    timeout: 5000,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`Hook exited ${result.status}: ${result.stderr}`)
+  }
+  return JSON.parse(result.stdout.trim())
+}
+
+function context(prompt: string): string {
+  const out = runHook(prompt)
+  return out.hookSpecificOutput?.additionalContext ?? ''
+}
+
+describe('keyword-router: no signal → pass-through', () => {
+  test('trivial question', () => {
+    const out = runHook('What is 2+2?')
+    expect(out.continue).toBe(true)
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('general explanation request', () => {
+    const out = runHook('How does the plugin system work?')
+    expect(out.continue).toBe(true)
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+})
+
+describe('keyword-router: bug signals → debugger', () => {
+  test('"bug" keyword', () => {
+    expect(context('fix the login bug')).toContain('groundwork:debugger')
+  })
+
+  test('"broken" keyword', () => {
+    expect(context("the payment flow is broken")).toContain('groundwork:debugger')
+  })
+
+  test('"doesn\'t work" phrase', () => {
+    expect(context("the search doesn't work correctly")).toContain('groundwork:debugger')
+  })
+
+  test('"error" keyword', () => {
+    expect(context('getting an error when submitting the form')).toContain('groundwork:debugger')
+  })
+
+  test('"stack trace" phrase', () => {
+    expect(context('here is the stack trace from production')).toContain('groundwork:debugger')
+  })
+
+  test('"regression" keyword', () => {
+    expect(context('there is a regression in the auth module')).toContain('groundwork:debugger')
+  })
+
+  test('"debug" keyword', () => {
+    expect(context('debug why the cache is not invalidating')).toContain('groundwork:debugger')
+  })
+})
+
+describe('keyword-router: feature signals → planner', () => {
+  test('"plan" keyword', () => {
+    expect(context('plan the new notification system')).toContain('groundwork:planner')
+  })
+
+  test('"build X from scratch"', () => {
+    expect(context('build a authentication system from scratch')).toContain('groundwork:planner')
+  })
+
+  test('"architect" keyword', () => {
+    expect(context('architect the new microservices approach')).toContain('groundwork:planner')
+  })
+
+  test('"major feature" phrase', () => {
+    expect(context('implement this major feature for the dashboard')).toContain('groundwork:planner')
+  })
+
+  test('"implement X feature" phrase', () => {
+    expect(context('implement the workflow automation feature')).toContain('groundwork:planner')
+  })
+})
+
+describe('keyword-router: review signals → critic', () => {
+  test('"review" keyword', () => {
+    expect(context('review my auth implementation')).toContain('groundwork:critic')
+  })
+
+  test('"code review" phrase', () => {
+    expect(context('can you do a code review of this PR')).toContain('groundwork:critic')
+  })
+
+  test('"is this right" phrase', () => {
+    expect(context('is this code correct and following best practices?')).toContain('groundwork:critic')
+  })
+
+  test('"validate the plan" phrase', () => {
+    expect(context('validate the plan before we proceed')).toContain('groundwork:critic')
+  })
+})
+
+describe('keyword-router: security signals → security-reviewer', () => {
+  test('"security" keyword', () => {
+    expect(context('check this for security issues')).toContain('groundwork:security-reviewer')
+  })
+
+  test('"injection" keyword', () => {
+    expect(context('is this vulnerable to SQL injection?')).toContain('groundwork:security-reviewer')
+  })
+
+  test('"OWASP" keyword', () => {
+    expect(context('audit for OWASP top 10')).toContain('groundwork:security-reviewer')
+  })
+
+  test('"XSS" keyword', () => {
+    expect(context('check for XSS vulnerabilities in the template')).toContain('groundwork:security-reviewer')
+  })
+})
+
+describe('keyword-router: test signals → test-engineer', () => {
+  test('"write tests" phrase', () => {
+    expect(context('write tests for the auth module')).toContain('groundwork:test-engineer')
+  })
+
+  test('"test coverage" phrase', () => {
+    expect(context('improve test coverage for payment service')).toContain('groundwork:test-engineer')
+  })
+
+  test('"TDD" keyword', () => {
+    expect(context('use TDD to implement this feature')).toContain('groundwork:test-engineer')
+  })
+
+  test('"flaky test" phrase', () => {
+    expect(context('the flaky test in CI is causing issues')).toContain('groundwork:test-engineer')
+  })
+})
+
+describe('keyword-router: git signals → git-master', () => {
+  test('"commit" keyword', () => {
+    expect(context('commit these changes')).toContain('groundwork:git-master')
+  })
+
+  test('"rebase" keyword', () => {
+    expect(context('rebase onto main')).toContain('groundwork:git-master')
+  })
+
+  test('"pull request" phrase', () => {
+    expect(context('create a pull request for this branch')).toContain('groundwork:git-master')
+  })
+
+  test('"PR" keyword', () => {
+    expect(context('open a PR with these changes')).toContain('groundwork:git-master')
+  })
+})
+
+describe('keyword-router: design signals → designer', () => {
+  test('"UI" keyword', () => {
+    expect(context('improve the UI for the dashboard')).toContain('groundwork:designer')
+  })
+
+  test('"styling" keyword', () => {
+    expect(context('fix the styling of the modal')).toContain('groundwork:designer')
+  })
+
+  test('"dark mode" phrase', () => {
+    expect(context('add dark mode support')).toContain('groundwork:designer')
+  })
+
+  test('"responsive" keyword', () => {
+    expect(context('make the layout responsive')).toContain('groundwork:designer')
+  })
+})
+
+describe('keyword-router: advisor signals', () => {
+  test('"architecture trade-off" phrase', () => {
+    expect(context('explain the architecture trade-off between REST and GraphQL')).toContain('groundwork:advisor')
+  })
+
+  test('"should we use" phrase', () => {
+    expect(context('should we use Redis or Memcached?')).toContain('groundwork:advisor')
+  })
+})
+
+describe('keyword-router: multi-signal prompts', () => {
+  test('bug + security → both agents mentioned', () => {
+    const ctx = context('fix the SQL injection bug in the auth endpoint')
+    expect(ctx).toContain('groundwork:debugger')
+    expect(ctx).toContain('groundwork:security-reviewer')
+  })
+
+  test('review + security → both agents mentioned', () => {
+    const ctx = context('review the auth code for security vulnerabilities')
+    expect(ctx).toContain('groundwork:critic')
+    expect(ctx).toContain('groundwork:security-reviewer')
+  })
+
+  test('outputs GROUNDWORK ROUTING SIGNAL header', () => {
+    const ctx = context('fix the broken login')
+    expect(ctx).toContain('[GROUNDWORK ROUTING SIGNAL]')
+  })
+})
+
+describe('keyword-router: edge cases', () => {
+  test('empty prompt → pass-through', () => {
+    const out = runHook('')
+    expect(out.continue).toBe(true)
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('invalid JSON input → pass-through', () => {
+    const result = spawnSync('node', [HOOK], {
+      input: 'not json at all',
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+    const out = JSON.parse(result.stdout.trim())
+    expect(out.continue).toBe(true)
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('always sets continue: true', () => {
+    expect(runHook('fix the bug').continue).toBe(true)
+    expect(runHook('plan the feature').continue).toBe(true)
+    expect(runHook('random unrelated text').continue).toBe(true)
+  })
+})

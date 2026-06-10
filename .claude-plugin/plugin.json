@@ -14,24 +14,7 @@
     "fan-out",
     "routing"
   ],
-  "agents": [
-    "./agents-pi/advisor.md",
-    "./agents-pi/coder.md",
-    "./agents-pi/critic.md",
-    "./agents-pi/debugger.md",
-    "./agents-pi/designer.md",
-    "./agents-pi/explore.md",
-    "./agents-pi/general-purpose.md",
-    "./agents-pi/git-master.md",
-    "./agents-pi/observer.md",
-    "./agents-pi/oracle.md",
-    "./agents-pi/orchestrator.md",
-    "./agents-pi/planner.md",
-    "./agents-pi/security-reviewer.md",
-    "./agents-pi/test-engineer.md",
-    "./agents-pi/verifier.md"
-  ],
-  "skills": "./.pi/skills",
+  "skills": "./skills/groundwork/",
   "mcpServers": {},
   "claudeMd": "./CLAUDE.md"
 }

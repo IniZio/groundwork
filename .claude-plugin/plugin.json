@@ -1,0 +1,21 @@
+{
+  "name": "groundwork",
+  "version": "2.2.0",
+  "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
+  "author": {
+    "name": "Newman",
+    "url": "https://github.com/newman"
+  },
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "agents",
+    "workflow",
+    "fan-out",
+    "routing"
+  ],
+  "agents": "./agents/",
+  "skills": "./.pi/skills",
+  "mcpServers": {},
+  "claudeMd": "./CLAUDE.md"
+}

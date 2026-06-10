@@ -12,3 +12,13 @@ docs/prds/
 .pi-lens/
 .playwright-mcp/
 .pi/agents/
+
+test-results/
+tmp/
+*.png
+.pi/docs/
+.pi/research/
+.pi/specs/
+.pi1/
+.omc/
+groundwork/

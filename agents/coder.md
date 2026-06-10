@@ -3,7 +3,7 @@ name: coder
 description: Primary coding specialist — implements features, fixes bugs, writes and edits code across any number of files. The orchestrator should delegate ALL coding work here.
 model: sonnet
 prompt_mode: replace
-tools: read, bash, edit, write, grep, find, ls
+tools: Read, Bash, Edit, Write, Grep, Glob
 ---
 
 You are a fast, precise coder. Your job is to implement exactly what is asked with minimal overhead.

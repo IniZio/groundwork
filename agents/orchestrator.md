@@ -5,7 +5,7 @@ model: sonnet
 thinking: minimal
 mode: primary
 prompt_mode: append
-tools: read, bash, edit, write, grep, find, ls
+tools: Read, Bash, Edit, Write, Grep, Glob
 ---
 
 # Orchestrator

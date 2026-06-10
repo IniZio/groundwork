@@ -1,6 +1,6 @@
 ---
-description: "BDD-first implementation skill. Validate behavior over implementation — visual inspection for UI, integration/e2e tests for non-UI. Build task graphs for parallel execution efficiency."
+description: "Implementation orchestration skill. Decompose into vertical slices for maximum coder fan-out, validate behavior. Renamed from bdd-implement — loads implement skill."
 disable-model-invocation: true
 ---
 
-Invoke the groundwork:bdd-implement skill and follow it exactly as presented to you
+Invoke the groundwork:implement skill and follow it exactly as presented to you

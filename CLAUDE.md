@@ -59,6 +59,41 @@ All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ..
 
 Rule: **known path → `Read`; unknown location → `Explore` (no `groundwork:` prefix).**
 
+**Never guess a file location and act on it before confirming.** One `Explore` call to locate the right file costs far less context than a wrong edit + revert + re-investigation cycle.
+
+---
+
+## Context protection — keep raw output out of your window
+
+Every byte a tool returns enters your conversation memory and costs reasoning capacity for the rest of the session. Apply these rules before reaching for Bash or Read:
+
+| You want to… | Use instead of Bash/Read |
+|---|---|
+| Run 3+ discovery commands in parallel | `ctx_batch_execute(commands, queries)` — raw output stays in sandbox, only matching sections surface |
+| Search what you already indexed | `ctx_search(queries: [...])` — batch all questions in one call |
+| Analyze / count / filter file contents | `ctx_execute_file(path, language, code)` — only what you `console.log()` enters context |
+| Read a file you're about to **Edit** | `Read` — Edit needs exact bytes in context |
+
+**Sequential Bash grepping is the #1 context killer.** Ten grep calls → ten full outputs in context. One `ctx_batch_execute` with ten commands → one round-trip, only relevant lines surface.
+
+```
+# BAD — 6 sequential Bash calls, full output each time
+Bash("grep -r 'baseImage' packages/nexus --include='*.go'")
+Bash("grep -r 'apt-get install' scripts/ --include='*.sh'")
+Bash("find . -name 'Containerfile*'")
+...
+
+# GOOD — one ctx_batch_execute, findings only
+ctx_batch_execute(
+  commands=[
+    {label: "base image refs", command: "grep -r 'baseImage' packages/nexus --include='*.go' | grep -v worktrees"},
+    {label: "apt installs in scripts", command: "grep -r 'apt-get install' scripts/ --include='*.sh'"},
+    {label: "containerfiles", command: "find . -name 'Containerfile*' | grep -v worktrees"},
+  ],
+  queries=["where is the workspace package list defined"]
+)
+```
+
 ---
 
 ## Fan-out — the #1 lever

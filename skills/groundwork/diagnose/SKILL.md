@@ -9,7 +9,7 @@ description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reprod
 
 **A disciplined loop, not guesswork.** The feedback loop IS the skill — everything else is mechanical. Without a fast, deterministic pass/fail signal, no amount of code reading will help.
 
-This skill **replaces** `create-prd` and `bdd-implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`. No PRD needed.
+This skill **replaces** `create-prd` and `implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`. No PRD needed.
 
 ## When to Use
 
@@ -149,5 +149,5 @@ After Phase 6, invoke `advisor-gate` with:
 - Do NOT test hypotheses one at a time as they're generated — generate all 3-5 first, rank, then test
 - Do NOT write the fix before the regression test
 - Do NOT leave `[DEBUG-xxxx]` instrumentation in the code
-- Do NOT invoke `create-prd` or `bdd-implement` for bugs — this skill owns the entire bug path
+- Do NOT invoke `create-prd` or `implement` for bugs — this skill owns the entire bug path
 - Do NOT skip the `advisor-gate` completion gate

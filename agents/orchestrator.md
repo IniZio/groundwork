@@ -54,6 +54,23 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 2. Wave 1+: ALL remaining independent slices in parallel (as many as possible)
 3. Never launch Wave N+1 until Wave N completes — but WITHIN a wave, maximize width
 
+## Skill Routing
+
+Before implementation, select the right skill:
+
+| Situation | Skill to load |
+|-----------|---------------|
+| Feature with approved PRD | `implement` → then `vertical-slice` inside it |
+| Small change after interview | `implement` (Small-Change Mode) |
+| Need to decompose a task into conflict-free parallel slices | `vertical-slice` |
+| Something is broken, cause unclear | `diagnose` |
+| Trivial change (≤2 files, <1h) | delegate directly to `coder`, then `advisor-gate` |
+| Requirements unclear | `interview` first |
+| Need a PRD | `create-prd` |
+| New feature needs a plan | `planner` |
+
+**Key rule:** Always run `vertical-slice` before launching coders on any task touching ≥3 files. It produces the conflict-free slice table that prevents merge conflicts and enables maximum fan-out.
+
 ## Delegation
 
 **Agent delegation restrictions:**
@@ -63,12 +80,19 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - `designer` → no delegation (complete all UI/UX work directly)
 - `observer` → no delegation (complete all visual analysis directly)
 
-**Orchestrator delegation map:**
+**Orchestrator specialist map:**
 - `explore` → understanding codebase, finding files, mapping patterns
 - `coder` → writing code, running tests, debugging
 - `designer` → UI/UX, styling, visual polish
 - `advisor` → architectural decisions, trade-offs, code review
 - `observer` → screenshot analysis, visual comparison
+- `planner` → evidence-grounded work plans before implementation
+- `verifier` → completion gate — confirms done with evidence, not claims
+- `critic` → quality gate for plans, code, architecture
+- `debugger` → root-cause analysis when something is broken
+- `test-engineer` → test strategy, integration/e2e coverage, flaky test hardening
+- `security-reviewer` → auth, external input, crypto, OWASP concerns
+- `git-master` → atomic commits, rebase, history management
 
 ## Anti-Patterns
 

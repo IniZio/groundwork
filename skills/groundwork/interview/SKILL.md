@@ -60,7 +60,7 @@ Ask: is this a bug, a small change (<1 day), or a feature (≥1 day)?
 
 This determines what follows:
 - **Bug** → hand off to `diagnose` (interview output is the bug scope)
-- **Small change** → proceed to `bdd-implement` (interview spec IS the spec)
+- **Small change** → proceed to `implement` (interview spec IS the spec)
 - **Feature** → proceed to `create-prd` (interview spec feeds the PRD)
 
 ### 2. Interview
@@ -91,7 +91,7 @@ Areas to cover (adapt to context — not all apply to every situation):
 After interviewing (or when hitting the 8-10 question cap):
 
 1. **Summarize resolutions** — what was decided, what remains uncertain.
-2. **Propose next steps** — which skill follows (`diagnose`, `create-prd`, `bdd-implement`).
+2. **Propose next steps** — which skill follows (`diagnose`, `create-prd`, `implement`).
 3. **Present via `question` tool** — user confirms next steps or requests more interviewing.
 
 ### 4. Persist Interview Spec
@@ -126,7 +126,7 @@ After synthesis and user confirmation, save the interview spec to a durable file
 **Rules:**
 - File is never committed to git (lives in `docs/prds/` which is gitignored)
 - For features: this file feeds `create-prd` — the PRD is synthesized from it
-- For small changes: this file IS the spec for `bdd-implement`
+- For small changes: this file IS the spec for `implement`
 - For bugs: skip this step — bugs go directly to `diagnose`
 
 ## Domain Glossary (CONTEXT.md)

@@ -205,11 +205,11 @@ When a task fails:
 
 ## Issue-Type Routing (Progressive Disclosure)
 
-**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `create-prd` → `bdd-implement`. Don't pre-optimize — but don't skip required steps either.
+**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `create-prd` → `implement`. Don't pre-optimize — but don't skip required steps either.
 
 ### Skill Invocation
 
-When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, `bdd-implement`, `advisor-gate`, `prototype`), load it with the `skill` tool. Skills contain domain-specific instructions (debugging loops, question strategies, decomposition patterns) not present in this bootstrap.
+When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, `implement`, `vertical-slice`, `advisor-gate`, `prototype`), load it with the `skill` tool. Skills contain domain-specific instructions (debugging loops, question strategies, decomposition patterns) not present in this bootstrap.
 
 **Skills are loaded on-demand via progressive disclosure, not upfront classification.** If you load a skill and it turns out you didn't need it — that's fine. If you skip a skill and later realize you needed it — reload and restart that phase.
 
@@ -233,7 +233,7 @@ When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, 
 - ✅ `"Fix typo 'backgroud' → 'background'"` → obvious, fix directly
 - ✅ `"Port 8080 is already in use"` → known config, fix directly
 
-- Do NOT invoke `bdd-implement` or `create-prd` for bugs — `diagnose` is the full debug path
+- Do NOT invoke `implement` or `create-prd` for bugs — `diagnose` is the full debug path
 - If the bug is multi-system or boundaries are unclear → `diagnose` will call for `interview` itself
 
 ### Change
@@ -261,12 +261,12 @@ Classify by scope.
 
 ### Feature (clearly ≥1 day, or architectural)
 
-**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `create-prd` → then use the `skill` tool to load `bdd-implement` → then use the `skill` tool to load `advisor-gate`**
+**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `create-prd` → then use the `skill` tool to load `implement` (which loads `vertical-slice` internally) → then use the `skill` tool to load `advisor-gate`**
 
 - Only use this path when the work is **clearly** multi-day or architectural from the start
-- **Mandatory skill-tool invocations:** `interview` → `create-prd` → `bdd-implement` → `advisor-gate`. Never skip to implementation before loading each skill.
+- **Mandatory skill-tool invocations:** `interview` → `create-prd` → `implement` → `advisor-gate`. Never skip to implementation before loading each skill.
 - PRD is created from interview spec, not from a blank slate
-- bdd-implement decomposes into vertical tracer-bullet slices
+- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices before fanning out coders
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed
 
 ### Spike / Design Exploration
@@ -279,7 +279,7 @@ invoke skill "prototype" → feed findings into next skill
 ```
 [safe / small scope]  implement directly → invoke skill "advisor-gate"
 [risky / unclear]     invoke skill "interview" → implement → invoke skill "advisor-gate"
-[clearly ≥1d]         invoke skill "interview" → invoke skill "create-prd" → invoke skill "bdd-implement" → invoke skill "advisor-gate"
+[clearly ≥1d]         invoke skill "interview" → invoke skill "create-prd" → invoke skill "implement" → invoke skill "advisor-gate"
 ```
 
 ### Docs-Only Change

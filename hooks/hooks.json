@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CURSOR_PLUGIN_ROOT}/hooks/session-start",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start",
             "async": false
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CURSOR_PLUGIN_ROOT}/hooks/keyword-router.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/keyword-router.mjs",
             "async": false
           }
         ]

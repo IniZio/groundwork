@@ -42,6 +42,7 @@
 | Screenshot, image, PDF, visual diff | Visual | `observer` |
 | Architecture trade-off, hard decision | Decision | `advisor` |
 | Mid-task escalation from coder | Guidance | `oracle` |
+| "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 
 All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ...)`.
 

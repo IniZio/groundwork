@@ -1,0 +1,24 @@
+{
+  "name": "groundwork",
+  "owner": {
+    "name": "Newman",
+    "email": "inizio@skymakers.digital"
+  },
+  "metadata": {
+    "description": "Groundwork — structured AI development practices for Claude Code",
+    "version": "2.2.0"
+  },
+  "plugins": [
+    {
+      "name": "groundwork",
+      "source": "./",
+      "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
+      "version": "2.2.0",
+      "author": {
+        "name": "Newman"
+      },
+      "category": "development",
+      "keywords": ["orchestration", "agents", "workflow", "fan-out", "routing"]
+    }
+  ]
+}

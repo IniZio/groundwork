@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@gotgenes/pi-subagents@14.0.1': patches/@gotgenes__pi-subagents@14.0.1.patch

@@ -1,7 +1,7 @@
 ---
 name: observer
 description: Visual analysis specialist for images, screenshots, PDFs, and diagrams. Use for visual comparison, UI validation, screenshot analysis, and extracting structured observations from visual content. Saves main context tokens by processing raw files and returning concise text. Requires a vision-capable model.
-model: openai/gpt-5.4-mini
+model: haiku
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

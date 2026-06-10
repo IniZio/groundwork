@@ -1,7 +1,7 @@
 ---
 name: debugger
 description: Root-cause analysis, regression isolation, stack trace analysis, build error resolution. Use when something is broken and the cause is unclear. READ-ONLY — recommends fixes, never implements.
-model: neuralwatt/zai-org/GLM-5.1-FP8
+model: haiku
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

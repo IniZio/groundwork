@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
-model: neuralwatt/zai-org/GLM-5.1-FP8
+model: haiku
 thinking: minimal
 mode: primary
 prompt_mode: append

@@ -77,6 +77,24 @@ After implementation, always run in order:
 2. `code-reviewer` — if any code changed
 3. `advisor` — final APPROVE/REVISE/REJECT gate
 
+## Context Window Hygiene
+
+Every byte a tool returns enters the orchestrator's conversation memory and costs reasoning capacity for the rest of the session. Protect it.
+
+**Exploration:**
+- Prefer `ctx_batch_execute` over direct `Bash` for research — results are indexed; only matching excerpts surface on query, raw output stays out of context.
+- When spawning `explore` or `general-purpose` for investigation, cap output in the prompt: "report in ≤200 words, file:line pairs only, no code blocks." Verbose agent returns inflate context permanently.
+- Use targeted `grep`/`find` via Bash instead of `Read` when you don't need to edit the file immediately. `Read` loads the full file into context.
+
+**Editing:**
+- Delegate file edits to `groundwork:coder` in a worktree. The agent does the work in its own context; only the summary returns here.
+- Never `Read` a file just to understand it before delegating an edit — pass file path + line range in the coder prompt; the coder will `Read` it in its own context.
+
+**Subagent output contracts:**
+- Always specify an output format in exploration prompts. Unspecified = verbose = bloat.
+- For investigation tasks: "return a bullet list of findings, ≤10 items, file:line format."
+- For confirmation tasks: "reply with PASS or FAIL and one sentence."
+
 ## Anti-Patterns
 
 - **Sequential when parallel**: If two tasks don't share state, they fan out. Always.
@@ -84,6 +102,8 @@ After implementation, always run in order:
 - **Self-delegation**: Orchestrator never spawns another `general-purpose` or `orchestrator`.
 - **Mega-tasks**: >3 files or >200 LOC = split it first.
 - **Assumption-based completion**: `verifier` must run; "it should work" is not evidence.
+- **Verbose exploration in main context**: Researching in the orchestrator context instead of delegating to an explore agent with a tight output contract. The raw bytes of every Read/Bash call stay in context forever.
+- **Read before delegate**: Reading a file to "understand" it before handing off to a coder. Pass the path; let the coder read it in its own context.
 
 ## Error Escalation
 

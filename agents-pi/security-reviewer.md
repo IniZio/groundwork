@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Security vulnerability detection (OWASP Top 10, secrets, unsafe patterns). READ-ONLY. Use for auth changes, external input handling, crypto, or any security-sensitive code.
-model: openai/gpt-5.4
+model: sonnet
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Use this agent when you need to understand an unfamiliar codebase, trace logic flows, identify architectural patterns, locate relevant files and functions, or map out dependencies within a project. Use this agent when the user asks questions like 'how does X work?', 'where is Y implemented?', 'what modules interact with Z?', or when exploring a new repository to gain understanding.
-model: neuralwatt/zai-org/GLM-5.1-FP8
+model: haiku
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

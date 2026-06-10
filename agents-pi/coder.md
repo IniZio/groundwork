@@ -1,7 +1,7 @@
 ---
 name: coder
 description: Primary coding specialist — implements features, fixes bugs, writes and edits code across any number of files. The orchestrator should delegate ALL coding work here.
-model: kimi-for-coding
+model: haiku
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 ---

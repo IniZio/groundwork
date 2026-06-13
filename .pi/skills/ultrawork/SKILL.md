@@ -67,7 +67,7 @@ TASK GRAPH:
 Wave 0 (tracer bullet — 1 task): [prove E2E path works]
 Wave 1 (exploration — parallel): [list each explore task]
 Wave 2 (implementation — parallel): [list each coder/designer task]
-Wave 3 (verification): verifier → code-reviewer → advisor
+Wave 3 (verification): verifier → critic → advisor
 ```
 
 Then fire Wave 0, wait, assess, fire Wave 1+2 together if Wave 0 passed.
@@ -98,7 +98,7 @@ This surfaces bad routing before the token is spent.
 
 When ALL waves finish:
 1. `groundwork:verifier` — evidence only, no assumptions
-2. `groundwork:code-reviewer` — if code changed
+2. `groundwork:critic` — if code changed
 3. `groundwork:advisor` — APPROVE / REVISE / REJECT
 
 No APPROVE = not done. "It should work" is not evidence.

@@ -14,12 +14,12 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 | Agent | Role | Writes? |
 |-------|------|---------|
 | `explore` | Codebase exploration, file reading, "how does X work?" | READ-ONLY |
-| `planner` | Feature planning, codebase research, writes `.omc/plans/*.md` | READ-ONLY |
+| `planner` | Feature planning, codebase research, writes `.groundwork/plans/*.md` | READ-ONLY |
 | `coder` | Implementation, tests, builds | YES |
 | `designer` | UI/UX, styling, visual polish | YES |
 | `debugger` | Root-cause analysis, error diagnosis | READ-ONLY |
 | `test-engineer` | Test strategy, coverage, flaky test diagnosis | YES |
-| `code-reviewer` | Code quality, SOLID, logic defects | READ-ONLY |
+| `critic` | Code quality, SOLID, logic defects, plan/arch validation | READ-ONLY |
 | `security-reviewer` | OWASP, secrets, injection vulnerabilities | READ-ONLY |
 | `critic` | Plan/architecture validation, quality gate | READ-ONLY |
 | `verifier` | Evidence-based completion check (rejects "should work") | READ-ONLY |
@@ -41,7 +41,7 @@ Task(
   CONTEXT:
   - File to edit: src/lib/foo.ts:45-80 (implements X)
   - Constraint: must not break Y (see src/lib/bar.ts:12)
-  - Plan: .omc/plans/feature-xyz.md (step 3)
+  - Plan: .groundwork/plans/feature-xyz.md (step 3)
   
   SUCCESS CRITERIA:
   - <concrete observable outcome>
@@ -74,7 +74,7 @@ Task(subagent_type="groundwork:coder", prompt="...context block C...")
 After implementation, always run in order:
 
 1. `verifier` — fresh evidence only; rejects "should", "probably", "seems to"
-2. `code-reviewer` — if any code changed
+2. `critic` — if any code changed
 3. `advisor` — final APPROVE/REVISE/REJECT gate
 
 ## Context Window Hygiene

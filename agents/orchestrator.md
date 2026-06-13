@@ -36,11 +36,11 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 ```
 
 **Fan-out by specialist type (all can run in the same wave):**
-- **coder:** 5-15 parallel tasks for implementation slices
-- **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
-- **designer:** 1-3 parallel tasks for UI/UX work
-- **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
+- **coder:** 5-20 parallel tasks (one per semantic slice)
+- **explore:** 3-7 parallel tasks for codebase understanding (one per area/module)
+- **designer:** 2-5 parallel tasks for UI/UX work
+- **advisor:** 1-2 tasks at a time for strategic decisions (coder can also delegate to advisor mid-task)
+- **observer:** 2-5 parallel tasks for visual analysis, before/after comparisons
 
 **When NOT to fan out:**
 - Slices depend on each other's output (code dependencies, shared types)
@@ -48,11 +48,34 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 
 **Parallel dispatch rule:**
 - **ALL parallel `task` calls MUST be in ONE message.** Never send task calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message, then task B in the next, is sequential execution, not fan-out.
+- **Independence test:** Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure, serialize the dependency into Wave 0.
 
 **Wave pattern:**
 1. Wave 0: Tracer bullet (1-2 slices proving the end-to-end path)
 2. Wave 1+: ALL remaining independent slices in parallel (as many as possible)
 3. Never launch Wave N+1 until Wave N completes — but WITHIN a wave, maximize width
+
+## One Objective Per Task
+
+If describing a task takes more than 2 sentences, split it. "Implement auth + tests + logging" = 3 tasks. Every Task prompt must be self-contained — exact file paths, line ranges, constraints, and explicit SUCCESS criteria. Never rely on "as we discussed"; subagents have no session history.
+
+## Pre-Delegation Declaration
+
+Before every wave, declare per task — Agent: [specialist] · Reason: [why this one, not another] · Success criteria: [how I'll know it worked]. This surfaces bad routing before tokens are spent.
+
+## Task-Graph Template
+
+Before dispatching non-trivial work, declare the full wave graph:
+
+```
+TASK GRAPH:
+Wave 0 (tracer bullet — 1-2 tasks): [prove E2E path works]
+Wave 1 (exploration — parallel):    [list each explore task]
+Wave 2 (implementation — parallel): [list each coder/designer task]
+Wave 3 (verification):              verifier → critic → advisor
+```
+
+Fire Wave 0, wait, assess, then fire Waves 1 and 2 together if Wave 0 passed.
 
 ## Skill Routing
 
@@ -64,12 +87,12 @@ Before implementation, select the right skill:
 | Small change after interview | `implement` (Small-Change Mode) |
 | Need to decompose a task into conflict-free parallel slices | `vertical-slice` |
 | Something is broken, cause unclear | `diagnose` |
-| Trivial change (≤2 files, <1h) | delegate directly to `coder`, then `advisor-gate` |
+| Trivial change (≤2 files AND ≤1 user-facing behavior AND <1h) | delegate directly to `coder`, then `advisor-gate` |
 | Requirements unclear | `interview` first |
 | Need a PRD | `create-prd` |
 | New feature needs a plan | `planner` |
 
-**Key rule:** Always run `vertical-slice` before launching coders on any task touching ≥3 files. It produces the conflict-free slice table that prevents merge conflicts and enables maximum fan-out.
+**Key rule (MANDATORY):** Always run `vertical-slice` before launching coders on any task touching ≥3 files OR ≥2 user-facing behaviors. It produces the conflict-free slice table that prevents merge conflicts and enables maximum fan-out. Each file must be owned by exactly ONE slice per wave — no two parallel coders may touch the same file.
 
 ## Delegation
 
@@ -101,3 +124,6 @@ Before implementation, select the right skill:
 - **Single-slice waves.** If a wave has only 1 task, look harder for decomposition.
 - **Over-specifying task prompts.** Include what's needed, but don't micromanage the implementation.
 - **Sending `task` calls across messages.** All parallel tasks must launch in a single message. Message 1: task A, Message 2: task B = sequential.
+- **Mega-tasks** — bundling 4 objectives into 1 Task call.
+- **Vague context** — "implement as we discussed" (subagent has no history).
+- **Quota-chasing slices** — Ceilings are caps, not quotas — never invent or fragment slices to hit a number; valid slices are real, independently-testable behaviors with non-overlapping file ownership.

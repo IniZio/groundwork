@@ -9,6 +9,10 @@ description: Decompose any implementation task into conflict-free parallel slice
 
 A vertical slice is a **thin end-to-end behavior** that cuts through ALL layers (types → logic → surface → test) for ONE user-facing outcome. It is independently testable and independently delegatable.
 
+## Default Posture
+
+Decompose by default. The question is never "should I slice?" but "what is the maximum number of conflict-free slices?". Maximize parallel width within each wave; the only constraints on slicing are real file-ownership conflicts and genuine data dependencies.
+
 **Horizontal (wrong) — delays validation, blocks fan-out:**
 ```
 Wave 0: all types + all constants
@@ -25,11 +29,13 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 
 ## When to Use
 
-- Before delegating implementation to coders
-- Any task touching ≥3 files or ≥2 user-facing behaviors
-- Before `implement` or when the orchestrator is planning a wave
+**This skill is MANDATORY** — not optional — for any task touching ≥3 files or ≥2 user-facing behaviors before delegating to coders.
 
-**Skip if:** trivial change (1-2 files, single clear action) — delegate directly.
+- Before delegating implementation to coders
+- Before `implement` or when the orchestrator is planning a wave
+- Whenever ≥3 files will change or ≥2 distinct user-facing behaviors are involved — no exceptions
+
+**Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h. If either ≥3 files OR ≥2 user-facing behaviors, slicing is mandatory.**
 
 ## Decomposition Process
 
@@ -72,11 +78,13 @@ Slice N: <behavior name>
 
 | Task size | Target slices per wave |
 |-----------|------------------------|
-| Small change (1 day) | 3–5 slices |
-| Feature (PRD) | 5–15 slices per wave |
+| Small change (1 day) | 3–6 slices |
+| Feature (PRD) | 6–20 slices per wave |
 | Large refactor | 8–20 slices across waves |
 
-Single-slice waves are a code smell — look harder for decomposition.
+These counts are *slices per wave* (one coder each), bounded by the orchestrator's per-agent ceilings (coder ≤20 per wave). They are caps, not quotas — never invent or artificially fragment slices to hit a number. A valid slice is a real, independently-testable behavior with non-overlapping file ownership.
+
+**Single-slice waves are a FAILURE on non-trivial work.** If a wave has only one slice, you have not decomposed hard enough — re-examine for independent behaviors before proceeding.
 
 ## Conflict-Free Rules
 

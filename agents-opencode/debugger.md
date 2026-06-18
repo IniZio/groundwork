@@ -1,7 +1,7 @@
 ---
 name: debugger
 description: Root-cause analysis, regression isolation, stack trace analysis, build error resolution. Use when something is broken and the cause is unclear. READ-ONLY — recommends fixes, never implements.
-model: openai/gpt-5.4
+model: zai-coding-plan/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

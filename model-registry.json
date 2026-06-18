@@ -5,68 +5,56 @@
   "agents": {
     "orchestrator": {
       "pi": "inherit",
-      "opencode": "zai/glm-5.2"
+      "opencode": "zai-coding-plan/glm-5.2"
     },
     "general-purpose": {
       "pi": "inherit",
-      "opencode": "zai/glm-5.2"
+      "opencode": "zai-coding-plan/glm-5.2"
     },
     "advisor": {
       "pi": "zai/glm-5.2",
-      "opencode": "zai/glm-5.2"
+      "opencode": "kimi-for-coding/k2p7"
     },
     "coder": {
       "pi": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8",
-      "opencode": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8"
+      "opencode": "neuralwatt/kimi-k2.6-fast"
     },
     "critic": {
       "pi": "openai/gpt-5.4",
-      "opencode": "openai/gpt-5.4"
+      "opencode": "kimi-for-coding/k2p7"
     },
     "debugger": {
       "pi": "openai/gpt-5.4",
-      "opencode": "openai/gpt-5.4"
+      "opencode": "zai-coding-plan/glm-5.2"
     },
     "designer": {
       "pi": "sonnet",
-      "opencode": "cursor-acp/claude-sonnet-4-6"
+      "opencode": "neuralwatt/moonshotai/Kimi-K2.7-Code"
     },
     "verifier": {
       "pi": "neuralwatt/glm-5.1",
-      "opencode": "neuralwatt/glm-5.1"
-    },
-    "security-reviewer": {
-      "pi": "neuralwatt/glm-5.1",
-      "opencode": "neuralwatt/glm-5.1"
+      "opencode": "zai-coding-plan/glm-5.1"
     },
     "test-engineer": {
       "pi": "neuralwatt/glm-5.1",
-      "opencode": "neuralwatt/glm-5.1"
+      "opencode": "zai-coding-plan/glm-5.1"
     },
     "planner": {
       "pi": "openai/gpt-5.4",
-      "opencode": "openai/gpt-5.4"
+      "opencode": "zai-coding-plan/glm-5.2"
     },
     "git-master": {
       "pi": "opencode-go/deepseek-v4-flash",
       "opencode": "opencode-go/deepseek-v4-flash"
     },
-    "observer": {
-      "pi": "haiku",
-      "opencode": "cursor-acp/claude-haiku-4-5"
-    },
     "explore": {
       "pi": "opencode-go/deepseek-v4-flash",
       "opencode": "opencode-go/deepseek-v4-flash"
-    },
-    "oracle": {
-      "pi": "DISABLED",
-      "opencode": "DISABLED"
     }
   },
   "disabled": {
-    "pi": ["oracle"],
-    "opencode": ["oracle"]
+    "pi": [],
+    "opencode": []
   },
   "aliases": {
     "opencode": {

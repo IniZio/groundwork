@@ -319,7 +319,7 @@ export const GroundworkPlugin = async ({ client, directory }) => {
 
       // Register agent configs from agents/ directory with alias support
       config.agent = config.agent || {}
-      const groundworkAgentsDir = path.resolve(__dirname, '../../agents')
+      const groundworkAgentsDir = path.resolve(__dirname, '../../agents-opencode')
       const ORCHESTRATOR_AGENT_ALIASES = ['general-purpose', 'general_purpose', 'default']
       const AGENT_DEFAULTS = {
         advisor: { temperature: 0.1 },
@@ -342,6 +342,9 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             config.agent[registeredName] = config.agent[registeredName] || {}
             if (frontmatter.description && !config.agent[registeredName].description) {
               config.agent[registeredName].description = frontmatter.description
+            }
+            if (frontmatter.model && config.agent[registeredName].model === undefined) {
+              config.agent[registeredName].model = frontmatter.model
             }
             if (!config.agent[registeredName].prompt) {
               config.agent[registeredName].prompt = content.trim()

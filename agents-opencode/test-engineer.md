@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows. Use when tests need to be written, a test strategy designed, or flaky tests diagnosed.
-model: neuralwatt/glm-5.1
+model: zai-coding-plan/glm-5.1
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 permission:

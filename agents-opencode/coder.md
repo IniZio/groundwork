@@ -1,7 +1,7 @@
 ---
 name: coder
 description: Primary coding specialist — implements features, fixes bugs, writes and edits code across any number of files. The orchestrator should delegate ALL coding work here.
-model: neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8
+model: neuralwatt/kimi-k2.6-fast
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork

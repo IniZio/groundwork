@@ -259,6 +259,7 @@ export const GroundworkPlugin = async ({ client, directory }) => {
           },
           bash: {
             'git reset --hard *': 'deny',
+            'sudo *': 'deny',
           },
         },
         coder: {
@@ -281,6 +282,9 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             explore: 'allow',
           },
           'background*': 'deny',
+          bash: {
+            'sudo *': 'deny',
+          },
         },
         designer: {
           question: 'deny',
@@ -289,6 +293,9 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             explore: 'allow',
           },
           'background*': 'deny',
+          bash: {
+            'sudo *': 'deny',
+          },
         },
       }
 
@@ -359,6 +366,13 @@ export const GroundworkPlugin = async ({ client, directory }) => {
     },
 
     'tool.execute.before': async (input, output) => {
+      // Bash sudo blocking — engine-level hard enforcement
+      if (input.tool === 'bash' || input.tool === 'Bash') {
+        const cmd = output.args?.command || ''
+        if (/\bsudo\b/.test(cmd)) {
+          throw new Error('sudo is blocked by plugin policy. Use a non-privileged approach or ask the user.')
+        }
+      }
       if (input.tool === 'task' || input.tool === 'Task') {
         if (output.args?.subagent_type) {
           // Don't force background for advisor — orchestrator needs synchronous APPROVE/GAPS response

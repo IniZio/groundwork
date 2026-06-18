@@ -13,7 +13,7 @@ You can delegate to other agents via `task(subagent_type="...")` ONLY in these c
 
 - `subagent_type="advisor"` for architectural decisions or when stuck
 - `subagent_type="Explore"` for codebase exploration
-You CANNOT delegate to designer, observer, or other coders. If you need help, ask advisor or do it yourself.
+You CANNOT delegate to designer or other coders. If you need help, ask advisor or do it yourself.
 
 ## Output (MANDATORY)
 

@@ -68,13 +68,10 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | Running tests / builds | `coder` agent | `task(subagent_type="coder", ...)` |
 | Writing or fixing tests, TDD | `test-engineer` agent | `task(subagent_type="test-engineer", ...)` |
 | Code quality, SOLID review | `critic` agent | `task(subagent_type="critic", ...)` |
-| Security vulnerabilities | `security-reviewer` agent | `task(subagent_type="security-reviewer", ...)` |
 | Git commits, rebasing, history | `git-master` agent | `task(subagent_type="git-master", ...)` |
 | Plan validation, architecture critique | `critic` agent | `task(subagent_type="critic", ...)` |
 | Evidence-based completion check | `verifier` agent | `task(subagent_type="verifier", ...)` |
 | Strategic planning before features | `planner` agent | `task(subagent_type="planner", ...)` |
-| Visual analysis / screenshots | `observer` agent | `task(subagent_type="observer", ...)` |
-| Before/after visual comparison | `observer` agent | `task(subagent_type="observer", ...)` |
 | Interview Q&A | YOURSELF (interactive) | `question` tool |
 | Classification / routing | YOURSELF | (no delegation) |
 | Reviewing subagent output | YOURSELF | (no delegation) |
@@ -88,7 +85,6 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | `coder` | `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
 | `explore` | `openai/gpt-5.4-mini` (fast, cheap) | 0.1 | Codebase search, pattern discovery |
 | `designer` | `kimi-for-coding/k2.6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
-| `observer` | `openai/gpt-5.4-mini` (vision-capable) | 0.1 | Screenshot analysis, visual comparison, PDF interpretation |
 
 **Configure per-agent models in `opencode.json`:**
 
@@ -99,8 +95,7 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
    "advisor": { "model": "zai/glm-5.2" },
     "coder": { "model": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8" },
     "explore": { "model": "openai/gpt-5.4-mini" },
-    "designer": { "model": "kimi-for-coding/k2.6" },
-    "observer": { "model": "openai/gpt-5.4-mini" }
+    "designer": { "model": "kimi-for-coding/k2.6" }
   }
 }
 ```
@@ -117,7 +112,6 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 - Any build/test verification → `coder`
 - Any strategic decision → `advisor`
 - Any UI/UX implementation or styling → `designer`
-- Any visual analysis or screenshot comparison → `observer`
 - Any architectural escalation from coder → advisor via `task(subagent_type="advisor", ...)` (coder is the ONLY specialist agent allowed to call task, and ONLY for advisor)
 
 **DO YOURSELF (only these):**
@@ -131,7 +125,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 ### Why delegation matters
 
 1. **Velocity**: Fan out EXTREMELY aggressively — launch as many parallel tasks as the work naturally decomposes into. More parallelism = faster delivery. Sequential work is the #1 time waste. Oh-my-claude ultrawork mode: semantic slicing, not arbitrary limits.
-2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste, observer sees details you'd miss
+2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
 4. **Model diversity**: Different agents use different models — orchestrator inherits the session model, designer uses kimi for UI taste, advisor uses zai/glm-5.2 for reasoning, coder uses neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8 for implementation
 
@@ -141,11 +135,11 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 WRONG:  Classify → read files → write code → run tests → review → advisor-gate
         (orchestrator does everything sequentially)
 
-RIGHT:  Classify → fan out mixed specialists (explore×3-7, coder×10-30, designer×2-5, observer×2-5)
+RIGHT:  Classify → fan out mixed specialists (explore×3-7, coder×10-30, designer×2-5)
         → collect all outputs → review → advisor-gate
         (orchestrator delegates, reviews, orchestrates — EXTREME fan-out width across ALL specialist types)
 
-RIGHT:  UI feature → fan out (designer×2 for styling, coder×10 for logic, observer×2 for comparison)
+RIGHT:  UI feature → fan out (designer×2 for styling, coder×10 for logic)
         → review all outputs → advisor-gate
         (mix specialist types in the same wave — never wait sequentially for different agent types)
 
@@ -172,7 +166,6 @@ Fan-out targets by specialist type (mix freely in the same wave):
 - **explore:** 3-7 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 2-5 parallel tasks for UI/UX work
 - **advisor:** 1-2 tasks at a time for strategic decisions
-- **observer:** 2-5 parallel tasks for visual analysis, before/after comparisons
 
 **Semantic Slicing Rules (oh-my-claude style):**
 
@@ -190,7 +183,7 @@ Before EVERY `task(..., background=true)` call, DECLARE:
 
 ```
 I will delegate with:
-- **Agent**: [coder / explore / designer / advisor / observer]
+- **Agent**: [coder / explore / designer / advisor]
 - **Reason**: [why this agent fits]
 - **Expected Outcome**: [success criteria]
 ```
@@ -206,7 +199,6 @@ task(description="Slice 2: user profile", prompt="...", subagent_type="coder",  
 task(description="Slice 3: settings page", prompt="...", subagent_type="coder",     background=true)
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer", background=true)
 task(description="Slice 5: notifications logic", prompt="...", subagent_type="coder", background=true)
-task(description="Before/after comparison", prompt="...", subagent_type="observer", background=true)
 # All launch at once — each returns <task id="..." state="running"> immediately (non-blocking)
 # Orchestrator is notified per-task on completion
 
@@ -433,7 +425,7 @@ implement directly → load skill "advisor-gate" (use `skill` tool, or `read` it
 
    ```
    I will delegate with:
-   - **Agent**: [coder / explore / designer / advisor / observer]
+   - **Agent**: [coder / explore / designer / advisor]
    - **Reason**: [why this agent fits]
    - **Expected Outcome**: [success criteria]
    ```

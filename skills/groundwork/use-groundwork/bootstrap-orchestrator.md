@@ -47,8 +47,6 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | Strategic analysis / decisions | `advisor` agent | `task(subagent_type="advisor", ...)` |
 | Escalating decisions (coder → advisor) | `advisor` agent | `task(subagent_type="advisor", ...)` |
 | Running tests / builds | `coder` agent | `task(subagent_type="coder", ...)` |
-| Visual analysis / screenshots | `observer` agent | `task(subagent_type="observer", ...)` |
-| Before/after visual comparison | `observer` agent | `task(subagent_type="observer", ...)` |
 | Interview Q&A | YOURSELF (interactive) | `question` tool |
 | Classification / routing | YOURSELF | (no delegation) |
 | Reviewing subagent output | YOURSELF | (no delegation) |
@@ -61,7 +59,6 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | `coder` | `kimi-for-coding` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
 | `explore` | `opencode-go/deepseek-v4-flash` (fast, cheap) | 0.1 | Codebase search, pattern discovery |
 | `designer` | `cursor-agent/claude-sonnet-4-6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
-| `observer` | `openai/gpt-5.4-mini` (vision-capable) | 0.1 | Screenshot analysis, visual comparison, PDF interpretation |
 
 **Configure per-agent models in `opencode.json`:**
 ```json
@@ -70,8 +67,7 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
     "advisor": { "model": "openai/gpt-5.4" },
     "coder": { "model": "kimi-for-coding" },
     "explore": { "model": "opencode-go/deepseek-v4-flash" },
-    "designer": { "model": "cursor-agent/claude-sonnet-4-6" },
-    "observer": { "model": "openai/gpt-5.4-mini" }
+    "designer": { "model": "cursor-agent/claude-sonnet-4-6" }
   }
 }
 ```
@@ -87,7 +83,6 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 - Any build/test verification → `coder`
 - Any strategic decision → `advisor`
 - Any UI/UX implementation or styling → `designer`
-- Any visual analysis or screenshot comparison → `observer`
 - Any architectural escalation from coder → advisor via `task(subagent_type="advisor", ...)` (coder is the ONLY specialist agent allowed to call task, and ONLY for advisor)
 
 **DO YOURSELF (only these):**
@@ -100,7 +95,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 ### Why delegation matters
 
 1. **Velocity**: Fan out aggressively — launch 5-15 parallel coder tasks. More parallelism = faster delivery. Sequential work is the #1 time waste
-2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste, observer sees details you'd miss
+2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
 4. **Model diversity**: Different agents use different models — designer uses claude-sonnet-4-6 for UI taste, advisor uses gpt-5.4 for reasoning, coder uses kimi-for-coding for speed
 
@@ -110,11 +105,11 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 WRONG:  Classify → read files → write code → run tests → review → advisor-gate
         (orchestrator does everything sequentially)
 
-RIGHT:  Classify → fan out mixed specialists (explore×2, coder×5-15, designer×1-3, observer×1-3)
+RIGHT:  Classify → fan out mixed specialists (explore×2, coder×5-15, designer×1-3)
         → collect all outputs → review → advisor-gate
         (orchestrator delegates, reviews, orchestrates — MAXIMIZE fan-out width across ALL specialist types)
 
-RIGHT:  UI feature → fan out (designer for styling, coder×3 for logic, observer for comparison)
+RIGHT:  UI feature → fan out (designer for styling, coder×3 for logic)
         → review all outputs → advisor-gate
         (mix specialist types in the same wave — never wait sequentially for different agent types)
 
@@ -138,7 +133,6 @@ Fan-out targets by specialist type (mix freely in the same wave):
 - **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 1-3 parallel tasks for UI/UX work
 - **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
 
 Rules:
 1. **Within a wave, launch ALL independent slices simultaneously.** Never wait for Slice A before launching Slice B if they don't share code.
@@ -156,7 +150,6 @@ task(description="Slice 2: user profile", prompt="...", subagent_type="coder")
 task(description="Slice 3: settings page", prompt="...", subagent_type="coder")
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
 task(description="Slice 5: notifications logic", prompt="...", subagent_type="coder")
-task(description="Before/after comparison", prompt="...", subagent_type="observer")
 # All launch at once — each uses the right specialist
 
 # BAD: Sequential — never do this

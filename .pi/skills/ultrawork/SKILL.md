@@ -79,7 +79,6 @@ Then fire Wave 0, wait, assess, fire Wave 1+2 together if Wave 0 passed.
 | `explore` | 3–7 (one per area/module) |
 | `coder` | 5–20 (one per semantic slice) |
 | `designer` | 2–5 |
-| `observer` | 2–5 (before/after pairs) |
 | `test-engineer` | 2–5 |
 | `advisor` / `critic` | 1–2 (decision gates only) |
 

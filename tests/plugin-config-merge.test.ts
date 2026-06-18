@@ -154,16 +154,12 @@ describe("Plugin config merge", () => {
 			// designer can delegate to explore
 			expect(config.agent.designer.permission.task.explore).toBe("allow");
 
-			// observer can delegate to explore
-			expect(config.agent.observer.permission.task.explore).toBe("allow");
-
 			// Verify explore cannot delegate to advisor (only coder can)
 			expect(config.agent.explore.permission.task).toBe("deny");
 			// coder is the only one that can delegate to advisor
 			expect(config.agent.coder.permission.task.advisor).toBe("allow");
 			expect(config.agent.advisor.permission.task.advisor).toBeUndefined();
 			expect(config.agent.designer.permission.task.advisor).toBeUndefined();
-			expect(config.agent.observer.permission.task.advisor).toBeUndefined();
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
@@ -216,7 +212,6 @@ describe("Plugin config merge", () => {
 			expect(config.agent.coder.temperature).toBe(0.2);
 			expect(config.agent.advisor.temperature).toBe(0.1);
 			expect(config.agent.designer.temperature).toBe(0.7);
-			expect(config.agent.observer.temperature).toBe(0.1);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true });
 		}

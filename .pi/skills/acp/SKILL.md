@@ -20,13 +20,9 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 | `debugger` | Root-cause analysis, error diagnosis | READ-ONLY |
 | `test-engineer` | Test strategy, coverage, flaky test diagnosis | YES |
 | `critic` | Code quality, SOLID, logic defects, plan/arch validation | READ-ONLY |
-| `security-reviewer` | OWASP, secrets, injection vulnerabilities | READ-ONLY |
-| `critic` | Plan/architecture validation, quality gate | READ-ONLY |
 | `verifier` | Evidence-based completion check (rejects "should work") | READ-ONLY |
 | `advisor` | Strategic decisions, hard trade-offs, completion APPROVE gate | READ-ONLY |
-| `oracle` | High-stakes architectural guidance within executor workflows | YES |
 | `git-master` | Atomic commits, rebasing, history management | YES |
-| `observer` | Screenshot/image/PDF analysis, visual comparison | READ-ONLY |
 
 ## Context Isolation (from Superpowers pattern)
 

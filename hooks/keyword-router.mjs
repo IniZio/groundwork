@@ -37,13 +37,6 @@ const ROUTES = [
     hint: 'Route to `groundwork:critic` for review. Follow with `groundwork:advisor` APPROVE gate.',
   },
   {
-    agents: ['groundwork:security-reviewer'],
-    patterns: [
-      /\b(security|OWASP|injection|XSS|CSRF|SQL injection|auth.?orization|auth.?entication vulnerability|privilege escalation|secret|credential leak)\b/i,
-    ],
-    hint: 'Route to `groundwork:security-reviewer` for security analysis.',
-  },
-  {
     agents: ['groundwork:test-engineer'],
     patterns: [
       /\b(write tests|test coverage|flaky test|TDD|unit test|integration test|test strategy|e2e test|testing plan)\b/i,

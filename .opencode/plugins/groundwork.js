@@ -290,22 +290,6 @@ export const GroundworkPlugin = async ({ client, directory }) => {
           },
           'background*': 'deny',
         },
-        observer: {
-          question: 'deny',
-          task: {
-            '*': 'deny',
-            explore: 'allow',
-          },
-          'background*': 'deny',
-        },
-        oracle: {
-          question: 'deny',
-          task: {
-            '*': 'deny',
-            explore: 'allow',
-          },
-          'background*': 'deny',
-        },
       }
 
       function getAgentPermissions(agentName) {
@@ -325,7 +309,6 @@ export const GroundworkPlugin = async ({ client, directory }) => {
         advisor: { temperature: 0.1 },
         coder: { temperature: 0.2 },
         designer: { temperature: 0.7 },
-        observer: { temperature: 0.1 },
       }
       if (fs.existsSync(groundworkAgentsDir)) {
         for (const file of fs.readdirSync(groundworkAgentsDir)) {
@@ -371,6 +354,14 @@ export const GroundworkPlugin = async ({ client, directory }) => {
               }
             }
           }
+        }
+      }
+    },
+
+    'tool.execute.before': async (input, output) => {
+      if (input.tool === 'task' || input.tool === 'Task') {
+        if (output.args?.subagent_type && output.args.background !== true) {
+          output.args.background = true
         }
       }
     },

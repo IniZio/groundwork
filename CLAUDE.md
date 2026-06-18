@@ -32,16 +32,14 @@
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `coder` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `critic` → `advisor` gate |
-| "auth", "security", "OWASP", "injection" | Security | `security-reviewer` |
+| "auth", "security", "OWASP", "injection" | Security | `critic` → `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
 | "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.groundwork/plans/*.md` → fan-out `coder` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | built-in `Explore` (no prefix) |
 | "validate plan", "is this right" | Plan review | `critic` |
 | "is it done", "verify", "confirm" | Completion | `verifier` → `advisor` |
-| Screenshot, image, PDF, visual diff | Visual | `observer` |
 | Architecture trade-off, hard decision | Decision | `advisor` |
-| Mid-task escalation from coder | Guidance | `oracle` |
 | "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 
 All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ...)`.
@@ -128,7 +126,6 @@ Fan-out targets per wave:
 - `coder`: 5–20 tasks (as many as the plan decomposes into)
 - `explore`: 3–7 tasks (one per area/module)
 - `designer`: 2–5 tasks
-- `observer`: 2–5 tasks for before/after visual comparison
 - `advisor`: 1–2 tasks (only for hard decisions)
 
 **Fewer than 5 tasks on a non-trivial feature = under-sliced. Decompose harder.**
@@ -167,13 +164,10 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 | Test strategy, coverage | `test-engineer` |
 | Root-cause analysis | `debugger` |
 | Code quality, SOLID, plan validation | `critic` |
-| Security vulnerabilities | `security-reviewer` |
+| Security vulnerabilities | `critic` |
 | Plan/architecture validation | `critic` |
 | Evidence-based completion check | `verifier` |
 | Strategic decisions, completion gate | `advisor` |
-| Mid-task guidance for executors | `oracle` |
-| Git, commits, rebasing | `git-master` |
-| Screenshots, images, visual diff | `observer` |
 
 **DO YOURSELF (only these):**
 - Classify issue type and pick a routing path
@@ -209,7 +203,7 @@ Sub-orch 3 (UI):       → designer×2 + coder×1
 ### Depth-1 Constraint (HARD-ENFORCED)
 - Primary orchestrator CAN task `general-purpose` sub-orchestrators
 - Sub-orchestrators CANNOT task `orchestrator` or `general-purpose` — denied by opencode.json permissions
-- Sub-orchestrators CAN task all specialists: coder, explore, advisor, designer, observer, etc.
+- Sub-orchestrators CAN task all specialists: coder, explore, advisor, designer, etc.
 - Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
 
 ---
@@ -225,14 +219,7 @@ Never declare done without `advisor` APPROVE.
 
 ---
 
-## oracle vs advisor — which to call
 
-- `oracle`: called BY executor agents (coder, designer) mid-task when they hit a hard decision or repeated failure. Does NOT gate completion.
-- `advisor`: called BY the orchestrator only. Gates plan approval and task completion. APPROVE/REVISE/REJECT format.
-
----
-
-## Error escalation
 
 Same subtask fails 3× in a row:
 1. Stop retrying

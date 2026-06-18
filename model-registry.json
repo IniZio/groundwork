@@ -17,7 +17,7 @@
     },
     "coder": {
       "pi": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8",
-      "opencode": "neuralwatt/kimi-k2.6-fast"
+      "opencode": "neuralwatt/glm-5.1-fast"
     },
     "critic": {
       "pi": "openai/gpt-5.4",

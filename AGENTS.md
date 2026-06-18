@@ -22,17 +22,16 @@ This package supports both **OpenCode** and **Pi** from a single model-neutral s
 {
   "agents": {
     "advisor": { "pi": "zai/glm-5.2",         "opencode": "zai/glm-5.2" },
-    "coder":   { "pi": "neuralwatt/Qwen/...",  "opencode": "neuralwatt/Qwen/..." },
-    "oracle":  { "pi": "DISABLED",             "opencode": "DISABLED" }
+    "coder":   { "pi": "neuralwatt/Qwen/...",  "opencode": "neuralwatt/Qwen/..." }
   },
-  "disabled": { "pi": ["oracle"], "opencode": ["oracle"] },
+  "disabled": { "pi": [], "opencode": [] },
   "aliases":  { "opencode": { "explore": "explorer" } }
 }
 ```
 
 The registry also carries:
 
-- **`disabled`** — per-platform array of agent names to suppress (e.g. `oracle` is disabled because `advisor` covers that role).
+- **`disabled`** — per-platform array of agent names to suppress.
 - **`aliases`** — per-platform rename map. The source file stays `agents/explore.md`, but on opencode it is emitted as `explorer.md` to match opencode's native agent name.
 
 ### Codegen pipeline
@@ -82,7 +81,7 @@ The following are **generated** — never edit them directly:
 | Runtime entry | `src/pi.ts` | `.opencode/plugins/groundwork.js` |
 | Aliases applied | no | yes (`explore` → `explorer`) |
 
-Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes specialists such as `debugger`, `planner`, `critic`, `verifier`, `security-reviewer`, and `test-engineer`. `oracle` is intentionally disabled because `advisor` covers that role.
+Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes specialists such as `debugger`, `planner`, `critic`, `verifier`, and `test-engineer`.
 
 This ensures:
 

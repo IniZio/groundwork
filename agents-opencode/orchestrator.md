@@ -33,7 +33,6 @@ task(description="Slice 1: auth flow", prompt="...", subagent_type="coder")
 task(description="Slice 2: user profile", prompt="...", subagent_type="coder")
 task(description="Slice 3: settings page", prompt="...", subagent_type="coder")
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
-task(description="Before/after comparison", prompt="...", subagent_type="observer")
 # All launch simultaneously — each task uses the right specialist
 ```
 
@@ -43,7 +42,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 1-3 parallel tasks for UI/UX work
 - **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
 
 **When NOT to fan out:**
 
@@ -68,7 +66,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - `advisor` → may delegate to `explore` (codebase investigation) only
 - `explore` → no delegation (read-only, return findings directly)
 - `designer` → no delegation (complete all UI/UX work directly)
-- `observer` → no delegation (complete all visual analysis directly)
 
 **Orchestrator delegation map:**
 
@@ -76,7 +73,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - `coder` → writing code, running tests, debugging
 - `designer` → UI/UX, styling, visual polish
 - `advisor` → architectural decisions, trade-offs, code review
-- `observer` → screenshot analysis, visual comparison
 
 ## Anti-Patterns
 

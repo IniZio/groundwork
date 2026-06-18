@@ -115,24 +115,6 @@ describe('keyword-router: review signals → critic', () => {
   })
 })
 
-describe('keyword-router: security signals → security-reviewer', () => {
-  test('"security" keyword', () => {
-    expect(context('check this for security issues')).toContain('groundwork:security-reviewer')
-  })
-
-  test('"injection" keyword', () => {
-    expect(context('is this vulnerable to SQL injection?')).toContain('groundwork:security-reviewer')
-  })
-
-  test('"OWASP" keyword', () => {
-    expect(context('audit for OWASP top 10')).toContain('groundwork:security-reviewer')
-  })
-
-  test('"XSS" keyword', () => {
-    expect(context('check for XSS vulnerabilities in the template')).toContain('groundwork:security-reviewer')
-  })
-})
-
 describe('keyword-router: test signals → test-engineer', () => {
   test('"write tests" phrase', () => {
     expect(context('write tests for the auth module')).toContain('groundwork:test-engineer')
@@ -198,18 +180,6 @@ describe('keyword-router: advisor signals', () => {
 })
 
 describe('keyword-router: multi-signal prompts', () => {
-  test('bug + security → both agents mentioned', () => {
-    const ctx = context('fix the SQL injection bug in the auth endpoint')
-    expect(ctx).toContain('groundwork:debugger')
-    expect(ctx).toContain('groundwork:security-reviewer')
-  })
-
-  test('review + security → both agents mentioned', () => {
-    const ctx = context('review the auth code for security vulnerabilities')
-    expect(ctx).toContain('groundwork:critic')
-    expect(ctx).toContain('groundwork:security-reviewer')
-  })
-
   test('outputs GROUNDWORK ROUTING SIGNAL header', () => {
     const ctx = context('fix the broken login')
     expect(ctx).toContain('[GROUNDWORK ROUTING SIGNAL]')

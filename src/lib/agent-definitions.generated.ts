@@ -160,7 +160,7 @@ You can delegate to other agents via \`task(subagent_type="...")\` ONLY in these
 
 - \`subagent_type="advisor"\` for architectural decisions or when stuck
 - \`subagent_type="Explore"\` for codebase exploration
-You CANNOT delegate to designer, observer, or other coders. If you need help, ask advisor or do it yourself.
+You CANNOT delegate to designer or other coders. If you need help, ask advisor or do it yourself.
 
 ## Output (MANDATORY)
 
@@ -618,13 +618,11 @@ You may task these specialists:
 - \`explore\` — codebase investigation
 - \`advisor\` — strategic decisions, architecture
 - \`designer\` — UI/UX work
-- \`observer\` — visual analysis
 - \`git-master\` — git operations
 - \`critic\` — quality review
 - \`debugger\` — root-cause analysis
 - \`test-engineer\` — test strategy
 - \`verifier\` — completion verification
-- \`security-reviewer\` — security review
 - \`planner\` — planning
 
 You MUST NOT task:
@@ -651,7 +649,6 @@ You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT 
 - \`coder\` → writing code, running tests, debugging
 - \`designer\` → UI/UX, styling, visual polish
 - \`advisor\` → architectural decisions, trade-offs, code review
-- \`observer\` → screenshot analysis, visual comparison
 
 ## Anti-Patterns
 
@@ -753,7 +750,6 @@ task(description="Slice 1: auth flow", prompt="...", subagent_type="coder")
 task(description="Slice 2: user profile", prompt="...", subagent_type="coder")
 task(description="Slice 3: settings page", prompt="...", subagent_type="coder")
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
-task(description="Before/after comparison", prompt="...", subagent_type="observer")
 # All launch simultaneously — each task uses the right specialist
 \`\`\`
 
@@ -763,7 +759,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 1-3 parallel tasks for UI/UX work
 - **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
 
 **When NOT to fan out:**
 
@@ -788,7 +783,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - \`advisor\` → may delegate to \`explore\` (codebase investigation) only
 - \`explore\` → no delegation (read-only, return findings directly)
 - \`designer\` → no delegation (complete all UI/UX work directly)
-- \`observer\` → no delegation (complete all visual analysis directly)
 
 **Orchestrator delegation map:**
 
@@ -796,7 +790,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - \`coder\` → writing code, running tests, debugging
 - \`designer\` → UI/UX, styling, visual polish
 - \`advisor\` → architectural decisions, trade-offs, code review
-- \`observer\` → screenshot analysis, visual comparison
 
 ## Anti-Patterns
 
@@ -1153,7 +1146,7 @@ When invoked as a completion gate and the executor skips verification, default t
 		content: `---
 name: coder
 description: Primary coding specialist — implements features, fixes bugs, writes and edits code across any number of files. The orchestrator should delegate ALL coding work here.
-model: neuralwatt/kimi-k2.6-fast
+model: neuralwatt/glm-5.1-fast
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
@@ -1168,7 +1161,7 @@ You can delegate to other agents via \`task(subagent_type="...")\` ONLY in these
 
 - \`subagent_type="advisor"\` for architectural decisions or when stuck
 - \`subagent_type="Explore"\` for codebase exploration
-You CANNOT delegate to designer, observer, or other coders. If you need help, ask advisor or do it yourself.
+You CANNOT delegate to designer or other coders. If you need help, ask advisor or do it yourself.
 
 ## Output (MANDATORY)
 
@@ -1626,13 +1619,11 @@ You may task these specialists:
 - \`explore\` — codebase investigation
 - \`advisor\` — strategic decisions, architecture
 - \`designer\` — UI/UX work
-- \`observer\` — visual analysis
 - \`git-master\` — git operations
 - \`critic\` — quality review
 - \`debugger\` — root-cause analysis
 - \`test-engineer\` — test strategy
 - \`verifier\` — completion verification
-- \`security-reviewer\` — security review
 - \`planner\` — planning
 
 You MUST NOT task:
@@ -1659,7 +1650,6 @@ You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT 
 - \`coder\` → writing code, running tests, debugging
 - \`designer\` → UI/UX, styling, visual polish
 - \`advisor\` → architectural decisions, trade-offs, code review
-- \`observer\` → screenshot analysis, visual comparison
 
 ## Anti-Patterns
 
@@ -1761,7 +1751,6 @@ task(description="Slice 1: auth flow", prompt="...", subagent_type="coder")
 task(description="Slice 2: user profile", prompt="...", subagent_type="coder")
 task(description="Slice 3: settings page", prompt="...", subagent_type="coder")
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
-task(description="Before/after comparison", prompt="...", subagent_type="observer")
 # All launch simultaneously — each task uses the right specialist
 \`\`\`
 
@@ -1771,7 +1760,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 1-3 parallel tasks for UI/UX work
 - **advisor:** 1 task at a time for strategic decisions (coder can also delegate to advisor mid-task)
-- **observer:** 1-3 parallel tasks for visual analysis, before/after comparisons
 
 **When NOT to fan out:**
 
@@ -1796,7 +1784,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - \`advisor\` → may delegate to \`explore\` (codebase investigation) only
 - \`explore\` → no delegation (read-only, return findings directly)
 - \`designer\` → no delegation (complete all UI/UX work directly)
-- \`observer\` → no delegation (complete all visual analysis directly)
 
 **Orchestrator delegation map:**
 
@@ -1804,7 +1791,6 @@ task(description="Before/after comparison", prompt="...", subagent_type="observe
 - \`coder\` → writing code, running tests, debugging
 - \`designer\` → UI/UX, styling, visual polish
 - \`advisor\` → architectural decisions, trade-offs, code review
-- \`observer\` → screenshot analysis, visual comparison
 
 ## Anti-Patterns
 

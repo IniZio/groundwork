@@ -160,17 +160,6 @@ test_routing \
   "Validate this plan before we start implementing" \
   "groundwork:critic"
 
-# Security
-test_routing \
-  "security: OWASP audit" \
-  "Audit the input handling for OWASP top 10 vulnerabilities, especially injection risks" \
-  "groundwork:security-reviewer"
-
-test_routing \
-  "security: auth review" \
-  "Review the authentication module for security vulnerabilities" \
-  "groundwork:security-reviewer"
-
 # Tests
 test_routing \
   "tests: coverage request" \

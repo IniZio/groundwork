@@ -1521,10 +1521,10 @@ You're capable of extraordinary creative work. Commit fully to distinctive visio
 	},
 
 	{
-		name: "explorer",
+		name: "explore",
 		version: "2.0.0",
 		content: `---
-name: explorer
+name: explore
 description: Use this agent when you need to understand an unfamiliar codebase, trace logic flows, identify architectural patterns, locate relevant files and functions, or map out dependencies within a project. Use this agent when the user asks questions like 'how does X work?', 'where is Y implemented?', 'what modules interact with Z?', or when exploring a new repository to gain understanding.
 model: opencode-go/deepseek-v4-flash
 prompt_mode: replace

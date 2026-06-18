@@ -16,7 +16,7 @@ const ROUTES = [
       /\b(bug|broken|doesn'?t work|not working|error|exception|stack trace|crash|fail|failure|regression|broke)\b/i,
       /\b(debug|diagnose|root.?cause|investigate why|figure out why)\b/i,
     ],
-    hint: 'Route to `groundwork:debugger` first for root-cause analysis, then `groundwork:coder` to implement the fix.',
+    hint: 'Bug or regression detected. Load the `diagnose` skill FIRST — it owns the 6-phase diagnosis loop and will guide whether to delegate to debugger, coder, or explore. Do NOT route directly to debugger without loading diagnose.',
   },
   {
     agents: ['groundwork:planner'],
@@ -61,8 +61,16 @@ const ROUTES = [
     agents: ['groundwork:advisor'],
     patterns: [
       /\b(architecture trade.?off|which (approach|option|technology)|should we use|hard decision|validate (the )?plan|strategic)\b/i,
+      /\b(advisor gate|completion gate|declare done|mark as complete|all done|task complete|ready for review)\b/i,
     ],
     hint: 'Route to `groundwork:advisor` for strategic decisions and architecture trade-offs.',
+  },
+  {
+    agents: ['groundwork:verifier'],
+    patterns: [
+      /\b(is it done|are we done|verify this|verify the|validate this|check if complete|is this complete|prove it works|show evidence|completion check|ready to ship|ship it|can we merge|are all tests passing|does it pass)\b/i,
+    ],
+    hint: 'Route to `groundwork:verifier` — completion verification requested. The verifier ensures no task is marked done without fresh, verifiable proof.',
   },
 ]
 

@@ -360,10 +360,45 @@ export const GroundworkPlugin = async ({ client, directory }) => {
 
     'tool.execute.before': async (input, output) => {
       if (input.tool === 'task' || input.tool === 'Task') {
-        if (output.args?.subagent_type && output.args.background !== true) {
-          output.args.background = true
+        if (output.args?.subagent_type) {
+          // Don't force background for advisor — orchestrator needs synchronous APPROVE/GAPS response
+          if (output.args.subagent_type === 'advisor') return
+          if (output.args.background !== true) {
+            output.args.background = true
+          }
         }
       }
+      if (input.tool === 'question' || input.tool === 'Question') {
+        try {
+          const gateFile = path.join(process.cwd(), '.groundwork', 'gate-approved')
+          await fs.promises.access(gateFile)
+          // Gate file exists — allow without warning
+        } catch {
+          // Gate file missing — inject warning into question content
+          if (output.args?.questions && Array.isArray(output.args.questions)) {
+            for (const q of output.args.questions) {
+              if (q.question) {
+                q.question = '⚠️ ADVISOR GATE NOT PASSED — You must invoke advisor-gate and receive APPROVE before presenting results to the user.\n\n' + q.question
+              }
+            }
+          }
+        }
+      }
+    },
+
+    'tool.execute.after': async (input, output) => {
+      if (input.tool !== 'task' || output.args?.subagent_type !== 'advisor') return
+      try {
+        const resultText = JSON.stringify(output.result || output.output || '').toLowerCase()
+        const gateDir = path.join(process.cwd(), '.groundwork')
+        const gateFile = path.join(gateDir, 'gate-approved')
+        if (resultText.includes('approve')) {
+          await fs.promises.mkdir(gateDir, { recursive: true })
+          await fs.promises.writeFile(gateFile, new Date().toISOString())
+        } else if (resultText.includes('gaps') || resultText.includes('correction') || resultText.includes('stop')) {
+          try { await fs.promises.unlink(gateFile) } catch {}
+        }
+      } catch (e) { /* fail silently — gate enforcement is best-effort */ }
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {

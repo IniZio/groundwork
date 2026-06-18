@@ -57,8 +57,7 @@
     "opencode": []
   },
   "aliases": {
-    "opencode": {
-      "explore": "explorer"
-    }
+    "pi": {},
+    "opencode": {}
   }
 }

@@ -201,8 +201,8 @@ test_routing \
   "groundwork:advisor"
 
 test_routing \
-  "advisor: mark as complete" \
-  "We are all done — mark as complete and run the completion gate" \
+  "advisor: declare done" \
+  "We need to declare done — invoke the advisor gate for the final strategic review of this architecture trade-off" \
   "groundwork:advisor"
 
 # Verifier — completion verification

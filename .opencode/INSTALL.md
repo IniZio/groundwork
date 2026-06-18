@@ -1,5 +1,15 @@
 # Installing groundwork
 
+## Prerequisites
+
+Set the background subagent env var (required for native `background: true` on task calls and the plugin's fan-out enforcement hook):
+
+```bash
+export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1
+```
+
+Add to `~/.bashrc` or `~/.profile`, then **restart opencode** after setting it.
+
 Add both plugins to `opencode.json` plugin array:
 
 ```json

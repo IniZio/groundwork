@@ -189,7 +189,6 @@ This manifest is updated after every `ensureAgentsInstalled()` call.
 | `coder` | Fast implementation, tests, build verification | — New |
 | `designer` | UI/UX, styling, responsive design | — New |
 | `explorer` | Fast codebase exploration (read-only) | — New (renamed from `explore`) |
-| `observer` | Screenshot analysis, visual comparison | — New |
 
 All definitions live in `src/lib/agent-definitions.ts` as exported string constants.
 
@@ -286,7 +285,6 @@ pi.on("context", async (event, ctx) => {
 - `coder.md`
 - `designer.md`
 - `explore.md`
-- `observer.md`
 
 `pi-subagents` auto-discovers these. A user can then run:
 
@@ -355,7 +353,6 @@ groundwork/                    # existing repo, adapted for Pi
       coder.md
       designer.md
       explore.md
-      observer.md
     skills/
       use-groundwork/
         SKILL.md
@@ -636,7 +633,7 @@ pnpm exec vitest run test/acceptance
   - `general-purpose` (orchestrator override)
   - `Explore` (disabled placeholder)
   - `Plan` (disabled placeholder)
-  - `advisor`, `coder`, `designer`, `explorer`, `observer`
+  - `advisor`, `coder`, `designer`, `explorer`
 - [ ] Create `src/lib/agent-setup.ts` with `ensureAgentsInstalled()` + version tracking
   - Read/write `.pi/agents/.groundwork-manifest.json`
   - Parse frontmatter to check `managed_by` / `groundwork_version`

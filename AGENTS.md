@@ -99,6 +99,8 @@ Background execution now uses **opencode's native `background: true` parameter**
 OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1
 ```
 
+Add this to `~/.bashrc` or `~/.profile` and **restart opencode**. Without it, `background: true` is unavailable and the plugin's fan-out enforcement hook has no effect.
+
 There is no `background-manager.ts` and no custom background tool surface to maintain.
 
 ## Frontmatter Mapping

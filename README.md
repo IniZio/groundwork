@@ -63,7 +63,6 @@ When using Pi with `pi-subagents`, the following agent types are auto-configured
 | `coder` | Fast implementation, tests, build verification |
 | `designer` | UI/UX, styling, responsive design |
 | `explorer` | Codebase exploration (read-only) |
-| `observer` | Screenshot analysis, visual comparison |
 
 ## Rules
 

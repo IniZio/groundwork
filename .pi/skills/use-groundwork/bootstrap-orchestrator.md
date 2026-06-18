@@ -36,6 +36,20 @@ This file contains orchestrator-specific rules extracted from the use-groundwork
 
 Always use the `question` tool instead of ending the conversation. Never leave the user without a next step.
 
+### Background Task Notification Pattern
+
+When all work is delegated to background tasks, the orchestrator MUST end its turn — NOT call `question`:
+
+1. Launch all background tasks in ONE message (with `background=true`)
+2. Write a brief status update (what's running, expected completion order)
+3. **STOP** — do NOT call `question`, do NOT call `bash sleep`, do NOT poll
+4. Completion notifications will re-invoke you automatically
+5. Process results when they arrive, then launch the next wave or present to user
+
+**Why `question` blocks:** The question tool enters a blocking wait state. While pending, the opencode engine cannot deliver background task completion notifications to the orchestrator. This causes the orchestrator to get permanently stuck.
+
+**The ONLY valid use of `question` with background tasks running:** If the user sends a message while tasks are running, you may answer their question, but do NOT use `question` to ask "should I wait?"
+
 ### 2. Your role is orchestration
 
 Your role is orchestration. Classify, delegate, and review — do not implement directly. Do not write code, explore files, or debug directly. See the Orchestrator Role section below for the delegation matrix.

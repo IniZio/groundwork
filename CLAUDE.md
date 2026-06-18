@@ -122,6 +122,37 @@ Task(subagent_type="groundwork:coder", prompt="...slice 1...")
 
 **Do NOT use the removed custom tools `background_task` / `background_output`** — they have been removed. Use the native `task` tool with `background: true`.
 
+### CRITICAL EXCEPTION: Do NOT use `question` to wait for background tasks
+
+When you have background tasks running (`task(background=true, ...)`) and no other work to do:
+- **DO NOT call `question`** — it blocks you from receiving background task completion notifications
+- Instead, write a brief status update (what's running, what to expect) and **END YOUR TURN**
+- Background task completion notifications will re-invoke you automatically when each task finishes
+- You will be able to continue processing results at that point
+
+**Pattern:**
+```
+# GOOD — end turn, let notifications arrive
+"I've launched 5 parallel background tasks:
+- S1: Creating model registry
+- S2: Stripping models from agents
+- S3: Deleting background tools
+- S4: Cleaning bundle
+- S5: Updating bootstrap docs
+Waiting for completion notifications..."
+
+# BAD — blocks notifications, gets stuck
+question("5 tasks running, wait?", ["Wait", "Work on something else"])
+```
+
+The `question` tool is ONLY for:
+1. Gathering user preferences or requirements
+2. Clarifying ambiguous instructions
+3. Getting decisions on implementation choices
+4. Presenting results for user approval (after ALL work is done)
+
+It is NEVER a substitute for `await` or `sleep`.
+
 Fan-out targets per wave:
 - `coder`: 5–20 tasks (as many as the plan decomposes into)
 - `explore`: 3–7 tasks (one per area/module)

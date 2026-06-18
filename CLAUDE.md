@@ -34,7 +34,7 @@
 | "review", "quality", "SOLID", "check my code" | Code review | `critic` → `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `security-reviewer` |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
-| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.omc/plans/*.md` → fan-out `coder` |
+| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.groundwork/plans/*.md` → fan-out `coder` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | built-in `Explore` (no prefix) |
 | "validate plan", "is this right" | Plan review | `critic` |
@@ -133,7 +133,7 @@ Task(
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
-  PLAN: .omc/plans/feature.md step 3
+  PLAN: .groundwork/plans/feature.md step 3
   SUCCESS CRITERIA: <observable, verifiable outcome>
   SCOPE: touch only the files listed above.
   """

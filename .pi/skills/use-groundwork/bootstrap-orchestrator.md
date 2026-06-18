@@ -14,6 +14,7 @@ This file contains orchestrator-specific rules extracted from the use-groundwork
 4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first, then `create-prd`, then fan out to **10-30 parallel `coder` subagents** (EXTREME SLICING — oh-my-claude ultrawork mode).
 
 **The ONLY tools you use directly are:**
+
 - `subagent` — to delegate ALL work
 - `read` — to load skill files (e.g., `diagnose`, `interview`, `create-prd`)
 - `question` — to ask the user clarifying questions
@@ -82,18 +83,21 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 
 | Agent | Model recommendation | Temperature | Best for |
 |-------|---------------------|-------------|----------|
-| `advisor` | `openai/gpt-5.4` (strong reasoning) | 0.1 | Architecture, trade-offs, code review |
-| `coder` | `kimi-for-coding/k2.6` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
+| `general-purpose` (orchestrator) | `inherit` | — | Classification, delegation, workflow routing |
+| `advisor` | `zai/glm-5.2` (strong reasoning) | 0.1 | Architecture, trade-offs, code review |
+| `coder` | `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
 | `explore` | `openai/gpt-5.4-mini` (fast, cheap) | 0.1 | Codebase search, pattern discovery |
 | `designer` | `kimi-for-coding/k2.6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
 | `observer` | `openai/gpt-5.4-mini` (vision-capable) | 0.1 | Screenshot analysis, visual comparison, PDF interpretation |
 
 **Configure per-agent models in `opencode.json`:**
+
 ```json
 {
   "agent": {
-    "advisor": { "model": "openai/gpt-5.4" },
-    "coder": { "model": "kimi-for-coding/k2.6" },
+   "general-purpose": { "model": "inherit" },
+   "advisor": { "model": "zai/glm-5.2" },
+    "coder": { "model": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8" },
     "explore": { "model": "openai/gpt-5.4-mini" },
     "designer": { "model": "kimi-for-coding/k2.6" },
     "observer": { "model": "openai/gpt-5.4-mini" }
@@ -106,6 +110,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 ### When to delegate vs do it yourself
 
 **DELEGATE (always):**
+
 - Any `edit`, `write`, or file creation → `coder` (or `designer` for UI work)
 - Any discovery across unknown files (grep, glob, "which file handles X?") → `explore` (known paths → use `read` directly)
 - Any bug root-cause analysis → `debugger`
@@ -116,6 +121,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 - Any architectural escalation from coder → advisor via `task(subagent_type="advisor", ...)` (coder is the ONLY specialist agent allowed to call task, and ONLY for advisor)
 
 **DO YOURSELF (only these):**
+
 - Classify the issue type and pick a routing path
 - Conduct interview Q&A with the user (interactive)
 - Review subagent output for correctness
@@ -127,7 +133,7 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 1. **Velocity**: Fan out EXTREMELY aggressively — launch as many parallel tasks as the work naturally decomposes into. More parallelism = faster delivery. Sequential work is the #1 time waste. Oh-my-claude ultrawork mode: semantic slicing, not arbitrary limits.
 2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste, observer sees details you'd miss
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
-4. **Model diversity**: Different agents use different models — designer uses kimi for UI taste, advisor uses gpt-5.4 for reasoning, coder uses kimi-for-coding for speed and cost
+4. **Model diversity**: Different agents use different models — orchestrator inherits the session model, designer uses kimi for UI taste, advisor uses zai/glm-5.2 for reasoning, coder uses neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8 for implementation
 
 ### Anti-pattern: The Implementing Orchestrator
 
@@ -159,6 +165,7 @@ RIGHT:  pty_spawn "gh pr checks --watch" → pty_read on completion notification
 **The orchestrator MUST maximize parallel task dispatch. EXTREME fan-out is the #1 lever for velocity. Reference: oh-my-claude ultrawork pattern.**
 
 Fan-out targets by specialist type (mix freely in the same wave):
+
 - **coder:** as many parallel tasks as the plan decomposes into (often 5-20)
 - **explore:** 3-7 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 2-5 parallel tasks for UI/UX work
@@ -166,17 +173,19 @@ Fan-out targets by specialist type (mix freely in the same wave):
 - **observer:** 2-5 parallel tasks for visual analysis, before/after comparisons
 
 **Semantic Slicing Rules (oh-my-claude style):**
+
 1. **Each task must have ONE clear objective.** "Create auth middleware" is good. "Create auth middleware + login endpoint + logout endpoint" is bad — split into 3 tasks.
 2. **If a task feels complex or touches many files, split it.** There is no magic LOC limit. Use your judgment: if describing the task takes more than 2 sentences, it is probably too big.
 3. **Within a wave, launch ALL independent tasks simultaneously.** Never wait for Task A before launching Task B if they don't share code.
 4. **Sequential execution is only for dependencies.** If Task B needs output from Task A, they're in different waves. Everything else is parallel.
 5. **Fan-out first, review second.** Launch everything in parallel, then review all outputs together.
 6. **Send ALL parallel `subagent` calls in ONE message.** Never send subagent calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
-7. **Use the cheapest capable model for each slice.** coder uses `kimi-for-coding` (fast, cheap). Only escalate to advisor (gpt-5.4) for hard architectural decisions.
+7. **Use the right model for each slice.** coder uses `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (bounded implementation). Only escalate to advisor (`zai/glm-5.2`) for hard architectural decisions.
 
 **Pre-Delegation Planning (MANDATORY) — inspired by oh-my-claude:**
 
 Before EVERY `subagent` call, DECLARE:
+
 ```
 I will delegate with:
 - **Agent**: [coder / explore / designer / advisor / observer]
@@ -215,6 +224,7 @@ task(description="...", prompt="...", subagent_type="explore")  → Launch and w
 ```
 
 **Workflow:**
+
 1. Launch with `task` — the tool blocks until the subagent completes and returns the result directly
 2. You can launch MULTIPLE tasks in parallel for max throughput by calling `task` multiple times without waiting
 
@@ -266,6 +276,7 @@ When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, 
 **Rule of thumb:** If you're about to explore the codebase with `task` to understand a bug → stop. Load `diagnose` instead. It has the exploration built in.
 
 **Examples:**
+
 - ❌ `"The filter is broken"` → don't explore; load `diagnose`
 - ❌ `"Submit button doesn't work"` → don't explore; load `diagnose`
 - ❌ `"Error on line 42"` without obvious fix → don't explore; load `diagnose`
@@ -280,6 +291,7 @@ When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, 
 Classify by scope.
 
 **Trivial** (direct):
+
 - Single-file, single-line changes with zero ambiguity
 - Examples: typo fix, rename variable, update hex color, change constant value, add a missing import
 - Path: implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
@@ -287,11 +299,13 @@ Classify by scope.
 **Small change** — classify by clarity and risk:
 
 *Clear & low-risk* — implement directly:
+
 - Well-understood, localized changes where the approach and impact are obvious
 - Examples: add a simple validation rule, update a default config value, extract a helper function, add a missing null check, wire up a new field to an existing form
 - Path: implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 
 *Ambiguous or risky* — interview quick → implement:
+
 - Changes where requirements, scope, or side-effects are unclear; changes that touch shared code, public APIs, auth, or multiple modules
 - Examples: modify a shared data model, change an API response shape, alter permission checks, refactor a core utility used across the codebase
 - Path: Use the `skill` tool to load `interview` (quick: 2-4 questions) → implement → use the `skill` tool to load `advisor-gate`
@@ -309,12 +323,15 @@ Classify by scope.
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed
 
 ### Spike / Design Exploration
+
 ```
 load skill "prototype" (use `skill` tool, or `read` its SKILL.md) → feed findings into next skill
 ```
+
 - When the approach is uncertain and needs validation before committing
 
 ### Refactor
+
 ```
 [safe / small scope]  implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 [risky / unclear]     load skill "interview" (use `skill` tool, or `read` its SKILL.md) → implement → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
@@ -322,6 +339,7 @@ load skill "prototype" (use `skill` tool, or `read` its SKILL.md) → feed findi
 ```
 
 ### Docs-Only Change
+
 ```
 implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 ```
@@ -337,12 +355,14 @@ implement directly → load skill "advisor-gate" (use `skill` tool, or `read` it
 3. **Embed source in prompts.** Subagent tasks cannot reliably read large source files. If a coder needs reference material, embed it directly in the prompt text. Do NOT tell the coder to "read file X" — it may fail.
 4. **Verify task output immediately.** After a task completes, check the result. If it says `(No text output)` or the wrong files were created, relaunch the task with corrections before giving up on it.
 5. **Pre-Delegation Planning (MANDATORY).** Before EVERY subagent call, declare:
+
    ```
    I will delegate with:
    - **Agent**: [coder / explore / designer / advisor / observer]
    - **Reason**: [why this agent fits]
    - **Expected Outcome**: [success criteria]
    ```
+
    THEN make the call. Vague delegation is rejected. Exhaustiveness is required.
 
 ### Failed Task Recovery
@@ -367,6 +387,7 @@ When a subagent task fails or produces wrong output:
 ## Subagent Task Auto-Preamble
 
 Every subagent task automatically gets a preamble prepended: `[SUBAGENT TASK RULES — MANDATORY]` telling the agent:
+
 - Never call `question` or tools that wait for user input
 - Never call `task` or `delegate` tools — they are blocked in child sessions
 - Make decisions autonomously

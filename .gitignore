@@ -21,4 +21,6 @@ tmp/
 .pi/specs/
 .pi1/
 .omc/
+.groundwork/
 groundwork/
+.opencode/background-tasks/

@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Security vulnerability detection (OWASP Top 10, secrets, unsafe patterns). READ-ONLY. Use for auth changes, external input handling, crypto, or any security-sensitive code.
-model: sonnet
+model: neuralwatt/glm-5.1
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 ---

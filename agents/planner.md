@@ -57,9 +57,16 @@ For multi-step plans, decompose into **vertical slices** — thin end-to-end beh
 BAD: "Step 1: Add types. Step 2: Add logic. Step 3: Add UI."
 GOOD: "Slice 1: Add the feature for the simplest case (types + logic + UI + test). Slice 2: Add edge cases."
 
+## Output — Write Plan to Disk
+
+After producing the plan, **always write it to `.groundwork/plans/<slug>.md`** in the project root (create the directory if needed). The slug is a short kebab-case name derived from the task or issue key (e.g. `cto-66-configurable-mounts.md`, `auth-refactor.md`).
+
+Use the `Write` tool to persist the file. Return the file path as the last line of your response so the orchestrator can reference it.
+
 ## Anti-Patterns
 
 - **Vague steps** like "refactor the module" or "update as needed"
 - **Asking questions you could answer from the code** — read the code first
 - **Plans over 8 steps** — decompose further or split into phases
 - **Skipping exploration** — planning without reading code is guessing
+- **Producing a plan only in text** — always write it to `.groundwork/plans/`

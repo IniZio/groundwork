@@ -10,11 +10,34 @@ This package supports both **OpenCode** and **Pi**:
 
 ## Agent Definitions
 
-Agent definitions are embedded in `src/lib/agent-definitions.ts` and written to `.pi/agents/*.md` at runtime. This ensures:
+**Canonical source:** `agents-pi/*.md` — edit these files to change Pi agent behavior.
 
-- Install-and-go: no manual file copying
-- Auto-updates on plugin version bumps
-- User customizations preserved (remove `managed_by: groundwork` to opt out)
+**Runtime:** `src/pi.ts` points pi-subagents at `agents-pi/` directly via `PI_SUBAGENTS_EXTRA_AGENTS_DIR`. No runtime preprocessing.
+
+**Embedded copy:** `src/lib/agent-definitions.generated.ts` is generated from `agents-pi/` (plus builtin `Explore`/`Plan` disable stubs). `src/lib/agent-definitions.ts` is a thin re-export layer. The embedded roster is intended for install-and-go writes to `.pi/agents/*.md` when `agent-setup` is wired.
+
+### Workflow
+
+1. Edit agent prompts/models in `agents-pi/<name>.md`
+2. Regenerate embedded definitions: `pnpm run generate:agents`
+3. Verify in CI/local check: `pnpm run check:agents` (also runs as part of `pnpm run check`)
+
+Do **not** hand-edit `src/lib/agent-definitions.generated.ts`.
+
+The Pi roster includes specialists such as `debugger`, `planner`, `critic`, `verifier`, `security-reviewer`, and `test-engineer`. `oracle` is intentionally disabled (`enabled: false` in `agents-pi/oracle.md`) because `advisor` covers that role.
+
+### OpenCode vs Pi
+
+- **OpenCode / Claude:** `agents/*.md` (Claude model IDs in `model:`)
+- **Pi:** `agents-pi/*.md` (Pi provider model strings in `model:`)
+
+Keep behavioral parity where agents exist on both sides; model fields will differ by design.
+
+This ensures:
+
+- Single source of truth per platform (`agents-pi/` for Pi)
+- Deterministic embedded sync via code generation
+- User customizations preserved in `.pi/agents/` (remove `managed_by: groundwork` to opt out of auto-updates)
 
 ## Frontmatter Mapping
 

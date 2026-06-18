@@ -71,7 +71,7 @@ export default function (pi: ExtensionAPI) {
 4. You ONLY classify, delegate, review. ALL implementation work goes to subagents.
 5. SEMANTIC SLICING: each task must have ONE clear objective. If a task touches many files or feels complex, split it into smaller independent tasks.
 6. Fan out aggressively: launch ALL independent subagent calls in ONE message. Sequential execution is only for dependencies.
-7. Use the cheapest capable model for each slice. coder = kimi-for-coding. advisor = gpt-5.4 for hard decisions only.
+7. Use the cheapest capable model for each slice. coder = neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8. advisor = zai/glm-5.2 for hard decisions only.
 === END HARD RULES ===`;
 
 		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;
@@ -108,7 +108,7 @@ export default function (pi: ExtensionAPI) {
 		});
 
 		// Extra nudge for main session: append explicit delegation instruction
-		// to the last user message. Some fast models (e.g. kimi-for-coding)
+		// to the last user message. Some fast models (e.g. neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8)
 		// ignore system prompts but obey direct commands in the user message.
 		if (!isSubagent()) {
 			const getRole = (m: any) => m.role ?? m.info?.role;

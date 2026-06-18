@@ -4,7 +4,9 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "check": "tsc --noEmit",
+    "generate:agents": "node --experimental-strip-types scripts/generate-agent-definitions.ts",
+    "check:agents": "node --experimental-strip-types scripts/generate-agent-definitions.ts --check",
+    "check": "pnpm run check:agents && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "patch-package"

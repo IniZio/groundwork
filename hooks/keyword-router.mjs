@@ -25,7 +25,7 @@ const ROUTES = [
       /\b(build .{0,40} from scratch|implement .{0,40} feature|create .{0,40} system|major feature|big feature|complex feature)\b/i,
       /\b(multi.?day|multi.?week|large.?scale|end.?to.?end system)\b/i,
     ],
-    hint: 'Route to `groundwork:planner` first to create a plan in .omc/plans/, then fan-out `groundwork:coder` tasks.',
+    hint: 'Route to `groundwork:planner` first to create a plan in .groundwork/plans/, then fan-out `groundwork:coder` tasks.',
   },
   {
     agents: ['groundwork:critic'],

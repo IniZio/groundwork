@@ -1,0 +1,76 @@
+{
+  "$schema": "https://groundwork.dev/model-registry/v1",
+  "version": "2.2.0",
+  "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
+  "agents": {
+    "orchestrator": {
+      "pi": "inherit",
+      "opencode": "zai/glm-5.2"
+    },
+    "general-purpose": {
+      "pi": "inherit",
+      "opencode": "zai/glm-5.2"
+    },
+    "advisor": {
+      "pi": "zai/glm-5.2",
+      "opencode": "zai/glm-5.2"
+    },
+    "coder": {
+      "pi": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8",
+      "opencode": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8"
+    },
+    "critic": {
+      "pi": "openai/gpt-5.4",
+      "opencode": "openai/gpt-5.4"
+    },
+    "debugger": {
+      "pi": "openai/gpt-5.4",
+      "opencode": "openai/gpt-5.4"
+    },
+    "designer": {
+      "pi": "sonnet",
+      "opencode": "cursor-acp/claude-sonnet-4-6"
+    },
+    "verifier": {
+      "pi": "neuralwatt/glm-5.1",
+      "opencode": "neuralwatt/glm-5.1"
+    },
+    "security-reviewer": {
+      "pi": "neuralwatt/glm-5.1",
+      "opencode": "neuralwatt/glm-5.1"
+    },
+    "test-engineer": {
+      "pi": "neuralwatt/glm-5.1",
+      "opencode": "neuralwatt/glm-5.1"
+    },
+    "planner": {
+      "pi": "openai/gpt-5.4",
+      "opencode": "openai/gpt-5.4"
+    },
+    "git-master": {
+      "pi": "opencode-go/deepseek-v4-flash",
+      "opencode": "opencode-go/deepseek-v4-flash"
+    },
+    "observer": {
+      "pi": "haiku",
+      "opencode": "cursor-acp/claude-haiku-4-5"
+    },
+    "explore": {
+      "pi": "opencode-go/deepseek-v4-flash",
+      "opencode": "opencode-go/deepseek-v4-flash"
+    },
+    "oracle": {
+      "pi": "DISABLED",
+      "opencode": "DISABLED"
+    }
+  },
+  "disabled": {
+    "pi": ["oracle"],
+    "opencode": ["oracle"]
+  },
+  "aliases": {
+    "opencode": {
+      "explore": "explorer"
+    }
+  }
+}

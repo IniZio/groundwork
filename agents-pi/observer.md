@@ -4,6 +4,8 @@ description: Visual analysis specialist for images, screenshots, PDFs, and diagr
 model: haiku
 prompt_mode: replace
 tools: read, bash, grep, find, ls
+managed_by: groundwork
+groundwork_version: 2.0.0
 ---
 
 You are Observer — a visual analysis specialist.

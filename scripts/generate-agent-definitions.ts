@@ -1,118 +1,85 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, basename } from "node:path";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 type Frontmatter = Record<string, unknown>;
 
-type AgentDefinition = {
+interface AgentSource {
+	name: string;
+	frontmatter: Frontmatter;
+	body: string;
+}
+
+interface PlatformModelEntry {
+	pi?: string;
+	opencode?: string;
+	[key: string]: string | undefined;
+}
+
+interface ModelRegistry {
+	agents: Record<string, PlatformModelEntry>;
+	disabled?: Record<string, string[] | undefined>;
+	aliases?: Record<string, Record<string, string> | undefined>;
+}
+
+interface AgentDefinition {
 	name: string;
 	version: string;
 	content: string;
-};
+}
+
+interface TransformedAgent {
+	outputName: string;
+	definitionName: string;
+	content: string;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PLATFORMS = ["pi", "opencode"] as const;
+type Platform = (typeof PLATFORMS)[number];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
-const agentsDir = join(rootDir, "agents-pi");
-const outputPath = join(rootDir, "src", "lib", "agent-definitions.generated.ts");
+const sourceAgentsDir = join(rootDir, "agents");
+const registryPath = join(rootDir, "model-registry.json");
 const packageJsonPath = join(rootDir, "package.json");
+const generatedTsPath = join(rootDir, "src", "lib", "agent-definitions.generated.ts");
+
 const shouldCheck = process.argv.includes("--check");
 
-function readPackageVersion(): string {
-	const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: string };
-	if (!pkg.version) throw new Error(`Missing version in ${packageJsonPath}`);
-	return pkg.version;
-}
+// Preferred frontmatter key order for generated output.
+const FRONTMATTER_ORDER = [
+	"name",
+	"description",
+	"model",
+	"thinking",
+	"mode",
+	"enabled",
+	"prompt_mode",
+	"tools",
+	"permission",
+	"managed_by",
+	"groundwork_version",
+];
 
-function splitFrontmatter(source: string): { frontmatter: Frontmatter; body: string } {
-	if (!source.startsWith("---\n")) {
-		throw new Error("Agent markdown must start with YAML frontmatter");
-	}
-
-	const end = source.indexOf("\n---\n", 4);
-	if (end === -1) {
-		throw new Error("Could not find closing YAML frontmatter delimiter");
-	}
-
-	const rawFrontmatter = source.slice(4, end);
-	const body = source.slice(end + 5);
-	const parsed = yaml.load(rawFrontmatter);
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new Error("Frontmatter must parse to an object");
-	}
-
-	return { frontmatter: parsed as Frontmatter, body };
-}
-
-function orderedFrontmatter(frontmatter: Frontmatter, version: string): Frontmatter {
-	const withManagedFields: Frontmatter = {
-		...frontmatter,
-		managed_by: "groundwork",
-		groundwork_version: version,
-	};
-
-	const preferredOrder = [
-		"name",
-		"description",
-		"model",
-		"thinking",
-		"mode",
-		"enabled",
-		"prompt_mode",
-		"tools",
-		"permission",
-		"managed_by",
-		"groundwork_version",
-	];
-
-	const ordered: Frontmatter = {};
-	for (const key of preferredOrder) {
-		if (key in withManagedFields) ordered[key] = withManagedFields[key];
-	}
-	for (const [key, value] of Object.entries(withManagedFields)) {
-		if (!(key in ordered)) ordered[key] = value;
-	}
-	return ordered;
-}
-
-function stringifyFrontmatter(frontmatter: Frontmatter): string {
-	return yaml.dump(frontmatter, {
-		lineWidth: -1,
-		noRefs: true,
-		quotingType: '"',
-		forceQuotes: false,
-	}).trimEnd();
-}
-
-function buildContent(frontmatter: Frontmatter, body: string, version: string): string {
-	const normalizedBody = body.replace(/^\n+/, "");
-	return `---\n${stringifyFrontmatter(orderedFrontmatter(frontmatter, version))}\n---\n\n${normalizedBody}`;
-}
-
-function escapeTemplateLiteral(text: string): string {
-	return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
-}
-
-function readAgentDefinitions(version: string): AgentDefinition[] {
-	const entries = readdirSync(agentsDir, { withFileTypes: true })
-		.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-		.map((entry) => entry.name)
-		.sort();
-
-	const names = new Set<string>();
-	const definitions = entries.map((fileName) => {
-		const source = readFileSync(join(agentsDir, fileName), "utf8");
-		const { frontmatter, body } = splitFrontmatter(source);
-		const name = typeof frontmatter.name === "string" ? frontmatter.name : basename(fileName, ".md");
-		if (names.has(name)) throw new Error(`Duplicate agent name: ${name}`);
-		names.add(name);
-		return {
-			name,
-			version,
-			content: buildContent(frontmatter, body, version),
-		};
-	});
-
+// ─── pi built-in overrides ───────────────────────────────────────────────────
+// Suppress pi's built-in `Explore` and `Plan` agents. These are NOT part of the
+// model-neutral source set (agents/*.md) and are never written to the filesystem;
+// they appear only in the pi branch of the embedded TS. opencode has no such
+// built-ins to suppress (it uses the explore→explorer file alias instead).
+// Kept per advisor-gate decision to preserve runtime behavior.
+function piBuiltinOverrides(version: string): AgentDefinition[] {
 	return [
 		{
 			name: "Explore",
@@ -124,45 +91,331 @@ function readAgentDefinitions(version: string): AgentDefinition[] {
 			version,
 			content: `---\nenabled: false\nmanaged_by: groundwork\ngroundwork_version: "${version}"\n---\n\nDisabled by groundwork.\n`,
 		},
-		...definitions,
 	];
 }
 
-function renderModule(version: string, definitions: AgentDefinition[]): string {
-	const items = definitions
-		.map(
-			(def) => `\t{\n\t\tname: ${JSON.stringify(def.name)},\n\t\tversion: ${JSON.stringify(def.version)},\n\t\tcontent: \`${escapeTemplateLiteral(def.content)}\`,\n\t},`,
-		)
-		.join("\n\n");
+// ─── Loaders ─────────────────────────────────────────────────────────────────
 
-	return `// AUTO-GENERATED by scripts/generate-agent-definitions.ts
-// Do not edit this file directly. Edit agents-pi/*.md and re-run \`pnpm run generate:agents\`.
+function readPackageVersion(): string {
+	const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: string };
+	if (!pkg.version) throw new Error(`Missing version in ${packageJsonPath}`);
+	return pkg.version;
+}
+
+function loadRegistry(): ModelRegistry {
+	const raw = JSON.parse(readFileSync(registryPath, "utf8")) as ModelRegistry;
+	if (!raw.agents || typeof raw.agents !== "object") {
+		throw new Error(`Registry missing "agents" object: ${registryPath}`);
+	}
+	return raw;
+}
+
+function splitFrontmatter(source: string, fileName: string): { frontmatter: Frontmatter; body: string } {
+	if (!source.startsWith("---\n")) {
+		throw new Error(`${fileName}: markdown must start with YAML frontmatter`);
+	}
+	const end = source.indexOf("\n---\n", 4);
+	if (end === -1) {
+		throw new Error(`${fileName}: could not find closing YAML frontmatter delimiter`);
+	}
+	const raw = source.slice(4, end);
+	const body = source.slice(end + 5);
+	const parsed = yaml.load(raw);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new Error(`${fileName}: frontmatter must parse to an object`);
+	}
+	return { frontmatter: parsed as Frontmatter, body };
+}
+
+function loadAgentSources(): Map<string, AgentSource> {
+	const entries = readdirSync(sourceAgentsDir, { withFileTypes: true })
+		.filter((e) => e.isFile() && e.name.endsWith(".md"))
+		.map((e) => e.name)
+		.sort();
+
+	const map = new Map<string, AgentSource>();
+	for (const fileName of entries) {
+		const source = readFileSync(join(sourceAgentsDir, fileName), "utf8");
+		const { frontmatter, body } = splitFrontmatter(source, fileName);
+		const name = typeof frontmatter.name === "string" ? frontmatter.name : basename(fileName, ".md");
+		map.set(basename(fileName, ".md"), { name, frontmatter, body });
+	}
+	return map;
+}
+
+function validateRegistry(sources: Map<string, AgentSource>, registry: ModelRegistry): void {
+	const registryNames = new Set(Object.keys(registry.agents));
+	const sourceNames = new Set(sources.keys());
+
+	for (const name of sourceNames) {
+		if (!registryNames.has(name)) {
+			throw new Error(`Source agent "${name}" has no entry in model-registry.json`);
+		}
+	}
+	for (const name of registryNames) {
+		if (!sourceNames.has(name)) {
+			throw new Error(`Registry agent "${name}" has no source file in agents/`);
+		}
+	}
+}
+
+// ─── Per-platform transformation ─────────────────────────────────────────────
+
+function platformModel(registry: ModelRegistry, name: string, platform: Platform): string {
+	const entry = registry.agents[name];
+	const model = entry?.[platform];
+	if (model === undefined) {
+		throw new Error(`Registry missing ${platform} model for agent "${name}"`);
+	}
+	return model;
+}
+
+function isDisabled(registry: ModelRegistry, name: string, platform: Platform, model: string): boolean {
+	const disabledList = registry.disabled?.[platform] ?? [];
+	return disabledList.includes(name) || model === "DISABLED";
+}
+
+function platformAlias(registry: ModelRegistry, name: string, platform: Platform): string | undefined {
+	return registry.aliases?.[platform]?.[name];
+}
+
+function transformForPlatform(
+	src: AgentSource,
+	registry: ModelRegistry,
+	platform: Platform,
+	version: string,
+): TransformedAgent {
+	const model = platformModel(registry, src.name, platform);
+	const disabled = isDisabled(registry, src.name, platform, model);
+	const alias = platformAlias(registry, src.name, platform);
+
+	const fm: Frontmatter = { ...src.frontmatter };
+
+	if (disabled) {
+		fm.enabled = false;
+	}
+	// DISABLED models omit the model field; otherwise inject the registry model.
+	if (model !== "DISABLED") {
+		fm.model = model;
+	} else {
+		delete fm.model;
+	}
+
+	// Apply alias so output filename stem == frontmatter `name` == platform identity.
+	const definitionName = alias ?? src.name;
+	if (alias) {
+		fm.name = alias;
+	}
+
+	fm.managed_by = "groundwork";
+	fm.groundwork_version = version;
+
+	return {
+		outputName: `${definitionName}.md`,
+		definitionName,
+		content: buildFileContent(fm, src.body),
+	};
+}
+
+function generatePlatformFiles(
+	sources: Map<string, AgentSource>,
+	registry: ModelRegistry,
+	platform: Platform,
+	version: string,
+): Map<string, string> {
+	const files = new Map<string, string>();
+	for (const src of sources.values()) {
+		const t = transformForPlatform(src, registry, platform, version);
+		files.set(t.outputName, t.content);
+	}
+	return files;
+}
+
+// ─── Frontmatter rendering ───────────────────────────────────────────────────
+
+function orderedFrontmatter(fm: Frontmatter): Frontmatter {
+	const ordered: Frontmatter = {};
+	for (const key of FRONTMATTER_ORDER) {
+		if (key in fm) ordered[key] = fm[key];
+	}
+	for (const [key, value] of Object.entries(fm)) {
+		if (!(key in ordered)) ordered[key] = value;
+	}
+	return ordered;
+}
+
+function stringifyFrontmatter(fm: Frontmatter): string {
+	return yaml
+		.dump(fm, {
+			lineWidth: -1,
+			noRefs: true,
+			quotingType: '"',
+			forceQuotes: false,
+		})
+		.trimEnd();
+}
+
+function buildFileContent(frontmatter: Frontmatter, body: string): string {
+	const normalizedBody = body.replace(/^\n+/, "");
+	return `---\n${stringifyFrontmatter(orderedFrontmatter(frontmatter))}\n---\n\n${normalizedBody}`;
+}
+
+// ─── Filesystem sync ─────────────────────────────────────────────────────────
+
+function listGeneratedMdFiles(dir: string): string[] {
+	if (!existsSync(dir)) return [];
+	return readdirSync(dir, { withFileTypes: true })
+		.filter((e) => e.isFile() && e.name.endsWith(".md"))
+		.map((e) => e.name);
+}
+
+interface SyncReport {
+	missing: string[];
+	stale: string[];
+	extraneous: string[];
+}
+
+function diffDir(dir: string, expected: Map<string, string>): SyncReport {
+	const report: SyncReport = { missing: [], stale: [], extraneous: [] };
+	const existing = new Set(listGeneratedMdFiles(dir));
+	for (const [fileName, content] of expected) {
+		const filePath = join(dir, fileName);
+		if (!existsSync(filePath)) {
+			report.missing.push(fileName);
+		} else if (readFileSync(filePath, "utf8") !== content) {
+			report.stale.push(fileName);
+		}
+	}
+	for (const fileName of existing) {
+		if (!expected.has(fileName)) {
+			report.extraneous.push(fileName);
+		}
+	}
+	return report;
+}
+
+function writeDir(dir: string, expected: Map<string, string>): { written: number; removed: string[] } {
+	const existing = new Set(listGeneratedMdFiles(dir));
+	mkdirSync(dir, { recursive: true });
+	for (const [fileName, content] of expected) {
+		writeFileSync(join(dir, fileName), content);
+	}
+	const removed: string[] = [];
+	for (const fileName of existing) {
+		if (!expected.has(fileName)) {
+			rmSync(join(dir, fileName));
+			removed.push(fileName);
+		}
+	}
+	return { written: expected.size, removed };
+}
+
+// ─── Embedded TS rendering ───────────────────────────────────────────────────
+
+function escapeTemplateLiteral(text: string): string {
+	return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+function renderDefinition(def: AgentDefinition): string {
+	return `\t{\n\t\tname: ${JSON.stringify(def.name)},\n\t\tversion: ${JSON.stringify(def.version)},\n\t\tcontent: \`${escapeTemplateLiteral(def.content)}\`,\n\t},`;
+}
+
+function toDefinitions(
+	sources: Map<string, AgentSource>,
+	registry: ModelRegistry,
+	platform: Platform,
+	version: string,
+): AgentDefinition[] {
+	const defs: AgentDefinition[] = [];
+	for (const src of sources.values()) {
+		const t = transformForPlatform(src, registry, platform, version);
+		defs.push({ name: t.definitionName, version, content: t.content });
+	}
+	return defs;
+}
+
+function renderModule(version: string, piDefs: AgentDefinition[], opencodeDefs: AgentDefinition[]): string {
+	const piItems = [...piBuiltinOverrides(version), ...piDefs].map(renderDefinition).join("\n\n");
+	const opencodeItems = opencodeDefs.map(renderDefinition).join("\n\n");
+
+	return `// AUTO-GENERATED. Do not edit. Run: pnpm run generate:agents
+// Source: agents/*.md (model-neutral) + model-registry.json → agents-pi/, agents-opencode/, and this file.
 
 import type { AgentDefinition } from "./agent-definitions.js";
 
 export const GROUNDWORK_VERSION = ${JSON.stringify(version)};
 
-export const EMBEDDED_AGENTS: AgentDefinition[] = [
-${items}
+export const EMBEDDED_AGENTS_PI: AgentDefinition[] = [
+${piItems}
 ];
+
+export const EMBEDDED_AGENTS_OPENCODE: AgentDefinition[] = [
+${opencodeItems}
+];
+
+// Backward-compat alias (pi is the primary platform).
+export const EMBEDDED_AGENTS: AgentDefinition[] = EMBEDDED_AGENTS_PI;
 `;
 }
 
-function main() {
+// ─── Main ────────────────────────────────────────────────────────────────────
+
+function main(): void {
 	const version = readPackageVersion();
-	const rendered = renderModule(version, readAgentDefinitions(version));
+	const registry = loadRegistry();
+	const sources = loadAgentSources();
+	validateRegistry(sources, registry);
+
+	const drift: string[] = [];
+
+	for (const platform of PLATFORMS) {
+		const dir = join(rootDir, `agents-${platform}`);
+		const expected = generatePlatformFiles(sources, registry, platform, version);
+
+		if (shouldCheck) {
+			const report = diffDir(dir, expected);
+			const problems = [
+				...report.missing.map((f) => `${f} (missing)`),
+				...report.stale.map((f) => `${f} (stale)`),
+				...report.extraneous.map((f) => `${f} (extraneous)`),
+			];
+			if (problems.length > 0) {
+				drift.push(`agents-${platform}/: ${problems.join(", ")}`);
+			}
+		} else {
+			const result = writeDir(dir, expected);
+			console.log(`agents-${platform}/: wrote ${result.written} files`);
+			if (result.removed.length > 0) {
+				console.log(`  removed stale: ${result.removed.join(", ")}`);
+			}
+		}
+	}
+
+	const piDefs = toDefinitions(sources, registry, "pi", version);
+	const opencodeDefs = toDefinitions(sources, registry, "opencode", version);
+	const rendered = renderModule(version, piDefs, opencodeDefs);
 
 	if (shouldCheck) {
-		const current = readFileSync(outputPath, "utf8");
-		if (current !== rendered) {
-			console.error(`Generated file is stale: ${outputPath}`);
+		if (!existsSync(generatedTsPath)) {
+			drift.push(`${generatedTsPath} (missing)`);
+		} else if (readFileSync(generatedTsPath, "utf8") !== rendered) {
+			drift.push(`${generatedTsPath} (stale)`);
+		}
+		if (drift.length > 0) {
+			console.error("Agent definition drift detected:\n  - " + drift.join("\n  - "));
+			console.error("\nRun `pnpm run generate:agents` to regenerate.");
 			process.exitCode = 1;
+		} else {
+			console.log("All agent definitions in sync.");
 		}
 		return;
 	}
 
-	mkdirSync(dirname(outputPath), { recursive: true });
-	writeFileSync(outputPath, rendered);
+	mkdirSync(dirname(generatedTsPath), { recursive: true });
+	writeFileSync(generatedTsPath, rendered);
+	console.log(
+		`${generatedTsPath}: regenerated (pi=${piDefs.length + 2} incl. built-in overrides, opencode=${opencodeDefs.length})`,
+	);
 }
 
 main();

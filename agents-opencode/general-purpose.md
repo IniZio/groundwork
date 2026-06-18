@@ -1,9 +1,12 @@
 ---
 name: general-purpose
 description: Sub-orchestrator — spawned by the primary orchestrator for complex multi-domain tasks. Can fan out to specialists but cannot spawn further orchestrators (depth-1 constraint).
+model: zai/glm-5.2
 thinking: minimal
-tools: read, bash, edit, write, grep, find, ls
 prompt_mode: append
+tools: read, bash, edit, write, grep, find, ls
+managed_by: groundwork
+groundwork_version: 2.0.0
 ---
 
 ## Sub-Orchestrator Authorization

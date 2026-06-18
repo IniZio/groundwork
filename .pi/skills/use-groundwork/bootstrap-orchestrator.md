@@ -162,7 +162,9 @@ RIGHT:  pty_spawn "gh pr checks --watch" → pty_read on completion notification
 
 ### Fan-Out Maximization (Ultrawork Mode)
 
-**The orchestrator MUST maximize parallel task dispatch. EXTREME fan-out is the #1 lever for velocity. Reference: oh-my-claude ultrawork pattern.**
+**The orchestrator MUST maximize parallel task dispatch. EXTREME fan-out is the #1 lever for velocity. Reference: oh-my-claude ultrawork pattern. ALL fan-out `task` calls MUST include `background: true`.**
+
+Background tasks return immediately with `<task id="..." state="running">` — they do NOT block the orchestrator. The orchestrator receives a completion notification per task as each finishes, then collects the result. This native opencode pattern (v1.15.13+) replaces all older synchronous fan-out.
 
 Fan-out targets by specialist type (mix freely in the same wave):
 
@@ -177,14 +179,14 @@ Fan-out targets by specialist type (mix freely in the same wave):
 1. **Each task must have ONE clear objective.** "Create auth middleware" is good. "Create auth middleware + login endpoint + logout endpoint" is bad — split into 3 tasks.
 2. **If a task feels complex or touches many files, split it.** There is no magic LOC limit. Use your judgment: if describing the task takes more than 2 sentences, it is probably too big.
 3. **Within a wave, launch ALL independent tasks simultaneously.** Never wait for Task A before launching Task B if they don't share code.
-4. **Sequential execution is only for dependencies.** If Task B needs output from Task A, they're in different waves. Everything else is parallel.
+4. **Sequential execution is only for dependencies.** If Task B needs output from Task A, they're in different waves. Both waves still use `background: true` — the orchestrator waits for Task A's completion notification before launching Task B.
 5. **Fan-out first, review second.** Launch everything in parallel, then review all outputs together.
-6. **Send ALL parallel `subagent` calls in ONE message.** Never send subagent calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
+6. **Send ALL parallel `task` calls in ONE message — and every one of them MUST have `background: true`.** Never send task calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
 7. **Use the right model for each slice.** coder uses `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (bounded implementation). Only escalate to advisor (`zai/glm-5.2`) for hard architectural decisions.
 
 **Pre-Delegation Planning (MANDATORY) — inspired by oh-my-claude:**
 
-Before EVERY `subagent` call, DECLARE:
+Before EVERY `task(..., background=true)` call, DECLARE:
 
 ```
 I will delegate with:
@@ -193,23 +195,29 @@ I will delegate with:
 - **Expected Outcome**: [success criteria]
 ```
 
-THEN make the subagent call. Vague delegation is rejected. Exhaustiveness is required.
+THEN make the background task call. Vague delegation is rejected. Exhaustiveness is required.
 
 ```
-# GOOD: Fan out mixed specialists simultaneously
-task(description="Explore auth module", prompt="...", subagent_type="explore")
-task(description="Explore user model", prompt="...", subagent_type="explore")
-task(description="Slice 1: auth flow", prompt="...", subagent_type="coder")
-task(description="Slice 2: user profile", prompt="...", subagent_type="coder")
-task(description="Slice 3: settings page", prompt="...", subagent_type="coder")
-task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
-task(description="Slice 5: notifications logic", prompt="...", subagent_type="coder")
-task(description="Before/after comparison", prompt="...", subagent_type="observer")
-# All launch at once — each uses the right specialist
+# GOOD: Fan out mixed specialists simultaneously, all with background: true
+task(description="Explore auth module",   prompt="...", subagent_type="explore",    background=true)
+task(description="Explore user model",    prompt="...", subagent_type="explore",    background=true)
+task(description="Slice 1: auth flow",    prompt="...", subagent_type="coder",      background=true)
+task(description="Slice 2: user profile", prompt="...", subagent_type="coder",      background=true)
+task(description="Slice 3: settings page", prompt="...", subagent_type="coder",     background=true)
+task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer", background=true)
+task(description="Slice 5: notifications logic", prompt="...", subagent_type="coder", background=true)
+task(description="Before/after comparison", prompt="...", subagent_type="observer", background=true)
+# All launch at once — each returns <task id="..." state="running"> immediately (non-blocking)
+# Orchestrator is notified per-task on completion
 
-# BAD: Sequential — never do this
+# BAD: Sequential across messages — never do this
 task(description="Slice 1", ...) → wait → task(description="Slice 2", ...) → wait → ...
+
+# BAD: Forgot background: true — blocks the orchestrator, breaks fan-out
+task(description="Slice 1", prompt="...", subagent_type="coder")
 ```
+
+**Do NOT use the removed custom tools `background_task` / `background_output`** — they have been removed. Use the native `task` tool with `background: true`.
 
 The wrong pattern is the most common failure mode. It feels natural to "just do it" but it sacrifices velocity and quality.
 
@@ -217,38 +225,105 @@ The wrong pattern is the most common failure mode. It feels natural to "just do 
 
 ## Subagent Task Quick Reference
 
-Use the builtin `task` tool to delegate work to subagents:
+Use the builtin `task` tool with `background: true` to delegate work to subagents. **ALL fan-out `task` calls MUST include `background: true` — no exceptions.**
 
 ```
-task(description="...", prompt="...", subagent_type="explore")  → Launch and wait for result
+# Background task — returns immediately, non-blocking
+task(description="...", prompt="...", subagent_type="explore", background=true)
+# → returns <task id="..." state="running"> immediately
 ```
 
 **Workflow:**
 
-1. Launch with `task` — the tool blocks until the subagent completes and returns the result directly
-2. You can launch MULTIPLE tasks in parallel for max throughput by calling `task` multiple times without waiting
+1. Launch with `task(..., background=true)` — returns immediately with `<task id="..." state="running">` and does NOT block the orchestrator
+2. Launch MULTIPLE background tasks in parallel for max throughput — fan out in a SINGLE message
+3. The orchestrator receives a **completion notification** when each background task finishes — collect the result from the notification
+4. Sequential dependencies: STILL use `background: true` — wait for the prior task's completion notification before launching the next wave
 
 ### Task Status States
 
 Tasks can be in one of the following states:
 
-- `running` — Task is currently executing
+- `running` — Task is currently executing (initial state right after launch)
 - `completed` — Task finished successfully
 - `failed` — Task encountered an error
 
 ### Error Handling and Retry Patterns
 
-When a task fails:
+When a task fails (delivered via completion notification):
 
 - **Check for errors**: Always inspect the result for error details before using the output
 - **Retry vs Cancel**: Retry a task if the failure appears transient (e.g., network timeout, temporary resource unavailability). Cancel if the failure is persistent or indicates a fundamental issue
 
 ### Best Practices
 
+- **ALWAYS specify `background: true`** — synchronous `task` calls block the orchestrator and break fan-out
 - **Always specify descriptive `description` parameters** for task tracking
-- **Prefer parallel task launches over sequential** when dependencies allow. Parallel execution significantly reduces total completion time
+- **Prefer parallel background task launches over sequential** when dependencies allow. Parallel execution significantly reduces total completion time
 - **Include timeout parameters** for tasks that might hang to prevent indefinite execution
-- **Respond to user messages while tasks run.** If the user sends a message while you're waiting on tasks, answer them immediately
+- **Respond to user messages while tasks run.** Background tasks are non-blocking — answer the user immediately if they message you mid-wave
+
+### Removed Custom Tools — DO NOT USE
+
+The custom `background_task` and `background_output` tools have been **removed**. Use the native `task` tool with the `background: true` parameter instead. Any reference to those tool names is obsolete.
+
+### Sub-Orchestrator Delegation (Nested Orchestration)
+
+For complex multi-domain tasks, the primary orchestrator can spawn **sub-orchestrators** via `general-purpose` agent type. Each sub-orchestrator gets its own context window and can fan out to specialists independently.
+
+#### Dispatch Pattern
+```
+task(description="Sub-orch: auth domain", prompt="...", subagent_type="general-purpose", background=true)
+task(description="Sub-orch: payments domain", prompt="...", subagent_type="general-purpose", background=true)
+task(description="Sub-orch: UI domain", prompt="...", subagent_type="general-purpose", background=true)
+```
+All launch simultaneously. Each returns `<task id="..." state="running">`. You get notified per sub-orchestrator on completion.
+
+#### WHEN to Use Sub-Orchestrators (Routing Rules)
+
+Use sub-orchestrators when ANY of these are true:
+- **Domain threshold**: The task spans ≥3 independent sub-domains (e.g., auth + payments + UI)
+- **Slice overflow**: A single wave would have >15 slices — group by domain, assign each to a sub-orchestrator
+- **Multi-wave sub-tasks**: A sub-problem needs its own Wave 0 → Wave 1 → Wave 2 sequence
+- **Context budget**: Delegating all slices directly would consume too much orchestrator context for review
+
+Do NOT use sub-orchestrators when:
+- Single-domain task → delegate directly to the specialist (coder, explore, etc.)
+- Task fits in one wave (≤15 slices) → fan out specialists directly
+- Simple delegation → no orchestration layer needed
+- The sub-task is trivial (< 3 files, < 1h) → just use a single coder
+
+#### Domain Decomposition Pattern
+
+When using sub-orchestrators, decompose by DOMAIN not by layer:
+
+```
+# GOOD — domain decomposition (each sub-orch owns a vertical slice)
+Sub-orch 1 (auth):     → coder×3 (login, signup, password reset) + explore×1 + advisor×1
+Sub-orch 2 (payments): → coder×3 (checkout, billing, invoices) + explore×1
+Sub-orch 3 (UI):       → designer×2 (dashboard, settings) + coder×1 (wiring)
+
+# BAD — layer decomposition (creates serialization bottlenecks)
+Sub-orch 1 (all types):  → coder (defines all types)
+Sub-orch 2 (all logic):  → coder (all business logic, waits for types)
+Sub-orch 3 (all UI):     → designer (all UI, waits for logic)
+```
+
+Each sub-orchestrator should own a COMPLETE vertical slice — types + logic + surface + tests for ONE domain.
+
+#### Coordination Protocol
+
+1. **Launch all sub-orchestrators simultaneously** in ONE message with `background: true`
+2. **Each sub-orchestrator** independently: decomposes → fans out specialists → collects results → returns summary
+3. **Primary orchestrator** receives completion notifications, reviews each sub-orchestrator's output
+4. **Integration wave**: After all sub-orchestrators complete, the primary orchestrator may need a final wave to integrate cross-domain work (e.g., wiring auth tokens into payment calls)
+
+#### Depth-1 Enforcement
+
+Sub-orchestrators CANNOT spawn further orchestrators:
+- `general-purpose` agent permissions in opencode.json: `task: {orchestrator: deny, general-purpose: deny}`
+- This is a HARD permission boundary — sub-orchestrators physically cannot recurse
+- Maximum orchestration depth: 2 levels (primary + 1 sub-orchestrator layer)
 
 ---
 
@@ -394,6 +469,8 @@ Every subagent task automatically gets a preamble prepended: `[SUBAGENT TASK RUL
 - Return final result in last message
 
 This is the **soft prevention** layer. The **hard deny** layer in each specialist agent's frontmatter (`permission.question: deny`) catches any agent that ignores the preamble.
+
+**Exception — Sub-Orchestrators:** The `general-purpose` agent is explicitly exempt from the task-block rule. Its opencode.json permission allows `task: {*: allow}`, and its agent definition authorizes specialist delegation. When you task a `general-purpose` subagent, it CAN and SHOULD use `task()` to fan out to specialists.
 
 ---
 

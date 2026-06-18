@@ -98,19 +98,31 @@ ctx_batch_execute(
 
 ## Fan-out — the #1 lever
 
-**ALL parallel Task calls in ONE message. NEVER sequential across messages.**
+**ALL `task` calls for fan-out delegations MUST include `background: true`. NO EXCEPTIONS.**
+
+Background tasks return immediately with `<task id="..." state="running">` — they do NOT block the orchestrator. The orchestrator receives a completion notification when each background task finishes, then collects the result. This is the native opencode pattern (v1.15.13+) and replaces all older synchronous fan-out.
+
+**ALL parallel background task calls in ONE message. NEVER sequential across messages.**
 
 ```
-# GOOD — all fire simultaneously
-Task(subagent_type="Explore", prompt="...auth module...")
-Task(subagent_type="Explore", prompt="...user model...")
-Task(subagent_type="groundwork:coder", prompt="...slice 1: auth flow...")
-Task(subagent_type="groundwork:coder", prompt="...slice 2: user profile...")
-Task(subagent_type="groundwork:coder", prompt="...slice 3: settings page...")
+# GOOD — all fire simultaneously, each with background: true
+Task(subagent_type="Explore",          prompt="...auth module...",        background=true)
+Task(subagent_type="Explore",          prompt="...user model...",         background=true)
+Task(subagent_type="groundwork:coder", prompt="...slice 1: auth flow...", background=true)
+Task(subagent_type="groundwork:coder", prompt="...slice 2: user profile...", background=true)
+Task(subagent_type="groundwork:coder", prompt="...slice 3: settings page...", background=true)
+# Each returns <task id="..." state="running"> immediately. Orchestrator gets notified per-task on completion.
 
-# BAD — sequential, never do this
+# BAD — sequential across messages, NEVER do this
 Task(coder, "slice 1") → wait → Task(coder, "slice 2") → wait → ...
+
+# BAD — forgot background: true (blocks the orchestrator), NEVER do this
+Task(subagent_type="groundwork:coder", prompt="...slice 1...")
 ```
+
+**Sequential dependencies STILL use `background: true`.** When Slice B depends on Slice A's output, both launch with `background: true` — the orchestrator simply waits for Slice A's completion notification before launching Slice B in the next wave.
+
+**Do NOT use the removed custom tools `background_task` / `background_output`** — they have been removed. Use the native `task` tool with `background: true`.
 
 Fan-out targets per wave:
 - `coder`: 5–20 tasks (as many as the plan decomposes into)
@@ -130,6 +142,7 @@ Subagents do NOT inherit session history. Each Task must be self-contained:
 ```
 Task(
   subagent_type="groundwork:coder",
+  background=true,
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
@@ -167,6 +180,37 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 - Interactive Q&A with user (AskUserQuestion)
 - Review subagent output for correctness
 - Invoke skills and manage workflow state
+
+---
+
+## Sub-Orchestrator Delegation (Nested Orchestration)
+
+For complex multi-domain tasks, you MAY delegate to **sub-orchestrators** via `task(subagent_type="general-purpose", background=true)`.
+
+### When to Use Sub-Orchestrators
+- Task spans ≥3 independent sub-domains (e.g., auth + payments + UI)
+- A single wave would have >15 slices — group by domain
+- A sub-problem needs its own multi-wave orchestration sequence
+- Direct delegation would consume too much context for review
+
+### When NOT to Use
+- Single-domain task → delegate directly to specialist
+- Task fits in one wave (≤15 slices) → fan out directly
+- Trivial sub-task (<3 files) → single coder
+
+### Domain Decomposition (not layer decomposition)
+Each sub-orchestrator owns a COMPLETE vertical slice for ONE domain:
+```
+Sub-orch 1 (auth):     → coder×3 + explore×1 + advisor×1
+Sub-orch 2 (payments): → coder×3 + explore×1
+Sub-orch 3 (UI):       → designer×2 + coder×1
+```
+
+### Depth-1 Constraint (HARD-ENFORCED)
+- Primary orchestrator CAN task `general-purpose` sub-orchestrators
+- Sub-orchestrators CANNOT task `orchestrator` or `general-purpose` — denied by opencode.json permissions
+- Sub-orchestrators CAN task all specialists: coder, explore, advisor, designer, observer, etc.
+- Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
 
 ---
 

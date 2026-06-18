@@ -1,10 +1,13 @@
 ---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
+model: zai/glm-5.2
 thinking: minimal
 mode: primary
 prompt_mode: append
 tools: read, bash, edit, write, grep, find, ls
+managed_by: groundwork
+groundwork_version: 2.0.0
 ---
 
 # Orchestrator

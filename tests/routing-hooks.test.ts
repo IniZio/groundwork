@@ -73,6 +73,12 @@ describe('keyword-router: bug signals → debugger', () => {
   test('"debug" keyword', () => {
     expect(context('debug why the cache is not invalidating')).toContain('groundwork:debugger')
   })
+
+  test('debugger hint mentions diagnose skill FIRST', () => {
+    const ctx = context('fix the login bug')
+    expect(ctx).toContain('diagnose')
+    expect(ctx).toContain('FIRST')
+  })
 })
 
 describe('keyword-router: feature signals → planner', () => {
@@ -176,6 +182,78 @@ describe('keyword-router: advisor signals', () => {
 
   test('"should we use" phrase', () => {
     expect(context('should we use Redis or Memcached?')).toContain('groundwork:advisor')
+  })
+})
+
+describe('keyword-router: advisor gate/completion signals → advisor', () => {
+  test('"advisor gate" phrase', () => {
+    expect(context('run the advisor gate before we proceed')).toContain('groundwork:advisor')
+  })
+
+  test('"completion gate" phrase', () => {
+    expect(context('completion gate check for this task')).toContain('groundwork:advisor')
+  })
+
+  test('"declare done" phrase', () => {
+    expect(context('declare done and move on')).toContain('groundwork:advisor')
+  })
+
+  test('"mark as complete" phrase', () => {
+    expect(context('mark as complete once tests pass')).toContain('groundwork:advisor')
+  })
+
+  test('"all done" phrase', () => {
+    expect(context('all done with the implementation')).toContain('groundwork:advisor')
+  })
+
+  test('"ready for review" phrase', () => {
+    expect(context('ready for review whenever you are')).toContain('groundwork:advisor')
+  })
+
+  test('"run the advisor gate" phrase', () => {
+    expect(context('run the advisor gate before declaring done')).toContain('groundwork:advisor')
+  })
+
+  test('"completion gate check" phrase', () => {
+    expect(context('completion gate check for this task')).toContain('groundwork:advisor')
+  })
+
+  test('"task complete" phrase', () => {
+    expect(context('task complete and ready to ship')).toContain('groundwork:advisor')
+  })
+})
+
+describe('keyword-router: completion/verification signals → verifier', () => {
+  test('"is it done?" phrase', () => {
+    expect(context('is it done?')).toContain('groundwork:verifier')
+  })
+
+  test('"verify this" phrase', () => {
+    expect(context('verify this works correctly')).toContain('groundwork:verifier')
+  })
+
+  test('"ship it" phrase', () => {
+    expect(context('ship it to production')).toContain('groundwork:verifier')
+  })
+
+  test('"are we done" phrase', () => {
+    expect(context('are we done yet?')).toContain('groundwork:verifier')
+  })
+
+  test('"can we merge" phrase', () => {
+    expect(context('can we merge this PR?')).toContain('groundwork:verifier')
+  })
+
+  test('"ready to ship" phrase', () => {
+    expect(context('ready to ship the feature')).toContain('groundwork:verifier')
+  })
+
+  test('"verify this works" phrase', () => {
+    expect(context('verify this works correctly')).toContain('groundwork:verifier')
+  })
+
+  test('"validate this output" phrase', () => {
+    expect(context('validate this output before merging')).toContain('groundwork:verifier')
   })
 })
 

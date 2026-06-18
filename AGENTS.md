@@ -25,14 +25,14 @@ This package supports both **OpenCode** and **Pi** from a single model-neutral s
     "coder":   { "pi": "neuralwatt/Qwen/...",  "opencode": "neuralwatt/Qwen/..." }
   },
   "disabled": { "pi": [], "opencode": [] },
-  "aliases":  { "opencode": { "explore": "explorer" } }
+  "aliases":  { "pi": {}, "opencode": {} }
 }
 ```
 
 The registry also carries:
 
 - **`disabled`** — per-platform array of agent names to suppress.
-- **`aliases`** — per-platform rename map. The source file stays `agents/explore.md`, but on opencode it is emitted as `explorer.md` to match opencode's native agent name.
+- **`aliases`** — per-platform rename map (currently empty). An entry like `{ "opencode": { "old-name": "new-name" } }` would emit `agents/old-name.md` as `new-name.md` on opencode.
 
 ### Codegen pipeline
 
@@ -79,7 +79,7 @@ The following are **generated** — never edit them directly:
 | Model assignment | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` |
 | Generated dir | `agents-pi/` | `agents-opencode/` |
 | Runtime entry | `src/pi.ts` | `.opencode/plugins/groundwork.js` |
-| Aliases applied | no | yes (`explore` → `explorer`) |
+| Aliases applied | no | yes (currently none) |
 
 Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes specialists such as `debugger`, `planner`, `critic`, `verifier`, and `test-engineer`.
 

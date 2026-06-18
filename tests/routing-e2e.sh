@@ -194,6 +194,28 @@ test_routing \
   "Should we use REST or GraphQL for the new mobile API? What are the trade-offs?" \
   "groundwork:advisor"
 
+# Advisor completion gate signals
+test_routing \
+  "advisor: completion gate" \
+  "Run the advisor gate — we need to declare done on this task" \
+  "groundwork:advisor"
+
+test_routing \
+  "advisor: mark as complete" \
+  "We are all done — mark as complete and run the completion gate" \
+  "groundwork:advisor"
+
+# Verifier — completion verification
+test_routing \
+  "verifier: is it done" \
+  "Is it done? Can you verify this works and show evidence before we ship it?" \
+  "groundwork:verifier"
+
+test_routing \
+  "verifier: can we merge" \
+  "Can we merge this? Are all tests passing and does it pass the completion check?" \
+  "groundwork:verifier"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo ""

@@ -101,6 +101,8 @@ When invoked as an advisor gate (decision gate or completion gate), use this for
 Type: PLAN | CORRECTION | STOP | APPROVE | GAPS
 Decision: <single clear recommendation, 2-3 sentences max>
 Rationale: <why — brief, anchored to specific code/requirements>
+Axes: correctness <0-3> · completeness <0-3> · over_engineering <0-3>   (completion gate only)
+Citation: <file:line or construct, or 'none'>                           (required for CORRECTION/STOP/GAPS)
 Actions:
 1. <step one>
 2. <step two>
@@ -108,6 +110,8 @@ Risks to watch:
 - <risk>
 Effort: Quick | Short | Medium | Large
 \`\`\`
+
+On a completion gate, score the three axes **independently** (each ignoring the others): \`correctness\` (right behavior), \`completeness\` (no stubs/TODOs), \`over_engineering\` (\`0\` minimal … \`3\` a framework for a one-off). Roll up to **APPROVE** only when \`correctness ≥ 2\` and \`completeness ≥ 2\` and \`over_engineering ≤ 1\`; otherwise **GAPS/CORRECTION** (salvageable) or **STOP** (\`correctness ≤ 1\` or needs a user decision). Every CORRECTION/STOP/GAPS MUST carry a concrete \`Citation\` (a \`file:line\` or named construct, or \`none\`). If you cannot clearly distinguish a correct/minimal reference outcome from a broken/over-built one for this task, declare yourself NOT TRUSTWORTHY for this gate and return no verdict.
 
 When complexity warrants, add the Expanded tier after the essential gate format:
 
@@ -1102,6 +1106,8 @@ When invoked as an advisor gate (decision gate or completion gate), use this for
 Type: PLAN | CORRECTION | STOP | APPROVE | GAPS
 Decision: <single clear recommendation, 2-3 sentences max>
 Rationale: <why — brief, anchored to specific code/requirements>
+Axes: correctness <0-3> · completeness <0-3> · over_engineering <0-3>   (completion gate only)
+Citation: <file:line or construct, or 'none'>                           (required for CORRECTION/STOP/GAPS)
 Actions:
 1. <step one>
 2. <step two>
@@ -1109,6 +1115,8 @@ Risks to watch:
 - <risk>
 Effort: Quick | Short | Medium | Large
 \`\`\`
+
+On a completion gate, score the three axes **independently** (each ignoring the others): \`correctness\` (right behavior), \`completeness\` (no stubs/TODOs), \`over_engineering\` (\`0\` minimal … \`3\` a framework for a one-off). Roll up to **APPROVE** only when \`correctness ≥ 2\` and \`completeness ≥ 2\` and \`over_engineering ≤ 1\`; otherwise **GAPS/CORRECTION** (salvageable) or **STOP** (\`correctness ≤ 1\` or needs a user decision). Every CORRECTION/STOP/GAPS MUST carry a concrete \`Citation\` (a \`file:line\` or named construct, or \`none\`). If you cannot clearly distinguish a correct/minimal reference outcome from a broken/over-built one for this task, declare yourself NOT TRUSTWORTHY for this gate and return no verdict.
 
 When complexity warrants, add the Expanded tier after the essential gate format:
 

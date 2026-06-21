@@ -9,7 +9,7 @@
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:coder`. NEVER use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` → `/groundwork:create-prd` → fan out coders.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the `.groundwork/run.json` ledger) → fan out coders. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
@@ -27,7 +27,7 @@
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | `debugger` (root cause) → `coder` (fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity) | Trivial bug | `coder` direct → `advisor` gate |
-| "build X", "implement Y", complex feature | Feature | `interview` → `create-prd` → 5-20 `coder` parallel |
+| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → 5-20 `coder` parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized) | Small change | `coder` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `coder` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
@@ -43,6 +43,29 @@
 | "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 
 All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ...)`.
+
+---
+
+## Triage pre-check — before you route (mechanical)
+
+Before classifying and delegating ANY new request, run these two checks:
+
+1. **Dedup against the rejection KB.** Scan `.groundwork/out-of-scope/*.md` and match the request **by concept, not keyword** ("night theme" matches `dark-mode.md`). On a match, do NOT re-plan — surface it to the user: append the request to that file's *Prior requests* and offer **Confirm** (still rejected — decline + record), **Reconsider** (delete the file and re-triage fresh), or **Disagree** (user overrides; proceed). The KB is durable rejection memory; re-litigating a settled "no" wastes a wave. (Format: see `vertical-slice` → Rejection KB.)
+2. **Conflict → stop and ask.** If the request sends **conflicting classification signals** (e.g. reads as both a trivial change and a risky shared-code change, or both bug and feature), do NOT pick one and proceed — state the conflict and ask the user which framing is correct before routing. Guessing wrong here propagates through the whole fan-out.
+
+**Negative scope is first-class.** When you do route to a slice or brief, state what is explicitly **out of scope** for it alongside the success criteria — an unstated boundary is where gold-plating and scope-creep leak in.
+
+---
+
+## Run ledger & Stop-gate (mechanical enforcement)
+
+Non-trivial work is tracked in `.groundwork/run.json` — the run ledger written by `vertical-slice`/`ultrawork`. A `Stop` hook (`hooks/stop-gate.mjs`) reads it on every attempt to end the session and **blocks the stop**, re-injecting the fan-out rules, while any slice is not `complete` or `gate.advisor` is not `APPROVE`. This is what makes the workflow non-optional — the rules above are enforced, not advisory.
+
+Orchestrator obligations (the hook only reads):
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single coder, no slicing`).
+- Mark each verified slice `complete` in the ledger as waves land.
+- Record `gate.advisor = "APPROVE"` after the completion gate.
+- To abandon a run, set `"active": false`. Trivial tasks write no ledger, so the gate stays out of the way.
 
 ---
 

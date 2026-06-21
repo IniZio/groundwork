@@ -166,25 +166,24 @@ When creating or revising specs, ensure these sections are present:
 - Dependencies
 - Revision History
 
-## Integration with PRD System
+## Integration with the Plan
 
-### PRD → Spec Flow
+### Plan → Spec Flow
 
-When `create-prd` skill runs:
+When a feature is being planned (via `interview`, deferring to the project's planning convention):
 
-1. PRD is created in `docs/prds/YYYY-MM-DD-<feature>/PRD.md`
-2. This skill (or `create-prd`) creates spec at `.pi/specs/<feature>.md`
-3. Spec frontmatter links to PRD: `linked_prd: docs/prds/.../PRD.md`
-4. Spec Context section references PRD Overview
+1. The plan is synthesized (groundwork default: `.groundwork/plans/<feature>.md`)
+2. This skill creates the spec at `.pi/specs/<feature>.md`
+3. Spec frontmatter links to the plan: `linked_plan: .groundwork/plans/<feature>.md`
+4. Spec Context section references the plan's Overview / Acceptance Criteria
 
-### Spec Revision → PRD Revision
+### Spec Revision → Plan Revision
 
-When spec revision reveals PRD needs updating:
+When spec revision reveals the plan needs updating:
 
 1. Update spec first (this skill)
-2. Add Steer Log entry recommending PRD update
-3. Notify orchestrator to run `create-prd` for PRD sync
-4. PRD revision updates `linked_prd` reference in spec
+2. Update the plan in place, noting the rationale for the change
+3. Re-run `vertical-slice` if the change affects scope or slice boundaries
 
 ## Integration with Auto-Learning
 

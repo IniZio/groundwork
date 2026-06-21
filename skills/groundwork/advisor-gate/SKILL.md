@@ -69,6 +69,50 @@ Advisor returns one of:
 
 **Do not skip the completion gate even if you are confident.** Confidence without verification is an anti-pattern.
 
+## Single-Axis Scoring (score independently, then roll up)
+
+A single APPROVE blurs distinct failure modes — code that is correct but over-built, or lean but stubbed. Score three **independent** axes `0–3`, evaluating each on its own and deliberately ignoring the others while scoring it (borrowed from ponytail's judge):
+
+- **correctness** — does it do the right thing? `0` = wrong/broken · `3` = correct, edge cases handled.
+- **completeness** — is the job actually finished? `0` = stub/empty · `3` = fully implements the requirement, no TODOs.
+- **over_engineering** — is there unnecessary machinery? `0` = minimal, nothing superfluous · `3` = clearly over-engineered (a framework for a one-off).
+
+**Roll-up rule:**
+- **APPROVE** only when `correctness ≥ 2` AND `completeness ≥ 2` AND `over_engineering ≤ 1`.
+- **REVISE** (= GAPS/CORRECTION) when the approach is salvageable but an axis is off (e.g. `completeness ≤ 1`, or `over_engineering ≥ 2`).
+- **REJECT** (= STOP) when `correctness ≤ 1`, or the work needs a user decision.
+
+## Forced Citation (no abstract verdicts)
+
+Every **REVISE** or **REJECT** MUST name the single most important concrete offender — a specific `file:line` or named construct — or the literal string `none` if there genuinely isn't one. "Looks incomplete" is not a verdict; "`contact.ts:42` swallows the validation error" is. This makes the anti-"seems to" rule mechanical: an unanchored rejection is itself a defect.
+
+## Self-Test Before Trust
+
+A judge that can't tell good from bad must not score. Before recording a verdict on a non-trivial gate, the advisor performs a quick self-calibration: given the task, it states which of two reference outcomes — one deliberately correct/minimal, one deliberately broken/over-built — it would rank higher, and why. If it cannot articulate a clear distinction, it declares itself **NOT TRUSTWORTHY for this gate**, returns no verdict, and the orchestrator must escalate to the user rather than record `gate.advisor`. Trustworthiness is a precondition, not an assumption.
+
+### Recording the verdict in the run ledger
+
+If a run ledger exists (`.groundwork/run.json` — written by `vertical-slice`/`ultrawork`), the orchestrator MUST record the gate result so the Stop-gate hook can release the session. Record the **object form** so the verdict carries its own rubric and evidence (the Stop-gate also still accepts a bare string for backward compatibility):
+
+```json
+"advisor": {
+  "verdict": "APPROVE",
+  "rubric": "groundwork-completion-v1",
+  "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
+  "citation": "none"
+}
+```
+
+- **APPROVE** → `verdict: "APPROVE"`. With every slice already `complete`, the session is now allowed to end.
+- **GAPS / CORRECTION** → `verdict: "REVISE"` with the failing axes and a `citation`; resume work, the gate stays closed.
+- **STOP** → `verdict: "REJECT"` with a `citation`; surface the blocker to the user, the gate stays closed. If the rejection is a durable out-of-scope decision, also write a Rejection-KB entry (`.groundwork/out-of-scope/<concept-slug>.md`, see `vertical-slice`).
+
+Embedding the rubric inside the verdict keeps it self-auditing — the criteria can't drift from the score. The advisor itself is read-only and never edits the ledger; the orchestrator records the verdict after receiving it.
+
+### Determinism
+
+Run the advisor gate deterministically: a fixed model at `temperature: 0`, with the rubric id recorded in the verdict. The same evidence must yield the same verdict across reruns — a gate that flickers is a gate you cannot trust.
+
 ## Verification Pushback Rules
 
 When the executor skips or waives any verification step, the advisor MUST challenge the justification before approving. The advisor's default stance when verification was skipped is **GAPS** or **CORRECTION**, not APPROVE.
@@ -108,6 +152,8 @@ All advisor responses use a tiered structure to maximize signal density:
 Type: PLAN | CORRECTION | STOP | APPROVE | GAPS
 Decision: <single clear recommendation, 2-3 sentences max>
 Rationale: <why — brief, anchored to specific code/requirements>
+Axes: correctness <0-3> · completeness <0-3> · over_engineering <0-3>   (completion gate only)
+Citation: <file:line or construct, or 'none'>                           (required for CORRECTION/STOP/GAPS)
 Actions:
 1. <step one>
 2. <step two>

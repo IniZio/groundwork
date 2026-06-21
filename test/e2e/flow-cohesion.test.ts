@@ -43,7 +43,7 @@ const FLOW_CASES: FlowTestCase[] = [
 			"The filter function in src/app.js is broken — it returns all items instead of filtering. Debug and fix it.",
 		scenarioSetup: "standard-bug",
 		expectedSkills: ["diagnose"],
-		forbiddenSkills: ["create-prd", "bdd-implement"],
+		forbiddenSkills: ["vertical-slice", "implement"],
 		expectUAT: true, // diagnose → fix → UAT verify → advisor gate
 		expectFanOut: true, // diagnose delegates to explore/coder
 	},

@@ -1,6 +1,6 @@
 ---
 name: vertical-slice
-description: Decompose any implementation task into conflict-free parallel slices for maximum coder fan-out. Each slice is a thin end-to-end tracer through all layers for one user-facing behavior. Use before delegating to coders — this is the decomposition phase, not the implementation phase.
+description: Decompose any implementation task into conflict-free parallel slices for maximum coder fan-out. Each slice is a thin end-to-end tracer through all layers for one user-facing behavior. Use before delegating to coders — this is the decomposition phase, not the implementation phase. Writes the .groundwork/run.json ledger that the Stop-gate hook enforces.
 ---
 
 # Vertical-Slice Decomposition
@@ -112,3 +112,121 @@ Wave 1: S3 + S4 (parallel, no file conflicts)
 ```
 
 The orchestrator fans out all slices in each wave simultaneously.
+
+## The Ledger — `.groundwork/run.json` (MANDATORY)
+
+The slice table is not just a message to yourself — it is a **durable artifact** that
+the Stop-gate hook reads to decide whether the session is allowed to end. Producing
+the table without writing the ledger means the gate has nothing to enforce against.
+
+**After producing the slice plan, write `.groundwork/run.json`** with the Write tool.
+This is the contract; the hook (`hooks/stop-gate.mjs`) reads exactly these fields:
+
+```json
+{
+  "version": 1,
+  "active": true,
+  "session_id": "<this session's id — from the SessionStart 'Session identity' block>",
+  "brief": "<one-line description of the task>",
+  "plan_ref": "<path to a plan file if one exists, else null>",
+  "reinforcements": 0,
+  "slices": [
+    { "id": "S1", "behavior": "add workspace disk min-size",
+      "files": ["image_sparse.go", "image_sparse_test.go"],
+      "wave": 0, "blocked_by": [], "depends_on": [],
+      "acceptance": [
+        "image_sparse rejects a workspace smaller than the min size",
+        "image_sparse_test covers the min-size boundary"
+      ],
+      "status": "pending" },
+    { "id": "S2", "behavior": "guest agent disk handlers",
+      "files": ["server.go", "disk.go"],
+      "wave": 0, "blocked_by": [], "depends_on": [],
+      "acceptance": ["disk grow/shrink handlers respond over the agent socket"],
+      "status": "pending" }
+  ],
+  "gate": {
+    "verifier": "pending",
+    "critic": "pending",
+    "advisor": {
+      "verdict": "APPROVE",
+      "rubric": "groundwork-completion-v1",
+      "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
+      "citation": "image_sparse.go:120"
+    }
+  }
+}
+```
+
+`gate.advisor` also accepts the legacy bare string `"APPROVE"` (case-insensitive) for
+backward compatibility; the object form is preferred (see `advisor-gate`).
+
+**Field rules (the hook depends on these exact shapes):**
+
+- `active` — `true` while the run is live. Set to `false` ONLY to cancel/abandon the run.
+- `session_id` — copy from the SessionStart "Session identity" block. A ledger owned by a
+  different session never blocks the current one. Omit only if you cannot find it.
+- `slices[].status` — one of `pending` | `in_progress` | `complete`. The Stop gate blocks
+  while ANY slice is not `complete`.
+- `slices[].blocked_by` — array of slice IDs that must reach `complete` before this slice
+  may be marked `complete`. This is the **canonical** wave-ordering dependency.
+  `depends_on` is an accepted legacy alias; if both are present, treat them as a union.
+- `slices[].acceptance` — optional `string[]` of checkbox-style, individually verifiable
+  done-conditions. Each entry is one concrete assertion the verifier can confirm; the
+  Stop-gate surfaces the count for incomplete slices.
+- `gate.advisor` — `pending` until the advisor gate runs; must resolve to `APPROVE` for the
+  run to end (see `advisor-gate`). Accepts **either** form:
+  - **Legacy string**: `"APPROVE"` | `"REVISE"` | `"REJECT"` (case-insensitive).
+  - **Object**: `{ "verdict": "APPROVE|REVISE|REJECT", "rubric": "<id/text>", "axes": {
+    "correctness": 0-3, "completeness": 0-3, "over_engineering": 0-3 }, "citation":
+    "<file:line or construct, or 'none'>" }`.
+  The run is approved when the string, or the object's `verdict`, equals `APPROVE`
+  (case-insensitive). `verifier`/`critic` are informational (`pending`|`passed`|`skipped`).
+- `reinforcements` — leave at `0`; the hook manages it.
+
+**Lifecycle the orchestrator owns (the hook only reads):**
+
+1. `vertical-slice` writes the ledger with all slices `pending`.
+2. As each wave's coders return and you verify them, update those slices to `complete`
+   (Edit `.groundwork/run.json`).
+3. When all slices are `complete`, run verifier → critic → advisor and record
+   `gate.advisor = "APPROVE"`.
+4. With every slice `complete` and `gate.advisor === "APPROVE"`, the Stop gate releases.
+
+If you ever need to bail out, set `"active": false` — the gate releases immediately.
+
+## Rejection KB — `.groundwork/out-of-scope/<concept-slug>.md`
+
+When a **concept** is rejected as out of scope (by the advisor gate or at triage), record it
+as a durable knowledge-base entry — **one markdown file per concept**, keyed by a stable
+kebab-case slug (e.g. `realtime-collab.md`, `multi-tenant-billing.md`). This is the dedup
+store: at triage, scan this directory and match an incoming request **by concept, not
+keyword** ("night theme" matches `dark-mode.md`). On a match, append to *Prior requests* and
+decline rather than re-planning work already rejected.
+
+Record a concept here **only when it is genuinely rejected** — never for features already
+implemented (that would poison the dedup check with false rejections). Keep the reasoning
+**durable**: explain the lasting why (architecture fit, product direction, cost), not the
+circumstances of one request — those are deferrals, not rejections.
+
+Template:
+
+```markdown
+# Out of scope: <Concept name>
+
+**Slug:** <concept-slug>
+**Status:** REJECTED
+**First rejected:** <YYYY-MM-DD>
+
+## Why this is out of scope
+
+<Durable, evergreen rationale that should survive across sessions.>
+
+## What would change this
+
+<Concrete conditions that would make it in-scope later, or "none".>
+
+## Prior requests
+
+- <YYYY-MM-DD> — <who/where it was raised> — <one-line context / outcome>
+```

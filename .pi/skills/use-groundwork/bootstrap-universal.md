@@ -31,11 +31,12 @@ Invoke the `advisor-gate` skill before declaring any task complete. 1% chance = 
 
 | Skill | Invoke when... |
 |-------|----------------|
-| `interview` | **Before `create-prd` for features.** Before `diagnose` for complex bugs. Standalone for small changes. Anytime understanding is incomplete before action. Actively updates CONTEXT.md and ADRs inline |
-| `diagnose` | **Any bug or regression.** Something broken that needs root cause analysis. Replaces `create-prd` + `bdd-implement` for bugs |
+| `interview` | **Plan a feature** (synthesizes a concise plan, deferring to any project planning convention). Before `diagnose` for complex bugs. Standalone for small changes. Anytime understanding is incomplete before action. Actively updates CONTEXT.md and ADRs inline |
+| `diagnose` | **Any bug or regression.** Something broken that needs root cause analysis. Replaces the feature/`implement` path for bugs |
 | `advisor-gate` | **MANDATORY at every task completion.** Also: any technical decision with uncertainty, architectural trade-off, or high-risk operation — even 1% chance of impact |
-| `bdd-implement` | **After PRD approval (features) or interview (small changes).** NOT for bugs — use `diagnose` instead. Always delegate to parallel `coder` agents |
-| `create-prd` | After `interview` for features (≥1 day); no master PRD exists; about to implement non-trivial work |
+| `implement` | **After a plan (features) or interview (small changes).** NOT for bugs — use `diagnose` instead. Runs `vertical-slice` first, then delegates to parallel `coder` agents |
+| `vertical-slice` | **Before fanning out coders.** Decomposes the task into conflict-free parallel slices and writes the `.groundwork/run.json` ledger |
+| `ultrawork` | **Max fan-out mode.** Slice → write ledger → dispatch every independent slice in parallel; gate-enforced by the Stop hook |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
 | `commit` | Creating git commits (ensures consistent style) |
 | `opencode-acp` | Controlling another OpenCode instance via ACP protocol |

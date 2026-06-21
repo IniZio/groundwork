@@ -20,13 +20,13 @@ Always use the `question` tool instead of ending the conversation. Never leave t
 
 Your role is orchestration. Classify, delegate, and review — do not implement directly. Do not write code, explore files, or debug directly. See the Orchestrator Role section below for the delegation matrix.
 
-### 3. Always use `create-prd` before implementation
+### 3. Always plan and slice before implementation
 
-Always use `create-prd` before implementation of non-trivial features (≥1 day). Never start coding a feature without an approved master PRD.
+For non-trivial features, always synthesize a plan via `interview` (deferring to any project-level planning skill or convention; groundwork's `.groundwork/plans/` is the fallback), then decompose via `vertical-slice` — which writes the `.groundwork/run.json` ledger — before fanning out coders. Never start coding a feature without a plan and a slice ledger.
 
-### 4. Steer via interview
+### 4. Steer the plan in place
 
-Small direction changes update the master PRD via Steer Log (see `create-prd`). Significant architectural pivots get re-interviewed and the PRD rewritten.
+Small direction changes update the plan in place. Significant architectural pivots get re-interviewed and the plan rewritten.
 
 ### 5. No self-review
 
@@ -198,11 +198,17 @@ When a task fails:
 
 ## Issue-Type Routing (Progressive Disclosure)
 
-**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `create-prd` → `implement`. Don't pre-optimize — but don't skip required steps either.
+**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `vertical-slice` (writes the run ledger) → fan out coders. Don't pre-optimize — but don't skip required steps either.
+
+### Triage pre-check (before routing)
+
+1. **Dedup against the rejection KB.** Scan `.groundwork/out-of-scope/*.md` and match the request **by concept, not keyword**. On a match, don't re-plan — surface it to the user (Confirm / Reconsider / Disagree) and append to that file's *Prior requests*. (Format: `vertical-slice` → Rejection KB.)
+2. **Conflict → stop and ask.** If classification signals conflict (trivial vs risky, bug vs feature), state the conflict and ask which framing is correct before routing — don't silently pick one.
+3. **Negative scope is first-class.** When routing to a slice/brief, state what is explicitly out of scope alongside success criteria.
 
 ### Skill Invocation
 
-When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, `implement`, `vertical-slice`, `advisor-gate`, `prototype`), load it with the `skill` tool. Skills contain domain-specific instructions (debugging loops, question strategies, decomposition patterns) not present in this bootstrap.
+When a routing path names a skill (e.g., `diagnose`, `interview`, `implement`, `vertical-slice`, `ultrawork`, `advisor-gate`, `prototype`), load it with the `skill` tool. Skills contain domain-specific instructions (debugging loops, question strategies, decomposition patterns) not present in this bootstrap.
 
 **Skills are loaded on-demand via progressive disclosure, not upfront classification.** If you load a skill and it turns out you didn't need it — that's fine. If you skip a skill and later realize you needed it — reload and restart that phase.
 
@@ -226,7 +232,7 @@ When a routing path names a skill (e.g., `diagnose`, `interview`, `create-prd`, 
 - ✅ `"Fix typo 'backgroud' → 'background'"` → obvious, fix directly
 - ✅ `"Port 8080 is already in use"` → known config, fix directly
 
-- Do NOT invoke `implement` or `create-prd` for bugs — `diagnose` is the full debug path
+- Do NOT invoke the feature/`implement` path for bugs — `diagnose` is the full debug path
 - If the bug is multi-system or boundaries are unclear → `diagnose` will call for `interview` itself
 
 ### Change
@@ -250,16 +256,16 @@ Classify by scope.
 - Examples: modify a shared data model, change an API response shape, alter permission checks, refactor a core utility used across the codebase
 - Path: Use the `skill` tool to load `interview` (quick: 2-4 questions) → implement → use the `skill` tool to load `advisor-gate`
 
-**Escalation from small-change to feature:** If during implementation the work grows beyond 1 day or feels uncertain → stop, use the `skill` tool to load `interview` (then optionally use the `skill` tool to load `create-prd`).
+**Escalation from small-change to feature:** If during implementation the work grows beyond 1 day or feels uncertain → stop, use the `skill` tool to load `interview` and synthesize a plan.
 
 ### Feature (clearly ≥1 day, or architectural)
 
-**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `create-prd` → then use the `skill` tool to load `implement` (which loads `vertical-slice` internally) → then use the `skill` tool to load `advisor-gate`**
+**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `implement` (which loads `vertical-slice` to write the run ledger and fan out coders) → then use the `skill` tool to load `advisor-gate`**
 
 - Only use this path when the work is **clearly** multi-day or architectural from the start
-- **Mandatory skill-tool invocations:** `interview` → `create-prd` → `implement` → `advisor-gate`. Never skip to implementation before loading each skill.
-- PRD is created from interview spec, not from a blank slate
-- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices before fanning out coders
+- **Mandatory skill-tool invocations:** `interview` → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip to implementation before loading each skill.
+- The plan is synthesized from the interview, deferring to any project-level planning convention — not from a blank slate
+- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write `.groundwork/run.json` before fanning out coders
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed
 
 ### Spike / Design Exploration
@@ -272,7 +278,7 @@ invoke skill "prototype" → feed findings into next skill
 ```
 [safe / small scope]  implement directly → invoke skill "advisor-gate"
 [risky / unclear]     invoke skill "interview" → implement → invoke skill "advisor-gate"
-[clearly ≥1d]         invoke skill "interview" → invoke skill "create-prd" → invoke skill "implement" → invoke skill "advisor-gate"
+[clearly ≥1d]         invoke skill "interview" → invoke skill "implement" (→ vertical-slice) → invoke skill "advisor-gate"
 ```
 
 ### Docs-Only Change
@@ -356,9 +362,10 @@ digraph flow {
   "implement" -> "invoke skill advisor-gate";
 
   "Feature path" -> "invoke skill interview (full)";
-  "invoke skill interview (full)" -> "invoke skill create-prd";
-  "invoke skill create-prd" -> "invoke skill bdd-implement";
-  "invoke skill bdd-implement" -> "invoke skill advisor-gate";
+  "invoke skill interview (full)" -> "invoke skill implement";
+  "invoke skill implement" -> "invoke skill vertical-slice (writes ledger)";
+  "invoke skill vertical-slice (writes ledger)" -> "fan out coders";
+  "fan out coders" -> "invoke skill advisor-gate";
 
   "Spike" -> "invoke skill prototype";
   "invoke skill prototype" -> "Check escalation signals" [label="findings inform next step"];

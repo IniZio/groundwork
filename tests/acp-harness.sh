@@ -281,8 +281,8 @@ cmd_run() {
         )
 
         while [[ $turn -lt $max_turns ]]; do
-            if echo "$skills_loaded" | jq -e 'contains(["create-prd"])' > /dev/null 2>&1; then
-                echo "Multi-turn: create-prd loaded on turn $turn, stopping"
+            if echo "$skills_loaded" | jq -e 'contains(["vertical-slice"])' > /dev/null 2>&1; then
+                echo "Multi-turn: vertical-slice loaded on turn $turn, stopping"
                 break
             fi
 
@@ -490,7 +490,7 @@ EOF
     fi
     echo ""
 
-    # Test 5: Feature — clearly multi-day, should trigger interview then create-prd
+    # Test 5: Feature — clearly multi-day, should trigger interview then vertical-slice
     echo "--- Test 5: feature ---"
     if cmd_run --name feature \
         --prompt 'Build a workflow engine for the todo app: users can create custom automation rules with triggers (e.g., "when a todo is marked complete"), conditions (e.g., "if the todo has tag #work"), and actions (e.g., "move to Done list and notify via email"). Include a visual rule builder UI, rule persistence in localStorage, and a simulation mode to test rules without affecting real data.' \
@@ -498,7 +498,7 @@ EOF
         --timeout 300 \
         --multi-turn \
         --max-turns 5 \
-        --expect-skills "interview,create-prd"; then
+        --expect-skills "interview,vertical-slice"; then
         results+=("feature|PASS")
     else
         results+=("feature|FAIL")
@@ -550,7 +550,7 @@ EOF
             trivial-bug) expected_skills="(none)" ;;
             standard-bug) expected_skills="diagnose" ;;
             small-change) expected_skills="(none)" ;;
-            feature) expected_skills="interview, create-prd" ;;
+            feature) expected_skills="interview, vertical-slice" ;;
             orchestrator-no-self-task) expected_skills="(none)" ;;
         esac
 

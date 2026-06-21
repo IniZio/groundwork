@@ -67,7 +67,7 @@ describe.skipIf(!E2E_ENABLED)("Claude Plugin Routing E2E", () => {
 
 		assertSkillNotUsed(result, "diagnose");
 		assertSkillNotUsed(result, "interview");
-		assertSkillNotUsed(result, "create-prd");
+		assertSkillNotUsed(result, "vertical-slice");
 	}, 150_000);
 
 	test("standard-bug: diagnose skill loaded", async () => {

@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implementation orchestration skill. Decompose into vertical slices for maximum coder fan-out, then validate behavior (not code structure). MANDATORY after PRD approval or interview. Use vertical-slice skill for conflict-free slice planning.
+description: Implementation orchestration skill. Decompose into vertical slices for maximum coder fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the .groundwork/run.json ledger.
 ---
 
 # Implement
@@ -14,7 +14,7 @@ Slice the work into independent end-to-end behaviors before launching any coders
 ## When to Use
 
 **MANDATORY** in these cases:
-- After PRD approval — before any implementation begins
+- After a plan is approved — before any implementation begins
 - After `interview` for small changes — interview spec is the spec
 - Any feature that changes observable behavior
 - Any task touching ≥3 files or ≥2 behaviors
@@ -25,17 +25,25 @@ Slice the work into independent end-to-end behaviors before launching any coders
 
 ## Two Modes
 
-### Feature Mode (PRD exists)
-Decompose PRD acceptance criteria into vertical slices. Each criterion → one slice.
+### Feature Mode (a plan exists)
+A plan is whatever concrete spec the work is grounded in: an `interview` synthesis, a
+`planner` plan under `.groundwork/plans/`, or the project's own planning artifact (see
+`interview` for detecting project-level plan conventions). Decompose its acceptance
+criteria into vertical slices — each criterion → one slice. Record the plan path as
+`plan_ref` in the ledger.
 
-### Small-Change Mode (after `interview`, no PRD)
+### Small-Change Mode (after `interview`, no separate plan)
 Lightweight decomposition into 3–5 vertical slices. The interview spec is the spec.
 
-**Decision rule:** PRD exists → Feature Mode. Otherwise → Small-Change Mode.
+**Decision rule:** a plan/spec exists → Feature Mode. Otherwise → Small-Change Mode.
+
+## Step 0: Banner
+
+Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json`. This is the observable signal the workflow is engaged.
 
 ## Step 1: Decompose with `vertical-slice`
 
-Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching any coders. This is the most important step — skipping it causes sequential execution and merge conflicts.
+Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching any coders. This is the most important step — skipping it causes sequential execution and merge conflicts. `vertical-slice` also writes the **`.groundwork/run.json` ledger** (all slices `pending`) — the artifact the Stop-gate hook enforces. The session will not be allowed to end until every slice is `complete` and the advisor gate approves.
 
 **Minimum decomposition:**
 - Feature: ≥5 slices (target 5-15 per wave)
@@ -76,7 +84,7 @@ task(description="Slice 5: Persist state", prompt="...", subagent_type="coder")
 
 Each coder prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Coders have no shared state.
 
-Wait for wave completion, verify, then launch the next wave. Update `todowrite` after each wave.
+Wait for wave completion, verify, then launch the next wave. Update `todowrite` after each wave **and set each verified slice's `status` to `complete` in `.groundwork/run.json`** (Edit the file). The Stop-gate hook reads this on every stop attempt — slices left `pending` will block the session from ending.
 
 **Fan-out targets:**
 - Feature (PRD): 5-15 parallel slices per wave
@@ -110,6 +118,6 @@ Format: `- **<topic>**: <description>`. Only genuinely surprising things — not
 
 ## Step 8: Advisor Gate
 
-Invoke `advisor-gate` with: before state, after state, what changed, which acceptance criteria are met.
+Invoke `advisor-gate` with: before state, after state, what changed, which acceptance criteria are met. On APPROVE, record `gate.advisor = "APPROVE"` in `.groundwork/run.json`. With every slice `complete` and the advisor approved, the Stop-gate releases the session.
 
 **Non-negotiable. Do not declare done without this gate.**

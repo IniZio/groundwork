@@ -35,16 +35,16 @@ const TEST_CASES: RoutingTestCase[] = [
     description: 'Trivial question — direct path, no skills required',
     prompt: 'What is 2+2? Just give me the number.',
     expectedSkillsLoaded: [],
-    forbiddenSkills: ['interview', 'create-prd', 'bdd-implement', 'diagnose'],
+    forbiddenSkills: ['interview', 'vertical-slice', 'implement', 'diagnose'],
     forbiddenTools: [],
     textAssertions: [],
   },
   {
     name: 'trivial-bug',
-    description: 'Obvious bug (typo) — direct fix, no diagnose/create-prd/bdd-implement needed',
+    description: 'Obvious bug (typo) — direct fix, no diagnose/interview/vertical-slice needed',
     prompt: 'Fix the typo in /tmp/todo-app/src/style.css where it says "backgroud" instead of "background"',
     expectedSkillsLoaded: [],
-    forbiddenSkills: ['diagnose', 'create-prd', 'bdd-implement'],
+    forbiddenSkills: ['diagnose', 'vertical-slice', 'implement'],
     forbiddenTools: [],
     textAssertions: [],
   },
@@ -53,7 +53,7 @@ const TEST_CASES: RoutingTestCase[] = [
     description: 'Non-obvious bug — should load diagnose skill',
     prompt: "The todo app filters don't work correctly. When I click 'Active' filter, completed items still show. Debug and fix it.",
     expectedSkillsLoaded: ['diagnose'],
-    forbiddenSkills: ['create-prd', 'bdd-implement'],
+    forbiddenSkills: ['vertical-slice', 'implement'],
     forbiddenTools: [],
     textAssertions: [],
   },
@@ -62,16 +62,16 @@ const TEST_CASES: RoutingTestCase[] = [
     description: 'Small change — direct path, no skill loading needed',
     prompt: 'Add a button to the todo app that toggles all todos between completed and uncompleted',
     expectedSkillsLoaded: [],
-    forbiddenSkills: ['diagnose', 'create-prd', 'bdd-implement', 'interview'],
+    forbiddenSkills: ['diagnose', 'vertical-slice', 'implement', 'interview'],
     forbiddenTools: [],
     textAssertions: [],
   },
   {
     name: 'feature',
-    description: 'Feature — requires interview skill (create-prd follows after interview)',
+    description: 'Feature — requires interview skill (vertical-slice follows after interview)',
     prompt: 'Build a workflow engine for the todo app: users can create custom automation rules with triggers (e.g., "when a todo is marked complete"), conditions (e.g., "if the todo has tag #work"), and actions (e.g., "move to Done list and notify via email"). Include a visual rule builder UI, rule persistence in localStorage, and a simulation mode to test rules without affecting real data.',
-    expectedSkillsLoaded: ['interview', 'create-prd'],
-    forbiddenSkills: ['diagnose', 'bdd-implement'],
+    expectedSkillsLoaded: ['interview', 'vertical-slice'],
+    forbiddenSkills: ['diagnose'],
     forbiddenTools: [],
     textAssertions: [],
   },
@@ -146,13 +146,13 @@ describe('ACP Routing Tests', () => {
         expect(summary.duration_ms).toBeGreaterThan(0)
       })
 
-      test('feature progression: interview before create-prd', () => {
+      test('feature progression: interview before vertical-slice', () => {
         if (!summary || tc.name !== 'feature') return
         const interviewIdx = summary.skills_loaded.indexOf('interview')
-        const createPrdIdx = summary.skills_loaded.indexOf('create-prd')
+        const sliceIdx = summary.skills_loaded.indexOf('vertical-slice')
         expect(interviewIdx).toBeGreaterThanOrEqual(0)
-        expect(createPrdIdx).toBeGreaterThanOrEqual(0)
-        expect(interviewIdx).toBeLessThan(createPrdIdx)
+        expect(sliceIdx).toBeGreaterThanOrEqual(0)
+        expect(interviewIdx).toBeLessThan(sliceIdx)
       })
     })
   }

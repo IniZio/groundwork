@@ -4,7 +4,66 @@
  *
  * Fires on startup, resume, and context compaction so behavioral compliance
  * survives long sessions. Called by session-start (the tracked hook entrypoint).
+ *
+ * Beyond the static rulebook, when this session OWNS an active run ledger
+ * (.groundwork/run.json) it also re-surfaces the live run-state — incomplete
+ * slices, the advisor-gate status, and the banner to re-emit. Compaction
+ * summarizes away the working memory of an in-flight run; the static rules
+ * alone do not tell the resumed orchestrator that a run is mid-flight and the
+ * Stop-gate is armed. This block carries that state across the boundary.
  */
+
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+
+/** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
+function advisorVerdict(gate) {
+  const a = gate?.advisor
+  if (typeof a === 'string') return a
+  if (a && typeof a === 'object' && typeof a.verdict === 'string') return a.verdict
+  return null
+}
+
+/**
+ * Build a compact "resume here" block when this session owns an active run.
+ * Returns '' when there is no readable, active, session-owned ledger (fail-open).
+ */
+function activeRunBlock(projectDir, sessionId) {
+  let ledger
+  try {
+    ledger = JSON.parse(readFileSync(path.join(projectDir, '.groundwork', 'run.json'), 'utf8'))
+  } catch {
+    return '' // no ledger, unreadable, or malformed — nothing to resurface
+  }
+  if (!ledger || ledger.active !== true) return ''
+  // Only resurface a run owned by THIS session — never a foreign or stale run.
+  if (sessionId && typeof ledger.session_id === 'string' && ledger.session_id !== sessionId) return ''
+
+  const slices = Array.isArray(ledger.slices) ? ledger.slices : []
+  const incomplete = slices.filter((s) => s?.status !== 'complete')
+  const verdict = advisorVerdict(ledger.gate)
+
+  const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
+  if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
+  if (typeof ledger.plan_ref === 'string' && ledger.plan_ref) lines.push(`Plan: ${ledger.plan_ref}`)
+  lines.push(`Ledger: .groundwork/run.json — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
+  lines.push('')
+
+  if (incomplete.length) {
+    lines.push(`${incomplete.length} slice(s) NOT complete — the Stop-gate stays armed until each is \`complete\` and \`gate.advisor\` is APPROVE:`)
+    for (const s of incomplete) {
+      const acc = Array.isArray(s?.acceptance) && s.acceptance.length ? ` — ${s.acceptance.length} acceptance criteria` : ''
+      lines.push(`- ${s?.id ?? '?'} [${s?.status ?? '?'}] ${String(s?.behavior ?? '').slice(0, 80)}${acc}`)
+    }
+    lines.push('')
+    lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → .groundwork/run.json\``)
+  } else if (verdict !== 'APPROVE') {
+    lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate (verifier → critic → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
+  } else {
+    lines.push('All slices complete and advisor APPROVE — this run is finished. Set `"active": false` in .groundwork/run.json to close it out so the Stop-gate stands down.')
+  }
+  return `\n${lines.join('\n')}`
+}
 
 /** Read all of stdin; resolve '' if stdin is empty, closed, or errors. Never throws. */
 async function readStdin() {
@@ -57,6 +116,20 @@ When you have background tasks running and no other work to do:
 
 Before launching coders on ANY task touching ≥3 files or ≥2 user-facing behaviors, you MUST decompose into conflict-free vertical slices first (load the \`vertical-slice\` skill). A vertical slice is a thin end-to-end behavior cutting through all layers (types→logic→surface→test) for ONE outcome. Each file is owned by exactly ONE slice per wave (no two parallel slices touch the same file). Shared types/interfaces needed by multiple slices are defined in the tracer-bullet slice (Wave 0), so parallel coders never race on an undefined type. Single-slice waves on non-trivial work are a failure — look harder.
 
+## Run ledger & Stop-gate (mechanical enforcement — not advisory)
+
+\`vertical-slice\` writes the slice plan to \`.groundwork/run.json\` (the run ledger). A \`Stop\` hook reads this ledger on every attempt to end the session and BLOCKS the stop — re-injecting the fan-out rules — while any slice is not \`complete\` or while \`gate.advisor\` is not \`APPROVE\`. This is what makes the workflow stick; the rules above are not optional suggestions you can drop as context grows.
+
+Your obligations as orchestrator (the hook only reads — it cannot update the ledger for you):
+- **Banner first.** Your first line on a non-trivial task: \`GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json\`. For trivial work: \`GROUNDWORK ▸ trivial: single coder, no slicing\`.
+- **Write the ledger** when you slice (vertical-slice does this), stamping it with this session's \`session_id\` from the Session identity block below.
+- **Give each slice \`acceptance\`** (a string[] of verifiable done-conditions) and \`blocked_by\` (the canonical wave-ordering dependency; \`depends_on\` is a legacy alias). A slice can't be \`complete\` until its \`blocked_by\` slices are.
+- **Update slice status to \`complete\`** as each verified wave lands.
+- **Record the advisor verdict** after the completion gate. Prefer the object form — \`gate.advisor = { "verdict": "APPROVE", "rubric": "...", "axes": { "correctness", "completeness", "over_engineering" }, "citation": "..." }\` — so the verdict carries its own rubric and evidence; the bare string \`"APPROVE"\` is still accepted. Every REVISE/REJECT needs a concrete \`citation\`.
+- **To abandon a run**, set \`"active": false\` — the gate releases. Trivial tasks write no ledger, so the gate stays out of the way.
+
+Load \`/groundwork:ultrawork\` for the full max-fan-out protocol.
+
 ## Fan-out targets (per wave)
 
 Every \`task()\` call in a wave MUST pass \`background: true\` — no exceptions, no synchronous fan-out.
@@ -96,7 +169,7 @@ Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h → skip slicing, del
 
 ## Completion gate (mandatory)
 
-verifier → critic → advisor APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence.`
+verifier → critic → advisor APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
 
 let input = {}
 try {
@@ -116,6 +189,12 @@ if (sessionId || transcriptPath) {
   lines.push('', "When performing a session handoff (/groundwork:handoff), reference these values so the successor session can locate this session's transcript.")
   additionalContext += `\n${lines.join('\n')}`
 }
+
+const projectDir =
+  (typeof input?.cwd === 'string' && input.cwd) ||
+  process.env.CLAUDE_PROJECT_DIR ||
+  process.cwd()
+additionalContext += activeRunBlock(projectDir, sessionId)
 
 console.log(JSON.stringify({
   continue: true,

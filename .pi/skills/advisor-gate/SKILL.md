@@ -69,6 +69,50 @@ Advisor returns one of:
 
 **Do not skip the completion gate even if you are confident.** Confidence without verification is an anti-pattern.
 
+## Single-Axis Scoring (score independently, then roll up)
+
+A single APPROVE blurs distinct failure modes — code that is correct but over-built, or lean but stubbed. Score three **independent** axes `0–3`, evaluating each on its own and deliberately ignoring the others while scoring it (borrowed from ponytail's judge):
+
+- **correctness** — does it do the right thing? `0` = wrong/broken · `3` = correct, edge cases handled.
+- **completeness** — is the job actually finished? `0` = stub/empty · `3` = fully implements the requirement, no TODOs.
+- **over_engineering** — is there unnecessary machinery? `0` = minimal · `3` = clearly over-engineered (a framework for a one-off).
+
+**Roll-up rule:**
+- **APPROVE** only when `correctness ≥ 2` AND `completeness ≥ 2` AND `over_engineering ≤ 1`.
+- **REVISE** (= GAPS/CORRECTION) when the approach is salvageable but an axis is off.
+- **REJECT** (= STOP) when `correctness ≤ 1`, or the work needs a user decision.
+
+## Forced Citation (no abstract verdicts)
+
+Every **REVISE** or **REJECT** MUST name the single most important concrete offender — a specific `file:line` or named construct — or the literal string `none`. "Looks incomplete" is not a verdict; "`contact.ts:42` swallows the validation error" is. An unanchored rejection is itself a defect.
+
+## Self-Test Before Trust
+
+A judge that can't tell good from bad must not score. Before recording a verdict on a non-trivial gate, the advisor states which of two reference outcomes — one deliberately correct/minimal, one deliberately broken/over-built — it would rank higher, and why. If it cannot articulate a clear distinction, it declares itself **NOT TRUSTWORTHY for this gate**, returns no verdict, and the orchestrator escalates to the user rather than recording `gate.advisor`.
+
+### Recording the verdict in the run ledger
+
+If a run ledger exists (`.groundwork/run.json`), the orchestrator MUST record the gate result so the Stop-gate can release the session. Record the **object form** (a bare string is still accepted for backward compatibility):
+
+```json
+"advisor": {
+  "verdict": "APPROVE",
+  "rubric": "groundwork-completion-v1",
+  "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
+  "citation": "none"
+}
+```
+
+- **APPROVE** → `verdict: "APPROVE"`; with every slice `complete`, the run may end.
+- **GAPS / CORRECTION** → `verdict: "REVISE"` with failing axes + a `citation`; resume work.
+- **STOP** → `verdict: "REJECT"` with a `citation`; surface to the user. If it's a durable out-of-scope decision, also write a Rejection-KB entry (`.groundwork/out-of-scope/<concept-slug>.md`).
+
+Embedding the rubric keeps the verdict self-auditing. The advisor is read-only and never edits the ledger; the orchestrator records the verdict.
+
+### Determinism
+
+Run the advisor gate deterministically — fixed model, `temperature: 0`, rubric id in the verdict — so the same evidence yields the same verdict across reruns.
+
 ## Verification Pushback Rules
 
 When the executor skips or waives any verification step, the advisor MUST challenge the justification before approving. The advisor's default stance when verification was skipped is **GAPS** or **CORRECTION**, not APPROVE.

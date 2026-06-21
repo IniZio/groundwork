@@ -1,6 +1,6 @@
 # Groundwork
 
-Workflow plugin for AI coding agents providing structured development practices: PRD-driven development, advisor gates, BDD implementation, parallel background tasks, and context management.
+Workflow plugin for AI coding agents providing structured development practices: interview-driven planning, vertical-slice fan-out enforced by a run ledger and Stop-gate hook, advisor gates, and context management.
 
 ## Supports
 
@@ -44,11 +44,12 @@ Note: pi-subagents is bundled as a dependency, enabling agent spawning functiona
 | Skill | Trigger |
 |-------|---------|
 | `use-groundwork` | Every session start — core rules, issue-type routing |
-| `interview` | Before PRD creation; standalone for small changes |
+| `interview` | Plan a feature (defers to project planning conventions); standalone for small changes |
+| `vertical-slice` | Decompose into conflict-free parallel slices; writes the `.groundwork/run.json` ledger |
+| `ultrawork` | Max fan-out mode — slice → ledger → dispatch all slices in parallel |
+| `implement` | Orchestrate implementation after a plan/interview |
 | `diagnose` | Bugs and regressions |
-| `create-prd` | After interviewing for features (≥1 day) |
 | `advisor-gate` | Before declaring done |
-| `bdd-implement` | After PRD approval or interviewing |
 | `prototype` | Design exploration |
 | `goal` | Persistent project goal |
 
@@ -66,10 +67,22 @@ When using Pi with `pi-subagents`, the following agent types are auto-configured
 
 ## Rules
 
-1. Issue-type routing: bug → diagnose, small change → interview + bdd-implement, feature → interview + create-prd + bdd-implement
-2. Advisor gate before declaring done
-3. No PRD commits to git
-4. Interview before PRD — understanding before synthesis
+1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out coders → advisor gate
+2. Advisor gate before declaring done; recorded in `.groundwork/run.json` and enforced by the Stop-gate hook
+3. Plans defer to the project's planning convention; groundwork's `.groundwork/plans/` is the fallback and is not committed
+4. Interview before slicing — understanding before synthesis
+
+## Run ledger (`.groundwork/run.json`)
+
+Non-trivial runs are tracked in a ledger the Stop-gate hook (`hooks/stop-gate.mjs`) enforces. Key fields:
+
+- `slices[].blocked_by` — canonical wave-ordering dependency (`depends_on` is a legacy alias); a slice can't be marked `complete` until its blockers are.
+- `slices[].acceptance` — `string[]` of checkbox-style, verifiable done-conditions; the Stop-gate surfaces unmet counts.
+- `gate.advisor` — accepts the legacy string (`APPROVE`/`REVISE`/`REJECT`) **or** an object `{ verdict, rubric, axes: { correctness, completeness, over_engineering }, citation }` (axes scored 0–3). The run is approved when the string or `verdict` is `APPROVE`.
+
+The advisor gate scores correctness / completeness / over-engineering as independent axes, requires a concrete `citation` on any non-approval, and self-tests before recording a verdict.
+
+**Rejection KB** — `.groundwork/out-of-scope/<concept-slug>.md`: one durable file per rejected concept (reasoning + a *Prior requests* list), scanned at triage to dedup repeat asks by concept rather than re-litigating a settled "no".
 
 ## Dev
 

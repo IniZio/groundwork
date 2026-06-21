@@ -21,14 +21,14 @@ const TEST_CASES: RoutingTestCase[] = [
 		name: "trivial-bug",
 		prompt: 'Fix the typo where it says "backgroud" instead of "background"',
 		expectSkills: [],
-		forbidSkills: ["diagnose", "create-prd", "bdd-implement"],
+		forbidSkills: ["diagnose", "interview", "vertical-slice"],
 		shouldDelegate: false,
 	},
 	{
 		name: "standard-bug",
 		prompt: "The filters don't work. Debug and fix.",
 		expectSkills: [],
-		forbidSkills: ["create-prd", "bdd-implement"],
+		forbidSkills: ["vertical-slice", "implement"],
 		shouldDelegate: true,
 	},
 	{
@@ -42,7 +42,7 @@ const TEST_CASES: RoutingTestCase[] = [
 		name: "small-change-clear",
 		prompt: "Add a missing null check to the user service.",
 		expectSkills: [],
-		forbidSkills: ["interview", "create-prd", "diagnose"],
+		forbidSkills: ["interview", "vertical-slice", "diagnose"],
 		shouldDelegate: false,
 	},
 	{
@@ -50,7 +50,7 @@ const TEST_CASES: RoutingTestCase[] = [
 		prompt:
 			"Add an 'avatarUrl' string field to the shared UserModel used across 5 modules.",
 		expectSkills: [],
-		forbidSkills: ["create-prd", "diagnose"],
+		forbidSkills: ["vertical-slice", "diagnose"],
 		shouldDelegate: true,
 	},
 ];

@@ -1,6 +1,6 @@
 ---
 name: interview
-description: Interview-based planning skill. Ask one question at a time with recommended answers, cross-reference codebase, actively update CONTEXT.md and ADRs inline. Use BEFORE create-prd for features, or standalone for small changes and bug scoping.
+description: Interview-based planning skill. Ask one question at a time with recommended answers, cross-reference codebase, detect and defer to project-level planning conventions, and synthesize a concise plan that feeds vertical-slice. Use for features, small changes, and bug scoping.
 ---
 
 # Interview
@@ -9,11 +9,11 @@ description: Interview-based planning skill. Ask one question at a time with rec
 
 **Understanding before synthesis.** Relentlessly interview about every aspect of a plan, resolving dependencies between decisions one-by-one. Each question comes with a recommended answer. Codebase exploration replaces questions when possible.
 
-Interviewing is separate from PRD creation. When embedded in PRD creation, the agent conflates "understanding the problem" with "writing the spec" and does both poorly. Separation forces genuine Q&A before synthesis.
+Interviewing is separate from writing the plan. When the two are conflated, the agent does both poorly — it half-understands and half-specifies. Separation forces genuine Q&A first, then a concise plan grounded in what was actually resolved.
 
 ## When to Use
 
-- **Before `create-prd`** for features — mandatory interview phase
+- **Before implementing a feature** — full interview, then synthesize the plan
 - **Before `diagnose`** for complex bugs — scope before debugging
 - **Standalone for small changes** — interview output serves as the lightweight spec
 - **Anytime understanding is incomplete before action** — when the approach is unclear, user says "help me plan", etc.
@@ -54,14 +54,24 @@ During interviewing, these happen simultaneously:
 
 ## Workflow
 
+### 0. Detect Project Planning Conventions (do this first)
+
+Groundwork does not impose a heavyweight PRD format. Before synthesizing a plan, find out how **this project** already plans, and defer to it:
+
+1. **Project planning skills/commands.** Check available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, `/design-doc`, or `/rfc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
+2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/plans/`, `docs/prds/`, `docs/rfcs/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
+3. **Project instructions.** Honor any planning rules in `CLAUDE.md` / `AGENTS.md`.
+
+**Order of preference:** project planning skill → project plans convention → groundwork's default concise plan (below). State which one you're using before writing.
+
 ### 1. Determine Scope
 
 Ask: is this a bug, a small change (<1 day), or a feature (≥1 day)?
 
 This determines what follows:
 - **Bug** → hand off to `diagnose` (interview output is the bug scope)
-- **Small change** → proceed to `bdd-implement` (interview spec IS the spec)
-- **Feature** → proceed to `create-prd` (interview spec feeds the PRD)
+- **Small change** → proceed to `implement` (interview spec IS the spec)
+- **Feature** → synthesize the plan (Step 4), then `vertical-slice` → fan out `coder`
 
 ### 2. Interview
 
@@ -91,17 +101,20 @@ Areas to cover (adapt to context — not all apply to every situation):
 After interviewing (or when hitting the 8-10 question cap):
 
 1. **Summarize resolutions** — what was decided, what remains uncertain.
-2. **Propose next steps** — which skill follows (`diagnose`, `create-prd`, `bdd-implement`).
+2. **Propose next steps** — which skill follows (`diagnose`, `implement`, or fan-out via `vertical-slice`).
 3. **Present via `question` tool** — user confirms next steps or requests more interviewing.
 
-### 4. Persist Interview Spec
+### 4. Synthesize the Plan
 
-After synthesis and user confirmation, save the interview spec to a durable file:
+After synthesis and user confirmation, write the plan to a durable file. **Use whatever planning convention you detected in Step 0.** Only fall back to the default below when the project has no planning skill or convention of its own.
 
-**Path:** `docs/prds/interview/<slug>.md`
-**Slug:** kebab-case identifier for the feature/change (e.g., `inline-todo-editing`, `auth-flow`)
+- **Project planning skill exists** → invoke it; it owns the format and location.
+- **Project plans convention exists** → write the plan there, matching the existing format/naming.
+- **No project convention** → use groundwork's default concise plan at `.groundwork/plans/<slug>.md`.
 
-**Format:**
+The plan must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers. It exists to feed `vertical-slice`, not to be an exhaustive document.
+
+**Default concise plan format** (`.groundwork/plans/<slug>.md`, slug = kebab-case identifier):
 ```markdown
 # <Title>
 
@@ -111,12 +124,14 @@ After synthesis and user confirmation, save the interview spec to a durable file
 ## Decisions
 
 - **<decision area>**: <what was decided>
-- **<decision area>**: <what was decided>
 
 ## Acceptance Criteria
 
-1. <criterion>
-2. <criterion>
+1. <observable, testable criterion>
+
+## Out of Scope
+
+- <explicitly not covered>
 
 ## Open Questions
 
@@ -124,10 +139,10 @@ After synthesis and user confirmation, save the interview spec to a durable file
 ```
 
 **Rules:**
-- File is never committed to git (lives in `docs/prds/` which is gitignored)
-- For features: this file feeds `create-prd` — the PRD is synthesized from it
-- For small changes: this file IS the spec for `bdd-implement`
-- For bugs: skip this step — bugs go directly to `diagnose`
+- For features: this plan feeds `vertical-slice` — slices map to acceptance criteria, and the plan path becomes `plan_ref` in `.groundwork/run.json`.
+- For small changes: this plan IS the spec for `implement`.
+- For bugs: skip this step — bugs go directly to `diagnose`.
+- Respect the project's commit policy for plans (groundwork's `.groundwork/` default is not committed).
 
 ## Domain Glossary (CONTEXT.md)
 

@@ -18,8 +18,8 @@ echo ""
 
 echo "--- Test 2: Well-specified change → direct implementation ---"
 echo "Prompt: 'Add a toggle-all button to the todo list'"
-echo "Expected: agent implements directly without loading interview/create-prd,"
-echo "          finishes with advisor-gate. Skips interview/bdd-implement/PRD."
+echo "Expected: agent implements directly without loading interview,"
+echo "          finishes with advisor-gate. Skips interview/vertical-slice/plan."
 echo ""
 
 echo "--- Test 3: Ambiguous change → interview escalation ---"
@@ -34,10 +34,10 @@ echo "Expected: agent detects >1 file scope, loads interview skill,"
 echo "          scopes the work, then implements, advisor-gate"
 echo ""
 
-echo "--- Test 5: Clearly ≥1d feature → interview + PRD ---"
+echo "--- Test 5: Clearly ≥1d feature → interview + plan + slice ---"
 echo "Prompt: 'We need to add user authentication with OAuth2 — this will take a few days'"
 echo "Expected: agent classifies as feature (≥1d), loads interview skill,"
-echo "          asks questions, then create-prd, bdd-implement, advisor-gate"
+echo "          asks questions, synthesizes a plan, then vertical-slice, fan-out coders, advisor-gate"
 echo ""
 
 echo "--- Test 6: Completion gate trigger ---"

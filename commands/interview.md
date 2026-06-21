@@ -1,5 +1,5 @@
 ---
-description: "Interview-based planning. Ask one question at a time with recommended answers, actively update CONTEXT.md and ADRs inline. Use before specs/PRDs for features, small changes, and bug scoping."
+description: "Interview-based planning. Ask one question at a time with recommended answers, detect project planning conventions, and synthesize a concise plan. Use for features, small changes, and bug scoping."
 disable-model-invocation: true
 ---
 

@@ -12,18 +12,18 @@ const TEST_CASES: RoutingTestCase[] = [
 		name: "trivial-bug",
 		prompt: 'Fix the typo where it says "backgroud" instead of "background"',
 		expectSkills: [],
-		forbidSkills: ["diagnose", "create-prd", "bdd-implement"],
+		forbidSkills: ["diagnose", "interview", "vertical-slice"],
 	},
 	{
 		name: "standard-bug",
 		prompt: "The filters don't work. Debug and fix.",
 		expectSkills: ["diagnose"],
-		forbidSkills: ["create-prd", "bdd-implement"],
+		forbidSkills: ["vertical-slice", "implement"],
 	},
 	{
 		name: "feature",
 		prompt: "Build a workflow engine with triggers, conditions, and actions.",
-		expectSkills: ["interview", "create-prd"],
+		expectSkills: ["interview", "vertical-slice"],
 		forbidSkills: ["diagnose"],
 	},
 ];

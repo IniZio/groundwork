@@ -9,6 +9,8 @@ description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reprod
 
 **A disciplined loop, not guesswork.** The feedback loop IS the skill — everything else is mechanical. Without a fast, deterministic pass/fail signal, no amount of code reading will help.
 
+**Verify the claim before any fix is delegated (triage gate).** Reproduce the reported failure FIRST — run it, observe the actual symptom (Phases 1–2) — before routing a fix to a coder. Never delegate a fix for a bug you have not reproduced: a fix for an unconfirmed claim is a guess, and guesses ship the wrong change. **If you cannot reproduce it**, do NOT proceed to a fix — stay in triage: sharpen the loop, gather evidence (logs, HAR, a failing input, environment access), or ask the user for the missing piece. "Can't reproduce" is a reason to investigate, not to guess-patch.
+
 This skill **replaces** `create-prd` and `implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`. No PRD needed.
 
 ## When to Use

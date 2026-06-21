@@ -27,7 +27,7 @@ Unit tests and mocked integration tests are INSUFFICIENT for UAT verification. T
 
 **MANDATORY** — invoke this skill in these cases:
 
-1. **Before `advisor-gate`** — every path through `bdd-implement` or `diagnose` MUST pass through `uat-verify` before reaching `advisor-gate`
+1. **Before `advisor-gate`** — every path through `implement` or `diagnose` MUST pass through `uat-verify` before reaching `advisor-gate`
 2. **After any implementation** that changes observable behavior
 3. **After bug fixes** from `diagnose` — verify the fix works as the user would experience it
 
@@ -412,7 +412,7 @@ Overall: PASS | FAIL
 ### Position in Skill Chain
 
 ```
-interview → create-prd → bdd-implement → [UAT VERIFY] → advisor-gate → done
+interview → vertical-slice → fan out coders → [UAT VERIFY] → advisor-gate → done
 interview → diagnose → [UAT VERIFY] → advisor-gate → done
 trivial change → implement → [UAT VERIFY] → advisor-gate → done
 ```

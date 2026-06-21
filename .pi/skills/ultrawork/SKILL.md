@@ -20,7 +20,7 @@ Sequential execution is the #1 velocity killer. If two tasks don't share state, 
 3. **ALL parallel Task calls in ONE message.** Sending Task A in one message, then Task B in the next is sequential execution in disguise.
 4. **Route to the right specialist.** Don't use `coder` for exploration. Don't use `explore` for implementation. Use the right tool.
 5. **Use cheapest capable model tier per slice** (already set per agent; trust the defaults).
-6. **Context-isolate every task.** Each Task prompt must be self-contained — include the specific file paths, line ranges, constraints, and success criteria. Never rely on "the agent knows what we discussed."
+6. **Context-isolate every task — durably.** Each Task prompt must be self-contained (never rely on "the agent knows what we discussed"), but describe the work by **behavioral contract, not pinned line numbers**: the files the slice owns, the interfaces/signatures it must satisfy, and observable acceptance criteria. Line ranges rot the instant a sibling slice edits the file — a contract survives. The ledger's `files[]` still lists ownership for conflict detection; that is structural, not the brief.
 
 ## Agent Dispatch — Exact Syntax
 

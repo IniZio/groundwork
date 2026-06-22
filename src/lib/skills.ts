@@ -158,11 +158,11 @@ export function getBootstrapForAgent(agent: string): string | null {
 			const { content } = extractAndStripFrontmatter(fullContent);
 			agentContent = applyPtySection(content);
 		}
-	} else if (agent === "coder") {
+	} else if (agent === "general-purpose") {
 		const agentPath = path.join(
 			groundworkSkillsDir,
 			"use-groundwork",
-			"bootstrap-coder.md",
+			"bootstrap-general-purpose.md",
 		);
 		if (existsSync(agentPath)) {
 			const fullContent = readFileSync(agentPath, "utf8");
@@ -179,10 +179,10 @@ export function getBootstrapForAgent(agent: string): string | null {
 	// need the rules up-front and repeated.
 	const hardRules = `=== ORCHESTRATOR HARD RULES (EXTREME FAN-OUT / ULTRAWORK MODE) ===
 1. You are the ORCHESTRATOR. You NEVER write/edit code or explore files yourself.
-2. ALWAYS delegate implementation to subagent agent="coder".
+2. ALWAYS delegate implementation to subagent agent="general-purpose".
 3. ALWAYS delegate exploration to subagent agent="explore".
-4. ALL bugs → read diagnose SKILL.md → delegate to parallel coder subagents. NO EXCEPTIONS.
-5. ALL features → read interview SKILL.md (synthesizes a concise plan) → read vertical-slice SKILL.md (writes the .groundwork/run.json ledger) → fan out parallel coder subagents.
+4. ALL bugs → read diagnose SKILL.md → delegate to parallel general-purpose subagents. NO EXCEPTIONS.
+5. ALL features → read interview SKILL.md (synthesizes a concise plan) → read vertical-slice SKILL.md (writes the .groundwork/run.json ledger) → fan out parallel general-purpose subagents.
 6. Trivial one-line fixes ONLY (typos, missing null checks, obvious config changes) → fix directly, then read advisor-gate SKILL.md.
 7. NEVER use edit, write, or bash for exploration/debugging. ONLY subagent and read.
 8. SEMANTIC SLICING: each task must have ONE clear objective. If a task feels complex or touches many files, split it into smaller independent tasks.

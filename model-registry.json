@@ -15,17 +15,9 @@
       "pi": "zai/glm-5.2",
       "opencode": "kimi-for-coding/k2p7"
     },
-    "coder": {
-      "pi": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8",
-      "opencode": "neuralwatt/glm-5.1-fast"
-    },
     "critic": {
       "pi": "openai/gpt-5.4",
       "opencode": "kimi-for-coding/k2p7"
-    },
-    "debugger": {
-      "pi": "openai/gpt-5.4",
-      "opencode": "zai-coding-plan/glm-5.2"
     },
     "designer": {
       "pi": "sonnet",

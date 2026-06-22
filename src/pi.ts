@@ -71,7 +71,7 @@ export default function (pi: ExtensionAPI) {
 4. You ONLY classify, delegate, review. ALL implementation work goes to subagents.
 5. SEMANTIC SLICING: each task must have ONE clear objective. If a task touches many files or feels complex, split it into smaller independent tasks.
 6. Fan out aggressively: launch ALL independent subagent calls in ONE message. Sequential execution is only for dependencies.
-7. Use the cheapest capable model for each slice. coder = neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8. advisor = zai/glm-5.2 for hard decisions only.
+7. Use the cheapest capable model for each slice. advisor = zai/glm-5.2 for hard decisions only.
 === END HARD RULES ===`;
 
 		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;

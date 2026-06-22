@@ -11,12 +11,12 @@
 
 const ROUTES = [
   {
-    agents: ['groundwork:debugger'],
+    agents: ['groundwork:general-purpose'],
     patterns: [
       /\b(bug|broken|doesn'?t work|not working|error|exception|stack trace|crash|fail|failure|regression|broke)\b/i,
       /\b(debug|diagnose|root.?cause|investigate why|figure out why)\b/i,
     ],
-    hint: 'Bug or regression detected. Load the `diagnose` skill FIRST — it owns the 6-phase diagnosis loop and will guide whether to delegate to debugger, coder, or explore. Do NOT route directly to debugger without loading diagnose.',
+    hint: 'Bug or regression detected. Load the `diagnose` skill FIRST — it owns the 6-phase diagnosis loop and will guide root-cause analysis before any fix, then delegate the diagnosis-and-fix to `groundwork:general-purpose`.',
   },
   {
     agents: ['groundwork:planner'],
@@ -25,7 +25,7 @@ const ROUTES = [
       /\b(build .{0,40} from scratch|implement .{0,40} feature|create .{0,40} system|major feature|big feature|complex feature)\b/i,
       /\b(multi.?day|multi.?week|large.?scale|end.?to.?end system)\b/i,
     ],
-    hint: 'Route to `groundwork:planner` first to create a plan in .groundwork/plans/, then fan-out `groundwork:coder` tasks.',
+    hint: 'Route to `groundwork:planner` first to create a plan in .groundwork/plans/, then fan-out `groundwork:general-purpose` tasks.',
   },
   {
     agents: ['groundwork:critic'],

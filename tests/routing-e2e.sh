@@ -49,7 +49,7 @@ fi
 # Arguments:
 #   $1  test name
 #   $2  user prompt to classify
-#   $3  expected agent substring (e.g. "groundwork:debugger")
+#   $3  expected agent substring (e.g. "groundwork:general-purpose")
 #   $4  (optional) forbidden agent that must NOT appear (e.g. "groundwork:planner")
 
 test_routing() {
@@ -117,17 +117,17 @@ printf "%-40s %s\n" "$(printf '%0.s-' {1..40})" "------"
 test_routing \
   "bug: explicit bug report" \
   "The login button doesn't work after the last deploy. Users are getting a 500 error." \
-  "groundwork:debugger"
+  "groundwork:general-purpose"
 
 test_routing \
   "bug: stack trace provided" \
   "Here's the stack trace from prod: TypeError: Cannot read property 'id' of undefined at UserService.getUser" \
-  "groundwork:debugger"
+  "groundwork:general-purpose"
 
 test_routing \
   "bug: regression report" \
   "There's a regression in payment processing — it worked last week but now always fails at checkout" \
-  "groundwork:debugger"
+  "groundwork:general-purpose"
 
 # Feature/planning routing
 # Complex features may route via orchestrator (who then delegates to planner) — accept both
@@ -141,11 +141,11 @@ test_routing \
   "Plan the architecture for migrating from monolith to microservices" \
   "groundwork:planner"
 
-# Small change → coder direct
+# Small change → general-purpose direct
 test_routing \
   "small: localized clear change" \
   "Add email validation logic to the signup form handler — reject addresses without @ sign" \
-  "groundwork:coder" \
+  "groundwork:general-purpose" \
   "groundwork:planner"
 
 # Code review

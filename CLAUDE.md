@@ -6,10 +6,10 @@
 
 ## 🛑 MANDATORY PRE-FLIGHT — before ANY tool call
 
-1. **Writing or editing code?** → STOP. Delegate to `groundwork:coder`. NEVER use Edit/Write yourself.
+1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. NEVER use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the `.groundwork/run.json` ledger) → fan out coders. Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the `.groundwork/run.json` ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
@@ -25,16 +25,16 @@
 
 | Signal | Classification | Path |
 |---|---|---|
-| "doesn't work", "broken", "error", stack trace | Bug | `debugger` (root cause) → `coder` (fix) → `advisor` gate |
-| Obvious typo/config (zero ambiguity) | Trivial bug | `coder` direct → `advisor` gate |
-| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → 5-20 `coder` parallel → `advisor` gate |
-| "add/update/tweak" (small, clear, <1h, localized) | Small change | `coder` direct → `advisor` gate |
-| Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `coder` → `advisor` gate |
+| "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
+| Obvious typo/config (zero ambiguity) | Trivial bug | `general-purpose` direct → `advisor` gate |
+| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → 5-20 `general-purpose` parallel → `advisor` gate |
+| "add/update/tweak" (small, clear, <1h, localized) | Small change | `general-purpose` direct → `advisor` gate |
+| Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `critic` → `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `critic` → `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
-| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.groundwork/plans/*.md` → fan-out `coder` |
+| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.groundwork/plans/*.md` → fan-out `general-purpose` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | built-in `Explore` (no prefix) |
 | "validate plan", "is this right" | Plan review | `critic` |
@@ -42,7 +42,7 @@
 | Architecture trade-off, hard decision | Decision | `advisor` |
 | "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 
-All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:coder", ...)`.
+All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-purpose", ...)`.
 
 ---
 
@@ -62,7 +62,7 @@ Before classifying and delegating ANY new request, run these two checks:
 Non-trivial work is tracked in `.groundwork/run.json` — the run ledger written by `vertical-slice`/`ultrawork`. A `Stop` hook (`hooks/stop-gate.mjs`) reads it on every attempt to end the session and **blocks the stop**, re-injecting the fan-out rules, while any slice is not `complete` or `gate.advisor` is not `APPROVE`. This is what makes the workflow non-optional — the rules above are enforced, not advisory.
 
 Orchestrator obligations (the hook only reads):
-- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single coder, no slicing`).
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing`).
 - Mark each verified slice `complete` in the ledger as waves land.
 - Record `gate.advisor = "APPROVE"` after the completion gate.
 - To abandon a run, set `"active": false`. Trivial tasks write no ledger, so the gate stays out of the way.
@@ -129,16 +129,16 @@ Background tasks return immediately with `<task id="..." state="running">` — t
 # GOOD — all fire simultaneously, each with background: true
 Task(subagent_type="Explore",          prompt="...auth module...",        background=true)
 Task(subagent_type="Explore",          prompt="...user model...",         background=true)
-Task(subagent_type="groundwork:coder", prompt="...slice 1: auth flow...", background=true)
-Task(subagent_type="groundwork:coder", prompt="...slice 2: user profile...", background=true)
-Task(subagent_type="groundwork:coder", prompt="...slice 3: settings page...", background=true)
+Task(subagent_type="groundwork:general-purpose", prompt="...slice 1: auth flow...", background=true)
+Task(subagent_type="groundwork:general-purpose", prompt="...slice 2: user profile...", background=true)
+Task(subagent_type="groundwork:general-purpose", prompt="...slice 3: settings page...", background=true)
 # Each returns <task id="..." state="running"> immediately. Orchestrator gets notified per-task on completion.
 
 # BAD — sequential across messages, NEVER do this
-Task(coder, "slice 1") → wait → Task(coder, "slice 2") → wait → ...
+Task(general-purpose, "slice 1") → wait → Task(general-purpose, "slice 2") → wait → ...
 
 # BAD — forgot background: true (blocks the orchestrator), NEVER do this
-Task(subagent_type="groundwork:coder", prompt="...slice 1...")
+Task(subagent_type="groundwork:general-purpose", prompt="...slice 1...")
 ```
 
 **Sequential dependencies STILL use `background: true`.** When Slice B depends on Slice A's output, both launch with `background: true` — the orchestrator simply waits for Slice A's completion notification before launching Slice B in the next wave.
@@ -177,7 +177,7 @@ The `question` tool is ONLY for:
 It is NEVER a substitute for `await` or `sleep`.
 
 Fan-out targets per wave:
-- `coder`: 5–20 tasks (as many as the plan decomposes into)
+- `general-purpose`: 5–20 tasks (as many as the plan decomposes into)
 - `explore`: 3–7 tasks (one per area/module)
 - `designer`: 2–5 tasks
 - `advisor`: 1–2 tasks (only for hard decisions)
@@ -192,7 +192,7 @@ Subagents do NOT inherit session history. Each Task must be self-contained:
 
 ```
 Task(
-  subagent_type="groundwork:coder",
+  subagent_type="groundwork:general-purpose",
   background=true,
   prompt="""
   TASK: <one clear objective — max 2 sentences>
@@ -213,10 +213,10 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 | Activity | Agent |
 |----------|-------|
 | Understanding codebase | `explore` |
-| Writing/editing code | `coder` |
+| Writing/editing code | `general-purpose` |
 | UI/UX, styling | `designer` |
 | Test strategy, coverage | `test-engineer` |
-| Root-cause analysis | `debugger` |
+| Root-cause analysis | `general-purpose` |
 | Code quality, SOLID, plan validation | `critic` |
 | Security vulnerabilities | `critic` |
 | Plan/architecture validation | `critic` |
@@ -244,20 +244,21 @@ For complex multi-domain tasks, you MAY delegate to **sub-orchestrators** via `t
 ### When NOT to Use
 - Single-domain task → delegate directly to specialist
 - Task fits in one wave (≤15 slices) → fan out directly
-- Trivial sub-task (<3 files) → single coder
+- Trivial sub-task (<3 files) → single general-purpose
 
 ### Domain Decomposition (not layer decomposition)
-Each sub-orchestrator owns a COMPLETE vertical slice for ONE domain:
+Each sub-orchestrator owns a COMPLETE vertical slice for ONE domain. Because `general-purpose` is now the implementer (it cannot spawn another `general-purpose`), a sub-orchestrator **writes its domain's code itself** and delegates only supporting work to other specialists:
 ```
-Sub-orch 1 (auth):     → coder×3 + explore×1 + advisor×1
-Sub-orch 2 (payments): → coder×3 + explore×1
-Sub-orch 3 (UI):       → designer×2 + coder×1
+Sub-orch 1 (auth):     implements auth directly + explore×1 + advisor×1
+Sub-orch 2 (payments): implements payments directly + explore×1
+Sub-orch 3 (UI):       designer×2 + implements glue logic directly
 ```
+To run several domains in parallel, the PRIMARY orchestrator fans out one `general-purpose` per domain — not a sub-orchestrator fanning out more `general-purpose`s.
 
 ### Depth-1 Constraint (HARD-ENFORCED)
 - Primary orchestrator CAN task `general-purpose` sub-orchestrators
-- Sub-orchestrators CANNOT task `orchestrator` or `general-purpose` — denied by opencode.json permissions
-- Sub-orchestrators CAN task all specialists: coder, explore, advisor, designer, etc.
+- Sub-orchestrators CANNOT task `orchestrator` or another `general-purpose` — denied by opencode.json permissions (a `general-purpose` implements its own code instead)
+- Sub-orchestrators CAN task supporting specialists: explore, advisor, designer, critic, test-engineer, verifier, planner
 - Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
 
 ---

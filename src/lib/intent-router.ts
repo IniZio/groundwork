@@ -70,13 +70,13 @@ export function inferLaneIntent(task: string): LaneIntent {
 	return "unknown";
 }
 
-export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
+export function routeTaskToRole(task: string, fallback = "general-purpose"): RouteResult {
 	const intent = inferLaneIntent(task);
 
 	switch (intent) {
 		case "build-fix":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "high",
 				reason: "build-fix intent detected",
@@ -84,7 +84,7 @@ export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
 
 		case "debug":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "high",
 				reason: "keyword match for debug",
@@ -92,7 +92,7 @@ export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
 
 		case "docs":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "high",
 				reason: "docs intent detected",
@@ -108,7 +108,7 @@ export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
 
 		case "cleanup":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "high",
 				reason: "cleanup intent detected",
@@ -132,7 +132,7 @@ export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
 
 		case "verification":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "high",
 				reason: "verification intent detected",
@@ -140,7 +140,7 @@ export function routeTaskToRole(task: string, fallback = "coder"): RouteResult {
 
 		case "implementation":
 			return {
-				role: "coder",
+				role: "general-purpose",
 				intent,
 				confidence: "medium",
 				reason: "implementation intent detected",

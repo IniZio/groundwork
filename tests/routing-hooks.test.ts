@@ -45,36 +45,36 @@ describe('keyword-router: no signal → pass-through', () => {
   })
 })
 
-describe('keyword-router: bug signals → debugger', () => {
+describe('keyword-router: bug signals → general-purpose', () => {
   test('"bug" keyword', () => {
-    expect(context('fix the login bug')).toContain('groundwork:debugger')
+    expect(context('fix the login bug')).toContain('groundwork:general-purpose')
   })
 
   test('"broken" keyword', () => {
-    expect(context("the payment flow is broken")).toContain('groundwork:debugger')
+    expect(context("the payment flow is broken")).toContain('groundwork:general-purpose')
   })
 
   test('"doesn\'t work" phrase', () => {
-    expect(context("the search doesn't work correctly")).toContain('groundwork:debugger')
+    expect(context("the search doesn't work correctly")).toContain('groundwork:general-purpose')
   })
 
   test('"error" keyword', () => {
-    expect(context('getting an error when submitting the form')).toContain('groundwork:debugger')
+    expect(context('getting an error when submitting the form')).toContain('groundwork:general-purpose')
   })
 
   test('"stack trace" phrase', () => {
-    expect(context('here is the stack trace from production')).toContain('groundwork:debugger')
+    expect(context('here is the stack trace from production')).toContain('groundwork:general-purpose')
   })
 
   test('"regression" keyword', () => {
-    expect(context('there is a regression in the auth module')).toContain('groundwork:debugger')
+    expect(context('there is a regression in the auth module')).toContain('groundwork:general-purpose')
   })
 
   test('"debug" keyword', () => {
-    expect(context('debug why the cache is not invalidating')).toContain('groundwork:debugger')
+    expect(context('debug why the cache is not invalidating')).toContain('groundwork:general-purpose')
   })
 
-  test('debugger hint mentions diagnose skill FIRST', () => {
+  test('general-purpose hint mentions diagnose skill FIRST', () => {
     const ctx = context('fix the login bug')
     expect(ctx).toContain('diagnose')
     expect(ctx).toContain('FIRST')

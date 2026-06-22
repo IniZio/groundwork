@@ -171,7 +171,7 @@ For performance (avoid re-parsing all files), a `.pi/agents/.groundwork-manifest
   "agents": {
     "general-purpose": "1.0.0",
     "advisor": "1.0.0",
-    "coder": "1.0.0"
+    "general-purpose": "1.0.0"
   }
 }
 ```
@@ -186,7 +186,7 @@ This manifest is updated after every `ensureAgentsInstalled()` call.
 | `Explore` | Disabled placeholder | ✅ Disables builtin |
 | `Plan` | Disabled placeholder | ✅ Disables builtin |
 | `advisor` | Strategic decisions, architecture, code review | — New |
-| `coder` | Fast implementation, tests, build verification | — New |
+| `general-purpose` | Fast implementation, tests, build verification | — New |
 | `designer` | UI/UX, styling, responsive design | — New |
 | `explorer` | Fast codebase exploration (read-only) | — New (renamed from `explore`) |
 
@@ -282,7 +282,7 @@ pi.on("context", async (event, ctx) => {
 
 `pi-groundwork` installs agent definitions into `.pi/agents/`:
 - `advisor.md`
-- `coder.md`
+- `general-purpose.md`
 - `designer.md`
 - `explore.md`
 
@@ -350,7 +350,7 @@ groundwork/                    # existing repo, adapted for Pi
   .pi/                         # NEW — Pi discovery layout
     agents/
       advisor.md
-      coder.md
+      general-purpose.md
       designer.md
       explore.md
     skills/
@@ -358,7 +358,7 @@ groundwork/                    # existing repo, adapted for Pi
         SKILL.md
         bootstrap-universal.md
         bootstrap-orchestrator.md
-        bootstrap-coder.md
+        bootstrap-general-purpose.md
       interview/
         SKILL.md
       diagnose/
@@ -633,7 +633,7 @@ pnpm exec vitest run test/acceptance
   - `general-purpose` (orchestrator override)
   - `Explore` (disabled placeholder)
   - `Plan` (disabled placeholder)
-  - `advisor`, `coder`, `designer`, `explorer`
+  - `advisor`, `general-purpose`, `designer`, `explorer`
 - [ ] Create `src/lib/agent-setup.ts` with `ensureAgentsInstalled()` + version tracking
   - Read/write `.pi/agents/.groundwork-manifest.json`
   - Parse frontmatter to check `managed_by` / `groundwork_version`

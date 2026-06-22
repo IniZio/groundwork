@@ -44,9 +44,9 @@ describe("plugin hooks: completion gate enforcement", () => {
 			expect(output.args.background).not.toBe(true);
 		});
 
-		test("non-advisor subagent_type (coder) is forced to background=true", async () => {
+		test("non-advisor subagent_type (general-purpose) is forced to background=true", async () => {
 			const input = { tool: "task" };
-			const output = { args: { subagent_type: "coder" } };
+			const output = { args: { subagent_type: "general-purpose" } };
 			await plugin["tool.execute.before"](input as any, output as any);
 			expect(output.args.background).toBe(true);
 		});
@@ -67,7 +67,7 @@ describe("plugin hooks: completion gate enforcement", () => {
 
 		test("non-task tool is ignored", async () => {
 			const input = { tool: "read" };
-			const output = { args: { subagent_type: "coder" } };
+			const output = { args: { subagent_type: "general-purpose" } };
 			await plugin["tool.execute.before"](input as any, output as any);
 			expect(output.args.background).toBeUndefined();
 		});
@@ -129,7 +129,7 @@ describe("plugin hooks: completion gate enforcement", () => {
 
 		test("non-advisor task result does not write gate file", async () => {
 			const input = { tool: "task" };
-			const output = { args: { subagent_type: "coder" }, result: "APPROVE" };
+			const output = { args: { subagent_type: "general-purpose" }, result: "APPROVE" };
 			await plugin["tool.execute.after"](input as any, output as any);
 			expect(existsSync(gateFile())).toBe(false);
 		});

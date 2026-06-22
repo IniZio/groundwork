@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implementation orchestration skill. Decompose into vertical slices for maximum coder fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the .groundwork/run.json ledger.
+description: Implementation orchestration skill. Decompose into vertical slices for maximum general-purpose fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the .groundwork/run.json ledger.
 ---
 
 # Implement
@@ -9,7 +9,7 @@ description: Implementation orchestration skill. Decompose into vertical slices 
 
 **Decompose first, fan out maximally, validate behavior.**
 
-Slice the work into independent end-to-end behaviors before launching any coders. Fan out all independent slices simultaneously — 5-15 parallel coders per wave is the target. Validate what the system *does* from the user's perspective, not how the code is structured.
+Slice the work into independent end-to-end behaviors before launching any general-purpose agents. Fan out all independent slices simultaneously — 5-15 parallel general-purpose agents per wave is the target. Validate what the system *does* from the user's perspective, not how the code is structured.
 
 ## When to Use
 
@@ -21,7 +21,7 @@ Slice the work into independent end-to-end behaviors before launching any coders
 
 **Do NOT use for:**
 - **Bugs** — use `diagnose` instead. It owns the fix and regression test.
-- **Trivial changes** (<1h, fully specified, ≤2 files) — delegate directly to coder, then `advisor-gate`.
+- **Trivial changes** (<1h, fully specified, ≤2 files) — delegate directly to general-purpose, then `advisor-gate`.
 
 ## Two Modes
 
@@ -43,7 +43,7 @@ Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> sl
 
 ## Step 1: Decompose with `vertical-slice`
 
-Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching any coders. This is the most important step — skipping it causes sequential execution and merge conflicts. `vertical-slice` also writes the **`.groundwork/run.json` ledger** (all slices `pending`) — the artifact the Stop-gate hook enforces. The session will not be allowed to end until every slice is `complete` and the advisor gate approves.
+Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching any general-purpose agents. This is the most important step — skipping it causes sequential execution and merge conflicts. `vertical-slice` also writes the **`.groundwork/run.json` ledger** (all slices `pending`) — the artifact the Stop-gate hook enforces. The session will not be allowed to end until every slice is `complete` and the advisor gate approves.
 
 **Minimum decomposition:**
 - Feature: ≥5 slices (target 5-15 per wave)
@@ -75,14 +75,14 @@ Set the first `todowrite` item to the feature goal from acceptance criteria. Thi
 
 ```
 # Wave 1: launch all independent slices at once
-task(description="Slice 2: Complete + delete", prompt="...", subagent_type="coder")
-task(description="Slice 3: Filter + clear", prompt="...", subagent_type="coder")
-task(description="Slice 4: Edit item", prompt="...", subagent_type="coder")
-task(description="Slice 5: Persist state", prompt="...", subagent_type="coder")
+task(description="Slice 2: Complete + delete", prompt="...", subagent_type="general-purpose")
+task(description="Slice 3: Filter + clear", prompt="...", subagent_type="general-purpose")
+task(description="Slice 4: Edit item", prompt="...", subagent_type="general-purpose")
+task(description="Slice 5: Persist state", prompt="...", subagent_type="general-purpose")
 # Never: task → wait → task → wait (sequential = wasted time)
 ```
 
-Each coder prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Coders have no shared state.
+Each general-purpose prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Coders have no shared state.
 
 Wait for wave completion, verify, then launch the next wave. Update `todowrite` after each wave **and set each verified slice's `status` to `complete` in `.groundwork/run.json`** (Edit the file). The Stop-gate hook reads this on every stop attempt — slices left `pending` will block the session from ending.
 

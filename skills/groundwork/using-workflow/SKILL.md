@@ -25,9 +25,9 @@ Invoke the relevant skill BEFORE acting. If there's even a 1% chance it applies 
 | Skill | Invoke when... |
 |-------|----------------|
 | `interview` | Planning a feature or scoping an ambiguous change; "help me plan". Detects project plan conventions and synthesizes a concise plan |
-| `vertical-slice` | Decompose a task into conflict-free parallel slices and write the run ledger — before fanning out coders |
+| `vertical-slice` | Decompose a task into conflict-free parallel slices and write the run ledger — before fanning out general-purpose agents |
 | `ultrawork` | Max fan-out mode: slice → ledger → dispatch all slices in parallel, gate-enforced |
-| `implement` | Orchestrate implementation after a plan/interview — slices, fans out coders, validates behavior |
+| `implement` | Orchestrate implementation after a plan/interview — slices, fans out general-purpose agents, validates behavior |
 | `diagnose` | Any bug needing investigation — owns the 6-phase debug loop and regression test |
 | `advisor-gate` | Any technical decision with uncertainty; ALWAYS at task completion as the finishness gate |
 | `prototype` | Approach is uncertain and needs validation before committing |

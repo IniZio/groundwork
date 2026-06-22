@@ -66,26 +66,26 @@ describe("inferLaneIntent", () => {
 });
 
 describe("routeTaskToRole", () => {
-	test("routes build-fix to coder with high confidence", () => {
+	test("routes build-fix to general-purpose with high confidence", () => {
 		const result = routeTaskToRole("broken build in CI");
 		expect(result.intent).toBe("build-fix");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("high");
 		expect(result.reason).toBe("build-fix intent detected");
 	});
 
-	test("routes debug to coder with high confidence", () => {
+	test("routes debug to general-purpose with high confidence", () => {
 		const result = routeTaskToRole("debug the failing request");
 		expect(result.intent).toBe("debug");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("high");
 		expect(result.reason).toBe("keyword match for debug");
 	});
 
-	test("routes docs to coder with high confidence", () => {
+	test("routes docs to general-purpose with high confidence", () => {
 		const result = routeTaskToRole("write docs for the new endpoint");
 		expect(result.intent).toBe("docs");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("high");
 	});
 
@@ -96,10 +96,10 @@ describe("routeTaskToRole", () => {
 		expect(result.confidence).toBe("high");
 	});
 
-	test("routes cleanup to coder with high confidence", () => {
+	test("routes cleanup to general-purpose with high confidence", () => {
 		const result = routeTaskToRole("refactor the data layer");
 		expect(result.intent).toBe("cleanup");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("high");
 	});
 
@@ -126,17 +126,17 @@ describe("routeTaskToRole", () => {
 		expect(result.reason).toBe("review intent with security domain");
 	});
 
-	test("routes verification to coder with high confidence", () => {
+	test("routes verification to general-purpose with high confidence", () => {
 		const result = routeTaskToRole("add unit tests for the payment service");
 		expect(result.intent).toBe("verification");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("high");
 	});
 
-	test("routes implementation to coder with medium confidence", () => {
+	test("routes implementation to general-purpose with medium confidence", () => {
 		const result = routeTaskToRole("implement the new dashboard feature");
 		expect(result.intent).toBe("implementation");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 		expect(result.confidence).toBe("medium");
 	});
 
@@ -147,9 +147,9 @@ describe("routeTaskToRole", () => {
 		expect(result.reason).toBe("unknown intent, using fallback");
 	});
 
-	test("unknown intent uses default fallback role coder", () => {
+	test("unknown intent uses default fallback role general-purpose", () => {
 		const result = routeTaskToRole("");
-		expect(result.role).toBe("coder");
+		expect(result.role).toBe("general-purpose");
 	});
 
 	test("custom fallback role is used for unknown intent", () => {

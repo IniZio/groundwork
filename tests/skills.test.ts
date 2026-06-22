@@ -52,8 +52,8 @@ describe("getBootstrapForAgent aliases", () => {
 		expect(content).toContain("Fan-Out Maximization");
 	});
 
-	test("coder receives coder bootstrap", () => {
-		expect(getBootstrapForAgent("coder")).toContain("Groundwork Coder Rules");
+	test("general-purpose receives general-purpose bootstrap", () => {
+		expect(getBootstrapForAgent("general-purpose")).toContain("Groundwork Coder Rules");
 	});
 });
 

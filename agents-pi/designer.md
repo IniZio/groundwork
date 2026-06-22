@@ -81,7 +81,7 @@ RESPONSIVE: verified at 320px, 768px, 1024px, 1440px
 
 ## READ BUDGET (Anti-Loop Protection)
 
-Same rules as coder:
+Same rules as the general-purpose agent:
 - Max 3 file reads per task
 - Read ONLY files explicitly mentioned in the prompt
 - After reading 3 files, STOP reading and START implementing

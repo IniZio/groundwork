@@ -12,7 +12,7 @@ import {
  * UAT verification tests verify that the uat-verify skill is invoked
  * between implementation and advisor-gate.
  *
- * With subagentDepth=1, the orchestrator can delegate to coder agents
+ * With subagentDepth=1, the orchestrator can delegate to general-purpose agents
  * who implement the fix, then the orchestrator runs UAT before advisor-gate.
  */
 

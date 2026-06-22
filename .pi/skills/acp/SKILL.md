@@ -15,9 +15,9 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 |-------|------|---------|
 | `explore` | Codebase exploration, file reading, "how does X work?" | READ-ONLY |
 | `planner` | Feature planning, codebase research, writes `.groundwork/plans/*.md` | READ-ONLY |
-| `coder` | Implementation, tests, builds | YES |
+| `general-purpose` | Implementation, tests, builds | YES |
 | `designer` | UI/UX, styling, visual polish | YES |
-| `debugger` | Root-cause analysis, error diagnosis | READ-ONLY |
+| `general-purpose` | Root-cause analysis, error diagnosis | READ-ONLY |
 | `test-engineer` | Test strategy, coverage, flaky test diagnosis | YES |
 | `critic` | Code quality, SOLID, logic defects, plan/arch validation | READ-ONLY |
 | `verifier` | Evidence-based completion check (rejects "should work") | READ-ONLY |
@@ -30,7 +30,7 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 
 ```
 Task(
-  subagent_type="groundwork:coder",
+  subagent_type="groundwork:general-purpose",
   prompt="""
   TASK: <specific, scoped description>
   
@@ -58,10 +58,10 @@ The more scoped the context block, the better the output. Avoid: full conversati
 **Wave N — Full Fan-Out**: Once Wave 0 succeeds, launch ALL independent tasks in parallel. Fewer than 5 tasks on a complex feature = under-sliced. Decompose harder.
 
 ```
-# Example: parallel coder fan-out after planner
-Task(subagent_type="groundwork:coder", prompt="...context block A...")
-Task(subagent_type="groundwork:coder", prompt="...context block B...")
-Task(subagent_type="groundwork:coder", prompt="...context block C...")
+# Example: parallel general-purpose fan-out after planner
+Task(subagent_type="groundwork:general-purpose", prompt="...context block A...")
+Task(subagent_type="groundwork:general-purpose", prompt="...context block B...")
+Task(subagent_type="groundwork:general-purpose", prompt="...context block C...")
 # All in one message — they run concurrently
 ```
 
@@ -83,8 +83,8 @@ Every byte a tool returns enters the orchestrator's conversation memory and cost
 - Use targeted `grep`/`find` via Bash instead of `Read` when you don't need to edit the file immediately. `Read` loads the full file into context.
 
 **Editing:**
-- Delegate file edits to `groundwork:coder` in a worktree. The agent does the work in its own context; only the summary returns here.
-- Never `Read` a file just to understand it before delegating an edit — pass file path + line range in the coder prompt; the coder will `Read` it in its own context.
+- Delegate file edits to `groundwork:general-purpose` in a worktree. The agent does the work in its own context; only the summary returns here.
+- Never `Read` a file just to understand it before delegating an edit — pass file path + line range in the general-purpose prompt; the general-purpose will `Read` it in its own context.
 
 **Subagent output contracts:**
 - Always specify an output format in exploration prompts. Unspecified = verbose = bloat.
@@ -99,7 +99,7 @@ Every byte a tool returns enters the orchestrator's conversation memory and cost
 - **Mega-tasks**: >3 files or >200 LOC = split it first.
 - **Assumption-based completion**: `verifier` must run; "it should work" is not evidence.
 - **Verbose exploration in main context**: Researching in the orchestrator context instead of delegating to an explore agent with a tight output contract. The raw bytes of every Read/Bash call stay in context forever.
-- **Read before delegate**: Reading a file to "understand" it before handing off to a coder. Pass the path; let the coder read it in its own context.
+- **Read before delegate**: Reading a file to "understand" it before handing off to a general-purpose. Pass the path; let the general-purpose read it in its own context.
 
 ## Error Escalation
 

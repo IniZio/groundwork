@@ -52,7 +52,7 @@ Before reading the work, predict 3-5 most likely problem areas. Write them down.
 Read thoroughly. For plans, verify:
 - Every assumption is stated explicitly
 - Every step has clear acceptance criteria
-- No step could be interpreted ambiguously by two different coders
+- No step could be interpreted ambiguously by two different implementers
 - Dependencies between steps are explicit
 - Rollback path exists for each step
 

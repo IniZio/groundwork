@@ -22,7 +22,7 @@ This package supports both **OpenCode** and **Pi** from a single model-neutral s
 {
   "agents": {
     "advisor": { "pi": "zai/glm-5.2",         "opencode": "zai/glm-5.2" },
-    "coder":   { "pi": "neuralwatt/Qwen/...",  "opencode": "neuralwatt/Qwen/..." }
+    "general-purpose":   { "pi": "neuralwatt/Qwen/...",  "opencode": "neuralwatt/Qwen/..." }
   },
   "disabled": { "pi": [], "opencode": [] },
   "aliases":  { "pi": {}, "opencode": {} }
@@ -81,7 +81,7 @@ The following are **generated** — never edit them directly:
 | Runtime entry | `src/pi.ts` | `.opencode/plugins/groundwork.js` |
 | Aliases applied | no | yes (currently none) |
 
-Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes specialists such as `debugger`, `planner`, `critic`, `verifier`, and `test-engineer`.
+Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes specialists such as `general-purpose`, `planner`, `critic`, `verifier`, and `test-engineer`.
 
 This ensures:
 

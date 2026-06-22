@@ -9,7 +9,7 @@ description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reprod
 
 **A disciplined loop, not guesswork.** The feedback loop IS the skill — everything else is mechanical. Without a fast, deterministic pass/fail signal, no amount of code reading will help.
 
-**Verify the claim before any fix is delegated (triage gate).** Reproduce the reported failure FIRST — run it, observe the actual symptom (Phases 1–2) — before routing a fix to a coder. Never delegate a fix for a bug you have not reproduced: a fix for an unconfirmed claim is a guess. **If you cannot reproduce it**, do NOT proceed to a fix — stay in triage: sharpen the loop, gather evidence (logs, HAR, a failing input, environment access), or ask the user. "Can't reproduce" is a reason to investigate, not to guess-patch.
+**Verify the claim before any fix is delegated (triage gate).** Reproduce the reported failure FIRST — run it, observe the actual symptom (Phases 1–2) — before routing a fix to a general-purpose. Never delegate a fix for a bug you have not reproduced: a fix for an unconfirmed claim is a guess. **If you cannot reproduce it**, do NOT proceed to a fix — stay in triage: sharpen the loop, gather evidence (logs, HAR, a failing input, environment access), or ask the user. "Can't reproduce" is a reason to investigate, not to guess-patch.
 
 This skill **replaces** the feature/`implement` path for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`. No plan needed.
 
@@ -68,7 +68,7 @@ Each hypothesis must be **falsifiable**: "If <X> is the cause, then <changing Y>
 **Parallel hypothesis testing:** Launch the top 2-3 hypotheses as **parallel exploration tasks** when they probe different parts of the system:
 ```
 # Good: parallel probes of independent hypotheses
-# Both orchestrator and coder can delegate to explore
+# Both orchestrator and general-purpose can delegate to explore
 task(description="Test hypothesis A: auth middleware", prompt="Check if the auth middleware strips the X-Token header when...", subagent_type="explore")
 task(description="Test hypothesis B: race condition in cache", prompt="Check if the cache invalidation runs before the response...", subagent_type="explore")
 ```
@@ -100,13 +100,13 @@ If no correct seam exists, that itself is the finding — flag for architecture 
 # But you CAN parallelize: fix implementation + feedback loop verification
 ```
 
-**For orchestrator:** Delegate the fix to a `coder` agent and verification to `explore`:
+**For orchestrator:** Delegate the fix to a `general-purpose` agent and verification to `explore`:
 ```
-task(description="Write regression test + apply fix", prompt="...", subagent_type="coder")
+task(description="Write regression test + apply fix", prompt="...", subagent_type="general-purpose")
 task(description="Verify feedback loop passes after fix", prompt="...", subagent_type="explore")  # runs after fix task
 ```
 
-**For coder:** Implement the fix and regression test yourself. You can delegate codebase verification to `explore` via `task(subagent_type="explore", ...)`.
+**For general-purpose:** Implement the fix and regression test yourself. You can delegate codebase verification to `explore` via `task(subagent_type="explore", ...)`.
 
 **Sequence:**
 1. Minimise reproduction → write failing test → watch it fail

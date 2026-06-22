@@ -101,7 +101,7 @@ If session ID extraction fails from JSON, use `--continue` instead of `--session
 | `--dir <path>` | Working directory | **Always set this** — defaults to CWD |
 | `-m provider/model` | Select model | e.g. `kimi-for-coding/k2p5` |
 | `--format json` | JSON event stream | Easier to parse than formatted text |
-| `--agent <name>` | Select agent | e.g. `coder`, `advisor`, `explore` |
+| `--agent <name>` | Select agent | e.g. `general-purpose`, `advisor`, `explore` |
 | `--session <id>` | Resume specific session | For multi-turn |
 | `--continue` | Continue last session | Alternative to `--session` |
 | `--fork` | Fork before continuing | Safe branching |
@@ -158,7 +158,7 @@ Run a coding task in a separate project without polluting your session:
 
 ```
 pty_spawn(command: "opencode", args: ["acp", "--port", "9090"], title: "ACP Worker")
-bash(command: 'sleep 3 && opencode run "Refactor the auth module to use composition over inheritance" --attach http://localhost:9090 --dir /other/project --agent coder --format json', timeout: 300000)
+bash(command: 'sleep 3 && opencode run "Refactor the auth module to use composition over inheritance" --attach http://localhost:9090 --dir /other/project --agent general-purpose --format json', timeout: 300000)
 pty_kill(id: "<pty-id>", cleanup: true)
 ```
 

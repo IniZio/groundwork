@@ -23,26 +23,26 @@ describe("Plugin config merge", () => {
 			expect(config.agent.explore.permission.task).toBe("deny");
 			expect(config.agent.explore.permission["background*"]).toBe("deny");
 
-			// coder agent should have nested task permissions loaded
-			expect(config.agent.coder).toBeDefined();
-			expect(config.agent.coder.permission).toBeDefined();
-			expect(config.agent.coder.permission.question).toBe("deny");
-			expect(config.agent.coder.permission["background*"]).toBe("deny");
-			expect(config.agent.coder.permission.bash).toBeDefined();
-			expect(config.agent.coder.permission.bash["git reset --hard *"]).toBe(
+			// general-purpose agent should have nested task permissions loaded
+			expect(config.agent.general-purpose).toBeDefined();
+			expect(config.agent.general-purpose.permission).toBeDefined();
+			expect(config.agent.general-purpose.permission.question).toBe("deny");
+			expect(config.agent.general-purpose.permission["background*"]).toBe("deny");
+			expect(config.agent.general-purpose.permission.bash).toBeDefined();
+			expect(config.agent.general-purpose.permission.bash["git reset --hard *"]).toBe(
 				"deny",
 			);
-			// coder can delegate to explore and advisor
-			expect(config.agent.coder.permission.task).toBeDefined();
-			expect(config.agent.coder.permission.task["*"]).toBe("deny");
-			expect(config.agent.coder.permission.task.advisor).toBe("allow");
-			expect(config.agent.coder.permission.task.explore).toBe("allow");
+			// general-purpose can delegate to explore and advisor
+			expect(config.agent.general-purpose.permission.task).toBeDefined();
+			expect(config.agent.general-purpose.permission.task["*"]).toBe("deny");
+			expect(config.agent.general-purpose.permission.task.advisor).toBe("allow");
+			expect(config.agent.general-purpose.permission.task.explore).toBe("allow");
 
 			// orchestrator denies self-delegation but allows all other task types
 			expect(config.agent.orchestrator.permission.task.orchestrator).toBe(
 				"deny",
 			);
-			expect(config.agent.orchestrator.permission.task.coder).toBeUndefined(); // no explicit allow needed — only self-delegation is denied
+			expect(config.agent.orchestrator.permission.task.general-purpose).toBeUndefined(); // no explicit allow needed — only self-delegation is denied
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
@@ -92,7 +92,7 @@ describe("Plugin config merge", () => {
 							extra: "deny", // not in frontmatter
 						},
 					},
-					coder: {
+					general-purpose: {
 						permission: {
 							task: {
 								explore: "deny", // frontmatter says allow
@@ -115,17 +115,17 @@ describe("Plugin config merge", () => {
 			// extra permission not in frontmatter should be preserved
 			expect(config.agent.explore.permission.extra).toBe("deny");
 
-			// coder: explicit nested values should win
-			expect(config.agent.coder.permission.task.explore).toBe("deny");
-			expect(config.agent.coder.permission.task.advisor).toBe("deny");
+			// general-purpose: explicit nested values should win
+			expect(config.agent.general-purpose.permission.task.explore).toBe("deny");
+			expect(config.agent.general-purpose.permission.task.advisor).toBe("deny");
 			// frontmatter wildcard should still be merged in
-			expect(config.agent.coder.permission.task["*"]).toBe("deny");
+			expect(config.agent.general-purpose.permission.task["*"]).toBe("deny");
 			// custom permission not in frontmatter should be preserved
-			expect(config.agent.coder.permission.task.custom).toBe("allow");
+			expect(config.agent.general-purpose.permission.task.custom).toBe("allow");
 			// frontmatter value for background* should still be merged in
-			expect(config.agent.coder.permission["background*"]).toBe("deny");
+			expect(config.agent.general-purpose.permission["background*"]).toBe("deny");
 			// explicit question wins over frontmatter
-			expect(config.agent.coder.permission.question).toBe("allow");
+			expect(config.agent.general-purpose.permission.question).toBe("allow");
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
@@ -145,8 +145,8 @@ describe("Plugin config merge", () => {
 			// explore is a leaf: cannot delegate to anyone
 			expect(config.agent.explore.permission.task).toBe("deny");
 
-			// coder can delegate to explore
-			expect(config.agent.coder.permission.task.explore).toBe("allow");
+			// general-purpose can delegate to explore
+			expect(config.agent.general-purpose.permission.task.explore).toBe("allow");
 
 			// advisor can delegate to explore
 			expect(config.agent.advisor.permission.task.explore).toBe("allow");
@@ -154,10 +154,10 @@ describe("Plugin config merge", () => {
 			// designer can delegate to explore
 			expect(config.agent.designer.permission.task.explore).toBe("allow");
 
-			// Verify explore cannot delegate to advisor (only coder can)
+			// Verify explore cannot delegate to advisor (only general-purpose can)
 			expect(config.agent.explore.permission.task).toBe("deny");
-			// coder is the only one that can delegate to advisor
-			expect(config.agent.coder.permission.task.advisor).toBe("allow");
+			// general-purpose is the only one that can delegate to advisor
+			expect(config.agent.general-purpose.permission.task.advisor).toBe("allow");
 			expect(config.agent.advisor.permission.task.advisor).toBeUndefined();
 			expect(config.agent.designer.permission.task.advisor).toBeUndefined();
 		} finally {
@@ -209,7 +209,7 @@ describe("Plugin config merge", () => {
 			expect(config.agent.explore.temperature).toBe(0.99);
 
 			// other agents should get defaults
-			expect(config.agent.coder.temperature).toBe(0.2);
+			expect(config.agent.general-purpose.temperature).toBe(0.2);
 			expect(config.agent.advisor.temperature).toBe(0.1);
 			expect(config.agent.designer.temperature).toBe(0.7);
 		} finally {

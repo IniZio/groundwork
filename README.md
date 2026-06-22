@@ -61,13 +61,13 @@ When using Pi with `pi-subagents`, the following agent types are auto-configured
 |-------|---------|
 | `general-purpose` | Orchestrator — main workflow coordinator |
 | `advisor` | Strategic decisions, architecture, code review |
-| `coder` | Fast implementation, tests, build verification |
+| `general-purpose` | Fast implementation, tests, build verification |
 | `designer` | UI/UX, styling, responsive design |
 | `explorer` | Codebase exploration (read-only) |
 
 ## Rules
 
-1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out coders → advisor gate
+1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out general-purpose agents → advisor gate
 2. Advisor gate before declaring done; recorded in `.groundwork/run.json` and enforced by the Stop-gate hook
 3. Plans defer to the project's planning convention; groundwork's `.groundwork/plans/` is the fallback and is not committed
 4. Interview before slicing — understanding before synthesis

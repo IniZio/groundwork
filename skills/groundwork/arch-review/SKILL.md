@@ -118,7 +118,7 @@ Side effects as decisions crystallize:
 
 - **New concept not in project docs?** → Offer to add it to `CONTEXT.md` (create lazily if absent). Use project domain vocabulary, not generic terms.
 - **User rejects with a load-bearing reason?** → Offer an ADR: _"Want me to record this so future reviews don't re-suggest it?"_ Only offer when the reason would genuinely matter to a future explorer — skip ephemeral reasons ("not now") or self-evident ones.
-- **Ready to act?** → Route to `groundwork:coder` with: the candidate description, agreed interface shape, and success criteria.
+- **Ready to act?** → Route to `groundwork:general-purpose` with: the candidate description, agreed interface shape, and success criteria.
 
 ## Context budget rules
 

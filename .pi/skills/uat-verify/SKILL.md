@@ -412,7 +412,7 @@ Overall: PASS | FAIL
 ### Position in Skill Chain
 
 ```
-interview → vertical-slice → fan out coders → [UAT VERIFY] → advisor-gate → done
+interview → vertical-slice → fan out general-purpose agents → [UAT VERIFY] → advisor-gate → done
 interview → diagnose → [UAT VERIFY] → advisor-gate → done
 trivial change → implement → [UAT VERIFY] → advisor-gate → done
 ```
@@ -424,7 +424,7 @@ trivial change → implement → [UAT VERIFY] → advisor-gate → done
 After all implementation waves complete:
 
 1. Load this skill (`uat-verify`) 
-2. Delegate UAT execution to a `coder` agent with explicit instructions:
+2. Delegate UAT execution to a `general-purpose` agent with explicit instructions:
    - What artifact type was built
    - What UAT method to use
    - What scenarios to test (from acceptance criteria / bug report)

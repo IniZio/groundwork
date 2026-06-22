@@ -50,7 +50,7 @@ pnpm exec vitest run test/e2e --reporter=verbose
 2. Verify bootstrap injection:
    - Start a session → check that `use-groundwork` rules appear in system prompt
 3. Verify agent definitions:
-   - Run `/agents` → should see orchestrator (general-purpose), advisor, coder, designer, explorer
+   - Run `/agents` → should see orchestrator (general-purpose), advisor, general-purpose, designer, explorer
    - Should NOT see builtin Explore or Plan (disabled)
 4. Verify goal tool:
    - Call `set_goal(action="set", objective="Test", acceptanceCriteria=["A","B"])`

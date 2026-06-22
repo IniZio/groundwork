@@ -21,7 +21,7 @@ const GROUNDWORK_PROVIDERS: Record<string, ProviderConfig> = {
 	// model discovery from the NeuralWatt API. Agent .md files reference
 	// `neuralwatt/zai-org/GLM-5.1-FP8` which pi-neuralwatt resolves.
 
-	// ── Moonshot / Kimi (coder model) ───────────────────────────────────────
+	// ── Moonshot / Kimi (implementation model) ──────────────────────────────
 	"kimi-for-coding": {
 		name: "Kimi for Coding (Moonshot)",
 		baseUrl: "https://api.moonshot.cn/v1",

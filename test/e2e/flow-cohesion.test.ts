@@ -45,7 +45,7 @@ const FLOW_CASES: FlowTestCase[] = [
 		expectedSkills: ["diagnose"],
 		forbiddenSkills: ["vertical-slice", "implement"],
 		expectUAT: true, // diagnose → fix → UAT verify → advisor gate
-		expectFanOut: true, // diagnose delegates to explore/coder
+		expectFanOut: true, // diagnose delegates to explore/general-purpose
 	},
 	{
 		name: "feature-full-flow",

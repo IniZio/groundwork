@@ -13,6 +13,6 @@ This skill is injected at conversation start by the plugin. The full bootstrap c
 
 - `bootstrap-universal.md` — universal rules for ALL agents (90 lines)
 - `bootstrap-orchestrator.md` — orchestrator-only rules (391 lines)
-- `bootstrap-coder.md` — coder-specific rules (22 lines)
+- `bootstrap-general-purpose.md` — general-purpose-specific rules (22 lines)
 
 If you notice the core rules, routing, or skill triggers are missing from your context (e.g., after context compression), re-invoke this skill to reload the bootstrap content.

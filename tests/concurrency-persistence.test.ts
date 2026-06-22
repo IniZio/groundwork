@@ -142,14 +142,14 @@ describe('PersistenceLayer', () => {
     await pl.write('task-1', 'sess-1', tmpDir, 'task result content', {
       id: 'task-1',
       status: 'completed',
-      agent: 'coder'
+      agent: 'general-purpose'
     })
     const content = await pl.read('task-1', 'sess-1', tmpDir)
     expect(content).not.toBeNull()
     expect(content!).toContain('task result content')
     expect(content!).toContain('id: task-1')
     expect(content!).toContain('status: completed')
-    expect(content!).toContain('agent: coder')
+    expect(content!).toContain('agent: general-purpose')
   })
 
   test('read nonexistent returns null', async () => {
@@ -189,11 +189,11 @@ describe('PersistenceLayer', () => {
   })
 
   test('readMeta finds task across sessions', async () => {
-    await pl.write('meta-1', 'sess-meta', tmpDir, 'meta content', { id: 'meta-1', agent: 'coder' })
+    await pl.write('meta-1', 'sess-meta', tmpDir, 'meta content', { id: 'meta-1', agent: 'general-purpose' })
     const meta = await pl.readMeta('meta-1', tmpDir)
     expect(meta).not.toBeNull()
     expect(meta!.id).toBe('meta-1')
-    expect(meta!.agent).toBe('coder')
+    expect(meta!.agent).toBe('general-purpose')
   })
 
   test('readMeta returns null for nonexistent', async () => {

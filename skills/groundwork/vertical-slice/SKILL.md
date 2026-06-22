@@ -1,6 +1,6 @@
 ---
 name: vertical-slice
-description: Decompose any implementation task into conflict-free parallel slices for maximum coder fan-out. Each slice is a thin end-to-end tracer through all layers for one user-facing behavior. Use before delegating to coders — this is the decomposition phase, not the implementation phase. Writes the .groundwork/run.json ledger that the Stop-gate hook enforces.
+description: Decompose any implementation task into conflict-free parallel slices for maximum general-purpose fan-out. Each slice is a thin end-to-end tracer through all layers for one user-facing behavior. Use before delegating to general-purpose agents — this is the decomposition phase, not the implementation phase. Writes the .groundwork/run.json ledger that the Stop-gate hook enforces.
 ---
 
 # Vertical-Slice Decomposition
@@ -29,9 +29,9 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 
 ## When to Use
 
-**This skill is MANDATORY** — not optional — for any task touching ≥3 files or ≥2 user-facing behaviors before delegating to coders.
+**This skill is MANDATORY** — not optional — for any task touching ≥3 files or ≥2 user-facing behaviors before delegating to general-purpose agents.
 
-- Before delegating implementation to coders
+- Before delegating implementation to general-purpose agents
 - Before `implement` or when the orchestrator is planning a wave
 - Whenever ≥3 files will change or ≥2 distinct user-facing behaviors are involved — no exceptions
 
@@ -82,7 +82,7 @@ Slice N: <behavior name>
 | Feature (PRD) | 6–20 slices per wave |
 | Large refactor | 8–20 slices across waves |
 
-These counts are *slices per wave* (one coder each), bounded by the orchestrator's per-agent ceilings (coder ≤20 per wave). They are caps, not quotas — never invent or artificially fragment slices to hit a number. A valid slice is a real, independently-testable behavior with non-overlapping file ownership.
+These counts are *slices per wave* (one general-purpose each), bounded by the orchestrator's per-agent ceilings (general-purpose ≤20 per wave). They are caps, not quotas — never invent or artificially fragment slices to hit a number. A valid slice is a real, independently-testable behavior with non-overlapping file ownership.
 
 **Single-slice waves are a FAILURE on non-trivial work.** If a wave has only one slice, you have not decomposed hard enough — re-examine for independent behaviors before proceeding.
 
@@ -187,7 +187,7 @@ backward compatibility; the object form is preferred (see `advisor-gate`).
 **Lifecycle the orchestrator owns (the hook only reads):**
 
 1. `vertical-slice` writes the ledger with all slices `pending`.
-2. As each wave's coders return and you verify them, update those slices to `complete`
+2. As each wave's general-purpose agents return and you verify them, update those slices to `complete`
    (Edit `.groundwork/run.json`).
 3. When all slices are `complete`, run verifier → critic → advisor and record
    `gate.advisor = "APPROVE"`.

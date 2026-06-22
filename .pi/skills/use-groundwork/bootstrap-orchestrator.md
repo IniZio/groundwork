@@ -8,10 +8,10 @@ This file contains orchestrator-specific rules extracted from the use-groundwork
 
 **Before calling ANY tool, ask yourself:**
 
-1. **Am I about to write or edit code?** → STOP. Use `subagent` tool with `agent: "coder"`. NEVER use `edit` or `write` yourself.
+1. **Am I about to write or edit code?** → STOP. Use `subagent` tool with `agent: "general-purpose"`. NEVER use `edit` or `write` yourself.
 2. **Am I about to run a shell command to explore files?** → STOP. Use `subagent` tool with `agent: "explore"`. NEVER use `bash` to grep/read/glob yourself.
-3. **Am I about to debug or reproduce a bug?** → STOP. Load `diagnose` skill first, then delegate to `coder` subagents.
-4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first (synthesize a plan, deferring to project planning conventions), then `vertical-slice` (writes the `.groundwork/run.json` ledger), then fan out to **10-30 parallel `coder` subagents** (EXTREME SLICING — oh-my-claude ultrawork mode).
+3. **Am I about to debug or reproduce a bug?** → STOP. Load `diagnose` skill first, then delegate to `general-purpose` subagents.
+4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first (synthesize a plan, deferring to project planning conventions), then `vertical-slice` (writes the `.groundwork/run.json` ledger), then fan out to **10-30 parallel `general-purpose` subagents** (EXTREME SLICING — oh-my-claude ultrawork mode).
 
 **The ONLY tools you use directly are:**
 
@@ -56,7 +56,7 @@ Your role is orchestration. Classify, delegate, and review — do not implement 
 
 ### 3. Always plan and slice before implementation
 
-Synthesize a plan via `interview` (deferring to any project-level planning skill or convention; groundwork's `.groundwork/plans/` is the fallback), then decompose via `vertical-slice` — which writes the `.groundwork/run.json` ledger — before fanning out coders. Never start coding a feature without a plan and a slice ledger.
+Synthesize a plan via `interview` (deferring to any project-level planning skill or convention; groundwork's `.groundwork/plans/` is the fallback), then decompose via `vertical-slice` — which writes the `.groundwork/run.json` ledger — before fanning out general-purpose agents. Never start coding a feature without a plan and a slice ledger.
 
 ### 4. Steer the plan in place
 
@@ -75,11 +75,11 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 | Activity | Delegate to | Via |
 |----------|------------|-----|
 | Discovering unknown files, summarizing patterns | `explore` agent | `task(subagent_type="explore", ...)` — NOT for known-path reads |
-| Writing or editing code | `coder` agent | `task(subagent_type="coder", ...)` |
+| Writing or editing code | `general-purpose` agent | `task(subagent_type="general-purpose", ...)` |
 | Writing or editing UI/UX code | `designer` agent | `task(subagent_type="designer", ...)` |
-| Root-cause analysis for bugs | `debugger` agent | `task(subagent_type="debugger", ...)` |
+| Root-cause analysis for bugs | `general-purpose` agent | `task(subagent_type="general-purpose", ...)` |
 | Strategic analysis / decisions | `advisor` agent | `task(subagent_type="advisor", ...)` |
-| Running tests / builds | `coder` agent | `task(subagent_type="coder", ...)` |
+| Running tests / builds | `general-purpose` agent | `task(subagent_type="general-purpose", ...)` |
 | Writing or fixing tests, TDD | `test-engineer` agent | `task(subagent_type="test-engineer", ...)` |
 | Code quality, SOLID review | `critic` agent | `task(subagent_type="critic", ...)` |
 | Git commits, rebasing, history | `git-master` agent | `task(subagent_type="git-master", ...)` |
@@ -96,9 +96,9 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
 |-------|---------------------|-------------|----------|
 | `general-purpose` (orchestrator) | `inherit` | — | Classification, delegation, workflow routing |
 | `advisor` | `zai/glm-5.2` (strong reasoning) | 0.1 | Architecture, trade-offs, code review |
-| `coder` | `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
+| `general-purpose` | `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (high reasoning) | 0.2 | Bounded implementation, tests, build verification |
 | `explore` | `openai/gpt-5.4-mini` (fast, cheap) | 0.1 | Codebase search, pattern discovery |
-| `designer` | `kimi-for-coding/k2.6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
+| `designer` | `glm-5.2/k2.6` (high reasoning, visual taste) | 0.7 | UI/UX, styling, responsive design, visual polish |
 
 **Configure per-agent models in `opencode.json`:**
 
@@ -107,9 +107,9 @@ Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any techn
   "agent": {
    "general-purpose": { "model": "inherit" },
    "advisor": { "model": "zai/glm-5.2" },
-    "coder": { "model": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8" },
+    "general-purpose": { "model": "neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8" },
     "explore": { "model": "openai/gpt-5.4-mini" },
-    "designer": { "model": "kimi-for-coding/k2.6" }
+    "designer": { "model": "glm-5.2/k2.6" }
   }
 }
 ```
@@ -120,13 +120,13 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 
 **DELEGATE (always):**
 
-- Any `edit`, `write`, or file creation → `coder` (or `designer` for UI work)
+- Any `edit`, `write`, or file creation → `general-purpose` (or `designer` for UI work)
 - Any discovery across unknown files (grep, glob, "which file handles X?") → `explore` (known paths → use `read` directly)
-- Any bug root-cause analysis → `debugger`
-- Any build/test verification → `coder`
+- Any bug root-cause analysis → `general-purpose`
+- Any build/test verification → `general-purpose`
 - Any strategic decision → `advisor`
 - Any UI/UX implementation or styling → `designer`
-- Any architectural escalation from coder → advisor via `task(subagent_type="advisor", ...)` (coder is the ONLY specialist agent allowed to call task, and ONLY for advisor)
+- Any architectural escalation from general-purpose → advisor via `task(subagent_type="advisor", ...)` (general-purpose is the ONLY specialist agent allowed to call task, and ONLY for advisor)
 
 **DO YOURSELF (only these):**
 
@@ -139,9 +139,9 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 ### Why delegation matters
 
 1. **Velocity**: Fan out EXTREMELY aggressively — launch as many parallel tasks as the work naturally decomposes into. More parallelism = faster delivery. Sequential work is the #1 time waste. Oh-my-claude ultrawork mode: semantic slicing, not arbitrary limits.
-2. **Quality**: Each agent is specialized — coder writes better code, explore maps faster, advisor thinks deeper, designer has visual taste
+2. **Quality**: Each agent is specialized — general-purpose writes better code, explore maps faster, advisor thinks deeper, designer has visual taste
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details
-4. **Model diversity**: Different agents use different models — orchestrator inherits the session model, designer uses kimi for UI taste, advisor uses zai/glm-5.2 for reasoning, coder uses neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8 for implementation
+4. **Model diversity**: Different agents use different models — orchestrator inherits the session model, designer uses kimi for UI taste, advisor uses zai/glm-5.2 for reasoning, general-purpose uses neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8 for implementation
 
 ### Anti-pattern: The Implementing Orchestrator
 
@@ -149,17 +149,17 @@ Temperature defaults are set automatically by the plugin. Override in `opencode.
 WRONG:  Classify → read files → write code → run tests → review → advisor-gate
         (orchestrator does everything sequentially)
 
-RIGHT:  Classify → fan out mixed specialists (explore×3-7, coder×10-30, designer×2-5)
+RIGHT:  Classify → fan out mixed specialists (explore×3-7, general-purpose×10-30, designer×2-5)
         → collect all outputs → review → advisor-gate
         (orchestrator delegates, reviews, orchestrates — EXTREME fan-out width across ALL specialist types)
 
-RIGHT:  UI feature → fan out (designer×2 for styling, coder×10 for logic)
+RIGHT:  UI feature → fan out (designer×2 for styling, general-purpose×10 for logic)
         → review all outputs → advisor-gate
         (mix specialist types in the same wave — never wait sequentially for different agent types)
 
 CODER TOOL LOOP:
 WRONG:  Coder calls tool X → gets result → calls tool X again with same args → repeats (loop)
-RIGHT:  Loop detector catches it → sends nudge → coder takes different approach
+RIGHT:  Loop detector catches it → sends nudge → general-purpose takes different approach
 
 CI BABYSITTING:
 WRONG:  bash "gh pr checks" → bash "gh pr checks" → bash "gh pr checks" (polling loop)
@@ -176,7 +176,7 @@ Background tasks return immediately with `<task id="..." state="running">` — t
 
 Fan-out targets by specialist type (mix freely in the same wave):
 
-- **coder:** as many parallel tasks as the plan decomposes into (often 5-20)
+- **general-purpose:** as many parallel tasks as the plan decomposes into (often 5-20)
 - **explore:** 3-7 parallel tasks for codebase understanding (one per area/module)
 - **designer:** 2-5 parallel tasks for UI/UX work
 - **advisor:** 1-2 tasks at a time for strategic decisions
@@ -189,7 +189,7 @@ Fan-out targets by specialist type (mix freely in the same wave):
 4. **Sequential execution is only for dependencies.** If Task B needs output from Task A, they're in different waves. Both waves still use `background: true` — the orchestrator waits for Task A's completion notification before launching Task B.
 5. **Fan-out first, review second.** Launch everything in parallel, then review all outputs together.
 6. **Send ALL parallel `task` calls in ONE message — and every one of them MUST have `background: true`.** Never send task calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message and task B in the next is sequential execution, not fan-out.
-7. **Use the right model for each slice.** coder uses `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (bounded implementation). Only escalate to advisor (`zai/glm-5.2`) for hard architectural decisions.
+7. **Use the right model for each slice.** general-purpose uses `neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8` (bounded implementation). Only escalate to advisor (`zai/glm-5.2`) for hard architectural decisions.
 
 **Pre-Delegation Planning (MANDATORY) — inspired by oh-my-claude:**
 
@@ -197,7 +197,7 @@ Before EVERY `task(..., background=true)` call, DECLARE:
 
 ```
 I will delegate with:
-- **Agent**: [coder / explore / designer / advisor]
+- **Agent**: [general-purpose / explore / designer / advisor]
 - **Reason**: [why this agent fits]
 - **Expected Outcome**: [success criteria]
 ```
@@ -208,11 +208,11 @@ THEN make the background task call. Vague delegation is rejected. Exhaustiveness
 # GOOD: Fan out mixed specialists simultaneously, all with background: true
 task(description="Explore auth module",   prompt="...", subagent_type="explore",    background=true)
 task(description="Explore user model",    prompt="...", subagent_type="explore",    background=true)
-task(description="Slice 1: auth flow",    prompt="...", subagent_type="coder",      background=true)
-task(description="Slice 2: user profile", prompt="...", subagent_type="coder",      background=true)
-task(description="Slice 3: settings page", prompt="...", subagent_type="coder",     background=true)
+task(description="Slice 1: auth flow",    prompt="...", subagent_type="general-purpose",      background=true)
+task(description="Slice 2: user profile", prompt="...", subagent_type="general-purpose",      background=true)
+task(description="Slice 3: settings page", prompt="...", subagent_type="general-purpose",     background=true)
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer", background=true)
-task(description="Slice 5: notifications logic", prompt="...", subagent_type="coder", background=true)
+task(description="Slice 5: notifications logic", prompt="...", subagent_type="general-purpose", background=true)
 # All launch at once — each returns <task id="..." state="running"> immediately (non-blocking)
 # Orchestrator is notified per-task on completion
 
@@ -220,7 +220,7 @@ task(description="Slice 5: notifications logic", prompt="...", subagent_type="co
 task(description="Slice 1", ...) → wait → task(description="Slice 2", ...) → wait → ...
 
 # BAD: Forgot background: true — blocks the orchestrator, breaks fan-out
-task(description="Slice 1", prompt="...", subagent_type="coder")
+task(description="Slice 1", prompt="...", subagent_type="general-purpose")
 ```
 
 **Do NOT use the removed custom tools `background_task` / `background_output`** — they have been removed. Use the native `task` tool with `background: true`.
@@ -294,10 +294,10 @@ Use sub-orchestrators when ANY of these are true:
 - **Context budget**: Delegating all slices directly would consume too much orchestrator context for review
 
 Do NOT use sub-orchestrators when:
-- Single-domain task → delegate directly to the specialist (coder, explore, etc.)
+- Single-domain task → delegate directly to the specialist (general-purpose, explore, etc.)
 - Task fits in one wave (≤15 slices) → fan out specialists directly
 - Simple delegation → no orchestration layer needed
-- The sub-task is trivial (< 3 files, < 1h) → just use a single coder
+- The sub-task is trivial (< 3 files, < 1h) → just use a single general-purpose
 
 #### Domain Decomposition Pattern
 
@@ -305,13 +305,13 @@ When using sub-orchestrators, decompose by DOMAIN not by layer:
 
 ```
 # GOOD — domain decomposition (each sub-orch owns a vertical slice)
-Sub-orch 1 (auth):     → coder×3 (login, signup, password reset) + explore×1 + advisor×1
-Sub-orch 2 (payments): → coder×3 (checkout, billing, invoices) + explore×1
-Sub-orch 3 (UI):       → designer×2 (dashboard, settings) + coder×1 (wiring)
+Sub-orch 1 (auth):     → general-purpose×3 (login, signup, password reset) + explore×1 + advisor×1
+Sub-orch 2 (payments): → general-purpose×3 (checkout, billing, invoices) + explore×1
+Sub-orch 3 (UI):       → designer×2 (dashboard, settings) + general-purpose×1 (wiring)
 
 # BAD — layer decomposition (creates serialization bottlenecks)
-Sub-orch 1 (all types):  → coder (defines all types)
-Sub-orch 2 (all logic):  → coder (all business logic, waits for types)
+Sub-orch 1 (all types):  → general-purpose (defines all types)
+Sub-orch 2 (all logic):  → general-purpose (all business logic, waits for types)
 Sub-orch 3 (all UI):     → designer (all UI, waits for logic)
 ```
 
@@ -335,7 +335,7 @@ Sub-orchestrators CANNOT spawn further orchestrators:
 
 ## Issue-Type Routing (Progressive Disclosure)
 
-**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `vertical-slice` (writes the run ledger) → fan out coders → `advisor-gate`. Don't pre-optimize — but don't skip required steps either.
+**Before implementing, classify the issue along two axes: type and scope.** Single-line, zero-ambiguity fixes go direct. Small changes that are clear and low-risk also go direct — only route small changes into `interview` when they are ambiguous, cross system boundaries, or carry non-trivial risk. Features always follow the structured path: `interview` → `vertical-slice` (writes the run ledger) → fan out general-purpose agents → `advisor-gate`. Don't pre-optimize — but don't skip required steps either.
 
 ### Triage pre-check (before routing)
 
@@ -401,7 +401,7 @@ Classify by scope.
 
 ### Feature (clearly ≥1 day, or architectural)
 
-**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `implement` (which loads `vertical-slice` to write the run ledger and fan out coders) → then use the `skill` tool to load `advisor-gate`**
+**Path: Use the `skill` tool to load `interview` (full: 8-10 questions) → then use the `skill` tool to load `implement` (which loads `vertical-slice` to write the run ledger and fan out general-purpose agents) → then use the `skill` tool to load `advisor-gate`**
 
 - Only use this path when the work is **clearly** multi-day or architectural from the start
 - **Mandatory skill-tool invocations:** `interview` → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip to implementation before loading each skill.
@@ -422,7 +422,7 @@ load skill "prototype" (use `skill` tool, or `read` its SKILL.md) → feed findi
 ```
 [safe / small scope]  implement directly → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 [risky / unclear]     load skill "interview" (use `skill` tool, or `read` its SKILL.md) → implement → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
-[clearly ≥1d]         load skill "interview" (use `skill` tool, or `read` its SKILL.md) → load skill "implement" (loads `vertical-slice`) → fan out coders → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
+[clearly ≥1d]         load skill "interview" (use `skill` tool, or `read` its SKILL.md) → load skill "implement" (loads `vertical-slice`) → fan out general-purpose agents → load skill "advisor-gate" (use `skill` tool, or `read` its SKILL.md)
 ```
 
 ### Docs-Only Change
@@ -439,13 +439,13 @@ implement directly → load skill "advisor-gate" (use `skill` tool, or `read` it
 
 1. **ONE clear objective per task.** "Create auth middleware" is good. "Create auth middleware + login endpoint + logout endpoint" is bad — split into 3 tasks.
 2. **If a task feels complex, split it.** There is no magic LOC limit. Use your judgment: if describing the task takes more than 2 sentences, it is probably too big.
-3. **Embed source in prompts.** Subagent tasks cannot reliably read large source files. If a coder needs reference material, embed it directly in the prompt text. Do NOT tell the coder to "read file X" — it may fail.
+3. **Embed source in prompts.** Subagent tasks cannot reliably read large source files. If a general-purpose needs reference material, embed it directly in the prompt text. Do NOT tell the general-purpose to "read file X" — it may fail.
 4. **Verify task output immediately.** After a task completes, check the result. If it says `(No text output)` or the wrong files were created, relaunch the task with corrections before giving up on it.
 5. **Pre-Delegation Planning (MANDATORY).** Before EVERY subagent call, declare:
 
    ```
    I will delegate with:
-   - **Agent**: [coder / explore / designer / advisor]
+   - **Agent**: [general-purpose / explore / designer / advisor]
    - **Reason**: [why this agent fits]
    - **Expected Outcome**: [success criteria]
    ```
@@ -463,9 +463,9 @@ When a subagent task fails or produces wrong output:
 
 ## What NOT to Do
 
-- **NEVER implement when you should delegate.** If you find yourself using `edit`, `write`, or running builds/tests — STOP. That's the coder agent's job. Delegate it.
+- **NEVER implement when you should delegate.** If you find yourself using `edit`, `write`, or running builds/tests — STOP. That's the general-purpose agent's job. Delegate it.
 - **NEVER explore when you should delegate.** If you find yourself using `read`, `glob`, `grep` to understand code — STOP. That's the explore agent's job. Delegate it.
-- **NEVER do implementation work directly when a coder fails.** Always relaunch with corrected prompt first. Only do the work yourself after relaunch fails — and even then, explain why to the user.
+- **NEVER do implementation work directly when a general-purpose fails.** Always relaunch with corrected prompt first. Only do the work yourself after relaunch fails — and even then, explain why to the user.
 - **NEVER send `task` calls across multiple messages.** All parallel tasks must be launched in a single message. Sending task A, then task B in the next message is sequential execution disguised as delegation.
 - **NEVER end the conversation — use `question` tool to keep going**
 
@@ -521,8 +521,8 @@ digraph flow {
   "Feature path" -> "invoke skill interview (full)";
   "invoke skill interview (full)" -> "invoke skill implement";
   "invoke skill implement" -> "invoke skill vertical-slice (writes ledger)";
-  "invoke skill vertical-slice (writes ledger)" -> "fan out coders";
-  "fan out coders" -> "invoke skill advisor-gate";
+  "invoke skill vertical-slice (writes ledger)" -> "fan out general-purpose agents";
+  "fan out general-purpose agents" -> "invoke skill advisor-gate";
 
   "Spike" -> "invoke skill prototype";
   "invoke skill prototype" -> "Check escalation signals" [label="findings inform next step"];

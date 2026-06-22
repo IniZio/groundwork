@@ -208,7 +208,7 @@ function buildReason(ledger, incomplete) {
   lines.push('- Launch every independent slice in the next wave in ONE message — splitting Task calls across messages is sequential execution in disguise.')
   lines.push('- Each file is owned by exactly ONE slice per wave; shared types live in the Wave 0 tracer.')
   lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
-  lines.push('- You are the ORCHESTRATOR — delegate to groundwork:coder. Do not implement slices yourself.')
+  lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
   lines.push('')
   lines.push('TO FINISH: as each slice lands, set its status to "complete" in .groundwork/run.json. When all slices are complete, run verifier → critic → advisor and record gate.advisor = "APPROVE".')
   lines.push('TO ABANDON: set "active": false in .groundwork/run.json (the run is cancelled and the gate releases).')

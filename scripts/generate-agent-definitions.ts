@@ -58,6 +58,28 @@ const generatedTsPath = join(rootDir, "src", "lib", "agent-definitions.generated
 
 const shouldCheck = process.argv.includes("--check");
 
+// Frontmatter fields that belong ONLY to the pi/opencode platforms — NOT Claude Code.
+// These were stripped from the model-neutral source (agents/*.md) because Claude Code
+// reads those files directly as subagent definitions and degrades on foreign keys
+// (e.g. `prompt_mode` makes spawned agents narrate tool calls as text instead of
+// invoking them). They are re-injected here so the generated pi/opencode trees are
+// behaviorally unchanged. Agents not listed get DEFAULT_PLATFORM_FRONTMATTER.
+const RO_TOOLS = "read, bash, grep, find, ls";
+const RW_TOOLS = "read, bash, edit, write, grep, find, ls";
+const PLATFORM_ONLY_FRONTMATTER: Record<string, Frontmatter> = {
+	advisor: { prompt_mode: "replace", tools: RO_TOOLS },
+	critic: { prompt_mode: "replace", tools: RO_TOOLS },
+	designer: { prompt_mode: "replace", tools: RW_TOOLS },
+	explore: { prompt_mode: "replace", tools: RO_TOOLS },
+	"general-purpose": { prompt_mode: "replace", thinking: "low", tools: RW_TOOLS },
+	"git-master": { prompt_mode: "replace", tools: RO_TOOLS, permission: { task: { "*": "deny" } } },
+	orchestrator: { prompt_mode: "append", thinking: "minimal", mode: "primary", tools: RW_TOOLS },
+	planner: { prompt_mode: "replace", tools: RO_TOOLS },
+	"test-engineer": { prompt_mode: "replace", tools: RW_TOOLS, permission: { task: { "*": "deny", explore: "allow" } } },
+	verifier: { prompt_mode: "replace", tools: RO_TOOLS },
+};
+const DEFAULT_PLATFORM_FRONTMATTER: Frontmatter = { prompt_mode: "replace", tools: RW_TOOLS };
+
 // Preferred frontmatter key order for generated output.
 const FRONTMATTER_ORDER = [
 	"name",
@@ -190,6 +212,16 @@ function transformForPlatform(
 	const alias = platformAlias(registry, src.name, platform);
 
 	const fm: Frontmatter = { ...src.frontmatter };
+
+	// `disallowedTools` is a Claude-Code-only frontmatter field (read-only enforcement);
+	// pi/opencode express tool restrictions via `permission`, so drop it from their output.
+	delete fm.disallowedTools;
+
+	// Re-inject pi/opencode-only frontmatter stripped from the model-neutral source.
+	const platformOnly = PLATFORM_ONLY_FRONTMATTER[src.name] ?? DEFAULT_PLATFORM_FRONTMATTER;
+	for (const [key, value] of Object.entries(platformOnly)) {
+		fm[key] = value;
+	}
 
 	if (disabled) {
 		fm.enabled = false;

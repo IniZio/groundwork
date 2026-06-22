@@ -71,7 +71,7 @@ Ask: is this a bug, a small change (<1 day), or a feature (≥1 day)?
 This determines what follows:
 - **Bug** → hand off to `diagnose` (interview output is the bug scope)
 - **Small change** → proceed to `implement` (interview spec IS the spec)
-- **Feature** → synthesize the plan (Step 4), then `vertical-slice` → fan out `coder`
+- **Feature** → synthesize the plan (Step 4), then `vertical-slice` → fan out `general-purpose`
 
 ### 2. Interview
 

@@ -1,8 +1,8 @@
-# Groundwork Coder Rules
+# Groundwork General-Purpose Rules
 
-These rules apply specifically to the coder agent, in addition to the universal rules.
+These rules apply specifically to the general-purpose agent, in addition to the universal rules.
 
-## Coder-Specific Rules
+## Execution-Specific Rules
 
 ### No Self-Review
 Use the **advisor** agent via `task(subagent_type="advisor", ...)` for any technical uncertainty. Do not rely on internal reasoning loops when a decision has ambiguity or impact.
@@ -14,7 +14,7 @@ For any visible UI change or bug, validate with actual visual inspection before 
 
 - **NEVER use `task` when acting as advisor.** Subagent tasks are for executors only.
 
-The coder is the **ONLY** specialist agent allowed to call `task`, and **ONLY** for `advisor` (and `explore` for codebase investigation).
+The general-purpose agent may call `task` for `advisor` (technical decisions) and `explore` (codebase investigation), plus other non-orchestrator specialists for a genuinely multi-domain sub-problem.
 
 Example:
 ```

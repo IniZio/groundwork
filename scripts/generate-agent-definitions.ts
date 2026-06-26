@@ -46,12 +46,12 @@ interface TransformedAgent {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PLATFORMS = ["pi", "opencode"] as const;
+const PLATFORMS = ["pi", "opencode", "claude-code"] as const;
 type Platform = (typeof PLATFORMS)[number];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
-const sourceAgentsDir = join(rootDir, "agents");
+const sourceAgentsDir = join(rootDir, "agents-src");
 const registryPath = join(rootDir, "model-registry.json");
 const packageJsonPath = join(rootDir, "package.json");
 const generatedTsPath = join(rootDir, "src", "lib", "agent-definitions.generated.ts");
@@ -59,11 +59,11 @@ const generatedTsPath = join(rootDir, "src", "lib", "agent-definitions.generated
 const shouldCheck = process.argv.includes("--check");
 
 // Frontmatter fields that belong ONLY to the pi/opencode platforms — NOT Claude Code.
-// These were stripped from the model-neutral source (agents/*.md) because Claude Code
-// reads those files directly as subagent definitions and degrades on foreign keys
-// (e.g. `prompt_mode` makes spawned agents narrate tool calls as text instead of
-// invoking them). They are re-injected here so the generated pi/opencode trees are
-// behaviorally unchanged. Agents not listed get DEFAULT_PLATFORM_FRONTMATTER.
+// The model-neutral source (agents-src/*.md) carries only name, description, and
+// disallowedTools (a CC-only enforcement field). These platform-only fields are
+// re-injected here so the generated pi/opencode trees are behaviorally unchanged.
+// Agents not listed get DEFAULT_PLATFORM_FRONTMATTER.
+// Claude Code output (agents/) is handled by transformForClaudeCode() — no injection.
 const RO_TOOLS = "read, bash, grep, find, ls";
 const RW_TOOLS = "read, bash, edit, write, grep, find, ls";
 const PLATFORM_ONLY_FRONTMATTER: Record<string, Frontmatter> = {
@@ -97,7 +97,7 @@ const FRONTMATTER_ORDER = [
 
 // ─── pi built-in overrides ───────────────────────────────────────────────────
 // Suppress pi's built-in `Explore` and `Plan` agents. These are NOT part of the
-// model-neutral source set (agents/*.md) and are never written to the filesystem;
+// model-neutral source set (agents-src/*.md) and are never written to the filesystem;
 // they appear only in the pi branch of the embedded TS. opencode has no such
 // built-ins to suppress (it uses the explore→explorer file alias instead).
 // Kept per advisor-gate decision to preserve runtime behavior.
@@ -176,7 +176,7 @@ function validateRegistry(sources: Map<string, AgentSource>, registry: ModelRegi
 	}
 	for (const name of registryNames) {
 		if (!sourceNames.has(name)) {
-			throw new Error(`Registry agent "${name}" has no source file in agents/`);
+			throw new Error(`Registry agent "${name}" has no source file in agents-src/`);
 		}
 	}
 }
@@ -249,6 +249,43 @@ function transformForPlatform(
 	};
 }
 
+// ─── Claude Code–specific transformation ─────────────────────────────────────
+
+// Valid Claude Code model aliases. "inherit" is NOT valid for CC subagent definitions.
+const CLAUDE_CODE_VALID_MODELS = new Set(["opus", "sonnet", "haiku"]);
+
+function transformForClaudeCode(
+	src: AgentSource,
+	registry: ModelRegistry,
+	version: string,
+): TransformedAgent {
+	const model = registry.agents[src.name]?.["claude-code"];
+	if (model === undefined) {
+		throw new Error(`Registry missing claude-code model for agent "${src.name}"`);
+	}
+	if (!CLAUDE_CODE_VALID_MODELS.has(model)) {
+		throw new Error(
+			`Registry claude-code model for "${src.name}" is "${model}" — must be one of: opus, sonnet, haiku (never "inherit" or platform-specific strings)`,
+		);
+	}
+
+	// Claude Code only honors: name, description, model, disallowedTools.
+	// We must NOT inject prompt_mode, tools, managed_by, thinking, mode, groundwork_version.
+	const fm: Frontmatter = {};
+	if (typeof src.frontmatter.name === "string") fm.name = src.frontmatter.name;
+	if (typeof src.frontmatter.description === "string") fm.description = src.frontmatter.description;
+	fm.model = model;
+	if (src.frontmatter.disallowedTools !== undefined) {
+		fm.disallowedTools = src.frontmatter.disallowedTools;
+	}
+
+	return {
+		outputName: `${src.name}.md`,
+		definitionName: src.name,
+		content: buildFileContent(fm, src.body),
+	};
+}
+
 function generatePlatformFiles(
 	sources: Map<string, AgentSource>,
 	registry: ModelRegistry,
@@ -257,8 +294,13 @@ function generatePlatformFiles(
 ): Map<string, string> {
 	const files = new Map<string, string>();
 	for (const src of sources.values()) {
-		const t = transformForPlatform(src, registry, platform, version);
-		files.set(t.outputName, t.content);
+		if (platform === "claude-code") {
+			const t = transformForClaudeCode(src, registry, version);
+			files.set(t.outputName, t.content);
+		} else {
+			const t = transformForPlatform(src, registry, platform, version);
+			files.set(t.outputName, t.content);
+		}
 	}
 	return files;
 }
@@ -355,7 +397,7 @@ function renderDefinition(def: AgentDefinition): string {
 function toDefinitions(
 	sources: Map<string, AgentSource>,
 	registry: ModelRegistry,
-	platform: Platform,
+	platform: "pi" | "opencode",
 	version: string,
 ): AgentDefinition[] {
 	const defs: AgentDefinition[] = [];
@@ -371,7 +413,7 @@ function renderModule(version: string, piDefs: AgentDefinition[], opencodeDefs: 
 	const opencodeItems = opencodeDefs.map(renderDefinition).join("\n\n");
 
 	return `// AUTO-GENERATED. Do not edit. Run: pnpm run generate:agents
-// Source: agents/*.md (model-neutral) + model-registry.json → agents-pi/, agents-opencode/, and this file.
+// Source: agents-src/*.md (model-neutral) + model-registry.json → agents/ (claude-code), agents-pi/, agents-opencode/, and this file.
 
 import type { AgentDefinition } from "./agent-definitions.js";
 
@@ -401,7 +443,10 @@ function main(): void {
 	const drift: string[] = [];
 
 	for (const platform of PLATFORMS) {
-		const dir = join(rootDir, `agents-${platform}`);
+		// claude-code output goes to agents/ (what Claude Code reads directly).
+		// pi/opencode outputs go to agents-<platform>/.
+		const dir = platform === "claude-code" ? join(rootDir, "agents") : join(rootDir, `agents-${platform}`);
+		const dirLabel = platform === "claude-code" ? "agents" : `agents-${platform}`;
 		const expected = generatePlatformFiles(sources, registry, platform, version);
 
 		if (shouldCheck) {
@@ -412,11 +457,11 @@ function main(): void {
 				...report.extraneous.map((f) => `${f} (extraneous)`),
 			];
 			if (problems.length > 0) {
-				drift.push(`agents-${platform}/: ${problems.join(", ")}`);
+				drift.push(`${dirLabel}/: ${problems.join(", ")}`);
 			}
 		} else {
 			const result = writeDir(dir, expected);
-			console.log(`agents-${platform}/: wrote ${result.written} files`);
+			console.log(`${dirLabel}/: wrote ${result.written} files`);
 			if (result.removed.length > 0) {
 				console.log(`  removed stale: ${result.removed.join(", ")}`);
 			}

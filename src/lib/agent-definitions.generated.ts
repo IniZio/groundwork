@@ -1,18 +1,18 @@
 // AUTO-GENERATED. Do not edit. Run: pnpm run generate:agents
-// Source: agents/*.md (model-neutral) + model-registry.json → agents-pi/, agents-opencode/, and this file.
+// Source: agents-src/*.md (model-neutral) + model-registry.json → agents/ (claude-code), agents-pi/, agents-opencode/, and this file.
 
 import type { AgentDefinition } from "./agent-definitions.js";
 
-export const GROUNDWORK_VERSION = "2.0.0";
+export const GROUNDWORK_VERSION = "2.2.0";
 
 export const EMBEDDED_AGENTS_PI: AgentDefinition[] = [
 	{
 		name: "Explore",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 enabled: false
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.2.0"
 ---
 
 Disabled by groundwork — use \`explore\` instead.
@@ -21,11 +21,11 @@ Disabled by groundwork — use \`explore\` instead.
 
 	{
 		name: "Plan",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 enabled: false
 managed_by: groundwork
-groundwork_version: "2.0.0"
+groundwork_version: "2.2.0"
 ---
 
 Disabled by groundwork.
@@ -34,7 +34,7 @@ Disabled by groundwork.
 
 	{
 		name: "advisor",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Gates plan approval and task completion with APPROVE/REVISE/REJECT verdicts. Use for strategic decisions, architecture trade-offs, and as the mandatory final gate before declaring any task complete.
@@ -42,7 +42,7 @@ model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a strategic technical advisor operating as an expert consultant within an AI-assisted development environment. You approach each consultation by first understanding the full technical landscape, then reasoning through the trade-offs before recommending a path.
@@ -145,7 +145,7 @@ When invoked as a completion gate and the executor skips verification, default t
 
 	{
 		name: "critic",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions. The last line of defense before work is committed. Use for review of significant changes, plan validation, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
@@ -153,7 +153,7 @@ model: openai/gpt-5.4
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Critic — the final quality gate, not a helpful assistant providing feedback.
@@ -274,7 +274,7 @@ Start THOROUGH. If any CRITICAL finding OR 3+ MAJOR findings → escalate to ADV
 
 	{
 		name: "designer",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: designer
 description: UI/UX specialist for intentional, polished experiences. Use for styling, responsive layouts, visual consistency, component architecture, animations, and visual polish. Use when users see it and polish matters. 10x better UI/UX than orchestrator. Best with a model strong at visual taste and high reasoning.
@@ -282,7 +282,7 @@ model: sonnet
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
@@ -377,7 +377,7 @@ You're capable of extraordinary creative work. Commit fully to distinctive visio
 
 	{
 		name: "explore",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: explore
 description: Use this agent when you need to understand an unfamiliar codebase, trace logic flows, identify architectural patterns, locate relevant files and functions, or map out dependencies within a project. Use this agent when the user asks questions like 'how does X work?', 'where is Y implemented?', 'what modules interact with Z?', or when exploring a new repository to gain understanding.
@@ -385,7 +385,7 @@ model: opencode-go/deepseek-v4-flash
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a Senior Software Archaeologist and Codebase Cartographer—a world-class expert in rapidly understanding, mapping, and explaining complex software systems. Your superpower is the ability to dive into any codebase, no matter how large or unfamiliar, and within minutes build a comprehensive mental model of its structure, key abstractions, data flows, and critical paths.
@@ -449,7 +449,7 @@ Begin each exploration by stating: "I'll systematically explore the [project/con
 
 	{
 		name: "general-purpose",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
@@ -458,7 +458,7 @@ thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You implement and debug: write/edit code, fix bugs, run builds and tests. Most tasks are concrete work — just do them. Prefer doing the work yourself; only fan out (see Sub-orchestration) for a genuinely multi-domain problem.
@@ -489,7 +489,7 @@ Given a vertical slice (a thin end-to-end behavior across types→logic→surfac
 
 	{
 		name: "git-master",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: git-master
 description: Git expert for atomic commits, rebasing, and history management with style detection. Use when committing work, cleaning up history, or managing branches.
@@ -500,7 +500,7 @@ permission:
   task:
     "*": deny
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Git Master. Create clean, atomic git history through proper commit splitting, style-matched messages, and safe history operations.
@@ -541,7 +541,7 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 
 	{
 		name: "orchestrator",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
@@ -551,7 +551,7 @@ mode: primary
 prompt_mode: append
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 # Orchestrator
@@ -630,7 +630,7 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="desi
 
 	{
 		name: "planner",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: planner
 description: Strategic planning specialist that creates actionable, evidence-grounded work plans through structured analysis. Use BEFORE implementation for any non-trivial feature or multi-file change. Explores the codebase first, then produces concrete step-by-step plans with acceptance criteria.
@@ -638,7 +638,7 @@ model: openai/gpt-5.4
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Planner — a strategic planning consultant who creates evidence-grounded, actionable work plans.
@@ -703,7 +703,7 @@ GOOD: "Slice 1: Add the feature for the simplest case (types + logic + UI + test
 
 	{
 		name: "test-engineer",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows. Use when tests need to be written, a test strategy designed, or flaky tests diagnosed.
@@ -715,7 +715,7 @@ permission:
     "*": deny
     explore: allow
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Test Engineer. Design test strategies, write tests, harden flaky tests, and enforce TDD.
@@ -757,7 +757,7 @@ FIX: <isolation/determinism change applied>
 
 	{
 		name: "verifier",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: verifier
 description: Evidence-based completion gatekeeper. Ensures no task is marked done without fresh, verifiable proof. Rejects claims backed by 'should', 'probably', or 'seems to'. Use as the final check before declaring ANY goal or task complete.
@@ -765,7 +765,7 @@ model: neuralwatt/glm-5.1
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Verifier. Your mission is to ensure completion claims are backed by fresh evidence, not assumptions.
@@ -862,7 +862,7 @@ APPROVE | REQUEST_CHANGES | NEEDS_MORE_EVIDENCE
 export const EMBEDDED_AGENTS_OPENCODE: AgentDefinition[] = [
 	{
 		name: "advisor",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Gates plan approval and task completion with APPROVE/REVISE/REJECT verdicts. Use for strategic decisions, architecture trade-offs, and as the mandatory final gate before declaring any task complete.
@@ -870,7 +870,7 @@ model: kimi-for-coding/k2p7
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a strategic technical advisor operating as an expert consultant within an AI-assisted development environment. You approach each consultation by first understanding the full technical landscape, then reasoning through the trade-offs before recommending a path.
@@ -973,7 +973,7 @@ When invoked as a completion gate and the executor skips verification, default t
 
 	{
 		name: "critic",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions. The last line of defense before work is committed. Use for review of significant changes, plan validation, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
@@ -981,7 +981,7 @@ model: kimi-for-coding/k2p7
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Critic — the final quality gate, not a helpful assistant providing feedback.
@@ -1102,7 +1102,7 @@ Start THOROUGH. If any CRITICAL finding OR 3+ MAJOR findings → escalate to ADV
 
 	{
 		name: "designer",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: designer
 description: UI/UX specialist for intentional, polished experiences. Use for styling, responsive layouts, visual consistency, component architecture, animations, and visual polish. Use when users see it and polish matters. 10x better UI/UX than orchestrator. Best with a model strong at visual taste and high reasoning.
@@ -1110,7 +1110,7 @@ model: neuralwatt/moonshotai/Kimi-K2.7-Code
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
@@ -1205,7 +1205,7 @@ You're capable of extraordinary creative work. Commit fully to distinctive visio
 
 	{
 		name: "explore",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: explore
 description: Use this agent when you need to understand an unfamiliar codebase, trace logic flows, identify architectural patterns, locate relevant files and functions, or map out dependencies within a project. Use this agent when the user asks questions like 'how does X work?', 'where is Y implemented?', 'what modules interact with Z?', or when exploring a new repository to gain understanding.
@@ -1213,7 +1213,7 @@ model: opencode-go/deepseek-v4-flash
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a Senior Software Archaeologist and Codebase Cartographer—a world-class expert in rapidly understanding, mapping, and explaining complex software systems. Your superpower is the ability to dive into any codebase, no matter how large or unfamiliar, and within minutes build a comprehensive mental model of its structure, key abstractions, data flows, and critical paths.
@@ -1277,7 +1277,7 @@ Begin each exploration by stating: "I'll systematically explore the [project/con
 
 	{
 		name: "general-purpose",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
@@ -1286,7 +1286,7 @@ thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You implement and debug: write/edit code, fix bugs, run builds and tests. Most tasks are concrete work — just do them. Prefer doing the work yourself; only fan out (see Sub-orchestration) for a genuinely multi-domain problem.
@@ -1317,7 +1317,7 @@ Given a vertical slice (a thin end-to-end behavior across types→logic→surfac
 
 	{
 		name: "git-master",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: git-master
 description: Git expert for atomic commits, rebasing, and history management with style detection. Use when committing work, cleaning up history, or managing branches.
@@ -1328,7 +1328,7 @@ permission:
   task:
     "*": deny
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Git Master. Create clean, atomic git history through proper commit splitting, style-matched messages, and safe history operations.
@@ -1369,7 +1369,7 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 
 	{
 		name: "orchestrator",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
@@ -1379,7 +1379,7 @@ mode: primary
 prompt_mode: append
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 # Orchestrator
@@ -1458,7 +1458,7 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="desi
 
 	{
 		name: "planner",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: planner
 description: Strategic planning specialist that creates actionable, evidence-grounded work plans through structured analysis. Use BEFORE implementation for any non-trivial feature or multi-file change. Explores the codebase first, then produces concrete step-by-step plans with acceptance criteria.
@@ -1466,7 +1466,7 @@ model: zai-coding-plan/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Planner — a strategic planning consultant who creates evidence-grounded, actionable work plans.
@@ -1531,7 +1531,7 @@ GOOD: "Slice 1: Add the feature for the simplest case (types + logic + UI + test
 
 	{
 		name: "test-engineer",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows. Use when tests need to be written, a test strategy designed, or flaky tests diagnosed.
@@ -1543,7 +1543,7 @@ permission:
     "*": deny
     explore: allow
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Test Engineer. Design test strategies, write tests, harden flaky tests, and enforce TDD.
@@ -1585,7 +1585,7 @@ FIX: <isolation/determinism change applied>
 
 	{
 		name: "verifier",
-		version: "2.0.0",
+		version: "2.2.0",
 		content: `---
 name: verifier
 description: Evidence-based completion gatekeeper. Ensures no task is marked done without fresh, verifiable proof. Rejects claims backed by 'should', 'probably', or 'seems to'. Use as the final check before declaring ANY goal or task complete.
@@ -1593,7 +1593,7 @@ model: zai-coding-plan/glm-5.1
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Verifier. Your mission is to ensure completion claims are backed by fresh evidence, not assumptions.

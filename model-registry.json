@@ -1,55 +1,67 @@
 {
   "$schema": "https://groundwork.dev/model-registry/v1",
   "version": "2.2.0",
-  "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
+  "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents-src/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
   "agents": {
     "orchestrator": {
       "pi": "inherit",
-      "opencode": "zai-coding-plan/glm-5.2"
+      "opencode": "zai-coding-plan/glm-5.2",
+      "claude-code": "opus"
     },
     "general-purpose": {
       "pi": "inherit",
-      "opencode": "zai-coding-plan/glm-5.2"
+      "opencode": "zai-coding-plan/glm-5.2",
+      "claude-code": "sonnet"
     },
     "advisor": {
       "pi": "zai/glm-5.2",
-      "opencode": "kimi-for-coding/k2p7"
+      "opencode": "kimi-for-coding/k2p7",
+      "claude-code": "opus"
     },
     "critic": {
       "pi": "openai/gpt-5.4",
-      "opencode": "kimi-for-coding/k2p7"
+      "opencode": "kimi-for-coding/k2p7",
+      "claude-code": "opus"
     },
     "designer": {
       "pi": "sonnet",
-      "opencode": "neuralwatt/moonshotai/Kimi-K2.7-Code"
+      "opencode": "neuralwatt/moonshotai/Kimi-K2.7-Code",
+      "claude-code": "sonnet"
     },
     "verifier": {
       "pi": "neuralwatt/glm-5.1",
-      "opencode": "zai-coding-plan/glm-5.1"
+      "opencode": "zai-coding-plan/glm-5.1",
+      "claude-code": "sonnet"
     },
     "test-engineer": {
       "pi": "neuralwatt/glm-5.1",
-      "opencode": "zai-coding-plan/glm-5.1"
+      "opencode": "zai-coding-plan/glm-5.1",
+      "claude-code": "sonnet"
     },
     "planner": {
       "pi": "openai/gpt-5.4",
-      "opencode": "zai-coding-plan/glm-5.2"
+      "opencode": "zai-coding-plan/glm-5.2",
+      "claude-code": "opus"
     },
     "git-master": {
       "pi": "opencode-go/deepseek-v4-flash",
-      "opencode": "opencode-go/deepseek-v4-flash"
+      "opencode": "opencode-go/deepseek-v4-flash",
+      "claude-code": "haiku"
     },
     "explore": {
       "pi": "opencode-go/deepseek-v4-flash",
-      "opencode": "opencode-go/deepseek-v4-flash"
+      "opencode": "opencode-go/deepseek-v4-flash",
+      "claude-code": "sonnet"
     }
   },
   "disabled": {
     "pi": [],
-    "opencode": []
+    "opencode": [],
+    "claude-code": []
   },
   "aliases": {
     "pi": {},
-    "opencode": {}
+    "opencode": {},
+    "claude-code": {}
   }
 }

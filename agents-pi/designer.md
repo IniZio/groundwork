@@ -5,7 +5,7 @@ model: sonnet
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.

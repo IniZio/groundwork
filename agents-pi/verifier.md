@@ -5,7 +5,7 @@ model: neuralwatt/glm-5.1
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.0.0
+groundwork_version: 2.2.0
 ---
 
 You are Verifier. Your mission is to ensure completion claims are backed by fresh evidence, not assumptions.

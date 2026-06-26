@@ -69,6 +69,41 @@ Advisor returns one of:
 
 **Do not skip the completion gate even if you are confident.** Confidence without verification is an anti-pattern.
 
+## Risk-Tiered Completion Flow
+
+The gate sequence scales with change risk. Apply the matching tier — don't over-gate trivial work, don't under-gate feature work.
+
+| Tier | Condition | Flow |
+|------|-----------|------|
+| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h | Skip staged review → advisor directly |
+| **Small** | Localized, clear, low blast radius | `critic → advisor` |
+| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code | `[qa if interactive UI] → critic (two-stage) → advisor` |
+
+The stages below apply to the **Feature / non-trivial** tier only.
+
+## Critic Two-Stage Review (non-trivial changes)
+
+For non-trivial slices, `critic` performs two distinct passes before the advisor gate:
+
+### Stage 1 — Spec-Compliance (fresh evidence)
+
+- Does the delivered work meet the acceptance criteria from the slice brief?
+- Reject anything hedged with "should", "probably", "seems to" — these are not evidence.
+- Confirm each acceptance criterion is concretely met with observable proof (test output, command run, file diff).
+- If any criterion is unmet or unverified → **GAPS** back to the executor.
+
+### Stage 2 — Code-Quality Review
+
+- SOLID principles, over-engineering, dead code, naming, error handling.
+- Applies only if code changed in this slice (skip for doc-only / config-only changes).
+- Produces a findings list; minor findings may be folded into the advisor APPROVE as watch items rather than blockers.
+
+### Whole-Branch Final Review (non-trivial, before advisor gate)
+
+After all slices pass Stage 1 + Stage 2, critic performs one **whole-branch review** — not per-slice, but across the full diff — to catch cross-slice inconsistencies, emergent over-engineering, and integration-level issues that weren't visible per-slice. This runs once, not per slice.
+
+The advisor gate runs AFTER the whole-branch review clears.
+
 ## Single-Axis Scoring (score independently, then roll up)
 
 A single APPROVE blurs distinct failure modes — code that is correct but over-built, or lean but stubbed. Score three **independent** axes `0–3`, evaluating each on its own and deliberately ignoring the others while scoring it (borrowed from ponytail's judge):

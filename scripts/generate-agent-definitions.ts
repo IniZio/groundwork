@@ -432,6 +432,67 @@ export const EMBEDDED_AGENTS: AgentDefinition[] = EMBEDDED_AGENTS_PI;
 `;
 }
 
+// ─── CLAUDE.md model-table injection ─────────────────────────────────────────
+
+const CLAUDE_MD_PATH = join(rootDir, "CLAUDE.md");
+const AGENT_MODELS_BEGIN = "<!-- AGENT-MODELS:BEGIN";
+const AGENT_MODELS_END = "<!-- AGENT-MODELS:END -->";
+
+/** Build the markdown table fragment from registry claude-code models. */
+function buildModelTable(registry: ModelRegistry): string {
+	const rows = Object.entries(registry.agents)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, entry]) => {
+			const model = entry["claude-code"] ?? "—";
+			return `| ${name} | ${model} |`;
+		});
+	return ["| Agent | Model |", "| --- | --- |", ...rows].join("\n") + "\n";
+}
+
+/**
+ * Inject `table` strictly between the AGENT-MODELS:BEGIN … END markers in `filePath`.
+ * Preserves marker lines and ALL content outside the markers byte-for-byte.
+ * Throws a loud error if either marker is missing.
+ * Idempotent: a second call with the same table produces no change.
+ */
+function injectModelTable(filePath: string, table: string): void {
+	const original = readFileSync(filePath, "utf8");
+
+	const beginIdx = original.indexOf(AGENT_MODELS_BEGIN);
+	if (beginIdx === -1) {
+		throw new Error(
+			`AGENT-MODELS:BEGIN marker not found in ${filePath}. ` +
+				"Run S6 first or manually insert the marker pair.",
+		);
+	}
+	const endIdx = original.indexOf(AGENT_MODELS_END);
+	if (endIdx === -1) {
+		throw new Error(
+			`AGENT-MODELS:END marker not found in ${filePath}. ` +
+				"The marker file may be corrupt — restore it from git.",
+		);
+	}
+	if (endIdx <= beginIdx) {
+		throw new Error(`AGENT-MODELS:END appears before AGENT-MODELS:BEGIN in ${filePath}.`);
+	}
+
+	// Advance past the BEGIN line (include its newline).
+	const beginLineEnd = original.indexOf("\n", beginIdx);
+	if (beginLineEnd === -1) {
+		throw new Error(`AGENT-MODELS:BEGIN line has no trailing newline in ${filePath}.`);
+	}
+
+	const before = original.slice(0, beginLineEnd + 1); // up to and including \n after BEGIN line
+	const after = original.slice(endIdx); // from END marker to EOF
+
+	const injected = before + table + after;
+
+	if (injected !== original) {
+		writeFileSync(filePath, injected);
+	}
+	// If identical, no write → true idempotency (mtime unchanged).
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 function main(): void {
@@ -472,6 +533,24 @@ function main(): void {
 	const opencodeDefs = toDefinitions(sources, registry, "opencode", version);
 	const rendered = renderModule(version, piDefs, opencodeDefs);
 
+	// ── CLAUDE.md model-table check / inject ──────────────────────────────────
+	const table = buildModelTable(registry);
+	if (shouldCheck) {
+		// Verify the table region in CLAUDE.md matches what the registry would generate.
+		const claudeMd = readFileSync(CLAUDE_MD_PATH, "utf8");
+		const beginIdx = claudeMd.indexOf(AGENT_MODELS_BEGIN);
+		const endIdx = claudeMd.indexOf(AGENT_MODELS_END);
+		if (beginIdx === -1 || endIdx === -1) {
+			drift.push(`CLAUDE.md: AGENT-MODELS markers missing`);
+		} else {
+			const beginLineEnd = claudeMd.indexOf("\n", beginIdx);
+			const currentContent = claudeMd.slice(beginLineEnd + 1, endIdx);
+			if (currentContent !== table) {
+				drift.push(`CLAUDE.md: model table (stale)`);
+			}
+		}
+	}
+
 	if (shouldCheck) {
 		if (!existsSync(generatedTsPath)) {
 			drift.push(`${generatedTsPath} (missing)`);
@@ -487,6 +566,9 @@ function main(): void {
 		}
 		return;
 	}
+
+	injectModelTable(CLAUDE_MD_PATH, table);
+	console.log(`CLAUDE.md: model table injected`);
 
 	mkdirSync(dirname(generatedTsPath), { recursive: true });
 	writeFileSync(generatedTsPath, rendered);

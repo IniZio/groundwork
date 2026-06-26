@@ -66,11 +66,11 @@ const ROUTES = [
     hint: 'Route to `groundwork:advisor` for strategic decisions and architecture trade-offs.',
   },
   {
-    agents: ['groundwork:verifier'],
+    agents: ['groundwork:critic'],
     patterns: [
       /\b(is it done|are we done|verify this|verify the|validate this|check if complete|is this complete|prove it works|show evidence|completion check|ready to ship|ship it|can we merge|are all tests passing|does it pass)\b/i,
     ],
-    hint: 'Route to `groundwork:verifier` — completion verification requested. The verifier ensures no task is marked done without fresh, verifiable proof.',
+    hint: 'Route to `groundwork:critic` — completion verification requested. The critic ensures no task is marked done without fresh, verifiable proof (rejects "should", "probably", "seems to").',
   },
 ]
 

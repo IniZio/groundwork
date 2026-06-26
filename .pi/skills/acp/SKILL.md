@@ -19,8 +19,7 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 | `designer` | UI/UX, styling, visual polish | YES |
 | `general-purpose` | Root-cause analysis, error diagnosis | READ-ONLY |
 | `test-engineer` | Test strategy, coverage, flaky test diagnosis | YES |
-| `critic` | Code quality, SOLID, logic defects, plan/arch validation | READ-ONLY |
-| `verifier` | Evidence-based completion check (rejects "should work") | READ-ONLY |
+| `critic` | Code quality, SOLID, logic defects, plan/arch validation, AND fresh-evidence completion gating (rejects "should work") | READ-ONLY |
 | `advisor` | Strategic decisions, hard trade-offs, completion APPROVE gate | READ-ONLY |
 | `git-master` | Atomic commits, rebasing, history management | YES |
 
@@ -67,11 +66,13 @@ Task(subagent_type="groundwork:general-purpose", prompt="...context block C...")
 
 ## Standard Completion Flow
 
-After implementation, always run in order:
+After implementation, run the risk-tiered gate:
 
-1. `verifier` — fresh evidence only; rejects "should", "probably", "seems to"
-2. `critic` — if any code changed
-3. `advisor` — final APPROVE/REVISE/REJECT gate
+- **Trivial** (≤2 files, ≤1 behavior, <1h): `advisor` directly
+- **Small** (localized, clear): `critic → advisor`
+- **Feature / non-trivial** (≥3 files OR ≥2 behaviors): `[qa if interactive UI] → critic (evidence+quality) → advisor`
+
+`critic` owns fresh-evidence gating — it rejects "should", "probably", "seems to" — AND code-quality review. The advisor is the final APPROVE/REVISE/REJECT gate.
 
 ## Context Window Hygiene
 
@@ -97,7 +98,7 @@ Every byte a tool returns enters the orchestrator's conversation memory and cost
 - **Context bleed**: Never pass session history to subagents — craft a scoped context block.
 - **Self-delegation**: Orchestrator never spawns another `general-purpose` or `orchestrator`.
 - **Mega-tasks**: >3 files or >200 LOC = split it first.
-- **Assumption-based completion**: `verifier` must run; "it should work" is not evidence.
+- **Assumption-based completion**: `critic` must run as the evidence gate; "it should work" is not evidence.
 - **Verbose exploration in main context**: Researching in the orchestrator context instead of delegating to an explore agent with a tight output contract. The raw bytes of every Read/Bash call stay in context forever.
 - **Read before delegate**: Reading a file to "understand" it before handing off to a general-purpose. Pass the path; let the general-purpose read it in its own context.
 

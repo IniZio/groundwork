@@ -146,7 +146,6 @@ This is the contract; the hook (`hooks/stop-gate.mjs`) reads exactly these field
       "status": "pending" }
   ],
   "gate": {
-    "verifier": "pending",
     "critic": "pending",
     "advisor": {
       "verdict": "APPROVE",
@@ -172,7 +171,7 @@ backward compatibility; the object form is preferred (see `advisor-gate`).
   may be marked `complete`. This is the **canonical** wave-ordering dependency.
   `depends_on` is an accepted legacy alias; if both are present, treat them as a union.
 - `slices[].acceptance` — optional `string[]` of checkbox-style, individually verifiable
-  done-conditions. Each entry is one concrete assertion the verifier can confirm; the
+  done-conditions. Each entry is one concrete assertion the critic can confirm; the
   Stop-gate surfaces the count for incomplete slices.
 - `gate.advisor` — `pending` until the advisor gate runs; must resolve to `APPROVE` for the
   run to end (see `advisor-gate`). Accepts **either** form:
@@ -181,7 +180,7 @@ backward compatibility; the object form is preferred (see `advisor-gate`).
     "correctness": 0-3, "completeness": 0-3, "over_engineering": 0-3 }, "citation":
     "<file:line or construct, or 'none'>" }`.
   The run is approved when the string, or the object's `verdict`, equals `APPROVE`
-  (case-insensitive). `verifier`/`critic` are informational (`pending`|`passed`|`skipped`).
+  (case-insensitive). `verifier`/`critic` are informational (`pending`|`passed`|`skipped`) — tolerated as ledger keys but not required for the gate.
 - `reinforcements` — leave at `0`; the hook manages it.
 
 **Lifecycle the orchestrator owns (the hook only reads):**
@@ -189,8 +188,7 @@ backward compatibility; the object form is preferred (see `advisor-gate`).
 1. `vertical-slice` writes the ledger with all slices `pending`.
 2. As each wave's general-purpose agents return and you verify them, update those slices to `complete`
    (Edit `.groundwork/run.json`).
-3. When all slices are `complete`, run verifier → critic → advisor and record
-   `gate.advisor = "APPROVE"`.
+3. When all slices are `complete`, run the risk-tiered completion gate: `[qa if interactive UI] → critic (evidence+quality) → advisor` and record `gate.advisor = "APPROVE"`. Trivial work (≤2 files, ≤1 behavior, <1h) may skip directly to advisor.
 4. With every slice `complete` and `gate.advisor === "APPROVE"`, the Stop gate releases.
 
 If you ever need to bail out, set `"active": false` — the gate releases immediately.

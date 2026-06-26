@@ -58,7 +58,7 @@ function activeRunBlock(projectDir, sessionId) {
     lines.push('')
     lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → .groundwork/run.json\``)
   } else if (verdict !== 'APPROVE') {
-    lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate (verifier → critic → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
+    lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate ([qa if interactive UI] → critic → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
   } else {
     lines.push('All slices complete and advisor APPROVE — this run is finished. Set `"active": false` in .groundwork/run.json to close it out so the Stop-gate stands down.')
   }
@@ -94,7 +94,7 @@ You are the ORCHESTRATOR. Classify, decompose, delegate, review. NEVER implement
 | UI / styling / layout / design | \`groundwork:designer\` |
 | "Explore" / "how does" / "where is" | built-in Explore (no prefix) |
 | Hard decision / architecture trade-off | \`groundwork:advisor\` |
-| Completion check | \`groundwork:verifier\` → \`groundwork:critic\` → \`groundwork:advisor\` APPROVE |
+| Completion check | \`groundwork:critic\` (evidence+quality) → \`groundwork:advisor\` APPROVE (add \`groundwork:qa\` first for interactive UI) |
 
 ## Prime directive
 
@@ -160,7 +160,7 @@ TASK GRAPH:
 Wave 0 (tracer bullet — 1–2 tasks): [prove E2E path; define shared types]
 Wave 1 (exploration — parallel): [one explore per area/module]
 Wave 2 (implementation — parallel): [one general-purpose/designer per slice]
-Wave 3 (verification): verifier → critic → advisor APPROVE
+Wave 3 (verification): [qa if interactive UI] → critic (evidence+quality) → advisor APPROVE
 \`\`\`
 
 ## Trivial escape hatch
@@ -169,7 +169,7 @@ Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h → skip slicing, del
 
 ## Completion gate (mandatory)
 
-verifier → critic → advisor APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
+[qa if interactive UI] → critic (evidence+quality) → advisor APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
 
 let input = {}
 try {

@@ -201,7 +201,7 @@ function buildReason(ledger, incomplete) {
   const gate = ledger.gate ?? {}
   const advisorShown = advisorVerdict(gate) ?? 'pending'
   lines.push('')
-  lines.push(`Completion gate — verifier: ${gate.verifier ?? 'pending'} · critic: ${gate.critic ?? 'pending'} · advisor: ${advisorShown} (must be APPROVE).`)
+  lines.push(`Completion gate — critic: ${gate.critic ?? 'pending'} · advisor: ${advisorShown} (must be APPROVE). [verifier: ${gate.verifier ?? 'n/a'} — informational only]`)
 
   lines.push('')
   lines.push('REMEMBER THE FAN-OUT RULES:')
@@ -210,7 +210,7 @@ function buildReason(ledger, incomplete) {
   lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
   lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
   lines.push('')
-  lines.push('TO FINISH: as each slice lands, set its status to "complete" in .groundwork/run.json. When all slices are complete, run verifier → critic → advisor and record gate.advisor = "APPROVE".')
+  lines.push('TO FINISH: as each slice lands, set its status to "complete" in .groundwork/run.json. When all slices are complete, run the completion gate ([qa if interactive UI] → critic → advisor) and record gate.advisor = "APPROVE".')
   lines.push('TO ABANDON: set "active": false in .groundwork/run.json (the run is cancelled and the gate releases).')
   return lines.join('\n')
 }

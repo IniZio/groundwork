@@ -28,7 +28,7 @@
       "opencode": "neuralwatt/moonshotai/Kimi-K2.7-Code",
       "claude-code": "sonnet"
     },
-    "verifier": {
+    "qa": {
       "pi": "neuralwatt/glm-5.1",
       "opencode": "zai-coding-plan/glm-5.1",
       "claude-code": "sonnet"

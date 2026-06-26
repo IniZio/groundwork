@@ -76,7 +76,7 @@ const PLATFORM_ONLY_FRONTMATTER: Record<string, Frontmatter> = {
 	orchestrator: { prompt_mode: "append", thinking: "minimal", mode: "primary", tools: RW_TOOLS },
 	planner: { prompt_mode: "replace", tools: RO_TOOLS },
 	"test-engineer": { prompt_mode: "replace", tools: RW_TOOLS, permission: { task: { "*": "deny", explore: "allow" } } },
-	verifier: { prompt_mode: "replace", tools: RO_TOOLS },
+	qa: { prompt_mode: "replace", tools: RW_TOOLS },
 };
 const DEFAULT_PLATFORM_FRONTMATTER: Frontmatter = { prompt_mode: "replace", tools: RW_TOOLS };
 

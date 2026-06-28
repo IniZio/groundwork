@@ -226,11 +226,14 @@ function transformForPlatform(
 	if (disabled) {
 		fm.enabled = false;
 	}
-	// DISABLED models omit the model field; otherwise inject the registry model.
-	if (model !== "DISABLED") {
-		fm.model = model;
-	} else {
+	// DISABLED models omit the model field. opencode has no "inherit" keyword —
+	// a subagent inherits the parent/session model by omitting `model` entirely
+	// (pi keeps the literal "inherit", which it understands natively).
+	const omitModel = model === "DISABLED" || (platform === "opencode" && model === "inherit");
+	if (omitModel) {
 		delete fm.model;
+	} else {
+		fm.model = model;
 	}
 
 	// Apply alias so output filename stem == frontmatter `name` == platform identity.

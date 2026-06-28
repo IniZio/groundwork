@@ -5,17 +5,17 @@
   "agents": {
     "orchestrator": {
       "pi": "inherit",
-      "opencode": "zai-coding-plan/glm-5.2",
+      "opencode": "inherit",
       "claude-code": "opus"
     },
     "general-purpose": {
       "pi": "inherit",
-      "opencode": "zai-coding-plan/glm-5.2",
+      "opencode": "kimi-for-coding/k2p7",
       "claude-code": "sonnet"
     },
     "advisor": {
       "pi": "zai/glm-5.2",
-      "opencode": "kimi-for-coding/k2p7",
+      "opencode": "zai-coding-plan/glm-5.2",
       "claude-code": "opus"
     },
     "critic": {

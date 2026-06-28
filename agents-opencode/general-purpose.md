@@ -1,7 +1,7 @@
 ---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
-model: zai-coding-plan/glm-5.2
+model: kimi-for-coding/k2p7
 thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls

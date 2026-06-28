@@ -318,14 +318,20 @@ export const GroundworkPlugin = async ({ client, directory }) => {
         designer: { temperature: 0.7 },
       }
       if (fs.existsSync(groundworkAgentsDir)) {
-        for (const file of fs.readdirSync(groundworkAgentsDir)) {
-          if (!file.endsWith('.md')) continue
+        const agentFiles = fs.readdirSync(groundworkAgentsDir).filter((f) => f.endsWith('.md'))
+        // Names backed by their own dedicated agent file must NOT be clobbered by the
+        // orchestrator's alias registration. Otherwise the orchestrator's model leaks
+        // onto e.g. general-purpose, which intentionally omits `model` to inherit the
+        // session model.
+        const dedicatedNames = new Set(agentFiles.map((f) => path.basename(f, '.md')))
+        const orchestratorAliases = ORCHESTRATOR_AGENT_ALIASES.filter((a) => !dedicatedNames.has(a))
+        for (const file of agentFiles) {
           const agentFilePath = path.join(groundworkAgentsDir, file)
           const raw = fs.readFileSync(agentFilePath, 'utf8')
           const { frontmatter, content } = extractAndStripFrontmatter(raw)
           const name = frontmatter.name || path.basename(file, '.md')
           const names = name === 'orchestrator'
-            ? [name, ...ORCHESTRATOR_AGENT_ALIASES]
+            ? [name, ...orchestratorAliases]
             : [name]
           for (const registeredName of names) {
             if (config.agent[registeredName]?.disable) continue

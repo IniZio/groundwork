@@ -893,7 +893,7 @@ export const EMBEDDED_AGENTS_OPENCODE: AgentDefinition[] = [
 		content: `---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Gates plan approval and task completion with APPROVE/REVISE/REJECT verdicts. Use for strategic decisions, architecture trade-offs, and as the mandatory final gate before declaring any task complete.
-model: kimi-for-coding/k2p7
+model: zai-coding-plan/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
@@ -1342,7 +1342,7 @@ Begin each exploration by stating: "I'll systematically explore the [project/con
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
-model: zai-coding-plan/glm-5.2
+model: kimi-for-coding/k2p7
 thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
@@ -1434,7 +1434,6 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 		content: `---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
-model: zai-coding-plan/glm-5.2
 thinking: minimal
 mode: primary
 prompt_mode: append

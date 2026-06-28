@@ -1,7 +1,7 @@
 ---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Gates plan approval and task completion with APPROVE/REVISE/REJECT verdicts. Use for strategic decisions, architecture trade-offs, and as the mandatory final gate before declaring any task complete.
-model: kimi-for-coding/k2p7
+model: zai-coding-plan/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

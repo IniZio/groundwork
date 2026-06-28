@@ -149,7 +149,7 @@ When invoked as a completion gate and the executor skips verification, default t
 		content: `---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions — including fresh-evidence completion verification. The last line of defense before work is committed. Use for review of significant changes, plan validation, evidence-based completion checks, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
-model: openai/gpt-5.4
+model: kimi-code/kimi-for-coding
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
@@ -312,7 +312,7 @@ Start THOROUGH. If any CRITICAL finding OR 3+ MAJOR findings → escalate to ADV
 		content: `---
 name: designer
 description: UI/UX specialist for intentional, polished experiences. Use for styling, responsive layouts, visual consistency, component architecture, animations, and visual polish. Use when users see it and polish matters. 10x better UI/UX than orchestrator. Best with a model strong at visual taste and high reasoning.
-model: sonnet
+model: opencode-go/kimi-k2.7-code
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
@@ -487,7 +487,7 @@ Begin each exploration by stating: "I'll systematically explore the [project/con
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
-model: inherit
+model: kimi-code/kimi-for-coding
 thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
@@ -579,7 +579,6 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 		content: `---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
-model: inherit
 thinking: minimal
 mode: primary
 prompt_mode: append
@@ -668,7 +667,7 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="desi
 		content: `---
 name: planner
 description: Strategic planning specialist that creates actionable, evidence-grounded work plans through structured analysis. Use BEFORE implementation for any non-trivial feature or multi-file change. Explores the codebase first, then produces concrete step-by-step plans with acceptance criteria.
-model: openai/gpt-5.4
+model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
@@ -741,7 +740,7 @@ GOOD: "Slice 1: Add the feature for the simplest case (types + logic + UI + test
 		content: `---
 name: qa
 description: Use when a change needs live verification — browser/TUI/CLI exploratory + scripted testing, fixture generation, and standing up a running env for human eyeball-check.
-model: neuralwatt/glm-5.1
+model: zai/glm-5.1
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
@@ -837,7 +836,7 @@ Produce a written report (see Output Format). Cite every artifact by path. criti
 		content: `---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows. Use when tests need to be written, a test strategy designed, or flaky tests diagnosed.
-model: neuralwatt/glm-5.1
+model: zai/glm-5.1
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 permission:

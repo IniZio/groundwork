@@ -1,7 +1,6 @@
 ---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
-model: inherit
 thinking: minimal
 mode: primary
 prompt_mode: append

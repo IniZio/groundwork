@@ -15,9 +15,9 @@
 - `Task(subagent_type=...)` — to delegate ALL work
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
-- `Bash` — ONLY for one-shot git status checks, NEVER exploration or implementation
+- `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update run.json); NEVER exploration or implementation
 
-**If you find yourself using Edit, Write, or Bash for more than 2 commands → YOU ARE DOING IT WRONG. Stop and delegate.**
+**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI and one-shot git status are the only sanctioned Bash uses.)
 
 ---
 
@@ -62,11 +62,12 @@ Before classifying and delegating ANY new request, run these two checks:
 
 Non-trivial work is tracked in `.groundwork/run.json` — the run ledger written by `vertical-slice`/`ultrawork`. A `Stop` hook (`hooks/stop-gate.mjs`) reads it on every attempt to end the session and **blocks the stop**, re-injecting the fan-out rules, while any slice is not `complete` or `gate.advisor` is not `APPROVE`. This is what makes the workflow non-optional — the rules above are enforced, not advisory.
 
-Orchestrator obligations (the hook only reads):
+Orchestrator obligations (the hook only reads). **Mutate the ledger ONLY through the `ledger` CLI — never Read/Edit `.groundwork/run.json` by hand.** Reading the whole file into the opus context on every status flip costs 15–40K tokens per run and races the hook's own writes; the CLI does a locked, atomic read-modify-write and returns one compact line:
 - Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing`).
-- Mark each verified slice `complete` in the ledger as waves land.
-- Record `gate.advisor = "APPROVE"` after the completion gate.
-- To abandon a run, set `"active": false`. Trivial tasks write no ledger, so the gate stays out of the way.
+- Mark each verified slice complete as waves land: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …]`.
+- Record the verdict after the completion gate: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE` (add `--citation … --rubric …` for the object form; also `gate critic passed`).
+- Check progress cheaply any time with `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs status` instead of reading the file.
+- To abandon a run: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs abandon` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 
 ---
 

@@ -229,7 +229,7 @@ function transformForPlatform(
 	// DISABLED models omit the model field. opencode has no "inherit" keyword —
 	// a subagent inherits the parent/session model by omitting `model` entirely
 	// (pi keeps the literal "inherit", which it understands natively).
-	const omitModel = model === "DISABLED" || (platform === "opencode" && model === "inherit");
+	const omitModel = model === "DISABLED" || model === "inherit";
 	if (omitModel) {
 		delete fm.model;
 	} else {

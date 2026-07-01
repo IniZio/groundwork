@@ -44,6 +44,7 @@ Invoke the `advisor-gate` skill before declaring any task complete. 1% chance = 
 | `vertical-slice` | **Before fanning out general-purpose agents.** Decomposes task into conflict-free parallel slices with wave assignments and writes the `.groundwork/run.json` ledger. Called inside `implement` or standalone |
 | `ultrawork` | **Max fan-out mode.** Slice → write ledger → dispatch every independent slice in parallel; gate-enforced by the Stop hook |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
+| `housekeep` | **Codebase hygiene / cleanup.** Default mode `deslop` (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design slop). Opt-in modes: `deps`, `lint-debt`, `docs-staleness`. Triggers: deslop, anti-slop, AI slop, housekeep, cleanup the code, dependency audit, lint debt, stale docs |
 | `commit` | Creating git commits (ensures consistent style) |
 | `opencode-acp` | Controlling another OpenCode instance via ACP protocol |
 | `goal` | **Multi-step work needing focus tracking.** Set before testing multiple flows, multi-wave implementation, or any task where losing the objective causes rework. Persisted across sessions |

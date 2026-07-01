@@ -36,6 +36,8 @@ Use these terms exactly in all cleanup plans and reports.
 - Between tasks: sweep residual slop before it compounds
 - The goal is simplification and hygiene, not new feature delivery
 
+`housekeep` is orchestrator-run. When the target area is large, the orchestrator fans out `Explore` subagents for the smell scan and collects findings via Task return values; cleanup edits are then delegated to `general-purpose` agents. (If the skill is loaded by a delegated leaf subagent, use the fallback tools noted in "Context budget rules" below.)
+
 ## When NOT to Use
 
 - The task is a new feature build or product change → use `implement`
@@ -90,6 +92,7 @@ This workflow is inline because `deslop` is the default mode. The other modes po
 - **Pass 4: Test reinforcement**
 - Re-run targeted verification after EACH pass.
 - Do not bundle unrelated refactors into the same edit set.
+- If a pass finds no violations after an evidence-based scan, record the empty finding (which area was scanned, why nothing qualified) and proceed to the next pass. Do NOT manufacture deletions or changes to justify a pass. A clean pass is a valid result.
 
 ### Step 5 — Run the quality gates
 
@@ -108,13 +111,7 @@ Always report:
 
 ## UI/design reviewer checklist
 
-Use these as review prompts, not absolute bans. Keep intentional brand, accessibility, product-density, or design-system choices when they have a clear rationale.
-
-- **Shadow restraint:** question box shadows on every surface, logo, background, card, or icon; keep shadows only where they clarify elevation or interaction.
-- **Content hierarchy:** remove repetitive eyebrow/title/description/extra `<p>` stuffing when the title already carries the message; avoid generic emoji badges unless they are part of the product voice.
-- **Palette rationale:** challenge default AI blue/purple palettes, especially Tailwind-like `#3B82F6`, when no brand or system rationale exists.
-- **Layout rhythm:** avoid overly perfect uniform grids when the product context benefits from rhythm, emphasis, asymmetry, carousel/bento treatment, or varied card weights.
-- **Gradient restraint:** tone down extreme gradients unless the brand deliberately owns that visual language.
+The 5-item UI/design checklist lives in `reference/ui-checklist.md`. Load it ONLY when the target has a rendered UI/CLI surface; otherwise skip — it is dead weight on backend-only cleanups.
 
 ## Scoped file-list usage
 
@@ -133,7 +130,7 @@ For `deps`, `lint-debt`, or `docs-staleness` modes, load the matching `reference
 
 These are mandatory, not advisory:
 
-1. Collect findings via `Explore` subagents when scanning a large area — do not read raw files into main context to hunt for smells.
+1. Collect findings via `Explore` subagents when scanning a large area (orchestrator context) — do not read raw files into main context to hunt for smells. If `Explore` subagents cannot be spawned (leaf-subagent context where `task` is unavailable), fall back to `ctx_batch_execute` for structural scans, `ctx_execute` for computations, and `ctx_execute_file` for targeted file reads — NEVER `Read` raw files into context to hunt for smells. The philosophy is unchanged either way: raw exploration output stays out of context.
 2. Use `ctx_batch_execute` for any file-count or structural analysis — never sequential grep calls.
 3. The cleanup report is the full artifact; keep your in-context summary to the user ≤12 lines.
 4. No files created in the repo for the report — temp dir only if an artifact is needed.
@@ -153,6 +150,8 @@ After the cleanup report, invoke `advisor-gate` with:
 - **REJECT** → back out the risky cleanup and re-plan with a narrower scope
 
 **Interactive surfaces:** if the change touches an interactive UI or CLI surface, run `qa` (live verification) BEFORE `critic`. Otherwise go straight `critic` → `advisor-gate`.
+
+`critic` satisfies the writer/reviewer separation that a dedicated `--review` mode would provide: it is an independent reviewer that inspects the cleanup plan, changed files, and verification evidence, and never both edits and approves in the same pass.
 
 ## What NOT to Do
 

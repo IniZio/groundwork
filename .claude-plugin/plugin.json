@@ -14,7 +14,7 @@
     "fan-out",
     "routing"
   ],
-  "skills": "./skills/",
+  "skills": "./skills/groundwork/",
   "mcpServers": {},
   "claudeMd": "./CLAUDE.md"
 }

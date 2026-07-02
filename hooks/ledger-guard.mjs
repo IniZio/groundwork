@@ -20,20 +20,7 @@
  */
 
 import path from 'node:path'
-
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
-}
-
-function passthrough() {
-  process.exit(0)
-}
+import { readStdin, passthrough } from './lib/hook-io.mjs'
 
 function deny(reason) {
   console.log(

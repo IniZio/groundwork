@@ -15,6 +15,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { readStdin } from './lib/hook-io.mjs'
 
 /** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
 function advisorVerdict(gate) {
@@ -63,17 +64,6 @@ function activeRunBlock(projectDir, sessionId) {
     lines.push('All slices complete and advisor APPROVE — this run is finished. Set `"active": false` in .groundwork/run.json to close it out so the Stop-gate stands down.')
   }
   return `\n${lines.join('\n')}`
-}
-
-/** Read all of stdin; resolve '' if stdin is empty, closed, or errors. Never throws. */
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
 }
 
 const reminder = `# groundwork — Orchestrator Mode (max fan-out)

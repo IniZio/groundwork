@@ -70,20 +70,10 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { mutateLedger } from './lib/ledger-io.mjs'
+import { readStdin } from './lib/hook-io.mjs'
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
-
-/** Read all of stdin; resolve '' on empty/closed/error. Never throws. */
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
-}
 
 /**
  * Pure: extract the advisor verdict from either the legacy string form

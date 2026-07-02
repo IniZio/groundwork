@@ -31,23 +31,9 @@
  *    annotation comments (@ts-ignore etc.) are allow-listed before detection.
  */
 
+import { readStdin, passthrough } from './lib/hook-io.mjs'
+
 const GUARDED = new Set(['Edit', 'Write', 'MultiEdit'])
-
-/** Read all of stdin; resolve '' on empty/closed/error. Never throws. */
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
-}
-
-/** Let the call proceed unchanged. Emitting nothing + exit 0 = normal flow. */
-function passthrough() {
-  process.exit(0)
-}
 
 /**
  * Advisory allow: the call proceeds, but the reason surfaces the slop findings

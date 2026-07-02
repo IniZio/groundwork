@@ -3,6 +3,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readGoal } from "../lib/goal.js";
+import { formatGoal } from "../lib/goal-format.js";
 
 export function createGoalCommand(deps: { directory: string }) {
 	return {
@@ -13,19 +14,7 @@ export function createGoalCommand(deps: { directory: string }) {
 				return "Error: No session ID available.";
 			}
 
-			const goal = readGoal(deps.directory, sessionID);
-			if (!goal) {
-				return "No active goal set. Use the `set_goal` tool to create one.";
-			}
-
-			const criteria = goal.acceptanceCriteria
-				.map(
-					(c: string, i: number) =>
-						`  ${i + 1}. [${goal.status === "achieved" ? "x" : " "}] ${c}`,
-				)
-				.join("\n");
-
-			return `Goal: ${goal.objective}\nStatus: ${goal.status}\nAcceptance Criteria:\n${criteria}`;
+			return formatGoal(readGoal(deps.directory, sessionID));
 		},
 	};
 }

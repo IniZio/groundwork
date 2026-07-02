@@ -2,6 +2,7 @@
 // Quick command to check or set the active goal.
 
 import { readGoal } from "../lib/goal.js";
+import { formatGoal } from "../lib/goal-format.js";
 
 export function createGoalCommand(deps: { directory: string }) {
 	return {
@@ -22,17 +23,7 @@ export function createGoalCommand(deps: { directory: string }) {
 				return;
 			}
 
-			const criteria = goal.acceptanceCriteria
-				.map(
-					(c: string, i: number) =>
-						`  ${i + 1}. [${goal.status === "achieved" ? "x" : " "}] ${c}`,
-				)
-				.join("\n");
-
-			await ctx.ui?.notify?.(
-				`Goal: ${goal.objective}\nStatus: ${goal.status}\nAcceptance Criteria:\n${criteria}`,
-				"info",
-			);
+			await ctx.ui?.notify?.(formatGoal(goal), "info");
 		},
 	};
 }

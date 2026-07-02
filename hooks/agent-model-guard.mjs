@@ -34,25 +34,10 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readStdin, passthrough } from './lib/hook-io.mjs'
 
 /** Model injected when subagent_type is missing/unknown — never opus. */
 const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
-
-/** Read all of stdin; resolve '' on empty/closed/error. Never throws. */
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
-}
-
-/** Let the call proceed unchanged. Emitting nothing + exit 0 = normal flow. */
-function passthrough() {
-  process.exit(0)
-}
 
 /** Auto-approve the call with a rewritten input that carries `model`. */
 function injectModel(toolInput, model, reason) {

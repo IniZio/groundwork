@@ -42,24 +42,9 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { readStdin, passthrough } from './lib/hook-io.mjs'
 
 const GUARDED = new Set(['Edit', 'Write', 'MultiEdit'])
-
-/** Read all of stdin; resolve '' on empty/closed/error. Never throws. */
-async function readStdin() {
-  try {
-    let data = ''
-    for await (const chunk of process.stdin) data += chunk
-    return data
-  } catch {
-    return ''
-  }
-}
-
-/** Let the call proceed unchanged. Emitting nothing + exit 0 = normal flow. */
-function passthrough() {
-  process.exit(0)
-}
 
 /** Deny the call with a reason that points at delegation / the escape valve. */
 function deny(reason) {

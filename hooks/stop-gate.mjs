@@ -23,11 +23,18 @@
  *    CONSECUTIVE no-progress blocks: it resets to 0 whenever the ledger advances
  *    (a slice completes, a gate flips), so a run that is genuinely progressing is
  *    never prematurely released, while a truly stuck run still hits the cap.
- *  - YIELD-AWARE. A turn-end is not always a stall. When the transcript shows the
- *    orchestrator deliberately yielded — awaiting user input (`needs input:`),
- *    reporting failure (`failed:`), or having just launched background delegation
- *    — the stop is ALLOWED without burning a reinforcement, so the session can
- *    yield and be re-invoked instead of busy-looping against the gate.
+ *  - YIELD-AWARE. A turn-end is not always a stall. When the orchestrator
+ *    deliberately yielded — the Stop payload's `background_tasks` shows work still
+ *    in flight (authoritative), or the transcript shows awaiting user input
+ *    (`needs input:`), reporting failure (`failed:`), having just launched
+ *    background delegation, or more `state="running"` launches than
+ *    `<task-notification>` completions — the stop is ALLOWED
+ *    without burning a reinforcement, so the session can yield and be re-invoked
+ *    instead of busy-looping against the gate. The in-flight check is what keeps
+ *    the gate from misfiring when the orchestrator is re-invoked on a PARTIAL
+ *    completion (one agent of many finished) and ends its turn to await the
+ *    rest — that turn issues no new Task call, so the last-turn markers alone
+ *    would wrongly read it as a stall.
  *
  * Ledger schema (.groundwork/run.json) — see vertical-slice/SKILL.md:
  *   {
@@ -60,8 +67,9 @@
  *   the enforcement-relevant ledger state at the last block, used to detect progress).
  */
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { mutateLedger } from './lib/ledger-io.mjs'
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
@@ -107,12 +115,26 @@ function progressSignature(ledger) {
 }
 
 /**
+ * Pure: how many background delegations are still in flight, derived from the raw
+ * transcript. Every background launch echoes a `state="running"` tool-result and
+ * every completion injects one `<task-notification>`; launches in excess of
+ * completions are tasks the orchestrator is still legitimately awaiting. Regexes
+ * tolerate JSON/escaped quoting (`state=\"running\"`, double-escaped in nested
+ * transcripts). Over-counting only biases toward allowing the yield, which never
+ * traps the user, so this is deliberately permissive.
+ */
+function outstandingBackgroundTasks(raw) {
+  const launches = (raw.match(/state=\\*"running/g) || []).length
+  const completions = (raw.match(/<task-notification>/g) || []).length
+  return launches - completions
+}
+
+/**
  * Best-effort: return the LAST assistant turn's concatenated text and the names of
  * any tool_use blocks it issued. Tolerates the several transcript line shapes
- * (message-wrapped or flat). Throws only on unreadable file — caller catches.
+ * (message-wrapped or flat). Operates on the already-read raw transcript string.
  */
-function lastAssistantTurn(transcriptPath) {
-  const raw = readFileSync(transcriptPath, 'utf8')
+function lastAssistantTurn(raw) {
   let text = ''
   let toolNames = []
   for (const line of raw.split('\n')) {
@@ -146,15 +168,57 @@ function lastAssistantTurn(transcriptPath) {
 }
 
 /**
+ * Pure: are any harness-tracked background tasks still in flight, per the Stop
+ * hook's structured `background_tasks` payload (subagents, shell monitors,
+ * workflows, teammates)? This is the AUTHORITATIVE signal — it comes from the
+ * harness, not a transcript regex. A task counts as in-flight unless its status
+ * is clearly terminal (completed/failed/cancelled/…). Returns false when the
+ * field is absent or empty.
+ */
+function hasInFlightBackgroundTasks(input) {
+  const tasks = input?.background_tasks
+  if (!Array.isArray(tasks) || tasks.length === 0) return false
+  const TERMINAL = /^(completed?|complete|done|failed|error|cancell?ed|stopped|killed|timed_?out)$/i
+  return tasks.some((t) => {
+    const s = typeof t?.status === 'string' ? t.status : ''
+    return !TERMINAL.test(s)
+  })
+}
+
+/**
  * Best-effort: did the orchestrator deliberately yield this turn (vs. stall)?
  * Returns a short reason string when yielding, else null. Fail-open: any read or
  * parse failure returns null so normal enforcement proceeds.
+ *
+ * Order of evidence, strongest first:
+ *  1. the structured `background_tasks` payload (harness truth);
+ *  2. the transcript's own launch/completion bookkeeping (fallback for hosts that
+ *     don't populate background_tasks);
+ *  3. explicit last-turn protocol markers (needs input:/failed:/just-launched).
  */
-function detectYield(transcriptPath) {
+function detectYield(input) {
+  // 1. Authoritative: harness says background work is still running.
+  if (hasInFlightBackgroundTasks(input)) {
+    return 'background tasks still in flight (background_tasks payload) — orchestrator awaiting completion'
+  }
+  const transcriptPath = typeof input?.transcript_path === 'string' ? input.transcript_path : ''
   if (!transcriptPath) return null
+  let raw
+  try {
+    raw = readFileSync(transcriptPath, 'utf8')
+  } catch {
+    return null
+  }
+  // 2. Fallback in-flight detection from transcript bookkeeping: the orchestrator
+  // ending its turn while agents are still running is a yield, not a stall — even
+  // on the re-invocation after a PARTIAL completion, where this turn launched
+  // nothing new and so the last-turn markers below would miss it.
+  if (outstandingBackgroundTasks(raw) > 0) {
+    return 'background delegations still in flight — orchestrator awaiting completion'
+  }
   let turn
   try {
-    turn = lastAssistantTurn(transcriptPath)
+    turn = lastAssistantTurn(raw)
   } catch {
     return null
   }
@@ -210,8 +274,8 @@ function buildReason(ledger, incomplete) {
   lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
   lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
   lines.push('')
-  lines.push('TO FINISH: as each slice lands, set its status to "complete" in .groundwork/run.json. When all slices are complete, run the completion gate ([qa if interactive UI] → critic → advisor) and record gate.advisor = "APPROVE".')
-  lines.push('TO ABANDON: set "active": false in .groundwork/run.json (the run is cancelled and the gate releases).')
+  lines.push('TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → critic → advisor) and record it with `ledger.mjs gate advisor APPROVE`. Check progress any time with `ledger.mjs status`.')
+  lines.push('TO ABANDON: run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon` (sets active:false — the run is cancelled and the gate releases).')
   return lines.join('\n')
 }
 
@@ -256,12 +320,12 @@ async function main() {
   const workRemains = incomplete.length > 0 || !advisorApproved
   if (!workRemains) return allow()
 
-  // Yield-aware: a deliberate turn-end (awaiting input, reported failure, or just
-  // launched background delegation) is not a stall — let the session yield and be
-  // re-invoked, without burning a reinforcement. Fail-open if the transcript can't
-  // be read. Leave the counter untouched so a later genuine stall is still bounded.
-  const transcriptPath = typeof input?.transcript_path === 'string' ? input.transcript_path : ''
-  if (detectYield(transcriptPath)) return allow()
+  // Yield-aware: a deliberate turn-end (background work still in flight, awaiting
+  // input, reported failure, or just-launched delegation) is not a stall — let the
+  // session yield and be re-invoked, without burning a reinforcement. Fail-open if
+  // signals can't be read. Leave the counter untouched so a later genuine stall is
+  // still bounded.
+  if (detectYield(input)) return allow()
 
   // Consecutive-no-progress reinforcement: only count when the ledger has NOT
   // advanced since the last block. Real progress resets the counter, so a moving
@@ -272,10 +336,16 @@ async function main() {
   const count = sig === prevSig ? prevCount : 0
   if (count >= REINFORCEMENT_CAP) return allow()
 
+  // Persist the counter via the shared locked/atomic helper, re-reading fresh so
+  // a concurrent `ledger` CLI write (e.g. a slice just marked complete) is never
+  // clobbered — we touch only the two housekeeping fields. Best-effort: still
+  // block this time even if persistence fails.
   try {
-    ledger.reinforcements = count + 1
-    ledger.progressSig = sig
-    writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`)
+    mutateLedger(ledgerPath, (fresh) => {
+      if (!fresh) return null
+      fresh.reinforcements = count + 1
+      fresh.progressSig = sig
+    })
   } catch {
     // Counter persistence is best-effort; still block this time.
   }

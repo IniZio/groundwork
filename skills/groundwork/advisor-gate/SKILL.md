@@ -127,7 +127,15 @@ A judge that can't tell good from bad must not score. Before recording a verdict
 
 ### Recording the verdict in the run ledger
 
-If a run ledger exists (`.groundwork/run.json` — written by `vertical-slice`/`ultrawork`), the orchestrator MUST record the gate result so the Stop-gate hook can release the session. Record the **object form** so the verdict carries its own rubric and evidence (the Stop-gate also still accepts a bare string for backward compatibility):
+If a run ledger exists (`.groundwork/run.json` — written by `vertical-slice`/`ultrawork`), the orchestrator MUST record the gate result so the Stop-gate hook can release the session — via the `ledger` CLI, never by hand-editing the file:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE \
+  --rubric groundwork-completion-v1 --citation none \
+  --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0
+```
+
+This stores the **object form** below so the verdict carries its own rubric and evidence (a bare `ledger.mjs gate advisor APPROVE` stores the legacy string form, also accepted):
 
 ```json
 "advisor": {
@@ -142,7 +150,7 @@ If a run ledger exists (`.groundwork/run.json` — written by `vertical-slice`/`
 - **GAPS / CORRECTION** → `verdict: "REVISE"` with the failing axes and a `citation`; resume work, the gate stays closed.
 - **STOP** → `verdict: "REJECT"` with a `citation`; surface the blocker to the user, the gate stays closed. If the rejection is a durable out-of-scope decision, also write a Rejection-KB entry (`.groundwork/out-of-scope/<concept-slug>.md`, see `vertical-slice`).
 
-Embedding the rubric inside the verdict keeps it self-auditing — the criteria can't drift from the score. The advisor itself is read-only and never edits the ledger; the orchestrator records the verdict after receiving it.
+Embedding the rubric inside the verdict keeps it self-auditing — the criteria can't drift from the score. The advisor itself is read-only and never edits the ledger; the orchestrator records the verdict (via `ledger.mjs gate advisor …`) after receiving it.
 
 ### Determinism
 

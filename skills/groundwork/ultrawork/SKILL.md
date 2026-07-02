@@ -92,7 +92,10 @@ tokens are spent.
 
 ## As Slices Land
 
-Update `.groundwork/run.json` as you go — set each verified slice's `status` to `complete`.
+Mark slices complete as you go with the `ledger` CLI — `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …]`.
+NEVER Read/Edit `.groundwork/run.json` by hand: the CLI does a locked, atomic update and returns one compact
+line, where a Read+Edit would push the whole ledger into the opus context on every flip (15–40K wasted tokens/run)
+and race the hook's own writes. Use `ledger.mjs status` for a compact progress view.
 The Stop-gate hook reads this file on every stop attempt and will block the session (and
 re-inject these rules) until every slice is `complete` and `gate.advisor === "APPROVE"`.
 

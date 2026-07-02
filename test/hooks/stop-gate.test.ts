@@ -45,6 +45,18 @@ function runHookWithTranscript(
 	return JSON.parse(out);
 }
 
+/** Run the hook with a `background_tasks` payload (the structured Stop-hook field). */
+function runHookWithBackgroundTasks(
+	ledger: unknown,
+	backgroundTasks: unknown,
+	sessionId = "sess-1",
+): { continue?: boolean; decision?: string; reason?: string } {
+	writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
+	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, background_tasks: backgroundTasks });
+	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	return JSON.parse(out);
+}
+
 /** Read the persisted reinforcements counter from the ledger after a run. */
 function readReinforcements(): number {
 	const raw = JSON.parse(readFileSync(path.join(projectDir, ".groundwork", "run.json"), "utf8"));
@@ -173,6 +185,78 @@ describe("stop-gate hook — yield-awareness (Fix B)", () => {
 
 	it("still BLOCKS when the last turn is ordinary prose (genuine stall)", () => {
 		const decision = runHookWithTranscript(incompleteLedger, [{ type: "text", text: "Okay, that looks done to me." }]);
+		expect(decision.decision).toBe("block");
+	});
+
+	it("allows the stop when background_tasks shows a running subagent (authoritative payload)", () => {
+		const decision = runHookWithBackgroundTasks(incompleteLedger, [
+			{ id: "t1", type: "subagent", status: "running", agent_type: "general-purpose" },
+		]);
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("does NOT burn a reinforcement while background_tasks reports in-flight work", () => {
+		runHookWithBackgroundTasks(incompleteLedger, [{ id: "t1", type: "subagent", status: "in_progress" }]);
+		expect(readReinforcements()).toBe(0);
+	});
+
+	it("BLOCKS when every background_tasks entry is terminal (completed/failed)", () => {
+		const decision = runHookWithBackgroundTasks(incompleteLedger, [
+			{ id: "t1", type: "subagent", status: "completed" },
+			{ id: "t2", type: "subagent", status: "failed" },
+		]);
+		expect(decision.decision).toBe("block");
+	});
+
+	it("BLOCKS when background_tasks is an empty array (nothing in flight)", () => {
+		const decision = runHookWithBackgroundTasks(incompleteLedger, []);
+		expect(decision.decision).toBe("block");
+	});
+
+	/**
+	 * Build a transcript with `launches` background-launch results and `completions`
+	 * task-notification entries, ending on an ordinary-prose assistant turn (no
+	 * Task call this turn — the partial-completion re-invocation shape).
+	 */
+	function runHookWithBackground(
+		ledger: unknown,
+		launches: number,
+		completions: number,
+	): { continue?: boolean; decision?: string; reason?: string } {
+		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
+		const transcriptPath = path.join(projectDir, "transcript.jsonl");
+		const lines: string[] = [JSON.stringify({ type: "user", message: { role: "user", content: "go" } })];
+		for (let i = 0; i < launches; i++) {
+			lines.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Task", input: {} }] } }));
+			lines.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", content: `<task id="..." state="running">` }] } }));
+		}
+		for (let i = 0; i < completions; i++) {
+			lines.push(JSON.stringify({ type: "user", message: { role: "user", content: "<task-notification>S done</task-notification>" } }));
+		}
+		// Final turn: plain prose, no Task call (re-yielding to await the rest).
+		lines.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "S1 complete, still waiting." }] } }));
+		writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
+		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1", transcript_path: transcriptPath });
+		return JSON.parse(execFileSync("node", [HOOK], { input, encoding: "utf8" }));
+	}
+
+	it("allows the stop when background delegations are still in flight (partial completion, no Task this turn)", () => {
+		// 5 launched, 1 completed → 4 still running. This is the bug: the last turn
+		// is plain prose with no Task call, yet the orchestrator is legitimately waiting.
+		const decision = runHookWithBackground(incompleteLedger, 5, 1);
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("does NOT burn a reinforcement while background tasks are in flight", () => {
+		runHookWithBackground(incompleteLedger, 5, 1);
+		expect(readReinforcements()).toBe(0);
+	});
+
+	it("BLOCKS once all background delegations have completed and work still remains", () => {
+		// 5 launched, 5 completed → none in flight; plain-prose final turn is a real stall.
+		const decision = runHookWithBackground(incompleteLedger, 5, 5);
 		expect(decision.decision).toBe("block");
 	});
 });

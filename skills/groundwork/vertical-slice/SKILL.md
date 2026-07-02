@@ -119,8 +119,10 @@ The slice table is not just a message to yourself — it is a **durable artifact
 the Stop-gate hook reads to decide whether the session is allowed to end. Producing
 the table without writing the ledger means the gate has nothing to enforce against.
 
-**After producing the slice plan, write `.groundwork/run.json`** with the Write tool.
-This is the contract; the hook (`hooks/stop-gate.mjs`) reads exactly these fields:
+**After producing the slice plan, write `.groundwork/run.json`** with the Write tool
+(the one-time initial write; thereafter mutate it ONLY via the `ledger` CLI — see
+the lifecycle below). This is the contract; the hook (`hooks/stop-gate.mjs`) reads
+exactly these fields:
 
 ```json
 {
@@ -183,15 +185,21 @@ backward compatibility; the object form is preferred (see `advisor-gate`).
   (case-insensitive). `verifier`/`critic` are informational (`pending`|`passed`|`skipped`) — tolerated as ledger keys but not required for the gate.
 - `reinforcements` — leave at `0`; the hook manages it.
 
-**Lifecycle the orchestrator owns (the hook only reads):**
+**Lifecycle the orchestrator owns (the hook only reads). After the initial write,
+NEVER Read/Edit `.groundwork/run.json` by hand — every mutation goes through the
+`ledger` CLI, which does a locked, atomic read-modify-write and returns one compact
+line. Reading the whole ledger into the (opus) orchestrator context on each update
+is the single biggest avoidable context cost in a run.**
 
-1. `vertical-slice` writes the ledger with all slices `pending`.
-2. As each wave's general-purpose agents return and you verify them, update those slices to `complete`
-   (Edit `.groundwork/run.json`).
-3. When all slices are `complete`, run the risk-tiered completion gate: `[qa if interactive UI] → critic (evidence+quality) → advisor` and record `gate.advisor = "APPROVE"`. Trivial work (≤2 files, ≤1 behavior, <1h) may skip directly to advisor.
+1. `vertical-slice` writes the ledger once with all slices `pending` (Write tool).
+2. As each wave's general-purpose agents return and you verify them, mark those slices complete:
+   `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …]`.
+   Need to see what's left? `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs status` (compact — do not Read the file).
+3. When all slices are `complete`, run the risk-tiered completion gate: `[qa if interactive UI] → critic (evidence+quality) → advisor` and record it with
+   `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE` (add `--citation … --rubric … --axes-correctness N …` for the object form). Trivial work (≤2 files, ≤1 behavior, <1h) may skip directly to advisor.
 4. With every slice `complete` and `gate.advisor === "APPROVE"`, the Stop gate releases.
 
-If you ever need to bail out, set `"active": false` — the gate releases immediately.
+If you ever need to bail out: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs abandon` (sets `"active": false`) — the gate releases immediately.
 
 ## Rejection KB — `.groundwork/out-of-scope/<concept-slug>.md`
 

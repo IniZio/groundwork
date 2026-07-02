@@ -66,26 +66,35 @@ export interface InjectionParams {
   goalReminder: string | null
 }
 
-export function injectGoalAndBootstrap(messages: any[], params: InjectionParams): void {
+type ChatPart = { type?: string; text?: string; synthetic?: boolean }
+type ChatMessage = {
+  role?: string
+  content?: ChatPart[]
+  info?: { role?: string }
+  parts?: ChatPart[]
+}
+
+export function injectGoalAndBootstrap(messages: ChatMessage[], params: InjectionParams): void {
   if (!messages.length) return
 
   // Pi format: { role: 'user', content: [{ type: 'text', text: '...' }] }
   // opencode format: { info: { role: 'user' }, parts: [{ type: 'text', text: '...' }] }
-  const getRole = (m: any) => m.role ?? m.info?.role
-  const getContent = (m: any) => m.content ?? m.parts
+  const getRole = (m: ChatMessage): string | undefined => m.role ?? m.info?.role
+  const getContent = (m: ChatMessage | undefined): ChatPart[] | undefined =>
+    m?.content ?? m?.parts
 
-  const firstUser = messages.find((m: any) => getRole(m) === 'user')
+  const firstUser = messages.find((m) => getRole(m) === 'user')
   const firstContent = getContent(firstUser)
   if (!Array.isArray(firstContent) || firstContent.length === 0) return
 
-  if (params.bootstrap && !firstContent.some((p: any) => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) {
+  if (params.bootstrap && !firstContent.some((p) => p.type === 'text' && (p.text ?? '').includes('EXTREMELY_IMPORTANT'))) {
     firstContent.unshift({ type: 'text', text: params.bootstrap, synthetic: true })
   }
 
   if (params.goalReminder) {
-    const lastUser = messages.filter((m: any) => getRole(m) === 'user').pop()
+    const lastUser = messages.filter((m) => getRole(m) === 'user').pop()
     const lastContent = getContent(lastUser)
-    if (Array.isArray(lastContent) && lastContent.length > 0 && !lastContent.some((p: any) => p.type === 'text' && p.text.includes('ACTIVE_GOAL'))) {
+    if (Array.isArray(lastContent) && lastContent.length > 0 && !lastContent.some((p) => p.type === 'text' && (p.text ?? '').includes('ACTIVE_GOAL'))) {
       lastContent.push({ type: 'text', text: params.goalReminder, synthetic: true })
     }
   }

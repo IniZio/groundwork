@@ -11,6 +11,7 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { tool } from '@opencode-ai/plugin'
 import fsPromises from 'fs/promises'
+import { readGoal, writeGoal, clearGoal, goalReminder } from '../../src/lib/goal.js'
 
 const z = tool.schema
 const __filename = fileURLToPath(import.meta.url)
@@ -425,11 +426,30 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       const firstUser = output.messages.find(m => m.info.role === 'user')
       const agent = firstUser?.info?.agent
       const bootstrap = agent ? getBootstrapForAgent(agent) : getBootstrapContent()
-      if (!bootstrap || !output.messages.length) return
-      if (!firstUser || !firstUser.parts.length) return
-      if (firstUser.parts.some(p => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) return
-      const ref = firstUser.parts[0]
-      firstUser.parts.unshift({ ...ref, type: 'text', text: bootstrap })
+
+      // Bootstrap (skills) injection — existing behavior preserved
+      if (bootstrap && output.messages.length && firstUser && firstUser.parts.length) {
+        if (!firstUser.parts.some(p => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) {
+          const ref = firstUser.parts[0]
+          firstUser.parts.unshift({ ...ref, type: 'text', text: bootstrap })
+        }
+      }
+
+      // Active-goal reminder — append <ACTIVE_GOAL> to the LAST user message.
+      // Best-effort: never break chat if goal read/inject fails.
+      try {
+        const sessionID = _input?.sessionID ?? output?.sessionID ?? output.messages.find(m => m.info?.sessionID)?.info?.sessionID
+        if (sessionID) {
+          const goal = readGoal(directory, sessionID)
+          if (goal && goal.status === 'active') {
+            const reminder = goalReminder(goal)
+            const lastUser = output.messages.filter(m => m.info.role === 'user').pop()
+            if (lastUser && Array.isArray(lastUser.parts) && lastUser.parts.length && !lastUser.parts.some(p => p.type === 'text' && p.text.includes('ACTIVE_GOAL'))) {
+              lastUser.parts.push({ type: 'text', text: reminder, synthetic: true })
+            }
+          }
+        }
+      } catch { /* best-effort goal injection */ }
     },
 
     tool: {
@@ -477,6 +497,68 @@ export const GroundworkPlugin = async ({ client, directory }) => {
             return `Could not read session ${args.sessionID}: ${error instanceof Error ? error.message : 'Unknown error'}`
           }
         }
+      }),
+
+      // set_goal — inlined (mirrors src/tools/set-goal.ts) because src/tools/* cannot
+      // resolve @opencode-ai/plugin at runtime (it lives under .opencode/node_modules).
+      set_goal: tool({
+        description: 'Manage the active session goal. Set a new goal, check status, pause, resume, mark achieved, or clear. The goal is scoped to the current session and is injected into every message as a reminder.',
+        args: {
+          action: z.enum(['set', 'status', 'pause', 'resume', 'achieved', 'clear']).describe('Action to perform: set (create/replace goal), status (read current), pause, resume, achieved (mark done), clear (delete)'),
+          objective: z.string().optional().describe('Goal objective text (required for "set" action)'),
+          acceptanceCriteria: z.array(z.string()).optional().describe('List of verifiable acceptance criteria (required for "set" action)'),
+        },
+        async execute(args, context) {
+          const { action, objective, acceptanceCriteria } = args
+          const sessionID = context?.sessionID
+          if (!sessionID) return 'Error: No session ID available. Cannot manage goal.'
+
+          switch (action) {
+            case 'status': {
+              const goal = readGoal(directory, sessionID)
+              if (!goal) return 'No active goal set.'
+              const criteria = goal.acceptanceCriteria.map((c, i) => `  ${i + 1}. [ ] ${c}`).join('\n')
+              return `Goal: ${goal.objective}\nStatus: ${goal.status}\nCreated: ${goal.createdAt}\nUpdated: ${goal.updatedAt}\nAcceptance Criteria:\n${criteria}`
+            }
+            case 'set': {
+              if (!objective || !acceptanceCriteria?.length) return 'Error: "objective" and "acceptanceCriteria" are required for the "set" action.'
+              const existing = readGoal(directory, sessionID)
+              if (existing?.status === 'active') return `Error: An active goal already exists: "${existing.objective}". Clear it first with action "clear", or mark it "achieved".`
+              const goal = { objective, acceptanceCriteria, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+              writeGoal(directory, sessionID, goal)
+              return `Goal set: "${objective}"\nAcceptance Criteria:\n${acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}\n\nThis goal will be injected into every message as a reminder. It is scoped to the current session.`
+            }
+            case 'pause': {
+              const goal = readGoal(directory, sessionID)
+              if (!goal) return 'No active goal to pause.'
+              if (goal.status !== 'active') return `Goal is already ${goal.status}.`
+              goal.status = 'paused'
+              writeGoal(directory, sessionID, goal)
+              return `Goal paused: "${goal.objective}"`
+            }
+            case 'resume': {
+              const goal = readGoal(directory, sessionID)
+              if (!goal) return 'No goal to resume.'
+              if (goal.status !== 'paused') return `Goal is ${goal.status}, not paused.`
+              goal.status = 'active'
+              writeGoal(directory, sessionID, goal)
+              return `Goal resumed: "${goal.objective}"`
+            }
+            case 'achieved': {
+              const goal = readGoal(directory, sessionID)
+              if (!goal) return 'No goal to mark as achieved.'
+              goal.status = 'achieved'
+              writeGoal(directory, sessionID, goal)
+              return `Goal marked as achieved: "${goal.objective}"\nClear it with action "clear" when ready.`
+            }
+            case 'clear': {
+              const removed = clearGoal(directory, sessionID)
+              return removed ? 'Goal cleared.' : 'No goal to clear.'
+            }
+            default:
+              return `Unknown action: ${action}`
+          }
+        },
       }),
     },
 

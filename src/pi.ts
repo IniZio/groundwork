@@ -59,9 +59,17 @@ export default function (pi: ExtensionAPI) {
 		const bootstrap = getBootstrapForAgent("orchestrator");
 		if (!bootstrap) return;
 
-		const evt = event as any;
-		const original = evt.systemPrompt ?? "";
-		if (original.includes("EXTREMELY_IMPORTANT")) return; // already injected
+		// omp (oh-my-pi fork) carries a `systemPrompt` on this event as a string[],
+		// while upstream pi-coding-agent types it as a string and omits the field
+		// from its ExtensionAPI declaration. Cast to the precise union we handle.
+		const evt = event as unknown as { systemPrompt?: unknown };
+		const raw = evt.systemPrompt;
+		const originalText = Array.isArray(raw)
+			? raw.filter((p): p is string => typeof p === "string").join("\n\n")
+			: typeof raw === "string"
+				? raw
+				: "";
+		if (originalText.includes("EXTREMELY_IMPORTANT")) return; // already injected
 
 		// Ultra-hard rule block injected FIRST so the model cannot miss it.
 		const hardRules = `=== HARD RULES (VIOLATE = WRONG) — EXTREME FAN-OUT / ULTRAWORK MODE ===
@@ -74,7 +82,13 @@ export default function (pi: ExtensionAPI) {
 7. Use the cheapest capable model for each slice. advisor = zai/glm-5.2 for hard decisions only.
 === END HARD RULES ===`;
 
-		evt.systemPrompt = `${hardRules}\n\n${bootstrap}\n\n${original}`;
+		const newPrompt = `${hardRules}\n\n${bootstrap}\n\n${originalText}`;
+
+		// pi-coding-agent applies the mutated event field; the omp fork instead reads
+		// the handler's RETURN value ({ systemPrompt }). Do both so the orchestrator
+		// identity injects on either runtime.
+		evt.systemPrompt = newPrompt;
+		return { systemPrompt: newPrompt };
 	});
 
 	// Goal reminders + subagent bootstrap injection via user-message parts.

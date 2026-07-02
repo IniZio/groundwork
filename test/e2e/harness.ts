@@ -133,7 +133,7 @@ export async function runPiPrompt(
 			settled = true;
 			clearTimeout(hardTimeoutId);
 			clearTimeout(softTimeoutId);
-			clearTimeout(graceTimer);
+			clearTimeout(graceTimer ?? undefined);
 			const durationMs = Date.now() - startTime;
 			const stderr = Buffer.concat(stderrChunks).toString("utf8");
 			resolve({

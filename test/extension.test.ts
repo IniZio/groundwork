@@ -13,6 +13,6 @@ describe("Pi Extension", () => {
 		expect(() => piExtension(pi as any)).not.toThrow();
 		expect(pi.registerTool).toHaveBeenCalledTimes(2);
 		expect(pi.registerCommand).toHaveBeenCalledTimes(2);
-		expect(pi.on).toHaveBeenCalledTimes(3);
+		expect(pi.on).toHaveBeenCalledTimes(4);
 	});
 });

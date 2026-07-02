@@ -1,7 +1,7 @@
 ---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions — including fresh-evidence completion verification. The last line of defense before work is committed. Use for review of significant changes, plan validation, evidence-based completion checks, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
-model: kimi-for-coding/k2p7
+model: neuralwatt/glm-5.2-fast
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

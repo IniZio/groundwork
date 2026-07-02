@@ -10,7 +10,7 @@
     },
     "general-purpose": {
       "pi": "kimi-code/kimi-for-coding",
-      "opencode": "kimi-for-coding/k2p7",
+      "opencode": "neuralwatt/glm-5.2-fast",
       "claude-code": "sonnet"
     },
     "advisor": {
@@ -20,12 +20,12 @@
     },
     "critic": {
       "pi": "kimi-code/kimi-for-coding",
-      "opencode": "kimi-for-coding/k2p7",
+      "opencode": "neuralwatt/glm-5.2-fast",
       "claude-code": "opus"
     },
     "designer": {
       "pi": "opencode-go/kimi-k2.7-code",
-      "opencode": "neuralwatt/moonshotai/Kimi-K2.7-Code",
+      "opencode": "neuralwatt/glm-5.2-fast",
       "claude-code": "sonnet"
     },
     "qa": {

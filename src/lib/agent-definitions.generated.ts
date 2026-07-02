@@ -1003,7 +1003,7 @@ When invoked as a completion gate and the executor skips verification, default t
 		content: `---
 name: critic
 description: Final quality gate for plans, code, and architecture decisions — including fresh-evidence completion verification. The last line of defense before work is committed. Use for review of significant changes, plan validation, evidence-based completion checks, and preventing flawed work from shipping. A false approval costs 10-100x more than a false rejection.
-model: kimi-for-coding/k2p7
+model: neuralwatt/glm-5.2-fast
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
@@ -1166,7 +1166,7 @@ Start THOROUGH. If any CRITICAL finding OR 3+ MAJOR findings → escalate to ADV
 		content: `---
 name: designer
 description: UI/UX specialist for intentional, polished experiences. Use for styling, responsive layouts, visual consistency, component architecture, animations, and visual polish. Use when users see it and polish matters. 10x better UI/UX than orchestrator. Best with a model strong at visual taste and high reasoning.
-model: neuralwatt/moonshotai/Kimi-K2.7-Code
+model: neuralwatt/glm-5.2-fast
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
@@ -1341,7 +1341,7 @@ Begin each exploration by stating: "I'll systematically explore the [project/con
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
-model: kimi-for-coding/k2p7
+model: neuralwatt/glm-5.2-fast
 thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls

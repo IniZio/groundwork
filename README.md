@@ -6,6 +6,8 @@ Workflow plugin for AI coding agents providing structured development practices:
 
 - **OpenCode** — Install via `opencode.json`
 - **Pi** — Install via `pi install git:github.com/IniZio/groundwork`
+- **Claude Code** — Install via `/plugin` (`.claude-plugin/plugin.json`)
+- **omp (Oh My Pi)** — Install via `omp plugin link` / `omp plugin install`
 
 ## Install
 
@@ -27,6 +29,26 @@ Add to `opencode.json`:
 ```bash
 pi install git:github.com/IniZio/groundwork
 ```
+
+### Claude Code
+
+Groundwork ships a `.claude-plugin/plugin.json` manifest (skills, agents, and the orchestrator `CLAUDE.md` via `claudeMd`). Add the marketplace and install:
+
+```
+/plugin marketplace add IniZio/groundwork
+/plugin install groundwork@groundwork
+```
+
+### omp (Oh My Pi)
+
+omp recognizes the `pi.extensions` manifest in `package.json` and loads `src/pi.ts`, which injects the orchestrator identity at session start. Link a local checkout (symlink, live-updates) or install a copy:
+
+```bash
+omp plugin link ./path/to/groundwork      # dev: symlink, tracks source
+omp plugin install ./path/to/groundwork   # release: copy
+```
+
+Verify: `omp plugin list` should show `groundwork@<version>`.
 
 Restart your agent. Skills auto-discover.
 

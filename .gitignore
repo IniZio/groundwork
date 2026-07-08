@@ -24,3 +24,4 @@ tmp/
 .groundwork/
 /groundwork/
 .opencode/background-tasks/
+.vscode/

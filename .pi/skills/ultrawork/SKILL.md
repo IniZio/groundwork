@@ -36,7 +36,7 @@ Task(subagent_type="groundwork:general-purpose", prompt="TASK: Add test for rate
 Task(subagent_type="groundwork:designer", prompt="TASK: Add error state UI for rate-limit response\nCONTEXT: src/components/LoginForm.tsx:20-60\nSCOPE: only this file\nSUCCESS: red banner shown with retry-after time")
 
 # Wave 3: Verification (after wave 2 completes — for interactive UI changes, add qa task first)
-Task(subagent_type="groundwork:critic", prompt="TASK: Verify auth rate limiting works end to end (fresh evidence + quality review)\nACCEPTANCE: 5 failed attempts → 429; audit log written; UI shows error\nSCOPE: run the test suite and check logs; reject any 'should work' claims without proof")
+Task(subagent_type="groundwork:advisor", prompt="TASK: Verify auth rate limiting works end to end (fresh evidence + quality review)\nACCEPTANCE: 5 failed attempts → 429; audit log written; UI shows error\nSCOPE: run the test suite and check logs; reject any 'should work' claims without proof")
 ```
 
 ## Anti-Patterns — These Are Failures
@@ -67,7 +67,7 @@ TASK GRAPH:
 Wave 0 (tracer bullet — 1 task): [prove E2E path works]
 Wave 1 (exploration — parallel): [list each explore task]
 Wave 2 (implementation — parallel): [list each general-purpose/designer task]
-Wave 3 (verification): [qa if interactive UI] → critic (evidence+quality) → advisor APPROVE
+Wave 3 (verification): [qa if interactive UI] → advisor (evidence+quality) APPROVE
 ```
 
 Then fire Wave 0, wait, assess, fire Wave 1+2 together if Wave 0 passed.
@@ -80,7 +80,7 @@ Then fire Wave 0, wait, assess, fire Wave 1+2 together if Wave 0 passed.
 | `general-purpose` | 5–20 (one per semantic slice) |
 | `designer` | 2–5 |
 | `test-engineer` | 2–5 |
-| `advisor` / `critic` | 1–2 (decision gates only) |
+| `advisor` | 1–2 (decision gates only) |
 
 ## Pre-Delegation Declaration (mandatory)
 
@@ -97,7 +97,6 @@ This surfaces bad routing before the token is spent.
 
 When ALL waves finish (non-trivial work — trivial single-file changes go directly to advisor):
 1. `groundwork:qa` — if the change involves interactive UI or live behavior (optional, skip for non-UI)
-2. `groundwork:critic` — fresh evidence only (rejects "should", "probably", "seems to") PLUS code-quality review if code changed
-3. `groundwork:advisor` — APPROVE / REVISE / REJECT
+2. `groundwork:advisor` — fresh evidence only (rejects "should", "probably", "seems to") PLUS code-quality review if code changed → APPROVE / REVISE / REJECT
 
 No APPROVE = not done. "It should work" is not evidence.

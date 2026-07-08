@@ -1,6 +1,6 @@
 ---
 name: vertical-slice
-description: Decompose any implementation task into conflict-free parallel slices for maximum general-purpose fan-out. Each slice is a thin end-to-end tracer through all layers for one user-facing behavior. Use before delegating to general-purpose agents — this is the decomposition phase, not the implementation phase. Writes the .groundwork/run.json ledger that the Stop-gate hook enforces.
+description: Decompose any task into conflict-free parallel slices. Writes the .groundwork/run.json ledger the Stop-gate enforces.
 ---
 
 # Vertical-Slice Decomposition
@@ -30,10 +30,6 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 ## When to Use
 
 **This skill is MANDATORY** — not optional — for any task touching ≥3 files or ≥2 user-facing behaviors before delegating to general-purpose agents.
-
-- Before delegating implementation to general-purpose agents
-- Before `implement` or when the orchestrator is planning a wave
-- Whenever ≥3 files will change or ≥2 distinct user-facing behaviors are involved — no exceptions
 
 **Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h. If either ≥3 files OR ≥2 user-facing behaviors, slicing is mandatory.**
 
@@ -76,15 +72,7 @@ Slice N: <behavior name>
 
 ## Fan-Out Targets
 
-| Task size | Target slices per wave |
-|-----------|------------------------|
-| Small change (1 day) | 3–6 slices |
-| Feature (PRD) | 6–20 slices per wave |
-| Large refactor | 8–20 slices across waves |
-
-These counts are *slices per wave* (one general-purpose each), bounded by the orchestrator's per-agent ceilings (general-purpose ≤20 per wave). They are caps, not quotas — never invent or artificially fragment slices to hit a number. A valid slice is a real, independently-testable behavior with non-overlapping file ownership.
-
-**Single-slice waves are a FAILURE on non-trivial work.** If a wave has only one slice, you have not decomposed hard enough — re-examine for independent behaviors before proceeding.
+Fan-out targets (from your agent definition's Fan-out Protocol section): general-purpose 5–20, explore 3–7, designer 2–5, advisor 1–2 per wave. **Single-slice waves on non-trivial work are a failure — decompose harder.**
 
 ## Conflict-Free Rules
 
@@ -111,24 +99,15 @@ Wave 0: S1 + S2 (parallel, no file conflicts)
 Wave 1: S3 + S4 (parallel, no file conflicts)
 ```
 
-The orchestrator fans out all slices in each wave simultaneously.
-
 ## The Ledger — `.groundwork/run.json` (MANDATORY)
 
-The slice table is not just a message to yourself — it is a **durable artifact** that
-the Stop-gate hook reads to decide whether the session is allowed to end. Producing
-the table without writing the ledger means the gate has nothing to enforce against.
-
-**After producing the slice plan, write `.groundwork/run.json`** with the Write tool
-(the one-time initial write; thereafter mutate it ONLY via the `ledger` CLI — see
-the lifecycle below). This is the contract; the hook (`hooks/stop-gate.mjs`) reads
-exactly these fields:
+Run-ledger mechanics and Stop-gate lifecycle: use ONLY the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs`) for all mutations — never Read/Edit `.groundwork/run.json` by hand. The schema this skill writes on initial creation:
 
 ```json
 {
   "version": 1,
   "active": true,
-  "session_id": "<this session's id — from the SessionStart 'Session identity' block>",
+  "session_id": "<from the SessionStart 'Session identity' block>",
   "brief": "<one-line description of the task>",
   "plan_ref": "<path to a plan file if one exists, else null>",
   "reinforcements": 0,
@@ -140,99 +119,17 @@ exactly these fields:
         "image_sparse rejects a workspace smaller than the min size",
         "image_sparse_test covers the min-size boundary"
       ],
-      "status": "pending" },
-    { "id": "S2", "behavior": "guest agent disk handlers",
-      "files": ["server.go", "disk.go"],
-      "wave": 0, "blocked_by": [], "depends_on": [],
-      "acceptance": ["disk grow/shrink handlers respond over the agent socket"],
-      "status": "pending" }
+      "status": "pending",
+      "kind": "impl" }
   ],
-  "gate": {
-    "critic": "pending",
-    "advisor": {
-      "verdict": "APPROVE",
-      "rubric": "groundwork-completion-v1",
-      "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
-      "citation": "image_sparse.go:120"
-    }
-  }
+  "gate": { "advisor": "pending" }
 }
 ```
 
-`gate.advisor` also accepts the legacy bare string `"APPROVE"` (case-insensitive) for
-backward compatibility; the object form is preferred (see `advisor-gate`).
+Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | impl`. Use non-`impl` kinds to track planning, diagnosis, or design phases as first-class ledger items. Gating is status-keyed — `kind` is metadata only and does not affect stop-gate logic.
 
-**Field rules (the hook depends on these exact shapes):**
+Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — never Read/Edit the file by hand.
 
-- `active` — `true` while the run is live. Set to `false` ONLY to cancel/abandon the run.
-- `session_id` — copy from the SessionStart "Session identity" block. A ledger owned by a
-  different session never blocks the current one. Omit only if you cannot find it.
-- `slices[].status` — one of `pending` | `in_progress` | `complete`. The Stop gate blocks
-  while ANY slice is not `complete`.
-- `slices[].blocked_by` — array of slice IDs that must reach `complete` before this slice
-  may be marked `complete`. This is the **canonical** wave-ordering dependency.
-  `depends_on` is an accepted legacy alias; if both are present, treat them as a union.
-- `slices[].acceptance` — optional `string[]` of checkbox-style, individually verifiable
-  done-conditions. Each entry is one concrete assertion the critic can confirm; the
-  Stop-gate surfaces the count for incomplete slices.
-- `gate.advisor` — `pending` until the advisor gate runs; must resolve to `APPROVE` for the
-  run to end (see `advisor-gate`). Accepts **either** form:
-  - **Legacy string**: `"APPROVE"` | `"REVISE"` | `"REJECT"` (case-insensitive).
-  - **Object**: `{ "verdict": "APPROVE|REVISE|REJECT", "rubric": "<id/text>", "axes": {
-    "correctness": 0-3, "completeness": 0-3, "over_engineering": 0-3 }, "citation":
-    "<file:line or construct, or 'none'>" }`.
-  The run is approved when the string, or the object's `verdict`, equals `APPROVE`
-  (case-insensitive). `verifier`/`critic` are informational (`pending`|`passed`|`skipped`) — tolerated as ledger keys but not required for the gate.
-- `reinforcements` — leave at `0`; the hook manages it.
+## Rejection KB
 
-**Lifecycle the orchestrator owns (the hook only reads). After the initial write,
-NEVER Read/Edit `.groundwork/run.json` by hand — every mutation goes through the
-`ledger` CLI, which does a locked, atomic read-modify-write and returns one compact
-line. Reading the whole ledger into the (opus) orchestrator context on each update
-is the single biggest avoidable context cost in a run.**
-
-1. `vertical-slice` writes the ledger once with all slices `pending` (Write tool).
-2. As each wave's general-purpose agents return and you verify them, mark those slices complete:
-   `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …]`.
-   Need to see what's left? `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs status` (compact — do not Read the file).
-3. When all slices are `complete`, run the risk-tiered completion gate: `[qa if interactive UI] → critic (evidence+quality) → advisor` and record it with
-   `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE` (add `--citation … --rubric … --axes-correctness N …` for the object form). Trivial work (≤2 files, ≤1 behavior, <1h) may skip directly to advisor.
-4. With every slice `complete` and `gate.advisor === "APPROVE"`, the Stop gate releases.
-
-If you ever need to bail out: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs abandon` (sets `"active": false`) — the gate releases immediately.
-
-## Rejection KB — `.groundwork/out-of-scope/<concept-slug>.md`
-
-When a **concept** is rejected as out of scope (by the advisor gate or at triage), record it
-as a durable knowledge-base entry — **one markdown file per concept**, keyed by a stable
-kebab-case slug (e.g. `realtime-collab.md`, `multi-tenant-billing.md`). This is the dedup
-store: at triage, scan this directory and match an incoming request **by concept, not
-keyword** ("night theme" matches `dark-mode.md`). On a match, append to *Prior requests* and
-decline rather than re-planning work already rejected.
-
-Record a concept here **only when it is genuinely rejected** — never for features already
-implemented (that would poison the dedup check with false rejections). Keep the reasoning
-**durable**: explain the lasting why (architecture fit, product direction, cost), not the
-circumstances of one request — those are deferrals, not rejections.
-
-Template:
-
-```markdown
-# Out of scope: <Concept name>
-
-**Slug:** <concept-slug>
-**Status:** REJECTED
-**First rejected:** <YYYY-MM-DD>
-
-## Why this is out of scope
-
-<Durable, evergreen rationale that should survive across sessions.>
-
-## What would change this
-
-<Concrete conditions that would make it in-scope later, or "none".>
-
-## Prior requests
-
-- <YYYY-MM-DD> — <who/where it was raised> — <one-line context / outcome>
-```
+When a concept is rejected as out of scope, record it in `.groundwork/out-of-scope/<concept-slug>.md`. See `reference/rejection-kb.md` for the template and full rules.

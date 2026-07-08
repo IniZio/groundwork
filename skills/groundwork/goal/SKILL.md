@@ -1,6 +1,7 @@
 ---
 name: goal
 description: Manage persistent project goals that survive context compression and session restarts. Set objectives with acceptance criteria, check status, pause, resume, or clear. The active goal is injected into every message as a reminder.
+disable-model-invocation: true
 ---
 
 # Goal

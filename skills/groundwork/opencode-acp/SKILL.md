@@ -1,6 +1,7 @@
 ---
 name: opencode-acp
 description: Control another OpenCode instance via the Agent Client Protocol (ACP). Start an ACP server, send prompts (single-turn or multi-turn), capture responses. Use for testing workflows, delegating work to isolated agents, or running tasks in separate projects.
+disable-model-invocation: true
 ---
 
 # OpenCode ACP

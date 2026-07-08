@@ -128,7 +128,7 @@ export default function (pi: ExtensionAPI) {
 			const getRole = (m: any) => m.role ?? m.info?.role;
 			const getContent = (m: any) => m.content ?? m.parts;
 			const lastUser = messages.filter((m: any) => getRole(m) === "user").pop();
-			const content = getContent(lastUser);
+			const content = lastUser ? getContent(lastUser) : undefined;
 			if (Array.isArray(content) && content.length > 0) {
 				const nudge =
 					"\n\nDELEGATION RULE: Trivial one-line fixes (typos, missing null checks, obvious config changes) AND clear low-risk small changes (add validation rule, extract helper, add null check) may be fixed directly with edit/write. ALL bugs, features, ambiguous changes, or anything touching shared code / multiple modules MUST delegate to subagent agents. Do NOT use bash, codebase_map, or exploration tools yourself. EXTREME FAN-OUT: decompose into semantic slices (one clear objective per task), then launch ALL independent subagent calls in ONE message.";

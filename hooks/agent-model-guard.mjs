@@ -39,6 +39,30 @@ import { readStdin, passthrough } from './lib/hook-io.mjs'
 /** Model injected when subagent_type is missing/unknown — never opus. */
 const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
 
+/**
+ * Built-in Claude Code agent types that groundwork BANS in favor of its own
+ * namespaced equivalents. The built-ins default to `inherit` (the opus session
+ * model) and, more importantly, carry none of groundwork's role prompts. A bare
+ * (unprefixed) subagent_type is a built-in; the groundwork agent is namespaced
+ * (e.g. "groundwork:explore"). Override the set via env (comma-separated).
+ */
+const BANNED_BUILTINS = new Set(
+  (process.env.GROUNDWORK_BANNED_BUILTIN_AGENTS || 'explore,general-purpose')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+)
+
+/** Deny a dispatch outright (built-in agent ban). */
+function deny(reason) {
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
+    }),
+  )
+  process.exit(0)
+}
+
 /** Auto-approve the call with a rewritten input that carries `model`. */
 function injectModel(toolInput, model, reason) {
   console.log(
@@ -115,6 +139,19 @@ async function main() {
 
   const toolInput = input?.tool_input
   if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) return passthrough()
+
+  // Ban built-in agents that duplicate a groundwork agent. A bare (unprefixed)
+  // subagent_type is a Claude Code built-in; the groundwork equivalent is
+  // namespaced ("groundwork:explore"). Built-ins skip groundwork's role prompt
+  // and default to the opus session model.
+  const rawType = typeof toolInput.subagent_type === 'string' ? toolInput.subagent_type.trim() : ''
+  if (rawType && !rawType.includes(':') && BANNED_BUILTINS.has(rawType.toLowerCase())) {
+    return deny(
+      `groundwork: the built-in "${rawType}" agent is banned while groundwork is active — use the namespaced equivalent:\n` +
+        `  subagent_type: "groundwork:${rawType.toLowerCase()}"\n` +
+        `The groundwork agent runs on its model-registry tier and carries the groundwork role prompt; the built-in inherits the opus session model and has neither.`,
+    )
+  }
 
   // Operator intent wins: never override an explicit, non-empty model.
   if (typeof toolInput.model === 'string' && toolInput.model.trim()) return passthrough()

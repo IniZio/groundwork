@@ -21,20 +21,22 @@ const ROUTES = [
   {
     agents: ['groundwork:planner'],
     patterns: [
-      /\b(plan|architect|design|system design|how should we|approach for|strategy for)\b/i,
+      /\b(architect|how should we (build|structure|design|approach)|approach for|strategy for)\b/i,
+      /\b(plan (this|the|a|out|it)|create (a |the )?plan|design this first|plan (the|this) (feature|system|implementation|migration|refactor))\b/i,
       /\b(build .{0,40} from scratch|implement .{0,40} feature|create .{0,40} system|major feature|big feature|complex feature)\b/i,
       /\b(multi.?day|multi.?week|large.?scale|end.?to.?end system)\b/i,
     ],
     hint: 'Route to `groundwork:planner` first to create a plan in .groundwork/plans/, then fan-out `groundwork:general-purpose` tasks.',
   },
   {
-    agents: ['groundwork:critic'],
+    agents: ['groundwork:advisor'],
     patterns: [
-      /\b(review|code review|quality|SOLID|DRY|clean code|best practices?)\b/i,
+      /\b(code review|quality check|SOLID|DRY|clean code|best practices?)\b/i,
+      /\breview (my|the|this)( \w+)? (code|implementation|PR|pull request|approach|design)\b/i,
       /\bis (this|the|it|my) .{0,20}(right|correct|good)\b/i,
       /\b(validate (my|the|this) plan|check (my|the|this) (code|implementation|approach))\b/i,
     ],
-    hint: 'Route to `groundwork:critic` for review. Follow with `groundwork:advisor` APPROVE gate.',
+    hint: 'Route to `groundwork:advisor` for review and quality checks.',
   },
   {
     agents: ['groundwork:test-engineer'],
@@ -53,7 +55,8 @@ const ROUTES = [
   {
     agents: ['groundwork:designer'],
     patterns: [
-      /\b(UI|UX|styling|CSS|layout|design|responsive|visual|animation|dark mode|theme|component design)\b/i,
+      /\b(UI|UX|styling|CSS|layout|responsive|visual design|animation|dark mode|theme|component design|design system)\b/i,
+      /\b(design (the|a|this) (UI|UX|interface|layout|screen|page|component|modal|button|form))\b/i,
     ],
     hint: 'Route to `groundwork:designer` for UI/UX work.',
   },
@@ -66,11 +69,13 @@ const ROUTES = [
     hint: 'Route to `groundwork:advisor` for strategic decisions and architecture trade-offs.',
   },
   {
-    agents: ['groundwork:critic'],
+    agents: ['groundwork:advisor'],
     patterns: [
-      /\b(is it done|are we done|verify this|verify the|validate this|check if complete|is this complete|prove it works|show evidence|completion check|ready to ship|ship it|can we merge|are all tests passing|does it pass)\b/i,
+      /\b(is it done|are we done|check if complete|is this complete|prove it works|show evidence|completion check|are all tests passing|does it pass)\b/i,
+      /\b(verify (this|it|the implementation|the fix|the feature) works|verify this is (correct|done|complete|working)\b)/i,
+      /\b(ready to ship|ship it|can we merge)\b/i,
     ],
-    hint: 'Route to `groundwork:critic` — completion verification requested. The critic ensures no task is marked done without fresh, verifiable proof (rejects "should", "probably", "seems to").',
+    hint: 'Route to `groundwork:advisor` — completion verification requested. The advisor ensures no task is marked done without fresh, verifiable proof (rejects "should", "probably", "seems to").',
   },
 ]
 
@@ -81,7 +86,11 @@ function detectRoutes(prompt) {
       matched.push(route)
     }
   }
-  return matched
+  // A prompt matching >3 distinct route groups is almost certainly conversational.
+  // Suppress all hints rather than flooding the context with contradictory routing.
+  if (matched.length > 3) return []
+  // Cap at 2 strongest matches (first-matched = highest-priority routes).
+  return matched.slice(0, 2)
 }
 
 async function main() {

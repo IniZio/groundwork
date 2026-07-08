@@ -1,6 +1,7 @@
 ---
 name: prototype
 description: Build throwaway prototypes to flesh out a design before committing. Logic prototypes (interactive TUI) or UI prototypes (variant switcher). Delete when done. Use for spikes and design exploration.
+disable-model-invocation: true
 ---
 
 # Prototype

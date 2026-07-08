@@ -1,124 +1,101 @@
 {
-  "session_id": "5c305b9f-9133-459d-8792-6781b52f95c9",
   "active": false,
-  "note": "Complete — all slices done; advisor APPROVE 2026-06-26",
-  "plan_ref": ".groundwork/plans/model-enforcement-and-superpowers-adoption.md",
+  "session_id": "6b49f95b-5521-442b-ad93-be2edf9e170a",
+  "run": "Ledger-as-session-spine: add `kind` field (plan/diagnose/design/impl) so phases are first-class + wire early-phase skills to seed the ledger + fix stale implement/SKILL.md:86 Edit-the-file bug. Backward-compatible (no kind => impl); advisor gate stays top-level (no gate-kind).",
+  "slices": [
+    {
+      "id": "kind-core",
+      "wave": 1,
+      "status": "complete",
+      "desc": "TRACER/FOUNDATION. Add `kind` (plan|diagnose|design|impl, default impl) to the ledger item schema in hooks/ledger.mjs (cmdAdd --kind flag, init preserves+defaults, show/view display kind, help text) AND generalize hooks/stop-gate.mjs terminal check to be kind-aware. Owns the shared kind vocabulary + terminal-per-kind contract that all Wave-2 slices depend on.",
+      "blocked_by": [],
+      "acceptance": [
+        "ledger items accept an optional `kind` in {plan,diagnose,design,impl}; missing kind defaults to impl",
+        "`ledger add --kind <k>` sets it; init preserves kind on items that carry it",
+        "show and view display each item's kind",
+        "stop-gate treats terminal = complete|skipped for all non-gate kinds; advisor gate (top-level gate.advisor=APPROVE) requirement UNCHANGED",
+        "legacy ledgers with NO kind field behave EXACTLY as before (backward-compat, fail-safe)",
+        "node --check passes on both hooks"
+      ]
+    },
+    {
+      "id": "kind-tests",
+      "wave": 2,
+      "status": "complete",
+      "desc": "test/hooks/ledger.test.ts (+ stop-gate test if present): cover kind round-trip, default-to-impl, terminal-per-kind in stop-gate, and legacy no-kind backward compat.",
+      "blocked_by": [
+        "kind-core"
+      ],
+      "acceptance": [
+        "tests for kind accept/default/display",
+        "test that stop-gate accepts a run of mixed-kind items when all terminal + gate APPROVE",
+        "test that a legacy no-kind ledger still gates identically",
+        "full ledger test file passes"
+      ]
+    },
+    {
+      "id": "wire-diagnose",
+      "wave": 2,
+      "status": "complete",
+      "desc": "skills/groundwork/diagnose/SKILL.md (+ any platform mirror): instruct the orchestrator to seed a `diagnose`-kind ledger item at Phase 1 entry and mark it complete at post-mortem, so a diagnosis session is tracked+gated. Keep edits terse; do not duplicate existing CLI reference.",
+      "blocked_by": [
+        "kind-core"
+      ],
+      "acceptance": [
+        "diagnose skill seeds a diagnose-kind item at Phase 1 via the ledger CLI",
+        "instruction to mark it complete at post-mortem",
+        "mirror updated if one exists; no new duplicated ledger doc"
+      ]
+    },
+    {
+      "id": "wire-interview",
+      "wave": 2,
+      "status": "complete",
+      "desc": "skills/groundwork/interview/SKILL.md (+ mirror): when the plan is synthesized, seed a `plan`-kind ledger item (so the ledger is born at planning, not implementation). Terse; reuse existing plan_ref concept.",
+      "blocked_by": [
+        "kind-core"
+      ],
+      "acceptance": [
+        "interview skill seeds a plan-kind item when the plan is finalized",
+        "links plan_ref where applicable",
+        "mirror updated if present"
+      ]
+    },
+    {
+      "id": "wire-handoff-fix",
+      "wave": 2,
+      "status": "complete",
+      "desc": "Two distinct files: (a) skills/groundwork/handoff/SKILL.md — surface active ledger state (run brief, incomplete items, gate status) in the handoff so the successor session inherits it; (b) skills/groundwork/implement/SKILL.md — FIX the stale line ~86 'Edit the file directly' guidance to use the ledger CLI (it contradicts ledger-guard.mjs which blocks direct Edits).",
+      "blocked_by": [
+        "kind-core"
+      ],
+      "acceptance": [
+        "handoff skill instructs surfacing active ledger state to the successor",
+        "implement/SKILL.md no longer tells the agent to Edit run.json directly; points to ledger CLI complete --token",
+        "mirrors updated if present"
+      ]
+    },
+    {
+      "id": "docs-kind",
+      "wave": 2,
+      "status": "complete",
+      "desc": "CLAUDE.md (ledger CLI reference: document --kind on add; do NOT touch the generated AGENT-MODELS marker region) + skills/groundwork/vertical-slice/SKILL.md (canonical schema += optional kind field, default impl).",
+      "blocked_by": [
+        "kind-core"
+      ],
+      "acceptance": [
+        "CLAUDE.md ledger reference documents --kind and the kind vocabulary",
+        "vertical-slice canonical schema shows optional kind (default impl)",
+        "AGENT-MODELS generated region untouched"
+      ]
+    }
+  ],
   "gate": {
     "advisor": {
       "verdict": "APPROVE",
-      "rubric": "Scope coherent; delivered value (registry-governed claude-code codegen + drift gate, qa agent, verifier→critic merge, risk-tiered gating, bootstrap trim) stands independent of the already-satisfied enforcement premise; no dead code.",
-      "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
-      "citation": "CLAUDE.md:194-207 generated table matches model-registry.json claude-code column; generate-agent-definitions.ts:262-268,461-476 registry+marker integrity gates"
-    },
-    "critic": "SOUND — one MAJOR stale verifier routing ref fixed + regenerated; check:agents exits 0",
-    "verifier": null
-  },
-  "slices": [
-    {
-      "id": "S0",
-      "name": "codegen + registry + agents-src/ relocation + claude-code platform + plugin.json",
-      "wave": 0,
-      "blocked_by": [],
-      "status": "complete",
-      "acceptance": [
-        "pnpm run generate:agents emits agents/orchestrator.md with model: opus and NO prompt_mode/tools/managed_by",
-        "agents/critic.md contains model: opus AND disallowedTools; agents-pi/critic.md and agents-opencode/critic.md contain NO disallowedTools",
-        "pnpm run check:agents exits 0 after clean generate; hand-edit fails with (stale)",
-        "grep -c '\"claude-code\"' model-registry.json >= 10",
-        "grep -rl '^model:' agents-src/ returns empty",
-        "git status shows agents/ -> agents-src/ as renames (R not D+A)"
-      ]
-    },
-    {
-      "id": "S3",
-      "name": "ADD qa agent",
-      "wave": 1,
-      "blocked_by": ["S0"],
-      "status": "complete",
-      "acceptance": [
-        "pnpm run generate:agents emits agents/qa.md with model: sonnet, no prompt_mode, no disallowedTools",
-        "agents-pi/qa.md and agents-opencode/qa.md with tools: read, bash, edit, write, ...",
-        "validateRegistry passes (qa present in both source and registry)",
-        "Generated agents/qa.md body contains background-launch + PID/teardown protocol and feeds-the-gate sentence"
-      ]
-    },
-    {
-      "id": "S4",
-      "name": "REMOVE verifier, fold mandate into critic",
-      "wave": 1,
-      "blocked_by": ["S0"],
-      "status": "complete",
-      "acceptance": [
-        "agents-src/verifier.md gone",
-        "agents/verifier.md, agents-pi/verifier.md, agents-opencode/verifier.md all removed",
-        "pnpm run check:agents exits 0",
-        "Generated count: 10 agent files per platform dir (was 10: -verifier +qa)",
-        "grep -rn 'groundwork:verifier' agents-src/ agents/ returns 0"
-      ]
-    },
-    {
-      "id": "S5",
-      "name": "Reference cleanup: AGENTS.md + Cursor + omc memory + README",
-      "wave": 2,
-      "blocked_by": ["S0"],
-      "status": "complete",
-      "acceptance": [
-        "grep -n 'canonical' AGENTS.md shows agents-src/, never agents/*.md as canonical",
-        "grep -rn 'verifier' AGENTS.md groundwork/AGENTS.md README.md groundwork/README.md returns 0",
-        ".omc/project-memory.json paths point to agents-src/"
-      ]
-    },
-    {
-      "id": "S6",
-      "name": "CLAUDE.md: roster + risk-tiered gating + dispatch-time model rule",
-      "wave": 2,
-      "blocked_by": ["S0"],
-      "status": "complete",
-      "acceptance": [
-        "grep -n 'always run in sequence' CLAUDE.md returns 0",
-        "grep -n 'verifier' CLAUDE.md returns 0",
-        "CLAUDE.md contains risk tiers (trivial/small/feature) and 'never omit model:' rule",
-        "CLAUDE.md contains both injection markers exactly once"
-      ]
-    },
-    {
-      "id": "S7",
-      "name": "Skills + hooks: completion-flow text + Stop-gate + Superpowers two-stage review",
-      "wave": 2,
-      "blocked_by": ["S0"],
-      "status": "complete",
-      "acceptance": [
-        "grep -rn 'groundwork:verifier' hooks/ skills/groundwork/ returns 0",
-        "grep -rn 'run verifier' hooks/ skills/ returns 0",
-        "stop-gate.mjs tests pass with updated strings",
-        "advisor-gate/SKILL.md contains spec-compliance + code-quality stages gated on non-trivial",
-        "vertical-slice/SKILL.md completion section is risk-tiered AND mandates gate.advisor = APPROVE"
-      ]
-    },
-    {
-      "id": "S8",
-      "name": "Auto-generated model table (codegen emits the markdown block)",
-      "wave": 2,
-      "blocked_by": ["S0", "S3", "S4", "S6"],
-      "status": "complete",
-      "acceptance": [
-        "pnpm run generate:agents rewrites CLAUDE.md table to match registry claude-code columns",
-        "Running twice produces byte-identical file (idempotent)",
-        "Editing registry and regenerating updates CLAUDE.md table; check:agents fails if hand-edited",
-        "Removing a marker and regenerating errors (does not append second table)"
-      ]
-    },
-    {
-      "id": "S9",
-      "name": "Trim bootstrap-orchestrator.md 379 to ~150, push detail to reference/*.md",
-      "wave": 3,
-      "blocked_by": ["S6", "S7"],
-      "status": "complete",
-      "acceptance": [
-        "wc -l bootstrap-orchestrator.md <= ~150",
-        "grep for Stop-gate, background: true, run.json, gate.advisor in bootstrap-orchestrator.md finds all present",
-        "New reference/ dir exists with moved sections"
-      ]
+      "rubric": "correctness=3, completeness=3, over_engineering=0",
+      "citation": "Independent advisor verification: stop-gate terminal logic status-keyed (grep kind hooks/stop-gate.mjs = 0 refs) so legacy no-kind ledgers gate byte-identically; init writes obj verbatim (no bulk impl); unknown kinds rejected exit 2; advisor gate mechanism unchanged, no gate-kind; 86/86 ledger+stop-gate tests pass; CLAUDE.md AGENT-MODELS region untouched; implement/SKILL.md Edit-the-file bug fixed."
     }
-  ]
+  },
+  "write_token": "ef8d599e56137bef"
 }

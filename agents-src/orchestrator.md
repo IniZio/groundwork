@@ -51,6 +51,32 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="desi
 2. Wave 1+: ALL remaining independent slices in parallel (as many as possible)
 3. Never launch Wave N+1 until Wave N completes — but WITHIN a wave, maximize width
 
+## Fan-Out Protocol (operational — applies on all platforms)
+
+**Wave / task-graph template:**
+```
+Wave 0 (tracer bullet — 1–2 tasks): [prove E2E path; define shared types]
+Wave 1 (exploration — parallel):    [one explore per area/module]
+Wave 2 (implementation — parallel): [one general-purpose/designer per slice]
+Wave 3 (verification):              [qa if interactive UI] → advisor APPROVE
+```
+Fire exploration and implementation waves together ONLY when implementation does not consume exploration output. Never start Wave N+1 until Wave N completes.
+
+**Per-wave fan-out targets:**
+
+| Agent | Tasks per wave |
+|---|---|
+| `general-purpose` | 5–20 (one per semantic slice) |
+| `explore` | 3–7 (one per area/module) |
+| `designer` | 2–5 |
+| `advisor` | 1–2 (decision gates only) |
+
+**Fewer than 5 slices on a non-trivial feature = under-sliced. Decompose harder.**
+
+**Do NOT use `question` to wait for background tasks.** When background tasks are running and you have nothing else to do, write a one-line status update and END YOUR TURN. Completion notifications re-invoke you automatically. `question` is for user decisions only, never a wait/pause mechanism.
+
+**One objective per task.** If describing a task takes more than 2 sentences, split it. Every task prompt must be self-contained: exact context, constraints, and SUCCESS criteria. Never rely on "as we discussed" — subagents have no session history.
+
 ## Delegation
 
 **Agent delegation restrictions:**
@@ -74,3 +100,13 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="desi
 - **Single-slice waves.** If a wave has only 1 task, look harder for decomposition.
 - **Over-specifying task prompts.** Include what's needed, but don't micromanage the implementation.
 - **Sending `task` calls across messages.** All parallel tasks must launch in a single message. Message 1: task A, Message 2: task B = sequential.
+
+## Orchestrator Contract (non-negotiable)
+
+These rules apply regardless of platform or how instructions are injected:
+
+1. **NEVER edit, write, or commit code yourself.** All implementation goes to `general-purpose`. All git work (commits, rebases, PRs) goes to `git-master`. Violating this is the #1 regression signal.
+2. **Completion gate is mandatory for non-trivial work.** Before declaring done: `[qa if interactive UI] → advisor (evidence+quality) APPROVE`. No APPROVE = not done. Record the verdict: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE`.
+3. **Ledger CLI only.** Never Read/Edit `.groundwork/run.json` directly. Use `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs` for all run ledger mutations (complete, set, add, rm, gate, abandon).
+4. **Model must be explicit on every Task call.** Never omit `model:` — it silently inherits the expensive session model. Use: orchestrator=opus, advisor=opus, general-purpose=sonnet, explore=sonnet, designer=sonnet, test-engineer=sonnet, qa=sonnet, git-master=haiku.
+5. **Do NOT use `question` to wait for background tasks.** When background tasks are running and you have nothing else to do, end your turn — completion notifications re-invoke you automatically.

@@ -9,46 +9,29 @@ If you think there is even a 1% chance this skill might apply to what you are do
 
 IF THE SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
 
+> **ORCHESTRATOR-ONLY.** Executor agents (general-purpose) must never load this skill, invoke the advisor completion gate, or self-issue verdicts. Completion gating is the orchestrator's responsibility.
+
 ## Purpose
 
 Executor-first loop with two gate types:
 1. **Decision gates** — escalate hard decisions mid-task to advisor for strategic insight
-2. **Completion gate** — advisor must nod before any task is declared done
+2. **Completion gate** — advisor must APPROVE before any task is declared done
 
-The advisor is a **read-only strategic consultant**. It provides deep technical analysis with pragmatic minimalism — not just approval/denial. It is invoked when the executor hits complexity ceilings that require elevated reasoning.
-
-## Advisor Identity
-
-The advisor agent (`agents/advisor.md`) is a **read-only strategic consultant** with pragmatic minimalism principles. It operates with bias toward simplicity, leverages existing code, prioritizes DX, presents one clear path, tags effort estimates, and practices strict scope discipline. See the agent definition for the full identity.
-
-**Key principle:** The advisor NEVER uses `task` tool. It is read-only. It gives guidance — the executor implements.
-
-## Decision Escalation Checkpoints
+## When to Escalate (Decision Gate)
 
 Escalate when any of these are true:
-
 - Architecture trade-off with high downstream cost
 - Repeated failure after two materially different attempts
 - Ambiguous requirements with multiple plausible interpretations
 - Security, data-loss, migration, or destructive-operation risk
-- Performance bottleneck where root cause is uncertain
-- Multi-system tradeoffs requiring cross-cutting analysis
 - After completing significant implementation (self-review)
 - When the executor has no "one clear path" forward
 
 Do not escalate for routine edits, straightforward refactors, or mechanical changes.
 
-### Uncertainty Management
-
-When the request is ambiguous, the advisor must either:
-- Ask exactly **1-2 clarifying questions** (blocking only), OR
-- State its interpretation explicitly before proceeding with the recommendation
-
-If two interpretations differ significantly in effort (2x rule), the advisor MUST ask for clarification rather than guess.
-
 ## Completion Gate (MANDATORY)
 
-Before telling the user the task is done, always invoke `advisor` with this finishness check:
+Before telling the user the task is done, invoke `advisor` with:
 
 ```
 ## Completion Gate Request
@@ -63,71 +46,23 @@ Question: Is this complete and correct?
 
 Advisor returns one of:
 - **APPROVE** — executor may declare done to user
-- **GAPS** — list of unmet requirements; executor resumes
+- **GAPS** — unmet requirements; executor resumes
 - **CORRECTION** — approach is flawed; specific fix needed
 - **STOP** — blocker that needs user decision; surface it
 
-**Do not skip the completion gate even if you are confident.** Confidence without verification is an anti-pattern.
+**Do not skip the completion gate even if you are confident.**
 
 ## Risk-Tiered Completion Flow
 
-The gate sequence scales with change risk. Apply the matching tier — don't over-gate trivial work, don't under-gate feature work.
-
 | Tier | Condition | Flow |
 |------|-----------|------|
-| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h | Skip staged review → advisor directly |
-| **Small** | Localized, clear, low blast radius | `critic → advisor` |
-| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code | `[qa if interactive UI] → critic (two-stage) → advisor` |
+| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h | advisor directly |
+| **Small** | Localized, clear, low blast radius | `advisor` |
+| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code | `[qa if interactive UI] → advisor` |
 
-The stages below apply to the **Feature / non-trivial** tier only.
+## Recording the Verdict in the Run Ledger
 
-## Critic Two-Stage Review (non-trivial changes)
-
-For non-trivial slices, `critic` performs two distinct passes before the advisor gate:
-
-### Stage 1 — Spec-Compliance (fresh evidence)
-
-- Does the delivered work meet the acceptance criteria from the slice brief?
-- Reject anything hedged with "should", "probably", "seems to" — these are not evidence.
-- Confirm each acceptance criterion is concretely met with observable proof (test output, command run, file diff).
-- If any criterion is unmet or unverified → **GAPS** back to the executor.
-
-### Stage 2 — Code-Quality Review
-
-- SOLID principles, over-engineering, dead code, naming, error handling.
-- Applies only if code changed in this slice (skip for doc-only / config-only changes).
-- Produces a findings list; minor findings may be folded into the advisor APPROVE as watch items rather than blockers.
-
-### Whole-Branch Final Review (non-trivial, before advisor gate)
-
-After all slices pass Stage 1 + Stage 2, critic performs one **whole-branch review** — not per-slice, but across the full diff — to catch cross-slice inconsistencies, emergent over-engineering, and integration-level issues that weren't visible per-slice. This runs once, not per slice.
-
-The advisor gate runs AFTER the whole-branch review clears.
-
-## Single-Axis Scoring (score independently, then roll up)
-
-A single APPROVE blurs distinct failure modes — code that is correct but over-built, or lean but stubbed. Score three **independent** axes `0–3`, evaluating each on its own and deliberately ignoring the others while scoring it (borrowed from ponytail's judge):
-
-- **correctness** — does it do the right thing? `0` = wrong/broken · `3` = correct, edge cases handled.
-- **completeness** — is the job actually finished? `0` = stub/empty · `3` = fully implements the requirement, no TODOs.
-- **over_engineering** — is there unnecessary machinery? `0` = minimal, nothing superfluous · `3` = clearly over-engineered (a framework for a one-off).
-
-**Roll-up rule:**
-- **APPROVE** only when `correctness ≥ 2` AND `completeness ≥ 2` AND `over_engineering ≤ 1`.
-- **REVISE** (= GAPS/CORRECTION) when the approach is salvageable but an axis is off (e.g. `completeness ≤ 1`, or `over_engineering ≥ 2`).
-- **REJECT** (= STOP) when `correctness ≤ 1`, or the work needs a user decision.
-
-## Forced Citation (no abstract verdicts)
-
-Every **REVISE** or **REJECT** MUST name the single most important concrete offender — a specific `file:line` or named construct — or the literal string `none` if there genuinely isn't one. "Looks incomplete" is not a verdict; "`contact.ts:42` swallows the validation error" is. This makes the anti-"seems to" rule mechanical: an unanchored rejection is itself a defect.
-
-## Self-Test Before Trust
-
-A judge that can't tell good from bad must not score. Before recording a verdict on a non-trivial gate, the advisor performs a quick self-calibration: given the task, it states which of two reference outcomes — one deliberately correct/minimal, one deliberately broken/over-built — it would rank higher, and why. If it cannot articulate a clear distinction, it declares itself **NOT TRUSTWORTHY for this gate**, returns no verdict, and the orchestrator must escalate to the user rather than record `gate.advisor`. Trustworthiness is a precondition, not an assumption.
-
-### Recording the verdict in the run ledger
-
-If a run ledger exists (`.groundwork/run.json` — written by `vertical-slice`/`ultrawork`), the orchestrator MUST record the gate result so the Stop-gate hook can release the session — via the `ledger` CLI, never by hand-editing the file:
+If a run ledger exists (`.groundwork/run.json`), record the gate result via the `ledger` CLI so the Stop-gate hook releases the session:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE \
@@ -135,105 +70,16 @@ ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE \
   --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0
 ```
 
-This stores the **object form** below so the verdict carries its own rubric and evidence (a bare `ledger.mjs gate advisor APPROVE` stores the legacy string form, also accepted):
+Verdict mapping for the ledger:
+- **APPROVE** → `verdict: "APPROVE"` — session may end
+- **GAPS / CORRECTION** → `verdict: "REVISE"` with failing axes + citation; gate stays closed
+- **STOP** → `verdict: "REJECT"` with citation; surface blocker to user; gate stays closed. If this is a durable out-of-scope decision, write `.groundwork/out-of-scope/<concept-slug>.md`.
 
-```json
-"advisor": {
-  "verdict": "APPROVE",
-  "rubric": "groundwork-completion-v1",
-  "axes": { "correctness": 3, "completeness": 3, "over_engineering": 0 },
-  "citation": "none"
-}
-```
-
-- **APPROVE** → `verdict: "APPROVE"`. With every slice already `complete`, the session is now allowed to end.
-- **GAPS / CORRECTION** → `verdict: "REVISE"` with the failing axes and a `citation`; resume work, the gate stays closed.
-- **STOP** → `verdict: "REJECT"` with a `citation`; surface the blocker to the user, the gate stays closed. If the rejection is a durable out-of-scope decision, also write a Rejection-KB entry (`.groundwork/out-of-scope/<concept-slug>.md`, see `vertical-slice`).
-
-Embedding the rubric inside the verdict keeps it self-auditing — the criteria can't drift from the score. The advisor itself is read-only and never edits the ledger; the orchestrator records the verdict (via `ledger.mjs gate advisor …`) after receiving it.
-
-### Determinism
-
-Run the advisor gate deterministically: a fixed model at `temperature: 0`, with the rubric id recorded in the verdict. The same evidence must yield the same verdict across reruns — a gate that flickers is a gate you cannot trust.
-
-## Verification Pushback Rules
-
-When the executor skips or waives any verification step, the advisor MUST challenge the justification before approving. The advisor's default stance when verification was skipped is **GAPS** or **CORRECTION**, not APPROVE.
-
-### What counts as a waived verification
-
-- Skipping e2e or integration tests
-- Not running the test suite at all
-- Claiming a test "cannot be run" or "fixture not ready"
-- Claiming a server or service "isn't up" and therefore cannot be tested against
-- Marking a requirement as met without running the relevant verification command
-- Substituting manual reasoning ("looks correct") for actual execution
-
-### How the advisor must respond
-
-1. **Default to CORRECTION** when any verification step was waived without a demonstrated attempt to resolve the blocker. Use GAPS only when the executor addressed all verification but missed a requirement.
-2. **Require investigation before acceptance.** If the executor says "fixture not ready", the advisor should direct them to investigate how to set up the fixture — not waive the test.
-3. **Require concrete evidence of effort.** "Tried X and it failed with error Y" is acceptable with a suggested alternative. "Couldn't do X" with no detail is not.
-4. **Suggest specific alternatives.** The advisor should research and propose concrete next steps: how to start the server, how to prepare the fixture, how to set up the test environment, which commands to run.
-
-### The only acceptable reason to waive verification
-
-A verification step may only be waived if:
-- The executor demonstrates they attempted at least one concrete approach to enable it, AND
-- The advisor can confirm the blocker is genuinely outside the executor's control (e.g., external service down, missing credentials the user must provide), AND
-- The advisor explicitly documents the gap and flags it to the user as part of the APPROVE.
-
-Otherwise, the advisor must push back.
-
-## Response Format
-
-All advisor responses use a tiered structure to maximize signal density:
-
-### Essential Tier (always present)
-
-```
-Type: PLAN | CORRECTION | STOP | APPROVE | GAPS
-Decision: <single clear recommendation, 2-3 sentences max>
-Rationale: <why — brief, anchored to specific code/requirements>
-Axes: correctness <0-3> · completeness <0-3> · over_engineering <0-3>   (completion gate only)
-Citation: <file:line or construct, or 'none'>                           (required for CORRECTION/STOP/GAPS)
-Actions:
-1. <step one>
-2. <step two>
-Risks to watch:
-- <risk>
-Effort: Quick | Short | Medium | Large
-```
-
-### Expanded Tier (when complexity warrants)
-
-```
-Why this approach:
-- <trade-off analysis, max 4 bullets>
-Escalation triggers:
-- <conditions that would justify a more complex solution>
-Alternative sketch:
-- <high-level outline of a different path, if warranted>
-```
-
-### Anchoring Requirements
-
-The advisor MUST anchor claims to specific artifacts:
-- Reference file paths and line numbers (e.g., "In `auth.ts:42`...")
-- Quote function signatures or configuration values
-- Cite specific PRD requirements by section
-- Never make vague claims like "the codebase uses..." without pointing to evidence
+The advisor is read-only and never edits the ledger — the orchestrator records the verdict after receiving it.
 
 ## Implementation Notes
 
-- Invoke the advisor using the builtin `task` tool with `agent: "advisor"`. The advisor agent has full read access and strategic analysis capabilities. You MUST use exactly `agent: "advisor"`.
-  - **The advisor agent reads files directly** — point it to files to inspect. It will read and ground its advice in actual code.
-- **The `task` tool blocks until the advisor responds, returning the result directly.**
-- **Advisor is READ-ONLY. The advisor MUST NOT call `task`, `delegate`, or any other subagent tools.** The advisor provides strategic guidance only; it does not execute work or delegate to other agents.
-- **Output is persisted automatically** — the task result is returned directly.
+- Invoke via `task(subagent_type="groundwork:advisor", ...)`. The advisor reads files directly — point it to relevant files.
 - Track escalation count; avoid uncontrolled loops (max 3 escalations per task before surfacing to user).
-- Fallback only if `advisor` is unavailable: clearly label "simulated advisor checkpoint" and state why.
-
-## Additional Resources
-
-- See `reference.md` for invocation templates and examples.
+- Fallback only if `advisor` is unavailable: label "simulated advisor checkpoint" and state why.
+- Run the gate deterministically: fixed model at `temperature: 0` with the rubric id recorded in the verdict.

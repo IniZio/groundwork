@@ -1,6 +1,6 @@
 ---
 name: interview
-description: Interview-based planning skill. Ask one question at a time with recommended answers, cross-reference codebase, detect and defer to project-level planning conventions, and synthesize a concise plan that feeds vertical-slice. Use for features, small changes, and bug scoping.
+description: One-question-at-a-time planning interview; synthesizes a concise plan that feeds vertical-slice.
 ---
 
 # Interview
@@ -145,6 +145,8 @@ The plan must stay **concise and durable** — describe behaviors, interfaces, a
 - For small changes: this plan IS the spec for `implement`.
 - For bugs: skip this step — bugs go directly to `diagnose`.
 - Respect the project's commit policy for plans (groundwork's `.groundwork/` default is not committed).
+
+**Seed the ledger at plan time (features only).** After writing the plan file, run `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` (using the write token surfaced at SessionStart) and then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Plan written: <plan-path>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
 
 ## Domain Glossary (CONTEXT.md)
 

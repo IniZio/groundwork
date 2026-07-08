@@ -47,17 +47,24 @@ async function main() {
     return passthrough()
   }
 
-  const tool = typeof input?.tool_name === 'string' ? input.tool_name : ''
-  if (tool !== 'Read' && tool !== 'Edit' && tool !== 'MultiEdit') return passthrough()
+  const rawTool = typeof input?.tool_name === 'string' ? input.tool_name : ''
+  // Normalize: lowercase + strip leading "fast_" to catch fast_read, fast_edit, fast_multiedit
+  const toolNorm = rawTool.toLowerCase().replace(/^fast_/, '')
+  const tool = rawTool // keep original for message rendering
+  if (toolNorm !== 'read' && toolNorm !== 'edit' && toolNorm !== 'multiedit') return passthrough()
   if (!isLedgerPath(input?.tool_input?.file_path)) return passthrough()
 
   return deny(
     `groundwork: do not ${tool} .groundwork/run.json directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs status                 — compact progress view (use this instead of reading the file)\n` +
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs show <id>              — all fields of one slice\n` +
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status …]\n` +
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs set <id> [--status … | --wave N | --desc … | --blocked-by … | --acceptance …]\n` +
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs rm <id> [<id> …]       — remove slice(s)\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id> [<id> …] — mark slices complete\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs gate advisor APPROVE [--citation … --rubric … --axes-correctness N …]\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs gate critic passed\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon                — cancel the run (active:false)`,
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon                — cancel the run (active:false)\n` +
+      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs help [<cmd>]           — full usage`,
   )
 }
 

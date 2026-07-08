@@ -140,6 +140,86 @@ describe("deslop-guard — escape hatches disable detection", () => {
 	});
 });
 
+describe("deslop-guard — multi-word restating comments", () => {
+	it("WARNS on '// fetch the user' above function fetchUser", () => {
+		const d = runWrite("// fetch the user\nfunction fetchUser() { return null; }\n");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("multi-word restating");
+	});
+
+	it("WARNS on '// get user by id' above const getUserById", () => {
+		const d = runWrite("// get user by id\nconst getUserById = () => null;\n");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("multi-word restating");
+	});
+
+	it("does NOT warn on '// fetch the user with roles' (extra word not in identifier)", () => {
+		const d = runWrite("// fetch the user with roles\nfunction fetchUser() { return null; }\n");
+		// 'roles' is not in fetchUser tokens — should not fire
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("multi-word restating");
+	});
+
+	it("does NOT warn on a comment that adds real context", () => {
+		const d = runWrite("// fetch the user from the remote database\nfunction fetchUser() { return null; }\n");
+		// 'remote', 'database' are absent from identifier tokens
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("multi-word restating");
+	});
+});
+
+describe("deslop-guard — prose-paraphrase comments", () => {
+	it("WARNS on '// return the result' above 'return result'", () => {
+		const d = runWrite("// return the result\nreturn result;\n");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("prose-paraphrase");
+	});
+
+	it("WARNS on '// resolve the promise' above 'resolve(promise)'", () => {
+		// Both 'resolve' and 'promise' appear as whole words in the code line.
+		const d = runWrite("// resolve the promise\nresolve(promise);\n");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("prose-paraphrase");
+	});
+
+	it("WARNS on '// call the handler' above 'handler.call(this)'", () => {
+		// 'call' and 'handler' appear as whole words (\b match) in the code line.
+		const d = runWrite("// call the handler\nhandler.call(this);\n");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("prose-paraphrase");
+	});
+
+	it("does NOT warn when the comment adds real context not present in the code line", () => {
+		const d = runWrite("// throw if the user session has expired\nif (!user.isAuthenticated) { throw new Error(); }\n");
+		// 'session', 'expired' absent from code line → no match
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("prose-paraphrase");
+	});
+
+	it("does NOT warn on a prose-paraphrase above a declaration (handled by restating detectors)", () => {
+		const d = runWrite("// fetch the user\nfunction fetchUser() { return null; }\n");
+		// Should fire as multi-word restating, NOT as prose-paraphrase
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("prose-paraphrase");
+	});
+
+	it("does NOT warn on '// cat and dog' above 'concatenate(dogmatic)' (raw-substring false positive)", () => {
+		// 'cat' is a substring of 'concatenate' and 'dog' of 'dogmatic', but neither
+		// is a word-boundary match or a splitIdentifier token of those identifiers.
+		const d = runWrite("// cat and dog\nconcatenate(dogmatic);\n");
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("prose-paraphrase");
+	});
+
+	it("does NOT warn on '// log level' above 'dialogLevelizer()' (raw-substring false positive)", () => {
+		// 'log' ⊂ 'dialog', 'level' ⊂ 'levelizer' as substrings — but not as tokens.
+		const d = runWrite("// log level\ndialogLevelizer();\n");
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("prose-paraphrase");
+	});
+
+	it("does NOT warn on '// map keys' above 'remapKeystrokes()' (raw-substring false positive)", () => {
+		// 'map' ⊂ 'remap', 'keys' ⊂ 'keystrokes' as substrings — but 'map' and 'keys'
+		// are not splitIdentifier tokens of 'remap' or 'keystrokes'.
+		const d = runWrite("// map keys\nremapKeystrokes();\n");
+		expect(d.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("prose-paraphrase");
+	});
+});
+
 describe("deslop-guard — scope and fail-open (mirror sibling guards)", () => {
 	it("PASSES Bash (not in the guarded set)", () => {
 		const out = runHook({ tool_name: "Bash", tool_input: { command: "echo hi" } });

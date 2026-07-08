@@ -148,17 +148,16 @@ test_routing \
   "groundwork:general-purpose" \
   "groundwork:planner"
 
-# Code review
-# critic was previously named code-reviewer — accept both until plugin root CLAUDE.md is updated
+# Code review — routes to advisor
 test_routing \
   "review: code quality" \
   "Review my auth middleware implementation for code quality and SOLID principles" \
-  "groundwork:critic\|groundwork:code-reviewer"
+  "groundwork:advisor"
 
 test_routing \
   "review: plan validation" \
   "Validate this plan before we start implementing" \
-  "groundwork:critic"
+  "groundwork:advisor"
 
 # Tests
 test_routing \

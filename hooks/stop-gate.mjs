@@ -50,7 +50,6 @@
  *         "status": "pending|in_progress|complete" }
  *     ],
  *     "gate": { "verifier": "pending|passed",
- *               "critic":   "pending|passed|skipped",
  *               // advisor accepts EITHER a legacy string OR an object:
  *               "advisor":  "pending|APPROVE|REVISE|REJECT"
  *                 | { "verdict": "APPROVE|REVISE|REJECT", "rubric": "...",
@@ -99,7 +98,6 @@ function progressSignature(ledger) {
   return JSON.stringify({
     sliceState,
     verifier: gate.verifier ?? null,
-    critic: gate.critic ?? null,
     advisor: advisorVerdict(gate),
   })
 }
@@ -229,11 +227,17 @@ function allow() {
 }
 
 function block(reason) {
-  console.log(JSON.stringify({ decision: 'block', reason }))
+  console.log(
+    JSON.stringify({
+      decision: 'block',
+      reason,
+      hookSpecificOutput: { hookEventName: 'Stop', additionalContext: reason },
+    }),
+  )
   process.exit(0)
 }
 
-function buildReason(ledger, incomplete) {
+function buildReason(ledger, incomplete, count) {
   const lines = []
   lines.push('⛔ GROUNDWORK STOP-GATE — this run is NOT complete.')
   lines.push('')
@@ -255,17 +259,22 @@ function buildReason(ledger, incomplete) {
   const gate = ledger.gate ?? {}
   const advisorShown = advisorVerdict(gate) ?? 'pending'
   lines.push('')
-  lines.push(`Completion gate — critic: ${gate.critic ?? 'pending'} · advisor: ${advisorShown} (must be APPROVE). [verifier: ${gate.verifier ?? 'n/a'} — informational only]`)
+  lines.push(`Completion gate — advisor: ${advisorShown} (must be APPROVE). [verifier: ${gate.verifier ?? 'n/a'} — informational only]`)
 
-  lines.push('')
-  lines.push('REMEMBER THE FAN-OUT RULES:')
-  lines.push('- Launch every independent slice in the next wave in ONE message — splitting Task calls across messages is sequential execution in disguise.')
-  lines.push('- Each file is owned by exactly ONE slice per wave; shared types live in the Wave 0 tracer.')
-  lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
-  lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
-  lines.push('')
-  lines.push('TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → critic → advisor) and record it with `ledger.mjs gate advisor APPROVE`. Check progress any time with `ledger.mjs status`.')
-  lines.push('TO ABANDON: run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon` (sets active:false — the run is cancelled and the gate releases).')
+  if (count === 0) {
+    lines.push('')
+    lines.push('REMEMBER THE FAN-OUT RULES:')
+    lines.push('- Launch every independent slice in the next wave in ONE message — splitting Task calls across messages is sequential execution in disguise.')
+    lines.push('- Each file is owned by exactly ONE slice per wave; shared types live in the Wave 0 tracer.')
+    lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
+    lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
+    lines.push('')
+    lines.push('TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with `ledger.mjs gate advisor APPROVE`. Check progress any time with `ledger.mjs status`.')
+    lines.push('TO ABANDON: run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon` (sets active:false — the run is cancelled and the gate releases).')
+  } else {
+    lines.push('')
+    lines.push('Full rules were shown on the first block. Finish: ledger.mjs complete <ids> + gate advisor APPROVE. Abandon: ledger.mjs abandon.')
+  }
   return lines.join('\n')
 }
 
@@ -304,7 +313,8 @@ async function main() {
   }
 
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
-  const incomplete = slices.filter((s) => s?.status !== 'complete')
+  const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
+  const incomplete = slices.filter((s) => !TERMINAL_STATUSES.has(s?.status))
   const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
   const workRemains = incomplete.length > 0 || !advisorApproved
@@ -340,7 +350,7 @@ async function main() {
     // Counter persistence is best-effort; still block this time.
   }
 
-  return block(buildReason(ledger, incomplete))
+  return block(buildReason(ledger, incomplete, count))
 }
 
 main().catch(() => allow())

@@ -12,12 +12,21 @@
  * opus despite the fan-out machinery being available and correctly routed.
  *
  * This hook is the mechanical backstop, mirroring agent-model-guard /
- * ledger-guard. On Edit/Write/MultiEdit it DENIES the call **only when both**:
- *   1. the caller is the orchestrator (not a delegated subagent), AND
- *   2. an active run ledger exists (`.groundwork/run.json`, active:true) —
- *      i.e. the orchestrator has committed to a sliced run.
- * Everything else passes through, so trivial work (no ledger) and every
- * subagent edit are untouched.
+ * ledger-guard. On Edit/Write/MultiEdit (and their OpenCode fast_ variants) it
+ * DENIES the call when:
+ *   1. the caller is the orchestrator (not a delegated subagent).
+ * Subagent edits always pass through. The ledger-active precondition was
+ * removed — orchestrator direct edits are wrong regardless of ledger state,
+ * and the prior "trivial work (no ledger)" escape valve was the loophole.
+ *
+ * Tool-name normalization: OpenCode v1.17.x registers fast_edit, fast_write,
+ * fast_multiedit as DISTINCT tool names. To catch these and any future
+ * fast_* / renamed variants without another patch, we normalize the incoming
+ * tool name before matching:
+ *   1. lowercase the name
+ *   2. strip a leading "fast_" prefix
+ *   3. match against the canonical set {edit, write, multiedit, notebookedit}
+ * This means fast_edit → edit (guarded), fast_write → write (guarded), etc.
  *
  * Subagent detection (verified empirically against Claude Code 2.1.191 and the
  * FleetView remote harness):
@@ -33,18 +42,31 @@
  * Design guarantees (identical contract to the sibling guards):
  *  - FAIL-OPEN. Any error, malformed stdin, or unreadable ledger → emit nothing,
  *    exit 0, let the call proceed. A guard must never wedge real work.
- *  - SCOPED. Acts only on Edit/Write/MultiEdit; the one file it never touches is
- *    the ledger itself (`.groundwork/run.json`) — ledger-guard owns that, and
- *    the one-shot init Write must stay allowed.
+ *  - SCOPED. Acts only on edit/write/multiedit/notebookedit (canonical form after
+ *    normalization); the one file it never touches is the ledger itself
+ *    (`.groundwork/run.json`) — ledger-guard owns that, and the one-shot init
+ *    Write must stay allowed.
  *  - SESSION-SAFE. A ledger owned by a different session never blocks this one
  *    (same rule the stop-gate uses).
  */
 
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 
-const GUARDED = new Set(['Edit', 'Write', 'MultiEdit'])
+/**
+ * Canonical guarded tool names (lowercase, no fast_ prefix).
+ * Normalization: lowercase → strip leading "fast_" → match here.
+ * This catches Edit, Write, MultiEdit, NotebookEdit, fast_edit, fast_write,
+ * fast_multiedit, fast_notebookedit, and any future fast_* variants.
+ */
+const GUARDED_CANONICAL = new Set(['edit', 'write', 'multiedit', 'notebookedit'])
+
+/** Normalize a raw tool name to its canonical form for guard matching. */
+function normalizeToolName(raw) {
+  if (typeof raw !== 'string') return ''
+  const lower = raw.toLowerCase()
+  return lower.startsWith('fast_') ? lower.slice(5) : lower
+}
 
 /** Deny the call with a reason that points at delegation / the escape valve. */
 function deny(reason) {
@@ -73,27 +95,6 @@ function isLedgerPath(fp) {
   return path.basename(norm) === 'run.json' && path.basename(path.dirname(norm)) === '.groundwork'
 }
 
-/**
- * Return the active ledger for this session, or null when there is nothing to
- * enforce (no ledger, inactive, unreadable, or owned by a different session).
- */
-function activeLedgerForSession(input) {
-  const projectDir = (typeof input?.cwd === 'string' && input.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd()
-  const ledgerPath = path.join(projectDir, '.groundwork', 'run.json')
-  let ledger
-  try {
-    ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'))
-  } catch {
-    return null
-  }
-  if (!ledger || ledger.active !== true) return null
-  const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
-  if (typeof ledger.session_id === 'string' && ledger.session_id && sessionId && ledger.session_id !== sessionId) {
-    return null
-  }
-  return ledger
-}
-
 async function main() {
   let input = {}
   try {
@@ -103,8 +104,9 @@ async function main() {
     return passthrough()
   }
 
-  const tool = typeof input?.tool_name === 'string' ? input.tool_name : ''
-  if (!GUARDED.has(tool)) return passthrough()
+  const rawTool = typeof input?.tool_name === 'string' ? input.tool_name : ''
+  const tool = normalizeToolName(rawTool)
+  if (!GUARDED_CANONICAL.has(tool)) return passthrough()
 
   // Subagents are the intended implementers — never block them.
   if (isSubagentCall(input)) return passthrough()
@@ -112,15 +114,10 @@ async function main() {
   // The ledger file itself is governed by ledger-guard; its init Write stays free.
   if (isLedgerPath(input?.tool_input?.file_path)) return passthrough()
 
-  // Only bite once the orchestrator has committed to an active, owned run.
-  if (!activeLedgerForSession(input)) return passthrough()
-
   return deny(
-    `groundwork: the orchestrator must not ${tool} files directly during an active run — that is exactly the "NEVER implement directly" rule, and it puts heavy work on the expensive opus session model instead of a sonnet subagent.\n` +
-      `Delegate this edit to a subagent that owns the slice:\n` +
-      `  • dispatch a groundwork:general-purpose agent (Task/Agent tool, subagent_type "groundwork:general-purpose") with the exact file + change; it runs on sonnet per model-registry.json.\n` +
-      `  • track it in the ledger: $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs status\n` +
-      `If this work genuinely is not part of the run, abandon it first: $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon (sets active:false — the guard then releases).`,
+    `groundwork: orchestrator ${rawTool} blocked — delegate this change instead:\n` +
+      `  task(subagent_type="groundwork:general-purpose", background=true, model="sonnet", prompt="<file path> + exact change + success criteria")\n` +
+      `  Then mark it complete: $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`,
   )
 }
 

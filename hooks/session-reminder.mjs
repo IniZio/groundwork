@@ -50,6 +50,11 @@ function activeRunBlock(projectDir, sessionId) {
   lines.push(`Ledger: .groundwork/run.json — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
   lines.push('')
 
+  if (typeof ledger.write_token === 'string' && ledger.write_token) {
+    lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`ledger gate\` and \`ledger complete\`. NEVER include this token in a subagent Task prompt.`)
+    lines.push('')
+  }
+
   if (incomplete.length) {
     lines.push(`${incomplete.length} slice(s) NOT complete — the Stop-gate stays armed until each is \`complete\` and \`gate.advisor\` is APPROVE:`)
     for (const s of incomplete) {
@@ -59,7 +64,7 @@ function activeRunBlock(projectDir, sessionId) {
     lines.push('')
     lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → .groundwork/run.json\``)
   } else if (verdict !== 'APPROVE') {
-    lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate ([qa if interactive UI] → critic → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
+    lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate ([qa if interactive UI] → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
   } else {
     lines.push('All slices complete and advisor APPROVE — this run is finished. Set `"active": false` in .groundwork/run.json to close it out so the Stop-gate stands down.')
   }
@@ -70,29 +75,17 @@ const reminder = `# groundwork — Orchestrator Mode (max fan-out)
 
 You are the ORCHESTRATOR. Classify, decompose, delegate, review. NEVER implement directly — no Edit/Write/Grep/Glob/Read or running builds yourself.
 
-## Routing (use \`groundwork:\` prefix on all subagent_type values)
+## Routing
 
-| Signal | Agent |
-|---|---|
-| Bug / error / stack trace / "doesn't work" | load \`diagnose\` skill → \`groundwork:general-purpose\` (root-cause + fix) |
-| Feature (≥1h, multi-file, unclear scope) | \`groundwork:planner\` → read plan → fan-out \`groundwork:general-purpose\` |
-| Small clear change (<1h, localized) | \`groundwork:general-purpose\` direct |
-| "Plan this" / "design this" / architecture | \`groundwork:planner\` |
-| "Review" / "check quality" / SOLID | \`groundwork:critic\` → \`groundwork:advisor\` gate |
-| Tests / coverage / TDD / flaky | \`groundwork:test-engineer\` |
-| Git / commit / rebase / PR | \`groundwork:git-master\` |
-| UI / styling / layout / design | \`groundwork:designer\` |
-| "Explore" / "how does" / "where is" | built-in Explore (no prefix) |
-| Hard decision / architecture trade-off | \`groundwork:advisor\` |
-| Completion check | \`groundwork:critic\` (evidence+quality) → \`groundwork:advisor\` APPROVE (add \`groundwork:qa\` first for interactive UI) |
+Routing: see the issue-type routing table in CLAUDE.md (always loaded).
 
 ## Prime directive
 
 Fire all independent agent calls simultaneously; never serialize independent work. If two tasks don't share state, they run in parallel, always. ALL parallel Task calls MUST be in ONE message — Task A in one message then Task B in the next is sequential execution in disguise. Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure, serialize the dependency into Wave 0.
 
-## Background fan-out (mandatory)
+## Background fan-out
 
-ALL fan-out task calls MUST include \`background: true\` parameter. The task returns immediately with \`<task id="..." state="running">\`. You will be notified when each task completes. This is the native background mechanism — there are no separate \`background_task\`/\`background_output\` tools. Fire every wave with \`background: true\` on every \`task()\` call so the whole wave runs concurrently instead of blocking on each child in turn; the orchestrator never waits synchronously for a single delegated task while others could run.
+Fan-out tasks run in the background by default (v2.1.198+); fire every wave's independent task() calls in ONE message and end your turn — you will be re-invoked on each completion.
 
 ## DO NOT use question to wait for background tasks
 
@@ -122,14 +115,14 @@ Load \`/groundwork:ultrawork\` for the full max-fan-out protocol.
 
 ## Fan-out targets (per wave)
 
-Every \`task()\` call in a wave MUST pass \`background: true\` — no exceptions, no synchronous fan-out.
+Fire the entire wave in ONE message — never serialize tasks that don't share state.
 
 | Agent | Tasks per wave |
 |---|---|
 | \`explore\` | 3–7 (one per area/module) |
 | \`general-purpose\` | 5–20 (one per semantic slice) |
 | \`designer\` | 2–5 |
-| \`advisor\` / \`critic\` | 1–2 (decision gates only) |
+| \`advisor\` | 1–2 (decision gates only) |
 
 These are ceilings, not quotas. Do NOT invent or artificially fragment slices to hit a number — the only valid slices are real, independently-testable behaviors with non-overlapping file ownership.
 
@@ -150,7 +143,7 @@ TASK GRAPH:
 Wave 0 (tracer bullet — 1–2 tasks): [prove E2E path; define shared types]
 Wave 1 (exploration — parallel): [one explore per area/module]
 Wave 2 (implementation — parallel): [one general-purpose/designer per slice]
-Wave 3 (verification): [qa if interactive UI] → critic (evidence+quality) → advisor APPROVE
+Wave 3 (verification): [qa if interactive UI] → advisor (evidence+quality) APPROVE
 \`\`\`
 
 ## Trivial escape hatch
@@ -159,7 +152,7 @@ Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h → skip slicing, del
 
 ## Completion gate (mandatory)
 
-[qa if interactive UI] → critic (evidence+quality) → advisor APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
+[qa if interactive UI] → advisor (evidence+quality) APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
 
 let input = {}
 try {

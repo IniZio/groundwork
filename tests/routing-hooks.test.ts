@@ -82,8 +82,20 @@ describe('keyword-router: bug signals → general-purpose', () => {
 })
 
 describe('keyword-router: feature signals → planner', () => {
-  test('"plan" keyword', () => {
+  test('"plan this" imperative', () => {
+    expect(context('plan this new notification system')).toContain('groundwork:planner')
+  })
+
+  test('"plan the feature" phrase', () => {
     expect(context('plan the new notification system')).toContain('groundwork:planner')
+  })
+
+  test('"create a plan" phrase', () => {
+    expect(context('create a plan for the migration')).toContain('groundwork:planner')
+  })
+
+  test('"design this first" phrase', () => {
+    expect(context('design this first before we implement')).toContain('groundwork:planner')
   })
 
   test('"build X from scratch"', () => {
@@ -103,21 +115,21 @@ describe('keyword-router: feature signals → planner', () => {
   })
 })
 
-describe('keyword-router: review signals → critic', () => {
-  test('"review" keyword', () => {
-    expect(context('review my auth implementation')).toContain('groundwork:critic')
+describe('keyword-router: review signals → advisor', () => {
+  test('"review my code" phrase', () => {
+    expect(context('review my auth implementation')).toContain('groundwork:advisor')
   })
 
   test('"code review" phrase', () => {
-    expect(context('can you do a code review of this PR')).toContain('groundwork:critic')
+    expect(context('can you do a code review of this PR')).toContain('groundwork:advisor')
   })
 
   test('"is this right" phrase', () => {
-    expect(context('is this code correct and following best practices?')).toContain('groundwork:critic')
+    expect(context('is this code correct and following best practices?')).toContain('groundwork:advisor')
   })
 
   test('"validate the plan" phrase', () => {
-    expect(context('validate the plan before we proceed')).toContain('groundwork:critic')
+    expect(context('validate the plan before we proceed')).toContain('groundwork:advisor')
   })
 })
 
@@ -173,6 +185,10 @@ describe('keyword-router: design signals → designer', () => {
   test('"responsive" keyword', () => {
     expect(context('make the layout responsive')).toContain('groundwork:designer')
   })
+
+  test('"design the UI" phrase → designer', () => {
+    expect(context('design the UI for the settings page')).toContain('groundwork:designer')
+  })
 })
 
 describe('keyword-router: advisor signals', () => {
@@ -223,37 +239,72 @@ describe('keyword-router: advisor gate/completion signals → advisor', () => {
   })
 })
 
-describe('keyword-router: completion/verification signals → verifier', () => {
+describe('keyword-router: completion/verification signals → advisor', () => {
   test('"is it done?" phrase', () => {
-    expect(context('is it done?')).toContain('groundwork:verifier')
-  })
-
-  test('"verify this" phrase', () => {
-    expect(context('verify this works correctly')).toContain('groundwork:verifier')
-  })
-
-  test('"ship it" phrase', () => {
-    expect(context('ship it to production')).toContain('groundwork:verifier')
-  })
-
-  test('"are we done" phrase', () => {
-    expect(context('are we done yet?')).toContain('groundwork:verifier')
-  })
-
-  test('"can we merge" phrase', () => {
-    expect(context('can we merge this PR?')).toContain('groundwork:verifier')
-  })
-
-  test('"ready to ship" phrase', () => {
-    expect(context('ready to ship the feature')).toContain('groundwork:verifier')
+    expect(context('is it done?')).toContain('groundwork:advisor')
   })
 
   test('"verify this works" phrase', () => {
-    expect(context('verify this works correctly')).toContain('groundwork:verifier')
+    expect(context('verify this works correctly')).toContain('groundwork:advisor')
   })
 
-  test('"validate this output" phrase', () => {
-    expect(context('validate this output before merging')).toContain('groundwork:verifier')
+  test('"ship it" phrase', () => {
+    expect(context('ship it to production')).toContain('groundwork:advisor')
+  })
+
+  test('"are we done" phrase', () => {
+    expect(context('are we done yet?')).toContain('groundwork:advisor')
+  })
+
+  test('"can we merge" phrase', () => {
+    expect(context('can we merge this PR?')).toContain('groundwork:advisor')
+  })
+
+  test('"ready to ship" phrase', () => {
+    expect(context('ready to ship the feature')).toContain('groundwork:advisor')
+  })
+})
+
+describe('keyword-router: FALSE POSITIVE negatives — must NOT fire', () => {
+  test('"it plans to" — bare noun in sentence → no routing', () => {
+    const out = runHook('it plans to run the migration next week')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('"the plan landed" — bare noun in sentence → no routing', () => {
+    const out = runHook('the plan landed well with the team')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('"well-designed API" — adjective "design" → no planner/designer routing', () => {
+    const out = runHook('this is a well-designed API')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('"system design" as topic in conversation → no routing', () => {
+    const out = runHook('we discussed system design patterns in the meeting')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('"I will verify them later" — deferred intent → no completion routing', () => {
+    const out = runHook('I will verify them later once the build passes')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('"reload so we can verify" — status update → no completion routing', () => {
+    const out = runHook('reload so we can verify the changes look right')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('bare "review" in passing → no advisor routing', () => {
+    const out = runHook('the team will review this internally')
+    expect(out.hookSpecificOutput).toBeUndefined()
+  })
+
+  test('>3 route matches suppressed (multi-keyword noise)', () => {
+    // A message hitting >3 route groups is noise — suppress all routing hints
+    const out = runHook('fix the broken design, write tests, review the code and commit the PR')
+    expect(out.hookSpecificOutput).toBeUndefined()
   })
 })
 

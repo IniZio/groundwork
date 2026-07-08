@@ -32,7 +32,7 @@ function runHook(payload: Record<string, unknown>): Decision {
 
 const ACTIVE = { active: true, session_id: "sess-1", slices: [] };
 
-describe("orchestrator-impl-guard — blocks direct implementation during an active run", () => {
+describe("orchestrator-impl-guard — blocks direct implementation always (no ledger precondition)", () => {
 	it("DENIES orchestrator Edit of a source file while a run is active", () => {
 		const cwd = makeProject(ACTIVE);
 		const d = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" });
@@ -46,10 +46,38 @@ describe("orchestrator-impl-guard — blocks direct implementation during an act
 		expect(runHook({ tool_name: "MultiEdit", tool_input: { file_path: `${cwd}/src/c.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
-	it("the deny reason offers the abandon escape valve", () => {
+	it("DENIES OpenCode fast_edit (same canonical form as Edit after normalization)", () => {
 		const cwd = makeProject(ACTIVE);
-		const reason = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.permissionDecisionReason ?? "";
-		expect(reason).toContain("abandon");
+		const d = runHook({ tool_name: "fast_edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("general-purpose");
+	});
+
+	it("DENIES OpenCode fast_write", () => {
+		const cwd = makeProject(ACTIVE);
+		const d = runHook({ tool_name: "fast_write", tool_input: { file_path: `${cwd}/src/b.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES OpenCode fast_multiedit", () => {
+		const cwd = makeProject(ACTIVE);
+		const d = runHook({ tool_name: "fast_multiedit", tool_input: { file_path: `${cwd}/src/c.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES even when there is NO ledger (trivial task / no run — removed escape valve)", () => {
+		const cwd = makeProject();
+		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES when the ledger is inactive (active:false — not a loophole)", () => {
+		const cwd = makeProject({ active: false, session_id: "sess-1", slices: [] });
+		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES when the active ledger is owned by a DIFFERENT session (session ownership is irrelevant now)", () => {
+		const cwd = makeProject({ active: true, session_id: "other-sess", slices: [] });
+		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 });
 
@@ -60,25 +88,22 @@ describe("orchestrator-impl-guard — never over-reaches", () => {
 		expect(d.hookSpecificOutput).toBeUndefined();
 	});
 
+	it("PASSES a subagent fast_edit (subagents may use any tool variant)", () => {
+		const cwd = makeProject(ACTIVE);
+		const d = runHook({ tool_name: "fast_edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1", agent_type: "general-purpose", agent_id: "a124" });
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("PASSES a subagent fast_write (subagents may use any tool variant)", () => {
+		const cwd = makeProject(ACTIVE);
+		const d = runHook({ tool_name: "fast_write", tool_input: { file_path: `${cwd}/src/b.ts` }, cwd, session_id: "sess-1", agent_type: "general-purpose", agent_id: "a125" });
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
 	it("PASSES a subagent Edit identified by agent-*.jsonl transcript (FleetView)", () => {
 		const cwd = makeProject(ACTIVE);
 		const d = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1", transcript_path: "/x/projects/p/agent-deadbeef.jsonl" });
 		expect(d.hookSpecificOutput).toBeUndefined();
-	});
-
-	it("PASSES when there is NO ledger (trivial task / no run)", () => {
-		const cwd = makeProject();
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput).toBeUndefined();
-	});
-
-	it("PASSES when the ledger is inactive (active:false)", () => {
-		const cwd = makeProject({ active: false, session_id: "sess-1", slices: [] });
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput).toBeUndefined();
-	});
-
-	it("PASSES when the active ledger is owned by a DIFFERENT session", () => {
-		const cwd = makeProject({ active: true, session_id: "other-sess", slices: [] });
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput).toBeUndefined();
 	});
 
 	it("PASSES the one-shot init Write of the ledger itself", () => {

@@ -27,6 +27,8 @@ This skill **replaces** `create-prd` and `implement` for bugs. Bugs go through: 
 
 **"This is the skill. Everything else is mechanical."**
 
+**Seed the ledger.** Before building the loop, the orchestrator creates a tracked item so the Stop-gate covers this diagnosis: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` for a fresh run (use `ledger add --kind diagnose <slug>` if a run already exists). Full CLI reference: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs help`.
+
 Construct a fast, deterministic, agent-runnable pass/fail signal. Without one, stop and ask for help.
 
 **10 ways to build a loop (priority order):**
@@ -126,6 +128,8 @@ task(description="Verify feedback loop passes after fix", prompt="...", subagent
 
 If answer involves architectural change (no good test seam, tangled callers, hidden coupling), note it for future architecture improvement work.
 
+**Close the ledger item.** Mark the diagnose entry complete: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <slug> --token <write_token>`. Any fix work becomes its own `impl` slice(s) in the same ledger run — bridging diagnosis directly into tracked implementation.
+
 ## Abbreviated Mode
 
 For **trivial bugs** where the cause is obvious (≤1 file, obvious fix):
@@ -136,14 +140,14 @@ Skip Phase 3 (hypothesise) and Phase 4 (instrument) — there's only one plausib
 
 ## Completion Gate
 
-After Phase 6, invoke `advisor-gate` with:
+After Phase 6, return the following evidence to the **orchestrator** — the orchestrator runs the `advisor-gate`, not you:
 - Original bug report
 - Root cause (which hypothesis was correct)
 - Fix summary
 - Regression test location
 - Post-mortem finding
 
-**This is non-negotiable.** Diagnose always ends with `advisor-gate`.
+**Do not invoke or simulate the advisor gate yourself.** Report evidence; gating is the orchestrator's job.
 
 ## What NOT to Do
 

@@ -1,6 +1,7 @@
 ---
 name: housekeep
-description: Regression-safe, deletion-first codebase hygiene. Default mode `deslop` removes AI slop (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design defaults). Opt-in modes `deps`, `lint-debt`, `docs-staleness` for dependency audits, lint/type-debt cleanup, and stale doc sweeps. Triggers: housekeep, deslop, cleanup, tidy, code hygiene, anti-slop, AI slop, dependency audit, lint debt, stale docs.
+description: Deletion-first codebase hygiene — deslop (default), deps, lint-debt, and docs-staleness modes.
+disable-model-invocation: true
 ---
 
 # Housekeep
@@ -70,7 +71,7 @@ This workflow is inline because `deslop` is the default mode. The other modes po
 ### Step 2 — Write a cleanup plan before code
 
 - Bound the pass to the requested files or feature area.
-- List the concrete smells to remove (use the six categories below).
+- List the concrete smells to remove (use the seven categories below).
 - Order the work from safest deletion to riskier consolidation.
 
 ### Step 3 — Classify the slop before editing
@@ -83,13 +84,15 @@ This workflow is inline because `deslop` is the default mode. The other modes po
 | **Boundary violations** | Hidden coupling, misplaced responsibilities, wrong-layer imports or side effects |
 | **Missing tests** | Behavior not locked, weak regression coverage, edge-case gaps |
 | **UI/design defaults** | Generic visual patterns that make an AI-built interface feel unreviewed |
+| **Redundant comments** | Narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of obvious code (`// increment counter` above `count++`), section-divider banners, apologetic/hedging filler. **Keep:** non-obvious *why* rationale, invariants/constraints, warnings/gotchas, issue/spec links, public API doc-comments |
 
 ### Step 4 — Run one smell-focused pass at a time
 
 - **Pass 1: Dead code deletion**
 - **Pass 2: Duplicate removal**
 - **Pass 3: Naming and error-handling cleanup**
-- **Pass 4: Test reinforcement**
+- **Pass 4: Comment cleanup** — remove narration, step markers, restatements; keep *why*, invariants, gotchas, doc-comments (see the Redundant comments smell above; `hooks/deslop-guard.mjs` flags some patterns at write-time as an advisory signal)
+- **Pass 5: Test reinforcement**
 - Re-run targeted verification after EACH pass.
 - Do not bundle unrelated refactors into the same edit set.
 - If a pass finds no violations after an evidence-based scan, record the empty finding (which area was scanned, why nothing qualified) and proceed to the next pass. Do NOT manufacture deletions or changes to justify a pass. A clean pass is a valid result.
@@ -149,9 +152,9 @@ After the cleanup report, invoke `advisor-gate` with:
 - **REVISE** → address the flagged risks (un-removed smell, weakened test, scope creep) and re-run the workflow
 - **REJECT** → back out the risky cleanup and re-plan with a narrower scope
 
-**Interactive surfaces:** if the change touches an interactive UI or CLI surface, run `qa` (live verification) BEFORE `critic`. Otherwise go straight `critic` → `advisor-gate`.
+**Interactive surfaces:** if the change touches an interactive UI or CLI surface, run `qa` (live verification) first. Otherwise go straight to `advisor-gate`.
 
-`critic` satisfies the writer/reviewer separation that a dedicated `--review` mode would provide: it is an independent reviewer that inspects the cleanup plan, changed files, and verification evidence, and never both edits and approves in the same pass.
+`advisor` satisfies the writer/reviewer separation that a dedicated `--review` mode would provide: it is an independent reviewer that inspects the cleanup plan, changed files, and verification evidence, and never both edits and approves in the same pass.
 
 ## What NOT to Do
 

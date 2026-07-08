@@ -28,9 +28,7 @@ Non-trivial work is tracked in `.groundwork/run.json`. The `Stop` hook (`hooks/s
 
 ## Fan-Out Rules (ENFORCEMENT)
 
-**ALL `task` calls for fan-out MUST include `background: true`. NO EXCEPTIONS.**
-
-**ALL parallel background task calls in ONE message. NEVER sequential across messages.**
+**ALL parallel task calls in ONE message. NEVER sequential across messages.**
 
 **Do NOT call `question` while background tasks are running.** It blocks completion notifications. End your turn instead — notifications re-invoke you automatically when each task finishes.
 
@@ -48,31 +46,25 @@ Before fanning out general-purpose agents, the work MUST be decomposed via `vert
 
 After implementation:
 1. **`qa`** (load `groundwork:qa`) — live verification if the change has an interactive UI or CLI surface. Skip for pure logic/config changes.
-2. **`critic`** — evidence-based quality + completion check; accepts only fresh observed evidence, not "should work" hedges.
-3. **`advisor`** — APPROVE / REVISE / REJECT gate. **Never declare done without `advisor` APPROVE.**
+2. **`advisor`** — evidence-based quality + completion check (rejects "should work" hedges) + APPROVE / REVISE / REJECT gate. **Never declare done without `advisor` APPROVE.**
 
-Sequence: `[qa if interactive]` → `critic` → `advisor`
+Sequence: `[qa if interactive UI]` → `advisor`
+
+---
+
+## Escalation — 1% Heuristic (ENFORCEMENT)
+
+**If there is even a 1% chance a decision is high-impact, irreversible, ambiguous, or likely to cause rework — invoke `advisor` (`advisor-gate`) before proceeding.** Escalate once early rather than discover a wrong path late.
+
+**This gate is ORCHESTRATOR-ONLY.** Subagents never invoke `advisor` — they make local decisions and return their result. YOU own every advisor call, at two points:
+- **Mid-flow:** any architectural trade-off, destructive operation, or genuine uncertainty → `advisor` before committing to the path.
+- **At completion:** the `advisor` gate is never optional. Every path converges here. Never declare done without an APPROVE verdict (recorded as `gate.advisor` in `.groundwork/run.json`). "Should work" is not evidence.
 
 ---
 
 ## Delegation Matrix
 
-| Activity | Delegate to | `groundwork:` prefix |
-|----------|------------|----------------------|
-| Understanding codebase | `explore` | yes |
-| Writing or editing code | `general-purpose` | yes |
-| UI/UX, styling | `designer` | yes |
-| Live verification (browser/TUI/CLI) | `qa` | yes |
-| Test strategy, coverage, flaky tests | `test-engineer` | yes |
-| Evidence-based quality review | `critic` | yes |
-| Strategic decisions / completion gate | `advisor` | yes |
-| Strategic planning (pre-feature) | `planner` | yes |
-| Commits, rebasing, PRs | `git-master` | yes |
-| Interview Q&A | YOURSELF | `question` tool |
-| Classification / routing | YOURSELF | (no delegation) |
-| Reviewing subagent output | YOURSELF | (no delegation) |
-
-Always use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor", ...)`.
+See CLAUDE.md §Delegation matrix. Always use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor", ...)`.
 
 Agent roster + model recommendations → `reference/agent-selection.md`
 
@@ -80,25 +72,7 @@ Agent roster + model recommendations → `reference/agent-selection.md`
 
 ## Issue-Type Routing
 
-**Classify first, route second.** Triage pre-check before routing:
-1. Scan `.groundwork/out-of-scope/*.md` — match by concept. On match: surface to user (Confirm / Reconsider / Disagree).
-2. Conflicting signals → stop and ask. Do not silently pick a framing.
-3. Always state what is explicitly out of scope alongside success criteria.
-
-| Signal | Path |
-|--------|------|
-| Bug — root cause unclear | load `diagnose` → `advisor-gate` |
-| Bug — obvious typo/config | fix directly → `advisor-gate` |
-| Trivial change (single-line, zero ambiguity) | implement directly → `advisor-gate` |
-| Small change — clear & low-risk | implement directly → `advisor-gate` |
-| Small change — ambiguous or risky | `interview` (quick) → implement → `advisor-gate` |
-| Feature (≥1d or architectural) | `interview` (full) → `implement` → `vertical-slice` → fan out → `advisor-gate` |
-| Refactor — safe/small | implement directly → `advisor-gate` |
-| Refactor — risky/unclear | `interview` → implement → `advisor-gate` |
-| Spike / design exploration | `prototype` → feed findings into next skill |
-| Docs-only | implement directly → `advisor-gate` |
-
-When a routing path names a skill, load it with the `skill` tool. **Always end with `advisor-gate`.** Every path converges here.
+See CLAUDE.md §Issue-type routing. When a routing path names a skill, load it with the `skill` tool. **Always end with `advisor-gate`.** Every path converges here.
 
 Full routing diagrams and extended examples → `reference/routing-detail.md`
 

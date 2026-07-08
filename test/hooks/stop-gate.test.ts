@@ -261,6 +261,156 @@ describe("stop-gate hook — yield-awareness (Fix B)", () => {
 	});
 });
 
+describe("stop-gate hook — skipped status is terminal", () => {
+	it("allows stop when all slices are skipped and gate is APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "skipped" },
+				{ id: "S2", status: "skipped" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("allows stop when slices are mixed complete+skipped and gate is APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete" },
+				{ id: "S2", status: "skipped" },
+				{ id: "S3", status: "complete" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("blocks when one slice is pending even if others are skipped and gate is APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "skipped" },
+				{ id: "S2", status: "pending" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.decision).toBe("block");
+	});
+
+	it("blocks when all slices are skipped but gate is not APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [{ id: "S1", status: "skipped" }],
+			gate: { advisor: "pending" },
+		});
+		expect(decision.decision).toBe("block");
+	});
+});
+
+describe("stop-gate hook — kind-aware gating (kind does not change terminal logic)", () => {
+	it("allows stop with mixed-kind slices all complete + gate APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete", kind: "plan" },
+				{ id: "S2", status: "complete", kind: "design" },
+				{ id: "S3", status: "complete", kind: "impl" },
+				{ id: "S4", status: "complete", kind: "diagnose" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("allows stop with mixed-kind slices all skipped or complete + gate APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete", kind: "plan" },
+				{ id: "S2", status: "skipped", kind: "design" },
+				{ id: "S3", status: "complete" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("blocks when one mixed-kind item is still pending even with gate APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete", kind: "plan" },
+				{ id: "S2", status: "pending", kind: "design" },
+				{ id: "S3", status: "complete", kind: "impl" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.decision).toBe("block");
+	});
+});
+
+describe("stop-gate hook — backward compat (no kind fields anywhere)", () => {
+	it("blocks a legacy no-kind ledger with incomplete slices", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete" },
+				{ id: "S2", status: "pending" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.decision).toBe("block");
+	});
+
+	it("allows a legacy no-kind ledger when all slices complete and gate is APPROVE", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [
+				{ id: "S1", status: "complete" },
+				{ id: "S2", status: "complete" },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+
+	it("blocks a legacy no-kind ledger when gate is not APPROVE even if all slices complete", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [{ id: "S1", status: "complete" }],
+			gate: { advisor: "pending" },
+		});
+		expect(decision.decision).toBe("block");
+	});
+});
+
 describe("stop-gate hook — consecutive-no-progress counter (Fix A)", () => {
 	it("fails open once the cap of no-progress blocks is reached (same signature)", () => {
 		// reinforcements already at the cap AND progressSig matches current state → release.
@@ -268,7 +418,7 @@ describe("stop-gate hook — consecutive-no-progress counter (Fix A)", () => {
 			active: true,
 			session_id: "sess-1",
 			reinforcements: 12,
-			progressSig: JSON.stringify({ sliceState: "S1:pending", verifier: null, critic: null, advisor: null }),
+			progressSig: JSON.stringify({ sliceState: "S1:pending", verifier: null, advisor: null }),
 			slices: [{ id: "S1", status: "pending" }],
 			gate: {},
 		};
@@ -282,7 +432,7 @@ describe("stop-gate hook — consecutive-no-progress counter (Fix A)", () => {
 			active: true,
 			session_id: "sess-1",
 			reinforcements: 12,
-			progressSig: JSON.stringify({ sliceState: "S1:pending,S2:pending", verifier: null, critic: null, advisor: null }),
+			progressSig: JSON.stringify({ sliceState: "S1:pending,S2:pending", verifier: null, advisor: null }),
 			slices: [
 				{ id: "S1", status: "complete" },
 				{ id: "S2", status: "pending" },
@@ -292,5 +442,62 @@ describe("stop-gate hook — consecutive-no-progress counter (Fix A)", () => {
 		const decision = runHook(ledger);
 		expect(decision.decision).toBe("block");
 		expect(readReinforcements()).toBe(1);
+	});
+});
+
+describe("stop-gate hook — progressive block message verbosity", () => {
+	const pendingSlice = { id: "S1", status: "pending" };
+
+	it("block #1 (reinforcements=0, no prior sig) emits the full static ruleset", () => {
+		const ledger = {
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			slices: [pendingSlice],
+			gate: { advisor: "pending" },
+		};
+		const decision = runHook(ledger);
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).toContain("REMEMBER THE FAN-OUT RULES");
+		expect(decision.reason).toContain("TO FINISH");
+		expect(decision.reason).toContain("TO ABANDON");
+		expect(decision.reason).not.toContain("Full rules were shown on the first block");
+	});
+
+	it("block #2 (reinforcements=1, same sig) emits only the compact one-liner", () => {
+		// Simulate a second block on the same state: reinforcements=1, progressSig matches current.
+		// Note: advisorVerdict("pending") returns "PENDING" (uppercased), so sig must match that.
+		const sliceState = "S1:pending";
+		const ledger = {
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 1,
+			progressSig: JSON.stringify({ sliceState, verifier: null, advisor: "PENDING" }),
+			slices: [pendingSlice],
+			gate: { advisor: "pending" },
+		};
+		const decision = runHook(ledger);
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).toContain("Full rules were shown on the first block");
+		expect(decision.reason).toContain("ledger.mjs complete");
+		expect(decision.reason).toContain("ledger.mjs abandon");
+		expect(decision.reason).not.toContain("REMEMBER THE FAN-OUT RULES");
+		expect(decision.reason).not.toContain("TO FINISH");
+	});
+
+	it("block #2 compact message still includes the dynamic slice status and gate info", () => {
+		const sliceState = "S1:pending";
+		const ledger = {
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 1,
+			progressSig: JSON.stringify({ sliceState, verifier: null, advisor: "PENDING" }),
+			slices: [pendingSlice],
+			gate: { advisor: "pending" },
+		};
+		const decision = runHook(ledger);
+		expect(decision.reason).toContain("Slices: 0/1 complete");
+		expect(decision.reason).toContain("S1");
+		expect(decision.reason).toContain("Completion gate");
 	});
 });

@@ -124,9 +124,9 @@ Edit **`agents-src/*.md`** instead. The generator overwrites all three `agents*/
 | Aliases applied | yes (currently none) | no | yes (currently none) | no |
 | Install step | — | — | — | `pnpm run install:kimi` |
 
-Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes 10 specialists: `orchestrator`, `general-purpose`, `planner`, `advisor`, `critic` (evidence-gathering + quality review), `qa` (live browser/TUI/CLI testing), `designer`, `test-engineer`, `git-master`, and `explore`.
+Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes 9 specialists: `orchestrator`, `general-purpose`, `planner`, `advisor` (evidence-gathering + quality review + final APPROVE gate), `qa` (live browser/TUI/CLI testing), `designer`, `test-engineer`, `git-master`, and `explore`.
 
-> **Note:** `verifier` has been merged into `critic`. `critic` now handles both fresh-evidence completion verification and code/plan quality review. A new `qa` agent handles live interactive testing, fixture generation, and background-env handoff. The completion flow is: `[qa if interactive UI] → critic → advisor`.
+> **Note:** `verifier` was merged into `critic`; `critic` has since been merged into `advisor`. `advisor` now handles strategic decisions, fresh-evidence completion gating, code/plan quality review, and the final APPROVE/REVISE/REJECT verdict. A new `qa` agent handles live interactive testing, fixture generation, and background-env handoff. The completion flow is: `[qa if interactive UI] → advisor`.
 
 This ensures:
 

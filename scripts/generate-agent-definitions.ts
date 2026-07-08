@@ -68,12 +68,11 @@ const RO_TOOLS = "read, bash, grep, find, ls";
 const RW_TOOLS = "read, bash, edit, write, grep, find, ls";
 const PLATFORM_ONLY_FRONTMATTER: Record<string, Frontmatter> = {
 	advisor: { prompt_mode: "replace", tools: RO_TOOLS },
-	critic: { prompt_mode: "replace", tools: RO_TOOLS },
 	designer: { prompt_mode: "replace", tools: RW_TOOLS },
 	explore: { prompt_mode: "replace", tools: RO_TOOLS },
 	"general-purpose": { prompt_mode: "replace", thinking: "low", tools: RW_TOOLS },
 	"git-master": { prompt_mode: "replace", tools: RO_TOOLS, permission: { task: { "*": "deny" } } },
-	orchestrator: { prompt_mode: "append", thinking: "minimal", mode: "primary", tools: RW_TOOLS },
+	orchestrator: { prompt_mode: "append", thinking: "minimal", mode: "primary", tools: RO_TOOLS },
 	planner: { prompt_mode: "replace", tools: RO_TOOLS },
 	"test-engineer": { prompt_mode: "replace", tools: RW_TOOLS, permission: { task: { "*": "deny", explore: "allow" } } },
 	qa: { prompt_mode: "replace", tools: RW_TOOLS },
@@ -85,6 +84,9 @@ const FRONTMATTER_ORDER = [
 	"name",
 	"description",
 	"model",
+	"disallowedTools",
+	"skills",
+	"memory",
 	"thinking",
 	"mode",
 	"enabled",
@@ -213,9 +215,12 @@ function transformForPlatform(
 
 	const fm: Frontmatter = { ...src.frontmatter };
 
-	// `disallowedTools` is a Claude-Code-only frontmatter field (read-only enforcement);
-	// pi/opencode express tool restrictions via `permission`, so drop it from their output.
+	// `disallowedTools`, `skills`, and `memory` are Claude-Code-only frontmatter fields;
+	// pi/opencode express tool restrictions via `permission` and have no equivalent for
+	// skills/memory, so drop all three from their output.
 	delete fm.disallowedTools;
+	delete fm.skills;
+	delete fm.memory;
 
 	// Re-inject pi/opencode-only frontmatter stripped from the model-neutral source.
 	const platformOnly = PLATFORM_ONLY_FRONTMATTER[src.name] ?? DEFAULT_PLATFORM_FRONTMATTER;
@@ -280,6 +285,12 @@ function transformForClaudeCode(
 	fm.model = model;
 	if (src.frontmatter.disallowedTools !== undefined) {
 		fm.disallowedTools = src.frontmatter.disallowedTools;
+	}
+	if (src.frontmatter.skills !== undefined) {
+		fm.skills = src.frontmatter.skills;
+	}
+	if (src.frontmatter.memory !== undefined) {
+		fm.memory = src.frontmatter.memory;
 	}
 
 	return {

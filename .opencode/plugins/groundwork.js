@@ -255,6 +255,11 @@ export const GroundworkPlugin = async ({ client, directory }) => {
       // pi-subagents frontmatter parser is FLAT only — nested permission blocks are ignored
       const AGENT_PERMISSIONS = {
         orchestrator: {
+          edit: 'deny',
+          write: 'deny',
+          fast_edit: 'deny',
+          fast_write: 'deny',
+          fast_multiedit: 'deny',
           task: {
             orchestrator: 'deny',
           },

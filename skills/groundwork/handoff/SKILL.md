@@ -1,6 +1,7 @@
 ---
 name: handoff
-description: Hand off the current session to a freshly spawned Claude Code session. Writes a structured handoff document referencing this session's transcript, then spawns (or prints the launch command for) a successor session. Use when the context window is filling up, when switching machines or terminals, or when ending a work block with a clean baton pass.
+description: Write a handoff document and pass context to a successor Claude Code session.
+disable-model-invocation: true
 ---
 
 # Handoff
@@ -84,6 +85,16 @@ Run via Bash with `run_in_background`. Then tell the user:
 Confirm the successor transcript exists: `~/.claude/projects/<munged-cwd>/$NEW_ID.jsonl`.
 
 If the spawn failed, fall back to mode (c) and show the user the one-liner.
+
+## Active Run — Ledger Context
+
+If `.groundwork/run.json` exists and has `active: true`, the handoff document **must** include a run summary so the successor session inherits the run state. Add a **Run state** section to the handoff document:
+
+- Render it with `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs view` (or `status` for a compact view).
+- Include: the run's brief/goal, each incomplete slice (id, kind, status), and the gate verdict if one exists.
+- The successor needs this to satisfy the Stop-gate — unresolved slices block session end.
+
+Do not paste the raw JSON; use the ledger CLI output.
 
 ## What NOT to Do
 

@@ -151,6 +151,92 @@ function findRestatingComments(lines) {
 }
 
 /**
+ * Split a camelCase or snake_case identifier into lowercase tokens.
+ * e.g. "fetchUserById" → ["fetch","user","by","id"]
+ *      "get_user_by_id" → ["get","user","by","id"]
+ */
+function splitIdentifier(name) {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+/** Stop-words stripped from a prose comment before comparing to an identifier. */
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'to', 'from', 'for', 'of', 'in', 'on', 'at', 'by',
+  'and', 'or', 'with', 'that', 'this', 'it', 'is', 'are', 'be', 'as',
+  'its', 'into', 'up',
+])
+
+/**
+ * High-confidence prose-paraphrase detection: a short imperative comment whose
+ * key verb and primary noun appear verbatim as substrings of the very next code
+ * line — e.g. `// increment the counter` above `count++` (verb "increment" not
+ * in line, low-confidence, skip) vs `// return the result` above `return result`
+ * (both tokens present, flag).
+ *
+ * Heuristics (all must pass to flag):
+ *  1. Comment is ≤8 words and starts with an imperative verb (no capital letter
+ *     mid-phrase, first word lowercased).
+ *  2. The next non-blank, non-comment line is a real code line (not a
+ *     declaration — those are handled by restating detectors).
+ *  3. At least 2 of the comment's content words (after stop-word removal) appear
+ *     as exact word-boundary matches in the code line.
+ *
+ * Precision over recall: a single unmatched content word is enough to skip.
+ */
+const IMPERATIVE_COMMENT_RE = /^\s*\/\/\s+([a-z][a-zA-Z0-9 ]{0,60})\s*$/
+const CODE_LINE_RE = /^\s*(?!\/\/)[\w$.({\['"!`]/ // starts like code, not a comment
+const COMMENT_WORD_RE = /^[a-z][a-z0-9]*$/i // plain words only; reject tokens with punctuation/symbols
+
+function findProseParaphraseComments(lines) {
+  const findings = []
+  for (let i = 0; i < lines.length - 1; i++) {
+    const cm = IMPERATIVE_COMMENT_RE.exec(lines[i])
+    if (!cm) continue
+    const commentText = cm[1].trim()
+    const words = commentText.split(/\s+/)
+    if (words.length < 2 || words.length > 8) continue
+
+    // next non-blank line
+    let j = i + 1
+    while (j < lines.length && lines[j].trim() === '') j++
+    if (j >= lines.length) break
+    const codeLine = lines[j]
+
+    // Skip if the next line is a declaration (restating detectors cover that).
+    if (DECL_RE.test(codeLine)) continue
+    // Next line must look like code, not another comment or blank.
+    if (!CODE_LINE_RE.test(codeLine)) continue
+
+    const codeLineLower = codeLine.toLowerCase()
+    const contentWords = words
+      .map((w) => w.toLowerCase())
+      .filter((w) => !STOP_WORDS.has(w) && COMMENT_WORD_RE.test(w))
+    if (contentWords.length < 2) continue
+
+    // ALL content words must appear in the code line — either as a whole word
+    // (word-boundary match) or as a component of a camelCase/snake_case token
+    // (e.g. "authenticated" inside "isAuthenticated" splits to ["is","authenticated"]).
+    // Raw-substring fallback is intentionally absent: "cat" must not match "concatenate".
+    const codeIdentTokens = new Set(
+      (codeLineLower.match(/[a-z_$][a-z0-9_$]*/g) ?? []).flatMap((tok) => splitIdentifier(tok))
+    )
+    const allInCode = contentWords.every((w) => {
+      const wre = new RegExp(`\\b${w}\\b`)
+      return wre.test(codeLineLower) || codeIdentTokens.has(w)
+    })
+    if (allInCode) {
+      findings.push({ line: i, comment: commentText, codeLine: codeLine.trim() })
+    }
+  }
+  return findings
+}
+
+/**
  * Is this line allow-listed (skip slop detection for it)?
  * License-header check only applies in the first ~5 lines.
  */
@@ -192,9 +278,14 @@ function detectSlop(content) {
     findings.push(`line ${blk.start + 1}: commented-out code block (${blk.len} consecutive // lines that look like code) — ${sample}…`)
   }
 
-  // Multi-line: restating comments.
+  // Multi-line: restating comments (single-identifier form).
   for (const r of findRestatingComments(lines)) {
     findings.push(`line ${r.line + 1}: restating comment "// ${r.name}" immediately above its declaration — drop it`)
+  }
+
+  // Multi-line: high-confidence prose-paraphrase comments (e.g. "// return the result" above "return result").
+  for (const r of findProseParaphraseComments(lines)) {
+    findings.push(`line ${r.line + 1}: prose-paraphrase comment "// ${r.comment}" narrates the line below without adding info — drop it`)
   }
 
   return findings

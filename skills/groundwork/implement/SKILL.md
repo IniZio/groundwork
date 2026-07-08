@@ -84,7 +84,7 @@ task(description="Slice 5: Persist state", prompt="...", subagent_type="general-
 
 Each general-purpose prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Coders have no shared state.
 
-Wait for wave completion, verify, then launch the next wave. Update `todowrite` after each wave **and set each verified slice's `status` to `complete` in `.groundwork/run.json`** (Edit the file). The Stop-gate hook reads this on every stop attempt — slices left `pending` will block the session from ending.
+Wait for wave completion, verify, then launch the next wave. Update `todowrite` after each wave **and mark each verified slice complete via the ledger CLI** — `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> --token <write_token>` (the write_token is orchestrator-only, surfaced at init and in the SessionStart injection). The Stop-gate hook reads this on every stop attempt — slices left `pending` will block the session from ending. Do NOT edit `.groundwork/run.json` directly; `ledger-guard.mjs` blocks it.
 
 **Fan-out targets:**
 - Feature (PRD): 5-15 parallel slices per wave
@@ -116,8 +116,8 @@ Append non-obvious gotchas to `docs/learnings.md`:
 
 Format: `- **<topic>**: <description>`. Only genuinely surprising things — not routine findings.
 
-## Step 8: Advisor Gate
+## Step 8: Report Evidence to Orchestrator
 
-Invoke `advisor-gate` with: before state, after state, what changed, which acceptance criteria are met. On APPROVE, record `gate.advisor = "APPROVE"` in `.groundwork/run.json`. With every slice `complete` and the advisor approved, the Stop-gate releases the session.
+Return to the **orchestrator**: before state, after state, what changed, which acceptance criteria are met. The orchestrator invokes `advisor-gate` — do not invoke it yourself or simulate its verdict.
 
-**Non-negotiable. Do not declare done without this gate.**
+**Do not declare done to the user.** Evidence reporting is your final step; gating belongs to the orchestrator.

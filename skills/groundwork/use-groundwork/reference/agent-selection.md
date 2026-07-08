@@ -8,8 +8,7 @@
 | `general-purpose` | Bounded implementation, tests, build verification, debugging |
 | `designer` | UI/UX, styling, responsive design, visual polish |
 | `qa` | Live verification — browser/TUI/CLI exploratory + scripted testing, running env for eyeball-check |
-| `advisor` | Architecture, trade-offs, completion gate (APPROVE/REVISE/REJECT) |
-| `critic` | Code quality review, evidence-based completion checks, SOLID audit |
+| `advisor` | Architecture, trade-offs, completion gate (APPROVE/REVISE/REJECT), evidence-based completion checks, code quality review, SOLID audit |
 | `test-engineer` | Test strategy, integration/e2e coverage, flaky test hardening |
 | `git-master` | Atomic commits, rebasing, history management |
 | `planner` | Strategic planning, actionable work plans before non-trivial features |

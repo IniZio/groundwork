@@ -1,6 +1,6 @@
 ---
 name: explore
-description: Use this agent when you need to understand an unfamiliar codebase, trace logic flows, identify architectural patterns, locate relevant files and functions, or map out dependencies within a project. Use this agent when the user asks questions like 'how does X work?', 'where is Y implemented?', 'what modules interact with Z?', or when exploring a new repository to gain understanding.
+description: Read-only codebase exploration — traces flows, locates symbols, maps dependencies. Use to understand how or where something works.
 model: opencode-go/deepseek-v4-flash
 prompt_mode: replace
 tools: read, bash, grep, find, ls

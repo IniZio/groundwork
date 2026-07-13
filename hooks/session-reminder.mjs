@@ -15,7 +15,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { readStdin } from './lib/hook-io.mjs'
+import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 
 /** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
 function advisorVerdict(gate) {
@@ -153,6 +153,10 @@ Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h → skip slicing, del
 ## Completion gate (mandatory)
 
 [qa if interactive UI] → advisor (evidence+quality) APPROVE before declaring done. No APPROVE = not done. "It should work" is not evidence. Record the verdict as \`gate.advisor\` in \`.groundwork/run.json\` so the Stop-gate releases the session.`
+
+// SDK-embedded agents (pencil, etc.) set CLAUDE_CODE_ENTRYPOINT=sdk-py|sdk-js.
+// Injecting groundwork's orchestrator persona into them causes misbehaviour — suppress silently.
+if (isEmbeddedAgent()) process.exit(0)
 
 let input = {}
 try {

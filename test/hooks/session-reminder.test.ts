@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -115,5 +115,91 @@ describe("session-reminder hook — active run resurfacing (post-compact)", () =
 			.additionalContext as string;
 		expect(ctx).toContain("Orchestrator Mode");
 		expect(ctx).not.toContain("ACTIVE RUN");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Embedded-agent guard (CLAUDE_CODE_ENTRYPOINT)
+
+describe("session-reminder hook — embedded-agent guard", () => {
+	/** Run the hook with a given CLAUDE_CODE_ENTRYPOINT value; return raw stdout. */
+	function runWithEntrypoint(entrypoint: string | undefined): string {
+		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1", source: "startup" });
+		const env = { ...process.env };
+		if (entrypoint !== undefined) env.CLAUDE_CODE_ENTRYPOINT = entrypoint;
+		else delete env.CLAUDE_CODE_ENTRYPOINT;
+		return execFileSync("node", [HOOK], { input, encoding: "utf8", env });
+	}
+
+	it("produces NO output (empty stdout) when CLAUDE_CODE_ENTRYPOINT=sdk-py", () => {
+		const out = runWithEntrypoint("sdk-py");
+		expect(out).toBe("");
+	});
+
+	it("produces NO output (empty stdout) when CLAUDE_CODE_ENTRYPOINT=sdk-js", () => {
+		const out = runWithEntrypoint("sdk-js");
+		expect(out).toBe("");
+	});
+
+	it("produces normal injection when CLAUDE_CODE_ENTRYPOINT=cli", () => {
+		const out = runWithEntrypoint("cli");
+		const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+		expect(ctx).toContain("Orchestrator Mode");
+	});
+
+	it("produces normal injection when CLAUDE_CODE_ENTRYPOINT is unset", () => {
+		const out = runWithEntrypoint(undefined);
+		const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+		expect(ctx).toContain("Orchestrator Mode");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// CLAUDE_ENV_FILE export
+
+describe("session-reminder hook — CLAUDE_ENV_FILE export", () => {
+	it("appends CLAUDE_CODE_SESSION_ID=<sessionId> to CLAUDE_ENV_FILE when set", () => {
+		const envFile = path.join(projectDir, "session.env");
+		const input = JSON.stringify({ cwd: projectDir, session_id: "test-sess-xyz", source: "startup" });
+		execFileSync("node", [HOOK], {
+			input,
+			encoding: "utf8",
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_ENV_FILE: envFile },
+		});
+		const contents = readFileSync(envFile, "utf8");
+		expect(contents).toContain("CLAUDE_CODE_SESSION_ID=test-sess-xyz");
+		// Must be a bare KEY=value line — no "export" keyword
+		expect(contents).not.toMatch(/export\s+CLAUDE_CODE_SESSION_ID/);
+	});
+
+	it("does not duplicate the line on a second invocation", () => {
+		const envFile = path.join(projectDir, "session.env");
+		const input = JSON.stringify({ cwd: projectDir, session_id: "test-sess-xyz", source: "startup" });
+		const opts = {
+			input,
+			encoding: "utf8" as const,
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_ENV_FILE: envFile },
+		};
+		execFileSync("node", [HOOK], opts);
+		execFileSync("node", [HOOK], opts);
+		const contents = readFileSync(envFile, "utf8");
+		const matches = contents.split("\n").filter((l) => l.trim() === "CLAUDE_CODE_SESSION_ID=test-sess-xyz");
+		expect(matches).toHaveLength(1);
+	});
+
+	it("does not write to CLAUDE_ENV_FILE when session_id is absent from stdin", () => {
+		const envFile = path.join(projectDir, "session.env");
+		const input = JSON.stringify({ cwd: projectDir, source: "startup" }); // no session_id
+		execFileSync("node", [HOOK], {
+			input,
+			encoding: "utf8",
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_ENV_FILE: envFile },
+		});
+		// File should not be created at all
+		let contents: string | undefined;
+		try { contents = readFileSync(envFile, "utf8"); } catch { /* expected */ }
+		if (contents !== undefined) {
+			expect(contents).not.toContain("CLAUDE_CODE_SESSION_ID");
+		}
 	});
 });

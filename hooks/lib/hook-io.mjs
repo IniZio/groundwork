@@ -21,3 +21,17 @@ export async function readStdin() {
 export function passthrough() {
   process.exit(0)
 }
+
+/**
+ * Returns true when the current session was launched by an SDK-embedded agent
+ * (e.g. pencil, or any tool that spawns Claude Code programmatically via the
+ * Python or JS SDK).  These sessions set CLAUDE_CODE_ENTRYPOINT to "sdk-py" or
+ * "sdk-js"; interactive CLI sessions use "cli" or leave it unset.
+ *
+ * NOTE: do NOT use process.stdin.isTTY here — Claude Code always pipes JSON to
+ * hooks via stdin, so isTTY is always false even for real interactive sessions.
+ */
+export function isEmbeddedAgent() {
+  const ep = process.env.CLAUDE_CODE_ENTRYPOINT
+  return ep === 'sdk-py' || ep === 'sdk-js'
+}

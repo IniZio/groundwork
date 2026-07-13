@@ -20,7 +20,7 @@
  */
 
 import path from 'node:path'
-import { readStdin, passthrough } from './lib/hook-io.mjs'
+import { readStdin, passthrough, isEmbeddedAgent } from './lib/hook-io.mjs'
 
 function deny(reason) {
   console.log(
@@ -39,6 +39,9 @@ function isLedgerPath(fp) {
 }
 
 async function main() {
+  // Embedded SDK agents have no groundwork ledger — no enforcement needed.
+  if (isEmbeddedAgent()) return passthrough()
+
   let input = {}
   try {
     const raw = await readStdin()

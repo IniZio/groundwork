@@ -68,8 +68,8 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { mutateLedger } from './lib/ledger-io.mjs'
-import { readStdin } from './lib/hook-io.mjs'
+import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
+import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
@@ -279,6 +279,9 @@ function buildReason(ledger, incomplete, count) {
 }
 
 async function main() {
+  // Embedded SDK agents (sdk-py/sdk-js) have no groundwork ledger — pass through silently.
+  if (isEmbeddedAgent()) return allow()
+
   let input = {}
   try {
     const raw = await readStdin()

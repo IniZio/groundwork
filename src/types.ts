@@ -19,3 +19,11 @@ export interface MessageInfo {
   agent?: string
   model?: { providerID: string; modelID: string }
 }
+
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      CLAUDE_CODE_SESSION_ID?: string;
+    }
+  }
+}

@@ -25,7 +25,7 @@ These rules apply to ALL agents in the groundwork workflow.
 | `interview` | **Plan a feature** (synthesizes a concise plan, deferring to any project planning convention). Before `diagnose` for complex bugs. Standalone for small changes. Anytime understanding is incomplete before action. Actively updates CONTEXT.md and ADRs inline |
 | `diagnose` | **Any bug or regression.** Something broken that needs root cause analysis. Replaces the feature/`implement` path for bugs |
 | `implement` | **After a plan (features) or interview (small changes).** NOT for bugs — use `diagnose` instead. Runs `vertical-slice` first, then fans out parallel `general-purpose` agents |
-| `vertical-slice` | **Before fanning out general-purpose agents.** Decomposes task into conflict-free parallel slices with wave assignments and writes the `.groundwork/run.json` ledger. Called inside `implement` or standalone |
+| `vertical-slice` | **Before fanning out general-purpose agents.** Decomposes task into conflict-free parallel slices with wave assignments and writes the run ledger. Called inside `implement` or standalone |
 | `ultrawork` | **Max fan-out mode.** Slice → write ledger → dispatch every independent slice in parallel; gate-enforced by the Stop hook |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
 | `housekeep` | **Codebase hygiene / cleanup.** Default mode `deslop` (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design slop). Opt-in modes: `deps`, `lint-debt`, `docs-staleness`. Triggers: deslop, anti-slop, AI slop, housekeep, cleanup the code, dependency audit, lint debt, stale docs |

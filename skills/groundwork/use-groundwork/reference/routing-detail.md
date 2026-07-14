@@ -81,7 +81,7 @@ digraph flow {
 
 - Only use when work is **clearly** multi-day or architectural from the start.
 - **Mandatory skill-tool invocations:** `interview` → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip.
-- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write `.groundwork/run.json`.
+- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write the run ledger.
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed.
 
 ## Triage Pre-Check Detail

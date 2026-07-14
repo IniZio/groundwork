@@ -67,7 +67,7 @@ Note: pi-subagents is bundled as a dependency, enabling agent spawning functiona
 |-------|---------|
 | `use-groundwork` | Every session start — core rules, issue-type routing |
 | `interview` | Plan a feature (defers to project planning conventions); standalone for small changes |
-| `vertical-slice` | Decompose into conflict-free parallel slices; writes the `.groundwork/run.json` ledger |
+| `vertical-slice` | Decompose into conflict-free parallel slices; writes the run ledger |
 | `ultrawork` | Max fan-out mode — slice → ledger → dispatch all slices in parallel |
 | `implement` | Orchestrate implementation after a plan/interview |
 | `diagnose` | Bugs and regressions |
@@ -90,13 +90,13 @@ When using Pi with `pi-subagents`, the following agent types are auto-configured
 ## Rules
 
 1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out general-purpose agents → advisor gate
-2. Advisor gate before declaring done; recorded in `.groundwork/run.json` and enforced by the Stop-gate hook
+2. Advisor gate before declaring done; recorded in the run ledger and enforced by the Stop-gate hook
 3. Plans defer to the project's planning convention; groundwork's `.groundwork/plans/` is the fallback and is not committed
 4. Interview before slicing — understanding before synthesis
 
-## Run ledger (`.groundwork/run.json`)
+## Run ledger (`.groundwork/runs/<session_id>.json`)
 
-Non-trivial runs are tracked in a ledger the Stop-gate hook (`hooks/stop-gate.mjs`) enforces. Key fields:
+Non-trivial runs are tracked in a per-session ledger the Stop-gate hook (`hooks/stop-gate.mjs`) enforces. Legacy `.groundwork/run.json` is still honored for in-flight runs. Key fields:
 
 - `slices[].blocked_by` — canonical wave-ordering dependency (`depends_on` is a legacy alias); a slice can't be marked `complete` until its blockers are.
 - `slices[].acceptance` — `string[]` of checkbox-style, verifiable done-conditions; the Stop-gate surfaces unmet counts.

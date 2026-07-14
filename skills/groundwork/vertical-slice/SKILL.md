@@ -99,9 +99,9 @@ Wave 0: S1 + S2 (parallel, no file conflicts)
 Wave 1: S3 + S4 (parallel, no file conflicts)
 ```
 
-## The Ledger — `.groundwork/run.json` (MANDATORY)
+## The Ledger (MANDATORY)
 
-Run-ledger mechanics and Stop-gate lifecycle: use ONLY the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs`) for all mutations — never Read/Edit `.groundwork/run.json` by hand. The schema this skill writes on initial creation:
+The run ledger is written per-session at `.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` is still honored for in-flight runs). Use ONLY the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs`) for all mutations — never Read/Edit the ledger file by hand. The schema this skill writes on initial creation:
 
 ```json
 {

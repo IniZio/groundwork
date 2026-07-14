@@ -12,7 +12,7 @@ You are now in **Ultrawork Mode**. Backed by the Stop-gate hook — it refuses t
 Your **first line of output** after engaging ultrawork MUST be one of:
 
 ```
-GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json
+GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json
 ```
 or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h):
 ```
@@ -28,7 +28,7 @@ Two tasks are independent ONLY if neither consumes the other's output AND they s
 ## Execution Policy
 
 1. **Decompose first.** Load `vertical-slice` and cut the work into the maximum number of conflict-free slices. Each slice = ONE user-facing behavior through all layers.
-2. **Write the ledger.** `vertical-slice` writes `.groundwork/run.json` with every slice `pending`. No ledger = no enforcement.
+2. **Write the ledger.** `vertical-slice` writes the run ledger with every slice `pending`. No ledger = no enforcement.
 3. **One objective per task.** If describing a task takes more than 2 sentences, split it.
 4. **ALL parallel Task calls in ONE message.** Task A in one message, Task B in the next is sequential execution.
 5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix.
@@ -43,7 +43,7 @@ Before each wave, state for each task: **Agent** · **Reason** · **Success crit
 
 ## As Slices Land
 
-Mark slices complete via the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id>`). Never Read/Edit `.groundwork/run.json` by hand.
+Mark slices complete via the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id>`). Never Read/Edit the run ledger file by hand.
 
 ## Anti-Patterns — These Are Failures
 
@@ -61,5 +61,5 @@ Task(general-purpose, "rate limiting + audit logging + tests + UI")  ← 4 tasks
 Task(general-purpose, "implement as we discussed")  ← subagent has no session history
 
 # BAD: No ledger
-Fan out without writing .groundwork/run.json  ← the gate has nothing to enforce
+Fan out without writing the run ledger  ← the gate has nothing to enforce
 ```

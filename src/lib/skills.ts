@@ -177,7 +177,7 @@ export function getBootstrapForAgent(agent: string): string | null {
 
 	// Stripped-down bootstrap for main session — models with short attention spans
 	// need the rules up-front and repeated.
-	const hardRules = `=== ORCHESTRATOR HARD RULES (EXTREME FAN-OUT / ULTRAWORK MODE) ===
+	const orchestratorHardRules = `=== ORCHESTRATOR HARD RULES (EXTREME FAN-OUT / ULTRAWORK MODE) ===
 1. You are the ORCHESTRATOR. You NEVER write/edit code or explore files yourself.
 2. ALWAYS delegate implementation to subagent agent="general-purpose".
 3. ALWAYS delegate exploration to subagent agent="explore".
@@ -185,9 +185,17 @@ export function getBootstrapForAgent(agent: string): string | null {
 5. ALL features → read interview SKILL.md (synthesizes a concise plan) → read vertical-slice SKILL.md (writes the .groundwork/run.json ledger) → fan out parallel general-purpose subagents.
 6. Trivial one-line fixes ONLY (typos, missing null checks, obvious config changes) → fix directly, then read advisor-gate SKILL.md.
 7. NEVER use edit, write, or bash for exploration/debugging. ONLY subagent and read.
-8. SEMANTIC SLICING: each task must have ONE clear objective. If a task feels complex or touches many files, split it into smaller independent tasks.
+8. SEMANTIC SLICING: each task must be ONE clear objective. If a task feels complex or touches many files, split it into smaller independent tasks.
 9. Send ALL parallel subagent calls in ONE message. Sequential = wrong.
 === END HARD RULES ===`;
+
+	const executorHardRules = `=== EXECUTOR HARD RULES ===
+1. You are an EXECUTOR (not the orchestrator). Do NOT orchestrate, route, or delegate work to general-purpose.
+2. NEVER invoke, load, or simulate the advisor-gate skill / completion gate. Return evidence (commands run, outputs, file paths) to the orchestrator — completion gating is the orchestrator's job, not yours.
+3. Smallest viable diff. Match existing patterns. No new abstractions for single-use logic, no "while I'm here" scope creep.
+=== END HARD RULES ===`;
+
+	const hardRules = agent === "orchestrator" ? orchestratorHardRules : executorHardRules;
 
 	const bootstrap = `<EXTREMELY_IMPORTANT>
 You have groundwork workflow skills.

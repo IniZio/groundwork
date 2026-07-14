@@ -13,9 +13,10 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
+import { resolveLedgerPath } from './lib/ledger-io.mjs'
 
 /** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
 function advisorVerdict(gate) {
@@ -32,7 +33,8 @@ function advisorVerdict(gate) {
 function activeRunBlock(projectDir, sessionId) {
   let ledger
   try {
-    ledger = JSON.parse(readFileSync(path.join(projectDir, '.groundwork', 'run.json'), 'utf8'))
+    const lp = resolveLedgerPath({ projectDir, sessionId: sessionId || undefined })
+    ledger = JSON.parse(readFileSync(lp, 'utf8'))
   } catch {
     return '' // no ledger, unreadable, or malformed — nothing to resurface
   }
@@ -47,7 +49,8 @@ function activeRunBlock(projectDir, sessionId) {
   const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
   if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
   if (typeof ledger.plan_ref === 'string' && ledger.plan_ref) lines.push(`Plan: ${ledger.plan_ref}`)
-  lines.push(`Ledger: .groundwork/run.json — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
+  const ledgerRef = ledger.session_id ? `.groundwork/runs/${ledger.session_id}.json` : `.groundwork/run.json`
+  lines.push(`Ledger: ${ledgerRef} — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
   lines.push('')
 
   if (typeof ledger.write_token === 'string' && ledger.write_token) {
@@ -62,11 +65,11 @@ function activeRunBlock(projectDir, sessionId) {
       lines.push(`- ${s?.id ?? '?'} [${s?.status ?? '?'}] ${String(s?.behavior ?? '').slice(0, 80)}${acc}`)
     }
     lines.push('')
-    lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → .groundwork/run.json\``)
+    lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → ${ledgerRef}\``)
   } else if (verdict !== 'APPROVE') {
     lines.push('All slices complete but the advisor gate is not APPROVE. Run the completion gate ([qa if interactive UI] → advisor), record `gate.advisor`, OR set `"active": false` to close the run.')
   } else {
-    lines.push('All slices complete and advisor APPROVE — this run is finished. Set `"active": false` in .groundwork/run.json to close it out so the Stop-gate stands down.')
+    lines.push(`All slices complete and advisor APPROVE — this run is finished. Set \`"active": false\` in ${ledgerRef} to close it out so the Stop-gate stands down.`)
   }
   return `\n${lines.join('\n')}`
 }
@@ -101,10 +104,10 @@ Before launching general-purpose agents on ANY task touching ≥3 files or ≥2 
 
 ## Run ledger & Stop-gate (mechanical enforcement — not advisory)
 
-\`vertical-slice\` writes the slice plan to \`.groundwork/run.json\` (the run ledger). A \`Stop\` hook reads this ledger on every attempt to end the session and BLOCKS the stop — re-injecting the fan-out rules — while any slice is not \`complete\` or while \`gate.advisor\` is not \`APPROVE\`. This is what makes the workflow stick; the rules above are not optional suggestions you can drop as context grows.
+\`vertical-slice\` writes the slice plan to the run ledger (\`.groundwork/runs/<session_id>.json\` for concurrent-safe per-session tracking; legacy \`.groundwork/run.json\` still works). A \`Stop\` hook reads this ledger on every attempt to end the session and BLOCKS the stop — re-injecting the fan-out rules — while any slice is not \`complete\` or while \`gate.advisor\` is not \`APPROVE\`. This is what makes the workflow stick; the rules above are not optional suggestions you can drop as context grows.
 
 Your obligations as orchestrator (the hook only reads — it cannot update the ledger for you):
-- **Banner first.** Your first line on a non-trivial task: \`GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json\`. For trivial work: \`GROUNDWORK ▸ trivial: single general-purpose agent, no slicing\`.
+- **Banner first.** Your first line on a non-trivial task: \`GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json\`. For trivial work: \`GROUNDWORK ▸ trivial: single general-purpose agent, no slicing\`.
 - **Write the ledger** when you slice (vertical-slice does this), stamping it with this session's \`session_id\` from the Session identity block below.
 - **Give each slice \`acceptance\`** (a string[] of verifiable done-conditions) and \`blocked_by\` (the canonical wave-ordering dependency; \`depends_on\` is a legacy alias). A slice can't be \`complete\` until its \`blocked_by\` slices are.
 - **Update slice status to \`complete\`** as each verified wave lands.
@@ -168,6 +171,21 @@ try {
 
 let additionalContext = reminder
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
+
+// Best-effort: export session id to Claude Code's session-scoped env file so
+// subsequent Bash subprocesses see CLAUDE_CODE_SESSION_ID even on hosts/versions
+// where it isn't set automatically.
+try {
+  const envFile = process.env.CLAUDE_ENV_FILE
+  if (envFile && sessionId) {
+    const line = `CLAUDE_CODE_SESSION_ID=${sessionId}`
+    let existing = ''
+    try { existing = readFileSync(envFile, 'utf8') } catch { /* file may not exist yet */ }
+    if (!existing.split('\n').some(l => l.trim() === line)) {
+      appendFileSync(envFile, (existing && !existing.endsWith('\n') ? '\n' : '') + line + '\n')
+    }
+  }
+} catch { /* never fail the hook */ }
 const transcriptPath = typeof input?.transcript_path === 'string' ? input.transcript_path : ''
 if (sessionId || transcriptPath) {
   const lines = ['', '## Session identity']

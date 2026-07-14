@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getBootstrapForAgent } from "./lib/skills.js";
@@ -14,6 +15,56 @@ import { createGroundworkRuntime } from "./runtime.js";
 function isSubagent(): boolean {
 	const depth = Number(process.env.PI_SUBAGENT_DEPTH ?? "0");
 	return depth > 0;
+}
+
+interface LedgerData {
+	active?: boolean;
+	session_id?: string;
+	slices?: Array<{ status?: string }>;
+	gate?: { advisor?: string };
+}
+
+function isLedgerData(value: unknown): value is LedgerData {
+	if (!value || typeof value !== "object") return false;
+
+	if ("active" in value) {
+		const active = value.active;
+		if (typeof active !== "boolean" && active !== undefined) return false;
+	}
+	if ("session_id" in value) {
+		const session_id = value.session_id;
+		if (typeof session_id !== "string" && session_id !== undefined) return false;
+	}
+	if ("slices" in value) {
+		const slices = value.slices;
+		if (!Array.isArray(slices)) return false;
+	}
+	if ("gate" in value) {
+		const gate = value.gate;
+		if (!gate || typeof gate !== "object") return false;
+		if ("advisor" in gate) {
+			const advisor = gate.advisor;
+			if (typeof advisor !== "string" && advisor !== undefined && advisor !== null) return false;
+		}
+	}
+	return true;
+}
+
+/** Read the active run ledger for the given project dir + session id. */
+function readActiveLedger(projectDir: string, sessionId: string): LedgerData | null {
+	const candidates = [
+		sessionId ? join(projectDir, ".groundwork", "runs", `${sessionId}.json`) : null,
+		join(projectDir, ".groundwork", "run.json"),
+	].filter((p): p is string => p !== null);
+	for (const p of candidates) {
+		if (!existsSync(p)) continue;
+		try {
+			const raw = JSON.parse(readFileSync(p, "utf8"));
+			if (!isLedgerData(raw)) continue;
+			if (raw.active === true) return raw;
+		} catch { /* malformed — skip */ }
+	}
+	return null;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -48,7 +99,21 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", (_event, _ctx) => {
-		// No-op: agent dir is now static (package-local), no per-session cleanup needed.
+		// Best-effort: warn if the session is ending with an active, ungated ledger.
+		try {
+			interface SessionShutdownCtx {
+				sessionManager?: { getSessionId?: () => string };
+			}
+			// Library boundary: pi typings don't expose sessionManager.
+			const ctxObj = _ctx as unknown as SessionShutdownCtx;
+			const sid = ctxObj?.sessionManager?.getSessionId?.() ?? "";
+			const ledger = readActiveLedger(directory, sid);
+			if (ledger && ledger.gate?.advisor !== "APPROVE") {
+				console.warn(
+					"[groundwork] Session shutting down with active ledger — advisor gate not APPROVED.",
+				);
+			}
+		} catch { /* best-effort */ }
 	});
 
 	// Inject orchestrator identity into the SYSTEM PROMPT for the main session.
@@ -137,6 +202,24 @@ export default function (pi: ExtensionAPI) {
 					.pop();
 				if (lastTextPart && !lastTextPart.text.includes(nudge.trim())) {
 					lastTextPart.text += nudge;
+				}
+
+				// Stop-gate enforcement: warn if an active ledger is not yet approved.
+				const ledger = readActiveLedger(directory, sessionID);
+				if (ledger && ledger.gate?.advisor !== "APPROVE") {
+					const terminalStatuses: Record<string, true> = {
+						complete: true,
+						skipped: true,
+						abandoned: true,
+					};
+					const incompleteCount =
+						ledger.slices?.filter((s) => !terminalStatuses[s.status ?? ""]).length ?? 0;
+					const verdict = ledger.gate?.advisor;
+					const warning =
+						`\n\n⚠️ STOP-GATE ACTIVE — ${incompleteCount} slice(s) incomplete, advisor gate: ${verdict ?? "PENDING"}. Do NOT end the session. Complete all slices, then invoke advisor for APPROVE before yielding.`;
+					if (lastTextPart && !lastTextPart.text.includes("STOP-GATE ACTIVE")) {
+						lastTextPart.text += warning;
+					}
 				}
 			}
 		}

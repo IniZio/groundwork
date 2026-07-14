@@ -16,7 +16,7 @@
  * parse surfaces to the caller, which decides whether to fail open.
  */
 
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
@@ -131,5 +131,68 @@ export function readLedger(ledgerPath) {
     return JSON.parse(readFileSync(ledgerPath, 'utf8'))
   } catch {
     return null
+  }
+}
+
+/**
+ * Resolve the ledger file path for a given project directory and session id.
+ *
+ * Strategy:
+ *  - sessionId must match /^[A-Za-z0-9_-]{1,128}$/ (path-traversal guard);
+ *    invalid/absent sessionId → fall back to the legacy path.
+ *  - With a valid sessionId: return `.groundwork/runs/<sessionId>.json`.
+ *    BUT for back-compat: if that per-session file does NOT yet exist AND the
+ *    legacy `.groundwork/run.json` exists AND (legacy has no session_id OR
+ *    legacy.session_id === sessionId), return the legacy path so in-flight old
+ *    runs keep working.
+ *  - Without a sessionId: return the legacy path `.groundwork/run.json`.
+ */
+export function resolveLedgerPath({ projectDir, sessionId } = {}) {
+  const legacyPath = path.join(projectDir, '.groundwork', 'run.json')
+  if (!sessionId || typeof sessionId !== 'string') return legacyPath
+
+  const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/
+  if (!SAFE_ID.test(sessionId)) return legacyPath
+
+  const perSessionPath = path.join(projectDir, '.groundwork', 'runs', `${sessionId}.json`)
+
+  // Per-session file already exists → use it (new session or resumed).
+  if (existsSync(perSessionPath)) return perSessionPath
+
+  // Per-session file doesn't exist yet — check legacy back-compat:
+  if (existsSync(legacyPath)) {
+    let legacy = null
+    try { legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) } catch { /* ignore */ }
+    const legacyOwner = legacy?.session_id
+    if (!legacyOwner || legacyOwner === sessionId) return legacyPath
+  }
+
+  // New run — use per-session path.
+  return perSessionPath
+}
+
+/**
+ * Best-effort prune of stale per-session ledger files under `.groundwork/runs/`.
+ * Removes files that are inactive (active:false) OR older than 7 days (mtime).
+ * Never throws.
+ */
+export function pruneStaleSessionLedgers(projectDir) {
+  const runsDir = path.join(projectDir, '.groundwork', 'runs')
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+  try {
+    const files = readdirSync(runsDir).filter((f) => f.endsWith('.json'))
+    for (const f of files) {
+      const fp = path.join(runsDir, f)
+      try {
+        const st = statSync(fp)
+        if (Date.now() - st.mtimeMs > sevenDaysMs) { unlinkSync(fp); continue }
+        const obj = JSON.parse(readFileSync(fp, 'utf8'))
+        if (obj.active === false) unlinkSync(fp)
+      } catch {
+        /* ignore per-file errors */
+      }
+    }
+  } catch {
+    /* runsDir doesn't exist or not readable — nothing to prune */
   }
 }

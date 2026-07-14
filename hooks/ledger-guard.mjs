@@ -31,11 +31,23 @@ function deny(reason) {
   process.exit(0)
 }
 
-/** Is this file path the run ledger (`…/.groundwork/run.json`)? */
+/**
+ * Is this file path a run ledger?
+ * Matches:
+ *   …/.groundwork/run.json          (legacy single-session path)
+ *   …/.groundwork/runs/<id>.json    (per-session path)
+ */
 function isLedgerPath(fp) {
   if (typeof fp !== 'string' || !fp) return false
   const norm = path.normalize(fp)
-  return path.basename(norm) === 'run.json' && path.basename(path.dirname(norm)) === '.groundwork'
+  // Legacy: …/.groundwork/run.json
+  if (path.basename(norm) === 'run.json' && path.basename(path.dirname(norm)) === '.groundwork') return true
+  // Per-session: …/.groundwork/runs/<anything>.json
+  if (norm.endsWith('.json') && path.basename(path.dirname(norm)) === 'runs') {
+    const grandparent = path.basename(path.dirname(path.dirname(norm)))
+    if (grandparent === '.groundwork') return true
+  }
+  return false
 }
 
 async function main() {
@@ -58,7 +70,7 @@ async function main() {
   if (!isLedgerPath(input?.tool_input?.file_path)) return passthrough()
 
   return deny(
-    `groundwork: do not ${tool} .groundwork/run.json directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\n` +
+    `groundwork: do not ${tool} the run ledger directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs status                 — compact progress view (use this instead of reading the file)\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs show <id>              — all fields of one slice\n` +
       `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status …]\n` +

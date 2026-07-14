@@ -29,14 +29,23 @@
  * Exit 0 on success, 2 on usage error, 1 on operational failure.
  */
 
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { mutateLedger, readLedger, atomicWriteJsonSync } from './lib/ledger-io.mjs'
+import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 
+/**
+ * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
+ * Returns undefined if neither is set.
+ */
+function resolveSessionId(flags) {
+  return flags?.session || process.env.CLAUDE_CODE_SESSION_ID || undefined
+}
+
+/** Module-level resolved ledger path — set once in main() before dispatch. */
+let _ledgerPath = null
 function ledgerPath() {
-  const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
-  return path.join(base, '.groundwork', 'run.json')
+  return _ledgerPath
 }
 
 function die(msg, code = 1) {
@@ -353,6 +362,12 @@ function cmdInit(src) {
   // Generate and embed the write-token for gate/complete authority
   const writeToken = randomBytes(8).toString('hex')
   obj.write_token = writeToken
+  // Stamp session_id if not already present and a sessionId is known
+  const sessionId = resolveSessionId(null)
+  if (sessionId && !obj.session_id) obj.session_id = sessionId
+  // Best-effort prune stale per-session ledgers before writing
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   atomicWriteJsonSync(ledgerPath(), obj)
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
@@ -566,6 +581,11 @@ function main() {
   // per-command --help
   const { flags } = parseFlags(rest)
   if ('help' in flags) { cmdHelp([cmd]); return }
+
+  // Resolve the ledger path once (honors --session flag and CLAUDE_CODE_SESSION_ID env)
+  const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  const sessionId = resolveSessionId(flags)
+  _ledgerPath = resolveLedgerPath({ projectDir: base, sessionId })
 
   try {
     switch (cmd) {

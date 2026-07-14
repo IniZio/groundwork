@@ -37,6 +37,23 @@ describe("ledger-guard — denies direct access to the run ledger", () => {
 	});
 });
 
+describe("ledger-guard — denies access to per-session ledger files", () => {
+	it("DENIES Read of .groundwork/runs/abc123.json", () => {
+		const d = runHook("Read", "/home/u/proj/.groundwork/runs/abc123.json");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES Edit of .groundwork/runs/some-session.json", () => {
+		const d = runHook("Edit", "/proj/.groundwork/runs/some-session.json");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES MultiEdit of per-session ledger", () => {
+		const d = runHook("MultiEdit", "/a/.groundwork/runs/sess-xyz.json");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
 describe("ledger-guard — never over-reaches", () => {
 	it("passes through Read of any other file", () => {
 		expect(runHook("Read", "/home/u/proj/src/index.ts").hookSpecificOutput).toBeUndefined();

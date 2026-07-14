@@ -1,6 +1,7 @@
 ---
 name: advisor-gate
-description: Executor-first workflow with advisor checkpoints at hard decisions AND mandatory gate approval before declaring any task complete. The advisor operates as a strategic technical consultant — providing deep architectural insight, trade-off analysis, and effort-aware recommendations — not just a yes/no gate. ALWAYS required before claiming done.
+description: ORCHESTRATOR-ONLY skill. Executor/subagent agents MUST NOT invoke this. Advisor completion gate: mandatory APPROVE/REVISE/REJECT verdict before the orchestrator declares any task complete, plus decision-gate escalation for hard architectural trade-offs.
+disable-model-invocation: true
 ---
 
 # Advisor Gate

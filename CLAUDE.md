@@ -13,13 +13,13 @@
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. NEVER use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the `.groundwork/run.json` ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
-- `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update run.json); NEVER exploration or implementation
+- `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger); NEVER exploration or implementation
 
 **If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI and one-shot git status are the only sanctioned Bash uses.)
 
@@ -66,8 +66,8 @@ Before classifying and delegating ANY new request, run these two checks:
 
 _Injected at SessionStart by hooks/session-reminder.mjs — see that injection for the stop-gate rules and orchestrator obligations._
 
-**Ledger CLI command reference** (use these; never Read/Edit `.groundwork/run.json` by hand):
-- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing`).
+**Ledger CLI command reference** (use these; never Read/Edit the run ledger file — `.groundwork/runs/<session_id>.json`, legacy `.groundwork/run.json` — by hand):
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing`).
 - Mark each verified slice complete as waves land: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …] --token <write_token>`. The write_token is printed at `init` and re-surfaced in the SessionStart injection (orchestrator-only — never pass it to subagents).
 - Update slice status or fields mid-run: `ledger set <id> --status in_progress|complete [--wave N] [--desc "…"]`; add new slices with `ledger add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--kind plan|diagnose|design|impl]` (kind defaults to `impl`); remove with `ledger rm <id>`. Kinds let the ledger represent non-implementation phases (planning, diagnosis, design) as first-class items, making the ledger the whole-session spine rather than implementation-only.
 - Inspect a single slice in full: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs show <id>`.

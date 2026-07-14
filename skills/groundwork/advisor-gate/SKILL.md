@@ -1,6 +1,7 @@
 ---
 name: advisor-gate
-description: Executor-first workflow with advisor checkpoints at hard decisions AND mandatory gate approval before declaring any task complete. The advisor operates as a strategic technical consultant — providing deep architectural insight, trade-off analysis, and effort-aware recommendations — not just a yes/no gate. ALWAYS required before claiming done.
+description: ORCHESTRATOR-ONLY skill. Executor/subagent agents MUST NOT invoke this. Advisor completion gate: mandatory APPROVE/REVISE/REJECT verdict before the orchestrator declares any task complete, plus decision-gate escalation for hard architectural trade-offs.
+disable-model-invocation: true
 ---
 
 # Advisor Gate
@@ -62,7 +63,7 @@ Advisor returns one of:
 
 ## Recording the Verdict in the Run Ledger
 
-If a run ledger exists (`.groundwork/run.json`), record the gate result via the `ledger` CLI so the Stop-gate hook releases the session:
+If a run ledger exists (`.groundwork/runs/<session_id>.json`, or legacy `.groundwork/run.json`), record the gate result via the `ledger` CLI so the Stop-gate hook releases the session:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE \

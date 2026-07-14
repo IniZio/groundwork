@@ -33,9 +33,13 @@ afterEach(() => rmSync(projectDir, { recursive: true, force: true }));
 
 /** Run the CLI with CLAUDE_PROJECT_DIR pointing at the temp project. */
 function run(args: string[], stdin?: string): { code: number; stdout: string; stderr: string } {
+	// Unset CLAUDE_CODE_SESSION_ID so the CLI uses the legacy run.json path (which is
+	// where the beforeEach fixture writes the test ledger).
+	const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
+	delete env.CLAUDE_CODE_SESSION_ID;
 	try {
 		const stdout = execFileSync("node", [CLI, ...args], {
-			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+			env,
 			encoding: "utf8",
 			input: stdin,
 		});
@@ -139,8 +143,10 @@ describe("ledger CLI — init & atomicity", () => {
 	it("survives many concurrent completes without losing a write (lock serializes)", () => {
 		// Fire 3 completes in parallel; all must land.
 		const { spawnSync } = require("node:child_process");
+		const spawnEnv = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
+		delete spawnEnv.CLAUDE_CODE_SESSION_ID;
 		const procs = ["S2", "S3"].map((id) =>
-			spawnSync("node", [CLI, "complete", id], { env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir }, encoding: "utf8" }),
+			spawnSync("node", [CLI, "complete", id], { env: spawnEnv, encoding: "utf8" }),
 		);
 		for (const p of procs) expect(p.status).toBe(0);
 		const l = readLedger();
@@ -507,6 +513,117 @@ describe("ledger CLI — init kind preservation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Multi-session isolation — per-session ledger files
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — per-session isolation", () => {
+	it("two different session ids write to different files and don't interfere", () => {
+		// Init run for session aaa
+		const srcA = path.join(projectDir, "plan-aaa.json");
+		writeFileSync(srcA, JSON.stringify({ active: true, brief: "run-aaa", slices: [{ id: "A1", status: "pending" }], gate: {} }));
+		const rA = runWithSession("aaa", ["init", srcA]);
+		expect(rA.code).toBe(0);
+		expect(rA.stdout).toContain(".groundwork/runs/aaa.json");
+
+		// Init run for session bbb
+		const srcB = path.join(projectDir, "plan-bbb.json");
+		writeFileSync(srcB, JSON.stringify({ active: true, brief: "run-bbb", slices: [{ id: "B1", status: "pending" }, { id: "B2", status: "pending" }], gate: {} }));
+		const rB = runWithSession("bbb", ["init", srcB]);
+		expect(rB.code).toBe(0);
+		expect(rB.stdout).toContain(".groundwork/runs/bbb.json");
+
+		// Complete a slice in aaa — must not affect bbb
+		const tokenA = extractToken(rA.stdout);
+		runWithSession("aaa", ["complete", "A1", "--token", tokenA]);
+
+		// Status for aaa
+		const statusA = runWithSession("aaa", ["status"]);
+		expect(statusA.stdout).toContain("run-aaa");
+		expect(statusA.stdout).toContain("A1✓");
+
+		// Status for bbb (both B1 and B2 still pending)
+		const statusB = runWithSession("bbb", ["status"]);
+		expect(statusB.stdout).toContain("run-bbb");
+		expect(statusB.stdout).not.toContain("A1");
+
+		// Ledger files must be at different paths
+		const fileAaa = path.join(projectDir, ".groundwork", "runs", "aaa.json");
+		const fileBbb = path.join(projectDir, ".groundwork", "runs", "bbb.json");
+		expect(existsSync(fileAaa)).toBe(true);
+		expect(existsSync(fileBbb)).toBe(true);
+		// And they must have independent content
+		const ledgerA = JSON.parse(readFileSync(fileAaa, "utf8"));
+		const ledgerB = JSON.parse(readFileSync(fileBbb, "utf8"));
+		expect(ledgerA.brief).toBe("run-aaa");
+		expect(ledgerB.brief).toBe("run-bbb");
+		expect(ledgerA.slices[0].status).toBe("complete");
+		expect(ledgerB.slices[0].status).toBe("pending");
+	});
+
+	it("legacy fallback: reads run.json when per-session file absent and session_id matches", () => {
+		// The beforeEach already wrote run.json with session_id: "sess-1"
+		// No per-session file exists for sess-1
+		const statusR = runWithSession("sess-1", ["status"]);
+		expect(statusR.code).toBe(0);
+		expect(statusR.stdout).toContain("test run"); // brief from baseLedger
+	});
+
+	it("legacy fallback: reads run.json when per-session file absent and run.json has no session_id", () => {
+		// Write a legacy ledger without session_id
+		const noSessionLedger = { ...baseLedger(), session_id: undefined };
+		delete noSessionLedger.session_id;
+		writeFileSync(ledgerFile, JSON.stringify(noSessionLedger, null, 2));
+		const statusR = runWithSession("any-session", ["status"]);
+		expect(statusR.code).toBe(0);
+		expect(statusR.stdout).toContain("test run");
+	});
+
+	it("sanitization: session id with path-traversal chars falls back to legacy path", () => {
+		// ../evil should be rejected — CLI falls back to legacy run.json
+		const statusR = runWithSession("../evil", ["status"]);
+		// Should read from the legacy run.json (which exists from beforeEach)
+		expect(statusR.code).toBe(0);
+		expect(statusR.stdout).toContain("test run");
+	});
+
+	it("sanitization: session id with slashes is rejected (falls back to legacy)", () => {
+		const r = runWithSession("foo/bar", ["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("test run");
+	});
+
+	it("init stamps session_id from CLAUDE_CODE_SESSION_ID into the ledger", () => {
+		const src = path.join(projectDir, "plan-sid.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		const r = runWithSession("my-sess-42", ["init", src]);
+		expect(r.code).toBe(0);
+		const lp = path.join(projectDir, ".groundwork", "runs", "my-sess-42.json");
+		expect(existsSync(lp)).toBe(true);
+		const l = JSON.parse(readFileSync(lp, "utf8"));
+		expect(l.session_id).toBe("my-sess-42");
+	});
+});
+
+/** Run the CLI with a specific CLAUDE_CODE_SESSION_ID. */
+function runWithSession(sessionId: string, args: string[]): { code: number; stdout: string; stderr: string } {
+	try {
+		const stdout = execFileSync("node", [CLI, ...args], {
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: sessionId },
+			encoding: "utf8",
+		});
+		return { code: 0, stdout, stderr: "" };
+	} catch (e: any) {
+		return { code: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+	}
+}
+
+/** Extract write_token value from init stdout. */
+function extractToken(stdout: string): string {
+	const m = stdout.match(/write_token:\s+([0-9a-f]+)/);
+	return m ? m[1] : "";
+}
+
+// ---------------------------------------------------------------------------
 // skipped status — ledger CLI
 // ---------------------------------------------------------------------------
 
@@ -534,5 +651,45 @@ describe("ledger CLI — skipped status", () => {
 		const r = run(["show", "S2"]);
 		expect(r.code).toBe(0);
 		expect(r.stdout).toContain("status:     skipped");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// degraded mode — session-id resolution
+
+describe("ledger CLI — degraded mode (no session id)", () => {
+	it("falls back to legacy run.json when CLAUDE_CODE_SESSION_ID is unset and no --session flag", () => {
+		// The `run()` helper already unsets CLAUDE_CODE_SESSION_ID.
+		// The beforeEach fixture writes the ledger at .groundwork/run.json with session_id "sess-1".
+		const r = run(["status"]);
+		expect(r.code).toBe(0);
+		// A successful status read proves it found and parsed the legacy path.
+		expect(r.stdout).toMatch(/slices|complete|pending/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// negative ownership — session A is not blocked by session B's legacy ledger
+
+describe("ledger CLI — negative ownership", () => {
+	it("session A's init writes its own per-session ledger and does not overwrite session B's legacy ledger", () => {
+		// beforeEach wrote a legacy run.json stamped with session_id "sess-1" (≈ session B).
+		const legacyBefore = JSON.parse(readFileSync(ledgerFile, "utf8"));
+
+		// Session A initialises its own run — uses per-session path runs/sess-A.json.
+		const srcFile = path.join(projectDir, "plan-a.json");
+		writeFileSync(srcFile, JSON.stringify({ brief: "session A run", slices: [] }));
+		const rA = runWithSession("sess-A", ["init", srcFile]);
+		expect(rA.code).toBe(0);
+		expect(rA.stdout).toContain(".groundwork/runs/sess-A.json");
+
+		// The legacy ledger (session B's) must be untouched.
+		const legacyAfter = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		expect(legacyAfter).toEqual(legacyBefore);
+
+		// Session A's per-session file exists and is independent.
+		const sessionAFile = path.join(projectDir, ".groundwork", "runs", "sess-A.json");
+		const sessionALedger = JSON.parse(readFileSync(sessionAFile, "utf8"));
+		expect(sessionALedger.session_id).toBe("sess-A");
 	});
 });

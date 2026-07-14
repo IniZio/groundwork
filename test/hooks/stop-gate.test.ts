@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
 
@@ -499,5 +500,89 @@ describe("stop-gate hook — progressive block message verbosity", () => {
 		expect(decision.reason).toContain("Slices: 0/1 complete");
 		expect(decision.reason).toContain("S1");
 		expect(decision.reason).toContain("Completion gate");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Multi-session isolation — per-session ledger files
+// ---------------------------------------------------------------------------
+
+const pendingSliceMulti = { id: "M1", status: "pending", acceptance: ["does the thing"] };
+const completeSliceMulti = { id: "M1", status: "complete", acceptance: ["does the thing"] };
+
+/** Run the hook with a per-session ledger file at .groundwork/runs/<sessionId>.json */
+function runHookWithPerSessionLedger(
+	ledger: unknown,
+	sessionId: string,
+): { continue?: boolean; decision?: string; reason?: string } {
+	const runsDir = path.join(projectDir, ".groundwork", "runs");
+	mkdirSync(runsDir, { recursive: true });
+	writeFileSync(path.join(runsDir, `${sessionId}.json`), JSON.stringify(ledger, null, 2));
+	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
+	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	return JSON.parse(out);
+}
+
+describe("stop-gate hook — per-session ledger isolation", () => {
+	it("blocks on its own per-session ledger when slices incomplete", () => {
+		const decision = runHookWithPerSessionLedger({
+			active: true,
+			session_id: "sess-aaa",
+			reinforcements: 0,
+			slices: [pendingSliceMulti],
+			gate: { advisor: "pending" },
+		}, "sess-aaa");
+		expect(decision.decision).toBe("block");
+	});
+
+	it("allows when its per-session ledger shows all complete + APPROVE", () => {
+		const decision = runHookWithPerSessionLedger({
+			active: true,
+			session_id: "sess-aaa",
+			reinforcements: 0,
+			slices: [completeSliceMulti],
+			gate: { advisor: "APPROVE" },
+		}, "sess-aaa");
+		expect(decision.continue).toBe(true);
+	});
+
+	it("session bbb is not blocked by session aaa's incomplete run", () => {
+		// Write aaa's ledger as incomplete
+		const runsDir = path.join(projectDir, ".groundwork", "runs");
+		mkdirSync(runsDir, { recursive: true });
+		writeFileSync(
+			path.join(runsDir, "sess-aaa.json"),
+			JSON.stringify({
+				active: true,
+				session_id: "sess-aaa",
+				reinforcements: 0,
+				slices: [pendingSliceMulti],
+				gate: { advisor: "pending" },
+			}),
+		);
+		// Session bbb has no ledger — should allow (fail-open)
+		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-bbb" });
+		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		const decision = JSON.parse(out);
+		expect(decision.continue).toBe(true);
+	});
+
+	it("legacy path used when no per-session file exists and run.json matches session", () => {
+		// Write legacy run.json with session_id: sess-legacy
+		writeFileSync(
+			path.join(projectDir, ".groundwork", "run.json"),
+			JSON.stringify({
+				active: true,
+				session_id: "sess-legacy",
+				reinforcements: 0,
+				slices: [pendingSliceMulti],
+				gate: { advisor: "pending" },
+			}),
+		);
+		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-legacy" });
+		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		const decision = JSON.parse(out);
+		// Should block because the legacy ledger is active and owned by this session
+		expect(decision.decision).toBe("block");
 	});
 });

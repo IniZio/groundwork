@@ -8,7 +8,7 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 
 1. **Always use `question` tool** — never end the conversation without a next step.
 2. **Your role is orchestration** — classify, delegate, review. Do NOT write code, explore files, or debug directly.
-3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes `.groundwork/run.json` ledger) → fan out. Never start coding without a plan and a slice ledger.
+3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes the run ledger) → fan out. Never start coding without a plan and a slice ledger.
 4. **Steer the plan in place** — small direction changes update the plan in place; pivots get re-interviewed.
 5. **No self-review** — use `advisor` for technical uncertainty, not internal reasoning loops.
 
@@ -16,10 +16,10 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 
 ## Stop-Gate / Run Ledger (ENFORCEMENT)
 
-Non-trivial work is tracked in `.groundwork/run.json`. The `Stop` hook (`hooks/stop-gate.mjs`) blocks session end while any slice is not `complete` or `gate.advisor` is not `APPROVE`.
+Non-trivial work is tracked in the run ledger — a per-session file at `.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` is honored for in-flight runs). The `Stop` hook (`hooks/stop-gate.mjs`) blocks session end while any slice is not `complete` or `gate.advisor` is not `APPROVE`.
 
 **Orchestrator obligations (hook only reads — YOU must write):**
-- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing` for trivial tasks).
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing` for trivial tasks).
 - Mark each verified slice `complete` in the ledger as waves land.
 - Record `gate.advisor = "APPROVE"` after the advisor gate approves.
 - To abandon a run, set `"active": false`. Trivial tasks write no ledger.
@@ -38,7 +38,7 @@ Full patterns and anti-patterns → `reference/fan-out-patterns.md`
 
 ## Vertical-Slice Gate (ENFORCEMENT)
 
-Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes `.groundwork/run.json`). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
+Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes the run ledger). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
 
 ---
 

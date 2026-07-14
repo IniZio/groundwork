@@ -298,7 +298,7 @@ async function main() {
     process.env.CLAUDE_PROJECT_DIR ||
     process.cwd()
 
-  const ledgerPath = path.join(projectDir, '.groundwork', 'run.json')
+  const ledgerPath = resolveLedgerPath({ projectDir, sessionId: sessionId || undefined })
 
   let ledger
   try {
@@ -310,7 +310,7 @@ async function main() {
 
   if (!ledger || ledger.active !== true) return allow()
 
-  // Never block on a run owned by a different session.
+  // Never block on a run owned by a different session (defensive layer for legacy fallback).
   if (typeof ledger.session_id === 'string' && ledger.session_id && sessionId && ledger.session_id !== sessionId) {
     return allow()
   }

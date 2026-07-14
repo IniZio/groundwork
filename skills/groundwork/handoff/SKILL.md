@@ -88,7 +88,7 @@ If the spawn failed, fall back to mode (c) and show the user the one-liner.
 
 ## Active Run — Ledger Context
 
-If `.groundwork/run.json` exists and has `active: true`, the handoff document **must** include a run summary so the successor session inherits the run state. Add a **Run state** section to the handoff document:
+If an active run ledger exists (`.groundwork/runs/<session_id>.json`, or legacy `.groundwork/run.json`) with `active: true`, the handoff document **must** include a run summary so the successor session inherits the run state. Add a **Run state** section to the handoff document:
 
 - Render it with `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs view` (or `status` for a compact view).
 - Include: the run's brief/goal, each incomplete slice (id, kind, status), and the gate verdict if one exists.

@@ -34,9 +34,9 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 		expect(d.hookSpecificOutput?.updatedInput?.prompt).toBe("commit");
 	});
 
-	it("injects sonnet for groundwork:general-purpose", () => {
+	it("injects claude-sonnet-4-6 for groundwork:general-purpose", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:general-purpose", prompt: "x" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
 	});
 
 	it("injects opus for groundwork:advisor (opus by design)", () => {
@@ -62,7 +62,7 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 
 	it("also guards the Task tool name", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:qa", prompt: "verify" }, "Task"));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
 	});
 });
 

@@ -11,7 +11,7 @@
     "general-purpose": {
       "pi": "kimi-for-coding",
       "opencode": "kimi-for-coding/k2p7",
-      "claude-code": "sonnet"
+      "claude-code": "claude-sonnet-4-6"
     },
     "advisor": {
       "pi": "zai/glm-5.2",
@@ -21,17 +21,17 @@
     "designer": {
       "pi": "kimi-for-coding",
       "opencode": "kimi-for-coding/k2p7",
-      "claude-code": "sonnet"
+      "claude-code": "claude-sonnet-4-6"
     },
     "qa": {
       "pi": "zai/glm-5.1",
       "opencode": "zai-coding-plan/glm-5.1",
-      "claude-code": "sonnet"
+      "claude-code": "claude-sonnet-4-6"
     },
     "test-engineer": {
       "pi": "zai/glm-5.1",
       "opencode": "zai-coding-plan/glm-5.1",
-      "claude-code": "sonnet"
+      "claude-code": "claude-sonnet-4-6"
     },
     "planner": {
       "pi": "zai/glm-5.2",
@@ -46,7 +46,7 @@
     "explore": {
       "pi": "opencode-go/deepseek-v4-flash",
       "opencode": "opencode-go/deepseek-v4-flash",
-      "claude-code": "sonnet"
+      "claude-code": "claude-sonnet-4-6"
     }
   },
   "disabled": {

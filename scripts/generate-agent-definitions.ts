@@ -259,8 +259,14 @@ function transformForPlatform(
 
 // ─── Claude Code–specific transformation ─────────────────────────────────────
 
-// Valid Claude Code model aliases. "inherit" is NOT valid for CC subagent definitions.
+// Valid Claude Code model aliases, or an explicit claude-* model ID (e.g. "claude-sonnet-4-6").
+// "inherit" is NOT valid for CC subagent definitions.
 const CLAUDE_CODE_VALID_MODELS = new Set(["opus", "sonnet", "haiku"]);
+const CLAUDE_CODE_EXPLICIT_MODEL_ID = /^claude-[a-z0-9-]+$/;
+
+function isValidClaudeCodeModel(model: string): boolean {
+	return CLAUDE_CODE_VALID_MODELS.has(model) || CLAUDE_CODE_EXPLICIT_MODEL_ID.test(model);
+}
 
 function transformForClaudeCode(
 	src: AgentSource,
@@ -271,9 +277,9 @@ function transformForClaudeCode(
 	if (model === undefined) {
 		throw new Error(`Registry missing claude-code model for agent "${src.name}"`);
 	}
-	if (!CLAUDE_CODE_VALID_MODELS.has(model)) {
+	if (!isValidClaudeCodeModel(model)) {
 		throw new Error(
-			`Registry claude-code model for "${src.name}" is "${model}" — must be one of: opus, sonnet, haiku (never "inherit" or platform-specific strings)`,
+			`Registry claude-code model for "${src.name}" is "${model}" — must be one of: opus, sonnet, haiku, or an explicit claude-* model ID (never "inherit")`,
 		);
 	}
 

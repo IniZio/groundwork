@@ -141,14 +141,14 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 | Agent | Model |
 | --- | --- |
 | advisor | opus |
-| designer | sonnet |
-| explore | sonnet |
-| general-purpose | sonnet |
+| designer | claude-sonnet-4-6 |
+| explore | claude-sonnet-4-6 |
+| general-purpose | claude-sonnet-4-6 |
 | git-master | haiku |
 | orchestrator | opus |
 | planner | opus |
-| qa | sonnet |
-| test-engineer | sonnet |
+| qa | claude-sonnet-4-6 |
+| test-engineer | claude-sonnet-4-6 |
 <!-- AGENT-MODELS:END -->
 
 ---

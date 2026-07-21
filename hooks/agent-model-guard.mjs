@@ -36,8 +36,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 
-/** Model injected when subagent_type is missing/unknown — never opus. Defaults to claude-sonnet-4-6. */
-const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'claude-sonnet-4-6'
+/** Model injected when subagent_type is missing/unknown — never opus. Defaults to the 'sonnet' tier alias (pinned via ANTHROPIC_DEFAULT_SONNET_MODEL in user settings). */
+const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
 
 /**
  * Built-in Claude Code agent types that groundwork BANS in favor of its own
@@ -52,26 +52,6 @@ const BANNED_BUILTINS = new Set(
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
 )
-
-/**
- * Pure: normalize a raw model ID string to a short tier alias ("sonnet",
- * "opus", "haiku", "fable"). Handles three forms:
- *   - Bare alias:          "sonnet"                          → "sonnet"
- *   - Full Claude ID:      "claude-sonnet-4-6"               → "sonnet"
- *   - Extended suffixes:   "claude-sonnet-4-6[1m]"           → "sonnet"
- *   - Cross-region prefix: "us.anthropic.claude-opus-4-..."  → "opus"
- * Returns the original string (lowercased, trimmed) unchanged when no tier
- * matches — the caller is free to use the full ID directly.
- */
-export function toTierAlias(modelId) {
-  if (typeof modelId !== 'string') return modelId
-  const s = modelId.trim().toLowerCase().replace(/\[.*?\]$/, '').replace(/^(?:us|eu|ap)\.anthropic\./, '')
-  if (s === 'sonnet' || s.startsWith('claude-sonnet')) return 'sonnet'
-  if (s === 'opus' || s.startsWith('claude-opus')) return 'opus'
-  if (s === 'haiku' || s.startsWith('claude-haiku')) return 'haiku'
-  if (s === 'fable' || s.startsWith('claude-fable')) return 'fable'
-  return modelId.trim().toLowerCase()
-}
 
 /** Deny a dispatch outright (built-in agent ban). */
 function deny(reason) {

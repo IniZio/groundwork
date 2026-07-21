@@ -1,15 +1,8 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "agent-model-guard.mjs");
-
-// Dynamically import toTierAlias once for unit tests (the module is ESM; the
-// main() entrypoint is guarded so importing does not hang on stdin).
-let toTierAlias: (modelId: string) => string;
-beforeAll(async () => {
-	({ toTierAlias } = await import(HOOK));
-});
 
 type Decision = {
 	hookSpecificOutput?: {
@@ -41,9 +34,9 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 		expect(d.hookSpecificOutput?.updatedInput?.prompt).toBe("commit");
 	});
 
-	it("injects claude-sonnet-4-6 for groundwork:general-purpose", () => {
+	it("injects sonnet for groundwork:general-purpose", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:general-purpose", prompt: "x" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
 	});
 
 	it("injects opus for groundwork:advisor (opus by design)", () => {
@@ -59,18 +52,18 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 
 	it("injects the cheap DEFAULT when subagent_type is absent", () => {
 		const d = runHook(agentCall({ prompt: "do a thing" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
 		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("default");
 	});
 
 	it("injects the cheap DEFAULT for an unknown subagent_type (catch-all 'claude')", () => {
 		const d = runHook(agentCall({ subagent_type: "claude", prompt: "anything" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
 	});
 
 	it("also guards the Task tool name", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:qa", prompt: "verify" }, "Task"));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
 	});
 });
 
@@ -101,28 +94,3 @@ describe("agent-model-guard — never overrides / never over-reaches", () => {
 	});
 });
 
-describe("toTierAlias — model ID normalization", () => {
-	it("normalizes claude-sonnet-4-6[1m] to 'sonnet'", () => {
-		expect(toTierAlias("claude-sonnet-4-6[1m]")).toBe("sonnet");
-	});
-
-	it("normalizes us.anthropic.claude-opus-4-5 to 'opus'", () => {
-		expect(toTierAlias("us.anthropic.claude-opus-4-5")).toBe("opus");
-	});
-
-	it("normalizes us.anthropic.claude-haiku-3-5 to 'haiku'", () => {
-		expect(toTierAlias("us.anthropic.claude-haiku-3-5")).toBe("haiku");
-	});
-
-	it("passes through bare tier alias 'sonnet' unchanged", () => {
-		expect(toTierAlias("sonnet")).toBe("sonnet");
-	});
-
-	it("passes through bare tier alias 'opus' unchanged", () => {
-		expect(toTierAlias("opus")).toBe("opus");
-	});
-
-	it("passes through bare tier alias 'haiku' unchanged", () => {
-		expect(toTierAlias("haiku")).toBe("haiku");
-	});
-});

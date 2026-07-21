@@ -18,6 +18,24 @@ Load this file only when the user selects `deps` mode. The shared posture and co
 | **Duplicate functionality** | Two deps doing the same job (e.g. two HTTP clients, two date libs) |
 | **Phantom deps** | Imported but not declared — classic Node/monorepo hoisting issue; works by accident |
 
+## Severity mapping
+
+Default SEV tiers for deps smells (rubric: consequence × blast-radius; context can bump ±1 per SKILL.md):
+
+| Smell | Default SEV | Rationale |
+|---|---|---|
+| **Vulnerable dependencies** | SEV1 | Security consequence; potentially wide blast-radius |
+| **Phantom deps** | SEV2 | Works by accident — latent breakage risk on install/upgrade |
+| **Unused dependencies** | SEV3 | Maintainability; safe to delete |
+| **Duplicate functionality** | SEV3 | Maintainability; consolidation is low-risk |
+| **Outdated dependencies** | SEV3 (default) / SEV1 (if carrying a known CVE) | The CVE case is an explicit context bump per the rubric |
+
+These are defaults the rubric can adjust. The pass order below (unused → outdated → vulnerable → duplicate) already flows safest-first, which maps roughly SEV3 → SEV3 → SEV1 → SEV3 — the triage gate may reorder when a SEV1 vulnerability warrants immediate attention.
+
+## Findings backlog and triage gate
+
+Deps mode reuses the **shared findings-backlog format** and the **interactive triage gate** defined in `SKILL.md` (see "Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine the table schema or gate here. Collect every smell as a Finding during the scan; present the severity-sorted backlog to the user before any edits begin.
+
 ## Passes
 
 Mirror the deslop pass structure: one smell-focused pass at a time, verification after each.

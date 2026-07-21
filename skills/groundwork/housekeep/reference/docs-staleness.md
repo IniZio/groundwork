@@ -18,6 +18,24 @@ Load this file only when the user selects `docs-staleness` mode. The shared post
 | **Dead doc references** | Docs referencing removed features, configs, or symbols |
 | **Orphaned docs** | Doc files for features that were removed from the codebase |
 
+## Severity mapping
+
+Default tiers for each smell (rubric can bump ±1; see SKILL.md "Severity model"):
+
+| Smell | Default tier | Rationale |
+|---|---|---|
+| **Outdated comments** (actively contradict code) | SEV2 | Intent-masking — misleads the next reader into a wrong change |
+| **Dead doc references** (removed features/configs/symbols) | SEV3 | Maintainability — confusing but won't cause a wrong edit |
+| **Broken doc links** | SEV3 | Maintainability — dead navigation, not actively harmful |
+| **Orphaned docs** (for removed features) | SEV3 | Maintainability — safe to delete; no live code depends on them |
+| **Stale TODOs/FIXMEs** | SEV4 | Cosmetic/noise — bump to SEV2 if the TODO flags a known correctness or security gap |
+
+These are defaults; context bumps apply (e.g. a misleading comment on a security boundary → SEV1; an orphaned doc in an archived module → SEV4).
+
+## Findings backlog and triage gate
+
+Docs-staleness mode **reuses** the shared findings-backlog table schema and interactive triage gate defined in SKILL.md ("Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine them here. Collect every smell as a Finding (id, severity, category, location, finding, suggested action, effort) before presenting the backlog to the user.
+
 ## Passes
 
 - **Pass 1: Stale TODOs/FIXMEs** — resolve, delete, or re-date; never leave a vague TODO behind.

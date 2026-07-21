@@ -139,7 +139,7 @@ describe('buildStruggleNudge', () => {
     // Should mention the overflow
     expect(result).toContain('more pattern')
     // The line count of bullet items should be ≤ maxLines
-    const bulletLines = result.split('\n').filter((l) => l.startsWith('- '))
+    const bulletLines = result.split('\n').filter((l: string) => l.startsWith('- '))
     expect(bulletLines.length).toBeLessThanOrEqual(3)
   })
 

@@ -263,7 +263,7 @@ describe('listLearnings', () => {
     upsertLearning(tmpDir, { concept: 'concept-c', session_id: 's3', detail: 'd3' })
     const list = listLearnings(tmpDir)
     expect(list).toHaveLength(3)
-    const slugs = list.map(e => e.slug).sort()
+    const slugs = list.map((e: { slug: string }) => e.slug).sort()
     expect(slugs).toEqual(['concept-a', 'concept-b', 'concept-c'])
   })
 

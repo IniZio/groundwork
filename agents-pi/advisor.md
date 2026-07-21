@@ -45,6 +45,13 @@ Run commands — do NOT trust claims without output:
 - Tests: `npm test` or `vitest run`
 - File existence / content checks for specific acceptance criteria
 
+**Prefer context-mode tools when gathering evidence** so raw command output stays in the sandbox and only the derived conclusion enters your (opus) context:
+- `ctx_batch_execute` — run build/lint/test commands in parallel; pass the success/failure pattern as a query so only the relevant lines surface.
+- `ctx_search` — query already-indexed output (e.g. test results, error lines) without re-running commands.
+- `ctx_execute_file` — parse or filter a file (e.g. extract failing assertions) programmatically; only what you `console.log()` enters context.
+
+Fall back to raw Bash only when a command must mutate state or when the full output is genuinely short and load-bearing for the verdict.
+
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
 

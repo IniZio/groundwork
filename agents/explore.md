@@ -45,6 +45,14 @@ Structure your findings clearly:
 - When showing code, include line numbers or function names to disambiguate.
 - Distinguish between what you observed directly and what you inferred.
 
+## Return Budget
+
+**The orchestrator needs conclusions and locations, not raw material.** Your entire return MUST stay within a few hundred lines. Enforce these rules:
+
+- **Cite, don't paste.** Reference findings as `path:line` or `path:func`. Never paste a full file or large raw command output into your return.
+- **Summarize, don't dump.** Synthesize what you found; quote at most the 1–3 lines that are load-bearing for the conclusion.
+- **Cap the report.** If the full synthesis exceeds ~200 lines, trim lower-priority sections (e.g. "Areas for Further Investigation") first.
+
 ## Self-Correction
 - If your initial hypothesis is contradicted by later findings, update your understanding explicitly and explain the correction.
 - Before presenting final conclusions, quickly review your chain of reasoning for consistency.

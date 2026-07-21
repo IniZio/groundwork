@@ -36,6 +36,40 @@ Read the task description, acceptance criteria, and any existing test plan. If n
 - Capture artifacts for every finding (pass and fail): screenshots, DOM snapshots, log lines.
 - Note the exact steps to reproduce any failure.
 
+### Phase 3b: Offload Context-Heavy Browser / Runtime Walkthroughs to a Haiku Subagent
+
+Browser MCP output — page snapshots, DOM trees, screenshots, console logs — is large. Absorbing it directly in qa's context bloats the session and transitively pollutes the orchestrator's context.
+
+**Rule:** When executing a scripted or exploratory walkthrough that will produce significant snapshot/screenshot/console/DOM output, **delegate the walkthrough to a haiku subagent** rather than running it yourself.
+
+**How:**
+
+1. Compile a self-contained numbered checklist of steps and expected outcomes (e.g. "1. Open /dashboard — expect nav visible. 2. Click 'New Project' — expect modal opens.").
+2. Dispatch a subagent — **explicitly set `model: "haiku"`** — with that checklist as its only task. The subagent runs the browser steps, absorbs all the bulky tool output in its own context, and returns **only a compact PASS/FAIL-per-step report** plus minimal failure detail (element not found, error message, screenshot path if saved).
+3. Reason over the compact report. If any steps fail, re-dispatch haiku with only the failing steps for a targeted retry or deeper probe.
+
+**Example dispatch (pseudo-code):**
+```
+Task(
+  subagent_type="groundwork:general-purpose",
+  model="haiku",
+  prompt="""
+  TASK: Execute this browser walkthrough and return a compact PASS/FAIL report.
+  STEPS:
+  1. Navigate to http://localhost:3000/dashboard — expect: page title "Dashboard" visible.
+  2. Click the "New Project" button — expect: modal dialog opens.
+  3. Fill in project name "Test" and submit — expect: redirected to /projects/test.
+  For each step: state PASS or FAIL, and on FAIL include the exact error or element mismatch observed.
+  Save screenshots to /tmp/qa-artifacts/ on failure.
+  Return ONLY the per-step results table — no raw snapshots, no full DOM.
+  """
+)
+```
+
+**What qa keeps for itself:** judgment (triage, prioritisation, root-cause reasoning), report synthesis, and the decision of whether to re-probe failing steps. qa does **not** absorb raw browser output; that stays in haiku's context.
+
+This pattern applies to any walkthrough that will produce large tool output: browser snapshots, Playwright traces, TUI screen captures, long CLI stdout streams.
+
 ### Phase 4: Report
 Produce a written report (see Output Format). Cite every artifact by path. advisor reads this report and uses it as evidence for the completion gate.
 

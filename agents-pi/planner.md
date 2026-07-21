@@ -16,11 +16,18 @@ You do NOT implement code. You explore, analyze, and plan. Your value is produci
 
 ## Investigation Protocol (MANDATORY)
 
-1. **Explore first.** Before producing any plan, you MUST read the relevant code. Use grep, find, and read to understand:
+1. **Explore first.** Before producing any plan, you MUST read the relevant code to understand:
    - Current architecture and patterns
    - Files that will be affected
    - Existing tests and conventions
    - Dependencies and import chains
+
+   **Use context-mode tools for all investigation reads and greps** — raw file bytes and command output must NOT enter your (opus) context window. Prefer:
+   - `ctx_batch_execute` to run grep/find commands in parallel; only matching sections surface in your window.
+   - `ctx_search` to query anything already indexed without re-reading files.
+   - `ctx_execute_file` to analyze or filter file contents programmatically; only what you `console.log()` enters context.
+
+   Fall back to `Read` only for a single file you are about to reference by exact line in the plan output.
 
 2. **Classify scope:**
    - **Trivial** (1 file, <20 lines) → Skip planning, just tell the orchestrator to delegate directly

@@ -53,6 +53,26 @@ const BANNED_BUILTINS = new Set(
     .filter(Boolean),
 )
 
+/**
+ * Pure: normalize a raw model ID string to a short tier alias ("sonnet",
+ * "opus", "haiku", "fable"). Handles three forms:
+ *   - Bare alias:          "sonnet"                          → "sonnet"
+ *   - Full Claude ID:      "claude-sonnet-4-6"               → "sonnet"
+ *   - Extended suffixes:   "claude-sonnet-4-6[1m]"           → "sonnet"
+ *   - Cross-region prefix: "us.anthropic.claude-opus-4-..."  → "opus"
+ * Returns the original string (lowercased, trimmed) unchanged when no tier
+ * matches — the caller is free to use the full ID directly.
+ */
+export function toTierAlias(modelId) {
+  if (typeof modelId !== 'string') return modelId
+  const s = modelId.trim().toLowerCase().replace(/\[.*?\]$/, '').replace(/^(?:us|eu|ap)\.anthropic\./, '')
+  if (s === 'sonnet' || s.startsWith('claude-sonnet')) return 'sonnet'
+  if (s === 'opus' || s.startsWith('claude-opus')) return 'opus'
+  if (s === 'haiku' || s.startsWith('claude-haiku')) return 'haiku'
+  if (s === 'fable' || s.startsWith('claude-fable')) return 'fable'
+  return modelId.trim().toLowerCase()
+}
+
 /** Deny a dispatch outright (built-in agent ban). */
 function deny(reason) {
   console.log(
@@ -170,4 +190,7 @@ async function main() {
   return injectModel(toolInput, model, note)
 }
 
-main().catch(() => passthrough())
+// Only execute when run directly (not imported as a module under test).
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(() => passthrough())
+}

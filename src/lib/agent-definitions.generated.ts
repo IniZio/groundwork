@@ -82,6 +82,13 @@ Run commands — do NOT trust claims without output:
 - Tests: \`npm test\` or \`vitest run\`
 - File existence / content checks for specific acceptance criteria
 
+**Prefer context-mode tools when gathering evidence** so raw command output stays in the sandbox and only the derived conclusion enters your (opus) context:
+- \`ctx_batch_execute\` — run build/lint/test commands in parallel; pass the success/failure pattern as a query so only the relevant lines surface.
+- \`ctx_search\` — query already-indexed output (e.g. test results, error lines) without re-running commands.
+- \`ctx_execute_file\` — parse or filter a file (e.g. extract failing assertions) programmatically; only what you \`console.log()\` enters context.
+
+Fall back to raw Bash only when a command must mutate state or when the full output is genuinely short and load-bearing for the verdict.
+
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
 
@@ -336,6 +343,14 @@ Structure your findings clearly:
 - When showing code, include line numbers or function names to disambiguate.
 - Distinguish between what you observed directly and what you inferred.
 
+## Return Budget
+
+**The orchestrator needs conclusions and locations, not raw material.** Your entire return MUST stay within a few hundred lines. Enforce these rules:
+
+- **Cite, don't paste.** Reference findings as \`path:line\` or \`path:func\`. Never paste a full file or large raw command output into your return.
+- **Summarize, don't dump.** Synthesize what you found; quote at most the 1–3 lines that are load-bearing for the conclusion.
+- **Cap the report.** If the full synthesis exceeds ~200 lines, trim lower-priority sections (e.g. "Areas for Further Investigation") first.
+
 ## Self-Correction
 - If your initial hypothesis is contradicted by later findings, update your understanding explicitly and explain the correction.
 - Before presenting final conclusions, quickly review your chain of reasoning for consistency.
@@ -385,6 +400,15 @@ You implement and debug: write/edit code, fix bugs, run builds and tests. Most t
 - Skip the build only if there's no build system, the task says not to, or it needs services unavailable here.
 - Close with **one line**: files changed (path + created/modified) and build/test result (pass / fail+reason / skip+reason). No multi-line status template.
 - **NEVER invoke or simulate the advisor completion gate.** Return evidence (commands run, outputs, file paths) to the orchestrator — the completion gate is the orchestrator's job, not yours.
+
+## Return discipline (the whole return, not just the closing line)
+
+Every byte you return re-enters the orchestrator's context and is billed there. Keep the entire response compact:
+
+- **No log dumps.** Never paste full build or test output. Report the result (pass / fail + the failing line) and cite the location (\`path:line\`); omit everything else.
+- **No file pastes.** Never reproduce full file contents. Quote at most the 2–4 load-bearing lines that prove the change is correct.
+- **Cite, don't show.** Reference changed code as \`path:line\` or \`path:func\`; the orchestrator can fetch it if needed.
+- The closing one-liner is the primary signal; anything above it must also be concise.
 
 ## Sub-orchestration (multi-domain only)
 
@@ -593,11 +617,18 @@ You do NOT implement code. You explore, analyze, and plan. Your value is produci
 
 ## Investigation Protocol (MANDATORY)
 
-1. **Explore first.** Before producing any plan, you MUST read the relevant code. Use grep, find, and read to understand:
+1. **Explore first.** Before producing any plan, you MUST read the relevant code to understand:
    - Current architecture and patterns
    - Files that will be affected
    - Existing tests and conventions
    - Dependencies and import chains
+
+   **Use context-mode tools for all investigation reads and greps** — raw file bytes and command output must NOT enter your (opus) context window. Prefer:
+   - \`ctx_batch_execute\` to run grep/find commands in parallel; only matching sections surface in your window.
+   - \`ctx_search\` to query anything already indexed without re-reading files.
+   - \`ctx_execute_file\` to analyze or filter file contents programmatically; only what you \`console.log()\` enters context.
+
+   Fall back to \`Read\` only for a single file you are about to reference by exact line in the plan output.
 
 2. **Classify scope:**
    - **Trivial** (1 file, <20 lines) → Skip planning, just tell the orchestrator to delegate directly
@@ -690,6 +721,40 @@ Read the task description, acceptance criteria, and any existing test plan. If n
 - Run scripted scenarios.
 - Capture artifacts for every finding (pass and fail): screenshots, DOM snapshots, log lines.
 - Note the exact steps to reproduce any failure.
+
+### Phase 3b: Offload Context-Heavy Browser / Runtime Walkthroughs to a Haiku Subagent
+
+Browser MCP output — page snapshots, DOM trees, screenshots, console logs — is large. Absorbing it directly in qa's context bloats the session and transitively pollutes the orchestrator's context.
+
+**Rule:** When executing a scripted or exploratory walkthrough that will produce significant snapshot/screenshot/console/DOM output, **delegate the walkthrough to a haiku subagent** rather than running it yourself.
+
+**How:**
+
+1. Compile a self-contained numbered checklist of steps and expected outcomes (e.g. "1. Open /dashboard — expect nav visible. 2. Click 'New Project' — expect modal opens.").
+2. Dispatch a subagent — **explicitly set \`model: "haiku"\`** — with that checklist as its only task. The subagent runs the browser steps, absorbs all the bulky tool output in its own context, and returns **only a compact PASS/FAIL-per-step report** plus minimal failure detail (element not found, error message, screenshot path if saved).
+3. Reason over the compact report. If any steps fail, re-dispatch haiku with only the failing steps for a targeted retry or deeper probe.
+
+**Example dispatch (pseudo-code):**
+\`\`\`
+Task(
+  subagent_type="groundwork:general-purpose",
+  model="haiku",
+  prompt="""
+  TASK: Execute this browser walkthrough and return a compact PASS/FAIL report.
+  STEPS:
+  1. Navigate to http://localhost:3000/dashboard — expect: page title "Dashboard" visible.
+  2. Click the "New Project" button — expect: modal dialog opens.
+  3. Fill in project name "Test" and submit — expect: redirected to /projects/test.
+  For each step: state PASS or FAIL, and on FAIL include the exact error or element mismatch observed.
+  Save screenshots to /tmp/qa-artifacts/ on failure.
+  Return ONLY the per-step results table — no raw snapshots, no full DOM.
+  """
+)
+\`\`\`
+
+**What qa keeps for itself:** judgment (triage, prioritisation, root-cause reasoning), report synthesis, and the decision of whether to re-probe failing steps. qa does **not** absorb raw browser output; that stays in haiku's context.
+
+This pattern applies to any walkthrough that will produce large tool output: browser snapshots, Playwright traces, TUI screen captures, long CLI stdout streams.
 
 ### Phase 4: Report
 Produce a written report (see Output Format). Cite every artifact by path. advisor reads this report and uses it as evidence for the completion gate.
@@ -835,6 +900,13 @@ Run commands — do NOT trust claims without output:
 - Lint: \`npm run lint\` or \`biome check\`
 - Tests: \`npm test\` or \`vitest run\`
 - File existence / content checks for specific acceptance criteria
+
+**Prefer context-mode tools when gathering evidence** so raw command output stays in the sandbox and only the derived conclusion enters your (opus) context:
+- \`ctx_batch_execute\` — run build/lint/test commands in parallel; pass the success/failure pattern as a query so only the relevant lines surface.
+- \`ctx_search\` — query already-indexed output (e.g. test results, error lines) without re-running commands.
+- \`ctx_execute_file\` — parse or filter a file (e.g. extract failing assertions) programmatically; only what you \`console.log()\` enters context.
+
+Fall back to raw Bash only when a command must mutate state or when the full output is genuinely short and load-bearing for the verdict.
 
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
@@ -1090,6 +1162,14 @@ Structure your findings clearly:
 - When showing code, include line numbers or function names to disambiguate.
 - Distinguish between what you observed directly and what you inferred.
 
+## Return Budget
+
+**The orchestrator needs conclusions and locations, not raw material.** Your entire return MUST stay within a few hundred lines. Enforce these rules:
+
+- **Cite, don't paste.** Reference findings as \`path:line\` or \`path:func\`. Never paste a full file or large raw command output into your return.
+- **Summarize, don't dump.** Synthesize what you found; quote at most the 1–3 lines that are load-bearing for the conclusion.
+- **Cap the report.** If the full synthesis exceeds ~200 lines, trim lower-priority sections (e.g. "Areas for Further Investigation") first.
+
 ## Self-Correction
 - If your initial hypothesis is contradicted by later findings, update your understanding explicitly and explain the correction.
 - Before presenting final conclusions, quickly review your chain of reasoning for consistency.
@@ -1139,6 +1219,15 @@ You implement and debug: write/edit code, fix bugs, run builds and tests. Most t
 - Skip the build only if there's no build system, the task says not to, or it needs services unavailable here.
 - Close with **one line**: files changed (path + created/modified) and build/test result (pass / fail+reason / skip+reason). No multi-line status template.
 - **NEVER invoke or simulate the advisor completion gate.** Return evidence (commands run, outputs, file paths) to the orchestrator — the completion gate is the orchestrator's job, not yours.
+
+## Return discipline (the whole return, not just the closing line)
+
+Every byte you return re-enters the orchestrator's context and is billed there. Keep the entire response compact:
+
+- **No log dumps.** Never paste full build or test output. Report the result (pass / fail + the failing line) and cite the location (\`path:line\`); omit everything else.
+- **No file pastes.** Never reproduce full file contents. Quote at most the 2–4 load-bearing lines that prove the change is correct.
+- **Cite, don't show.** Reference changed code as \`path:line\` or \`path:func\`; the orchestrator can fetch it if needed.
+- The closing one-liner is the primary signal; anything above it must also be concise.
 
 ## Sub-orchestration (multi-domain only)
 
@@ -1347,11 +1436,18 @@ You do NOT implement code. You explore, analyze, and plan. Your value is produci
 
 ## Investigation Protocol (MANDATORY)
 
-1. **Explore first.** Before producing any plan, you MUST read the relevant code. Use grep, find, and read to understand:
+1. **Explore first.** Before producing any plan, you MUST read the relevant code to understand:
    - Current architecture and patterns
    - Files that will be affected
    - Existing tests and conventions
    - Dependencies and import chains
+
+   **Use context-mode tools for all investigation reads and greps** — raw file bytes and command output must NOT enter your (opus) context window. Prefer:
+   - \`ctx_batch_execute\` to run grep/find commands in parallel; only matching sections surface in your window.
+   - \`ctx_search\` to query anything already indexed without re-reading files.
+   - \`ctx_execute_file\` to analyze or filter file contents programmatically; only what you \`console.log()\` enters context.
+
+   Fall back to \`Read\` only for a single file you are about to reference by exact line in the plan output.
 
 2. **Classify scope:**
    - **Trivial** (1 file, <20 lines) → Skip planning, just tell the orchestrator to delegate directly
@@ -1444,6 +1540,40 @@ Read the task description, acceptance criteria, and any existing test plan. If n
 - Run scripted scenarios.
 - Capture artifacts for every finding (pass and fail): screenshots, DOM snapshots, log lines.
 - Note the exact steps to reproduce any failure.
+
+### Phase 3b: Offload Context-Heavy Browser / Runtime Walkthroughs to a Haiku Subagent
+
+Browser MCP output — page snapshots, DOM trees, screenshots, console logs — is large. Absorbing it directly in qa's context bloats the session and transitively pollutes the orchestrator's context.
+
+**Rule:** When executing a scripted or exploratory walkthrough that will produce significant snapshot/screenshot/console/DOM output, **delegate the walkthrough to a haiku subagent** rather than running it yourself.
+
+**How:**
+
+1. Compile a self-contained numbered checklist of steps and expected outcomes (e.g. "1. Open /dashboard — expect nav visible. 2. Click 'New Project' — expect modal opens.").
+2. Dispatch a subagent — **explicitly set \`model: "haiku"\`** — with that checklist as its only task. The subagent runs the browser steps, absorbs all the bulky tool output in its own context, and returns **only a compact PASS/FAIL-per-step report** plus minimal failure detail (element not found, error message, screenshot path if saved).
+3. Reason over the compact report. If any steps fail, re-dispatch haiku with only the failing steps for a targeted retry or deeper probe.
+
+**Example dispatch (pseudo-code):**
+\`\`\`
+Task(
+  subagent_type="groundwork:general-purpose",
+  model="haiku",
+  prompt="""
+  TASK: Execute this browser walkthrough and return a compact PASS/FAIL report.
+  STEPS:
+  1. Navigate to http://localhost:3000/dashboard — expect: page title "Dashboard" visible.
+  2. Click the "New Project" button — expect: modal dialog opens.
+  3. Fill in project name "Test" and submit — expect: redirected to /projects/test.
+  For each step: state PASS or FAIL, and on FAIL include the exact error or element mismatch observed.
+  Save screenshots to /tmp/qa-artifacts/ on failure.
+  Return ONLY the per-step results table — no raw snapshots, no full DOM.
+  """
+)
+\`\`\`
+
+**What qa keeps for itself:** judgment (triage, prioritisation, root-cause reasoning), report synthesis, and the decision of whether to re-probe failing steps. qa does **not** absorb raw browser output; that stays in haiku's context.
+
+This pattern applies to any walkthrough that will produce large tool output: browser snapshots, Playwright traces, TUI screen captures, long CLI stdout streams.
 
 ### Phase 4: Report
 Produce a written report (see Output Format). Cite every artifact by path. advisor reads this report and uses it as evidence for the completion gate.

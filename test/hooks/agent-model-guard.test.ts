@@ -1,8 +1,15 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "agent-model-guard.mjs");
+
+// Dynamically import toTierAlias once for unit tests (the module is ESM; the
+// main() entrypoint is guarded so importing does not hang on stdin).
+let toTierAlias: (modelId: string) => string;
+beforeAll(async () => {
+	({ toTierAlias } = await import(HOOK));
+});
 
 type Decision = {
 	hookSpecificOutput?: {
@@ -91,5 +98,31 @@ describe("agent-model-guard — never overrides / never over-reaches", () => {
 	it("does not treat an empty-string model as explicit (injects instead)", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:git-master", model: "   ", prompt: "x" }));
 		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("haiku");
+	});
+});
+
+describe("toTierAlias — model ID normalization", () => {
+	it("normalizes claude-sonnet-4-6[1m] to 'sonnet'", () => {
+		expect(toTierAlias("claude-sonnet-4-6[1m]")).toBe("sonnet");
+	});
+
+	it("normalizes us.anthropic.claude-opus-4-5 to 'opus'", () => {
+		expect(toTierAlias("us.anthropic.claude-opus-4-5")).toBe("opus");
+	});
+
+	it("normalizes us.anthropic.claude-haiku-3-5 to 'haiku'", () => {
+		expect(toTierAlias("us.anthropic.claude-haiku-3-5")).toBe("haiku");
+	});
+
+	it("passes through bare tier alias 'sonnet' unchanged", () => {
+		expect(toTierAlias("sonnet")).toBe("sonnet");
+	});
+
+	it("passes through bare tier alias 'opus' unchanged", () => {
+		expect(toTierAlias("opus")).toBe("opus");
+	});
+
+	it("passes through bare tier alias 'haiku' unchanged", () => {
+		expect(toTierAlias("haiku")).toBe("haiku");
 	});
 });

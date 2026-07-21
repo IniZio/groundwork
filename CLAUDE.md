@@ -240,7 +240,7 @@ Completion gate is **risk-tiered** — scale cost to risk. `advisor` APPROVE is 
 | Small change / bug fix | <1h, localized, single domain | `advisor` |
 | Feature / shared-code / security / multi-slice | Ledger exists, or touches API/auth/shared | `[qa if interactive UI]` → `advisor` |
 
-_Injected at SessionStart by hooks/session-reminder.mjs — see that injection for the full completion gate rules._
+_hooks/session-reminder.mjs re-injects a brief reminder post-compaction; this tier table is authoritative._
 
 ---
 

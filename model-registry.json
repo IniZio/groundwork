@@ -1,6 +1,6 @@
 {
   "$schema": "https://groundwork.dev/model-registry/v1",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents-src/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
   "agents": {
     "orchestrator": {

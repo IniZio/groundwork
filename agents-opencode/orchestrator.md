@@ -6,7 +6,7 @@ mode: primary
 prompt_mode: append
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.2.0
+groundwork_version: 2.2.1
 ---
 
 # Orchestrator

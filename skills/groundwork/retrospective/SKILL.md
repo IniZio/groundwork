@@ -33,12 +33,16 @@ The imperative is narrow: it fires only when the trigger conditions are met. A s
 
 ## Execution Model & Delegation
 
-This skill runs in a **hybrid** model — never as a single standalone subagent.
+Run the retrospective as a **fork** (`subagent_type: "fork"`) — not inline in the orchestrator, and not as a context-blind fresh subagent.
 
-- **The orchestrator performs the judgment.** Phase 1 (Reflection), Phase 2 (Classification), and driving the advisor gate in Phases 3 and 7 stay with the orchestrator. These require the live session context — the orchestrator lived the session; a fresh subagent sees only second-hand artifacts (transcript, signals) and reflects worse. This work is cheap because that context is already loaded.
-- **Delegate mechanical, IO-heavy work to `groundwork:general-purpose` on `claude-sonnet-4-6`.** Parsing `.groundwork/struggle-signals.jsonl`, dedup-searching the KB and `skills/`, drafting and writing `.groundwork/learnings/<slug>.md` (via `hooks/lib/learnings-io.mjs`), and applying reference-file or skill diffs all go to a subagent. This keeps bulk file I/O out of the orchestrator's window and off the expensive model. **Always pass `model: claude-sonnet-4-6` explicitly** on these Task calls (per the project rule that every Task/Agent dispatch names its model).
+- A fork inherits the **full session history**, so it can reflect on what actually happened (Phase 1) at full fidelity. A fresh subagent cannot see the session and would need a hand-written brief.
+- A fork keeps the retrospective's bulk reading and reasoning **out of the main context window** (only its final summary returns to the orchestrator) and **reuses the parent prompt cache**, making it cheaper than a fresh subagent for this same-context work.
+- Caveats: a fork **always inherits the parent model** — it cannot be pinned to a smaller/cheaper model — and fork mode is **experimental** (may change across versions). If minimizing model cost matters more than reflection fidelity, the fallback is: the orchestrator writes a distilled brief and delegates to a fresh `groundwork:general-purpose` subagent on `claude-sonnet-4-6`.
 
-Do NOT run the entire retrospective as one subagent: it cannot see the session it is meant to retrospect on, so reflection quality drops and you pay to re-feed the transcript. Split judgment (orchestrator) from mechanical execution (sonnet-4-6 subagent).
+**Division of labor:**
+
+- The **fork** performs Phases 1–6: reflection, classification, the Learnings-KB upsert, low-blast auto-apply (reference-file bullets), bloat control, and the Phase 6 summary.
+- **High-blast promotions stay with the orchestrator.** For a CLAUDE.md routing rule or a new cross-project SKILL.md, the fork DRAFTS the proposed diff and returns it in its final message; the orchestrator drives the advisor gate (Phase 7) and applies the change only on APPROVE. A fork must never self-approve a high-blast change.
 
 ---
 
@@ -163,7 +167,7 @@ Do not emit a long report. The durable artifact IS the record.
 
 ## Phase 7 — Promotion Procedure (Recurrence Gate + Advisor)
 
-This phase operationalizes what the apply table in Phase 3 declares. It runs only after the KB entry exists (Phase 4) and the lesson reaches the promotion threshold. The **orchestrator** (not an executor subagent) drives every step that involves the advisor gate. The mechanical writes in the paths below (KB upsert, reference-file bullet, drafting diffs) are delegated to a `claude-sonnet-4-6` `groundwork:general-purpose` subagent per the Execution Model section; the orchestrator retains classification and the advisor gate.
+This phase operationalizes what the apply table in Phase 3 declares. It runs only after the KB entry exists (Phase 4) and the lesson reaches the promotion threshold. The **orchestrator** (not an executor subagent) drives every step that involves the advisor gate. Per the Execution Model section, the fork performs the KB upsert and low-blast reference-file writes and DRAFTS high-blast diffs in its final message; the orchestrator drives the advisor gate below and applies high-blast changes (CLAUDE.md, new SKILL.md) only on advisor APPROVE.
 
 ### Step 1 — Recurrence Gate
 

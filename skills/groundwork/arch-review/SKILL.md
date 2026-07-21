@@ -119,6 +119,7 @@ Side effects as decisions crystallize:
 - **New concept not in project docs?** → Offer to add it to `CONTEXT.md` (create lazily if absent). Use project domain vocabulary, not generic terms.
 - **User rejects with a load-bearing reason?** → Offer an ADR: _"Want me to record this so future reviews don't re-suggest it?"_ Only offer when the reason would genuinely matter to a future explorer — skip ephemeral reasons ("not now") or self-evident ones.
 - **Ready to act?** → Route to `groundwork:general-purpose` with: the candidate description, agreed interface shape, and success criteria.
+- **Durable architectural lesson?** → If a finding represents a recurring pattern or a lesson that applies beyond this codebase (not a one-off), invoke `/retrospective` to persist it in the Learnings KB. The HTML report is ephemeral; `/retrospective` is not.
 
 ## Context budget rules
 

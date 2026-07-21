@@ -1,22 +1,59 @@
 ---
 name: housekeep
-description: Deletion-first codebase hygiene — deslop (default), deps, lint-debt, and docs-staleness modes.
+description: Deletion-first codebase hygiene — deslop (default), deps, lint-debt, docs-staleness, and learnings-staleness modes.
 disable-model-invocation: true
 ---
 
 # Housekeep
 
-Regression-safe, deletion-first codebase hygiene. The default mode (`deslop`) removes AI-generated slop without drifting scope or changing intended behavior. Three opt-in modes cover dependency audits, accumulated lint/type-debt, and stale docs.
+Regression-safe, deletion-first codebase hygiene. The default mode (`deslop`) removes AI-generated slop without drifting scope or changing intended behavior. Four opt-in modes cover dependency audits, accumulated lint/type-debt, stale docs, and stale promoted learnings.
 
 ## Glossary
 
 Use these terms exactly in all cleanup plans and reports.
 
 - **Slop** — code that works but is bloated, repetitive, weakly tested, or over-abstracted; the residue of unreviewed AI-generated patches
-- **Smell** — a concrete, classifiable hygiene problem (one of six categories in `deslop` mode)
+- **Smell** — a concrete, classifiable hygiene problem (one of seven categories in `deslop` mode; each mode has its own catalog)
+- **Finding** — one identified smell instance, assigned an id (F1, F2…), severity tier, location, and suggested action; the atomic unit of the backlog
+- **Severity** — a 4-tier rating (SEV1–SEV4) that drives triage priority; derived from the rubric (consequence × blast-radius), not the smell category alone. Tiers:
+  - **SEV1** — correctness / safety; do first
+  - **SEV2** — intent-masking / latent risk
+  - **SEV3** — maintainability
+  - **SEV4** — cosmetic
+- **Backlog** — the complete, severity-sorted table of Findings collected during the scan; presented to the user at the triage gate before any edits
+- **Triage** — the interactive step where the user reviews the backlog and selects which Findings to clean; only selected Findings proceed to cleanup
 - **Behavior lock** — a regression test (added or confirmed) that pins down behavior BEFORE cleanup edits begin
 - **Pass** — one smell-focused edit cycle; each pass re-runs verification before the next begins
 - **Deletion-first** — prefer removing code over adding code; consolidation before introduction; reuse before new deps
+
+## Severity model
+
+**Rubric:** `severity = consequence-if-left-uncleaned × blast-radius`. The smell category gives a DEFAULT tier; context can bump it **one tier** up or down:
+- Bump UP: the smell lives on a critical path, shared/public surface, or security boundary
+- Bump DOWN: the smell is isolated, covered by tests, or in a rarely-touched module
+
+These are defaults the rubric can adjust — not a rigid lookup.
+
+| Tier | Label | Default smell categories |
+|---|---|---|
+| SEV1 | Correctness / safety | Boundary violations on a critical path; Missing tests on a critical path |
+| SEV2 | Intent-masking / latent risk | Dead code that masks intent; Needless abstraction that blurs boundaries. (Also where type-safety erosion lands for `lint-debt` mode.) |
+| SEV3 | Maintainability | Duplication; Naming / error-handling issues |
+| SEV4 | Cosmetic | Redundant comments; UI/design defaults |
+
+## Shared findings backlog format
+
+Every mode uses this table schema. The backlog is grouped and sorted by severity (SEV1 first).
+
+| id | severity | category | location | finding | suggested action | effort |
+|---|---|---|---|---|---|---|
+| F1 | SEV2 | Dead code | `src/auth/session.ts:44` | `refreshTokenLegacy()` never called after migration | Delete function | S |
+| F2 | SEV3 | Duplication | `src/api/users.ts:12`, `src/api/orders.ts:18` | Identical `paginateQuery` helper copied in two files | Extract to `src/lib/paginate.ts` | M |
+| F3 | SEV1 | Boundary violations | `src/ui/UserCard.tsx:88` | Direct DB import in component bypasses service layer | Move query to `UserService` | L |
+
+**Effort key:** S = <30 min, M = 30–90 min, L = >90 min.
+
+Collect EVERY smell as a Finding during the scan — do not fix in place. Assemble the full backlog before presenting it.
 
 ## Mode selection
 
@@ -26,9 +63,12 @@ Use these terms exactly in all cleanup plans and reports.
 | `housekeep deps`, `dependency hygiene`, `audit deps` | `deps` | `reference/deps.md` |
 | `housekeep lint-debt`, `lint debt`, `type debt`, `cleanup suppressions` | `lint-debt` | `reference/lint-debt.md` |
 | `housekeep docs`, `stale docs`, `dead comments` | `docs-staleness` | `reference/docs-staleness.md` |
-| `housekeep all` | all four | load all three reference files sequentially |
+| `housekeep learnings`, `stale learnings`, `revalidate learnings` | `learnings-staleness` | `reference/learnings-staleness.md` |
+| `housekeep all` | all five | load all four reference files sequentially |
 
 **Progressive-disclosure rule:** Load ONLY the reference file for the selected mode. Do not load non-default mode detail unless that mode is selected. The shared posture, completion gate, and context-budget rules below apply to every mode.
+
+**All four modes share the same scan → score → triage → report phases.** Only the smell catalog and passes differ per mode; each reference file provides its own smell→severity mapping using the same SEV1–SEV4 tiers.
 
 ## When to Use
 
@@ -60,21 +100,17 @@ Use these terms exactly in all cleanup plans and reports.
 
 ## Process — the deslop workflow
 
-This workflow is inline because `deslop` is the default mode. The other modes point to their own `reference/*.md` passes.
+This workflow is inline because `deslop` is the default mode. The other modes point to their own `reference/*.md` passes but follow the same 8-step spine.
 
-### Step 1 — Protect current behavior first
+### Step 1 — Protect current behavior (behavior lock)
 
 - Identify what must stay the same.
 - Add or run the narrowest regression tests needed before editing.
 - If tests cannot come first, record the verification plan explicitly before touching code.
 
-### Step 2 — Write a cleanup plan before code
+### Step 2 — Scan & inventory
 
-- Bound the pass to the requested files or feature area.
-- List the concrete smells to remove (use the seven categories below).
-- Order the work from safest deletion to riskier consolidation.
-
-### Step 3 — Classify the slop before editing
+Sweep the scoped surface. Collect EVERY smell instance as a Finding — do not fix in place. Use the seven deslop categories below to recognize smells.
 
 | Smell | Definition |
 |---|---|
@@ -86,7 +122,25 @@ This workflow is inline because `deslop` is the default mode. The other modes po
 | **UI/design defaults** | Generic visual patterns that make an AI-built interface feel unreviewed |
 | **Redundant comments** | Narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of obvious code (`// increment counter` above `count++`), section-divider banners, apologetic/hedging filler. **Keep:** non-obvious *why* rationale, invariants/constraints, warnings/gotchas, issue/spec links, public API doc-comments |
 
-### Step 4 — Run one smell-focused pass at a time
+### Step 3 — Classify & score by severity
+
+Map each Finding to its smell category, then apply the severity rubric (consequence × blast-radius; context bumps ±1). Assemble the full backlog table sorted SEV1 → SEV4. Do not begin edits yet.
+
+### Step 4 — Triage gate (user selection — mandatory)
+
+Present the prioritized backlog to the user, grouped by severity (SEV1 first). The user selects which Findings to clean:
+
+- **Accept** — include in the cleanup pass
+- **Defer** — record in the report; do not action now
+- **Skip** — record in the report; do not action
+
+ONLY user-selected (accepted) Findings enter the cleanup pass. Deferred and skipped Findings are recorded in the final report's Deferred/Skipped Backlog slot — never silently dropped and never silently expanded. This gate happens BEFORE any cleanup edits.
+
+### Step 5 — Cleanup plan for selected findings
+
+Bound the plan to accepted Findings only. Order the work from safest deletion to riskier consolidation.
+
+### Step 6 — Run one smell-focused pass at a time
 
 - **Pass 1: Dead code deletion**
 - **Pass 2: Duplicate removal**
@@ -97,20 +151,56 @@ This workflow is inline because `deslop` is the default mode. The other modes po
 - Do not bundle unrelated refactors into the same edit set.
 - If a pass finds no violations after an evidence-based scan, record the empty finding (which area was scanned, why nothing qualified) and proceed to the next pass. Do NOT manufacture deletions or changes to justify a pass. A clean pass is a valid result.
 
-### Step 5 — Run the quality gates
+### Step 7 — Run quality gates
 
 - Keep regression tests green.
 - Run the relevant lint, typecheck, and unit/integration tests for the touched area.
 - Run existing static or security checks when available.
 - If a gate fails, fix the issue or back out the risky cleanup. Never force a cleanup through a failing gate.
 
-### Step 6 — Close with an evidence-dense report
+### Step 8 — Close with the structured report
 
-Always report:
-- **Changed files**
-- **Simplifications**
-- **Behavior lock / verification run**
-- **Remaining risks**
+Use this template exactly. Present it as the final deliverable.
+
+````
+## Housekeep Report
+
+**Scope:** <files / directories covered>
+
+**Behavior Lock:**
+- <test(s) added or confirmed; or verification plan if tests could not come first>
+
+**Triaged Backlog:**
+- SEV1: <n> findings | SEV2: <n> | SEV3: <n> | SEV4: <n> | Total: <n>
+- Accepted: <n> | Deferred: <n> | Skipped: <n>
+
+**Selected For Cleanup:** <list of accepted Finding ids>
+
+**Passes Completed:**
+- Pass 1 (Dead code): <concise summary or "nothing qualified">
+- Pass 2 (Duplication): <concise summary or "nothing qualified">
+- Pass 3 (Naming/error-handling): <concise summary or "nothing qualified">
+- Pass 4 (Comments): <concise summary or "nothing qualified">
+- Pass 5 (Tests): <concise summary or "nothing qualified">
+
+**Quality Gates:**
+- Regression tests: PASS / FAIL
+- Lint: PASS / FAIL
+- Typecheck: PASS / FAIL
+- Other: <gate name>: PASS / FAIL
+
+**Changed Files:**
+| file | simplification |
+|---|---|
+| <path> | <one-line description of what was removed/simplified> |
+
+**Deferred/Skipped Backlog:**
+| id | severity | finding | disposition | reason |
+|---|---|---|---|---|
+| <Fn> | <SEVn> | <finding> | Deferred / Skipped | <user-stated reason or "no reason given"> |
+
+**Remaining Risks:** <known gaps, untested edges, deferred SEV1/2 items, scope not covered>
+````
 
 ## UI/design reviewer checklist
 
@@ -127,7 +217,7 @@ This skill can be bounded to an explicit file list or changed-file scope when th
 
 ## Non-deslop modes
 
-For `deps`, `lint-debt`, or `docs-staleness` modes, load the matching `reference/<mode>.md`. Those files carry the mode-specific smells, passes, and tooling. The shared posture, execution rules, context-budget rules, and completion gate in this file apply to all modes.
+For `deps`, `lint-debt`, `docs-staleness`, or `learnings-staleness` modes, load the matching `reference/<mode>.md`. Those files carry the mode-specific smells, passes, and tooling. The shared posture, execution rules, context-budget rules, and completion gate in this file apply to all modes. Each reference file maps its mode-specific smells onto the SEV1–SEV4 tiers defined above.
 
 ## Context budget rules
 
@@ -166,3 +256,5 @@ After the cleanup report, invoke `advisor-gate` with:
 - Do not force a cleanup through when a quality gate fails — back it out.
 - Do not run sequential grep calls when one `ctx_batch_execute` covers discovery.
 - Do not skip `advisor-gate` — every housekeep run ends at the gate.
+- Do not begin edits before the triage gate — the user must select Findings first.
+- Do not silently drop deferred or skipped Findings — record them in the report.

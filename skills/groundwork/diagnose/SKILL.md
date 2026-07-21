@@ -128,6 +128,8 @@ task(description="Verify feedback loop passes after fix", prompt="...", subagent
 
 If answer involves architectural change (no good test seam, tangled callers, hidden coupling), note it for future architecture improvement work.
 
+If the post-mortem surfaced a **reusable lesson** — a recurring gotcha, a class of root cause, or something that would have prevented this bug if it had been written down — invoke `/retrospective` to codify it durably into the Learnings KB rather than letting it evaporate in the transcript.
+
 **Close the ledger item.** Mark the diagnose entry complete: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <slug> --token <write_token>`. Any fix work becomes its own `impl` slice(s) in the same ledger run — bridging diagnosis directly into tracked implementation.
 
 ## Abbreviated Mode

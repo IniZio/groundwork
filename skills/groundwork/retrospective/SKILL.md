@@ -31,6 +31,17 @@ The imperative is narrow: it fires only when the trigger conditions are met. A s
 
 ---
 
+## Execution Model & Delegation
+
+This skill runs in a **hybrid** model — never as a single standalone subagent.
+
+- **The orchestrator performs the judgment.** Phase 1 (Reflection), Phase 2 (Classification), and driving the advisor gate in Phases 3 and 7 stay with the orchestrator. These require the live session context — the orchestrator lived the session; a fresh subagent sees only second-hand artifacts (transcript, signals) and reflects worse. This work is cheap because that context is already loaded.
+- **Delegate mechanical, IO-heavy work to `groundwork:general-purpose` on `claude-sonnet-4-6`.** Parsing `.groundwork/struggle-signals.jsonl`, dedup-searching the KB and `skills/`, drafting and writing `.groundwork/learnings/<slug>.md` (via `hooks/lib/learnings-io.mjs`), and applying reference-file or skill diffs all go to a subagent. This keeps bulk file I/O out of the orchestrator's window and off the expensive model. **Always pass `model: claude-sonnet-4-6` explicitly** on these Task calls (per the project rule that every Task/Agent dispatch names its model).
+
+Do NOT run the entire retrospective as one subagent: it cannot see the session it is meant to retrospect on, so reflection quality drops and you pay to re-feed the transcript. Split judgment (orchestrator) from mechanical execution (sonnet-4-6 subagent).
+
+---
+
 ## Phase 1 — Reflection
 
 Answer three questions before writing anything:
@@ -152,7 +163,7 @@ Do not emit a long report. The durable artifact IS the record.
 
 ## Phase 7 — Promotion Procedure (Recurrence Gate + Advisor)
 
-This phase operationalizes what the apply table in Phase 3 declares. It runs only after the KB entry exists (Phase 4) and the lesson reaches the promotion threshold. The **orchestrator** (not an executor subagent) drives every step that involves the advisor gate.
+This phase operationalizes what the apply table in Phase 3 declares. It runs only after the KB entry exists (Phase 4) and the lesson reaches the promotion threshold. The **orchestrator** (not an executor subagent) drives every step that involves the advisor gate. The mechanical writes in the paths below (KB upsert, reference-file bullet, drafting diffs) are delegated to a `claude-sonnet-4-6` `groundwork:general-purpose` subagent per the Execution Model section; the orchestrator retains classification and the advisor gate.
 
 ### Step 1 — Recurrence Gate
 

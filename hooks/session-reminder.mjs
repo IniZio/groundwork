@@ -18,6 +18,7 @@ import path from 'node:path'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
+import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
 
 /** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
 function advisorVerdict(gate) {
@@ -200,6 +201,7 @@ const projectDir =
   (typeof input?.cwd === 'string' && input.cwd) ||
   process.env.CLAUDE_PROJECT_DIR ||
   process.cwd()
+try { ensureGroundworkExcluded(projectDir) } catch { /* never fail the hook */ }
 additionalContext += activeRunBlock(projectDir, sessionId)
 try {
   additionalContext += buildStruggleNudge(projectDir)

@@ -83,10 +83,15 @@ function writePayload(opts: { filePath: string; sessionId: string; cwd: string }
 
 let tmpDir: string
 let detector: { processPayload: (payload: unknown, opts?: { threshold?: number }) => Promise<void> }
+let savedClaudeProjectDir: string | undefined
 
 beforeEach(async () => {
   tmpDir = path.join(os.tmpdir(), `gw-detector-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   mkdirSync(tmpDir, { recursive: true })
+  // Unset CLAUDE_PROJECT_DIR so the detector resolves projectDir from payload.cwd
+  // instead of writing to the real host project directory.
+  savedClaudeProjectDir = process.env.CLAUDE_PROJECT_DIR
+  delete process.env.CLAUDE_PROJECT_DIR
   // Fresh import each test to reset module-level state (Node caches modules,
   // but vitest's isolate mode handles this; if not, we use a workaround below).
   detector = await loadDetector()
@@ -94,6 +99,12 @@ beforeEach(async () => {
 
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true })
+  // Restore CLAUDE_PROJECT_DIR to its original value (or remove if it was unset).
+  if (savedClaudeProjectDir !== undefined) {
+    process.env.CLAUDE_PROJECT_DIR = savedClaudeProjectDir
+  } else {
+    delete process.env.CLAUDE_PROJECT_DIR
+  }
 })
 
 // ---------------------------------------------------------------------------

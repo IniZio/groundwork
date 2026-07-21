@@ -116,7 +116,7 @@ async function main() {
 
   return deny(
     `groundwork: orchestrator ${rawTool} blocked — delegate this change instead:\n` +
-      `  task(subagent_type="groundwork:general-purpose", background=true, model="sonnet", prompt="<file path> + exact change + success criteria")\n` +
+      `  task(subagent_type="groundwork:general-purpose", background=true, model="claude-sonnet-4-6", prompt="<file path> + exact change + success criteria")\n` +
       `  Then mark it complete: $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`,
   )
 }

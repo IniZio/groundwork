@@ -36,8 +36,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 
-/** Model injected when subagent_type is missing/unknown — never opus. */
-const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
+/** Model injected when subagent_type is missing/unknown — never opus. Defaults to claude-sonnet-4-6. */
+const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'claude-sonnet-4-6'
 
 /**
  * Built-in Claude Code agent types that groundwork BANS in favor of its own

@@ -27,7 +27,7 @@ This package supports **Claude Code**, **OpenCode**, **Pi**, and **Kimi Code CLI
 {
   "agents": {
     "advisor": { "pi": "zai/glm-5.2", "opencode": "zai/glm-5.2", "claude-code": "opus" },
-    "general-purpose": { "pi": "neuralwatt/Qwen/...", "opencode": "neuralwatt/Qwen/...", "claude-code": "sonnet" }
+    "general-purpose": { "pi": "neuralwatt/Qwen/...", "opencode": "neuralwatt/Qwen/...", "claude-code": "claude-sonnet-4-6" }
   },
   "disabled": { "pi": [], "opencode": [], "claude-code": [] },
   "aliases":  { "pi": {}, "opencode": {}, "claude-code": {} }

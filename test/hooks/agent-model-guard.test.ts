@@ -44,20 +44,21 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("opus");
 	});
 
-	it("resolves a built-in capitalized type (Explore → sonnet)", () => {
+	it("denies a built-in capitalized type (Explore is banned)", () => {
 		const d = runHook(agentCall({ subagent_type: "Explore", prompt: "look" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.updatedInput).toBeUndefined();
 	});
 
 	it("injects the cheap DEFAULT when subagent_type is absent", () => {
 		const d = runHook(agentCall({ prompt: "do a thing" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
 		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("default");
 	});
 
 	it("injects the cheap DEFAULT for an unknown subagent_type (catch-all 'claude')", () => {
 		const d = runHook(agentCall({ subagent_type: "claude", prompt: "anything" }));
-		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("claude-sonnet-4-6");
 	});
 
 	it("also guards the Task tool name", () => {

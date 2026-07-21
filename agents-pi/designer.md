@@ -5,7 +5,7 @@ model: kimi-for-coding
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.2.1
+groundwork_version: 2.3.0
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.

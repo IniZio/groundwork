@@ -34,7 +34,7 @@ This package supports **Claude Code**, **OpenCode**, **Pi**, and **Kimi Code CLI
 }
 ```
 
-The `claude-code` column uses **Claude model aliases** (`sonnet`, `opus`, `haiku`) rather than full model IDs.
+The `claude-code` column uses explicit full model IDs for the Sonnet tier (`claude-sonnet-4-6`) and the `opus`/`haiku` aliases for those tiers.
 
 The registry also carries:
 
@@ -118,7 +118,7 @@ Edit **`agents-src/*.md`** instead. The generator overwrites all three `agents*/
 | | Claude Code | Pi | OpenCode | Kimi |
 |---|---|---|---|---|
 | Canonical source | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` |
-| Model assignment | `model-registry.json` → `agents.*.claude-code` (aliases: `sonnet`/`opus`/`haiku`) | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` | model-neutral; no registry injection |
+| Model assignment | `model-registry.json` → `agents.*.claude-code` (`claude-sonnet-4-6` for Sonnet tier; `opus`/`haiku` aliases for those tiers) | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` | model-neutral; no registry injection |
 | Generated dir | `agents/` | `agents-pi/` | `agents-opencode/` | — |
 | Runtime entry | `.claude-plugin/plugin.json` | `src/pi.ts` | `.opencode/plugins/groundwork.js` | `.kimi-plugin/plugin.json` |
 | Aliases applied | yes (currently none) | no | yes (currently none) | no |

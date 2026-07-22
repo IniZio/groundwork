@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Groundwork — structured AI development practices for Claude Code",
-    "version": "2.3.0"
+    "version": "2.3.1"
   },
   "plugins": [
     {
       "name": "groundwork",
       "source": "./",
       "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "author": {
         "name": "Newman"
       },

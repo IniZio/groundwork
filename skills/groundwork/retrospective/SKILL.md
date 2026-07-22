@@ -33,16 +33,14 @@ The imperative is narrow: it fires only when the trigger conditions are met. A s
 
 ## Execution Model & Delegation
 
-Run the retrospective as a **fork** (`subagent_type: "fork"`) — not inline in the orchestrator, and not as a context-blind fresh subagent.
+Run the retrospective as a **fork** (`subagent_type: "fork"`) dispatched in **retrospective-fork mode** — see CLAUDE.md → "Forks and the orchestrator identity".
 
-- A fork inherits the **full session history**, so it can reflect on what actually happened (Phase 1) at full fidelity. A fresh subagent cannot see the session and would need a hand-written brief.
-- A fork keeps the retrospective's bulk reading and reasoning **out of the main context window** (only its final summary returns to the orchestrator) and **reuses the parent prompt cache**, making it cheaper than a fresh subagent for this same-context work.
-- Caveats: a fork **always inherits the parent model** — it cannot be pinned to a smaller/cheaper model — and fork mode is **experimental** (may change across versions). If minimizing model cost matters more than reflection fidelity, the fallback is: the orchestrator writes a distilled brief and delegates to a fresh `groundwork:general-purpose` subagent on `claude-sonnet-4-6`.
+- A fork inherits the full session history, so it reflects at full fidelity and keeps the bulk reasoning out of the orchestrator's context window.
+- A fork ALSO inherits the orchestrator identity. Do NOT try to revoke it ("you are not the orchestrator" — that contradicts the inherited system prompt and competes with it, unreliably). Instead INVOKE the sanctioned carve-out. The fork's dispatch prompt MUST say, verbatim in spirit: "You are the orchestrator running in **retrospective-fork mode** per CLAUDE.md: execute Phases 1–6 yourself with Read/Write/Edit, do NOT delegate or spawn subagents, do NOT end your turn to wait, and return your report as your FINAL message. DRAFT any high-blast promotion (CLAUDE.md rule / new SKILL.md) and hand it back — do not apply it yourself."
+- Caveats: a fork inherits the parent model (opus — not sonnet-4-6) and fork mode is experimental. This override is prompt-level, not mechanical; it works only because it EXTENDS the identity rather than contradicting it.
+- **Guaranteed-safe fallback** (use for a short/mechanical retro, when opus cost is unwanted, or if the fork ever misbehaves): the orchestrator reflects inline (it already has full history) and delegates only the mechanical writes to a fresh `groundwork:general-purpose` subagent on `claude-sonnet-4-6`. A named subagent's own system prompt fully replaces the orchestrator identity, so there is no leak.
 
-**Division of labor:**
-
-- The **fork** performs Phases 1–6: reflection, classification, the Learnings-KB upsert, low-blast auto-apply (reference-file bullets), bloat control, and the Phase 6 summary.
-- **High-blast promotions stay with the orchestrator.** For a CLAUDE.md routing rule or a new cross-project SKILL.md, the fork DRAFTS the proposed diff and returns it in its final message; the orchestrator drives the advisor gate (Phase 7) and applies the change only on APPROVE. A fork must never self-approve a high-blast change.
+**Division of labor:** the fork (or, in fallback, the orchestrator) performs Phases 1–6; high-blast promotions always go to the PARENT orchestrator + advisor gate.
 
 ---
 
@@ -84,6 +82,8 @@ Is the learning reusable across multiple projects?
 | `housekeep/reference/*.md` bullet | Auto-apply | None — low blast radius |
 | CLAUDE.md routing / coordination rule | Propose-only | advisor gate before write |
 | New cross-project `SKILL.md` | TDD-on-process + write | advisor gate before merge |
+
+> **Retrospective-fork mode caveat:** a fork applies ONLY the low-blast `housekeep/reference/*.md` row itself. The two high-blast rows (CLAUDE.md rule, new SKILL.md) are **drafted and deferred to Phase 7** — the parent orchestrator drives the advisor gate and performs the write/merge. A retrospective fork never writes a SKILL.md or edits CLAUDE.md, even though these rows appear within Phases 1–6. (The TDD-on-process steps below are authored/drafted by the fork but only *committed* by the parent after APPROVE.)
 
 **TDD-on-process** (required for new SKILL.md):
 1. RED — document the baseline scenario: describe exactly how an agent WITHOUT this skill fails (what it does, what rationalization it uses).

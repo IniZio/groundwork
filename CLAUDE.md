@@ -20,8 +20,31 @@
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
 - `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger); NEVER exploration or implementation
+- `Write`/`Edit` — restricted to the direct-write allowlist below
 
-**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI and one-shot git status are the only sanctioned Bash uses.)
+**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, one-shot git status, and the direct-write allowlist below are the only sanctioned direct-write/Bash uses.)
+
+### Direct-write allowlist (destination-path gated, NOT judgment-gated)
+
+The orchestrator may use Write/Edit directly ONLY for content it already holds verbatim this turn, and ONLY under these destination paths:
+- `.groundwork/**` EXCEPT `.groundwork/runs/**` and legacy `.groundwork/run.json` (ledger CLI only — unchanged)
+- `.groundwork/out-of-scope/**` (closes the existing triage-append gap — see Triage pre-check)
+- Session/project memory files (e.g. `memory/*.md` and its `MEMORY.md` index)
+
+**Verbatim precondition:** if composing the content first requires reading or searching the codebase, that composition is exploration — delegate it. Write only once the content already exists in this turn.
+
+**Hard deny-floor** (never direct Write/Edit here, regardless of the above): anything under `src/`, `test/`, `tests/`; any file matching build/behavior extensions (`.ts .tsx .js .mjs .cjs .json .yaml .yml .toml`, lockfiles, `Dockerfile`/`Containerfile`, CI configs); `package.json`, `tsconfig*`, `.claude/settings*.json`, `.mcp.json`; and the orchestrator-rule files themselves (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) — edits to these still require delegation + the advisor gate.
+
+**Anti-creep tripwire:** if the doc's purpose is to carry a code or config change to be applied elsewhere, this exception does not apply — that's implementation; delegate it. The allowance covers coordination artifacts only, and its safety comes entirely from these paths being unable to affect build, test, or runtime.
+
+---
+
+## Forks and the orchestrator identity
+
+A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the SessionStart injection), so by default a fork believes it is the orchestrator and tries to delegate-and-wait — which **deadlocks**, because no parent loop services a fork's background tasks. No prompt override reliably *revokes* an inherited system prompt; the only robust lever is a sanctioned carve-out that *extends* the identity.
+
+- **General rule:** do NOT use a fork for execution work. Use a **named subagent** (`general-purpose`, etc.) — its own definition system prompt fully replaces the orchestrator identity, so there is no leak.
+- **The one sanctioned exception — retrospective-fork mode:** `/groundwork:retrospective` MAY run as a fork (it needs full session history to reflect). When your task prompt states you are a retrospective fork, you remain the orchestrator but this mode inverts the delegate-everything rule for the retrospective only: execute Phases 1–6 **yourself**, directly, with Read/Write/Edit; do NOT delegate or spawn subagents; do NOT end your turn to "wait" (there is nothing to service you — waiting deadlocks); return your reflection + Learnings-KB result as your FINAL message. The sole exception within the exception: high-blast promotions (a CLAUDE.md rule or a new SKILL.md) — DRAFT those and hand them back in your report; the PARENT orchestrator runs them through the advisor gate and applies them. This is scoped narrowly to the retrospective fork and grants no general license to self-implement.
 
 ---
 
@@ -260,3 +283,42 @@ Same subtask fails 3× in a row:
 
 Load `/groundwork:use-groundwork` for complete skill routing, PRD flow, and BDD implementation rules.
 Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
+- **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
+- **Finding relationships**: `query_graph_tool` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview_tool` + `list_communities_tool`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes_tool` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context_tool` | Need source snippets for review — token-efficient |
+| `get_impact_radius_tool` | Understanding blast radius of a change |
+| `get_affected_flows_tool` | Finding which execution paths are impacted |
+| `query_graph_tool` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes_tool` | Finding functions/classes by name or keyword |
+| `get_architecture_overview_tool` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes_tool` for code review.
+3. Use `get_affected_flows_tool` to understand impact.
+4. Use `query_graph_tool` pattern="tests_for" to check coverage.

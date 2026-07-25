@@ -17,10 +17,12 @@
  *   ledger.mjs status                           compact one-line-per-slice view
  *   ledger.mjs complete S3 [S4 ...]             mark slice(s) complete
  *   ledger.mjs gate advisor APPROVE [--citation "x" --rubric "y" \
- *               --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0]
+ *               --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0 \
+ *               --axes-contract-fitness 2 --axes-plan-soundness 2]
+ *               // advisor verdicts: APPROVE | REVISE | REJECT | REPLAN (bare string or {verdict})
  *   ledger.mjs abandon                          set active:false (releases the gate)
  *   ledger.mjs init <file|->                    write the initial ledger atomically
- *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending]
+ *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]
  *   ledger.mjs rm <id> [<id> …]                 remove slice(s)
  *   ledger.mjs set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]
  *   ledger.mjs show <id>                        print all fields of one slice
@@ -139,6 +141,8 @@ const HELP = {
       '--axes-correctness N (advisor) 0-3 axis score',
       '--axes-completeness N',
       '--axes-over_engineering N',
+      '--axes-contract-fitness N (advisor) 0-3, or omit if N/A',
+      '--axes-plan-soundness N',
     ],
   },
   abandon: {
@@ -161,6 +165,7 @@ const HELP = {
       '--status <s>         pending | in_progress | complete | skipped (default pending)',
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
+      '--feature-slug <s>  (optional) link run to .groundwork/features/<slug>/',
     ],
   },
   rm: {
@@ -274,14 +279,18 @@ function cmdGate(args) {
   const [which, verdictRaw] = positionals
   if (!which || !verdictRaw) die('usage: ledger gate <advisor|verifier|qa> <verdict> [--token <t>] [--citation .. --rubric ..]', 2)
   if (!['advisor', 'verifier', 'qa'].includes(which)) die(`unknown gate "${which}"`, 2)
-  const hasObj = which === 'advisor' && (flags.citation || flags.rubric || flags['axes-correctness'])
+  // Advisor verdicts accepted as bare string or object: APPROVE | REVISE | REJECT | REPLAN
+  // (REPLAN is non-terminal — stop-gate routes back to interview/vertical-slice).
+  const AXIS_KEYS = ['correctness', 'completeness', 'over_engineering', 'contract_fitness', 'plan_soundness']
+  const hasAxes = AXIS_KEYS.some((k) => flags[`axes-${k}`] != null)
+  const hasObj = which === 'advisor' && (flags.citation || flags.rubric || hasAxes)
   let value
   if (hasObj) {
     value = { verdict: verdictRaw }
     if (flags.rubric) value.rubric = flags.rubric
     if (flags.citation) value.citation = flags.citation
     const axes = {}
-    for (const k of ['correctness', 'completeness', 'over_engineering']) {
+    for (const k of AXIS_KEYS) {
       if (flags[`axes-${k}`] != null) axes[k] = Number(flags[`axes-${k}`])
     }
     if (Object.keys(axes).length) value.axes = axes
@@ -381,7 +390,7 @@ function cmdInit(src) {
 function cmdAdd(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
-  if (!id) die('usage: ledger add <id> [--wave N] [--desc "…"] [--kind <k>] [--blocked-by a,b] [--acceptance "a;b"] [--status pending]', 2)
+  if (!id) die('usage: ledger add <id> [--wave N] [--desc "…"] [--kind <k>] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]', 2)
   const status = flags.status ?? 'pending'
   assertStatus(status)
   if (flags.kind != null) assertKind(flags.kind)
@@ -403,10 +412,14 @@ function cmdAdd(args) {
     const item = { id, wave, status, desc, blocked_by, acceptance }
     if (flags.kind != null) item.kind = flags.kind
     ledger.slices.push(item)
+    // Optional top-level link to a durable feature ledger (Contract B.1 / R4).
+    // Mirrors plan_ref/brief: set on the run object, not on the slice.
+    if (flags['feature-slug'] != null) ledger.feature_slug = flags['feature-slug']
     return l === null ? ledger : undefined // return new object only if we created it
   })
   const kindNote = flags.kind != null ? `, kind=${flags.kind}` : ''
-  process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote})\n`)
+  const slugNote = flags['feature-slug'] != null ? `, feature_slug=${flags['feature-slug']}` : ''
+  process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote}${slugNote})\n`)
 }
 
 function cmdRm(ids) {

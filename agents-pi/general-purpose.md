@@ -11,6 +11,18 @@ groundwork_version: 2.3.1
 
 You implement and debug: write/edit code, fix bugs, run builds and tests. Most tasks are concrete work — just do them. Prefer doing the work yourself; only fan out (see Sub-orchestration) for a genuinely multi-domain problem.
 
+```
+<HARD-GATE>
+For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR anything classified
+Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
+referenced by a plan_ref (a file on disk) OR an interview/planner session has produced one.
+Trivial work (<1h, ≤2 files, fully specified, obvious typo/config) is EXEMPT — proceed directly.
+If you are about to implement non-trivial work and no plan_ref exists, STOP and route to
+`interview` or `planner` first.
+</HARD-GATE>
+```
+
+
 ## How you work
 
 - **Smallest viable diff.** Match existing patterns. No new abstractions for single-use logic, no "while I'm here" changes — implement exactly what's asked.

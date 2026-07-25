@@ -693,3 +693,20 @@ describe("ledger CLI — negative ownership", () => {
 		expect(sessionALedger.session_id).toBe("sess-A");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// feature_slug — add writes top-level field; round-trips on read
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — feature_slug", () => {
+	it("add --feature-slug writes top-level feature_slug and round-trips on read", () => {
+		const r = run(["add", "F1", "--feature-slug", "feat-x", "--desc", "linked slice"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("feature_slug=feat-x");
+		const ledger = readLedger();
+		expect(ledger.feature_slug).toBe("feat-x");
+		// slice itself is still added
+		expect(ledger.slices.find((s: any) => s.id === "F1")).toBeDefined();
+	});
+});
+

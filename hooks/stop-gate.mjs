@@ -42,18 +42,22 @@
  *     "active": true,
  *     "session_id": "<session that owns this run, or omitted>",
  *     "brief": "<one-line task description>",
+ *     "plan_ref": "<path to plan artifact, or omitted/null>",
+ *     "feature_slug": "<kebab-case feature id linking .groundwork/features/<slug>/, or null>",
  *     "reinforcements": 0,
  *     "slices": [
  *       { "id": "S1", "behavior": "...", "files": ["..."], "wave": 0,
  *         "blocked_by": [], "depends_on": [],
  *         "acceptance": ["verifiable done-condition", "..."],
+ *         "kind": "plan|diagnose|design|impl",
  *         "status": "pending|in_progress|complete" }
  *     ],
  *     "gate": { "verifier": "pending|passed",
  *               // advisor accepts EITHER a legacy string OR an object:
- *               "advisor":  "pending|APPROVE|REVISE|REJECT"
- *                 | { "verdict": "APPROVE|REVISE|REJECT", "rubric": "...",
- *                     "axes": { "correctness": 0, "completeness": 0, "over_engineering": 0 },
+ *               "advisor":  "pending|APPROVE|REVISE|REJECT|REPLAN"
+ *                 | { "verdict": "APPROVE|REVISE|REJECT|REPLAN", "rubric": "...",
+ *                     "axes": { "correctness": 0, "completeness": 0, "over_engineering": 0,
+ *                               "contract_fitness": 0, "plan_soundness": 0 },
  *                     "citation": "<file:line|construct|'none'>" } }
  *   }
  *
@@ -66,7 +70,7 @@
  *   the enforcement-relevant ledger state at the last block, used to detect progress).
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
@@ -261,6 +265,13 @@ function buildReason(ledger, incomplete, count) {
   lines.push('')
   lines.push(`Completion gate — advisor: ${advisorShown} (must be APPROVE). [verifier: ${gate.verifier ?? 'n/a'} — informational only]`)
 
+  // REPLAN is non-terminal (only APPROVE releases). Steer the orchestrator back
+  // to interview (spec wrong) or vertical-slice (decomposition wrong) — never more impl.
+  if (advisorShown === 'REPLAN') {
+    lines.push('')
+    lines.push('Advisor returned REPLAN — re-enter interview (spec wrong) or vertical-slice (decomposition wrong) before more impl slices; do not resume impl waves.')
+  }
+
   if (count === 0) {
     lines.push('')
     lines.push('REMEMBER THE FAN-OUT RULES:')
@@ -316,12 +327,46 @@ async function main() {
   }
 
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
+
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
   const incomplete = slices.filter((s) => !TERMINAL_STATUSES.has(s?.status))
+  // Only APPROVE is terminal. REPLAN/REVISE/REJECT/pending keep the gate closed;
+  // advisor computes APPROVE per Contract A.2 — stop-gate trusts the verdict (no axis math).
   const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
   const workRemains = incomplete.length > 0 || !advisorApproved
+  // Complete + APPROVE → allow before plan pre-gate (done runs need no plan check).
   if (!workRemains) return allow()
+
+  // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).
+  // FAIL-OPEN: any error in this check falls through (never wedge the session).
+  // Skipped for absent/garbled/foreign-session ledgers (already allowed above).
+  // Only mid-flight runs (workRemains) reach this pre-gate.
+  try {
+    const brief = typeof ledger.brief === 'string' ? ledger.brief : ''
+    const trivialEscape =
+      (slices.length <= 2 && !slices.some((s) => s?.kind === 'impl')) ||
+      /trivial|single-line|config|typo/i.test(brief)
+    if (!trivialEscape) {
+      const planRef = ledger.plan_ref
+      const planRefOk =
+        typeof planRef === 'string' &&
+        planRef.length > 0 &&
+        existsSync(planRef)
+      const planSliceComplete = slices.some(
+        (s) =>
+          (s?.kind === 'plan' || s?.kind === 'design') &&
+          s?.status === 'complete',
+      )
+      if (!planRefOk && !planSliceComplete) {
+        return block(
+          'Non-trivial run has no plan artifact (plan_ref missing/absent on disk, or no plan/design slice complete). Run interview or planner to produce a plan before more impl.',
+        )
+      }
+    }
+  } catch {
+    // Fail-open: never block on pre-gate errors.
+  }
 
   // Yield-aware: a deliberate turn-end (background work still in flight, awaiting
   // input, reported failure, or just-launched delegation) is not a stall — let the

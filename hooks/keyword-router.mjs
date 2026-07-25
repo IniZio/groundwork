@@ -26,7 +26,7 @@ const ROUTES = [
       /\b(build .{0,40} from scratch|implement .{0,40} feature|create .{0,40} system|major feature|big feature|complex feature)\b/i,
       /\b(multi.?day|multi.?week|large.?scale|end.?to.?end system)\b/i,
     ],
-    hint: 'Route to `groundwork:planner` first to create a plan in .groundwork/plans/, then fan-out `groundwork:general-purpose` tasks.',
+    hint: 'Route to `groundwork:planner` first. Planner MUST write a durable plan file (e.g. `.groundwork/plans/<slug>.md`) and report it as `plan_ref` to the orchestrator BEFORE any fan-out — never fan out from a memory-only plan. Then `vertical-slice` + `groundwork:general-purpose`.',
   },
   {
     agents: ['groundwork:advisor'],

@@ -1,0 +1,78 @@
+---
+name: ultrawork
+description: Maximum parallel fan-out mode. Slice, write ledger, dispatch all independent slices simultaneously. Triggers on "ultrawork", "ulw", "max fan-out", "go parallel".
+---
+
+# Ultrawork — Maximum Fan-Out
+
+## Platform contract
+
+The workflow is platform-neutral, but enforcement is not. Claude Code and
+OpenCode may provide native delegation and hook surfaces; use those only when
+the host documents them. In Codex, this skill is guidance: use native Codex
+subagent/delegation tools only when they are actually available in the current
+session. Otherwise execute slices sequentially and say that fan-out, ledger
+tracking, and completion gating are advisory.
+
+You are now in **Ultrawork Mode**. Where the host supplies a Stop-gate hook,
+it may enforce the run ledger. Codex has no such guarantee from a skill alone;
+do not claim that ending the session is mechanically blocked.
+
+## Emit the banner FIRST (compliance tripwire)
+
+Your **first line of output** after engaging ultrawork MUST be one of:
+
+```
+GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json
+```
+or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h):
+```
+GROUNDWORK ▸ trivial: single general-purpose, no slicing
+```
+
+## The Prime Directive
+
+**Fire all independent agent calls simultaneously. NEVER serialize independent work.**
+
+Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file. When unsure, serialize into Wave 0.
+
+## Execution Policy
+
+1. **Decompose first.** Load `vertical-slice` and cut the work into the maximum number of conflict-free slices. Each slice = ONE user-facing behavior through all layers.
+2. **Write the ledger.** `vertical-slice` writes the run ledger with every slice `pending`. No ledger = no enforcement.
+3. **One objective per task.** If describing a task takes more than 2 sentences, split it.
+4. **ALL parallel Task calls in ONE message.** Task A in one message, Task B in the next is sequential execution.
+5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix.
+6. **Context-isolate by behavioral contract.** Describe each task by the interfaces/signatures it must satisfy and observable acceptance criteria — not pinned line numbers (they rot when siblings edit the file).
+7. **Fan-out.** When a wave is dispatched and you have no other work, write a one-line status and END YOUR TURN (you're re-invoked on each task completion).
+
+Fan-out ceilings, wave template, and completion-gate rules are in your agent definition's Fan-out Protocol section (self-contained, platform-independent).
+
+## Pre-Delegation Declaration (mandatory)
+
+Before each wave, state for each task: **Agent** · **Reason** · **Success criteria**.
+
+## As Slices Land
+
+Mark slices complete through the host's documented ledger interface. If no such
+interface exists, keep the slice table in the plan or handoff artifact and
+report it as advisory. Never invent plugin-root paths or claim hook enforcement.
+
+## Anti-Patterns — These Are Failures
+
+```
+# BAD: Sequential — costs Nx wall time
+Task(general-purpose, "slice 1") → wait → Task(general-purpose, "slice 2") → ...
+
+# BAD: Orchestrator implementing directly
+Edit(file, ...)   ← YOU ARE THE ORCHESTRATOR, NOT THE CODER
+
+# BAD: Mega-task
+Task(general-purpose, "rate limiting + audit logging + tests + UI")  ← 4 tasks in 1
+
+# BAD: Vague context
+Task(general-purpose, "implement as we discussed")  ← subagent has no session history
+
+# BAD: No ledger
+Fan out without writing the run ledger  ← the gate has nothing to enforce
+```

@@ -12,6 +12,19 @@ These rules apply to ALL agents in the groundwork workflow.
 5. **Prefer watch/follow variants with PTY. Never poll-repeat.** NEVER poll-repeat a command — always use `--watch`/`--follow`/`-f`/`--tail` in a PTY session instead. Examples: `gh pr checks --watch`, `gh run view --log`, `jest --watch`, `kubectl get pods --watch`. **Babysitting CI is a MUST-use-PTY pattern**: spawn a PTY for `gh pr checks --watch` or `gh run view --log-failed` and wait for it, rather than calling `gh pr checks` or `gh run view` repeatedly in bash. If a command has a `--watch` flag, use it with PTY — period. Repeated one-shot calls waste tokens and risk missing state changes.
 <!-- PTY-SECTION-END -->
 
+### Direct-write allowlist (destination-path gated, NOT judgment-gated)
+
+The orchestrator may use Write/Edit directly ONLY for content it already holds verbatim this turn, and ONLY under these destination paths:
+- `.groundwork/**` EXCEPT `.groundwork/runs/**` and legacy `.groundwork/run.json` (ledger CLI only — unchanged)
+- `.groundwork/out-of-scope/**` (closes the existing triage-append gap — see Triage pre-check)
+- Session/project memory files (e.g. `memory/*.md` and its `MEMORY.md` index)
+
+**Verbatim precondition:** if composing the content first requires reading or searching the codebase, that composition is exploration — delegate it. Write only once the content already exists in this turn.
+
+**Hard deny-floor** (never direct Write/Edit here, regardless of the above): anything under `src/`, `test/`, `tests/`; any file matching build/behavior extensions (`.ts .tsx .js .mjs .cjs .json .yaml .yml .toml`, lockfiles, `Dockerfile`/`Containerfile`, CI configs); `package.json`, `tsconfig*`, `.claude/settings*.json`, `.mcp.json`; and the orchestrator-rule files themselves (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) — edits to these still require delegation + the advisor gate.
+
+**Anti-creep tripwire:** if the doc's purpose is to carry a code or config change to be applied elsewhere, this exception does not apply — that's implementation; delegate it. The allowance covers coordination artifacts only, and its safety comes entirely from these paths being unable to affect build, test, or runtime.
+
 ## Triage pre-check (before routing any new request)
 
 - **Dedup against the rejection KB.** Scan `.groundwork/out-of-scope/*.md` and match **by concept, not keyword**. On a match, surface to the user (Confirm / Reconsider / Disagree) and append to *Prior requests* instead of re-planning. (Format: `vertical-slice` → Rejection KB.)
@@ -24,11 +37,11 @@ These rules apply to ALL agents in the groundwork workflow.
 |-------|----------------|
 | `interview` | **Plan a feature** (synthesizes a concise plan, deferring to any project planning convention). Before `diagnose` for complex bugs. Standalone for small changes. Anytime understanding is incomplete before action. Actively updates CONTEXT.md and ADRs inline |
 | `diagnose` | **Any bug or regression.** Something broken that needs root cause analysis. Replaces the feature/`implement` path for bugs |
-| `implement` | **After a plan (features) or interview (small changes).** NOT for bugs — use `diagnose` instead. Runs `vertical-slice` first, then fans out parallel `general-purpose` agents |
-| `vertical-slice` | **Before fanning out general-purpose agents.** Decomposes task into conflict-free parallel slices with wave assignments and writes the run ledger. Called inside `implement` or standalone |
+| `implement` | **After a plan (features) or interview (small changes).** NOT for bugs — use `diagnose` instead. Runs `vertical-slice` first, then fans out parallel `general-purpose` agents. A non-trivial feature MUST have a `plan_ref` (from `interview` or `planner`) before `vertical-slice` fans out |
+| `vertical-slice` | **Before fanning out general-purpose agents.** Decomposes task into conflict-free parallel slices with wave assignments and writes the run ledger. Called inside `implement` or standalone. Requires `plan_ref` for non-trivial features |
 | `ultrawork` | **Max fan-out mode.** Slice → write ledger → dispatch every independent slice in parallel; gate-enforced by the Stop hook |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
-| `housekeep` | **Codebase hygiene / cleanup.** Default mode `deslop` (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design slop). Opt-in modes: `deps`, `lint-debt`, `docs-staleness`. Triggers: deslop, anti-slop, AI slop, housekeep, cleanup the code, dependency audit, lint debt, stale docs |
+| `housekeep` | **Codebase hygiene / cleanup.** Default mode `deslop` (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design slop); scans and produces a severity-ranked (SEV1–4) prioritized findings backlog, presents it for interactive triage/selection before cleaning, and closes with a structured report. Opt-in modes: `deps`, `lint-debt`, `docs-staleness`. Triggers: deslop, anti-slop, AI slop, housekeep, cleanup the code, dependency audit, lint debt, stale docs, triage cleanup, prioritize slop, cleanup backlog, what needs cleaning |
 | `commit` | Creating git commits (ensures consistent style) |
 | `opencode-acp` | Controlling another OpenCode instance via ACP protocol |
 | `goal` | **Multi-step work needing focus tracking.** Set before testing multiple flows, multi-wave implementation, or any task where losing the objective causes rework. Persisted across sessions |

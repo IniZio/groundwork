@@ -1,5 +1,11 @@
 # Task Scoping & Subagent Task Reference
 
+## Codex Scope
+
+This reference documents multi-agent hosts. Codex has no implied dispatch API:
+use its available plan/delegation surfaces when present, otherwise perform the
+scoped work locally. The task examples below are not Codex commands.
+
 ## Task Quick Reference
 
 Use the builtin `task` tool to delegate work to subagents:
@@ -21,6 +27,8 @@ When a task fails:
 3. **One responsibility per task.** "Create types.ts" is good. "Create all lib files" is bad.
 4. **Embed source in prompts.** Subagents cannot reliably read large source files — embed reference material directly in the prompt text. Do NOT tell the subagent to "read file X".
 5. **Verify task output immediately.** If result says `(No text output)` or wrong files were created, relaunch with corrections.
+
+6. **Non-trivial work needs `plan_ref` first.** Before fanning out `general-purpose` on a feature/SmallRisky task, the orchestrator MUST have a durable `plan_ref` (from `interview` or `planner`, e.g. `.groundwork/plans/<slug>.md`). Do not embed a memory-only plan and fan out. Trivial / small-clear / docs / obvious-bug paths stay exempt.
 
 ## Failed Task Recovery
 

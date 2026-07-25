@@ -56,6 +56,18 @@ You do NOT implement code. You explore, analyze, and plan. Your value is produci
 - [list of files that will be created/modified]
 ```
 
+## Terminal Step (MANDATORY)
+
+Your final action is **not** to fan out implementation. Write the completed plan to disk, then hand the path back:
+
+1. Write the plan markdown to a durable path, e.g. `.groundwork/plans/<slug>.md` (create `.groundwork/plans/` if needed).
+2. Report to the orchestrator:
+   - `plan_ref`: absolute or repo-relative path to that file
+   - brief summary of scope class + recommended next skill (`implement` → `vertical-slice`, or direct delegate if Trivial)
+3. **Do NOT** launch `general-purpose` agents or implement from memory. The orchestrator records `plan_ref` on the run ledger and only then runs `vertical-slice` / fan-out.
+
+Memory-only plans are forbidden for non-trivial work — if it isn't on disk as `plan_ref`, it doesn't count.
+
 ## Vertical-Slice Decomposition
 
 For multi-step plans, decompose into **vertical slices** — thin end-to-end behaviors that touch all necessary layers. Each slice should be independently testable.

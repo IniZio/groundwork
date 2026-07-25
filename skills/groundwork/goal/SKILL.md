@@ -6,11 +6,31 @@ disable-model-invocation: true
 
 # Goal
 
+## Platform contract
+
+Goal persistence and automatic reminders are host-specific. OpenCode may expose
+its goal tool and message transform; Codex skills alone do not register a
+`set_goal` tool or inject text into every user message. In Codex, keep the goal
+in the available plan or handoff artifact and repeat only a short status when
+it is relevant. Do not claim automatic persistence or per-turn injection.
+
 ## Purpose
 
 Persist an objective with acceptance criteria across sessions, context compression, and `/clear`. The goal reminder appears in every user message so the agent never loses track.
 
-This is NOT session-scoped. The goal lives in `.opencode/goal.json` and persists until explicitly cleared or marked achieved.
+On hosts with a goal runtime, the goal may persist beyond a session. Otherwise
+this is a workflow convention and should be recorded in the host's plan or a
+handoff artifact.
+
+## Feature ledger
+
+When exactly one feature is `active: true` under `.groundwork/features/`,
+`goal` **MAY** mirror that feature's goal and acceptance criteria from
+`spec.md` / `.feature.yaml`. Session-goal behavior above still applies.
+
+**On conflict, the feature ledger wins** — do not let a divergent session goal
+override feature ACs or negative scope. Clear or realign the session goal to
+match the feature rather than forking two objectives.
 
 ## When to Use
 
@@ -23,46 +43,40 @@ This is NOT session-scoped. The goal lives in `.opencode/goal.json` and persists
 
 ### Set a Goal
 
-```
-set_goal(action: "set", objective: "<what to achieve>", acceptanceCriteria: ["<criterion 1>", "<criterion 2>", ...])
-```
+Use the host's documented goal interface, if one exists; otherwise write the
+objective and acceptance criteria into the current plan or handoff artifact.
 
 Requirements:
 - `objective`: clear, specific description of what done looks like
 - `acceptanceCriteria`: list of verifiable, testable criteria. Each must be independently confirmable
 
-After setting, the goal reminder is injected into every subsequent user message automatically.
+Do not assume automatic reminders. Keep any reminder short and emit it only
+when the goal materially affects the current turn.
 
 ### Check Status
 
-```
-set_goal(action: "status")
-```
+Check status through the host's documented goal interface, or inspect the
+current plan/handoff artifact.
 
 Returns current goal, status, and acceptance criteria checklist.
 
 ### Pause / Resume
 
-```
-set_goal(action: "pause")   // temporarily stop reminders
-set_goal(action: "resume")  // reactivate
-```
+Pause or resume reminders through the host's documented interface. In Codex,
+simply omit the optional short reminder until it is relevant again.
 
 Use when switching to an urgent interruption, then resume.
 
 ### Mark Achieved
 
-```
-set_goal(action: "achieved")
-```
+Mark the goal achieved in the host's documented goal interface or plan artifact.
 
 **Only after advisor-gate APPROVE confirms all acceptance criteria are met.** Do not self-certify.
 
 ### Clear
 
-```
-set_goal(action: "clear")
-```
+Clear it through the host's documented interface, or remove it from the plan or
+handoff artifact when the host treats those as the source of truth.
 
 Removes the goal file entirely. Use after achieving or when abandoning.
 
@@ -86,7 +100,8 @@ The advisor must check each criterion. If any is UNMET, the response is GAPS (no
 - Acceptance criteria must be verifiable — no subjective terms
 - Do NOT set a goal for trivial tasks (<1h) — it's overhead
 - Do NOT mark achieved without advisor-gate confirmation
-- The goal reminder survives context compression because it's injected via message transform, not stored in context
+- On Codex, a skill cannot guarantee survival across context compression; preserve
+  the goal in the plan or handoff artifact and re-read it only when needed.
 
 ## Anti-Patterns
 

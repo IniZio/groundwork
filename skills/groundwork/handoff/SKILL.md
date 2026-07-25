@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Write a handoff document and pass context to a successor Claude Code session.
+description: Write a concise, user-readable continuation document for a later Codex session.
 disable-model-invocation: true
 ---
 
@@ -8,9 +8,9 @@ disable-model-invocation: true
 
 ## Core Principle
 
-**A clean baton pass, not a context dump.** The successor session gets a short, structured handoff document plus a pointer to this session's full transcript. Summarize the state; let the successor grep the transcript for anything deeper.
+**A clean baton pass, not a context dump.** Write a short, structured artifact that the user can inspect, save, and provide to a later session. Summarize the state; do not assume the next session can access this session's transcript.
 
-**Hard rule: never silently drop context.** The handoff document must be shown to (or be readable by) the user before the old session is abandoned. If anything important cannot be captured in the document, say so explicitly rather than letting it vanish.
+**Hard rule: never silently drop context.** The artifact must be shown to (or be readable by) the user before the current session ends. If anything important cannot be captured, say so explicitly.
 
 ## When to Use
 
@@ -18,18 +18,12 @@ disable-model-invocation: true
 - Switching machines or terminals mid-task
 - Ending a work block and wanting a clean baton pass for the next session
 
-## Step 1 — Identify this session
+## Write the continuation artifact
 
-The SessionStart hook injects a "Session identity" block (session_id, transcript_path) into context. Use those values.
-
-**Fallback if the block is absent:** the transcript directory is `~/.claude/projects/<cwd with "/" and "." replaced by "-">/`, and the current session is the most recently modified `.jsonl` file there — verify with `ls -t`.
-
-## Step 2 — Write the handoff document
-
-Write `.claude/handoffs/<session_id>.md` (create the directory if needed) with these sections:
+Write a Markdown file in a user-visible project location, such as `.groundwork/handoffs/<timestamp-or-session-id>.md`, with these sections:
 
 ```markdown
-# Handoff from session <session_id>
+# Continuation handoff
 
 ## Goal
 What the overall task is.
@@ -40,65 +34,44 @@ What is done, what is in flight.
 ## Decisions made
 Each decision with a one-line rationale.
 
-## Key files
+## Files
 path:line references.
 
 ## Next steps
 Ordered, concrete.
 
-## Previous session
-- session_id: <session_id>
-- transcript_path: <transcript_path>
-
-If you need detail not captured above, read or grep the transcript JSONL at the path above (each line is a JSON message; filter by role/content).
+## Active run state
+Brief status of the active plan or run ledger. Include the run goal, incomplete slices, and gate verdict when known. If no run is active, say so.
 ```
 
 **Rules:**
 - Never include secrets or credentials in the handoff file
 - Summarize, don't dump transcript
 
-## Step 3 — Choose handoff mode
+## Active feature — projection, not a second source of truth
 
-Use `AskUserQuestion` and offer three options:
+When exactly one feature ledger is active (`active: true` under
+`.groundwork/features/<slug>/.feature.yaml`), **render the handoff from that
+feature** — primarily `.feature.yaml` + `spec.md` (goal, unmet ACs, negative
+scope, `resume.*` program counter, open slices, last `runs[]` row, recent
+`history`/`decisions`). Optionally fold in current session run-ledger status.
 
-a) **Spawn now (recommended)** — spawn a headless successor session immediately; user attaches later.
-b) **Fork with full history** — print `claude --resume <old_session_id> --fork-session` for the user to run; clones the entire history into a new session id (no context shedding).
-c) **File only** — just write the handoff document and print the launch one-liner for the user to run in a fresh terminal: `claude --session-id $(uuidgen) "$(cat .claude/handoffs/<id>.md)"`.
+- The feature ledger is the source of truth; the handoff file is a **projection**
+  for humans and later sessions, not a parallel state store.
+- Still write the markdown artifact and show it to the user (delivery unchanged).
+- Also append a feature `history` entry with `type: handoff` and record the
+  handoff path under `links.handoffs` when practical.
 
-## Step 4 — Spawn (mode a)
+When **no** active feature exists, handoff behavior is unchanged: summarize the
+session from plan/run-ledger/context as above.
 
-```bash
-NEW_ID=$(uuidgen)
-nohup claude -p --session-id "$NEW_ID" "$(cat .claude/handoffs/<old_id>.md)" \
-  > .claude/handoffs/<old_id>-spawn.log 2>&1 &
-echo "$NEW_ID"
-```
+## Delivery
 
-Run via Bash with `run_in_background`. Then tell the user:
-
-- The successor session id is `$NEW_ID`
-- Attach interactively with `claude --resume $NEW_ID`
-- The headless run processes the handoff prompt, so the successor has already oriented itself by the time the user attaches
-
-## Step 5 — Verify
-
-Confirm the successor transcript exists: `~/.claude/projects/<munged-cwd>/$NEW_ID.jsonl`.
-
-If the spawn failed, fall back to mode (c) and show the user the one-liner.
-
-## Active Run — Ledger Context
-
-If an active run ledger exists (`.groundwork/runs/<session_id>.json`, or legacy `.groundwork/run.json`) with `active: true`, the handoff document **must** include a run summary so the successor session inherits the run state. Add a **Run state** section to the handoff document:
-
-- Render it with `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs view` (or `status` for a compact view).
-- Include: the run's brief/goal, each incomplete slice (id, kind, status), and the gate verdict if one exists.
-- The successor needs this to satisfy the Stop-gate — unresolved slices block session end.
-
-Do not paste the raw JSON; use the ledger CLI output.
+Tell the user the exact artifact path and show its contents or a concise summary. The user decides when and how to provide it to a later session. This skill only writes documentation; it does not create or launch another session.
 
 ## What NOT to Do
 
-- Do NOT dump raw transcript content into the handoff document — summarize and point at the transcript path
+- Do NOT dump raw conversation content into the handoff document — summarize it
 - Do NOT include secrets, tokens, or credentials in the handoff file
 - Do NOT abandon the old session before the handoff document has been shown to (or is readable by) the user
-- Do NOT declare the handoff complete in mode (a) without verifying the successor transcript exists
+- Do NOT claim that a later session was created or verified

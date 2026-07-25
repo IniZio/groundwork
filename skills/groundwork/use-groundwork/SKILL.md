@@ -18,3 +18,7 @@ This skill is injected at conversation start by the plugin. The full bootstrap c
 - `bootstrap-general-purpose.md` — general-purpose-specific rules (22 lines)
 
 If you notice the core rules, routing, or skill triggers are missing from your context (e.g., after context compression), re-invoke this skill to reload the bootstrap content.
+
+## Non-trivial feature mandate
+
+A non-trivial feature MUST have a `plan_ref` (produced by `interview` or `planner` — a plan file on disk such as `.groundwork/plans/<slug>.md`) before `vertical-slice` fans out. The `planner` route is not an interview-free shortcut; it writes that artifact and returns `plan_ref`. Trivial / small-clear / docs / obvious-bug fast-paths remain direct → `advisor-gate`.

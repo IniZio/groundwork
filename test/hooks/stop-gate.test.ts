@@ -586,3 +586,140 @@ describe("stop-gate hook — per-session ledger isolation", () => {
 		expect(decision.decision).toBe("block");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// New skillset contracts (R1/R3) — REPLAN non-terminal + plan_ref pre-gate
+// ---------------------------------------------------------------------------
+
+describe("stop-gate — new skillset contracts (R1/R3)", () => {
+	it("REPLAN is non-terminal: blocks with interview/vertical-slice guidance", () => {
+		// ≤2 slices, no kind:impl → trivial escape so pre-gate does not swallow REPLAN reason
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "feature work mid-flight",
+			slices: [{ id: "S1", status: "pending", acceptance: ["still open"] }],
+			gate: { advisor: "REPLAN" },
+		});
+		expect(decision.decision).toBe("block");
+		expect(decision.continue).not.toBe(true);
+		expect(decision.reason).toContain("REPLAN");
+		expect(decision.reason).toMatch(/interview|vertical-slice/);
+	});
+
+	it("REPLAN does not release even when all slices are terminal", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "feature work mid-flight",
+			slices: [
+				{ id: "S1", status: "complete", acceptance: ["done"] },
+				{ id: "S2", status: "complete", acceptance: ["also done"] },
+			],
+			gate: { advisor: "REPLAN" },
+		});
+		expect(decision.decision).toBe("block");
+		expect(decision.continue).not.toBe(true);
+		expect(decision.reason).toContain("REPLAN");
+		expect(decision.reason).toMatch(/interview|vertical-slice/);
+	});
+
+	it("plan_ref pre-gate blocks a non-trivial run lacking a plan artifact", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "multi-slice feature implementation",
+			slices: [
+				{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
+				{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
+				{ id: "S3", kind: "impl", status: "pending", acceptance: ["c"] },
+			],
+			gate: { advisor: "pending" },
+		});
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).toMatch(/plan artifact/i);
+	});
+
+	it("plan_ref pre-gate passes when plan_ref points at a real file (falls through to incomplete-slices)", () => {
+		const planDir = mkdtempSync(path.join(tmpdir(), "gw-plan-"));
+		const planPath = path.join(planDir, "plan.md");
+		writeFileSync(planPath, "# plan\n\nDo the feature.\n");
+		try {
+			const decision = runHook({
+				active: true,
+				session_id: "sess-1",
+				reinforcements: 0,
+				brief: "multi-slice feature implementation",
+				plan_ref: planPath,
+				slices: [
+					{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
+					{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
+					{ id: "S3", kind: "impl", status: "pending", acceptance: ["c"] },
+				],
+				gate: { advisor: "pending" },
+			});
+			expect(decision.decision).toBe("block");
+			// Pre-gate did not fire — normal incomplete-slices path
+			expect(decision.reason).not.toMatch(/plan artifact/i);
+			expect(decision.reason).toContain("Incomplete slices");
+		} finally {
+			rmSync(planDir, { recursive: true, force: true });
+		}
+	});
+
+	it("plan_ref pre-gate passes when a plan slice is complete (falls through to incomplete-slices)", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "multi-slice feature implementation",
+			slices: [
+				{ id: "P0", kind: "plan", status: "complete", acceptance: ["plan written"] },
+				{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
+				{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
+			],
+			gate: { advisor: "pending" },
+		});
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).not.toMatch(/plan artifact/i);
+		expect(decision.reason).toContain("Incomplete slices");
+	});
+
+	it("trivial escape skips plan_ref pre-gate (block reason is incomplete-slices, not plan artifact)", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "config tweak",
+			slices: [
+				{ id: "S1", status: "pending", acceptance: ["flip flag"] },
+				{ id: "S2", status: "pending", acceptance: ["document"] },
+			],
+			gate: { advisor: "pending" },
+		});
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).not.toMatch(/plan artifact/i);
+		expect(decision.reason).toContain("Incomplete slices");
+	});
+
+	it("complete+APPROVE with no plan_ref is ALLOWED (pre-gate must not fire on done runs)", () => {
+		const decision = runHook({
+			active: true,
+			session_id: "sess-1",
+			reinforcements: 0,
+			brief: "multi-slice feature implementation",
+			slices: [
+				{ id: "S1", kind: "impl", status: "complete", acceptance: ["a"] },
+				{ id: "S2", kind: "impl", status: "complete", acceptance: ["b"] },
+				{ id: "S3", kind: "impl", status: "complete", acceptance: ["c"] },
+			],
+			gate: { advisor: "APPROVE" },
+		});
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+});
+

@@ -1,5 +1,13 @@
 # Issue-Type Routing Detail
 
+## Codex Scope
+
+The routing graph is shared workflow guidance. In Codex, invoke skills through
+the available skill surface and represent planning, slicing, and review in the
+host plan. References below to dispatch, question prompts, ledgers, or gates
+describe other hosts unless explicitly marked Codex-compatible; do not treat
+them as native Codex capabilities.
+
 Full routing flow digraph and extended examples.
 
 ## Routing Flow Digraph
@@ -34,8 +42,8 @@ digraph flow {
   "invoke skill interview (quick)" -> "implement";
   "implement" -> "invoke skill advisor-gate";
 
-  "Feature path" -> "invoke skill interview (full)";
-  "invoke skill interview (full)" -> "invoke skill implement";
+  "Feature path" -> "plan_ref via interview or planner";
+  "plan_ref via interview or planner" -> "invoke skill implement";
   "invoke skill implement" -> "invoke skill vertical-slice (writes ledger)";
   "invoke skill vertical-slice (writes ledger)" -> "fan out general-purpose agents";
   "fan out general-purpose agents" -> "invoke skill advisor-gate";
@@ -80,9 +88,12 @@ digraph flow {
 ## Feature Path Detail
 
 - Only use when work is **clearly** multi-day or architectural from the start.
-- **Mandatory skill-tool invocations:** `interview` → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip.
-- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write the run ledger.
+- **Mandatory skill-tool invocations:** (`interview` **or** `planner`) → durable `plan_ref` on disk → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip.
+- **A non-trivial feature MUST have a `plan_ref` (produced by `interview` or `planner`) before `vertical-slice` fans out.** No memory-only plans; no fan-out until the plan file exists.
+- The `planner` route is **not** an interview-free shortcut for non-trivial work — it writes the plan artifact (e.g. `.groundwork/plans/<slug>.md`) and returns `plan_ref`; the orchestrator then continues through `vertical-slice` / fan-out.
+- `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write the run ledger (recording `plan_ref`).
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed.
+- **Trivial / small-clear / docs / obvious-bug fast-paths stay unchanged** — HARD-GATE and `plan_ref` apply to non-trivial work only.
 
 ## Triage Pre-Check Detail
 

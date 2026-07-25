@@ -30,7 +30,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/pi.ts"
+      "./pi/pi.ts"
     ],
     "skills": [
       "./.pi/skills"

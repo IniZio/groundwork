@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { PiToolDeps } from "./deps.js";
-import { readGoal, writeGoal, clearGoal, type Goal } from "../lib/goal.js";
+import { readGoal, writeGoal, clearGoal, type Goal } from "../../src/lib/goal.js";
 
 export function createSetGoalTool(deps: PiToolDeps) {
 	const { directory } = deps;

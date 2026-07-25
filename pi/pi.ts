@@ -2,14 +2,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getBootstrapForAgent } from "./lib/skills.js";
-import { readGoal, goalReminder, injectGoalAndBootstrap } from "./lib/goal.js";
-import { registerGroundworkProviders } from "./lib/provider-registry.js";
+import { getBootstrapForAgent } from "../src/lib/skills.js";
+import { readGoal, goalReminder, injectGoalAndBootstrap } from "../src/lib/goal.js";
+import { registerGroundworkProviders } from "../src/lib/provider-registry.js";
 import { createHandoffSessionTool } from "./pi-tools/handoff-session.js";
 import { createSetGoalTool } from "./pi-tools/set-goal.js";
 import { createHandoffCommand } from "./pi-commands/handoff.js";
 import { createGoalCommand } from "./pi-commands/goal.js";
-import { createGroundworkRuntime } from "./runtime.js";
+import { createGroundworkRuntime } from "../src/runtime.js";
 
 /** True when running inside a subagent child process (depth > 0). */
 function isSubagent(): boolean {
@@ -67,6 +67,21 @@ function readActiveLedger(projectDir: string, sessionId: string): LedgerData | n
 	return null;
 }
 
+/**
+ * omp has no CLAUDE_ENV_FILE, so propagate the session id + project dir into the
+ * process env here. Bash-spawned hooks/ledger.mjs reads CLAUDE_CODE_SESSION_ID
+ * (and CLAUDE_PROJECT_DIR) to resolve the per-session ledger
+ * (.groundwork/runs/<session_id>.json) instead of collapsing every session onto
+ * the legacy .groundwork/run.json.
+ */
+export function exportSessionEnv(
+	sessionId: string | undefined | null,
+	projectDir: string,
+): void {
+	if (sessionId) process.env.CLAUDE_CODE_SESSION_ID = sessionId;
+	if (projectDir) process.env.CLAUDE_PROJECT_DIR = projectDir;
+}
+
 export default function (pi: ExtensionAPI) {
 	// Register custom model providers so pi-subagents can resolve our model strings
 	// (e.g. "kimi-for-coding", "opencode-go/deepseek-v4-flash", etc.)
@@ -96,6 +111,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		const cwd = (ctx as any)?.cwd ?? process.cwd();
 		runtime.cwd = cwd;
+		const sessionId = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
+		exportSessionEnv(sessionId || undefined, directory);
 	});
 
 	pi.on("session_shutdown", (_event, _ctx) => {

@@ -1,6 +1,6 @@
 // ─── Shared handoff instruction content ──────────────────────────────────────
 // Used by both src/commands/handoff.ts (returns string) and
-// src/pi-commands/handoff.ts (emits via ctx.ui.notify).
+// pi/pi-commands/handoff.ts (emits via ctx.ui.notify).
 
 /**
  * Builds the handoff instructions string for the /handoff command.

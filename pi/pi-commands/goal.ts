@@ -1,8 +1,8 @@
 // ─── /goal Command (Pi) ─────────────────────────────────────────────────────
 // Quick command to check or set the active goal.
 
-import { readGoal } from "../lib/goal.js";
-import { formatGoal } from "../lib/goal-format.js";
+import { readGoal } from "../../src/lib/goal.js";
+import { formatGoal } from "../../src/lib/goal-format.js";
 
 export function createGoalCommand(deps: { directory: string }) {
 	return {

@@ -1,7 +1,7 @@
 // ─── /handoff Command (Pi) ───────────────────────────────────────────────────
 // Generates a handoff prompt for the user to copy into a new session.
 
-import { buildHandoffInstructions } from "../lib/handoff-instructions.js";
+import { buildHandoffInstructions } from "../../src/lib/handoff-instructions.js";
 
 export function createHandoffCommand(_deps: { directory: string }) {
 	return {

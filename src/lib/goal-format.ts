@@ -1,6 +1,6 @@
 // ─── Shared goal formatting content ──────────────────────────────────────────
 // Used by both src/commands/goal.ts (returns string) and
-// src/pi-commands/goal.ts (emits via ctx.ui.notify).
+// pi/pi-commands/goal.ts (emits via ctx.ui.notify).
 
 import type { Goal } from "./goal.js";
 

@@ -18,6 +18,6 @@
     },
     "baseUrl": "."
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "pi/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -6,7 +6,7 @@ This package supports **Claude Code**, **OpenCode**, **Pi**, and **Kimi Code CLI
 
 - Claude Code entry: `.claude-plugin/plugin.json`
 - OpenCode entry: `.opencode/plugins/groundwork.js`
-- Pi entry: `src/pi.ts`
+- Pi entry: `pi/pi.ts`
 - Kimi entry: `.kimi-plugin/plugin.json` (skill manifest)
 - Kimi installer: `scripts/install-kimi.sh`
 - Shared logic: `src/lib/`
@@ -58,7 +58,7 @@ The registry also carries:
 ### Runtime
 
 - **Claude Code** (`.claude-plugin/plugin.json`): auto-discovers agents from the generated `agents/` directory. No manifest `agents` key — adding one breaks the plugin (see WARNING above).
-- **Pi** (`src/pi.ts`): points pi-subagents at the generated `agents-pi/` directory via `PI_SUBAGENTS_EXTRA_AGENTS_DIR`. No runtime preprocessing — the directory is already platform-correct.
+- **Pi** (`pi/pi.ts`): points pi-subagents at the generated `agents-pi/` directory via `PI_SUBAGENTS_EXTRA_AGENTS_DIR`. No runtime preprocessing — the directory is already platform-correct.
 - **OpenCode** (`.opencode/plugins/groundwork.js`): reads from the generated `agents-opencode/` directory.
 
 ### Kimi
@@ -120,7 +120,7 @@ Edit **`agents-src/*.md`** instead. The generator overwrites all three `agents*/
 | Canonical source | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` |
 | Model assignment | `model-registry.json` → `agents.*.claude-code` (`claude-sonnet-4-6` for Sonnet tier; `opus`/`haiku` aliases for those tiers) | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` | model-neutral; no registry injection |
 | Generated dir | `agents/` | `agents-pi/` | `agents-opencode/` | — |
-| Runtime entry | `.claude-plugin/plugin.json` | `src/pi.ts` | `.opencode/plugins/groundwork.js` | `.kimi-plugin/plugin.json` |
+| Runtime entry | `.claude-plugin/plugin.json` | `pi/pi.ts` | `.opencode/plugins/groundwork.js` | `.kimi-plugin/plugin.json` |
 | Aliases applied | yes (currently none) | no | yes (currently none) | no |
 | Install step | — | — | — | `pnpm run install:kimi` |
 

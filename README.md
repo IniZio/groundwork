@@ -41,7 +41,7 @@ Groundwork ships a `.claude-plugin/plugin.json` manifest (skills, agents, and th
 
 ### omp (Oh My Pi)
 
-omp recognizes the `pi.extensions` manifest in `package.json` and loads `src/pi.ts`, which injects the orchestrator identity at session start. Link a local checkout (symlink, live-updates) or install a copy:
+omp recognizes the `pi.extensions` manifest in `package.json` and loads `pi/pi.ts`, which injects the orchestrator identity at session start. Link a local checkout (symlink, live-updates) or install a copy:
 
 ```bash
 omp plugin link ./path/to/groundwork      # dev: symlink, tracks source
@@ -117,7 +117,7 @@ pnpm run check   # typecheck
 ## Architecture
 
 - `src/` — TypeScript source
-- `src/pi.ts` — Pi extension entry point
+- `pi/pi.ts` — Pi extension entry point
 - `.opencode/plugins/groundwork.js` — OpenCode plugin entry point
 - `.pi/skills/` — Pi skill definitions
 - `.pi/agents/` — Agent definitions (auto-installed on session start)

@@ -6,7 +6,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
@@ -20,13 +20,14 @@ interface AgentSource {
 	body: string;
 }
 
-interface PlatformModelEntry {
+export interface PlatformModelEntry {
 	pi?: string;
 	opencode?: string;
+	codex?: string;
 	[key: string]: string | undefined;
 }
 
-interface ModelRegistry {
+export interface ModelRegistry {
 	agents: Record<string, PlatformModelEntry>;
 	disabled?: Record<string, string[] | undefined>;
 	aliases?: Record<string, Record<string, string> | undefined>;
@@ -55,8 +56,17 @@ const sourceAgentsDir = join(rootDir, "agents-src");
 const registryPath = join(rootDir, "model-registry.json");
 const packageJsonPath = join(rootDir, "package.json");
 const generatedTsPath = join(rootDir, "src", "lib", "agent-definitions.generated.ts");
+const codexSkillsSourceDir = join(rootDir, "skills", "groundwork");
+const codexSkillsDir = join(rootDir, "skills");
 
 const shouldCheck = process.argv.includes("--check");
+const shouldPrintCodexModelGuidance = process.argv.includes("--print-codex-model-guidance");
+
+// Codex consumes skills rather than agent-definition files. These mappings are
+// deterministic model guidance for Codex-capable specialists and must not be
+// added to PLATFORMS: doing so would incorrectly emit an agents-codex/ tree.
+const CODEX_MODEL_GUIDANCE_ROLES = ["explore", "general-purpose"] as const;
+const CODEX_MODEL_GUIDANCE_PATH = join("use-groundwork", "reference", "agent-selection.md");
 
 // Frontmatter fields that belong ONLY to the pi/opencode platforms — NOT Claude Code.
 // The model-neutral source (agents-src/*.md) carries only name, description, and
@@ -181,6 +191,40 @@ function validateRegistry(sources: Map<string, AgentSource>, registry: ModelRegi
 			throw new Error(`Registry agent "${name}" has no source file in agents-src/`);
 		}
 	}
+
+	for (const name of CODEX_MODEL_GUIDANCE_ROLES) {
+		const model = registry.agents[name]?.codex;
+		if (typeof model !== "string" || model.length === 0) {
+			throw new Error(`Registry missing codex model for routing role "${name}"`);
+		}
+	}
+}
+
+export function renderCodexModelGuidance(registry: ModelRegistry): string {
+	const rows = CODEX_MODEL_GUIDANCE_ROLES.map(
+		(name) => `| ${name} | ${registry.agents[name].codex} |`,
+	);
+	return [
+		"<!-- CODEX-MODEL-ROUTING:BEGIN -->",
+		"## Codex model routing",
+		"",
+		"Use these registry-backed assignments when Codex exposes model-selectable delegation.",
+		"",
+		"| Agent | Model |",
+		"| --- | --- |",
+		...rows,
+		"<!-- CODEX-MODEL-ROUTING:END -->",
+		"",
+	].join("\n");
+}
+
+export function applyCodexModelGuidance(
+	relativePath: string,
+	content: string,
+	registry: ModelRegistry,
+): string {
+	if (relativePath !== CODEX_MODEL_GUIDANCE_PATH) return content;
+	return `${content.trimEnd()}\n\n${renderCodexModelGuidance(registry)}`;
 }
 
 // ─── Per-platform transformation ─────────────────────────────────────────────
@@ -404,6 +448,118 @@ function writeDir(dir: string, expected: Map<string, string>): { written: number
 	return { written: expected.size, removed };
 }
 
+// Codex requires each skill to be a direct child of the plugin's `skills/`
+// directory. The shared Kimi tree keeps the same skills under
+// `skills/groundwork/`, so materialize direct Codex-facing copies from that
+// source alongside the canonical nested tree.
+/**
+ * Resolve a Codex overlay path for a given skill file.
+ *
+ * Codex skill files are emitted as flattened copies under `skills/`. To keep
+ * Claude/Kimi/OpenCode source behavior untouched while producing honest Codex
+ * output, a skill may carry a `.codex-overlays/` directory that mirrors its own
+ * subtree: any file present there overrides the canonical source for the Codex
+ * projection only. Claude/Kimi/OpenCode never read `.codex-overlays/`.
+ *
+ * `relativePath` is relative to `codexSkillsSourceDir` (e.g.
+ * "use-groundwork/SKILL.md"); the first segment is the skill name. Returns an
+ * empty string when no skill-dir prefix exists (no overlay possible).
+ */
+function codexOverlayPath(relativePath: string): string {
+	const posix = relativePath.split(sep).join("/");
+	const slashIdx = posix.indexOf("/");
+	if (slashIdx === -1) return "";
+	const skillDir = posix.slice(0, slashIdx);
+	const rest = posix.slice(slashIdx + 1);
+	return join(codexSkillsSourceDir, skillDir, ".codex-overlays", ...rest.split("/"));
+}
+
+function codexSkillFiles(registry: ModelRegistry): Map<string, string> {
+	const files = new Map<string, string>();
+	function normalizeSkill(source: string, fileName: string): string {
+		if (!source.startsWith("---\n")) throw new Error(`${fileName}: skill must start with YAML frontmatter`);
+		const end = source.indexOf("\n---", 4);
+		if (end === -1) throw new Error(`${fileName}: skill frontmatter is not closed`);
+		const rawFrontmatter = source.slice(4, end).replace(
+			/^description:\s*(.+)$/m,
+			(_match, value: string) => `description: ${JSON.stringify(value)}`,
+		);
+		const frontmatter = yaml.load(rawFrontmatter);
+		if (!frontmatter || typeof frontmatter !== "object" || Array.isArray(frontmatter)) {
+			throw new Error(`${fileName}: skill frontmatter must be an object`);
+		}
+		const normalized = { ...(frontmatter as Frontmatter) };
+		if (normalized["disable-model-invocation"] === true) normalized["disable-model-invocation"] = false;
+		return `---\n${stringifyFrontmatter(normalized)}\n---${source.slice(end + 4)}`;
+	}
+	function visit(sourceDir: string, relativeDir: string): void {
+		for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+			const sourcePath = join(sourceDir, entry.name);
+			const relativePath = join(relativeDir, entry.name);
+			if (entry.isDirectory()) {
+				// Overlay dir is a Codex-projection source, not a generated skill tree node.
+				if (entry.name === ".codex-overlays") continue;
+				visit(sourcePath, relativePath);
+				continue;
+			}
+			if (!entry.isFile()) continue;
+			// Overlay-first: a `.codex-overlays/` mirror file (if present) overrides the
+			// canonical source for the Codex projection only.
+			const overlayPath = codexOverlayPath(relativePath);
+			const raw = existsSync(overlayPath)
+				? readFileSync(overlayPath, "utf8")
+				: readFileSync(sourcePath, "utf8");
+			const normalized = entry.name === "SKILL.md" ? normalizeSkill(raw, relativePath) : raw;
+			files.set(relativePath, applyCodexModelGuidance(relativePath, normalized, registry));
+		}
+	}
+	for (const entry of readdirSync(codexSkillsSourceDir, { withFileTypes: true })) {
+		if (entry.isDirectory()) visit(join(codexSkillsSourceDir, entry.name), entry.name);
+	}
+	return files;
+}
+
+function listRelativeFiles(dir: string): string[] {
+	if (!existsSync(dir)) return [];
+	const files: string[] = [];
+	function visit(currentDir: string, relativeDir: string): void {
+		for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+			const currentPath = join(currentDir, entry.name);
+			const relativePath = join(relativeDir, entry.name);
+			if (entry.isDirectory()) visit(currentPath, relativePath);
+			else if (entry.isFile()) files.push(relativePath);
+		}
+	}
+	visit(dir, "");
+	return files;
+}
+
+function diffCodexSkills(expected: Map<string, string>): string[] {
+	const problems: string[] = [];
+	const existing = new Set(listRelativeFiles(codexSkillsDir).filter((path) => !path.startsWith("groundwork/")));
+	for (const [relativePath, content] of expected) {
+		const filePath = join(codexSkillsDir, relativePath);
+		if (!existsSync(filePath)) problems.push(`${relativePath} (missing)`);
+		else if (readFileSync(filePath, "utf8") !== content) problems.push(`${relativePath} (stale)`);
+	}
+	for (const relativePath of existing) {
+		if (!expected.has(relativePath)) problems.push(`${relativePath} (extraneous)`);
+	}
+	return problems;
+}
+
+function writeCodexSkills(expected: Map<string, string>): void {
+	const existing = listRelativeFiles(codexSkillsDir).filter((path) => !path.startsWith("groundwork/"));
+	for (const [relativePath, content] of expected) {
+		const filePath = join(codexSkillsDir, relativePath);
+		mkdirSync(dirname(filePath), { recursive: true });
+		writeFileSync(filePath, content);
+	}
+	for (const relativePath of existing) {
+		if (!expected.has(relativePath)) rmSync(join(codexSkillsDir, relativePath));
+	}
+}
+
 // ─── Embedded TS rendering ───────────────────────────────────────────────────
 
 function escapeTemplateLiteral(text: string): string {
@@ -521,7 +677,20 @@ function main(): void {
 	const sources = loadAgentSources();
 	validateRegistry(sources, registry);
 
+	if (shouldPrintCodexModelGuidance) {
+		process.stdout.write(renderCodexModelGuidance(registry));
+		return;
+	}
+
 	const drift: string[] = [];
+	const expectedCodexSkills = codexSkillFiles(registry);
+	if (shouldCheck) {
+		const problems = diffCodexSkills(expectedCodexSkills);
+		if (problems.length > 0) drift.push(`codex/skills/: ${problems.join(", ")}`);
+	} else {
+		writeCodexSkills(expectedCodexSkills);
+		console.log(`skills/: synchronized ${expectedCodexSkills.size} Codex skill files`);
+	}
 
 	for (const platform of PLATFORMS) {
 		// claude-code output goes to agents/ (what Claude Code reads directly).
@@ -597,4 +766,6 @@ function main(): void {
 	);
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+	main();
+}

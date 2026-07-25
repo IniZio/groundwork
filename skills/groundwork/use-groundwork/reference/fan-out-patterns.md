@@ -1,5 +1,13 @@
 # Fan-Out Patterns Reference
 
+## Codex Scope
+
+The examples below describe hosts with native multi-agent dispatch. In Codex,
+use the same slice and wave structure as a planning aid, then execute locally
+or through a host-provided delegation surface. Do not treat the example
+dispatch syntax, background notifications, or user-question calls as Codex
+capabilities. Keep the reminder to one or two lines after the initial load.
+
 ## Fan-Out Maximization
 
 Fan-out targets by specialist type (mix freely in the same wave):

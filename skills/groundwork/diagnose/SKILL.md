@@ -5,6 +5,13 @@ description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reprod
 
 # Diagnose
 
+## Platform contract
+
+The diagnosis loop is shared. Ledger commands, delegation, and completion gates
+depend on the host. In Codex, use only native tools documented in the current
+session; otherwise track diagnosis state in the plan or handoff artifact and
+label delegation, ledger state, and advisor review as advisory.
+
 ## Core Principle
 
 **A disciplined loop, not guesswork.** The feedback loop IS the skill — everything else is mechanical. Without a fast, deterministic pass/fail signal, no amount of code reading will help.
@@ -27,7 +34,7 @@ This skill **replaces** `create-prd` and `implement` for bugs. Bugs go through: 
 
 **"This is the skill. Everything else is mechanical."**
 
-**Seed the ledger.** Before building the loop, the orchestrator creates a tracked item so the Stop-gate covers this diagnosis: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` for a fresh run (use `ledger add --kind diagnose <slug>` if a run already exists). Full CLI reference: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs help`.
+**Seed tracking when supported.** Before building the loop, create a tracked diagnosis item through the host's documented ledger interface. If Codex has no such interface, record the item in the plan or handoff artifact; no Stop-gate enforcement should be assumed.
 
 Construct a fast, deterministic, agent-runnable pass/fail signal. Without one, stop and ask for help.
 
@@ -67,13 +74,7 @@ Each hypothesis must be **falsifiable**: "If <X> is the cause, then <changing Y>
 
 **Show the ranked list to the user before testing.** User often has domain knowledge to re-rank instantly.
 
-**Parallel hypothesis testing:** Launch the top 2-3 hypotheses as **parallel exploration tasks** when they probe different parts of the system:
-```
-# Good: parallel probes of independent hypotheses
-# Both orchestrator and general-purpose can delegate to explore
-task(description="Test hypothesis A: auth middleware", prompt="Check if the auth middleware strips the X-Token header when...", subagent_type="explore")
-task(description="Test hypothesis B: race condition in cache", prompt="Check if the cache invalidation runs before the response...", subagent_type="explore")
-```
+**Parallel hypothesis testing:** Launch independent probes in parallel only via the host's documented native delegation surface. In Codex, if no such surface is available, test them sequentially and note the fallback.
 **Only parallelize when hypotheses are independent.** If Hypothesis B depends on Hypothesis A being wrong, test A first.
 
 ### Phase 4 — Instrument
@@ -102,13 +103,9 @@ If no correct seam exists, that itself is the finding — flag for architecture 
 # But you CAN parallelize: fix implementation + feedback loop verification
 ```
 
-**For orchestrator:** Delegate the fix to a `general-purpose` agent and verification to `explore`:
-```
-task(description="Write regression test + apply fix", prompt="...", subagent_type="general-purpose")
-task(description="Verify feedback loop passes after fix", prompt="...", subagent_type="explore")  # runs after fix task
-```
+**For orchestrator:** Delegate the fix and verification using the host's documented agent interface. If unavailable in Codex, perform the bounded fix and verification in sequence.
 
-**For general-purpose:** Implement the fix and regression test yourself. You can delegate codebase verification to `explore` via `task(subagent_type="explore", ...)`.
+**For general-purpose:** Implement the fix and regression test yourself. Use a native verification delegate only when the host documents one.
 
 **Sequence:**
 1. Minimise reproduction → write failing test → watch it fail
@@ -130,7 +127,7 @@ If answer involves architectural change (no good test seam, tangled callers, hid
 
 If the post-mortem surfaced a **reusable lesson** — a recurring gotcha, a class of root cause, or something that would have prevented this bug if it had been written down — invoke `/retrospective` to codify it durably into the Learnings KB rather than letting it evaporate in the transcript.
 
-**Close the ledger item.** Mark the diagnose entry complete: `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <slug> --token <write_token>`. Any fix work becomes its own `impl` slice(s) in the same ledger run — bridging diagnosis directly into tracked implementation.
+**Close tracking when supported.** Mark the diagnosis entry complete through the host's documented ledger interface. Otherwise record completion in the plan or handoff artifact. Any fix work should remain a separately identified impl slice.
 
 ## Abbreviated Mode
 

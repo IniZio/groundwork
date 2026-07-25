@@ -1,5 +1,12 @@
 # Agent Selection & Model Configuration Reference
 
+## Codex Scope
+
+The roster and model table are shared planning metadata. Codex model guidance
+comes from the registry, but specialist names are not automatically callable
+agents. Use a host-provided delegation surface when available; otherwise keep
+the role boundaries in the plan and execute locally.
+
 ## Agent Roster
 
 | Agent | Best for |

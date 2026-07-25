@@ -1,6 +1,6 @@
 ---
 name: session-continue
-description: When context is getting long or a fresh session is needed, present the user with a choice between same-session continuation (summary + continue) or /handoff to create a new session. Never silently drop context.
+description: When context is getting long or a fresh session is needed, summarize explicitly or write a continuation artifact. Never silently drop context.
 ---
 
 # Session Continue
@@ -16,11 +16,11 @@ Invoke when ANY of these are true:
 
 ## Core Rule
 
-Never silently start fresh or drop context. Always make the transition explicit and user-approved.
+Never silently start fresh or drop context. Keep the current session when practical; otherwise write a file-only handoff and tell the user where it is.
 
-## Two Options (Present via `question` tool)
+## Two Options
 
-### Option 1: Same-Session Summary
+### Option 1: Summary and continue
 
 Stay in this session. Compress the key context into a summary, prepend it as a system message, and continue.
 
@@ -33,34 +33,33 @@ Good for: short remaining work, user wants continuity, context is dense but mana
    - Current state of work (what's done, what's next)
    - Active files/paths
    - Any open questions
-2. Continue the conversation with this summary visible
+2. Continue the conversation with the summary visible to the user
 
-### Option 2: `/handoff`
+### Option 2: File-only handoff
 
-Use the built-in `/handoff` command (provided by the groundwork plugin) to create a new session with the current context as an editable draft.
+Use the `handoff` skill to write a concise Markdown continuation artifact.
 
 Good for: long remaining work, context overload, starting a new major feature, user preference.
 
 **How to execute:**
-1. Tell the user: "I'll create a handoff prompt. You can edit it before sending."
-2. The user types `/handoff <brief description of what to continue>` in the TUI
-3. The AI generates a handoff summary, calls `handoff_session` to open a new session
-4. The new session auto-loads file references and can use `read_session` for the full transcript
+1. Tell the user that a continuation artifact will be created.
+2. Include the goal, current state, decisions, files, next steps, and active run state.
+3. Give the user the exact file path; do not claim that a new session was opened.
 
 ## Presentation Template
 
-Use `question` tool:
+Use a concise user-facing question or message when a choice is needed:
 
 ```
 "Context is getting long. How would you like to continue?"
 
 Options:
 - "Summary + continue here" — compress context and keep going in this session
-- "/handoff to new session" — create a new session with full context as editable draft
+- "Write a handoff file" — save a continuation artifact for a later session
 ```
 
 ## Never Do
 
 - Do not start a new topic and hope the user doesn't notice context was lost
-- Do not invoke `/handoff` without user choosing it
+- Do not write a handoff file unless the user chooses it or a fresh-session transition is necessary
 - Do not drop file paths, decisions, or open questions from the summary

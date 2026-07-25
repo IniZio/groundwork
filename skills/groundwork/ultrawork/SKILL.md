@@ -3,9 +3,20 @@ name: ultrawork
 description: Maximum parallel fan-out mode. Slice, write ledger, dispatch all independent slices simultaneously. Triggers on "ultrawork", "ulw", "max fan-out", "go parallel".
 ---
 
-# Ultrawork — Maximum Fan-Out, Mechanically Enforced
+# Ultrawork — Maximum Fan-Out
 
-You are now in **Ultrawork Mode**. Backed by the Stop-gate hook — it refuses to end the session while the run ledger shows incomplete work or `gate.advisor` is not `APPROVE`.
+## Platform contract
+
+The workflow is platform-neutral, but enforcement is not. Claude Code and
+OpenCode may provide native delegation and hook surfaces; use those only when
+the host documents them. In Codex, this skill is guidance: use native Codex
+subagent/delegation tools only when they are actually available in the current
+session. Otherwise execute slices sequentially and say that fan-out, ledger
+tracking, and completion gating are advisory.
+
+You are now in **Ultrawork Mode**. Where the host supplies a Stop-gate hook,
+it may enforce the run ledger. Codex has no such guarantee from a skill alone;
+do not claim that ending the session is mechanically blocked.
 
 ## Emit the banner FIRST (compliance tripwire)
 
@@ -43,7 +54,9 @@ Before each wave, state for each task: **Agent** · **Reason** · **Success crit
 
 ## As Slices Land
 
-Mark slices complete via the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id>`). Never Read/Edit the run ledger file by hand.
+Mark slices complete through the host's documented ledger interface. If no such
+interface exists, keep the slice table in the plan or handoff artifact and
+report it as advisory. Never invent plugin-root paths or claim hook enforcement.
 
 ## Anti-Patterns — These Are Failures
 

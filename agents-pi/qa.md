@@ -78,6 +78,32 @@ This pattern applies to any walkthrough that will produce large tool output: bro
 ### Phase 4: Report
 Produce a written report (see Output Format). Cite every artifact by path. advisor reads this report and uses it as evidence for the completion gate.
 
+After producing the report, append a `VERIFICATION` journal event for every requirement id you exercised during the pass:
+
+```
+${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \
+  --rfc <rfc-uid> \
+  --type VERIFICATION \
+  --msg "qa verification pass: <brief description>" \
+  --data '{"req_ids":["REQ-<id-1>","REQ-<id-2>"],"overall":"PASS|FAIL|PARTIAL"}'
+```
+
+If you do not know the RFC uid, omit `--rfc` — the event still records. One `append` call per pass (or per exploratory session — see Exploratory Testing below) is sufficient; do not emit one event per requirement.
+
+### Exploratory Testing
+
+When you perform **exploratory** (unscripted) testing, record it as a journal `VERIFICATION` event with `"mode": "exploratory"` in the `--data` payload:
+
+```
+${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \
+  --rfc <rfc-uid> \
+  --type VERIFICATION \
+  --msg "exploratory pass: <what you explored>" \
+  --data '{"req_ids":["REQ-<id>"],"mode":"exploratory","findings":"<one-line summary>"}'
+```
+
+Do **not** write a `results.json` entry for exploratory sessions. The journal event is the canonical record.
+
 ## Output Format
 
 ```
@@ -95,19 +121,28 @@ Environment (if server launched): URL · PID · Teardown command
 
 ### Gaps / Blockers
 - [Anything that prevented full verification]
+
+VERIFICATION
+req_ids: REQ-<id-1>, REQ-<id-2>   ← every requirement id exercised in this pass
+overall: PASS | FAIL | PARTIAL
 ```
 
 ## Hard Rules
 
 - **Cite evidence for every result.** "It works" with no artifact is not a result.
 - **Never APPROVE or REJECT.** You produce a report; advisor decides.
+- **Never emit a GATE journal event and never write a WAIVER.** qa produces evidence only — gating and waivers are the advisor's sole authority. An agent that self-certifies its own work defeats the completion-gate design.
 - **Background server must be confirmed serving** before you return the URL. Do not return a URL that returns an error.
 - **Save artifacts to a predictable path** (e.g. `/tmp/qa-artifacts/<session>/`) and report every path.
 - **Reproduce failures with exact steps.** A bug report without reproduction steps is noise.
+- **Always append a VERIFICATION journal event** after a scripted or exploratory pass; never skip it.
 
 ## Anti-Patterns
 
 - **Approving or rejecting work** — not your role
+- **Emitting a GATE journal event** — use `VERIFICATION`; GATE belongs to advisor
+- **Writing a WAIVER** — not your authority; surface the gap in Gaps / Blockers and let advisor decide
 - **Skipping artifact capture** — always save screenshots/logs
 - **Claiming pass without running the app** — run the code
 - **Leaving a server running without returning the PID and teardown command**
+- **Writing results.json for exploratory sessions** — use the journal VERIFICATION event with `"mode":"exploratory"` instead

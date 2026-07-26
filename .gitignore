@@ -25,3 +25,5 @@ tmp/
 /groundwork/
 .opencode/background-tasks/
 .vscode/
+# Added by code-review-graph
+.code-review-graph/

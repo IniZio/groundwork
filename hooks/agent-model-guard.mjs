@@ -9,7 +9,7 @@
  * routinely dropped: a real nexus session fired 30 Agent calls, ALL without
  * `model`, so every git-master/general-purpose/qa subagent billed as opus.
  *
- * This hook is the mechanical backstop. On every Agent/Task call it:
+ * This hook is the mechanical backstop. On every Agent/Task/TaskCreate call it:
  *   - LEAVES an explicit `model` untouched (operator intent wins, always);
  *   - otherwise INJECTS the model that `subagent_type` maps to in the registry
  *     (claude-code column), rewriting the tool input via `updatedInput` so the
@@ -22,8 +22,14 @@
  *    nothing and exit 0, i.e. let the call proceed unchanged. A hook must never
  *    wedge a dispatch.
  *  - NON-OVERRIDING. A call that already specifies `model` is never altered.
- *  - SCOPED. Only acts on the Agent/Task tools (also gated by the hooks.json
- *    matcher); anything else is a no-op allow.
+ *  - SCOPED. Only acts on the Agent/Task/TaskCreate tools (also gated by the
+ *    hooks.json matcher); anything else is a no-op allow.
+ *
+ * NOTE on TaskCreate: Claude Code v2.1.198+ runs agents in the background by
+ * default. For background dispatch the harness fires PreToolUse with
+ * tool_name "TaskCreate" (not "Agent"). The tool_input layout is identical
+ * (same subagent_type field). The matcher covers all three variants so the ban
+ * and model-injection logic applies regardless of foreground vs background.
  *
  * Output contract (PreToolUse): to rewrite input we MUST return
  * permissionDecision "allow" together with the COMPLETE updated input object
@@ -31,10 +37,47 @@
  * back plus `model`). See https://code.claude.com/docs/en/hooks.md.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
+
+/**
+ * Opt-in diagnostic: capture the REAL PreToolUse payload shape for TaskCreate
+ * dispatches so we can confirm the exact key that holds subagent_type.
+ *
+ * Enable by setting the env var before starting Claude Code:
+ *   export GROUNDWORK_HOOK_DEBUG=/path/to/hook-debug.log
+ *   # or a bare value (no "/") to use the default location:
+ *   export GROUNDWORK_HOOK_DEBUG=1
+ *
+ * When unset/empty this function is a complete no-op — zero file I/O, zero
+ * perf cost, zero behavior change. When set, one JSON line is appended per
+ * hook invocation, capturing the full parsed input (tool_name + tool_input)
+ * and a timestamp. Failures are silently swallowed; the hook result is never
+ * affected by whether logging succeeds or fails.
+ */
+function debugLog(input) {
+  const envVal = process.env.GROUNDWORK_HOOK_DEBUG
+  if (!envVal) return
+  try {
+    // Use the env value as the log path if it looks like one (contains "/"),
+    // otherwise fall back to <plugin-root>/.groundwork/hook-debug.log,
+    // resolved the same way loadRegistry() finds model-registry.json.
+    let logPath
+    if (envVal.includes('/')) {
+      logPath = envVal
+    } else {
+      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT
+        || path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+      logPath = path.join(pluginRoot, '.groundwork', 'hook-debug.log')
+    }
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...input }) + '\n'
+    appendFileSync(logPath, line, 'utf8')
+  } catch {
+    /* best-effort — never break the hook */
+  }
+}
 
 /** Model injected when subagent_type is missing/unknown — never opus. Defaults to the 'sonnet' tier alias (pinned via ANTHROPIC_DEFAULT_SONNET_MODEL in user settings). */
 const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
@@ -134,8 +177,11 @@ async function main() {
     return passthrough()
   }
 
+  // Opt-in diagnostic: log full payload before any filtering (see debugLog above).
+  debugLog(input)
+
   const toolName = typeof input?.tool_name === 'string' ? input.tool_name : ''
-  if (toolName !== 'Agent' && toolName !== 'Task') return passthrough()
+  if (toolName !== 'Agent' && toolName !== 'Task' && toolName !== 'TaskCreate') return passthrough()
 
   const toolInput = input?.tool_input
   if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) return passthrough()

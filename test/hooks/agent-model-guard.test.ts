@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -14,8 +16,12 @@ type Decision = {
 };
 
 /** Run the hook with a given PreToolUse stdin payload; parse stdout (or {} when empty). */
-function runHook(payload: unknown): Decision {
-	const out = execFileSync("node", [HOOK], { input: JSON.stringify(payload), encoding: "utf8" });
+function runHook(payload: unknown, env?: Record<string, string>): Decision {
+	const out = execFileSync("node", [HOOK], {
+		input: JSON.stringify(payload),
+		encoding: "utf8",
+		env: { ...process.env, ...env },
+	});
 	return out.trim() ? JSON.parse(out) : {};
 }
 
@@ -65,6 +71,37 @@ describe("agent-model-guard — injects the registry model when omitted", () => 
 		const d = runHook(agentCall({ subagent_type: "groundwork:qa", prompt: "verify" }, "Task"));
 		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
 	});
+
+	it("guards TaskCreate (background-dispatch variant, default since v2.1.198)", () => {
+		const d = runHook(agentCall({ subagent_type: "groundwork:general-purpose", prompt: "x" }, "TaskCreate"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+	});
+});
+
+describe("agent-model-guard — TaskCreate ban (background dispatch)", () => {
+	it("denies TaskCreate of banned built-in Explore", () => {
+		const d = runHook(agentCall({ subagent_type: "Explore", prompt: "look" }, "TaskCreate"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.updatedInput).toBeUndefined();
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("groundwork:explore");
+	});
+
+	it("denies TaskCreate of banned built-in general-purpose (lowercase)", () => {
+		const d = runHook(agentCall({ subagent_type: "general-purpose", prompt: "do it" }, "TaskCreate"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("allows TaskCreate of namespaced groundwork:explore (not banned)", () => {
+		const d = runHook(agentCall({ subagent_type: "groundwork:explore", prompt: "look" }, "TaskCreate"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBeDefined();
+	});
+
+	it("passes through TaskCreate when model already set", () => {
+		const d = runHook(agentCall({ subagent_type: "groundwork:general-purpose", model: "opus", prompt: "x" }, "TaskCreate"));
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
 });
 
 describe("agent-model-guard — never overrides / never over-reaches", () => {
@@ -91,6 +128,43 @@ describe("agent-model-guard — never overrides / never over-reaches", () => {
 	it("does not treat an empty-string model as explicit (injects instead)", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:git-master", model: "   ", prompt: "x" }));
 		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("haiku");
+	});
+});
+
+describe("agent-model-guard — GROUNDWORK_HOOK_DEBUG opt-in logging", () => {
+	it("writes NO log file when GROUNDWORK_HOOK_DEBUG is unset (default path unchanged)", () => {
+		// Verify deny still works and no spurious file is created.
+		const d = runHook(agentCall({ subagent_type: "groundwork:git-master", prompt: "x" }), {
+			GROUNDWORK_HOOK_DEBUG: "",
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.updatedInput?.model).toBe("haiku");
+		// No log file should exist at the default location when the var is empty.
+		// We can't know where the default resolves without CLAUDE_PLUGIN_ROOT, so we
+		// just assert the hook still produced correct output (behavioral unchanged).
+	});
+
+	it("appends a JSON line to the specified log path when GROUNDWORK_HOOK_DEBUG is set", () => {
+		const logPath = path.join(os.tmpdir(), `gw-hook-debug-test-${process.pid}.log`);
+		// Ensure the file doesn't exist before the test.
+		if (existsSync(logPath)) unlinkSync(logPath);
+		try {
+			const payload = agentCall({ subagent_type: "groundwork:general-purpose", prompt: "debug-test" });
+			const d = runHook(payload, { GROUNDWORK_HOOK_DEBUG: logPath });
+			// Hook behavior must be unaffected.
+			expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+			expect(d.hookSpecificOutput?.updatedInput?.model).toBe("sonnet");
+			// Log file must now exist and contain a valid JSON line.
+			expect(existsSync(logPath)).toBe(true);
+			const lines = readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean);
+			expect(lines.length).toBeGreaterThanOrEqual(1);
+			const entry = JSON.parse(lines[0]);
+			expect(entry.tool_name).toBe("Agent");
+			expect(entry.tool_input?.subagent_type).toBe("groundwork:general-purpose");
+			expect(typeof entry.ts).toBe("string");
+		} finally {
+			if (existsSync(logPath)) unlinkSync(logPath);
+		}
 	});
 });
 

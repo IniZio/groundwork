@@ -50,6 +50,16 @@
             "async": false
           }
         ]
+      },
+      {
+        "matcher": "Read|Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/doc-read-guard.mjs",
+            "async": false
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -83,6 +93,16 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/struggle-detector.mjs",
+            "async": false
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/doc-size-guard.mjs",
             "async": false
           }
         ]

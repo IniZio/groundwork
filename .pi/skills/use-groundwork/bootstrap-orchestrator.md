@@ -14,7 +14,7 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 1. **Am I about to write or edit code?** → STOP. Use `subagent` tool with `agent: "general-purpose"`. NEVER use `edit` or `write` yourself.
 2. **Am I about to run a shell command to explore files?** → STOP. Use `subagent` tool with `agent: "explore"`. NEVER use `bash` to grep/read/glob yourself.
 3. **Am I about to debug or reproduce a bug?** → STOP. Load `diagnose` skill first, then delegate to `general-purpose` subagents.
-4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first (synthesize a plan, deferring to project planning conventions), then `vertical-slice` (writes the `.groundwork/run.json` ledger), then fan out general-purpose agents.
+4. **Am I working on a feature (>1 day)?** → STOP. Load `interview` skill first (synthesize a plan, deferring to project planning conventions), then `vertical-slice` (writes the `.groundwork/runs/<session_id>.json` ledger; legacy `.groundwork/run.json` is honored for in-flight runs), then fan out general-purpose agents.
 
 **The ONLY tools you use directly are:**
 
@@ -22,8 +22,22 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 - `read` — to load skill files (e.g., `diagnose`, `interview`, `vertical-slice`)
 - `question` — to ask the user clarifying questions
 - `bash` — ONLY for one-shot status checks and the `ledger` CLI, NEVER for exploration or implementation
+- `edit`/`write` — restricted to the direct-write allowlist below
 
 **If you find yourself using `edit`, `write`, or `bash` for more than 2 commands in a row — YOU ARE DOING IT WRONG. Stop and delegate.**
+
+### Direct-write allowlist (destination-path gated, NOT judgment-gated)
+
+The orchestrator may use Write/Edit directly ONLY for content it already holds verbatim this turn, and ONLY under these destination paths:
+- `.groundwork/**` EXCEPT `.groundwork/runs/**` and legacy `.groundwork/run.json` (ledger CLI only — unchanged)
+- `.groundwork/out-of-scope/**` (closes the existing triage-append gap — see Triage pre-check)
+- Session/project memory files (e.g. `memory/*.md` and its `MEMORY.md` index)
+
+**Verbatim precondition:** if composing the content first requires reading or searching the codebase, that composition is exploration — delegate it. Write only once the content already exists in this turn.
+
+**Hard deny-floor** (never direct Write/Edit here, regardless of the above): anything under `src/`, `test/`, `tests/`; any file matching build/behavior extensions (`.ts .tsx .js .mjs .cjs .json .yaml .yml .toml`, lockfiles, `Dockerfile`/`Containerfile`, CI configs); `package.json`, `tsconfig*`, `.claude/settings*.json`, `.mcp.json`; and the orchestrator-rule files themselves (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) — edits to these still require delegation + the advisor gate.
+
+**Anti-creep tripwire:** if the doc's purpose is to carry a code or config change to be applied elsewhere, this exception does not apply — that's implementation; delegate it. The allowance covers coordination artifacts only, and its safety comes entirely from these paths being unable to affect build, test, or runtime.
 
 ---
 
@@ -31,7 +45,7 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 
 1. **Always use `question` tool** — never end the conversation without a next step.
 2. **Your role is orchestration** — classify, delegate, review. Do NOT write code, explore files, or debug directly.
-3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes `.groundwork/run.json` ledger) → fan out. Never start coding without a plan and a slice ledger.
+3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes `.groundwork/runs/<session_id>.json` ledger; legacy `.groundwork/run.json` is honored for in-flight runs) → fan out. Never start coding without a plan and a slice ledger.
 4. **Steer the plan in place** — small direction changes update the plan in place; pivots get re-interviewed.
 5. **No self-review** — use `advisor` for technical uncertainty, not internal reasoning loops.
 
@@ -51,10 +65,10 @@ When all work is delegated to background tasks, the orchestrator MUST end its tu
 
 ## Stop-Gate / Run Ledger (ENFORCEMENT)
 
-Non-trivial work is tracked in `.groundwork/run.json`. The Stop-gate hook blocks session end when `active: true` and `gate.advisor` is not `APPROVE`.
+Non-trivial work is tracked in the run ledger — a per-session file at `.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` is honored for in-flight runs). The Stop-gate hook blocks session end while any slice is not `complete` or `gate.advisor` is not `APPROVE`.
 
 **Orchestrator obligations:**
-- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing` for trivial tasks).
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing` for trivial tasks).
 - Mark each verified slice `complete` in the ledger as waves land.
 - Record `gate.advisor = "APPROVE"` after the advisor gate approves.
 - To abandon a run, set `"active": false`. Trivial tasks write no ledger.
@@ -73,7 +87,7 @@ Agent roster + model recommendations → `reference/agent-selection.md`
 
 ## Vertical-Slice Gate (ENFORCEMENT)
 
-Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes `.groundwork/run.json`). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
+Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes `.groundwork/runs/<session_id>.json`; legacy `.groundwork/run.json` is honored for in-flight runs). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
 
 ---
 

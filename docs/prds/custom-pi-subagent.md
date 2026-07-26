@@ -1,3 +1,5 @@
+> ⚠️ **OBSOLETE (2026-07-25).** This PRD documents the vanilla-pi custom-subagent feature, which was removed in commit `624ce2d` (`pi/pi-commands/agents.ts` stripped; omp supersedes it via generated `agents-pi/` + `model-registry.json`). The `src/pi.ts` path references below are historical — the pi extension now lives at `pi/pi.ts`. Retained as a historical artifact; do not implement from this spec.
+
 # Custom Pi-Subagent Model Support PRD
 
 **Date:** 2026-06-05  

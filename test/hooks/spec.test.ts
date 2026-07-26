@@ -591,15 +591,45 @@ describe("AC12 — verify field validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC13 — delegation exits 127 when sibling script absent
+// AC13 — delegation: absent script exits 127; present script reaches impl
 // ---------------------------------------------------------------------------
 
 describe("AC13 — delegation of verify/steer/lint/metrics/doc", () => {
-	for (const sub of ["verify", "steer", "lint", "metrics", "doc"]) {
-		it(`spec ${sub} exits 127 with a named message when spec-${sub}.mjs is absent`, () => {
-			const r = run([sub]);
-			expect(r.code).toBe(127);
-			expect(r.stderr).toContain(`spec-${sub}.mjs`);
+	// All subcommands the dispatcher recognises as delegated.
+	const ALL_DELEGATED = ["verify", "steer", "lint", "metrics", "doc"];
+	// Derive the absent set at test-time so adding a new spec-<sub>.mjs
+	// automatically moves it out of this group without a manual edit.
+	const hooksDir = path.resolve(import.meta.dirname, "..", "..", "hooks");
+	const absentSubs = ALL_DELEGATED.filter(
+		(sub) => !existsSync(path.join(hooksDir, `spec-${sub}.mjs`)),
+	);
+
+	describe("absent script → dispatcher exits 127", () => {
+		for (const sub of absentSubs) {
+			it(`spec ${sub} exits 127 with a named message when spec-${sub}.mjs is absent`, () => {
+				const r = run([sub]);
+				expect(r.code).toBe(127);
+				expect(r.stderr).toContain(`spec-${sub}.mjs`);
+			});
+		}
+	});
+
+	// Present scripts: dispatcher must reach the real implementation.
+	// Assertions are specific to each script's documented exit codes so that
+	// a mutation (removing the script) causes a concrete assertion failure.
+	describe("present script → reaches implementation (not 127)", () => {
+		it("spec steer with no args exits 2 (usage error), reaching spec-steer.mjs", () => {
+			const r = run(["steer"]);
+			// exit 2 = usage error from spec-steer.mjs; 127 would mean script absent
+			expect(r.code).toBe(2);
+			expect(r.stdout).toContain("spec steer");
 		});
-	}
+
+		it("spec lint with no args exits 0 (informational scan), reaching spec-lint.mjs", () => {
+			const r = run(["lint"]);
+			// exit 0 = clean informational run from spec-lint.mjs; 127 would mean script absent
+			expect(r.code).toBe(0);
+			expect(r.stdout).toContain("spec lint");
+		});
+	});
 });

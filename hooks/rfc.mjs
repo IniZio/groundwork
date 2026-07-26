@@ -33,7 +33,19 @@ import {
   findRfcByUid,
   readJournalEntries,
   findLedgersForRfc,
+  readTasksSidecar,
+  validateSectionLayout,
+  generateManifestBlock,
+  extractManifestBlock,
+  writeManifest,
 } from './lib/rfc-io.mjs'
+import {
+  checkReviewGate,
+  cmdReviewGenerate,
+  cmdReviewAdd,
+  cmdReviewResolve,
+  cmdReviewParseCriticmarkup,
+} from './rfc-review.mjs'
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -112,16 +124,20 @@ const ALL_STATUSES = new Set(Object.keys(TRANSITIONS))
 function validateFrontmatter(fm) {
   const errors = []
 
+  // Note: 'tasks' is NOT required here — it lives in tasks.yaml sidecar for
+  // multi-file RFCs.  Legacy single-file RFCs (no sections/) may still carry
+  // tasks in frontmatter for backwards compatibility; shape is validated below
+  // when the key is present.
   const required = [
     'schema', 'uid', 'ordinal', 'slug', 'title', 'status', 'classification',
     'created', 'updated', 'accepted_at', 'accepted_by', 'supersedes',
-    'superseded_by', 'body_digest', 'spec_delta', 'tasks',
+    'superseded_by', 'body_digest', 'spec_delta',
   ]
   for (const f of required) {
     if (!(f in fm)) errors.push(`missing required field: ${f}`)
   }
 
-  if (fm.schema !== 1) errors.push(`schema: must be 1 (got ${JSON.stringify(fm.schema)})`)
+  if (fm.schema !== 1 && fm.schema !== 2) errors.push(`schema: must be 1 or 2 (got ${JSON.stringify(fm.schema)})`)
 
   if (typeof fm.uid === 'string' && !/^R-\d{8}-[A-Z0-9]{6}$/.test(fm.uid)) {
     errors.push(`uid: does not match ^R-\\d{8}-[A-Z0-9]{6}$ (got "${fm.uid}")`)
@@ -165,16 +181,21 @@ function validateFrontmatter(fm) {
     }
   }
 
-  if (!Array.isArray(fm.tasks)) {
-    errors.push('tasks: must be an array')
-  } else {
-    for (const t of fm.tasks) {
-      const tid = t.id ?? '?'
-      for (const f of ['id', 'title', 'wave', 'blocked_by', 'files', 'ac']) {
-        if (!(f in t)) errors.push(`tasks[${tid}]: missing field ${f}`)
-      }
-      if (t.conditional === true && !t.trigger) {
-        errors.push(`tasks[${tid}]: conditional:true requires a trigger field`)
+  // tasks[] validation — only when the key is present in frontmatter.
+  // For multi-file RFCs, tasks live in tasks.yaml; for legacy single-file RFCs,
+  // migrate.mjs may still write tasks to frontmatter.
+  if ('tasks' in fm) {
+    if (!Array.isArray(fm.tasks)) {
+      errors.push('tasks: must be an array')
+    } else {
+      for (const t of fm.tasks) {
+        const tid = t.id ?? '?'
+        for (const f of ['id', 'title', 'wave', 'blocked_by', 'files', 'ac']) {
+          if (!(f in t)) errors.push(`tasks[${tid}]: missing field ${f}`)
+        }
+        if (t.conditional === true && !t.trigger) {
+          errors.push(`tasks[${tid}]: conditional:true requires a trigger field`)
+        }
       }
     }
   }
@@ -186,10 +207,33 @@ function validateFrontmatter(fm) {
 // Commands
 // ---------------------------------------------------------------------------
 
+// Section scaffold for rfc new — §§1-12 leaf files under sections/.
+// Heading depth is 2 (##) for all top-level sections per §1.1 rule 5.
+const SCAFFOLD_SECTIONS = [
+  { prefix: '01', slug: 'summary',           heading: '## 1. Summary' },
+  { prefix: '02', slug: 'motivation',         heading: '## 2. Motivation' },
+  { prefix: '03', slug: 'design',             heading: '## 3. Design' },
+  { prefix: '04', slug: 'alternatives',       heading: '## 4. Alternatives' },
+  { prefix: '05', slug: 'security',           heading: '## 5. Security' },
+  { prefix: '06', slug: 'observability',      heading: '## 6. Observability' },
+  { prefix: '07', slug: 'migration',          heading: '## 7. Migration' },
+  { prefix: '08', slug: 'open-questions',     heading: '## 8. Open Questions' },
+  { prefix: '09', slug: 'appendix',           heading: '## 9. Appendix' },
+  { prefix: '10', slug: 'tasks',              heading: '## 10. Tasks' },
+  { prefix: '11', slug: 'conflict-register',  heading: '## 11. Conflict Register' },
+  { prefix: '12', slug: 'resolution',         heading: '## 12. Resolution' },
+]
+
 function cmdNew(args) {
   const { flags, positionals } = parseFlags(args)
   const slug = positionals[0]
   if (!slug) die('usage: rfc new <slug> [--supersedes <uid>]', 2)
+
+  // Unknown flags → error (rfc new was extended; unknown flags must be rejected).
+  const knownFlags = new Set(['supersedes'])
+  for (const key of Object.keys(flags)) {
+    if (!knownFlags.has(key)) die(`rfc new: unknown flag --${key}`, 2)
+  }
 
   const dir = rfcsDir()
   mkdirSync(dir, { recursive: true })
@@ -216,8 +260,9 @@ function cmdNew(args) {
 
   if (existsSync(rfcDir)) die(`RFC directory already exists: ${rfcDir}`)
 
+  // Frontmatter — tasks is NOT included; it lives in tasks.yaml sidecar.
   const frontmatter = {
-    schema: 1,
+    schema: 2,
     uid,
     ordinal,
     slug,
@@ -232,7 +277,6 @@ function cmdNew(args) {
     superseded_by: null,
     body_digest: null,
     spec_delta: [],
-    tasks: [],
   }
 
   // Create directory structure (AC 1)
@@ -240,10 +284,25 @@ function cmdNew(args) {
   mkdirSync(path.join(rfcDir, 'notes'), { recursive: true })
   mkdirSync(path.join(rfcDir, 'reviews'), { recursive: true })
 
-  // Serialize frontmatter using yaml with lineWidth 0 (AC 5)
+  // Create sections/ directory with one leaf file per §§1-12.
+  const sectionsDir = path.join(rfcDir, 'sections')
+  mkdirSync(sectionsDir, { recursive: true })
+  for (const s of SCAFFOLD_SECTIONS) {
+    const filename = `${s.prefix}-${s.slug}.md`
+    writeFileSync(path.join(sectionsDir, filename), `${s.heading}\n\nTODO\n`)
+  }
+
+  // Create tasks.yaml sidecar — empty array for a new RFC.
+  writeFileSync(path.join(rfcDir, 'tasks.yaml'), '[]\n')
+
+  // Write rfc.md: frontmatter + abstract placeholder + manifest placeholder.
+  // Section prose lives entirely in sections/; rfc.md holds only metadata.
   const fmYaml = stringify(frontmatter, { lineWidth: 0 })
-  const body = `\n## 1. Summary\n\nTODO\n\n## 2. Motivation\n\nTODO\n\n## 3. Design\n\nTODO\n\n## 4. Alternatives\n\nTODO\n\n## 5. Security\n\nTODO\n\n## 6. Observability\n\nTODO\n\n## 7. Migration\n\nTODO\n\n## 8. Open Questions\n\nTODO\n\n## 9. Appendix\n\n## 12. Resolution\n\n`
+  const body = `\n> Abstract: TODO\n\n<!-- rfc:manifest:begin — generated by \`rfc index\`; do not hand-edit -->\n<!-- rfc:manifest:end -->\n`
   writeFileSync(path.join(rfcDir, 'rfc.md'), `---\n${fmYaml}---\n${body}`)
+
+  // Generate the manifest immediately so validate exits 0 right after new.
+  writeManifest(rfcDir)
 
   // AC 7: atomically set superseded_by on each target
   for (const { uid: targetUid, dir: targetDir } of supersededDirs) {
@@ -259,6 +318,21 @@ function cmdNew(args) {
   out(`Created ${rfcDir}`)
   out(`  uid: ${uid}`)
   out(`  ordinal: ${ordinal}`)
+}
+
+function cmdIndex(args) {
+  const { positionals } = parseFlags(args)
+  const rfcPath = positionals[0]
+  if (!rfcPath) die('usage: rfc index <dir>', 2)
+
+  const rfcMd = path.join(rfcPath, 'rfc.md')
+  if (!existsSync(rfcMd)) die(`rfc.md not found: ${rfcMd}`)
+
+  const sectionsDir = path.join(rfcPath, 'sections')
+  if (!existsSync(sectionsDir)) die(`sections/ not found: ${sectionsDir}`)
+
+  writeManifest(rfcPath)
+  out('Manifest written.')
 }
 
 function cmdValidate(args) {
@@ -284,13 +358,45 @@ function cmdValidate(args) {
     process.exit(1)
   }
 
-  const { frontmatter, body } = parsed
+  const { frontmatter } = parsed
   const errors = validateFrontmatter(frontmatter)
+
+  // Strict layout validation — keyed on schema version, NOT on filesystem presence.
+  // schema >= 2 → STRICT: sections/ MUST exist, tasks.yaml MUST exist, naming validated.
+  // schema 1 (or absent/null, treated as 1) → legacy/lenient: no layout requirements.
+  // Absent schema: treated as 1 (lenient) so that pre-schema RFCs and migrate.mjs output
+  // (which stamps schema: 1) remain valid without any migration step.
+  const sectionsDir = path.join(rfcPath, 'sections')
+  if ((frontmatter.schema ?? 1) >= 2) {
+    // sections/ MUST exist for a schema-2 RFC — a single-file schema-2 RFC is non-conformant.
+    if (!existsSync(sectionsDir)) {
+      errors.push('layout: sections/ directory is missing (required for schema 2+ RFCs)')
+    }
+    // tasks.yaml MUST exist for schema-2 RFCs.
+    if (!existsSync(path.join(rfcPath, 'tasks.yaml'))) {
+      errors.push('layout: tasks.yaml is missing (required for schema 2+ RFCs)')
+    }
+    // Validate naming and numbering conventions inside sections/ (only if it exists).
+    if (existsSync(sectionsDir)) {
+      const layoutErrors = validateSectionLayout(sectionsDir)
+      errors.push(...layoutErrors)
+    }
+  }
+
+  // Manifest freshness check — schema >= 2 + sections/ must exist (layout error already
+  // reported if missing). A stale manifest fails validate; run `rfc index <dir>` to fix.
+  if ((frontmatter.schema ?? 1) >= 2 && existsSync(sectionsDir)) {
+    const currentBlock = extractManifestBlock(content)
+    const expectedBlock = generateManifestBlock(rfcPath)
+    if (currentBlock !== expectedBlock) {
+      errors.push('manifest: stale — run `rfc index <dir>` to regenerate')
+    }
+  }
 
   // AC 6: body_digest integrity check for review+ statuses
   const frozenStatuses = new Set(['review', 'accepted', 'implementing', 'implemented', 'rejected', 'superseded', 'abandoned'])
   if (frozenStatuses.has(frontmatter.status) && frontmatter.body_digest != null) {
-    const current = computeBodyDigest(frontmatter, body)
+    const current = computeBodyDigest(frontmatter, rfcPath)
     if (current !== frontmatter.body_digest) {
       errors.push(
         `body_digest mismatch: body was mutated after RFC moved to "${frontmatter.status}"\n` +
@@ -351,8 +457,20 @@ function cmdSetStatus(args) {
 
   // Stamp body_digest when first entering review (draft → review)
   if (newStatus === 'review' && currentStatus === 'draft') {
-    const digest = computeBodyDigest(doc.toJS(), body)
+    const digest = computeBodyDigest(doc.toJS(), rfcPath)
     doc.set('body_digest', digest)
+  }
+
+  // AC T12.4: review gate — refuse if any review sidecar blocks acceptance
+  if (newStatus === 'accepted') {
+    const gate = checkReviewGate(rfcPath)
+    if (!gate.ok) {
+      const lines = [
+        ...gate.malformed.map(m => `  MALFORMED: ${m}`),
+        ...gate.offending.map(m => `  ${m}`),
+      ]
+      die(`Cannot accept RFC: review gate failed:\n${lines.join('\n')}`)
+    }
   }
 
   if (newStatus === 'accepted' && !doc.get('accepted_at')) {
@@ -390,8 +508,12 @@ function cmdStatus(args) {
   out(`  created:        ${frontmatter.created}`)
   out(`  updated:        ${frontmatter.updated}`)
 
-  // AC 9: program counter — tasks from frontmatter (plan, not progress)
-  const tasks = Array.isArray(frontmatter.tasks) ? frontmatter.tasks : []
+  // AC 9: program counter — tasks from tasks.yaml sidecar if available,
+  // else fall back to frontmatter.tasks (legacy single-file compatibility).
+  const tasksPath = path.join(rfcPath, 'tasks.yaml')
+  const tasks = existsSync(tasksPath)
+    ? readTasksSidecar(rfcPath)
+    : (Array.isArray(frontmatter.tasks) ? frontmatter.tasks : [])
   if (tasks.length > 0) {
     out('')
     out('Tasks (from frontmatter — plan only, no progress state):')
@@ -454,16 +576,45 @@ function cmdStatus(args) {
 }
 
 // ---------------------------------------------------------------------------
+// review subcommand (T12) — dispatches to rfc-review.mjs exports
+// ---------------------------------------------------------------------------
+
+function cmdReview(args) {
+  const subcmd = args[0]
+  const rest = args.slice(1)
+  const reviewCmds = {
+    generate: cmdReviewGenerate,
+    add: cmdReviewAdd,
+    resolve: cmdReviewResolve,
+    'parse-criticmarkup': cmdReviewParseCriticmarkup,
+  }
+  if (!subcmd || !reviewCmds[subcmd]) {
+    const known = Object.keys(reviewCmds).join(', ')
+    die(
+      `review: unknown subcommand "${subcmd ?? ''}". ` +
+      `Available: ${known}`,
+      2
+    )
+  }
+  reviewCmds[subcmd](rest)
+}
+
+// ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
 
 const HELP_TEXT = `rfc — Groundwork RFC management CLI
 
 Usage:
-  rfc new <slug> [--supersedes <uid> ...]   Create a new RFC
-  rfc validate <dir>                         Validate rfc.md frontmatter
-  rfc set-status <dir> <status>              Transition RFC status
-  rfc status <dir>                           Print RFC status and run ledger state
+  rfc new <slug> [--supersedes <uid> ...]        Create a new RFC
+  rfc index <dir>                                Regenerate the manifest block in rfc.md
+  rfc validate <dir>                              Validate rfc.md frontmatter
+  rfc set-status <dir> <status>                  Transition RFC status
+  rfc status <dir>                               Print RFC status and run ledger state
+  rfc review generate <dir> --reviewer <name>    Create an empty review sidecar
+  rfc review add      <dir> --reviewer <name> --text <t> [--severity ...] [--anchor-type ...]
+  rfc review resolve  <dir> --id <RC-NNN> [--wont-fix]
+  rfc review parse-criticmarkup <file> [--rfc-dir <dir>] [--reviewer <name>]
 
 Statuses: draft | review | accepted | implementing | implemented | rejected | superseded | abandoned
 
@@ -490,7 +641,7 @@ if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') {
   process.exit(0)
 }
 
-const commands = { new: cmdNew, validate: cmdValidate, 'set-status': cmdSetStatus, status: cmdStatus }
+const commands = { new: cmdNew, index: cmdIndex, validate: cmdValidate, 'set-status': cmdSetStatus, status: cmdStatus, review: cmdReview }
 
 if (!commands[cmd]) {
   die(`unknown command "${cmd}". Run \`rfc help\` for usage.`, 2)

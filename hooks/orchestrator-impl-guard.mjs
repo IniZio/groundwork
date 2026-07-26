@@ -50,6 +50,7 @@
  *    (same rule the stop-gate uses).
  */
 
+import os from 'node:os'
 import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 
@@ -88,6 +89,59 @@ function isSubagentCall(input) {
   return false
 }
 
+/**
+ * Returns true when the orchestrator is permitted to write the target path
+ * directly (content already held in context — no codebase read required).
+ *
+ * Permit 1 — session/project memory files:
+ *   Path must be under  ~/.claude/projects/<hash>/memory/<file>
+ *   Anchored to os.homedir() so "src/.claude/projects/x/memory/evil.ts" does
+ *   NOT match: that resolved path does not start with the user's ~/.claude/
+ *   prefix, meaning it cannot impersonate a memory path via a source-tree
+ *   subdirectory.  Decision: the spoof path SHOULD NOT be permitted; memory
+ *   files always live under the user's home directory, never inside a source
+ *   tree.  See test "spoof path src/.claude/... → BLOCKED" for the assertion.
+ *
+ * Permit 2 — handoff documents:
+ *   Basename must match handoff-*.md AND the directory must contain a
+ *   .groundwork segment.  The basename check is done AFTER path.resolve(),
+ *   so a .. traversal (e.g. ".groundwork/handoff-x.md/../../src/index.ts")
+ *   collapses to "index.ts" as the basename, which fails the glob — BLOCKED.
+ *
+ * Fail-safe: any throw or malformed input returns false → BLOCK (not permit).
+ */
+function isOrchestratorWritablePath(rawPath) {
+  if (typeof rawPath !== 'string' || !rawPath) return false
+  let resolved
+  try {
+    resolved = path.resolve(rawPath)
+  } catch {
+    return false
+  }
+
+  // Permit 1: ~/.claude/projects/<hash>/memory/<file>
+  const memoryBase = path.join(os.homedir(), '.claude', 'projects')
+  if (resolved.startsWith(memoryBase + path.sep)) {
+    const rel = resolved.slice(memoryBase.length + 1) // "<hash>/memory/<file>"
+    const segments = rel.split(path.sep)
+    // segments: [0]=hash, [1]="memory", [2+]=filename — require all three levels
+    if (segments.length >= 3 && segments[1] === 'memory') return true
+  }
+
+  // Permit 2: handoff-*.md inside a .groundwork/ directory
+  // Note: dirParts.includes('.groundwork') matches at ANY depth in the resolved path,
+  // so src/.groundwork/handoff-*.md is also permitted. This is accepted behavior —
+  // the basename regex confines it to .md files with no build effect. Do not tighten
+  // this to an exact-depth check without understanding the nesting implications.
+  const basename = path.basename(resolved)
+  if (/^handoff-.+\.md$/.test(basename)) {
+    const dirParts = path.dirname(resolved).split(path.sep)
+    if (dirParts.includes('.groundwork')) return true
+  }
+
+  return false
+}
+
 /** Is this file path the run ledger (`…/.groundwork/run.json`)? */
 function isLedgerPath(fp) {
   if (typeof fp !== 'string' || !fp) return false
@@ -113,6 +167,9 @@ async function main() {
 
   // The ledger file itself is governed by ledger-guard; its init Write stays free.
   if (isLedgerPath(input?.tool_input?.file_path)) return passthrough()
+
+  // Narrow permit: memory files and handoff docs the orchestrator composes in-context.
+  if (isOrchestratorWritablePath(input?.tool_input?.file_path)) return passthrough()
 
   return deny(
     `groundwork: orchestrator ${rawTool} blocked — delegate this change instead:\n` +

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -124,5 +124,159 @@ describe("orchestrator-impl-guard — never over-reaches", () => {
 	it("fails open (no output) on malformed stdin", () => {
 		const out = execFileSync("node", [HOOK], { input: "{ not json", encoding: "utf8" });
 		expect(out.trim()).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Narrow-path permit — memory files and handoff documents
+// ---------------------------------------------------------------------------
+
+/** Build a PreToolUse Write payload for a given path (no subagent signals). */
+function orchestratorWrite(filePath: string, toolName = "Write"): Record<string, unknown> {
+	return {
+		hook_event_name: "PreToolUse",
+		tool_name: toolName,
+		tool_input: { file_path: filePath, content: "x" },
+		// No agent_type / agent_id / transcript_path → orchestrator identity
+	};
+}
+
+describe("orchestrator-impl-guard — memory file permit", () => {
+	const memDir = path.join(homedir(), ".claude", "projects", "abc123hash", "memory");
+
+	it("orchestrator Write to a memory file → ALLOWED", () => {
+		const d = runHook(orchestratorWrite(path.join(memDir, "groundwork-notes.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	it("orchestrator Write to MEMORY.md index in memory dir → ALLOWED", () => {
+		const d = runHook(orchestratorWrite(path.join(memDir, "MEMORY.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	it("orchestrator fast_write to memory file → ALLOWED (normalization)", () => {
+		const d = runHook(orchestratorWrite(path.join(memDir, "cozempic_digest.md"), "fast_write"));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	it("memory path missing 'memory' segment → BLOCKED (only ~/.claude/projects/<hash>/memory/ qualifies)", () => {
+		// ~/.claude/projects/<hash>/evil.ts — not inside a memory/ subdir
+		const p = path.join(homedir(), ".claude", "projects", "abc123hash", "evil.ts");
+		const d = runHook(orchestratorWrite(p));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("memory .. traversal escaping memory dir → BLOCKED", () => {
+		// Build with string concatenation so the literal ".." survives into the hook predicate.
+		// path.join would collapse it at construction time and the traversal would never be exercised.
+		// ~/.claude/projects/abc123/memory/../../evil.ts resolves to ~/.claude/projects/evil.ts
+		// which is not at depth ≥3 under memory/, so it is correctly blocked.
+		const p = homedir() + "/.claude/projects/abc123/memory/../../evil.ts";
+		const d = runHook(orchestratorWrite(p));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("spoof: src/.claude/projects/x/memory/evil.ts → BLOCKED", () => {
+		// Decision: NOT permitted. The memory permit is anchored to homedir()
+		// (~/.claude/projects/). A .claude/projects/ segment buried inside a
+		// source directory resolves to a path that does NOT start with the
+		// homedir() + "/.claude/projects" prefix, so it is correctly rejected.
+		// Allowing it would let an attacker-controlled filename bypass the guard.
+		const p = path.join(
+			"/home/newman/.local/share/groundwork",
+			"src",
+			".claude",
+			"projects",
+			"x",
+			"memory",
+			"evil.ts",
+		);
+		const d = runHook(orchestratorWrite(p));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
+describe("orchestrator-impl-guard — handoff document permit", () => {
+	const gwDir = "/home/newman/.local/share/groundwork/.groundwork";
+
+	it("orchestrator Write to .groundwork/handoff-YYYY-MM-DD-desc.md → ALLOWED", () => {
+		const d = runHook(orchestratorWrite(path.join(gwDir, "handoff-2026-07-26-memory-permit.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	it("orchestrator Write to nested-project .groundwork/handoff-*.md → ALLOWED", () => {
+		const d = runHook(orchestratorWrite("/tmp/some-project/.groundwork/handoff-2026-07-26-session.md"));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	it("non-.md file with handoff- prefix → BLOCKED (must end in .md)", () => {
+		const d = runHook(orchestratorWrite(path.join(gwDir, "handoff-2026-07-26.ts")));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("handoff file outside .groundwork/ → BLOCKED (must be inside a .groundwork dir)", () => {
+		const d = runHook(orchestratorWrite("/home/newman/handoff-2026-07-26.md"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it(".groundwork/out-of-scope/foo.md → BLOCKED (deliberate exclusion from permit)", () => {
+		// out-of-scope/ is under .groundwork/ but is NOT a handoff-*.md file.
+		// The exclusion is deliberate: out-of-scope writes carry KB content that
+		// must go through delegation to ensure correctness.
+		const d = runHook(orchestratorWrite(path.join(gwDir, "out-of-scope", "dark-mode.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("handoff .. traversal escaping .groundwork → BLOCKED", () => {
+		// Build with string concatenation so the literal ".." survives into the hook predicate.
+		// path.join would collapse it at construction time and the traversal would never be exercised.
+		// ".groundwork/handoff-x.md/../../src/index.ts" resolves basename to
+		// "index.ts", which does not match handoff-*.md → BLOCKED
+		const p = gwDir + "/handoff-x.md/../../src/index.ts";
+		const d = runHook(orchestratorWrite(p));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
+describe("orchestrator-impl-guard — narrow-permit blocked regressions", () => {
+	it("orchestrator Write to src/index.ts → BLOCKED (core regression)", () => {
+		const d = runHook(orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("missing file_path → BLOCKED (malformed path is fail-safe)", () => {
+		const d = runHook({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { content: "x" } });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("null file_path → BLOCKED", () => {
+		const d = runHook({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: null } });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("empty string file_path → BLOCKED", () => {
+		const d = runHook({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "" } });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
+describe("orchestrator-impl-guard — subagent passthrough regressions (line 112)", () => {
+	it("subagent Write to src/index.ts → ALLOWED (line 112 passthrough intact)", () => {
+		const d = runHook({
+			...orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"),
+			agent_type: "general-purpose",
+			agent_id: "abc123",
+		});
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("fork-shaped input (agent-*.jsonl transcript, no agent_type) → ALLOWED", () => {
+		// Retrospective forks have an agent-*.jsonl transcript_path but no agent_type.
+		// They must remain permitted so the retrospective skill continues to work.
+		const d = runHook({
+			...orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"),
+			transcript_path: "/sessions/agent-retro-fork.jsonl",
+		});
+		expect(d.hookSpecificOutput).toBeUndefined();
 	});
 });

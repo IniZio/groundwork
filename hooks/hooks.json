@@ -2,11 +2,21 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Agent|Task",
+        "matcher": "Agent|Task|TaskCreate",
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-model-guard.mjs",
+            "async": false
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task|TaskCreate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nesting-guard.mjs",
             "async": false
           }
         ]

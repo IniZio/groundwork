@@ -31,11 +31,11 @@
  * Exit 0 on success, 2 on usage error, 1 on operational failure.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
-import { parseFrontmatter as parseRfcFrontmatter } from './lib/rfc-io.mjs'
+import { parseFrontmatter as parseRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
 
 /**
  * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
@@ -398,7 +398,14 @@ function cmdInit(args) {
     const uid = rfcFrontmatter.uid
     if (!uid) die(`RFC at ${rfcMdPath} has no uid in frontmatter`, 1)
     obj.rfc_ref = uid
-    const tasks = Array.isArray(rfcFrontmatter.tasks) ? rfcFrontmatter.tasks : []
+    // Prefer tasks.yaml sidecar; fall back to frontmatter.tasks for legacy schema:1 RFCs.
+    // Seeding a run with zero slices defeats the Stop-gate (zero slices are trivially
+    // all-complete), so we treat neither-source-present as a hard error.
+    const hasSidecar = existsSync(path.join(rfcDir, 'tasks.yaml'))
+    const tasks = hasSidecar
+      ? readTasksSidecar(rfcDir)
+      : (Array.isArray(rfcFrontmatter.tasks) ? rfcFrontmatter.tasks : [])
+    if (tasks.length === 0) die(`RFC at ${rfcDir} has no tasks — cannot seed a ledger with zero slices (check tasks.yaml or frontmatter tasks[])`, 1)
     obj.slices = tasks.map((t) => ({
       id: String(t.id ?? ''),
       wave: Number.isFinite(Number(t.wave)) ? Number(t.wave) : 0,

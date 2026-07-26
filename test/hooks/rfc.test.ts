@@ -125,7 +125,7 @@ function minimalRfcMd(overrides: Record<string, string> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("rfc new (AC 1)", () => {
-	it("creates directory structure with draft status, uid, notes/, reviews/", () => {
+	it("creates directory structure with draft status, uid, notes/, reviews/, sections/, tasks.yaml", () => {
 		const rfcDir = createRfc("my-feature");
 
 		// Directory exists
@@ -136,6 +136,10 @@ describe("rfc new (AC 1)", () => {
 		expect(existsSync(path.join(rfcDir, "notes"))).toBe(true);
 		// reviews/ directory
 		expect(existsSync(path.join(rfcDir, "reviews"))).toBe(true);
+		// sections/ directory (multi-file layout)
+		expect(existsSync(path.join(rfcDir, "sections"))).toBe(true);
+		// tasks.yaml sidecar
+		expect(existsSync(path.join(rfcDir, "tasks.yaml"))).toBe(true);
 
 		const content = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
 		// status is draft
@@ -144,6 +148,14 @@ describe("rfc new (AC 1)", () => {
 		expect(content).toMatch(/uid: R-\d{8}-[A-Z0-9]{6}/);
 		// directory name has padded ordinal
 		expect(path.basename(rfcDir)).toMatch(/^0001-my-feature$/);
+		// tasks NOT in frontmatter (they live in tasks.yaml sidecar)
+		expect(content).not.toMatch(/^tasks:/m);
+	});
+
+	it("scaffolds a conforming structure — rfc validate exits 0 immediately after rfc new", () => {
+		const rfcDir = createRfc("scaffold-test");
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(0);
 	});
 
 	it("assigns incrementing ordinals for successive RFCs", () => {
@@ -156,6 +168,16 @@ describe("rfc new (AC 1)", () => {
 	it("exits 2 when slug is missing", () => {
 		const r = run(["new"]);
 		expect(r.code).toBe(2);
+	});
+
+	// M-09 killer: unknown-flag rejection removed.
+	// `rfc new` must exit 2 on any unrecognised flag — this guard was absent and
+	// once allowed a stray `--debug` flag to silently write a directory into the
+	// live repo during a gate run.
+	it("exits 2 on unknown flag (M-09)", () => {
+		const r = run(["new", "my-feature", "--surprise-flag"]);
+		expect(r.code).toBe(2);
+		expect(r.stderr).toMatch(/unknown flag/i);
 	});
 });
 
@@ -331,11 +353,12 @@ describe("rfc validate body_digest (AC 6)", () => {
 		const rfcDir = createRfc("digest-bad");
 		run(["set-status", rfcDir, "review"]);
 
-		// Mutate the body after review (simulating a forbidden edit)
-		const rfcMd = path.join(rfcDir, "rfc.md");
-		const content = readFileSync(rfcMd, "utf8");
-		const mutated = content.replace("## 1. Summary", "## 1. Summary\n\nMUTATED TEXT");
-		writeFileSync(rfcMd, mutated);
+		// Mutate a section file (§1 is within the digest scope §§1–8).
+		// In the multi-file layout, the digest is computed from sections/; mutating
+		// rfc.md body alone would not change the digest.
+		const sectionFile = path.join(rfcDir, "sections", "01-summary.md");
+		const sectionContent = readFileSync(sectionFile, "utf8");
+		writeFileSync(sectionFile, sectionContent + "\n\nMUTATED TEXT");
 
 		const r = run(["validate", rfcDir]);
 		expect(r.code).toBe(1);
@@ -543,13 +566,11 @@ describe("rfc status with ledger (AC 9)", () => {
 		const rfcMd = path.join(rfcDir, "rfc.md");
 		const uid = readFileSync(rfcMd, "utf8").match(/uid: (R-\d{8}-[A-Z0-9]{6})/)![1];
 
-		// Inject tasks into frontmatter
-		const content = readFileSync(rfcMd, "utf8");
-		const withTasks = content.replace(
-			"tasks: []",
-			"tasks:\n  - id: T1\n    title: Implement core\n    wave: 0\n    blocked_by: []\n    files: []\n    ac: [AC1, AC2]\n  - id: T2\n    title: Write tests\n    wave: 1\n    blocked_by: [T1]\n    files: []\n    ac: [AC1]",
-		);
-		writeFileSync(rfcMd, withTasks);
+		// Write tasks to tasks.yaml sidecar (tasks no longer live in frontmatter).
+		const tasksYaml =
+			`- id: T1\n  title: Implement core\n  wave: 0\n  blocked_by: []\n  files: []\n  ac: [AC1, AC2]\n` +
+			`- id: T2\n  title: Write tests\n  wave: 1\n  blocked_by: [T1]\n  files: []\n  ac: [AC1]\n`;
+		writeFileSync(path.join(rfcDir, "tasks.yaml"), tasksYaml);
 
 		// Write a run ledger with rfc_ref
 		const runsDir = path.join(projectDir, ".groundwork", "runs");
@@ -643,6 +664,75 @@ describe("yaml direct dependency (AC 11)", () => {
 		const ver = pkgJson.dependencies.yaml as string;
 		// Must be >=2.8.3 or ^2.8.3 or similar — just check the version number is >= 2.8.3
 		expect(ver).toMatch(/2\.(8|9|[1-9]\d)\./);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Help and usage
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Schema-keyed strict layout validation (guard-narrowing fix)
+// Kills M-07 (entire strict path was skipped) and M-08 (tasks.yaml check absent).
+// Also kills the boundary mutant (>= 2 vs >= 3).
+// ---------------------------------------------------------------------------
+
+describe("rfc validate strict layout (schema >= 2)", () => {
+	it("rfc new writes schema: 2 — new RFCs are strict from birth", () => {
+		const rfcDir = createRfc("strict-birth");
+		const content = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
+		// Extract schema value from frontmatter
+		const m = content.match(/^schema: (\d+)$/m);
+		expect(m).toBeTruthy();
+		expect(Number(m![1])).toBe(2);
+	});
+
+	// M-07 killer: proves the strict path actually executes for schema: 2.
+	// If the gate were `if (false && ...)` or keyed on existsSync(sectionsDir),
+	// a schema:2 RFC with no sections/ would pass — this test would fail.
+	// Also kills the boundary mutant `>= 3`: schema:2 must trigger strict.
+	it("exits 1 when schema: 2 RFC is missing sections/ (single-file schema-2 is non-conformant)", () => {
+		const rfcDir = createRfc("missing-sections");
+		// Remove sections/ to simulate a single-file schema-2 RFC.
+		rmSync(path.join(rfcDir, "sections"), { recursive: true, force: true });
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("sections/");
+	});
+
+	// M-08 killer: proves the tasks.yaml check fires for schema: 2.
+	// If the tasks.yaml check were removed, this test would see exit 0.
+	it("exits 1 when schema: 2 RFC has sections/ but tasks.yaml is missing", () => {
+		const rfcDir = createRfc("missing-tasks");
+		// Remove tasks.yaml to simulate a schema-2 RFC without the required sidecar.
+		rmSync(path.join(rfcDir, "tasks.yaml"), { force: true });
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("tasks.yaml");
+	});
+
+	// Boundary: schema:1 (lenient) with no sections/ must NOT trigger strict errors.
+	// Proves the gate is < 2 lenient, not accidentally strict for all RFCs.
+	it("exits 0 for schema: 1 RFC with no sections/ (legacy/lenient path)", () => {
+		// Use rfc new output as base, then downgrade to schema: 1 and remove sections/.
+		const rfcDir = createRfc("legacy-lenient");
+		const rfcMdPath = path.join(rfcDir, "rfc.md");
+		const content = readFileSync(rfcMdPath, "utf8");
+		// Patch schema: 2 → schema: 1 and remove sections/.
+		const patched = content.replace(/^schema: 2$/m, "schema: 1");
+		writeFileSync(rfcMdPath, patched);
+		rmSync(path.join(rfcDir, "sections"), { recursive: true, force: true });
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(0);
+	});
+
+	// schema: 2 with full layout intact passes — confirms the gate does not
+	// unconditionally fail all schema-2 RFCs.
+	it("exits 0 for a fully conformant schema: 2 RFC (sections/ + tasks.yaml present)", () => {
+		const rfcDir = createRfc("full-conformant");
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("OK");
 	});
 });
 

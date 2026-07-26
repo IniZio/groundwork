@@ -342,7 +342,7 @@ async function main() {
   try {
     const rfcRef = ledger.rfc_ref
     if (typeof rfcRef === 'string' && rfcRef) {
-      const rfcsDir = path.join(projectDir, 'docs', 'rfcs')
+      const rfcsDir = path.join(projectDir, '.groundwork', 'rfcs')
       const rfcDir = findRfcByUid(rfcsDir, rfcRef)
       if (rfcDir) {
         const content = readFileSync(path.join(rfcDir, 'rfc.md'), 'utf8')

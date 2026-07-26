@@ -21,6 +21,7 @@ import {
   writeFileSync,
   existsSync,
   readdirSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -165,7 +166,7 @@ const APPROVED_LEDGER_BASE = {
 
 describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
   it("creates one slice per task, preserving id/wave/blocked_by/acceptance", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-test");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-test");
     makeRfcDir(rfcDir, "R-20260101-ABCDEF", "accepted", [
       { id: "T1", wave: 1, blocked_by: [], acceptance: ["ac1", "ac2"], desc: "first task" },
       { id: "T2", wave: 2, blocked_by: ["T1"], acceptance: ["ac3"] },
@@ -193,7 +194,7 @@ describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
   });
 
   it("all created slices have status: pending", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-test");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-test");
     makeRfcDir(rfcDir, "R-20260101-BBBBBB", "implementing", [
       { id: "X1", wave: 0 },
     ]);
@@ -216,7 +217,7 @@ describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
 
   // AC5: session-scoped ledger written, no RFC-scoped ledger
   it("writes a session-scoped ledger, not an RFC-scoped one", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-test");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-test");
     makeRfcDir(rfcDir, "R-20260101-CCCCCC", "accepted", [{ id: "T1", wave: 0 }]);
     runLedger(["init", "--rfc", rfcDir], { CLAUDE_CODE_SESSION_ID: "sess-t5" });
 
@@ -227,6 +228,87 @@ describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
     expect(files[0]).toBe("sess-t5.json");
     // No ledger named after the RFC uid
     expect(existsSync(path.join(projectDir, ".groundwork", "R-20260101-CCCCCC.json"))).toBe(false);
+  });
+
+  // AC1 sidecar: tasks.yaml present → read tasks from it, ignore frontmatter
+  it("reads tasks from tasks.yaml sidecar when present", () => {
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-sidecar");
+    mkdirSync(rfcDir, { recursive: true });
+    // rfc.md has NO tasks in frontmatter (tasks: null / absent)
+    writeFileSync(
+      path.join(rfcDir, "rfc.md"),
+      [
+        "---",
+        "uid: R-20260101-SIDECAR",
+        "status: accepted",
+        "title: Sidecar RFC",
+        "---",
+        "",
+        "# body",
+      ].join("\n"),
+    );
+    // tasks.yaml sidecar with 3 tasks
+    writeFileSync(
+      path.join(rfcDir, "tasks.yaml"),
+      [
+        "- id: S1",
+        "  wave: 1",
+        "  desc: sidecar task one",
+        "  blocked_by: []",
+        "  acceptance: []",
+        "- id: S2",
+        "  wave: 1",
+        "  desc: sidecar task two",
+        "  blocked_by: [S1]",
+        "  acceptance: []",
+        "- id: S3",
+        "  wave: 2",
+        "  desc: sidecar task three",
+        "  blocked_by: []",
+        "  acceptance: [ac-s3]",
+      ].join("\n"),
+    );
+
+    const result = runLedger(["init", "--rfc", rfcDir], { CLAUDE_CODE_SESSION_ID: "sess-sidecar" });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("3 slices");
+
+    const ledgerPath = path.join(projectDir, ".groundwork", "runs", "sess-sidecar.json");
+    const ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
+    expect(ledger.slices).toHaveLength(3);
+
+    const s1 = ledger.slices.find((s: any) => s.id === "S1");
+    expect(s1).toBeDefined();
+    expect(s1.wave).toBe(1);
+
+    const s3 = ledger.slices.find((s: any) => s.id === "S3");
+    expect(s3).toBeDefined();
+    expect(s3.wave).toBe(2);
+    expect(s3.acceptance).toContain("ac-s3");
+  });
+
+  // AC1 neither: no tasks.yaml AND no frontmatter tasks → hard error, exit 1
+  it("exits 1 when neither tasks.yaml nor frontmatter tasks are present", () => {
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-notasks");
+    mkdirSync(rfcDir, { recursive: true });
+    // rfc.md with uid but no tasks field
+    writeFileSync(
+      path.join(rfcDir, "rfc.md"),
+      [
+        "---",
+        "uid: R-20260101-NOTASKS",
+        "status: accepted",
+        "title: No Tasks RFC",
+        "---",
+        "",
+        "# body",
+      ].join("\n"),
+    );
+    // No tasks.yaml written
+
+    const result = runLedger(["init", "--rfc", rfcDir], { CLAUDE_CODE_SESSION_ID: "sess-notasks" });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/no tasks|zero slices/i);
   });
 });
 
@@ -243,7 +325,7 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
   }
 
   it("blocks when RFC is in 'draft' status", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-draft");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-draft");
     makeRfcDir(rfcDir, "R-20260101-DRAFT1", "draft", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-DRAFT1"), "sess-t5");
     expect(result.decision).toBe("block");
@@ -253,7 +335,7 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
   });
 
   it("blocks when RFC is in 'review' status", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-review");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-review");
     makeRfcDir(rfcDir, "R-20260101-REVIE1", "review", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-REVIE1"), "sess-t5");
     expect(result.decision).toBe("block");
@@ -261,7 +343,7 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
   });
 
   it("allows when RFC is in 'accepted' status", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-accepted");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-accepted");
     makeRfcDir(rfcDir, "R-20260101-ACCPT1", "accepted", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-ACCPT1"), "sess-t5");
     // Should allow (no incomplete slices, advisor APPROVE, RFC accepted)
@@ -269,10 +351,43 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
   });
 
   it("allows when RFC is in 'implementing' status", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-impl");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-impl");
     makeRfcDir(rfcDir, "R-20260101-IMPLI1", "implementing", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-IMPLI1"), "sess-t5");
     expect(result.continue).toBe(true);
+  });
+
+  it("treats rfc_ref: '' (empty string) as absent — no RFC resolution attempted", () => {
+    // Mutation target: the truthiness half of `typeof rfcRef === 'string' && rfcRef`.
+    //
+    // To make this non-vacuous we plant an RFC whose frontmatter uid IS the empty
+    // string (written as uid: "" so js-yaml parses it as "").  Without the mutation
+    // the guard short-circuits on the falsy "" before ever calling findRfcByUid, so
+    // stop-gate allows.  WITH the mutation (typeof only) the guard enters the block,
+    // findRfcByUid scans the directory, finds uid === "", reads status "draft", and
+    // BLOCKS.  The test therefore FAILS under mutation and PASSES on production code.
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-empty-uid");
+    mkdirSync(rfcDir, { recursive: true });
+    // Write uid: "" explicitly so js-yaml parses it as empty string (not null).
+    writeFileSync(
+      path.join(rfcDir, "rfc.md"),
+      [
+        "---",
+        'uid: ""',
+        "status: draft",
+        "title: Empty UID RFC",
+        "tasks: []",
+        "---",
+        "",
+        "# body",
+      ].join("\n"),
+    );
+
+    const ledger = { ...APPROVED_LEDGER_BASE, rfc_ref: "" };
+    const result = runStopGate(ledger, "sess-t5");
+    // Empty rfc_ref → guard short-circuits before RFC resolution → allow
+    expect(result.continue).toBe(true);
+    expect(result.decision).not.toBe("block");
   });
 });
 
@@ -282,7 +397,7 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
 
 describe("AC4: stop-gate fails open on RFC resolution errors", () => {
   it("allows when rfc_ref does not resolve to any RFC directory", () => {
-    // No docs/rfcs directory at all
+    // No .groundwork/rfcs directory at all — findRfcByUid returns null → fail-open
     const ledger = { ...APPROVED_LEDGER_BASE, rfc_ref: "R-20260101-MISSIN" };
     const result = runStopGate(ledger, "sess-t5");
     // RFC not found → fail-open → allow
@@ -290,7 +405,7 @@ describe("AC4: stop-gate fails open on RFC resolution errors", () => {
   });
 
   it("allows when rfc.md is malformed / unreadable", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-bad");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-bad");
     mkdirSync(rfcDir, { recursive: true });
     writeFileSync(path.join(rfcDir, "rfc.md"), "not valid yaml frontmatter");
     const ledger = { ...APPROVED_LEDGER_BASE, rfc_ref: "R-20260101-BADUID" };
@@ -299,19 +414,27 @@ describe("AC4: stop-gate fails open on RFC resolution errors", () => {
     expect(result.continue).toBe(true);
   });
 
-  it("allows when docs/rfcs/ exists but rfc.md has uid match yet subsequent parse throws", () => {
-    // Write an rfc.md that has the correct uid embedded in content but no valid frontmatter
-    // so the outer code path would throw if the catch is removed.
-    // We simulate by patching: write a uid-matched file with INVALID content after a
-    // second rfc.md is also present so findRfcByUid's internal catch re-routes.
-    // In practice, write a VALID rfc.md that findRfcByUid matches, but then
-    // the rfc.md becomes unreadable before the second readFileSync.
-    // Since we can't race, test the simpler "rfc_ref present but docs/rfcs missing entirely"
-    // to ensure a directory-read ENOENT in findRfcByUid is swallowed.
-    rmSync(path.join(projectDir, "docs"), { recursive: true, force: true });
-    const ledger = { ...APPROVED_LEDGER_BASE, rfc_ref: "R-20260101-NODOCSRFC" };
-    const result = runStopGate(ledger, "sess-t5");
-    expect(result.continue).toBe(true);
+  it("allows when .groundwork/rfcs/ is unreadable (EACCES forces throw out of RFC resolution)", () => {
+    // Skip on root: root ignores mode bits, so chmod 000 has no effect.
+    // Skip on Windows: chmod is a no-op there.
+    if (process.platform === "win32" || process.getuid?.() === 0) return;
+
+    // Create an unreadable rfcs directory — readdirSync(rfcsDir) at the TOP of
+    // findRfcByUid (outside its inner try-catch) will throw EACCES, exercising
+    // stop-gate's outer catch (AC4 fail-open).
+    const rfcsDir = path.join(projectDir, ".groundwork", "rfcs");
+    mkdirSync(rfcsDir, { recursive: true });
+    chmodSync(rfcsDir, 0o000);
+
+    try {
+      const ledger = { ...APPROVED_LEDGER_BASE, rfc_ref: "R-20260101-EACCES1" };
+      const result = runStopGate(ledger, "sess-t5");
+      // AC4: outer catch must allow the stop — never wedge the session
+      expect(result.continue).toBe(true);
+    } finally {
+      // Restore so afterEach rmSync can clean up the temp dir
+      chmodSync(rfcsDir, 0o755);
+    }
   });
 
   it("allows (without rfc check) when ledger has no rfc_ref", () => {
@@ -327,7 +450,7 @@ describe("AC4: stop-gate fails open on RFC resolution errors", () => {
 
 describe("AC3: session-reminder displays rfc_ref and status", () => {
   it("shows RFC uid and status when ledger carries rfc_ref that resolves", () => {
-    const rfcDir = path.join(projectDir, "docs", "rfcs", "0001-test");
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-show01");
     mkdirSync(rfcDir, { recursive: true });
     const rfcFm = [
       "---",

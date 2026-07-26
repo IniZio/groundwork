@@ -47,7 +47,7 @@
     "explore": {
       "pi": "opencode-go/deepseek-v4-flash",
       "opencode": "opencode-go/deepseek-v4-flash",
-      "claude-code": "sonnet",
+      "claude-code": "haiku",
       "codex": "gpt-5.6-luna"
     }
   },

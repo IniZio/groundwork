@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Read-only codebase exploration — traces flows, locates symbols, maps dependencies. Use to understand how or where something works.
-model: sonnet
+model: haiku
 disallowedTools: Write, Edit, MultiEdit, NotebookEdit
 ---
 

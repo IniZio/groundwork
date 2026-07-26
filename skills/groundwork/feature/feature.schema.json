@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://groundwork.local/schemas/feature.schema.json",
+  "title": "Groundwork feature ledger (.feature.yaml)",
+  "description": "Machine-authoritative multi-session feature program counter under .groundwork/features/<slug>/.feature.yaml. Wave-1 schema contract for the feature-ledger skill. YAML sidecars MUST deserialize to an instance of this schema (additionalProperties fail-closed).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "id",
+    "slug",
+    "active",
+    "status",
+    "health",
+    "ac_coverage",
+    "resume",
+    "runs",
+    "history",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "version": {
+      "description": "Schema major version. Currently always 1.",
+      "const": 1
+    },
+    "id": {
+      "description": "Stable feature id. Prefer feat_<ULID>; feat_<slug> is allowed.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^feat_[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "slug": {
+      "description": "Directory name under .groundwork/features/. Kebab-case; optional single leading underscore for test/reserved prefixes (e.g. _fixture-ledger).",
+      "type": "string",
+      "pattern": "^_?[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "active": {
+      "description": "Soft-archive flag. false = archived; /resume ignores unless slug is explicit.",
+      "type": "boolean"
+    },
+    "status": {
+      "description": "Authoritative lifecycle status (Linear ProjectStatusType-aligned). ONLY these five values — never in_progress, completed_acs, or other aliases.",
+      "type": "string",
+      "enum": ["planned", "started", "paused", "completed", "canceled"]
+    },
+    "health": {
+      "description": "Plan/schedule health (Linear ProjectUpdateHealthType-aligned).",
+      "type": "string",
+      "enum": ["onTrack", "atRisk", "offTrack"]
+    },
+    "plan_ref": {
+      "description": "Path to plan.md (or null if co-located default is implied by consumers).",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "spec_ref": {
+      "description": "Path to spec.md (or null if co-located default is implied by consumers).",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "branch": {
+      "description": "Primary implementation branch, if any.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "ac_coverage": {
+      "description": "Explicit map from acceptance-criterion id (e.g. AC1) to the slice ids that cover it. An AC is met iff every listed covering slice appears in the union of runs[].slices_completed (and/or equivalent slice_complete history). Empty array means no covering slices assigned yet (AC unmet). Omit no AC that exists in spec.md — keep keys stable; never renumber mid-flight.",
+      "type": "object",
+      "default": {},
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^AC[0-9]+$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "uniqueItems": true
+      }
+    },
+    "resume": {
+      "$ref": "#/$defs/resume"
+    },
+    "runs": {
+      "description": "Authoritative cross-session index of linked session run ledgers. Session ledgers may be pruned after ~7d; run_path MAY be null when the file is absent.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      }
+    },
+    "history": {
+      "description": "Append-only status pulses (keep last ~10 in agents; validators do not enforce length).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/historyEvent"
+      }
+    },
+    "decisions": {
+      "description": "MADR/Nygard-shaped decision pointers.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "links": {
+      "$ref": "#/$defs/links"
+    },
+    "gate": {
+      "$ref": "#/$defs/gate"
+    },
+    "created_at": {
+      "description": "ISO-8601 creation timestamp.",
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "description": "ISO-8601 last update timestamp.",
+      "type": "string",
+      "minLength": 1
+    },
+    "created_by_session": {
+      "description": "Session id that created the ledger.",
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "oneOf": [
+    {
+      "title": "terminal",
+      "description": "Invariant branch A: feature is terminal. status is completed|canceled and resume.pointer is the terminal sentinel (done) or null/absent.",
+      "properties": {
+        "status": {
+          "enum": ["completed", "canceled"]
+        },
+        "resume": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pointer": {
+              "anyOf": [
+                { "type": "null" },
+                { "const": "done" }
+              ]
+            },
+            "slice_id": {
+              "type": ["string", "null"]
+            },
+            "next_actions": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "blocked_reason": {
+              "type": ["string", "null"]
+            },
+            "waiting_on": {
+              "type": ["string", "null"]
+            },
+            "updated_at": {
+              "type": ["string", "null"]
+            },
+            "updated_by_session": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["next_actions"]
+        }
+      },
+      "required": ["status", "resume"]
+    },
+    {
+      "title": "active-pointer",
+      "description": "Invariant branch B: feature is non-terminal. status is planned|started|paused and resume.pointer names a non-complete target (slice:|milestone:|ac:).",
+      "properties": {
+        "status": {
+          "enum": ["planned", "started", "paused"]
+        },
+        "resume": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pointer": {
+              "type": "string",
+              "pattern": "^(slice|milestone|ac):[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            },
+            "slice_id": {
+              "type": ["string", "null"]
+            },
+            "next_actions": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "blocked_reason": {
+              "type": ["string", "null"]
+            },
+            "waiting_on": {
+              "type": ["string", "null"]
+            },
+            "updated_at": {
+              "type": ["string", "null"]
+            },
+            "updated_by_session": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["pointer", "next_actions"]
+        }
+      },
+      "required": ["status", "resume"]
+    }
+  ],
+  "$defs": {
+    "resume": {
+      "title": "resume",
+      "description": "DAP continue/restartFrame metaphor — THE program counter. Shape is further constrained by the top-level oneOf invariant.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["next_actions"],
+      "properties": {
+        "pointer": {
+          "description": "Program counter. Active: slice:<id> | milestone:<id> | ac:<id>. Terminal: done or null.",
+          "type": ["string", "null"]
+        },
+        "slice_id": {
+          "description": "Convenience mirror of the slice id when pointer is slice:<id>; else null.",
+          "type": ["string", "null"]
+        },
+        "next_actions": {
+          "description": "Short ordered next actions for /resume presentation.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blocked_reason": {
+          "description": "If set, feature is blocked; /resume must surface and not silently continue impl.",
+          "type": ["string", "null"]
+        },
+        "waiting_on": {
+          "description": "Optional external waiter label (person, system, decision).",
+          "type": ["string", "null"]
+        },
+        "updated_at": {
+          "type": ["string", "null"]
+        },
+        "updated_by_session": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "run": {
+      "title": "run",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "slices_completed"],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_path": {
+          "description": "Path to the session run ledger JSON. NULL when the ledger was pruned, never written, or otherwise absent — consumers MUST tolerate missing files (gap #4).",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "started_at": {
+          "type": ["string", "null"]
+        },
+        "ended_at": {
+          "type": ["string", "null"]
+        },
+        "gate_advisor": {
+          "description": "Advisor gate snapshot from that run.",
+          "type": ["string", "null"],
+          "enum": [
+            "pending",
+            "APPROVE",
+            "REVISE",
+            "REJECT",
+            "REPLAN",
+            null
+          ]
+        },
+        "slices_completed": {
+          "description": "Slice ids completed during this run. Union across runs feeds ac_coverage met/unmet derivation.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "historyEvent": {
+      "title": "historyEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "type", "summary"],
+      "properties": {
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "session_id": {
+          "type": ["string", "null"]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "created",
+            "status_update",
+            "slice_complete",
+            "slice_reopened",
+            "run_linked",
+            "decision",
+            "handoff",
+            "paused",
+            "resumed",
+            "completed",
+            "canceled"
+          ]
+        },
+        "summary": {
+          "description": "Human-readable event summary (canonical field name; not detail).",
+          "type": "string"
+        },
+        "ref": {
+          "description": "Optional pointer (run path, slice id, etc.).",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "decision": {
+      "title": "decision",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "summary"],
+      "properties": {
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adr": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "links": {
+      "title": "links",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linear_project_id": {
+          "type": ["string", "null"]
+        },
+        "linear_issue_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "github_issue": {
+          "type": ["string", "null"]
+        },
+        "github_prs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "handoffs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    },
+    "gate": {
+      "title": "gate",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "advisor": {
+          "type": ["string", "null"],
+          "enum": [
+            "pending",
+            "APPROVE",
+            "REVISE",
+            "REJECT",
+            "REPLAN",
+            null
+          ]
+        },
+        "last_verdict_at": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "id": "feat_workspace-disk-min-size",
+      "slug": "workspace-disk-min-size",
+      "active": true,
+      "status": "started",
+      "health": "onTrack",
+      "plan_ref": ".groundwork/features/workspace-disk-min-size/plan.md",
+      "spec_ref": ".groundwork/features/workspace-disk-min-size/spec.md",
+      "branch": "feat/workspace-disk-min-size",
+      "ac_coverage": {
+        "AC1": ["F1"],
+        "AC2": ["F1"],
+        "AC3": ["F2"]
+      },
+      "resume": {
+        "pointer": "slice:F2",
+        "slice_id": "F2",
+        "next_actions": [
+          "Implement guest agent undersized-disk error path",
+          "Add integration assertion for AC3"
+        ],
+        "blocked_reason": null,
+        "waiting_on": null,
+        "updated_at": "2026-07-25T14:02:00Z",
+        "updated_by_session": "019f9a07-22c5-7000-8bc0-291e2980660c"
+      },
+      "runs": [
+        {
+          "session_id": "019f9a07-22c5-7000-8bc0-291e2980660c",
+          "run_path": ".groundwork/runs/019f9a07-22c5-7000-8bc0-291e2980660c.json",
+          "started_at": "2026-07-25T13:40:00Z",
+          "ended_at": null,
+          "gate_advisor": "pending",
+          "slices_completed": ["F1"]
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-07-25T13:30:00Z",
+          "session_id": "019f9a07-22c5-7000-8bc0-291e2980660c",
+          "type": "created",
+          "summary": "Feature ledger created",
+          "ref": null
+        },
+        {
+          "at": "2026-07-25T14:02:00Z",
+          "session_id": "019f9a07-22c5-7000-8bc0-291e2980660c",
+          "type": "slice_complete",
+          "summary": "F1 image_sparse min-size + tests",
+          "ref": "F1"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "2026-07-25T13:35:00Z",
+          "summary": "Min size enforced at image_sparse, not guest",
+          "adr": null
+        }
+      ],
+      "links": {
+        "linear_project_id": null,
+        "linear_issue_ids": [],
+        "github_issue": null,
+        "github_prs": [],
+        "handoffs": []
+      },
+      "gate": {
+        "advisor": "pending",
+        "last_verdict_at": null
+      },
+      "created_at": "2026-07-25T13:30:00Z",
+      "updated_at": "2026-07-25T14:02:00Z",
+      "created_by_session": "019f9a07-22c5-7000-8bc0-291e2980660c"
+    },
+    {
+      "version": 1,
+      "id": "feat_bad-terminal",
+      "slug": "bad-terminal",
+      "active": false,
+      "status": "completed",
+      "health": "onTrack",
+      "ac_coverage": {
+        "AC1": ["F1"]
+      },
+      "resume": {
+        "pointer": "slice:F1",
+        "slice_id": "F1",
+        "next_actions": [],
+        "blocked_reason": null,
+        "waiting_on": null
+      },
+      "runs": [],
+      "history": [
+        {
+          "at": "2026-07-25T13:30:00Z",
+          "type": "completed",
+          "summary": "Marked complete while pointer still open"
+        }
+      ],
+      "created_at": "2026-07-25T13:30:00Z",
+      "updated_at": "2026-07-25T15:00:00Z"
+    }
+  ]
+}

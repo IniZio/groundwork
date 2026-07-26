@@ -1,0 +1,187 @@
+{
+  "generated_at": "2026-07-26T10:59:25.262Z",
+  "nodes": {
+    "C-GROUNDWORK": {
+      "id": "C-GROUNDWORK",
+      "type": "concept",
+      "title": "Groundwork",
+      "summary": "Groundwork",
+      "refs": [],
+      "inbound": [
+        "C-ARTIFACT",
+        "C-ENFORCEMENT",
+        "C-ORCHESTRATION",
+        "C-VERIFICATION"
+      ],
+      "byteSize": 643,
+      "relPath": "README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": null,
+      "ears": null
+    },
+    "C-ARTIFACT": {
+      "id": "C-ARTIFACT",
+      "type": "concept",
+      "title": "Artifact Model",
+      "summary": "Artifact Model",
+      "refs": [
+        "C-GROUNDWORK"
+      ],
+      "inbound": [
+        "ARTIFACT-R-u6zs"
+      ],
+      "byteSize": 1672,
+      "relPath": "artifact/README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": "C-GROUNDWORK",
+      "ears": null
+    },
+    "ARTIFACT-R-u6zs": {
+      "id": "ARTIFACT-R-u6zs",
+      "type": "requirement",
+      "title": "C-ARTIFACT",
+      "summary": "When a vertical slice is marked complete via the ledger CLI, the run ledger shall record the slice id, completion timestamp, and the session id before the Stop hook permits the session to end.",
+      "refs": [
+        "C-ARTIFACT"
+      ],
+      "inbound": [],
+      "byteSize": 1163,
+      "relPath": "artifact/requirements/ledger-completeness.md",
+      "status": "active",
+      "pattern": "event",
+      "verification": "hybrid",
+      "criticality": "must",
+      "concept": "C-ARTIFACT",
+      "parent": null,
+      "ears": "When a vertical slice is marked complete via the ledger CLI, the run ledger shall record the slice id, completion timestamp, and the session id before the Stop hook permits the session to end."
+    },
+    "C-ENFORCEMENT": {
+      "id": "C-ENFORCEMENT",
+      "type": "concept",
+      "title": "Enforcement Hooks",
+      "summary": "Enforcement Hooks",
+      "refs": [
+        "C-GROUNDWORK"
+      ],
+      "inbound": [
+        "ENFORCEMENT-R-wfdw"
+      ],
+      "byteSize": 1796,
+      "relPath": "enforcement/README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": "C-GROUNDWORK",
+      "ears": null
+    },
+    "ENFORCEMENT-R-wfdw": {
+      "id": "ENFORCEMENT-R-wfdw",
+      "type": "requirement",
+      "title": "C-ENFORCEMENT",
+      "summary": "If an Edit or Write call is received from the orchestrator identity on a path that is not a permitted memory file or handoff document, then the enforcement hook shall return a deny block and the tool call shall not execute.",
+      "refs": [
+        "C-ENFORCEMENT"
+      ],
+      "inbound": [],
+      "byteSize": 1056,
+      "relPath": "enforcement/requirements/impl-guard-block.md",
+      "status": "active",
+      "pattern": "unwanted",
+      "verification": "automated",
+      "criticality": "must",
+      "concept": "C-ENFORCEMENT",
+      "parent": null,
+      "ears": "If an Edit or Write call is received from the orchestrator identity on a path that is not a permitted memory file or handoff document, then the enforcement hook shall return a deny block and the tool call shall not execute."
+    },
+    "C-ORCHESTRATION": {
+      "id": "C-ORCHESTRATION",
+      "type": "concept",
+      "title": "Orchestration Model",
+      "summary": "Orchestration Model",
+      "refs": [
+        "C-GROUNDWORK"
+      ],
+      "inbound": [
+        "ORCHESTRATION-R-ve7w"
+      ],
+      "byteSize": 1464,
+      "relPath": "orchestration/README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": "C-GROUNDWORK",
+      "ears": null
+    },
+    "ORCHESTRATION-R-ve7w": {
+      "id": "ORCHESTRATION-R-ve7w",
+      "type": "requirement",
+      "title": "C-ORCHESTRATION",
+      "summary": "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent and shall not invoke Edit, Write, or MultiEdit directly on production code.",
+      "refs": [
+        "C-ORCHESTRATION"
+      ],
+      "inbound": [],
+      "byteSize": 1232,
+      "relPath": "orchestration/requirements/delegation-guard.md",
+      "status": "active",
+      "pattern": "event",
+      "verification": "hybrid",
+      "criticality": "must",
+      "concept": "C-ORCHESTRATION",
+      "parent": null,
+      "ears": "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent and shall not invoke Edit, Write, or MultiEdit directly on production code."
+    },
+    "C-VERIFICATION": {
+      "id": "C-VERIFICATION",
+      "type": "concept",
+      "title": "Verification",
+      "summary": "Verification",
+      "refs": [
+        "C-GROUNDWORK"
+      ],
+      "inbound": [
+        "VERIFICATION-R-oxuu"
+      ],
+      "byteSize": 1618,
+      "relPath": "verification/README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": "C-GROUNDWORK",
+      "ears": null
+    },
+    "VERIFICATION-R-oxuu": {
+      "id": "VERIFICATION-R-oxuu",
+      "type": "requirement",
+      "title": "C-VERIFICATION",
+      "summary": "When a non-trivial task reaches its completion phase, the orchestrator shall obtain an APPROVE verdict from the advisor agent and record it in the run ledger before the session is permitted to end.",
+      "refs": [
+        "C-VERIFICATION"
+      ],
+      "inbound": [],
+      "byteSize": 1257,
+      "relPath": "verification/requirements/advisor-gate-required.md",
+      "status": "active",
+      "pattern": "event",
+      "verification": "hybrid",
+      "criticality": "must",
+      "concept": "C-VERIFICATION",
+      "parent": null,
+      "ears": "When a non-trivial task reaches its completion phase, the orchestrator shall obtain an APPROVE verdict from the advisor agent and record it in the run ledger before the session is permitted to end."
+    }
+  }
+}

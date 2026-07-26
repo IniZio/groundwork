@@ -3,6 +3,7 @@ id: C-GROUNDWORK
 type: concept
 title: Groundwork
 parent: null
+origin_rfc: R-20260726-K4M2QX
 ---
 
 # Groundwork

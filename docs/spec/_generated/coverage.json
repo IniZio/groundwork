@@ -1,0 +1,13 @@
+{
+  "total": 4,
+  "by_status": {
+    "active": 4
+  },
+  "by_verification": {
+    "hybrid": 3,
+    "automated": 1
+  },
+  "by_criticality": {
+    "must": 4
+  }
+}

@@ -1,3 +1,9 @@
+---
+name: spec
+description: Manage structured requirement specifications under docs/spec/ — create, build, verify, and query spec nodes and their traceability data.
+disable-model-invocation: true
+---
+
 # groundwork:spec skill
 
 Use this skill to manage structured requirement specifications in a groundwork-managed project.

@@ -1,60 +1,50 @@
-# spec skill
-
-Manage requirement specifications under `docs/spec/` using the `spec` CLI.
-
-## CLI quick reference
-
-```
-spec init                        Create docs/spec/README.md with a root concept node
-spec build                       Build docs/spec/_generated/{index.md,index.json,coverage.json}
-spec req new <concept> <name>    Create a new requirement file
-spec show <id> [--full]          Show a spec node (≤8 lines without --full)
-spec search <q> [--limit N]      Search nodes (default limit 8)
-spec tree [--depth N]            Show concept tree (default depth 2)
-spec deps <id>                   Show inbound/outbound references from the index
-```
-
-## Requirement file schema
-
-Each requirement lives at `docs/spec/**/requirements/<kebab>.md`:
-
-```yaml
 ---
-id: CONCEPT-R-xxxx         # 4 random base32 chars, locally unique
-concept: C-CONCEPT         # owning concept node id
-ears: "When X, the system shall Y."
-pattern: event             # ubiquitous|event|state|option|unwanted
-verify: "Observe Y in output."  # prose only — NO file paths
-verification: automated    # automated|manual|hybrid
-criticality: must          # must|should (default must)
-origin_rfc: RFC-0001
-superseded_by: null
-status: active             # active|superseded|withdrawn
+name: spec
+description: Manage structured requirement specifications under docs/spec/ — create, build, verify, and query spec nodes and their traceability data.
+disable-model-invocation: false
 ---
+
+# groundwork:spec skill
+
+Use this skill to manage structured requirement specifications in a groundwork-managed project.
+
+## When to invoke
+
+- User asks to "spec out", "write requirements for", or "create a spec" for a feature
+- A feature plan references a `spec_ref` and the spec file is missing
+- A build error mentions `docs/spec/` or `spec build` failures
+- Reviewing requirement completeness or coverage
+
+## Workflow
+
+1. **Init** (first time): `spec init` — creates `docs/spec/README.md` with the project concept node.
+2. **Add sub-concept** (for a major component): create `docs/spec/<component>/README.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
+3. **Add requirements**: `spec req new <concept-id> <kebab-name>` — creates a stub; fill in `ears`, `verify`, and `verification` fields.
+4. **Build index**: `spec build` — validates the tree and writes `_generated/`. Exits 1 on:
+   - Duplicate requirement ids
+   - `concept` frontmatter disagreeing with directory position
+   - File paths in `verify` fields (use `@verifies` annotations in test code instead)
+5. **Browse**: `spec tree`, `spec search <q>`, `spec show <id>`, `spec deps <id>`
+
+## Writing good requirements
+
+- **EARS notation is normative** — the `ears` field is the binding statement.
+- **`verify` is prose only** — never put file paths or test references here. Reference tests from source code via `@verifies <id>` annotation comments.
+- **`criticality: should`** — surfaced in coverage reports, never blocks CI.
+- **Manual requirements** must include a `## Manual procedure` section in the body.
+
+## Coverage report
+
+`spec build` writes `docs/spec/_generated/coverage.json`:
+```json
+{
+  "total": 12,
+  "by_status": { "active": 11, "superseded": 1 },
+  "by_verification": { "automated": 9, "manual": 2, "hybrid": 1 },
+  "by_criticality": { "must": 10, "should": 2 }
+}
 ```
 
-Body is commentary only. Manual requirements must include a `## Manual procedure` section.
+## CLI reference
 
-## EARS patterns
-
-| Pattern | Template |
-|---|---|
-| ubiquitous | The `<system>` shall `<response>`. |
-| event | When `<trigger>`, the `<system>` shall `<response>`. |
-| state | While `<state>`, the `<system>` shall `<response>`. |
-| option | Where `<feature>`, the `<system>` shall `<response>`. |
-| unwanted | If `<condition>`, then the `<system>` shall `<response>`. |
-
-## Index staleness
-
-Read commands (`show`, `search`, `tree`, `deps`) automatically rebuild `_generated/index.json`
-when any spec file is newer than the index. Run `spec build` explicitly after large edits.
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | operational failure (build error, file not found, …) |
-| 2 | usage error |
-| 127 | delegated subcommand script not installed |
+See `skills/spec/SKILL.md` or run `spec --help`.

@@ -89,6 +89,19 @@ Run commands — do NOT trust claims without output:
 
 Fall back to raw Bash only when a command must mutate state or when the full output is genuinely short and load-bearing for the verdict.
 
+**Gathering code evidence — graph first, Grep/Read as fallback**
+
+Before opening files or running grep, start with the code-review-graph MCP tools — they are token-efficient and give you structural coverage that file scanning cannot:
+
+- \`mcp__code-review-graph__detect_changes_tool\` — risk-scored change triage; always start here. Surfaces what changed and where to focus review effort.
+- \`mcp__code-review-graph__get_review_context_tool\` — token-efficient source snippets for changed code; use instead of reading whole files.
+- \`mcp__code-review-graph__get_impact_radius_tool\` — blast radius of the change; catches code touched by the change that was not explicitly examined.
+- \`mcp__code-review-graph__get_affected_flows_tool\` — execution paths impacted; use together with \`get_impact_radius_tool\` to confirm the review covered the full blast area.
+
+Fall back to Grep/Read only when the graph does not cover what you need (newly created files not yet indexed, generated code, config files).
+
+**Caveat — the graph indexes code only.** Plans, specs, RFCs, and test *results* are NOT in the graph. Pass or read those directly. Graph coverage does not equal completeness of evidence — always verify acceptance criteria against the actual plan text, not graph nodes.
+
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
 
@@ -933,6 +946,19 @@ Run commands — do NOT trust claims without output:
 - \`ctx_execute_file\` — parse or filter a file (e.g. extract failing assertions) programmatically; only what you \`console.log()\` enters context.
 
 Fall back to raw Bash only when a command must mutate state or when the full output is genuinely short and load-bearing for the verdict.
+
+**Gathering code evidence — graph first, Grep/Read as fallback**
+
+Before opening files or running grep, start with the code-review-graph MCP tools — they are token-efficient and give you structural coverage that file scanning cannot:
+
+- \`mcp__code-review-graph__detect_changes_tool\` — risk-scored change triage; always start here. Surfaces what changed and where to focus review effort.
+- \`mcp__code-review-graph__get_review_context_tool\` — token-efficient source snippets for changed code; use instead of reading whole files.
+- \`mcp__code-review-graph__get_impact_radius_tool\` — blast radius of the change; catches code touched by the change that was not explicitly examined.
+- \`mcp__code-review-graph__get_affected_flows_tool\` — execution paths impacted; use together with \`get_impact_radius_tool\` to confirm the review covered the full blast area.
+
+Fall back to Grep/Read only when the graph does not cover what you need (newly created files not yet indexed, generated code, config files).
+
+**Caveat — the graph indexes code only.** Plans, specs, RFCs, and test *results* are NOT in the graph. Pass or read those directly. Graph coverage does not equal completeness of evidence — always verify acceptance criteria against the actual plan text, not graph nodes.
 
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.

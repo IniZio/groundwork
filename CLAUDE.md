@@ -20,22 +20,24 @@
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
 - `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger); NEVER exploration or implementation
-- `Write`/`Edit` — restricted to the direct-write allowlist below
+- `Write`/`Edit` — only for the two permitted path shapes; see **When the orchestrator may write directly** below
 
-**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, one-shot git status, and the direct-write allowlist below are the only sanctioned direct-write/Bash uses.)
+**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI and one-shot git status are the only sanctioned Bash uses.)
 
-### Direct-write allowlist (destination-path gated, NOT judgment-gated)
+**Edits to orchestrator-rule files (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) require delegation to `groundwork:general-purpose` + the `advisor` gate.**
 
-The orchestrator may use Write/Edit directly ONLY for content it already holds verbatim this turn, and ONLY under these destination paths:
-- `.groundwork/**` EXCEPT `.groundwork/runs/**` and legacy `.groundwork/run.json` (ledger CLI only — unchanged)
-- `.groundwork/out-of-scope/**` (closes the existing triage-append gap — see Triage pre-check)
-- Session/project memory files (e.g. `memory/*.md` and its `MEMORY.md` index)
+### When the orchestrator may write directly
 
-**Verbatim precondition:** if composing the content first requires reading or searching the codebase, that composition is exploration — delegate it. Write only once the content already exists in this turn.
+**Test:** would delegating cost more context than doing it? Content already in your window → write it directly. Content requiring a read or search to compose → delegate; that's exploration.
 
-**Hard deny-floor** (never direct Write/Edit here, regardless of the above): anything under `src/`, `test/`, `tests/`; any file matching build/behavior extensions (`.ts .tsx .js .mjs .cjs .json .yaml .yml .toml`, lockfiles, `Dockerfile`/`Containerfile`, CI configs); `package.json`, `tsconfig*`, `.claude/settings*.json`, `.mcp.json`; and the orchestrator-rule files themselves (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) — edits to these still require delegation + the advisor gate.
+**Two path shapes `hooks/orchestrator-impl-guard.mjs` actually permits:**
 
-**Anti-creep tripwire:** if the doc's purpose is to carry a code or config change to be applied elsewhere, this exception does not apply — that's implementation; delegate it. The allowance covers coordination artifacts only, and its safety comes entirely from these paths being unable to affect build, test, or runtime.
+| Permitted | Pattern |
+|---|---|
+| Session/project memory | path is UNDER `~/.claude/projects/…/memory/`, home-anchored (incl. `MEMORY.md` index) |
+| Handoff documents | `handoff-*.md` inside any `.groundwork/` directory |
+
+**Everything else is blocked.** Code, config, test files, and `.groundwork/out-of-scope/**` are never orchestrator-written regardless of how obvious the change appears. When the principle and the hook disagree, **the hook wins**.
 
 ---
 
@@ -80,7 +82,7 @@ All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-pu
 
 Before classifying and delegating ANY new request, run these two checks:
 
-1. **Dedup against the rejection KB.** Scan `.groundwork/out-of-scope/*.md` and match the request **by concept, not keyword** ("night theme" matches `dark-mode.md`). On a match, do NOT re-plan — surface it to the user: append the request to that file's *Prior requests* and offer **Confirm** (still rejected — decline + record), **Reconsider** (delete the file and re-triage fresh), or **Disagree** (user overrides; proceed). The KB is durable rejection memory; re-litigating a settled "no" wastes a wave. (Format: see `vertical-slice` → Rejection KB.)
+1. **Dedup against the rejection KB.** Scan `.groundwork/out-of-scope/*.md` and match the request **by concept, not keyword** ("night theme" matches `dark-mode.md`). On a match, do NOT re-plan — surface it to the user: delegate the *Prior requests* append to `groundwork:general-purpose`, then offer **Confirm** (still rejected — decline + record), **Reconsider** (delete the file and re-triage fresh), or **Disagree** (user overrides; proceed). The KB is durable rejection memory; re-litigating a settled "no" wastes a wave. (Format: see `vertical-slice` → Rejection KB.)
 2. **Conflict → stop and ask.** If the request sends **conflicting classification signals** (e.g. reads as both a trivial change and a risky shared-code change, or both bug and feature), do NOT pick one and proceed — state the conflict and ask the user which framing is correct before routing. Guessing wrong here propagates through the whole fan-out.
 
 **Negative scope is first-class.** When you do route to a slice or brief, state what is explicitly **out of scope** for it alongside the success criteria — an unstated boundary is where gold-plating and scope-creep leak in.
@@ -169,7 +171,7 @@ Tier aliases (sonnet/opus/haiku/fable) resolve to the provider's *latest* versio
 | --- | --- |
 | advisor | opus |
 | designer | sonnet |
-| explore | sonnet |
+| explore | haiku |
 | general-purpose | sonnet |
 | git-master | haiku |
 | orchestrator | opus |
@@ -250,8 +252,8 @@ Sub-orch 3 (UI):       designer×2 + implements glue logic directly
 To run several domains in parallel, the PRIMARY orchestrator fans out one `general-purpose` per domain — not a sub-orchestrator fanning out more `general-purpose`s.
 
 ### Depth-1 Constraint (HARD-ENFORCED)
-- Primary orchestrator CAN task `general-purpose` sub-orchestrators
-- Sub-orchestrators CANNOT task `orchestrator` or another `general-purpose` — denied by opencode.json permissions (a `general-purpose` implements its own code instead)
+- Primary orchestrator CAN task `general-purpose` sub-orchestrators and `orchestrator` for further decomposition
+- Sub-orchestrators CANNOT task `orchestrator` or another `general-purpose` — enforced by `hooks/nesting-guard.mjs` on Claude Code (a `general-purpose` implements its own slice directly)
 - Sub-orchestrators CAN task supporting specialists: explore, advisor, designer, test-engineer, qa, planner
 - Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
 

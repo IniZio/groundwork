@@ -35,6 +35,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
+import { parseFrontmatter as parseRfcFrontmatter } from './lib/rfc-io.mjs'
 
 /**
  * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
@@ -151,9 +152,11 @@ const HELP = {
     flags: [],
   },
   init: {
-    summary: 'write the initial ledger atomically from a JSON file or stdin',
-    usage: 'ledger init <file|->',
-    flags: [],
+    summary: 'write the initial ledger atomically from a JSON file or stdin; or seed from an RFC',
+    usage: 'ledger init [<file|->] [--rfc <dir>]',
+    flags: [
+      '--rfc <dir>   path to an RFC directory; seeds slices from frontmatter tasks[] and sets rfc_ref',
+    ],
   },
   add: {
     summary: 'insert a new slice into the ledger',
@@ -354,20 +357,59 @@ function cmdAbandon() {
   process.stdout.write('run cancelled (active:false) — gate released\n')
 }
 
-function cmdInit(src) {
-  if (!src) die('usage: ledger init <file|->', 2)
-  let raw
-  try {
-    raw = src === '-' ? readFileSync(0, 'utf8') : readFileSync(src, 'utf8')
-  } catch (e) {
-    die(`cannot read initial ledger from ${src}: ${e?.message ?? e}`, 1)
+function cmdInit(args) {
+  // Support both legacy single-positional form and new flag-based form.
+  // When args is a string (old call site), wrap it; this path should not occur
+  // after the main() update below but kept defensively.
+  const argv = Array.isArray(args) ? args : (args ? [args] : [])
+  const { flags, positionals } = parseFlags(argv)
+  const src = positionals[0]
+  const rfcDir = flags.rfc
+
+  if (!src && !rfcDir) die('usage: ledger init <file|-> [--rfc <dir>]', 2)
+
+  let obj = {}
+
+  if (src) {
+    let raw
+    try {
+      raw = src === '-' ? readFileSync(0, 'utf8') : readFileSync(src, 'utf8')
+    } catch (e) {
+      die(`cannot read initial ledger from ${src}: ${e?.message ?? e}`, 1)
+    }
+    try {
+      obj = JSON.parse(raw)
+    } catch (e) {
+      die(`initial ledger is not valid JSON: ${e?.message ?? e}`, 2)
+    }
   }
-  let obj
-  try {
-    obj = JSON.parse(raw)
-  } catch (e) {
-    die(`initial ledger is not valid JSON: ${e?.message ?? e}`, 2)
+
+  // AC1: --rfc <dir> seeds slices from RFC frontmatter tasks[] and sets rfc_ref.
+  if (rfcDir) {
+    const rfcMdPath = path.join(rfcDir, 'rfc.md')
+    let rfcFrontmatter
+    try {
+      const content = readFileSync(rfcMdPath, 'utf8')
+      const parsed = parseRfcFrontmatter(content)
+      rfcFrontmatter = parsed.frontmatter
+    } catch (e) {
+      die(`cannot read RFC from ${rfcMdPath}: ${e?.message ?? e}`, 1)
+    }
+    const uid = rfcFrontmatter.uid
+    if (!uid) die(`RFC at ${rfcMdPath} has no uid in frontmatter`, 1)
+    obj.rfc_ref = uid
+    const tasks = Array.isArray(rfcFrontmatter.tasks) ? rfcFrontmatter.tasks : []
+    obj.slices = tasks.map((t) => ({
+      id: String(t.id ?? ''),
+      wave: Number.isFinite(Number(t.wave)) ? Number(t.wave) : 0,
+      blocked_by: Array.isArray(t.blocked_by) ? t.blocked_by.map(String) : [],
+      acceptance: Array.isArray(t.acceptance) ? t.acceptance.map(String) : [],
+      status: 'pending',
+      desc: String(t.desc ?? t.behavior ?? ''),
+      kind: String(t.kind ?? 'impl'),
+    }))
   }
+
   // Generate and embed the write-token for gate/complete authority
   const writeToken = randomBytes(8).toString('hex')
   obj.write_token = writeToken
@@ -606,7 +648,7 @@ function main() {
       case 'complete': return cmdComplete(rest)
       case 'gate':     return cmdGate(rest)
       case 'abandon':  return cmdAbandon()
-      case 'init':     return cmdInit(rest[0])
+      case 'init':     return cmdInit(rest)
       case 'add':      return cmdAdd(rest)
       case 'rm':       return cmdRm(rest)
       case 'set':      return cmdSet(rest)

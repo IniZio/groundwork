@@ -50,7 +50,7 @@ A plan is whatever concrete spec the work is grounded in: an `interview` synthes
 `planner` plan under `.groundwork/plans/`, or the project's own planning artifact (see
 `interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a `plan_ref` (plan file on disk) before `vertical-slice` fans out** — if missing, STOP and route to `interview` or `planner` first (HARD-GATE). Decompose its acceptance
 criteria into vertical slices — each criterion → one slice. Record the plan path as
-`plan_ref` in the ledger.
+`plan_ref` in the ledger. **When implementing an RFC**, also set `rfc_ref` by using `ledger init --rfc <rfc-dir>` which seeds slices from the RFC's `tasks:` frontmatter block automatically.
 
 ### Small-Change Mode (after `interview`, no separate plan)
 Lightweight decomposition into 3–5 vertical slices. The interview spec is the spec.

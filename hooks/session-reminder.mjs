@@ -13,12 +13,130 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { appendFileSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
+import { findRfcByUid, parseFrontmatter as parseRfcFrontmatter } from './lib/rfc-io.mjs'
+import { specDirPath, indexJsonPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
+import { resolveShardPath, appendEvent } from './lib/journal-io.mjs'
+
+// ---------------------------------------------------------------------------
+// Token estimation (rough: 1 token ≈ 4 chars for English/code text)
+// ---------------------------------------------------------------------------
+
+function estimateTokens(text) {
+  return Math.ceil((text || '').length / 4)
+}
+
+// ---------------------------------------------------------------------------
+// RFC status resolver (AC3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to resolve the RFC status for a given rfc_ref uid.
+ * Returns the status string or null if not resolvable (fail-open).
+ */
+function resolveRfcStatus(projectDir, rfcRef) {
+  try {
+    const rfcsDir = path.join(projectDir, 'docs', 'rfcs')
+    const rfcDir = findRfcByUid(rfcsDir, rfcRef)
+    if (!rfcDir) return null
+    const content = readFileSync(path.join(rfcDir, 'rfc.md'), 'utf8')
+    const { frontmatter } = parseRfcFrontmatter(content)
+    return typeof frontmatter.status === 'string' ? frontmatter.status : null
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Spec skeleton renderer (AC6, AC7)
+// ---------------------------------------------------------------------------
+
+const SPEC_SKELETON_TOKEN_CAP = 600
+const SPEC_NODE_DEPTH1_THRESHOLD = 40
+
+/**
+ * Build a compact spec skeleton from the spec index.
+ * Returns '' if no spec exists or on any error (fail-open).
+ * Degrades to depth-1 with child counts rather than truncating mid-tree.
+ */
+function buildSpecSkeleton(projectDir) {
+  try {
+    const sd = specDirPath(projectDir)
+    if (!existsSync(sd)) return ''
+
+    // Load index (or build on the fly — we don't want to trigger a full build
+    // in a SessionStart hook, so use loadIndex only if present).
+    let index = loadIndex(sd)
+    if (!index) {
+      // Build on the fly (fast, no side effects other than reading files)
+      const { nodes } = buildIndexData(sd)
+      index = { nodes }
+    }
+    const nodes = index.nodes || {}
+    const nodeValues = Object.values(nodes)
+    if (nodeValues.length === 0) return ''
+
+    // Separate concept nodes (no concept field = root concept) from requirements
+    const concepts = nodeValues.filter((n) => n.type === 'concept' || !n.concept)
+    const requirements = nodeValues.filter((n) => n.type === 'requirement' || n.concept)
+
+    // Build child count map: concept id → number of direct requirements
+    const childCounts = {}
+    for (const r of requirements) {
+      const parent = r.concept || r.parent
+      if (parent) {
+        childCounts[parent] = (childCounts[parent] || 0) + 1
+      }
+    }
+
+    // Try full depth-1 render first, degrade if over cap
+    const lines = ['', '## Spec Skeleton', '']
+    const topLevelConcepts = concepts.filter((n) => !n.parent && !n.concept)
+
+    // If too many top-level nodes, always use depth 1 with child counts
+    const useDepth1 = topLevelConcepts.length > SPEC_NODE_DEPTH1_THRESHOLD || concepts.length > SPEC_NODE_DEPTH1_THRESHOLD
+
+    if (useDepth1 || true) {
+      // Always render depth 1 with child counts (safe, bounded)
+      for (const c of topLevelConcepts) {
+        const children = childCounts[c.id] || 0
+        lines.push(`- **${c.id}** ${c.title || c.id}${children ? ` (${children} req${children !== 1 ? 's' : ''})` : ''}`)
+        // Show direct concept children at depth 1
+        const childConcepts = concepts.filter((n) => n.parent === c.id || n.concept === c.id)
+        for (const cc of childConcepts) {
+          const ccChildren = childCounts[cc.id] || 0
+          lines.push(`  - **${cc.id}** ${cc.title || cc.id}${ccChildren ? ` (${ccChildren} req${ccChildren !== 1 ? 's' : ''})` : ''}`)
+        }
+      }
+    }
+
+    const totalNodes = nodeValues.length
+    lines.push('')
+    lines.push(`_${totalNodes} spec node${totalNodes !== 1 ? 's' : ''} total_`)
+
+    const rendered = lines.join('\n')
+    if (estimateTokens(rendered) <= SPEC_SKELETON_TOKEN_CAP) {
+      return rendered
+    }
+
+    // Over cap at depth 1 — degrade to just top-level with counts
+    const stripped = ['', '## Spec Skeleton', '']
+    for (const c of topLevelConcepts) {
+      const children = childCounts[c.id] || 0
+      stripped.push(`- **${c.id}** ${c.title || c.id}${children ? ` (${children} req${children !== 1 ? 's' : ''})` : ''}`)
+    }
+    stripped.push('')
+    stripped.push(`_${totalNodes} spec nodes total (degraded to root only)_`)
+    return stripped.join('\n')
+  } catch {
+    return '' // fail-open
+  }
+}
 
 /** Normalize gate.advisor (legacy string OR {verdict,...} object) to its verdict string, else null. */
 function advisorVerdict(gate) {
@@ -51,6 +169,11 @@ function activeRunBlock(projectDir, sessionId) {
   const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
   if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
   if (typeof ledger.plan_ref === 'string' && ledger.plan_ref) lines.push(`Plan: ${ledger.plan_ref}`)
+  // AC3: display rfc_ref and its current status when present
+  if (typeof ledger.rfc_ref === 'string' && ledger.rfc_ref) {
+    const rfcStatus = resolveRfcStatus(projectDir, ledger.rfc_ref)
+    lines.push(`RFC: ${ledger.rfc_ref} (status: ${rfcStatus ?? 'unknown'})`)
+  }
   const ledgerRef = ledger.session_id ? `.groundwork/runs/${ledger.session_id}.json` : `.groundwork/run.json`
   lines.push(`Ledger: ${ledgerRef} — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
   lines.push('')
@@ -206,6 +329,52 @@ additionalContext += activeRunBlock(projectDir, sessionId)
 try {
   additionalContext += buildStruggleNudge(projectDir)
 } catch { /* never fail the hook */ }
+
+// AC6/AC7: spec skeleton with 600-token cap; dropped first if total >3000 tokens.
+const TOTAL_TOKEN_CAP = 3000
+const TOTAL_TOKEN_ALARM = 3300
+try {
+  const skeleton = buildSpecSkeleton(projectDir)
+  if (skeleton) {
+    const baseTokens = estimateTokens(additionalContext)
+    const skeletonTokens = estimateTokens(skeleton)
+    if (baseTokens + skeletonTokens <= TOTAL_TOKEN_CAP) {
+      additionalContext += skeleton
+    } else {
+      // AC7: drop skeleton before any other block; record a SESSION_START journal event
+      try {
+        if (sessionId) {
+          const shardPath = resolveShardPath(projectDir, sessionId)
+          appendEvent(shardPath, {
+            type: 'SESSION_START',
+            ts: new Date().toISOString(),
+            session: sessionId,
+            event: 'spec_skeleton_dropped',
+            reason: `injection cap (${TOTAL_TOKEN_CAP} tokens) would be exceeded`,
+            base_tokens: baseTokens,
+            skeleton_tokens: skeletonTokens,
+          })
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+} catch { /* never fail the hook */ }
+
+// AC8: token alarm (informational — logged only)
+try {
+  const totalTokens = estimateTokens(additionalContext)
+  if (totalTokens > TOTAL_TOKEN_ALARM && sessionId) {
+    const shardPath = resolveShardPath(projectDir, sessionId)
+    appendEvent(shardPath, {
+      type: 'SESSION_START',
+      ts: new Date().toISOString(),
+      session: sessionId,
+      event: 'injection_over_alarm',
+      total_tokens: totalTokens,
+      alarm_threshold: TOTAL_TOKEN_ALARM,
+    })
+  }
+} catch { /* best-effort */ }
 
 console.log(JSON.stringify({
   continue: true,

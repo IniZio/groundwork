@@ -152,6 +152,8 @@ Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | i
 
 Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — never Read/Edit the file by hand.
 
+**RFC-seeded ledger (when the task is implementing an RFC):** If the RFC has a `tasks:` block in its frontmatter, seed slices automatically: `ledger init --rfc <rfc-dir>`. This reads `rfc.md`, extracts `tasks[]`, and sets `rfc_ref` to the RFC uid — preserving each task's `id`, `wave`, `blocked_by`, and `acceptance`. A file argument may be omitted when `--rfc` is the only source needed.
+
 ## Rejection KB
 
 When a concept is rejected as out of scope, record it in `.groundwork/out-of-scope/<concept-slug>.md`. See `reference/rejection-kb.md` for the template and full rules.

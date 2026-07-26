@@ -199,23 +199,28 @@ describe("orchestrator-impl-guard — memory file permit", () => {
 describe("orchestrator-impl-guard — handoff document permit", () => {
 	const gwDir = "/home/newman/.local/share/groundwork/.groundwork";
 
-	it("orchestrator Write to .groundwork/handoff-YYYY-MM-DD-desc.md → ALLOWED", () => {
-		const d = runHook(orchestratorWrite(path.join(gwDir, "handoff-2026-07-26-memory-permit.md")));
+	it("orchestrator Write to .groundwork/handoffs/handoff-YYYY-MM-DD-desc.md → ALLOWED", () => {
+		const d = runHook(orchestratorWrite(path.join(gwDir, "handoffs", "handoff-2026-07-26-memory-permit.md")));
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	it("orchestrator Write to nested-project .groundwork/handoff-*.md → ALLOWED", () => {
-		const d = runHook(orchestratorWrite("/tmp/some-project/.groundwork/handoff-2026-07-26-session.md"));
+	it("orchestrator Write to nested-project .groundwork/handoffs/handoff-*.md → ALLOWED", () => {
+		const d = runHook(orchestratorWrite("/tmp/some-project/.groundwork/handoffs/handoff-2026-07-26-session.md"));
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	it("non-.md file with handoff- prefix → BLOCKED (must end in .md)", () => {
-		const d = runHook(orchestratorWrite(path.join(gwDir, "handoff-2026-07-26.ts")));
+	it("OLD shape .groundwork/handoff-*.md (no handoffs dir) → BLOCKED", () => {
+		const d = runHook(orchestratorWrite(path.join(gwDir, "handoff-2026-07-26-old-shape.md")));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
-	it("handoff file outside .groundwork/ → BLOCKED (must be inside a .groundwork dir)", () => {
-		const d = runHook(orchestratorWrite("/home/newman/handoff-2026-07-26.md"));
+	it("non-.md file with handoff- prefix → BLOCKED (must end in .md)", () => {
+		const d = runHook(orchestratorWrite(path.join(gwDir, "handoffs", "handoff-2026-07-26.ts")));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("handoffs dir not under .groundwork/ → BLOCKED", () => {
+		const d = runHook(orchestratorWrite("/home/newman/handoffs/handoff-2026-07-26.md"));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
@@ -227,12 +232,27 @@ describe("orchestrator-impl-guard — handoff document permit", () => {
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
+	it("handoff-*.md in wrong sub-dir (out-of-scope) → BLOCKED (parent must be 'handoffs')", () => {
+		// Kills the dirParts[n-1] === 'handoffs' half of the two-part check.
+		// .groundwork/out-of-scope/handoff-2026-07-26.md satisfies the .groundwork grandparent
+		// but NOT the handoffs immediate-parent — must be blocked.
+		const d = runHook(orchestratorWrite(path.join(gwDir, "out-of-scope", "handoff-2026-07-26.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("handoff-*.md in wrong sub-dir (runs) → BLOCKED (parent must be 'handoffs')", () => {
+		// Second non-forbidden wrong sub-dir to confirm the parent check is structural,
+		// not a hard-coded exclusion of 'out-of-scope' specifically.
+		const d = runHook(orchestratorWrite(path.join(gwDir, "runs", "handoff-x.md")));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
 	it("handoff .. traversal escaping .groundwork → BLOCKED", () => {
 		// Build with string concatenation so the literal ".." survives into the hook predicate.
 		// path.join would collapse it at construction time and the traversal would never be exercised.
-		// ".groundwork/handoff-x.md/../../src/index.ts" resolves basename to
+		// ".groundwork/handoffs/handoff-x.md/../../src/index.ts" resolves basename to
 		// "index.ts", which does not match handoff-*.md → BLOCKED
-		const p = gwDir + "/handoff-x.md/../../src/index.ts";
+		const p = gwDir + "/handoffs/handoff-x.md/../../src/index.ts";
 		const d = runHook(orchestratorWrite(p));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});

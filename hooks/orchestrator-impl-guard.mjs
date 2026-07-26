@@ -103,10 +103,14 @@ function isSubagentCall(input) {
  *   tree.  See test "spoof path src/.claude/... → BLOCKED" for the assertion.
  *
  * Permit 2 — handoff documents:
- *   Basename must match handoff-*.md AND the directory must contain a
- *   .groundwork segment.  The basename check is done AFTER path.resolve(),
- *   so a .. traversal (e.g. ".groundwork/handoff-x.md/../../src/index.ts")
- *   collapses to "index.ts" as the basename, which fails the glob — BLOCKED.
+ *   Basename must match handoff-*.md AND the immediate parent directory must
+ *   be named "handoffs" AND that "handoffs" dir's parent must be a directory
+ *   named ".groundwork".  Shape: <any>/.groundwork/handoffs/handoff-*.md.
+ *   The old root-level shape (<any>/.groundwork/handoff-*.md, no handoffs
+ *   sub-dir) is deliberately BLOCKED.
+ *   The basename check is done AFTER path.resolve(), so a .. traversal
+ *   (e.g. ".groundwork/handoffs/handoff-x.md/../../src/index.ts") collapses
+ *   to "index.ts" as the basename, which fails the glob — BLOCKED.
  *
  * Fail-safe: any throw or malformed input returns false → BLOCK (not permit).
  */
@@ -128,15 +132,15 @@ function isOrchestratorWritablePath(rawPath) {
     if (segments.length >= 3 && segments[1] === 'memory') return true
   }
 
-  // Permit 2: handoff-*.md inside a .groundwork/ directory
-  // Note: dirParts.includes('.groundwork') matches at ANY depth in the resolved path,
-  // so src/.groundwork/handoff-*.md is also permitted. This is accepted behavior —
-  // the basename regex confines it to .md files with no build effect. Do not tighten
-  // this to an exact-depth check without understanding the nesting implications.
+  // Permit 2: handoff-*.md inside <any>/.groundwork/handoffs/
+  // Shape: <root>/.groundwork/handoffs/handoff-*.md
+  // The old root-level shape (.groundwork/handoff-*.md) is deliberately BLOCKED.
   const basename = path.basename(resolved)
   if (/^handoff-.+\.md$/.test(basename)) {
     const dirParts = path.dirname(resolved).split(path.sep)
-    if (dirParts.includes('.groundwork')) return true
+    // immediate parent must be "handoffs", its parent must be ".groundwork"
+    const n = dirParts.length
+    if (n >= 2 && dirParts[n - 1] === 'handoffs' && dirParts[n - 2] === '.groundwork') return true
   }
 
   return false

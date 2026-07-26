@@ -35,7 +35,7 @@
 | Permitted | Pattern |
 |---|---|
 | Session/project memory | path is UNDER `~/.claude/projects/…/memory/`, home-anchored (incl. `MEMORY.md` index) |
-| Handoff documents | `handoff-*.md` inside any `.groundwork/` directory |
+| Handoff documents | `handoff-*.md` inside `<any>/.groundwork/handoffs/` (i.e. the file's parent is `handoffs`, whose parent is `.groundwork`) |
 
 **Everything else is blocked.** Code, config, test files, and `.groundwork/out-of-scope/**` are never orchestrator-written regardless of how obvious the change appears. When the principle and the hook disagree, **the hook wins**.
 

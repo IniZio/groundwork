@@ -238,7 +238,7 @@ Restore the previous `pi` string (`kimi-for-coding` in the current registry), ru
 
 ## See also
 
-- `AGENTS.md` — Model registry, codegen pipeline, and platform runtime wiring
+- `docs/development.md` — Model registry, codegen pipeline, and platform runtime wiring
 - `model-registry.json` — live assignments
 - `scripts/generate-agent-definitions.ts` — generator + `--check` implementation
 - `agents-src/` — model-neutral agent sources

@@ -8,6 +8,7 @@ Workflow plugin for AI coding agents providing structured development practices:
 - **Pi** — Install via `pi install git:github.com/IniZio/groundwork`
 - **Claude Code** — Install via `/plugin` (`.claude-plugin/plugin.json`)
 - **omp (Oh My Pi)** — Install via `omp plugin link` / `omp plugin install`
+- **Codex** — Install from the Codex plugin directory (`.codex-plugin/plugin.json`)
 
 ## Install
 
@@ -50,16 +51,36 @@ omp plugin install ./path/to/groundwork   # release: copy
 
 Verify: `omp plugin list` should show `groundwork@<version>`.
 
+### Codex
+
+Groundwork follows the native Codex plugin layout used by plugins such as
+Superpowers: `.codex-plugin/plugin.json` at the repository root and one skill
+directory per workflow directly under `skills/`. Open Codex's plugin directory
+(`/plugins`), search for `Groundwork`, and install it from the marketplace.
+
+The direct Codex skill directories are generated from the canonical
+`skills/groundwork/` tree by `pnpm run generate:agents`.
+
 Restart your agent. Skills auto-discover.
 
 Note: pi-subagents is bundled as a dependency, enabling agent spawning functionality automatically.
 
-## Tools
+## Runtime capabilities
 
-| Tool | Purpose |
+Groundwork skills provide workflow instructions; they do not automatically add
+runtime tools to the host agent. The available runtime surface depends on the
+host platform.
+
+| Capability | Groundwork support |
 |------|---------|
-| `handoff_session` | Create focused continuation prompt |
-| `set_goal` | Manage active session goal |
+| Handoff | File-only Markdown continuation artifact via the `handoff` skill |
+| Goals | Workflow guidance; persistent goal tooling depends on the host |
+| Fan-out | Workflow guidance; parallel delegation depends on the host |
+
+For Codex specifically, installing this plugin makes the skills discoverable,
+but does not automatically install fan-out tools, handoff orchestration, or
+enforcement hooks. Codex handoff is intentionally file-only: the skill writes
+an artifact the user can review and provide to a later session.
 
 ## Skills
 
@@ -116,8 +137,10 @@ pnpm run check   # typecheck
 
 ## Architecture
 
-- `src/` — TypeScript source
-- `pi/pi.ts` — Pi extension entry point
+- `src/` — shared TypeScript source (`src/lib/`, `src/runtime.ts`)
+- `pi/pi.ts` — Pi extension entry point (compiled-TS; the one platform that is source, not a static `.<platform>-plugin/` manifest)
+- `pi/pi-commands/`, `pi/pi-tools/` — Pi-only commands and tools (`agents.ts` removed; omp uses generated `agents-pi/` + `model-registry.json`)
 - `.opencode/plugins/groundwork.js` — OpenCode plugin entry point
+- `.codex-plugin/plugin.json` — Codex plugin manifest
 - `.pi/skills/` — Pi skill definitions
 - `.pi/agents/` — Agent definitions (auto-installed on session start)

@@ -288,6 +288,50 @@ Same subtask fails 3× in a row:
 Load `/groundwork:use-groundwork` for complete skill routing, PRD flow, and BDD implementation rules.
 Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task.
 
+---
+
+## Codebase reference
+
+### Top-level directories
+
+| Path | Contents |
+|---|---|
+| `agents/` | Compiled agent definition files |
+| `agents-src/` | Source agent definitions (Markdown with YAML frontmatter) |
+| `commands/` | Claude Code slash-command scripts |
+| `docs/` | Spec tree (`docs/spec/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
+| `hooks/` | PreToolUse / Stop / SessionStart hook scripts + CLIs |
+| `hooks/lib/` | Shared helpers for hooks (`hook-io.mjs`, `spec-io.mjs`) |
+| `scripts/` | Build and utility scripts |
+| `skills/` | Skill definition files by namespace |
+| `src/` | TypeScript source |
+| `test/` + `tests/` | Vitest test files |
+| `.groundwork/` | Runtime artefacts: run ledgers, RFCs, journal shards, plans |
+| `.claude/` | Claude Code project settings (`settings.json` with hooks) |
+
+### Key files
+
+- `CLAUDE.md` — orchestrator mode instructions; loaded by Claude Code at session start
+- `hooks/hooks.json` — canonical hook registration; referenced by `.claude/settings.json`
+- `model-registry.json` — agent-to-model mapping used by the dispatch table above
+- `plugin.json` — plugin manifest consumed by the Claude Code plugin loader
+
+### Naming conventions
+
+- Hook CLIs: kebab-named `.mjs` files in `hooks/`.
+- Agent source files: `agents-src/<name>.md` with YAML frontmatter.
+- Skills: `skills/<namespace>/<skill-name>/SKILL.md`.
+- Spec requirements: `docs/spec/<concept-dir>/requirements/<kebab-name>.md`.
+- Runtime state (ledgers, journal shards, plans): `.groundwork/`, excluded in this repo via the committed `.gitignore`. When groundwork runs inside a **host project's** repo, exclude `.groundwork/` via `.git/info/exclude` instead — never touch that project's committed `.gitignore`.
+
+### Runtime and tooling
+
+- **Runtime:** Node.js v22+ with native ESM (`"type": "module"`). Hooks are plain `.mjs` scripts — no build step. TypeScript in `src/` compiled with `tsc`; also runnable via `node --experimental-strip-types`. Bun is a supported runtime for the test suite.
+- **Package manager:** `pnpm` with `pnpm-workspace.yaml`. Use `pnpm install` after checkout; `pnpm run check` type-checks.
+- **Tests:** Vitest 3.x. Files in `test/` and `tests/`. Run with `npx vitest run <path>` — **never** bare `pnpm test` from a subagent (filter is silently ignored, whole suite runs).
+- **TypeScript:** `strict: true`, `target: ES2024`, `moduleResolution: NodeNext`. Path aliases: `#src/*` → `./src/*`, `#test/*` → `./test/*`.
+- **Hook CLIs:** exit `0` success · `1` operational failure · `2` usage error.
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 

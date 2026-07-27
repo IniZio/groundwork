@@ -468,10 +468,15 @@ function cmdComplete(args) {
     assertWriteToken(l, flags.token)
     const slices = Array.isArray(l.slices) ? l.slices : []
     const byId = new Map(slices.map((s) => [s?.id, s]))
+    const now = new Date().toISOString()
     for (const id of ids) {
       const s = byId.get(id)
       if (!s) missing.push(id)
-      else s.status = 'complete'
+      else {
+        s.status = 'complete'
+        s.completed_at = now
+        s.session_id = l.session_id ?? null
+      }
     }
     total = slices.length
     done = slices.filter((s) => s?.status === 'complete').length
@@ -751,7 +756,14 @@ function cmdSet(args) {
       e.exitCode = 2
       throw e
     }
-    if (flags.status != null) { s.status = flags.status; updated.push(`status=${flags.status}`) }
+    if (flags.status != null) {
+      s.status = flags.status
+      if (flags.status === 'complete') {
+        s.completed_at = new Date().toISOString()
+        s.session_id = l.session_id ?? null
+      }
+      updated.push(`status=${flags.status}`)
+    }
     if (flags.wave != null) { s.wave = Number(flags.wave); updated.push(`wave=${s.wave}`) }
     if (flags.desc != null) { s.desc = flags.desc; updated.push(`desc="${flags.desc}"`) }
     if (flags['blocked-by'] != null) {

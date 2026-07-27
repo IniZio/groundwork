@@ -46,6 +46,7 @@ import {
   cmdReviewResolve,
   cmdReviewParseCriticmarkup,
 } from './rfc-review.mjs'
+import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -115,6 +116,12 @@ const TRANSITIONS = {
   abandoned:    ['superseded'],
 }
 
+// spec_delta change types — Keep a Changelog v1.1.0 vocabulary (full published
+// set; partial adoption of a standard is the anti-pattern RFC-0002 §3 rejects).
+// `supersede` from the prior bespoke enum maps to `Deprecated`; the replacement
+// pointer moves into the entry's `description` text. See RFC-0002 §11/§12.
+const SPEC_DELTA_OPS = ['Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security']
+
 const ALL_STATUSES = new Set(Object.keys(TRANSITIONS))
 
 // ---------------------------------------------------------------------------
@@ -124,61 +131,52 @@ const ALL_STATUSES = new Set(Object.keys(TRANSITIONS))
 function validateFrontmatter(fm) {
   const errors = []
 
-  // Note: 'tasks' is NOT required here — it lives in tasks.yaml sidecar for
-  // multi-file RFCs.  Legacy single-file RFCs (no sections/) may still carry
-  // tasks in frontmatter for backwards compatibility; shape is validated below
-  // when the key is present.
-  const required = [
-    'schema', 'uid', 'ordinal', 'slug', 'title', 'status', 'classification',
-    'created', 'updated', 'accepted_at', 'accepted_by', 'supersedes',
-    'superseded_by', 'body_digest', 'spec_delta',
-  ]
-  for (const f of required) {
-    if (!(f in fm)) errors.push(`missing required field: ${f}`)
+  // ---------------------------------------------------------------------------
+  // JSON Schema validation — field types, enums, required, additionalProperties
+  // ---------------------------------------------------------------------------
+  // Covers: required fields, schema version, uid pattern, status/classification
+  // enums, accepted_by oneOf, supersedes/superseded_by patterns, spec_delta type
+  // and item additionalProperties (enforces the note→description rename from STD7).
+  // Does NOT cover: spec_delta op vocabulary (custom message below), spec_delta
+  // target (custom "non-empty target" message below), cross-field accepted_by+
+  // spec_change, tasks shape, status transitions, body_digest, manifest freshness.
+  const schemaValidate = loadSchema('rfc-frontmatter')
+  if (!schemaValidate(fm)) {
+    // Filter out spec_delta op enum and target errors — hand-written checks below
+    // emit better-formatted messages for those specific paths.
+    const filtered = (schemaValidate.errors ?? []).filter(err => {
+      const p = err.instancePath
+      if (/^\/spec_delta\/\d+\/op$/.test(p) && err.keyword === 'enum') return false
+      if (/^\/spec_delta\/\d+$/.test(p) && err.keyword === 'required') return false
+      if (/^\/spec_delta\/\d+\/target$/.test(p) && err.keyword === 'minLength') return false
+      return true
+    })
+    errors.push(...ajvErrorsToLines(filtered, 'rfc'))
   }
 
-  if (fm.schema !== 1 && fm.schema !== 2) errors.push(`schema: must be 1 or 2 (got ${JSON.stringify(fm.schema)})`)
+  // ---------------------------------------------------------------------------
+  // Hand-written checks for invariants the schema cannot express
+  // ---------------------------------------------------------------------------
 
-  if (typeof fm.uid === 'string' && !/^R-\d{8}-[A-Z0-9]{6}$/.test(fm.uid)) {
-    errors.push(`uid: does not match ^R-\\d{8}-[A-Z0-9]{6}$ (got "${fm.uid}")`)
-  }
-
-  if (!ALL_STATUSES.has(fm.status)) {
-    errors.push(`status: invalid "${fm.status}" — must be one of: ${[...ALL_STATUSES].join(', ')}`)
-  }
-
-  if (!['spec_change', 'tactical'].includes(fm.classification)) {
-    errors.push(`classification: must be spec_change or tactical (got "${fm.classification}")`)
-  }
-
-  if (fm.accepted_by !== null && fm.accepted_by !== undefined &&
-      !['human', 'advisor'].includes(fm.accepted_by)) {
-    errors.push(`accepted_by: must be "human", "advisor", or null`)
-  }
-
-  if (fm.classification === 'spec_change' && fm.accepted_by === 'advisor') {
-    errors.push('accepted_by: must be "human" when classification is spec_change')
-  }
-
-  if (!Array.isArray(fm.supersedes)) {
-    errors.push('supersedes: must be an array')
-  } else {
-    for (const u of fm.supersedes) {
-      if (typeof u !== 'string' || !/^R-\d{8}-[A-Z0-9]{6}$/.test(u)) {
-        errors.push(`supersedes: "${u}" is not a valid RFC uid`)
-      }
-    }
-  }
-
-  if (!Array.isArray(fm.spec_delta)) {
-    errors.push('spec_delta: must be an array')
-  } else {
+  // spec_delta op vocabulary — Keep a Changelog v1.1.0 values only.
+  // Custom message includes the legacy→new mapping so an unreached RFC on another
+  // machine knows exactly how to hand-migrate (`.groundwork/` is gitignored).
+  if (Array.isArray(fm.spec_delta)) {
     for (const op of fm.spec_delta) {
-      if (!['add', 'modify', 'supersede', 'remove'].includes(op.op)) {
-        errors.push(`spec_delta: op must be add|modify|supersede|remove (got "${op.op}")`)
+      if (!SPEC_DELTA_OPS.includes(op.op)) {
+        errors.push(
+          `spec_delta: op must be ${SPEC_DELTA_OPS.join('|')} (got "${op.op}")` +
+          ` — legacy mapping: add→Added, modify→Changed, remove→Removed, supersede→Deprecated`
+        )
       }
       if (!op.target) errors.push('spec_delta: each op must have a non-empty target')
     }
+  }
+
+  // Cross-field: spec_change classification requires human acceptance (not expressible
+  // as a simple enum constraint; would need if/then JSON Schema logic).
+  if (fm.classification === 'spec_change' && fm.accepted_by === 'advisor') {
+    errors.push('accepted_by: must be "human" when classification is spec_change')
   }
 
   // tasks[] validation — only when the key is present in frontmatter.
@@ -207,8 +205,9 @@ function validateFrontmatter(fm) {
 // Commands
 // ---------------------------------------------------------------------------
 
-// Section scaffold for rfc new — §§1-12 leaf files under sections/.
+// Section scaffold for rfc new — §§1-13 leaf files under sections/.
 // Heading depth is 2 (##) for all top-level sections per §1.1 rule 5.
+// Entries with a `content` field use that verbatim instead of the default "TODO" body.
 const SCAFFOLD_SECTIONS = [
   { prefix: '01', slug: 'summary',           heading: '## 1. Summary' },
   { prefix: '02', slug: 'motivation',         heading: '## 2. Motivation' },
@@ -222,6 +221,62 @@ const SCAFFOLD_SECTIONS = [
   { prefix: '10', slug: 'tasks',              heading: '## 10. Tasks' },
   { prefix: '11', slug: 'conflict-register',  heading: '## 11. Conflict Register' },
   { prefix: '12', slug: 'resolution',         heading: '## 12. Resolution' },
+  {
+    prefix: '13',
+    slug: 'decision-record',
+    heading: '## 13. Decision Record',
+    // MADR (Markdown Architectural Decision Records) structure.
+    // One block per major decision this RFC introduces. Duplicate from
+    // "### Decision N" through its closing "---" for each additional decision.
+    // NOTE: do NOT use MADR's status vocabulary (proposed/accepted/deprecated/…)
+    // or its immutability rule — the RFC lifecycle (rfc.md §3.2) is authoritative.
+    content: `\
+## 13. Decision Record
+
+<!-- One block per major decision this RFC introduces.
+     Duplicate from the next "### Decision N" heading through its closing "---"
+     for each additional decision. Do NOT use MADR status fields (proposed/accepted/…)
+     — RFC status is governed by the frontmatter status field and §3.2. -->
+
+### Decision 1: <title>
+
+#### Context and Problem Statement
+
+TODO — what is the problem, and why does it require a decision now?
+
+#### Decision Drivers
+
+- TODO
+
+#### Considered Options
+
+- Option A — TODO
+- Option B — TODO
+
+#### Decision Outcome
+
+Chosen option: **Option A**, because TODO.
+
+#### Consequences
+
+- Good: TODO
+- Bad: TODO
+
+#### Pros and Cons of Options
+
+**Option A**
+
+- Pro: TODO
+- Con: TODO
+
+**Option B**
+
+- Pro: TODO
+- Con: TODO
+
+---
+`,
+  },
 ]
 
 function cmdNew(args) {
@@ -289,7 +344,7 @@ function cmdNew(args) {
   mkdirSync(sectionsDir, { recursive: true })
   for (const s of SCAFFOLD_SECTIONS) {
     const filename = `${s.prefix}-${s.slug}.md`
-    writeFileSync(path.join(sectionsDir, filename), `${s.heading}\n\nTODO\n`)
+    writeFileSync(path.join(sectionsDir, filename), s.content ?? `${s.heading}\n\nTODO\n`)
   }
 
   // Create tasks.yaml sidecar — empty array for a new RFC.

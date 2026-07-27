@@ -217,6 +217,69 @@ describe("rfc validate (AC 2)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// STD7: spec_delta uses the Keep a Changelog v1.1.0 change-type vocabulary
+// and the OpenAPI-Overlay field name `description` (was `note`). Hard cutover —
+// the prior bespoke enum (add|modify|supersede|remove) is rejected outright.
+// ---------------------------------------------------------------------------
+
+describe("rfc validate spec_delta change types (STD7)", () => {
+	function withSpecDelta(dirName: string, deltaYaml: string) {
+		const dir = path.join(rfcsDir(), dirName);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			path.join(dir, "rfc.md"),
+			minimalRfcMd().replace("spec_delta: []\n", `spec_delta:\n${deltaYaml}`),
+		);
+		return run(["validate", dir]);
+	}
+
+	for (const op of ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]) {
+		it(`accepts op: ${op}`, () => {
+			const r = withSpecDelta(
+				`0001-op-${op.toLowerCase()}`,
+				`  - op: ${op}\n    target: docs/spec/README.md\n`,
+			);
+			expect(r.code).toBe(0);
+		});
+	}
+
+	for (const legacy of ["add", "modify", "supersede", "remove"]) {
+		it(`rejects the legacy op: ${legacy} (hard cutover, no dual-accept)`, () => {
+			const r = withSpecDelta(
+				`0001-legacy-${legacy}`,
+				`  - op: ${legacy}\n    target: docs/spec/README.md\n`,
+			);
+			expect(r.code).toBe(1);
+			expect(r.stderr).toContain("spec_delta: op must be");
+			expect(r.stderr).toContain(`got "${legacy}"`);
+		});
+	}
+
+	it("rejects an unknown op", () => {
+		const r = withSpecDelta(
+			"0001-op-nonsense",
+			"  - op: Nonsense\n    target: docs/spec/README.md\n",
+		);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain('got "Nonsense"');
+	});
+
+	it("accepts an entry carrying `description`", () => {
+		const r = withSpecDelta(
+			"0001-desc",
+			"  - op: Added\n    target: docs/spec/README.md\n    description: 'Root node.'\n",
+		);
+		expect(r.code).toBe(0);
+	});
+
+	it("still requires a non-empty target", () => {
+		const r = withSpecDelta("0001-no-target", "  - op: Added\n");
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("non-empty target");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // AC 3: YAML parse error reports line and column
 // ---------------------------------------------------------------------------
 

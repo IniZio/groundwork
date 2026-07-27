@@ -54,8 +54,8 @@
  *     ],
  *     "gate": { "verifier": "pending|passed",
  *               // advisor accepts EITHER a legacy string OR an object:
- *               "advisor":  "pending|APPROVE|REVISE|REJECT|REPLAN"
- *                 | { "verdict": "APPROVE|REVISE|REJECT|REPLAN", "rubric": "...",
+ *               "advisor":  "pending|APPROVE|CORRECTION|STOP|GAPS|REPLAN"
+ *                 | { "verdict": "APPROVE|CORRECTION|STOP|GAPS|REPLAN", "rubric": "...",
  *                     "axes": { "correctness": 0, "completeness": 0, "over_engineering": 0,
  *                               "contract_fitness": 0, "plan_soundness": 0 },
  *                     "citation": "<file:line|construct|'none'>" } }

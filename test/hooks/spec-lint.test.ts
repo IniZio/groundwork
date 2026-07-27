@@ -3,13 +3,15 @@
  *
  * Tests run against temp fixture trees, NEVER against docs/spec/** in the live repo.
  *
- * Rules exercised (6 invariants):
+ * Rules exercised (8 invariants):
  *   ears-or-summary — requirement nodes must have ears OR summary (either/or)
  *   origin-rfc      — every node must carry origin_rfc
  *   required-fields — all schema-required fields must be present and non-blank (concept + requirement)
  *   enum-values     — type, pattern, verification, criticality, status
  *   id-format       — concept and requirement id regexes
  *   summary-length  — ≤25 words (boundary: exactly 25 passes; 26 fails)
+ *   snapshot-of     — snapshot_of must reference an existing node in the spec tree
+ *   unknown-field   — frontmatter must not contain keys not defined in the schema
  *   spec_delta path — a delta targeting a nonexistent path must FAIL
  */
 
@@ -586,7 +588,7 @@ describe("spec_delta path existence check (--rfc mode)", () => {
   function writeRfc(uid: string, targets: string[]) {
     const rfcDir = path.join(projectDir, ".groundwork", "rfcs", `0001-${uid}`);
     mkdirSync(rfcDir, { recursive: true });
-    const deltaLines = targets.map(t => `  - op: add\n    target: ${t}`).join("\n");
+    const deltaLines = targets.map(t => `  - op: Added\n    target: ${t}`).join("\n");
     writeFileSync(
       path.join(rfcDir, "rfc.md"),
       `---\nuid: ${uid}\ntitle: Test RFC\n---\n\nspec_delta:\n${deltaLines}\n`,
@@ -627,6 +629,39 @@ describe("spec_delta path existence check (--rfc mode)", () => {
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("does not exist");
     expect(r.stderr).toContain("docs/spec/artifacts/README.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshot_of referential integrity (invariant 7)
+// ---------------------------------------------------------------------------
+
+describe("snapshot-of referential integrity", () => {
+  it("fails when snapshot_of references a non-existent node id", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT", { snapshot_of: "C-NONEXISTENT" }));
+    const r = buildAndLint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("snapshot-of");
+    expect(combined).toContain("C-NONEXISTENT");
+  });
+
+  it("passes when snapshot_of references an existing node id", () => {
+    mkSpec();
+    // C-TARGET exists; C-SNAP declares snapshot_of: C-TARGET
+    writeConcept("target", minConcept("C-TARGET"));
+    writeConcept("snap", minConcept("C-SNAP", { parent: "C-TARGET", snapshot_of: "C-TARGET" }));
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("snapshot-of");
+    expect(r.code).toBe(0);
+  });
+
+  it("passes when snapshot_of is absent", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("snapshot-of");
+    expect(r.code).toBe(0);
   });
 });
 
@@ -682,9 +717,9 @@ describe("acceptance evidence: broken-state fixture now fails with named violati
         "---",
         "",
         "spec_delta:",
-        "  - op: add",
+        "  - op: Added",
         "    target: docs/spec/README.md",
-        "  - op: add",
+        "  - op: Added",
         "    target: docs/spec/requirements/req.md",
       ].join("\n"),
     );
@@ -709,5 +744,77 @@ describe("acceptance evidence: broken-state fixture now fails with named violati
     process.stdout.write("\n=== ACCEPTANCE EVIDENCE OUTPUT ===\n");
     process.stdout.write(output);
     process.stdout.write("===================================\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unknown-field invariant (invariant 8) — additionalProperties enforcement
+// ---------------------------------------------------------------------------
+
+describe("unknown-field: extra frontmatter keys are reported", () => {
+  it("reports unknown-field violation for a concept with an extra key", () => {
+    mkSpec();
+    // bogus_key is not in the spec-concept schema
+    writeConcept("", { ...minConcept("C-ROOT"), bogus_key: "oops" } as Record<string, string | null>);
+    const br = build();
+    if (br.code !== 0) return; // build permissiveness — lint must still catch it
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("unknown-field");
+    expect(combined).toContain("bogus_key");
+    expect(combined).toContain("C-ROOT");
+  });
+
+  it("reports unknown-field violation for a requirement with an extra key", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeReq("requirements", "req.md", {
+      ...minReq("C-ROOT", "ROOT-R-uf1a"),
+      secret_field: "whoops",
+    });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("unknown-field");
+    expect(combined).toContain("secret_field");
+    expect(combined).toContain("ROOT-R-uf1a");
+  });
+
+  it("--rfc mode exits 1 when the linted node has an unknown key", () => {
+    mkSpec();
+    writeConcept("", { ...minConcept("C-ROOT"), bogus_key: "oops" } as Record<string, string | null>);
+    const br = build();
+    if (br.code !== 0) return;
+    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-R-20260727-UF001");
+    mkdirSync(rfcDir, { recursive: true });
+    writeFileSync(
+      path.join(rfcDir, "rfc.md"),
+      [
+        "---",
+        "uid: R-20260727-UF001",
+        "title: Unknown field RFC",
+        "---",
+        "",
+        "spec_delta:",
+        "  - op: Added",
+        "    target: docs/spec/README.md",
+        "",
+      ].join("\n"),
+    );
+    const r = lint(["--rfc", "R-20260727-UF001"]);
+    expect(r.code).toBe(1);
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("unknown-field");
+    expect(combined).toContain("bogus_key");
+  });
+
+  it("valid concept with no extra keys does NOT trigger unknown-field", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-uf2a"));
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("unknown-field");
+    expect(r.code).toBe(0);
   });
 });

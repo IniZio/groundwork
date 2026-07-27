@@ -86,17 +86,17 @@ describe("stop-gate hook — advisor verdict (object or string)", () => {
 		expect(decision.decision).toBeUndefined();
 	});
 
-	it("blocks the stop when gate.advisor is an OBJECT with verdict REVISE (even if slices complete)", () => {
+	it("blocks the stop when gate.advisor is an OBJECT with verdict CORRECTION (even if slices complete)", () => {
 		const decision = runHook({
 			active: true,
 			session_id: "sess-1",
 			reinforcements: 0,
 			slices: [completeSlice],
-			gate: { advisor: { verdict: "REVISE", citation: "contact.ts:42" } },
+			gate: { advisor: { verdict: "CORRECTION", citation: "contact.ts:42" } },
 		});
 		expect(decision.decision).toBe("block");
 		// The block reason renders the normalized verdict, never "[object Object]".
-		expect(decision.reason).toContain("REVISE");
+		expect(decision.reason).toContain("CORRECTION");
 		expect(decision.reason).not.toContain("[object Object]");
 	});
 

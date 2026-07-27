@@ -19,7 +19,7 @@
  *   ledger.mjs gate advisor APPROVE [--citation "x" --rubric "y" \
  *               --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0 \
  *               --axes-contract-fitness 2 --axes-plan-soundness 2]
- *               // advisor verdicts: APPROVE | REVISE | REJECT | REPLAN (bare string or {verdict})
+ *               // advisor verdicts: APPROVE | CORRECTION | STOP | GAPS | REPLAN (bare string or {verdict})
  *   ledger.mjs abandon                          set active:false (releases the gate)
  *   ledger.mjs init <file|->                    write the initial ledger atomically
  *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]
@@ -36,6 +36,7 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { parseFrontmatter as parseRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
+import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 
 /**
  * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
@@ -92,6 +93,207 @@ function advisorVerdict(gate) {
 /** Validate a status string, die(exit 2) if invalid. */
 function assertStatus(val) {
   if (!VALID_STATUSES.has(val)) die(`invalid status "${val}". Must be: pending | in_progress | complete | skipped`, 2)
+}
+
+// ---------------------------------------------------------------------------
+// LEDGER VALIDATION — schema + custom structural invariants
+// ---------------------------------------------------------------------------
+
+/**
+ * Known slice keys. Keys not in this set that resemble a known key (edit
+ * distance ≤ 2) are flagged as near-miss warnings so typos like `blocked_bY`
+ * are surfaced rather than silently ignored.
+ */
+const KNOWN_SLICE_KEYS = new Set([
+  'id', 'status', 'wave', 'kind', 'desc',
+  'blocked_by', 'depends_on', // depends_on = legacy alias for blocked_by
+  'acceptance', 'name',
+])
+
+/**
+ * Known keys in tasks.yaml task entries. Near-miss typos in these keys are
+ * caught at parse time (hard error, exit 1) so they never reach the slice
+ * reconstructor where they would be silently dropped.
+ *
+ * Includes both the canonical ledger-side names AND the tasks.yaml sidecar
+ * format aliases used by vertical-slice: title (alias for desc), ac (alias
+ * for acceptance), files (informational, not mapped to a slice field).
+ */
+const KNOWN_TASK_KEYS = new Set([
+  'id', 'wave', 'kind',
+  'blocked_by', 'depends_on', // depends_on = legacy alias
+  'desc', 'behavior',          // desc preferred; behavior = legacy
+  'title',                     // tasks.yaml sidecar alias for desc
+  'acceptance',
+  'ac',                        // tasks.yaml sidecar alias for acceptance
+  'files',                     // informational; not mapped to a slice field
+  'name',
+])
+
+/** Simple Levenshtein distance, capped at 3 for performance. */
+function levenshtein(a, b) {
+  if (Math.abs(a.length - b.length) > 3) return 4
+  const m = a.length, n = b.length
+  const dp = Array.from({ length: m + 1 }, (_, i) => Array(n + 1).fill(0).map((_, j) => i === 0 ? j : j === 0 ? i : 0))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
+/**
+ * Validate a parsed ledger document.
+ *
+ * Returns { errors, warnings }:
+ *   errors   — hard invariants: blocked_by/depends_on referential integrity,
+ *              acceptance non-empty-string elements. These fail writes.
+ *   warnings — schema violations (structural issues, missing required fields) and
+ *              near-miss unknown slice keys. Always surfaced to stderr, never block.
+ *              NOTE: advisor verdict enum is enforced inline in cmdGate, not here,
+ *              so that the error message is specific and other schema issues stay soft.
+ */
+function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
+  const errors = []
+  const warnings = []
+
+  if (ledger == null || typeof ledger !== 'object') {
+    errors.push('ledger: not an object')
+    return { errors, warnings }
+  }
+
+  // 1. JSON Schema validation.
+  //    On the READ path (strictSchema=false): soft — structural issues surface as warnings
+  //    so a corrupt pre-existing ledger doesn't brick a running session.
+  //    On the WRITE path (strictSchema=true): hard — never commit new corruption to disk.
+  //    advisor verdict enum is enforced inline in cmdGate with a targeted check.
+  try {
+    const validate = loadSchema('run-ledger')
+    if (!validate(ledger) && validate.errors) {
+      for (const line of ajvErrorsToLines(validate.errors, 'ledger')) {
+        if (strictSchema) {
+          errors.push(line)
+        } else {
+          warnings.push(line)
+        }
+      }
+    }
+  } catch (e) {
+    warnings.push(`schema: could not load run-ledger schema (${e?.message ?? e})`)
+  }
+
+  // Build slice-id set for referential integrity checks.
+  const slices = Array.isArray(ledger.slices) ? ledger.slices : []
+  // Duplicate id detection: a dup means the stop-gate can never drain the ledger.
+  const sliceIdCounts = new Map()
+  for (const s of slices) {
+    if (!s?.id) continue
+    sliceIdCounts.set(s.id, (sliceIdCounts.get(s.id) ?? 0) + 1)
+  }
+  for (const [id, count] of sliceIdCounts) {
+    if (count > 1) errors.push(`slice "${id}": duplicate id appears ${count} times`)
+  }
+  const sliceIds = new Set(slices.map((s) => s?.id).filter(Boolean))
+
+  for (const s of slices) {
+    if (!s || typeof s !== 'object') continue
+    const sid = s.id ?? '?'
+
+    // 2. blocked_by referential integrity (also checks depends_on legacy alias)
+    for (const field of ['blocked_by', 'depends_on']) {
+      if (!Array.isArray(s[field])) continue
+      for (const ref of s[field]) {
+        if (typeof ref === 'string' && ref && !sliceIds.has(ref)) {
+          errors.push(`slice "${sid}": ${field} references unknown id "${ref}"`)
+        }
+      }
+    }
+
+    // 3. acceptance: if present must be non-empty array of non-empty strings
+    if (Object.prototype.hasOwnProperty.call(s, 'acceptance')) {
+      const acc = s.acceptance
+      if (!Array.isArray(acc) || acc.length === 0) {
+        errors.push(`slice "${sid}": acceptance must be a non-empty array when present (omit the key to indicate no criteria)`)
+      } else if (acc.some((item) => typeof item !== 'string' || item.trim() === '')) {
+        errors.push(`slice "${sid}": acceptance items must be non-empty strings`)
+      }
+    }
+
+    // 4. Near-miss unknown key detection — catches typos like blocked_bY
+    //    (soft warning: schema has additionalProperties:true; we cannot change it)
+    for (const key of Object.keys(s)) {
+      if (KNOWN_SLICE_KEYS.has(key)) continue
+      let best = null, bestDist = 3
+      for (const known of KNOWN_SLICE_KEYS) {
+        const d = levenshtein(key, known)
+        if (d < bestDist) { best = known; bestDist = d }
+      }
+      if (best !== null) {
+        warnings.push(`slice "${sid}": unknown key "${key}" — did you mean "${best}"? (possible typo; field will be ignored)`)
+      }
+    }
+  }
+
+  return { errors, warnings }
+}
+
+/**
+ * Emit validation issues to stderr as warnings (never throws).
+ * Used by read-only commands so corrupt-but-parseable ledgers don't brick a session.
+ */
+function warnValidate(ledger) {
+  const { errors, warnings } = validateLedgerDoc(ledger)
+  for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
+  for (const e of errors) process.stderr.write(`ledger warn: ${e}\n`)
+}
+
+/**
+ * Validate ledger; throw on hard errors. Warnings always go to stderr.
+ * Used before writes so new corruption is never committed to disk.
+ * Schema violations are soft here (warnings) so that existing ledgers with minor
+ * structural quirks remain mutable (complete, gate, set). Use checkLedgerStrict
+ * for new ledger creation (cmdInit) where there is no excuse for writing corruption.
+ */
+function checkLedger(ledger) {
+  const { errors, warnings } = validateLedgerDoc(ledger)
+  for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
+  if (errors.length) {
+    const err = new Error('ledger validation failed:\n' + errors.map((x) => '  ' + x).join('\n'))
+    err.exitCode = 1
+    throw err
+  }
+}
+
+/**
+ * Strict variant of checkLedger for cmdInit (new ledger creation).
+ * Schema violations are hard errors here because "never write new corruption"
+ * is a stronger rule than "tolerate corruption already on disk".
+ * Duplicate slice ids are also caught here since a dup at init-time can never
+ * be drained by the stop-gate.
+ */
+function checkLedgerStrict(ledger) {
+  const { errors, warnings } = validateLedgerDoc(ledger, { strictSchema: true })
+  for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
+  if (errors.length) {
+    const err = new Error('ledger validation failed:\n' + errors.map((x) => '  ' + x).join('\n'))
+    err.exitCode = 1
+    throw err
+  }
+}
+
+/**
+ * Like mutateLedger but validates the resulting state before committing.
+ * If validation finds hard errors the write is aborted and an error is thrown
+ * (which the main() catch converts to exit 1).
+ */
+function mutateLedgerChecked(lPath, fn) {
+  return mutateLedger(lPath, (l) => {
+    const result = fn(l)
+    const next = result === undefined ? l : result
+    if (next != null) checkLedger(next)
+    return result
+  })
 }
 
 /**
@@ -237,6 +439,7 @@ function cmdHelp(args) {
 function cmdStatus() {
   const l = readLedger(ledgerPath())
   if (!l) die('no ledger at ' + ledgerPath(), 1)
+  warnValidate(l)
   const slices = Array.isArray(l.slices) ? l.slices : []
   const done = slices.filter((s) => s?.status === 'complete').length
   const head = `run: ${l.brief ?? '(no brief)'}${l.active === false ? '  [ABANDONED]' : ''}`
@@ -260,7 +463,7 @@ function cmdComplete(args) {
   let done = 0
   let total = 0
   const missing = []
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
     const slices = Array.isArray(l.slices) ? l.slices : []
@@ -282,8 +485,12 @@ function cmdGate(args) {
   const [which, verdictRaw] = positionals
   if (!which || !verdictRaw) die('usage: ledger gate <advisor|verifier|qa> <verdict> [--token <t>] [--citation .. --rubric ..]', 2)
   if (!['advisor', 'verifier', 'qa'].includes(which)) die(`unknown gate "${which}"`, 2)
-  // Advisor verdicts accepted as bare string or object: APPROVE | REVISE | REJECT | REPLAN
+  // Advisor verdicts (from agents-src/advisor.md): APPROVE | CORRECTION | STOP | GAPS | REPLAN
   // (REPLAN is non-terminal — stop-gate routes back to interview/vertical-slice).
+  const VALID_ADVISOR_VERDICTS = new Set(['APPROVE', 'CORRECTION', 'STOP', 'GAPS', 'REPLAN'])
+  if (which === 'advisor' && !VALID_ADVISOR_VERDICTS.has(verdictRaw)) {
+    die(`invalid advisor verdict "${verdictRaw}". Must be: APPROVE | CORRECTION | STOP | GAPS | REPLAN`, 1)
+  }
   const AXIS_KEYS = ['correctness', 'completeness', 'over_engineering', 'contract_fitness', 'plan_soundness']
   const hasAxes = AXIS_KEYS.some((k) => flags[`axes-${k}`] != null)
   const hasObj = which === 'advisor' && (flags.citation || flags.rubric || hasAxes)
@@ -301,7 +508,7 @@ function cmdGate(args) {
     value = verdictRaw
   }
   let runId = null
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
     l.gate = l.gate ?? {}
@@ -350,7 +557,7 @@ function writeGateArtifact({ runId, which, verdictRaw, value, hasObj, flags }) {
 }
 
 function cmdAbandon() {
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to abandon')
     l.active = false
   })
@@ -406,13 +613,35 @@ function cmdInit(args) {
       ? readTasksSidecar(rfcDir)
       : (Array.isArray(rfcFrontmatter.tasks) ? rfcFrontmatter.tasks : [])
     if (tasks.length === 0) die(`RFC at ${rfcDir} has no tasks — cannot seed a ledger with zero slices (check tasks.yaml or frontmatter tasks[])`, 1)
+    // Validate tasks.yaml keys at parse time, before reconstruction, so that
+    // a typo'd key (e.g. blocked_bY) is caught rather than silently dropped.
+    // A near-miss (edit distance ≤ 2) is a hard error (the intent is clear but
+    // the key would be silently lost, which corrupts dependency ordering).
+    // A completely-unrecognised key emits a warning (might be supplementary metadata).
+    for (const t of tasks) {
+      if (!t || typeof t !== 'object') continue
+      const tid = t.id ?? '?'
+      for (const key of Object.keys(t)) {
+        if (KNOWN_TASK_KEYS.has(key)) continue
+        let best = null, bestDist = 3
+        for (const known of KNOWN_TASK_KEYS) {
+          const d = levenshtein(key, known)
+          if (d < bestDist) { best = known; bestDist = d }
+        }
+        if (best !== null) {
+          die(`tasks.yaml task "${tid}": unrecognised key "${key}" looks like a typo of "${best}" — fix the key or it will be silently dropped`, 1)
+        } else {
+          process.stderr.write(`ledger warn: tasks.yaml task "${tid}": unknown key "${key}" (not a known task field; will be ignored)\n`)
+        }
+      }
+    }
     obj.slices = tasks.map((t) => ({
       id: String(t.id ?? ''),
       wave: Number.isFinite(Number(t.wave)) ? Number(t.wave) : 0,
-      blocked_by: Array.isArray(t.blocked_by) ? t.blocked_by.map(String) : [],
-      acceptance: Array.isArray(t.acceptance) ? t.acceptance.map(String) : [],
+      blocked_by: Array.isArray(t.blocked_by ?? t.depends_on) ? (t.blocked_by ?? t.depends_on).map(String) : [],
+      ...(Array.isArray(t.acceptance ?? t.ac) && (t.acceptance ?? t.ac).length > 0 ? { acceptance: (t.acceptance ?? t.ac).map(String) } : {}),
       status: 'pending',
-      desc: String(t.desc ?? t.behavior ?? ''),
+      desc: String(t.desc ?? t.behavior ?? t.title ?? ''),
       kind: String(t.kind ?? 'impl'),
     }))
   }
@@ -420,9 +649,15 @@ function cmdInit(args) {
   // Generate and embed the write-token for gate/complete authority
   const writeToken = randomBytes(8).toString('hex')
   obj.write_token = writeToken
-  // Stamp session_id if not already present and a sessionId is known
+  // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
+  if (!('active' in obj)) obj.active = true
+  // Stamp session_id: prefer env, then input, then generate a stable opaque id so the
+  // required schema field is always satisfied even in test/offline contexts.
   const sessionId = resolveSessionId(null)
-  if (sessionId && !obj.session_id) obj.session_id = sessionId
+  if (!obj.session_id) obj.session_id = sessionId ?? randomBytes(16).toString('hex')
+  // Validate before writing — strict: schema violations are hard errors at init
+  // time because there is no excuse for persisting corruption in a fresh ledger.
+  checkLedgerStrict(obj)
   // Best-effort prune stale per-session ledgers before writing
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
@@ -448,7 +683,7 @@ function cmdAdd(args) {
   const blocked_by = flags['blocked-by'] ? flags['blocked-by'].split(',').map((s) => s.trim()).filter(Boolean) : []
   const acceptance = flags.acceptance ? flags.acceptance.split(';').map((s) => s.trim()).filter(Boolean) : []
 
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     // Create a minimal ledger skeleton if none exists yet
     const ledger = l ?? { active: true, brief: '', slices: [], gate: {} }
     ledger.slices = Array.isArray(ledger.slices) ? ledger.slices : []
@@ -458,7 +693,10 @@ function cmdAdd(args) {
       e.exitCode = 2
       throw e
     }
-    const item = { id, wave, status, desc, blocked_by, acceptance }
+    const item = { id, wave, status, desc, blocked_by }
+    // Only set acceptance when explicitly provided (omitting [] keeps the key
+    // absent, which is valid; present+empty is now a validation error).
+    if (acceptance.length > 0) item.acceptance = acceptance
     if (flags.kind != null) item.kind = flags.kind
     ledger.slices.push(item)
     // Optional top-level link to a durable feature ledger (Contract B.1 / R4).
@@ -475,7 +713,7 @@ function cmdRm(ids) {
   if (!ids.length) die('usage: ledger rm <id> [<id> ...]', 2)
   let remaining = 0
   const missing = []
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     const slices = Array.isArray(l.slices) ? l.slices : []
     const existingIds = new Set(slices.map((s) => s?.id))
@@ -504,7 +742,7 @@ function cmdSet(args) {
   if (flags.status != null) assertStatus(flags.status)
 
   const updated = []
-  mutateLedger(ledgerPath(), (l) => {
+  mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     const slices = Array.isArray(l.slices) ? l.slices : []
     const s = slices.find((s) => s?.id === id)
@@ -532,6 +770,7 @@ function cmdShow(id) {
   if (!id) die('usage: ledger show <id>', 2)
   const l = readLedger(ledgerPath())
   if (!l) die('no ledger at ' + ledgerPath(), 1)
+  warnValidate(l)
   const slices = Array.isArray(l.slices) ? l.slices : []
   const s = slices.find((s) => s?.id === id)
   if (!s) die(`unknown slice id "${id}"`, 2)
@@ -563,6 +802,7 @@ function cmdShow(id) {
 function cmdView() {
   const l = readLedger(ledgerPath())
   if (!l) die('no ledger at ' + ledgerPath(), 1)
+  warnValidate(l)
   const slices = Array.isArray(l.slices) ? l.slices : []
   const lines = []
 

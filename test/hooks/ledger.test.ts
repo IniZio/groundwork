@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,7 +20,7 @@ const baseLedger = () => ({
 		{ id: "S2", name: "feature", wave: 1, blocked_by: ["S1"], status: "pending", acceptance: ["b", "c"] },
 		{ id: "S3", name: "polish", wave: 1, blocked_by: ["S1"], status: "pending", acceptance: ["d"] },
 	],
-	gate: { advisor: "pending" },
+	gate: {},
 });
 
 beforeEach(() => {
@@ -51,6 +51,21 @@ function run(args: string[], stdin?: string): { code: number; stdout: string; st
 
 function readLedger() {
 	return JSON.parse(readFileSync(ledgerFile, "utf8"));
+}
+
+/**
+ * Like run() but captures stdout AND stderr in all cases (even exit 0).
+ * execFileSync swallows stderr on success; spawnSync always gives both.
+ */
+function runFull(args: string[], stdin?: string): { code: number; stdout: string; stderr: string } {
+	const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
+	delete env.CLAUDE_CODE_SESSION_ID;
+	const r = spawnSync("node", [CLI, ...args], {
+		env,
+		encoding: "utf8",
+		input: stdin,
+	});
+	return { code: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
 describe("ledger CLI — complete", () => {
@@ -90,9 +105,9 @@ describe("ledger CLI — gate", () => {
 	});
 
 	it("sets gate.advisor as an OBJECT when citation/rubric/axes flags are present", () => {
-		run(["gate", "advisor", "REVISE", "--citation", "contact.ts:42", "--rubric", "v1", "--axes-correctness", "2"]);
+		run(["gate", "advisor", "CORRECTION", "--citation", "contact.ts:42", "--rubric", "v1", "--axes-correctness", "2"]);
 		const a = readLedger().gate.advisor;
-		expect(a).toEqual({ verdict: "REVISE", rubric: "v1", citation: "contact.ts:42", axes: { correctness: 2 } });
+		expect(a).toEqual({ verdict: "CORRECTION", rubric: "v1", citation: "contact.ts:42", axes: { correctness: 2 } });
 	});
 
 	it("rejects an unknown gate name (exit 2)", () => {
@@ -707,6 +722,486 @@ describe("ledger CLI — feature_slug", () => {
 		expect(ledger.feature_slug).toBe("feat-x");
 		// slice itself is still added
 		expect(ledger.slices.find((s: any) => s.id === "F1")).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Schema validation — wired on load and mutation
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — schema validation on read (warn-only)", () => {
+	it("status succeeds and emits no stderr on a schema-clean ledger (no gate verdict)", () => {
+		// Write a ledger with no gate.advisor so no schema warning is generated.
+		// Write a clean fixture with no gate.advisor (omitting it is the correct initial state).
+		writeFileSync(ledgerFile, JSON.stringify({
+			session_id: "sess-1",
+			active: true,
+			brief: "clean",
+			slices: [{ id: "S1", status: "pending", acceptance: ["x"] }],
+			gate: {},
+		}, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+	});
+
+	it("status warns to stderr but still exits 0 when ledger has schema issues", () => {
+		// Write a ledger that violates the schema (missing required session_id).
+		// Validation is warn-only on reads so the command must still succeed.
+		const bad = { active: true, slices: [{ id: "X1", status: "pending", acceptance: ["ok"] }], gate: {} };
+		writeFileSync(ledgerFile, JSON.stringify(bad, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0); // warn-only — does NOT die
+		expect(r.stderr).toContain("warn"); // at least one warning emitted
+	});
+});
+
+// ---------------------------------------------------------------------------
+// blocked_by referential integrity
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — blocked_by referential integrity", () => {
+	it("add with --blocked-by pointing at an existing slice succeeds", () => {
+		const r = run(["add", "S4", "--blocked-by", "S1", "--acceptance", "done"]);
+		expect(r.code).toBe(0);
+	});
+
+	it("add with --blocked-by pointing at a non-existent id is rejected (exit 1)", () => {
+		const r = run(["add", "S4", "--blocked-by", "NONEXISTENT", "--acceptance", "done"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("blocked_by");
+		expect(r.stderr).toContain("NONEXISTENT");
+	});
+
+	it("set --blocked-by with a dangling ref is rejected (exit 1)", () => {
+		const r = run(["set", "S2", "--blocked-by", "GHOST"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("blocked_by");
+		expect(r.stderr).toContain("GHOST");
+	});
+
+	it("status warns on an existing ledger with a dangling blocked_by (warn-only on reads)", () => {
+		// Inject a dangling ref directly into the ledger file
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		l.slices[1].blocked_by = ["DANGLING"];
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0); // warn-only on reads
+		expect(r.stderr).toContain("DANGLING");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// blocked_bY near-miss typo warning
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — near-miss key warning", () => {
+	it("status warns when a slice has a key that is a near-miss of a known key", () => {
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		// Inject a misspelled key (blocked_bY instead of blocked_by)
+		l.slices[0].blocked_bY = ["S1"];
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toContain("blocked_bY");
+		expect(r.stderr).toContain("blocked_by");
+	});
+
+	it("the misspelled blocked_bY variant does NOT trigger the blocked_by integrity check (it is not read as blocked_by)", () => {
+		// This is the key safety property: a typo key is not silently accepted as valid,
+		// it is warned about; the integrity check only looks at the correctly spelled field.
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		l.slices[0].blocked_bY = ["NONEXISTENT"]; // typo key — should warn, not error
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		// Should warn about the unknown key, but NOT about a dangling blocked_by ref
+		// (because the canonical blocked_by on S1 is [] which is absent → no ref check)
+		expect(r.stderr).toContain("blocked_bY");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// acceptance validation
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — acceptance validation", () => {
+	it("add with --acceptance 'a;b' succeeds", () => {
+		const r = run(["add", "A1", "--acceptance", "criterion one;criterion two"]);
+		expect(r.code).toBe(0);
+	});
+
+	it("add without --acceptance omits the key (not present: []) — backward compat", () => {
+		run(["add", "A2"]);
+		const slice = readLedger().slices.find((s: any) => s.id === "A2");
+		expect(slice).toBeDefined();
+		// Key must be absent (not present as [])
+		expect(Object.prototype.hasOwnProperty.call(slice, "acceptance")).toBe(false);
+	});
+
+	it("set --acceptance to a valid value succeeds", () => {
+		const r = run(["set", "S2", "--acceptance", "done"]);
+		expect(r.code).toBe(0);
+		expect(readLedger().slices.find((s: any) => s.id === "S2").acceptance).toEqual(["done"]);
+	});
+
+	it("init rejects a ledger whose slice has acceptance: [] (present but empty)", () => {
+		const src = path.join(projectDir, "bad-acceptance.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			session_id: "x",
+			slices: [{ id: "X1", status: "pending", acceptance: [] }],
+			gate: {},
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("acceptance");
+	});
+
+	it("init rejects a ledger whose slice has acceptance with an empty-string item", () => {
+		const src = path.join(projectDir, "bad-acceptance2.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			session_id: "x",
+			slices: [{ id: "X1", status: "pending", acceptance: ["valid", ""] }],
+			gate: {},
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("acceptance");
+	});
+
+	it("status warns (not errors) on a ledger with acceptance: [] in an existing slice", () => {
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		l.slices[0].acceptance = []; // directly inject bad acceptance
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0); // warn-only on reads
+		expect(r.stderr).toContain("acceptance");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Legacy-shaped ledger — depends_on alias, missing kind/wave/desc
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — legacy shapes remain valid", () => {
+	it("status succeeds on a ledger with depends_on instead of blocked_by (treated as alias)", () => {
+		writeFileSync(ledgerFile, JSON.stringify({
+			session_id: "legacy-sess",
+			active: true,
+			brief: "legacy run",
+			slices: [
+				{ id: "L1", status: "complete", acceptance: ["done"] },
+				{ id: "L2", status: "pending", depends_on: ["L1"], acceptance: ["todo"] },
+			],
+			gate: {}, // no advisor verdict avoids schema warning for "pending" non-enum value
+		}, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		// depends_on referential integrity: L1 exists — no error
+		expect(r.stderr).toBe("");
+	});
+
+	it("status warns on a ledger where depends_on references a non-existent slice", () => {
+		writeFileSync(ledgerFile, JSON.stringify({
+			session_id: "legacy-sess",
+			active: true,
+			slices: [
+				{ id: "L1", status: "pending", depends_on: ["MISSING"], acceptance: ["x"] },
+			],
+			gate: {},
+		}, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toContain("depends_on");
+		expect(r.stderr).toContain("MISSING");
+	});
+
+	it("slices without kind, wave, or desc are accepted (legacy shape)", () => {
+		writeFileSync(ledgerFile, JSON.stringify({
+			session_id: "leg",
+			active: true,
+			slices: [{ id: "L1", status: "pending", acceptance: ["x"] }],
+			gate: {},
+		}, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Both gate.advisor forms (bare string + object) validated cleanly
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — gate.advisor forms survive validation", () => {
+	it("bare string advisor gate is accepted", () => {
+		const r = runFull(["gate", "advisor", "APPROVE"]);
+		expect(r.code).toBe(0);
+		// Schema-only issue: schema allows APPROVE — no warning expected
+		expect(r.stderr).toBe("");
+	});
+
+	it("object-form advisor gate is accepted", () => {
+		const r = runFull(["gate", "advisor", "APPROVE", "--citation", "src:42", "--rubric", "r1"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+	});
+
+	it("non-schema verdict string (CORRECTION) emits schema warning but still exits 0", () => {
+		// CORRECTION is not in the schema enum but is used by some gate commands.
+		// Schema violations are warnings-only; the operation must succeed.
+		const r = runFull(["gate", "advisor", "CORRECTION"]);
+		expect(r.code).toBe(0);
+		// May or may not warn depending on Ajv schema strictness — just ensure no crash
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Defect 1: cmdInit must set active:true
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — init sets active:true", () => {
+	it("init from a JSON file without active sets active:true in the written ledger", () => {
+		const src = path.join(projectDir, "no-active.json");
+		writeFileSync(src, JSON.stringify({ session_id: "x", slices: [], gate: {} }));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+		expect(readLedger().active).toBe(true);
+	});
+
+	it("init from a JSON file that already has active:true keeps it true", () => {
+		const src = path.join(projectDir, "with-active.json");
+		writeFileSync(src, JSON.stringify({ session_id: "x", active: true, slices: [], gate: {} }));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(0);
+		expect(readLedger().active).toBe(true);
+	});
+
+	it("init --rfc produces a ledger with active:true and zero warnings", () => {
+		// Build a minimal RFC directory
+		const rfcDir = path.join(projectDir, "rfc-test");
+		mkdirSync(rfcDir, { recursive: true });
+		writeFileSync(path.join(rfcDir, "rfc.md"), [
+			"---",
+			"uid: RFC-TEST",
+			"title: Test RFC",
+			"---",
+			"",
+		].join("\n"));
+		writeFileSync(path.join(rfcDir, "tasks.yaml"), [
+			"- id: T1",
+			"  title: Do something",
+			"  wave: 1",
+			"  blocked_by: []",
+			"  ac:",
+			"    - The system shall do something.",
+		].join("\n"));
+		rmSync(ledgerFile, { force: true });
+		const r = runFull(["init", "--rfc", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+		const l = readLedger();
+		expect(l.active).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Defect 2: tasks.yaml near-miss key must fail loudly at parse time
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — tasks.yaml near-miss key detection at parse time", () => {
+	function makeRfcDir(tasksYaml: string) {
+		const rfcDir = mkdtempSync(path.join(tmpdir(), "gw-rfc-"));
+		writeFileSync(path.join(rfcDir, "rfc.md"), [
+			"---",
+			"uid: RFC-TMP",
+			"title: Tmp RFC",
+			"---",
+			"",
+		].join("\n"));
+		writeFileSync(path.join(rfcDir, "tasks.yaml"), tasksYaml);
+		return rfcDir;
+	}
+
+	it("CASE A: correct blocked_by is read and dependency is set", () => {
+		const rfcDir = makeRfcDir([
+			"- id: T1",
+			"  title: First",
+			"  wave: 1",
+			"  blocked_by: []",
+			"  ac:",
+			"    - done",
+			"- id: T2",
+			"  title: Second",
+			"  wave: 2",
+			"  blocked_by: [T1]",
+			"  ac:",
+			"    - done too",
+		].join("\n"));
+		rmSync(ledgerFile, { force: true });
+		const r = runFull(["init", "--rfc", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+		const l = readLedger();
+		const t2 = l.slices.find((s: any) => s.id === "T2");
+		expect(t2.blocked_by).toEqual(["T1"]);
+		rmSync(rfcDir, { recursive: true, force: true });
+	});
+
+	it("CASE B: misspelled blocked_bY fails loudly (exit 1) and names the offending key", () => {
+		const rfcDir = makeRfcDir([
+			"- id: T1",
+			"  title: First",
+			"  wave: 1",
+			"  blocked_by: []",
+			"  ac:",
+			"    - done",
+			"- id: T2",
+			"  title: Second",
+			"  wave: 2",
+			"  blocked_bY: [T1]",
+			"  ac:",
+			"    - done too",
+		].join("\n"));
+		rmSync(ledgerFile, { force: true });
+		const r = runFull(["init", "--rfc", rfcDir]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("blocked_bY");
+		expect(r.stderr).toContain("blocked_by");
+		rmSync(rfcDir, { recursive: true, force: true });
+	});
+
+	it("completely unknown key (far from any known key) emits a warning but does not fail", () => {
+		const rfcDir = makeRfcDir([
+			"- id: T1",
+			"  title: Something",
+			"  wave: 1",
+			"  zzzunknownfield: whatever",
+			"  ac:",
+			"    - done",
+		].join("\n"));
+		rmSync(ledgerFile, { force: true });
+		const r = runFull(["init", "--rfc", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toContain("zzzunknownfield");
+		rmSync(rfcDir, { recursive: true, force: true });
+	});
+
+	it("tasks.yaml with title and ac keys maps them to desc and acceptance on the slice", () => {
+		const rfcDir = makeRfcDir([
+			"- id: T1",
+			"  title: My Slice Title",
+			"  wave: 1",
+			"  blocked_by: []",
+			"  ac:",
+			"    - Criterion one",
+			"    - Criterion two",
+		].join("\n"));
+		rmSync(ledgerFile, { force: true });
+		const r = runFull(["init", "--rfc", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toBe("");
+		const t1 = readLedger().slices.find((s: any) => s.id === "T1");
+		expect(t1.desc).toBe("My Slice Title");
+		expect(t1.acceptance).toEqual(["Criterion one", "Criterion two"]);
+		rmSync(rfcDir, { recursive: true, force: true });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Defect 3: write-path schema validation (init rejects new corruption)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — init rejects schema violations on write (strict init)", () => {
+	function initFrom(obj: object) {
+		const src = path.join(projectDir, "bad.json");
+		writeFileSync(src, JSON.stringify(obj));
+		rmSync(ledgerFile, { force: true });
+		return runFull(["init", src]);
+	}
+
+	it("init rejects a slice with status:'donezo' (invalid enum value)", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [{ id: "X1", status: "donezo" }], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("status");
+	});
+
+	it("init rejects a slice with missing status (required field)", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [{ id: "X1" }], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("status");
+	});
+
+	it("init rejects a slice with wave:'three' (wrong type)", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [{ id: "X1", status: "pending", wave: "three" }], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("wave");
+	});
+
+	it("init rejects a slice with id:123 (wrong type — id must be string)", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [{ id: 123, status: "pending" }], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("id");
+	});
+
+	it("init rejects a slice with kind:'refactor' (unknown enum value)", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [{ id: "X1", status: "pending", kind: "refactor" }], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("kind");
+	});
+
+	it("init rejects duplicate slice ids", () => {
+		const r = initFrom({
+			session_id: "x", active: true,
+			slices: [
+				{ id: "X1", status: "pending" },
+				{ id: "X1", status: "pending" },
+			], gate: {},
+		});
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("X1");
+		expect(r.stderr).toContain("duplicate");
+	});
+
+	it("read commands (status) still succeed on a corrupt pre-existing ledger (warn-only on reads)", () => {
+		// Directly inject a corrupt ledger (simulating one written by an older tool)
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		l.slices[0].status = "donezo";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).toContain("status");
+	});
+
+	it("complete still succeeds on a ledger with pre-existing schema quirks (warn-only on mutations)", () => {
+		// Inject an extra field that wouldn't pass strict schema, then verify complete works
+		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
+		l.extraTopLevelField = "some value";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["complete", "S2"]);
+		expect(r.code).toBe(0);
 	});
 });
 

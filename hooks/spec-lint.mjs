@@ -2,7 +2,7 @@
 /**
  * spec-lint.mjs — `spec lint [--rfc <uid>]` subcommand
  *
- * Without --rfc: checks every spec node against 6 spec invariants and
+ * Without --rfc: checks every spec node against 8 spec invariants and
  *   reports each violation as a LINT_DRIFT journal event. AC 5.
  * With --rfc <uid>: checks only the nodes named by that RFC's spec_delta
  *   and exits 1 if any violation is found. AC 6.
@@ -17,6 +17,8 @@
  *   4. enum-values     — type, pattern, verification, criticality, status
  *   5. id-format       — concept and requirement id regexes
  *   6. summary-length  — summary must be ≤25 words
+ *   7. snapshot-of     — if snapshot_of is declared, the referenced node must exist
+ *   8. unknown-field   — frontmatter must not contain keys not defined in the schema
  *
  * Exit codes: 0 success  1 violations found (--rfc mode only)  2 usage error
  */
@@ -25,6 +27,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { loadSchema } from './lib/schema-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Project root
@@ -112,25 +115,88 @@ function parseSpecDeltaTargets(rfcContent) {
 }
 
 // ---------------------------------------------------------------------------
-// Schema constants (RFC §2.2 concept nodes, §2.3 requirement nodes)
+// Fields requiring whitespace-only check (schema minLength passes for "   " since length≥1)
 // ---------------------------------------------------------------------------
 
-// Required fields per node type
-const CONCEPT_REQUIRED = ['id', 'type', 'title', 'summary', 'parent', 'origin_rfc']
-// ears and summary are intentionally omitted from REQ_REQUIRED: the either/or
-// rule ("ears or summary") is enforced by the ears-or-summary invariant below,
-// which gives a clearer error message than two individual required-field hits.
-const REQ_REQUIRED = ['id', 'type', 'concept', 'pattern', 'verify', 'verification', 'origin_rfc', 'status']
+// Free-text string fields that need whitespace-only detection beyond schema minLength.
+// Enum and pattern fields are covered by schema enum/pattern constraints.
+// origin_rfc is checked by the hand-written origin-rfc invariant.
+// ears and summary for requirements are checked by the ears-or-summary invariant.
+const CONCEPT_WHITESPACE_FIELDS = ['title', 'summary']
+const REQ_WHITESPACE_FIELDS = ['verify']
 
-// Valid enum values
-const VALID_PATTERN = new Set(['ubiquitous', 'event', 'state', 'option', 'unwanted'])
-const VALID_VERIFICATION = new Set(['automated', 'manual', 'hybrid'])
-const VALID_CRITICALITY = new Set(['must', 'should'])
-const VALID_STATUS = new Set(['active', 'superseded', 'withdrawn'])
+// ---------------------------------------------------------------------------
+// Schema error → spec-lint violation converter
+// ---------------------------------------------------------------------------
 
-// Id regexes (RFC §2.2, §2.3)
-const CONCEPT_ID_RE = /^C-[A-Z0-9]+(-[A-Z0-9]+)*$/
-// Requirement ids: <CONCEPT-SUFFIX>-R-[a-z0-9]{4} (suffix = concept id with C- removed)
+/**
+ * Convert Ajv validation errors from spec schemas into spec-lint violation lines.
+ *
+ * Filtering:
+ *   - anyOf errors and their sub-errors (ears-or-summary handled by invariant 1)
+ *   - not errors (origin_rfc 'null' sentinel handled by invariant 2)
+ *   - all errors on origin_rfc field (handled by invariant 2)
+ *   - oneOf and sub-errors from within oneOf (parent field complexity)
+ *   - pattern errors on requirement id field (hand-written check is concept-prefix-specific)
+ *
+ * @param {import('ajv').ErrorObject[]} errors  Ajv errors from validate.errors
+ * @param {string} nodeId                        Node id for error messages
+ * @param {object} rawFm                         Parsed frontmatter (to recover bad values)
+ * @param {boolean} isConcept                    true = concept schema, false = requirement schema
+ * @returns {string[]}  violation strings ready to push into the violations array
+ */
+function schemaErrorsToViolations(errors, nodeId, rawFm, isConcept) {
+  if (!errors || errors.length === 0) return []
+  const result = []
+
+  for (const err of errors) {
+    const { keyword, instancePath, params, schemaPath } = err
+    const field = instancePath ? instancePath.replace(/^\//, '') : ''
+
+    // Skip anyOf errors and errors emitted from within anyOf branches
+    // (ears-or-summary is validated by invariant 1, which also catches whitespace-only)
+    if (keyword === 'anyOf') continue
+    if (schemaPath && schemaPath.includes('/anyOf/')) continue
+
+    // Skip not errors — origin_rfc 'null' sentinel is handled by invariant 2
+    if (keyword === 'not') continue
+
+    // Skip all errors on origin_rfc — handled by the hand-written origin-rfc invariant
+    if (field === 'origin_rfc') continue
+    if (keyword === 'required' && params.missingProperty === 'origin_rfc') continue
+
+    // Skip oneOf errors and errors from within oneOf branches (parent field)
+    if (keyword === 'oneOf') continue
+    if (schemaPath && schemaPath.includes('/oneOf/')) continue
+
+    // Skip requirement id pattern errors — hand-written check is concept-prefix-specific
+    if (!isConcept && keyword === 'pattern' && field === 'id') continue
+
+    if (keyword === 'required') {
+      result.push(`required-field: node "${nodeId}" is missing required field "${params.missingProperty}"`)
+    } else if (keyword === 'minLength') {
+      result.push(`required-field: node "${nodeId}" is missing required field "${field}"`)
+    } else if (keyword === 'type' && field) {
+      result.push(`required-field: node "${nodeId}" is missing required field "${field}"`)
+    } else if (keyword === 'enum') {
+      const badValue = rawFm[field]
+      const allowed = (params.allowedValues || []).join('|')
+      result.push(`enum-value: node "${nodeId}" has invalid ${field} "${badValue}" (must be ${allowed})`)
+    } else if (keyword === 'const' && field === 'type') {
+      result.push(`enum-value: node "${nodeId}" has invalid type "${rawFm.type}" (must be concept or requirement)`)
+    } else if (keyword === 'pattern') {
+      const val = rawFm[field]
+      const nodekind = isConcept ? 'concept' : 'requirement'
+      result.push(`id-format: ${nodekind} "${nodeId}" field "${field}" value "${val}" does not match pattern ${params.pattern}`)
+    } else if (keyword === 'additionalProperties') {
+      const badKey = params.additionalProperty
+      result.push(`unknown-field: node "${nodeId}" has unknown frontmatter key "${badKey}"`)
+    }
+    // Unknown keywords: silently skip (safe future-proofing)
+  }
+
+  return result
+}
 
 // ---------------------------------------------------------------------------
 // Spec invariant checks
@@ -138,20 +204,36 @@ const CONCEPT_ID_RE = /^C-[A-Z0-9]+(-[A-Z0-9]+)*$/
 
 /**
  * Returns an array of violation description strings for a spec node.
- * @param {object} node - index node (id, type, title, ears, summary, relPath, concept)
+ * @param {object} node  - index node (id, type, title, ears, summary, relPath, concept)
  * @param {object} rawFm - parsed frontmatter from the markdown file
+ * @param {object} index - full spec index (nodes map) for referential integrity checks
  */
-function checkNodeInvariants(node, rawFm) {
+function checkNodeInvariants(node, rawFm, index) {
   const violations = []
   const id = node.id || rawFm.id || '(unknown)'
   const nodeType = rawFm.type || node.type
   const isRequirement = nodeType === 'requirement' || (node.concept && nodeType !== 'concept')
   const isConcept = !isRequirement
 
+  // --- Schema validation (required fields, enum values, concept id format) ---
+  // Delegates invariants 3, 4, and 5 (concept part) to JSON Schema.
+  // Filtered: anyOf (inv 1), not/origin_rfc (inv 2), oneOf/parent, req id pattern (inv 5 req part).
+  try {
+    const schemaName = isConcept ? 'spec-concept' : 'spec-requirement'
+    const validate = loadSchema(schemaName)
+    if (!validate(rawFm)) {
+      for (const line of schemaErrorsToViolations(validate.errors, id, rawFm, isConcept)) {
+        violations.push(line)
+      }
+    }
+  } catch {
+    // Schema load failure is an operational error; hand-written checks below still run.
+  }
+
   // Invariant 1: requirement nodes must have ears or summary (either/or).
-  // Uses rawFm (frontmatter) — not the index node — because spec-build populates
-  // node.summary from body text when the YAML field is absent, masking the absence.
-  // ears and summary are not in REQ_REQUIRED so this is the sole check for them.
+  // Hand-written because the schema's anyOf passes for whitespace-only ears/summary
+  // (minLength:1 is satisfied by "   "), and spec-build populates node.summary from body
+  // text when the YAML field is absent, masking the absence in the index node.
   if (isRequirement) {
     const hasEars = rawFm.ears && rawFm.ears.trim()
     const hasSummary = rawFm.summary && rawFm.summary.trim()
@@ -161,50 +243,27 @@ function checkNodeInvariants(node, rawFm) {
   }
 
   // Invariant 2: origin_rfc must be present in the markdown frontmatter.
-  if (!rawFm.origin_rfc || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
+  // Hand-written to produce the "origin-rfc:" prefix and to catch whitespace-only values
+  // (schema minLength:1 does not reject "   "). Schema handles "null" sentinel and empty
+  // string, but schema errors on origin_rfc are filtered so this is the sole reporter.
+  if (!rawFm.origin_rfc || typeof rawFm.origin_rfc !== 'string' || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
     violations.push(`origin-rfc: node "${id}" has no origin_rfc in frontmatter`)
   }
 
-  // Invariant 3: required fields must be present and non-blank.
-  // Note: `parent` accepts explicit null (root concept); all other required fields must be non-null, non-blank strings.
-  const requiredFields = isRequirement ? REQ_REQUIRED : CONCEPT_REQUIRED
-  for (const field of requiredFields) {
+  // Invariant 3 (whitespace supplement): required string fields with whitespace-only values.
+  // Schema minLength:1 does not reject non-empty whitespace strings (e.g. "   " has length 3).
+  // Enum and pattern fields are caught by schema for whitespace. Only free-text fields need this.
+  const whitespaceFields = isConcept ? CONCEPT_WHITESPACE_FIELDS : REQ_WHITESPACE_FIELDS
+  for (const field of whitespaceFields) {
     const val = rawFm[field]
-    if (field === 'parent') {
-      // null is explicitly valid (root concept); only truly absent (undefined) is a violation
-      if (val === undefined) {
-        violations.push(`required-field: node "${id}" is missing required field "${field}"`)
-      }
-    } else if (val === undefined || val === null || val === '' || (typeof val === 'string' && val.trim() === '')) {
+    if (typeof val === 'string' && val !== '' && val.trim() === '') {
       violations.push(`required-field: node "${id}" is missing required field "${field}"`)
     }
   }
 
-  // Invariant 4: enum values must be valid.
-  if (rawFm.type && rawFm.type !== 'concept' && rawFm.type !== 'requirement') {
-    violations.push(`enum-value: node "${id}" has invalid type "${rawFm.type}" (must be concept or requirement)`)
-  }
-  if (isRequirement) {
-    if (rawFm.pattern && !VALID_PATTERN.has(rawFm.pattern)) {
-      violations.push(`enum-value: node "${id}" has invalid pattern "${rawFm.pattern}" (must be ubiquitous|event|state|option|unwanted)`)
-    }
-    if (rawFm.verification && !VALID_VERIFICATION.has(rawFm.verification)) {
-      violations.push(`enum-value: node "${id}" has invalid verification "${rawFm.verification}" (must be automated|manual|hybrid)`)
-    }
-    if (rawFm.criticality && !VALID_CRITICALITY.has(rawFm.criticality)) {
-      violations.push(`enum-value: node "${id}" has invalid criticality "${rawFm.criticality}" (must be must|should)`)
-    }
-    if (rawFm.status && !VALID_STATUS.has(rawFm.status)) {
-      violations.push(`enum-value: node "${id}" has invalid status "${rawFm.status}" (must be active|superseded|withdrawn)`)
-    }
-  }
-
-  // Invariant 5: id format must match schema regex.
-  if (isConcept && rawFm.id) {
-    if (!CONCEPT_ID_RE.test(rawFm.id)) {
-      violations.push(`id-format: concept "${rawFm.id}" does not match pattern ^C-[A-Z0-9]+(-[A-Z0-9]+)*$`)
-    }
-  }
+  // Invariant 5 (requirement id, concept-prefix check): schema validates the general
+  // <SUFFIX>-R-[a-z0-9]{4} shape but cannot enforce that SUFFIX matches this node's
+  // concept id. Hand-written check catches prefix/concept mismatches.
   if (isRequirement && rawFm.id) {
     const conceptId = rawFm.concept || ''
     const suffix = conceptId.replace(/^C-/, '')
@@ -226,6 +285,16 @@ function checkNodeInvariants(node, rawFm) {
     const wordCount = summary.trim().split(/\s+/).length
     if (wordCount > 25) {
       violations.push(`summary-length: node "${id}" summary has ${wordCount} words (max 25)`)
+    }
+  }
+
+  // Invariant 7 (new): snapshot_of referential integrity.
+  // If a node declares snapshot_of: <id>, that id must resolve to an existing node
+  // in the spec index. JSON Schema cannot express cross-node referential integrity.
+  if (rawFm.snapshot_of) {
+    const snapshotTarget = String(rawFm.snapshot_of).trim()
+    if (snapshotTarget && !(index.nodes && index.nodes[snapshotTarget])) {
+      violations.push(`snapshot-of: node "${id}" references snapshot_of "${snapshotTarget}" which does not exist in the spec tree`)
     }
   }
 
@@ -260,7 +329,7 @@ function emitLintDrift(projectDir, rfcUid, nodeId, violation) {
 function usage() {
   process.stdout.write(`Usage: spec lint [--rfc <uid>]
 
-  Without --rfc: check every spec node against 6 spec invariants.
+  Without --rfc: check every spec node against 8 spec invariants.
     Violations are printed to stdout and recorded as LINT_DRIFT journal events.
     Exit 0 always (informational).
 
@@ -275,6 +344,8 @@ Spec invariants:
   enum-values     type, pattern, verification, criticality, status
   id-format       concept and requirement id regexes
   summary-length  summary must be ≤25 words
+  snapshot-of     if snapshot_of is declared, the referenced node must exist
+  unknown-field   frontmatter must not contain keys not defined in the schema
 
 Spec files are opened read-only; this command never writes to docs/spec/**.
 
@@ -359,7 +430,7 @@ for (const node of targetNodes) {
     }
   }
 
-  for (const v of checkNodeInvariants(node, rawFm)) {
+  for (const v of checkNodeInvariants(node, rawFm, index)) {
     violations.push({ nodeId: node.id, violation: v })
     emitLintDrift(projectDir, rfcForJournal, node.id, v)
   }

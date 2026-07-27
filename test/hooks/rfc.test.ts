@@ -237,7 +237,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 		it(`accepts op: ${op}`, () => {
 			const r = withSpecDelta(
 				`0001-op-${op.toLowerCase()}`,
-				`  - op: ${op}\n    target: docs/spec/README.md\n`,
+				`  - op: ${op}\n    target: doc/specs/README.md\n`,
 			);
 			expect(r.code).toBe(0);
 		});
@@ -247,7 +247,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 		it(`rejects the legacy op: ${legacy} (hard cutover, no dual-accept)`, () => {
 			const r = withSpecDelta(
 				`0001-legacy-${legacy}`,
-				`  - op: ${legacy}\n    target: docs/spec/README.md\n`,
+				`  - op: ${legacy}\n    target: doc/specs/README.md\n`,
 			);
 			expect(r.code).toBe(1);
 			expect(r.stderr).toContain("spec_delta: op must be");
@@ -258,7 +258,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 	it("rejects an unknown op", () => {
 		const r = withSpecDelta(
 			"0001-op-nonsense",
-			"  - op: Nonsense\n    target: docs/spec/README.md\n",
+			"  - op: Nonsense\n    target: doc/specs/README.md\n",
 		);
 		expect(r.code).toBe(1);
 		expect(r.stderr).toContain('got "Nonsense"');
@@ -267,7 +267,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 	it("accepts an entry carrying `description`", () => {
 		const r = withSpecDelta(
 			"0001-desc",
-			"  - op: Added\n    target: docs/spec/README.md\n    description: 'Root node.'\n",
+			"  - op: Added\n    target: doc/specs/README.md\n    description: 'Root node.'\n",
 		);
 		expect(r.code).toBe(0);
 	});

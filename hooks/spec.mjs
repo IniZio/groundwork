@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Groundwork spec CLI — manage requirement specifications under docs/spec/.
+ * Groundwork spec CLI — manage requirement specifications under doc/specs/.
  *
  * Subcommands:
- *   init                    — create docs/spec/README.md with a root concept node
- *   build                   — build docs/spec/_generated/{index.md,index.json,coverage.json}
+ *   init                    — create doc/specs/README.md with a root concept node
+ *   build                   — build doc/specs/_generated/{index.md,index.json,coverage.json}
  *   req new <concept> <name>— create a new requirement file
  *   show <id> [--full]      — show a spec node (8 lines without --full)
  *   search <q> [--limit N]  — search nodes (default --limit 8)
@@ -197,12 +197,12 @@ function countBy(arr, field) {
 
 const HELP = {
   init: {
-    summary: 'create docs/spec/README.md with a root concept node',
+    summary: 'create doc/specs/README.md with a root concept node',
     usage: 'spec init',
     flags: [],
   },
   build: {
-    summary: 'build docs/spec/_generated/{index.md,index.json,coverage.json}',
+    summary: 'build doc/specs/_generated/{index.md,index.json,coverage.json}',
     usage: 'spec build',
     flags: [],
   },
@@ -276,7 +276,7 @@ function cmdInit(args) {
   if (existsSync(sd)) {
     const readme = join(sd, 'README.md')
     if (existsSync(readme)) {
-      die(`docs/spec/README.md already exists. Remove it or run "spec build" to update the index.`, 1)
+      die(`doc/specs/README.md already exists. Remove it or run "spec build" to update the index.`, 1)
     }
   }
 
@@ -317,12 +317,12 @@ function cmdInit(args) {
   ].join('\n')
 
   writeFileSync(join(sd, 'README.md'), readme, 'utf8')
-  process.stdout.write(`spec: created docs/spec/README.md (concept ${conceptId})\n`)
+  process.stdout.write(`spec: created doc/specs/README.md (concept ${conceptId})\n`)
 }
 
 function cmdBuild(args) {
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
   runBuild(sd)
 }
 
@@ -348,11 +348,11 @@ function cmdReqNew(args) {
   }
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // Find the concept directory
   const conceptDir = findConceptDir(conceptId, sd)
-  if (!conceptDir) die(`concept "${conceptId}" not found in docs/spec/`, 1)
+  if (!conceptDir) die(`concept "${conceptId}" not found in doc/specs/`, 1)
 
   // Collect existing id suffixes for uniqueness (AC5)
   const allFiles = walkSpecFiles(sd)
@@ -406,7 +406,7 @@ function cmdShow(args) {
   if (!id) die('usage: spec show <id> [--full]', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
   ensureFreshIndex(sd)
@@ -455,7 +455,7 @@ function cmdSearch(args) {
   if (isNaN(limit) || limit < 1) die('--limit must be a positive integer', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
   ensureFreshIndex(sd)
@@ -495,7 +495,7 @@ function cmdTree(args) {
   if (isNaN(depth) || depth < 1) die('--depth must be a positive integer', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
   ensureFreshIndex(sd)
@@ -538,7 +538,7 @@ function cmdDeps(args) {
   if (!id) die('usage: spec deps <id>', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
   ensureFreshIndex(sd)

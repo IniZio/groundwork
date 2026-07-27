@@ -723,7 +723,7 @@ Every task in the RFC must carry:
 - \`blocked_by\` — list of task IDs this task depends on (empty array if none)
 - \`conditional\` + \`trigger\` — if this task is conditional
 
-For each acceptance criterion, note whether it is testable (\`testable: true\`) or requires manual verification (\`testable: false\`). If \`testable: false\`, verify that the corresponding requirement in \`docs/spec/\` declares \`verification: manual\` — if it does not, either reject the criterion or require the requirement to be updated before proceeding.
+For each acceptance criterion, note whether it is testable (\`testable: true\`) or requires manual verification (\`testable: false\`). If \`testable: false\`, verify that the corresponding requirement in \`doc/specs/\` declares \`verification: manual\` — if it does not, either reject the criterion or require the requirement to be updated before proceeding.
 
 ## Phase 4: Coverage Verification (MANDATORY before RFC-READY)
 
@@ -741,7 +741,7 @@ Coverage table format:
 Rules:
 - **Every criterion must have a non-empty Covered By cell.** A criterion with no covering task is uncovered.
 - **Do not return RFC-READY while any criterion is uncovered.** Add the uncovered criterion as a NEEDS-INPUT question instead.
-- The Requirement ID column traces back to \`docs/spec/\` requirement IDs. If a criterion has no linked requirement, record it as \`(untraced)\` and flag it as a gap — do not silently omit it.
+- The Requirement ID column traces back to \`doc/specs/\` requirement IDs. If a criterion has no linked requirement, record it as \`(untraced)\` and flag it as a gap — do not silently omit it.
 
 ## Phase 5: RFC on Disk (Terminal Step — MANDATORY)
 
@@ -1010,7 +1010,7 @@ You are Test Engineer. Design test strategies, write tests, harden flaky tests, 
 
 ## Requirement Traceability
 
-When a test you write directly verifies a named requirement (identified by a requirement id from \`docs/spec/**\`), you must:
+When a test you write directly verifies a named requirement (identified by a requirement id from \`doc/specs/**\`), you must:
 
 1. **Annotate the test** with an \`@verifies\` comment naming the requirement id:
    \`\`\`

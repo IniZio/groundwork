@@ -495,7 +495,7 @@ describe("AC3: session-reminder displays rfc_ref and status", () => {
 describe("AC6: spec skeleton token cap and depth-1 degradation", () => {
   it("includes spec skeleton when spec index exists", () => {
     // Copy fixture spec files into project
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     // Copy the root README
     writeFileSync(
@@ -522,7 +522,7 @@ describe("AC6: spec skeleton token cap and depth-1 degradation", () => {
   });
 
   it("spec skeleton is at most 600 tokens when spec exists", () => {
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     writeFileSync(
       path.join(destSpec, "README.md"),
@@ -541,7 +541,7 @@ describe("AC6: spec skeleton token cap and depth-1 degradation", () => {
 
   it("degrades to root-only when depth-1 tree would exceed 600 tokens", () => {
     // Build a spec with many child concepts that would push depth-1 over 600 tokens
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     writeFileSync(
       path.join(destSpec, "README.md"),
@@ -574,7 +574,7 @@ describe("AC6: spec skeleton token cap and depth-1 degradation", () => {
   });
 
   it("total injection does not exceed 3000 tokens", () => {
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     writeFileSync(
       path.join(destSpec, "README.md"),
@@ -595,7 +595,7 @@ describe("AC6: spec skeleton token cap and depth-1 degradation", () => {
 describe("AC7: spec skeleton dropped before other blocks when cap exceeded", () => {
   it("drops spec skeleton and logs journal event when cap would be exceeded", () => {
     // Create a MASSIVE spec tree that would push us over 3000 tokens
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     // Write 60 concept nodes to exceed cap
     const rootContent = "---\nid: C-ROOT\ntype: concept\ntitle: Root\n---\n";
@@ -637,7 +637,7 @@ describe("AC7: spec skeleton dropped before other blocks when cap exceeded", () 
 describe("AC8: fixture spec tree token measurement", () => {
   it("measures token counts for each session-reminder block against the 3000-token cap", () => {
     // Copy full fixture spec tree
-    const destSpec = path.join(projectDir, "docs", "spec");
+    const destSpec = path.join(projectDir, "doc", "specs");
     mkdirSync(destSpec, { recursive: true });
     function copyDir(src: string, dest: string) {
       mkdirSync(dest, { recursive: true });

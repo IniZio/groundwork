@@ -34,11 +34,11 @@ Each element of `acceptance` is an object:
 | `id` | yes | Criterion ID: `T1-AC1`, `T1-AC2`, etc. |
 | `text` | yes | The verifiable acceptance criterion text |
 | `testable` | yes | `true` if programmatically verifiable; `false` if manual |
-| `req_id` | no | Requirement ID from `docs/spec/` that this criterion satisfies |
+| `req_id` | no | Requirement ID from `doc/specs/` that this criterion satisfies |
 
 ### Testability constraint
 
-If `testable: false`, the corresponding requirement (identified by `req_id`) must declare `verification: manual` in `docs/spec/`. If it does not:
+If `testable: false`, the corresponding requirement (identified by `req_id`) must declare `verification: manual` in `doc/specs/`. If it does not:
 - Either convert the criterion to be testable (preferred), or
 - Reject the criterion and add a blocking NEEDS-INPUT question asking the human to update the requirement
 

@@ -301,7 +301,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 | `agents/` | Compiled agent definition files |
 | `agents-src/` | Source agent definitions (Markdown with YAML frontmatter) |
 | `commands/` | Claude Code slash-command scripts |
-| `docs/` | Spec tree (`docs/spec/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
+| `docs/` | Spec tree (`doc/specs/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
 | `hooks/` | PreToolUse / Stop / SessionStart hook scripts + CLIs |
 | `hooks/lib/` | Shared helpers for hooks (`hook-io.mjs`, `spec-io.mjs`) |
 | `scripts/` | Build and utility scripts |
@@ -323,7 +323,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 - Hook CLIs: kebab-named `.mjs` files in `hooks/`.
 - Agent source files: `agents-src/<name>.md` with YAML frontmatter.
 - Skills: `skills/<namespace>/<skill-name>/SKILL.md`.
-- Spec requirements: `docs/spec/<concept-dir>/requirements/<kebab-name>.md`.
+- Spec requirements: `doc/specs/<concept-dir>/requirements/<kebab-name>.md`.
 - Runtime state (ledgers, journal shards, plans): `.groundwork/`, excluded in this repo via the committed `.gitignore`. When groundwork runs inside a **host project's** repo, exclude `.groundwork/` via `.git/info/exclude` instead — never touch that project's committed `.gitignore`.
 
 ### Runtime and tooling

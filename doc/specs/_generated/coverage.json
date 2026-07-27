@@ -1,13 +1,13 @@
 {
-  "total": 6,
+  "total": 7,
   "by_status": {
-    "active": 6
+    "active": 7
   },
   "by_verification": {
-    "automated": 4,
+    "automated": 5,
     "manual": 2
   },
   "by_criticality": {
-    "must": 6
+    "must": 7
   }
 }

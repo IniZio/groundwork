@@ -425,23 +425,23 @@ describe("AC8 — read-only guarantee", () => {
 
 describe("AC9 — unclassified paths excluded and named", () => {
 	it("names unclassified files in the summary", () => {
-		// docs/spec/README.md is not matched by any class (narrative requires top-level only)
-		mkdirSync(path.join(projectDir, "docs", "spec"), { recursive: true });
+		// doc/specs/README.md is not matched by any class (narrative requires top-level only)
+		mkdirSync(path.join(projectDir, "doc", "specs"), { recursive: true });
 		writeFileSync(
-			path.join(projectDir, "docs", "spec", "README.md"),
+			path.join(projectDir, "doc", "specs", "README.md"),
 			"# Spec Root\n\nSome content.\n\n## Section\n\nMore.\n",
 		);
 
 		const r = run(["lint"]);
 		expect(r.stdout).toContain("unclassified");
-		expect(r.stdout).toContain("docs/spec/README.md");
+		expect(r.stdout).toContain("doc/specs/README.md");
 	});
 
 	it("does not treat unclassified files as violations", () => {
 		// A structurally bad file in an unclassified location should not trigger FAIL
-		mkdirSync(path.join(projectDir, "docs", "spec"), { recursive: true });
+		mkdirSync(path.join(projectDir, "doc", "specs"), { recursive: true });
 		writeFileSync(
-			path.join(projectDir, "docs", "spec", "bad.md"),
+			path.join(projectDir, "doc", "specs", "bad.md"),
 			// No summary header, no sections
 			"just some random text\nno headings at all\n",
 		);

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27T03:54:29.301Z",
+  "generated_at": "2026-07-27T08:29:39.208Z",
   "nodes": {
     "C-GROUNDWORK": {
       "id": "C-GROUNDWORK",
@@ -39,6 +39,7 @@
       "inbound": [
         "C-GROUNDWORK",
         "ARTIFACT-R-u6zs",
+        "ARTIFACT-R-rfr1",
         "ARTIFACT-R-p3qx"
       ],
       "byteSize": 1579,
@@ -70,6 +71,25 @@
       "concept": "C-ARTIFACT",
       "parent": null,
       "ears": "When a vertical slice is marked complete via the ledger CLI, hooks/ledger.mjs shall persist the slice id, completion timestamp, and session id to the run ledger."
+    },
+    "ARTIFACT-R-rfr1": {
+      "id": "ARTIFACT-R-rfr1",
+      "type": "requirement",
+      "title": "When a run ledger is initialized with --rfc, the rfc_ref field is set to the RFC directory path.",
+      "summary": "When a run ledger is initialized with --rfc, the rfc_ref field is set to the RFC directory path.",
+      "refs": [
+        "C-ARTIFACT"
+      ],
+      "inbound": [],
+      "byteSize": 847,
+      "relPath": "artifact/requirements/rfc-ref-ledger-field.md",
+      "status": "active",
+      "pattern": "event",
+      "verification": "automated",
+      "criticality": "must",
+      "concept": "C-ARTIFACT",
+      "parent": null,
+      "ears": "When a run ledger is initialized with --rfc <dir>, the system SHALL set rfc_ref in the ledger to the RFC directory path so that enforcement hooks can verify spec writes are authorized."
     },
     "ARTIFACT-R-p3qx": {
       "id": "ARTIFACT-R-p3qx",

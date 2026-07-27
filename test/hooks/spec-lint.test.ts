@@ -1,7 +1,7 @@
 /**
  * spec-lint tests — validates schema enforcement added by the lint-hardening slice.
  *
- * Tests run against temp fixture trees, NEVER against docs/spec/** in the live repo.
+ * Tests run against temp fixture trees, NEVER against doc/specs/** in the live repo.
  *
  * Rules exercised (8 invariants):
  *   ears-or-summary — requirement nodes must have ears OR summary (either/or)
@@ -58,7 +58,7 @@ afterEach(() => rmSync(projectDir, { recursive: true, force: true }));
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SPEC_DIR = () => path.join(projectDir, "docs", "spec");
+const SPEC_DIR = () => path.join(projectDir, "doc", "specs");
 
 function mkSpec() {
   mkdirSync(SPEC_DIR(), { recursive: true });
@@ -599,36 +599,36 @@ describe("spec_delta path existence check (--rfc mode)", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
     build(); // build index first
-    writeRfc("R-TESTUID", ["docs/spec/nonexistent/README.md"]);
+    writeRfc("R-TESTUID", ["doc/specs/nonexistent/README.md"]);
     const r = lint(["--rfc", "R-TESTUID"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("does not exist");
-    expect(r.stderr).toContain("docs/spec/nonexistent/README.md");
+    expect(r.stderr).toContain("doc/specs/nonexistent/README.md");
   });
 
   it("passes (nodes matched or no nodes) when spec_delta targets exist", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
     build();
-    writeRfc("R-TESTUID2", ["docs/spec/README.md"]);
+    writeRfc("R-TESTUID2", ["doc/specs/README.md"]);
     const r = lint(["--rfc", "R-TESTUID2"]);
     // Should not fail on "does not exist"
     expect(r.stderr).not.toContain("does not exist");
   });
 
   it("reproduces the rfc.md typo scenario: artifacts/ vs artifact/", () => {
-    // rfc.md targets docs/spec/artifacts/README.md (pluralised, doesn't exist)
-    // The real path would be docs/spec/artifact/README.md
+    // rfc.md targets doc/specs/artifacts/README.md (pluralised, doesn't exist)
+    // The real path would be doc/specs/artifact/README.md
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    // Only create docs/spec/artifact/ (no 's')
+    // Only create doc/specs/artifact/ (no 's')
     writeConcept("artifact", minConcept("C-ARTIFACT"));
     build();
-    writeRfc("R-TYPO", ["docs/spec/artifacts/README.md"]);
+    writeRfc("R-TYPO", ["doc/specs/artifacts/README.md"]);
     const r = lint(["--rfc", "R-TYPO"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("does not exist");
-    expect(r.stderr).toContain("docs/spec/artifacts/README.md");
+    expect(r.stderr).toContain("doc/specs/artifacts/README.md");
   });
 });
 
@@ -718,9 +718,9 @@ describe("acceptance evidence: broken-state fixture now fails with named violati
         "",
         "spec_delta:",
         "  - op: Added",
-        "    target: docs/spec/README.md",
+        "    target: doc/specs/README.md",
         "  - op: Added",
-        "    target: docs/spec/requirements/req.md",
+        "    target: doc/specs/requirements/req.md",
       ].join("\n"),
     );
 
@@ -798,7 +798,7 @@ describe("unknown-field: extra frontmatter keys are reported", () => {
         "",
         "spec_delta:",
         "  - op: Added",
-        "    target: docs/spec/README.md",
+        "    target: doc/specs/README.md",
         "",
       ].join("\n"),
     );

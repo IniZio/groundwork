@@ -25,4 +25,4 @@ The artifact model covers the durable, file-backed records that groundwork creat
 
 ## Spec tree
 
-`docs/spec/` — EARS requirements indexed by `hooks/spec.mjs` and read by the SessionStart renderer to assemble the context injection.
+`doc/specs/` — EARS requirements indexed by `hooks/spec.mjs` and read by the SessionStart renderer to assemble the context injection.

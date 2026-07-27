@@ -1,7 +1,7 @@
 /**
  * spec CLI tests — covers all 13 acceptance criteria from RFC-0001 T1.
  *
- * AC1  — spec init creates docs/spec/README.md with a valid concept node
+ * AC1  — spec init creates doc/specs/README.md with a valid concept node
  * AC2  — spec build writes _generated/{index.md,index.json,coverage.json}
  * AC3  — spec build exits 1 on parent/dir mismatch, printing node id + both values
  * AC4  — spec build exits 1 on duplicate id, printing both paths
@@ -80,8 +80,8 @@ function run(
 // Helpers for building fixture trees
 // ---------------------------------------------------------------------------
 
-const SPEC_DIR = () => path.join(projectDir, "docs", "spec");
-const GEN_DIR = () => path.join(projectDir, "docs", "spec", "_generated");
+const SPEC_DIR = () => path.join(projectDir, "doc", "specs");
+const GEN_DIR = () => path.join(projectDir, "doc", "specs", "_generated");
 
 function mkSpec() {
 	mkdirSync(SPEC_DIR(), { recursive: true });
@@ -142,7 +142,7 @@ function minReq(conceptId: string, reqId: string, overrides: Record<string, stri
 // ---------------------------------------------------------------------------
 
 describe("AC1 — spec init", () => {
-	it("creates docs/spec/README.md with a valid concept node", () => {
+	it("creates doc/specs/README.md with a valid concept node", () => {
 		const r = run(["init"]);
 		expect(r.code, `stderr: ${r.stderr}`).toBe(0);
 		const readme = path.join(SPEC_DIR(), "README.md");

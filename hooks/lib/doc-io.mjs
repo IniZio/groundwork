@@ -40,7 +40,7 @@
  *
  * Anything that does not match any of the above is "unclassified" and is
  * excluded from linting (AC 9). The unclassified path is genuinely reachable
- * (e.g. docs/spec/README.md, any generated file, or a random .md in a plugin
+ * (e.g. doc/specs/README.md, any generated file, or a random .md in a plugin
  * directory) — it is not a catch-all that swallows everything.
  *
  * Summary-header block definition (AC 3): all content from the start of the
@@ -252,7 +252,7 @@ export function walkMdFiles(dir) {
  *   classified:   [{ absPath, relPath, cls: { name, budget } }]
  *   unclassified: [absPath]
  *
- * Files in docs/spec/ are intentionally not classified (spec nodes are managed
+ * Files in doc/specs/ are intentionally not classified (spec nodes are managed
  * by the spec CLI) — they will appear in unclassified if encountered.
  */
 export function findDocFiles(rootDir) {
@@ -274,6 +274,14 @@ export function findDocFiles(rootDir) {
   const docsDir = join(rootDir, 'docs')
   if (existsSync(docsDir)) {
     for (const p of walkMdFiles(docsDir)) {
+      if (!seen.has(p)) { seen.add(p); allPaths.push(p) }
+    }
+  }
+
+  // doc/ tree (spec files live under doc/specs/ and are intentionally unclassified)
+  const docDir = join(rootDir, 'doc')
+  if (existsSync(docDir)) {
+    for (const p of walkMdFiles(docDir)) {
       if (!seen.has(p)) { seen.add(p); allPaths.push(p) }
     }
   }

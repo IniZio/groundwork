@@ -7,7 +7,7 @@
  * With --rfc <uid>: checks only the nodes named by that RFC's spec_delta
  *   and exits 1 if any violation is found. AC 6.
  *
- * Spec files are opened read-only; this command never writes to docs/spec/**. AC 8.
+ * Spec files are opened read-only; this command never writes to doc/specs/**. AC 8.
  *
  * Spec invariants checked:
  *   1. ears-or-summary — requirement nodes must have ears or summary (either/or)
@@ -42,7 +42,7 @@ function findProjectRoot() {
 // ---------------------------------------------------------------------------
 
 function loadSpecIndex(projectDir) {
-  const indexPath = join(projectDir, 'docs', 'spec', '_generated', 'index.json')
+  const indexPath = join(projectDir, 'doc', 'specs', '_generated', 'index.json')
   if (!existsSync(indexPath)) return null
   try {
     return JSON.parse(readFileSync(indexPath, 'utf8'))
@@ -347,7 +347,7 @@ Spec invariants:
   snapshot-of     if snapshot_of is declared, the referenced node must exist
   unknown-field   frontmatter must not contain keys not defined in the schema
 
-Spec files are opened read-only; this command never writes to docs/spec/**.
+Spec files are opened read-only; this command never writes to doc/specs/**.
 
 Exit codes: 0 success  1 violations (--rfc mode)  2 usage error
 `)
@@ -371,12 +371,16 @@ if (rfcFlagPresent && !rfcMode) {
   process.exit(2)
 }
 
-const projectDir = process.env.GROUNDWORK_PROJECT_DIR ?? findProjectRoot()
-const specDir = join(projectDir, 'docs', 'spec')
+const projectDir = process.env.GROUNDWORK_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR ?? findProjectRoot()
+const specDir = join(projectDir, 'doc', 'specs')
 
 // Load the spec index.
 const index = loadSpecIndex(projectDir)
 if (!index) {
+  if (!existsSync(specDir)) {
+    process.stdout.write('spec lint: clean — no spec tree found.\n')
+    process.exit(0)
+  }
   process.stderr.write(`spec lint: spec index not found. Run "spec build" first.\n`)
   process.exit(1)
 }
@@ -404,8 +408,8 @@ if (rfcMode) {
     process.exit(1)
   }
 
-  // Convert delta paths to relPath format (strip docs/spec/ prefix)
-  const deltaRelPaths = new Set(deltaPaths.map(p => p.replace(/^docs\/spec\//, '')))
+  // Convert delta paths to relPath format (strip doc/specs/ prefix)
+  const deltaRelPaths = new Set(deltaPaths.map(p => p.replace(/^doc\/specs\//, '')))
 
   targetNodes = allNodes.filter(n =>
     deltaRelPaths.has(n.relPath) || deltaRelPaths.has(n.id) || deltaPaths.includes(n.id),

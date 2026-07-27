@@ -44,7 +44,7 @@ export function findProjectRoot(startDir) {
 }
 
 export function specDirPath(projectRoot) {
-  return join(projectRoot, 'docs', 'spec')
+  return join(projectRoot, 'doc', 'specs')
 }
 
 export function generatedDirPath(sd) {

@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Manage structured requirement specifications under docs/spec/ — create, build, verify, and query spec nodes and their traceability data.
+description: Manage structured requirement specifications under doc/specs/ — create, build, verify, and query spec nodes and their traceability data.
 disable-model-invocation: false
 ---
 
@@ -12,13 +12,13 @@ Use this skill to manage structured requirement specifications in a groundwork-m
 
 - User asks to "spec out", "write requirements for", or "create a spec" for a feature
 - A feature plan references a `spec_ref` and the spec file is missing
-- A build error mentions `docs/spec/` or `spec build` failures
+- A build error mentions `doc/specs/` or `spec build` failures
 - Reviewing requirement completeness or coverage
 
 ## Workflow
 
-1. **Init** (first time): `spec init` — creates `docs/spec/README.md` with the project concept node.
-2. **Add sub-concept** (for a major component): create `docs/spec/<component>/README.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
+1. **Init** (first time): `spec init` — creates `doc/specs/README.md` with the project concept node.
+2. **Add sub-concept** (for a major component): create `doc/specs/<component>/README.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
 3. **Add requirements**: `spec req new <concept-id> <kebab-name>` — creates a stub; fill in `ears`, `verify`, and `verification` fields.
 4. **Build index**: `spec build` — validates the tree and writes `_generated/`. Exits 1 on:
    - Duplicate requirement ids
@@ -35,7 +35,7 @@ Use this skill to manage structured requirement specifications in a groundwork-m
 
 ## Coverage report
 
-`spec build` writes `docs/spec/_generated/coverage.json`:
+`spec build` writes `doc/specs/_generated/coverage.json`:
 ```json
 {
   "total": 12,

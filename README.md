@@ -4,10 +4,18 @@ Workflow plugin for AI coding agents providing structured development practices:
 
 ## Supports
 
+- **Pi** — Install via `pi install git:github.com/IniZio/groundwork`
 - **Claude Code** — Install via `/plugin` (`.claude-plugin/plugin.json`)
+- **omp (Oh My Pi)** — Install via `omp plugin link` / `omp plugin install`
 - **Codex** — Install from the Codex plugin directory (`.codex-plugin/plugin.json`)
 
 ## Install
+
+### Pi
+
+```bash
+pi install git:github.com/IniZio/groundwork
+```
 
 ### Claude Code
 
@@ -17,6 +25,17 @@ Groundwork ships a `.claude-plugin/plugin.json` manifest (skills, agents, and th
 /plugin marketplace add IniZio/groundwork
 /plugin install groundwork@groundwork
 ```
+
+### omp (Oh My Pi)
+
+omp recognizes the `pi.extensions` manifest in `package.json` and loads `pi/pi.ts`, which injects the orchestrator identity at session start. Link a local checkout (symlink, live-updates) or install a copy:
+
+```bash
+omp plugin link ./path/to/groundwork      # dev: symlink, tracks source
+omp plugin install ./path/to/groundwork   # release: copy
+```
+
+Verify: `omp plugin list` should show `groundwork@<version>`.
 
 ### Codex
 
@@ -88,7 +107,22 @@ pnpm test        # run tests
 pnpm run check   # typecheck
 ```
 
+## Agents (Pi)
+
+When using Pi with `pi-subagents`, the following agent types are auto-configured:
+
+| Agent | Purpose |
+|-------|---------|
+| `orchestrator` | Main workflow coordinator |
+| `advisor` | Strategic decisions, architecture, code review |
+| `general-purpose` | Fast implementation, tests, build verification |
+| `designer` | UI/UX, styling, responsive design |
+| `explore` | Codebase exploration (read-only) |
+
 ## Architecture
 
 - `src/` — shared TypeScript source (`src/lib/`, `src/runtime.ts`)
+- `pi/pi.ts` — Pi extension entry point (compiled-TS; the one platform that is source, not a static `.<platform>-plugin/` manifest)
+- `pi/pi-commands/`, `pi/pi-tools/` — Pi-only commands and tools
+- `.pi/skills/` — Pi skill definitions
 - `.codex-plugin/plugin.json` — Codex plugin manifest

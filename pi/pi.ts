@@ -5,10 +5,6 @@ import { fileURLToPath } from "node:url";
 import { getBootstrapForAgent } from "../src/lib/skills.js";
 import { readGoal, goalReminder, injectGoalAndBootstrap } from "../src/lib/goal.js";
 import { registerGroundworkProviders } from "../src/lib/provider-registry.js";
-import { createHandoffSessionTool } from "./pi-tools/handoff-session.js";
-import { createSetGoalTool } from "./pi-tools/set-goal.js";
-import { createHandoffCommand } from "./pi-commands/handoff.js";
-import { createGoalCommand } from "./pi-commands/goal.js";
 import { createGroundworkRuntime } from "../src/runtime.js";
 
 /** True when running inside a subagent child process (depth > 0). */
@@ -98,14 +94,6 @@ export default function (pi: ExtensionAPI) {
 		piDirs.push(piAgentsDir);
 		process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = piDirs.join(":");
 	}
-
-	// ---- Tools ----
-	pi.registerTool(createHandoffSessionTool({ directory }));
-	pi.registerTool(createSetGoalTool({ directory }));
-
-	// ---- Commands ----
-	pi.registerCommand("handoff", createHandoffCommand({ directory }));
-	pi.registerCommand("goal", createGoalCommand({ directory }));
 
 	// ---- Events ----
 	pi.on("session_start", (_event, ctx) => {

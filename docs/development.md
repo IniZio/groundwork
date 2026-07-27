@@ -4,9 +4,10 @@ Full agent conventions and development workflows. For the lean session bootstrap
 
 ## Multi-Platform Package
 
-This package supports **Claude Code** and **Codex** from a single model-neutral source of truth:
+This package supports **Claude Code**, **Pi**, and **Codex** from a single model-neutral source of truth:
 
 - Claude Code entry: `.claude-plugin/plugin.json`
+- Pi entry: `pi/pi.ts` (compiled-TS extension source under `pi/`; pi-only code in `pi/pi-commands/`, `pi/pi-tools/`)
 - Codex entry: `.codex-plugin/plugin.json`
 - Shared logic: `src/lib/`
 
@@ -16,20 +17,20 @@ This package supports **Claude Code** and **Codex** from a single model-neutral 
 
 **`agents-src/*.md`** is the single canonical source for all agent prompts and behavior. These files are **model-neutral** — they contain **no `model:` field**. Edit them to change what an agent *does* (description, tools, prompt body, `prompt_mode`).
 
-`agents/` is **generated output** — never edit it directly.
+`agents/`, `agents-pi/` are **generated output** — never edit them directly.
 
 ### Model registry
 
-**`model-registry.json`** is the single source of truth for *which model* each agent uses. Each agent maps to a model for `claude-code`:
+**`model-registry.json`** is the single source of truth for *which model* each agent uses, per platform. Each agent maps to a model for `pi` and `claude-code`:
 
 ```jsonc
 {
   "agents": {
-    "advisor": { "claude-code": "opus" },
-    "general-purpose": { "claude-code": "claude-sonnet-4-6" }
+    "advisor": { "pi": "zai/glm-5.2", "claude-code": "opus" },
+    "general-purpose": { "pi": "neuralwatt/Qwen/...", "claude-code": "claude-sonnet-4-6" }
   },
-  "disabled": { "claude-code": [] },
-  "aliases":  { "claude-code": {} }
+  "disabled": { "pi": [], "claude-code": [] },
+  "aliases":  { "pi": {}, "claude-code": {} }
 }
 ```
 
@@ -46,8 +47,9 @@ The registry also carries:
 
 1. Reads every `agents-src/*.md` (model-neutral source).
 2. Reads `model-registry.json` (per-platform model assignments, `disabled` list, `aliases`).
-3. Emits **two** generated artifacts:
-   - **`agents/*.md`** — Claude Code-flavored agent files (Claude aliases injected, disabled agents dropped).
+3. Emits **three** generated artifacts targeting **two platforms**:
+   - **`agents/*.md`** — Claude Code-flavored agent files (Claude aliases injected, `claude-code`-disabled agents dropped).
+   - **`agents-pi/*.md`** — Pi-flavored agent files (Pi model strings injected, Pi-disabled agents dropped).
    - **`src/lib/agent-definitions.generated.ts`** — embedded roster for install-and-go writes.
 
 **Check mode:** `pnpm run check:agents` re-runs the generator with `--check` and fails if any generated artifact is stale. It is chained into `pnpm run check` (which also runs `tsc --noEmit`). **Run `pnpm run check` before committing.**
@@ -55,6 +57,7 @@ The registry also carries:
 ### Runtime
 
 - **Claude Code** (`.claude-plugin/plugin.json`): auto-discovers agents from the generated `agents/` directory. No manifest `agents` key — adding one breaks the plugin (see WARNING below).
+- **Pi** (`pi/pi.ts`): points pi-subagents at the generated `agents-pi/` directory via `PI_SUBAGENTS_EXTRA_AGENTS_DIR`. No runtime preprocessing — the directory is already platform-correct. Pi is the one platform whose plugin is a compiled-TS extension (plain `pi/` source folder; no `.<platform>-plugin/plugin.json`).
 
 ### Codex
 
@@ -66,9 +69,9 @@ frontmatter normalization is applied during that generation.
 ### Workflow
 
 1. **Behavior change?** Edit `agents-src/<name>.md` (the prompt, tools, description).
-2. **Model change?** Edit `model-registry.json` (the `claude-code` value for that agent).
-3. **Disable an agent?** Add its name to `model-registry.json` → `disabled.claude-code` (or set its model to `DISABLED`).
-4. **Rename?** Add an entry to `model-registry.json` → `aliases.claude-code`.
+2. **Model change?** Edit `model-registry.json` (the `pi` / `claude-code` value for that agent).
+3. **Disable an agent?** Add its name to `model-registry.json` → `disabled.<platform>` (or set its model to `DISABLED`).
+4. **Rename per platform?** Add an entry to `model-registry.json` → `aliases.<platform>`.
 5. Regenerate: `pnpm run generate:agents`
 6. Verify: `pnpm run check`
 
@@ -77,9 +80,10 @@ frontmatter normalization is applied during that generation.
 The following are **generated output** — never edit them directly:
 
 - `agents/*.md` — Claude Code platform output
+- `agents-pi/*.md` — Pi platform output
 - `src/lib/agent-definitions.generated.ts`
 
-Edit **`agents-src/*.md`** instead. The generator overwrites the `agents/` directory on every run.
+Edit **`agents-src/*.md`** instead. The generator overwrites all `agents*/` directories on every run.
 
 `src/lib/agent-definitions.ts` is a thin re-export layer over the generated file.
 
@@ -87,16 +91,16 @@ Edit **`agents-src/*.md`** instead. The generator overwrites the `agents/` direc
 
 **Never add an `agents` key to `.claude-plugin/plugin.json`.** The Claude Code loader rejects it with `agents: Invalid input` and **disables the entire plugin** — all agents and skills stop working. Agents are auto-discovered from `agents/` with no manifest key. (Confirmed by a live regression on 2026-06-26: adding the key broke the plugin; removing it restored it.)
 
-### Claude Code vs Codex at a glance
+### Claude Code vs Pi vs Codex at a glance
 
-| | Claude Code | Codex |
-|---|---|---|
-| Canonical source | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` |
-| Model assignment | `model-registry.json` → `agents.*.claude-code` (`claude-sonnet-4-6` for Sonnet tier; `opus`/`haiku` aliases for those tiers) | model-neutral; no registry injection |
-| Generated dir | `agents/` | direct `skills/<name>/` |
-| Runtime entry | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| Aliases applied | yes (currently none) | no |
-| Install step | — | Codex plugin directory |
+| | Claude Code | Pi | Codex |
+|---|---|---|---|
+| Canonical source | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` |
+| Model assignment | `model-registry.json` → `agents.*.claude-code` | `model-registry.json` → `agents.*.pi` | model-neutral; no registry injection |
+| Generated dir | `agents/` | `agents-pi/` | direct `skills/<name>/` |
+| Runtime entry | `.claude-plugin/plugin.json` | `pi/pi.ts` | `.codex-plugin/plugin.json` |
+| Aliases applied | yes (currently none) | no | no |
+| Install step | — | — | Codex plugin directory |
 
 Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes 9 specialists: `orchestrator`, `general-purpose`, `planner`, `advisor` (evidence-gathering + quality review + final APPROVE gate), `qa` (live browser/TUI/CLI testing), `designer`, `test-engineer`, `git-master`, and `explore`.
 
@@ -129,3 +133,4 @@ Source files (`agents-src/*.md`) carry **no `model:` field** — models live in 
 
 - Unit tests: `pnpm exec vitest run`
 - Acceptance tests: `pnpm exec vitest run test/acceptance`
+- Smoke tests: see `.pi/skills/pi-test-harness/SKILL.md`

@@ -9,7 +9,7 @@
     "check": "pnpm run check:agents && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "patch-package",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@earendil-works/pi-ai": ">=0.75.0",

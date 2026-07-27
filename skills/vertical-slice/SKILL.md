@@ -150,7 +150,7 @@ AC IDs, and keep wave/`blocked_by` consistent with `plan.md` / `tasks.md`.
 
 Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | impl`. Use non-`impl` kinds to track planning, diagnosis, or design phases as first-class ledger items. Gating is status-keyed — `kind` is metadata only and does not affect stop-gate logic.
 
-Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — never Read/Edit the file by hand.
+Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — MUST NOT Read/Edit the file by hand.
 
 **RFC-seeded ledger (when the task is implementing an RFC):** If the RFC has a `tasks:` block in its frontmatter, seed slices automatically: `ledger init --rfc <rfc-dir>`. This reads `rfc.md`, extracts `tasks[]`, and sets `rfc_ref` to the RFC uid — preserving each task's `id`, `wave`, `blocked_by`, and `acceptance`. A file argument may be omitted when `--rfc` is the only source needed.
 

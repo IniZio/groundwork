@@ -35,7 +35,7 @@ Interviewing is separate from writing the plan. When the two are conflated, the 
 
 ## Rules
 
-1. **Ask EXACTLY one question at a time.** Formulate the question, provide your recommended answer, then STOP and wait for the user's response. Do NOT ask a second question in the same message. This is the most important rule.
+1. **Ask EXACTLY one question at a time.** Formulate the question, provide your recommended answer, then STOP and wait for the user's response. MUST NOT ask a second question in the same message. This is the most important rule.
 2. **Provide a recommended answer** for each question — grounded in codebase knowledge when possible.
 3. **If a question can be answered by exploring the codebase, explore the codebase instead** of asking the user.
 4. **Cap at 8-10 questions.** After that, synthesize what you know and propose next steps. User can always request more interviewing.

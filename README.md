@@ -4,32 +4,10 @@ Workflow plugin for AI coding agents providing structured development practices:
 
 ## Supports
 
-- **OpenCode** — Install via `opencode.json`
-- **Pi** — Install via `pi install git:github.com/IniZio/groundwork`
 - **Claude Code** — Install via `/plugin` (`.claude-plugin/plugin.json`)
-- **omp (Oh My Pi)** — Install via `omp plugin link` / `omp plugin install`
 - **Codex** — Install from the Codex plugin directory (`.codex-plugin/plugin.json`)
 
 ## Install
-
-### OpenCode
-
-Add to `opencode.json`:
-
-```json
-{
-  "plugin": [
-    "opencode-pty",
-    "groundwork@git+https://github.com/IniZio/groundwork.git"
-  ]
-}
-```
-
-### Pi
-
-```bash
-pi install git:github.com/IniZio/groundwork
-```
 
 ### Claude Code
 
@@ -39,17 +17,6 @@ Groundwork ships a `.claude-plugin/plugin.json` manifest (skills, agents, and th
 /plugin marketplace add IniZio/groundwork
 /plugin install groundwork@groundwork
 ```
-
-### omp (Oh My Pi)
-
-omp recognizes the `pi.extensions` manifest in `package.json` and loads `pi/pi.ts`, which injects the orchestrator identity at session start. Link a local checkout (symlink, live-updates) or install a copy:
-
-```bash
-omp plugin link ./path/to/groundwork      # dev: symlink, tracks source
-omp plugin install ./path/to/groundwork   # release: copy
-```
-
-Verify: `omp plugin list` should show `groundwork@<version>`.
 
 ### Codex
 
@@ -62,8 +29,6 @@ The direct Codex skill directories are generated from the canonical
 `skills/groundwork/` tree by `pnpm run generate:agents`.
 
 Restart your agent. Skills auto-discover.
-
-Note: pi-subagents is bundled as a dependency, enabling agent spawning functionality automatically.
 
 ## Runtime capabilities
 
@@ -96,18 +61,6 @@ an artifact the user can review and provide to a later session.
 | `prototype` | Design exploration |
 | `goal` | Persistent project goal |
 
-## Agents (Pi)
-
-When using Pi with `pi-subagents`, the following agent types are auto-configured:
-
-| Agent | Purpose |
-|-------|---------|
-| `general-purpose` | Orchestrator — main workflow coordinator |
-| `advisor` | Strategic decisions, architecture, code review |
-| `general-purpose` | Fast implementation, tests, build verification |
-| `designer` | UI/UX, styling, responsive design |
-| `explorer` | Codebase exploration (read-only) |
-
 ## Rules
 
 1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out general-purpose agents → advisor gate
@@ -138,9 +91,4 @@ pnpm run check   # typecheck
 ## Architecture
 
 - `src/` — shared TypeScript source (`src/lib/`, `src/runtime.ts`)
-- `pi/pi.ts` — Pi extension entry point (compiled-TS; the one platform that is source, not a static `.<platform>-plugin/` manifest)
-- `pi/pi-commands/`, `pi/pi-tools/` — Pi-only commands and tools (`agents.ts` removed; omp uses generated `agents-pi/` + `model-registry.json`)
-- `.opencode/plugins/groundwork.js` — OpenCode plugin entry point
 - `.codex-plugin/plugin.json` — Codex plugin manifest
-- `.pi/skills/` — Pi skill definitions
-- `.pi/agents/` — Agent definitions (auto-installed on session start)

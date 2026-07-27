@@ -22,7 +22,6 @@ interface AgentSource {
 
 export interface PlatformModelEntry {
 	pi?: string;
-	opencode?: string;
 	codex?: string;
 	[key: string]: string | undefined;
 }
@@ -47,7 +46,7 @@ interface TransformedAgent {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PLATFORMS = ["pi", "opencode", "claude-code"] as const;
+const PLATFORMS = ["pi", "claude-code"] as const;
 type Platform = (typeof PLATFORMS)[number];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,7 +67,7 @@ const shouldPrintCodexModelGuidance = process.argv.includes("--print-codex-model
 const CODEX_MODEL_GUIDANCE_ROLES = ["explore", "general-purpose"] as const;
 const CODEX_MODEL_GUIDANCE_PATH = join("use-groundwork", "reference", "agent-selection.md");
 
-// Frontmatter fields that belong ONLY to the pi/opencode platforms — NOT Claude Code.
+// Frontmatter fields that belong ONLY to the pi platform — NOT Claude Code.
 // The model-neutral source (agents-src/*.md) carries only name, description, and
 // disallowedTools (a CC-only enforcement field). These platform-only fields are
 // re-injected here so the generated pi/opencode trees are behaviorally unchanged.
@@ -110,8 +109,7 @@ const FRONTMATTER_ORDER = [
 // ─── pi built-in overrides ───────────────────────────────────────────────────
 // Suppress pi's built-in `Explore` and `Plan` agents. These are NOT part of the
 // model-neutral source set (agents-src/*.md) and are never written to the filesystem;
-// they appear only in the pi branch of the embedded TS. opencode has no such
-// built-ins to suppress (it uses the explore→explorer file alias instead).
+// they appear only in the pi branch of the embedded TS.
 // Kept per advisor-gate decision to preserve runtime behavior.
 function piBuiltinOverrides(version: string): AgentDefinition[] {
 	return [
@@ -260,8 +258,8 @@ function transformForPlatform(
 	const fm: Frontmatter = { ...src.frontmatter };
 
 	// `disallowedTools`, `skills`, and `memory` are Claude-Code-only frontmatter fields;
-	// pi/opencode express tool restrictions via `permission` and have no equivalent for
-	// skills/memory, so drop all three from their output.
+	// pi expresses tool restrictions via `permission` and has no equivalent for
+	// skills/memory, so drop all three from its output.
 	delete fm.disallowedTools;
 	delete fm.skills;
 	delete fm.memory;
@@ -275,9 +273,8 @@ function transformForPlatform(
 	if (disabled) {
 		fm.enabled = false;
 	}
-	// DISABLED models omit the model field. opencode has no "inherit" keyword —
-	// a subagent inherits the parent/session model by omitting `model` entirely
-	// (pi keeps the literal "inherit", which it understands natively).
+	// DISABLED models omit the model field.
+	// pi uses the literal "inherit" keyword to inherit the parent/session model.
 	const omitModel = model === "DISABLED" || model === "inherit";
 	if (omitModel) {
 		delete fm.model;
@@ -573,7 +570,7 @@ function renderDefinition(def: AgentDefinition): string {
 function toDefinitions(
 	sources: Map<string, AgentSource>,
 	registry: ModelRegistry,
-	platform: "pi" | "opencode",
+	platform: "pi",
 	version: string,
 ): AgentDefinition[] {
 	const defs: AgentDefinition[] = [];
@@ -584,12 +581,11 @@ function toDefinitions(
 	return defs;
 }
 
-function renderModule(version: string, piDefs: AgentDefinition[], opencodeDefs: AgentDefinition[]): string {
+function renderModule(version: string, piDefs: AgentDefinition[]): string {
 	const piItems = [...piBuiltinOverrides(version), ...piDefs].map(renderDefinition).join("\n\n");
-	const opencodeItems = opencodeDefs.map(renderDefinition).join("\n\n");
 
 	return `// AUTO-GENERATED. Do not edit. Run: pnpm run generate:agents
-// Source: agents-src/*.md (model-neutral) + model-registry.json → agents/ (claude-code), agents-pi/, agents-opencode/, and this file.
+// Source: agents-src/*.md (model-neutral) + model-registry.json → agents/ (claude-code), agents-pi/, and this file.
 
 import type { AgentDefinition } from "./agent-definitions.js";
 
@@ -597,10 +593,6 @@ export const GROUNDWORK_VERSION = ${JSON.stringify(version)};
 
 export const EMBEDDED_AGENTS_PI: AgentDefinition[] = [
 ${piItems}
-];
-
-export const EMBEDDED_AGENTS_OPENCODE: AgentDefinition[] = [
-${opencodeItems}
 ];
 
 // Backward-compat alias (pi is the primary platform).
@@ -694,7 +686,7 @@ function main(): void {
 
 	for (const platform of PLATFORMS) {
 		// claude-code output goes to agents/ (what Claude Code reads directly).
-		// pi/opencode outputs go to agents-<platform>/.
+		// pi output goes to agents-pi/.
 		const dir = platform === "claude-code" ? join(rootDir, "agents") : join(rootDir, `agents-${platform}`);
 		const dirLabel = platform === "claude-code" ? "agents" : `agents-${platform}`;
 		const expected = generatePlatformFiles(sources, registry, platform, version);
@@ -719,8 +711,7 @@ function main(): void {
 	}
 
 	const piDefs = toDefinitions(sources, registry, "pi", version);
-	const opencodeDefs = toDefinitions(sources, registry, "opencode", version);
-	const rendered = renderModule(version, piDefs, opencodeDefs);
+	const rendered = renderModule(version, piDefs);
 
 	// ── CLAUDE.md model-table check / inject ──────────────────────────────────
 	const table = buildModelTable(registry);
@@ -762,7 +753,7 @@ function main(): void {
 	mkdirSync(dirname(generatedTsPath), { recursive: true });
 	writeFileSync(generatedTsPath, rendered);
 	console.log(
-		`${generatedTsPath}: regenerated (pi=${piDefs.length + 2} incl. built-in overrides, opencode=${opencodeDefs.length})`,
+		`${generatedTsPath}: regenerated (pi=${piDefs.length + 2} incl. built-in overrides)`,
 	);
 }
 

@@ -154,8 +154,8 @@ describe("spec-guard — fail-open: ledger missing rfc_ref", () => {
 	});
 });
 
-describe("spec-guard — deny: RFC not in accepted/implementing status", () => {
-	it("denies when RFC status is 'draft'", () => {
+describe("spec-guard — advisory warn (RFC not in accepted/implementing status)", () => {
+	it("permits and emits WARN when RFC status is 'draft'", () => {
 		const projectDir = makeProjectDir();
 		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-my-rfc");
 		writeRfc(rfcDir, {
@@ -178,13 +178,13 @@ describe("spec-guard — deny: RFC not in accepted/implementing status", () => {
 			},
 			{ CLAUDE_SESSION_ID: "sess-3" },
 		);
-		expect(r.exitCode).toBe(2);
-		expect(r.stderr).toContain("DENIED");
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toContain("WARN");
 		expect(r.stderr).toContain("draft");
 		expect(r.stderr).toContain("accepted/implementing");
 	});
 
-	it("denies when RFC status is 'review'", () => {
+	it("permits and emits WARN when RFC status is 'review'", () => {
 		const projectDir = makeProjectDir();
 		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0002-review-rfc");
 		writeRfc(rfcDir, {
@@ -207,13 +207,13 @@ describe("spec-guard — deny: RFC not in accepted/implementing status", () => {
 			},
 			{ CLAUDE_SESSION_ID: "sess-4" },
 		);
-		expect(r.exitCode).toBe(2);
-		expect(r.stderr).toContain("DENIED");
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toContain("WARN");
 	});
 });
 
-describe("spec-guard — deny: no matching spec_delta entry", () => {
-	it("denies when RFC is accepted but spec_delta doesn't cover the path", () => {
+describe("spec-guard — advisory warn: no matching spec_delta entry", () => {
+	it("permits and emits WARN when RFC is accepted but spec_delta doesn't cover the path", () => {
 		const projectDir = makeProjectDir();
 		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0003-accepted-rfc");
 		writeRfc(rfcDir, {
@@ -239,20 +239,21 @@ describe("spec-guard — deny: no matching spec_delta entry", () => {
 			},
 			{ CLAUDE_SESSION_ID: "sess-5" },
 		);
-		expect(r.exitCode).toBe(2);
-		expect(r.stderr).toContain("DENIED");
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toContain("WARN");
 		expect(r.stderr).toContain("spec_delta");
 	});
 });
 
 describe("spec-guard — permit: matching spec_delta entry", () => {
-	it("permits when RFC is accepted and spec_delta has exact match for target", () => {
+	it("permits when RFC is accepted and spec_delta has exact match for target (new layout: requirements.md)", () => {
+		// New layout: doc/specs/<concept>/requirements.md (one file per concept, not one per req)
 		const projectDir = makeProjectDir();
 		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0004-impl-rfc");
 		writeRfc(rfcDir, {
 			uid: "0004",
 			status: "accepted",
-			spec_delta: [{ op: "add", target: "doc/specs/requirements/my-req.md" }],
+			spec_delta: [{ op: "add", target: "doc/specs/artifact/requirements.md" }],
 		});
 		writeLedger(projectDir, "sess-6", {
 			active: true,
@@ -264,7 +265,7 @@ describe("spec-guard — permit: matching spec_delta entry", () => {
 			{
 				tool_name: "Write",
 				tool_input: {
-					file_path: path.join(projectDir, "doc", "specs", "requirements", "my-req.md"),
+					file_path: path.join(projectDir, "doc", "specs", "artifact", "requirements.md"),
 				},
 				cwd: projectDir,
 				session_id: "sess-6",
@@ -341,5 +342,96 @@ describe("spec-guard — permit: matching spec_delta entry", () => {
 		});
 		expect(result.status).toBe(0);
 		expect(result.stdout.trim()).toBe("");
+	});
+});
+
+describe("spec-guard — new layout: doc/specs/<concept>/requirements.md", () => {
+	it("permits write to doc/specs/artifact/requirements.md when spec_delta covers doc/specs/", () => {
+		// New layout: requirements are anchored H3 sections in requirements.md per concept.
+		// A spec_delta entry covering the directory prefix authorizes all files beneath it.
+		const projectDir = makeProjectDir();
+		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0010-new-layout-rfc");
+		writeRfc(rfcDir, {
+			uid: "0010",
+			status: "accepted",
+			spec_delta: [{ op: "add", target: "doc/specs/" }],
+		});
+		writeLedger(projectDir, "sess-10", {
+			active: true,
+			session_id: "sess-10",
+			rfc_ref: ".groundwork/rfcs/0010-new-layout-rfc",
+			slices: [],
+		});
+		const r = runHook(
+			{
+				tool_name: "Write",
+				tool_input: {
+					file_path: path.join(projectDir, "doc", "specs", "artifact", "requirements.md"),
+				},
+				cwd: projectDir,
+				session_id: "sess-10",
+			},
+			{ CLAUDE_SESSION_ID: "sess-10" },
+		);
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toBe("");
+	});
+
+	it("permits and emits WARN for doc/specs/artifact/requirements.md when no spec_delta entry covers it", () => {
+		// No spec_delta entry targets doc/specs/artifact/ or doc/specs/artifact/requirements.md.
+		const projectDir = makeProjectDir();
+		const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0011-wrong-delta-rfc");
+		writeRfc(rfcDir, {
+			uid: "0011",
+			status: "accepted",
+			spec_delta: [
+				// Only covers enforcement concept, not artifact
+				{ op: "add", target: "doc/specs/enforcement/requirements.md" },
+			],
+		});
+		writeLedger(projectDir, "sess-11", {
+			active: true,
+			session_id: "sess-11",
+			rfc_ref: ".groundwork/rfcs/0011-wrong-delta-rfc",
+			slices: [],
+		});
+		const r = runHook(
+			{
+				tool_name: "Write",
+				tool_input: {
+					file_path: path.join(projectDir, "doc", "specs", "artifact", "requirements.md"),
+				},
+				cwd: projectDir,
+				session_id: "sess-11",
+			},
+			{ CLAUDE_SESSION_ID: "sess-11" },
+		);
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toContain("WARN");
+		expect(r.stderr).toContain("spec_delta");
+	});
+});
+
+describe("spec-guard — fail-open behavior documentation (do not change without RFC discussion)", () => {
+	it("documents current fail-open behavior for out-of-project paths (see RFC discussion)", () => {
+		// CURRENT BEHAVIOR (pinned, not endorsed): when a write targets an absolute path
+		// in a different repo, relativeFromProject() returns the absolute path unchanged.
+		// That absolute path does not start with "doc/specs/" or "docs/steering/", so
+		// isGuarded = false and the hook passes through with exit 0 — no RFC check performed.
+		//
+		// This means cross-repo spec writes are NOT authorization-checked.
+		// If the design decision flips to fail-closed, invert this test.
+		const projectDir = makeProjectDir();
+		// Simulate a write in a completely different project directory (not a subdirectory of projectDir).
+		const otherProjectPath = "/home/newman/magic/hanlun-lms/doc/specs/artifact/requirements.md";
+		const r = runHook({
+			tool_name: "Write",
+			tool_input: { file_path: otherProjectPath },
+			cwd: projectDir,
+			session_id: "sess-xrepo",
+		});
+		// Fail-open: exits 0, no WARN (passthrough before ledger load).
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).toBe("");
 	});
 });

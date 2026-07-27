@@ -164,6 +164,7 @@ const APPROVED_LEDGER_BASE = {
 // AC1: ledger init --rfc <dir>
 // ---------------------------------------------------------------------------
 
+// @verifies ARTIFACT-R-002
 describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
   it("creates one slice per task, preserving id/wave/blocked_by/acceptance", () => {
     const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-test");
@@ -313,10 +314,13 @@ describe("AC1: ledger init --rfc seeds slices from RFC tasks", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC2: stop-gate blocks on non-accepted/implementing RFC
+// AC2: stop-gate rfc_ref behavior (non-blocking as of this session's change)
+// The rfc_ref gate was removed from stop-gate.mjs: a draft/review RFC no longer
+// blocks session close.  These tests assert the new non-blocking contract while
+// preserving coverage of accepted/implementing/empty cases.
 // ---------------------------------------------------------------------------
 
-describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
+describe("AC2: stop-gate rfc_ref — non-blocking for any RFC status", () => {
   function makeLedgerWithRfc(uid: string): object {
     return {
       ...APPROVED_LEDGER_BASE,
@@ -324,22 +328,21 @@ describe("AC2: stop-gate blocks on unresolved rfc_ref", () => {
     };
   }
 
-  it("blocks when RFC is in 'draft' status", () => {
+  it("does NOT block when RFC is in 'draft' status (rfc_ref gate removed)", () => {
     const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-draft");
     makeRfcDir(rfcDir, "R-20260101-DRAFT1", "draft", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-DRAFT1"), "sess-t5");
-    expect(result.decision).toBe("block");
-    expect(result.reason).toContain("R-20260101-DRAFT1");
-    expect(result.reason).toContain("draft");
-    expect(result.reason).toContain("accepted");
+    // rfc_ref gate is no longer active — session close must not be blocked for this reason
+    expect(result.decision).not.toBe("block");
+    expect(result.continue).toBe(true);
   });
 
-  it("blocks when RFC is in 'review' status", () => {
+  it("does NOT block when RFC is in 'review' status (rfc_ref gate removed)", () => {
     const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-review");
     makeRfcDir(rfcDir, "R-20260101-REVIE1", "review", []);
     const result = runStopGate(makeLedgerWithRfc("R-20260101-REVIE1"), "sess-t5");
-    expect(result.decision).toBe("block");
-    expect(result.reason).toContain("review");
+    expect(result.decision).not.toBe("block");
+    expect(result.continue).toBe(true);
   });
 
   it("allows when RFC is in 'accepted' status", () => {

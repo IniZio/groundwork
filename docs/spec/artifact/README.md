@@ -2,13 +2,14 @@
 id: C-ARTIFACT
 type: concept
 title: Artifact Model
+summary: "The four groundwork artifact types—run ledger, RFC documents, session journal, and spec tree—are file-backed records that persist across sessions."
 parent: C-GROUNDWORK
 origin_rfc: R-20260726-K4M2QX
 ---
 
 # Artifact Model
 
-The artifact model covers the durable, file-backed records that groundwork creates and maintains across sessions. Four artifact types make up the model: the run ledger, RFC documents, the session journal, and the spec/steering trees.
+The artifact model covers the durable, file-backed records that groundwork creates and maintains across sessions. Four artifact types make up the model: the run ledger, RFC documents, the session journal, and the spec tree.
 
 ## Run ledger
 
@@ -20,12 +21,8 @@ The artifact model covers the durable, file-backed records that groundwork creat
 
 ## Session journal
 
-`.groundwork/journal/` — append-only event log sharded per session. Events are written by `hooks/journal.mjs` and carry a type from the valid set: `DECISION`, `SPEC_CHANGE`, `STEERING_UPDATE`, `LINT_DRIFT`, `PROTOTYPE_RESULT`, `FAILURE`, `MILESTONE`, `TASK_COMPLETE`, `GATE`, `VERIFICATION`, `WAIVER`, `HANDOFF`, `SESSION_START`.
+`.groundwork/journal/` — append-only event log sharded per session. Events are written by `hooks/journal.mjs` and carry a type from the valid set: `DECISION`, `SPEC_CHANGE`, `LINT_DRIFT`, `PROTOTYPE_RESULT`, `FAILURE`, `MILESTONE`, `TASK_COMPLETE`, `GATE`, `VERIFICATION`, `WAIVER`, `HANDOFF`, `SESSION_START`.
 
-## Spec and steering trees
+## Spec tree
 
-`docs/spec/` — EARS requirements indexed by `hooks/spec.mjs`. `docs/steering/` — human-authored steering documents covering technology choices, codebase structure, and project conventions. Both are read by the SessionStart renderer to assemble the context injection.
-
-## Sub-concepts
-
-See sub-directories for component-level requirement specs.
+`docs/spec/` — EARS requirements indexed by `hooks/spec.mjs` and read by the SessionStart renderer to assemble the context injection.

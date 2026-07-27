@@ -1,18 +1,15 @@
 ---
 id: VERIFICATION-R-oxuu
+type: requirement
 concept: C-VERIFICATION
-ears: "When a non-trivial task reaches its completion phase, the orchestrator shall obtain an APPROVE verdict from the advisor agent and record it in the run ledger before the session is permitted to end."
-pattern: event
-verify: "Confirm that the Stop hook reads the active run ledger and blocks session end when gate.advisor is absent or not APPROVE. Confirm that after the ledger gate command records an advisor APPROVE, the Stop hook allows the session to end."
-verification: hybrid
+summary: "The Stop hook shall block session end when the active run ledger does not carry an advisor APPROVE verdict."
+ears: "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook shall block session end."
+pattern: unwanted
+verify: "Run the Stop hook against a ledger with no gate entry and confirm it emits a block. Run it again after recording an advisor APPROVE via the ledger gate command and confirm the session is permitted to end."
+verification: automated
 criticality: must
 origin_rfc: R-20260726-K4M2QX
-superseded_by: null
 status: active
 ---
 
-The advisor gate is enforced at two points: the orchestrator's CLAUDE.md instructs it to route to the advisor, and the Stop hook provides a mechanical backstop that cannot be bypassed by ignoring the instruction. The advisor agent runs verification commands itself and issues scored verdicts rather than accepting implementer self-reports.
-
-## Manual procedure
-
-Run a feature wave to completion. Without calling `ledger.mjs gate advisor APPROVE`, attempt to end the session and verify the Stop hook blocks it. Then obtain an APPROVE verdict from the advisor and record it in the ledger, and verify the session is permitted to end.
+The Stop hook is the mechanical backstop. The orchestrator's duty to actually obtain the APPROVE verdict from the advisor before recording it is a separate, LLM-level requirement covered by VERIFICATION-R-m5kn.

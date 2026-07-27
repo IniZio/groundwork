@@ -2,6 +2,7 @@
 id: C-ENFORCEMENT
 type: concept
 title: Enforcement Hooks
+summary: "Enforcement hooks mechanically bind CLAUDE.md prose rules as PreToolUse gates, blocking orchestrators and subagents from violating delegation constraints."
 parent: C-GROUNDWORK
 origin_rfc: R-20260726-K4M2QX
 ---
@@ -30,6 +31,3 @@ PreToolUse on `Edit|Write|MultiEdit`. Enforces quality constraints on written co
 
 PreToolUse on `Agent|Task|TaskCreate`. Enforces that every dispatched agent carries an explicit `model:` field to prevent silent inheritance of the expensive orchestrator model.
 
-## Sub-concepts
-
-See sub-directories for component-level requirement specs.

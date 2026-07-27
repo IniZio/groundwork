@@ -2,6 +2,7 @@
 id: C-ORCHESTRATION
 type: concept
 title: Orchestration Model
+summary: "The orchestrator classifies and delegates all implementation to specialist subagents and never writes code or edits files itself."
 parent: C-GROUNDWORK
 origin_rfc: R-20260726-K4M2QX
 ---
@@ -25,6 +26,3 @@ The `vertical-slice` skill decomposes a feature into conflict-free parallel slic
 
 A subagent at depth ≥ 1 may not dispatch `general-purpose` or `orchestrator`. The `nesting-guard.mjs` PreToolUse hook enforces this mechanically; the prose rule in CLAUDE.md is advisory only.
 
-## Sub-concepts
-
-See sub-directories for component-level requirement specs.

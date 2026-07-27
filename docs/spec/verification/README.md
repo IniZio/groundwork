@@ -2,6 +2,7 @@
 id: C-VERIFICATION
 type: concept
 title: Verification
+summary: "Non-trivial task completion requires an APPROVE verdict from the advisor agent, recorded in the run ledger before the session can end."
 parent: C-GROUNDWORK
 origin_rfc: R-20260726-K4M2QX
 ---
@@ -26,6 +27,3 @@ Trivial tasks (≤2 files, ≤1 behaviour, <1h): advisor directly, or skip if tr
 
 The `stop-gate.mjs` Stop hook blocks session end until the active ledger shows all slices complete and `gate.advisor === "APPROVE"`. This prevents the orchestrator from ending a session before the gate is satisfied.
 
-## Sub-concepts
-
-See sub-directories for component-level requirement specs.

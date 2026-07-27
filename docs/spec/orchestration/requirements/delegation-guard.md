@@ -1,18 +1,19 @@
 ---
 id: ORCHESTRATION-R-ve7w
+type: requirement
 concept: C-ORCHESTRATION
-ears: "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent and shall not invoke Edit, Write, or MultiEdit directly on production code."
+summary: "When the orchestrator classifies a task as non-trivial, it shall delegate implementation to a groundwork:general-purpose subagent."
+ears: "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent."
 pattern: event
-verify: "Confirm that the orchestrator impl-guard hook blocks Edit and Write calls from the orchestrator identity (agent_type absent, agent_id absent) on paths outside the two permitted shapes, and that a general-purpose subagent with agent_type set is allowed through."
-verification: hybrid
+verify: "Review session transcripts for non-trivial tasks and confirm that the orchestrator issued a Task call to a groundwork:general-purpose subagent rather than invoking Edit or Write itself. The impl-guard hook (ENFORCEMENT-R-wfdw) provides the mechanical backstop for the inverse case."
+verification: manual
 criticality: must
 origin_rfc: R-20260726-K4M2QX
-superseded_by: null
 status: active
 ---
 
-The orchestrator-impl-guard.mjs PreToolUse hook enforces this requirement mechanically. When the orchestrator calls Edit or Write on a path that is neither a memory file nor a handoff document, the hook emits a deny block listing the delegation command to use instead.
+The positive delegation mandate (classify → delegate) is an LLM-level behaviour and cannot be enforced mechanically. The inverse (orchestrator must not call Edit/Write on production code) is enforced by the impl-guard hook (ENFORCEMENT-R-wfdw).
 
 ## Manual procedure
 
-Run a session where the orchestrator attempts to call Edit on a source file directly. Verify that the PreToolUse hook returns a deny response and the edit is blocked. Then repeat the same call from a subagent session (agent_type present) and verify it is allowed.
+After a non-trivial feature wave completes, inspect the orchestrator's session transcript. Verify that every implementation step was performed via a `Task(subagent_type="groundwork:general-purpose", …)` call, and that no Edit, Write, or MultiEdit calls appear against production code paths.

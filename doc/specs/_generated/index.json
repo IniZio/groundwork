@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27T08:29:39.208Z",
+  "generated_at": "2026-07-27T13:21:34.072Z",
   "nodes": {
     "C-GROUNDWORK": {
       "id": "C-GROUNDWORK",
@@ -10,7 +10,8 @@
         "C-ARTIFACT",
         "C-ENFORCEMENT",
         "C-ORCHESTRATION",
-        "C-VERIFICATION"
+        "C-VERIFICATION",
+        "ARTIFACT-R-001"
       ],
       "inbound": [
         "C-ARTIFACT",
@@ -18,7 +19,7 @@
         "C-ORCHESTRATION",
         "C-VERIFICATION"
       ],
-      "byteSize": 1326,
+      "byteSize": 3319,
       "relPath": "README.md",
       "status": null,
       "pattern": null,
@@ -26,7 +27,11 @@
       "criticality": "must",
       "concept": null,
       "parent": null,
-      "ears": null
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null
     },
     "C-ARTIFACT": {
       "id": "C-ARTIFACT",
@@ -37,10 +42,7 @@
         "C-GROUNDWORK"
       ],
       "inbound": [
-        "C-GROUNDWORK",
-        "ARTIFACT-R-u6zs",
-        "ARTIFACT-R-rfr1",
-        "ARTIFACT-R-p3qx"
+        "C-GROUNDWORK"
       ],
       "byteSize": 1579,
       "relPath": "artifact/README.md",
@@ -50,68 +52,82 @@
       "criticality": "must",
       "concept": null,
       "parent": "C-GROUNDWORK",
-      "ears": null
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null
     },
-    "ARTIFACT-R-u6zs": {
-      "id": "ARTIFACT-R-u6zs",
+    "ARTIFACT-R-001": {
+      "id": "ARTIFACT-R-001",
       "type": "requirement",
-      "title": "hooks/ledger.mjs persists slice id, completion timestamp, and session id when a slice is marked complete.",
-      "summary": "hooks/ledger.mjs persists slice id, completion timestamp, and session id when a slice is marked complete.",
+      "title": "Ledger records slice completion",
+      "summary": "When a vertical slice is marked complete via the ledger CLI, hooks/ledger.",
       "refs": [
-        "C-ARTIFACT",
-        "ARTIFACT-R-p3qx"
-      ],
-      "inbound": [],
-      "byteSize": 927,
-      "relPath": "artifact/requirements/ledger-completeness.md",
-      "status": "active",
-      "pattern": "event",
-      "verification": "automated",
-      "criticality": "must",
-      "concept": "C-ARTIFACT",
-      "parent": null,
-      "ears": "When a vertical slice is marked complete via the ledger CLI, hooks/ledger.mjs shall persist the slice id, completion timestamp, and session id to the run ledger."
-    },
-    "ARTIFACT-R-rfr1": {
-      "id": "ARTIFACT-R-rfr1",
-      "type": "requirement",
-      "title": "When a run ledger is initialized with --rfc, the rfc_ref field is set to the RFC directory path.",
-      "summary": "When a run ledger is initialized with --rfc, the rfc_ref field is set to the RFC directory path.",
-      "refs": [
-        "C-ARTIFACT"
-      ],
-      "inbound": [],
-      "byteSize": 847,
-      "relPath": "artifact/requirements/rfc-ref-ledger-field.md",
-      "status": "active",
-      "pattern": "event",
-      "verification": "automated",
-      "criticality": "must",
-      "concept": "C-ARTIFACT",
-      "parent": null,
-      "ears": "When a run ledger is initialized with --rfc <dir>, the system SHALL set rfc_ref in the ledger to the RFC directory path so that enforcement hooks can verify spec writes are authorized."
-    },
-    "ARTIFACT-R-p3qx": {
-      "id": "ARTIFACT-R-p3qx",
-      "type": "requirement",
-      "title": "The Stop hook shall block session end when the active run ledger contains any slice not marked complete.",
-      "summary": "The Stop hook shall block session end when the active run ledger contains any slice not marked complete.",
-      "refs": [
-        "C-ARTIFACT",
-        "VERIFICATION-R-oxuu"
+        "ARTIFACT-R-003"
       ],
       "inbound": [
-        "ARTIFACT-R-u6zs"
+        "C-GROUNDWORK"
       ],
-      "byteSize": 1027,
-      "relPath": "artifact/requirements/stop-hook-incomplete-guard.md",
-      "status": "active",
-      "pattern": "unwanted",
+      "byteSize": 2796,
+      "relPath": "artifact/requirements.md",
+      "status": null,
+      "pattern": null,
       "verification": "automated",
       "criticality": "must",
       "concept": "C-ARTIFACT",
       "parent": null,
-      "ears": "If the Stop hook fires and the active run ledger contains any slice not marked complete, then the Stop hook shall block session end."
+      "ears": "**When** a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs` **shall** persist the slice id, completion timestamp, and session id to `.groundwork/runs/<session_id>.json`.",
+      "anchor": "artifact-r-001",
+      "why": "the Stop hook reads the ledger to gate session end; an entry without a session id cannot be attributed to the run that produced it, so a concurrent session's completions would incorrectly satisfy this session's gate, allowing premature termination.",
+      "fitCriterion": "after `ledger complete s3`, the `s3` entry carries non-null `id`, ISO-8601 `completed_at`, and `session_id` matching the completing session.",
+      "source": "R-20260726-K4M2QX"
+    },
+    "ARTIFACT-R-002": {
+      "id": "ARTIFACT-R-002",
+      "type": "requirement",
+      "title": "RFC reference field in ledger",
+      "summary": "Where --rfc <dir> is passed at ledger init, the ledger shall record rfcref as an optional advisory field containing the RFC directory path.",
+      "refs": [],
+      "inbound": [],
+      "byteSize": 2796,
+      "relPath": "artifact/requirements.md",
+      "status": null,
+      "pattern": null,
+      "verification": "automated",
+      "criticality": "should",
+      "concept": "C-ARTIFACT",
+      "parent": null,
+      "ears": "**Where** `--rfc <dir>` is passed at ledger init, the ledger **shall** record `rfc_ref` as an optional advisory field containing the RFC directory path.",
+      "anchor": "artifact-r-002",
+      "why": "traceability tooling and audit trails benefit from knowing which RFC motivated a session's work; `rfc_ref` provides that link without gating spec writes or session close. Its absence is not an error: `spec-guard` and the Stop hook treat it as informational metadata only.",
+      "fitCriterion": "initialize a run ledger with `--rfc <dir>` and confirm `rfc_ref` equals the given path; also confirm that a ledger initialized without `--rfc` contains no `rfc_ref` field, that spec writes succeed in both cases, and that session close is not blocked by a missing `rfc_ref`.",
+      "source": "R-20260726-K4M2QX"
+    },
+    "ARTIFACT-R-003": {
+      "id": "ARTIFACT-R-003",
+      "type": "requirement",
+      "title": "Stop hook incomplete-slice guard",
+      "summary": "If the Stop hook fires and the active run ledger contains any slice not marked complete, then the Stop hook shall block session end.",
+      "refs": [
+        "VERIFICATION-R-001"
+      ],
+      "inbound": [
+        "ARTIFACT-R-001"
+      ],
+      "byteSize": 2796,
+      "relPath": "artifact/requirements.md",
+      "status": null,
+      "pattern": null,
+      "verification": "automated",
+      "criticality": "must",
+      "concept": "C-ARTIFACT",
+      "parent": null,
+      "ears": "**If** the Stop hook fires and the active run ledger contains any slice not marked complete, **then** the Stop hook **shall** block session end.",
+      "anchor": "artifact-r-003",
+      "why": "the Stop hook is the final check preventing incomplete work from being left behind; if a slice is in `\"pending\"` or `\"in_progress\"` state, the session must not terminate, because the run ledger is the orchestrator's ground truth for what work remains. This guard is independent of and in addition to the advisor gate guard; both must be satisfied.",
+      "fitCriterion": "run the Stop hook against a run ledger with one incomplete slice and confirm it emits a block citing the incomplete slice id. Complete the slice via `ledger complete <id>` and re-run the Stop hook; confirm it no longer blocks.",
+      "source": "R-20260726-K4M2QX"
     },
     "C-ENFORCEMENT": {
       "id": "C-ENFORCEMENT",
@@ -122,8 +138,7 @@
         "C-GROUNDWORK"
       ],
       "inbound": [
-        "C-GROUNDWORK",
-        "ENFORCEMENT-R-wfdw"
+        "C-GROUNDWORK"
       ],
       "byteSize": 1886,
       "relPath": "enforcement/README.md",
@@ -133,28 +148,34 @@
       "criticality": "must",
       "concept": null,
       "parent": "C-GROUNDWORK",
-      "ears": null
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null
     },
-    "ENFORCEMENT-R-wfdw": {
-      "id": "ENFORCEMENT-R-wfdw",
+    "ENFORCEMENT-R-001": {
+      "id": "ENFORCEMENT-R-001",
       "type": "requirement",
-      "title": "The impl-guard hook shall deny any Edit or Write call from the orchestrator identity on a path outside the two permitted shapes.",
-      "summary": "The impl-guard hook shall deny any Edit or Write call from the orchestrator identity on a path outside the two permitted shapes.",
-      "refs": [
-        "C-ENFORCEMENT"
-      ],
+      "title": "Impl-guard blocks orchestrator direct edits outside permitted paths",
+      "summary": "If an Edit or Write call is received from the orchestrator identity on a path that is not a permitted memory file or handoff document, then the enforcement hook shall return a deny block.",
+      "refs": [],
       "inbound": [
-        "ORCHESTRATION-R-ve7w"
+        "ORCHESTRATION-R-001"
       ],
-      "byteSize": 1158,
-      "relPath": "enforcement/requirements/impl-guard-block.md",
-      "status": "active",
-      "pattern": "unwanted",
+      "byteSize": 1783,
+      "relPath": "enforcement/requirements.md",
+      "status": null,
+      "pattern": null,
       "verification": "automated",
       "criticality": "must",
       "concept": "C-ENFORCEMENT",
       "parent": null,
-      "ears": "If an Edit or Write call is received from the orchestrator identity on a path that is not a permitted memory file or handoff document, then the enforcement hook shall return a deny block."
+      "ears": "If an Edit or Write call is received from the orchestrator identity on a path that is not a permitted memory file or handoff document, then the enforcement hook **shall** return a deny block.",
+      "anchor": "enforcement-r-001",
+      "why": "The orchestrator role is to classify, delegate, and review work—never to implement directly. Direct implementation by the orchestrator consumes the expensive session model (opus) for file edits that should be delegated to subagents (which run on sonnet per model-registry.json). Under real context pressure, this advisory is routinely dropped: observed groundwork sessions ran 200+ Edits + 37+ Writes on the orchestrator's model despite correct fan-out machinery being available, resulting in ~88% of output-token load landing on the expensive model. This hook enforces the division of labor mechanically. The two permitted paths (memory under `~/.claude/projects/<hash>/memory/` and handoffs at `.groundwork/handoffs/handoff-*.md`) are composition-in-context documents the orchestrator must write in a single turn; code and test and tooling changes belong to delegated subagents.",
+      "fitCriterion": "The enforcement hook test suite passes all deny cases. Edit and Write calls from the orchestrator on paths outside the two permitted shapes are blocked; calls from subagents are passed through; the two permit paths (memory files under user home claude projects directory and handoff documents under groundwork handoffs subdirectory) are allowed; and spoof paths resolving outside those shapes are blocked.",
+      "source": "R-20260726-K4M2QX"
     },
     "C-ORCHESTRATION": {
       "id": "C-ORCHESTRATION",
@@ -165,8 +186,7 @@
         "C-GROUNDWORK"
       ],
       "inbound": [
-        "C-GROUNDWORK",
-        "ORCHESTRATION-R-ve7w"
+        "C-GROUNDWORK"
       ],
       "byteSize": 1529,
       "relPath": "orchestration/README.md",
@@ -176,27 +196,34 @@
       "criticality": "must",
       "concept": null,
       "parent": "C-GROUNDWORK",
-      "ears": null
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null
     },
-    "ORCHESTRATION-R-ve7w": {
-      "id": "ORCHESTRATION-R-ve7w",
+    "ORCHESTRATION-R-001": {
+      "id": "ORCHESTRATION-R-001",
       "type": "requirement",
-      "title": "When the orchestrator classifies a task as non-trivial, it shall delegate implementation to a groundwork:general-purpose subagent.",
-      "summary": "When the orchestrator classifies a task as non-trivial, it shall delegate implementation to a groundwork:general-purpose subagent.",
+      "title": "Orchestrator delegates non-trivial implementation",
+      "summary": "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent.",
       "refs": [
-        "C-ORCHESTRATION",
-        "ENFORCEMENT-R-wfdw"
+        "ENFORCEMENT-R-001"
       ],
       "inbound": [],
-      "byteSize": 1325,
-      "relPath": "orchestration/requirements/delegation-guard.md",
-      "status": "active",
-      "pattern": "event",
+      "byteSize": 1382,
+      "relPath": "orchestration/requirements.md",
+      "status": null,
+      "pattern": null,
       "verification": "manual",
       "criticality": "must",
       "concept": "C-ORCHESTRATION",
       "parent": null,
-      "ears": "When the orchestrator classifies a task as non-trivial, the orchestrator shall delegate implementation to a groundwork:general-purpose subagent."
+      "ears": "**When** the orchestrator classifies a task as non-trivial, the orchestrator **shall** delegate implementation to a `groundwork:general-purpose` subagent.",
+      "anchor": "orchestration-r-001",
+      "why": "the orchestrator's context window is a finite shared resource; raw tool output (from Edit, Write, Bash, Read) consumed by the orchestrator directly bloats that window and reduces its capacity to synthesize results, coordinate parallel work, and make strategic decisions across the session. Delegating to specialist subagents decouples execution from oversight, allowing the orchestrator to receive only polished summaries and maintain focus on classification, quality gating, and orchestration.",
+      "fitCriterion": "after a non-trivial feature is implemented, session transcripts show Task calls to `groundwork:general-purpose` subagents for all implementation steps, and no Edit, Write, or MultiEdit calls appear in the orchestrator's direct tool calls against production code paths. The impl-guard hook (ENFORCEMENT-R-001) provides the mechanical backstop for verification.",
+      "source": "R-20260726-K4M2QX"
     },
     "C-VERIFICATION": {
       "id": "C-VERIFICATION",
@@ -207,9 +234,7 @@
         "C-GROUNDWORK"
       ],
       "inbound": [
-        "C-GROUNDWORK",
-        "VERIFICATION-R-oxuu",
-        "VERIFICATION-R-m5kn"
+        "C-GROUNDWORK"
       ],
       "byteSize": 1688,
       "relPath": "verification/README.md",
@@ -219,52 +244,62 @@
       "criticality": "must",
       "concept": null,
       "parent": "C-GROUNDWORK",
-      "ears": null
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null
     },
-    "VERIFICATION-R-oxuu": {
-      "id": "VERIFICATION-R-oxuu",
+    "VERIFICATION-R-001": {
+      "id": "VERIFICATION-R-001",
       "type": "requirement",
-      "title": "The Stop hook shall block session end when the active run ledger does not carry an advisor APPROVE verdict.",
-      "summary": "The Stop hook shall block session end when the active run ledger does not carry an advisor APPROVE verdict.",
+      "title": "Stop hook blocks unverified session end",
+      "summary": "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook shall block session end.",
       "refs": [
-        "C-VERIFICATION",
-        "VERIFICATION-R-m5kn"
+        "VERIFICATION-R-002"
       ],
       "inbound": [
-        "ARTIFACT-R-p3qx",
-        "VERIFICATION-R-m5kn"
+        "ARTIFACT-R-003",
+        "VERIFICATION-R-002"
       ],
-      "byteSize": 869,
-      "relPath": "verification/requirements/advisor-gate-required.md",
-      "status": "active",
-      "pattern": "unwanted",
+      "byteSize": 2182,
+      "relPath": "verification/requirements.md",
+      "status": null,
+      "pattern": null,
       "verification": "automated",
       "criticality": "must",
       "concept": "C-VERIFICATION",
       "parent": null,
-      "ears": "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook shall block session end."
+      "ears": "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook **shall** block session end.",
+      "anchor": "verification-r-001",
+      "why": "Without mechanical enforcement at the Stop boundary, an orchestrator (an LLM) can rationalize ending the session without recording the verdict into the ledger, leaving no audit trail and no verification gate. The Stop hook forces every session-end attempt into the ledger for inspection, making the decision point auditable and preventing accidental completions that bypass review.",
+      "fitCriterion": "Run the Stop hook against a ledger with no gate entry and confirm it emits a block. Run it again after recording an advisor APPROVE via the ledger gate command and confirm the session is permitted to end.",
+      "source": "R-20260726-K4M2QX"
     },
-    "VERIFICATION-R-m5kn": {
-      "id": "VERIFICATION-R-m5kn",
+    "VERIFICATION-R-002": {
+      "id": "VERIFICATION-R-002",
       "type": "requirement",
-      "title": "When a non-trivial task is complete, the orchestrator shall obtain an APPROVE verdict from the advisor agent.",
+      "title": "Orchestrator obtains advisor approval",
       "summary": "When a non-trivial task is complete, the orchestrator shall obtain an APPROVE verdict from the advisor agent.",
       "refs": [
-        "C-VERIFICATION",
-        "VERIFICATION-R-oxuu"
+        "VERIFICATION-R-001"
       ],
       "inbound": [
-        "VERIFICATION-R-oxuu"
+        "VERIFICATION-R-001"
       ],
-      "byteSize": 1367,
-      "relPath": "verification/requirements/advisor-obtainment.md",
-      "status": "active",
-      "pattern": "event",
+      "byteSize": 2182,
+      "relPath": "verification/requirements.md",
+      "status": null,
+      "pattern": null,
       "verification": "manual",
       "criticality": "must",
       "concept": "C-VERIFICATION",
       "parent": null,
-      "ears": "When a non-trivial task is complete, the orchestrator shall obtain an APPROVE verdict from the advisor agent."
+      "ears": "When a non-trivial task is complete, the orchestrator **shall** obtain an APPROVE verdict from the advisor agent.",
+      "anchor": "verification-r-002",
+      "why": "An enforcement mechanism (the Stop hook) without a binding normative obligation is merely aspirational; an orchestrator can rationalize around it if obtaining the verdict is framed as optional. The completion gate tiers (CLAUDE.md §Mandatory completion flow) establish that advisor APPROVE is REQUIRED for non-trivial work. This requirement captures the orchestrator's explicit obligation to make that invocation a non-negotiable step, not one it skips under time pressure or when the task \"looks good\".",
+      "fitCriterion": "Review the orchestrator's session transcript after a completed non-trivial task and confirm a Task call to groundwork:advisor was made and that the advisor returned an APPROVE verdict before the ledger gate command was recorded.",
+      "source": "R-20260726-K4M2QX"
     }
   }
 }

@@ -2,11 +2,30 @@
  * spec-io.mjs — shared I/O utilities for the spec CLI.
  *
  * Pure data functions; no process.exit. No cross-imports from rfc-io or journal-io.
+ *
+ * RFC-0003 (accepted 2026-07-27): normative requirement content lives in anchored H3
+ * sections of a per-concept `requirements.md`.  Frontmatter is metadata only.
+ * `ears` and `verify` are removed from the frontmatter schema.
  */
 
 import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs'
-import { join, dirname, relative } from 'node:path'
+import { join, dirname, relative, basename } from 'node:path'
 import { load as yamlLoad } from 'js-yaml'
+
+// ---------------------------------------------------------------------------
+// Frontmatter schema (RFC-0003)
+// ---------------------------------------------------------------------------
+
+/**
+ * Allowed frontmatter fields for all spec files (README.md and requirements.md).
+ * `ears` and `verify` are intentionally absent — they moved to the markdown body.
+ *
+ * Consumers (spec-lint.mjs, spec-guard.mjs) import this set for validation.
+ */
+export const ALLOWED_FRONTMATTER_FIELDS = new Set([
+  'id', 'type', 'concept', 'parent', 'title', 'summary',
+  'origin_rfc', 'status', 'pattern', 'verification', 'criticality',
+])
 
 // ---------------------------------------------------------------------------
 // Frontmatter parsing
@@ -105,8 +124,10 @@ export function firstSentence(text) {
   return m ? m[0].trim() : clean.slice(0, 120).trim()
 }
 
-// Matches requirement ids (CONCEPT-R-xxxx) and concept ids (C-NAME)
-const ID_RE_SRC = '\\b([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-[a-z0-9]{4}|C-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)\\b'
+// Matches requirement ids (CONCEPT-R-NNN new-format or CONCEPT-R-xxxx old-format)
+// and concept ids (C-NAME).  The suffix is [a-z0-9]+ to cover both numeric (001)
+// and legacy 4-char (abcd) suffixes.
+export const ID_RE_SRC = '\\b([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-[a-z0-9]+|C-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)\\b'
 
 export function extractRefs(content, selfId) {
   const re = new RegExp(ID_RE_SRC, 'g')
@@ -133,6 +154,211 @@ export function pathLikeToken(text) {
     if (/\.[a-zA-Z]{1,5}$/.test(t) && t.length > 4 && !t.endsWith('etc.')) return t
   }
   return null
+}
+
+// ---------------------------------------------------------------------------
+// Requirements body parser (RFC-0003)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the text of the H1 heading from a markdown body, or null.
+ * Used to derive the concept `title` and `summary` when no frontmatter field is present.
+ */
+function extractH1(body) {
+  const m = (body || '').match(/^#\s+(.+)$/m)
+  return m ? m[1].trim() : null
+}
+
+/**
+ * Parse a bullet list from section body into { label, content } objects.
+ * Handles two-space continuation lines.
+ *
+ * @param {string} sectionBody
+ * @returns {{ label: string, content: string }[]}
+ */
+function parseBulletItems(sectionBody) {
+  const items = []
+  const lines = sectionBody.split('\n')
+  let current = null
+
+  for (const line of lines) {
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      if (current !== null) items.push(current)
+      current = { raw: line.slice(2) }
+    } else if (current !== null && (line.startsWith('  ') || line.startsWith('\t'))) {
+      // continuation line
+      current.raw += ' ' + line.trim()
+    } else {
+      if (current !== null) items.push(current)
+      current = null
+    }
+  }
+  if (current !== null) items.push(current)
+  return items
+}
+
+/**
+ * Extract the attribute line values from a section body.
+ * Line form: **Verification** <v> · **Criticality** <c> · **Source** <s>
+ * (may appear as a standalone line or as a bullet item).
+ *
+ * @param {string} sectionBody
+ * @returns {{ verification: string, criticality: string, source: string } | null}
+ */
+function extractAttributeLine(sectionBody) {
+  // Match the attribute line regardless of whether it is bare or inside a bullet
+  const re = /\*\*Verification\*\*\s+(\S+)\s*[·•]\s*\*\*Criticality\*\*\s+(\S+)\s*[·•]\s*\*\*Source\*\*\s+(\S+)/
+  for (const line of sectionBody.split('\n')) {
+    const bare = line.startsWith('- ') || line.startsWith('* ') ? line.slice(2) : line
+    const m = bare.match(re)
+    if (m) return { verification: m[1], criticality: m[2], source: m[3] }
+  }
+  return null
+}
+
+/**
+ * Extract href values from a **See also** bullet line.
+ *
+ * @param {string} sectionBody
+ * @returns {string[]}
+ */
+function extractSeeAlso(sectionBody) {
+  const hrefs = []
+  const items = parseBulletItems(sectionBody)
+  const seeAlsoItem = items.find(it => it.raw.startsWith('**See also**'))
+  if (!seeAlsoItem) return hrefs
+  const re = /\[([^\]]+)\]\(#([^)]+)\)/g
+  let m
+  while ((m = re.exec(seeAlsoItem.raw)) !== null) {
+    hrefs.push(m[2])
+  }
+  return hrefs
+}
+
+/**
+ * Parse all requirement sections from a requirements.md document.
+ *
+ * Each section is an anchored H3 block with the canonical shape (RFC-0003 §3.1):
+ *
+ *   ### CONCEPT-R-001 — Title {#concept-r-001}
+ *
+ *   **When** … **shall** …
+ *
+ *   - **Why** — …
+ *   - **Fit criterion** — …
+ *   - **Verification** automated · **Criticality** must · **Source** R-XXXX
+ *   - **See also** [CONCEPT-R-002](#concept-r-002)
+ *
+ * @param {string} markdown - Full file content (frontmatter is stripped automatically)
+ * @returns {RequirementSection[]}
+ *
+ * @typedef {Object} RequirementSection
+ * @property {string}   id                - Requirement ID (e.g. ARTIFACT-R-001)
+ * @property {string}   title             - Human title from H3 heading
+ * @property {string}   anchor            - Anchor slug from {#anchor} (e.g. artifact-r-001)
+ * @property {string|null} normativeStatement - EARS prose after the heading (contains **shall**)
+ * @property {string|null} why            - Rationale from **Why** bullet
+ * @property {string|null} fitCriterion   - Acceptance test from **Fit criterion** bullet
+ * @property {string|null} verification   - automated | manual | hybrid from attribute line
+ * @property {string|null} criticality    - must | should from attribute line
+ * @property {string|null} source         - Source RFC id from attribute line
+ * @property {string[]}  seeAlso          - Anchor hrefs from **See also** links
+ * @property {string[]}  refs             - Extracted cross-reference IDs from section content
+ * @property {string[]}  errors           - Validation errors for this section
+ */
+export function parseRequirementsDocument(markdown) {
+  // Strip frontmatter so the H3 splitter only sees body content
+  const { body } = parseYamlFrontmatter(markdown)
+
+  const sections = []
+
+  // Split body on H3 heading boundaries.  Every chunk that starts with "### " is
+  // a potential requirement section; chunks without that prefix are preamble.
+  const chunks = body.split(/^(?=### )/m)
+
+  // Heading pattern: ### ID — Title {#anchor}
+  // The em-dash (—, U+2014) or en-dash (–) separates ID from title.
+  const HEADING_RE = /^### ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+)\s+[—–]\s+(.+?)\s+\{#([^}]+)\}\s*(?:\n|$)/
+
+  for (const chunk of chunks) {
+    if (!chunk.startsWith('### ')) continue
+
+    const headingLine = chunk.split('\n')[0] + '\n'
+    const hm = headingLine.match(HEADING_RE)
+    if (!hm) continue  // non-requirement H3 (section header etc.) — skip
+
+    const id = hm[1]
+    const title = hm[2].trim()
+    const anchor = hm[3].trim()
+    const sectionBody = chunk.slice(headingLine.trimEnd().length).trim()
+
+    const errors = []
+
+    // RULE-02: anchor must equal id lowercased
+    if (anchor !== id.toLowerCase()) {
+      errors.push(`anchor {#${anchor}} does not match id ${id} lowercased (expected {#${id.toLowerCase()}})`)
+    }
+
+    // Normative statement: non-empty prose before the first bullet
+    const normativeStatement = (() => {
+      const lines = sectionBody.split('\n')
+      const stmtLines = []
+      for (const line of lines) {
+        if (line.startsWith('- ') || line.startsWith('* ')) break
+        stmtLines.push(line)
+      }
+      const stmt = stmtLines.join('\n').trim()
+      return stmt || null
+    })()
+
+    if (!normativeStatement) {
+      errors.push('missing normative statement (no prose between heading and first bullet)')
+    } else if (!normativeStatement.includes('**shall**')) {
+      errors.push('normative statement does not contain bolded **shall**')
+    }
+
+    // Bullet items
+    const items = parseBulletItems(sectionBody)
+
+    const whyItem = items.find(it => it.raw.startsWith('**Why**'))
+    const why = whyItem ? whyItem.raw.replace(/^\*\*Why\*\*\s*[—–]\s*/, '').trim() : null
+    if (!why) errors.push('missing **Why** rationale bullet')
+
+    const fitItem = items.find(it => it.raw.startsWith('**Fit criterion**'))
+    const fitCriterion = fitItem
+      ? fitItem.raw.replace(/^\*\*Fit criterion\*\*\s*[—–]\s*/, '').trim()
+      : null
+    if (!fitCriterion) errors.push('missing **Fit criterion** bullet')
+
+    // Attribute line
+    const attr = extractAttributeLine(sectionBody)
+    const verification = attr?.verification ?? null
+    const criticality = attr?.criticality ?? null
+    const source = attr?.source ?? null
+
+    // See also
+    const seeAlso = extractSeeAlso(sectionBody)
+
+    // Cross-reference IDs extracted from section content (excluding self)
+    const refs = extractRefs(sectionBody, id)
+
+    sections.push({
+      id,
+      title,
+      anchor,
+      normativeStatement,
+      why,
+      fitCriterion,
+      verification,
+      criticality,
+      source,
+      seeAlso,
+      refs,
+      errors,
+    })
+  }
+
+  return sections
 }
 
 // ---------------------------------------------------------------------------
@@ -173,17 +399,25 @@ export function findConceptDir(conceptId, sd) {
 }
 
 // ---------------------------------------------------------------------------
-// Build index data (AC2, AC3, AC4, AC6, AC12)
+// Build index data (AC2, AC3, AC4, AC6; RFC-0003 body-format)
 // ---------------------------------------------------------------------------
 
 /**
- * Build index from all spec files.
+ * Build index from all spec files under `sd`.
  * Returns { nodes: Record<id, NodeRecord>, errors: ErrorRecord[] }
  *
- * Errors:
- *   { type: 'duplicate_id', id, paths: [p1, p2] }
- *   { type: 'parent_dir_mismatch', nodeId, frontmatter, directory, path }
- *   { type: 'path_in_verify', nodeId, token, path }
+ * File handling (RFC-0003):
+ *   requirements.md  — body parsed as H3 requirement sections; one node per section.
+ *   README.md / other — frontmatter id required; yields one concept/metadata node.
+ *
+ * Error types:
+ *   { type: 'duplicate_id',            id, paths: [p1, p2] }
+ *   { type: 'parent_dir_mismatch',     nodeId, frontmatter, directory, path }
+ *   { type: 'unknown_frontmatter_field', field, nodeId?, path }
+ *   { type: 'requirement_parse_error', nodeId, message, path }
+ *
+ * Legacy error type removed (ears/verify moved to body):
+ *   path_in_verify — no longer emitted; check is now a lint concern only.
  */
 export function buildIndexData(sd) {
   const files = walkSpecFiles(sd)
@@ -194,73 +428,154 @@ export function buildIndexData(sd) {
   for (const { absPath, relPath } of files) {
     let raw
     try { raw = readFileSync(absPath, 'utf8') } catch { continue }
-    const { data, body } = parseYamlFrontmatter(raw)
-    if (!data.id) continue
 
-    const id = String(data.id)
+    const filename = basename(absPath)
 
-    // AC4: duplicate id detection
-    if (idToPath[id]) {
-      errors.push({ type: 'duplicate_id', id, paths: [idToPath[id], absPath] })
-      continue
-    }
-    idToPath[id] = absPath
+    if (filename === 'requirements.md') {
+      // -----------------------------------------------------------------------
+      // RFC-0003: parse H3 requirement sections from the body
+      // -----------------------------------------------------------------------
+      const { data: fileData } = parseYamlFrontmatter(raw)
 
-    const refs = extractRefs(raw, id)
-    const byteSize = Buffer.byteLength(raw, 'utf8')
-
-    // AC3: parent frontmatter field vs directory position
-    if (data.concept) {
-      const expectedConcept = findNearestConceptId(absPath, sd)
-      if (expectedConcept && String(data.concept) !== expectedConcept) {
-        errors.push({
-          type: 'parent_dir_mismatch',
-          nodeId: id,
-          frontmatter: String(data.concept),
-          directory: expectedConcept,
-          path: absPath,
-        })
+      // Validate no unknown fields in file-level frontmatter (catches stale ears:/verify:)
+      for (const field of Object.keys(fileData)) {
+        if (!ALLOWED_FRONTMATTER_FIELDS.has(field)) {
+          errors.push({ type: 'unknown_frontmatter_field', field, path: absPath })
+        }
       }
-    }
 
-    // AC12: if verify contains a path-like token, reject
-    if (data.verify && typeof data.verify === 'string') {
-      const bad = pathLikeToken(data.verify)
-      if (bad) {
-        errors.push({ type: 'path_in_verify', nodeId: id, token: bad, path: absPath })
+      const conceptId = findNearestConceptId(absPath, sd)
+      const sections = parseRequirementsDocument(raw)
+      const byteSize = Buffer.byteLength(raw, 'utf8')
+
+      for (const section of sections) {
+        const id = section.id
+
+        // AC4: duplicate id detection
+        if (idToPath[id]) {
+          errors.push({ type: 'duplicate_id', id, paths: [idToPath[id], absPath] })
+          continue
+        }
+        idToPath[id] = absPath
+
+        // Propagate section-level parse errors
+        for (const msg of section.errors) {
+          errors.push({ type: 'requirement_parse_error', nodeId: id, message: msg, path: absPath })
+        }
+
+        // RULE-08 (concept nodes): summary is a frontmatter label.
+        // For requirement nodes: derive from normative statement or fall back to title.
+        const summary = section.normativeStatement
+          ? firstSentence(section.normativeStatement)
+          : section.title
+
+        nodes[id] = {
+          id,
+          type: 'requirement',
+          title: section.title,
+          summary,
+          refs: section.refs,
+          byteSize,
+          relPath,
+          // AC11: inbound computed after all nodes collected
+          inbound: [],
+          // Body-derived fields
+          concept: conceptId,
+          parent: null,
+          status: null,
+          pattern: null,
+          verification: section.verification,
+          criticality: section.criticality || 'must',
+          // `ears` preserved in node shape for display consumers; populated from body
+          ears: section.normativeStatement,
+          anchor: section.anchor,
+          why: section.why,
+          fitCriterion: section.fitCriterion,
+          source: section.source,
+        }
       }
-    }
+    } else {
+      // -----------------------------------------------------------------------
+      // README.md and other .md files — concept/metadata nodes from frontmatter
+      // -----------------------------------------------------------------------
+      const { data, body } = parseYamlFrontmatter(raw)
+      if (!data.id) continue
 
-    // AC6: summary is the RFC-designated index field (≤25-word retrieval gloss);
-    //      ears is the normative EARS sentence used for display in show/search but
-    //      not surfaced in the index — agents scan the index to pick a file to open,
-    //      and the authored summary serves that better than the full normative sentence.
-    const summary = data.summary
-      ? String(data.summary)
-      : data.ears
-        ? firstSentence(String(data.ears))
-        : data.title
-          ? String(data.title)
-          : firstSentence(body || id)
+      const id = String(data.id)
 
-    nodes[id] = {
-      id,
-      type: data.type ? String(data.type) : (data.concept ? 'requirement' : 'concept'),
-      title: String(data.title || data.summary || (data.ears ? firstSentence(String(data.ears)) : id)),
-      summary,
-      refs,
-      byteSize,
-      relPath,
-      // AC11: inbound computed after all nodes collected
-      inbound: [],
-      // Fields for display
-      concept: data.concept ? String(data.concept) : null,
-      parent: data.parent !== undefined ? (data.parent ? String(data.parent) : null) : null,
-      status: data.status ? String(data.status) : null,
-      pattern: data.pattern ? String(data.pattern) : null,
-      verification: data.verification ? String(data.verification) : null,
-      criticality: data.criticality ? String(data.criticality) : 'must',
-      ears: data.ears ? String(data.ears) : null,
+      // Reject any frontmatter field not in the allowed set (ears/verify will trigger this)
+      for (const field of Object.keys(data)) {
+        if (!ALLOWED_FRONTMATTER_FIELDS.has(field)) {
+          errors.push({ type: 'unknown_frontmatter_field', field, nodeId: id, path: absPath })
+        }
+      }
+
+      // AC4: duplicate id detection
+      if (idToPath[id]) {
+        errors.push({ type: 'duplicate_id', id, paths: [idToPath[id], absPath] })
+        continue
+      }
+      idToPath[id] = absPath
+
+      const refs = extractRefs(raw, id)
+      const byteSize = Buffer.byteLength(raw, 'utf8')
+
+      // AC3: parent frontmatter field vs directory position
+      if (data.concept) {
+        const expectedConcept = findNearestConceptId(absPath, sd)
+        if (expectedConcept && String(data.concept) !== expectedConcept) {
+          errors.push({
+            type: 'parent_dir_mismatch',
+            nodeId: id,
+            frontmatter: String(data.concept),
+            directory: expectedConcept,
+            path: absPath,
+          })
+        }
+      }
+
+      // AC12: if verify contains a path-like token, emit a blocking error.
+      // verify is not in ALLOWED_FRONTMATTER_FIELDS (RFC-0003 moved it to the body)
+      // but we still check it when present in old-format files to preserve AC12 enforcement.
+      if (data.verify && typeof data.verify === 'string') {
+        const bad = pathLikeToken(data.verify)
+        if (bad) {
+          errors.push({ type: 'path_in_verify', nodeId: id, token: bad, path: absPath })
+        }
+      }
+
+      // RULE-08: `summary` is the frontmatter index label (≤25 words).  When absent,
+      // fall back through: ears (old-format) → H1 → title → firstSentence(body).
+      // `ears` is no longer in ALLOWED_FRONTMATTER_FIELDS (RFC-0003) but may be present
+      // in old-format files; we use its value for derivation without blocking.
+      const h1 = extractH1(body)
+      const earsStr = data.ears ? String(data.ears) : null
+      const summary = data.summary
+        ? String(data.summary)
+        : earsStr
+          ? firstSentence(earsStr)
+          : h1 ?? (data.title ? String(data.title) : firstSentence(body || id))
+
+      nodes[id] = {
+        id,
+        type: data.type ? String(data.type) : (data.concept ? 'requirement' : 'concept'),
+        title: String(data.title || data.summary || (earsStr ? firstSentence(earsStr) : null) || h1 || id),
+        summary,
+        refs,
+        byteSize,
+        relPath,
+        // AC11: inbound computed after all nodes collected
+        inbound: [],
+        // Frontmatter fields
+        concept: data.concept ? String(data.concept) : null,
+        parent: data.parent !== undefined ? (data.parent ? String(data.parent) : null) : null,
+        status: data.status ? String(data.status) : null,
+        pattern: data.pattern ? String(data.pattern) : null,
+        verification: data.verification ? String(data.verification) : null,
+        criticality: data.criticality ? String(data.criticality) : 'must',
+        // ears: preserved from old-format frontmatter for display/search consumers
+        ears: earsStr,
+      }
     }
   }
 

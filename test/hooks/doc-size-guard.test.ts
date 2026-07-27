@@ -267,7 +267,7 @@ describe("doc-size-guard — fail-open (AC 6)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Budget-pinning tests (M10 regression: mutating rfc or steering budget must fail)
+// Budget-pinning tests (M10 regression: mutating rfc budget must fail)
 // ---------------------------------------------------------------------------
 
 describe("doc-class budget values — pinned (M10 mutation guard)", () => {
@@ -285,11 +285,6 @@ describe("doc-class budget values — pinned (M10 mutation guard)", () => {
 	it("rfc-section class budget is exactly 6000 tokens", () => {
 		// Pinned: mutating this value must fail this test.
 		expect(getClassBudget("rfc-section")).toBe(6000);
-	});
-
-	it("steering class budget is exactly 3000 tokens", () => {
-		// Changing this to any other value must fail this test.
-		expect(getClassBudget("steering")).toBe(3000);
 	});
 
 	it("rfc-index guard fires when rfc.md exceeds 12000 tokens", () => {

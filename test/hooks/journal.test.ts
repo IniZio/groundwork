@@ -149,7 +149,7 @@ describe('AC 2 — invalid type error', () => {
     )
     const combined = r.stderr + r.stdout
     const EXPECTED = [
-      'DECISION', 'SPEC_CHANGE', 'STEERING_UPDATE', 'LINT_DRIFT',
+      'DECISION', 'SPEC_CHANGE', 'LINT_DRIFT',
       'PROTOTYPE_RESULT', 'FAILURE', 'MILESTONE', 'TASK_COMPLETE',
       'GATE', 'VERIFICATION', 'WAIVER', 'HANDOFF', 'SESSION_START',
     ]

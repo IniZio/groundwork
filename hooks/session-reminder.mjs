@@ -13,7 +13,7 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { appendFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
@@ -29,98 +29,6 @@ import { resolveShardPath, appendEvent } from './lib/journal-io.mjs'
 
 function estimateTokens(text) {
   return Math.ceil((text || '').length / 4)
-}
-
-// ---------------------------------------------------------------------------
-// Steering injection (AC 2, AC 3 of T14)
-// Token estimation for steering uses byteLength/3.5 — same as doc-io.mjs.
-// This is an estimate, not a tokenizer count.
-// ---------------------------------------------------------------------------
-
-const STEERING_TOKEN_CAP = 1000
-
-/**
- * Estimate token count using the canonical doc-io.mjs formula.
- * Used for steering only (the existing estimateTokens() uses length/4).
- */
-function estimateSteeringTokens(text) {
-  return Math.ceil(Buffer.byteLength(text ?? '', 'utf8') / 3.5)
-}
-
-/**
- * Read top-level markdown files under docs/steering/ (non-recursive).
- * AC 2: only files directly under docs/steering/, no subdirectory recursion.
- * AC 8: read-only.
- * Returns array of { name, content } sorted alphabetically.
- */
-function readTopLevelSteeringFiles(projectDir) {
-  const steeringDir = path.join(projectDir, 'docs', 'steering')
-  if (!existsSync(steeringDir)) return []
-  let entries
-  try { entries = readdirSync(steeringDir) } catch { return [] }
-  const files = []
-  for (const name of entries.sort()) {
-    if (!name.endsWith('.md')) continue
-    const absPath = path.join(steeringDir, name)
-    try {
-      // AC 2: skip subdirectories
-      if (statSync(absPath).isDirectory()) continue
-      const content = readFileSync(absPath, 'utf8')
-      files.push({ name, content })
-    } catch { continue }
-  }
-  return files
-}
-
-/**
- * Assemble the steering injection for SessionStart.
- * AC 2: reads only top-level files under docs/steering/.
- * AC 3: truncates at file granularity if combined tokens > STEERING_TOKEN_CAP;
- *       names omitted files and returns metadata for the SESSION_START journal event.
- * AC 8: never writes to docs/steering/.
- *
- * Returns { text, loadedFiles, omittedFiles, totalTokens } or null if nothing loaded.
- */
-function buildSteeringInjection(projectDir) {
-  const files = readTopLevelSteeringFiles(projectDir)
-  if (files.length === 0) return null
-
-  const loaded = []
-  const omitted = []
-  let runningTokens = 0
-
-  for (const { name, content } of files) {
-    const fileTokens = estimateSteeringTokens(content)
-    if (runningTokens + fileTokens <= STEERING_TOKEN_CAP) {
-      loaded.push({ name, content, tokens: fileTokens })
-      runningTokens += fileTokens
-    } else {
-      omitted.push(name)
-    }
-  }
-
-  const lines = ['', '## Steering', '']
-  for (const { name, content } of loaded) {
-    lines.push(`### ${name}`)
-    lines.push('')
-    lines.push(content.trim())
-    lines.push('')
-  }
-  if (omitted.length > 0) {
-    // AC 3: name all omitted files so the agent knows what was skipped
-    lines.push(`_Steering files omitted (over budget): ${omitted.join(', ')}_`)
-    lines.push('')
-  }
-
-  if (loaded.length === 0 && omitted.length === 0) return null
-
-  const text = lines.join('\n')
-  return {
-    text,
-    loadedFiles: loaded.map(f => f.name),
-    omittedFiles: omitted,
-    totalTokens: estimateSteeringTokens(text),
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -420,30 +328,6 @@ try { ensureGroundworkExcluded(projectDir) } catch { /* never fail the hook */ }
 additionalContext += activeRunBlock(projectDir, sessionId)
 try {
   additionalContext += buildStruggleNudge(projectDir)
-} catch { /* never fail the hook */ }
-
-// T14 AC 2/3: steering injection (top-level docs/steering/*.md only, no recursion).
-try {
-  const steeringResult = buildSteeringInjection(projectDir)
-  if (steeringResult) {
-    additionalContext += steeringResult.text
-    // AC 3: if any files were omitted due to the 1000-token cap, record a SESSION_START event.
-    if (steeringResult.omittedFiles.length > 0 && sessionId) {
-      try {
-        const shardPath = resolveShardPath(projectDir, sessionId)
-        appendEvent(shardPath, {
-          type: 'SESSION_START',
-          ts: new Date().toISOString(),
-          session: sessionId,
-          event: 'steering_files_loaded',
-          loaded: steeringResult.loadedFiles,
-          omitted: steeringResult.omittedFiles,
-          total_tokens: steeringResult.totalTokens,
-          cap: STEERING_TOKEN_CAP,
-        })
-      } catch { /* best-effort */ }
-    }
-  }
 } catch { /* never fail the hook */ }
 
 // AC6/AC7: spec skeleton with 600-token cap; dropped first if total >3000 tokens.

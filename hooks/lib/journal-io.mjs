@@ -24,7 +24,6 @@ import path from 'node:path'
 export const VALID_TYPES = [
   'DECISION',
   'SPEC_CHANGE',
-  'STEERING_UPDATE',
   'LINT_DRIFT',
   'PROTOTYPE_RESULT',
   'FAILURE',

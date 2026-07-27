@@ -18,7 +18,6 @@
  *   skill         skills/** /SKILL.md                              6 000           DERIVED
  *   prd           docs/prds/** /*.md                                3 000           DERIVED
  *   plan          docs/plans/** /*.md                               2 000           DERIVED
- *   steering      docs/steering/** /*.md                            3 000           DERIVED (see note)
  *   rfc-index     .groundwork/rfcs/** /rfc.md                      12 000           DERIVED (see note)
  *   rfc-section   .groundwork/rfcs/** /sections/** /*.md            6 000           DERIVED (see note)
  *   narrative     docs/*.md  (top-level only, no subdirs)          2 000           DERIVED
@@ -29,10 +28,6 @@
  * the source column and remove this notice for that row.
  *
  * Budget rationale (T20 additions):
- *   steering (DERIVED): §6.3 of RFC-0001 caps injection at 1 000 tokens —
- *   that is a *consumption* window (how much the agent receives per turn via
- *   progressive disclosure), not the file storage budget. 3 000 tokens was
- *   chosen by analogy with the PRD class; it is not quoted from the RFC.
  *   rfc-index (DERIVED): post-split rfc.md ≈ frontmatter (~9 841 tok measured)
  *   + manifest/abstract (~1 500 tok) ≈ 11 300 tok total. 12 000 is set by
  *   analogy with the root-doc class and gives ~6 % headroom. This budget WILL
@@ -93,11 +88,6 @@ export const DOC_CLASSES = [
     name: 'plan',
     budget: 2000,
     match: (rel) => /^docs[/\\]plans[/\\]/.test(rel) && rel.endsWith('.md'),
-  },
-  {
-    name: 'steering',
-    budget: 3000,
-    match: (rel) => /^docs[/\\]steering[/\\]/.test(rel) && rel.endsWith('.md'),
   },
   {
     name: 'rfc-index',

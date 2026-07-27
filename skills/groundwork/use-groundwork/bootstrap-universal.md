@@ -43,7 +43,6 @@ The orchestrator may use Write/Edit directly ONLY for content it already holds v
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
 | `housekeep` | **Codebase hygiene / cleanup.** Default mode `deslop` (dead code, duplication, needless abstraction, boundary violations, missing tests, UI/design slop); scans and produces a severity-ranked (SEV1–4) prioritized findings backlog, presents it for interactive triage/selection before cleaning, and closes with a structured report. Opt-in modes: `deps`, `lint-debt`, `docs-staleness`. Triggers: deslop, anti-slop, AI slop, housekeep, cleanup the code, dependency audit, lint debt, stale docs, triage cleanup, prioritize slop, cleanup backlog, what needs cleaning |
 | `commit` | Creating git commits (ensures consistent style) |
-| `opencode-acp` | Controlling another OpenCode instance via ACP protocol |
 | `goal` | **Multi-step work needing focus tracking.** Set before testing multiple flows, multi-wave implementation, or any task where losing the objective causes rework. Persisted across sessions |
 
 ## Session Conventions

@@ -32,7 +32,7 @@ When the task will modify `docs/spec/` or produce a `spec_delta` in the RFC fron
 
 - Which concept nodes in `docs/spec/` does this change touch?
 - Which existing requirement IDs does this task satisfy or modify?
-- Is this a new requirement addition (`op: add`) or a modification of an existing one (`op: modify`)?
+- Is this a new requirement addition (`op: Added`) or a modification of an existing one (`op: Changed`)?
 
 ## Required Interview Questions (always ask when acceptance criteria are stated)
 

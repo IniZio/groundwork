@@ -15,7 +15,7 @@ Run the full interview protocol when any of the following is true:
 - The task touches shared or security-sensitive code without a stated constraint
 - A spec_delta is implied but the requirement IDs are not given
 
-If the task brief is fully specified (named files, named criteria, named requirement IDs), skip to Phase 2.
+If the task brief is fully specified (named files, named criteria, named requirement IDs), skip to Phase 2 (Code Investigation).
 
 ## Question Collection
 
@@ -30,7 +30,7 @@ For each open question:
 
 When the task will modify `docs/spec/` or produce a `spec_delta` in the RFC frontmatter, include these questions if not already answered by the brief:
 
-- Which concept nodes in `docs/spec/` does this change touch? (needed for steering ancestry resolution)
+- Which concept nodes in `docs/spec/` does this change touch?
 - Which existing requirement IDs does this task satisfy or modify?
 - Is this a new requirement addition (`op: add`) or a modification of an existing one (`op: modify`)?
 
@@ -54,7 +54,6 @@ questions:
     question: "…"
     recommended_answer: "…"
     blocking: false
-tooling_gap: <value or omit>
 ```
 
 Emit exactly one NEEDS-INPUT payload with all collected questions. After the user responds, resume from the phase that was blocked.

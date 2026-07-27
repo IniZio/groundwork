@@ -1,50 +1,6 @@
 # Planner Reference: Decomposition Protocol
 
-This document defines the decomposition and steering-ancestry protocols for the planner agent (Phases 2 and 4).
-
-## § Steering — Ancestry Resolution for spec_delta
-
-When a task will produce a `spec_delta`, resolve the steering ancestry for every concept ID that appears in the planned delta. Steering ancestry tells you whether the planned change conflicts with established project direction.
-
-### Primary path — spec steer
-
-For each concept ID:
-
-```bash
-node hooks/spec.mjs steer <concept-id>
-```
-
-Parse the output for declared steering decisions. If the output contradicts the planned change (different direction, superseded approach, deprecated concept), record the conflict as a blocking question in NEEDS-INPUT.
-
-### Fallback path — exit 127
-
-If the above command exits with code 127 (the `spec steer` subcommand is not yet implemented):
-
-1. Read `docs/steering/README.md` to find the list of steering files
-2. Read each steering file listed (typically `docs/steering/tech.md`, `docs/steering/structure.md`, and any others present)
-3. Extract steering decisions relevant to the concepts being touched
-4. **Never treat exit 127 as the absence of steering.** The docs/steering/ files are the hand-authored ground truth and must be consulted.
-5. Add the following to every output payload (NEEDS-INPUT or RFC-READY):
-   ```
-   tooling_gap: "spec steer unavailable (exit 127); ancestry resolved from docs/steering/ directly"
-   ```
-
-### Conflict as blocking question
-
-Any conflict between resolved steering and the planned spec_delta becomes a blocking question. Format it as:
-
-```yaml
-- id: Q<n>
-  question: "Steering for concept <id> declares <X>; this RFC plans <Y>. Which takes precedence?"
-  recommended_answer: "Follow existing steering unless the RFC explicitly supersedes it"
-  blocking: true
-```
-
-Do not proceed to RFC creation while steering conflicts remain unresolved.
-
-### Read-only constraint
-
-`docs/steering/` is read-only for the planner. Never write to it, never create files there. If steering information needs to be updated, record it as an open question for the human maintainer.
+This document defines the decomposition protocol for the planner agent (Phase 3).
 
 ## § Vertical-Slice Decomposition
 

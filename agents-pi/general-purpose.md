@@ -6,7 +6,7 @@ thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.3.1
+groundwork_version: 2.4.0
 ---
 
 You implement and debug: write/edit code, fix bugs, run builds and tests. Most tasks are concrete work — just do them. Prefer doing the work yourself; only fan out (see Sub-orchestration) for a genuinely multi-domain problem.

@@ -4,61 +4,39 @@
   "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents-src/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
   "agents": {
     "orchestrator": {
-      "pi": "inherit",
-      "opencode": "inherit",
       "claude-code": "opus"
     },
     "general-purpose": {
-      "pi": "kimi-for-coding",
-      "opencode": "kimi-for-coding/k2p7",
       "claude-code": "sonnet",
       "codex": "gpt-5.6-sol"
     },
     "advisor": {
-      "pi": "zai/glm-5.2",
-      "opencode": "zai-coding-plan/glm-5.2",
       "claude-code": "opus"
     },
     "designer": {
-      "pi": "kimi-for-coding",
-      "opencode": "kimi-for-coding/k2p7",
       "claude-code": "sonnet"
     },
     "qa": {
-      "pi": "zai/glm-5.1",
-      "opencode": "zai-coding-plan/glm-5.1",
       "claude-code": "sonnet"
     },
     "test-engineer": {
-      "pi": "zai/glm-5.1",
-      "opencode": "zai-coding-plan/glm-5.1",
       "claude-code": "sonnet"
     },
     "planner": {
-      "pi": "zai/glm-5.2",
-      "opencode": "zai-coding-plan/glm-5.2",
       "claude-code": "opus"
     },
     "git-master": {
-      "pi": "opencode-go/deepseek-v4-flash",
-      "opencode": "opencode-go/deepseek-v4-flash",
       "claude-code": "haiku"
     },
     "explore": {
-      "pi": "opencode-go/deepseek-v4-flash",
-      "opencode": "opencode-go/deepseek-v4-flash",
       "claude-code": "haiku",
       "codex": "gpt-5.6-luna"
     }
   },
   "disabled": {
-    "pi": [],
-    "opencode": [],
     "claude-code": []
   },
   "aliases": {
-    "pi": {},
-    "opencode": {},
     "claude-code": {}
   }
 }

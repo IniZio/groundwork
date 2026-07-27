@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27T13:21:34.072Z",
+  "generated_at": "2026-07-27T14:52:33.778Z",
   "nodes": {
     "C-GROUNDWORK": {
       "id": "C-GROUNDWORK",
@@ -19,7 +19,7 @@
         "C-ORCHESTRATION",
         "C-VERIFICATION"
       ],
-      "byteSize": 3319,
+      "byteSize": 3371,
       "relPath": "README.md",
       "status": null,
       "pattern": null,
@@ -44,7 +44,7 @@
       "inbound": [
         "C-GROUNDWORK"
       ],
-      "byteSize": 1579,
+      "byteSize": 3054,
       "relPath": "artifact/README.md",
       "status": null,
       "pattern": null,
@@ -229,14 +229,14 @@
       "id": "C-VERIFICATION",
       "type": "concept",
       "title": "Verification",
-      "summary": "Non-trivial task completion requires an APPROVE verdict from the advisor agent, recorded in the run ledger before the session can end.",
+      "summary": "Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends.",
       "refs": [
         "C-GROUNDWORK"
       ],
       "inbound": [
         "C-GROUNDWORK"
       ],
-      "byteSize": 1688,
+      "byteSize": 2688,
       "relPath": "verification/README.md",
       "status": null,
       "pattern": null,
@@ -253,8 +253,8 @@
     "VERIFICATION-R-001": {
       "id": "VERIFICATION-R-001",
       "type": "requirement",
-      "title": "Stop hook blocks unverified session end",
-      "summary": "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook shall block session end.",
+      "title": "Stop hook blocks session end while slices are incomplete",
+      "summary": "If the Stop hook fires and the active run ledger contains any slices whose status is not complete or skipped, or the advisor gate verdict is not APPROVE, then the Stop hook shall block session end.",
       "refs": [
         "VERIFICATION-R-002"
       ],
@@ -262,7 +262,7 @@
         "ARTIFACT-R-003",
         "VERIFICATION-R-002"
       ],
-      "byteSize": 2182,
+      "byteSize": 2505,
       "relPath": "verification/requirements.md",
       "status": null,
       "pattern": null,
@@ -270,24 +270,24 @@
       "criticality": "must",
       "concept": "C-VERIFICATION",
       "parent": null,
-      "ears": "If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook **shall** block session end.",
+      "ears": "If the Stop hook fires and the active run ledger contains any slices whose status is not `complete` or `skipped`, or the advisor gate verdict is not `APPROVE`, then the Stop hook **shall** block session end.",
       "anchor": "verification-r-001",
-      "why": "Without mechanical enforcement at the Stop boundary, an orchestrator (an LLM) can rationalize ending the session without recording the verdict into the ledger, leaving no audit trail and no verification gate. The Stop hook forces every session-end attempt into the ledger for inspection, making the decision point auditable and preventing accidental completions that bypass review.",
-      "fitCriterion": "Run the Stop hook against a ledger with no gate entry and confirm it emits a block. Run it again after recording an advisor APPROVE via the ledger gate command and confirm the session is permitted to end.",
+      "why": "Without mechanical enforcement at the Stop boundary, an orchestrator (an LLM) can rationalize ending the session before all delegated slices have landed, leaving work unfinished and no audit trail. The Stop hook forces every session-end attempt through a ledger check, making incomplete delegations visible and preventing accidental completions that bypass the fan-out model.",
+      "fitCriterion": "Run the Stop hook against a ledger with one or more pending slices and confirm it emits a block. Run it with all slices complete but gate.advisor not APPROVE and confirm it still blocks. Run it with all slices complete AND gate.advisor = \"APPROVE\" and confirm the session is permitted to end.",
       "source": "R-20260726-K4M2QX"
     },
     "VERIFICATION-R-002": {
       "id": "VERIFICATION-R-002",
       "type": "requirement",
-      "title": "Orchestrator obtains advisor approval",
-      "summary": "When a non-trivial task is complete, the orchestrator shall obtain an APPROVE verdict from the advisor agent.",
+      "title": "Orchestrator invokes advisor to validate completion",
+      "summary": "When a non-trivial task is complete, the orchestrator shall invoke the advisor (native advisor() tool, or groundwork:advisor if unavailable) to validate that the work is genuinely complete in the real world.",
       "refs": [
         "VERIFICATION-R-001"
       ],
       "inbound": [
         "VERIFICATION-R-001"
       ],
-      "byteSize": 2182,
+      "byteSize": 2505,
       "relPath": "verification/requirements.md",
       "status": null,
       "pattern": null,
@@ -295,10 +295,10 @@
       "criticality": "must",
       "concept": "C-VERIFICATION",
       "parent": null,
-      "ears": "When a non-trivial task is complete, the orchestrator **shall** obtain an APPROVE verdict from the advisor agent.",
+      "ears": "When a non-trivial task is complete, the orchestrator **shall** invoke the advisor (native `advisor()` tool, or `groundwork:advisor` if unavailable) to validate that the work is genuinely complete in the real world.",
       "anchor": "verification-r-002",
-      "why": "An enforcement mechanism (the Stop hook) without a binding normative obligation is merely aspirational; an orchestrator can rationalize around it if obtaining the verdict is framed as optional. The completion gate tiers (CLAUDE.md §Mandatory completion flow) establish that advisor APPROVE is REQUIRED for non-trivial work. This requirement captures the orchestrator's explicit obligation to make that invocation a non-negotiable step, not one it skips under time pressure or when the task \"looks good\".",
-      "fitCriterion": "Review the orchestrator's session transcript after a completed non-trivial task and confirm a Task call to groundwork:advisor was made and that the advisor returned an APPROVE verdict before the ledger gate command was recorded.",
+      "why": "Tests passing and slices marked complete establish internal consistency, not real-world validity. A working API must be tested against a real server; a UI change must be pixel-checked against the design; a PR must be CI-watched to completion. The advisor executes these checks itself rather than trusting self-reports. This requirement captures the orchestrator's explicit obligation to perform that validation step, not to treat green tests as sufficient evidence of done.",
+      "fitCriterion": "Review the orchestrator's session transcript after a completed non-trivial task and confirm the advisor was invoked (via `advisor()` or a Task call to `groundwork:advisor`) before the session ended, and that the advisor performed real-world verification commands rather than accepting a self-report.",
       "source": "R-20260726-K4M2QX"
     }
   }

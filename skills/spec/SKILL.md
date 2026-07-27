@@ -106,7 +106,13 @@ Tests reference requirements via `@verifies <id>` annotation comments in source 
 
 ### RFC reference (optional)
 
-Writes to `doc/specs/` do not require RFC authorization. The `spec-guard.mjs` PreToolUse hook is advisory: it may emit a warning when `rfc_ref` is present but the write is not covered by the referenced RFC, but it never blocks the write. The `rfc_ref` ledger field is optional metadata that MAY be set by passing `--rfc <dir>` at ledger init; omitting it is normal and causes no warnings.
+Writes to `doc/specs/` do not require RFC authorization — specs are always editable. The `spec-guard.mjs` PreToolUse hook is advisory: it may emit a warning when `rfc_ref` is present but the write is not covered by the referenced RFC, but it never blocks the write. The `rfc_ref` ledger field is optional metadata that MAY be set by passing `--rfc <dir>` at ledger init; omitting it is normal and causes no warnings.
+
+RFCs are decision records — the WHY behind a requirement. Write one when the decision is significant enough to warrant traceability (a new constraint, a breaking change, a policy shift); skip for small or obvious changes. A requirement's `origin_rfc` field traces it back to the motivating RFC, so reviewers can follow the rationale chain from requirement to decision record.
+
+### Advisor validation after spec-backed implementation
+
+After implementing a change backed by spec requirements, invoke `advisor()` (the native tool) or `groundwork:advisor` as a fallback to validate the work is genuinely complete — not just that tests pass, but that the right things were tested in the right environment (CI watched to completion, API changes exercised against real infrastructure, UI pixel-checked against spec).
 
 ### Complete example
 

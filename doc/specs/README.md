@@ -20,7 +20,7 @@ Groundwork is an orchestrator-mode AI coding framework that classifies, delegate
 
 ## Scope
 
-This spec is partial. It covers four load-bearing behavioral areas established in RFC-0001: artifact records (C-ARTIFACT), enforcement hooks (C-ENFORCEMENT), the orchestration model (C-ORCHESTRATION), and the verification gate (C-VERIFICATION). It does not yet specify the four CLIs (`spec`, `ledger`, `rfc`, `journal`), the hooks beyond `orchestrator-impl-guard`, `nesting-guard`, `stop-gate`, `deslop-guard`, and `agent-model-guard`, the twenty-plus skills, or the session-start injection pipeline. Coverage grows by RFC: each accepted RFC nominates the concept nodes and requirement files it introduces.
+This spec is partial. It covers four load-bearing behavioral areas established in RFC-0001: artifact records (C-ARTIFACT), enforcement hooks (C-ENFORCEMENT), the orchestration model (C-ORCHESTRATION), and the verification gate (C-VERIFICATION). It does not yet specify the four CLIs (`spec`, `ledger`, `rfc`, `journal`), the hooks beyond `orchestrator-impl-guard`, `nesting-guard`, `stop-gate`, `deslop-guard`, and `agent-model-guard`, the twenty-plus skills, or the session-start injection pipeline. Coverage grows incrementally: each RFC records the decisions behind the concepts and requirements it introduces, using `origin_rfc` as the traceability link.
 
 ---
 

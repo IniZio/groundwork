@@ -1,6 +1,6 @@
 # Spec Index
 
-_Generated: 2026-07-27T13:21:34.080Z_
+_Generated: 2026-07-27T14:52:33.786Z_
 
 ## Artifact Model
 
@@ -30,10 +30,10 @@ If an Edit or Write call is received from the orchestrator identity on a path th
 
 ## Verification
 
-### [VERIFICATION-R-001 — Stop hook blocks unverified session end](../verification/requirements.md#verification-r-001)
+### [VERIFICATION-R-001 — Stop hook blocks session end while slices are incomplete](../verification/requirements.md#verification-r-001)
 
-If the Stop hook fires and the active run ledger does not carry an advisor APPROVE verdict, then the Stop hook **shall** block session end.
+If the Stop hook fires and the active run ledger contains any slices whose status is not `complete` or `skipped`, or the advisor gate verdict is not `APPROVE`, then the Stop hook **shall** block session end.
 
-### [VERIFICATION-R-002 — Orchestrator obtains advisor approval](../verification/requirements.md#verification-r-002)
+### [VERIFICATION-R-002 — Orchestrator invokes advisor to validate completion](../verification/requirements.md#verification-r-002)
 
-When a non-trivial task is complete, the orchestrator **shall** obtain an APPROVE verdict from the advisor agent.
+When a non-trivial task is complete, the orchestrator **shall** invoke the advisor (native `advisor()` tool, or `groundwork:advisor` if unavailable) to validate that the work is genuinely complete in the real world.

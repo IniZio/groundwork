@@ -4,14 +4,14 @@
  *
  * Advisory prompts injected at SessionStart are routinely ignored. This hook is
  * the mechanical backstop: it refuses to let a session end while an active run
- * still has incomplete vertical slices or has not been signed off by the advisor
- * gate, and on every blocked stop it re-injects the parallel-fan-out rules.
+ * still has incomplete vertical slices, and on every blocked stop it re-injects
+ * the parallel-fan-out rules.
  *
  * Source of truth is the artifact-only ledger at `.groundwork/run.json`, written
  * by the `vertical-slice` / `ultrawork` skills and updated by the orchestrator as
  * waves complete. The hook can only READ the ledger and BLOCK — it cannot observe
  * truth — so it demands the orchestrator record specific evidence (every slice
- * `complete`, `gate.advisor === "APPROVE"`) before the run is allowed to end.
+ * `complete` or `skipped`) before the run is allowed to end.
  *
  * Design guarantees:
  *  - FAIL-OPEN. Any error, missing/garbled ledger, or absent run → allow the stop.
@@ -329,11 +329,13 @@ async function main() {
 
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
   const incomplete = slices.filter((s) => !TERMINAL_STATUSES.has(s?.status))
-  // Only APPROVE is terminal. REPLAN/REVISE/REJECT/pending keep the gate closed;
-  // advisor computes APPROVE per Contract A.2 — stop-gate trusts the verdict (no axis math).
-  const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
   // rfc_ref (if present) is informational metadata — it does NOT block session close.
+
+  // Only APPROVE is terminal. REPLAN/REVISE/REJECT/pending keep the gate closed;
+  // advisor validates real-world completeness (UI tested, e2e coverage, clarifications
+  // resolved) — not just internal consistency.
+  const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
   const workRemains = incomplete.length > 0 || !advisorApproved
   // Complete + APPROVE → allow before plan pre-gate (done runs need no plan check).

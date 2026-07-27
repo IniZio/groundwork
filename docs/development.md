@@ -4,13 +4,11 @@ Full agent conventions and development workflows. For the lean session bootstrap
 
 ## Multi-Platform Package
 
-This package supports **Claude Code**, **OpenCode**, **Pi**, **Kimi Code CLI**, and **Codex** from a single model-neutral source of truth:
+This package supports **Claude Code**, **OpenCode**, **Pi**, and **Codex** from a single model-neutral source of truth:
 
 - Claude Code entry: `.claude-plugin/plugin.json`
 - OpenCode entry: `.opencode/plugins/groundwork.js`
 - Pi entry: `pi/pi.ts` (compiled-TS extension source under `pi/`; pi-only code in `pi/pi-commands/`, `pi/pi-tools/`)
-- Kimi entry: `.kimi-plugin/plugin.json` (skill manifest)
-- Kimi installer: `scripts/install-kimi.sh`
 - Codex entry: `.codex-plugin/plugin.json`
 - Shared logic: `src/lib/`
 
@@ -64,32 +62,6 @@ The registry also carries:
 - **Pi** (`pi/pi.ts`): points pi-subagents at the generated `agents-pi/` directory via `PI_SUBAGENTS_EXTRA_AGENTS_DIR`. No runtime preprocessing — the directory is already platform-correct. Pi is the one platform whose plugin is a compiled-TS extension (plain `pi/` source folder; no `.<platform>-plugin/plugin.json`). The dead vanilla-pi custom-subagent command `pi/pi-commands/agents.ts` was removed — omp supersedes it via generated `agents-pi/` + `model-registry.json`.
 - **OpenCode** (`.opencode/plugins/groundwork.js`): reads from the generated `agents-opencode/` directory.
 
-### Kimi
-
-Kimi Code CLI discovers skills as directories containing `SKILL.md` under project `.agents/skills/` or user `~/.agents/skills/`. Groundwork ships a Kimi-compatible skill tree at `skills/groundwork/` (for example, `use-groundwork`, `arch-review`, `implement`).
-
-To install the skills into `~/.agents/skills`:
-
-```sh
-pnpm run install:kimi
-# or
-scripts/install-kimi.sh
-```
-
-The installer creates symlinks (not copies), so updates to the plugin are reflected automatically. To preview what it would do without changing the filesystem:
-
-```sh
-scripts/install-kimi.sh --dry-run
-```
-
-Set `TARGET_DIR` to install somewhere other than `~/.agents/skills`:
-
-```sh
-TARGET_DIR=./.agents/skills pnpm run install:kimi
-```
-
-The installer refuses to overwrite an existing non-symlink directory or a symlink pointing somewhere else; resolve conflicts manually.
-
 ### Codex
 
 Codex discovers the root `.codex-plugin/plugin.json` manifest and direct skill
@@ -123,16 +95,16 @@ Edit **`agents-src/*.md`** instead. The generator overwrites all three `agents*/
 
 **Never add an `agents` key to `.claude-plugin/plugin.json`.** The Claude Code / opencode loader rejects it with `agents: Invalid input` and **disables the entire plugin** — all agents and skills stop working. Agents are auto-discovered from `agents/` with no manifest key. (Confirmed by a live regression on 2026-06-26: adding the key broke the plugin; removing it restored it.)
 
-### Claude Code vs Pi vs OpenCode vs Kimi vs Codex at a glance
+### Claude Code vs Pi vs OpenCode vs Codex at a glance
 
-| | Claude Code | Pi | OpenCode | Kimi | Codex |
-|---|---|---|---|---|---|
-| Canonical source | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` | `skills/groundwork/*/SKILL.md` |
-| Model assignment | `model-registry.json` → `agents.*.claude-code` (`claude-sonnet-4-6` for Sonnet tier; `opus`/`haiku` aliases for those tiers) | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` | model-neutral; no registry injection | model-neutral; no registry injection |
-| Generated dir | `agents/` | `agents-pi/` | `agents-opencode/` | — | direct `skills/<name>/` |
-| Runtime entry | `.claude-plugin/plugin.json` | `pi/pi.ts` | `.opencode/plugins/groundwork.js` | `.kimi-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| Aliases applied | yes (currently none) | no | yes (currently none) | no | no |
-| Install step | — | — | — | `pnpm run install:kimi` | Codex plugin directory |
+| | Claude Code | Pi | OpenCode | Codex |
+|---|---|---|---|---|
+| Canonical source | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `agents-src/*.md` (shared) | `skills/groundwork/*/SKILL.md` |
+| Model assignment | `model-registry.json` → `agents.*.claude-code` (`claude-sonnet-4-6` for Sonnet tier; `opus`/`haiku` aliases for those tiers) | `model-registry.json` → `agents.*.pi` | `model-registry.json` → `agents.*.opencode` | model-neutral; no registry injection |
+| Generated dir | `agents/` | `agents-pi/` | `agents-opencode/` | direct `skills/<name>/` |
+| Runtime entry | `.claude-plugin/plugin.json` | `pi/pi.ts` | `.opencode/plugins/groundwork.js` | `.codex-plugin/plugin.json` |
+| Aliases applied | yes (currently none) | no | yes (currently none) | no |
+| Install step | — | — | — | Codex plugin directory |
 
 Keep behavioral parity where agents exist on both sides; model fields will differ by design. The roster includes 9 specialists: `orchestrator`, `general-purpose`, `planner`, `advisor` (evidence-gathering + quality review + final APPROVE gate), `qa` (live browser/TUI/CLI testing), `designer`, `test-engineer`, `git-master`, and `explore`.
 

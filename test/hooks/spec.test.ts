@@ -303,6 +303,85 @@ describe("AC6 — index.json fields", () => {
 });
 
 // ---------------------------------------------------------------------------
+// AC6b — explicit summary beats title fallback for concept nodes
+// ---------------------------------------------------------------------------
+
+describe("AC6b — concept summary field beats title in index", () => {
+	it("uses the summary field, not the title, when summary is present on a concept", () => {
+		mkSpec();
+		// Write a concept with a summary that is clearly distinct from the title
+		const dir = SPEC_DIR();
+		writeFileSync(
+			path.join(dir, "README.md"),
+			[
+				"---",
+				"id: C-SUMTEST",
+				"type: concept",
+				"title: Some Generic Title",
+				"summary: An informative authored summary distinct from the title",
+				"parent: null",
+				"origin_rfc: RFC-0001",
+				"---",
+				"",
+				"# Some Generic Title",
+				"",
+			].join("\n"),
+		);
+
+		run(["build"]);
+
+		const idx = JSON.parse(
+			readFileSync(path.join(GEN_DIR(), "index.json"), "utf8"),
+		);
+		const node = idx.nodes["C-SUMTEST"];
+		expect(node).toBeDefined();
+		// summary must be the authored value, not the title
+		expect(node.summary).toBe(
+			"An informative authored summary distinct from the title",
+		);
+		expect(node.summary).not.toBe("Some Generic Title");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AC6c — title falls through firstSentence(ears) before bare id
+// Kills the mutant: `title: String(data.title || data.summary || id)`
+// Without the fix, a requirement with ears but no title/summary gets title===id,
+// causing spec show to suppress the Title line and the index to show the bare id.
+// ---------------------------------------------------------------------------
+
+describe("AC6c — title falls back through ears before bare id", () => {
+	it("sets title to firstSentence(ears) when no title or summary field is present", () => {
+		mkSpec();
+		writeReadme("", "C-ROOT", "Root Concept");
+		writeReq("requirements", "req-ears-only.md", {
+			id: "ROOT-R-ears01",
+			concept: "C-ROOT",
+			ears: "The system shall process requests without delay.",
+			pattern: "ubiquitous",
+			verify: "Measure latency.",
+			verification: "automated",
+			criticality: "must",
+			origin_rfc: "RFC-0001",
+			status: "active",
+			// NOTE: no summary, no title — this is the defect scenario
+		});
+
+		run(["build"]);
+
+		const idx = JSON.parse(
+			readFileSync(path.join(GEN_DIR(), "index.json"), "utf8"),
+		);
+		const node = idx.nodes["ROOT-R-ears01"];
+		expect(node).toBeDefined();
+		// title must NOT be the bare id
+		expect(node.title).not.toBe("ROOT-R-ears01");
+		// title must be derived from the ears sentence (firstSentence)
+		expect(node.title).toContain("The system shall process requests");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // AC7 — spec show without --full
 // ---------------------------------------------------------------------------
 
@@ -594,9 +673,9 @@ describe("AC12 — verify field validation", () => {
 // AC13 — delegation: absent script exits 127; present script reaches impl
 // ---------------------------------------------------------------------------
 
-describe("AC13 — delegation of verify/steer/lint/metrics/doc", () => {
+describe("AC13 — delegation of verify/lint/metrics/doc", () => {
 	// All subcommands the dispatcher recognises as delegated.
-	const ALL_DELEGATED = ["verify", "steer", "lint", "metrics", "doc"];
+	const ALL_DELEGATED = ["verify", "lint", "metrics", "doc"];
 	// Derive the absent set at test-time so adding a new spec-<sub>.mjs
 	// automatically moves it out of this group without a manual edit.
 	const hooksDir = path.resolve(import.meta.dirname, "..", "..", "hooks");
@@ -618,18 +697,68 @@ describe("AC13 — delegation of verify/steer/lint/metrics/doc", () => {
 	// Assertions are specific to each script's documented exit codes so that
 	// a mutation (removing the script) causes a concrete assertion failure.
 	describe("present script → reaches implementation (not 127)", () => {
-		it("spec steer with no args exits 2 (usage error), reaching spec-steer.mjs", () => {
-			const r = run(["steer"]);
-			// exit 2 = usage error from spec-steer.mjs; 127 would mean script absent
-			expect(r.code).toBe(2);
-			expect(r.stdout).toContain("spec steer");
-		});
-
 		it("spec lint with no args exits 0 (informational scan), reaching spec-lint.mjs", () => {
 			const r = run(["lint"]);
 			// exit 0 = clean informational run from spec-lint.mjs; 127 would mean script absent
 			expect(r.code).toBe(0);
 			expect(r.stdout).toContain("spec lint");
 		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M1 — summary-before-ears precedence (mutation pin)
+// A surviving mutant swapped summary→ears. This test fails if ears is shown
+// in the index instead of the authored summary.
+// ---------------------------------------------------------------------------
+
+describe("M1 — index uses summary over ears when both are present", () => {
+	it("index.md shows the summary gloss, not the ears sentence, when they differ", () => {
+		mkSpec();
+		writeReadme("", "C-ROOT", "Root");
+		writeReq(
+			"requirements",
+			"pinned.md",
+			minReq("C-ROOT", "ROOT-R-m1aa", {
+				summary: "Short retrieval gloss for the index.",
+				ears: "When triggered, the system shall perform the long normative action described here.",
+			}),
+		);
+		run(["build"]);
+		const idx = readFileSync(
+			path.join(GEN_DIR(), "index.md"),
+			"utf8",
+		);
+		// summary must appear in the index
+		expect(idx).toContain("Short retrieval gloss for the index");
+		// ears sentence must NOT appear in the index (it's for show/search, not retrieval)
+		expect(idx).not.toContain("perform the long normative action");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M3 — requirement title derived from summary, not concept id (mutation pin)
+// The prior code fell back to data.concept, making Title and Concept identical.
+// This test fails if the title is the parent concept id instead of the summary.
+// ---------------------------------------------------------------------------
+
+describe("M3 — spec show uses summary as title for requirements", () => {
+	it("show output for a requirement shows summary as title, not the concept id", () => {
+		mkSpec();
+		writeReadme("", "C-ROOT", "Root");
+		writeReq(
+			"requirements",
+			"title-check.md",
+			minReq("C-ROOT", "ROOT-R-m3bb", {
+				summary: "Distinct summary gloss for the requirement.",
+				ears: "The system shall do something.",
+			}),
+		);
+		run(["build"]);
+		const r = run(["show", "ROOT-R-m3bb"]);
+		expect(r.code, `stderr: ${r.stderr}`).toBe(0);
+		// Title must show the summary, not the parent concept id
+		expect(r.stdout).toContain("Distinct summary gloss");
+		expect(r.stdout).not.toContain("Title: C-ROOT");
 	});
 });

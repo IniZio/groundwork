@@ -2,18 +2,21 @@
 /**
  * spec-lint.mjs — `spec lint [--rfc <uid>]` subcommand
  *
- * Without --rfc: checks every spec node against steering invariants and
+ * Without --rfc: checks every spec node against 6 spec invariants and
  *   reports each violation as a LINT_DRIFT journal event. AC 5.
  * With --rfc <uid>: checks only the nodes named by that RFC's spec_delta
  *   and exits 1 if any violation is found. AC 6.
  *
- * NEVER writes to docs/steering/. Opens steering files read-only. AC 8.
+ * Spec files are opened read-only; this command never writes to docs/spec/**. AC 8.
  *
- * Steering invariants checked:
- *   1. title-present   — every spec node must have a non-empty title
- *   2. ears-or-summary — requirement nodes must have ears or summary
- *   3. origin-rfc      — every node must declare origin_rfc in its
+ * Spec invariants checked:
+ *   1. ears-or-summary — requirement nodes must have ears or summary (either/or)
+ *   2. origin-rfc      — every node must declare origin_rfc in its
  *                        markdown frontmatter
+ *   3. required-field  — all schema-required fields must be present and non-blank
+ *   4. enum-values     — type, pattern, verification, criticality, status
+ *   5. id-format       — concept and requirement id regexes
+ *   6. summary-length  — summary must be ≤25 words
  *
  * Exit codes: 0 success  1 violations found (--rfc mode only)  2 usage error
  */
@@ -56,8 +59,12 @@ function parseSimpleFrontmatter(content) {
   for (const line of match[1].split(/\r?\n/)) {
     const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/)
     if (!m) continue
-    const val = m[2].trim().replace(/^['"]|['"]$/g, '')
-    result[m[1]] = val === 'null' ? null : val
+    const rawVal = m[2].trim()
+    // Check for the unquoted YAML null scalar BEFORE stripping quotes, so that
+    // a quoted "null" string is preserved as the string 'null' (making the
+    // sentinel check `rawFm.origin_rfc === 'null'` reachable for that case).
+    const val = rawVal === 'null' ? null : rawVal.replace(/^['"]|['"]$/g, '')
+    result[m[1]] = val
   }
   return result
 }
@@ -105,7 +112,28 @@ function parseSpecDeltaTargets(rfcContent) {
 }
 
 // ---------------------------------------------------------------------------
-// Steering invariant checks
+// Schema constants (RFC §2.2 concept nodes, §2.3 requirement nodes)
+// ---------------------------------------------------------------------------
+
+// Required fields per node type
+const CONCEPT_REQUIRED = ['id', 'type', 'title', 'summary', 'parent', 'origin_rfc']
+// ears and summary are intentionally omitted from REQ_REQUIRED: the either/or
+// rule ("ears or summary") is enforced by the ears-or-summary invariant below,
+// which gives a clearer error message than two individual required-field hits.
+const REQ_REQUIRED = ['id', 'type', 'concept', 'pattern', 'verify', 'verification', 'origin_rfc', 'status']
+
+// Valid enum values
+const VALID_PATTERN = new Set(['ubiquitous', 'event', 'state', 'option', 'unwanted'])
+const VALID_VERIFICATION = new Set(['automated', 'manual', 'hybrid'])
+const VALID_CRITICALITY = new Set(['must', 'should'])
+const VALID_STATUS = new Set(['active', 'superseded', 'withdrawn'])
+
+// Id regexes (RFC §2.2, §2.3)
+const CONCEPT_ID_RE = /^C-[A-Z0-9]+(-[A-Z0-9]+)*$/
+// Requirement ids: <CONCEPT-SUFFIX>-R-[a-z0-9]{4} (suffix = concept id with C- removed)
+
+// ---------------------------------------------------------------------------
+// Spec invariant checks
 // ---------------------------------------------------------------------------
 
 /**
@@ -115,23 +143,90 @@ function parseSpecDeltaTargets(rfcContent) {
  */
 function checkNodeInvariants(node, rawFm) {
   const violations = []
+  const id = node.id || rawFm.id || '(unknown)'
+  const nodeType = rawFm.type || node.type
+  const isRequirement = nodeType === 'requirement' || (node.concept && nodeType !== 'concept')
+  const isConcept = !isRequirement
 
-  // Invariant 1: title must be present and non-empty.
-  if (!node.title || !node.title.trim()) {
-    violations.push(`title-present: node "${node.id}" has no title`)
-  }
-
-  // Invariant 2: requirement nodes must have ears or summary.
-  const isRequirement = node.type === 'requirement' || (node.concept && node.type !== 'concept')
+  // Invariant 1: requirement nodes must have ears or summary (either/or).
+  // Uses rawFm (frontmatter) — not the index node — because spec-build populates
+  // node.summary from body text when the YAML field is absent, masking the absence.
+  // ears and summary are not in REQ_REQUIRED so this is the sole check for them.
   if (isRequirement) {
-    if (!(node.ears && node.ears.trim()) && !(node.summary && node.summary.trim())) {
-      violations.push(`ears-or-summary: requirement "${node.id}" has neither ears nor summary`)
+    const hasEars = rawFm.ears && rawFm.ears.trim()
+    const hasSummary = rawFm.summary && rawFm.summary.trim()
+    if (!hasEars && !hasSummary) {
+      violations.push(`ears-or-summary: requirement "${id}" has neither ears nor summary`)
     }
   }
 
-  // Invariant 3: origin_rfc must be present in the markdown frontmatter.
+  // Invariant 2: origin_rfc must be present in the markdown frontmatter.
   if (!rawFm.origin_rfc || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
-    violations.push(`origin-rfc: node "${node.id}" has no origin_rfc in frontmatter`)
+    violations.push(`origin-rfc: node "${id}" has no origin_rfc in frontmatter`)
+  }
+
+  // Invariant 3: required fields must be present and non-blank.
+  // Note: `parent` accepts explicit null (root concept); all other required fields must be non-null, non-blank strings.
+  const requiredFields = isRequirement ? REQ_REQUIRED : CONCEPT_REQUIRED
+  for (const field of requiredFields) {
+    const val = rawFm[field]
+    if (field === 'parent') {
+      // null is explicitly valid (root concept); only truly absent (undefined) is a violation
+      if (val === undefined) {
+        violations.push(`required-field: node "${id}" is missing required field "${field}"`)
+      }
+    } else if (val === undefined || val === null || val === '' || (typeof val === 'string' && val.trim() === '')) {
+      violations.push(`required-field: node "${id}" is missing required field "${field}"`)
+    }
+  }
+
+  // Invariant 4: enum values must be valid.
+  if (rawFm.type && rawFm.type !== 'concept' && rawFm.type !== 'requirement') {
+    violations.push(`enum-value: node "${id}" has invalid type "${rawFm.type}" (must be concept or requirement)`)
+  }
+  if (isRequirement) {
+    if (rawFm.pattern && !VALID_PATTERN.has(rawFm.pattern)) {
+      violations.push(`enum-value: node "${id}" has invalid pattern "${rawFm.pattern}" (must be ubiquitous|event|state|option|unwanted)`)
+    }
+    if (rawFm.verification && !VALID_VERIFICATION.has(rawFm.verification)) {
+      violations.push(`enum-value: node "${id}" has invalid verification "${rawFm.verification}" (must be automated|manual|hybrid)`)
+    }
+    if (rawFm.criticality && !VALID_CRITICALITY.has(rawFm.criticality)) {
+      violations.push(`enum-value: node "${id}" has invalid criticality "${rawFm.criticality}" (must be must|should)`)
+    }
+    if (rawFm.status && !VALID_STATUS.has(rawFm.status)) {
+      violations.push(`enum-value: node "${id}" has invalid status "${rawFm.status}" (must be active|superseded|withdrawn)`)
+    }
+  }
+
+  // Invariant 5: id format must match schema regex.
+  if (isConcept && rawFm.id) {
+    if (!CONCEPT_ID_RE.test(rawFm.id)) {
+      violations.push(`id-format: concept "${rawFm.id}" does not match pattern ^C-[A-Z0-9]+(-[A-Z0-9]+)*$`)
+    }
+  }
+  if (isRequirement && rawFm.id) {
+    const conceptId = rawFm.concept || ''
+    const suffix = conceptId.replace(/^C-/, '')
+    if (suffix) {
+      const reqIdRe = new RegExp(`^${suffix}-R-[a-z0-9]{4}$`)
+      if (!reqIdRe.test(rawFm.id)) {
+        violations.push(`id-format: requirement "${rawFm.id}" does not match pattern ${suffix}-R-[a-z0-9]{4}`)
+      }
+    } else {
+      if (!/^[A-Z0-9]+(-[A-Z0-9]+)*-R-[a-z0-9]{4}$/.test(rawFm.id)) {
+        violations.push(`id-format: requirement "${rawFm.id}" does not match pattern <SUFFIX>-R-[a-z0-9]{4}`)
+      }
+    }
+  }
+
+  // Invariant 6: summary must be ≤25 words.
+  const summary = rawFm.summary || node.summary
+  if (summary && summary.trim()) {
+    const wordCount = summary.trim().split(/\s+/).length
+    if (wordCount > 25) {
+      violations.push(`summary-length: node "${id}" summary has ${wordCount} words (max 25)`)
+    }
   }
 
   return violations
@@ -152,7 +247,7 @@ function emitLintDrift(projectDir, rfcUid, nodeId, violation) {
       'append',
       '--rfc', rfcUid,
       '--type', 'LINT_DRIFT',
-      '--msg', `steering invariant violation on ${nodeId}: ${violation}`,
+      '--msg', `spec invariant violation on ${nodeId}: ${violation}`,
       '--data', JSON.stringify({ node_id: nodeId, invariant }),
     ], { stdio: 'pipe', cwd: projectDir })
   } catch { /* best-effort — never fail the caller */ }
@@ -165,7 +260,7 @@ function emitLintDrift(projectDir, rfcUid, nodeId, violation) {
 function usage() {
   process.stdout.write(`Usage: spec lint [--rfc <uid>]
 
-  Without --rfc: check every spec node against steering invariants.
+  Without --rfc: check every spec node against 6 spec invariants.
     Violations are printed to stdout and recorded as LINT_DRIFT journal events.
     Exit 0 always (informational).
 
@@ -173,12 +268,15 @@ function usage() {
     Violations are printed to stderr and recorded as LINT_DRIFT journal events.
     Exit 1 if any violation; exit 0 if clean.
 
-Steering invariants:
-  title-present   every spec node must have a non-empty title
-  ears-or-summary requirement nodes must have ears or summary
+Spec invariants:
+  ears-or-summary requirement nodes must have ears or summary (either/or)
   origin-rfc      every node must declare origin_rfc in frontmatter
+  required-field  all schema-required fields must be present and non-blank
+  enum-values     type, pattern, verification, criticality, status
+  id-format       concept and requirement id regexes
+  summary-length  summary must be ≤25 words
 
-Steering files are opened read-only; this command never writes to docs/steering/.
+Spec files are opened read-only; this command never writes to docs/spec/**.
 
 Exit codes: 0 success  1 violations (--rfc mode)  2 usage error
 `)
@@ -225,6 +323,16 @@ if (rfcMode) {
   const rfcContent = readFileSync(join(rfcDir, 'rfc.md'), 'utf8')
   const deltaPaths = parseSpecDeltaTargets(rfcContent)
 
+  // FIX 3: Verify each spec_delta target path exists on disk. A delta pointing
+  // at a nonexistent path is always a lint failure — fail-open hides typos.
+  const missingPaths = deltaPaths.filter(t => !existsSync(join(projectDir, t)))
+  if (missingPaths.length > 0) {
+    for (const mp of missingPaths) {
+      process.stderr.write(`spec lint: spec_delta target does not exist on disk: ${mp}\n`)
+    }
+    process.exit(1)
+  }
+
   // Convert delta paths to relPath format (strip docs/spec/ prefix)
   const deltaRelPaths = new Set(deltaPaths.map(p => p.replace(/^docs\/spec\//, '')))
 
@@ -260,7 +368,7 @@ for (const node of targetNodes) {
 if (violations.length === 0) {
   process.stdout.write(rfcMode
     ? `spec lint --rfc ${rfcUid}: clean — no violations found.\n`
-    : 'spec lint: clean — no steering invariant violations found.\n')
+    : 'spec lint: clean — no spec invariant violations found.\n')
   process.exit(0)
 }
 

@@ -231,17 +231,22 @@ export function buildIndexData(sd) {
       }
     }
 
-    // AC6: first-sentence summary from ears (for requirements) or body/title (for concepts)
-    const summary = data.ears
-      ? firstSentence(String(data.ears))
-      : data.title
-        ? String(data.title)
-        : firstSentence(body || id)
+    // AC6: summary is the RFC-designated index field (≤25-word retrieval gloss);
+    //      ears is the normative EARS sentence used for display in show/search but
+    //      not surfaced in the index — agents scan the index to pick a file to open,
+    //      and the authored summary serves that better than the full normative sentence.
+    const summary = data.summary
+      ? String(data.summary)
+      : data.ears
+        ? firstSentence(String(data.ears))
+        : data.title
+          ? String(data.title)
+          : firstSentence(body || id)
 
     nodes[id] = {
       id,
       type: data.type ? String(data.type) : (data.concept ? 'requirement' : 'concept'),
-      title: String(data.title || data.concept || id),
+      title: String(data.title || data.summary || (data.ears ? firstSentence(String(data.ears)) : id)),
       summary,
       refs,
       byteSize,

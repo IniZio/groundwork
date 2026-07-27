@@ -10,7 +10,7 @@
  *   search <q> [--limit N]  — search nodes (default --limit 8)
  *   tree [--depth N]        — show concept tree (default depth 2)
  *   deps <id>               — show inbound/outbound references from index
- *   verify|steer|lint|metrics|doc [args…] — delegate to sibling script
+ *   verify|lint|metrics|doc [args…] — delegate to sibling script
  *
  * Exit codes: 0 success  1 operational failure  2 usage error
  */
@@ -151,6 +151,15 @@ function runBuild(sd, { silent = false } = {}) {
   writeFileSync(join(genDir, 'coverage.json'), JSON.stringify(coverage, null, 2) + '\n', 'utf8')
 
   // index.md — human-readable table
+  /** Truncate on a word boundary; append ellipsis if cut. */
+  function truncWB(s, n) {
+    if (!s || s.length <= n) return (s || '').replace(/\|/g, '\\|')
+    const cut = s.slice(0, n)
+    const lastSpace = cut.lastIndexOf(' ')
+    const trimmed = lastSpace > n * 0.6 ? cut.slice(0, lastSpace) : cut
+    return trimmed.replace(/\|/g, '\\|') + '…'
+  }
+
   const rows = Object.values(nodes).sort((a, b) => a.id.localeCompare(b.id))
   const lines = [
     '# Spec Index',
@@ -160,7 +169,7 @@ function runBuild(sd, { silent = false } = {}) {
     '| id | type | status | summary |',
     '|---|---|---|---|',
     ...rows.map(n =>
-      `| ${n.id} | ${n.type} | ${n.status || '-'} | ${(n.summary || '').replace(/\|/g, '\\|').slice(0, 80)} |`,
+      `| ${n.id} | ${n.type} | ${n.status || '-'} | ${truncWB(n.summary, 80)} |`,
     ),
     '',
   ]
@@ -223,7 +232,6 @@ const HELP = {
     flags: [],
   },
   verify: { summary: 'run verification suite (delegates to spec-verify.mjs)', usage: 'spec verify [args…]', flags: [] },
-  steer: { summary: 'steering report (delegates to spec-steer.mjs)', usage: 'spec steer [args…]', flags: [] },
   lint: { summary: 'lint spec files (delegates to spec-lint.mjs)', usage: 'spec lint [args…]', flags: [] },
   metrics: { summary: 'metrics report (delegates to spec-metrics.mjs)', usage: 'spec metrics [args…]', flags: [] },
   doc: { summary: 'generate documentation (delegates to spec-doc.mjs)', usage: 'spec doc [args…]', flags: [] },
@@ -374,6 +382,7 @@ function cmdReqNew(args) {
     `id: ${reqId}`,
     `concept: ${conceptId}`,
     `ears: "TODO: write EARS requirement here."`,
+    `summary: "TODO: write a ≤25-word retrieval gloss for this requirement."`,
     `pattern: ubiquitous`,
     `verify: "TODO: describe how to verify this requirement."`,
     `verification: automated`,
@@ -597,7 +606,7 @@ function main() {
   const { flags } = parseFlags(rest)
   if (flags.help) { cmdHelp([cmd]); return }
 
-  const DELEGATED = new Set(['verify', 'steer', 'lint', 'metrics', 'doc'])
+  const DELEGATED = new Set(['verify', 'lint', 'metrics', 'doc'])
 
   try {
     switch (cmd) {

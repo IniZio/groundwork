@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spec-concept.schema.json",
+  "$comment": "Deliberately NOT covered by this schema (handled by spec-lint.mjs at runtime):\n  1. summary-length: ≤25-word limit — JSON Schema has no word-count keyword.\n  2. origin_rfc referential integrity: whether the value resolves to a real RFC file on disk.\n  3. superseded_by referential integrity: whether the target node exists.\n  4. snapshot_of referential integrity: whether the referenced snapshot exists.\n  5. parent-agrees-with-directory-path: the parent field value must match the concept's containing directory path.\nThe origin_rfc 'null' sentinel (literal string \"null\") IS rejected here via not:{const:\"null\"}.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "title", "summary", "parent", "origin_rfc"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^C-[A-Z0-9]+(-[A-Z0-9]+)*$",
+      "description": "Concept node identifier; matches RFC §2.2 pattern C-<SEGMENT>(-<SEGMENT>)*"
+    },
+    "type": {
+      "const": "concept"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "≤25 words enforced by spec-lint.mjs, not this schema"
+    },
+    "parent": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ],
+      "description": "Parent concept id, or null for the root concept (C-GROUNDWORK)"
+    },
+    "origin_rfc": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "const": "null" },
+      "description": "RFC uid that introduced this node; literal string 'null' is rejected here"
+    },
+    "superseded_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_of": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

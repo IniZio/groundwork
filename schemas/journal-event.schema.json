@@ -1,0 +1,53 @@
+{
+  "$id": "journal-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Journal Event",
+  "description": "One line of a groundwork journal shard (.jsonl). Appended atomically by hooks/journal.mjs via hooks/lib/journal-io.mjs.",
+  "$comment": "Invariants NOT enforced by this schema (implemented as hand-written checks in STD6 / hooks/journal.mjs): (1) NEVER_COMPRESS enforcement — DECISION and SPEC_CHANGE events must not be folded into digest summaries; this is a runtime policy, not a structural constraint; (2) shard-path naming — events are stored under .groundwork/journal/<YYYY-MM-DD>-<session_id>.jsonl; the session_id in the path is not cross-checked against the 'session' field here; (3) rfc and msg are required by the journal CLI (hooks/journal.mjs line 148) but not by all journal writers — e.g. SESSION_START events emitted by session-hook writers may omit both.",
+
+  "type": "object",
+  "required": ["ts", "type"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when the event was appended (UTC)."
+    },
+    "session": {
+      "type": "string",
+      "description": "Claude Code session id (or named session handle) of the agent that appended the event."
+    },
+    "rfc": {
+      "type": "string",
+      "description": "RFC identifier the event belongs to (e.g. R-20260726-K4M2QX). Required by the journal CLI; may be absent on session-start hook events."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "DECISION",
+        "SPEC_CHANGE",
+        "LINT_DRIFT",
+        "PROTOTYPE_RESULT",
+        "FAILURE",
+        "MILESTONE",
+        "TASK_COMPLETE",
+        "GATE",
+        "VERIFICATION",
+        "WAIVER",
+        "HANDOFF",
+        "SESSION_START"
+      ],
+      "description": "Event type drawn from VALID_TYPES in hooks/lib/journal-io.mjs (12 values as of 2026-07-26; STEERING_UPDATE was removed)."
+    },
+    "msg": {
+      "type": "string",
+      "description": "Human-readable event message. Required by the journal CLI; may be absent on non-CLI writers."
+    },
+    "data": {
+      "type": "object",
+      "description": "Optional structured payload attached by the journal CLI (--data flag). Shape is type-specific and not constrained here.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,154 @@
+{
+  "$id": "run-ledger.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Run Ledger",
+  "description": "Groundwork run ledger — the orchestrator's session-scoped work record stored under .groundwork/runs/<session_id>.json (legacy: .groundwork/run.json).",
+  "$comment": "ENFORCEMENT MODEL: Two-tier depending on command. (1) HARD at `init` (cmdInit calls checkLedgerStrict): schema violations are treated as hard errors — they throw with exitCode=1, so a schema-violating ledger can never be written at init time. (2) ADVISORY for all other mutations (complete, gate, set, add — these call the soft checkLedger): schema violations surface as warnings to stderr, the command succeeds with exit 0. Rationale: a running session must be able to drain its ledger even if an older schema version wrote something structurally non-conformant. The three hand-written HARD checks (exit 1, all commands): (1) blocked_by referential integrity — referenced ids must exist in slices[]; (2) acceptance array must be non-empty; (3) individual acceptance strings must be non-empty. Additional invariants the schema does NOT cover at all: (a) acceptance-criteria satisfaction — strings are free-form, not evaluated; (b) write_token secrecy — schema treats it as an opaque string; (c) slice id uniqueness — JSON Schema cannot assert uniqueness of non-primitive items across arrays.",
+
+  "type": "object",
+  "required": ["session_id", "active", "slices"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "UUID of the Claude Code session that owns this ledger."
+    },
+    "active": {
+      "type": "boolean",
+      "description": "False once the run is abandoned or the stop-gate releases the session."
+    },
+    "goal": {
+      "type": "string",
+      "description": "One-sentence description of the run's objective (preferred field; older ledgers used 'brief')."
+    },
+    "brief": {
+      "type": "string",
+      "description": "Legacy alias for 'goal'. Accepted for back-compat."
+    },
+    "plan_ref": {
+      "type": ["string", "null"],
+      "description": "Path (or null) to the plan file consulted for this run."
+    },
+    "write_token": {
+      "type": "string",
+      "description": "Opaque random token required for gate/complete mutations. Treated as a secret; never reproduced in logs."
+    },
+    "feature_slug": {
+      "type": "string",
+      "description": "Optional link to .groundwork/features/<slug>/ for feature-ledger tracking."
+    },
+    "reinforcements": {
+      "description": "Arbitrary extra context or annotations attached by the orchestrator."
+    },
+    "progressSig": {
+      "description": "Opaque progress signal used by the stop-gate hook."
+    },
+    "gate": {
+      "type": "object",
+      "description": "Gate verdicts keyed by gate name (advisor, verifier, qa).",
+      "properties": {
+        "advisor": {
+          "$ref": "#/$defs/advisorGate"
+        },
+        "verifier": {
+          "type": "string"
+        },
+        "qa": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "slices": {
+      "type": "array",
+      "description": "Ordered list of work slices tracked by this run.",
+      "items": {
+        "$ref": "#/$defs/slice"
+      }
+    }
+  },
+  "additionalProperties": true,
+
+  "$defs": {
+    "advisorGate": {
+      "description": "Advisor verdict — either a bare verdict string or a rich object form.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["APPROVE", "CORRECTION", "STOP", "GAPS", "REPLAN"],
+          "description": "Bare verdict string (legacy / shorthand form)."
+        },
+        {
+          "type": "object",
+          "required": ["verdict"],
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": ["APPROVE", "CORRECTION", "STOP", "GAPS", "REPLAN"]
+            },
+            "citation": {
+              "type": "string",
+              "description": "Evidence or source the advisor cited."
+            },
+            "rubric": {
+              "type": "string",
+              "description": "Rubric text used for the verdict."
+            },
+            "axes": {
+              "type": "object",
+              "description": "Scored quality axes (0–3 each).",
+              "properties": {
+                "correctness":       { "type": "integer", "minimum": 0, "maximum": 3 },
+                "completeness":      { "type": "integer", "minimum": 0, "maximum": 3 },
+                "over_engineering":  { "type": "integer", "minimum": 0, "maximum": 3 },
+                "contract_fitness":  { "type": "integer", "minimum": 0, "maximum": 3 },
+                "plan_soundness":    { "type": "integer", "minimum": 0, "maximum": 3 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "slice": {
+      "type": "object",
+      "required": ["id", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique slice identifier within the run (e.g. S1, STD6-A)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete", "skipped"],
+          "description": "Current execution state of the slice."
+        },
+        "wave": {
+          "type": ["integer", "null"],
+          "description": "Wave number for fan-out ordering. May be absent on legacy slices."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["plan", "diagnose", "design", "impl"],
+          "description": "Work category. Absent slices default to 'impl' at runtime."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Human-readable description of the work."
+        },
+        "blocked_by": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ids of slices that must complete before this one starts. Referential integrity is NOT enforced here."
+        },
+        "acceptance": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Observable acceptance criteria strings. Satisfaction is NOT evaluated by this schema."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

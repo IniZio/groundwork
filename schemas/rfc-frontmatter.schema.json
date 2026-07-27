@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rfc-frontmatter",
+  "title": "RFC Frontmatter",
+  "description": "JSON Schema 2020-12 for Groundwork RFC frontmatter (rfc.md YAML header). Derived from hooks/rfc.mjs validateFrontmatter.",
+  "$comment": "Invariants deliberately NOT covered by this schema: (1) legal status TRANSITIONS — a directed graph (draft→review→accepted→…), not expressible in JSON Schema; (2) body_digest correctness — SHA-256 of the rendered body, checked at review+ statuses by rfc.mjs at runtime; (3) manifest freshness — the <!-- rfc:manifest --> block in rfc.md is a generated index, verified separately; (4) spec_delta target existence on disk — whether each target path actually exists is a filesystem check, not a schema check; (5) cross-field constraint: accepted_by must be 'human' when classification is 'spec_change' — requires if/then logic beyond the enum; (6) supersedes uid referential integrity — whether each uid in supersedes[] names an existing RFC.",
+
+  "type": "object",
+
+  "required": [
+    "schema",
+    "uid",
+    "ordinal",
+    "slug",
+    "title",
+    "status",
+    "classification",
+    "created",
+    "updated",
+    "accepted_at",
+    "accepted_by",
+    "supersedes",
+    "superseded_by",
+    "body_digest",
+    "spec_delta"
+  ],
+
+  "properties": {
+    "schema": {
+      "description": "RFC document schema version. 1 = legacy single-file layout; 2 = multi-file layout with sections/ and tasks.yaml sidecar.",
+      "type": "integer",
+      "enum": [1, 2]
+    },
+
+    "uid": {
+      "description": "Globally unique RFC identifier. Format: R-YYYYMMDD-XXXXXX where XXXXXX is 6 uppercase alphanumeric characters.",
+      "type": "string",
+      "pattern": "^R-[0-9]{8}-[A-Z0-9]{6}$"
+    },
+
+    "ordinal": {
+      "description": "Sequential RFC number within the project (1-based).",
+      "type": "integer",
+      "minimum": 1
+    },
+
+    "slug": {
+      "description": "URL-safe kebab-case identifier derived from the RFC title.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "title": {
+      "description": "Human-readable RFC title.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "status": {
+      "description": "Current lifecycle status. Legal transitions are enforced by rfc.mjs at runtime, not by this schema.",
+      "type": "string",
+      "enum": ["draft", "review", "accepted", "implementing", "implemented", "rejected", "superseded", "abandoned"]
+    },
+
+    "classification": {
+      "description": "RFC impact class. spec_change requires human acceptance; tactical may be advisor-accepted.",
+      "type": "string",
+      "enum": ["spec_change", "tactical"]
+    },
+
+    "created": {
+      "description": "ISO 8601 datetime when the RFC was created.",
+      "type": "string"
+    },
+
+    "updated": {
+      "description": "ISO 8601 datetime when the RFC frontmatter was last modified.",
+      "type": "string"
+    },
+
+    "accepted_at": {
+      "description": "ISO 8601 datetime when the RFC was accepted, or null if not yet accepted.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+
+    "accepted_by": {
+      "description": "Who accepted the RFC. 'human' or 'advisor', or null if not yet accepted. spec_change classification requires 'human'.",
+      "oneOf": [
+        { "type": "string", "enum": ["human", "advisor"] },
+        { "type": "null" }
+      ]
+    },
+
+    "supersedes": {
+      "description": "Array of RFC uids that this RFC supersedes (may be empty).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^R-[0-9]{8}-[A-Z0-9]{6}$"
+      }
+    },
+
+    "superseded_by": {
+      "description": "UID of the RFC that supersedes this one, or null if not superseded.",
+      "oneOf": [
+        { "type": "string", "pattern": "^R-[0-9]{8}-[A-Z0-9]{6}$" },
+        { "type": "null" }
+      ]
+    },
+
+    "body_digest": {
+      "description": "SHA-256 digest of the rendered RFC body. Stamped when status transitions to 'review'. Null on drafts.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+
+    "spec_delta": {
+      "description": "Ordered list of spec changes this RFC proposes. Each entry names a file and the operation applied to it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["op", "target"],
+        "properties": {
+          "op": {
+            "description": "Change type, using the Keep a Changelog v1.1.0 vocabulary (full published set). The prior bespoke enum (add|modify|supersede|remove) was replaced by STD7 in a hard cutover: add→Added, modify→Changed, remove→Removed, supersede→Deprecated with the replacement pointer moved into `description`.",
+            "type": "string",
+            "enum": ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+          },
+          "target": {
+            "description": "Repo-relative path of the spec file affected. Whether the path exists on disk is not validated here.",
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "description": "Human-readable description of the change. Named per OpenAPI Overlay field conventions (renamed from `note` by STD7).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "links": {
+      "description": "Freeform map of related links (e.g. GitHub issues, PRs). May be absent or empty.",
+      "type": "object"
+    },
+
+    "tasks": {
+      "description": "Legacy: inline task list for single-file RFCs (schema 1). Multi-file RFCs (schema 2) use a tasks.yaml sidecar instead. Validated by rfc.mjs when present but not fully constrained here.",
+      "type": "array"
+    }
+  }
+}

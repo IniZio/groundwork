@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spec-requirement.schema.json",
+  "$comment": "Deliberately NOT covered by this schema (handled by spec-lint.mjs at runtime):\n  1. summary-length: ≤25-word limit — JSON Schema has no word-count keyword.\n  2. origin_rfc referential integrity: whether the value resolves to a real RFC file on disk.\n  3. superseded_by referential integrity: whether the target node exists.\n  4. snapshot_of referential integrity: whether the referenced snapshot exists.\n  5. parent-agrees-with-directory-path: N/A for requirements (no parent field), but concept agreement is not validated here.\nThe ears-or-summary either/or rule IS encoded here via anyOf (neither field is individually required).\nThe origin_rfc 'null' sentinel (literal string \"null\") IS rejected here via not:{const:\"null\"}.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "concept", "pattern", "verify", "verification", "origin_rfc", "status"],
+  "anyOf": [
+    { "required": ["ears"], "properties": { "ears": { "type": "string", "minLength": 1 } } },
+    { "required": ["summary"], "properties": { "summary": { "type": "string", "minLength": 1 } } }
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*-R-[a-z0-9]{4}$",
+      "description": "Requirement identifier; matches pattern <CONCEPT-SUFFIX>-R-[a-z0-9]{4}"
+    },
+    "type": {
+      "const": "requirement"
+    },
+    "concept": {
+      "type": "string",
+      "pattern": "^C-[A-Z0-9]+(-[A-Z0-9]+)*$",
+      "description": "Id of the parent concept node"
+    },
+    "pattern": {
+      "enum": ["ubiquitous", "event", "state", "option", "unwanted"]
+    },
+    "verify": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable verification procedure"
+    },
+    "verification": {
+      "enum": ["automated", "manual", "hybrid"]
+    },
+    "origin_rfc": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "const": "null" },
+      "description": "RFC uid that introduced this node; literal string 'null' is rejected here"
+    },
+    "status": {
+      "enum": ["active", "superseded", "withdrawn"]
+    },
+    "ears": {
+      "type": "string",
+      "minLength": 1,
+      "description": "EARS-format requirement sentence; required unless summary is present"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plain-English summary; required unless ears is present; ≤25 words enforced by spec-lint.mjs"
+    },
+    "criticality": {
+      "enum": ["must", "should"]
+    },
+    "superseded_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_of": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

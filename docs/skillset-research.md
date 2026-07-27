@@ -230,7 +230,6 @@ Tier 2 (optional polish):
 - **Session run ledger stays session-scoped** and stop-gate stays session-keyed (do NOT leak cross-session). Feature ledger is a *layer above*, not a replacement.
 - **Trivial fast-path unchanged** — trivial/small-clear/docs/obvious-bug still go direct → advisor. All new gates are N/A or absent for trivial work.
 - **No SaaS dependency** — Linear/GitHub bridges are optional `links.*`; core resume is file-native JSON.
-- **No PRDs committed** — `plan_ref`/`spec_ref` may point at gitignored `docs/prds/`.
 - **Codex/non-hook hosts** keep advisory semantics; the new mechanics apply where hooks run.
 - **Generated files untouched** — all edits land in `agents-src/`, `skills/groundwork/`, `hooks/`; `pnpm run generate:agents` + `pnpm run check` run before commit.
 

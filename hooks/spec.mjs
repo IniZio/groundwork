@@ -33,6 +33,7 @@ import {
   randomSuffix,
   firstSentence,
 } from './lib/spec-io.mjs'
+import { scanVerifies } from './lib/verifies-scan.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,11 +111,22 @@ function runBuild(sd, { silent = false } = {}) {
     process.exit(1)
   }
 
+  // Report non-blocking parse errors as warnings
+  for (const e of errors) {
+    if (e.type === 'requirement_parse_error') {
+      process.stderr.write(`spec: [warning] parse error in "${e.nodeId}": ${e.message}\n  in: ${e.path}\n`)
+    }
+    if (!silent && e.type === 'unknown_frontmatter_field') {
+      const who = e.nodeId ? ` (${e.nodeId})` : ''
+      process.stderr.write(`spec: [warning] unknown frontmatter field "${e.field}"${who}\n  in: ${e.path}\n`)
+    }
+  }
+
   // Prepare output
   const genDir = generatedDirPath(sd)
   mkdirSync(genDir, { recursive: true })
 
-  // index.json (AC6: summary, refs, byteSize per node)
+  // index.json (AC6: summary, refs, byteSize per node; RFC-0003: body-derived fields)
   const indexJson = {
     generated_at: new Date().toISOString(),
     nodes: {},
@@ -136,44 +148,139 @@ function runBuild(sd, { silent = false } = {}) {
       concept: n.concept,
       parent: n.parent,
       ears: n.ears,
+      // Body-derived fields (RFC-0003 body-first format)
+      anchor: n.anchor ?? null,
+      why: n.why ?? null,
+      fitCriterion: n.fitCriterion ?? null,
+      source: n.source ?? null,
     }
   }
   writeFileSync(join(genDir, 'index.json'), JSON.stringify(indexJson, null, 2) + '\n', 'utf8')
 
   // coverage.json
+  // by_source replaces by_status: status is not present in the body-first format;
+  // source RFC is extracted from the **Source** token in each requirement's attribute line.
   const reqs = Object.values(nodes).filter(n => n.type === 'requirement')
+
+  // Scan test files for @verifies annotations to compute ACTUAL verification evidence.
+  // sd is <projectRoot>/doc/specs, so the project root is two levels up.
+  const projectRootDir = dirname(dirname(sd))
+  const verifiesMap = scanVerifies(projectRootDir)
+
+  // Build per-requirement map: declared intent + actual test coverage
+  /** @type {Record<string, {declared: string|null, verified: boolean, tests: string[]}>} */
+  const byRequirement = {}
+  for (const req of reqs) {
+    const tests = verifiesMap[req.id] ?? []
+    byRequirement[req.id] = {
+      declared: req.verification ?? null,
+      verified: tests.length > 0,
+      tests,
+    }
+  }
+
+  // IDs that declare automated verification but have no verifying test yet
+  const unverifiedAutomated = reqs
+    .filter(r => r.verification === 'automated' && (verifiesMap[r.id] ?? []).length === 0)
+    .map(r => r.id)
+    .sort()
+
   const coverage = {
     total: reqs.length,
-    by_status: countBy(reqs, 'status'),
+    by_source: countBy(reqs, 'source'),
+    // declared verification intent (kept for backward compatibility)
     by_verification: countBy(reqs, 'verification'),
     by_criticality: countBy(reqs, 'criticality'),
+    // actual verification evidence from @verifies annotations in test files
+    verified: reqs.filter(r => (verifiesMap[r.id] ?? []).length > 0).length,
+    unverified_automated: unverifiedAutomated,
+    by_requirement: byRequirement,
   }
   writeFileSync(join(genDir, 'coverage.json'), JSON.stringify(coverage, null, 2) + '\n', 'utf8')
 
-  // index.md — human-readable table
-  /** Truncate on a word boundary; append ellipsis if cut. */
-  function truncWB(s, n) {
-    if (!s || s.length <= n) return (s || '').replace(/\|/g, '\\|')
-    const cut = s.slice(0, n)
-    const lastSpace = cut.lastIndexOf(' ')
-    const trimmed = lastSpace > n * 0.6 ? cut.slice(0, lastSpace) : cut
-    return trimmed.replace(/\|/g, '\\|') + '…'
-  }
+  // index.md — grouped by concept, full normative statement, working anchor links
+  // A reader can skim the whole spec and click through to any requirement from this file.
+  const allNodes = Object.values(nodes)
+  const requirementNodes = allNodes.filter(n => n.type === 'requirement')
+  const conceptNodes = allNodes
+    .filter(n => n.type !== 'requirement')
+    .sort((a, b) => a.id.localeCompare(b.id))
 
-  const rows = Object.values(nodes).sort((a, b) => a.id.localeCompare(b.id))
-  const lines = [
+  const mdLines = [
     '# Spec Index',
     '',
     `_Generated: ${new Date().toISOString()}_`,
     '',
-    '| id | type | status | summary |',
-    '|---|---|---|---|',
-    ...rows.map(n =>
-      `| ${n.id} | ${n.type} | ${n.status || '-'} | ${truncWB(n.summary, 80)} |`,
-    ),
-    '',
   ]
-  writeFileSync(join(genDir, 'index.md'), lines.join('\n'), 'utf8')
+
+  // Track which requirements have been placed (grouped under their concept)
+  const outputReqIds = new Set()
+
+  for (const concept of conceptNodes) {
+    const conceptReqs = requirementNodes
+      .filter(n => n.concept === concept.id)
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    // Report missing anchors; track as output so they don't appear in Uncategorized
+    for (const req of conceptReqs) {
+      outputReqIds.add(req.id)
+      if (!req.anchor) {
+        process.stderr.write(
+          `spec: requirement "${req.id}" has no anchor — omitted from index.md to avoid a broken link\n`,
+        )
+      }
+    }
+
+    const anchoredReqs = conceptReqs.filter(n => n.anchor)
+    if (anchoredReqs.length === 0) continue  // skip concept with no linkable requirements
+
+    mdLines.push(`## ${concept.title || concept.id}`)
+    mdLines.push('')
+
+    for (const req of anchoredReqs) {
+      // Link is relative from _generated/ to the spec root (prepend ../ to relPath)
+      const link = `../${req.relPath}#${req.anchor}`
+      mdLines.push(`### [${req.id} — ${req.title}](${link})`)
+      mdLines.push('')
+      if (req.ears) {
+        mdLines.push(req.ears)
+        mdLines.push('')
+      }
+    }
+  }
+
+  // Requirements not associated with any listed concept
+  const uncategorized = requirementNodes
+    .filter(n => !outputReqIds.has(n.id))
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  if (uncategorized.length > 0) {
+    // Report missing anchors in uncategorized set
+    for (const req of uncategorized) {
+      if (!req.anchor) {
+        process.stderr.write(
+          `spec: requirement "${req.id}" has no anchor — omitted from index.md to avoid a broken link\n`,
+        )
+      }
+    }
+
+    const anchoredUncategorized = uncategorized.filter(n => n.anchor)
+    if (anchoredUncategorized.length > 0) {
+      mdLines.push('## Uncategorized Requirements')
+      mdLines.push('')
+      for (const req of anchoredUncategorized) {
+        const link = `../${req.relPath}#${req.anchor}`
+        mdLines.push(`### [${req.id} — ${req.title}](${link})`)
+        mdLines.push('')
+        if (req.ears) {
+          mdLines.push(req.ears)
+          mdLines.push('')
+        }
+      }
+    }
+  }
+
+  writeFileSync(join(genDir, 'index.md'), mdLines.join('\n'), 'utf8')
 
   if (!silent) {
     process.stdout.write(

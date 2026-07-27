@@ -713,7 +713,11 @@ describe("AC13 — delegation of verify/lint/metrics/doc", () => {
 // ---------------------------------------------------------------------------
 
 describe("M1 — index uses summary over ears when both are present", () => {
-	it("index.md shows the summary gloss, not the ears sentence, when they differ", () => {
+	it("index.json summary field uses the authored gloss, not the ears sentence, when they differ", () => {
+		// Old-format requirements (not requirements.md) have no anchor and are omitted
+		// from index.md (RFC-0003 contract, see spec-build.test.ts). The mutation target —
+		// `summary = data.summary ?? firstSentence(data.ears)` — is tested via index.json
+		// which always records every node's summary field regardless of anchor presence.
 		mkSpec();
 		writeReadme("", "C-ROOT", "Root");
 		writeReq(
@@ -725,14 +729,15 @@ describe("M1 — index uses summary over ears when both are present", () => {
 			}),
 		);
 		run(["build"]);
-		const idx = readFileSync(
-			path.join(GEN_DIR(), "index.md"),
-			"utf8",
+		const idxJson = JSON.parse(
+			readFileSync(path.join(GEN_DIR(), "index.json"), "utf8"),
 		);
-		// summary must appear in the index
-		expect(idx).toContain("Short retrieval gloss for the index");
-		// ears sentence must NOT appear in the index (it's for show/search, not retrieval)
-		expect(idx).not.toContain("perform the long normative action");
+		const node = idxJson.nodes["ROOT-R-m1aa"];
+		expect(node).toBeDefined();
+		// summary must be the authored gloss, not derived from ears
+		expect(node.summary).toContain("Short retrieval gloss for the index");
+		// ears sentence must NOT be used as the summary
+		expect(node.summary).not.toContain("perform the long normative action");
 	});
 });
 

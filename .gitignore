@@ -27,3 +27,5 @@ tmp/
 .vscode/
 # Added by code-review-graph
 .code-review-graph/
+# Generated spec build output
+doc/specs/_generated/

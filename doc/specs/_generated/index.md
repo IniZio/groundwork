@@ -1,6 +1,15 @@
 # Spec Index
 
-_Generated: 2026-07-27T14:52:33.786Z_
+_Generated: 2026-07-27T17:33:23.160Z_
+
+## Concepts
+
+| Concept | Summary | Status | Views |
+| --- | --- | --- | --- |
+| C-ARTIFACT | The four groundwork artifact types—run ledger, RFC documents, session journal, and spec tree—are file-backed records that persist across sessions. | review | overview, data-model, constraints |
+| C-ENFORCEMENT | Enforcement hooks mechanically bind CLAUDE.md prose rules as PreToolUse gates, blocking orchestrators and subagents from violating delegation constraints. | review | overview, flows, constraints |
+| C-ORCHESTRATION | The orchestrator classifies and delegates all implementation to specialist subagents and never writes code or edits files itself. | review | overview, flows |
+| C-VERIFICATION | Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends. | review | overview, constraints |
 
 ## Artifact Model
 

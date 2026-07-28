@@ -27,6 +27,15 @@
  *     unknown-field        — frontmatter must not contain keys not defined in the schema
  *   Traceability invariants (requirement nodes only):
  *     automated-unverified — every automated requirement must have ≥1 test carrying // @verifies <id>
+ *   S1 manifest invariants (concept nodes with spec.yaml):
+ *     manifest-invalid     — spec.yaml must be valid per the spec-manifest schema
+ *     missing-view-file    — every declared view file must exist on disk
+ *     required-field       — view file frontmatter must have type and id fields
+ *     unknown-field        — view file frontmatter must have no extra fields
+ *     unsupported-source   — lint.data-model.type_names.source must be 'types'
+ *     type-name-missing    — named TypeScript types must exist in src/
+ *     operation-missing    — named CLI operations must exist in hooks/*.mjs
+ *     manifest-mismatch    — spec.yaml id/title/summary must match README.md
  *
  * Exit codes: 0 success  1 violations found (both modes)  2 usage error
  */
@@ -35,6 +44,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { load as yamlLoad } from 'js-yaml'
 import { loadSchema } from './lib/schema-io.mjs'
 import {
   parseRequirementsDocument,
@@ -66,6 +76,40 @@ function loadSpecIndex(projectDir) {
 }
 
 // ---------------------------------------------------------------------------
+// Local spec.yaml manifest loader (sync; mirrors spec-io's private _loadSpecManifestSync)
+// ---------------------------------------------------------------------------
+
+/**
+ * Load and validate spec.yaml for a concept directory synchronously.
+ *
+ * @param {string} conceptDir  Absolute path to the concept directory.
+ * @returns {{ manifest: object|null, errors: {field: string, problem: string}[] }}
+ */
+function loadSpecManifestSync(conceptDir) {
+  const p = join(conceptDir, 'spec.yaml')
+  if (!existsSync(p)) return { manifest: null, errors: [] }
+  let raw
+  try { raw = readFileSync(p, 'utf8') } catch { return { manifest: null, errors: [] } }
+  let manifest
+  try { manifest = yamlLoad(raw) } catch (e) {
+    return { manifest: null, errors: [{ field: 'spec.yaml', problem: `YAML parse error: ${e.message}` }] }
+  }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return { manifest: null, errors: [{ field: '(root)', problem: 'spec.yaml must be a YAML mapping object' }] }
+  }
+  const validate = loadSchema('spec-manifest')
+  const valid = validate(manifest)
+  if (valid) return { manifest, errors: [] }
+  const errors = (validate.errors || []).map(err => ({
+    field: err.keyword === 'required'
+      ? (err.params?.missingProperty || '(root)')
+      : (err.instancePath ? err.instancePath.replace(/^\//, '') : '(root)'),
+    problem: err.message || 'invalid',
+  }))
+  return { manifest, errors }
+}
+
+// ---------------------------------------------------------------------------
 // RFC discovery and spec_delta parsing
 // ---------------------------------------------------------------------------
 
@@ -81,6 +125,15 @@ function findRfcDirSync(projectDir, uid) {
   for (const name of entries) {
     const dir = join(rfcsDir, name)
     try { if (!statSync(dir).isDirectory()) continue } catch { continue }
+    // S2+: try rfc.yaml sidecar first (uid field moved out of rfc.md prose)
+    const yamlPath = join(dir, 'rfc.yaml')
+    if (existsSync(yamlPath)) {
+      try {
+        const parsed = yamlLoad(readFileSync(yamlPath, 'utf8'))
+        if (parsed && parsed.uid === uid) return dir
+      } catch { /* fall through to rfc.md check */ }
+    }
+    // Legacy: uid may still be in rfc.md frontmatter or body
     const rfcPath = join(dir, 'rfc.md')
     if (!existsSync(rfcPath)) continue
     try {
@@ -505,6 +558,14 @@ Spec invariants (all nodes):
 Traceability invariants (requirement nodes only):
   automated-unverified  every automated requirement must have ≥1 test with // @verifies <id>
 
+S1 manifest invariants (concept nodes with spec.yaml):
+  manifest-invalid    spec.yaml must be valid per the spec-manifest schema
+  missing-view-file   every declared view file must exist on disk
+  unsupported-source  lint.data-model.type_names.source must be 'types'
+  type-name-missing   named TypeScript types must exist in src/
+  operation-missing   named CLI operations must exist in hooks/*.mjs
+  manifest-mismatch   spec.yaml id/title/summary must match README.md
+
 Spec files are opened read-only; this command never writes to doc/specs/**.
 
 Exit codes: 0 success  1 violations found  2 usage error
@@ -556,8 +617,17 @@ if (rfcMode) {
     process.stderr.write(`spec lint: RFC "${rfcUid}" not found under .groundwork/rfcs/\n`)
     process.exit(1)
   }
-  const rfcContent = readFileSync(join(rfcDir, 'rfc.md'), 'utf8')
-  const deltaPaths = parseSpecDeltaTargets(rfcContent)
+  const rfcYamlPath = join(rfcDir, 'rfc.yaml')
+  let deltaPaths
+  if (existsSync(rfcYamlPath)) {
+    const rfcYaml = yamlLoad(readFileSync(rfcYamlPath, 'utf8'))
+    deltaPaths = Array.isArray(rfcYaml?.spec_delta)
+      ? rfcYaml.spec_delta.map(item => item.target).filter(Boolean)
+      : []
+  } else {
+    const rfcContent = readFileSync(join(rfcDir, 'rfc.md'), 'utf8')
+    deltaPaths = parseSpecDeltaTargets(rfcContent)
+  }
 
   const missingPaths = deltaPaths.filter(t => !existsSync(join(projectDir, t)))
   if (missingPaths.length > 0) {
@@ -633,6 +703,131 @@ if (automatedNodes.length > 0) {
       const violation = `automated-unverified: verification=automated but no test carries // @verifies ${node.id}`
       violations.push({ nodeId: node.id, violation })
       emitLintDrift(projectDir, rfcForJournal, node.id, violation)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S1 checks: spec.yaml manifest validation, view-file rules, lint block, agreement
+// ---------------------------------------------------------------------------
+
+/** Allowed frontmatter keys in view files (must be exactly these two). */
+const VIEW_ALLOWED_FIELDS = new Set(['type', 'id'])
+
+// Process each concept node (README.md-based nodes indexed with type === 'concept')
+const conceptNodes = targetNodes.filter(n => n.type === 'concept')
+
+for (const conceptNode of conceptNodes) {
+  const nodeId = conceptNode.id
+  const conceptDir = join(specDir, dirname(conceptNode.relPath || ''))
+
+  // 1. Validate spec.yaml when present
+  const { manifest, errors: manifestErrors } = loadSpecManifestSync(conceptDir)
+  for (const { field, problem } of manifestErrors) {
+    const violation = `manifest-invalid: concept "${nodeId}" spec.yaml field "${field}": ${problem}`
+    violations.push({ nodeId, violation })
+    emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+  }
+
+  // 2. View-file frontmatter rules (from spec.yaml manifest views; index.json does not
+  //    serialize the views field, so we read directly from the manifest here)
+  const views = (manifest && Array.isArray(manifest.views)) ? manifest.views : []
+  for (const view of views) {
+    if (!view || typeof view.file !== 'string') continue
+    const viewAbsPath = join(conceptDir, view.file)
+    if (!existsSync(viewAbsPath)) {
+      const violation = `missing-view-file: concept "${nodeId}" declares view file "${view.file}" which does not exist`
+      violations.push({ nodeId, violation })
+      emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      continue
+    }
+    let viewContent
+    try { viewContent = readFileSync(viewAbsPath, 'utf8') } catch { continue }
+    // If the view file is the concept node itself (e.g. overview → README.md),
+    // its frontmatter is already validated by the concept schema — skip the
+    // strict two-field check (plan decision V2).
+    const conceptNodeAbsPath = join(specDir, conceptNode.relPath || '')
+    if (viewAbsPath === conceptNodeAbsPath) continue
+    const { data: viewFm } = parseYamlFrontmatter(viewContent)
+    const viewFields = Object.keys(viewFm || {})
+    // Must have exactly 'type' and 'id' — no more, no less
+    for (const f of VIEW_ALLOWED_FIELDS) {
+      if (!viewFields.includes(f)) {
+        const violation = `required-field: view file "${view.file}" in concept "${nodeId}" is missing required field "${f}"`
+        violations.push({ nodeId, violation })
+        emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      }
+    }
+    for (const f of viewFields) {
+      if (!VIEW_ALLOWED_FIELDS.has(f)) {
+        const violation = `unknown-field: view file "${view.file}" in concept "${nodeId}" has unknown frontmatter field "${f}"`
+        violations.push({ nodeId, violation })
+        emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      }
+    }
+  }
+
+  // 3 & 4. Lint block checks and agreement check (require manifest to be parseable)
+  if (manifest) {
+    const lint = manifest.lint || {}
+
+    // 3a. data-model / type_names lint check
+    const typeNamesConf = lint['data-model']?.type_names
+    if (typeNamesConf && Array.isArray(typeNamesConf.names) && typeNamesConf.names.length > 0) {
+      if (typeNamesConf.source !== 'types') {
+        const violation = `unsupported-source: concept "${nodeId}" lint.data-model.type_names has unsupported source '${typeNamesConf.source}'; only 'types' is supported in this repo`
+        violations.push({ nodeId, violation })
+        emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      } else {
+        const srcDir = join(projectDir, 'src')
+        for (const name of typeNamesConf.names) {
+          const grepResult = spawnSync(
+            'grep', ['-rE', `^export (type|interface) ${name}\\b`, '--include=*.ts', srcDir],
+            { encoding: 'utf8' },
+          )
+          if (!grepResult.stdout || !grepResult.stdout.trim()) {
+            const violation = `type-name-missing: concept "${nodeId}" lint.data-model.type_names: TypeScript type/interface "${name}" not found in src/`
+            violations.push({ nodeId, violation })
+            emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+          }
+        }
+      }
+    }
+
+    // 3b. api / operations lint check
+    const opsConf = lint['api']?.operations
+    if (Array.isArray(opsConf) && opsConf.length > 0) {
+      const hooksDir = join(projectDir, 'hooks')
+      for (const op of opsConf) {
+        const grepResult = spawnSync(
+          'grep', ['-rE', `['"]${op}['"]`, '--include=*.mjs', hooksDir],
+          { encoding: 'utf8' },
+        )
+        if (!grepResult.stdout || !grepResult.stdout.trim()) {
+          const violation = `operation-missing: concept "${nodeId}" lint.api.operations: CLI operation "${op}" not found in hooks/*.mjs`
+          violations.push({ nodeId, violation })
+          emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+        }
+      }
+    }
+
+    // 4. Agreement check: spec.yaml vs README.md frontmatter
+    const readmePath = join(conceptDir, 'README.md')
+    if (existsSync(readmePath)) {
+      let readmeContent
+      try { readmeContent = readFileSync(readmePath, 'utf8') } catch { readmeContent = null }
+      if (readmeContent) {
+        const { data: readmeFm } = parseYamlFrontmatter(readmeContent)
+        for (const field of ['id', 'title', 'summary']) {
+          const specVal = manifest[field]
+          const readmeVal = readmeFm[field]
+          if (specVal !== readmeVal) {
+            const violation = `manifest-mismatch: concept "${nodeId}" spec.yaml.${field} ("${specVal}") != README.md.${field} ("${readmeVal}")`
+            violations.push({ nodeId, violation })
+            emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+          }
+        }
+      }
     }
   }
 }

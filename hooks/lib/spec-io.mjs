@@ -11,6 +11,7 @@
 import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs'
 import { join, dirname, relative, basename } from 'node:path'
 import { load as yamlLoad } from 'js-yaml'
+import { loadSchema } from './schema-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Frontmatter schema (RFC-0003)
@@ -98,6 +99,37 @@ export function walkSpecFiles(sd) {
 }
 
 // ---------------------------------------------------------------------------
+// Walk spec.yaml sidecar files (S0 pre-pass helper)
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk all spec.yaml sidecar files found under `sd` (excludes _generated and dotfiles).
+ * Returns an array of { absPath, conceptDir } where conceptDir is the directory
+ * that contains the spec.yaml.
+ *
+ * @param {string} sd - Spec directory root
+ * @returns {{ absPath: string, conceptDir: string }[]}
+ */
+function walkSpecYamlFiles(sd) {
+  const results = []
+  function walk(dir) {
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || e.name === '_generated') continue
+      const full = join(dir, e.name)
+      if (e.isDirectory()) {
+        walk(full)
+      } else if (e.isFile() && e.name === 'spec.yaml') {
+        results.push({ absPath: full, conceptDir: dir })
+      }
+    }
+  }
+  walk(sd)
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Staleness check (AC10)
 // ---------------------------------------------------------------------------
 
@@ -106,6 +138,10 @@ export function isIndexStale(sd) {
   if (!existsSync(p)) return true
   const idxMtime = statSync(p).mtimeMs
   for (const { absPath } of walkSpecFiles(sd)) {
+    if (statSync(absPath).mtimeMs > idxMtime) return true
+  }
+  // S0: also check spec.yaml sidecar files (AC7)
+  for (const { absPath } of walkSpecYamlFiles(sd)) {
     if (statSync(absPath).mtimeMs > idxMtime) return true
   }
   return false
@@ -399,6 +435,56 @@ export function findConceptDir(conceptId, sd) {
 }
 
 // ---------------------------------------------------------------------------
+// Spec manifest loading (S0)
+// ---------------------------------------------------------------------------
+
+/**
+ * Synchronous implementation — used internally by buildIndexData and
+ * wrapped by the exported async loadSpecManifest.
+ *
+ * @param {string} conceptDir
+ * @returns {{ manifest: object|null, errors: {field: string, problem: string}[] }}
+ */
+function _loadSpecManifestSync(conceptDir) {
+  const p = join(conceptDir, 'spec.yaml')
+  if (!existsSync(p)) return { manifest: null, errors: [] }
+  let raw
+  try { raw = readFileSync(p, 'utf8') } catch { return { manifest: null, errors: [] } }
+  let manifest
+  try {
+    manifest = yamlLoad(raw)
+  } catch (e) {
+    return { manifest: null, errors: [{ field: 'spec.yaml', problem: `YAML parse error: ${e.message}` }] }
+  }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return { manifest: null, errors: [{ field: '(root)', problem: 'spec.yaml must be a YAML mapping object' }] }
+  }
+  const validate = loadSchema('spec-manifest')
+  const valid = validate(manifest)
+  if (valid) return { manifest, errors: [] }
+  const errors = (validate.errors || []).map(err => ({
+    field: err.instancePath ? err.instancePath.replace(/^\//, '') : '(root)',
+    problem: err.message || 'invalid',
+  }))
+  return { manifest, errors }
+}
+
+/**
+ * Load and validate the spec.yaml manifest for a concept directory.
+ *
+ * Reads `<conceptDir>/spec.yaml` if present, parses YAML, and validates
+ * against schemas/spec-manifest.schema.json via loadSchema('spec-manifest').
+ *
+ * @param {string} conceptDir  Absolute path to the concept directory.
+ * @returns {Promise<{ manifest: object|null, errors: {field: string, problem: string}[] }>}
+ *   manifest: parsed YAML object, or null when file does not exist or is unreadable.
+ *   errors:   array of { field, problem } pairs; empty on success.
+ */
+export async function loadSpecManifest(conceptDir) {
+  return _loadSpecManifestSync(conceptDir)
+}
+
+// ---------------------------------------------------------------------------
 // Build index data (AC2, AC3, AC4, AC6; RFC-0003 body-format)
 // ---------------------------------------------------------------------------
 
@@ -425,7 +511,32 @@ export function buildIndexData(sd) {
   const nodes = {}
   const idToPath = {}
 
+  // ---------------------------------------------------------------------------
+  // S0 pre-pass: collect view file paths from all spec.yaml manifests.
+  // Must run BEFORE the walk loop so viewFilePaths is populated (S0-AC5).
+  // ---------------------------------------------------------------------------
+  /** @type {Set<string>} Absolute paths of view files declared in spec.yaml manifests. */
+  const viewFilePaths = new Set()
+  /** @type {Map<string, {type: string, file: string}[]>} conceptDir → views array */
+  const conceptDirViews = new Map()
+
+  for (const { conceptDir } of walkSpecYamlFiles(sd)) {
+    const { manifest } = _loadSpecManifestSync(conceptDir)
+    if (manifest && Array.isArray(manifest.views)) {
+      conceptDirViews.set(conceptDir, manifest.views)
+      for (const view of manifest.views) {
+        if (view && typeof view.file === 'string') {
+          viewFilePaths.add(join(conceptDir, view.file))
+        }
+      }
+    }
+  }
+  // ---------------------------------------------------------------------------
+
   for (const { absPath, relPath } of files) {
+    // S0: skip files declared as views in a spec.yaml manifest.
+    // README.md is always exempt — it is the concept node itself.
+    if (viewFilePaths.has(absPath) && basename(absPath) !== 'README.md') continue
     let raw
     try { raw = readFileSync(absPath, 'utf8') } catch { continue }
 
@@ -575,6 +686,12 @@ export function buildIndexData(sd) {
         criticality: data.criticality ? String(data.criticality) : 'must',
         // ears: preserved from old-format frontmatter for display/search consumers
         ears: earsStr,
+      }
+
+      // S0: attach views from spec.yaml manifest to the concept node (README.md).
+      if (basename(absPath) === 'README.md') {
+        const dirViews = conceptDirViews.get(dirname(absPath))
+        if (dirViews) nodes[id].views = dirViews
       }
     }
   }

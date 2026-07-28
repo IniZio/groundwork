@@ -34,6 +34,8 @@ import {
 } from "../../hooks/lib/rfc-io.mjs";
 
 const CLI = path.resolve(import.meta.dirname, "..", "..", "hooks", "rfc.mjs");
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
+const REAL_RFCS_DIR = path.join(REPO_ROOT, ".groundwork", "rfcs");
 
 let projectDir: string;
 
@@ -364,11 +366,12 @@ describe("rfc validate manifest freshness", () => {
 	// schema: 1 RFC — manifest check must NOT run (M-M04)
 	it("does not check manifest freshness for schema: 1 RFCs (M-M04)", () => {
 		const rfcDir = createRfc("legacy");
-		const rfcMdPath = path.join(rfcDir, "rfc.md");
-		const content = readFileSync(rfcMdPath, "utf8");
+		// S2: schema field lives in rfc.yaml; patch there.
+		const rfcYamlPath = path.join(rfcDir, "rfc.yaml");
+		const content = readFileSync(rfcYamlPath, "utf8");
 		// Downgrade to schema: 1 and remove sections/ (schema 1 is lenient)
 		const patched = content.replace(/^schema: 2$/m, "schema: 1");
-		writeFileSync(rfcMdPath, patched);
+		writeFileSync(rfcYamlPath, patched);
 		rmSync(path.join(rfcDir, "sections"), { recursive: true, force: true });
 		const r = run(["validate", rfcDir]);
 		expect(r.code).toBe(0);
@@ -515,23 +518,295 @@ describe("manifest section ordering — correctness", () => {
 
 describe("body_digest invariance", () => {
 	it("computeBodyDigest returns the same value before and after writing the manifest", async () => {
-		const { computeBodyDigest, parseFrontmatter, generateManifestBlock, writeManifest } =
+		const { computeBodyDigest, writeManifest } =
 			await import("../../hooks/lib/rfc-io.mjs");
+		const { parse: parseYaml } = await import("yaml");
 
 		const rfcDir = createRfc("digest-invariance");
-		const content1 = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
-		const { frontmatter: fm1 } = parseFrontmatter(content1);
+		// S2: frontmatter is in rfc.yaml; rfc.md is prose-only
+		const rfcYamlPath = path.join(rfcDir, "rfc.yaml");
+		const fm1 = parseYaml(readFileSync(rfcYamlPath, "utf8"));
 		const digest1 = computeBodyDigest(fm1, rfcDir);
 
 		// Corrupt manifest and then regenerate — digest must not change
+		// (manifest lives in rfc.md prose, not in sections/ that feed the digest)
 		const rfcMdPath = path.join(rfcDir, "rfc.md");
-		writeFileSync(rfcMdPath, content1.replace(/<!-- rfc:manifest:end -->/, "<!-- rfc:manifest:end -->\nEXTRA LINE"));
+		const mdContent = readFileSync(rfcMdPath, "utf8");
+		writeFileSync(rfcMdPath, mdContent.replace(/<!-- rfc:manifest:end -->/, "<!-- rfc:manifest:end -->\nEXTRA LINE"));
 		writeManifest(rfcDir);
 
-		const content2 = readFileSync(rfcMdPath, "utf8");
-		const { frontmatter: fm2 } = parseFrontmatter(content2);
+		const fm2 = parseYaml(readFileSync(rfcYamlPath, "utf8"));
 		const digest2 = computeBodyDigest(fm2, rfcDir);
 
 		expect(digest1).toBe(digest2);
+	});
+});
+
+// ===========================================================================
+// S2 manifest redesign — rfc.yaml sidecar ACs
+//
+// AC coverage:
+//   S2-AC1  → all three existing RFCs validate cleanly (exit 0)
+//   S2-AC2  → dual-read fallback: rfc.md-only dir exits 0
+//   S2-AC2b → status 'proposed' is NOT in rfc-frontmatter schema enum (regression pin)
+//   S2-AC3  → rfc new emits rfc.yaml + prose-only rfc.md; also sections/ + tasks.yaml
+//   S2-AC4  → body_digest is stable across two validate runs; input set documented
+//   S2-AC5  → accepted_by: advisor + classification: spec_change fails validate
+//   S2-AC6  → deleted schema files leave no dangling references
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// S2-AC1: All three existing RFCs validate cleanly
+// ---------------------------------------------------------------------------
+
+describe("S2-AC1: existing RFCs 0001/0002/0003 all exit 0 on validate", () => {
+	// cmdValidate reads rfcPath directly and never calls projectDir(),
+	// so CLAUDE_PROJECT_DIR in the temp env does not affect these validations.
+	const rfcDirNames = [
+		"0001-spec-rfc-journal",
+		"0002-external-standards-adoption",
+		// 0003 was previously failing with "status: proposed not in enum";
+		// the fix was migrating its status from proposed → draft (not relaxing the schema).
+		"0003-spec-body-format",
+	];
+
+	for (const dirName of rfcDirNames) {
+		it(`${dirName} exits 0 (OK)`, () => {
+			const rfcPath = path.join(REAL_RFCS_DIR, dirName);
+			const r = run(["validate", rfcPath]);
+			expect(r.code).toBe(0);
+			expect(r.stdout.trim()).toBe("OK");
+		});
+	}
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC2: dual-read fallback — rfc.md YAML frontmatter only (no rfc.yaml)
+// ---------------------------------------------------------------------------
+
+describe("S2-AC2: dual-read fallback (rfc.md with YAML frontmatter, no rfc.yaml sidecar)", () => {
+	it("exits 0 when only rfc.md with YAML frontmatter exists (legacy layout)", () => {
+		// Build a minimal legacy-style RFC directory inside projectDir.
+		// Schema 1, no rfc.yaml — forces the dual-read fallback path.
+		const rfcDir = path.join(projectDir, "rfc-dual-read-fallback");
+		mkdirSync(rfcDir, { recursive: true });
+		const rfcMdContent = [
+			"---",
+			"schema: 1",
+			"uid: R-20260727-DUAL01",
+			"ordinal: 99",
+			"slug: dual-read-test",
+			"title: dual read test",
+			"status: draft",
+			"classification: tactical",
+			'created: "2026-07-27T00:00:00.000Z"',
+			'updated: "2026-07-27T00:00:00.000Z"',
+			"accepted_at: null",
+			"accepted_by: null",
+			"supersedes: []",
+			"superseded_by: null",
+			"body_digest: null",
+			"spec_delta: []",
+			"tasks: []",
+			"---",
+			"",
+			"## Summary",
+			"",
+			"Fallback test content.",
+		].join("\n");
+		writeFileSync(path.join(rfcDir, "rfc.md"), rfcMdContent);
+		// No rfc.yaml — validate must use the rfc.md frontmatter path.
+		expect(existsSync(path.join(rfcDir, "rfc.yaml"))).toBe(false);
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(0);
+		expect(r.stdout.trim()).toBe("OK");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC2b: status 'proposed' NOT in rfc-frontmatter schema enum (regression pin)
+// ---------------------------------------------------------------------------
+
+describe("S2-AC2b: 'proposed' is not a valid status (regression pin)", () => {
+	it("rfc-frontmatter.schema.json status enum does not contain 'proposed'", () => {
+		const schemaPath = path.join(REPO_ROOT, "schemas", "rfc-frontmatter.schema.json");
+		const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+		const statusEnum: string[] = schema.properties?.status?.enum ?? [];
+		// The enum must NOT include 'proposed' — the correct fix for RFC 0003 was
+		// changing its stored status to 'draft', not relaxing the schema.
+		expect(statusEnum).not.toContain("proposed");
+		// Sanity: real statuses must still be present so we didn't collapse the enum.
+		expect(statusEnum).toContain("draft");
+		expect(statusEnum).toContain("review");
+		expect(statusEnum).toContain("accepted");
+	});
+
+	it("validate exits 1 with a status enum error when rfc.md has status: proposed", () => {
+		const rfcDir = path.join(projectDir, "rfc-proposed-status");
+		mkdirSync(rfcDir, { recursive: true });
+		const rfcMdContent = [
+			"---",
+			"schema: 1",
+			"uid: R-20260727-PROP01",
+			"ordinal: 99",
+			"slug: proposed-test",
+			"title: proposed test",
+			"status: proposed",
+			"classification: tactical",
+			'created: "2026-07-27T00:00:00.000Z"',
+			'updated: "2026-07-27T00:00:00.000Z"',
+			"accepted_at: null",
+			"accepted_by: null",
+			"supersedes: []",
+			"superseded_by: null",
+			"body_digest: null",
+			"spec_delta: []",
+			"tasks: []",
+			"---",
+			"",
+			"## Summary",
+			"",
+			"Regression test for status: proposed.",
+		].join("\n");
+		writeFileSync(path.join(rfcDir, "rfc.md"), rfcMdContent);
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(1);
+		// Must report a status field error.
+		expect(r.stderr).toMatch(/status/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC3: rfc new produces rfc.yaml + prose-only rfc.md (no YAML frontmatter block)
+// ---------------------------------------------------------------------------
+
+describe("S2-AC3: rfc new layout (rfc.yaml sidecar + prose-only rfc.md)", () => {
+	it("emits rfc.yaml, rfc.md with no --- in first 5 lines, sections/, tasks.yaml", () => {
+		const rfcDir = createRfc("test-slug-s7-canary");
+
+		// rfc.yaml must be present (S2 machine-readable sidecar)
+		expect(existsSync(path.join(rfcDir, "rfc.yaml"))).toBe(true);
+		// Multi-file sections layout
+		expect(existsSync(path.join(rfcDir, "sections"))).toBe(true);
+		// Task sidecar
+		expect(existsSync(path.join(rfcDir, "tasks.yaml"))).toBe(true);
+		// Prose document
+		expect(existsSync(path.join(rfcDir, "rfc.md"))).toBe(true);
+
+		// rfc.md first 5 lines must NOT begin with '---'
+		// (no YAML frontmatter fence; machine data lives in rfc.yaml)
+		const mdLines = readFileSync(path.join(rfcDir, "rfc.md"), "utf8")
+			.split("\n")
+			.slice(0, 5);
+		for (const line of mdLines) {
+			expect(line.trim()).not.toBe("---");
+		}
+
+		// rfc.yaml must carry the slug and draft status
+		const rfcYaml = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
+		expect(rfcYaml).toContain("slug: test-slug-s7-canary");
+		expect(rfcYaml).toContain("status: draft");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC4: body_digest stability + input set documented in source
+// ---------------------------------------------------------------------------
+
+describe("S2-AC4: body_digest is stable across recomputations", () => {
+	it("validate exits 0 on two consecutive runs after set-status → review (digest is deterministic)", () => {
+		const rfcDir = createRfc("digest-stability-s2");
+		// Move to review — stamps body_digest in rfc.yaml
+		const rSet = run(["set-status", rfcDir, "review"]);
+		expect(rSet.code).toBe(0);
+
+		// Read the stored digest immediately after stamping
+		const yamlAfterStamp = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
+		const stampedMatch = yamlAfterStamp.match(/^body_digest:\s*(\S+)$/m);
+		expect(stampedMatch).toBeTruthy();
+		const stampedDigest = stampedMatch![1].trim();
+		expect(stampedDigest).not.toBe("null");
+
+		// First validate — recomputes from sections/ + tasks.yaml, compares to stored
+		const r1 = run(["validate", rfcDir]);
+		expect(r1.code).toBe(0);
+		// Confirm rfc.yaml is unchanged (validate must not mutate the file)
+		const yamlAfterFirst = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
+		expect(yamlAfterFirst.match(/^body_digest:\s*(\S+)$/m)![1].trim()).toBe(stampedDigest);
+
+		// Second validate — same result; recomputation must be deterministic
+		const r2 = run(["validate", rfcDir]);
+		expect(r2.code).toBe(0);
+		const yamlAfterSecond = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
+		expect(yamlAfterSecond.match(/^body_digest:\s*(\S+)$/m)![1].trim()).toBe(stampedDigest);
+	});
+
+	it("computeNewBodyDigest input set is documented in hooks/rfc.mjs", () => {
+		const rfcMjs = readFileSync(path.join(REPO_ROOT, "hooks", "rfc.mjs"), "utf8");
+		// The JSDoc above computeNewBodyDigest uses "Input set" as the label.
+		expect(rfcMjs).toContain("computeNewBodyDigest");
+		expect(rfcMjs).toContain("Input set");
+		// Documents that spec_delta is excluded (it moved to rfc.yaml as mutable metadata).
+		expect(rfcMjs).toMatch(/spec_delta.*excluded|excluded.*spec_delta/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC5: cross-field rejection — accepted_by: advisor + classification: spec_change
+// ---------------------------------------------------------------------------
+
+describe("S2-AC5: cross-field validation (accepted_by: advisor + classification: spec_change)", () => {
+	it("validate exits 1 with the exact error message for the forbidden combination", () => {
+		const rfcDir = createRfc("cross-field-s2");
+		const yamlPath = path.join(rfcDir, "rfc.yaml");
+		const original = readFileSync(yamlPath, "utf8");
+		// Patch to the forbidden combination
+		const patched = original
+			.replace(/^classification: tactical$/m, "classification: spec_change")
+			.replace(/^accepted_by: null$/m, "accepted_by: advisor");
+		writeFileSync(yamlPath, patched);
+
+		const r = run(["validate", rfcDir]);
+		expect(r.code).toBe(1);
+		// Exact error string emitted by cmdValidate (hooks/rfc.mjs line ~262)
+		expect(r.stderr).toContain('accepted_by: must be "human" when classification is spec_change');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S2-AC6: deleted schema files leave no dangling references
+// ---------------------------------------------------------------------------
+
+describe("S2-AC6: rfcs/rfc.schema and rfcs/review.schema not referenced", () => {
+	it("no file in hooks/ or schemas/ references either deleted schema path", () => {
+		const hooksDir = path.join(REPO_ROOT, "hooks");
+		const schemasDir = path.join(REPO_ROOT, "schemas");
+		const deletedPatterns = ["rfcs/rfc.schema", "rfcs/review.schema"];
+
+		for (const pattern of deletedPatterns) {
+			let stdout = "";
+			let exitCode = 0;
+			try {
+				stdout = execFileSync("grep", ["-r", pattern, hooksDir, schemasDir], {
+					encoding: "utf8",
+				});
+				exitCode = 0; // grep exited 0 → found matches
+			} catch (e: any) {
+				exitCode = e.status ?? -1;
+			}
+
+			if (exitCode === 0) {
+				// Found references — fail with evidence
+				throw new Error(
+					`Pattern "${pattern}" is still referenced in hooks/ or schemas/:\n${stdout}`,
+				);
+			} else if (exitCode !== 1) {
+				// exit 1 = no matches (expected); any other code = grep invocation error
+				throw new Error(
+					`grep exited with unexpected code ${exitCode} while searching for "${pattern}"`,
+				);
+			}
+			// exitCode === 1 → no matches → assertion passes
+		}
 	});
 });

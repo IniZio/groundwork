@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27T14:52:33.778Z",
+  "generated_at": "2026-07-27T17:33:23.134Z",
   "nodes": {
     "C-GROUNDWORK": {
       "id": "C-GROUNDWORK",
@@ -236,7 +236,7 @@
       "inbound": [
         "C-GROUNDWORK"
       ],
-      "byteSize": 2688,
+      "byteSize": 2834,
       "relPath": "verification/README.md",
       "status": null,
       "pattern": null,

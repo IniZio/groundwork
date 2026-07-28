@@ -49,7 +49,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
-import { findRfcByUid, parseFrontmatter } from './lib/rfc-io.mjs'
+import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -113,6 +113,8 @@ function resolveRfcDir(projectDir, rfcRef) {
     const candidate = path.isAbsolute(rfcRef)
       ? rfcRef
       : path.join(path.resolve(projectDir), rfcRef)
+    // Accept the directory if it contains rfc.yaml (sidecar) or rfc.md (legacy).
+    if (existsSync(path.join(candidate, 'rfc.yaml'))) return candidate
     if (existsSync(path.join(candidate, 'rfc.md'))) return candidate
 
     // Strategy 2: treat as a UID and search .groundwork/rfcs/.
@@ -207,9 +209,7 @@ async function main() {
         `RFC not found for rfc_ref "${rfcRef}" — permitting write (fail-open)`,
       )
     }
-    const rfcMdPath = path.join(rfcDir, 'rfc.md')
-    const content = readFileSync(rfcMdPath, 'utf8')
-    const parsed = parseFrontmatter(content)
+    const parsed = readRfcFrontmatter(rfcDir)
     frontmatter = parsed.frontmatter
     rfcUid = typeof frontmatter.uid === 'string' ? frontmatter.uid : rfcRef
   } catch {

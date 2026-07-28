@@ -19,7 +19,7 @@ import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
-import { findRfcByUid, parseFrontmatter as parseRfcFrontmatter } from './lib/rfc-io.mjs'
+import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 import { specDirPath, indexJsonPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { resolveShardPath, appendEvent } from './lib/journal-io.mjs'
 
@@ -44,8 +44,7 @@ function resolveRfcStatus(projectDir, rfcRef) {
     const rfcsDir = path.join(projectDir, '.groundwork', 'rfcs')
     const rfcDir = findRfcByUid(rfcsDir, rfcRef)
     if (!rfcDir) return null
-    const content = readFileSync(path.join(rfcDir, 'rfc.md'), 'utf8')
-    const { frontmatter } = parseRfcFrontmatter(content)
+    const { frontmatter } = readRfcFrontmatter(rfcDir)
     return typeof frontmatter.status === 'string' ? frontmatter.status : null
   } catch {
     return null

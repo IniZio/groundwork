@@ -602,18 +602,60 @@ export function nextOrdinal(rfcsDir) {
 }
 
 /**
+ * Read RFC frontmatter from an RFC directory, supporting both formats:
+ *  - Sidecar format (S2+): metadata in rfc.yaml, rfc.md is prose-only.
+ *  - Legacy format: frontmatter embedded in rfc.md.
+ *
+ * Tries rfc.yaml first; falls back to rfc.md frontmatter.
+ * Throws if neither file is readable or parseable.
+ *
+ * @param {string} rfcDir  Absolute path to the RFC directory.
+ * @returns {{ frontmatter: object }}
+ */
+export function readRfcFrontmatter(rfcDir) {
+  const rfcYamlPath = path.join(rfcDir, 'rfc.yaml')
+  if (existsSync(rfcYamlPath)) {
+    const content = readFileSync(rfcYamlPath, 'utf8')
+    const frontmatter = parseYaml(content)
+    if (frontmatter && typeof frontmatter === 'object') {
+      return { frontmatter }
+    }
+  }
+  // Fall back to legacy: frontmatter embedded in rfc.md.
+  const rfcMdPath = path.join(rfcDir, 'rfc.md')
+  const content = readFileSync(rfcMdPath, 'utf8')
+  return parseFrontmatter(content)
+}
+
+/**
  * Find an RFC directory by UID, searching under rfcsDir.
+ * Supports both sidecar (rfc.yaml) and legacy (rfc.md frontmatter) formats.
  * Returns the absolute path to the RFC directory, or null if not found.
  */
 export function findRfcByUid(rfcsDir, uid) {
   if (!existsSync(rfcsDir)) return null
   for (const name of readdirSync(rfcsDir)) {
-    const rfcMd = path.join(rfcsDir, name, 'rfc.md')
+    const dirPath = path.join(rfcsDir, name)
+
+    // Sidecar format (S2+): uid lives in rfc.yaml.
+    const rfcYaml = path.join(dirPath, 'rfc.yaml')
+    if (existsSync(rfcYaml)) {
+      try {
+        const content = readFileSync(rfcYaml, 'utf8')
+        const parsed = parseYaml(content)
+        if (parsed?.uid === uid) return dirPath
+      } catch {
+        // skip unreadable/invalid files
+      }
+    }
+
+    // Legacy format: uid in rfc.md frontmatter.
+    const rfcMd = path.join(dirPath, 'rfc.md')
     if (!existsSync(rfcMd)) continue
     try {
       const content = readFileSync(rfcMd, 'utf8')
       const { frontmatter } = parseFrontmatter(content)
-      if (frontmatter.uid === uid) return path.join(rfcsDir, name)
+      if (frontmatter.uid === uid) return dirPath
     } catch {
       // skip unreadable/invalid files
     }

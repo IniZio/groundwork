@@ -1,251 +1,164 @@
-# Spec Authoring Conventions
+# Spec System Conventions
 
-This document is the normative authoring guide for all requirement files under `doc/specs/`. Every agent writing or reviewing specs follows these rules. An unenforced invariant is a wish; these rules are enforced by `spec lint` and `spec-guard.mjs`.
+## 1. Spec = viewpoints over a system
 
----
+A spec describes a system through multiple complementary representations called views. Requirements and constraints are one view among peers; a data model, a flow diagram, and an API surface are equally first-class. No single view is authoritative in isolation — understanding emerges from reading them together. This reframe means the unit of organization is a **concept directory**, not a requirements document, and the machine-readable anchor for that directory is `spec.yaml`.
 
-## 1. Principles
+## 2. Concept directory structure
 
-- One falsifiable assertion per requirement.
-- A requirement without a rationale is incomplete. The absence of **Why** is the specific defect this format corrects.
-- Frontmatter is typed metadata a tool reads. Prose in YAML cannot be rendered, linked, or fenced — it is invisible to Markdown renderers and unsearchable by prose queries. No normative content belongs there.
-- An unverifiable fit criterion is a wish. If you cannot write a concrete observable outcome, the requirement is not ready.
-- Cross-references are anchor links, never bare id text. A bare id cannot be navigated.
+Each concept lives in its own subdirectory under `doc/specs/`:
 
----
+```
+doc/specs/<concept>/
+  spec.yaml           — machine manifest (view registry, lint config, status)
+  README.md           — concept node (indexed entry point; carries id, title, summary)
+  data-model.md       — optional view: entities, fields, relations
+  flows.md            — optional view: key behavioral sequences
+  api.md              — optional view: declared operations / interface
+  constraints.md      — optional view: testable normative invariants
+  requirements.md     — EARS requirements (existing format, unchanged)
+```
 
-## 2. Frontmatter Is Metadata Only
+`README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, `parent`, and `origin_rfc` fields validated by `spec-concept.schema.json`. Renaming it to `overview.md` is a deferred follow-up RFC; until that RFC lands, `README.md` remains the single indexed entry point per concept.
 
-Frontmatter fields are typed data consumed by the `spec` CLI, `spec-lint`, and `spec-guard`. They carry identity, provenance, and enumerated attributes. They never carry normative content. Parsers return `{data, content}` as separate objects; prose placed in YAML fields is stripped from the rendered page and cannot be linked, cross-referenced, or syntax-checked.
+## 3. View types
 
-### 2.1 Concept Node Frontmatter
+All accepted view `type` values are listed here. `spec-lint.mjs` validates that every `type` declared in `spec.yaml` is one of these values.
 
-A concept node is the `README.md` at the root of a concept directory (e.g. `doc/specs/artifact/README.md`).
-
-| Field | Required | Type / Enum | Notes |
+| Type | File convention | Diagram format | What it describes |
 |---|---|---|---|
-| `id` | **required** | `C-<CONCEPT>` | Format: `C-[A-Z0-9]+(-[A-Z0-9]+)*`. Example: `C-ARTIFACT`. |
-| `type` | **required** | `concept` | Always the literal string `concept`. |
-| `title` | **required** | string | Human-readable concept name. |
-| `summary` | **required** | string ≤25 words | Short index label. Derived from the H1 heading. Must NOT be a normative statement. |
-| `parent` | **required** | string \| `null` | Parent concept id (e.g. `C-GROUNDWORK`), or `null` for the root concept. |
-| `origin_rfc` | **required** | string | RFC uid that introduced this concept (e.g. `R-20260726-K4M2QX`). |
+| `overview` | `README.md` | prose | Concept narrative and rationale |
+| `data-model` | `data-model.md` | Mermaid `erDiagram` | Entities, fields, relations |
+| `flows` | `flows.md` | Mermaid `sequenceDiagram` | Key behavioral sequences |
+| `api` | `api.md` | prose table | Declared operations / interface |
+| `constraints` | `constraints.md` | prose (`SHALL` statements) | Testable normative invariants |
 
-No other fields are permitted in concept node frontmatter.
+## 4. View file format rule
 
-### 2.2 Requirement Node Frontmatter
+Every view file **MUST** have exactly two frontmatter fields: `type` and `id`. No other frontmatter fields are permitted. Adding a third field causes a `spec-lint unknown-field` violation and exit 1. Omitting either field causes a `spec-lint required-field` violation.
 
-A requirement node lives in `doc/specs/<concept>/requirements.md` as an anchored H3 section. Each requirement's frontmatter is on the **containing file**, not per-section. The file-level frontmatter for `requirements.md` carries only `concept` and `origin_rfc` as a linking header; the per-requirement metadata appears in the body annotation line (§5).
+Valid view file header:
 
-However, when a concept's requirements are stored in a dedicated file (the new layout), the frontmatter applies to the file, not to individual requirements. The per-requirement identity and metadata are expressed in the body: the H3 heading carries the id, and the annotation line carries verification/criticality/source. The following field table applies to the per-requirement frontmatter of the **old** single-file-per-requirement layout (retained for reference during migration) and to any tool or lint that reads individual requirement files.
-
-**Post-migration requirement frontmatter fields** (file-level, when `requirements.md` is a single consolidated file):
-
-| Field | Required | Type / Enum | Notes |
-|---|---|---|---|
-| `id` | **required** | `<CONCEPT>-R-NNN` | Sequential, zero-padded 3 digits (e.g. `ARTIFACT-R-001`). Concept prefix is the directory name uppercased. |
-| `type` | **required** | `requirement` | Always the literal string `requirement`. |
-| `concept` | **required** | string | Owning concept node id (e.g. `C-ARTIFACT`). |
-| `pattern` | **required** | `ubiquitous` \| `event` \| `state` \| `option` \| `unwanted` | The EARS pattern this requirement follows. |
-| `verification` | **required** | `automated` \| `manual` \| `hybrid` | How this requirement is verified. |
-| `status` | **required** | `active` \| `superseded` \| `withdrawn` | Lifecycle state. |
-| `origin_rfc` | **required** | string | RFC uid that introduced this requirement. |
-| `criticality` | optional | `must` \| `should` | Importance level. Defaults to `must` when absent. |
-| `parent` | optional | string \| `null` | Parent requirement id, when this requirement refines another. |
-| `summary` | optional | string ≤25 words | Short index label used by `spec index`. Must NOT duplicate the normative sentence; it is a navigation label only. |
-
-Fields removed in this format: `ears` (normative sentence moves to body prose) and `verify` (fit criterion moves to **Fit criterion** bullet in body). These fields must not appear in new requirement files.
-
+```yaml
 ---
-
-## 3. The Body Is the Requirement
-
-The H3 heading and the body prose together constitute the complete requirement. The frontmatter carries only typed metadata; everything normative, explanatory, and verifiable lives in the body.
-
-### 3.1 Canonical Requirement Shape
-
-The following is a complete, copy-pasteable example. Downstream agents MUST use this exact structure.
-
-```markdown
-### ARTIFACT-R-001 — Ledger records slice completion {#artifact-r-001}
-
-**When** a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs`
-**shall** persist the slice id, completion timestamp, and session id to
-`.groundwork/runs/<session_id>.json`.
-
-- **Why** — the Stop hook reads the ledger to gate session end; an entry without a
-  session id cannot be attributed to the run that produced it.
-- **Fit criterion** — after `ledger complete s3`, the `s3` entry carries non-null
-  `id`, ISO-8601 `completed_at`, and `session_id` matching the completing session.
-- **Verification** automated · **Criticality** must · **Source** R-20260726-K4M2QX
-- **See also** [ARTIFACT-R-002](#artifact-r-002)
-```
-
-**H3 heading structure:** `### <ID> — <Short title> {#<id-lowercased>}`
-
-The `{#<id-lowercased>}` attribute is the machine-readable anchor. It must immediately follow the title on the same line, with the id lowercased (e.g. `{#artifact-r-001}`).
-
-### 3.2 Required Body Elements
-
-Every requirement body must contain all of the following, in order:
-
-**1. Normative sentence** (EARS-shaped, `shall` bolded)
-
-The opening paragraph is a single sentence in EARS form (§4). The EARS keyword that opens the sentence is bolded; `**shall**` is bolded. This sentence is the normative assertion. It must be falsifiable: a reader must be able to construct a test that could prove it false.
-
-**2. Why — rationale (REQUIRED)**
-
-```
-- **Why** — <rationale prose>
-```
-
-The rationale states the consequence of violation: why this rule exists and what breaks if it does not hold. ISO/IEC/IEEE 29148 §5.2.7 and Volere §6 carry rationale as a first-class element. A requirement without a **Why** is rejected by `spec lint`. One sentence is usually enough; two is the maximum.
-
-**3. Fit criterion (REQUIRED)**
-
-```
-- **Fit criterion** — <observable outcome>
-```
-
-The Volere fit criterion is the measurable acceptance test: the concrete, observable condition that proves the requirement is satisfied. It must be specific enough that two engineers, reading it independently, would run the same test and agree on the result. "The system works correctly" is not a fit criterion. "After `ledger complete s3`, the `s3` entry carries non-null `id`, ISO-8601 `completed_at`, and `session_id` matching the completing session" is.
-
-**4. Annotation line (REQUIRED)**
-
-```
-- **Verification** <value> · **Criticality** <value> · **Source** <rfc-uid>
-```
-
-The annotation line carries three typed attributes on a single bullet:
-
-- **Verification**: `automated` | `manual` | `hybrid`
-- **Criticality**: `must` | `should`
-- **Source**: the origin RFC uid (same value as the `origin_rfc` frontmatter field)
-
-**5. See also (optional)**
-
-```
-- **See also** [ARTIFACT-R-002](#artifact-r-002)
-```
-
-Cross-references to related requirements, as comma-separated anchor links. Omit this line if there are no cross-references. Never write bare id text (`ARTIFACT-R-002`); always link (`[ARTIFACT-R-002](#artifact-r-002)`).
-
+type: data-model
+id: C-MYCONCEPT
 ---
+```
 
-## 4. EARS Is a Sentence Discipline, Not a Field
+The `id` value **MUST** match the owning concept's id (the same value in `README.md` and `spec.yaml`).
 
-EARS (Easy Approach to Requirements Syntax), by Alistair Mavin, constrains the normative sentence to five patterns. These are sentence-level templates, not a field or frontmatter key. Pick the pattern that fits the requirement's trigger logic; use the template exactly; bold the opening keyword and `**shall**`.
+## 5. spec.yaml — the manifest
 
-| Pattern | Template |
+`spec.yaml` is the machine-readable manifest for a concept directory. It is validated against `schemas/spec-manifest.schema.json` by `spec lint`.
+
+Complete annotated example:
+
+```yaml
+# Concept identifier — must match README.md and all view file id fields.
+# Pattern: C-[A-Z][A-Z0-9-]+
+id: C-ARTIFACT
+
+# Human-readable concept title — must match README.md title field.
+title: Artifact
+
+# One-line summary (1–180 characters) — must match README.md summary field.
+summary: "Spec-system artifacts produced and consumed by groundwork agents."
+
+# Lifecycle status of this spec concept.
+# See §6 for the full status table.
+status: review
+
+# owner_team: Platform            # Omit entirely when unknown; never use an empty string.
+
+# Ordered list of view documents for this concept.
+# Each entry must have a 'type' (from the table in §3) and a 'file' path
+# relative to this concept directory.
+views:
+  - type: overview
+    file: README.md
+  - type: data-model
+    file: data-model.md
+  - type: constraints
+    file: constraints.md
+
+# Cross-concept relationships — informational only; concept IDs are NOT
+# verified against a registry by spec lint. Do not use for machine enforcement.
+relations:
+  _note: "Informational only"
+  items:
+    - kind: depends-on
+      target: C-ORCHESTRATION
+
+# Lint configuration for automated checks.
+# See §10 for full explanation of each check.
+lint:
+  data-model:
+    type_names:
+      source: types          # Only 'types' is supported; 'prisma', 'schema', 'graphql' → violation.
+      names:
+        - ArtifactNode
+        - ArtifactRef
+  api:
+    operations:
+      - artifact build
+      - artifact publish
+
+# status_policy: custom status transition rules, keyed by status value.
+# When present, spec-lint asserts this block matches the canonical definition
+# in §6 of this file. Omit to inherit the canonical policy.
+# status_policy:
+#   draft: "Initial description; may change freely"
+#   review: "Stable enough for agent use; awaiting validation"
+```
+
+## 6. Status lifecycle — spec concepts
+
+The following table is the **single canonical source** for spec concept status values and their meanings. When `status_policy` is present inline in a `spec.yaml`, `spec-lint` asserts that every entry matches this table.
+
+| Status | Meaning |
 |---|---|
-| Ubiquitous | `The <system> **shall** <response>.` |
-| Event-driven | `**When** <trigger>, the <system> **shall** <response>.` |
-| State-driven | `**While** <precondition>, the <system> **shall** <response>.` |
-| Optional-feature | `**Where** <feature included>, the <system> **shall** <response>.` |
-| Unwanted-behaviour | `**If** <trigger>, **then** the <system> **shall** <response>.` |
+| `draft` | Initial description; may change freely |
+| `review` | Stable enough for agent use; awaiting validation against implementation |
+| `accepted` | Validated against implementation; breaking changes require RFC |
+| `deprecated` | No longer in use; see replacement |
 
-The `pattern` frontmatter field records which of the five patterns applies: `ubiquitous`, `event`, `state`, `option`, `unwanted`. This field is typed metadata for tooling; the sentence in the body is the normative statement.
+## 7. Status lifecycle — RFCs
 
----
+The following table is the **single canonical source** for RFC status values and their meanings. When `status_policy` is present inline in an `rfc.yaml`, `spec-lint` asserts that every entry matches this table.
 
-## 5. Anchors
-
-Every requirement carries an `{#<id-lowercased>}` attribute on its H3 heading line. The anchor is:
-
-- the **machine-checkable handle** — `spec lint` verifies anchor presence and uniqueness
-- the **stable citation target** — tests cite `SPEC#artifact-r-001`; cross-references link to it
-
-Anchors must be globally unique within the spec tree. The id lowercased is the anchor: `ARTIFACT-R-001` → `{#artifact-r-001}`.
-
-Cross-references to requirements MUST be markdown anchor links:
-
-```markdown
-<!-- correct -->
-[ARTIFACT-R-001](#artifact-r-001)
-
-<!-- wrong — unfollowable, breaks tooling -->
-ARTIFACT-R-001
-```
-
----
-
-## 6. Test Traceability — `@verifies`
-
-A `@verifies` annotation in test source is the claim that a specific test verifies a specific requirement. The format is a `//` comment on or immediately above the relevant `describe` or `it` block, or embedded in the test title:
-
-```
-// @verifies ARTIFACT-R-001
-// @verifies ARTIFACT-R-001, ARTIFACT-R-002
-```
-
-Multiple requirement ids MAY appear comma-or-space-separated on a single line. Ids follow the requirement id grammar: `<CONCEPT>-R-NNN` (§7).
-
-**Where** — annotations live in `test/` and `tests/` source files, on the test that directly exercises the annotated requirement's behavior.
-
-**Meaning** — an annotation is a truth claim, not a tag. The annotated test MUST actually assert the behavior the requirement specifies. A false `@verifies` (annotation present, behavior not asserted) is a defect worse than an unannotated gap: it reports coverage that does not exist.
-
-**Enforcement** — `spec lint` enforces the following invariant: every requirement whose annotation line carries `**Verification** automated` MUST have at least one test citing its id via `@verifies`, or `spec lint` exits 1. `_generated/coverage.json` reports declared-vs-actual verification counts and lists every `automated` requirement that has no verifying test.
-
-**Relationship to the `verification:` attribute:**
-
-| Value | Meaning |
+| Status | Meaning |
 |---|---|
-| `automated` | A `@verifies` test verifies this requirement. Machine-enforced by `spec lint`. |
-| `manual` | Verified by a documented procedure; no `@verifies` annotation is expected or required. |
-| `hybrid` | Both a `@verifies` test and a documented manual procedure apply. |
+| `draft` | Initial draft; not yet ready for review |
+| `review` | Ready for review; `body_digest` stamped at this transition |
+| `accepted` | Decision recorded; `spec_delta` concepts updated |
+| `implementing` | Implementation in progress |
+| `implemented` | Implementation complete |
+| `rejected` | Decision recorded; no spec changes |
+| `superseded` | A newer RFC supersedes this one |
+| `abandoned` | Withdrawn without formal decision |
 
----
+## 8. Node ownership rule (transitional)
 
-## 7. ID Scheme
+`README.md` is the **indexed concept node** — it carries `id`, `type: concept`, `title`, `summary`, `parent`, and `origin_rfc`, validated by `spec-concept.schema.json`. View files are **not** indexed nodes; they are reached via the `spec.yaml` `views` array.
 
-Requirement ids are sequential per concept, zero-padded to 3 digits:
+Creating an `overview.md` with a `type: overview` frontmatter field alongside `id: C-FOO` would collide on the concept node id — `spec lint` would see two nodes with the same `id`. The rename from `README.md` to `overview.md` as the indexed node is a deferred RFC; until it lands, do not create an `overview.md` that carries the concept's `id`.
 
-```
-<CONCEPT>-R-NNN
-```
+## 9. Relations block
 
-Where `<CONCEPT>` is the concept directory name uppercased. Examples: `ARTIFACT-R-001`, `ENFORCEMENT-R-012`, `VERIFICATION-R-003`.
+The `relations` block in `spec.yaml` is **informational only**. Concept IDs listed in `relations.items[].target` are not verified against any registry by `spec lint`. Do not use the `relations` block for machine enforcement. Use the `lint` block for machine-checked invariants, and use RFC `spec_delta` for tracked structural changes.
 
-Rules:
+## 10. Lint block
 
-- Start each concept's sequence at `001`.
-- Never reuse a number within a concept, even if a requirement is withdrawn.
-- Superseded requirements keep their original id; the replacement gets the next number.
-- The concept prefix is the directory name, not the concept node id prefix. Directory `artifact` → prefix `ARTIFACT` (not `C-ARTIFACT`).
+The `lint` block in `spec.yaml` configures two automated checks run by `spec lint`:
 
----
+**`data-model.type_names`** — checks that declared TypeScript type or interface names exist in `src/`.
 
-## 8. File Layout
+- `source` must be `types`; values `prisma`, `schema`, and `graphql` cause an `unsupported-source` violation and exit 1.
+- Each name in `names` is checked via `grep -rE '^export (type|interface) <name>\b' src/**/*.ts`. A name not found → `type-name-missing` violation.
+- An empty `names` array → no check performed.
 
-```
-doc/specs/
-  README.md                       ← spec tree root (concept node C-GROUNDWORK)
-  conventions.md                  ← this file
-  _generated/
-    index.md                      ← auto-generated by `spec build`
-    index.json
-  <concept>/
-    README.md                     ← concept node (frontmatter + overview prose)
-    requirements.md               ← all requirements for this concept, anchored H3 sections
-```
+**`api.operations`** — checks that declared operation names appear as string literals in `hooks/*.mjs`.
 
-**Concept `README.md`** carries: the concept node frontmatter (§2.1); a one-paragraph problem statement; explicit scope and non-goals; and key decisions or constraints. It is the entry point for understanding what the concept covers.
-
-**`requirements.md`** carries all requirements for the concept as anchored H3 sections in id order. There is exactly one `requirements.md` per concept. Cross-concept references use anchor links pointing to the target concept's `requirements.md`.
-
-**Why one file per concept, not one file per requirement:** No established requirements format uses one-file-per-requirement. That layout is an industrial requirements-database pattern. It fragments the read, makes cross-referencing awkward, and produces directory explosion (29 requirements → 29 files). A single anchored document is navigable, renderable, and diff-friendly.
-
----
-
-## 9. Anti-Patterns
-
-The following are prohibited. Each prohibition has a one-line reason.
-
-| Prohibited | Why |
-|---|---|
-| Normative prose in frontmatter (any `ears:` or `verify:` field) | Frontmatter is invisible to renderers and cannot carry links or inline code. |
-| A requirement body without `**Why**` | A requirement without rationale is structurally incomplete; `spec lint` rejects it. |
-| A bare id cross-reference (`ARTIFACT-R-001` without a link) | Bare ids cannot be navigated; `spec lint` flags them. |
-| An unfalsifiable fit criterion (`"the system works correctly"`) | A criterion no test can refute is a wish, not a specification. |
-| A `summary` field that duplicates the normative sentence | `summary` is a ≤25-word index label for navigation; the sentence belongs in body prose. |
-| A `requirements/` directory of per-requirement files | Abolished by RFC-0003; the layout is a one-file-per-concept `requirements.md`. |
-| `shall` without bold (`shall` vs `**shall**`) | The bold is the machine-readable signal for `spec lint` pattern checking. |
+- Each entry in `operations` is checked via `grep -rE '["']<op>["']' hooks/*.mjs`. A name not found → `operation-missing` violation.
+- An empty `operations` array → no check performed.

@@ -1,0 +1,15 @@
+id: C-ORCHESTRATION
+title: Orchestration Model
+summary: "The orchestrator classifies and delegates all implementation to specialist subagents and never writes code or edits files itself."
+status: review
+views:
+  - type: overview
+    file: README.md
+  - type: flows
+    file: flows.md
+relations:
+  _note: "Informational only"
+  items:
+    - kind: depends-on
+      target: C-ARTIFACT
+lint: {}

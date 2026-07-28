@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
-import { parseFrontmatter as parseRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
+import { parseFrontmatter as parseRfcFrontmatter, readRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 
 /**
@@ -598,17 +598,15 @@ function cmdInit(args) {
 
   // AC1: --rfc <dir> seeds slices from RFC frontmatter tasks[] and sets rfc_ref.
   if (rfcDir) {
-    const rfcMdPath = path.join(rfcDir, 'rfc.md')
     let rfcFrontmatter
     try {
-      const content = readFileSync(rfcMdPath, 'utf8')
-      const parsed = parseRfcFrontmatter(content)
+      const parsed = readRfcFrontmatter(rfcDir)
       rfcFrontmatter = parsed.frontmatter
     } catch (e) {
-      die(`cannot read RFC from ${rfcMdPath}: ${e?.message ?? e}`, 1)
+      die(`cannot read RFC from ${rfcDir}: ${e?.message ?? e}`, 1)
     }
     const uid = rfcFrontmatter.uid
-    if (!uid) die(`RFC at ${rfcMdPath} has no uid in frontmatter`, 1)
+    if (!uid) die(`RFC at ${rfcDir} has no uid in frontmatter`, 1)
     obj.rfc_ref = uid
     // Prefer tasks.yaml sidecar; fall back to frontmatter.tasks for legacy schema:1 RFCs.
     // Seeding a run with zero slices defeats the Stop-gate (zero slices are trivially

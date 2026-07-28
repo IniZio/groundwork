@@ -15,7 +15,7 @@
  * Exit codes: 0 success  1 operational failure  2 usage error
  */
 
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -32,6 +32,7 @@ import {
   findConceptDir,
   randomSuffix,
   firstSentence,
+  loadSpecManifest,
 } from './lib/spec-io.mjs'
 import { scanVerifies } from './lib/verifies-scan.mjs'
 
@@ -75,13 +76,13 @@ function resolveSpecDir() {
 }
 
 /** Ensure index exists and is not stale; rebuild if needed. */
-function ensureFreshIndex(sd) {
+async function ensureFreshIndex(sd) {
   if (isIndexStale(sd)) {
-    runBuild(sd, { silent: true })
+    await runBuild(sd, { silent: true })
   }
 }
 
-function runBuild(sd, { silent = false } = {}) {
+async function runBuild(sd, { silent = false } = {}) {
   const { nodes, errors } = buildIndexData(sd)
 
   // Report errors and exit 1 on build-blocking errors
@@ -212,6 +213,60 @@ function runBuild(sd, { silent = false } = {}) {
     `_Generated: ${new Date().toISOString()}_`,
     '',
   ]
+
+  // Concepts table — placed at top of index.md, before requirement sections
+  {
+    const conceptDirs = readdirSync(sd, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== '_generated')
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    // Map: first path component of relPath → concept node (skips root-level concepts)
+    const conceptByDir = {}
+    for (const cn of conceptNodes) {
+      const parts = cn.relPath.split('/')
+      if (parts.length >= 2) {
+        conceptByDir[parts[0]] = cn
+      }
+    }
+
+    const conceptRows = []
+    for (const entry of conceptDirs) {
+      const dirName = entry.name
+      const conceptNode = conceptByDir[dirName]
+      const { manifest, errors: manifestErrors } = await loadSpecManifest(join(sd, dirName))
+      const hasManifest = manifest !== null && manifestErrors.length === 0
+
+      const conceptId = conceptNode ? conceptNode.id : dirName
+      let summary, status, views
+
+      if (hasManifest) {
+        summary = manifest.summary || (conceptNode ? conceptNode.summary : '—')
+        status = manifest.status || '—'
+        views = manifest.views && manifest.views.length > 0
+          ? manifest.views.map(v => v.type).filter(Boolean).join(', ')
+          : '—'
+      } else {
+        summary = (conceptNode ? conceptNode.summary : '') || '—'
+        summary += ' *(no manifest)*'
+        status = '—'
+        views = '—'
+      }
+
+      conceptRows.push([conceptId, summary, status, views])
+    }
+
+    mdLines.push('## Concepts', '')
+    if (conceptRows.length > 0) {
+      mdLines.push('| Concept | Summary | Status | Views |')
+      mdLines.push('| --- | --- | --- | --- |')
+      for (const [cid, summ, stat, v] of conceptRows) {
+        mdLines.push(`| ${cid} | ${summ} | ${stat} | ${v} |`)
+      }
+    } else {
+      mdLines.push('_No concept directories found._')
+    }
+    mdLines.push('')
+  }
 
   // Track which requirements have been placed (grouped under their concept)
   const outputReqIds = new Set()
@@ -427,10 +482,10 @@ function cmdInit(args) {
   process.stdout.write(`spec: created doc/specs/README.md (concept ${conceptId})\n`)
 }
 
-function cmdBuild(args) {
+async function cmdBuild(args) {
   const sd = resolveSpecDir()
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
-  runBuild(sd)
+  await runBuild(sd)
 }
 
 function cmdReq(args) {
@@ -507,7 +562,7 @@ function cmdReqNew(args) {
   process.stdout.write(`spec: created ${reqFile} (id: ${reqId})\n`)
 }
 
-function cmdShow(args) {
+async function cmdShow(args) {
   const { flags, positionals } = parseFlags(args)
   const [id] = positionals
   if (!id) die('usage: spec show <id> [--full]', 2)
@@ -516,7 +571,7 @@ function cmdShow(args) {
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -553,7 +608,7 @@ function cmdShow(args) {
   )
 }
 
-function cmdSearch(args) {
+async function cmdSearch(args) {
   const { flags, positionals } = parseFlags(args)
   const query = positionals.join(' ').trim()
   if (!query) die('usage: spec search <query> [--limit N]', 2)
@@ -565,7 +620,7 @@ function cmdSearch(args) {
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -594,7 +649,7 @@ function cmdSearch(args) {
   }
 }
 
-function cmdTree(args) {
+async function cmdTree(args) {
   const { flags } = parseFlags(args)
 
   // AC9: default depth 2
@@ -605,7 +660,7 @@ function cmdTree(args) {
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -639,7 +694,7 @@ function cmdTree(args) {
   for (const root of roots) renderTree(root, 0)
 }
 
-function cmdDeps(args) {
+async function cmdDeps(args) {
   const { positionals } = parseFlags(args)
   const [id] = positionals
   if (!id) die('usage: spec deps <id>', 2)
@@ -648,7 +703,7 @@ function cmdDeps(args) {
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   // AC11: read only from index, no opening markdown files
   const idx = loadIndex(sd)
@@ -703,7 +758,7 @@ function cmdDelegate(sub, args) {
 // Main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2)
   const [cmd, ...rest] = argv
 
@@ -718,12 +773,12 @@ function main() {
   try {
     switch (cmd) {
       case 'init':   return cmdInit(rest)
-      case 'build':  return cmdBuild(rest)
+      case 'build':  return await cmdBuild(rest)
       case 'req':    return cmdReq(rest)
-      case 'show':   return cmdShow(rest)
-      case 'search': return cmdSearch(rest)
-      case 'tree':   return cmdTree(rest)
-      case 'deps':   return cmdDeps(rest)
+      case 'show':   return await cmdShow(rest)
+      case 'search': return await cmdSearch(rest)
+      case 'tree':   return await cmdTree(rest)
+      case 'deps':   return await cmdDeps(rest)
       default:
         if (DELEGATED.has(cmd)) return cmdDelegate(cmd, rest)
         die(`unknown command "${cmd}". Run spec --help for a list.`, 2)
@@ -740,5 +795,8 @@ const isMain =
   process.argv[1].endsWith('spec.mjs')
 
 if (isMain) {
-  main()
+  main().catch(e => {
+    process.stderr.write(`spec: ${e?.message ?? String(e)}\n`)
+    process.exit(1)
+  })
 }

@@ -19,6 +19,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { parse as parseYaml } from 'yaml'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -106,6 +107,10 @@ function formatId(n) {
  * Returns a plain object of key→string-value pairs.
  */
 function readRfcFrontmatter(rfcDir) {
+  const rfcYaml = path.join(rfcDir, 'rfc.yaml')
+  if (existsSync(rfcYaml)) {
+    return parseYaml(readFileSync(rfcYaml, 'utf8'))
+  }
   const rfcMd = path.join(rfcDir, 'rfc.md')
   if (!existsSync(rfcMd)) return null
   const content = readFileSync(rfcMd, 'utf8')

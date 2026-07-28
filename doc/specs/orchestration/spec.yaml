@@ -7,6 +7,8 @@ views:
     file: README.md
   - type: flows
     file: flows.md
+  - type: constraints
+    file: constraints.md
 relations:
   _note: "Informational only"
   items:

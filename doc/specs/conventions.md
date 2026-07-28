@@ -15,8 +15,7 @@ doc/specs/<concept>/
   data-model.md       — optional view: entities, fields, relations
   flows.md            — optional view: key behavioral sequences
   api.md              — optional view: declared operations / interface
-  constraints.md      — optional view: testable normative invariants
-  requirements.md     — EARS requirements (existing format, unchanged)
+  constraints.md      — optional view: testable normative invariants (self-contained: Why, Fit criterion, Criticality inline)
 ```
 
 `README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, `parent`, and `origin_rfc` fields validated by `spec-concept.schema.json`. Renaming it to `overview.md` is a deferred follow-up RFC; until that RFC lands, `README.md` remains the single indexed entry point per concept.
@@ -47,6 +46,14 @@ id: C-MYCONCEPT
 ```
 
 The `id` value **MUST** match the owning concept's id (the same value in `README.md` and `spec.yaml`).
+
+### Spec views are self-contained
+
+Every view file **MUST** be fully self-contained. The full rationale (Why), fit criteria, and verification method for each requirement belong **inside** the view file — not in an external document. In particular:
+
+- **RFCs are for progress tracking and journaling.** They are not committed to the repository and are not a durable source of spec truth. A `constraints.md` file **MUST NOT** rely on an RFC to supply rationale or acceptance criteria.
+- **The `constraints.md` view type** carries normative `**shall**` statements with Why, Fit criterion, Criticality, and Verification method inline. A constraint entry that lacks these fields is incomplete regardless of whether an RFC exists that documents them.
+- **The `requirements.md` format is superseded.** New spec content uses the `constraints.md` view format. The old `requirements.md` files in concept directories have been migrated into their corresponding `constraints.md` view and deleted.
 
 ## 5. spec.yaml — the manifest
 

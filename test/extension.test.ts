@@ -11,8 +11,8 @@ describe("Pi Extension", () => {
 			sendMessage: vi.fn(),
 		};
 		expect(() => piExtension(pi as any)).not.toThrow();
-		expect(pi.registerTool).toHaveBeenCalledTimes(2);
-		expect(pi.registerCommand).toHaveBeenCalledTimes(2);
+		expect(pi.registerTool).toHaveBeenCalledTimes(0);
+		expect(pi.registerCommand).toHaveBeenCalledTimes(0);
 		expect(pi.on).toHaveBeenCalledTimes(4);
 	});
 });
@@ -34,5 +34,20 @@ describe("exportSessionEnv", () => {
 		exportSessionEnv(undefined, "/tmp/proj");
 		expect(process.env.CLAUDE_CODE_SESSION_ID).toBe("stale");
 		expect(process.env.CLAUDE_PROJECT_DIR).toBe("/tmp/proj");
+	});
+
+	test("ignores empty values", () => {
+		process.env.CLAUDE_CODE_SESSION_ID = "existing";
+		process.env.CLAUDE_PROJECT_DIR = "existing";
+		exportSessionEnv("", "");
+		expect(process.env.CLAUDE_CODE_SESSION_ID).toBe("existing");
+		expect(process.env.CLAUDE_PROJECT_DIR).toBe("existing");
+	});
+
+	test("handles null session id", () => {
+		process.env.CLAUDE_CODE_SESSION_ID = "existing";
+		exportSessionEnv(null, "/tmp/project");
+		expect(process.env.CLAUDE_CODE_SESSION_ID).toBe("existing");
+		expect(process.env.CLAUDE_PROJECT_DIR).toBe("/tmp/project");
 	});
 });

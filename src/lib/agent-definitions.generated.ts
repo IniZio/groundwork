@@ -184,7 +184,6 @@ Before opening files or running grep, start with the code-review-graph MCP tools
 Fall back to Grep/Read only when the graph does not cover what you need (newly created files not yet indexed, generated code, config files).
 
 **Caveat — the graph indexes code only.** Plans, specs, RFCs, and test *results* are NOT in the graph. Pass or read those directly. Graph coverage does not equal completeness of evidence — always verify acceptance criteria against the actual plan text, not graph nodes.
-
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
 
@@ -690,7 +689,7 @@ Key rules:
 
 ## Phase 2: Code Investigation
 
-1. **Explore first.** Before producing any plan, read the relevant code to understand:
+1. **Explore first.** Before producing any plan, you MUST read the relevant code to understand:
    - Current architecture and patterns
    - Files that will be affected
    - Existing tests and conventions

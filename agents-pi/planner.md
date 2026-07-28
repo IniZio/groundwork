@@ -30,7 +30,7 @@ Key rules:
 
 ## Phase 2: Code Investigation
 
-1. **Explore first.** Before producing any plan, read the relevant code to understand:
+1. **Explore first.** Before producing any plan, you MUST read the relevant code to understand:
    - Current architecture and patterns
    - Files that will be affected
    - Existing tests and conventions

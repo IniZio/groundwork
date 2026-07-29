@@ -32,6 +32,7 @@ function runHook(payload: Record<string, unknown>): Decision {
 
 const ACTIVE = { active: true, session_id: "sess-1", slices: [] };
 
+// @verifies ENFORCEMENT-R-001
 describe("orchestrator-impl-guard — blocks direct implementation always (no ledger precondition)", () => {
 	it("DENIES orchestrator Edit of a source file while a run is active", () => {
 		const cwd = makeProject(ACTIVE);

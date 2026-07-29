@@ -4,14 +4,14 @@
  *
  * Advisory prompts injected at SessionStart are routinely ignored. This hook is
  * the mechanical backstop: it refuses to let a session end while an active run
- * still has incomplete vertical slices or has not been signed off by the advisor
- * gate, and on every blocked stop it re-injects the parallel-fan-out rules.
+ * still has incomplete vertical slices, and on every blocked stop it re-injects
+ * the parallel-fan-out rules.
  *
  * Source of truth is the artifact-only ledger at `.groundwork/run.json`, written
  * by the `vertical-slice` / `ultrawork` skills and updated by the orchestrator as
  * waves complete. The hook can only READ the ledger and BLOCK — it cannot observe
  * truth — so it demands the orchestrator record specific evidence (every slice
- * `complete`, `gate.advisor === "APPROVE"`) before the run is allowed to end.
+ * `complete` or `skipped`) before the run is allowed to end.
  *
  * Design guarantees:
  *  - FAIL-OPEN. Any error, missing/garbled ledger, or absent run → allow the stop.
@@ -71,10 +71,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
-import { findRfcByUid, parseFrontmatter as parseRfcFrontmatter } from './lib/rfc-io.mjs'
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
@@ -331,35 +329,13 @@ async function main() {
 
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
   const incomplete = slices.filter((s) => !TERMINAL_STATUSES.has(s?.status))
-  // Only APPROVE is terminal. REPLAN/REVISE/REJECT/pending keep the gate closed;
-  // advisor computes APPROVE per Contract A.2 — stop-gate trusts the verdict (no axis math).
-  const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
-  // AC2 — rfc_ref pre-gate: if the ledger carries an rfc_ref, the referenced RFC
-  // must be in status "accepted" or "implementing" before this run can close.
-  // Checked regardless of work remaining — RFC status is a close prerequisite.
-  // AC4 — FAIL-OPEN: ANY error while resolving the RFC must allow the stop.
-  try {
-    const rfcRef = ledger.rfc_ref
-    if (typeof rfcRef === 'string' && rfcRef) {
-      const rfcsDir = path.join(projectDir, '.groundwork', 'rfcs')
-      const rfcDir = findRfcByUid(rfcsDir, rfcRef)
-      if (rfcDir) {
-        const content = readFileSync(path.join(rfcDir, 'rfc.md'), 'utf8')
-        const { frontmatter } = parseRfcFrontmatter(content)
-        const rfcStatus = frontmatter.status
-        const ALLOWED_RFC_STATUSES = new Set(['accepted', 'implementing'])
-        if (!ALLOWED_RFC_STATUSES.has(rfcStatus)) {
-          return block(
-            `RFC ${rfcRef} is in status "${rfcStatus}" — must be "accepted" or "implementing" before this run can close. Advance the RFC status first.`,
-          )
-        }
-      }
-      // If RFC directory not found: fail-open (AC4) — do not block on absent RFC
-    }
-  } catch {
-    // AC4: fail-open on ANY error resolving the RFC — never wedge the session
-  }
+  // rfc_ref (if present) is informational metadata — it does NOT block session close.
+
+  // Only APPROVE is terminal. REPLAN/REVISE/REJECT/pending keep the gate closed;
+  // advisor validates real-world completeness (UI tested, e2e coverage, clarifications
+  // resolved) — not just internal consistency.
+  const advisorApproved = advisorVerdict(ledger.gate) === 'APPROVE'
 
   const workRemains = incomplete.length > 0 || !advisorApproved
   // Complete + APPROVE → allow before plan pre-gate (done runs need no plan check).

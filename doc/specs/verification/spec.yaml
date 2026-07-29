@@ -1,0 +1,15 @@
+id: C-VERIFICATION
+title: Verification
+summary: "Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends."
+status: review
+views:
+  - type: overview
+    file: README.md
+  - type: constraints
+    file: constraints.md
+relations:
+  _note: "Informational only"
+  items:
+    - kind: part-of
+      target: C-GROUNDWORK
+lint: {}

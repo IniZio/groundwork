@@ -29,7 +29,6 @@ These rules apply to ALL agents in the groundwork workflow.
 | `ultrawork` | **Max fan-out mode.** Slice → write ledger → dispatch every independent slice in parallel; gate-enforced by the Stop hook |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models (logic TUI), explore UI layouts (variant switcher). Throwaway |
 | `commit` | Creating git commits (ensures consistent style) |
-| `opencode-acp` | Controlling another OpenCode instance via ACP protocol |
 | `goal` | **Multi-step work needing focus tracking.** Set before testing multiple flows, multi-wave implementation, or any task where losing the objective causes rework. Persisted across sessions |
 
 ## Session Conventions

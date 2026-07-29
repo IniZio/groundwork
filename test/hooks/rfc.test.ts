@@ -141,15 +141,18 @@ describe("rfc new (AC 1)", () => {
 		// tasks.yaml sidecar
 		expect(existsSync(path.join(rfcDir, "tasks.yaml"))).toBe(true);
 
-		const content = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
+		// S2: frontmatter moves to rfc.yaml; rfc.md is prose-only
+		expect(existsSync(path.join(rfcDir, "rfc.yaml"))).toBe(true);
+		const rfcYaml = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
 		// status is draft
-		expect(content).toContain("status: draft");
+		expect(rfcYaml).toContain("status: draft");
 		// uid matches pattern
-		expect(content).toMatch(/uid: R-\d{8}-[A-Z0-9]{6}/);
+		expect(rfcYaml).toMatch(/uid: R-\d{8}-[A-Z0-9]{6}/);
 		// directory name has padded ordinal
 		expect(path.basename(rfcDir)).toMatch(/^0001-my-feature$/);
-		// tasks NOT in frontmatter (they live in tasks.yaml sidecar)
-		expect(content).not.toMatch(/^tasks:/m);
+		// rfc.md is prose-only — tasks key must not appear in prose
+		const rfcMdContent = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
+		expect(rfcMdContent).not.toMatch(/^tasks:/m);
 	});
 
 	it("scaffolds a conforming structure — rfc validate exits 0 immediately after rfc new", () => {
@@ -237,7 +240,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 		it(`accepts op: ${op}`, () => {
 			const r = withSpecDelta(
 				`0001-op-${op.toLowerCase()}`,
-				`  - op: ${op}\n    target: docs/spec/README.md\n`,
+				`  - op: ${op}\n    target: doc/specs/README.md\n`,
 			);
 			expect(r.code).toBe(0);
 		});
@@ -247,7 +250,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 		it(`rejects the legacy op: ${legacy} (hard cutover, no dual-accept)`, () => {
 			const r = withSpecDelta(
 				`0001-legacy-${legacy}`,
-				`  - op: ${legacy}\n    target: docs/spec/README.md\n`,
+				`  - op: ${legacy}\n    target: doc/specs/README.md\n`,
 			);
 			expect(r.code).toBe(1);
 			expect(r.stderr).toContain("spec_delta: op must be");
@@ -258,7 +261,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 	it("rejects an unknown op", () => {
 		const r = withSpecDelta(
 			"0001-op-nonsense",
-			"  - op: Nonsense\n    target: docs/spec/README.md\n",
+			"  - op: Nonsense\n    target: doc/specs/README.md\n",
 		);
 		expect(r.code).toBe(1);
 		expect(r.stderr).toContain('got "Nonsense"');
@@ -267,7 +270,7 @@ describe("rfc validate spec_delta change types (STD7)", () => {
 	it("accepts an entry carrying `description`", () => {
 		const r = withSpecDelta(
 			"0001-desc",
-			"  - op: Added\n    target: docs/spec/README.md\n    description: 'Root node.'\n",
+			"  - op: Added\n    target: doc/specs/README.md\n    description: 'Root node.'\n",
 		);
 		expect(r.code).toBe(0);
 	});
@@ -352,21 +355,22 @@ describe("rfc set-status bytes-after-fence preservation (AC 4)", () => {
 describe("frontmatter serialization (AC 5)", () => {
 	it("serializes with lineWidth 0 — long strings are not wrapped", () => {
 		const rfcDir = createRfc("linewidth-test");
-		const rfcMd = path.join(rfcDir, "rfc.md");
+		// S2: frontmatter is in rfc.yaml; set-status writes back to rfc.yaml
+		const rfcYamlPath = path.join(rfcDir, "rfc.yaml");
 		// Inject a very long title that would wrap at 80 chars
-		const content = readFileSync(rfcMd, "utf8");
+		const content = readFileSync(rfcYamlPath, "utf8");
 		const longTitle =
 			"This is a very long title that would definitely wrap at the default 80-character line width limit imposed by YAML serializers";
 		const patched = content.replace(
 			/^title:.*$/m,
 			`title: ${longTitle}`,
 		);
-		writeFileSync(rfcMd, patched);
+		writeFileSync(rfcYamlPath, patched);
 
-		// Trigger a set-status (which serializes frontmatter)
+		// Trigger a set-status (which serializes frontmatter back to rfc.yaml)
 		run(["set-status", rfcDir, "review"]);
 
-		const after = readFileSync(rfcMd, "utf8");
+		const after = readFileSync(rfcYamlPath, "utf8");
 		// The long title must appear entirely on one line — no wrapping
 		const titleLine = after.split("\n").find((l) => l.startsWith("title:"));
 		expect(titleLine).toBeDefined();
@@ -444,8 +448,9 @@ describe("rfc new --supersedes (AC 7)", () => {
 	it("sets supersedes on new RFC and superseded_by on target atomically", () => {
 		// Create the original RFC
 		const originalDir = createRfc("original-proposal");
-		const originalMd = path.join(originalDir, "rfc.md");
-		const originalContent = readFileSync(originalMd, "utf8");
+		// S2: frontmatter is in rfc.yaml; read uid from there
+		const originalYaml = path.join(originalDir, "rfc.yaml");
+		const originalContent = readFileSync(originalYaml, "utf8");
 		const uidMatch = originalContent.match(/uid: (R-\d{8}-[A-Z0-9]{6})/);
 		expect(uidMatch).toBeTruthy();
 		const originalUid = uidMatch![1];
@@ -454,17 +459,17 @@ describe("rfc new --supersedes (AC 7)", () => {
 		const r = run(["new", "replacement-proposal", "--supersedes", originalUid]);
 		expect(r.code).toBe(0);
 
-		// New RFC should have supersedes: [originalUid]
+		// New RFC should have supersedes: [originalUid] in its rfc.yaml
 		const newDirs = existsSync(path.join(rfcsDir(), "0002-replacement-proposal"));
 		expect(newDirs).toBe(true);
 		const newContent = readFileSync(
-			path.join(rfcsDir(), "0002-replacement-proposal", "rfc.md"),
+			path.join(rfcsDir(), "0002-replacement-proposal", "rfc.yaml"),
 			"utf8",
 		);
 		expect(newContent).toContain(originalUid);
 
-		// Original RFC should now have superseded_by set to new RFC's uid
-		const updatedOriginal = readFileSync(originalMd, "utf8");
+		// Original RFC should now have superseded_by set to new RFC's uid in rfc.yaml
+		const updatedOriginal = readFileSync(originalYaml, "utf8");
 		expect(updatedOriginal).toContain("superseded_by:");
 		// The new uid should appear in the updated original
 		const newUidMatch = newContent.match(/uid: (R-\d{8}-[A-Z0-9]{6})/);
@@ -626,8 +631,8 @@ describe("rfc status with ledger (AC 9)", () => {
 	it("prints program counter, per-task status, AC coverage map, and gate history", () => {
 		// Create RFC with tasks
 		const rfcDir = createRfc("with-ledger");
-		const rfcMd = path.join(rfcDir, "rfc.md");
-		const uid = readFileSync(rfcMd, "utf8").match(/uid: (R-\d{8}-[A-Z0-9]{6})/)![1];
+		// S2: frontmatter (including uid) is in rfc.yaml
+		const uid = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8").match(/uid: (R-\d{8}-[A-Z0-9]{6})/)![1];
 
 		// Write tasks to tasks.yaml sidecar (tasks no longer live in frontmatter).
 		const tasksYaml =
@@ -743,8 +748,9 @@ describe("yaml direct dependency (AC 11)", () => {
 describe("rfc validate strict layout (schema >= 2)", () => {
 	it("rfc new writes schema: 2 — new RFCs are strict from birth", () => {
 		const rfcDir = createRfc("strict-birth");
-		const content = readFileSync(path.join(rfcDir, "rfc.md"), "utf8");
-		// Extract schema value from frontmatter
+		// S2: frontmatter (including schema) is in rfc.yaml
+		const content = readFileSync(path.join(rfcDir, "rfc.yaml"), "utf8");
+		// Extract schema value from sidecar
 		const m = content.match(/^schema: (\d+)$/m);
 		expect(m).toBeTruthy();
 		expect(Number(m![1])).toBe(2);
@@ -778,12 +784,13 @@ describe("rfc validate strict layout (schema >= 2)", () => {
 	// Proves the gate is < 2 lenient, not accidentally strict for all RFCs.
 	it("exits 0 for schema: 1 RFC with no sections/ (legacy/lenient path)", () => {
 		// Use rfc new output as base, then downgrade to schema: 1 and remove sections/.
+		// S2: schema field lives in rfc.yaml; patch there.
 		const rfcDir = createRfc("legacy-lenient");
-		const rfcMdPath = path.join(rfcDir, "rfc.md");
-		const content = readFileSync(rfcMdPath, "utf8");
+		const rfcYamlPath = path.join(rfcDir, "rfc.yaml");
+		const content = readFileSync(rfcYamlPath, "utf8");
 		// Patch schema: 2 → schema: 1 and remove sections/.
 		const patched = content.replace(/^schema: 2$/m, "schema: 1");
-		writeFileSync(rfcMdPath, patched);
+		writeFileSync(rfcYamlPath, patched);
 		rmSync(path.join(rfcDir, "sections"), { recursive: true, force: true });
 		const r = run(["validate", rfcDir]);
 		expect(r.code).toBe(0);

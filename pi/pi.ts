@@ -5,10 +5,6 @@ import { fileURLToPath } from "node:url";
 import { getBootstrapForAgent } from "../src/lib/skills.js";
 import { readGoal, goalReminder, injectGoalAndBootstrap } from "../src/lib/goal.js";
 import { registerGroundworkProviders } from "../src/lib/provider-registry.js";
-import { createHandoffSessionTool } from "./pi-tools/handoff-session.js";
-import { createSetGoalTool } from "./pi-tools/set-goal.js";
-import { createHandoffCommand } from "./pi-commands/handoff.js";
-import { createGoalCommand } from "./pi-commands/goal.js";
 import { createGroundworkRuntime } from "../src/runtime.js";
 
 /** True when running inside a subagent child process (depth > 0). */
@@ -68,16 +64,17 @@ function readActiveLedger(projectDir: string, sessionId: string): LedgerData | n
 }
 
 /**
- * omp has no CLAUDE_ENV_FILE, so propagate the session id + project dir into the
- * process env here. Bash-spawned hooks/ledger.mjs reads CLAUDE_CODE_SESSION_ID
- * (and CLAUDE_PROJECT_DIR) to resolve the per-session ledger
- * (.groundwork/runs/<session_id>.json) instead of collapsing every session onto
- * the legacy .groundwork/run.json.
+ * Export the active session id + project dir to the process environment so that
+ * Bash-spawned subprocesses (notably the `hooks/ledger.mjs` CLI) resolve the
+ * per-session ledger path (`.groundwork/runs/<session_id>.json`) instead of
+ * collapsing every session onto the legacy `.groundwork/run.json`.
+ *
+ * Mirrors the Claude Code SessionStart hook (session-reminder.mjs, which writes
+ * CLAUDE_CODE_SESSION_ID to CLAUDE_ENV_FILE). pi has no session-scoped env file,
+ * so we set the global process env — correct for pi's single-session-per-process
+ * model.
  */
-export function exportSessionEnv(
-	sessionId: string | undefined | null,
-	projectDir: string,
-): void {
+export function exportSessionEnv(sessionId: string | undefined | null, projectDir: string): void {
 	if (sessionId) process.env.CLAUDE_CODE_SESSION_ID = sessionId;
 	if (projectDir) process.env.CLAUDE_PROJECT_DIR = projectDir;
 }
@@ -99,20 +96,17 @@ export default function (pi: ExtensionAPI) {
 		process.env.PI_SUBAGENTS_EXTRA_AGENTS_DIR = piDirs.join(":");
 	}
 
-	// ---- Tools ----
-	pi.registerTool(createHandoffSessionTool({ directory }));
-	pi.registerTool(createSetGoalTool({ directory }));
-
-	// ---- Commands ----
-	pi.registerCommand("handoff", createHandoffCommand({ directory }));
-	pi.registerCommand("goal", createGoalCommand({ directory }));
-
 	// ---- Events ----
 	pi.on("session_start", (_event, ctx) => {
-		const cwd = (ctx as any)?.cwd ?? process.cwd();
+		interface SessionStartCtx {
+			cwd?: string;
+			sessionManager?: { getSessionId?: () => string };
+		}
+		const ctxObj = ctx as unknown as SessionStartCtx;
+		const cwd = ctxObj?.cwd ?? process.cwd();
 		runtime.cwd = cwd;
-		const sessionId = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
-		exportSessionEnv(sessionId || undefined, directory);
+		const sid = ctxObj?.sessionManager?.getSessionId?.() ?? "";
+		exportSessionEnv(sid || undefined, cwd);
 	});
 
 	pi.on("session_shutdown", (_event, _ctx) => {
@@ -179,8 +173,10 @@ export default function (pi: ExtensionAPI) {
 		const messages = (event as any).messages;
 		if (!Array.isArray(messages)) return;
 
-		const sessionID = (ctx as any)?.sessionManager?.getSessionId?.() ?? "";
-		const agent = (ctx as any)?.agent ?? "orchestrator";
+		const ctxObj = ctx as unknown as { sessionManager?: { getSessionId?: () => string }; agent?: string };
+		const sessionID = ctxObj?.sessionManager?.getSessionId?.() ?? "";
+		exportSessionEnv(sessionID || undefined, directory);
+		const agent = ctxObj?.agent ?? "orchestrator";
 
 		// For subagents: inject full bootstrap into user messages.
 		// For main session: inject an explicit delegation command into the LAST

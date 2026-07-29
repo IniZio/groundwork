@@ -95,6 +95,21 @@ describe("ledger CLI — complete", () => {
 		expect(r.stdout.split("\n").filter(Boolean).length).toBe(1);
 		expect(r.stdout).not.toContain("acceptance");
 	});
+
+	// @verifies ARTIFACT-R-001
+	it("stamps completed_at (ISO-8601) and session_id on the completed slice", () => {
+		const r = run(["complete", "S2"]);
+		expect(r.code).toBe(0);
+		const ledger = readLedger();
+		const s = ledger.slices.find((s: any) => s.id === "S2");
+		// id must be present (unchanged)
+		expect(s.id).toBe("S2");
+		// completed_at must be a valid ISO-8601 date string
+		expect(s.completed_at).toBeTruthy();
+		expect(new Date(s.completed_at).toISOString()).toBe(s.completed_at);
+		// session_id on slice must match the run's top-level session_id
+		expect(s.session_id).toBe(ledger.session_id);
+	});
 });
 
 describe("ledger CLI — gate", () => {

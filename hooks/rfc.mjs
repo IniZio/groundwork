@@ -21,10 +21,12 @@
  *   abandoned    → superseded
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { stringify } from 'yaml'
+import { parseDocument, stringify } from 'yaml'
 import {
+  assembleLogicalBody,
   generateUid,
   parseFrontmatter,
   serializeFrontmatter,
@@ -102,6 +104,79 @@ function rfcsDir() {
 }
 
 // ---------------------------------------------------------------------------
+// Sidecar helpers — S2: rfc.yaml takes over machine-readable frontmatter
+// ---------------------------------------------------------------------------
+
+/**
+ * Read RFC frontmatter, preferring rfc.yaml sidecar over rfc.md YAML block.
+ *
+ * Returns { frontmatter, doc, body, source } where:
+ *   source = 'sidecar' when read from rfc.yaml
+ *   source = 'rfc.md'  when read from rfc.md frontmatter (legacy)
+ *   body   = prose string from rfc.md (sidecar path returns full rfc.md content)
+ *   doc    = yaml.Document (parseDocument result; for sidecar path, parses rfc.yaml)
+ *
+ * Throws if neither source is readable.
+ */
+function readSidecarFrontmatter(rfcPath) {
+  const yamlPath = path.join(rfcPath, 'rfc.yaml')
+  const mdPath = path.join(rfcPath, 'rfc.md')
+
+  if (existsSync(yamlPath)) {
+    const yamlContent = readFileSync(yamlPath, 'utf8')
+    const doc = parseDocument(yamlContent)
+    const frontmatter = doc.toJS()
+    const body = existsSync(mdPath) ? readFileSync(mdPath, 'utf8') : ''
+    return { frontmatter, doc, body, source: 'sidecar' }
+  }
+
+  // Legacy fallback: read frontmatter from rfc.md YAML block
+  const content = readFileSync(mdPath, 'utf8')
+  const parsed = parseFrontmatter(content)
+  return { ...parsed, source: 'rfc.md' }
+}
+
+/**
+ * Find an RFC directory by uid, checking rfc.yaml first then rfc.md frontmatter.
+ * Local dual-read version — works after frontmatter has been extracted to rfc.yaml.
+ *
+ * @param {string} dir  Path to the .groundwork/rfcs/ directory.
+ * @param {string} uid  RFC uid to search for.
+ * @returns {string|null}  Absolute path to the RFC directory, or null.
+ */
+function findRfcByUidLocal(dir, uid) {
+  if (!existsSync(dir)) return null
+  for (const name of readdirSync(dir)) {
+    const rfcDir = path.join(dir, name)
+    try {
+      const { frontmatter } = readSidecarFrontmatter(rfcDir)
+      if (frontmatter.uid === uid) return rfcDir
+    } catch {
+      // Skip unreadable entries
+    }
+  }
+  return null
+}
+
+/**
+ * Compute the S2 body digest: SHA-256 over all section files in canonical
+ * section order (all sections, no §1–8 filter) concatenated with the JSON
+ * encoding of the tasks[] array from tasks.yaml.
+ *
+ * Input set differs from the legacy computeBodyDigest (rfc-io.mjs) in two ways:
+ *   1. No §§1–8 filter — all sections contribute.
+ *   2. spec_delta is excluded (it moves to rfc.yaml and is mutable metadata).
+ *
+ * @param {string} rfcDir  Absolute path to the RFC directory.
+ * @returns {string}  Hex-encoded SHA-256 digest.
+ */
+function computeNewBodyDigest(rfcDir) {
+  const prose = assembleLogicalBody(rfcDir, null)
+  const tasks = readTasksSidecar(rfcDir)
+  return createHash('sha256').update(prose + JSON.stringify(tasks), 'utf8').digest('hex')
+}
+
+// ---------------------------------------------------------------------------
 // §3.2 Transition table (quoted from rfc.md §3.2, lines 1012-1023)
 // ---------------------------------------------------------------------------
 
@@ -128,7 +203,15 @@ const ALL_STATUSES = new Set(Object.keys(TRANSITIONS))
 // Schema validation
 // ---------------------------------------------------------------------------
 
-function validateFrontmatter(fm) {
+/**
+ * Validate RFC frontmatter object against the given JSON Schema and additional
+ * hand-written invariants.
+ *
+ * @param {object} fm         Parsed frontmatter JS object.
+ * @param {string} schemaName Schema name passed to loadSchema(). Use
+ *   'rfc-manifest' for sidecar RFCs and 'rfc-frontmatter' for legacy rfc.md.
+ */
+function validateFrontmatter(fm, schemaName = 'rfc-frontmatter') {
   const errors = []
 
   // ---------------------------------------------------------------------------
@@ -140,7 +223,7 @@ function validateFrontmatter(fm) {
   // Does NOT cover: spec_delta op vocabulary (custom message below), spec_delta
   // target (custom "non-empty target" message below), cross-field accepted_by+
   // spec_change, tasks shape, status transitions, body_digest, manifest freshness.
-  const schemaValidate = loadSchema('rfc-frontmatter')
+  const schemaValidate = loadSchema(schemaName)
   if (!schemaValidate(fm)) {
     // Filter out spec_delta op enum and target errors — hand-written checks below
     // emit better-formatted messages for those specific paths.
@@ -303,7 +386,8 @@ function cmdNew(args) {
     if (!/^R-\d{8}-[A-Z0-9]{6}$/.test(targetUid)) {
       die(`--supersedes: "${targetUid}" is not a valid RFC uid`)
     }
-    const targetDir = findRfcByUid(dir, targetUid)
+    // Use local dual-read lookup so we find RFCs whose frontmatter has moved to rfc.yaml
+    const targetDir = findRfcByUidLocal(dir, targetUid)
     if (!targetDir) die(`--supersedes: RFC with uid "${targetUid}" not found`)
     supersededDirs.push({ uid: targetUid, dir: targetDir })
   }
@@ -350,23 +434,38 @@ function cmdNew(args) {
   // Create tasks.yaml sidecar — empty array for a new RFC.
   writeFileSync(path.join(rfcDir, 'tasks.yaml'), '[]\n')
 
-  // Write rfc.md: frontmatter + abstract placeholder + manifest placeholder.
-  // Section prose lives entirely in sections/; rfc.md holds only metadata.
+  // Write rfc.yaml: machine-readable sidecar (S2 pattern).
   const fmYaml = stringify(frontmatter, { lineWidth: 0 })
+  writeFileSync(path.join(rfcDir, 'rfc.yaml'), fmYaml)
+
+  // Write rfc.md: prose-only (no YAML frontmatter block).
+  // Section prose lives entirely in sections/; rfc.md holds abstract + manifest.
   const body = `\n> Abstract: TODO\n\n<!-- rfc:manifest:begin — generated by \`rfc index\`; do not hand-edit -->\n<!-- rfc:manifest:end -->\n`
-  writeFileSync(path.join(rfcDir, 'rfc.md'), `---\n${fmYaml}---\n${body}`)
+  writeFileSync(path.join(rfcDir, 'rfc.md'), body)
 
   // Generate the manifest immediately so validate exits 0 right after new.
   writeManifest(rfcDir)
 
-  // AC 7: atomically set superseded_by on each target
+  // AC 7: atomically set superseded_by on each target.
+  // Support both sidecar (rfc.yaml) and legacy (rfc.md frontmatter) targets.
   for (const { uid: targetUid, dir: targetDir } of supersededDirs) {
-    const targetMd = path.join(targetDir, 'rfc.md')
-    const content = readFileSync(targetMd, 'utf8')
-    const { doc, body: targetBody } = parseFrontmatter(content)
-    doc.set('superseded_by', uid)
-    doc.set('updated', now)
-    writeFileSync(targetMd, serializeFrontmatter(doc, targetBody))
+    const targetYaml = path.join(targetDir, 'rfc.yaml')
+    if (existsSync(targetYaml)) {
+      // Sidecar target: update rfc.yaml
+      const yamlContent = readFileSync(targetYaml, 'utf8')
+      const doc = parseDocument(yamlContent)
+      doc.set('superseded_by', uid)
+      doc.set('updated', now)
+      writeFileSync(targetYaml, doc.toString({ lineWidth: 0 }))
+    } else {
+      // Legacy target: update rfc.md frontmatter
+      const targetMd = path.join(targetDir, 'rfc.md')
+      const content = readFileSync(targetMd, 'utf8')
+      const { doc, body: targetBody } = parseFrontmatter(content)
+      doc.set('superseded_by', uid)
+      doc.set('updated', now)
+      writeFileSync(targetMd, serializeFrontmatter(doc, targetBody))
+    }
     out(`  superseded_by on ${targetUid} → ${uid}`)
   }
 
@@ -395,15 +494,15 @@ function cmdValidate(args) {
   const rfcPath = positionals[0]
   if (!rfcPath) die('usage: rfc validate <dir>', 2)
 
+  // Require at minimum rfc.md (prose) or rfc.yaml (sidecar) to exist
+  const rfcYaml = path.join(rfcPath, 'rfc.yaml')
   const rfcMd = path.join(rfcPath, 'rfc.md')
-  if (!existsSync(rfcMd)) die(`rfc.md not found: ${rfcMd}`)
-
-  const content = readFileSync(rfcMd, 'utf8')
+  if (!existsSync(rfcYaml) && !existsSync(rfcMd)) die(`rfc.md not found: ${rfcPath}`)
 
   // AC 3: report line/col on YAML parse error
   let parsed
   try {
-    parsed = parseFrontmatter(content)
+    parsed = readSidecarFrontmatter(rfcPath)
   } catch (e) {
     if (e.line != null) {
       process.stderr.write(`rfc: YAML parse error at line ${e.line}, column ${e.col}: ${e.message}\n`)
@@ -413,8 +512,10 @@ function cmdValidate(args) {
     process.exit(1)
   }
 
-  const { frontmatter } = parsed
-  const errors = validateFrontmatter(frontmatter)
+  const { frontmatter, body: rfcBody, source } = parsed
+  // Use rfc-manifest schema for sidecar RFCs; rfc-frontmatter for legacy rfc.md
+  const schemaName = source === 'sidecar' ? 'rfc-manifest' : 'rfc-frontmatter'
+  const errors = validateFrontmatter(frontmatter, schemaName)
 
   // Strict layout validation — keyed on schema version, NOT on filesystem presence.
   // schema >= 2 → STRICT: sections/ MUST exist, tasks.yaml MUST exist, naming validated.
@@ -440,18 +541,23 @@ function cmdValidate(args) {
 
   // Manifest freshness check — schema >= 2 + sections/ must exist (layout error already
   // reported if missing). A stale manifest fails validate; run `rfc index <dir>` to fix.
+  // For sidecar RFCs, rfcBody is the full rfc.md prose content; for legacy, the full rfc.md.
   if ((frontmatter.schema ?? 1) >= 2 && existsSync(sectionsDir)) {
-    const currentBlock = extractManifestBlock(content)
+    const currentBlock = extractManifestBlock(rfcBody)
     const expectedBlock = generateManifestBlock(rfcPath)
     if (currentBlock !== expectedBlock) {
       errors.push('manifest: stale — run `rfc index <dir>` to regenerate')
     }
   }
 
-  // AC 6: body_digest integrity check for review+ statuses
+  // AC 6: body_digest integrity check for review+ statuses.
+  // Sidecar RFCs use the S2 digest definition (all sections + tasks, no spec_delta).
+  // Legacy rfc.md RFCs use the old definition (§§1–8 + spec_delta + tasks).
   const frozenStatuses = new Set(['review', 'accepted', 'implementing', 'implemented', 'rejected', 'superseded', 'abandoned'])
   if (frozenStatuses.has(frontmatter.status) && frontmatter.body_digest != null) {
-    const current = computeBodyDigest(frontmatter, rfcPath)
+    const current = source === 'sidecar'
+      ? computeNewBodyDigest(rfcPath)
+      : computeBodyDigest(frontmatter, rfcPath)
     if (current !== frontmatter.body_digest) {
       errors.push(
         `body_digest mismatch: body was mutated after RFC moved to "${frontmatter.status}"\n` +
@@ -480,18 +586,14 @@ function cmdSetStatus(args) {
     die(`invalid status "${newStatus}". Must be: ${[...ALL_STATUSES].join(', ')}`, 2)
   }
 
-  const rfcMd = path.join(rfcPath, 'rfc.md')
-  if (!existsSync(rfcMd)) die(`rfc.md not found: ${rfcMd}`)
-
-  const content = readFileSync(rfcMd, 'utf8')
   let parsed
   try {
-    parsed = parseFrontmatter(content)
+    parsed = readSidecarFrontmatter(rfcPath)
   } catch (e) {
     die(`YAML parse error: ${e.message}`)
   }
 
-  const { frontmatter, doc, body } = parsed
+  const { frontmatter, doc, body, source } = parsed
   const currentStatus = frontmatter.status
   const permitted = TRANSITIONS[currentStatus] ?? []
 
@@ -510,9 +612,13 @@ function cmdSetStatus(args) {
   doc.set('status', newStatus)
   doc.set('updated', now)
 
-  // Stamp body_digest when first entering review (draft → review)
+  // Stamp body_digest when first entering review (draft → review).
+  // Sidecar RFCs use the S2 digest (all sections + tasks, no spec_delta).
+  // Legacy rfc.md RFCs use the old definition (§§1–8 + spec_delta + tasks).
   if (newStatus === 'review' && currentStatus === 'draft') {
-    const digest = computeBodyDigest(doc.toJS(), rfcPath)
+    const digest = source === 'sidecar'
+      ? computeNewBodyDigest(rfcPath)
+      : computeBodyDigest(doc.toJS(), rfcPath)
     doc.set('body_digest', digest)
   }
 
@@ -532,8 +638,15 @@ function cmdSetStatus(args) {
     doc.set('accepted_at', now)
   }
 
-  // AC 4: body (everything after closing fence) is passed through UNCHANGED
-  writeFileSync(rfcMd, serializeFrontmatter(doc, body))
+  if (source === 'sidecar') {
+    // Write updated frontmatter back to rfc.yaml; rfc.md prose is unchanged.
+    // lineWidth: 0 prevents YAML from reflowing long strings at 80 chars (AC5).
+    writeFileSync(path.join(rfcPath, 'rfc.yaml'), doc.toString({ lineWidth: 0 }))
+  } else {
+    // Legacy: write frontmatter back into rfc.md
+    // AC 4: body (everything after closing fence) is passed through UNCHANGED
+    writeFileSync(path.join(rfcPath, 'rfc.md'), serializeFrontmatter(doc, body))
+  }
   out(`${currentStatus} → ${newStatus}`)
 }
 
@@ -542,13 +655,9 @@ function cmdStatus(args) {
   const rfcPath = positionals[0]
   if (!rfcPath) die('usage: rfc status <dir>', 2)
 
-  const rfcMd = path.join(rfcPath, 'rfc.md')
-  if (!existsSync(rfcMd)) die(`rfc.md not found: ${rfcMd}`)
-
-  const content = readFileSync(rfcMd, 'utf8')
   let parsed
   try {
-    parsed = parseFrontmatter(content)
+    parsed = readSidecarFrontmatter(rfcPath)
   } catch (e) {
     die(`YAML parse error: ${e.message}`)
   }

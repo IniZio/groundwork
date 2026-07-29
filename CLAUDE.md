@@ -48,7 +48,7 @@
 A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the SessionStart injection), so by default a fork believes it is the orchestrator and tries to delegate-and-wait — which **deadlocks**, because no parent loop services a fork's background tasks. No prompt override reliably *revokes* an inherited system prompt; the only robust lever is a sanctioned carve-out that *extends* the identity.
 
 - **General rule:** MUST NOT use a fork for execution work, except in the sanctioned retrospective-fork mode described immediately below. Use a **named subagent** (`general-purpose`, etc.) — its own definition system prompt fully replaces the orchestrator identity, so there is no leak.
-- **The one sanctioned exception — retrospective-fork mode:** `/groundwork:retrospective` MAY run as a fork (it needs full session history to reflect). When your task prompt states you are a retrospective fork, you remain the orchestrator but this mode inverts the delegate-everything rule for the retrospective only: execute Phases 1–6 **yourself**, directly, with Read/Write/Edit; do NOT delegate or spawn subagents; do NOT end your turn to "wait" (there is nothing to service you — waiting deadlocks); return your reflection + Learnings-KB result as your FINAL message. The sole exception within the exception: high-blast promotions (a CLAUDE.md rule or a new SKILL.md) — DRAFT those and hand them back in your report; the PARENT orchestrator runs them through the advisor gate and applies them. This is scoped narrowly to the retrospective fork and grants no general license to self-implement.
+- **The one sanctioned exception — retrospective-fork mode:** `/groundwork:retrospective` MAY run as a fork (it needs full session history to reflect). When your task prompt states you are a retrospective fork, you remain the orchestrator but this mode inverts the delegate-everything rule for the retrospective only: execute Phases 1–6 **yourself**, directly, with Read/Write/Edit; do NOT delegate or spawn subagents; do NOT end your turn to "wait" (there is nothing to service you — waiting deadlocks); return your reflection + Learnings-KB result as your FINAL message. The sole exception within the exception: high-blast promotions (a CLAUDE.md rule or a new SKILL.md) — DRAFT those and hand them back in your report; the PARENT orchestrator runs them through advisor validation and applies them. This is scoped narrowly to the retrospective fork and grants no general license to self-implement.
 
 **Fork vs named subagent — quick decision.** Default to a **named subagent**. Choose a **fork** only when the task genuinely needs the *full session history* to do well (e.g. reflecting on "what happened this session") AND a short written brief cannot substitute for that history AND it is a sanctioned execute-in-fork mode (currently only `/groundwork:retrospective`). Prefer a **named subagent** when: the task is scoped and self-contained (a brief suffices); you need a specific or cheaper model (a fork is pinned to the parent model); you want a guaranteed-clean identity (a named subagent's own definition system prompt fully replaces the orchestrator identity, so there is no leak); or cost matters (a fork copies the entire transcript into the child — observed ~350–430k tokens on a long session — while a named subagent starts fresh). Rule of thumb: **history-critical AND a sanctioned fork mode → fork; everything else → named subagent.**
 
@@ -101,7 +101,7 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Update slice status or fields mid-run: `ledger set <id> --status in_progress|complete [--wave N] [--desc "…"]`; add new slices with `ledger add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--kind plan|diagnose|design|impl]` (kind defaults to `impl`); remove with `ledger rm <id>`. Kinds let the ledger represent non-implementation phases (planning, diagnosis, design) as first-class items, making the ledger the whole-session spine rather than implementation-only.
 - Inspect a single slice in full: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs show <id>`.
 - View run summary: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs view` (token is redacted in output).
-- Record the verdict after the completion gate: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE --token <write_token>` (add `--citation … --rubric …` for the object form).
+- Record the advisor verdict in the ledger: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE --token <write_token>` (add `--citation … --rubric …` for the object form). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
 - Check progress cheaply any time with `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs status` instead of reading the file.
 - To abandon a run: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs abandon` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 - For full command reference: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs help [<cmd>]` (also `-h` or bare `ledger`).
@@ -263,13 +263,13 @@ To run several domains in parallel, the PRIMARY orchestrator fans out one `gener
 
 ## Mandatory completion flow
 
-Completion gate is **risk-tiered** — scale cost to risk. `advisor` APPROVE is REQUIRED for non-trivial work.
+Completion gate is **risk-tiered** — scale cost to risk. For non-trivial work, the advisor MUST return APPROVE before the session can end; CORRECTION and REPLAN block session end. Invoke `advisor()` (the native tool, or `groundwork:advisor` if unavailable) to validate real-world completeness: CI watched to completion, UI verified with agent-browser/playwright, e2e and TDD coverage in place, any needed user clarifications resolved, similar reference projects consulted. "Tests pass locally" is not sufficient evidence of completeness. Findings that don't rise to CORRECTION MUST be registered as new ledger slices via `ledger add` before recording APPROVE — the gate then holds the session open until they land.
 
 | Tier | When | Gate sequence |
 |---|---|---|
-| Trivial | Typo / config, no ledger | `advisor` only — or skip if truly zero-risk |
-| Small change / bug fix | <1h, localized, single domain | `advisor` |
-| Feature / shared-code / security / multi-slice | Ledger exists, or touches API/auth/shared | `[qa if interactive UI]` → `advisor` |
+| Trivial | Typo / config, no ledger | `advisor()` only — or skip if truly zero-risk |
+| Small change / bug fix | <1h, localized, single domain | `advisor()` |
+| Feature / shared-code / security / multi-slice | Ledger exists, or touches API/auth/shared | `[qa if interactive UI]` → `advisor()` |
 
 _hooks/session-reminder.mjs re-injects a brief reminder post-compaction; this tier table is authoritative._
 
@@ -280,8 +280,8 @@ _hooks/session-reminder.mjs re-injects a brief reminder post-compaction; this ti
 Same subtask fails 3× in a row:
 1. Stop retrying
 2. Collect all errors, approaches tried, specific blocker
-3. `advisor`: "3 consecutive failures on [task]. Tried: ... Blocker: ..."
-4. Wait for APPROVE before proceeding
+3. `advisor()`: "3 consecutive failures on [task]. Tried: ... Blocker: ..."
+4. Wait for advisor guidance before proceeding
 
 ---
 
@@ -301,7 +301,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 | `agents/` | Compiled agent definition files |
 | `agents-src/` | Source agent definitions (Markdown with YAML frontmatter) |
 | `commands/` | Claude Code slash-command scripts |
-| `docs/` | Spec tree (`docs/spec/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
+| `docs/` | Spec tree (`doc/specs/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
 | `hooks/` | PreToolUse / Stop / SessionStart hook scripts + CLIs |
 | `hooks/lib/` | Shared helpers for hooks (`hook-io.mjs`, `spec-io.mjs`) |
 | `scripts/` | Build and utility scripts |
@@ -323,7 +323,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 - Hook CLIs: kebab-named `.mjs` files in `hooks/`.
 - Agent source files: `agents-src/<name>.md` with YAML frontmatter.
 - Skills: `skills/<namespace>/<skill-name>/SKILL.md`.
-- Spec requirements: `docs/spec/<concept-dir>/requirements/<kebab-name>.md`.
+- Spec requirements: `doc/specs/<concept-dir>/requirements/<kebab-name>.md`.
 - Runtime state (ledgers, journal shards, plans): `.groundwork/`, excluded in this repo via the committed `.gitignore`. When groundwork runs inside a **host project's** repo, exclude `.groundwork/` via `.git/info/exclude` instead — never touch that project's committed `.gitignore`.
 
 ### Runtime and tooling

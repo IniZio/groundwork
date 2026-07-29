@@ -28,9 +28,11 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
+const PRD_DIR = path.join(ROOT, "docs", "prds");
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(path.join(tmpdir(), "doc-read-guard-"));
+	mkdirSync(PRD_DIR, { recursive: true });
 });
 
 afterEach(() => {

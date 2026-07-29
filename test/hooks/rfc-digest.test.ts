@@ -375,7 +375,7 @@ describe("digest determinism across layouts", () => {
 		const rfcDir = makeRfc({ "01-summary.md": "## 1. Summary\n\nContent.\n" }, []);
 		const fm1 = { spec_delta: [] };
 		const fm2 = {
-			spec_delta: [{ op: "Added", target: "docs/spec/README.md", description: "Root." }],
+			spec_delta: [{ op: "Added", target: "doc/specs/README.md", description: "Root." }],
 		};
 		expect(computeBodyDigest(fm1, rfcDir)).not.toBe(computeBodyDigest(fm2, rfcDir));
 	});

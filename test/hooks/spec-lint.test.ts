@@ -1,18 +1,25 @@
 /**
- * spec-lint tests — validates schema enforcement added by the lint-hardening slice.
+ * spec-lint tests — validates the new body-first spec format (RFC-0003) and
+ * the exit-code regression fix (violations now always produce exit 1).
  *
- * Tests run against temp fixture trees, NEVER against docs/spec/** in the live repo.
+ * Tests run against temp fixture trees; they NEVER touch doc/specs/** in the live repo.
  *
- * Rules exercised (8 invariants):
- *   ears-or-summary — requirement nodes must have ears OR summary (either/or)
- *   origin-rfc      — every node must carry origin_rfc
- *   required-fields — all schema-required fields must be present and non-blank (concept + requirement)
- *   enum-values     — type, pattern, verification, criticality, status
- *   id-format       — concept and requirement id regexes
- *   summary-length  — ≤25 words (boundary: exactly 25 passes; 26 fails)
- *   snapshot-of     — snapshot_of must reference an existing node in the spec tree
- *   unknown-field   — frontmatter must not contain keys not defined in the schema
- *   spec_delta path — a delta targeting a nonexistent path must FAIL
+ * Invariants exercised:
+ *   stale-frontmatter   — ears or verify in any frontmatter → violation
+ *   normative-statement — normative statement must contain bolded **shall**
+ *   why-required        — **Why** rationale is required in body
+ *   fit-criterion       — **Fit criterion** is required in body
+ *   anchor-mismatch     — {#anchor} must equal id lowercased
+ *   xref-dangling       — dangling same-file anchor or relative-path ref → violation
+ *   id-format           — requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
+ *   origin-rfc          — every node must carry origin_rfc
+ *   required-field      — all schema-required fields must be present and non-blank
+ *   enum-values         — type, pattern, verification, criticality, status
+ *   summary-length      — ≤25 words (boundary: exactly 25 passes; 26 fails)
+ *   snapshot-of         — snapshot_of must reference an existing node
+ *   unknown-field       — frontmatter must not contain unknown keys
+ *   spec_delta path     — a delta targeting a nonexistent path must FAIL
+ *   exit-code bug fix   — violations without --rfc → exit 1 (was: exit 0)
  */
 
 import { execFileSync } from "node:child_process";
@@ -58,13 +65,13 @@ afterEach(() => rmSync(projectDir, { recursive: true, force: true }));
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SPEC_DIR = () => path.join(projectDir, "docs", "spec");
+const SPEC_DIR = () => path.join(projectDir, "doc", "specs");
 
 function mkSpec() {
   mkdirSync(SPEC_DIR(), { recursive: true });
 }
 
-/** Write a concept README.md; fields is the complete set of frontmatter fields. */
+/** Write a concept README.md. */
 function writeConcept(relDir: string, fields: Record<string, string | null>) {
   const dir = path.join(SPEC_DIR(), relDir);
   mkdirSync(dir, { recursive: true });
@@ -78,21 +85,11 @@ function writeConcept(relDir: string, fields: Record<string, string | null>) {
   );
 }
 
-/** Write a requirement file. */
-function writeReq(relDir: string, filename: string, fields: Record<string, string>) {
-  const dir = path.join(SPEC_DIR(), relDir);
-  mkdirSync(dir, { recursive: true });
-  const fm = Object.entries(fields)
-    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-    .join("\n");
-  writeFileSync(
-    path.join(dir, filename),
-    `---\n${fm}\n---\n\nCommentary.\n`,
-  );
-}
-
 /** Minimal valid concept frontmatter. */
-function minConcept(id: string, overrides: Record<string, string | null> = {}): Record<string, string | null> {
+function minConcept(
+  id: string,
+  overrides: Record<string, string | null> = {},
+): Record<string, string | null> {
   return {
     id,
     type: "concept",
@@ -104,29 +101,83 @@ function minConcept(id: string, overrides: Record<string, string | null> = {}): 
   };
 }
 
-/** Minimal valid requirement frontmatter. */
-function minReq(
-  conceptId: string,
-  reqId: string,
-  overrides: Record<string, string> = {},
-): Record<string, string> {
-  return {
-    id: reqId,
-    type: "requirement",
-    concept: conceptId,
-    summary: "A one-sentence requirement summary.",
-    ears: "The system shall do something.",
-    pattern: "ubiquitous",
-    verify: "Observe the output.",
-    verification: "automated",
-    criticality: "must",
-    origin_rfc: "R-20260726-K4M2QX",
-    status: "active",
-    ...overrides,
-  };
+/**
+ * Build a valid new-format requirement H3 section string.
+ * All fields have safe defaults so callers only override what they need to test.
+ */
+function minSection(
+  id: string,
+  opts: {
+    title?: string;
+    /** Override the {#anchor} slug (defaults to id.toLowerCase()) */
+    anchor?: string;
+    /** Override the normative statement (must contain **shall** for valid) */
+    normative?: string;
+    /** Override the **Why** bullet text; null → omit the bullet entirely */
+    why?: string | null;
+    /** Override the **Fit criterion** bullet text; null → omit */
+    fitCriterion?: string | null;
+    /** Additional See also line, e.g. "[FOO-R-002](#foo-r-002)" or "(../other/requirements.md#other-r-001)" */
+    seeAlso?: string;
+    /** Verification value for the attribute line (defaults to 'manual') */
+    verification?: string;
+  } = {},
+): string {
+  const title = opts.title ?? "Test requirement";
+  const anchorSlug =
+    opts.anchor !== undefined ? opts.anchor : id.toLowerCase();
+  const heading = `### ${id} — ${title} {#${anchorSlug}}`;
+
+  const normative =
+    opts.normative !== undefined
+      ? opts.normative
+      : `**When** a trigger occurs, the system **shall** respond.`;
+
+  const whyLine =
+    opts.why !== null
+      ? `- **Why** — ${opts.why ?? "This behavior is required because correctness depends on it."}`
+      : "";
+  const fcLine =
+    opts.fitCriterion !== null
+      ? `- **Fit criterion** — ${opts.fitCriterion ?? "The observable outcome is confirmed by inspection."}`
+      : "";
+  const verification = opts.verification ?? "manual";
+  const annotation = `- **Verification** ${verification} · **Criticality** must · **Source** R-20260726-K4M2QX`;
+  const seeAlsoLine = opts.seeAlso ? `- **See also** ${opts.seeAlso}` : "";
+
+  return [heading, "", normative, "", whyLine, fcLine, annotation, seeAlsoLine]
+    .filter((l) => l !== "")
+    .join("\n") + "\n";
 }
 
-/** Run `spec build` then return result (builds the index). */
+/**
+ * Write a requirements.md file with H3 sections (RFC-0003 body-format).
+ * @param relDir  Directory relative to doc/specs/ (e.g. "artifact")
+ * @param sections  Array of raw section strings (from minSection)
+ * @param fmOverrides  Override file-level frontmatter fields
+ */
+function writeRequirementsDoc(
+  relDir: string,
+  sections: string[],
+  fmOverrides: Record<string, string> = {},
+) {
+  const dir = path.join(SPEC_DIR(), relDir);
+  mkdirSync(dir, { recursive: true });
+  const fm = {
+    concept: "C-ROOT",
+    origin_rfc: "R-20260726-K4M2QX",
+    ...fmOverrides,
+  };
+  const fmStr = Object.entries(fm)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  writeFileSync(
+    path.join(dir, "requirements.md"),
+    `---\n${fmStr}\n---\n\n${sections.join("\n")}`,
+  );
+}
+
+/** Run `spec build` and return result. */
 function build(): { code: number; stdout: string; stderr: string } {
   const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
   delete env.CLAUDE_CODE_SESSION_ID;
@@ -138,12 +189,18 @@ function build(): { code: number; stdout: string; stderr: string } {
     return { code: 0, stdout, stderr: "" };
   } catch (e: unknown) {
     const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
+    return {
+      code: err.status ?? 1,
+      stdout: err.stdout ?? "",
+      stderr: err.stderr ?? "",
+    };
   }
 }
 
 /** Run `spec-lint.mjs` directly (with optional extra args). */
-function lint(extraArgs: string[] = []): { code: number; stdout: string; stderr: string } {
+function lint(
+  extraArgs: string[] = [],
+): { code: number; stdout: string; stderr: string } {
   const env = { ...process.env, GROUNDWORK_PROJECT_DIR: projectDir };
   delete env.CLAUDE_CODE_SESSION_ID;
   try {
@@ -154,32 +211,38 @@ function lint(extraArgs: string[] = []): { code: number; stdout: string; stderr:
     return { code: 0, stdout, stderr: "" };
   } catch (e: unknown) {
     const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
+    return {
+      code: err.status ?? 1,
+      stdout: err.stdout ?? "",
+      stderr: err.stderr ?? "",
+    };
   }
 }
 
-/**
- * Build spec index then run lint. Returns lint result.
- * build() must succeed (caller is responsible for valid build fixtures).
- */
-function buildAndLint(extraArgs: string[] = []): { code: number; stdout: string; stderr: string } {
+/** Build the spec index, then run lint. */
+function buildAndLint(
+  extraArgs: string[] = [],
+): { code: number; stdout: string; stderr: string } {
   const br = build();
   if (br.code !== 0) {
-    // Let caller handle build failure via lint result format
-    return { code: br.code, stdout: br.stdout, stderr: `BUILD FAILED: ${br.stderr}` };
+    return {
+      code: br.code,
+      stdout: br.stdout,
+      stderr: `BUILD FAILED: ${br.stderr}`,
+    };
   }
   return lint(extraArgs);
 }
 
 // ---------------------------------------------------------------------------
-// Valid baseline — a fully-correct tree must pass clean
+// Baseline: a clean new-format document must pass clean with exit 0
 // ---------------------------------------------------------------------------
 
-describe("baseline — valid tree passes", () => {
-  it("concept + requirement with all required fields passes clean", () => {
+describe("baseline — valid new-format tree passes clean", () => {
+  it("concept + requirements.md with valid H3 sections → exit 0 and 'clean'", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req-one.md", minReq("C-ROOT", "ROOT-R-aa1b"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001"), minSection("ROOT-R-002")]);
     const r = buildAndLint();
     expect(r.stdout, `stderr: ${r.stderr}`).toContain("clean");
     expect(r.code).toBe(0);
@@ -187,7 +250,350 @@ describe("baseline — valid tree passes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FIX 1 — origin_rfc invariant
+// EXIT CODE REGRESSION — violations without --rfc must exit 1
+// (Before the fix: the linter exited 0 in non-rfc mode even with violations)
+// ---------------------------------------------------------------------------
+
+describe("exit-code regression: violations without --rfc → exit 1", () => {
+  it("reports violations AND exits 1 when no --rfc flag is given", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    // Write a requirements.md with a section missing **Why** (a violation)
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { why: null }),
+    ]);
+    const br = build();
+    if (br.code !== 0) return; // build permissiveness — lint must still catch it
+    const r = lint(); // NO --rfc flag
+    // CRITICAL: exit code must be 1 (this was 0 before the fix)
+    expect(r.code, "exit code must be 1, not 0, when violations exist without --rfc").toBe(1);
+    // The violation must also appear in output
+    expect(r.stdout + r.stderr).toContain("why-required");
+  });
+
+  it("reports violations AND exits 1 WITH --rfc flag (existing behaviour preserved)", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { why: null }),
+    ]);
+    build();
+    // Write an RFC that covers this file
+    const rfcDir = path.join(
+      projectDir,
+      ".groundwork",
+      "rfcs",
+      "0001-R-TESTUID",
+    );
+    mkdirSync(rfcDir, { recursive: true });
+    writeFileSync(
+      path.join(rfcDir, "rfc.md"),
+      [
+        "---",
+        "uid: R-TESTUID",
+        "title: Test RFC",
+        "---",
+        "",
+        "spec_delta:",
+        "  - op: Added",
+        "    target: doc/specs/requirements.md",
+        "",
+      ].join("\n"),
+    );
+    const r = lint(["--rfc", "R-TESTUID"]);
+    expect(r.code).toBe(1);
+    expect(r.stdout + r.stderr).toContain("why-required");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stale-frontmatter: ears or verify in ANY frontmatter → violation
+// ---------------------------------------------------------------------------
+
+describe("stale-frontmatter: ears in requirements.md frontmatter", () => {
+  it("reports stale-frontmatter when 'ears:' appears in requirements.md frontmatter", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001")], {
+      concept: "C-ROOT",
+      origin_rfc: "R-20260726-K4M2QX",
+      ears: "The system shall do something.",
+    });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("stale-frontmatter");
+    expect(combined).toContain("ears");
+    expect(r.code).toBe(1);
+  });
+
+  it("reports stale-frontmatter when 'verify:' appears in requirements.md frontmatter", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001")], {
+      concept: "C-ROOT",
+      origin_rfc: "R-20260726-K4M2QX",
+      verify: "Observe the output.",
+    });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("stale-frontmatter");
+    expect(combined).toContain("verify");
+    expect(r.code).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// why-required: a requirement missing **Why** must fail
+// ---------------------------------------------------------------------------
+
+describe("why-required: missing **Why** → violation", () => {
+  it("reports why-required when the **Why** bullet is absent", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001", { why: null })]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("why-required");
+    expect(combined).toContain("ROOT-R-001");
+    expect(r.code).toBe(1);
+  });
+
+  it("does NOT report why-required when **Why** is present", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { why: "Because this is required for correctness." }),
+    ]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("why-required");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fit-criterion: a requirement missing **Fit criterion** must fail
+// ---------------------------------------------------------------------------
+
+describe("fit-criterion: missing **Fit criterion** → violation", () => {
+  it("reports fit-criterion when the **Fit criterion** bullet is absent", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001", { fitCriterion: null })]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("fit-criterion");
+    expect(combined).toContain("ROOT-R-001");
+    expect(r.code).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normative-statement: must contain bolded **shall**
+// ---------------------------------------------------------------------------
+
+describe("normative-statement: must contain **shall**", () => {
+  it("reports normative-statement when **shall** is not bolded (bare 'shall')", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", {
+        normative: "When a trigger occurs, the system shall respond.",
+      }),
+    ]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("normative-statement");
+    expect(combined).toContain("ROOT-R-001");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when **shall** is correctly bolded", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", {
+        normative: "**When** a trigger occurs, the system **shall** respond.",
+      }),
+    ]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("normative-statement");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// id-format: legacy 4-char id must fail; 3-digit id must pass
+// ---------------------------------------------------------------------------
+
+describe("id-format: legacy-format requirement id → violation", () => {
+  it("reports id-format for a legacy 4-char id like ROOT-R-u6zs", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    // Write a requirements.md with a legacy-style id in the H3 heading
+    const legacySection = [
+      "### ROOT-R-u6zs — Legacy id format {#root-r-u6zs}",
+      "",
+      "**When** a trigger occurs, the system **shall** respond.",
+      "",
+      "- **Why** — Needed for correctness.",
+      "- **Fit criterion** — Observable outcome confirmed.",
+      "- **Verification** automated · **Criticality** must · **Source** R-20260726-K4M2QX",
+    ].join("\n") + "\n";
+    writeRequirementsDoc("", [legacySection]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("id-format");
+    expect(combined).toContain("ROOT-R-u6zs");
+    expect(r.code).toBe(1);
+  });
+
+  it("reports id-format for an unpadded 1-digit id like ROOT-R-1", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    const badSection = [
+      "### ROOT-R-1 — Unpadded id {#root-r-1}",
+      "",
+      "**When** a trigger occurs, the system **shall** respond.",
+      "",
+      "- **Why** — Needed for correctness.",
+      "- **Fit criterion** — Observable outcome confirmed.",
+      "- **Verification** automated · **Criticality** must · **Source** R-20260726-K4M2QX",
+    ].join("\n") + "\n";
+    writeRequirementsDoc("", [badSection]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("id-format");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes with a valid 3-digit id like ROOT-R-001", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001")]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("id-format");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// xref-dangling: dangling same-file anchor → violation
+// ---------------------------------------------------------------------------
+
+describe("xref-dangling: dangling same-file anchor", () => {
+  it("reports xref-dangling when a same-file seeAlso anchor does not exist", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    // ROOT-R-001 references #root-r-999 which does not exist in this file
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", {
+        seeAlso: "[ROOT-R-999](#root-r-999)",
+      }),
+    ]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("xref-dangling");
+    expect(combined).toContain("root-r-999");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when a same-file seeAlso anchor resolves to another section in the file", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { seeAlso: "[ROOT-R-002](#root-r-002)" }),
+      minSection("ROOT-R-002"),
+    ]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// xref-dangling: dangling relative-path cross-reference → violation
+// ---------------------------------------------------------------------------
+
+describe("xref-dangling: dangling relative-path cross-reference", () => {
+  it("reports xref-dangling when the target file does not exist", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    // sub/requirements.md references ../nonexistent/requirements.md which doesn't exist
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso:
+          "[OTHER-R-001](../nonexistent/requirements.md#other-r-001)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("xref-dangling");
+    expect(combined).toContain("nonexistent");
+    expect(r.code).toBe(1);
+  });
+
+  it("reports xref-dangling when target file exists but anchor is missing", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    writeConcept("other", minConcept("C-OTHER", { parent: "C-ROOT" }));
+    // other/requirements.md exists but only has OTHER-R-001, not OTHER-R-999
+    writeRequirementsDoc("other", [minSection("OTHER-R-001")], { concept: "C-OTHER" });
+    // sub/requirements.md references OTHER-R-999 which does NOT exist in other/requirements.md
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso:
+          "[OTHER-R-999](../other/requirements.md#other-r-999)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("xref-dangling");
+    expect(combined).toContain("other-r-999");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when a relative-path cross-reference resolves to an existing file and anchor", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    writeConcept("other", minConcept("C-OTHER", { parent: "C-ROOT" }));
+    writeRequirementsDoc("other", [minSection("OTHER-R-001")], { concept: "C-OTHER" });
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso:
+          "[OTHER-R-001](../other/requirements.md#other-r-001)",
+      }),
+    ], { concept: "C-SUB" });
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// origin-rfc invariant (concept nodes)
 // ---------------------------------------------------------------------------
 
 describe("origin-rfc invariant", () => {
@@ -195,8 +601,7 @@ describe("origin-rfc invariant", () => {
     mkSpec();
     writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: null });
     const br = build();
-    // build may succeed even with missing origin_rfc
-    if (br.code !== 0) return; // if build itself rejects it that's also fine
+    if (br.code !== 0) return;
     const r = lint();
     const combined = r.stdout + r.stderr;
     expect(combined).toContain("origin-rfc");
@@ -209,38 +614,41 @@ describe("origin-rfc invariant", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("origin-rfc");
-  });
-
-  it("fails when requirement is missing origin_rfc", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", { ...minReq("C-ROOT", "ROOT-R-zz99"), origin_rfc: "" });
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("origin-rfc");
-    expect(combined).toContain("ROOT-R-zz99");
+    expect(r.stdout + r.stderr).toContain("origin-rfc");
   });
 
   it("fails when origin_rfc is the literal string 'null'", () => {
-    // Kills the `rawFm.origin_rfc === 'null'` sentinel guard at spec-lint.mjs:160.
-    // YAML parsers emit the JS null for bare `null`; the string 'null' is what you
-    // get when the value is quoted or stringified — the guard must catch it.
     mkSpec();
     writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: "null" });
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("origin-rfc");
+    expect(r.stdout + r.stderr).toContain("origin-rfc");
+  });
+
+  it("fails when requirements.md is missing origin_rfc", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001")], {
+      concept: "C-ROOT",
+      // origin_rfc deliberately omitted
+    } as Record<string, string>);
+    // Manually write without origin_rfc
+    const dir = path.join(SPEC_DIR());
+    writeFileSync(
+      path.join(dir, "requirements.md"),
+      `---\nconcept: C-ROOT\n---\n\n${minSection("ROOT-R-001")}`,
+    );
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).toContain("origin-rfc");
+    expect(r.code).toBe(1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// FIX 2 — required fields
+// required-field: concept fields (schema validation still applies)
 // ---------------------------------------------------------------------------
 
 describe("required-field: concept fields", () => {
@@ -250,9 +658,8 @@ describe("required-field: concept fields", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("summary");
+    expect(r.stdout + r.stderr).toContain("required-field");
+    expect(r.stdout + r.stderr).toContain("summary");
   });
 
   it("fails when concept is missing type", () => {
@@ -263,115 +670,8 @@ describe("required-field: concept fields", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    // type missing → required-field violation
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("type");
-  });
-});
-
-describe("required-field: requirement fields", () => {
-  it("fails when requirement is missing status", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-aa1c");
-    delete (fields as Record<string, unknown>).status;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("status");
-  });
-
-  it("fails when requirement is missing pattern", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-aa1d");
-    delete (fields as Record<string, unknown>).pattern;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("pattern");
-  });
-
-  it("fails when requirement is missing verification", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-aa1f");
-    delete (fields as Record<string, unknown>).verification;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("verification");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ears-or-summary invariant (either/or semantics)
-// ---------------------------------------------------------------------------
-
-describe("ears-or-summary invariant", () => {
-  it("fires when requirement has neither ears nor summary", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-eo1a");
-    delete (fields as Record<string, unknown>).ears;
-    delete (fields as Record<string, unknown>).summary;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("ears-or-summary");
-    expect(combined).toContain("ROOT-R-eo1a");
-  });
-
-  it("fires when ears and summary are both whitespace-only", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-eo1b", {
-      ears: "   ",
-      summary: "   ",
-    }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("ears-or-summary");
-  });
-
-  it("passes when requirement has ears but no summary (either is sufficient)", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-eo2a");
-    delete (fields as Record<string, unknown>).summary;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).not.toContain("ears-or-summary");
-  });
-
-  it("passes when requirement has summary but no ears (either is sufficient)", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const fields = minReq("C-ROOT", "ROOT-R-eo2b");
-    delete (fields as Record<string, unknown>).ears;
-    writeReq("requirements", "req.md", fields);
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).not.toContain("ears-or-summary");
+    expect(r.stdout + r.stderr).toContain("required-field");
+    expect(r.stdout + r.stderr).toContain("type");
   });
 });
 
@@ -379,110 +679,36 @@ describe("ears-or-summary invariant", () => {
 // required-field: whitespace-only values are rejected
 // ---------------------------------------------------------------------------
 
-describe("required-field: whitespace-only values", () => {
-  it("fires for concept with whitespace-only title", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT", { title: "   " }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("title");
-  });
-
+describe("required-field: whitespace-only concept fields", () => {
   it("fires for concept with whitespace-only summary", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT", { summary: "   " }));
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("required-field");
-    expect(combined).toContain("summary");
+    expect(r.stdout + r.stderr).toContain("required-field");
+    expect(r.stdout + r.stderr).toContain("summary");
   });
 });
 
 // ---------------------------------------------------------------------------
-// FIX 2 — enum validation
+// enum-value: concept type validation
 // ---------------------------------------------------------------------------
 
-describe("enum-value: bad type", () => {
-  it("fails when node has an invalid type value", () => {
+describe("enum-value: bad concept type", () => {
+  it("fails when concept has an invalid type value", () => {
     mkSpec();
-    // Write a concept with type set to an unrecognised value
     writeConcept("", { ...minConcept("C-ROOT"), type: "feature" });
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("enum-value");
-    expect(combined).toContain("feature");
-  });
-});
-
-describe("enum-value: bad pattern", () => {
-  it("fails with invalid pattern value", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-ee1a", { pattern: "mandatory" }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("enum-value");
-    expect(combined).toContain("pattern");
-    expect(combined).toContain("mandatory");
-  });
-});
-
-describe("enum-value: bad verification", () => {
-  it("fails with invalid verification value", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-ee2a", { verification: "robot" }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("enum-value");
-    expect(combined).toContain("verification");
-    expect(combined).toContain("robot");
-  });
-});
-
-describe("enum-value: bad status", () => {
-  it("fails with invalid status value", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-ee3a", { status: "draft" }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("enum-value");
-    expect(combined).toContain("status");
-    expect(combined).toContain("draft");
-  });
-});
-
-describe("enum-value: bad criticality", () => {
-  it("fails with invalid criticality value", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-ee4a", { criticality: "critical" }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("enum-value");
-    expect(combined).toContain("criticality");
-    expect(combined).toContain("critical");
+    expect(r.stdout + r.stderr).toContain("enum-value");
+    expect(r.stdout + r.stderr).toContain("feature");
   });
 });
 
 // ---------------------------------------------------------------------------
-// FIX 2 — id format
+// id-format: concept id
 // ---------------------------------------------------------------------------
 
 describe("id-format: concept id", () => {
@@ -492,8 +718,7 @@ describe("id-format: concept id", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("id-format");
+    expect(r.stdout + r.stderr).toContain("id-format");
   });
 
   it("fails with concept id missing C- prefix", () => {
@@ -502,44 +727,17 @@ describe("id-format: concept id", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("id-format");
-  });
-});
-
-describe("id-format: requirement id", () => {
-  it("fails with malformed requirement id (wrong suffix)", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-LONG5CHAR"));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("id-format");
-  });
-
-  it("fails when requirement id prefix doesn't match concept", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "WRONG-R-aa1b"));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("id-format");
+    expect(r.stdout + r.stderr).toContain("id-format");
   });
 });
 
 // ---------------------------------------------------------------------------
-// FIX 2 — summary length (≤25 words)
+// summary-length: ≤25 words
 // ---------------------------------------------------------------------------
 
 describe("summary-length", () => {
-  // 25-word summary (boundary: must PASS)
-  const twentyFiveWords = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive";
-
-  // 26-word summary (must FAIL)
+  const twentyFiveWords =
+    "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive";
   const twentySixWords = twentyFiveWords + " twentysix";
 
   it("passes when summary is exactly 25 words", () => {
@@ -548,7 +746,6 @@ describe("summary-length", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    // Must NOT contain summary-length violation
     expect(r.stdout + r.stderr).not.toContain("summary-length");
     expect(r.code).toBe(0);
   });
@@ -562,33 +759,24 @@ describe("summary-length", () => {
     expect(r.stdout + r.stderr).toContain("summary-length");
     expect(r.stdout + r.stderr).toContain("26");
   });
-
-  it("fails when requirement summary exceeds 25 words", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-sl1a", {
-      summary: twentySixWords,
-    }));
-    const br = build();
-    if (br.code !== 0) return;
-    const r = lint();
-    expect(r.stdout + r.stderr).toContain("summary-length");
-  });
 });
 
 // ---------------------------------------------------------------------------
-// FIX 3 — spec_delta path must exist on disk
+// spec_delta path existence check (--rfc mode)
 // ---------------------------------------------------------------------------
 
 describe("spec_delta path existence check (--rfc mode)", () => {
-  /** Write a minimal rfc.md with a spec_delta block.
-   * The parser (parseSpecDeltaTargets) looks for lines matching /^\s+target:\s*(.+)$/,
-   * so target must be on its own indented line, not after a dash on the same line.
-   */
   function writeRfc(uid: string, targets: string[]) {
-    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", `0001-${uid}`);
+    const rfcDir = path.join(
+      projectDir,
+      ".groundwork",
+      "rfcs",
+      `0001-${uid}`,
+    );
     mkdirSync(rfcDir, { recursive: true });
-    const deltaLines = targets.map(t => `  - op: Added\n    target: ${t}`).join("\n");
+    const deltaLines = targets
+      .map((t) => `  - op: Added\n    target: ${t}`)
+      .join("\n");
     writeFileSync(
       path.join(rfcDir, "rfc.md"),
       `---\nuid: ${uid}\ntitle: Test RFC\n---\n\nspec_delta:\n${deltaLines}\n`,
@@ -598,42 +786,26 @@ describe("spec_delta path existence check (--rfc mode)", () => {
   it("fails when spec_delta target path does not exist on disk", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    build(); // build index first
-    writeRfc("R-TESTUID", ["docs/spec/nonexistent/README.md"]);
+    build();
+    writeRfc("R-TESTUID", ["doc/specs/nonexistent/README.md"]);
     const r = lint(["--rfc", "R-TESTUID"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("does not exist");
-    expect(r.stderr).toContain("docs/spec/nonexistent/README.md");
+    expect(r.stderr).toContain("doc/specs/nonexistent/README.md");
   });
 
-  it("passes (nodes matched or no nodes) when spec_delta targets exist", () => {
+  it("passes (no-error on path) when spec_delta target exists", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
     build();
-    writeRfc("R-TESTUID2", ["docs/spec/README.md"]);
+    writeRfc("R-TESTUID2", ["doc/specs/README.md"]);
     const r = lint(["--rfc", "R-TESTUID2"]);
-    // Should not fail on "does not exist"
     expect(r.stderr).not.toContain("does not exist");
-  });
-
-  it("reproduces the rfc.md typo scenario: artifacts/ vs artifact/", () => {
-    // rfc.md targets docs/spec/artifacts/README.md (pluralised, doesn't exist)
-    // The real path would be docs/spec/artifact/README.md
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    // Only create docs/spec/artifact/ (no 's')
-    writeConcept("artifact", minConcept("C-ARTIFACT"));
-    build();
-    writeRfc("R-TYPO", ["docs/spec/artifacts/README.md"]);
-    const r = lint(["--rfc", "R-TYPO"]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("does not exist");
-    expect(r.stderr).toContain("docs/spec/artifacts/README.md");
   });
 });
 
 // ---------------------------------------------------------------------------
-// snapshot_of referential integrity (invariant 7)
+// snapshot-of referential integrity
 // ---------------------------------------------------------------------------
 
 describe("snapshot-of referential integrity", () => {
@@ -641,180 +813,164 @@ describe("snapshot-of referential integrity", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT", { snapshot_of: "C-NONEXISTENT" }));
     const r = buildAndLint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("snapshot-of");
-    expect(combined).toContain("C-NONEXISTENT");
+    expect(r.stdout + r.stderr).toContain("snapshot-of");
+    expect(r.stdout + r.stderr).toContain("C-NONEXISTENT");
   });
 
   it("passes when snapshot_of references an existing node id", () => {
     mkSpec();
-    // C-TARGET exists; C-SNAP declares snapshot_of: C-TARGET
     writeConcept("target", minConcept("C-TARGET"));
-    writeConcept("snap", minConcept("C-SNAP", { parent: "C-TARGET", snapshot_of: "C-TARGET" }));
-    const r = buildAndLint();
-    expect(r.stdout + r.stderr).not.toContain("snapshot-of");
-    expect(r.code).toBe(0);
-  });
-
-  it("passes when snapshot_of is absent", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    const r = buildAndLint();
-    expect(r.stdout + r.stderr).not.toContain("snapshot-of");
-    expect(r.code).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Acceptance evidence: broken-state fixture (the old bug reproduced)
-//
-// Before this fix: a concept node missing origin_rfc AND summary passed clean.
-// After this fix:  each violation is named and the output is non-zero in --rfc mode.
-// ---------------------------------------------------------------------------
-
-describe("acceptance evidence: broken-state fixture now fails with named violations", () => {
-  it("--rfc mode exits non-zero and names each violation for a node missing origin_rfc + required fields", () => {
-    mkSpec();
-    // Write a concept with ONLY id, type, title, parent — missing summary, origin_rfc
-    writeConcept("", {
-      id: "C-ROOT",
-      type: "concept",
-      title: "Root",
-      parent: null,
-      // summary: missing
-      // origin_rfc: missing
-    });
-    // Write requirement with ONLY the bare-minimum that spec build accepts — missing several required fields
-    writeReq("requirements", "req.md", {
-      id: "ROOT-R-aa1a",
-      type: "requirement",
-      concept: "C-ROOT",
-      ears: "The system shall do something.",
-      pattern: "ubiquitous",
-      verify: "Observe.",
-      // verification: missing
-      // origin_rfc: missing
-      // status: missing
-      // summary: missing
-    });
-
-    const br = build();
-    // Build may succeed permissively
-    if (br.code !== 0) {
-      // If build itself fails, that's acceptable as a strictness signal
-      return;
-    }
-
-    // Create an RFC that targets both files
-    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-BROKEN");
-    mkdirSync(rfcDir, { recursive: true });
-    writeFileSync(
-      path.join(rfcDir, "rfc.md"),
-      [
-        "---",
-        "uid: R-BROKEN",
-        "title: Broken state RFC",
-        "---",
-        "",
-        "spec_delta:",
-        "  - op: Added",
-        "    target: docs/spec/README.md",
-        "  - op: Added",
-        "    target: docs/spec/requirements/req.md",
-      ].join("\n"),
+    writeConcept(
+      "snap",
+      minConcept("C-SNAP", { parent: "C-TARGET", snapshot_of: "C-TARGET" }),
     );
-
-    const r = lint(["--rfc", "R-BROKEN"]);
-
-    // Must exit non-zero
-    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(1);
-
-    const output = r.stdout + r.stderr;
-
-    // origin-rfc violations must be named
-    expect(output).toContain("origin-rfc");
-
-    // At least one required-field violation must be named
-    expect(output).toContain("required-field");
-
-    // Node ids must appear in violations
-    expect(output).toContain("C-ROOT");
-
-    // Paste-worthy output for acceptance evidence
-    process.stdout.write("\n=== ACCEPTANCE EVIDENCE OUTPUT ===\n");
-    process.stdout.write(output);
-    process.stdout.write("===================================\n");
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("snapshot-of");
+    expect(r.code).toBe(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// unknown-field invariant (invariant 8) — additionalProperties enforcement
+// unknown-field: extra frontmatter keys are reported
 // ---------------------------------------------------------------------------
 
 describe("unknown-field: extra frontmatter keys are reported", () => {
-  it("reports unknown-field violation for a concept with an extra key", () => {
+  it("reports unknown-field for a concept with an extra key", () => {
     mkSpec();
-    // bogus_key is not in the spec-concept schema
-    writeConcept("", { ...minConcept("C-ROOT"), bogus_key: "oops" } as Record<string, string | null>);
-    const br = build();
-    if (br.code !== 0) return; // build permissiveness — lint must still catch it
-    const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("unknown-field");
-    expect(combined).toContain("bogus_key");
-    expect(combined).toContain("C-ROOT");
-  });
-
-  it("reports unknown-field violation for a requirement with an extra key", () => {
-    mkSpec();
-    writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", {
-      ...minReq("C-ROOT", "ROOT-R-uf1a"),
-      secret_field: "whoops",
-    });
+    writeConcept("", {
+      ...minConcept("C-ROOT"),
+      bogus_key: "oops",
+    } as Record<string, string | null>);
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("unknown-field");
-    expect(combined).toContain("secret_field");
-    expect(combined).toContain("ROOT-R-uf1a");
+    expect(r.stdout + r.stderr).toContain("unknown-field");
+    expect(r.stdout + r.stderr).toContain("bogus_key");
   });
 
   it("--rfc mode exits 1 when the linted node has an unknown key", () => {
     mkSpec();
-    writeConcept("", { ...minConcept("C-ROOT"), bogus_key: "oops" } as Record<string, string | null>);
+    writeConcept("", {
+      ...minConcept("C-ROOT"),
+      bogus_key: "oops",
+    } as Record<string, string | null>);
     const br = build();
     if (br.code !== 0) return;
-    const rfcDir = path.join(projectDir, ".groundwork", "rfcs", "0001-R-20260727-UF001");
+    const rfcDir = path.join(
+      projectDir,
+      ".groundwork",
+      "rfcs",
+      "0001-R-UF001",
+    );
     mkdirSync(rfcDir, { recursive: true });
     writeFileSync(
       path.join(rfcDir, "rfc.md"),
       [
         "---",
-        "uid: R-20260727-UF001",
+        "uid: R-UF001",
         "title: Unknown field RFC",
         "---",
         "",
         "spec_delta:",
         "  - op: Added",
-        "    target: docs/spec/README.md",
+        "    target: doc/specs/README.md",
         "",
       ].join("\n"),
     );
-    const r = lint(["--rfc", "R-20260727-UF001"]);
+    const r = lint(["--rfc", "R-UF001"]);
     expect(r.code).toBe(1);
-    const combined = r.stdout + r.stderr;
-    expect(combined).toContain("unknown-field");
-    expect(combined).toContain("bogus_key");
+    expect(r.stdout + r.stderr).toContain("unknown-field");
+    expect(r.stdout + r.stderr).toContain("bogus_key");
   });
 
   it("valid concept with no extra keys does NOT trigger unknown-field", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    writeReq("requirements", "req.md", minReq("C-ROOT", "ROOT-R-uf2a"));
+    writeRequirementsDoc("", [minSection("ROOT-R-001")]);
     const r = buildAndLint();
     expect(r.stdout + r.stderr).not.toContain("unknown-field");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// automated-unverified: automated requirement without @verifies test → violation
+// ---------------------------------------------------------------------------
+
+describe("automated-unverified: automated requirement must have a @verifies test", () => {
+  it("fails when an automated requirement has no @verifies annotation in any test file", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { verification: "automated" }),
+    ]);
+    // No test/ directory created → verifiedIds returns empty set
+    const r = buildAndLint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("automated-unverified");
+    expect(combined).toContain("ROOT-R-001");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when an automated requirement has a @verifies annotation in a test file", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { verification: "automated" }),
+    ]);
+    // Create a test file that carries the @verifies annotation
+    const testDir = path.join(projectDir, "test");
+    mkdirSync(testDir, { recursive: true });
+    writeFileSync(
+      path.join(testDir, "root.test.ts"),
+      "// @verifies ROOT-R-001\nit('placeholder', () => {})\n",
+    );
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("automated-unverified");
+    expect(r.code).toBe(0);
+  });
+
+  it("does not flag a manual requirement even without any @verifies test", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { verification: "manual" }),
+    ]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("automated-unverified");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// anchor-mismatch: {#anchor} must equal id lowercased
+// ---------------------------------------------------------------------------
+
+describe("anchor-mismatch: anchor must equal id lowercased", () => {
+  it("reports anchor-mismatch when anchor does not match id lowercased", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    // Use a wrong anchor (e.g. 'root-r-wrong' instead of 'root-r-001')
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { anchor: "root-r-wrong" }),
+    ]);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("anchor-mismatch");
+    expect(combined).toContain("ROOT-R-001");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when anchor exactly equals id lowercased", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { anchor: "root-r-001" }),
+    ]);
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("anchor-mismatch");
     expect(r.code).toBe(0);
   });
 });

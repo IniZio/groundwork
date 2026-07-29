@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spec-manifest",
+  "title": "Spec Manifest",
+  "description": "JSON Schema 2020-12 for spec.yaml sidecar — the machine-readable manifest for a spec concept directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "summary", "status", "views"],
+  "properties": {
+    "id": {
+      "description": "Concept identifier. Must be C- followed by an uppercase letter and then uppercase letters, digits, or hyphens.",
+      "type": "string",
+      "pattern": "^C-[A-Z][A-Z0-9-]+$"
+    },
+    "title": {
+      "description": "Human-readable concept title.",
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "description": "One-line summary of the concept (mandatory; 1–180 characters).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 180
+    },
+    "status": {
+      "description": "Lifecycle status of this spec concept.",
+      "type": "string",
+      "enum": ["draft", "review", "accepted", "deprecated"]
+    },
+    "owner_team": {
+      "description": "Team responsible for this concept. Non-empty when present; omit entirely when unknown.",
+      "type": "string",
+      "minLength": 1
+    },
+    "views": {
+      "description": "Ordered list of view documents for this concept.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "file"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "description": "View category.",
+            "type": "string",
+            "enum": ["overview", "data-model", "flows", "api", "constraints"]
+          },
+          "file": {
+            "description": "File path relative to the concept directory.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "relations": {
+      "description": "Cross-concept relationships.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_note": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "string", "minLength": 1 },
+              "target": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "lint": {
+      "description": "Lint configuration for automated checks.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data-model": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type_names": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "names"],
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": ["types", "schema", "prisma", "graphql"]
+                },
+                "names": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "status_policy": {
+      "description": "Custom status transition rules. Keys are status values; values are freeform policy strings.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

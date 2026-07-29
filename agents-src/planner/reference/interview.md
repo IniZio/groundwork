@@ -28,9 +28,9 @@ For each open question:
 
 ## Required Interview Questions (always ask when spec_delta is planned)
 
-When the task will modify `docs/spec/` or produce a `spec_delta` in the RFC frontmatter, include these questions if not already answered by the brief:
+When the task will modify `doc/specs/` or produce a `spec_delta` in the RFC frontmatter, include these questions if not already answered by the brief:
 
-- Which concept nodes in `docs/spec/` does this change touch?
+- Which concept nodes in `doc/specs/` does this change touch?
 - Which existing requirement IDs does this task satisfy or modify?
 - Is this a new requirement addition (`op: Added`) or a modification of an existing one (`op: Changed`)?
 
@@ -39,7 +39,7 @@ When the task will modify `docs/spec/` or produce a `spec_delta` in the RFC fron
 For each acceptance criterion stated in the brief:
 - Is this criterion testable programmatically, or does it require manual verification?
 - If testable: what is the observable output that confirms it?
-- If not testable (`testable: false`): does the linked requirement in `docs/spec/` already declare `verification: manual`? If not, the criterion must either be made testable or the requirement must be updated.
+- If not testable (`testable: false`): does the linked requirement in `doc/specs/` already declare `verification: manual`? If not, the criterion must either be made testable or the requirement must be updated.
 
 ## NEEDS-INPUT Format (reference)
 

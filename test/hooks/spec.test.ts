@@ -1,7 +1,7 @@
 /**
  * spec CLI tests — covers all 13 acceptance criteria from RFC-0001 T1.
  *
- * AC1  — spec init creates docs/spec/README.md with a valid concept node
+ * AC1  — spec init creates doc/specs/README.md with a valid concept node
  * AC2  — spec build writes _generated/{index.md,index.json,coverage.json}
  * AC3  — spec build exits 1 on parent/dir mismatch, printing node id + both values
  * AC4  — spec build exits 1 on duplicate id, printing both paths
@@ -80,8 +80,8 @@ function run(
 // Helpers for building fixture trees
 // ---------------------------------------------------------------------------
 
-const SPEC_DIR = () => path.join(projectDir, "docs", "spec");
-const GEN_DIR = () => path.join(projectDir, "docs", "spec", "_generated");
+const SPEC_DIR = () => path.join(projectDir, "doc", "specs");
+const GEN_DIR = () => path.join(projectDir, "doc", "specs", "_generated");
 
 function mkSpec() {
 	mkdirSync(SPEC_DIR(), { recursive: true });
@@ -142,7 +142,7 @@ function minReq(conceptId: string, reqId: string, overrides: Record<string, stri
 // ---------------------------------------------------------------------------
 
 describe("AC1 — spec init", () => {
-	it("creates docs/spec/README.md with a valid concept node", () => {
+	it("creates doc/specs/README.md with a valid concept node", () => {
 		const r = run(["init"]);
 		expect(r.code, `stderr: ${r.stderr}`).toBe(0);
 		const readme = path.join(SPEC_DIR(), "README.md");
@@ -713,7 +713,11 @@ describe("AC13 — delegation of verify/lint/metrics/doc", () => {
 // ---------------------------------------------------------------------------
 
 describe("M1 — index uses summary over ears when both are present", () => {
-	it("index.md shows the summary gloss, not the ears sentence, when they differ", () => {
+	it("index.json summary field uses the authored gloss, not the ears sentence, when they differ", () => {
+		// Old-format requirements (not requirements.md) have no anchor and are omitted
+		// from index.md (RFC-0003 contract, see spec-build.test.ts). The mutation target —
+		// `summary = data.summary ?? firstSentence(data.ears)` — is tested via index.json
+		// which always records every node's summary field regardless of anchor presence.
 		mkSpec();
 		writeReadme("", "C-ROOT", "Root");
 		writeReq(
@@ -725,14 +729,15 @@ describe("M1 — index uses summary over ears when both are present", () => {
 			}),
 		);
 		run(["build"]);
-		const idx = readFileSync(
-			path.join(GEN_DIR(), "index.md"),
-			"utf8",
+		const idxJson = JSON.parse(
+			readFileSync(path.join(GEN_DIR(), "index.json"), "utf8"),
 		);
-		// summary must appear in the index
-		expect(idx).toContain("Short retrieval gloss for the index");
-		// ears sentence must NOT appear in the index (it's for show/search, not retrieval)
-		expect(idx).not.toContain("perform the long normative action");
+		const node = idxJson.nodes["ROOT-R-m1aa"];
+		expect(node).toBeDefined();
+		// summary must be the authored gloss, not derived from ears
+		expect(node.summary).toContain("Short retrieval gloss for the index");
+		// ears sentence must NOT be used as the summary
+		expect(node.summary).not.toContain("perform the long normative action");
 	});
 });
 

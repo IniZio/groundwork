@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Groundwork spec CLI — manage requirement specifications under docs/spec/.
+ * Groundwork spec CLI — manage requirement specifications under doc/specs/.
  *
  * Subcommands:
- *   init                    — create docs/spec/README.md with a root concept node
- *   build                   — build docs/spec/_generated/{index.md,index.json,coverage.json}
+ *   init                    — create doc/specs/README.md with a root concept node
+ *   build                   — build doc/specs/_generated/{index.md,index.json,coverage.json}
  *   req new <concept> <name>— create a new requirement file
  *   show <id> [--full]      — show a spec node (8 lines without --full)
  *   search <q> [--limit N]  — search nodes (default --limit 8)
@@ -15,7 +15,7 @@
  * Exit codes: 0 success  1 operational failure  2 usage error
  */
 
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -32,7 +32,9 @@ import {
   findConceptDir,
   randomSuffix,
   firstSentence,
+  loadSpecManifest,
 } from './lib/spec-io.mjs'
+import { scanVerifies } from './lib/verifies-scan.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,13 +76,13 @@ function resolveSpecDir() {
 }
 
 /** Ensure index exists and is not stale; rebuild if needed. */
-function ensureFreshIndex(sd) {
+async function ensureFreshIndex(sd) {
   if (isIndexStale(sd)) {
-    runBuild(sd, { silent: true })
+    await runBuild(sd, { silent: true })
   }
 }
 
-function runBuild(sd, { silent = false } = {}) {
+async function runBuild(sd, { silent = false } = {}) {
   const { nodes, errors } = buildIndexData(sd)
 
   // Report errors and exit 1 on build-blocking errors
@@ -110,11 +112,22 @@ function runBuild(sd, { silent = false } = {}) {
     process.exit(1)
   }
 
+  // Report non-blocking parse errors as warnings
+  for (const e of errors) {
+    if (e.type === 'requirement_parse_error') {
+      process.stderr.write(`spec: [warning] parse error in "${e.nodeId}": ${e.message}\n  in: ${e.path}\n`)
+    }
+    if (!silent && e.type === 'unknown_frontmatter_field') {
+      const who = e.nodeId ? ` (${e.nodeId})` : ''
+      process.stderr.write(`spec: [warning] unknown frontmatter field "${e.field}"${who}\n  in: ${e.path}\n`)
+    }
+  }
+
   // Prepare output
   const genDir = generatedDirPath(sd)
   mkdirSync(genDir, { recursive: true })
 
-  // index.json (AC6: summary, refs, byteSize per node)
+  // index.json (AC6: summary, refs, byteSize per node; RFC-0003: body-derived fields)
   const indexJson = {
     generated_at: new Date().toISOString(),
     nodes: {},
@@ -136,44 +149,193 @@ function runBuild(sd, { silent = false } = {}) {
       concept: n.concept,
       parent: n.parent,
       ears: n.ears,
+      // Body-derived fields (RFC-0003 body-first format)
+      anchor: n.anchor ?? null,
+      why: n.why ?? null,
+      fitCriterion: n.fitCriterion ?? null,
+      source: n.source ?? null,
     }
   }
   writeFileSync(join(genDir, 'index.json'), JSON.stringify(indexJson, null, 2) + '\n', 'utf8')
 
   // coverage.json
+  // by_source replaces by_status: status is not present in the body-first format;
+  // source RFC is extracted from the **Source** token in each requirement's attribute line.
   const reqs = Object.values(nodes).filter(n => n.type === 'requirement')
+
+  // Scan test files for @verifies annotations to compute ACTUAL verification evidence.
+  // sd is <projectRoot>/doc/specs, so the project root is two levels up.
+  const projectRootDir = dirname(dirname(sd))
+  const verifiesMap = scanVerifies(projectRootDir)
+
+  // Build per-requirement map: declared intent + actual test coverage
+  /** @type {Record<string, {declared: string|null, verified: boolean, tests: string[]}>} */
+  const byRequirement = {}
+  for (const req of reqs) {
+    const tests = verifiesMap[req.id] ?? []
+    byRequirement[req.id] = {
+      declared: req.verification ?? null,
+      verified: tests.length > 0,
+      tests,
+    }
+  }
+
+  // IDs that declare automated verification but have no verifying test yet
+  const unverifiedAutomated = reqs
+    .filter(r => r.verification === 'automated' && (verifiesMap[r.id] ?? []).length === 0)
+    .map(r => r.id)
+    .sort()
+
   const coverage = {
     total: reqs.length,
-    by_status: countBy(reqs, 'status'),
+    by_source: countBy(reqs, 'source'),
+    // declared verification intent (kept for backward compatibility)
     by_verification: countBy(reqs, 'verification'),
     by_criticality: countBy(reqs, 'criticality'),
+    // actual verification evidence from @verifies annotations in test files
+    verified: reqs.filter(r => (verifiesMap[r.id] ?? []).length > 0).length,
+    unverified_automated: unverifiedAutomated,
+    by_requirement: byRequirement,
   }
   writeFileSync(join(genDir, 'coverage.json'), JSON.stringify(coverage, null, 2) + '\n', 'utf8')
 
-  // index.md — human-readable table
-  /** Truncate on a word boundary; append ellipsis if cut. */
-  function truncWB(s, n) {
-    if (!s || s.length <= n) return (s || '').replace(/\|/g, '\\|')
-    const cut = s.slice(0, n)
-    const lastSpace = cut.lastIndexOf(' ')
-    const trimmed = lastSpace > n * 0.6 ? cut.slice(0, lastSpace) : cut
-    return trimmed.replace(/\|/g, '\\|') + '…'
-  }
+  // index.md — grouped by concept, full normative statement, working anchor links
+  // A reader can skim the whole spec and click through to any requirement from this file.
+  const allNodes = Object.values(nodes)
+  const requirementNodes = allNodes.filter(n => n.type === 'requirement')
+  const conceptNodes = allNodes
+    .filter(n => n.type !== 'requirement')
+    .sort((a, b) => a.id.localeCompare(b.id))
 
-  const rows = Object.values(nodes).sort((a, b) => a.id.localeCompare(b.id))
-  const lines = [
+  const mdLines = [
     '# Spec Index',
     '',
     `_Generated: ${new Date().toISOString()}_`,
     '',
-    '| id | type | status | summary |',
-    '|---|---|---|---|',
-    ...rows.map(n =>
-      `| ${n.id} | ${n.type} | ${n.status || '-'} | ${truncWB(n.summary, 80)} |`,
-    ),
-    '',
   ]
-  writeFileSync(join(genDir, 'index.md'), lines.join('\n'), 'utf8')
+
+  // Concepts table — placed at top of index.md, before requirement sections
+  {
+    const conceptDirs = readdirSync(sd, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== '_generated')
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    // Map: first path component of relPath → concept node (skips root-level concepts)
+    const conceptByDir = {}
+    for (const cn of conceptNodes) {
+      const parts = cn.relPath.split('/')
+      if (parts.length >= 2) {
+        conceptByDir[parts[0]] = cn
+      }
+    }
+
+    const conceptRows = []
+    for (const entry of conceptDirs) {
+      const dirName = entry.name
+      const conceptNode = conceptByDir[dirName]
+      const { manifest, errors: manifestErrors } = await loadSpecManifest(join(sd, dirName))
+      const hasManifest = manifest !== null && manifestErrors.length === 0
+
+      const conceptId = conceptNode ? conceptNode.id : dirName
+      let summary, status, views
+
+      if (hasManifest) {
+        summary = manifest.summary || (conceptNode ? conceptNode.summary : '—')
+        status = manifest.status || '—'
+        views = manifest.views && manifest.views.length > 0
+          ? manifest.views.map(v => v.type).filter(Boolean).join(', ')
+          : '—'
+      } else {
+        summary = (conceptNode ? conceptNode.summary : '') || '—'
+        summary += ' *(no manifest)*'
+        status = '—'
+        views = '—'
+      }
+
+      conceptRows.push([conceptId, summary, status, views])
+    }
+
+    mdLines.push('## Concepts', '')
+    if (conceptRows.length > 0) {
+      mdLines.push('| Concept | Summary | Status | Views |')
+      mdLines.push('| --- | --- | --- | --- |')
+      for (const [cid, summ, stat, v] of conceptRows) {
+        mdLines.push(`| ${cid} | ${summ} | ${stat} | ${v} |`)
+      }
+    } else {
+      mdLines.push('_No concept directories found._')
+    }
+    mdLines.push('')
+  }
+
+  // Track which requirements have been placed (grouped under their concept)
+  const outputReqIds = new Set()
+
+  for (const concept of conceptNodes) {
+    const conceptReqs = requirementNodes
+      .filter(n => n.concept === concept.id)
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    // Report missing anchors; track as output so they don't appear in Uncategorized
+    for (const req of conceptReqs) {
+      outputReqIds.add(req.id)
+      if (!req.anchor) {
+        process.stderr.write(
+          `spec: requirement "${req.id}" has no anchor — omitted from index.md to avoid a broken link\n`,
+        )
+      }
+    }
+
+    const anchoredReqs = conceptReqs.filter(n => n.anchor)
+    if (anchoredReqs.length === 0) continue  // skip concept with no linkable requirements
+
+    mdLines.push(`## ${concept.title || concept.id}`)
+    mdLines.push('')
+
+    for (const req of anchoredReqs) {
+      // Link is relative from _generated/ to the spec root (prepend ../ to relPath)
+      const link = `../${req.relPath}#${req.anchor}`
+      mdLines.push(`### [${req.id} — ${req.title}](${link})`)
+      mdLines.push('')
+      if (req.ears) {
+        mdLines.push(req.ears)
+        mdLines.push('')
+      }
+    }
+  }
+
+  // Requirements not associated with any listed concept
+  const uncategorized = requirementNodes
+    .filter(n => !outputReqIds.has(n.id))
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  if (uncategorized.length > 0) {
+    // Report missing anchors in uncategorized set
+    for (const req of uncategorized) {
+      if (!req.anchor) {
+        process.stderr.write(
+          `spec: requirement "${req.id}" has no anchor — omitted from index.md to avoid a broken link\n`,
+        )
+      }
+    }
+
+    const anchoredUncategorized = uncategorized.filter(n => n.anchor)
+    if (anchoredUncategorized.length > 0) {
+      mdLines.push('## Uncategorized Requirements')
+      mdLines.push('')
+      for (const req of anchoredUncategorized) {
+        const link = `../${req.relPath}#${req.anchor}`
+        mdLines.push(`### [${req.id} — ${req.title}](${link})`)
+        mdLines.push('')
+        if (req.ears) {
+          mdLines.push(req.ears)
+          mdLines.push('')
+        }
+      }
+    }
+  }
+
+  writeFileSync(join(genDir, 'index.md'), mdLines.join('\n'), 'utf8')
 
   if (!silent) {
     process.stdout.write(
@@ -197,12 +359,12 @@ function countBy(arr, field) {
 
 const HELP = {
   init: {
-    summary: 'create docs/spec/README.md with a root concept node',
+    summary: 'create doc/specs/README.md with a root concept node',
     usage: 'spec init',
     flags: [],
   },
   build: {
-    summary: 'build docs/spec/_generated/{index.md,index.json,coverage.json}',
+    summary: 'build doc/specs/_generated/{index.md,index.json,coverage.json}',
     usage: 'spec build',
     flags: [],
   },
@@ -276,7 +438,7 @@ function cmdInit(args) {
   if (existsSync(sd)) {
     const readme = join(sd, 'README.md')
     if (existsSync(readme)) {
-      die(`docs/spec/README.md already exists. Remove it or run "spec build" to update the index.`, 1)
+      die(`doc/specs/README.md already exists. Remove it or run "spec build" to update the index.`, 1)
     }
   }
 
@@ -317,13 +479,13 @@ function cmdInit(args) {
   ].join('\n')
 
   writeFileSync(join(sd, 'README.md'), readme, 'utf8')
-  process.stdout.write(`spec: created docs/spec/README.md (concept ${conceptId})\n`)
+  process.stdout.write(`spec: created doc/specs/README.md (concept ${conceptId})\n`)
 }
 
-function cmdBuild(args) {
+async function cmdBuild(args) {
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
-  runBuild(sd)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
+  await runBuild(sd)
 }
 
 function cmdReq(args) {
@@ -348,11 +510,11 @@ function cmdReqNew(args) {
   }
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // Find the concept directory
   const conceptDir = findConceptDir(conceptId, sd)
-  if (!conceptDir) die(`concept "${conceptId}" not found in docs/spec/`, 1)
+  if (!conceptDir) die(`concept "${conceptId}" not found in doc/specs/`, 1)
 
   // Collect existing id suffixes for uniqueness (AC5)
   const allFiles = walkSpecFiles(sd)
@@ -400,16 +562,16 @@ function cmdReqNew(args) {
   process.stdout.write(`spec: created ${reqFile} (id: ${reqId})\n`)
 }
 
-function cmdShow(args) {
+async function cmdShow(args) {
   const { flags, positionals } = parseFlags(args)
   const [id] = positionals
   if (!id) die('usage: spec show <id> [--full]', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -446,7 +608,7 @@ function cmdShow(args) {
   )
 }
 
-function cmdSearch(args) {
+async function cmdSearch(args) {
   const { flags, positionals } = parseFlags(args)
   const query = positionals.join(' ').trim()
   if (!query) die('usage: spec search <query> [--limit N]', 2)
@@ -455,10 +617,10 @@ function cmdSearch(args) {
   if (isNaN(limit) || limit < 1) die('--limit must be a positive integer', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -487,7 +649,7 @@ function cmdSearch(args) {
   }
 }
 
-function cmdTree(args) {
+async function cmdTree(args) {
   const { flags } = parseFlags(args)
 
   // AC9: default depth 2
@@ -495,10 +657,10 @@ function cmdTree(args) {
   if (isNaN(depth) || depth < 1) die('--depth must be a positive integer', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   const idx = loadIndex(sd)
   if (!idx) die('index not found — run "spec build" first', 1)
@@ -532,16 +694,16 @@ function cmdTree(args) {
   for (const root of roots) renderTree(root, 0)
 }
 
-function cmdDeps(args) {
+async function cmdDeps(args) {
   const { positionals } = parseFlags(args)
   const [id] = positionals
   if (!id) die('usage: spec deps <id>', 2)
 
   const sd = resolveSpecDir()
-  if (!existsSync(sd)) die('docs/spec/ not found — run "spec init" first', 1)
+  if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
 
   // AC10: rebuild if stale
-  ensureFreshIndex(sd)
+  await ensureFreshIndex(sd)
 
   // AC11: read only from index, no opening markdown files
   const idx = loadIndex(sd)
@@ -596,7 +758,7 @@ function cmdDelegate(sub, args) {
 // Main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2)
   const [cmd, ...rest] = argv
 
@@ -611,12 +773,12 @@ function main() {
   try {
     switch (cmd) {
       case 'init':   return cmdInit(rest)
-      case 'build':  return cmdBuild(rest)
+      case 'build':  return await cmdBuild(rest)
       case 'req':    return cmdReq(rest)
-      case 'show':   return cmdShow(rest)
-      case 'search': return cmdSearch(rest)
-      case 'tree':   return cmdTree(rest)
-      case 'deps':   return cmdDeps(rest)
+      case 'show':   return await cmdShow(rest)
+      case 'search': return await cmdSearch(rest)
+      case 'tree':   return await cmdTree(rest)
+      case 'deps':   return await cmdDeps(rest)
       default:
         if (DELEGATED.has(cmd)) return cmdDelegate(cmd, rest)
         die(`unknown command "${cmd}". Run spec --help for a list.`, 2)
@@ -633,5 +795,8 @@ const isMain =
   process.argv[1].endsWith('spec.mjs')
 
 if (isMain) {
-  main()
+  main().catch(e => {
+    process.stderr.write(`spec: ${e?.message ?? String(e)}\n`)
+    process.exit(1)
+  })
 }

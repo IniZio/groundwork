@@ -24,26 +24,14 @@ All agents use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor
 
 ## Model Recommendations
 
-| Agent | Model recommendation | Temperature | Notes |
-|-------|---------------------|-------------|-------|
-| `advisor` | `openai/gpt-5.4` | 0.1 | Strong reasoning for architecture and gates |
-| `general-purpose` | `glm-5.2` | 0.2 | High reasoning, bounded implementation |
-| `explore` | `opencode-go/deepseek-v4-flash` | 0.1 | Fast, cheap for discovery |
-| `designer` | `cursor-agent/claude-sonnet-4-6` | 0.7 | Visual taste, UI polish |
+| Agent | Model | Notes |
+|-------|-------|-------|
+| `advisor` | `opus` | Strong reasoning for architecture and gates |
+| `general-purpose` | `sonnet` | High reasoning, bounded implementation |
+| `explore` | `haiku` | Fast, cheap for discovery |
+| `designer` | `sonnet` | Visual taste, UI polish |
 
-**Configure per-agent models in `opencode.json`:**
-```json
-{
-  "agent": {
-    "advisor": { "model": "openai/gpt-5.4" },
-    "general-purpose": { "model": "glm-5.2" },
-    "explore": { "model": "opencode-go/deepseek-v4-flash" },
-    "designer": { "model": "cursor-agent/claude-sonnet-4-6" }
-  }
-}
-```
-
-Temperature defaults are set automatically by the plugin. Override in `opencode.json` if needed.
+Per-agent models are configured in `model-registry.json` at the project root. The `model:` parameter on each `Task` call selects the model — see the dispatch table in `CLAUDE.md`.
 
 ## Why Delegation Matters
 

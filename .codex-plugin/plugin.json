@@ -1,0 +1,28 @@
+{
+  "name": "groundwork",
+  "version": "2.3.1",
+  "description": "Structured AI development workflows with planning, fan-out, testing, and advisor gates.",
+  "author": {
+    "name": "Newman",
+    "email": "inizio@skymakers.digital"
+  },
+  "homepage": "https://github.com/IniZio/groundwork",
+  "repository": "https://github.com/IniZio/groundwork",
+  "license": "MIT",
+  "keywords": ["workflow", "planning", "agents", "testing", "code-review"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Groundwork",
+    "shortDescription": "Structured workflows for reliable coding tasks",
+    "longDescription": "Groundwork provides reusable planning, implementation, diagnosis, testing, handoff, and review workflows for AI coding agents.",
+    "developerName": "Newman",
+    "category": "Coding",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Plan and implement this feature with Groundwork",
+      "Diagnose this bug with a regression test",
+      "Review this change against its acceptance criteria"
+    ],
+    "brandColor": "#1F6FEB"
+  }
+}

@@ -1,5 +1,5 @@
 // ─── Embedded Agent Definitions ─────────────────────────────────────────────
-// Types and re-exports. Content is generated from agents-pi/*.md — see
+// Types and re-exports. Content is generated from agents/*.md — see
 // scripts/generate-agent-definitions.ts and `pnpm run generate:agents`.
 
 export interface AgentDefinition {

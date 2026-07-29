@@ -104,6 +104,34 @@ describe("agent-model-guard — TaskCreate ban (background dispatch)", () => {
 	});
 });
 
+describe("agent-model-guard — every registry agent injects a short alias", () => {
+	const VALID_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);
+
+	// All agents in model-registry.json (claude-code column) that have a real mapping.
+	const REGISTRY_AGENTS = [
+		"orchestrator",
+		"general-purpose",
+		"advisor",
+		"designer",
+		"qa",
+		"test-engineer",
+		"planner",
+		"git-master",
+		"explore",
+	];
+
+	for (const agent of REGISTRY_AGENTS) {
+		it(`injects a short alias for groundwork:${agent}`, () => {
+			const d = runHook(agentCall({ subagent_type: `groundwork:${agent}`, prompt: "x" }));
+			const model = d.hookSpecificOutput?.updatedInput?.model;
+			expect(
+				VALID_ALIASES.has(model as string),
+				`Expected a short alias for ${agent} but got "${model}"`,
+			).toBe(true);
+		});
+	}
+});
+
 describe("agent-model-guard — never overrides / never over-reaches", () => {
 	it("passes through (no output) when model is already explicit", () => {
 		const d = runHook(agentCall({ subagent_type: "groundwork:general-purpose", model: "opus", prompt: "x" }));

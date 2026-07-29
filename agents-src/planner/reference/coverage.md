@@ -6,7 +6,7 @@ This document defines the coverage verification protocol for the planner agent (
 
 The coverage table provides a machine-readable, human-auditable map from every task acceptance criterion to:
 1. The **task** that covers it (confirms no criterion is left floating)
-2. The **requirement ID** that traces it to a formal requirement in `docs/spec/`
+2. The **requirement ID** that traces it to a formal requirement in `doc/specs/`
 
 A criterion with no covering task is a gap. A criterion with no requirement ID is a trace gap. Both must be resolved or explicitly flagged before RFC-READY.
 
@@ -48,9 +48,9 @@ When a blocking gap is found:
 - Add a NEEDS-INPUT question for each uncovered criterion
 - Do not partially emit RFC-READY alongside NEEDS-INPUT — choose one format per response
 
-## Tracing to docs/spec/
+## Tracing to doc/specs/
 
-Requirement IDs come from `docs/spec/` requirement files. To look up a requirement:
+Requirement IDs come from `doc/specs/` requirement files. To look up a requirement:
 
 ```bash
 node hooks/spec.mjs show <req-id>
@@ -62,7 +62,7 @@ Or search:
 node hooks/spec.mjs search <keyword>
 ```
 
-If `docs/spec/` has no matching requirement for a criterion, record `(untraced)` and add a non-blocking NEEDS-INPUT question asking whether a new requirement should be created.
+If `doc/specs/` has no matching requirement for a criterion, record `(untraced)` and add a non-blocking NEEDS-INPUT question asking whether a new requirement should be created.
 
 ## Example Coverage Table
 

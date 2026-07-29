@@ -83,6 +83,25 @@ function debugLog(input) {
 const DEFAULT_MODEL = process.env.GROUNDWORK_DEFAULT_AGENT_MODEL || 'sonnet'
 
 /**
+ * Normalize any model string to the short tier alias accepted by the Claude Code
+ * Agent/Task `model` parameter: sonnet | opus | haiku | fable.
+ *
+ * Handles full model IDs ("claude-sonnet-4-6", "us.anthropic.claude-sonnet-4-6",
+ * "claude-sonnet-4-6[1m]"), bare aliases ("opus"), and anything in between.
+ * Case-insensitive. Returns the input unchanged when no known tier token is found
+ * (defensive pass-through so the caller can still attempt the dispatch).
+ */
+function toTierAlias(model) {
+  if (typeof model !== 'string') return model
+  const lower = model.toLowerCase()
+  if (lower.includes('opus')) return 'opus'
+  if (lower.includes('haiku')) return 'haiku'
+  if (lower.includes('fable')) return 'fable'
+  if (lower.includes('sonnet')) return 'sonnet'
+  return model
+}
+
+/**
  * Built-in Claude Code agent types that groundwork BANS in favor of its own
  * namespaced equivalents. The built-ins default to `inherit` (the opus session
  * model) and, more importantly, carry none of groundwork's role prompts. A bare
@@ -207,7 +226,7 @@ async function main() {
 
   const subagentType = toolInput.subagent_type
   const resolved = resolveModel(registry, subagentType)
-  const model = resolved || DEFAULT_MODEL
+  const model = toTierAlias(resolved || DEFAULT_MODEL)
   const who = (typeof subagentType === 'string' && subagentType.trim()) || '(no subagent_type)'
   const note = resolved
     ? `groundwork model-guard: injected model "${model}" for ${who} (was unset — would have inherited the opus session model)`

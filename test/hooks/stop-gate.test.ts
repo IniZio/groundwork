@@ -66,6 +66,7 @@ function readReinforcements(): number {
 
 const completeSlice = { id: "S1", status: "complete", acceptance: ["does the thing"] };
 
+// @verifies VERIFICATION-R-001
 describe("stop-gate hook — advisor verdict (object or string)", () => {
 	it("allows the stop when gate.advisor is an OBJECT with verdict APPROVE and all slices complete", () => {
 		const decision = runHook({
@@ -262,6 +263,7 @@ describe("stop-gate hook — yield-awareness (Fix B)", () => {
 	});
 });
 
+// @verifies ARTIFACT-R-003
 describe("stop-gate hook — skipped status is terminal", () => {
 	it("allows stop when all slices are skipped and gate is APPROVE", () => {
 		const decision = runHook({

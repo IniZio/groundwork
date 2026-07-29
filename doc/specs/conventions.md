@@ -6,7 +6,7 @@ A spec describes a system through multiple complementary representations called 
 
 ## 2. Concept directory structure
 
-Each concept lives in its own subdirectory under `doc/specs/`:
+Each concept lives in its own subdirectory under [doc/specs/](./):
 
 ```
 doc/specs/<concept>/
@@ -53,6 +53,8 @@ Every view file **MUST** be fully self-contained. The full rationale (Why), fit 
 
 - **RFCs are for progress tracking and journaling.** They are not committed to the repository and are not a durable source of spec truth. A `constraints.md` file **MUST NOT** rely on an RFC to supply rationale or acceptance criteria.
 - **The `constraints.md` view type** carries normative `**shall**` statements with Why, Fit criterion, Criticality, and Verification method inline. A constraint entry that lacks these fields is incomplete regardless of whether an RFC exists that documents them.
+- **`Verification:` describes a method, not evidence.** Write it as a test specification: what to run, what inputs to use, what outcome certifies compliance. Use future-tense prose ("Integration test asserts that…"). Evidence of having run the verification belongs in the RFC journal or commit history — not in the spec. The field is populated before the tests exist; its purpose is to specify them precisely enough that another engineer can implement them.
+- **`Criticality:` is a machine-readable index tag** (`must` / `should` / `may`). It is NOT redundant with the normative verb (SHALL / SHOULD / MAY) in the requirement body. The body uses RFC 2119 language for the binding normative statement; `Criticality` is the structured index key for filtering and tooling queries (e.g. "show all `must` requirements"). Both must be present and consistent: a `shall` body requires `Criticality: must`; a `should` body requires `Criticality: should`.
 - **The `requirements.md` format is superseded.** New spec content uses the `constraints.md` view format. The old `requirements.md` files in concept directories have been migrated into their corresponding `constraints.md` view and deleted.
 
 ## 5. spec.yaml — the manifest
@@ -119,6 +121,15 @@ lint:
 #   review: "Stable enough for agent use; awaiting validation"
 ```
 
+### Dual manifest authority
+
+A concept may have two `spec.yaml` files: one at the project root and one inside the concept directory. These serve different purposes:
+
+- The **concept-level `spec.yaml`** (inside `doc/specs/<concept>/`) is the **canonical manifest** for tooling. View paths in it are relative to that directory. `spec-lint` reads this file.
+- The **root `spec.yaml`** (at the repository root, if present) is an **optional project-level index**. It may enumerate concept directories for navigation purposes. It does not override any field in the concept-level manifest. A tool resolving concept data MUST prefer the concept-level file.
+
+If a root manifest and a concept-level manifest share the same `id`, the concept-level file wins. Writers MUST NOT assume the root manifest drives tooling behaviour.
+
 ## 6. Status lifecycle — spec concepts
 
 The following table is the **single canonical source** for spec concept status values and their meanings. When `status_policy` is present inline in a `spec.yaml`, `spec-lint` asserts that every entry matches this table.
@@ -129,6 +140,13 @@ The following table is the **single canonical source** for spec concept status v
 | `review` | Stable enough for agent use; awaiting validation against implementation |
 | `accepted` | Validated against implementation; breaking changes require RFC |
 | `deprecated` | No longer in use; see replacement |
+
+### Status transition triggers
+
+- **`draft`** — the initial state for any new concept. The writer is actively designing; structure and requirements may change freely without a change record.
+- **`review`** — set when the concept is stable enough for team validation. The spec accurately reflects the intended design; the primary open question is whether the implementation agrees.
+- **`accepted`** — set after the team has reviewed and approved the concept as normative. From this point, breaking changes (removing requirements, changing IDs, altering constraints) require an RFC.
+- **`deprecated`** — set when the concept is superseded or removed. The `README.md` SHOULD link to the replacement concept or the RFC that retired it.
 
 ## 7. Status lifecycle — RFCs
 
@@ -153,7 +171,7 @@ Creating an `overview.md` with a `type: overview` frontmatter field alongside `i
 
 ## 9. Relations block
 
-The `relations` block in `spec.yaml` is **informational only**. Concept IDs listed in `relations.items[].target` are not verified against any registry by `spec lint`. Do not use the `relations` block for machine enforcement. Use the `lint` block for machine-checked invariants, and use RFC `spec_delta` for tracked structural changes.
+The `relations` block in `spec.yaml` is **informational only** — a human-readable dependency map, not a machine-checked contract. Concept IDs listed in `relations.items[].target` are not verified against any registry by `spec lint`; no tooling currently checks that the referenced concept IDs exist. Do not use the `relations` block for machine enforcement. Use the `lint` block for machine-checked invariants, and use RFC `spec_delta` for tracked structural changes.
 
 ## 10. Lint block
 
@@ -169,3 +187,16 @@ The `lint` block in `spec.yaml` configures two automated checks run by `spec lin
 
 - Each entry in `operations` is checked via `grep -rE '["']<op>["']' hooks/*.mjs`. A name not found → `operation-missing` violation.
 - An empty `operations` array → no check performed.
+
+**`data-model.entities`** — declares the *logical domain entity names* for a concept (e.g. `Task`, `User`, `Tag`). These are conceptual model names — not database table names or ORM class names specifically, unless the optional `source` sub-key says otherwise. Add the optional `source` key to specify where to validate the names:
+
+```yaml
+lint:
+  data-model:
+    entities: [Task, User, Tag]
+    source: typescript   # optional: schema | prisma | typescript | graphql
+```
+
+When `source` is omitted, `entities` is treated as a documentation-only declaration (no automated check). When `source` is present, lint looks for the entity names in the corresponding artefact (`src/**/*.ts` for `typescript`, the Prisma schema for `prisma`, etc.).
+
+**`constraints.ids_prefix`** — the prefix string that all requirement IDs in `constraints.md` must begin with (e.g. `TASK-R-`). This is **intentionally declared explicitly** rather than derived from the concept `id`. A concept `id` may contain hyphens, namespace separators, or version suffixes that do not map cleanly to a prefix convention; the writer states the intended prefix so lint can validate requirement headings without parsing the `id` format. If the concept `id` changes, update `ids_prefix` in the same commit.

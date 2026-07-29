@@ -14,7 +14,7 @@ When a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs` 
 - **Verification**: automated — `hooks/ledger.mjs` persists these fields on every `complete` command; the Stop hook reads them to validate gate satisfaction.
 - **Criticality**: must
 
-See also: ARTIFACT-R-003
+See also: [ARTIFACT-R-003](#artifact-r-003)
 
 ## ARTIFACT-R-002 — RFC reference field in ledger {#artifact-r-002}
 
@@ -34,4 +34,4 @@ If the Stop hook fires and the active run ledger contains any slice not marked c
 - **Verification**: automated — the Stop hook enforces this mechanically on every session-end attempt.
 - **Criticality**: must
 
-See also: VERIFICATION-R-001
+See also: [VERIFICATION-R-001](../verification/constraints.md#verification-r-001)

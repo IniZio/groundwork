@@ -14,7 +14,7 @@ If the Stop hook fires and the active run ledger contains any slices whose statu
 - **Verification**: automated — the Stop hook enforces this mechanically on every session-end attempt.
 - **Criticality**: must
 
-See also: VERIFICATION-R-002
+See also: [VERIFICATION-R-002](#verification-r-002)
 
 ## VERIFICATION-R-002 — Orchestrator invokes advisor to validate completion {#verification-r-002}
 
@@ -25,4 +25,4 @@ When a non-trivial task is complete, the orchestrator **shall** invoke the advis
 - **Verification**: manual — confirmed by reviewing the orchestrator's session transcript to ensure advisor invocation occurred before session end and that real-world verification commands were performed.
 - **Criticality**: must
 
-See also: VERIFICATION-R-001
+See also: [VERIFICATION-R-001](#verification-r-001)

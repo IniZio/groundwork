@@ -14,4 +14,4 @@ When the orchestrator classifies a task as non-trivial, the orchestrator **shall
 - **Verification**: manual — confirmed by reviewing session transcripts for Task delegation calls and absence of direct Edit/Write calls from the orchestrator on production code paths.
 - **Criticality**: must
 
-See also: ENFORCEMENT-R-001
+See also: [ENFORCEMENT-R-001](../enforcement/constraints.md#enforcement-r-001)

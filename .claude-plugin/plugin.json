@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.4.0",
+  "version": "2.6.0",
   "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
   "author": {
     "name": "Newman",

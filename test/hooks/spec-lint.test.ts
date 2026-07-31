@@ -12,7 +12,7 @@
  *   anchor-mismatch     — {#anchor} must equal id lowercased
  *   xref-dangling       — dangling same-file anchor or relative-path ref → violation
  *   id-format           — requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
- *   origin-rfc          — every node must carry origin_rfc
+ *   origin-rfc          — origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
  *   required-field      — all schema-required fields must be present and non-blank
  *   enum-values         — type, pattern, verification, criticality, status
  *   summary-length      — ≤25 words (boundary: exactly 25 passes; 26 fails)
@@ -24,7 +24,6 @@
 
 import { execFileSync } from "node:child_process";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -597,7 +596,7 @@ describe("xref-dangling: dangling relative-path cross-reference", () => {
 // ---------------------------------------------------------------------------
 
 describe("origin-rfc invariant", () => {
-  it("fails when concept is missing origin_rfc", () => {
+  it("fails when concept has origin_rfc: null (present but null-valued)", () => {
     mkSpec();
     writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: null });
     const br = build();
@@ -626,14 +625,10 @@ describe("origin-rfc invariant", () => {
     expect(r.stdout + r.stderr).toContain("origin-rfc");
   });
 
-  it("fails when requirements.md is missing origin_rfc", () => {
+  it("passes when requirements.md is missing origin_rfc (absent is allowed)", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    writeRequirementsDoc("", [minSection("ROOT-R-001")], {
-      concept: "C-ROOT",
-      // origin_rfc deliberately omitted
-    } as Record<string, string>);
-    // Manually write without origin_rfc
+    // Manually write without origin_rfc — absent is now allowed
     const dir = path.join(SPEC_DIR());
     writeFileSync(
       path.join(dir, "requirements.md"),
@@ -642,8 +637,7 @@ describe("origin-rfc invariant", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    expect(r.stdout + r.stderr).toContain("origin-rfc");
-    expect(r.code).toBe(1);
+    expect(r.stdout + r.stderr).not.toContain("origin-rfc");
   });
 });
 

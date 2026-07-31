@@ -18,19 +18,94 @@ doc/specs/<concept>/
   constraints.md      — optional view: testable normative invariants (self-contained: Why, Fit criterion, Criticality inline)
 ```
 
-`README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, `parent`, and `origin_rfc` fields validated by `spec-concept.schema.json`. Renaming it to `overview.md` is a deferred follow-up RFC; until that RFC lands, `README.md` remains the single indexed entry point per concept.
+`README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, and `parent` fields validated by `spec-concept.schema.json`; `origin_rfc` is an optional field that, when present, must be a valid non-empty RFC ref. Renaming it to `overview.md` is a deferred follow-up RFC; until that RFC lands, `README.md` remains the single indexed entry point per concept.
+
+## 2a. Nested and multi-system layouts
+
+`findNearestConceptId` (in `hooks/lib/spec-io.mjs`) walks up to 12 directory levels when associating a requirement file with its parent concept. Arbitrary nesting depth up to 12 is supported by the indexer; nothing requires `parent` to equal the directory name.
+
+### Flat layout (single-system repo — default)
+
+```
+doc/specs/
+  README.md          ← root concept (created by `spec init`)
+  <concept-a>/
+    README.md
+    spec.yaml
+    constraints.md
+```
+
+`spec init` creates only `doc/specs/README.md` and assumes this flat model.
+
+### Multi-system / nested layout
+
+A repo with more than one system can root each system under `doc/specs/<system>/`:
+
+```
+doc/specs/
+  frontend/
+    README.md        ← system concept  (id: C-FRONTEND)
+    spec.yaml
+    auth/
+      README.md      ← sub-concept     (id: C-FRONTEND-AUTH, parent: C-FRONTEND)
+      spec.yaml
+      constraints.md
+  backend/
+    README.md        ← system concept  (id: C-BACKEND)
+    spec.yaml
+```
+
+`spec build` indexes all concept nodes correctly regardless of depth. Requirements in `auth/constraints.md` associate with `C-FRONTEND-AUTH` because that is the nearest `README.md` walking upward.
+
+**`spec init` assumption:** the command always creates `doc/specs/README.md`. For a multi-system repo, create each system's `README.md` manually with appropriate `id` and `parent` fields; there is no `spec init --system` subcommand.
 
 ## 3. View types
 
-All accepted view `type` values are listed here. `spec-lint.mjs` validates that every `type` declared in `spec.yaml` is one of these values.
+Core view `type` values are listed here. `spec-lint.mjs` validates every `type` declared in `spec.yaml` against the core set plus any project-declared extensions (see §3.1 below).
 
 | Type | File convention | Diagram format | What it describes |
 |---|---|---|---|
 | `overview` | `README.md` | prose | Concept narrative and rationale |
 | `data-model` | `data-model.md` | Mermaid `erDiagram` | Entities, fields, relations |
-| `flows` | `flows.md` | Mermaid `sequenceDiagram` | Key behavioral sequences |
+| `flows` | `flows.md` | Mermaid `sequenceDiagram` | Key behavioral sequences (internal collaboration between components) |
 | `api` | `api.md` | prose table | Declared operations / interface |
-| `constraints` | `constraints.md` | prose (`SHALL` statements) | Testable normative invariants |
+| `constraints` | `constraints.md` | prose (`SHALL` statements) | Testable normative invariants — use only when you want each entry to become a full requirement node with Why / Fit criterion / Criticality (see note below) |
+| `scenarios` | `scenarios.md` | prose / table | Input alphabet: the externally observable situations you select from and apply to exercise the system. Use `scenarios` when the document lists conditions, stimuli, or test inputs — not the internal component collaboration that `flows` describes. |
+| `cases` | `cases.md` | prose / table | A register of instances (test cases, failure cases, edge cases) that do not individually warrant full requirement nodes. Use `cases` when a list entry would not survive promotion to a `constraints` entry — i.e. it lacks or should not carry its own Why / Fit criterion / Criticality block. |
+
+> **Choosing between `scenarios` and `flows`:** `flows` traces internal collaboration (sequence diagrams, message passing between components). `scenarios` is the input alphabet you select from to exercise the system — it answers "what situations can arise?" not "what happens internally when they do?"
+
+> **Choosing between `cases` and `constraints`:** if you would not want each entry to become a requirement node with a full Why / Fit criterion / Criticality block, it belongs in `cases`, not `constraints`. Promoting every case entry to a requirement is a design signal that it belongs in `constraints`.
+
+> **`constraints` view type and the `constraints.md` file** — the `constraints` view type in the table above names the _kind_ of a view: normative invariants. The file that holds those invariants is `constraints.md`, registered in `spec.yaml` as `type: constraints`. Listing `type: constraints` in `spec.yaml` registers the view for tooling (lint, index); it does not drop or filter any requirements. The requirements themselves live in the body of `constraints.md` as anchored H3 sections. There is no separate processing step that would silently remove them.
+>
+> **Deprecated filename `requirements.md`:** tooling accepts `requirements.md` as a deprecated alias for the file **name** only. The view **type** must still be `type: constraints` — there is no view type named `requirements`. If you name the file `requirements.md` in `spec.yaml`, write `type: constraints`, not `type: requirements`. Writing `type: requirements` triggers an `unknown-view-type` lint violation. All new content uses `constraints.md`.
+
+### 3.1 Project-declared view type extensions
+
+If none of the core types fit, declare a project-local type under `view_types` in `spec.yaml`. This is modelled on ISO/IEC/IEEE 42010 viewpoint vocabulary: you may invent a type, but you must state what concern it frames and what the view contains.
+
+```yaml
+view_types:
+  - name: fixtures
+    concern: "Which canned datasets exist and what each one is for — needed by anyone writing a new harness test."
+    contents: "Table of named fixture datasets with provenance and intended use."
+
+views:
+  - type: overview
+    file: README.md
+  - type: scenarios
+    file: scenarios.md
+  - type: fixtures        # resolves against view_types above
+    file: fixtures.md
+```
+
+Rules enforced by `spec-lint`:
+
+1. `name` must match `^[a-z][a-z0-9-]*$`.
+2. `name` **must not** shadow a core type — the core wins. If you need a narrative document about a core type (e.g. a verification strategy), use a distinct name like `verification-strategy`.
+3. Any `views[].type` that is neither a core type nor declared in `view_types` is a lint violation (`unknown-view-type`) with an error message that lists the core types and shows the declaration snippet pre-filled with the rejected name.
+4. A `view_types` entry that no `views` entry uses emits a warning (dead vocabulary is untidy, not wrong).
 
 ## 4. View file format rule
 
@@ -52,10 +127,46 @@ The `id` value **MUST** match the owning concept's id (the same value in `README
 Every view file **MUST** be fully self-contained. The full rationale (Why), fit criteria, and verification method for each requirement belong **inside** the view file — not in an external document. In particular:
 
 - **RFCs are for progress tracking and journaling.** They are not committed to the repository and are not a durable source of spec truth. A `constraints.md` file **MUST NOT** rely on an RFC to supply rationale or acceptance criteria.
-- **The `constraints.md` view type** carries normative `**shall**` statements with Why, Fit criterion, Criticality, and Verification method inline. A constraint entry that lacks these fields is incomplete regardless of whether an RFC exists that documents them.
+- **The `constraints.md` view type** carries normative `**shall**` (or `**shall not**` for prohibitions) statements with Why, Fit criterion, Criticality, and Verification method inline. A constraint entry that lacks these fields is incomplete regardless of whether an RFC exists that documents them.
 - **`Verification:` describes a method, not evidence.** Write it as a test specification: what to run, what inputs to use, what outcome certifies compliance. Use future-tense prose ("Integration test asserts that…"). Evidence of having run the verification belongs in the RFC journal or commit history — not in the spec. The field is populated before the tests exist; its purpose is to specify them precisely enough that another engineer can implement them.
 - **`Criticality:` is a machine-readable index tag** (`must` / `should` / `may`). It is NOT redundant with the normative verb (SHALL / SHOULD / MAY) in the requirement body. The body uses RFC 2119 language for the binding normative statement; `Criticality` is the structured index key for filtering and tooling queries (e.g. "show all `must` requirements"). Both must be present and consistent: a `shall` body requires `Criticality: must`; a `should` body requires `Criticality: should`.
-- **The `requirements.md` format is superseded.** New spec content uses the `constraints.md` view format. The old `requirements.md` files in concept directories have been migrated into their corresponding `constraints.md` view and deleted.
+- **The `requirements.md` filename is superseded by `constraints.md`.** New spec content uses `constraints.md`. Tooling accepts `requirements.md` as a deprecated **filename** alias — the view **type** must still be `type: constraints`, not `type: requirements` (`requirements` is not a view type). No new files should use the old name.
+
+### Annotation line formats
+
+Two forms are accepted for the Verification/Criticality annotation. The **two-bullet form is preferred** for new requirements:
+
+```
+- **Verification**: <automated|manual|hybrid> — <brief prose description of the test method>
+- **Criticality**: <must|should>
+```
+
+The **single-line form** is the legacy format, still valid:
+
+```
+- **Verification** <automated|manual|hybrid> · **Criticality** <must|should> · **Source** <rfc-uid>
+```
+
+`Source` is **optional in both forms**. Include it when the requirement traces to a specific RFC (e.g. `Source R-20260726-K4M2QX`); omit it when no RFC is the origin. Tooling parses both forms; mixing forms across requirements in the same file is permitted.
+
+**`verification: manual` — recommended `### Manual procedure` sub-section.** When the annotation declares `Verification: manual`, the requirement body should also include a `### Manual procedure` H3 sub-section directly after the annotation bullets, describing the exact steps needed to verify compliance. A manual verification without written steps is not verifiable by a second engineer. Example:
+
+```markdown
+## MYFEATURE-R-001 — The system does X {#myfeature-r-001}
+
+The system **shall** do X.
+
+- **Why** — Without X, Y breaks.
+- **Fit criterion** — After running Z, X is confirmed.
+- **Verification**: manual — Inspect the output of Z and confirm X.
+- **Criticality**: must
+
+### Manual procedure
+
+1. Run `<command>`.
+2. Observe that `<expected output>` appears.
+3. Confirm that `<invariant>` holds.
+```
 
 ## 5. spec.yaml — the manifest
 
@@ -121,6 +232,23 @@ lint:
 #   review: "Stable enough for agent use; awaiting validation"
 ```
 
+### `summary` — ≤25 words, byte-identical in README.md and spec.yaml
+
+The `summary` field appears in both `README.md` frontmatter and `spec.yaml`. These two copies **must be byte-identical**. Two lint rules enforce this:
+
+- **`summary-length`** — `spec lint` rejects a summary exceeding 25 words in either file. Exactly 25 words passes; 26 fails.
+- **`manifest-mismatch`** — `spec lint` rejects any `id`, `title`, or `summary` value that differs between `spec.yaml` and `README.md`. The error names both file paths and both values:
+
+  ```
+  LINT_DRIFT <id>: manifest-mismatch: concept "<id>" summary differs —
+    /abs/path/to/spec.yaml: "value in spec.yaml" vs
+    /abs/path/to/README.md: "value in README.md"
+  ```
+
+When you edit one file, update the other in the same commit. A `spec lint` run in CI catches any drift before it merges.
+
+_(Long-term, deriving one from the other would eliminate the duplication. That redesign is deferred; the lint check is the current guard.)_
+
 ### Dual manifest authority
 
 A concept may have two `spec.yaml` files: one at the project root and one inside the concept directory. These serve different purposes:
@@ -165,7 +293,7 @@ The following table is the **single canonical source** for RFC status values and
 
 ## 8. Node ownership rule (transitional)
 
-`README.md` is the **indexed concept node** — it carries `id`, `type: concept`, `title`, `summary`, `parent`, and `origin_rfc`, validated by `spec-concept.schema.json`. View files are **not** indexed nodes; they are reached via the `spec.yaml` `views` array.
+`README.md` is the **indexed concept node** — it carries `id`, `type: concept`, `title`, `summary`, and `parent`, validated by `spec-concept.schema.json`. The `origin_rfc` field is optional; if present it must be a valid non-empty RFC ref. View files are **not** indexed nodes; they are reached via the `spec.yaml` `views` array.
 
 Creating an `overview.md` with a `type: overview` frontmatter field alongside `id: C-FOO` would collide on the concept node id — `spec lint` would see two nodes with the same `id`. The rename from `README.md` to `overview.md` as the indexed node is a deferred RFC; until it lands, do not create an `overview.md` that carries the concept's `id`.
 
@@ -177,10 +305,12 @@ The `relations` block in `spec.yaml` is **informational only** — a human-reada
 
 The `lint` block in `spec.yaml` configures two automated checks run by `spec lint`:
 
-**`data-model.type_names`** — checks that declared TypeScript type or interface names exist in `src/`.
+**`data-model.type_names`** — checks that declared type or interface names exist in the configured scan root.
 
 - `source` must be `types`; values `prisma`, `schema`, and `graphql` cause an `unsupported-source` violation and exit 1.
-- Each name in `names` is checked via `grep -rE '^export (type|interface) <name>\b' src/**/*.ts`. A name not found → `type-name-missing` violation.
+- `language` (optional, default `typescript`) — source language for declarations. Only `typescript` is currently supported. An unsupported language causes the check to be **skipped** with one informational message and zero `type-name-missing` violations; it is not a lint error.
+- `scan_root` (optional, default `src`) — directory to scan for declarations, relative to the project root.
+- Each name in `names` is checked via `grep -rE '^export (type|interface) <name>\b' <scan_root>/**/*.ts` (TypeScript). A name not found → `type-name-missing` violation.
 - An empty `names` array → no check performed.
 
 **`api.operations`** — checks that declared operation names appear as string literals in `hooks/*.mjs`.

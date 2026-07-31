@@ -28,12 +28,12 @@ This spec is partial. It covers four load-bearing behavioral areas established i
 
 1. **Start here** — this file. Read the Goals and Scope to understand what is and is not covered.
 2. **Pick a concept** — open the concept's `README.md` for the problem statement, scope, and key decisions.
-3. **Read the requirements** — open the concept's `requirements.md` for the normative requirements as anchored H3 sections.
+3. **Read the requirements** — open the concept's `constraints.md` for the normative requirements as anchored H3 sections. (`requirements.md` is a deprecated alias accepted by tooling; new content uses `constraints.md`.)
 
 To cite a specific requirement, use a markdown anchor link to its id lowercased:
 
 ```markdown
-[ARTIFACT-R-001](doc/specs/artifact/requirements.md#artifact-r-001)
+[ARTIFACT-R-001](doc/specs/artifact/constraints.md#artifact-r-001)
 ```
 
 Within the same file, omit the path prefix:

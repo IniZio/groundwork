@@ -42,12 +42,38 @@
         "additionalProperties": false,
         "properties": {
           "type": {
-            "description": "View category.",
+            "description": "View category. Core types: overview, data-model, flows, api, constraints, scenarios, cases. Project-declared types must match ^[a-z][a-z0-9-]*$ and be declared in view_types.",
             "type": "string",
-            "enum": ["overview", "data-model", "flows", "api", "constraints"]
+            "pattern": "^[a-z][a-z0-9-]*$"
           },
           "file": {
             "description": "File path relative to the concept directory.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "view_types": {
+      "description": "Project-declared view type extensions (ISO/IEC/IEEE 42010 style). Each entry declares a custom type name alongside the stakeholder concern it frames and a one-line description of what the view contains.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "concern", "contents"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Type name. Must match ^[a-z][a-z0-9-]*$ and must not collide with a core type.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "concern": {
+            "description": "Which stakeholder question or architectural concern this view frames.",
+            "type": "string",
+            "minLength": 1
+          },
+          "contents": {
+            "description": "One-line description of what this document contains.",
             "type": "string",
             "minLength": 1
           }
@@ -97,6 +123,16 @@
                 "names": {
                   "type": "array",
                   "items": { "type": "string" }
+                },
+                "language": {
+                  "description": "Source language for type declarations. Only 'typescript' is currently supported; other values cause the check to be skipped with an informational message.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scan_root": {
+                  "description": "Directory to scan for type declarations, relative to the project root. Defaults to 'src'.",
+                  "type": "string",
+                  "minLength": 1
                 }
               }
             }

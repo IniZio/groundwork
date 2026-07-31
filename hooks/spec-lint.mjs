@@ -11,15 +11,15 @@
  *
  * Invariants checked:
  *   Body-format requirement invariants (requirements.md H3 sections):
- *     stale-frontmatter    — ears or verify in any frontmatter → violation
- *     normative-statement  — body must contain a normative statement with bolded **shall**
- *     why-required         — every requirement body must have a **Why** rationale
- *     fit-criterion        — every requirement body must have a **Fit criterion**
- *     anchor-mismatch      — {#anchor} must equal id lowercased
- *     xref-dangling        — cross-references must resolve (same-file and relative-path)
- *     id-format            — requirement ids must be <CONCEPT>-R-NNN (exactly 3 zero-padded digits)
+ *     stale-frontmatter        — ears or verify in any frontmatter → violation
+ *     normative-statement      — body must contain a normative statement with bolded **shall**
+ *     why-required             — every requirement body must have a **Why** rationale
+ *     fit-criterion            — every requirement body must have a **Fit criterion**
+ *     anchor-mismatch          — {#anchor} must equal id lowercased
+ *     xref-dangling            — cross-references must resolve (same-file and relative-path)
+ *     id-format                — requirement ids must be <CONCEPT>-R-NNN (exactly 3 zero-padded digits)
  *   All node invariants (concept README.md and other nodes):
- *     origin-rfc           — every node must declare origin_rfc in its frontmatter
+ *     origin-rfc           — origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
  *     required-field       — all schema-required fields must be present and non-blank
  *     enum-values          — type, pattern, verification, criticality, status
  *     summary-length       — summary must be ≤25 words
@@ -33,16 +33,18 @@
  *     required-field       — view file frontmatter must have type and id fields
  *     unknown-field        — view file frontmatter must have no extra fields
  *     unsupported-source   — lint.data-model.type_names.source must be 'types'
- *     type-name-missing    — named TypeScript types must exist in src/
+ *     type-name-missing    — named types must exist in the configured scan root (language-aware)
  *     operation-missing    — named CLI operations must exist in hooks/*.mjs
  *     manifest-mismatch    — spec.yaml id/title/summary must match README.md
+ *     unknown-view-type    — views[].type must be a core type or declared in view_types
+ *     view-type-collision  — view_types[].name must not shadow a core type
+ *     view-type-mismatch   — view file frontmatter type must match the spec.yaml declaration
  *
  * Exit codes: 0 success  1 violations found (both modes)  2 usage error
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, basename, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { load as yamlLoad } from 'js-yaml'
 import { loadSchema } from './lib/schema-io.mjs'
@@ -50,16 +52,11 @@ import {
   parseRequirementsDocument,
   parseYamlFrontmatter,
   ALLOWED_FRONTMATTER_FIELDS,
+  CORE_VIEW_TYPES,
+  isRequirementsDoc,
+  hasNormativeVerb,
 } from './lib/spec-io.mjs'
 import { verifiedIds } from './lib/verifies-scan.mjs'
-
-// ---------------------------------------------------------------------------
-// Project root
-// ---------------------------------------------------------------------------
-
-function findProjectRoot() {
-  return dirname(dirname(fileURLToPath(import.meta.url)))
-}
 
 // ---------------------------------------------------------------------------
 // Spec index loader
@@ -240,11 +237,12 @@ function schemaErrorsToViolations(errors, nodeId, rawFm) {
  */
 function getSectionChunks(fileContent) {
   const { body } = parseYamlFrontmatter(fileContent)
-  const chunks = body.split(/^(?=### )/m)
+  // Match both H2 (##) and H3 (###) headings — constraints.md uses H2, requirements.md uses H3
+  const chunks = body.split(/^(?=#{2,3} )/m)
   const map = new Map()
-  const HEADING_RE = /^### ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+)/
+  const HEADING_RE = /^#{2,3} ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+)/
   for (const chunk of chunks) {
-    if (!chunk.startsWith('### ')) continue
+    if (!chunk.startsWith('## ') && !chunk.startsWith('### ')) continue
     const firstLine = chunk.split('\n')[0]
     const hm = firstLine.match(HEADING_RE)
     if (hm) map.set(hm[1], chunk)
@@ -309,13 +307,15 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
     })
   }
 
-  // origin_rfc must be present at file level
+  // origin_rfc is optional; if present it must be a valid non-empty RFC ref
   const originRfc = fileFm.origin_rfc
-  if (!originRfc || typeof originRfc !== 'string' || !String(originRfc).trim() || originRfc === 'null') {
-    violations.push({
-      nodeId: firstNodeId,
-      violation: `origin-rfc: file "${fileLabel}" has no origin_rfc in frontmatter`,
-    })
+  if (originRfc !== undefined) {
+    if (!originRfc || typeof originRfc !== 'string' || !String(originRfc).trim() || originRfc === 'null') {
+      violations.push({
+        nodeId: firstNodeId,
+        violation: `origin-rfc: file "${fileLabel}" has invalid origin_rfc in frontmatter`,
+      })
+    }
   }
 
   // Parse body sections
@@ -346,13 +346,16 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Normative statement with bolded **shall**
+    // Normative statement with bolded **shall** or **shall not**
+    // Accepts: **shall** (affirmative), **shall not** (prohibition inside bold),
+    //          **shall** not (prohibition outside bold). RFC 2119 / ISO 29148 both
+    // treat SHALL NOT as first-class normative.
     if (!section.normativeStatement) {
       violations.push({
         nodeId: id,
         violation: `normative-statement: requirement "${id}" has no normative statement (no prose before first bullet)`,
       })
-    } else if (!section.normativeStatement.includes('**shall**')) {
+    } else if (!hasNormativeVerb(section.normativeStatement)) {
       violations.push({
         nodeId: id,
         violation: `normative-statement: requirement "${id}" normative statement does not contain bolded **shall**`,
@@ -375,6 +378,22 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
+    // Unparseable **Verification** line: present but not understood is worse than absent
+    // Fire only when a bullet starting with **Verification** exists but did not parse.
+    const rawChunk = sectionChunks.get(id) || ''
+    if (!section.verification || section.verification === 'unknown') {
+      for (const line of rawChunk.split('\n')) {
+        const bulletText = (line.startsWith('- ') || line.startsWith('* ')) ? line.slice(2) : null
+        if (bulletText !== null && bulletText.trimStart().startsWith('**Verification**')) {
+          violations.push({
+            nodeId: id,
+            violation: `verification-unparseable: requirement "${id}" in "${fileAbsPath}" has a **Verification** line that did not parse: ${line.trim()}`,
+          })
+          break
+        }
+      }
+    }
+
     // Same-file cross-references: must resolve to a section in this file
     for (const anchor of section.seeAlso) {
       if (!fileAnchors.has(anchor)) {
@@ -386,7 +405,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
     }
 
     // Relative-path cross-references: file must exist and anchor must be present
-    const rawChunk = sectionChunks.get(id) || ''
     for (const { filePart, anchor } of extractRelativeLinks(rawChunk)) {
       const targetAbsPath = resolve(dirname(fileAbsPath), filePart)
       if (!existsSync(targetAbsPath)) {
@@ -478,9 +496,11 @@ function checkNodeInvariants(node, rawFm, index) {
     }
   }
 
-  // origin_rfc must be present in frontmatter (all node types)
-  if (!rawFm.origin_rfc || typeof rawFm.origin_rfc !== 'string' || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
-    violations.push(`origin-rfc: node "${id}" has no origin_rfc in frontmatter`)
+  // origin_rfc is optional; if present it must be a valid non-empty RFC ref
+  if (rawFm.origin_rfc !== undefined) {
+    if (!rawFm.origin_rfc || typeof rawFm.origin_rfc !== 'string' || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
+      violations.push(`origin-rfc: node "${id}" has invalid origin_rfc in frontmatter`)
+    }
   }
 
   // Summary length ≤25 words (all node types)
@@ -539,16 +559,16 @@ function usage() {
     Exit 1 if any violation; exit 0 if clean.
 
 Spec invariants (body-format requirements.md):
-  stale-frontmatter   ears or verify in any frontmatter is a violation
-  normative-statement body must have a normative statement with bolded **shall**
-  why-required        every requirement body must have a **Why** rationale
-  fit-criterion       every requirement body must have a **Fit criterion**
-  anchor-mismatch     {#anchor} must equal id lowercased
-  xref-dangling       cross-references must resolve (same-file and relative-path)
-  id-format           requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
+  stale-frontmatter        ears or verify in any frontmatter is a violation
+  normative-statement      body must have a normative statement with bolded **shall**
+  why-required             every requirement body must have a **Why** rationale
+  fit-criterion            every requirement body must have a **Fit criterion**
+  anchor-mismatch          {#anchor} must equal id lowercased
+  xref-dangling            cross-references must resolve (same-file and relative-path)
+  id-format                requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
 
 Spec invariants (all nodes):
-  origin-rfc      every node must declare origin_rfc in frontmatter
+  origin-rfc      origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
   required-field  all schema-required fields must be present and non-blank
   enum-values     type, pattern, verification, criticality, status
   summary-length  summary must be ≤25 words
@@ -593,7 +613,7 @@ if (rfcFlagPresent && !rfcMode) {
   process.exit(2)
 }
 
-const projectDir = process.env.GROUNDWORK_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR ?? findProjectRoot()
+const projectDir = process.env.GROUNDWORK_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd()
 const specDir = join(projectDir, 'doc', 'specs')
 
 // Load the spec index
@@ -603,7 +623,8 @@ if (!index) {
     process.stdout.write('spec lint: clean — no spec tree found.\n')
     process.exit(0)
   }
-  process.stderr.write('spec lint: spec index not found. Run "spec build" first.\n')
+  const indexPath = join(specDir, '_generated', 'index.json')
+  process.stderr.write(`spec lint: spec index not found at ${indexPath}. Run "spec build" first.\n`)
   process.exit(1)
 }
 
@@ -671,7 +692,7 @@ for (const [relPath, nodes] of byFile) {
   let fileContent
   try { fileContent = readFileSync(absPath, 'utf8') } catch { continue }
 
-  const isReqFile = relPath === 'requirements.md' || relPath.endsWith('/requirements.md')
+  const isReqFile = isRequirementsDoc(relPath)
 
   if (isReqFile) {
     // Body-format requirements.md: parse H3 sections and check body invariants
@@ -714,6 +735,21 @@ if (automatedNodes.length > 0) {
 /** Allowed frontmatter keys in view files (must be exactly these two). */
 const VIEW_ALLOWED_FIELDS = new Set(['type', 'id'])
 
+/** Levenshtein distance helper for near-miss type suggestions. */
+function levenshtein(a, b) {
+  const m = a.length, n = b.length
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)])
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
 // Process each concept node (README.md-based nodes indexed with type === 'concept')
 const conceptNodes = targetNodes.filter(n => n.type === 'concept')
 
@@ -729,8 +765,8 @@ for (const conceptNode of conceptNodes) {
     emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
   }
 
-  // 2. View-file frontmatter rules (from spec.yaml manifest views; index.json does not
-  //    serialize the views field, so we read directly from the manifest here)
+  // 2. View-file frontmatter rules (from spec.yaml manifest views; views are also
+  //    serialized into index.json for queryability)
   const views = (manifest && Array.isArray(manifest.views)) ? manifest.views : []
   for (const view of views) {
     if (!view || typeof view.file !== 'string') continue
@@ -765,6 +801,74 @@ for (const conceptNode of conceptNodes) {
         emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
       }
     }
+    // view-type-mismatch: frontmatter type must match spec.yaml declaration
+    const declaredType = typeof view.type === 'string' ? view.type : null
+    const fmType = viewFm && typeof viewFm.type === 'string' ? viewFm.type : null
+    if (declaredType && fmType && fmType !== declaredType) {
+      const violation = `view-type-mismatch: view file "${view.file}" in concept "${nodeId}" declares type "${fmType}" but spec.yaml says "${declaredType}"`
+      violations.push({ nodeId, violation })
+      emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+    }
+  }
+
+  // 2b. view-type-collision: project-declared type must not shadow a core type
+  if (manifest && Array.isArray(manifest.view_types)) {
+    for (const vt of manifest.view_types) {
+      if (!vt || typeof vt.name !== 'string') continue
+      if (CORE_VIEW_TYPES.has(vt.name)) {
+        const violation = `view-type-collision: concept "${nodeId}" view_types declares "${vt.name}" which shadows a core view type`
+        violations.push({ nodeId, violation })
+        emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      }
+    }
+  }
+
+  // 2c. unknown-view-type: views[].type must be core or project-declared
+  if (views.length > 0 || (manifest && Array.isArray(manifest.view_types))) {
+    const projectDeclaredNames = new Set(
+      (manifest && Array.isArray(manifest.view_types))
+        ? manifest.view_types.filter(vt => vt && typeof vt.name === 'string').map(vt => vt.name)
+        : []
+    )
+    // Warn about unused project-declared types (untidy but not a violation)
+    for (const name of projectDeclaredNames) {
+      if (!views.some(v => v && v.type === name)) {
+        process.stdout.write(`spec lint: warning: concept "${nodeId}" declares view_types entry "${name}" but no view uses it\n`)
+      }
+    }
+    for (let i = 0; i < views.length; i++) {
+      const view = views[i]
+      if (!view || typeof view.type !== 'string') continue
+      if (!CORE_VIEW_TYPES.has(view.type) && !projectDeclaredNames.has(view.type)) {
+        // Special case: "requirements" is a deprecated FILENAME alias, not a view type.
+        // A reader who names the file requirements.md and writes type: requirements hits this.
+        let didYouMean = ''
+        if (view.type === 'requirements') {
+          didYouMean = `\n  "requirements" is not a view type — it is the deprecated alias for the FILENAME.\n  The file requirements.md must still be registered with type: constraints, not type: requirements.\n  Change this entry to: type: constraints`
+        } else {
+          // Near-miss: Levenshtein distance 1-2 suggestion
+          for (const coreType of CORE_VIEW_TYPES) {
+            if (levenshtein(view.type, coreType) <= 2) {
+              didYouMean = `\n  Did you mean "${coreType}"?`
+              break
+            }
+          }
+        }
+        const violation = [
+          `unknown-view-type: concept "${nodeId}" declares view type "${view.type}" in views[${i}]`,
+          `  (file: ${view.file ?? '?'}), which is not a known view type.${didYouMean}`,
+          `  Core types: ${[...CORE_VIEW_TYPES].join(', ')}.${projectDeclaredNames.size > 0 ? `\n  Project-declared types: ${[...projectDeclaredNames].join(', ')}.` : ''}`,
+          `  If none of these fit, declare a project-local type in this spec.yaml:`,
+          `    view_types:`,
+          `      - name: ${view.type}`,
+          `        concern: "<which stakeholder question this view answers>"`,
+          `        contents: "<one line: what this document contains>"`,
+          `  See doc/specs/conventions.md §3.`,
+        ].join('\n')
+        violations.push({ nodeId, violation })
+        emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+      }
+    }
   }
 
   // 3 & 4. Lint block checks and agreement check (require manifest to be parseable)
@@ -779,17 +883,23 @@ for (const conceptNode of conceptNodes) {
         violations.push({ nodeId, violation })
         emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
       } else {
-        const srcDir = join(projectDir, 'src')
-        for (const name of typeNamesConf.names) {
-          const grepResult = spawnSync(
-            'grep', ['-rE', `^export (type|interface) ${name}\\b`, '--include=*.ts', srcDir],
-            { encoding: 'utf8' },
-          )
-          if (!grepResult.stdout || !grepResult.stdout.trim()) {
-            const violation = `type-name-missing: concept "${nodeId}" lint.data-model.type_names: TypeScript type/interface "${name}" not found in src/`
-            violations.push({ nodeId, violation })
-            emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+        const language = typeNamesConf.language ?? 'typescript'
+        const scanRoot = typeNamesConf.scan_root ?? 'src'
+        const scanDir = join(projectDir, scanRoot)
+        if (language === 'typescript') {
+          for (const name of typeNamesConf.names) {
+            const grepResult = spawnSync(
+              'grep', ['-rE', `^export (type|interface) ${name}\\b`, '--include=*.ts', scanDir],
+              { encoding: 'utf8' },
+            )
+            if (!grepResult.stdout || !grepResult.stdout.trim()) {
+              const violation = `type-name-missing: concept "${nodeId}" lint.data-model.type_names: TypeScript type/interface "${name}" not found in ${scanRoot}/`
+              violations.push({ nodeId, violation })
+              emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+            }
           }
+        } else {
+          process.stdout.write(`spec lint: type_names check skipped for concept "${nodeId}" — language "${language}" is not supported (supported: typescript)\n`)
         }
       }
     }
@@ -818,11 +928,12 @@ for (const conceptNode of conceptNodes) {
       try { readmeContent = readFileSync(readmePath, 'utf8') } catch { readmeContent = null }
       if (readmeContent) {
         const { data: readmeFm } = parseYamlFrontmatter(readmeContent)
+        const specYamlPath = join(conceptDir, 'spec.yaml')
         for (const field of ['id', 'title', 'summary']) {
           const specVal = manifest[field]
           const readmeVal = readmeFm[field]
           if (specVal !== readmeVal) {
-            const violation = `manifest-mismatch: concept "${nodeId}" spec.yaml.${field} ("${specVal}") != README.md.${field} ("${readmeVal}")`
+            const violation = `manifest-mismatch: concept "${nodeId}" ${field} differs — ${specYamlPath}: "${specVal}" vs ${readmePath}: "${readmeVal}"`
             violations.push({ nodeId, violation })
             emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
           }

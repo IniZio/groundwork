@@ -25,4 +25,11 @@ When a non-trivial task is complete, the orchestrator **shall** invoke the advis
 - **Verification**: manual — confirmed by reviewing the orchestrator's session transcript to ensure advisor invocation occurred before session end and that real-world verification commands were performed.
 - **Criticality**: must
 
+### Manual procedure
+
+1. At the end of a non-trivial session, open the session transcript.
+2. Search for an `advisor()` call or a `Task(subagent_type="groundwork:advisor", …)` call. Confirm it appears before the final session-end message.
+3. In the advisor's response, confirm that at least one real-world verification command was executed (e.g. `npx vitest run`, `node hooks/spec-lint.mjs`, a live API call, or a browser check) rather than a self-report.
+4. If both conditions hold, the requirement is satisfied for that session.
+
 See also: [VERIFICATION-R-001](#verification-r-001)

@@ -28,6 +28,15 @@ export const ALLOWED_FRONTMATTER_FIELDS = new Set([
   'origin_rfc', 'status', 'pattern', 'verification', 'criticality',
 ])
 
+/**
+ * Blessed core view types. Membership for views[].type is validated here (not in the
+ * JSON schema) so project-declared extensions can extend the set without schema changes.
+ * Single source of truth — imported by spec-lint.mjs.
+ */
+export const CORE_VIEW_TYPES = new Set([
+  'overview', 'data-model', 'flows', 'api', 'constraints', 'scenarios', 'cases',
+])
+
 // ---------------------------------------------------------------------------
 // Frontmatter parsing
 // ---------------------------------------------------------------------------
@@ -73,6 +82,21 @@ export function generatedDirPath(sd) {
 
 export function indexJsonPath(sd) {
   return join(sd, '_generated', 'index.json')
+}
+
+/**
+ * Returns true when `relPath` names a requirements document (constraints.md
+ * or requirements.md, at any depth under the spec directory).
+ *
+ * Single source of truth — imported by spec-lint.mjs and any other consumer
+ * that needs to recognise requirements documents by filename.
+ *
+ * @param {string} relPath  Path relative to the spec directory root.
+ * @returns {boolean}
+ */
+export function isRequirementsDoc(relPath) {
+  return relPath === 'requirements.md' || relPath.endsWith('/requirements.md') ||
+         relPath === 'constraints.md'  || relPath.endsWith('/constraints.md')
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +189,21 @@ export function firstSentence(text) {
 // and legacy 4-char (abcd) suffixes.
 export const ID_RE_SRC = '\\b([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-[a-z0-9]+|C-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)\\b'
 
+/**
+ * Returns true when `text` contains a bolded normative verb recognisable as
+ * a SHALL or SHALL NOT statement.  Accepts:
+ *   - **shall**       (affirmative)
+ *   - **shall not**   (prohibition, negation inside bold)
+ *   - **shall** not   (prohibition, negation outside bold)
+ * Single shared implementation — import this from both the indexer and linter
+ * so the two code paths cannot drift apart.
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function hasNormativeVerb(text) {
+  return /\*\*shall( not)?\*\*|\*\*shall\*\* not\b/.test(text)
+}
+
 export function extractRefs(content, selfId) {
   const re = new RegExp(ID_RE_SRC, 'g')
   const refs = new Set()
@@ -242,12 +281,33 @@ function parseBulletItems(sectionBody) {
  * @returns {{ verification: string, criticality: string, source: string } | null}
  */
 function extractAttributeLine(sectionBody) {
-  // Match the attribute line regardless of whether it is bare or inside a bullet
-  const re = /\*\*Verification\*\*\s+(\S+)\s*[·•]\s*\*\*Criticality\*\*\s+(\S+)\s*[·•]\s*\*\*Source\*\*\s+(\S+)/
+  // Form 1 (inline): **Verification** <v> · **Criticality** <c> · **Source** <s>
+  const re1 = /\*\*Verification\*\*\s+(\S+)\s*[·•]\s*\*\*Criticality\*\*\s+(\S+)\s*[·•]\s*\*\*Source\*\*\s+(\S+)/
+  // Form 2 (multi-bullet): separate lines for Verification: <v> and Criticality: <c>
+  // **Verification**: <v> [— <method prose>]
+  // **Criticality**: <c>
+  // **Source**: <s>  (optional)
+  const re2v = /\*\*Verification\*\*\s*:\s*(\S+)/
+  const re2c = /\*\*Criticality\*\*\s*:\s*(\S+)/
+  const re2s = /\*\*Source\*\*\s*:\s*(\S+)/
+
+  let form2v = null, form2c = null, form2s = null
+
   for (const line of sectionBody.split('\n')) {
     const bare = line.startsWith('- ') || line.startsWith('* ') ? line.slice(2) : line
-    const m = bare.match(re)
-    if (m) return { verification: m[1], criticality: m[2], source: m[3] }
+    // Try form 1 first
+    const m1 = bare.match(re1)
+    if (m1) return { verification: m1[1], criticality: m1[2], source: m1[3] }
+    // Accumulate form 2 fields
+    const mv = bare.match(re2v)
+    if (mv && !form2v) form2v = mv[1]
+    const mc = bare.match(re2c)
+    if (mc && !form2c) form2c = mc[1]
+    const ms = bare.match(re2s)
+    if (ms && !form2s) form2s = ms[1]
+  }
+  if (form2v || form2c) {
+    return { verification: form2v ?? 'unknown', criticality: form2c ?? 'unknown', source: form2s ?? '' }
   }
   return null
 }
@@ -308,20 +368,19 @@ export function parseRequirementsDocument(markdown) {
 
   const sections = []
 
-  // Split body on H3 heading boundaries.  Every chunk that starts with "### " is
-  // a potential requirement section; chunks without that prefix are preamble.
-  const chunks = body.split(/^(?=### )/m)
+  // Split body on H2 or H3 heading boundaries.  constraints.md uses H2 (##); requirements.md uses H3 (###).
+  const chunks = body.split(/^(?=#{2,3} )/m)
 
-  // Heading pattern: ### ID — Title {#anchor}
+  // Heading pattern: ## or ### ID — Title {#anchor}
   // The em-dash (—, U+2014) or en-dash (–) separates ID from title.
-  const HEADING_RE = /^### ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+)\s+[—–]\s+(.+?)\s+\{#([^}]+)\}\s*(?:\n|$)/
+  const HEADING_RE = /^#{2,3} ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+)\s+[—–]\s+(.+?)\s+\{#([^}]+)\}\s*(?:\n|$)/
 
   for (const chunk of chunks) {
-    if (!chunk.startsWith('### ')) continue
+    if (!chunk.startsWith('## ') && !chunk.startsWith('### ')) continue
 
     const headingLine = chunk.split('\n')[0] + '\n'
     const hm = headingLine.match(HEADING_RE)
-    if (!hm) continue  // non-requirement H3 (section header etc.) — skip
+    if (!hm) continue  // non-requirement heading (section header etc.) — skip
 
     const id = hm[1]
     const title = hm[2].trim()
@@ -349,7 +408,7 @@ export function parseRequirementsDocument(markdown) {
 
     if (!normativeStatement) {
       errors.push('missing normative statement (no prose between heading and first bullet)')
-    } else if (!normativeStatement.includes('**shall**')) {
+    } else if (!hasNormativeVerb(normativeStatement)) {
       errors.push('normative statement does not contain bolded **shall**')
     }
 
@@ -508,6 +567,7 @@ export async function loadSpecManifest(conceptDir) {
 export function buildIndexData(sd) {
   const files = walkSpecFiles(sd)
   const errors = []
+  const warnings = []
   const nodes = {}
   const idToPath = {}
 
@@ -536,16 +596,37 @@ export function buildIndexData(sd) {
   for (const { absPath, relPath } of files) {
     // S0: skip files declared as views in a spec.yaml manifest.
     // README.md is always exempt — it is the concept node itself.
-    if (viewFilePaths.has(absPath) && basename(absPath) !== 'README.md') continue
+    // constraints.md / requirements.md are always exempt — they are requirements documents
+    // and skipping them silently drops all their requirements (silent data loss).
+    const _bn = basename(absPath)
+    if (viewFilePaths.has(absPath) && _bn !== 'README.md' && _bn !== 'constraints.md' && _bn !== 'requirements.md') {
+      // Warn if this non-canonical view file contains requirement-shaped headings — they will be silently dropped.
+      let _viewRaw
+      try { _viewRaw = readFileSync(absPath, 'utf8') } catch { /* unreadable — skip silently */ }
+      if (_viewRaw && /^##+ [A-Z].*-R-\d/m.test(_viewRaw)) {
+        warnings.push({ type: 'view_shadows_requirements', path: absPath,
+          message: `${_bn} is listed under spec.yaml views: but also contains requirements — they will be silently dropped` })
+      }
+      continue
+    }
+    // constraints.md / requirements.md declared as views: canonical usage — always indexed, no warning.
     let raw
     try { raw = readFileSync(absPath, 'utf8') } catch { continue }
 
     const filename = basename(absPath)
 
-    if (filename === 'requirements.md') {
+    if (filename === 'constraints.md' || filename === 'requirements.md') {
       // -----------------------------------------------------------------------
-      // RFC-0003: parse H3 requirement sections from the body
+      // RFC-0003: parse requirement sections from the body.
+      // constraints.md is canonical; requirements.md is a deprecated alias.
       // -----------------------------------------------------------------------
+      if (filename === 'requirements.md') {
+        warnings.push({
+          type: 'deprecated_requirements_filename',
+          path: absPath,
+          message: `${absPath}: requirements.md is deprecated — rename this file to constraints.md`,
+        })
+      }
       const { data: fileData } = parseYamlFrontmatter(raw)
 
       // Validate no unknown fields in file-level frontmatter (catches stale ears:/verify:)
@@ -705,7 +786,7 @@ export function buildIndexData(sd) {
     }
   }
 
-  return { nodes, errors }
+  return { nodes, errors, warnings }
 }
 
 // ---------------------------------------------------------------------------

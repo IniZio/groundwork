@@ -83,7 +83,7 @@ async function ensureFreshIndex(sd) {
 }
 
 async function runBuild(sd, { silent = false } = {}) {
-  const { nodes, errors } = buildIndexData(sd)
+  const { nodes, errors, warnings = [] } = buildIndexData(sd)
 
   // Report errors and exit 1 on build-blocking errors
   const buildErrors = errors.filter(e =>
@@ -110,6 +110,11 @@ async function runBuild(sd, { silent = false } = {}) {
       }
     }
     process.exit(1)
+  }
+
+  // Report build warnings (deprecations, informational notices)
+  for (const w of warnings) {
+    process.stderr.write(`spec: [warning] ${w.message}\n`)
   }
 
   // Report non-blocking parse errors as warnings
@@ -154,6 +159,8 @@ async function runBuild(sd, { silent = false } = {}) {
       why: n.why ?? null,
       fitCriterion: n.fitCriterion ?? null,
       source: n.source ?? null,
+      // Views declared in spec.yaml (serialized for queryability)
+      views: n.views ?? null,
     }
   }
   writeFileSync(join(genDir, 'index.json'), JSON.stringify(indexJson, null, 2) + '\n', 'utf8')
@@ -189,6 +196,8 @@ async function runBuild(sd, { silent = false } = {}) {
   const coverage = {
     total: reqs.length,
     by_source: countBy(reqs, 'source'),
+    // concept id → requirement count: shows which areas are thin at a glance
+    by_concept: countBy(reqs, 'concept'),
     // declared verification intent (kept for backward compatibility)
     by_verification: countBy(reqs, 'verification'),
     by_criticality: countBy(reqs, 'criticality'),

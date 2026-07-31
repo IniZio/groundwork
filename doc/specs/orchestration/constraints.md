@@ -14,4 +14,11 @@ When the orchestrator classifies a task as non-trivial, the orchestrator **shall
 - **Verification**: manual — confirmed by reviewing session transcripts for Task delegation calls and absence of direct Edit/Write calls from the orchestrator on production code paths.
 - **Criticality**: must
 
+### Manual procedure
+
+1. At the end of a session where a non-trivial task was completed, open the session transcript.
+2. Search for direct Edit, Write, or MultiEdit calls. Confirm none appear against production code paths under the orchestrator identity (calls from delegated subagents are allowed).
+3. Search for Task or Agent calls. Confirm that implementation steps were delegated via `Task(subagent_type="groundwork:general-purpose", …)` or equivalent.
+4. If both conditions hold, the requirement is satisfied for that session.
+
 See also: [ENFORCEMENT-R-001](../enforcement/constraints.md#enforcement-r-001)

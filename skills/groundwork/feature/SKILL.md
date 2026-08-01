@@ -198,7 +198,7 @@ Additional invariants (prose / Wave-2 may harden further):
 
 1. Session run ledgers MAY set optional top-level `feature_slug` (see `vertical-slice` ledger schema). Feature `runs[]` is the authoritative cross-session index; session ledgers are ephemeral.
 2. Feature dir is **NOT** pruned with session ledgers (7d prune does not touch `.groundwork/features/`).
-3. No secrets. PRDs stay untracked per policy — `plan_ref` / `spec_ref` may point at gitignored `docs/prds/`.
+3. No secrets. PRDs stay untracked per policy — `plan_ref` / `spec_ref` may point at gitignored `.groundwork/plans/`.
 4. `spec.md` acceptance criteria use stable IDs (`AC1`, `AC2`, …) referenced by `ac_coverage`, `resume.pointer: ac:<id>`, and advisor `contract_fitness`.
 
 ### Example shape (informative; must satisfy schema)

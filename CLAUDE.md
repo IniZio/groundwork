@@ -310,7 +310,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 | `agents/` | Compiled agent definition files |
 | `agents-src/` | Source agent definitions (Markdown with YAML frontmatter) |
 | `commands/` | Claude Code slash-command scripts |
-| `docs/` | Spec tree (`doc/specs/`), plans (`docs/plans/`), PRDs (`docs/prds/`), and narrative docs |
+| `doc/` | Committed doc root — spec prose + spec.yaml (`doc/specs/`) |
 | `hooks/` | PreToolUse / Stop / SessionStart hook scripts + CLIs |
 | `hooks/lib/` | Shared helpers for hooks (`hook-io.mjs`, `spec-io.mjs`) |
 | `scripts/` | Build and utility scripts |

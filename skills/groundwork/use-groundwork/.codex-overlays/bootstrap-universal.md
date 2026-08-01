@@ -5,7 +5,7 @@ These rules apply to every role in the groundwork workflow.
 ## Core Rules (Non-Negotiable)
 
 1. **No worktrees.** For new work, continue in the same session. Do not use `git worktree add` or similar.
-2. **Never commit PRDs** to git. Spec docs live in `docs/prds/` but are never staged.
+2. **Never commit PRDs** to git. Plans and design docs live in `.groundwork/plans/` (gitignored) — never staged.
 3. **Skill tool invocation (progressive disclosure).** Load skills when routing names them — they carry instructions not present in the bootstrap. If you start direct and hit ambiguity, stop and load the matching skill. Loading a skill unnecessarily is fine — better too much structure than too little. Skills are tools, not gatekeepers.
 4. **Prefer watch/follow over polling.** For long-running or status commands use `--watch`/`--follow`/`-f`/`--tail`, or run the process in the background and check it once. Repeated one-shot calls waste tokens.
 5. **Use compact evidence checks.** For ambiguity or impact, state the decision, evidence, and pass/fail criterion; do not repeat the full workflow bootstrap.

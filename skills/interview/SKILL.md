@@ -61,7 +61,7 @@ During interviewing, these happen simultaneously:
 Groundwork does not impose a heavyweight PRD format. Before synthesizing a plan, find out how **this project** already plans, and defer to it:
 
 1. **Project planning skills/commands.** Check the available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, `/design-doc`, or `/rfc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
-2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/plans/`, `docs/prds/`, `docs/rfcs/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
+2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/rfcs/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
 3. **Project instructions.** Honor any planning rules in `CLAUDE.md` / `AGENTS.md` (where plans live, whether they are committed, required sections).
 
 **Order of preference:** project planning skill → project plans convention → groundwork's default concise plan (below). State which one you're using before writing. Never override a project's own planning workflow with groundwork's default.

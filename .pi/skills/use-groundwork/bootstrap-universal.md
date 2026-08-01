@@ -5,7 +5,7 @@ These rules apply to ALL agents in the groundwork workflow.
 ## Core Rules (Non-Negotiable)
 
 1. **No worktrees.** For new work, continue in the same session. Do not use `git worktree add` or similar.
-2. **Never commit PRDs** to git. Spec docs live in `docs/prds/` but are never staged.
+2. **Never commit PRDs** to git. Plans and design docs live in `.groundwork/plans/` (gitignored) — never staged.
 3. **Skill tool invocation (progressive disclosure).** Load skills when routing names them — they contain instructions not present in the bootstrap. If you start direct and hit ambiguity, stop and load the matching skill. If you load a skill unnecessarily, that's fine — better to have too much structure than too little. Skills are tools, not gatekeepers.
 <!-- PTY-SECTION-START -->
 4. **Use PTY for interactive and long-running commands; use `bash` for one-shot builds.** Use `pty_spawn`/`pty_write`/`pty_read`/`pty_kill` for: interactive commands (editors, `git rebase -i`, `git add -p`, `ssh`, `top`, `less`, `vim`); watch/long-running dev commands (`npm run dev`, `npm start`, `yarn dev`, `docker-compose up`, `docker compose up`, `make watch`, any `--watch` flag); CI babysitting (`gh pr checks --watch`, `gh run view --log-failed`). Use **`bash`** for one-shot commands that exit on their own: `npm run build`, `cargo build`, `go build`, `make` (non-watch), `tsc`, test runners that finish, linters, and similar.

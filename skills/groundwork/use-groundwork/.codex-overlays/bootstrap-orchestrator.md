@@ -66,7 +66,7 @@ workflow completion depend on a later notification-driven invocation.
 
 ## Vertical-Slice Gate (self-enforced)
 
-Before executing, decompose the work via `vertical-slice` (which writes the run ledger). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
+Before executing, decompose the work via `vertical-slice` (which writes the run ledger). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors or has a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients).
 
 ---
 

@@ -8,7 +8,7 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 
 1. **Always use `question` tool** — never end the conversation without a next step.
 2. **Your role is orchestration** — classify, delegate, review. Do NOT write code, explore files, or debug directly.
-3. **Always plan and slice before implementation** — non-trivial features require a durable `plan_ref` (from `interview` or `planner`) → `vertical-slice` (writes the run ledger) → fan out. A non-trivial feature MUST have a `plan_ref` before `vertical-slice` fans out. Never start coding without a plan artifact on disk and a slice ledger. The `planner` route is not an interview-free shortcut — it produces the plan artifact instead.
+3. **Always plan and slice before implementation** — non-trivial features require a durable `plan_ref` (from `interview` or `planner`) → `vertical-slice` (writes the run ledger) → fan out. A non-trivial feature MUST have a `plan_ref` before `vertical-slice` fans out. Never start coding without a plan artifact on disk and a slice ledger. Complex multi-file features route to the `planner` AGENT for context offload (see CLAUDE.md §Issue-type routing for the planner-as-agent rationale).
 4. **Steer the plan in place** — small direction changes update the plan in place; pivots get re-interviewed.
 5. **No self-review** — use `advisor` for technical uncertainty, not internal reasoning loops.
 
@@ -38,7 +38,7 @@ Full patterns and anti-patterns → `reference/fan-out-patterns.md`
 
 ## Vertical-Slice Gate (ENFORCEMENT)
 
-Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes the run ledger). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
+Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes the run ledger). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors or has a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients).
 
 ---
 

@@ -45,7 +45,7 @@ The orchestrator may use Write/Edit directly ONLY for content it already holds v
 
 1. **Always use `question` tool** — never end the conversation without a next step.
 2. **Your role is orchestration** — classify, delegate, review. Do NOT write code, explore files, or debug directly.
-3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes `.groundwork/runs/<session_id>.json` ledger; legacy `.groundwork/run.json` is honored for in-flight runs) → fan out. Never start coding without a plan and a slice ledger.
+3. **Always plan and slice before implementation** — non-trivial features require `interview` → `vertical-slice` (writes `.groundwork/runs/<session_id>.json` ledger; legacy `.groundwork/run.json` is honored for in-flight runs) → fan out. Never start coding without a plan and a slice ledger. Complex multi-file features route to the `planner` AGENT for context offload (see CLAUDE.md §Issue-type routing for the planner-as-agent rationale).
 4. **Steer the plan in place** — small direction changes update the plan in place; pivots get re-interviewed.
 5. **No self-review** — use `advisor` for technical uncertainty, not internal reasoning loops.
 
@@ -87,7 +87,7 @@ Agent roster + model recommendations → `reference/agent-selection.md`
 
 ## Vertical-Slice Gate (ENFORCEMENT)
 
-Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes `.groundwork/runs/<session_id>.json`; legacy `.groundwork/run.json` is honored for in-flight runs). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors.
+Before fanning out general-purpose agents, the work MUST be decomposed via `vertical-slice` (which writes `.groundwork/runs/<session_id>.json`; legacy `.groundwork/run.json` is honored for in-flight runs). A slice must cover a complete behavior end-to-end. Threshold: decompose when the task touches ≥3 files or ≥2 distinct behaviors or has a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients).
 
 ---
 

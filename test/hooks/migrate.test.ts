@@ -274,21 +274,21 @@ describe('AC 3 — file copy', () => {
     expect(existsSync(path.join(rfcsDir, dirs[0], 'notes', 'plan.md'))).toBe(true)
   })
 
-  it('copies docs/prds/ files referenced in plan.md', () => {
+  it('copies .groundwork/plans/ files referenced in plan.md', () => {
     const doc = buildFeatureYaml()
-    // Create a docs/prds/ file in the project
-    const prdDir = path.join(tmpDir, 'docs', 'prds')
-    mkdirSync(prdDir, { recursive: true })
-    writeFileSync(path.join(prdDir, 'requirements.md'), '# Requirements\nSome requirements.')
+    // Create a .groundwork/plans/ file in the project
+    const plansDir = path.join(tmpDir, '.groundwork', 'plans')
+    mkdirSync(plansDir, { recursive: true })
+    writeFileSync(path.join(plansDir, 'requirements.md'), '# Requirements\nSome requirements.')
 
-    const planWithRef = `# Plan\n\nSee docs/prds/requirements.md for details.\n`
+    const planWithRef = `# Plan\n\nSee .groundwork/plans/requirements.md for details.\n`
     createFeatureDir('test-feature', doc, undefined, planWithRef)
 
     runMigrate(['test-feature', '--delete'])
 
     const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
     const dirs = require('node:fs').readdirSync(rfcsDir)
-    const copiedPrd = path.join(rfcsDir, dirs[0], 'notes', 'docs', 'prds', 'requirements.md')
+    const copiedPrd = path.join(rfcsDir, dirs[0], 'notes', '.groundwork', 'plans', 'requirements.md')
     expect(existsSync(copiedPrd)).toBe(true)
   })
 })

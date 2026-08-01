@@ -134,13 +134,13 @@ beforeEach(() => {
 	mkdirSync(path.join(projectDir, "skills", "my-skill"), { recursive: true });
 	writeFileSync(path.join(projectDir, "skills", "my-skill", "SKILL.md"), SKILL_CONTENT);
 
-	// Create docs/prds/feature-x.md
-	mkdirSync(path.join(projectDir, "docs", "prds"), { recursive: true });
-	writeFileSync(path.join(projectDir, "docs", "prds", "feature-x.md"), PRD_CONTENT);
+	// Create .groundwork/plans/feature-x.md (prd class)
+	mkdirSync(path.join(projectDir, ".groundwork", "plans"), { recursive: true });
+	writeFileSync(path.join(projectDir, ".groundwork", "plans", "feature-x.md"), PRD_CONTENT);
 
-	// Create docs/development.md (narrative)
-	mkdirSync(path.join(projectDir, "docs"), { recursive: true });
-	writeFileSync(path.join(projectDir, "docs", "development.md"), NARRATIVE_CONTENT);
+	// Create doc/development.md (narrative)
+	mkdirSync(path.join(projectDir, "doc"), { recursive: true });
+	writeFileSync(path.join(projectDir, "doc", "development.md"), NARRATIVE_CONTENT);
 
 	// Create root README.md
 	writeFileSync(path.join(projectDir, "README.md"), `# README\n\nProject readme.\n\n## Getting Started\n\nStart here.\n`);
@@ -226,9 +226,9 @@ describe("AC3 — doc show --brief", () => {
 		// Create a file with a long summary header
 		const longHeader = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join("\n");
 		const bigFile = `${longHeader}\n\n## Section\n\nBody.\n`;
-		writeFileSync(path.join(projectDir, "docs", "big.md"), bigFile);
+		writeFileSync(path.join(projectDir, "doc", "big.md"), bigFile);
 
-		const out = runOrThrow(["show", "docs/big.md", "--brief"]);
+		const out = runOrThrow(["show", "doc/big.md", "--brief"]);
 		const lines = out.split("\n").filter((l) => l.trim() !== "" && !l.startsWith("─"));
 		expect(lines.length).toBeLessThanOrEqual(8);
 	});
@@ -253,7 +253,7 @@ describe("AC4 — doc search", () => {
 		// Create 10 narrative docs all matching "searchterm"
 		for (let i = 0; i < 10; i++) {
 			writeFileSync(
-				path.join(projectDir, "docs", `topic-${i}.md`),
+				path.join(projectDir, "doc", `topic-${i}.md`),
 				`# Topic ${i}\n\nThis doc mentions searchterm here.\n\n## Section\n\nMore text.\n`,
 			);
 		}
@@ -296,10 +296,9 @@ describe("AC4 — doc search", () => {
 describe("AC5 — doc lint summary table", () => {
 	it("prints one row per doc class", () => {
 		const out = runOrThrow(["lint"]);
-		// All 5 defined classes must appear
+		// All defined classes must appear
 		expect(out).toContain("root-doc");
 		expect(out).toContain("skill");
-		expect(out).toContain("prd");
 		expect(out).toContain("plan");
 		expect(out).toContain("narrative");
 	});
@@ -317,13 +316,13 @@ describe("AC5 — doc lint summary table", () => {
 describe("AC6 — doc lint violations", () => {
 	it("names path, class, token estimate, budget, and missing element for a violation", () => {
 		// File with no summary header and no section anchors
-		writeFileSync(path.join(projectDir, "docs", "empty-struct.md"), NO_SECTIONS_CONTENT);
+		writeFileSync(path.join(projectDir, "doc", "empty-struct.md"), NO_SECTIONS_CONTENT);
 
 		const r = run(["lint"]);
 		// Should exit 1 because of missing section-anchor
 		expect(r.status).toBe(1);
 		const out = r.stdout;
-		expect(out).toContain("docs/empty-struct.md");
+		expect(out).toContain("doc/empty-struct.md");
 		expect(out).toContain("narrative");
 		expect(out).toMatch(/~\d+ tokens/);
 		expect(out).toContain("2000"); // budget
@@ -331,7 +330,7 @@ describe("AC6 — doc lint violations", () => {
 	});
 
 	it("reports missing summary-header when file starts with ##", () => {
-		writeFileSync(path.join(projectDir, "docs", "no-header.md"), NO_HEADER_CONTENT);
+		writeFileSync(path.join(projectDir, "doc", "no-header.md"), NO_HEADER_CONTENT);
 
 		const r = run(["lint"]);
 		expect(r.status).toBe(1);
@@ -350,7 +349,7 @@ describe("AC7 — doc lint warning not failure for structurally-sound over-budge
 			"# Big PRD\n\nThis is the summary header.\n\n## Goals\n\n" +
 			"x".repeat(12000) + // ~3428 tokens from this alone
 			"\n\n## Non-Goals\n\nNone.\n";
-		writeFileSync(path.join(projectDir, "docs", "prds", "big.md"), bigContent);
+		writeFileSync(path.join(projectDir, ".groundwork", "plans", "big.md"), bigContent);
 
 		const r = run(["lint"]);
 		// Should NOT exit non-zero solely because of over-budget structurally-sound file
@@ -365,7 +364,7 @@ describe("AC7 — doc lint warning not failure for structurally-sound over-budge
 			"## Section\n\n" +
 			"x".repeat(12000) +
 			"\n## Another\n\nText.\n";
-		writeFileSync(path.join(projectDir, "docs", "prds", "big-bad.md"), bigBad);
+		writeFileSync(path.join(projectDir, ".groundwork", "plans", "big-bad.md"), bigBad);
 
 		const r = run(["lint"]);
 		expect(r.status).toBe(1);
@@ -380,7 +379,7 @@ describe("AC7 — doc lint warning not failure for structurally-sound over-budge
 describe("AC8 — read-only guarantee", () => {
 	it("does not modify any fixture file across all subcommands", () => {
 		const skillFile = path.join(projectDir, "skills", "my-skill", "SKILL.md");
-		const prdFile = path.join(projectDir, "docs", "prds", "feature-x.md");
+		const prdFile = path.join(projectDir, ".groundwork", "plans", "feature-x.md");
 		const readmeFile = path.join(projectDir, "README.md");
 
 		// Record mtime and content hash before
@@ -399,7 +398,7 @@ describe("AC8 — read-only guarantee", () => {
 		run(["toc", "skills/my-skill/SKILL.md"]);
 		run(["show", "skills/my-skill/SKILL.md", "--section", "overview"]);
 		run(["show", "skills/my-skill/SKILL.md", "--brief"]);
-		run(["show", "docs/prds/feature-x.md", "--brief"]);
+		run(["show", ".groundwork/plans/feature-x.md", "--brief"]);
 		run(["search", "section"]);
 		run(["lint"]);
 
@@ -466,7 +465,7 @@ describe("AC9 — unclassified paths excluded and named", () => {
 
 describe("T20-AC8 — per-file OK line reporting", () => {
 	it("emits an OK line containing the file path, class, and exact numeric token count", () => {
-		// docs/development.md is created in beforeEach with NARRATIVE_CONTENT
+		// doc/development.md is created in beforeEach with NARRATIVE_CONTENT
 		// Token formula: Math.ceil(Buffer.byteLength(content, 'utf8') / 3.5)
 		const expectedTokens = Math.ceil(
 			Buffer.byteLength(NARRATIVE_CONTENT, "utf8") / 3.5,
@@ -474,7 +473,7 @@ describe("T20-AC8 — per-file OK line reporting", () => {
 		const r = run(["lint"]);
 		// Exact substring check — any numeric corruption in M4 breaks this
 		expect(r.stdout).toContain(
-			`OK    docs/development.md  [narrative]  ~${expectedTokens} tokens (budget 2000)`,
+			`OK    doc/development.md  [narrative]  ~${expectedTokens} tokens (budget 2000)`,
 		);
 	});
 
@@ -484,7 +483,7 @@ describe("T20-AC8 — per-file OK line reporting", () => {
 		const header = "# Budget Boundary\n\nSummary paragraph here.\n\n## Section\n\n";
 		const headerBytes = Buffer.byteLength(header, "utf8");
 		const content = header + "x".repeat(7000 - headerBytes);
-		writeFileSync(path.join(projectDir, "docs", "at-budget.md"), content);
+		writeFileSync(path.join(projectDir, "doc", "at-budget.md"), content);
 
 		const tokenCost = Math.ceil(Buffer.byteLength(content, "utf8") / 3.5);
 		expect(tokenCost).toBe(2000); // sanity-check the fixture
@@ -492,8 +491,8 @@ describe("T20-AC8 — per-file OK line reporting", () => {
 		const r = run(["lint"]);
 		// With correct `>`: tokenCost === budget is NOT over budget → OK line.
 		// With mutant `>=`: tokenCost === budget IS "over" budget → WARN line.
-		expect(r.stdout).toMatch(/OK\s+docs\/at-budget\.md/);
-		expect(r.stdout).not.toMatch(/WARN\s+docs\/at-budget\.md/);
+		expect(r.stdout).toMatch(/OK\s+doc\/at-budget\.md/);
+		expect(r.stdout).not.toMatch(/WARN\s+doc\/at-budget\.md/);
 	});
 });
 

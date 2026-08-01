@@ -6,7 +6,6 @@ dist/
 .opencode/plugins/*.js
 test-*.ts
 test-*.mjs
-docs/prds/
 .opencode/goals/
 !
 .pi-lens/

@@ -303,8 +303,8 @@ function migrateFeature(featureDir, base, dryRun, sessionId) {
       const planContent = readFileSync(planPath, 'utf8')
       writeFileSync(path.join(rfcDir, 'notes', 'plan.md'), planContent)
 
-      // Also copy any docs/prds/ files referenced in plan.md (AC 3)
-      const prdRefs = [...planContent.matchAll(/docs\/prds\/([^\s\)'"]+)/g)]
+      // Also copy any .groundwork/plans/ files referenced in plan.md (AC 3)
+      const prdRefs = [...planContent.matchAll(/\.groundwork\/plans\/([^\s\)'"]+)/g)]
         .map(m => m[0])
       for (const ref of prdRefs) {
         const prdSrc = path.join(base, ref)

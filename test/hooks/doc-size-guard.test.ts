@@ -12,7 +12,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,22 +26,23 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-const PRD_DIR = path.join(ROOT, "docs", "prds");
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(path.join(tmpdir(), "doc-size-guard-"));
-	mkdirSync(PRD_DIR, { recursive: true });
+	// Create the plan dir so classifyDoc works with tmpDir as project root.
+	mkdirSync(path.join(tmpDir, ".groundwork", "plans"), { recursive: true });
 });
 
 afterEach(() => {
 	try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-function runHook(payload: Record<string, unknown>, extraEnv?: Record<string, string>): string {
+function runHook(payload: Record<string, unknown>, extraEnv?: Record<string, string>, cwd?: string): string {
 	const result = spawnSync("node", [HOOK], {
 		input: JSON.stringify({ hook_event_name: "PostToolUse", ...payload }),
 		encoding: "utf8",
 		env: { ...process.env, ...extraEnv },
+		cwd: cwd ?? tmpDir,
 	});
 	// Exit code is always 0 (fail-open design).
 	expect(result.status).toBe(0);
@@ -49,11 +50,12 @@ function runHook(payload: Record<string, unknown>, extraEnv?: Record<string, str
 }
 
 /**
- * Build a doc-class file path inside the real repo so classifyDoc works.
- * Uses docs/prds/ (prd class, budget 3000) for most tests.
+ * Build a plan-class file path inside the temp project root so classifyDoc works.
+ * Uses .groundwork/plans/ (plan class, budget 3000).
+ * Files are cleaned up automatically when tmpDir is removed in afterEach.
  */
 function prdPath(filename: string): string {
-	return path.join(ROOT, "docs", "prds", filename);
+	return path.join(tmpDir, ".groundwork", "plans", filename);
 }
 
 /**
@@ -85,30 +87,22 @@ describe("doc-size-guard — pass-through cases", () => {
 	});
 
 	it("passes through for a doc-class file within its budget", () => {
-		// prd budget = 3000 tokens; use a file well under budget
+		// plan budget = 3000 tokens; use a file well under budget
 		const fp = prdPath(`within-budget-${Date.now()}.md`);
 		writeFileSync(fp, "# Small doc\n\n## Section\n\nShort.\n");
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toBe("");
 	});
 
 	it("passes through for a file AT exactly the budget (boundary: > not >=)", () => {
-		// prd budget = 3000 tokens. Exactly 3000 tokens = exactly 10500 bytes (ASCII).
+		// plan budget = 3000 tokens. Exactly 3000 tokens = exactly 10500 bytes (ASCII).
 		// With > comparison: 3000 > 3000 = false → no violation.
 		// With >= mutant:    3000 >= 3000 = true → violation (catches the mutant).
 		const bytes = bytesForTokens(3000); // exactly 3000 tokens
 		const fp = prdPath(`at-budget-${Date.now()}.md`);
 		writeFileSync(fp, "x".repeat(bytes));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toBe("");
 	});
 
 	it("passes through for over-budget file with BOTH structural elements (warning-only territory)", () => {
@@ -116,23 +110,15 @@ describe("doc-size-guard — pass-through cases", () => {
 		// Both summary header and section anchor present, file over budget.
 		const content = bigContent(11000, true, true);
 		writeFileSync(fp, content);
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toBe(""); // guard is silent; doc lint warns separately
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toBe(""); // guard is silent; doc lint warns separately
 	});
 
 	it("passes through for a non-guarded tool name (Read)", () => {
 		const fp = prdPath(`read-tool-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000));
-		try {
-			const out = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
+		expect(out).toBe("");
 	});
 
 	it("passes through when tool_input.file_path is missing", () => {
@@ -149,12 +135,8 @@ describe("doc-size-guard — violations (AC 1)", () => {
 	it("prints violation for over-budget file missing BOTH structural elements", () => {
 		const fp = prdPath(`violation-both-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000, false, false));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toContain("doc-size-guard: violation");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toContain("doc-size-guard: violation");
 	});
 
 	it("prints violation for over-budget file missing summary-header only", () => {
@@ -162,13 +144,9 @@ describe("doc-size-guard — violations (AC 1)", () => {
 		// Has section anchor but no summary-header (starts immediately with ##).
 		const content = "## Section One\n\nContent.\n\n" + "x".repeat(11000);
 		writeFileSync(fp, content);
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toContain("doc-size-guard: violation");
-			expect(out).toContain("summary-header");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toContain("doc-size-guard: violation");
+		expect(out).toContain("summary-header");
 	});
 
 	it("prints violation for over-budget file missing section-anchor only", () => {
@@ -176,49 +154,33 @@ describe("doc-size-guard — violations (AC 1)", () => {
 		// Has summary header but no ## section.
 		const content = "# Title\n\nIntro paragraph.\n\n" + "x".repeat(11000);
 		writeFileSync(fp, content);
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toContain("doc-size-guard: violation");
-			expect(out).toContain("section-anchor");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toContain("doc-size-guard: violation");
+		expect(out).toContain("section-anchor");
 	});
 
 	it("violation output names path, class, measured tokens, budget, and missing element (AC 1)", () => {
 		const fp = prdPath(`violation-fields-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000, false, false));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
-			expect(out).toContain(fp);                // path
-			expect(out).toContain("prd");              // class
-			expect(out).toMatch(/~\d+ \(budget \d+\)/); // measured tokens + budget
-			expect(out).toContain("missing:");          // missing element field
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: fp } });
+		expect(out).toContain(fp);                // path
+		expect(out).toContain("plan");             // class
+		expect(out).toMatch(/~\d+ \(budget \d+\)/); // measured tokens + budget
+		expect(out).toContain("missing:");          // missing element field
 	});
 
 	it("fires for Edit tool use, not just Write", () => {
 		const fp = prdPath(`edit-violation-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000, false, false));
-		try {
-			const out = runHook({ tool_name: "Edit", tool_input: { file_path: fp } });
-			expect(out).toContain("doc-size-guard: violation");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Edit", tool_input: { file_path: fp } });
+		expect(out).toContain("doc-size-guard: violation");
 	});
 
 	it("fires for MultiEdit tool use", () => {
 		const fp = prdPath(`multiedit-violation-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000, false, false));
-		try {
-			const out = runHook({ tool_name: "MultiEdit", tool_input: { file_path: fp } });
-			expect(out).toContain("doc-size-guard: violation");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "MultiEdit", tool_input: { file_path: fp } });
+		expect(out).toContain("doc-size-guard: violation");
 	});
 });
 
@@ -234,6 +196,7 @@ describe("doc-size-guard — fail-open (AC 6)", () => {
 		// runHook already asserts exit code 0.
 		expect(out).toBe(""); // no violation output
 	});
+
 
 	it("fail-open: malformed stdin JSON — no output, exit 0", () => {
 		const result = spawnSync("node", [HOOK], {
@@ -256,15 +219,11 @@ describe("doc-size-guard — fail-open (AC 6)", () => {
 	it("fail-open: SDK-embedded agent env — no output, exit 0", () => {
 		const fp = prdPath(`sdk-agent-${Date.now()}.md`);
 		writeFileSync(fp, bigContent(11000, false, false));
-		try {
-			const out = runHook(
-				{ tool_name: "Write", tool_input: { file_path: fp } },
-				{ CLAUDE_CODE_ENTRYPOINT: "sdk-py" },
-			);
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const out = runHook(
+			{ tool_name: "Write", tool_input: { file_path: fp } },
+			{ CLAUDE_CODE_ENTRYPOINT: "sdk-py" },
+		);
+		expect(out).toBe("");
 	});
 });
 
@@ -291,60 +250,44 @@ describe("doc-class budget values — pinned (M10 mutation guard)", () => {
 
 	it("rfc-index guard fires when rfc.md exceeds 12000 tokens", () => {
 		// 12001 tokens = ceil(x / 3.5) > 12000 → x > 42000 bytes. Use 42004 bytes.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-budget-test");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-budget-test");
 		const rfcPath = path.join(rfcDir, "rfc.md");
 		mkdirSync(rfcDir, { recursive: true });
 		writeFileSync(rfcPath, "x".repeat(42004));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: rfcPath } });
-			expect(out).toContain("doc-size-guard: violation");
-			expect(out).toContain("rfc-index");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: rfcPath } });
+		expect(out).toContain("doc-size-guard: violation");
+		expect(out).toContain("rfc-index");
 	});
 
 	it("rfc-index guard does NOT fire at exactly 12000 tokens (boundary, > not >=)", () => {
 		// 12000 tokens = 42000 bytes. Guard uses >, not >=, so this must pass.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-budget-boundary");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-budget-boundary");
 		const rfcPath = path.join(rfcDir, "rfc.md");
 		mkdirSync(rfcDir, { recursive: true });
 		writeFileSync(rfcPath, "x".repeat(42000));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: rfcPath } });
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: rfcPath } });
+		expect(out).toBe("");
 	});
 
 	it("rfc-section guard fires when a sections/ file exceeds 6000 tokens", () => {
 		// 6001 tokens → x > 21000 bytes. Use 21004 bytes.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-section-test");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-section-test");
 		const secPath = path.join(rfcDir, "sections", "01-motivation.md");
 		mkdirSync(path.dirname(secPath), { recursive: true });
 		writeFileSync(secPath, "x".repeat(21004));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: secPath } });
-			expect(out).toContain("doc-size-guard: violation");
-			expect(out).toContain("rfc-section");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: secPath } });
+		expect(out).toContain("doc-size-guard: violation");
+		expect(out).toContain("rfc-section");
 	});
 
 	it("rfc-section guard does NOT fire at exactly 6000 tokens (boundary, > not >=)", () => {
 		// 6000 tokens = 21000 bytes.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-section-boundary");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-section-boundary");
 		const secPath = path.join(rfcDir, "sections", "01-motivation.md");
 		mkdirSync(path.dirname(secPath), { recursive: true });
 		writeFileSync(secPath, "x".repeat(21000));
-		try {
-			const out = runHook({ tool_name: "Write", tool_input: { file_path: secPath } });
-			expect(out).toBe("");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const out = runHook({ tool_name: "Write", tool_input: { file_path: secPath } });
+		expect(out).toBe("");
 	});
 
 	it("sections/ path classifies as rfc-section (not null/unclassified)", () => {

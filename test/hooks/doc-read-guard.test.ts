@@ -21,18 +21,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "doc-read-guard.mjs");
-const ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-const PRD_DIR = path.join(ROOT, "docs", "prds");
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(path.join(tmpdir(), "doc-read-guard-"));
-	mkdirSync(PRD_DIR, { recursive: true });
+	// Create the plan dir so classifyDoc works with tmpDir as project root.
+	mkdirSync(path.join(tmpDir, ".groundwork", "plans"), { recursive: true });
 });
 
 afterEach(() => {
@@ -46,11 +45,12 @@ type Decision = {
 	};
 };
 
-function runHook(payload: Record<string, unknown>, extraEnv?: Record<string, string>): Decision {
+function runHook(payload: Record<string, unknown>, extraEnv?: Record<string, string>, cwd?: string): Decision {
 	const result = spawnSync("node", [HOOK], {
 		input: JSON.stringify({ hook_event_name: "PreToolUse", ...payload }),
 		encoding: "utf8",
 		env: { ...process.env, ...extraEnv },
+		cwd: cwd ?? tmpDir,
 	});
 	expect(result.status).toBe(0); // always exit 0 (fail-open)
 	return result.stdout?.trim() ? JSON.parse(result.stdout) : {};
@@ -61,13 +61,14 @@ function runHookRaw(input: string, extraEnv?: Record<string, string>): { stdout:
 		input,
 		encoding: "utf8",
 		env: { ...process.env, ...extraEnv },
+		cwd: tmpDir,
 	});
 	return { stdout: result.stdout ?? "", status: result.status ?? 0 };
 }
 
-/** prd class path (budget 3000 tokens) */
+/** plan class path (budget 3000 tokens) — under .groundwork/plans/ in the temp project root */
 function prdPath(name: string): string {
-	return path.join(ROOT, "docs", "prds", name);
+	return path.join(tmpDir, ".groundwork", "plans", name);
 }
 
 /** Bytes for exactly `n` tokens: n * 3.5 */
@@ -105,37 +106,25 @@ describe("doc-read-guard — pass-through cases", () => {
 	it("passes through for Read of doc-class file within budget", () => {
 		const fp = prdPath(`within-budget-read-${Date.now()}.md`);
 		writeFileSync(fp, smallContent());
-		try {
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("passes through for Grep (AC 7: registered but no action)", () => {
 		const fp = prdPath(`grep-test-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({ tool_name: "Grep", tool_input: { pattern: "x", path: fp } });
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({ tool_name: "Grep", tool_input: { pattern: "x", path: fp } });
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("passes through for Edit (AC 4: never deny writes)", () => {
 		const fp = prdPath(`edit-pass-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "Edit",
-				tool_input: { file_path: fp, old_string: "x", new_string: "y" },
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Edit",
+			tool_input: { file_path: fp, old_string: "x", new_string: "y" },
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("passes through for Write (AC 4: never deny writes)", () => {
@@ -147,15 +136,11 @@ describe("doc-read-guard — pass-through cases", () => {
 	it("passes through for MultiEdit (AC 4: never deny writes)", () => {
 		const fp = prdPath(`multiedit-pass-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "MultiEdit",
-				tool_input: { file_path: fp, edits: [] },
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "MultiEdit",
+			tool_input: { file_path: fp, edits: [] },
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 });
 
@@ -167,72 +152,52 @@ describe("doc-read-guard — AC 2: Read of over-budget doc-class file", () => {
 	it("denies Read of over-budget doc-class file when no toc has been issued", () => {
 		const fp = prdPath(`big-no-toc-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const sid = sessionId();
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
-			expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const sid = sessionId();
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
 	it("denial message includes 'doc toc <path>' with the actual path (AC 2)", () => {
 		const fp = prdPath(`big-toc-msg-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const sid = sessionId();
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
-			expect(d.hookSpecificOutput?.permissionDecisionReason).toContain(`doc toc ${fp}`);
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const sid = sessionId();
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain(`doc toc ${fp}`);
 	});
 
 	it("permits Read of over-budget doc-class file when toc has been issued (AC 2)", () => {
 		const fp = prdPath(`big-with-toc-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const sid = sessionId();
-			// First: run a Bash "doc toc <path>" to record the toc.
-			runHook({
-				tool_name: "Bash",
-				tool_input: { command: `doc toc ${fp}` },
-				session_id: sid,
-			});
-			// Now the Read should be permitted.
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const sid = sessionId();
+		// First: run a Bash "doc toc <path>" to record the toc.
+		runHook({
+			tool_name: "Bash",
+			tool_input: { command: `doc toc ${fp}` },
+			session_id: sid,
+		});
+		// Now the Read should be permitted.
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("permits Read when no session_id is available (fail-open on missing session state)", () => {
 		// Without session_id, we cannot track toc state → fail-open (permit).
 		const fp = prdPath(`big-no-session-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
-			// No session_id → should NOT deny (fail-open).
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp } });
+		// No session_id → should NOT deny (fail-open).
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("passes through for Read of file at exactly the budget (boundary: > not >=)", () => {
-		// prd budget = 3000. Exactly 3000 tokens = 10500 bytes (ASCII).
+		// plan budget = 3000. Exactly 3000 tokens = 10500 bytes (ASCII).
 		// With > comparison: 3000 > 3000 = false → permit.
 		// With >= mutant: 3000 >= 3000 = true → deny (catches the mutant).
 		const fp = prdPath(`at-budget-read-${Date.now()}.md`);
 		writeFileSync(fp, "x".repeat(bytesForTokens(3000)));
-		try {
-			const sid = sessionId();
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const sid = sessionId();
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid });
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 });
 
@@ -244,61 +209,45 @@ describe("doc-read-guard — AC 3: Bash cat/head of over-budget file", () => {
 	it("denies Bash cat of over-budget doc-class file", () => {
 		const fp = prdPath(`cat-big-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "Bash",
-				tool_input: { command: `cat ${fp}` },
-				session_id: sessionId(),
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Bash",
+			tool_input: { command: `cat ${fp}` },
+			session_id: sessionId(),
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
 	it("denies Bash head of over-budget doc-class file", () => {
 		const fp = prdPath(`head-big-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "Bash",
-				tool_input: { command: `head -n 50 ${fp}` },
-				session_id: sessionId(),
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Bash",
+			tool_input: { command: `head -n 50 ${fp}` },
+			session_id: sessionId(),
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
 	it("denial message includes 'doc show <path>' with the actual path (AC 3)", () => {
 		const fp = prdPath(`cat-show-msg-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "Bash",
-				tool_input: { command: `cat ${fp}` },
-				session_id: sessionId(),
-			});
-			expect(d.hookSpecificOutput?.permissionDecisionReason).toContain(`doc show ${fp}`);
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Bash",
+			tool_input: { command: `cat ${fp}` },
+			session_id: sessionId(),
+		});
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain(`doc show ${fp}`);
 	});
 
 	it("permits Bash cat of within-budget doc-class file", () => {
 		const fp = prdPath(`cat-small-${Date.now()}.md`);
 		writeFileSync(fp, smallContent());
-		try {
-			const d = runHook({
-				tool_name: "Bash",
-				tool_input: { command: `cat ${fp}` },
-				session_id: sessionId(),
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Bash",
+			tool_input: { command: `cat ${fp}` },
+			session_id: sessionId(),
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
 	it("permits Bash cat of unclassified file even if large", () => {
@@ -315,16 +264,12 @@ describe("doc-read-guard — AC 3: Bash cat/head of over-budget file", () => {
 	it("permits Bash doc-toc command itself (not denied as a cat/head)", () => {
 		const fp = prdPath(`toc-cmd-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const d = runHook({
-				tool_name: "Bash",
-				tool_input: { command: `doc toc ${fp}` },
-				session_id: sessionId(),
-			});
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const d = runHook({
+			tool_name: "Bash",
+			tool_input: { command: `doc toc ${fp}` },
+			session_id: sessionId(),
+		});
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 });
 
@@ -392,16 +337,12 @@ describe("doc-read-guard — AC 6: fail-open", () => {
 	it("fail-open: SDK-embedded agent — no output, exit 0", () => {
 		const fp = prdPath(`sdk-read-${Date.now()}.md`);
 		writeFileSync(fp, bigContent());
-		try {
-			const r = runHookRaw(
-				JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: fp }, session_id: sessionId() }),
-				{ CLAUDE_CODE_ENTRYPOINT: "sdk-js" },
-			);
-			expect(r.status).toBe(0);
-			expect(r.stdout.trim()).toBe("");
-		} finally {
-			try { rmSync(fp); } catch { /* ignore */ }
-		}
+		const r = runHookRaw(
+			JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: fp }, session_id: sessionId() }),
+			{ CLAUDE_CODE_ENTRYPOINT: "sdk-js" },
+		);
+		expect(r.status).toBe(0);
+		expect(r.stdout.trim()).toBe("");
 	});
 });
 
@@ -412,30 +353,22 @@ describe("doc-read-guard — AC 6: fail-open", () => {
 describe("doc-read-guard — rfc-index class fires on over-budget rfc.md", () => {
 	it("denies Read of an rfc.md that exceeds 12000 tokens (rfc-index budget)", () => {
 		// 12001 tokens → 42004 bytes. Confirms the guard fires at the new calibration.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-read-guard-test");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-read-guard-test");
 		const rfcPath = path.join(rfcDir, "rfc.md");
 		mkdirSync(rfcDir, { recursive: true });
 		writeFileSync(rfcPath, "x".repeat(42004));
-		try {
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: rfcPath }, session_id: sessionId() });
-			expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-			expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("rfc-index");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: rfcPath }, session_id: sessionId() });
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("rfc-index");
 	});
 
 	it("permits Read of an rfc.md at exactly 12000 tokens (boundary, > not >=)", () => {
 		// 12000 tokens = 42000 bytes — at budget, not over; must permit.
-		const rfcDir = path.join(ROOT, ".groundwork", "rfcs", "9999-read-guard-boundary");
+		const rfcDir = path.join(tmpDir, ".groundwork", "rfcs", "9999-read-guard-boundary");
 		const rfcPath = path.join(rfcDir, "rfc.md");
 		mkdirSync(rfcDir, { recursive: true });
 		writeFileSync(rfcPath, "x".repeat(42000));
-		try {
-			const d = runHook({ tool_name: "Read", tool_input: { file_path: rfcPath }, session_id: sessionId() });
-			expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-		} finally {
-			try { rmSync(rfcDir, { recursive: true }); } catch { /* ignore */ }
-		}
+		const d = runHook({ tool_name: "Read", tool_input: { file_path: rfcPath }, session_id: sessionId() });
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 });

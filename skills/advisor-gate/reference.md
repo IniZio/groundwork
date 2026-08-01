@@ -59,7 +59,7 @@ Decision needed: <single concrete question>
    Decision: Do not add WebSocket support. The requirement only asks for HTTP cache
      invalidation. WebSocket is a separate feature requiring its own connection management,
      reconnection logic, and error handling — easily 1-2 days of additional work.
-   Rationale: Scope discipline. The PRD at `docs/prds/2026-04-17-cache/PRD.md` only mentions
+   Rationale: Scope discipline. The PRD at `.groundwork/plans/2026-04-17-cache-prd.md` only mentions
      HTTP endpoints. Adding WebSocket here violates "recommend only what was asked."
    Actions:
    1. Implement HTTP cache invalidation as specified

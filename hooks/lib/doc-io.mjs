@@ -16,11 +16,10 @@
  *   -----------   --------------------------------------------    ---------------  ------
  *   root-doc      {CLAUDE,AGENTS,README}.md at repo root          12 000           DERIVED
  *   skill         skills/** /SKILL.md                              6 000           DERIVED
- *   prd           docs/prds/** /*.md                                3 000           DERIVED
- *   plan          docs/plans/** /*.md                               2 000           DERIVED
+ *   plan          .groundwork/plans/** /*.md                        3 000           DERIVED
  *   rfc-index     .groundwork/rfcs/** /rfc.md                      12 000           DERIVED (see note)
  *   rfc-section   .groundwork/rfcs/** /sections/** /*.md            6 000           DERIVED (see note)
- *   narrative     docs/*.md  (top-level only, no subdirs)          2 000           DERIVED
+ *   narrative     doc/*.md  (top-level only, no subdirs)           2 000           DERIVED
  *
  * ALL budgets are DERIVED (calibrated from observed file sizes or by analogy
  * with peer classes). NONE are quoted from a spec or formal decision record.
@@ -80,14 +79,9 @@ export const DOC_CLASSES = [
     match: (rel) => /^skills[/\\].*[/\\]SKILL\.md$/.test(rel),
   },
   {
-    name: 'prd',
-    budget: 3000,
-    match: (rel) => /^docs[/\\]prds[/\\]/.test(rel) && rel.endsWith('.md'),
-  },
-  {
     name: 'plan',
-    budget: 2000,
-    match: (rel) => /^docs[/\\]plans[/\\]/.test(rel) && rel.endsWith('.md'),
+    budget: 3000,
+    match: (rel) => /^\.groundwork[/\\]plans[/\\]/.test(rel) && rel.endsWith('.md'),
   },
   {
     name: 'rfc-index',
@@ -102,7 +96,7 @@ export const DOC_CLASSES = [
   {
     name: 'narrative',
     budget: 2000,
-    match: (rel) => /^docs[/\\][^/\\]+\.md$/.test(rel),
+    match: (rel) => /^doc[/\\][^/\\]+\.md$/.test(rel),
   },
 ]
 
@@ -270,10 +264,10 @@ export function findDocFiles(rootDir) {
     }
   } catch { /* ignore */ }
 
-  // docs/ tree
-  const docsDir = join(rootDir, 'docs')
-  if (existsSync(docsDir)) {
-    for (const p of walkMdFiles(docsDir)) {
+  // .groundwork/plans/ tree (process artifacts: plans, PRDs, design docs — gitignored)
+  const plansDir = join(rootDir, '.groundwork', 'plans')
+  if (existsSync(plansDir)) {
+    for (const p of walkMdFiles(plansDir)) {
       if (!seen.has(p)) { seen.add(p); allPaths.push(p) }
     }
   }

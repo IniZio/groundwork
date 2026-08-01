@@ -17,9 +17,8 @@
  * Doc-class table (DERIVED — see hooks/lib/doc-io.mjs for full rationale):
  *   root-doc   {CLAUDE,AGENTS,README}.md at repo root   12 000 tokens
  *   skill      skills/** /SKILL.md                        6 000 tokens
- *   prd        docs/prds/** /*.md                          3 000 tokens
- *   plan       docs/plans/** /*.md                         2 000 tokens
- *   narrative  docs/*.md (top-level only)                  2 000 tokens
+ *   plan       .groundwork/plans/** /*.md                  3 000 tokens
+ *   narrative  doc/*.md (top-level only)                   2 000 tokens
  */
 
 import { existsSync, openSync, readSync, closeSync } from 'node:fs'

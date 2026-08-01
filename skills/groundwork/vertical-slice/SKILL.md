@@ -36,9 +36,9 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 
 ## When to Use
 
-**This skill is MANDATORY** — not optional — for any task touching ≥3 files or ≥2 user-facing behaviors before delegating to general-purpose agents.
+**This skill is MANDATORY** — not optional — for any task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) before delegating to general-purpose agents.
 
-**Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h. If either ≥3 files OR ≥2 user-facing behaviors, slicing is mandatory.**
+**Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios). If any of ≥3 files, ≥2 user-facing behaviors, or a large verification surface applies, slicing is mandatory.**
 
 ## Decomposition Process
 

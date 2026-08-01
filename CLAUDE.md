@@ -59,24 +59,31 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | Signal | Classification | Path |
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
-| Obvious typo/config (zero ambiguity) | Trivial bug | `general-purpose` direct → `advisor` gate |
+| Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
 | "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → 5-20 `general-purpose` parallel → `advisor` gate |
-| "add/update/tweak" (small, clear, <1h, localized) | Small change | `general-purpose` direct → `advisor` gate |
+| "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
-| "plan this", "design this first", complex multi-file feature | Feature planning | `planner` → read `.groundwork/plans/*.md` → fan-out `general-purpose` |
+| "plan this", "design this first", complex multi-file feature | Feature planning | `Task(subagent_type="groundwork:planner", model="opus")` → read `.groundwork/plans/*.md` → fan-out `general-purpose` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | `groundwork:explore` |
+| "audit plan coverage before fan-out", "map plan to slices" | Plan coverage audit | load `plan-review` skill (pre-fan-out, read-only coverage audit) |
 | "validate plan", "is this right" | Plan review | `advisor` |
 | "is it done", "verify", "confirm" | Completion | `advisor` (evidence+quality) |
 | interactive UI / live app / browser / TUI | Live verification | `qa` → feeds `advisor` |
 | Architecture trade-off, hard decision | Decision | `advisor` |
 | "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 
-All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-purpose", ...)`.
+All **agent types** in this table are invoked via `Task`/`Agent` — NOT via `Skill()`. `Skill()` loads instruction sets; `Task`/`Agent` dispatches to compute targets. Mixing these registries causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill" instead of launching the explore agent). All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-purpose", ...)`.
+
+**Why planner is an agent, not a skill:** Planning involves heavy research — reading source, searching across the codebase, weighing alternatives — and doing that inline burns the orchestrator's context window for the rest of the session. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` offloads all of that work into the subagent's context; only the plan file reference returns, keeping the orchestrator's window clear for fan-out.
+
+**Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself. Root failure this prevents: an unresolved routing target leaves the orchestrator with no compute path, so it implements inline — blowing context budget and defeating the delegation model entirely.
+
+_Small verification surface = no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios. Large verification surface (triggers slicing) = requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients._
 
 ---
 
@@ -163,6 +170,8 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 ---
 
 ## Per-agent models — NEVER omit `model:` on dispatch
+
+> **Agent types vs. skills:** The entries below are **agent types** — invoked via `Task(subagent_type="groundwork:…")` or `Agent`. They are NOT skills and MUST NOT be invoked via `Skill()`. Skills (loaded via `Skill()`) are instruction sets read into the orchestrator's context; agent types are compute targets dispatched as background processes. Mixing these registries causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill" instead of launching the explore agent). For the context-offload rationale behind the planner being an agent, see the routing table above.
 
 **Hard rule: every `Task`/`Agent` call MUST include `model:` explicitly.** Omitting it silently inherits the expensive session model and drives up cost for every background task. Source of truth is `model-registry.json` (`claude-code` column); the table below is generated from it.
 
@@ -267,8 +276,8 @@ Completion gate is **risk-tiered** — scale cost to risk. For non-trivial work,
 
 | Tier | When | Gate sequence |
 |---|---|---|
-| Trivial | Typo / config, no ledger | `advisor()` only — or skip if truly zero-risk |
-| Small change / bug fix | <1h, localized, single domain | `advisor()` |
+| Trivial | Typo / config, no ledger, small verification surface | `advisor()` only — or skip if truly zero-risk |
+| Small change / bug fix | <1h, localized, single domain, small verification surface | `advisor()` |
 | Feature / shared-code / security / multi-slice | Ledger exists, or touches API/auth/shared | `[qa if interactive UI]` → `advisor()` |
 
 _hooks/session-reminder.mjs re-injects a brief reminder post-compaction; this tier table is authoritative._

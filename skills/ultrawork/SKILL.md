@@ -25,7 +25,7 @@ Your **first line of output** after engaging ultrawork MUST be one of:
 ```
 GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json
 ```
-or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h):
+or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)):
 ```
 GROUNDWORK ▸ trivial: single general-purpose, no slicing
 ```

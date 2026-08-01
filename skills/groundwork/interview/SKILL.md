@@ -19,7 +19,9 @@ Interviewing is separate from writing the plan. When the two are conflated, the 
 - **Anytime understanding is incomplete before action** — when the approach is unclear, user says "help me plan", etc.
 
 **Do NOT use for:**
-- **Trivial tasks** (<1h, fully specified, ≤2 files) — default to direct implementation. Load skills only when routing names them; don't force a heavy classification phase before every action.
+- **Trivial tasks** (<1h, fully specified, ≤2 files, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) — default to direct implementation. Load skills only when routing names them; don't force a heavy classification phase before every action.
+
+**Versus the planner agent:** when the research load itself — reading source across many files, searching for constraints, weighing architectural options — would burn orchestrator context before a single question can be framed, dispatch `Task(subagent_type="groundwork:planner", model="opus")` instead. The planner absorbs all of that codebase reading in its own context and returns only the plan file reference.
 
 ## Two Modes
 

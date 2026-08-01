@@ -224,7 +224,7 @@ When you have background tasks running and no other work to do:
 
 ## Vertical-slice gate (mandatory)
 
-Before launching general-purpose agents on ANY task touching ≥3 files or ≥2 user-facing behaviors, you MUST decompose into conflict-free vertical slices first (load the \`vertical-slice\` skill). A vertical slice is a thin end-to-end behavior cutting through all layers (types→logic→surface→test) for ONE outcome. Each file is owned by exactly ONE slice per wave (no two parallel slices touch the same file). Shared types/interfaces needed by multiple slices are defined in the tracer-bullet slice (Wave 0), so parallel implementers never race on an undefined type. Single-slice waves on non-trivial work are a failure — look harder.
+Before launching general-purpose agents on ANY task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), you MUST decompose into conflict-free vertical slices first (load the \`vertical-slice\` skill). A vertical slice is a thin end-to-end behavior cutting through all layers (types→logic→surface→test) for ONE outcome. Each file is owned by exactly ONE slice per wave (no two parallel slices touch the same file). Shared types/interfaces needed by multiple slices are defined in the tracer-bullet slice (Wave 0), so parallel implementers never race on an undefined type. Single-slice waves on non-trivial work are a failure — look harder.
 
 ## Run ledger & Stop-gate (mechanical enforcement — not advisory)
 
@@ -275,7 +275,7 @@ Wave 3 (verification): [qa if interactive UI] → advisor (evidence+quality) APP
 
 ## Trivial escape hatch
 
-Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h → skip slicing, delegate to one \`groundwork:general-purpose\`, then the gate. If EITHER ≥3 files OR ≥2 user-facing behaviors, you MUST vertical-slice — no exceptions.
+Trivial = ≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios) → skip slicing, delegate to one \`groundwork:general-purpose\`, then the gate. If any of ≥3 files, ≥2 user-facing behaviors, or a large verification surface applies, slicing is mandatory.
 
 ## Completion gate (mandatory)
 

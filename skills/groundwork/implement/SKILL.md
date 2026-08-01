@@ -21,10 +21,10 @@ Slice the work into independent end-to-end behaviors before launching any genera
 
 ```
 <HARD-GATE>
-For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR anything classified
+For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), OR anything classified
 Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
 referenced by a plan_ref (a file on disk) OR an interview/planner session has produced one.
-Trivial work (<1h, ≤2 files, fully specified, obvious typo/config) is EXEMPT — proceed directly.
+Trivial work (<1h, ≤2 files, fully specified, obvious typo/config, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) is EXEMPT — proceed directly.
 If you are about to implement non-trivial work and no plan_ref exists, STOP and route to
 `interview` or `planner` first.
 </HARD-GATE>
@@ -37,11 +37,11 @@ If you are about to implement non-trivial work and no plan_ref exists, STOP and 
 - After a plan is approved — before any implementation begins
 - After `interview` for small changes — interview spec is the spec
 - Any feature that changes observable behavior
-- Any task touching ≥3 files or ≥2 behaviors
+- Any task touching ≥3 files or ≥2 behaviors or with a large verification surface
 
 **Do NOT use for:**
 - **Bugs** — use `diagnose` instead. It owns the fix and regression test.
-- **Trivial changes** (<1h, fully specified, ≤2 files) — delegate directly to general-purpose, then `advisor-gate`.
+- **Trivial changes** (<1h, fully specified, ≤2 files, small verification surface) — delegate directly to general-purpose, then `advisor-gate`.
 
 ## Two Modes
 

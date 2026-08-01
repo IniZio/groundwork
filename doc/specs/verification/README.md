@@ -26,7 +26,7 @@ The advisor executes verification commands itself rather than trusting implement
 
 ## Risk-tiered invocation
 
-Trivial tasks (≤2 files, ≤1 behaviour, <1h): advisor optional, or skip if truly zero-risk. Small changes (localized, clear, low blast radius): advisor required. Feature/non-trivial (≥3 files, ≥2 behaviours, shared code): `[qa if interactive UI] → advisor`.
+Trivial tasks (≤2 files, ≤1 behaviour, <1h, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)): advisor optional, or skip if truly zero-risk. Small changes (localized, clear, low blast radius): advisor required. Feature/non-trivial (≥3 files, ≥2 behaviours, shared code, OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients)): `[qa if interactive UI] → advisor`.
 
 ## Stop hook enforcement
 

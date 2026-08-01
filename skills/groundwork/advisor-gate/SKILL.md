@@ -67,9 +67,9 @@ Advisor returns one of:
 
 | Tier | Condition | Flow |
 |------|-----------|------|
-| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h | advisor directly |
+| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios) | advisor directly |
 | **Small** | Localized, clear, low blast radius | `advisor` |
-| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code | `[qa if interactive UI] → advisor` |
+| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) | `[qa if interactive UI] → advisor` |
 
 ## Recording the Verdict in the Run Ledger
 

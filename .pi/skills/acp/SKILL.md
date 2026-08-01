@@ -67,9 +67,9 @@ Task(subagent_type="groundwork:general-purpose", prompt="...context block C...")
 
 After implementation, run the risk-tiered gate:
 
-- **Trivial** (≤2 files, ≤1 behavior, <1h): `advisor` directly
+- **Trivial** (≤2 files, ≤1 behavior, <1h, small verification surface): `advisor` directly
 - **Small** (localized, clear): `advisor`
-- **Feature / non-trivial** (≥3 files OR ≥2 behaviors): `[qa if interactive UI] → advisor`
+- **Feature / non-trivial** (≥3 files OR ≥2 behaviors OR large verification surface): `[qa if interactive UI] → advisor`
 
 `advisor` owns fresh-evidence gating — it rejects "should", "probably", "seems to" — AND code-quality review, AND is the final APPROVE/REVISE/REJECT gate.
 

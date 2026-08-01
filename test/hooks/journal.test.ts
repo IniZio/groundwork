@@ -527,6 +527,75 @@ describe('AC 9 — DECISION/SPEC_CHANGE never in digest summary', () => {
 })
 
 // ---------------------------------------------------------------------------
+// AC 11 — --motive flag (primary) and --rfc deprecation alias
+// ---------------------------------------------------------------------------
+
+describe('AC 11 — --motive primary flag and --rfc deprecation alias', () => {
+  let tmp: string
+  beforeEach(() => { tmp = mkTmp() })
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
+
+  test('append --motive works and emits no deprecation warning', () => {
+    const env = journalEnv(tmp, 'sessM')
+    const r = runJournal(
+      ['append', '--motive', 'my-feature', '--type', 'MILESTONE', '--msg', 'motive test'],
+      env,
+    )
+    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
+    expect(r.stderr).not.toContain('deprecated')
+
+    const events = readShard(shardPath(tmp, 'sessM'))
+    expect(events).toHaveLength(1)
+    const e = events[0] as any
+    expect(e.rfc).toBe('my-feature')
+    expect(e.type).toBe('MILESTONE')
+  })
+
+  test('append --rfc still works but emits a deprecation notice', () => {
+    const env = journalEnv(tmp, 'sessD')
+    const r = runJournal(
+      ['append', '--rfc', 'R-OLD', '--type', 'MILESTONE', '--msg', 'old caller'],
+      env,
+    )
+    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
+    expect(r.stderr).toContain('deprecated')
+    expect(r.stderr).toContain('--motive')
+
+    const events = readShard(shardPath(tmp, 'sessD'))
+    expect(events).toHaveLength(1)
+    expect((events[0] as any).rfc).toBe('R-OLD')
+  })
+
+  test('show --motive works as filter without deprecation warning', () => {
+    const env = journalEnv(tmp, 'sessMS')
+    runJournal(['append', '--motive', 'feat-a', '--type', 'MILESTONE', '--msg', 'a'], env)
+    runJournal(['append', '--motive', 'feat-b', '--type', 'MILESTONE', '--msg', 'b'], env)
+
+    const r = runJournal(['show', '--motive', 'feat-a', '--since', '9999d'], env)
+    expect(r.status).toBe(0)
+    expect(r.stderr).not.toContain('deprecated')
+    expect(r.stdout).toContain('feat-a')
+    expect(r.stdout).not.toContain('feat-b')
+  })
+
+  test('show --rfc still filters but emits deprecation notice', () => {
+    const env = journalEnv(tmp, 'sessRS')
+    runJournal(['append', '--motive', 'R-SHOW', '--type', 'MILESTONE', '--msg', 'kept'], env)
+
+    const r = runJournal(['show', '--rfc', 'R-SHOW', '--since', '9999d'], env)
+    expect(r.status).toBe(0)
+    expect(r.stderr).toContain('deprecated')
+    expect(r.stdout).toContain('kept')
+  })
+
+  test('append without --motive or --rfc exits 2', () => {
+    const env = journalEnv(tmp, 'sessE')
+    const r = runJournal(['append', '--type', 'MILESTONE', '--msg', 'no scope'], env)
+    expect(r.status).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // AC 10 — digest prints recovery command
 // ---------------------------------------------------------------------------
 

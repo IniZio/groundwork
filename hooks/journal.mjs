@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * journal — append-only RFC event log CLI.
+ * journal — append-only event log CLI.
  *
  * Usage:
- *   journal append --rfc <uid> --type <T> --msg <M> [--data <json>]
- *   journal show [--rfc <uid>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]
- *   journal digest --rfc <uid> [--rebuild]
+ *   journal append --motive <id> --type <T> --msg <M> [--data <json>]
+ *   journal show [--motive <id>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]
+ *   journal digest --motive <id> [--rebuild]
  *   journal help [<cmd>]
+ *
+ * Deprecated aliases (emit a deprecation notice):
+ *   --rfc <uid>  →  use --motive <id> instead
  *
  * Exit codes: 0 success  1 operational failure  2 usage error
  *
@@ -79,9 +82,9 @@ function resolveContext() {
 const HELP = {
   append: {
     summary: 'append one event to the journal shard for this session',
-    usage: 'journal append --rfc <uid> --type <T> --msg <M> [--data <json>]',
+    usage: 'journal append --motive <id> --type <T> --msg <M> [--data <json>]',
     flags: [
-      '--rfc <uid>    RFC identifier (required)',
+      '--motive <id>  motive identifier (required; --rfc is a deprecated alias)',
       '--type <T>     event type (required)',
       '--msg <M>      human-readable message (required)',
       '--data <json>  optional extra data as a JSON object',
@@ -91,9 +94,9 @@ const HELP = {
   },
   show: {
     summary: 'query journal events with defaults: --since 7d --last 30',
-    usage: 'journal show [--rfc <uid>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]',
+    usage: 'journal show [--motive <id>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]',
     flags: [
-      '--rfc <uid>        filter by RFC id',
+      '--motive <id>      filter by motive id (--rfc is a deprecated alias)',
       '--type T[,T]       filter by event type (comma-separated)',
       '--since <date|Nd>  filter events at or after date (e.g. 7d, 2026-07-01)',
       '--last N           emit only the N most recent matching events (default 30)',
@@ -101,11 +104,11 @@ const HELP = {
     ],
   },
   digest: {
-    summary: 'emit digest summary of prefix + verbatim tail for an RFC',
-    usage: 'journal digest --rfc <uid> [--rebuild]',
+    summary: 'emit digest summary of prefix + verbatim tail for a motive',
+    usage: 'journal digest --motive <id> [--rebuild]',
     flags: [
-      '--rfc <uid>   RFC identifier (required)',
-      '--rebuild     force rebuild of digest from source',
+      '--motive <id>  motive identifier (required; --rfc is a deprecated alias)',
+      '--rebuild      force rebuild of digest from source',
     ],
   },
 }
@@ -143,10 +146,19 @@ function cmdHelp(args) {
 
 function cmdAppend(args) {
   const { flags } = parseFlags(args)
-  const { rfc, type, msg } = flags
+  const { type, msg } = flags
+
+  // --motive is primary; --rfc is a deprecated alias
+  let rfc = flags.motive
+  if (!rfc && flags.rfc) {
+    process.stderr.write(
+      'journal: --rfc is deprecated; use --motive instead\n',
+    )
+    rfc = flags.rfc
+  }
 
   if (!rfc || !type || !msg) {
-    die('append requires --rfc, --type, and --msg', 2)
+    die('append requires --motive (or deprecated --rfc), --type, and --msg', 2)
   }
 
   if (!VALID_TYPES.includes(type)) {
@@ -205,16 +217,23 @@ function cmdShow(args) {
 
   const allEvents = readAllEvents(journalDir)
 
+  // Resolve --motive / --rfc (deprecated alias)
+  let motiveFilter = flags.motive
+  if (!motiveFilter && flags.rfc) {
+    process.stderr.write('journal: --rfc is deprecated; use --motive instead\n')
+    motiveFilter = flags.rfc
+  }
+
   // Default windowing (AC 6):
-  //   without --rfc and without --since → imply --since 7d
+  //   without --motive/--rfc and without --since → imply --since 7d
   //   --last always defaults to 30
   const hasSince = flags.since != null
-  const hasRfc = flags.rfc != null
+  const hasRfc = motiveFilter != null
   const since = hasSince ? flags.since : (!hasRfc ? '7d' : undefined)
   const last = flags.last != null ? parseInt(String(flags.last), 10) : 30
 
   const { shown, withheld } = filterEvents(allEvents, {
-    rfc: flags.rfc,
+    rfc: motiveFilter,
     type: flags.type,
     since,
     last,
@@ -280,8 +299,12 @@ function buildDigest(prefixEvents, watermark, rfc) {
 
 function cmdDigest(args) {
   const { flags } = parseFlags(args)
-  const rfc = flags.rfc
-  if (!rfc || rfc === true) die('digest requires --rfc', 2)
+  let rfc = flags.motive
+  if (!rfc && flags.rfc) {
+    process.stderr.write('journal: --rfc is deprecated; use --motive instead\n')
+    rfc = flags.rfc
+  }
+  if (!rfc || rfc === true) die('digest requires --motive (or deprecated --rfc)', 2)
 
   const { projectDir } = resolveContext()
   const journalDir = path.join(projectDir, '.groundwork', 'journal')

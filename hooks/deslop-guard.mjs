@@ -172,6 +172,44 @@ const STOP_WORDS = new Set([
 ])
 
 /**
+ * Multi-word restating comment: a prose comment whose content words (after
+ * stop-word removal) are ALL present in the camelCase/snake_case tokens of the
+ * identifier declared on the next non-blank line. Requires ≥2 content words
+ * (single-identifier form is handled by findRestatingComments).
+ * e.g. "// fetch the user"  above "function fetchUser()" → fires
+ *      "// get user by id"  above "const getUserById"    → fires ("by" is a stop word)
+ *      "// fetch the user with roles" above "function fetchUser()" → skips ("roles" absent)
+ */
+function findMultiWordRestatingComments(lines) {
+  const findings = []
+  const MULTI_COMMENT_RE = /^\s*\/\/\s+([a-z][a-zA-Z0-9 ]{0,80})\s*$/
+  for (let i = 0; i < lines.length - 1; i++) {
+    const cm = MULTI_COMMENT_RE.exec(lines[i])
+    if (!cm) continue
+    const commentText = cm[1].trim()
+    const contentWords = commentText
+      .split(/\s+/)
+      .map((w) => w.toLowerCase())
+      .filter((w) => !STOP_WORDS.has(w) && /^[a-z][a-z0-9]*$/.test(w))
+    if (contentWords.length < 2) continue // single-word handled by findRestatingComments
+
+    // next non-blank line
+    let j = i + 1
+    while (j < lines.length && lines[j].trim() === '') j++
+    if (j >= lines.length) break
+    const decl = DECL_RE.exec(lines[j])
+    if (!decl) continue // must be a declaration
+
+    const identName = decl[4]
+    const identTokens = new Set(splitIdentifier(identName))
+    if (contentWords.every((w) => identTokens.has(w))) {
+      findings.push({ line: i, comment: commentText, identName })
+    }
+  }
+  return findings
+}
+
+/**
  * High-confidence prose-paraphrase detection: a short imperative comment whose
  * key verb and primary noun appear verbatim as substrings of the very next code
  * line — e.g. `// increment the counter` above `count++` (verb "increment" not
@@ -283,6 +321,11 @@ function detectSlop(content) {
     findings.push(`line ${r.line + 1}: restating comment "// ${r.name}" immediately above its declaration — drop it`)
   }
 
+  // Multi-line: multi-word restating comments (prose form where all content words are in the identifier).
+  for (const r of findMultiWordRestatingComments(lines)) {
+    findings.push(`line ${r.line + 1}: multi-word restating comment "// ${r.comment}" above ${r.identName} — all content words are in the identifier, drop it`)
+  }
+
   // Multi-line: high-confidence prose-paraphrase comments (e.g. "// return the result" above "return result").
   for (const r of findProseParaphraseComments(lines)) {
     findings.push(`line ${r.line + 1}: prose-paraphrase comment "// ${r.comment}" narrates the line below without adding info — drop it`)
@@ -292,7 +335,7 @@ function detectSlop(content) {
 }
 
 /** Extract the target file content from a parsed PreToolUse input. */
-function targetContent(toolName, toolInput) {
+function targetContent(_toolName, toolInput) {
   if (!toolInput || typeof toolInput !== 'object') return ''
   // Write: the full content. Edit/MultiEdit: best-effort — use new_string
   // (Edit) or one of newStrings (MultiEdit) as the writable surface.

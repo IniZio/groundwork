@@ -24,6 +24,51 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 // ---------------------------------------------------------------------------
+// Session-scoped TASK_COMPLETE collection
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan journal shards for TASK_COMPLETE events emitted in a given session,
+ * regardless of the motive they were tagged with.  This handles the case where
+ * `ledger complete` ran BEFORE the ledger's `motive` field was populated, so
+ * the events received a synthetic motive (e.g. "session:<id>") instead of the
+ * real one.  Returning these IDs lets the divergence checker treat them as
+ * witnessed completions and avoid false slice_state_mismatch findings.
+ *
+ * @param {string} journalDir  — absolute path to the journal shard directory
+ * @param {string} sessionId   — session ID from the ledger
+ * @returns {Set<string>}      — slice IDs with a TASK_COMPLETE in this session
+ */
+function collectSessionCompletedIds(journalDir, sessionId) {
+  const ids = new Set();
+  let files = [];
+  try {
+    files = readdirSync(journalDir).filter(f => f.endsWith('.jsonl'));
+  } catch {
+    return ids; // journal dir absent or unreadable — not an error
+  }
+  for (const f of files) {
+    // Fast-path: skip shards whose filename clearly belongs to a different
+    // session (filename pattern: YYYY-MM-DD-<sessionId>.jsonl).
+    if (!f.includes(sessionId)) continue;
+    try {
+      const lines = readFileSync(join(journalDir, f), 'utf8').split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const ev = JSON.parse(line);
+          if (ev.type === 'TASK_COMPLETE' && ev.session === sessionId) {
+            const sliceId = ev.data?.slice;
+            if (typeof sliceId === 'string' && sliceId) ids.add(sliceId);
+          }
+        } catch { /* malformed line — skip */ }
+      }
+    } catch { /* unreadable shard — skip */ }
+  }
+  return ids;
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -227,6 +272,37 @@ export async function collectGroundTruth({ projectDir, events = [] }) {
     ledger = { found: false, not_checkable: { reason: 'ledger_read_error' }, slices: [], gate: {} };
   }
 
+  // --- session-scoped TASK_COMPLETE witness --------------------------------
+  // When `ledger complete` runs before the ledger's `motive` field is set, the
+  // emitted TASK_COMPLETE events carry a synthetic motive ("session:<id>")
+  // rather than the real one.  The compile fold filters by motive, so those
+  // events are invisible to the divergence checker — causing false
+  // slice_state_mismatch findings.  We collect them here (outside the fold)
+  // and surface them as session_completed_ids so the checker can consult them.
+  let session_completed_ids = [];
+  if (ledger.found) {
+    const raw = ledger._raw_session_id; // not stored yet — read from disk below
+    void raw; // suppress lint
+  }
+  try {
+    // The ledger's session_id is the canonical key.  readLedger doesn't expose
+    // it yet, so we re-read the raw file via the path stored in ledger.path.
+    let sessionId = null;
+    if (ledger.found && typeof ledger.path === 'string') {
+      try {
+        const raw = JSON.parse(readFileSync(ledger.path, 'utf8'));
+        sessionId = typeof raw.session_id === 'string' ? raw.session_id : null;
+      } catch { /* ignore */ }
+    }
+    if (sessionId) {
+      const journalDir = join(projectDir, '.groundwork', 'journal');
+      const ids = collectSessionCompletedIds(journalDir, sessionId);
+      session_completed_ids = [...ids];
+    }
+  } catch {
+    // non-fatal
+  }
+
   // --- path existence probing ---------------------------------------------
   let existing_paths = {};
   try {
@@ -245,6 +321,7 @@ export async function collectGroundTruth({ projectDir, events = [] }) {
     dirty_paths,
     existing_paths,
     ledger,
+    session_completed_ids,
     collected_at,
   };
 

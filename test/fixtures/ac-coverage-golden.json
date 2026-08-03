@@ -1,0 +1,25 @@
+{
+  "_provenance": "Derived from hooks/feature.mjs deriveAcCoverage() at commit 11efcd0 (feat(skills): harden feature-ledger schema + add validator/resume CLI). All four ACs asserted field-by-field. AC3 (empty covering []) is closed via the AC_COVERAGE declaration form { ac, covering: [] } — representable in compile() since motive-compile/1.2.1. The compile() golden test asserts all four ACs including AC3.",
+  "_fixture_doc": {
+    "slug": "ac-coverage-golden",
+    "status": "in_progress",
+    "ac_coverage": {
+      "AC1": ["S1"],
+      "AC2": ["S1", "S2"],
+      "AC3": [],
+      "AC4": ["S4"]
+    },
+    "runs": [
+      { "session_id": "sess-golden", "slices_completed": ["S1", "S3"] }
+    ]
+  },
+  "completed": ["S1", "S3"],
+  "met": [
+    { "id": "AC1", "covering": ["S1"], "missing": [], "met": true }
+  ],
+  "unmet": [
+    { "id": "AC2", "covering": ["S1", "S2"], "missing": ["S2"], "met": false },
+    { "id": "AC3", "covering": [], "missing": [], "met": false },
+    { "id": "AC4", "covering": ["S4"], "missing": ["S4"], "met": false }
+  ]
+}

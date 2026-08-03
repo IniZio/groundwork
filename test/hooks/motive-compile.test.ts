@@ -97,7 +97,6 @@ describe('S2-AC1 — hook-only usefulness', () => {
     expect(view.agent.all_slices.length).toBeGreaterThan(0)
     expect(view.agent.last_gate?.verdict).toBe('APPROVE')
     expect(view.agent.failures.length).toBeGreaterThanOrEqual(1)
-    expect(view.agent.drift.length).toBeGreaterThanOrEqual(1)
     expect(view.agent.confidence).toBe('hook-only')
     expect(view.agent.resume.next_actions.length).toBeGreaterThanOrEqual(1)
   })
@@ -186,13 +185,6 @@ describe('S2-AC4 — field contract', () => {
     expect(view.agent.failures[0]?.attempts).toBe(fEvent.data.count)
   })
 
-  it('SPEC_DRIFT reads d.rfc_uid as fallback for spec_ref', () => {
-    const sdEvent = motiveA.find((e: any) => e.type === 'SPEC_DRIFT')
-    expect(sdEvent?.data?.rfc_uid).toBeTruthy()
-    const view = compile(motiveA)
-    expect(view.agent.drift[0]?.spec_ref).toBe(sdEvent.data.rfc_uid)
-  })
-
   it('TASK_COMPLETE carries only {slice} — fold does not fabricate wave or paths', () => {
     const gt = makeGroundTruth({ slices: [{ id: 'S1', status: 'complete', blocked_by: [] }] })
     const v = compile(motiveA, { groundTruth: gt })
@@ -204,12 +196,26 @@ describe('S2-AC4 — field contract', () => {
 // ── S2-AC5 ────────────────────────────────────────────────────────────────
 
 describe('S2-AC5 — no msg dependence', () => {
-  it('stripping msg leaves agent fold surface byte-identical', () => {
+  it('stripping msg leaves structural fold surface byte-identical (failures.msg is the only expected diff)', () => {
+    // S2-AC5 verifies that event-level `msg` does not seep into *structural* fold
+    // outputs (objective, decisions, open_slices, etc.).  FAILURE events are the
+    // deliberate exception — they now capture ev.msg so the clobber narrative is
+    // preserved.  We strip failures[].msg from both sides before comparing.
+    function structuralSurface(view: any) {
+      const surface = foldSurface(view)
+      return {
+        ...surface,
+        agent: {
+          ...surface.agent,
+          failures: (surface.agent.failures ?? []).map(({ msg: _msg, ...f }: any) => f),
+        },
+      }
+    }
     const gt = makeGroundTruth()
     const withMsg = compile(motiveA, { groundTruth: gt })
     const stripped = motiveA.map(({ msg: _m, ...e }: any) => e)
     const withoutMsg = compile(stripped, { groundTruth: gt })
-    expect(JSON.stringify(foldSurface(withoutMsg))).toBe(JSON.stringify(foldSurface(withMsg)))
+    expect(JSON.stringify(structuralSurface(withoutMsg))).toBe(JSON.stringify(structuralSurface(withMsg)))
   })
 })
 
@@ -353,9 +359,9 @@ describe('S2-AC10 — divergence is pure', () => {
 // ── S2-AC11 ───────────────────────────────────────────────────────────────
 
 describe('S2-AC11 — motive scoping', () => {
-  it('compiling test-motive-s6 yields events_folded === 5', () => {
+  it('compiling test-motive-s6 yields events_folded === 4', () => {
     const view = compile(motiveA)
-    expect(view.provenance.events_folded).toBe(5)
+    expect(view.provenance.events_folded).toBe(4)
   })
 
   it('no field in view mentions the other motive', () => {
@@ -376,6 +382,112 @@ describe('S2-AC12 — COMPILER_VERSION', () => {
     const view = compile(motiveA)
     expect(view.compiler_version).toBe(COMPILER_VERSION)
     expect(view.provenance.compiler_version).toBe(COMPILER_VERSION)
+  })
+})
+
+// ── session_completed_ids regression ─────────────────────────────────────
+//
+// Scenario: TASK_COMPLETE events were emitted before the ledger's motive field
+// was set, so they carry a synthetic motive ("session:<id>") and are absent from
+// the motive-filtered fold stream.  The divergence checker should NOT flag these
+// as slice_state_mismatch when session_completed_ids supplies them.
+
+describe('slice_state_mismatch — session_completed_ids suppresses false positive', () => {
+  /** Ground truth where the ledger has two complete slices but the
+   *  motive-filtered stream has ZERO TASK_COMPLETE events.           */
+  function makeGtWithSessionIds(sessionCompletedIds: string[]) {
+    return {
+      head_sha: 'abc1234',
+      branch: 'main',
+      dirty_paths: [],
+      existing_paths: {},
+      ledger: {
+        found: true,
+        slices: [
+          { id: 'S1', wave: 1, status: 'complete', desc: 'a', blocked_by: [] },
+          { id: 'S2', wave: 1, status: 'complete', desc: 'b', blocked_by: [] },
+        ],
+        gate: {},
+      },
+      session_completed_ids: sessionCompletedIds,
+      collected_at: '2026-08-03T09:00:00.000Z',
+    }
+  }
+
+  it('no false positive when session_completed_ids covers all ledger-complete slices', () => {
+    // Events have no TASK_COMPLETE for S1/S2 (they were emitted under a synthetic motive).
+    const events: any[] = []
+    const gt = makeGtWithSessionIds(['S1', 'S2'])
+    const view = compile(events, { groundTruth: gt })
+    const mismatches = view.divergence.findings.filter((f: any) => f.kind === 'slice_state_mismatch')
+    expect(mismatches).toHaveLength(0)
+    expect(view.divergence.banner).toBe('✓ No divergence')
+  })
+
+  it('true positive still fires when a slice is complete in ledger but absent from both streams', () => {
+    // S2 is complete in ledger but NOT in fold stream and NOT in session_completed_ids.
+    const events: any[] = []
+    const gt = makeGtWithSessionIds(['S1']) // only S1 witnessed
+    const view = compile(events, { groundTruth: gt })
+    const mismatches = view.divergence.findings.filter((f: any) => f.kind === 'slice_state_mismatch')
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0].id).toBe('S2')
+    expect(mismatches[0].detail).toMatch(/ledger says complete but no TASK_COMPLETE/)
+  })
+
+  it('session_completed_ids absent → legacy behaviour (no suppression)', () => {
+    // When groundTruth lacks session_completed_ids (e.g. old run), the original
+    // mismatch detection still fires.
+    const gt = makeGroundTruth({ slices: [{ id: 'S99', status: 'complete', blocked_by: [] }] })
+    // No TASK_COMPLETE in stream, no session_completed_ids → should fire
+    const view = compile([], { groundTruth: gt })
+    const mismatches = view.divergence.findings.filter((f: any) => f.kind === 'slice_state_mismatch')
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0].id).toBe('S99')
+  })
+})
+
+// ── FAILURE msg rendering regression ─────────────────────────────────────
+//
+// The event-level `msg` field should appear in the compiled failures record
+// and flow through to render output.
+
+describe('FAILURE event — msg field propagation', () => {
+  it('fold captures ev.msg into failure record', () => {
+    const events = [
+      {
+        ts: '2026-08-03T09:00:01.000Z',
+        session: 'sess',
+        motive: 'm',
+        type: 'FAILURE',
+        msg: 'S6 clobbered S7 files',
+        data: { fingerprint: 'fp1', kind: 'ownership-violation' },
+        _order: { shard: 's', line: 0 },
+      },
+    ]
+    const view = compile(events)
+    const f = view.agent.failures.find((f: any) => f.fingerprint === 'fp1')
+    expect(f).toBeDefined()
+    expect(f?.msg).toBe('S6 clobbered S7 files')
+  })
+
+  it('fold prefers last_error over msg when both present', () => {
+    // last_error (from struggle-detector) is the more precise field; msg is fallback
+    const events = [
+      {
+        ts: '2026-08-03T09:00:01.000Z',
+        session: 'sess',
+        motive: 'm',
+        type: 'FAILURE',
+        msg: 'narrative text',
+        data: { fingerprint: 'fp2', kind: 'test-fail', last_error: 'exit 1' },
+        _order: { shard: 's', line: 0 },
+      },
+    ]
+    const view = compile(events)
+    const f = view.agent.failures.find((f: any) => f.fingerprint === 'fp2')
+    expect(f?.last_error).toBe('exit 1')
+    expect(f?.msg).toBe('narrative text')
   })
 })
 

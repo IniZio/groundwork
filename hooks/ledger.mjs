@@ -22,7 +22,7 @@
  *               // advisor verdicts: APPROVE | CORRECTION | STOP | GAPS | REPLAN (bare string or {verdict})
  *   ledger.mjs abandon                          set active:false (releases the gate)
  *   ledger.mjs init <file|->                    write the initial ledger atomically
- *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]
+ *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending]
  *   ledger.mjs rm <id> [<id> …]                 remove slice(s)
  *   ledger.mjs set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]
  *   ledger.mjs claim <id> [<id> …] [--json] [--strict]  claim slice(s) for the current session (no --token)
@@ -37,7 +37,6 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
-import { parseFrontmatter as parseRfcFrontmatter, readRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 
 /**
@@ -111,6 +110,7 @@ const KNOWN_SLICE_KEYS = new Set([
   'blocked_by', 'depends_on', // depends_on = legacy alias for blocked_by
   'acceptance', 'name',
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
+  'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
 ])
 
 /**
@@ -131,6 +131,7 @@ const KNOWN_TASK_KEYS = new Set([
   'ac',                        // tasks.yaml sidecar alias for acceptance
   'files',                     // informational; not mapped to a slice field
   'name',
+  'covers_ac',                 // AC coverage: which AC<n> labels this slice covers
 ])
 
 /** Simple Levenshtein distance, capped at 3 for performance. */
@@ -357,11 +358,9 @@ const HELP = {
     flags: [],
   },
   init: {
-    summary: 'write the initial ledger atomically from a JSON file or stdin; or seed from an RFC',
-    usage: 'ledger init [<file|->] [--rfc <dir>]',
-    flags: [
-      '--rfc <dir>   path to an RFC directory; seeds slices from frontmatter tasks[] and sets rfc_ref',
-    ],
+    summary: 'write the initial ledger atomically from a JSON file or stdin',
+    usage: 'ledger init <file|->',
+    flags: [],
   },
   add: {
     summary: 'insert a new slice into the ledger',
@@ -373,7 +372,6 @@ const HELP = {
       '--status <s>         pending | in_progress | complete | skipped (default pending)',
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
-      '--feature-slug <s>  (optional) link run to .groundwork/features/<slug>/',
       '--claimed-by <sid>  (optional) set claimed_by on the new slice',
     ],
   },
@@ -504,6 +502,7 @@ function cmdComplete(args) {
   // successes (e.g. "ledger complete S1 BOGUS") are still recorded (AC8).
   if (capturedLedger) {
     const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    const sliceMap = new Map((capturedLedger.slices ?? []).map((s) => [s?.id, s]))
     for (const id of ids.filter((id) => !missing.includes(id))) {
       emitHookEvent({
         projectDir,
@@ -513,6 +512,20 @@ function cmdComplete(args) {
         data: { slice: id },
         ledger: capturedLedger,
       })
+      // Emit one AC_COVERAGE event per (slice, AC) pair declared in covers_ac.
+      const slice = sliceMap.get(id)
+      const raw = slice?.covers_ac
+      const acKeys = Array.isArray(raw) ? raw : raw != null ? [String(raw)] : []
+      for (const ac of acKeys) {
+        emitHookEvent({
+          projectDir,
+          sessionId: capturedLedger.session_id,
+          type: 'AC_COVERAGE',
+          source: 'hook:ledger',
+          data: { slice: id, ac },
+          ledger: capturedLedger,
+        })
+      }
     }
   }
   if (missing.length) die(`unknown slice id(s): ${missing.join(', ')}`, 2)
@@ -573,7 +586,7 @@ function cmdGate(args) {
 }
 
 /** Write .groundwork/gates/<run-id>.md with a machine-parseable header + human body. */
-function writeGateArtifact({ runId, which, verdictRaw, value, hasObj, flags }) {
+function writeGateArtifact({ runId, which, verdictRaw, value, hasObj }) {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   const gatesDir = path.join(base, '.groundwork', 'gates')
   try {
@@ -634,11 +647,10 @@ function cmdInit(args) {
   // When args is a string (old call site), wrap it; this path should not occur
   // after the main() update below but kept defensively.
   const argv = Array.isArray(args) ? args : (args ? [args] : [])
-  const { flags, positionals } = parseFlags(argv)
+  const { positionals } = parseFlags(argv)
   const src = positionals[0]
-  const rfcDir = flags.rfc
 
-  if (!src && !rfcDir) die('usage: ledger init <file|-> [--rfc <dir>]', 2)
+  if (!src) die('usage: ledger init <file|->', 2)
 
   let obj = {}
 
@@ -654,59 +666,6 @@ function cmdInit(args) {
     } catch (e) {
       die(`initial ledger is not valid JSON: ${e?.message ?? e}`, 2)
     }
-  }
-
-  // AC1: --rfc <dir> seeds slices from RFC frontmatter tasks[] and sets rfc_ref.
-  if (rfcDir) {
-    let rfcFrontmatter
-    try {
-      const parsed = readRfcFrontmatter(rfcDir)
-      rfcFrontmatter = parsed.frontmatter
-    } catch (e) {
-      die(`cannot read RFC from ${rfcDir}: ${e?.message ?? e}`, 1)
-    }
-    const uid = rfcFrontmatter.uid
-    if (!uid) die(`RFC at ${rfcDir} has no uid in frontmatter`, 1)
-    obj.rfc_ref = uid
-    // Prefer tasks.yaml sidecar; fall back to frontmatter.tasks for legacy schema:1 RFCs.
-    // Seeding a run with zero slices defeats the Stop-gate (zero slices are trivially
-    // all-complete), so we treat neither-source-present as a hard error.
-    const hasSidecar = existsSync(path.join(rfcDir, 'tasks.yaml'))
-    const tasks = hasSidecar
-      ? readTasksSidecar(rfcDir)
-      : (Array.isArray(rfcFrontmatter.tasks) ? rfcFrontmatter.tasks : [])
-    if (tasks.length === 0) die(`RFC at ${rfcDir} has no tasks — cannot seed a ledger with zero slices (check tasks.yaml or frontmatter tasks[])`, 1)
-    // Validate tasks.yaml keys at parse time, before reconstruction, so that
-    // a typo'd key (e.g. blocked_bY) is caught rather than silently dropped.
-    // A near-miss (edit distance ≤ 2) is a hard error (the intent is clear but
-    // the key would be silently lost, which corrupts dependency ordering).
-    // A completely-unrecognised key emits a warning (might be supplementary metadata).
-    for (const t of tasks) {
-      if (!t || typeof t !== 'object') continue
-      const tid = t.id ?? '?'
-      for (const key of Object.keys(t)) {
-        if (KNOWN_TASK_KEYS.has(key)) continue
-        let best = null, bestDist = 3
-        for (const known of KNOWN_TASK_KEYS) {
-          const d = levenshtein(key, known)
-          if (d < bestDist) { best = known; bestDist = d }
-        }
-        if (best !== null) {
-          die(`tasks.yaml task "${tid}": unrecognised key "${key}" looks like a typo of "${best}" — fix the key or it will be silently dropped`, 1)
-        } else {
-          process.stderr.write(`ledger warn: tasks.yaml task "${tid}": unknown key "${key}" (not a known task field; will be ignored)\n`)
-        }
-      }
-    }
-    obj.slices = tasks.map((t) => ({
-      id: String(t.id ?? ''),
-      wave: Number.isFinite(Number(t.wave)) ? Number(t.wave) : 0,
-      blocked_by: Array.isArray(t.blocked_by ?? t.depends_on) ? (t.blocked_by ?? t.depends_on).map(String) : [],
-      ...(Array.isArray(t.acceptance ?? t.ac) && (t.acceptance ?? t.ac).length > 0 ? { acceptance: (t.acceptance ?? t.ac).map(String) } : {}),
-      status: 'pending',
-      desc: String(t.desc ?? t.behavior ?? t.title ?? ''),
-      kind: String(t.kind ?? 'impl'),
-    }))
   }
 
   // Generate and embed the write-token for gate/complete authority
@@ -737,7 +696,7 @@ function cmdInit(args) {
 function cmdAdd(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
-  if (!id) die('usage: ledger add <id> [--wave N] [--desc "…"] [--kind <k>] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]', 2)
+  if (!id) die('usage: ledger add <id> [--wave N] [--desc "…"] [--kind <k>] [--blocked-by a,b] [--acceptance "a;b"] [--status pending]', 2)
   const status = flags.status ?? 'pending'
   assertStatus(status)
   if (flags.kind != null) assertKind(flags.kind)
@@ -766,14 +725,10 @@ function cmdAdd(args) {
       item.claimed_at = new Date().toISOString()
     }
     ledger.slices.push(item)
-    // Optional top-level link to a durable feature ledger (Contract B.1 / R4).
-    // Mirrors plan_ref/brief: set on the run object, not on the slice.
-    if (flags['feature-slug'] != null) ledger.feature_slug = flags['feature-slug']
     return l === null ? ledger : undefined // return new object only if we created it
   })
   const kindNote = flags.kind != null ? `, kind=${flags.kind}` : ''
-  const slugNote = flags['feature-slug'] != null ? `, feature_slug=${flags['feature-slug']}` : ''
-  process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote}${slugNote})\n`)
+  process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote})\n`)
 }
 
 function cmdRm(ids) {

@@ -238,6 +238,66 @@ describe('S3-AC5 — purity and no filesystem mutation', () => {
 // Never-throws — unreadable / bad dir
 // ---------------------------------------------------------------------------
 
+// ── session_completed_ids regression ─────────────────────────────────────
+//
+// When `ledger complete` runs before the ledger's motive field is set, the
+// emitted TASK_COMPLETE events carry a synthetic motive ("session:<id>").
+// collectGroundTruth() must return those slice IDs in session_completed_ids.
+
+describe('session_completed_ids — collected from journal shard by session', () => {
+  let dir: string;
+
+  beforeEach(() => { dir = tmp(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('returns slice IDs from TASK_COMPLETE events matching the ledger session_id', async () => {
+    const SESSION_ID = 'test-session-abc123';
+
+    // Write a ledger with session_id and motive
+    const ledgerData = {
+      session_id: SESSION_ID,
+      motive: 'my-motive',
+      active: true,
+      slices: [{ id: 'S1', status: 'complete' }],
+      gate: {},
+    };
+    writeLedger(dir, ledgerData);
+
+    // Write a journal shard with TASK_COMPLETE events — some for this session
+    // (with a DIFFERENT motive, simulating the pre-motive-field scenario) and
+    // one for a different session that must NOT appear in the result.
+    const journalDir = join(dir, '.groundwork', 'journal');
+    mkdirSync(journalDir, { recursive: true });
+    const shardPath = join(journalDir, `2026-08-03-${SESSION_ID}.jsonl`);
+    const events = [
+      { ts: '2026-08-03T09:00:00.000Z', session: SESSION_ID, motive: `session:${SESSION_ID}`, type: 'TASK_COMPLETE', data: { slice: 'S1' } },
+      { ts: '2026-08-03T09:00:01.000Z', session: SESSION_ID, motive: `session:${SESSION_ID}`, type: 'TASK_COMPLETE', data: { slice: 'S2' } },
+      { ts: '2026-08-03T09:00:02.000Z', session: 'other-session', motive: 'other-motive', type: 'TASK_COMPLETE', data: { slice: 'S99' } },
+      { ts: '2026-08-03T09:00:03.000Z', session: SESSION_ID, motive: 'my-motive', type: 'DECISION', data: { id: 'D1' } },
+    ];
+    writeFileSync(shardPath, events.map(e => JSON.stringify(e)).join('\n'), 'utf8');
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [] });
+
+    expect(Array.isArray(gt.session_completed_ids)).toBe(true);
+    expect(gt.session_completed_ids).toContain('S1');
+    expect(gt.session_completed_ids).toContain('S2');
+    expect(gt.session_completed_ids).not.toContain('S99');  // different session
+  });
+
+  it('returns empty array when no ledger is found', async () => {
+    const gt = await collectGroundTruth({ projectDir: dir, events: [] });
+    expect(gt.session_completed_ids).toEqual([]);
+  });
+
+  it('returns empty array when journal dir is absent', async () => {
+    writeLedger(dir, { session_id: 'sid', motive: 'm', active: true, slices: [], gate: {} });
+    // No journal dir written → should not throw
+    const gt = await collectGroundTruth({ projectDir: dir, events: [] });
+    expect(gt.session_completed_ids).toEqual([]);
+  });
+});
+
 describe('never throws under adversarial inputs', () => {
   it('handles a non-existent directory without throwing', async () => {
     const gt = await collectGroundTruth({ projectDir: '/tmp/definitely-does-not-exist-xyzzy', events: [] });

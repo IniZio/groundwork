@@ -18,6 +18,9 @@
  *                                           { kind, fingerprint, cmd, count }
  *     SESSION_END    d.outcome, d.reason, d.gate — hooks/stop-gate.mjs emits { outcome }
  *     SESSION_START  d.resumed_from      — hook-written; may be absent
+ *     AC_COVERAGE    coverage form: d.ac, d.slice — hooks/ledger.mjs emits per (slice, AC) pair
+ *                    declaration form: d.ac, d.covering:[] — hooks/migrate.mjs emits for
+ *                                      ACs declared with empty covering arrays (unmet-empty)
  *   Model-written / optional (may be entirely absent; fold degrades honestly):
  *     DECISION       d.decision, d.rationale, d.alternatives, d.slice
  *     HANDOFF        d.pointer, d.summary, d.next_actions
@@ -27,7 +30,8 @@
  *     LINT_DRIFT     d.kind, d.path, d.spec_ref, d.detail
  *     PROTOTYPE_RESULT d.claim, d.evidence, d.result
  *     WAIVER         (full d spread)
- *   No field reads d.msg (F4: msg is absent from hook-only events; purity not affected).
+ *   FAILURE events read ev.msg (top-level) — recorded as the narrative text for the
+ *   Trouble section; absent from most hook-only events so degrades to null gracefully.
  *
  * USAGE:
  *   compile(events, opts?) -> view
@@ -40,7 +44,7 @@
  *   opts.malformedLines — count from the reader; default 0
  */
 
-export const COMPILER_VERSION = 'motive-compile/1.1.0'
+export const COMPILER_VERSION = 'motive-compile/1.2.2'
 
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 }
 
@@ -77,6 +81,8 @@ export function compile(events, opts = {}) {
   const specChanges = []
   const waivers = []
   const baselines = []
+  // Map<ac_key, Set<sliceId>> — built from AC_COVERAGE events
+  const acCoverageMap = new Map()
 
   let objective = null
   let objectiveSource = 'absent'
@@ -139,6 +145,7 @@ export function compile(events, opts = {}) {
             target: d.cmd ?? d.target ?? null,
             attempts: d.count ?? d.attempts ?? null,
             last_error: d.last_error ?? null,
+            msg: ev.msg ?? null,
             slice: d.slice ?? null,
             resolved: false, // resolved in post-pass below
           })
@@ -301,6 +308,19 @@ export function compile(events, opts = {}) {
         break
       }
 
+      case 'AC_COVERAGE': {
+        // Two payload forms:
+        //   Coverage form:    { ac, slice }        — registers slice as covering the AC
+        //   Declaration form: { ac, covering: [] } — declares AC with no covering slices
+        //                     (slice absent/null)  so it appears as unmet in the view
+        if (d.ac != null) {
+          const key = String(d.ac)
+          if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
+          if (d.slice != null) acCoverageMap.get(key).add(String(d.slice))
+        }
+        break
+      }
+
       default: {
         unknownTypeEvents++
         break
@@ -398,6 +418,18 @@ export function compile(events, opts = {}) {
     }
   }
 
+  // ── shared completeness predicate ────────────────────────────────────────
+  // session_completed_ids supplements completedIds with TASK_COMPLETE events
+  // that were emitted before the ledger's motive field was set (so they carry
+  // a synthetic motive and are absent from the motive-filtered fold stream).
+  // Used by both the divergence check and ac_coverage to keep one notion of
+  // "complete" across the entire compile() output.
+  const sessionCompleted = Array.isArray(groundTruth?.session_completed_ids)
+    ? new Set(groundTruth.session_completed_ids)
+    : null
+  /** @param {string} id */
+  const isComplete = (id) => completedIds.has(id) || (sessionCompleted?.has(id) ?? false)
+
   // ── divergence: pure function of injected data ────────────────────────────
   let divergence
   if (groundTruth == null) {
@@ -405,9 +437,8 @@ export function compile(events, opts = {}) {
   } else {
     const findings = []
 
-    // slice_state_mismatch (high)
     for (const s of allSlices) {
-      const foldComplete = completedIds.has(s.id)
+      const foldComplete = isComplete(s.id)
       const ledgerComplete = s.status === 'complete'
       if (foldComplete && !ledgerComplete) {
         findings.push({
@@ -516,6 +547,28 @@ export function compile(events, opts = {}) {
     nextActions.push({ action: 'run_advisor_gate', why: 'all slices complete but no APPROVE gate recorded' })
   }
 
+  // ── ac_coverage ───────────────────────────────────────────────────────────
+  // AC coverage semantics:
+  //   met   = covering non-empty AND every listed slice in completedSlices
+  //   unmet = absent | empty | any incomplete covering slice
+  const acMet = []
+  const acUnmet = []
+  const acKeys = [...acCoverageMap.keys()].sort((a, b) => {
+    const na = parseInt(a.replace(/^AC/, ''), 10)
+    const nb = parseInt(b.replace(/^AC/, ''), 10)
+    if (!isNaN(na) && !isNaN(nb)) return na - nb
+    return a < b ? -1 : a > b ? 1 : 0
+  })
+  for (const key of acKeys) {
+    const covering = [...acCoverageMap.get(key)]
+    const missing = covering.filter((s) => !isComplete(s))
+    const isMet = covering.length > 0 && missing.length === 0
+    const entry = { id: key, covering, missing, met: isMet }
+    if (isMet) acMet.push(entry)
+    else acUnmet.push(entry)
+  }
+  const acCoverage = { met: acMet, unmet: acUnmet }
+
   // ── provenance ────────────────────────────────────────────────────────────
   const atOrd = ordered.length > 0 ? ordered.length : 0
   const lastEvent = ordered.length > 0 ? ordered[ordered.length - 1] : null
@@ -575,6 +628,7 @@ export function compile(events, opts = {}) {
     verifications,
     milestones,
     spec_changes: specChanges,
+    ac_coverage: acCoverage,
   }
 
   return {

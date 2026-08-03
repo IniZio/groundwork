@@ -135,6 +135,27 @@ export function renderView(view) {
   }
   parts.push('');
 
+  // ── AC Coverage (S8) ──────────────────────────────────────────────────────
+  parts.push('## AC Coverage');
+  parts.push('');
+  const acCoverage = agent.ac_coverage ?? { met: [], unmet: [] };
+  const acMet = acCoverage.met ?? [];
+  const acUnmet = acCoverage.unmet ?? [];
+  if (acMet.length === 0 && acUnmet.length === 0) {
+    parts.push('_No AC coverage recorded._');
+  } else {
+    for (const a of acMet) {
+      parts.push(`- ✓ **${a.id}** — met  covering=[${a.covering.join(', ')}]`);
+    }
+    for (const a of acUnmet) {
+      const why = a.covering.length === 0
+        ? 'no covering slices assigned'
+        : `missing: ${a.missing.join(', ')}`;
+      parts.push(`- ✗ **${a.id}** — unmet  covering=[${a.covering.join(', ')}]  (${why})`);
+    }
+  }
+  parts.push('');
+
   // ── Decision Log (S2) ─────────────────────────────────────────────────────
   parts.push('## Decision Log');
   parts.push('');
@@ -315,7 +336,7 @@ function _buildNarrativeSections(agent) {
     const lines = failures.map(
       (f) => {
         const name = f.target ?? f.fingerprint ?? 'failure';
-        const summary = f.last_error ?? '';
+        const summary = f.msg ?? f.last_error ?? '';
         return summary
           ? `- **${name}** (${f.attempts ?? 1} attempt(s)): ${summary}`
           : `- **${name}** (${f.attempts ?? 1} attempt(s))`;

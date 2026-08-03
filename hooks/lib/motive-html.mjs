@@ -199,6 +199,31 @@ ${rows}
 `
 }
 
+function renderAcCoverage(agent) {
+  const coverage = agent?.ac_coverage ?? { met: [], unmet: [] }
+  const met = Array.isArray(coverage.met) ? coverage.met : []
+  const unmet = Array.isArray(coverage.unmet) ? coverage.unmet : []
+  if (met.length === 0 && unmet.length === 0) {
+    return `<h2>AC Coverage</h2>
+<p class="empty">No AC coverage recorded.</p>
+`
+  }
+  const rows = [
+    ...met.map((a) =>
+      `<div class="ac-item ac-met"><span class="badge ac-met-badge">MET</span> <strong>${esc(a.id)}</strong> — covering: ${a.covering.map((s) => `<code>${esc(s)}</code>`).join(', ')}</div>`
+    ),
+    ...unmet.map((a) => {
+      const why = a.covering.length === 0
+        ? 'no covering slices assigned'
+        : `missing: ${a.missing.map((s) => `<code>${esc(s)}</code>`).join(', ')}`
+      return `<div class="ac-item ac-unmet"><span class="badge ac-unmet-badge">UNMET</span> <strong>${esc(a.id)}</strong> — covering: ${a.covering.map((s) => `<code>${esc(s)}</code>`).join(', ')} (${why})</div>`
+    }),
+  ].join('\n')
+  return `<h2>AC Coverage</h2>
+${rows}
+`
+}
+
 function renderReadySet(agent) {
   const slices = Array.isArray(agent?.open_slices) ? agent.open_slices : []
   const ready = slices.filter((s) => s.ready === true && s.status !== 'complete')
@@ -269,6 +294,7 @@ export function renderHtml(view) {
   const banner = renderDivergenceBanner(divergence)
   const objective = renderObjective(agent)
   const burnDown = renderBurnDown(agent)
+  const acCoverage = renderAcCoverage(agent)
   const decisions = renderDecisionTimeline(agent)
   const readySet = renderReadySet(agent)
   const baselines = renderBaselines(agent)
@@ -284,6 +310,7 @@ export function renderHtml(view) {
 <body>
 ${banner}${objective}
 ${burnDown}
+${acCoverage}
 ${decisions}
 ${readySet}
 ${baselines}

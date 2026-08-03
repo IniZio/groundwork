@@ -70,10 +70,24 @@ export const VALID_TYPES = [
   'SESSION_END',
   'MOTIVE_CREATED',
   'BASELINE',
+  /**
+   * AC_COVERAGE — two payload forms:
+   *   Coverage form:    { ac, slice }          — emitted by `ledger complete` for each
+   *                                               (slice, AC) pair when the completed slice
+   *                                               declares `covers_ac` coverage.
+   *   Declaration form: { ac, covering: [] }   — emitted by `migrate` for ACs that are
+   *                                               declared in feature.yaml with an empty
+   *                                               covering array (unmet-empty / invisible
+   *                                               missing slice class). Registers the AC
+   *                                               in the fold with zero slices so it
+   *                                               appears as unmet in the compiled view.
+   * Never compressed: coverage facts must survive any digest pass.
+   */
+  'AC_COVERAGE',
 ]
 
 /** Types that must never be folded into a digest summary (AC 9). */
-export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE', 'MOTIVE_CREATED', 'BASELINE'])
+export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE', 'MOTIVE_CREATED', 'BASELINE', 'AC_COVERAGE'])
 
 // ---------------------------------------------------------------------------
 // Motive normalization (Step 2 dual-key back-compat)

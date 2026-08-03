@@ -71,7 +71,7 @@ an artifact the user can review and provide to a later session.
 | Skill | Trigger |
 |-------|---------|
 | `use-groundwork` | Every session start — core rules, issue-type routing |
-| `interview` | Plan a feature (defers to project planning conventions); standalone for small changes |
+| `interview` | Plan a feature (captures intent into a motive charter); standalone for small changes |
 | `vertical-slice` | Decompose into conflict-free parallel slices; writes the run ledger |
 | `ultrawork` | Max fan-out mode — slice → ledger → dispatch all slices in parallel |
 | `implement` | Orchestrate implementation after a plan/interview |
@@ -84,7 +84,7 @@ an artifact the user can review and provide to a later session.
 
 1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out general-purpose agents → advisor gate
 2. Advisor gate before declaring done; recorded in the run ledger and enforced by the Stop-gate hook
-3. Plans defer to the project's planning convention; groundwork's `.groundwork/plans/` is the fallback and is not committed
+3. Intent lives in a motive charter at `.groundwork/motives/<slug>/motive.md` with a compiled Decision Log; charters are runtime state and are not committed
 4. Interview before slicing — understanding before synthesis
 
 ## Run ledger (`.groundwork/runs/<session_id>.json`)

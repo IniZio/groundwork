@@ -6,6 +6,7 @@
  *   journal append --motive <id> --type <T> --msg <M> [--data <json>]
  *   journal show [--motive <id>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]
  *   journal digest --motive <id> [--rebuild]
+ *   journal compile <motive> [--at <ord>] [--json] [--stdout] [--force] [--no-ground-truth]
  *   journal help [<cmd>]
  *
  * Exit codes: 0 success  1 operational failure  2 usage error
@@ -31,6 +32,10 @@ import {
   readAllEvents,
   filterEvents,
 } from './lib/journal-io.mjs'
+import { readOrderedEvents } from './lib/journal-order.mjs'
+import { compile, COMPILER_VERSION } from './lib/motive-compile.mjs'
+import { collectGroundTruth } from './lib/motive-ground-truth.mjs'
+import { buildHumanLayer, renderView } from './lib/motive-render.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,6 +114,20 @@ const HELP = {
       '--rebuild      force rebuild of digest from source',
     ],
   },
+  compile: {
+    summary: 'compile a motive\'s journal events into a versioned spec view',
+    usage: 'journal compile <motive> [--at <ord>] [--json] [--stdout] [--force] [--no-ground-truth]',
+    flags: [
+      '<motive>           motive identifier (required positional)',
+      '--at <ord>         fold only events 1..N (positive integer)',
+      '--json             print only the JSON payload to stdout',
+      '--stdout           print without writing .groundwork/compiled/ files',
+      '--force            overwrite even if compiler_version mismatches',
+      '--no-ground-truth  skip ground-truth collection (divergence_checked: false)',
+      '',
+      `Compiler version: ${COMPILER_VERSION}`,
+    ],
+  },
 }
 
 function cmdHelp(args) {
@@ -136,6 +155,150 @@ function cmdHelp(args) {
     'Run `journal help <command>` for per-command details.',
     'Exit codes: 0 success  1 operational failure  2 usage error',
   ].join('\n') + '\n')
+}
+
+// ---------------------------------------------------------------------------
+// compile helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Injective path-safe slug for a motive id (D5).
+ *
+ * Algorithm:
+ *   1. Escape literal `~` → `~007e` (must be first, to prevent double-escaping).
+ *   2. Replace every remaining disallowed character with `~` + exactly 4
+ *      lowercase hex digits (codePointAt). Allowed: A-Z a-z 0-9 . _ - (and `~`
+ *      after step 1 is already encoded).
+ *   3. Code points > 0xFFFF (astral plane) are rejected — exit 2.
+ *
+ * Fixed-width (4 hex) makes the encoding injective: `!92` and `→` (U+2192)
+ * cannot collide because `!` → `~0021` and `→` → `~2192` (each exactly 4 hex
+ * digits), and `92` are ordinary literal chars — `~0021 9 2` ≠ `~2192`.
+ */
+function motiveSlug(motive) {
+  // Detect astral-plane code points (> 0xFFFF) before encoding
+  for (const ch of motive) {
+    const cp = ch.codePointAt(0)
+    if (cp != null && cp > 0xffff) {
+      die(`motive id contains an unsupported character (U+${cp.toString(16).toUpperCase().padStart(4, '0')})`, 2)
+    }
+  }
+  return motive
+    .replace(/~/g, '~007e')
+    .replace(/[^A-Za-z0-9._~-]/gu, (c) => {
+      const cp = c.codePointAt(0)
+      return '~' + (cp != null ? cp : 0).toString(16).padStart(4, '0')
+    })
+}
+
+async function cmdCompile(args) {
+  const { flags, positionals } = parseFlags(args)
+  const motive = positionals[0]
+  if (!motive) die('compile requires a motive id', 2)
+
+  const { projectDir } = resolveContext()
+  const journalDir = path.join(projectDir, '.groundwork', 'journal')
+
+  // Parse --at
+  let atOrd = undefined
+  if (flags.at !== undefined && flags.at !== true) {
+    const atStr = String(flags.at)
+    const atNum = Number(atStr)
+    if (!Number.isInteger(atNum) || atNum <= 0 || !/^\d+$/.test(atStr)) {
+      die('--at expects an ordinal; named checkpoints arrive in Step 4.', 2)
+    }
+    atOrd = atNum
+  } else if (flags.at === true) {
+    die('--at expects an ordinal; named checkpoints arrive in Step 4.', 2)
+  }
+
+  // Read events for this motive
+  const { events, malformed_lines } = readOrderedEvents(journalDir, { motive })
+
+  if (events.length === 0) {
+    die(`no events found for motive "${motive}"`)
+  }
+
+  // Validate --at range (per-motive)
+  if (atOrd !== undefined && atOrd > events.length) {
+    die(`--at ${atOrd} is out of range; motive "${motive}" has ${events.length} events (valid: 1-${events.length}).`, 2)
+  }
+
+  // Collect ground truth (unless --no-ground-truth)
+  const noGroundTruth = 'no-ground-truth' in flags
+  let groundTruth = undefined
+  if (!noGroundTruth) {
+    groundTruth = await collectGroundTruth({ projectDir, events })
+  }
+
+  // Compile
+  const rawView = compile(events, {
+    at: atOrd,
+    groundTruth,
+    malformedLines: malformed_lines,
+  })
+  // Inject motive into provenance so buildHumanLayer/renderView can reference it
+  const viewWithMotive = Object.assign({}, rawView, {
+    provenance: Object.assign({}, rawView.provenance, { motive }),
+  })
+  const view = Object.assign({}, viewWithMotive, { human: buildHumanLayer(viewWithMotive) })
+
+  const slug = motiveSlug(motive)
+  const compiledDir = path.join(projectDir, '.groundwork', 'compiled')
+  const jsonPath = path.join(compiledDir, `${slug}.json`)
+  const mdPath = path.join(compiledDir, `${slug}.md`)
+
+  const jsonOut = JSON.stringify(
+    Object.assign({ _generated: `regenerate with 'journal compile ${motive}'` }, view),
+    null,
+    2,
+  ) + '\n'
+  const mdOut = renderView(view)
+
+  const toStdout = 'stdout' in flags
+  const asJson = 'json' in flags
+  const force = 'force' in flags
+
+  // Version-mismatch check (D2) — on default path only (not --stdout, and applies regardless of --json)
+  if (!toStdout) {
+    let existing = null
+    try {
+      existing = JSON.parse(readFileSync(jsonPath, 'utf8'))
+    } catch {
+      // no existing file — fine
+    }
+    if (!force && existing && existing.compiler_version != null && existing.provenance?.compiler_version != null &&
+        existing.compiler_version !== existing.provenance.compiler_version) {
+      process.stderr.write(
+        `journal compile: compiled view for "${motive}" has inconsistent compiler_version values: ` +
+        `top-level is ${existing.compiler_version} but provenance.compiler_version is ${existing.provenance.compiler_version}. ` +
+        `The file is corrupt — delete it and recompile.\n` +
+        `  to recompile from the event stream:  journal compile ${motive} --force\n`,
+      )
+      process.exit(1)
+    }
+    if (existing && existing.compiler_version && existing.compiler_version !== COMPILER_VERSION && !force) {
+      process.stderr.write(
+        `journal compile: compiled view for "${motive}" was produced by ${existing.compiler_version} but this\n` +
+        `binary is ${COMPILER_VERSION}. A view compiled by a different compiler is not comparable.\n` +
+        `  to recompile from the event stream:  journal compile ${motive} --force\n` +
+        `  to inspect the stale view as-is:     cat ${path.relative(projectDir, jsonPath)}\n`,
+      )
+      process.exit(1)
+    }
+  }
+
+  if (asJson) {
+    process.stdout.write(jsonOut)
+  } else {
+    process.stdout.write(mdOut + '\n')
+  }
+
+  if (!toStdout) {
+    mkdirSync(compiledDir, { recursive: true })
+    writeFileSync(jsonPath, jsonOut)
+    writeFileSync(mdPath, mdOut + '\n')
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +550,7 @@ function cmdDigest(args) {
 // Main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2)
   const [cmd, ...rest] = argv
 
@@ -399,9 +562,10 @@ function main() {
 
   try {
     switch (cmd) {
-      case 'append': return cmdAppend(rest)
-      case 'show':   return cmdShow(rest)
-      case 'digest': return cmdDigest(rest)
+      case 'append':  return cmdAppend(rest)
+      case 'show':    return cmdShow(rest)
+      case 'digest':  return cmdDigest(rest)
+      case 'compile': return await cmdCompile(rest)
       default:
         die(`unknown command "${cmd}". Run journal help for a list.`, 2)
     }

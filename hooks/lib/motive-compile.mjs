@@ -40,7 +40,7 @@
  *   opts.malformedLines — count from the reader; default 0
  */
 
-export const COMPILER_VERSION = 'motive-compile/1.0.0'
+export const COMPILER_VERSION = 'motive-compile/1.1.0'
 
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 }
 
@@ -65,11 +65,18 @@ export function compile(events, opts = {}) {
   // Map<fingerprint, record>  — highest ord per fingerprint wins
   const failuresMap = new Map()
   const decisions = []
+  // Map<id, decision record> — keyed ADR decisions (id present)
+  const decisionLogMap = new Map()
+  // insertion order for decision_log output
+  const decisionLogOrder = []
+  // Set of decision ids that resolved an open item (accepted only)
+  const resolvedByDecisions = new Map() // resolves-id → decision-id
   let lastHandoff = null
   const verifications = []
   const milestones = []
   const specChanges = []
   const waivers = []
+  const baselines = []
 
   let objective = null
   let objectiveSource = 'absent'
@@ -149,13 +156,68 @@ export function compile(events, opts = {}) {
 
       case 'DECISION': {
         modelWrittenCount++
-        decisions.push({
-          decision: d.decision ?? null,
-          rationale: d.rationale ?? null,
-          rationale_source: d.rationale != null ? 'recorded' : 'absent',
-          alternatives: Array.isArray(d.alternatives) ? d.alternatives : [],
-          slice: d.slice ?? null,
-        })
+        if (d.id != null) {
+          // ADR lifecycle: keyed by id; first-seen order preserved
+          const existing = decisionLogMap.get(d.id)
+          if (existing == null) {
+            // First appearance — create the entry
+            const entry = {
+              id: d.id,
+              status: d.status ?? 'proposed',
+              title: d.title ?? d.decision ?? null,
+              rationale: d.rationale ?? null,
+              ord,
+              ts,
+              supersedes: d.supersedes ?? null,
+              superseded_by: d.superseded_by ?? null,
+              resolves: d.resolves ?? null,
+            }
+            decisionLogMap.set(d.id, entry)
+            decisionLogOrder.push(d.id)
+            // If this event supersedes another, mark that one superseded
+            if (d.supersedes != null) {
+              const target = decisionLogMap.get(d.supersedes)
+              if (target != null) {
+                target.status = 'superseded'
+                target.superseded_by = d.id
+              }
+            }
+          } else {
+            // Update existing entry's status (and other optional fields)
+            if (d.status != null) existing.status = d.status
+            if (d.title != null) existing.title = d.title
+            if (d.rationale != null) existing.rationale = d.rationale
+            if (d.superseded_by != null) existing.superseded_by = d.superseded_by
+            if (d.resolves != null) existing.resolves = d.resolves
+            if (d.supersedes != null) {
+              existing.supersedes = d.supersedes
+              const target = decisionLogMap.get(d.supersedes)
+              if (target != null) {
+                target.status = 'superseded'
+                target.superseded_by = d.id
+              }
+            }
+          }
+          // Track accepted resolves for open-item burn-down
+          const entry = decisionLogMap.get(d.id)
+          if (entry.status === 'accepted' && entry.resolves != null) {
+            resolvedByDecisions.set(entry.resolves, d.id)
+          } else if (entry.status !== 'accepted' && entry.resolves != null) {
+            // Remove previous resolution if status downgraded (e.g. rejected)
+            if (resolvedByDecisions.get(entry.resolves) === d.id) {
+              resolvedByDecisions.delete(entry.resolves)
+            }
+          }
+        } else {
+          // Legacy DECISION with no id — keep in agent.decisions unchanged
+          decisions.push({
+            decision: d.decision ?? null,
+            rationale: d.rationale ?? null,
+            rationale_source: d.rationale != null ? 'recorded' : 'absent',
+            alternatives: Array.isArray(d.alternatives) ? d.alternatives : [],
+            slice: d.slice ?? null,
+          })
+        }
         break
       }
 
@@ -178,7 +240,8 @@ export function compile(events, opts = {}) {
       case 'MILESTONE': {
         modelWrittenCount++
         milestones.push({ ord, ts, objective: d.objective ?? null })
-        if (objective === null && d.objective != null) {
+        // Only set objective from MILESTONE if not already set by MOTIVE_CREATED (S2-AC5)
+        if (objectiveSource !== 'charter' && objective === null && d.objective != null) {
           objective = d.objective
           objectiveSource = 'recorded:MILESTONE'
         }
@@ -215,6 +278,26 @@ export function compile(events, opts = {}) {
 
       case 'WAIVER': {
         waivers.push({ ord, ts, ...d })
+        break
+      }
+
+      case 'MOTIVE_CREATED': {
+        // Highest-precedence objective source (S2-AC5)
+        if (d.objective != null) {
+          objective = d.objective
+          objectiveSource = 'charter'
+        }
+        break
+      }
+
+      case 'BASELINE': {
+        baselines.push({
+          name: d.name ?? null,
+          ord,
+          ts,
+          shard: ev._order?.shard ?? null,
+          line: ev._order?.line ?? null,
+        })
         break
       }
 
@@ -260,6 +343,32 @@ export function compile(events, opts = {}) {
     const blockers = Array.isArray(s.blocked_by) ? s.blocked_by : []
     return blockers.length > 0 && !blockers.every((bid) => completedIds.has(bid))
   })
+
+  // ── decision_log ──────────────────────────────────────────────────────────
+  const decisionLog = decisionLogOrder.map((id) => decisionLogMap.get(id))
+
+  // ── open items burn-down ──────────────────────────────────────────────────
+  let openItems = []
+  let openItemsSummary = { total: 0, open: 0, resolved: 0 }
+  let openItemsSource = null
+
+  const charter = opts.charter ?? null
+  if (charter != null && Array.isArray(charter.open_items)) {
+    openItemsSource = 'charter'
+    openItems = charter.open_items.map((item) => {
+      const resolvedBy = resolvedByDecisions.get(item.id) ?? null
+      return {
+        id: item.id,
+        kind: item.kind ?? null,
+        statement: item.statement ?? null,
+        owner: item.owner ?? null,
+        blocked_by: item.blocked_by ?? null,
+        resolved_by: resolvedBy,
+      }
+    })
+    const resolved = openItems.filter((i) => i.resolved_by != null).length
+    openItemsSummary = { total: openItems.length, open: openItems.length - resolved, resolved }
+  }
 
   // ── objective ─────────────────────────────────────────────────────────────
   if (objectiveSource === 'absent' && groundTruth?.ledger?.found) {
@@ -441,6 +550,11 @@ export function compile(events, opts = {}) {
   const agent = {
     objective,
     objective_source: objectiveSource,
+    decision_log: decisionLog,
+    baselines,
+    open_items: openItems,
+    open_items_summary: openItemsSummary,
+    open_items_source: openItemsSource,
     all_slices: allSlices,
     open_slices: openSlices.map((s) => ({
       ...s,

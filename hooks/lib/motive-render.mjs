@@ -94,8 +94,91 @@ export function renderView(view) {
   );
   parts.push('');
 
+  // ── Objective (S2) ────────────────────────────────────────────────────────
+  parts.push('## Objective');
+  parts.push('');
+  {
+    // Source label: prefer the human layer's narrative section if available (back-compat
+    // with pre-built human layers), fall back to agent.objective_source.
+    const objNarrative = human.narrative_sections.find((s) => s.title === 'Objective');
+    const objSource = objNarrative?.source ?? agent.objective_source ?? 'absent';
+    parts.push(_sourceLabel(objSource));
+    parts.push('');
+    if (agent.objective != null) {
+      parts.push(agent.objective);
+    } else {
+      parts.push('_No objective was recorded for this motive._');
+    }
+  }
+  parts.push('');
+
+  // ── Open Items (S2) ───────────────────────────────────────────────────────
+  parts.push('## Open Items');
+  parts.push('');
+  if (agent.open_items_source == null) {
+    parts.push('_no register found — charter not injected._');
+  } else {
+    const items = agent.open_items ?? [];
+    if (items.length === 0) {
+      parts.push('_No open items._');
+    } else {
+      const summary = agent.open_items_summary ?? { total: 0, open: 0, resolved: 0 };
+      parts.push(`${summary.open} open / ${summary.resolved} resolved / ${summary.total} total`);
+      parts.push('');
+      for (const item of items) {
+        const tag = item.resolved_by != null ? '[x]' : '[ ]';
+        const ownerNote = item.owner ? ` (owner: ${item.owner})` : '';
+        const resolvedNote = item.resolved_by ? ` — resolved by ${item.resolved_by}` : '';
+        parts.push(`- ${tag} **${item.id}** — ${item.statement ?? ''}${ownerNote}${resolvedNote}`);
+      }
+    }
+  }
+  parts.push('');
+
+  // ── Decision Log (S2) ─────────────────────────────────────────────────────
+  parts.push('## Decision Log');
+  parts.push('');
+  const decisionLog = agent.decision_log ?? [];
+  if (decisionLog.length === 0) {
+    parts.push('_No decisions recorded._');
+    parts.push('');
+  } else {
+    for (const d of decisionLog) {
+      const statusBadge = `[${d.status ?? 'unknown'}]`;
+      const supersededNote = d.superseded_by ? ` → superseded by ${d.superseded_by}` : '';
+      const supersedes = d.supersedes ? ` (supersedes ${d.supersedes})` : '';
+      parts.push(`### ${d.id}: ${d.title ?? '(untitled)'}${supersedes}`);
+      parts.push('');
+      parts.push(`**Status:** ${statusBadge}${supersededNote}`);
+      if (d.rationale != null) {
+        parts.push('');
+        parts.push(`**Rationale:** ${d.rationale}`);
+      }
+      if (d.resolves != null) {
+        parts.push('');
+        parts.push(`**Resolves:** ${d.resolves}`);
+      }
+      parts.push('');
+    }
+  }
+
+  // ── Baselines (S2) ────────────────────────────────────────────────────────
+  parts.push('## Baselines');
+  parts.push('');
+  const baselines = agent.baselines ?? [];
+  if (baselines.length === 0) {
+    parts.push('_No baselines recorded._');
+  } else {
+    for (const b of baselines) {
+      parts.push(`- **${b.name ?? '(unnamed)'}** at ord ${b.ord} (${b.ts ?? 'unknown'})`);
+    }
+  }
+  parts.push('');
+
   // ── Narrative sections (S4-AC2, S4-AC3) ───────────────────────────────────
   for (const section of human.narrative_sections) {
+    // Objective is now rendered above — skip the duplicate narrative Objective section
+    if (section.title === 'Objective') continue;
     parts.push(`## ${section.title}`);
     parts.push('');
     // source: label — visually distinct for recorded vs reconstructed (AC2)

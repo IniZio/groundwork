@@ -22,7 +22,7 @@
  */
 
 import path from 'node:path'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   VALID_TYPES,
   NEVER_COMPRESS,
@@ -36,6 +36,9 @@ import { readOrderedEvents } from './lib/journal-order.mjs'
 import { compile, COMPILER_VERSION } from './lib/motive-compile.mjs'
 import { collectGroundTruth } from './lib/motive-ground-truth.mjs'
 import { buildHumanLayer, renderView } from './lib/motive-render.mjs'
+import { readCharter, charterPath, renderCharterTemplate } from './lib/motive-charter.mjs'
+import { resolveBaseline } from './lib/motive-baseline.mjs'
+import { renderHtml } from './lib/motive-html.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -116,16 +119,35 @@ const HELP = {
   },
   compile: {
     summary: 'compile a motive\'s journal events into a versioned spec view',
-    usage: 'journal compile <motive> [--at <ord>] [--json] [--stdout] [--force] [--no-ground-truth]',
+    usage: 'journal compile <motive> [--at <ord|name>] [--html] [--tbd] [--json] [--stdout] [--force] [--no-ground-truth]',
     flags: [
       '<motive>           motive identifier (required positional)',
-      '--at <ord>         fold only events 1..N (positive integer)',
+      '--at <ord|name>    fold only events 1..N; accepts a positive integer or a baseline name',
+      '--html             write an HTML dashboard alongside the .json/.md files',
+      '--tbd              print count of open TBD/TBR items from the charter (warn-only)',
       '--json             print only the JSON payload to stdout',
       '--stdout           print without writing .groundwork/compiled/ files',
       '--force            overwrite even if compiler_version mismatches',
       '--no-ground-truth  skip ground-truth collection (divergence_checked: false)',
       '',
       `Compiler version: ${COMPILER_VERSION}`,
+    ],
+  },
+  motive: {
+    summary: 'manage motives (charters and lifecycle events)',
+    usage: 'journal motive new <slug> [--objective "…"] [--force]',
+    flags: [
+      'new <slug>         create a motive charter at .groundwork/motives/<slug>/motive.md',
+      '--objective "…"   initial objective text written into the charter',
+      '--force            overwrite an existing charter',
+    ],
+  },
+  baseline: {
+    summary: 'record a named baseline pin for a motive',
+    usage: 'journal baseline <name> --motive <slug>',
+    flags: [
+      '<name>         baseline name (required positional)',
+      '--motive <id>  motive identifier (required)',
     ],
   },
 }
@@ -199,17 +221,22 @@ async function cmdCompile(args) {
   const { projectDir } = resolveContext()
   const journalDir = path.join(projectDir, '.groundwork', 'journal')
 
-  // Parse --at
+  // Parse --at — numeric ordinal or baseline name (resolved after reading events)
   let atOrd = undefined
-  if (flags.at !== undefined && flags.at !== true) {
+  let atName = undefined
+  if (flags.at === true) {
+    die('--at requires a value: a positive integer ordinal or a baseline name', 2)
+  } else if (flags.at !== undefined) {
     const atStr = String(flags.at)
-    const atNum = Number(atStr)
-    if (!Number.isInteger(atNum) || atNum <= 0 || !/^\d+$/.test(atStr)) {
-      die('--at expects an ordinal; named checkpoints arrive in Step 4.', 2)
+    if (/^\d+$/.test(atStr)) {
+      const atNum = Number(atStr)
+      if (!Number.isInteger(atNum) || atNum <= 0) {
+        die('--at ordinal must be a positive integer', 2)
+      }
+      atOrd = atNum
+    } else {
+      atName = atStr  // resolve after reading events
     }
-    atOrd = atNum
-  } else if (flags.at === true) {
-    die('--at expects an ordinal; named checkpoints arrive in Step 4.', 2)
   }
 
   // Read events for this motive
@@ -219,10 +246,26 @@ async function cmdCompile(args) {
     die(`no events found for motive "${motive}"`)
   }
 
+  // Resolve named baseline
+  if (atName !== undefined) {
+    const pin = resolveBaseline(events, atName)
+    if (pin === null) {
+      const knownNames = events
+        .filter(e => e.type === 'BASELINE' && e.data?.name)
+        .map(e => String(e.data.name))
+      const list = knownNames.length ? knownNames.join(', ') : '(none)'
+      die(`baseline "${atName}" not found. Known baselines: ${list}`, 2)
+    }
+    atOrd = pin.ord
+  }
+
   // Validate --at range (per-motive)
   if (atOrd !== undefined && atOrd > events.length) {
     die(`--at ${atOrd} is out of range; motive "${motive}" has ${events.length} events (valid: 1-${events.length}).`, 2)
   }
+
+  // Read charter for join (S1-AC7); null when no charter exists or stub not yet implemented
+  const charter = readCharter({ projectDir, motive })
 
   // Collect ground truth (unless --no-ground-truth)
   const noGroundTruth = 'no-ground-truth' in flags
@@ -236,6 +279,7 @@ async function cmdCompile(args) {
     at: atOrd,
     groundTruth,
     malformedLines: malformed_lines,
+    charter,
   })
   // Inject motive into provenance so buildHumanLayer/renderView can reference it
   const viewWithMotive = Object.assign({}, rawView, {
@@ -258,6 +302,8 @@ async function cmdCompile(args) {
   const toStdout = 'stdout' in flags
   const asJson = 'json' in flags
   const force = 'force' in flags
+  const asHtml = 'html' in flags
+  const showTbd = 'tbd' in flags
 
   // Version-mismatch check (D2) — on default path only (not --stdout, and applies regardless of --json)
   if (!toStdout) {
@@ -298,7 +344,113 @@ async function cmdCompile(args) {
     mkdirSync(compiledDir, { recursive: true })
     writeFileSync(jsonPath, jsonOut)
     writeFileSync(mdPath, mdOut + '\n')
+    // --html: write dashboard alongside .json/.md
+    if (asHtml) {
+      const htmlOut = renderHtml(view)
+      const htmlPath = path.join(compiledDir, `${slug}.html`)
+      writeFileSync(htmlPath, htmlOut)
+    }
   }
+
+  // --tbd: warn-only open-items count (never affects exit code)
+  if (showTbd) {
+    const openItems = charter?.open_items ?? []
+    process.stderr.write(`journal: open TBD/TBR items: ${openItems.length}\n`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// motive new
+// ---------------------------------------------------------------------------
+
+function cmdMotiveNew(args) {
+  const { flags, positionals } = parseFlags(args)
+  const slug = positionals[0]
+  if (!slug) die('motive new requires a <slug>', 2)
+
+  const objective = typeof flags.objective === 'string' ? flags.objective : ''
+  const { projectDir, sessionId } = resolveContext()
+
+  const filePath = charterPath(projectDir, slug)
+
+  if (existsSync(filePath) && !flags.force) {
+    die(`charter already exists for "${slug}". Use --force to overwrite.`, 1)
+  }
+
+  const alreadyExisted = existsSync(filePath)
+  mkdirSync(path.dirname(filePath), { recursive: true })
+  const content = renderCharterTemplate({ motive: slug, objective })
+  writeFileSync(filePath, content)
+
+  // Emit MOTIVE_CREATED only for new motives, not for --force overwrites
+  if (!alreadyExisted) {
+    const ts = new Date().toISOString()
+    const shardPath = resolveShardPath(projectDir, sessionId)
+    const event = {
+      ts,
+      session: sessionId,
+      motive: slug,
+      type: 'MOTIVE_CREATED',
+      msg: `motive created: ${slug}`,
+      source: 'cli:journal',
+      data: { objective },
+    }
+    appendEvent(shardPath, event)
+  }
+
+  process.stdout.write(
+    `journal: created motive "${slug}" at ${path.relative(projectDir, filePath)}\n`,
+  )
+}
+
+function cmdMotive(args) {
+  const subcmd = args[0]
+  if (!subcmd) die('motive requires a subcommand (e.g. new)', 2)
+  if (subcmd === 'new') return cmdMotiveNew(args.slice(1))
+  die(`unknown motive subcommand "${subcmd}". Run journal help motive for usage.`, 2)
+}
+
+// ---------------------------------------------------------------------------
+// baseline
+// ---------------------------------------------------------------------------
+
+function cmdBaseline(args) {
+  const { flags, positionals } = parseFlags(args)
+  const name = positionals[0]
+  if (!name) die('baseline requires a <name>', 2)
+
+  const motive = flags.motive
+  if (!motive || motive === true) die('baseline requires --motive <slug>', 2)
+
+  const { projectDir, sessionId } = resolveContext()
+  const journalDir = path.join(projectDir, '.groundwork', 'journal')
+
+  // Warn on duplicate (latest wins per S4-AC2)
+  const { events } = readOrderedEvents(journalDir, { motive })
+  const duplicates = events.filter(e => e.type === 'BASELINE' && e.data?.name === name)
+  if (duplicates.length > 0) {
+    process.stderr.write(
+      `journal: baseline "${name}" already exists for motive "${motive}"; writing again (latest wins)\n`,
+    )
+  }
+
+  const shardPath = resolveShardPath(projectDir, sessionId)
+  const shard = path.basename(shardPath)
+  const ts = new Date().toISOString()
+  const event = {
+    ts,
+    session: sessionId,
+    motive,
+    type: 'BASELINE',
+    msg: `baseline: ${name}`,
+    source: 'cli:journal',
+    data: { name, shard },
+  }
+  appendEvent(shardPath, event)
+
+  process.stdout.write(
+    `journal: baseline "${name}" recorded for motive "${motive}" in ${shard}\n`,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -562,10 +714,12 @@ async function main() {
 
   try {
     switch (cmd) {
-      case 'append':  return cmdAppend(rest)
-      case 'show':    return cmdShow(rest)
-      case 'digest':  return cmdDigest(rest)
-      case 'compile': return await cmdCompile(rest)
+      case 'append':   return cmdAppend(rest)
+      case 'show':     return cmdShow(rest)
+      case 'digest':   return cmdDigest(rest)
+      case 'compile':  return await cmdCompile(rest)
+      case 'motive':   return cmdMotive(rest)
+      case 'baseline': return cmdBaseline(rest)
       default:
         die(`unknown command "${cmd}". Run journal help for a list.`, 2)
     }

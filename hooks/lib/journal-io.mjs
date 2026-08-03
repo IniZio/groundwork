@@ -27,6 +27,15 @@
  *   The `--rfc` CLI alias is removed from journal.mjs.  Existing shards that
  *   carry only an `rfc` key become invisible to `--motive` filters — accepted.
  *
+ *   New event types (S0, 2026-08-03):
+ *   MOTIVE_CREATED — emitted once when `journal motive new` creates a charter.
+ *     data: { objective: string }
+ *     (objective text so `compile --at <n>` can render it without file access)
+ *   BASELINE — emitted by `journal baseline <name>` to pin a point in time.
+ *     data: { name: string, shard: string }
+ *     (shard is the basename returned by resolveShardPath at write time;
+ *      ord is assigned by the fold as the per-motive ordinal)
+ *
  * `msg` field contract:
  *   `msg` is OPTIONAL on hook-written events (emitHookEvent does not require it;
  *   some event types carry no human-readable summary).  The journal-append CLI
@@ -59,10 +68,12 @@ export const VALID_TYPES = [
   'SESSION_START',
   'SPEC_DRIFT',
   'SESSION_END',
+  'MOTIVE_CREATED',
+  'BASELINE',
 ]
 
 /** Types that must never be folded into a digest summary (AC 9). */
-export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE'])
+export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE', 'MOTIVE_CREATED', 'BASELINE'])
 
 // ---------------------------------------------------------------------------
 // Motive normalization (Step 2 dual-key back-compat)

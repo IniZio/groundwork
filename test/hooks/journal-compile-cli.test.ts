@@ -282,7 +282,8 @@ describe('journal compile CLI (S5)', () => {
     populateJournal(journalDir, 'test-motive', 5)
     const r = run(['compile', 'test-motive', '--at', 'abc', '--no-ground-truth'], env(projectDir))
     expect(r.status).toBe(2)
-    expect(r.stderr).toContain('--at expects an ordinal')
+    // non-numeric --at is now treated as a baseline name; 'abc' won't resolve → exit 2 with "not found"
+    expect(r.stderr).toContain('abc')
   })
 
   // S5-AC4: --at out-of-range exits 2 with valid range

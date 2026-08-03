@@ -52,7 +52,11 @@
 
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
+
+/** Absolute path to the ledger bin wrapper — reliable regardless of session cwd. */
+const LEDGER_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/ledger')
 
 /**
  * Canonical guarded tool names (lowercase, no fast_ prefix).
@@ -178,7 +182,7 @@ async function main() {
   return deny(
     `groundwork: orchestrator ${rawTool} blocked — delegate this change instead:\n` +
       `  task(subagent_type="groundwork:general-purpose", background=true, model="claude-sonnet-4-6", prompt="<file path> + exact change + success criteria")\n` +
-      `  Then mark it complete: $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`,
+      `  Then mark it complete: ${LEDGER_BIN} complete <id>`,
   )
 }
 

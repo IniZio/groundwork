@@ -106,7 +106,7 @@ export function eventMotive(e) {
 /**
  * Resolve the current motive id through a 4-step chain:
  *   1. env GROUNDWORK_MOTIVE           (explicit override / test injection)
- *   2. ledger.motive                   (forward-compatible field; nothing writes it yet)
+ *   2. ledger.motive                   (written by `ledger init` — via JSON input or --motive flag)
  *   3. ledger.rfc_ref                  (today's de-facto objective pointer)
  *   4. "session:<sessionId>"           (synthetic — ALWAYS resolves)
  *

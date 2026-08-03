@@ -482,8 +482,8 @@ describe("stop-gate hook — progressive block message verbosity", () => {
 		const decision = runHook(ledger);
 		expect(decision.decision).toBe("block");
 		expect(decision.reason).toContain("Full rules were shown on the first block");
-		expect(decision.reason).toContain("ledger.mjs complete");
-		expect(decision.reason).toContain("ledger.mjs abandon");
+		expect(decision.reason).toMatch(/\/bin\/ledger complete/);
+		expect(decision.reason).toMatch(/\/bin\/ledger abandon/);
 		expect(decision.reason).not.toContain("REMEMBER THE FAN-OUT RULES");
 		expect(decision.reason).not.toContain("TO FINISH");
 	});

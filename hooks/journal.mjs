@@ -271,7 +271,7 @@ async function cmdCompile(args) {
   const noGroundTruth = 'no-ground-truth' in flags
   let groundTruth = undefined
   if (!noGroundTruth) {
-    groundTruth = await collectGroundTruth({ projectDir, events })
+    groundTruth = await collectGroundTruth({ projectDir, events, motive })
   }
 
   // Compile

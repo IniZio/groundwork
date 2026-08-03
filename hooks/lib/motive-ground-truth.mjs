@@ -121,13 +121,33 @@ function pickSlice(raw) {
 }
 
 /**
- * Find and parse the most-recently-modified ledger file in
- * <projectDir>/.groundwork/runs/*.json, falling back to the legacy
- * <projectDir>/.groundwork/run.json.
+ * Find and parse ledger file(s) in <projectDir>/.groundwork/runs/*.json,
+ * falling back to the legacy <projectDir>/.groundwork/run.json.
  *
+ * When `motive` is non-null and ≥1 file matches (`raw.motive === motive`),
+ * ALL matching files are UNIONED rather than picking one by mtime.  This
+ * preserves completions from earlier sessions of the same motive (a motive
+ * outlives a single session, so picking only the newest file would drop
+ * prior session's completed slices).
+ *
+ * Union semantics:
+ *   - Slices are keyed on `(session_id, slice_id)`.  Each ledger carries a
+ *     `session_id` field; slices from the SAME session that appear in multiple
+ *     files (re-saves) use the newer file's copy.  Slices from DIFFERENT
+ *     sessions with the same slice_id are kept as DISTINCT entries — they
+ *     represent independent work items across sessions.
+ *   - Top-level fields (gate, active, path) come from the most-recently-
+ *     modified matching file.
+ *   - Each slice entry receives a `_session_id` annotation for callers that
+ *     need to distinguish per-session provenance.
+ *
+ * Fallback: when motive is null OR no file matches the motive, the original
+ * single-most-recent-file behavior is preserved (unchanged).
+ *
+ * Unparseable files are excluded from the motive match.
  * Returns { found: false } when no ledger is present (never throws).
  */
-function readLedger(projectDir) {
+function readLedger(projectDir, motive = null) {
   const runsDir = join(projectDir, '.groundwork', 'runs');
   let candidates = [];
 
@@ -165,7 +185,61 @@ function readLedger(projectDir) {
     return { found: false, slices: [], gate: {} };
   }
 
-  // pick most recently modified
+  // When motive is specified, union ALL matching ledgers instead of picking one.
+  // Fall back to the full candidate list if none match (legacy unlabelled runs).
+  if (motive !== null) {
+    const parsed = [];
+    for (const c of candidates) {
+      try {
+        const raw = JSON.parse(readFileSync(c.path, 'utf8'));
+        if (raw.motive === motive) {
+          parsed.push({ ...c, raw });
+        }
+      } catch {
+        // skip unparseable file
+      }
+    }
+
+    if (parsed.length > 0) {
+      // Union slices keyed on (session_id, slice_id).
+      // Within the same session, the newer file's copy wins.
+      // Slices from different sessions with the same slice_id are kept as
+      // distinct entries — they represent independent work across sessions.
+      const sliceMap = new Map(); // `${session_id}::${slice_id}` -> { slice, mtime }
+      for (const { raw, mtime } of parsed) {
+        const sessionId = typeof raw.session_id === 'string' ? raw.session_id : '';
+        const rawSlices = Array.isArray(raw.slices) ? raw.slices : [];
+        for (const s of rawSlices) {
+          const key = `${sessionId}::${s.id}`;
+          const existing = sliceMap.get(key);
+          if (!existing || mtime > existing.mtime) {
+            sliceMap.set(key, {
+              slice: { ...pickSlice(s), _session_id: sessionId },
+              mtime,
+            });
+          }
+        }
+      }
+
+      // Most-recently-modified file provides the top-level gate/active fields.
+      parsed.sort((a, b) => b.mtime - a.mtime);
+      const primary = parsed[0];
+      const gate = primary.raw.gate && typeof primary.raw.gate === 'object'
+        ? primary.raw.gate
+        : {};
+
+      return {
+        found: true,
+        path: primary.path,
+        active: primary.raw.active ?? null,
+        slices: [...sliceMap.values()].map(v => v.slice),
+        gate,
+      };
+    }
+    // No matching file — fall through to unfiltered single-file behavior below.
+  }
+
+  // pick most recently modified (fallback / no-motive path)
   candidates.sort((a, b) => b.mtime - a.mtime);
   const { path } = candidates[0];
 
@@ -233,9 +307,10 @@ function collectPaths(events, ledgerSlices) {
  * @param {object} opts
  * @param {string} opts.projectDir  — absolute path to the project root (never uses CWD)
  * @param {Array}  [opts.events]    — folded events (for path extraction); defaults to []
+ * @param {string|null} [opts.motive] — motive name to scope ledger selection; null = unscoped
  * @returns {object}                — ground truth record; never throws
  */
-export async function collectGroundTruth({ projectDir, events = [] }) {
+export async function collectGroundTruth({ projectDir, events = [], motive = null }) {
   const collected_at = new Date().toISOString();
 
   // --- git probes ----------------------------------------------------------
@@ -267,7 +342,7 @@ export async function collectGroundTruth({ projectDir, events = [] }) {
   // --- ledger --------------------------------------------------------------
   let ledger;
   try {
-    ledger = readLedger(projectDir);
+    ledger = readLedger(projectDir, motive);
   } catch {
     ledger = { found: false, not_checkable: { reason: 'ledger_read_error' }, slices: [], gate: {} };
   }

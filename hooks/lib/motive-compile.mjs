@@ -350,7 +350,23 @@ export function compile(events, opts = {}) {
   // ── ground truth injection ────────────────────────────────────────────────
   const groundTruth = opts.groundTruth ?? null
   const ledger = groundTruth?.ledger ?? null
-  const allSlices = ledger?.found && Array.isArray(ledger.slices) ? ledger.slices : []
+  const _rawSlices = ledger?.found && Array.isArray(ledger.slices) ? ledger.slices : []
+  // When motive sessions are unioned, _rawSlices may contain multiple entries
+  // with the same slice id (one per session, each tagged with _session_id).
+  // Deduplicate by id here so that:
+  //   • Totals (all_slices / open_slices counts) are not inflated.
+  //   • A slice completed in ANY session counts as complete in the merged view
+  //     (status 'complete' takes priority; other statuses use most-recent-file order
+  //     which is preserved by the union algorithm).
+  // Note: openSlices/divergence checks below all use this deduped view, so a slice
+  // that was completed in an earlier session is never reported as open or mismatched.
+  const _sliceDedup = new Map()
+  for (const s of _rawSlices) {
+    const cur = _sliceDedup.get(s.id)
+    // 'complete' wins over any other status; otherwise last-write (insertion order) wins
+    if (!cur || s.status === 'complete') _sliceDedup.set(s.id, s)
+  }
+  const allSlices = [..._sliceDedup.values()]
 
   // ── open / blocked slices ─────────────────────────────────────────────────
   const completedIds = new Set(completedSlices.keys())

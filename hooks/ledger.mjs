@@ -359,8 +359,10 @@ const HELP = {
   },
   init: {
     summary: 'write the initial ledger atomically from a JSON file or stdin',
-    usage: 'ledger init <file|->',
-    flags: [],
+    usage: 'ledger init <file|-> [--motive <id>]',
+    flags: [
+      '--motive <id>        motive id to stamp on the ledger (overrides JSON input)',
+    ],
   },
   add: {
     summary: 'insert a new slice into the ledger',
@@ -647,7 +649,7 @@ function cmdInit(args) {
   // When args is a string (old call site), wrap it; this path should not occur
   // after the main() update below but kept defensively.
   const argv = Array.isArray(args) ? args : (args ? [args] : [])
-  const { positionals } = parseFlags(argv)
+  const { flags, positionals } = parseFlags(argv)
   const src = positionals[0]
 
   if (!src) die('usage: ledger init <file|->', 2)
@@ -677,6 +679,8 @@ function cmdInit(args) {
   // required schema field is always satisfied even in test/offline contexts.
   const sessionId = resolveSessionId(null)
   if (!obj.session_id) obj.session_id = sessionId ?? randomBytes(16).toString('hex')
+  // Stamp motive: --motive flag overrides JSON input; JSON input is preserved as-is.
+  if (flags.motive != null) obj.motive = flags.motive
   // Validate before writing — strict: schema violations are hard errors at init
   // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)

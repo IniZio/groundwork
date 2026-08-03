@@ -55,6 +55,7 @@ import {
   CORE_VIEW_TYPES,
   isRequirementsDoc,
   hasNormativeVerb,
+  extractAllHeadingAnchors,
 } from './lib/spec-io.mjs'
 import { verifiedIds } from './lib/verifies-scan.mjs'
 
@@ -415,8 +416,13 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       } else {
         try {
           const targetContent = readFileSync(targetAbsPath, 'utf8')
+          // Collect anchors from requirement sections (existing behaviour) and
+          // also from every ordinary heading (GitHub-style slug or explicit {#…}).
           const targetSections = parseRequirementsDocument(targetContent)
-          const targetAnchors = new Set(targetSections.map(s => s.anchor))
+          const targetAnchors = new Set([
+            ...targetSections.map(s => s.anchor),
+            ...extractAllHeadingAnchors(targetContent),
+          ])
           if (!targetAnchors.has(anchor)) {
             violations.push({
               nodeId: id,

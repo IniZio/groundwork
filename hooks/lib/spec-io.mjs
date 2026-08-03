@@ -790,6 +790,71 @@ export function buildIndexData(sd) {
 }
 
 // ---------------------------------------------------------------------------
+// Extract ALL heading anchors from a Markdown file (any level, any style).
+//
+// Two anchor sources are recognised:
+//   1. Explicit {#anchor} attribute at end of heading line (Pandoc/kramdown style)
+//   2. GitHub-style slug: lowercase, collapse non-alphanumeric runs to hyphens,
+//      strip leading/trailing hyphens.
+//
+// Used by spec-lint xref resolution so that links to ordinary headings
+// (e.g. `## Case register`) do not produce false xref-dangling violations.
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a heading text (without the leading `#` characters or a trailing
+ * `{#…}` attribute) into a GitHub-style anchor slug.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function githubSlug(text) {
+  return text
+    .toLowerCase()
+    // Keep Unicode letters, numbers, spaces, hyphens; strip everything else.
+    // \p{L} matches any Unicode letter (including accented chars, CJK, etc.)
+    // \p{N} matches any Unicode number. The `u` flag enables Unicode property escapes.
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')    // spaces/underscores → hyphens
+    .replace(/-+/g, '-')        // collapse multiple hyphens
+    .replace(/^-+|-+$/g, '')    // strip leading/trailing hyphens
+}
+
+/**
+ * Return all heading anchors present in a Markdown string.
+ * Anchors from explicit `{#…}` attributes take priority; everything else
+ * gets a GitHub-style slug derived from the heading text.
+ *
+ * @param {string} markdown
+ * @returns {Set<string>}
+ */
+export function extractAllHeadingAnchors(markdown) {
+  const { body } = parseYamlFrontmatter(markdown)
+  const anchors = new Set()
+  // Strip fenced code blocks (``` or ~~~ fences) before scanning for headings so
+  // that heading-shaped lines inside a fence do not manufacture phantom anchors.
+  // The fence marker may be indented up to 3 spaces (CommonMark §4.5).
+  const bodyWithoutFences = body.replace(
+    /^( {0,3})(```+|~~~+)[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm,
+    '',
+  )
+  // Match any ATX heading line (# through ######)
+  const HEADING_LINE_RE = /^#{1,6} (.+)$/gm
+  for (const match of bodyWithoutFences.matchAll(HEADING_LINE_RE)) {
+    const raw = match[1].trim()
+    // Check for explicit {#anchor} attribute at end of the heading text
+    const explicitMatch = raw.match(/\{#([^}]+)\}\s*$/)
+    if (explicitMatch) {
+      anchors.add(explicitMatch[1].trim())
+    } else {
+      anchors.add(githubSlug(raw))
+    }
+  }
+  return anchors
+}
+
+// ---------------------------------------------------------------------------
 // Load persisted index (AC10, AC11)
 // ---------------------------------------------------------------------------
 

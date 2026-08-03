@@ -222,7 +222,8 @@ export function renderView(view) {
     const sorted = [...divergenceFindings].sort(_findingOrder);
     for (const f of sorted) {
       const pathNote = f.path ? ` — \`${f.path}\`` : '';
-      parts.push(`- **[${f.severity}]** ${f.kind}${pathNote}: ${f.detail ?? ''}`);
+      const idNote = f.id ? ` [${f.id}]` : '';
+      parts.push(`- **[${f.severity}]** ${f.kind}${idNote}${pathNote}: ${f.detail ?? ''}`);
     }
     parts.push('');
   }

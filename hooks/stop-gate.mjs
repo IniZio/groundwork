@@ -71,6 +71,10 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** Absolute path to the ledger bin wrapper — reliable regardless of session cwd. */
+const LEDGER_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/ledger')
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
@@ -317,11 +321,11 @@ function buildReason(ledger, incomplete, count) {
     lines.push('- One objective per Task; each prompt self-contained (paths, constraints, success criteria).')
     lines.push('- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.')
     lines.push('')
-    lines.push('TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with `ledger.mjs gate advisor APPROVE`. Check progress any time with `ledger.mjs status`.')
-    lines.push('TO ABANDON: run `$CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon` (sets active:false — the run is cancelled and the gate releases).')
+    lines.push(`TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run \`${LEDGER_BIN} complete <id>\`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with \`${LEDGER_BIN} gate advisor APPROVE\`. Check progress any time with \`${LEDGER_BIN} status\`.`)
+    lines.push(`TO ABANDON: run \`${LEDGER_BIN} abandon\` (sets active:false — the run is cancelled and the gate releases).`)
   } else {
     lines.push('')
-    lines.push('Full rules were shown on the first block. Finish: ledger.mjs complete <ids> + gate advisor APPROVE. Abandon: ledger.mjs abandon.')
+    lines.push(`Full rules were shown on the first block. Finish: ${LEDGER_BIN} complete <ids> + gate advisor APPROVE. Abandon: ${LEDGER_BIN} abandon.`)
   }
   return lines.join('\n')
 }

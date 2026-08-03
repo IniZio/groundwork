@@ -588,6 +588,91 @@ describe("xref-dangling: dangling relative-path cross-reference", () => {
 });
 
 // ---------------------------------------------------------------------------
+// xref-dangling: non-requirement heading anchor resolution (field-report item 9)
+// ---------------------------------------------------------------------------
+
+describe("xref-dangling: non-requirement heading anchor resolution", () => {
+  /** Write an arbitrary markdown file at a path relative to doc/specs/. */
+  function writeMarkdownFile(relPath: string, content: string) {
+    const abs = path.join(SPEC_DIR(), relPath);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+
+  it("passes when xref targets an ordinary (non-requirement) heading via GitHub-style slug", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    // Write a plain README with an ordinary H2 heading "Case register"
+    // GitHub slug: "case-register"
+    writeMarkdownFile("other/README.md", "## Case register\n\nSome content.\n");
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[case register](../other/README.md#case-register)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+  });
+
+  it("reports xref-dangling when the ordinary heading anchor is truly absent", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    // Write a plain README with heading "Case register" but link to wrong slug
+    writeMarkdownFile("other/README.md", "## Case register\n\nSome content.\n");
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[no-such-section](../other/README.md#no-such-section)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("xref-dangling");
+    expect(combined).toContain("no-such-section");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes when xref targets an explicit {#anchor} on an ordinary heading", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    // Write a plain README with an explicit anchor attribute
+    writeMarkdownFile("other/README.md", "## Case register {#case-register}\n\nSome content.\n");
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[case register](../other/README.md#case-register)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+  });
+
+  it("requirement anchors still resolve correctly alongside ordinary headings", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    writeConcept("other", minConcept("C-OTHER", { parent: "C-ROOT" }));
+    // other/requirements.md has both a req section and ordinary headings
+    writeRequirementsDoc("other", [minSection("OTHER-R-001")], { concept: "C-OTHER" });
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[OTHER-R-001](../other/requirements.md#other-r-001)",
+      }),
+    ], { concept: "C-SUB" });
+    const r = buildAndLint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // origin-decision-ref invariant (concept nodes)
 // ---------------------------------------------------------------------------
 
@@ -960,6 +1045,82 @@ describe("automated-unverified: automated requirement must have a @verifies test
     const r = buildAndLint();
     expect(r.stdout + r.stderr).not.toContain("automated-unverified");
     expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractAllHeadingAnchors — fence-awareness and Unicode slug regression tests
+// ---------------------------------------------------------------------------
+
+describe("extractAllHeadingAnchors: fence-aware heading extraction", () => {
+  /** Write an arbitrary markdown file at a path relative to doc/specs/. */
+  function writeMarkdownFile2(relPath: string, content: string) {
+    const abs = path.join(SPEC_DIR(), relPath);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+
+  it("heading-looking line inside a fenced block does NOT create an anchor (xref to it dangles)", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    // The target file has a real heading AND a fake heading inside a fence
+    writeMarkdownFile2(
+      "other/README.md",
+      "## Real Heading\n\n```bash\n# Fake Heading In Code\n```\n\nSome content.\n",
+    );
+    // xref points to the fake heading slug — should dangle
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[fake](../other/README.md#fake-heading-in-code)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("xref-dangling");
+    expect(combined).toContain("fake-heading-in-code");
+    expect(r.code).toBe(1);
+  });
+
+  it("real headings around a fenced block still resolve correctly", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    writeMarkdownFile2(
+      "other/README.md",
+      "## Real Heading\n\n```bash\n# Fake Heading In Code\n```\n\n## Another Real Heading\n",
+    );
+    // xref to a real heading — should pass
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[real](../other/README.md#real-heading)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
+  });
+
+  it("accented heading ## Café Résumé resolves via #café-résumé (Unicode slug)", () => {
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeConcept("sub", minConcept("C-SUB", { parent: "C-ROOT" }));
+    writeMarkdownFile2(
+      "other/README.md",
+      "## Café Résumé\n\nSome content.\n",
+    );
+    writeRequirementsDoc("sub", [
+      minSection("SUB-R-001", {
+        seeAlso: "[café résumé](../other/README.md#café-résumé)",
+      }),
+    ], { concept: "C-SUB" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).not.toContain("xref-dangling");
   });
 });
 

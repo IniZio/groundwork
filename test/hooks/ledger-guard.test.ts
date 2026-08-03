@@ -16,7 +16,8 @@ describe("ledger-guard — denies direct access to the run ledger", () => {
 	it("DENIES Read of .groundwork/run.json", () => {
 		const d = runHook("Read", "/home/u/proj/.groundwork/run.json");
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("ledger.mjs");
+		const reason = d.hookSpecificOutput?.permissionDecisionReason ?? "";
+		expect(reason).toMatch(/\/bin\/ledger /m);
 	});
 
 	it("DENIES Edit of the ledger", () => {

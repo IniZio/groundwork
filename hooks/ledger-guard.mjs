@@ -20,7 +20,11 @@
  */
 
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { readStdin, passthrough, isEmbeddedAgent } from './lib/hook-io.mjs'
+
+/** Absolute path to the ledger bin wrapper — reliable regardless of session cwd. */
+const LEDGER_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/ledger')
 
 function deny(reason) {
   console.log(
@@ -71,15 +75,15 @@ async function main() {
 
   return deny(
     `groundwork: do not ${tool} the run ledger directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs status                 — compact progress view (use this instead of reading the file)\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs show <id>              — all fields of one slice\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status …]\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs set <id> [--status … | --wave N | --desc … | --blocked-by … | --acceptance …]\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs rm <id> [<id> …]       — remove slice(s)\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs complete <id> [<id> …] — mark slices complete\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs gate advisor APPROVE [--citation … --rubric … --axes-correctness N …]\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs abandon                — cancel the run (active:false)\n` +
-      `  $CLAUDE_PLUGIN_ROOT/hooks/ledger.mjs help [<cmd>]           — full usage`,
+      `  ${LEDGER_BIN} status                 — compact progress view (use this instead of reading the file)\n` +
+      `  ${LEDGER_BIN} show <id>              — all fields of one slice\n` +
+      `  ${LEDGER_BIN} add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status …]\n` +
+      `  ${LEDGER_BIN} set <id> [--status … | --wave N | --desc … | --blocked-by … | --acceptance …]\n` +
+      `  ${LEDGER_BIN} rm <id> [<id> …]       — remove slice(s)\n` +
+      `  ${LEDGER_BIN} complete <id> [<id> …] — mark slices complete\n` +
+      `  ${LEDGER_BIN} gate advisor APPROVE [--citation … --rubric … --axes-correctness N …]\n` +
+      `  ${LEDGER_BIN} abandon                — cancel the run (active:false)\n` +
+      `  ${LEDGER_BIN} help [<cmd>]           — full usage`,
   )
 }
 

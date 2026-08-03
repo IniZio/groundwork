@@ -201,6 +201,24 @@ describe("ledger CLI — init & atomicity", () => {
 		// token must also be persisted in run.json
 		expect(readLedger().write_token).toBe(token);
 	});
+
+	it("init persists motive from JSON input", () => {
+		const src = path.join(projectDir, "plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {}, motive: "my-motive" }));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(0);
+		expect(readLedger().motive).toBe("my-motive");
+	});
+
+	it("init --motive flag sets motive and overrides JSON input", () => {
+		const src = path.join(projectDir, "plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {}, motive: "old-motive" }));
+		rmSync(ledgerFile);
+		const r = run(["init", src, "--motive", "new-motive"]);
+		expect(r.code).toBe(0);
+		expect(readLedger().motive).toBe("new-motive");
+	});
 });
 
 // ---------------------------------------------------------------------------

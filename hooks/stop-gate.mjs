@@ -43,7 +43,6 @@
  *     "session_id": "<session that owns this run, or omitted>",
  *     "brief": "<one-line task description>",
  *     "plan_ref": "<path to plan artifact, or omitted/null>",
- *     "feature_slug": "<kebab-case feature id linking .groundwork/features/<slug>/, or null>",
  *     "reinforcements": 0,
  *     "slices": [
  *       { "id": "S1", "behavior": "...", "files": ["..."], "wave": 0,
@@ -411,14 +410,25 @@ async function main() {
         typeof planRef === 'string' &&
         planRef.length > 0 &&
         existsSync(planRef)
+      const motiveSlug =
+        typeof ledger.motive_ref === 'string' && ledger.motive_ref.length > 0
+          ? ledger.motive_ref
+          : typeof ledger.motive === 'string' && ledger.motive.length > 0
+            ? ledger.motive
+            : null
+      const motiveOk =
+        motiveSlug !== null &&
+        existsSync(
+          path.join(projectDir, '.groundwork', 'motives', motiveSlug, 'motive.md'),
+        )
       const planSliceComplete = slices.some(
         (s) =>
           (s?.kind === 'plan' || s?.kind === 'design') &&
           s?.status === 'complete',
       )
-      if (!planRefOk && !planSliceComplete) {
+      if (!planRefOk && !motiveOk && !planSliceComplete) {
         return block(
-          'Non-trivial run has no plan artifact (plan_ref missing/absent on disk, or no plan/design slice complete). Run interview or planner to produce a plan before more impl.',
+          'Non-trivial run has no plan artifact (plan_ref missing/absent on disk, motive/motive_ref charter missing, and no plan/design slice complete). Run interview or planner to produce a plan, or set motive/motive_ref to a slug whose charter exists at .groundwork/motives/<slug>/motive.md.',
         )
       }
     }

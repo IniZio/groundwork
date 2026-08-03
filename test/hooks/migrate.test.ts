@@ -2,17 +2,17 @@
  * Tests for hooks/migrate.mjs — "groundwork migrate features"
  *
  * AC coverage map:
- *   AC 1: tasks round-trip — every task id in tasks.md appears in RFC tasks[]
+ *   AC 1: ac_coverage → AC_COVERAGE journal events (one per ac×slice pair)
  *   AC 2: journal events — one per history entry + one DECISION per decision,
  *          preserving original timestamps
- *   AC 3: plan.md copied to notes/; docs/prds/ refs also copied
- *   AC 4: resume + ac_coverage are NOT forwarded to RFC frontmatter
+ *   AC 3: motive charter created with objective from spec.md Goal section
+ *   AC 4: AC_COVERAGE events carry motive field; events have correct structure
  *   AC 5: invalid .feature.yaml is skipped; valid features still processed
- *   AC 6: source not deleted until rfc validate passes; negative case proves
- *          source survives a validation failure
+ *   AC 6: source not deleted on failure (idempotency + safety); --delete
+ *          removes source on success; dry-run never creates motive dir
  */
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -25,12 +25,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { dump as yamlDump } from 'js-yaml'
-import { load as yamlLoad } from 'js-yaml'
-import { parse as parseYaml } from 'yaml'
 
 const HOOKS = path.resolve(import.meta.dirname, '..', '..', 'hooks')
 const CLI = path.join(HOOKS, 'migrate.mjs')
-const RFC_CLI = path.join(HOOKS, 'rfc.mjs')
 
 let tmpDir: string
 
@@ -102,8 +99,7 @@ function buildFeatureYaml(overrides: Record<string, unknown> = {}): Record<strin
 function createFeatureDir(
   slug: string,
   featureDoc: Record<string, unknown>,
-  tasksMd?: string,
-  planMd?: string,
+  specMd?: string,
 ): string {
   const featureDir = path.join(tmpDir, '.groundwork', 'features', slug)
   mkdirSync(featureDir, { recursive: true })
@@ -111,16 +107,15 @@ function createFeatureDir(
   // .feature.yaml
   writeFileSync(path.join(featureDir, '.feature.yaml'), yamlDump(featureDoc))
 
-  // tasks.md (default if not provided)
-  const tasks = tasksMd ?? `## Wave 1 — F1 first slice\n\n- [X] F1.1 First task\n- [X] F1.2 Second task\n\n## Wave 2 — F2 second slice\n\n- [ ] F2.1 Third task\n- [ ] F2.2 Fourth task\n`
-  writeFileSync(path.join(featureDir, 'tasks.md'), tasks)
+  // tasks.md (kept for migrate compatibility)
+  writeFileSync(path.join(featureDir, 'tasks.md'), `## Wave 1\n\n- [X] F1.1 First task\n\n## Wave 2\n\n- [ ] F2.1 Second task\n`)
 
   // plan.md
-  const plan = planMd ?? `# Plan\n\nSome plan content.\n`
-  writeFileSync(path.join(featureDir, 'plan.md'), plan)
+  writeFileSync(path.join(featureDir, 'plan.md'), `# Plan\n\nSome plan content.\n`)
 
   // spec.md
-  writeFileSync(path.join(featureDir, 'spec.md'), `# Spec\n\n## Goal\n\nTest feature goal.\n\n## Acceptance Criteria\n\nAC1. First AC.\nAC2. Second AC.\n`)
+  const spec = specMd ?? `# Spec\n\n## Goal\n\nTest feature goal.\n\n## Acceptance Criteria\n\nAC1. First AC.\nAC2. Second AC.\n`
+  writeFileSync(path.join(featureDir, 'spec.md'), spec)
 
   return featureDir
 }
@@ -138,26 +133,6 @@ function runMigrate(args: string[], env: Record<string, string> = {}): {
     stderr: result.stderr ?? '',
     status: result.status ?? -1,
   }
-}
-
-/** Read the RFC frontmatter from the first RFC directory found */
-function findRfcDir(base: string): string | null {
-  const rfcsDir = path.join(base, '.groundwork', 'rfcs')
-  if (!existsSync(rfcsDir)) return null
-  const entries = require('node:fs').readdirSync(rfcsDir)
-  for (const e of entries) {
-    const candidate = path.join(rfcsDir, e)
-    if (existsSync(path.join(candidate, 'rfc.md'))) return candidate
-  }
-  return null
-}
-
-/** Read RFC frontmatter as a plain JS object */
-function readRfcFrontmatter(rfcDir: string): Record<string, unknown> {
-  const content = readFileSync(path.join(rfcDir, 'rfc.md'), 'utf8')
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
-  if (!match) throw new Error('no frontmatter found')
-  return parseYaml(match[1]) as Record<string, unknown>
 }
 
 /** Read all journal events from tmpDir's journal directory */
@@ -178,48 +153,59 @@ function readJournalEvents(base: string): Array<Record<string, unknown>> {
   return events
 }
 
+/** Read the motive charter file for a given slug */
+function readMotiveCharter(base: string, slug: string): string | null {
+  const charterPath = path.join(base, '.groundwork', 'motives', slug, 'motive.md')
+  if (!existsSync(charterPath)) return null
+  return readFileSync(charterPath, 'utf8')
+}
+
 // ---------------------------------------------------------------------------
-// AC 1: tasks round-trip
+// AC 1: ac_coverage → AC_COVERAGE journal events
 // ---------------------------------------------------------------------------
 
-describe('AC 1 — tasks round-trip', () => {
-  it('every task id in tasks.md appears in RFC tasks[]', () => {
+describe('AC 1 — ac_coverage → AC_COVERAGE events', () => {
+  it('emits one AC_COVERAGE event per ac×slice pair from ac_coverage', () => {
+    // Fixture: AC1→[F1], AC2→[F1,F2] → 3 total AC_COVERAGE events
     const doc = buildFeatureYaml()
     createFeatureDir('test-feature', doc)
 
     const r = runMigrate(['test-feature', '--delete'])
     expect(r.status, `stderr: ${r.stderr}`).toBe(0)
 
-    const rfcDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcDir)
-    expect(dirs.length).toBe(1)
-    const fm = readRfcFrontmatter(path.join(rfcDir, dirs[0]))
+    const events = readJournalEvents(tmpDir)
+    const acEvents = events.filter(e => e.type === 'AC_COVERAGE')
 
-    const rfcTaskIds = new Set((fm.tasks as Array<{ id: string }>).map(t => t.id))
-    // Source task IDs from tasks.md fixture
-    const sourceIds = ['F1.1', 'F1.2', 'F2.1', 'F2.2']
-    for (const id of sourceIds) {
-      expect(rfcTaskIds.has(id), `task ${id} missing from RFC tasks[]`).toBe(true)
-    }
-    // No extra IDs
-    expect(rfcTaskIds.size).toBe(sourceIds.length)
+    expect(acEvents.length).toBe(3)
+
+    // AC1→F1
+    expect(acEvents.some(e =>
+      (e.data as Record<string, unknown>)?.ac === 'AC1' &&
+      (e.data as Record<string, unknown>)?.slice === 'F1'
+    )).toBe(true)
+    // AC2→F1
+    expect(acEvents.some(e =>
+      (e.data as Record<string, unknown>)?.ac === 'AC2' &&
+      (e.data as Record<string, unknown>)?.slice === 'F1'
+    )).toBe(true)
+    // AC2→F2
+    expect(acEvents.some(e =>
+      (e.data as Record<string, unknown>)?.ac === 'AC2' &&
+      (e.data as Record<string, unknown>)?.slice === 'F2'
+    )).toBe(true)
   })
 
-  it('wave numbers are derived from ## Wave N headers', () => {
+  it('AC_COVERAGE events carry the motive field set to the feature slug', () => {
     const doc = buildFeatureYaml()
-    createFeatureDir(
-      'wave-feature',
-      { ...doc, slug: 'wave-feature', id: 'feat_wave-feature' },
-      '## Wave 3 — F3\n\n- [ ] F3.1 Task in wave 3\n',
-    )
+    createFeatureDir('test-feature', doc)
 
-    runMigrate(['wave-feature', '--delete'])
+    runMigrate(['test-feature', '--delete'])
 
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    const fm = readRfcFrontmatter(path.join(rfcsDir, dirs[0]))
-    const task = (fm.tasks as Array<{ id: string; wave: number }>).find(t => t.id === 'F3.1')
-    expect(task?.wave).toBe(3)
+    const events = readJournalEvents(tmpDir)
+    const acEvents = events.filter(e => e.type === 'AC_COVERAGE')
+    for (const ev of acEvents) {
+      expect(ev.motive).toBe('test-feature')
+    }
   })
 })
 
@@ -235,7 +221,7 @@ describe('AC 2 — journal events', () => {
     runMigrate(['test-feature', '--delete'])
 
     const events = readJournalEvents(tmpDir)
-    // 3 history + 1 decision = 4 events
+    // 3 history + 1 decision + 3 AC_COVERAGE = 7 events
     expect(events.length).toBeGreaterThanOrEqual(4)
 
     // Timestamps preserved
@@ -259,87 +245,69 @@ describe('AC 2 — journal events', () => {
 })
 
 // ---------------------------------------------------------------------------
-// AC 3: plan.md and docs/prds/ copy
+// AC 3: motive charter created with objective from spec.md
 // ---------------------------------------------------------------------------
 
-describe('AC 3 — file copy', () => {
-  it('copies plan.md to notes/', () => {
+describe('AC 3 — charter creation', () => {
+  it('creates motive charter at .groundwork/motives/<slug>/motive.md', () => {
     const doc = buildFeatureYaml()
     createFeatureDir('test-feature', doc)
 
-    runMigrate(['test-feature', '--delete'])
+    const r = runMigrate(['test-feature', '--delete'])
+    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
 
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    expect(existsSync(path.join(rfcsDir, dirs[0], 'notes', 'plan.md'))).toBe(true)
+    const charter = readMotiveCharter(tmpDir, 'test-feature')
+    expect(charter).not.toBeNull()
   })
 
-  it('copies .groundwork/plans/ files referenced in plan.md', () => {
+  it('uses spec.md ## Goal section as the objective', () => {
     const doc = buildFeatureYaml()
-    // Create a .groundwork/plans/ file in the project
-    const plansDir = path.join(tmpDir, '.groundwork', 'plans')
-    mkdirSync(plansDir, { recursive: true })
-    writeFileSync(path.join(plansDir, 'requirements.md'), '# Requirements\nSome requirements.')
-
-    const planWithRef = `# Plan\n\nSee .groundwork/plans/requirements.md for details.\n`
-    createFeatureDir('test-feature', doc, undefined, planWithRef)
+    createFeatureDir('test-feature', doc, `# Spec\n\n## Goal\n\nBuild a better widget.\n\n## ACs\n\nAC1. Done.\n`)
 
     runMigrate(['test-feature', '--delete'])
 
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    const copiedPrd = path.join(rfcsDir, dirs[0], 'notes', '.groundwork', 'plans', 'requirements.md')
-    expect(existsSync(copiedPrd)).toBe(true)
+    const charter = readMotiveCharter(tmpDir, 'test-feature')
+    expect(charter).toContain('Build a better widget.')
+  })
+
+  it('falls back to placeholder objective when spec.md has no Goal section', () => {
+    const doc = buildFeatureYaml()
+    createFeatureDir('test-feature', doc, `# Spec\n\nNo goal section here.\n`)
+
+    runMigrate(['test-feature', '--delete'])
+
+    const charter = readMotiveCharter(tmpDir, 'test-feature')
+    expect(charter).toContain('migrated from feature test-feature')
   })
 })
 
 // ---------------------------------------------------------------------------
-// AC 4: resume and ac_coverage not forwarded
+// AC 4: events carry motive field; migration note in charter
 // ---------------------------------------------------------------------------
 
-describe('AC 4 — no resume/ac_coverage in RFC', () => {
-  it('does not include resume in RFC frontmatter', () => {
+describe('AC 4 — event structure and charter provenance', () => {
+  it('all journal events carry the motive field set to the feature slug', () => {
     const doc = buildFeatureYaml()
     createFeatureDir('test-feature', doc)
 
     runMigrate(['test-feature', '--delete'])
 
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    const fm = readRfcFrontmatter(path.join(rfcsDir, dirs[0]))
-
-    expect('resume' in fm).toBe(false)
-  })
-
-  it('does not include ac_coverage in RFC frontmatter', () => {
-    const doc = buildFeatureYaml()
-    createFeatureDir('test-feature', doc)
-
-    runMigrate(['test-feature', '--delete'])
-
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    const fm = readRfcFrontmatter(path.join(rfcsDir, dirs[0]))
-
-    expect('ac_coverage' in fm).toBe(false)
-  })
-
-  it('does NOT copy resume values into tasks.ac arrays', () => {
-    const doc = buildFeatureYaml()
-    createFeatureDir('test-feature', doc)
-
-    runMigrate(['test-feature', '--delete'])
-
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    const fm = readRfcFrontmatter(path.join(rfcsDir, dirs[0]))
-
-    // All tasks[] entries should have empty ac arrays (re-derived, not copied)
-    const tasks = fm.tasks as Array<{ ac: unknown[] }>
-    for (const t of tasks) {
-      expect(Array.isArray(t.ac)).toBe(true)
-      expect(t.ac.length).toBe(0)
+    const events = readJournalEvents(tmpDir)
+    for (const ev of events) {
+      expect(ev.motive).toBe('test-feature')
     }
+  })
+
+  it('charter contains migration note referencing ac_coverage (Q15 lossy history)', () => {
+    const doc = buildFeatureYaml()
+    createFeatureDir('test-feature', doc)
+
+    runMigrate(['test-feature', '--delete'])
+
+    const charter = readMotiveCharter(tmpDir, 'test-feature')
+    expect(charter).toContain('Migration note')
+    expect(charter).toContain('AC1')
+    expect(charter).toContain('AC2')
   })
 })
 
@@ -368,57 +336,53 @@ describe('AC 5 — skip invalid feature', () => {
     // Invalid feature reported
     expect(r.stderr).toMatch(/SKIP.*invalid-feature/)
 
-    // Valid feature was still migrated
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    expect(existsSync(rfcsDir), `rfcsDir should exist\nstdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(true)
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    expect(dirs.some((d: string) => d.includes('valid-feature'))).toBe(true)
+    // Valid feature was still migrated (motive dir created)
+    const motiveDir = path.join(tmpDir, '.groundwork', 'motives')
+    expect(existsSync(motiveDir), `motives dir should exist\nstdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(true)
+    const dirs = require('node:fs').readdirSync(motiveDir)
+    expect(dirs.some((d: string) => d === 'valid-feature')).toBe(true)
   })
 })
 
 // ---------------------------------------------------------------------------
-// AC 6: delete gating — negative test
+// AC 6: delete gating
 // ---------------------------------------------------------------------------
 
 describe('AC 6 — delete gating', () => {
-  it('does not delete source when rfc validate passes (happy path)', () => {
+  it('deletes source after successful migration when --delete is passed', () => {
     const doc = buildFeatureYaml()
     const featureDir = createFeatureDir('test-feature', doc)
 
     const r = runMigrate(['test-feature', '--delete'])
     expect(r.status, `stderr: ${r.stderr}`).toBe(0)
 
-    // Source deleted after successful validation
+    // Source deleted after successful migration
     expect(existsSync(featureDir)).toBe(false)
+    // Motive charter exists
+    const charter = readMotiveCharter(tmpDir, 'test-feature')
+    expect(charter).not.toBeNull()
   })
 
-  it('NEGATIVE: source directory survives when rfc validate fails', () => {
-    // Inject a stub rfc.mjs that always exits 1 via MIGRATE_RFC_CLI env var.
-    // This simulates the case where the RFC was written but validate rejects it.
+  it('NEGATIVE: source directory survives when motive already exists (idempotent skip)', () => {
     const doc = buildFeatureYaml()
     const featureDir = createFeatureDir('test-feature', doc)
 
-    // Write a stub rfc CLI that always fails
-    const stubRfcCli = path.join(tmpDir, 'stub-rfc.mjs')
-    writeFileSync(
-      stubRfcCli,
-      `#!/usr/bin/env node\nprocess.stderr.write('rfc: validate: stub: always fails\\n');\nprocess.exit(1);\n`,
-    )
+    // Pre-create the motive charter to trigger idempotent skip
+    const motiveDir = path.join(tmpDir, '.groundwork', 'motives', 'test-feature')
+    mkdirSync(motiveDir, { recursive: true })
+    writeFileSync(path.join(motiveDir, 'motive.md'), '# motive: test-feature\n')
 
-    const r = runMigrate(['test-feature', '--delete'], { MIGRATE_RFC_CLI: stubRfcCli })
+    const r = runMigrate(['test-feature', '--delete'])
 
-    // Should fail (validate failed)
+    // Should fail (charter already exists)
     expect(r.status, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(1)
     expect(r.stderr).toMatch(/SKIP.*test-feature/)
 
-    // RFC failed validation message
-    expect(r.stderr).toMatch(/RFC failed validation/)
-
     // Source must still be there — AC 6: never deleted when migration fails
-    expect(existsSync(featureDir), 'source must survive when rfc validate fails').toBe(true)
+    expect(existsSync(featureDir), 'source must survive when migration fails').toBe(true)
   })
 
-  it('dry-run never deletes source', () => {
+  it('dry-run never creates motive dir or deletes source', () => {
     const doc = buildFeatureYaml()
     const featureDir = createFeatureDir('test-feature', doc)
 
@@ -428,18 +392,18 @@ describe('AC 6 — delete gating', () => {
 
     // Source must still exist
     expect(existsSync(featureDir)).toBe(true)
-    // RFC dir must NOT have been created (dry-run)
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    expect(existsSync(rfcsDir)).toBe(false)
+    // Motive dir must NOT have been created (dry-run)
+    const motiveDir = path.join(tmpDir, '.groundwork', 'motives')
+    expect(existsSync(motiveDir)).toBe(false)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Additional: multiple features processed independently
+// Multi-feature isolation
 // ---------------------------------------------------------------------------
 
 describe('multi-feature isolation', () => {
-  it('processes multiple features independently', () => {
+  it('processes multiple features independently into separate motive dirs', () => {
     const doc1 = buildFeatureYaml({ slug: 'feature-one', id: 'feat_feature-one' })
     const doc2 = buildFeatureYaml({ slug: 'feature-two', id: 'feat_feature-two' })
     createFeatureDir('feature-one', doc1)
@@ -448,8 +412,8 @@ describe('multi-feature isolation', () => {
     const r = runMigrate(['--delete'])
     expect(r.status, `stderr: ${r.stderr}`).toBe(0)
 
-    const rfcsDir = path.join(tmpDir, '.groundwork', 'rfcs')
-    const dirs = require('node:fs').readdirSync(rfcsDir)
-    expect(dirs.filter((d: string) => existsSync(path.join(rfcsDir, d, 'rfc.md'))).length).toBe(2)
+    const motiveDir = path.join(tmpDir, '.groundwork', 'motives')
+    expect(existsSync(path.join(motiveDir, 'feature-one', 'motive.md'))).toBe(true)
+    expect(existsSync(path.join(motiveDir, 'feature-two', 'motive.md'))).toBe(true)
   })
 })

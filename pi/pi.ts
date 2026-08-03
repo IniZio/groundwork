@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getBootstrapForAgent } from "../src/lib/skills.js";
-import { readGoal, goalReminder, injectGoalAndBootstrap } from "../src/lib/goal.js";
 import { registerGroundworkProviders } from "../src/lib/provider-registry.js";
 import { createGroundworkRuntime } from "../src/runtime.js";
 
@@ -167,7 +166,7 @@ export default function (pi: ExtensionAPI) {
 		return { systemPrompt: newPrompt };
 	});
 
-	// Goal reminders + subagent bootstrap injection via user-message parts.
+	// Subagent bootstrap injection via user-message parts.
 	// For subagents this supplements their agent .md system prompt.
 	pi.on("context", (event, ctx) => {
 		const messages = (event as any).messages;
@@ -181,23 +180,22 @@ export default function (pi: ExtensionAPI) {
 		// For subagents: inject full bootstrap into user messages.
 		// For main session: inject an explicit delegation command into the LAST
 		// user message so models that ignore system prompts still see it.
-		let bootstrap: string | null = null;
 		if (isSubagent()) {
-			bootstrap = getBootstrapForAgent(agent);
-		}
-
-		let goalReminderText: string | null = null;
-		if (sessionID) {
-			const goal = readGoal(directory, sessionID);
-			if (goal?.status === "active") {
-				goalReminderText = goalReminder(goal);
+			const bootstrap = getBootstrapForAgent(agent);
+			if (bootstrap) {
+				type ChatPart = { type?: string; text?: string; synthetic?: boolean };
+				type ChatMsg = { role?: string; content?: ChatPart[]; info?: { role?: string }; parts?: ChatPart[] };
+				const getRole = (m: ChatMsg) => m.role ?? m.info?.role;
+				const getContent = (m: ChatMsg | undefined) => m?.content ?? m?.parts;
+				const firstUser = (messages as ChatMsg[]).find((m) => getRole(m) === "user");
+				const firstContent = getContent(firstUser);
+				if (Array.isArray(firstContent) && firstContent.length > 0) {
+					if (!firstContent.some((p) => p.type === "text" && (p.text ?? "").includes("EXTREMELY_IMPORTANT"))) {
+						firstContent.unshift({ type: "text", text: bootstrap, synthetic: true });
+					}
+				}
 			}
 		}
-
-		injectGoalAndBootstrap(messages, {
-			bootstrap,
-			goalReminder: goalReminderText,
-		});
 
 		// Extra nudge for main session: append explicit delegation instruction
 		// to the last user message. Some fast models (e.g. neuralwatt/Qwen/Qwen3.5-397B-A17B-FP8)

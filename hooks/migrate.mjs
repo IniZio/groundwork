@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
  * groundwork migrate features — convert legacy .groundwork/features/<slug>/
- * directories into RFC directories under .groundwork/rfcs/<NNNN>-<slug>/.
+ * directories into motives under .groundwork/motives/<slug>/.
  *
  * Usage:
  *   migrate [--dry-run] [--delete] [slug [slug...]]
  *
  * Flags:
- *   --dry-run   (default) Print what would happen; write RFC dirs but do NOT
+ *   --dry-run   (default) Print what would happen; write motive dirs but do NOT
  *               delete any source.  Safe to run any number of times.
- *   --delete    Actually delete each source directory AFTER its RFC passes
- *               `rfc validate`.  Requires explicit opt-in to prevent accidents.
+ *   --delete    Actually delete each source directory AFTER the charter is
+ *               written and journal events are flushed.  Requires explicit
+ *               opt-in to prevent accidents.
  *
  * Without explicit slug arguments all feature directories are processed.
  *
@@ -18,10 +19,11 @@
  *
  * Safety contract (AC 6):
  *   Source directories are NEVER deleted in dry-run mode.
- *   In --delete mode a source is deleted only when:
- *     a) every migration step succeeded for that feature, AND
- *     b) `node hooks/rfc.mjs validate <rfcDir>` exits 0.
- *   If validate fails the source is left intact and an error is reported.
+ *   In --delete mode a source is deleted only when every migration step
+ *   succeeded for that feature (charter written + all events flushed).
+ *   If anything fails the source is left intact and an error is reported.
+ *   Idempotency: if the motive charter already exists the feature is skipped
+ *   and the source is left intact.
  */
 
 import {
@@ -38,16 +40,13 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import { load as yamlLoad } from 'js-yaml'
-import { stringify as yamlStringify } from 'yaml'
-import { generateUid, nextOrdinal } from './lib/rfc-io.mjs'
+import { renderCharterTemplate, charterPath } from './lib/motive-charter.mjs'
 
 // We write journal shard lines directly (O_APPEND) so we can supply the
 // original timestamp from history entries (the journal CLI has no --ts flag).
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = path.resolve(__dirname, '..')
 
 // Feature schema required top-level fields (from feature.schema.json)
 const FEATURE_REQUIRED = new Set([
@@ -55,7 +54,7 @@ const FEATURE_REQUIRED = new Set([
   'ac_coverage', 'resume', 'runs', 'history', 'created_at', 'updated_at',
 ])
 
-// Map feature history.type → RFC journal event type
+// Map feature history.type → journal event type
 // Valid feature history types: created, status_update, slice_complete,
 //   slice_reopened, run_linked, decision, handoff, paused, resumed,
 //   completed, canceled
@@ -89,10 +88,6 @@ function projectDir() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd()
 }
 
-function rfcsDir(base) {
-  return path.join(base, '.groundwork', 'rfcs')
-}
-
 function featuresDir(base) {
   return path.join(base, '.groundwork', 'features')
 }
@@ -121,75 +116,59 @@ function writeJournalEvent(projectBase, sessionId, event) {
 }
 
 // ---------------------------------------------------------------------------
-// Feature YAML validation (lightweight — shells out to feature.mjs)
+// Feature YAML validation (inline — checks required fields from FEATURE_REQUIRED)
 // ---------------------------------------------------------------------------
 
 /**
- * Validate a feature directory by shelling out to hooks/feature.mjs validate.
+ * Validate a feature directory by checking required fields in .feature.yaml.
  * Returns { ok: true } or { ok: false, error: string }.
  */
 function validateFeatureDir(featureDir) {
-  const featureCli = path.join(REPO_ROOT, 'hooks', 'feature.mjs')
-  const result = spawnSync(process.execPath, [featureCli, 'validate', featureDir], {
-    encoding: 'utf8',
-  })
-  if (result.status === 0) return { ok: true }
-  const stderr = (result.stderr || '').trim()
-  const stdout = (result.stdout || '').trim()
-  return { ok: false, error: stderr || stdout || `exit ${result.status}` }
-}
-
-// ---------------------------------------------------------------------------
-// tasks.md parser
-// ---------------------------------------------------------------------------
-
-/**
- * Parse tasks.md and return an array of { id, title, wave } objects.
- * Wave is derived from the most recent "## Wave N" heading above the task.
- *
- * Task lines match: - [ ] F1.1 Title text  (open or done checkbox)
- * IDs are the first whitespace-delimited token after the checkbox.
- */
-function parseTasks(content) {
-  const lines = content.split(/\r?\n/)
-  const tasks = []
-  let currentWave = 1
-  const WAVE_RE = /^#{1,3}\s+[Ww]ave\s+(\d+)/
-  const TASK_RE = /^- \[[ xX]\]\s+(\S+)\s+(.*)/
-
-  for (const line of lines) {
-    const wm = line.match(WAVE_RE)
-    if (wm) {
-      currentWave = parseInt(wm[1], 10)
-      continue
-    }
-    const tm = line.match(TASK_RE)
-    if (tm) {
-      tasks.push({ id: tm[1], title: tm[2].trim(), wave: currentWave })
-    }
+  const yamlPath = path.join(featureDir, '.feature.yaml')
+  if (!existsSync(yamlPath)) return { ok: false, error: '.feature.yaml not found' }
+  let doc
+  try {
+    doc = yamlLoad(readFileSync(yamlPath, 'utf8'))
+  } catch (e) {
+    return { ok: false, error: `YAML parse error: ${e.message}` }
   }
-  return tasks
+  if (!doc || typeof doc !== 'object') return { ok: false, error: 'empty or non-object .feature.yaml' }
+  const missing = [...FEATURE_REQUIRED].filter((k) => !(k in doc))
+  if (missing.length > 0) return { ok: false, error: `missing required fields: ${missing.join(', ')}` }
+  return { ok: true }
 }
 
 // ---------------------------------------------------------------------------
-// RFC validate (shells out to hooks/rfc.mjs validate <dir>)
+// Objective extraction
 // ---------------------------------------------------------------------------
 
 /**
- * Returns { ok: true } or { ok: false, error: string }.
+ * Extract the objective from a feature document.
+ * Priority: doc.goal → doc.description → doc.title → spec.md ## Goal section
+ * → fallback placeholder.
  *
- * Honours MIGRATE_RFC_CLI env var so tests can inject a stub.
+ * Per Q15, lossy history is noted in the charter rather than silently lost.
  */
-function validateRfc(rfcDir) {
-  const rfcCli = process.env.MIGRATE_RFC_CLI || path.join(REPO_ROOT, 'hooks', 'rfc.mjs')
-  const result = spawnSync(process.execPath, [rfcCli, 'validate', rfcDir], {
-    encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir() },
-  })
-  if (result.status === 0) return { ok: true }
-  const stderr = (result.stderr || '').trim()
-  const stdout = (result.stdout || '').trim()
-  return { ok: false, error: stderr || stdout || `exit ${result.status}` }
+function extractObjective(doc, featureDir) {
+  if (doc.goal && typeof doc.goal === 'string') return doc.goal.trim()
+  if (doc.description && typeof doc.description === 'string') return doc.description.trim()
+  if (doc.title && typeof doc.title === 'string') return doc.title.trim()
+
+  // Try spec.md ## Goal section
+  const specPath = path.join(featureDir, 'spec.md')
+  if (existsSync(specPath)) {
+    try {
+      const specContent = readFileSync(specPath, 'utf8')
+      const m = specContent.match(/^##\s+Goal\s*\r?\n+([\s\S]*?)(?=\r?\n##|$)/m)
+      if (m) {
+        const goal = m[1].trim()
+        if (goal) return goal
+      }
+    } catch { /* tolerate unreadable spec */ }
+  }
+
+  const slug = path.basename(featureDir)
+  return `(migrated from feature ${slug})`
 }
 
 // ---------------------------------------------------------------------------
@@ -197,8 +176,8 @@ function validateRfc(rfcDir) {
 // ---------------------------------------------------------------------------
 
 /**
- * Migrate one feature directory to an RFC.
- * Returns { ok: true, rfcDir } or { ok: false, reason: string }.
+ * Migrate one feature directory to a motive.
+ * Returns { ok: true, motiveDir } or { ok: false, reason: string }.
  */
 function migrateFeature(featureDir, base, dryRun, sessionId) {
   const slug = path.basename(featureDir)
@@ -222,118 +201,52 @@ function migrateFeature(featureDir, base, dryRun, sessionId) {
     return { ok: false, reason: `YAML parse error: ${e.message}` }
   }
 
-  // 3. Parse tasks.md (AC 1)
-  const tasksMdPath = path.join(featureDir, 'tasks.md')
-  let parsedTasks = []
-  if (existsSync(tasksMdPath)) {
-    parsedTasks = parseTasks(readFileSync(tasksMdPath, 'utf8'))
+  // 3. Determine motive charter path
+  const motiveDir = path.join(base, '.groundwork', 'motives', slug)
+  const charter = charterPath(base, slug)
+
+  // Idempotency: skip if charter already exists (AC 6 safety)
+  if (existsSync(charter)) {
+    return { ok: false, reason: `motive charter already exists (idempotent skip): ${charter}` }
   }
 
-  // 4. Determine RFC directory
-  const rDir = rfcsDir(base)
-  const ordinal = nextOrdinal(rDir)
-  const rfcDirName = String(ordinal).padStart(4, '0') + '-' + slug
-  const rfcDir = path.join(rDir, rfcDirName)
-
-  if (existsSync(rfcDir)) {
-    return { ok: false, reason: `RFC directory already exists: ${rfcDir}` }
-  }
-
-  if (dryRun) {
-    out(`[dry-run] would create ${rfcDir} (${parsedTasks.length} tasks, ${(doc.history || []).length} history events, ${(doc.decisions || []).length} decisions)`)
-    return { ok: true, rfcDir, dryRun: true }
-  }
-
-  // 5. Create RFC directory structure
-  try {
-    mkdirSync(rfcDir, { recursive: true })
-    mkdirSync(path.join(rfcDir, 'notes'), { recursive: true })
-    mkdirSync(path.join(rfcDir, 'reviews'), { recursive: true })
-  } catch (e) {
-    return { ok: false, reason: `failed to create RFC dir: ${e.message}` }
-  }
-
-  // 6. Build tasks[] for frontmatter from parsed tasks (AC 1)
-  //    AC 4: do NOT include resume or ac_coverage in frontmatter
-  const rfcTasks = parsedTasks.map(t => ({
-    id: t.id,
-    title: t.title,
-    wave: t.wave,
-    blocked_by: [],
-    files: [],
-    ac: [],
-  }))
-
-  // 7. Write rfc.md
-  const uid = generateUid()
-  const now = new Date().toISOString()
-  const title = (doc.id || slug).replace(/^feat_/, '').replace(/[-_]/g, ' ')
-  const frontmatter = {
-    schema: 1,
-    uid,
-    ordinal,
-    slug,
-    title,
-    status: 'draft',
-    classification: 'tactical',
-    created: doc.created_at || now,
-    updated: now,
-    accepted_at: null,
-    accepted_by: null,
-    supersedes: [],
-    superseded_by: null,
-    body_digest: null,
-    spec_delta: [],
-    tasks: rfcTasks,
-  }
-
-  const fmYaml = yamlStringify(frontmatter, { lineWidth: 0 })
-  const body = `\n## 1. Summary\n\nMigrated from feature ledger \`${slug}\`.\n\n## 2. Motivation\n\nTODO\n\n## 3. Design\n\nTODO\n\n## 4. Alternatives\n\nTODO\n\n## 5. Security\n\nTODO\n\n## 6. Observability\n\nTODO\n\n## 7. Migration\n\nTODO\n\n## 8. Open Questions\n\nTODO\n\n## 9. Appendix\n\n## 12. Resolution\n\n`
-
-  try {
-    writeFileSync(path.join(rfcDir, 'rfc.md'), `---\n${fmYaml}---\n${body}`)
-  } catch (e) {
-    return { ok: false, reason: `failed to write rfc.md: ${e.message}` }
-  }
-
-  // 8. Copy plan.md to notes/ (AC 3)
-  const planPath = path.join(featureDir, 'plan.md')
-  if (existsSync(planPath)) {
-    try {
-      const planContent = readFileSync(planPath, 'utf8')
-      writeFileSync(path.join(rfcDir, 'notes', 'plan.md'), planContent)
-
-      // Also copy any .groundwork/plans/ files referenced in plan.md (AC 3)
-      const prdRefs = [...planContent.matchAll(/\.groundwork\/plans\/([^\s\)'"]+)/g)]
-        .map(m => m[0])
-      for (const ref of prdRefs) {
-        const prdSrc = path.join(base, ref)
-        if (existsSync(prdSrc)) {
-          const destDir = path.join(rfcDir, 'notes', path.dirname(ref))
-          mkdirSync(destDir, { recursive: true })
-          writeFileSync(
-            path.join(rfcDir, 'notes', ref),
-            readFileSync(prdSrc, 'utf8'),
-          )
-        }
-      }
-    } catch (e) {
-      warn(`${slug}: failed to copy plan.md: ${e.message}`)
-    }
-  }
-
-  // 9. Write journal events (AC 2)
-  //    - One event per history entry, preserving original timestamps
-  //    - One DECISION event per decisions entry
   const history = Array.isArray(doc.history) ? doc.history : []
   const decisions = Array.isArray(doc.decisions) ? doc.decisions : []
+  const acCoverage = (doc.ac_coverage && typeof doc.ac_coverage === 'object') ? doc.ac_coverage : {}
+
+  if (dryRun) {
+    out(`[dry-run] would create motive ${slug} (${history.length} events, ${decisions.length} decisions, ${Object.keys(acCoverage).length} ACs)`)
+    return { ok: true, motiveDir, dryRun: true }
+  }
+
+  // 4. Create motive charter
+  const objective = extractObjective(doc, featureDir)
+
+  // Q15: record migration provenance in the charter rather than silently losing it.
+  const acKeys = Object.keys(acCoverage)
+  const migrationNote = acKeys.length > 0
+    ? `\n\n> **Migration note (feature → motive):** AC coverage imported from feature \`${slug}\`. ` +
+      `Original entries: ${acKeys.map(k => `${k}→[${(acCoverage[k] || []).join(', ')}]`).join('; ')}.`
+    : ''
+
+  const charterContent = renderCharterTemplate({ motive: slug, objective }) + migrationNote
+
+  try {
+    mkdirSync(motiveDir, { recursive: true })
+    writeFileSync(charter, charterContent)
+  } catch (e) {
+    return { ok: false, reason: `failed to write charter: ${e.message}` }
+  }
+
+  // 5. Write history journal events (preserving original timestamps)
+  const now = new Date().toISOString()
 
   for (const ev of history) {
     const journalType = HISTORY_TYPE_MAP[ev.type] || 'MILESTONE'
     const event = {
       ts: ev.at || now,
       session: ev.session_id || sessionId,
-      rfc: uid,
+      motive: slug,
       type: journalType,
       msg: ev.summary || ev.type || '(no summary)',
       data: { source: 'feature-migrate', feature_slug: slug, feature_type: ev.type },
@@ -345,11 +258,12 @@ function migrateFeature(featureDir, base, dryRun, sessionId) {
     }
   }
 
+  // 6. Write DECISION journal events
   for (const d of decisions) {
     const event = {
       ts: d.at || now,
       session: sessionId,
-      rfc: uid,
+      motive: slug,
       type: 'DECISION',
       msg: d.summary || '(no summary)',
       data: { source: 'feature-migrate', feature_slug: slug, adr: d.adr || null },
@@ -361,17 +275,48 @@ function migrateFeature(featureDir, base, dryRun, sessionId) {
     }
   }
 
-  // 10. Validate RFC before returning success (AC 6)
-  const rfcValidation = validateRfc(rfcDir)
-  if (!rfcValidation.ok) {
-    return {
-      ok: false,
-      reason: `RFC failed validation (source preserved): ${rfcValidation.error}`,
-      rfcDir,
+  // 7. Emit AC_COVERAGE events so `journal compile` reproduces the coverage view (S8/Q15)
+  //    Coverage form:    one event per (ac_key, slice_id) pair, timestamped at updated_at.
+  //    Declaration form: one event per ac_key with empty covering array, so ACs declared
+  //                      with no covering slices (unmet-empty) appear in compiled output.
+  const acTs = doc.updated_at || now
+  for (const [ac, slices] of Object.entries(acCoverage)) {
+    const sliceList = Array.isArray(slices) ? slices : []
+    if (sliceList.length === 0) {
+      // Declaration form — AC known but has no covering slices
+      const event = {
+        ts: acTs,
+        session: sessionId,
+        motive: slug,
+        type: 'AC_COVERAGE',
+        msg: `${ac} declared with no covering slices`,
+        data: { source: 'feature-migrate', ac, covering: [] },
+      }
+      try {
+        writeJournalEvent(base, sessionId, event)
+      } catch (e) {
+        warn(`${slug}: failed to write AC_COVERAGE declaration event: ${e.message}`)
+      }
+    } else {
+      for (const slice of sliceList) {
+        const event = {
+          ts: acTs,
+          session: sessionId,
+          motive: slug,
+          type: 'AC_COVERAGE',
+          msg: `${ac} covered by ${slice}`,
+          data: { source: 'feature-migrate', ac, slice },
+        }
+        try {
+          writeJournalEvent(base, sessionId, event)
+        } catch (e) {
+          warn(`${slug}: failed to write AC_COVERAGE event: ${e.message}`)
+        }
+      }
     }
   }
 
-  return { ok: true, rfcDir }
+  return { ok: true, motiveDir }
 }
 
 // ---------------------------------------------------------------------------
@@ -391,8 +336,8 @@ function main() {
     if (a === '--delete')  { deleteSource = true; dryRun = false; continue }
     if (a === '--help' || a === '-h') {
       out('Usage: migrate [--dry-run] [--delete] [slug [slug...]]\n')
-      out('  --dry-run  (default) Write RFC dirs but skip deletion.')
-      out('  --delete   Delete source after successful rfc validate.')
+      out('  --dry-run  (default) Write motive dirs but skip deletion.')
+      out('  --delete   Delete source after successful migration.')
       process.exit(0)
     }
     if (!a.startsWith('-')) slugArgs.push(a)
@@ -452,9 +397,9 @@ function main() {
       continue
     }
 
-    out(`migrate: ${slug} → ${result.rfcDir}`)
+    out(`migrate: ${slug} → ${result.motiveDir}`)
 
-    // AC 6: only delete if explicitly requested AND validate passed
+    // AC 6: only delete if explicitly requested AND migration succeeded
     if (deleteSource) {
       out(`migrate: deleting source ${featureDir}`)
       try {

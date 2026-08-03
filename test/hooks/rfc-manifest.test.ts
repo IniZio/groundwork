@@ -188,8 +188,8 @@ describe("generateManifestBlock", () => {
 		const block = generateManifestBlock(rfcDir)!;
 		const lines = block.split("\n");
 		const nums = lines
-			.filter((l) => l.startsWith("| ") && !l.startsWith("| §"))
-			.map((l) => parseInt(l.split("|")[1].trim()));
+			.filter((l: string) => l.startsWith("| ") && !l.startsWith("| §"))
+			.map((l: string) => parseInt(l.split("|")[1].trim()));
 		expect(nums).toEqual([1, 2, 3]);
 	});
 });
@@ -418,7 +418,7 @@ describe("rfc new manifest scaffold", () => {
 		const block = extractManifestBlock(content);
 		expect(block).not.toBeNull();
 		// Should have at least one data row (§§1-12)
-		expect(block!.split("\n").filter((l) => /^\| \d/.test(l)).length).toBeGreaterThanOrEqual(12);
+		expect(block!.split("\n").filter((l: string) => /^\| \d/.test(l)).length).toBeGreaterThanOrEqual(12);
 	});
 
 	it("rfc validate exits 0 immediately after rfc new (manifest is fresh)", () => {
@@ -444,7 +444,7 @@ describe("_intro.md exclusion from manifest — correctness", () => {
 		const block = generateManifestBlock(rfcDir)!;
 		expect(block).not.toContain("_intro");
 		// Exactly one data row — §1 for 01-summary.md only
-		const dataRows = block.split("\n").filter((l) => /^\| \d/.test(l));
+		const dataRows = block.split("\n").filter((l: string) => /^\| \d/.test(l));
 		expect(dataRows).toHaveLength(1);
 		expect(dataRows[0]).toMatch(/^\| 1 \|/);
 	});
@@ -460,7 +460,7 @@ describe("_intro.md exclusion from manifest — correctness", () => {
 		const block = generateManifestBlock(rfcDir)!;
 		expect(block).not.toContain("_intro");
 		// Exactly three data rows: §1 (dir aggregate), §1.1, §1.2 — NOT four
-		const dataRows = block.split("\n").filter((l) => /^\| \d/.test(l));
+		const dataRows = block.split("\n").filter((l: string) => /^\| \d/.test(l));
 		expect(dataRows).toHaveLength(3);
 		expect(dataRows[0]).toMatch(/^\| 1 \|.*sections\/01-overview\//);
 		expect(dataRows[1]).toMatch(/^\| 1\.1 \|/);

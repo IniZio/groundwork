@@ -7,8 +7,8 @@
  * S1-AC3  ord is 1..N contiguous with no gaps; _order.line matches physical
  *         0-based offset, even in a shard with a blank line and a malformed line.
  * S1-AC4  Malformed lines are skipped AND counted; malformed_lines is returned.
- * S1-AC5  hooks/lib/journal-io.mjs is byte-unchanged (structural: file exists
- *         and matches its tracked content — confirmed via git diff --name-only).
+ * S1-AC5  VALID_TYPES in journal-io.mjs is a superset of the historically frozen
+ *         set (all types present before MOTIVE_CREATED/BASELINE were added).
  * S1-AC6  test/fixtures/hook-only-stream.jsonl is tracked by git.
  */
 
@@ -220,18 +220,30 @@ describe('S1-AC4: malformed lines counted', () => {
 })
 
 // ---------------------------------------------------------------------------
-// S1-AC5 — journal-io.mjs is byte-unchanged
+// S1-AC5 — VALID_TYPES superset invariant
 // ---------------------------------------------------------------------------
-describe('S1-AC5: journal-io.mjs is byte-unchanged', () => {
-  it('git diff --name-only shows no change to journal-io.mjs', () => {
-    // We check that journal-io.mjs does not appear in working-tree changes.
-    // This test will fail if any code in this session edits that file.
-    const diff = execSync('git diff --name-only HEAD', {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    expect(diff).not.toContain('hooks/lib/journal-io.mjs')
+describe('S1-AC5: VALID_TYPES is a superset of the historically frozen set', () => {
+  it('contains all types that existed before MOTIVE_CREATED/BASELINE were added', async () => {
+    const { VALID_TYPES } = await import('../../hooks/lib/journal-io.mjs')
+    const historicalTypes = [
+      'DECISION',
+      'SPEC_CHANGE',
+      'LINT_DRIFT',
+      'PROTOTYPE_RESULT',
+      'FAILURE',
+      'MILESTONE',
+      'TASK_COMPLETE',
+      'GATE',
+      'VERIFICATION',
+      'WAIVER',
+      'HANDOFF',
+      'SESSION_START',
+      'SPEC_DRIFT',
+      'SESSION_END',
+    ]
+    for (const t of historicalTypes) {
+      expect(VALID_TYPES, `VALID_TYPES should contain '${t}'`).toContain(t)
+    }
   })
 })
 

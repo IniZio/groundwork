@@ -58,7 +58,7 @@ function writeConcept(
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "README.md"),
-    `---\nid: "${id}"\ntype: concept\ntitle: "Test Concept"\nsummary: "A one-sentence summary."\nparent: null\norigin_rfc: "R-20260726-K4M2QX"\n---\n\n# Test Concept\n`,
+    `---\nid: "${id}"\ntype: concept\ntitle: "Test Concept"\nsummary: "A one-sentence summary."\nparent: null\norigin_decision_ref: "test-motive#D-1"\n---\n\n# Test Concept\n`,
   );
 }
 
@@ -95,7 +95,7 @@ function writeRequirementsDoc(relDir: string, sections: string[]): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "requirements.md"),
-    `---\nconcept: C-ROOT\norigin_rfc: R-20260726-K4M2QX\n---\n\n${sections.join("\n")}`,
+    `---\nconcept: C-ROOT\norigin_decision_ref: test-motive#D-1\n---\n\n${sections.join("\n")}`,
   );
 }
 

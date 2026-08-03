@@ -140,7 +140,7 @@ const MIN_CONCEPT: Record<string, string | null> = {
   title: "Test Concept",
   summary: "Test concept.",
   parent: null,
-  origin_rfc: "R-FIXTURE",
+  origin_decision_ref: "test-motive#D-1",
 };
 
 // ─── S0: spec-io / schema-io API ─────────────────────────────────────────────
@@ -158,24 +158,11 @@ describe("S0: spec-io schema and index API", () => {
     expect(r.stdout.trim()).toBe("OK");
   });
 
-  it("S0-AC2: loadSchema('rfc-manifest') compiles without error and returns a validate function", () => {
-    const r = runEsmScript(`
-      import { loadSchema } from '${SCHEMA_IO}';
-      const v = loadSchema('rfc-manifest');
-      if (typeof v !== 'function') throw new Error('not a function: ' + typeof v);
-      process.stdout.write('OK\\n');
-    `);
-    expect(r.stderr, `ESM error: ${r.stderr}`).toBe("");
-    expect(r.code).toBe(0);
-    expect(r.stdout.trim()).toBe("OK");
-  });
-
-  it("S0-AC3: buildIndexData returns exactly the 12 known node IDs with and without spec.yaml files", () => {
+  it("S0-AC3: buildIndexData returns exactly the 11 known node IDs with and without spec.yaml files", () => {
     // Stringified here so we can embed them in the ESM script without a file round-trip.
     const expectedJson = JSON.stringify(
       [
         "ARTIFACT-R-001",
-        "ARTIFACT-R-002",
         "ARTIFACT-R-003",
         "C-ARTIFACT",
         "C-ENFORCEMENT",
@@ -248,7 +235,7 @@ describe("S0: spec-io schema and index API", () => {
         mkdirSync(conceptDir, { recursive: true });
 
         writeFileSync(join(conceptDir, 'README.md'),
-          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC summary.\\norigin_rfc: R-FIXTURE\\n---\\n\\n# TC\\n');
+          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC summary.\\norigin_decision_ref: test-motive#D-1\\n---\\n\\n# TC\\n');
         writeFileSync(join(conceptDir, 'overview.md'),
           '---\\ntype: overview\\nid: V-TC-OVERVIEW\\n---\\n\\n# TC Overview\\n');
 
@@ -295,11 +282,11 @@ describe("S0: spec-io schema and index API", () => {
         mkdirSync(conceptDir, { recursive: true });
 
         writeFileSync(join(conceptDir, 'README.md'),
-          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC summary.\\norigin_rfc: R-FIXTURE\\n---\\n\\n# TC\\n');
+          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC summary.\\norigin_decision_ref: test-motive#D-1\\n---\\n\\n# TC\\n');
 
         // View file with indexable concept frontmatter — would normally become a node
         writeFileSync(join(conceptDir, 'flows.md'),
-          '---\\nid: C-TC-FLOWS\\ntype: concept\\ntitle: TC Flows\\nsummary: TC flows view.\\norigin_rfc: R-FIXTURE\\n---\\n\\n# TC Flows\\n');
+          '---\\nid: C-TC-FLOWS\\ntype: concept\\ntitle: TC Flows\\nsummary: TC flows view.\\norigin_decision_ref: test-motive#D-1\\n---\\n\\n# TC Flows\\n');
 
         // Control (no spec.yaml): flows.md IS indexed as its own node
         const { nodes: nodesWithout } = buildIndexData(tmp);
@@ -403,7 +390,7 @@ describe("S0: spec-io schema and index API", () => {
         const specYamlPath = join(conceptDir, 'spec.yaml');
 
         writeFileSync(readmePath,
-          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC.\\norigin_rfc: R-FIXTURE\\n---\\n\\n# TC\\n');
+          '---\\nid: C-TC\\ntype: concept\\ntitle: TC\\nsummary: TC.\\norigin_decision_ref: test-motive#D-1\\n---\\n\\n# TC\\n');
         writeFileSync(specYamlPath,
           'id: C-TC\\ntitle: TC\\nsummary: TC.\\nstatus: draft\\nviews: []\\n');
 

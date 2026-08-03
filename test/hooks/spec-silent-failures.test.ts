@@ -51,7 +51,7 @@ function makeReadme(id: string, title: string): string {
     'type: concept',
     `title: ${title}`,
     `summary: ${title} concept summary`,
-    'origin_rfc: RFC-TEST-001',
+    'origin_decision_ref: test-motive#D-1',
     'status: draft',
     '---',
     '',
@@ -66,7 +66,7 @@ function makeConstraintsMd(conceptId: string, reqSuffix: string = 'R-001', title
   return [
     '---',
     `concept: ${conceptId}`,
-    'origin_rfc: RFC-TEST-001',
+    'origin_decision_ref: test-motive#D-1',
     '---',
     '',
     `## ${reqId} — ${title} {#${anchor}}`,
@@ -191,7 +191,7 @@ describe('Bug 2 — constraints.md not indexed / deprecated_requirements_filenam
     const reqMd = [
       '---',
       'concept: C-FEATUREB',
-      'origin_rfc: RFC-TEST-001',
+      'origin_decision_ref: test-motive#D-1',
       '---',
       '',
       '### C-FEATUREB-R-001 — Example {#c-featureb-r-001}',
@@ -360,7 +360,7 @@ describe('Bug 3 — linter verification-unparseable violation', () => {
     const badDoc = [
       '---',
       'concept: C-LINTTEST',
-      'origin_rfc: RFC-TEST-001',
+      'origin_decision_ref: test-motive#D-1',
       '---',
       '',
       '## C-LINTTEST-R-001 — Bad annotation {#c-linttest-r-001}',
@@ -392,7 +392,7 @@ describe('Bug 3 — linter verification-unparseable violation', () => {
     const noAnnDoc = [
       '---',
       'concept: C-NOANN',
-      'origin_rfc: RFC-TEST-001',
+      'origin_decision_ref: test-motive#D-1',
       '---',
       '',
       '## C-NOANN-R-001 — No annotation {#c-noann-r-001}',

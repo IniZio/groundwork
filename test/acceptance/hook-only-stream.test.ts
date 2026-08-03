@@ -5,9 +5,9 @@
  * project. No `journal append` call is made anywhere in this test.
  *
  * AC coverage:
- *  S6-AC1 — shard contains all five mandate types: TASK_COMPLETE, GATE, SESSION_END, SPEC_DRIFT, FAILURE
+ *  S6-AC1 — shard contains all four mandate types: TASK_COMPLETE, GATE, SESSION_END, FAILURE
  *  S6-AC2 — zero events carry source:"cli:journal"; every mandate-type event has source starting "hook:"
- *  S6-AC3 — `journal show --motive <id>` returns all five event types
+ *  S6-AC3 — `journal show --motive <id>` returns all four event types
  *  S6-AC4 — every event carries non-empty `motive`; no `rfc` field present (motive-only schema)
  *  S6-AC5 — shard is saved as test/fixtures/hook-only-stream.jsonl (Step-3 compiler fixture)
  *  S6-AC6 — all lines parse as JSON; tested with ≥2 hooks spawned in parallel (O_APPEND exercise)
@@ -385,7 +385,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('S6 hook-only stream integration', () => {
-  const MANDATE_TYPES = ['TASK_COMPLETE', 'GATE', 'SESSION_END', 'SPEC_DRIFT', 'FAILURE'] as const
+  const MANDATE_TYPES = ['TASK_COMPLETE', 'GATE', 'SESSION_END', 'FAILURE'] as const
 
   test('S6-AC6: all journal lines parse as valid JSON (no partial-line corruption)', () => {
     // readShard() uses JSON.parse on every line — if any throws, events will be empty or throw
@@ -397,7 +397,7 @@ describe('S6 hook-only stream integration', () => {
     }
   })
 
-  test('S6-AC1: shard contains all five mandate event types', () => {
+  test('S6-AC1: shard contains all four mandate event types', () => {
     const types = new Set(events.map((e: any) => e.type))
     for (const t of MANDATE_TYPES) {
       expect(types, `missing type: ${t}`).toContain(t)
@@ -422,7 +422,7 @@ describe('S6 hook-only stream integration', () => {
     }
   })
 
-  test('S6-AC3: journal show --motive returns all five event types', () => {
+  test('S6-AC3: journal show --motive returns all four event types', () => {
     const r = spawnSync(
       'node',
       [JOURNAL_CLI, 'show', '--motive', MOTIVE, '--since', '9999d', '--last', '9999'],

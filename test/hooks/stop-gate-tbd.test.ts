@@ -225,3 +225,67 @@ describe("S7-AC4: missing or corrupt charter is a silent no-op", () => {
 		expect(decision.reason).not.toContain("Open items:");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// S13: Stop-gate accepts motive / motive_ref as plan-artifact alternative
+// ---------------------------------------------------------------------------
+
+describe("S13: motive/motive_ref satisfies the plan pre-gate", () => {
+	// A non-trivial run: >=3 impl slices, no brief triggering trivialEscape,
+	// advisor APPROVE so the only blocker can be the plan pre-gate.
+	const nonTrivialBase = {
+		active: true,
+		session_id: "sess-tbd",
+		reinforcements: 0,
+		gate: { advisor: "APPROVE" },
+		slices: [
+			{ id: "S1", kind: "impl", status: "complete" },
+			{ id: "S2", kind: "impl", status: "complete" },
+			{ id: "S3", kind: "impl", status: "complete" },
+		],
+	};
+
+	it("motive_ref whose charter exists on disk satisfies the gate", () => {
+		writeCharter("plugin-cleanup", 0);
+		const ledger = { ...nonTrivialBase, motive_ref: "plugin-cleanup" };
+		const decision = runHook(ledger);
+		expect(decision.reason ?? "").not.toContain("motive/motive_ref charter missing");
+	});
+
+	it("motive (not motive_ref) whose charter exists on disk satisfies the gate", () => {
+		writeCharter("plugin-cleanup", 0);
+		const ledger = { ...nonTrivialBase, motive: "plugin-cleanup" };
+		const decision = runHook(ledger);
+		expect(decision.reason ?? "").not.toContain("motive/motive_ref charter missing");
+	});
+
+	it("plan_ref pointing to existing file still satisfies the gate (backward compat)", () => {
+		const planPath = path.join(projectDir, "my-plan.md");
+		writeFileSync(planPath, "# plan");
+		const ledger = { ...nonTrivialBase, plan_ref: planPath };
+		const decision = runHook(ledger);
+		expect(decision.reason ?? "").not.toContain("motive/motive_ref charter missing");
+	});
+
+	it("neither plan_ref nor motive/motive_ref nor plan-slice -> block naming both remedies", () => {
+		const ledger = { ...nonTrivialBase, gate: { advisor: "pending" } };
+		const decision = runHook(ledger);
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).toContain("plan_ref");
+		expect(decision.reason).toContain("motive/motive_ref");
+	});
+
+	it("motive_ref with no charter file on disk is treated as unresolved", () => {
+		const ledger = { ...nonTrivialBase, motive_ref: "nonexistent-slug", gate: { advisor: "pending" } };
+		const decision = runHook(ledger);
+		expect(decision.decision).toBe("block");
+		expect(decision.reason).toContain("motive/motive_ref charter missing");
+	});
+
+	it("motive_ref takes precedence over motive; charter for motive_ref exists -> passes", () => {
+		writeCharter("real-motive", 0);
+		const ledger = { ...nonTrivialBase, motive_ref: "real-motive", motive: "nonexistent" };
+		const decision = runHook(ledger);
+		expect(decision.reason ?? "").not.toContain("motive/motive_ref charter missing");
+	});
+});

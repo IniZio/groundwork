@@ -1,9 +1,9 @@
-import { describe, test, expect, afterEach } from "bun:test";
+import { describe, test, expect, afterEach } from "vitest";
 import {
 	detectPtyPlugin,
 	setPtyPluginAvailable,
 	getBootstrapForAgent,
-} from "../src/lib/skills.js";
+} from "../../src/lib/skills.js";
 
 describe("detectPtyPlugin", () => {
 	test('returns true for ["opencode-pty"]', () => {
@@ -39,21 +39,23 @@ describe("getBootstrapForAgent aliases", () => {
 		setPtyPluginAvailable(false);
 	});
 
-	test("general-purpose receives orchestrator hard rules", () => {
+	test("general-purpose receives executor hard rules", () => {
 		const content = getBootstrapForAgent("general-purpose");
 		expect(content).not.toBeNull();
+		expect(content).toContain("EXECUTOR HARD RULES");
+		expect(content).toContain("EXTREMELY_IMPORTANT");
+	});
+
+	test("orchestrator alias receives orchestrator hard rules", () => {
+		const content = getBootstrapForAgent("orchestrator");
 		expect(content).toContain("ORCHESTRATOR HARD RULES");
 		expect(content).toContain("EXTREMELY_IMPORTANT");
 	});
 
-	test("orchestrator alias receives orchestrator bootstrap", () => {
-		const content = getBootstrapForAgent("orchestrator");
-		expect(content).toContain("Orchestrator Bootstrap");
-		expect(content).toContain("Fan-Out Maximization");
-	});
-
-	test("general-purpose receives general-purpose bootstrap", () => {
-		expect(getBootstrapForAgent("general-purpose")).toContain("Groundwork Coder Rules");
+	test("general-purpose and orchestrator receive different bootstrap content", () => {
+		const gp = getBootstrapForAgent("general-purpose");
+		const orch = getBootstrapForAgent("orchestrator");
+		expect(gp).not.toBe(orch);
 	});
 });
 

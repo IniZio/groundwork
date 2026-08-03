@@ -131,7 +131,7 @@ function minReq(conceptId: string, reqId: string, overrides: Record<string, stri
 		verify: "Observe the output.",
 		verification: "automated",
 		criticality: "must",
-		origin_rfc: "RFC-0001",
+		origin_decision_ref: "test-motive#D-1",
 		status: "active",
 		...overrides,
 	};
@@ -320,7 +320,7 @@ describe("AC6b — concept summary field beats title in index", () => {
 				"title: Some Generic Title",
 				"summary: An informative authored summary distinct from the title",
 				"parent: null",
-				"origin_rfc: RFC-0001",
+				"origin_decision_ref: test-motive#D-1",
 				"---",
 				"",
 				"# Some Generic Title",
@@ -362,7 +362,7 @@ describe("AC6c — title falls back through ears before bare id", () => {
 			verify: "Measure latency.",
 			verification: "automated",
 			criticality: "must",
-			origin_rfc: "RFC-0001",
+			origin_decision_ref: "test-motive#D-1",
 			status: "active",
 			// NOTE: no summary, no title — this is the defect scenario
 		});
@@ -606,7 +606,7 @@ describe("AC11 — spec deps", () => {
 				'verify: "Check output."',
 				'verification: "automated"',
 				'criticality: "must"',
-				'origin_rfc: "RFC-0001"',
+				'origin_decision_ref: "test-motive#D-1"',
 				'status: "active"',
 				"---",
 				"See ROOT-R-bbb2 for details.",

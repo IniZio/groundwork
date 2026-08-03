@@ -6,7 +6,8 @@
   "scripts": {
     "generate:agents": "node --experimental-strip-types scripts/generate-agent-definitions.ts",
     "check:agents": "node --experimental-strip-types scripts/generate-agent-definitions.ts --check",
-    "check": "pnpm run check:agents && tsc --noEmit",
+    "check:pi": "node scripts/check-pi-skills.mjs",
+    "check": "pnpm run check:agents && pnpm run check:pi && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "patch-package"

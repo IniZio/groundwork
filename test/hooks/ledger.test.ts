@@ -725,22 +725,6 @@ describe("ledger CLI — negative ownership", () => {
 });
 
 // ---------------------------------------------------------------------------
-// feature_slug — add writes top-level field; round-trips on read
-// ---------------------------------------------------------------------------
-
-describe("ledger CLI — feature_slug", () => {
-	it("add --feature-slug writes top-level feature_slug and round-trips on read", () => {
-		const r = run(["add", "F1", "--feature-slug", "feat-x", "--desc", "linked slice"]);
-		expect(r.code).toBe(0);
-		expect(r.stdout).toContain("feature_slug=feat-x");
-		const ledger = readLedger();
-		expect(ledger.feature_slug).toBe("feat-x");
-		// slice itself is still added
-		expect(ledger.slices.find((s: any) => s.id === "F1")).toBeDefined();
-	});
-});
-
-// ---------------------------------------------------------------------------
 // Schema validation — wired on load and mutation
 // ---------------------------------------------------------------------------
 
@@ -999,136 +983,8 @@ describe("ledger CLI — init sets active:true", () => {
 		expect(readLedger().active).toBe(true);
 	});
 
-	it("init --rfc produces a ledger with active:true and zero warnings", () => {
-		// Build a minimal RFC directory
-		const rfcDir = path.join(projectDir, "rfc-test");
-		mkdirSync(rfcDir, { recursive: true });
-		writeFileSync(path.join(rfcDir, "rfc.md"), [
-			"---",
-			"uid: RFC-TEST",
-			"title: Test RFC",
-			"---",
-			"",
-		].join("\n"));
-		writeFileSync(path.join(rfcDir, "tasks.yaml"), [
-			"- id: T1",
-			"  title: Do something",
-			"  wave: 1",
-			"  blocked_by: []",
-			"  ac:",
-			"    - The system shall do something.",
-		].join("\n"));
-		rmSync(ledgerFile, { force: true });
-		const r = runFull(["init", "--rfc", rfcDir]);
-		expect(r.code).toBe(0);
-		expect(r.stderr).toBe("");
-		const l = readLedger();
-		expect(l.active).toBe(true);
-	});
 });
 
-// ---------------------------------------------------------------------------
-// Defect 2: tasks.yaml near-miss key must fail loudly at parse time
-// ---------------------------------------------------------------------------
-
-describe("ledger CLI — tasks.yaml near-miss key detection at parse time", () => {
-	function makeRfcDir(tasksYaml: string) {
-		const rfcDir = mkdtempSync(path.join(tmpdir(), "gw-rfc-"));
-		writeFileSync(path.join(rfcDir, "rfc.md"), [
-			"---",
-			"uid: RFC-TMP",
-			"title: Tmp RFC",
-			"---",
-			"",
-		].join("\n"));
-		writeFileSync(path.join(rfcDir, "tasks.yaml"), tasksYaml);
-		return rfcDir;
-	}
-
-	it("CASE A: correct blocked_by is read and dependency is set", () => {
-		const rfcDir = makeRfcDir([
-			"- id: T1",
-			"  title: First",
-			"  wave: 1",
-			"  blocked_by: []",
-			"  ac:",
-			"    - done",
-			"- id: T2",
-			"  title: Second",
-			"  wave: 2",
-			"  blocked_by: [T1]",
-			"  ac:",
-			"    - done too",
-		].join("\n"));
-		rmSync(ledgerFile, { force: true });
-		const r = runFull(["init", "--rfc", rfcDir]);
-		expect(r.code).toBe(0);
-		expect(r.stderr).toBe("");
-		const l = readLedger();
-		const t2 = l.slices.find((s: any) => s.id === "T2");
-		expect(t2.blocked_by).toEqual(["T1"]);
-		rmSync(rfcDir, { recursive: true, force: true });
-	});
-
-	it("CASE B: misspelled blocked_bY fails loudly (exit 1) and names the offending key", () => {
-		const rfcDir = makeRfcDir([
-			"- id: T1",
-			"  title: First",
-			"  wave: 1",
-			"  blocked_by: []",
-			"  ac:",
-			"    - done",
-			"- id: T2",
-			"  title: Second",
-			"  wave: 2",
-			"  blocked_bY: [T1]",
-			"  ac:",
-			"    - done too",
-		].join("\n"));
-		rmSync(ledgerFile, { force: true });
-		const r = runFull(["init", "--rfc", rfcDir]);
-		expect(r.code).toBe(1);
-		expect(r.stderr).toContain("blocked_bY");
-		expect(r.stderr).toContain("blocked_by");
-		rmSync(rfcDir, { recursive: true, force: true });
-	});
-
-	it("completely unknown key (far from any known key) emits a warning but does not fail", () => {
-		const rfcDir = makeRfcDir([
-			"- id: T1",
-			"  title: Something",
-			"  wave: 1",
-			"  zzzunknownfield: whatever",
-			"  ac:",
-			"    - done",
-		].join("\n"));
-		rmSync(ledgerFile, { force: true });
-		const r = runFull(["init", "--rfc", rfcDir]);
-		expect(r.code).toBe(0);
-		expect(r.stderr).toContain("zzzunknownfield");
-		rmSync(rfcDir, { recursive: true, force: true });
-	});
-
-	it("tasks.yaml with title and ac keys maps them to desc and acceptance on the slice", () => {
-		const rfcDir = makeRfcDir([
-			"- id: T1",
-			"  title: My Slice Title",
-			"  wave: 1",
-			"  blocked_by: []",
-			"  ac:",
-			"    - Criterion one",
-			"    - Criterion two",
-		].join("\n"));
-		rmSync(ledgerFile, { force: true });
-		const r = runFull(["init", "--rfc", rfcDir]);
-		expect(r.code).toBe(0);
-		expect(r.stderr).toBe("");
-		const t1 = readLedger().slices.find((s: any) => s.id === "T1");
-		expect(t1.desc).toBe("My Slice Title");
-		expect(t1.acceptance).toEqual(["Criterion one", "Criterion two"]);
-		rmSync(rfcDir, { recursive: true, force: true });
-	});
-});
 
 // ---------------------------------------------------------------------------
 // Defect 3: write-path schema validation (init rejects new corruption)

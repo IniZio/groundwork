@@ -64,7 +64,7 @@ function makeConstraintsMd(conceptId: string, reqId: string = `${conceptId}-R-00
   return [
     '---',
     `concept: ${conceptId}`,
-    'origin_rfc: RFC-TEST-001',
+    'origin_decision_ref: test-motive#D-1',
     '---',
     '',
     `### ${reqId} — Test requirement {#${anchor}}`,

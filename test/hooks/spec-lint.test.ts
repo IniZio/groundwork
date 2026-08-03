@@ -12,7 +12,7 @@
  *   anchor-mismatch     — {#anchor} must equal id lowercased
  *   xref-dangling       — dangling same-file anchor or relative-path ref → violation
  *   id-format           — requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
- *   origin-rfc          — origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
+ *   origin-decision-ref — origin_decision_ref if present must be a valid decision ref (absent is allowed)
  *   required-field      — all schema-required fields must be present and non-blank
  *   enum-values         — type, pattern, verification, criticality, status
  *   summary-length      — ≤25 words (boundary: exactly 25 passes; 26 fails)
@@ -95,7 +95,6 @@ function minConcept(
     title: "Test Concept",
     summary: "A one-sentence concept summary.",
     parent: null,
-    origin_rfc: "R-20260726-K4M2QX",
     ...overrides,
   };
 }
@@ -164,7 +163,6 @@ function writeRequirementsDoc(
   mkdirSync(dir, { recursive: true });
   const fm = {
     concept: "C-ROOT",
-    origin_rfc: "R-20260726-K4M2QX",
     ...fmOverrides,
   };
   const fmStr = Object.entries(fm)
@@ -315,7 +313,6 @@ describe("stale-frontmatter: ears in requirements.md frontmatter", () => {
     writeConcept("", minConcept("C-ROOT"));
     writeRequirementsDoc("", [minSection("ROOT-R-001")], {
       concept: "C-ROOT",
-      origin_rfc: "R-20260726-K4M2QX",
       ears: "The system shall do something.",
     });
     const br = build();
@@ -332,7 +329,6 @@ describe("stale-frontmatter: ears in requirements.md frontmatter", () => {
     writeConcept("", minConcept("C-ROOT"));
     writeRequirementsDoc("", [minSection("ROOT-R-001")], {
       concept: "C-ROOT",
-      origin_rfc: "R-20260726-K4M2QX",
       verify: "Observe the output.",
     });
     const br = build();
@@ -592,43 +588,52 @@ describe("xref-dangling: dangling relative-path cross-reference", () => {
 });
 
 // ---------------------------------------------------------------------------
-// origin-rfc invariant (concept nodes)
+// origin-decision-ref invariant (concept nodes)
 // ---------------------------------------------------------------------------
 
-describe("origin-rfc invariant", () => {
-  it("fails when concept has origin_rfc: null (present but null-valued)", () => {
+describe("origin-decision-ref invariant", () => {
+  it("fails when concept has origin_decision_ref: null (present but null-valued)", () => {
     mkSpec();
-    writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: null });
+    writeConcept("", { ...minConcept("C-ROOT"), origin_decision_ref: null });
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
     const combined = r.stdout + r.stderr;
-    expect(combined).toContain("origin-rfc");
+    expect(combined).toContain("origin-decision-ref");
     expect(combined).toContain("C-ROOT");
   });
 
-  it("fails when concept has empty origin_rfc string", () => {
+  it("fails when concept has empty origin_decision_ref string", () => {
     mkSpec();
-    writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: "" });
+    writeConcept("", { ...minConcept("C-ROOT"), origin_decision_ref: "" });
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    expect(r.stdout + r.stderr).toContain("origin-rfc");
+    expect(r.stdout + r.stderr).toContain("origin-decision-ref");
   });
 
-  it("fails when origin_rfc is the literal string 'null'", () => {
+  it("fails when origin_decision_ref is the literal string 'null'", () => {
     mkSpec();
-    writeConcept("", { ...minConcept("C-ROOT"), origin_rfc: "null" });
+    writeConcept("", { ...minConcept("C-ROOT"), origin_decision_ref: "null" });
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    expect(r.stdout + r.stderr).toContain("origin-rfc");
+    expect(r.stdout + r.stderr).toContain("origin-decision-ref");
   });
 
-  it("passes when requirements.md is missing origin_rfc (absent is allowed)", () => {
+  it("fails when origin_decision_ref is an RFC uid (wrong format)", () => {
+    mkSpec();
+    writeConcept("", { ...minConcept("C-ROOT"), origin_decision_ref: "R-20260726-K4M2QX" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).toContain("origin-decision-ref");
+  });
+
+  it("passes when requirements.md is missing origin_decision_ref (absent is allowed)", () => {
     mkSpec();
     writeConcept("", minConcept("C-ROOT"));
-    // Manually write without origin_rfc — absent is now allowed
+    // Manually write without origin_decision_ref — absent is allowed
     const dir = path.join(SPEC_DIR());
     writeFileSync(
       path.join(dir, "requirements.md"),
@@ -637,7 +642,16 @@ describe("origin-rfc invariant", () => {
     const br = build();
     if (br.code !== 0) return;
     const r = lint();
-    expect(r.stdout + r.stderr).not.toContain("origin-rfc");
+    expect(r.stdout + r.stderr).not.toContain("origin-decision-ref");
+  });
+
+  it("passes when origin_decision_ref is a valid decision ref", () => {
+    mkSpec();
+    writeConcept("", { ...minConcept("C-ROOT"), origin_decision_ref: "plugin-cleanup#D-5" });
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).not.toContain("origin-decision-ref");
   });
 });
 
@@ -884,6 +898,19 @@ describe("unknown-field: extra frontmatter keys are reported", () => {
     const r = buildAndLint();
     expect(r.stdout + r.stderr).not.toContain("unknown-field");
     expect(r.code).toBe(0);
+  });
+
+  it("stale origin_rfc key (S7 rename) now triggers unknown-field violation", () => {
+    mkSpec();
+    writeConcept("", {
+      ...minConcept("C-ROOT"),
+      origin_rfc: "RFC-0001",
+    } as Record<string, string | null>);
+    const br = build();
+    if (br.code !== 0) return;
+    const r = lint();
+    expect(r.stdout + r.stderr).toContain("unknown-field");
+    expect(r.stdout + r.stderr).toContain("origin_rfc");
   });
 });
 

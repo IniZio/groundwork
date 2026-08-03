@@ -241,8 +241,8 @@ describe('ALLOWED_FRONTMATTER_FIELDS', () => {
     expect(ALLOWED_FRONTMATTER_FIELDS.has('verify')).toBe(false)
   })
 
-  it('includes id, type, concept, parent, title, summary, origin_rfc, status, pattern, verification, criticality', () => {
-    for (const field of ['id', 'type', 'concept', 'parent', 'title', 'summary', 'origin_rfc', 'status', 'pattern', 'verification', 'criticality']) {
+  it('includes id, type, concept, parent, title, summary, origin_decision_ref, status, pattern, verification, criticality', () => {
+    for (const field of ['id', 'type', 'concept', 'parent', 'title', 'summary', 'origin_decision_ref', 'status', 'pattern', 'verification', 'criticality']) {
       expect(ALLOWED_FRONTMATTER_FIELDS.has(field), `expected ${field} to be allowed`).toBe(true)
     }
   })

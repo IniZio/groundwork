@@ -309,14 +309,26 @@ export function compile(events, opts = {}) {
       }
 
       case 'AC_COVERAGE': {
-        // Two payload forms:
-        //   Coverage form:    { ac, slice }        — registers slice as covering the AC
-        //   Declaration form: { ac, covering: [] } — declares AC with no covering slices
+        // Three payload forms:
+        //   Single-AC form:   { ac, slice }              — registers slice as covering the AC
+        //   Array-covers form:{ slice, covers: ['AC-1'] } — registers slice as covering each listed AC
+        //   Declaration form: { ac, covering: [] }        — declares AC with no covering slices
         //                     (slice absent/null)  so it appears as unmet in the view
         if (d.ac != null) {
           const key = String(d.ac)
           if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
           if (d.slice != null) acCoverageMap.get(key).add(String(d.slice))
+        }
+        // Array covers form: { slice, covers: ['AC-1', 'AC-2'] }
+        if (Array.isArray(d.covers) && d.slice != null) {
+          const sliceId = String(d.slice)
+          for (const ac of d.covers) {
+            if (ac != null) {
+              const key = String(ac)
+              if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
+              acCoverageMap.get(key).add(sliceId)
+            }
+          }
         }
         break
       }
@@ -445,6 +457,11 @@ export function compile(events, opts = {}) {
     : null
   /** @param {string} id */
   const isComplete = (id) => completedIds.has(id) || (sessionCompleted?.has(id) ?? false)
+  // For acCoverage: a slice is "done" if the fold, session stream, OR the ledger says so.
+  // The divergence check still uses isComplete (fold-only) to detect fold↔ledger mismatches.
+  const ledgerCompleteIds = new Set(allSlices.filter((s) => s.status === 'complete').map((s) => s.id))
+  /** @param {string} id */
+  const isCompleteAnywhere = (id) => isComplete(id) || ledgerCompleteIds.has(id)
 
   // ── divergence: pure function of injected data ────────────────────────────
   let divergence
@@ -565,8 +582,10 @@ export function compile(events, opts = {}) {
 
   // ── ac_coverage ───────────────────────────────────────────────────────────
   // AC coverage semantics:
-  //   met   = covering non-empty AND every listed slice in completedSlices
-  //   unmet = absent | empty | any incomplete covering slice
+  //   met     = covering non-empty AND every listed slice in completedSlices
+  //   unmet   = absent | empty | any incomplete covering slice (and ledger found)
+  //   unknown = covering non-empty but no ledger to verify completion status
+  const ledgerFound = groundTruth?.ledger?.found ?? false
   const acMet = []
   const acUnmet = []
   const acKeys = [...acCoverageMap.keys()].sort((a, b) => {
@@ -577,9 +596,11 @@ export function compile(events, opts = {}) {
   })
   for (const key of acKeys) {
     const covering = [...acCoverageMap.get(key)]
-    const missing = covering.filter((s) => !isComplete(s))
+    const missing = covering.filter((s) => !isCompleteAnywhere(s))
     const isMet = covering.length > 0 && missing.length === 0
-    const entry = { id: key, covering, missing, met: isMet }
+    // status_unknown: covering exists but no ledger to verify completion
+    const statusUnknown = !ledgerFound && covering.length > 0 && !isMet
+    const entry = { id: key, covering, missing, met: isMet, status_unknown: statusUnknown }
     if (isMet) acMet.push(entry)
     else acUnmet.push(entry)
   }

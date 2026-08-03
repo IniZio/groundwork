@@ -554,3 +554,106 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
     expect(ac).toHaveLength(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// G2 fix — AC_COVERAGE array covers form
+// ---------------------------------------------------------------------------
+
+describe('G2: AC_COVERAGE array covers form — { slice, covers: [...] }', () => {
+  it('registers each ac from covers array in acCoverageMap', () => {
+    const events = [
+      {
+        type: 'AC_COVERAGE',
+        ts: '2026-01-01T00:00:00.000Z',
+        motive: 'test',
+        source: 'cli:journal',
+        data: { slice: 'S1-parser', covers: ['AC-1', 'AC-2'] },
+      },
+    ]
+    const view = compile(events, {})
+    const cov = view.agent.ac_coverage
+    const all = [...cov.met, ...cov.unmet]
+    expect(all.length).toBeGreaterThanOrEqual(2)
+    const ids = all.map((a: any) => a.id)
+    expect(ids).toContain('AC-1')
+    expect(ids).toContain('AC-2')
+    // S1-parser must appear as a covering slice for both
+    const ac1 = all.find((a: any) => a.id === 'AC-1')
+    const ac2 = all.find((a: any) => a.id === 'AC-2')
+    expect(ac1.covering).toContain('S1-parser')
+    expect(ac2.covering).toContain('S1-parser')
+  })
+
+  it('combines covers array with single-ac form for the same AC', () => {
+    const events = [
+      // single-AC form: S2 covers AC-3
+      { type: 'AC_COVERAGE', ts: '2026-01-01T00:00:00.000Z', motive: 'test', source: 'hook:ledger',
+        data: { ac: 'AC-3', slice: 'S2-validator' } },
+      // array covers form: S3 also covers AC-3 and AC-4
+      { type: 'AC_COVERAGE', ts: '2026-01-01T00:00:01.000Z', motive: 'test', source: 'cli:journal',
+        data: { slice: 'S3-http', covers: ['AC-3', 'AC-4'] } },
+    ]
+    const view = compile(events, {})
+    const cov = view.agent.ac_coverage
+    const all = [...cov.met, ...cov.unmet]
+    const ac3 = all.find((a: any) => a.id === 'AC-3')
+    const ac4 = all.find((a: any) => a.id === 'AC-4')
+    expect(ac3).toBeDefined()
+    expect(ac3.covering).toContain('S2-validator')
+    expect(ac3.covering).toContain('S3-http')
+    expect(ac4).toBeDefined()
+    expect(ac4.covering).toContain('S3-http')
+  })
+
+  it('event-only matrix fallback: AC×slice matrix renders non-empty when no ledger is present', () => {
+    // AC_COVERAGE events present; groundTruth present but ledger not found (real pilot path)
+    const events = [
+      {
+        type: 'AC_COVERAGE',
+        ts: '2026-01-01T00:00:00.000Z',
+        motive: 'test',
+        source: 'cli:journal',
+        data: { slice: 'S1-parser', covers: ['AC-1', 'AC-2'] },
+      },
+      {
+        type: 'AC_COVERAGE',
+        ts: '2026-01-01T00:00:01.000Z',
+        motive: 'test',
+        source: 'hook:ledger',
+        data: { ac: 'AC-3', slice: 'S2-validator' },
+      },
+    ]
+    // groundTruth present but ledger not found — simulates motive ledger not discovered
+    const groundTruth = {
+      head_sha: null,
+      branch: null,
+      dirty_paths: [],
+      existing_paths: {},
+      ledger: { found: false, slices: [], gate: {} },
+      session_completed_ids: [],
+      collected_at: '2026-01-01T00:00:00.000Z',
+    }
+    const view = compile(events, { groundTruth })
+    const cov = view.agent.ac_coverage
+    const all = [...cov.met, ...cov.unmet]
+    // Matrix must be non-empty
+    expect(all.length).toBeGreaterThanOrEqual(2)
+
+    // All entries have status_unknown=true (covering slices exist, ledger not found)
+    for (const entry of all) {
+      if ((entry as any).covering.length > 0) {
+        expect((entry as any).status_unknown).toBe(true)
+      }
+    }
+
+    // Rendered markdown must include the matrix with "? unknown" status, not "✗ unmet"
+    const md = renderView(view)
+    expect(md).toContain('AC×Slice Traceability Matrix')
+    expect(md).not.toContain('No AC coverage data')
+    expect(md).toContain('AC-1')
+    expect(md).toContain('AC-2')
+    expect(md).toContain('AC-3')
+    expect(md).toContain('? unknown')
+    expect(md).not.toContain('✗ unmet')
+  })
+})

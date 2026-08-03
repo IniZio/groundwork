@@ -39,6 +39,12 @@ function writeLedger(dir: string, data: any) {
   return path;
 }
 
+function writeLedgerFile(dir: string, filename: string, data: any) {
+  const runsDir = join(dir, '.groundwork', 'runs');
+  mkdirSync(runsDir, { recursive: true });
+  writeFileSync(join(runsDir, filename), JSON.stringify(data, null, 2), 'utf8');
+}
+
 // ---------------------------------------------------------------------------
 // S3-AC1 — real git repo: head_sha, branch, dirty_paths
 // ---------------------------------------------------------------------------
@@ -372,7 +378,7 @@ describe('S3-AC6 — motive-scoped ledger selection', () => {
     expect(gtBeta.ledger.slices[0].status).toBe('pending');
   });
 
-  it('falls back to most-recent ledger when motive has no matching ledger', async () => {
+  it('returns found:false when motive has no matching ledger (prevents cross-attribution)', async () => {
     writeLedgerFile(dir, 'run-a.json', {
       motive: 'some-other-motive',
       slices: [{ id: 'S1', status: 'complete', wave: 1, desc: 'fallback' }],
@@ -380,10 +386,9 @@ describe('S3-AC6 — motive-scoped ledger selection', () => {
       active: true,
     });
 
-    // motive 'unrelated' has no ledger — should fall back to the unfiltered most-recent
+    // motive 'unrelated' has no ledger — must NOT fall back to an unrelated run (G1 fix)
     const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: 'unrelated' });
-    expect(gt.ledger.found).toBe(true);
-    expect(gt.ledger.slices[0].id).toBe('S1');
+    expect(gt.ledger.found).toBe(false);
   });
 
   it('no false slice_state_mismatch when compile uses motive-scoped ledger', async () => {
@@ -526,5 +531,234 @@ describe('S3-AC7 — motive cross-session ledger union', () => {
     // Newer file (v2) wins
     expect(gt.ledger.slices[0].status).toBe('complete');
     expect(gt.ledger.slices[0].desc).toBe('v2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TBD-4 join: session_ids first-class in readLedger / collectGroundTruth
+// Resolves TBD-4: readLedger must expose session_id(s) so collectGroundTruth
+// can collect session-scoped TASK_COMPLETE events without re-reading ledger files.
+// ---------------------------------------------------------------------------
+
+describe('TBD-4 — session_ids first-class join (no file re-read)', () => {
+  let dir: string;
+
+  beforeEach(() => { dir = tmp(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('single-session ledger: collectGroundTruth populates session_completed_ids from ledger.session_id', async () => {
+    const SESSION_ID = 'join-test-session';
+    const MOTIVE = 'tbd4-motive';
+
+    writeLedger(dir, {
+      session_id: SESSION_ID,
+      motive: MOTIVE,
+      active: true,
+      slices: [{ id: 'J1', status: 'pending' }],
+      gate: {},
+    });
+
+    // Write a journal shard with TASK_COMPLETE — old format (synthetic motive)
+    const journalDir = join(dir, '.groundwork', 'journal');
+    mkdirSync(journalDir, { recursive: true });
+    const shardPath = join(journalDir, `2026-08-03-${SESSION_ID}.jsonl`);
+    const events = [
+      // old-format: synthetic motive (pre-TBD-4 fix)
+      { ts: '2026-08-03T10:00:00.000Z', session: SESSION_ID, motive: `session:${SESSION_ID}`, type: 'TASK_COMPLETE', data: { slice: 'J1' } },
+      // different session — must NOT appear
+      { ts: '2026-08-03T10:00:01.000Z', session: 'other-sess', motive: 'other-motive', type: 'TASK_COMPLETE', data: { slice: 'J99' } },
+    ];
+    writeFileSync(shardPath, events.map(e => JSON.stringify(e)).join('\n'), 'utf8');
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: MOTIVE });
+
+    // session_completed_ids must include J1 (collected via session_id from ledger, no re-read)
+    expect(Array.isArray(gt.session_completed_ids)).toBe(true);
+    expect(gt.session_completed_ids).toContain('J1');
+    expect(gt.session_completed_ids).not.toContain('J99');
+  });
+
+  it('multi-session motive union: session_completed_ids spans all sessions', async () => {
+    const MOTIVE = 'tbd4-multi-motive';
+    const SID_A = 'session-alpha';
+    const SID_B = 'session-beta';
+
+    // Two ledger files for the same motive, different sessions
+    writeLedgerFile(dir, 'run-alpha.json', {
+      motive: MOTIVE,
+      session_id: SID_A,
+      active: false,
+      slices: [{ id: 'MA1', status: 'complete' }],
+      gate: {},
+    });
+    writeLedgerFile(dir, 'run-beta.json', {
+      motive: MOTIVE,
+      session_id: SID_B,
+      active: true,
+      slices: [{ id: 'MB1', status: 'pending' }],
+      gate: {},
+    });
+
+    const journalDir = join(dir, '.groundwork', 'journal');
+    mkdirSync(journalDir, { recursive: true });
+
+    // Journal shards for each session
+    writeFileSync(
+      join(journalDir, `2026-08-03-${SID_A}.jsonl`),
+      JSON.stringify({ ts: '2026-08-03T10:00:00.000Z', session: SID_A, motive: MOTIVE, type: 'TASK_COMPLETE', data: { slice: 'MA1' } }) + '\n',
+      'utf8',
+    );
+    writeFileSync(
+      join(journalDir, `2026-08-03-${SID_B}.jsonl`),
+      JSON.stringify({ ts: '2026-08-03T10:01:00.000Z', session: SID_B, motive: `session:${SID_B}`, type: 'TASK_COMPLETE', data: { slice: 'MB1' } }) + '\n',
+      'utf8',
+    );
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: MOTIVE });
+
+    // Both sessions' completions must be in session_completed_ids
+    expect(gt.session_completed_ids).toContain('MA1');
+    expect(gt.session_completed_ids).toContain('MB1');
+  });
+
+  it('new-format TASK_COMPLETE (real motive) is joinable via both fold and session_completed_ids', async () => {
+    // This verifies the happy path: events carry real motive so the fold handles them,
+    // AND session_completed_ids also includes them (harmless union).
+    const SESSION_ID = 'new-format-session';
+    const MOTIVE = 'new-format-motive';
+
+    writeLedger(dir, {
+      session_id: SESSION_ID,
+      motive: MOTIVE,
+      active: true,
+      slices: [{ id: 'NF1', status: 'complete' }],
+      gate: {},
+    });
+
+    const journalDir = join(dir, '.groundwork', 'journal');
+    mkdirSync(journalDir, { recursive: true });
+    writeFileSync(
+      join(journalDir, `2026-08-03-${SESSION_ID}.jsonl`),
+      JSON.stringify({ ts: '2026-08-03T10:00:00.000Z', session: SESSION_ID, motive: MOTIVE, type: 'TASK_COMPLETE', data: { slice: 'NF1' } }) + '\n',
+      'utf8',
+    );
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: MOTIVE });
+
+    // New-format events: in session_completed_ids via session_id join
+    expect(gt.session_completed_ids).toContain('NF1');
+    // Ledger exposes session_id
+    expect(gt.ledger.session_id).toBe(SESSION_ID);
+    // session_ids array present and includes the session
+    expect(Array.isArray(gt.ledger.session_ids)).toBe(true);
+    expect(gt.ledger.session_ids).toContain(SESSION_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G1 fix — cross-directory motive scan (nested .groundwork/runs/ dirs)
+// ---------------------------------------------------------------------------
+
+describe('G1: cross-directory motive scan finds nested .groundwork/runs/ ledgers', () => {
+  let dir: string;
+  beforeEach(() => { dir = tmp(); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('finds a motive-matching ledger in a nested project dir when primary runs/ has no match', async () => {
+    // Primary runs/ — has a ledger with a DIFFERENT motive and newer mtime
+    const primaryRunsDir = join(dir, '.groundwork', 'runs');
+    mkdirSync(primaryRunsDir, { recursive: true });
+    writeFileSync(join(primaryRunsDir, 'main-session.json'), JSON.stringify({
+      session_id: 'main-session',
+      motive: 'main-project',
+      active: true,
+      slices: [{ id: 'M1', status: 'complete', wave: 1 }],
+      gate: {},
+    }, null, 2), 'utf8');
+
+    // Nested pilot project — has the target motive
+    const nestedRunsDir = join(dir, '.groundwork', 'pilots', 'my-pilot', '.groundwork', 'runs');
+    mkdirSync(nestedRunsDir, { recursive: true });
+    writeFileSync(join(nestedRunsDir, 'pilot-session.json'), JSON.stringify({
+      session_id: 'pilot-session',
+      motive: 'my-pilot',
+      active: false,
+      slices: [{ id: 'P1', status: 'complete', wave: 1 }, { id: 'P2', status: 'pending', wave: 2 }],
+      gate: {},
+    }, null, 2), 'utf8');
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: 'my-pilot' });
+
+    // Must find the nested pilot ledger, NOT the main-project ledger
+    expect(gt.ledger.found).toBe(true);
+    const sliceIds = gt.ledger.slices.map((s: any) => s.id);
+    expect(sliceIds).toContain('P1');
+    expect(sliceIds).toContain('P2');
+    expect(sliceIds).not.toContain('M1');
+  });
+
+  it('returns found:false when motive not in any runs/ dir (no cross-attribution)', async () => {
+    // Primary runs/ — has a different motive
+    const primaryRunsDir = join(dir, '.groundwork', 'runs');
+    mkdirSync(primaryRunsDir, { recursive: true });
+    writeFileSync(join(primaryRunsDir, 'wrong.json'), JSON.stringify({
+      session_id: 'wrong',
+      motive: 'wrong-motive',
+      active: true,
+      slices: [{ id: 'WRONG', status: 'complete', wave: 1 }],
+      gate: {},
+    }, null, 2), 'utf8');
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: 'nonexistent-motive' });
+    expect(gt.ledger.found).toBe(false);
+    // Must NOT contain the unrelated slice
+    expect(gt.ledger.slices).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G1 fix — explicit ledgerPath override in collectGroundTruth
+// ---------------------------------------------------------------------------
+
+describe('G1: explicit ledgerPath override in collectGroundTruth', () => {
+  let dir: string;
+  beforeEach(() => { dir = tmp(); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('reads exactly the specified ledger file, ignoring runs/ scan', async () => {
+    // Primary runs/ has an unrelated ledger
+    const primaryRunsDir = join(dir, '.groundwork', 'runs');
+    mkdirSync(primaryRunsDir, { recursive: true });
+    writeFileSync(join(primaryRunsDir, 'unrelated.json'), JSON.stringify({
+      session_id: 'unrelated',
+      motive: 'unrelated-motive',
+      active: true,
+      slices: [{ id: 'UNRELATED', status: 'complete', wave: 1 }],
+      gate: {},
+    }, null, 2), 'utf8');
+
+    // Explicit ledger file at an arbitrary path
+    const explicitPath = join(dir, 'explicit-ledger.json');
+    writeFileSync(explicitPath, JSON.stringify({
+      session_id: 'explicit-session',
+      motive: 'explicit-motive',
+      active: false,
+      slices: [{ id: 'E1', status: 'complete', wave: 1 }, { id: 'E2', status: 'pending', wave: 2 }],
+      gate: { advisor: 'APPROVE' },
+    }, null, 2), 'utf8');
+
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], motive: 'explicit-motive', ledgerPath: explicitPath });
+    expect(gt.ledger.found).toBe(true);
+    expect(gt.ledger.path).toBe(explicitPath);
+    const sliceIds = gt.ledger.slices.map((s: any) => s.id);
+    expect(sliceIds).toContain('E1');
+    expect(sliceIds).toContain('E2');
+    expect(sliceIds).not.toContain('UNRELATED');
+    expect(gt.ledger.gate).toEqual({ advisor: 'APPROVE' });
+  });
+
+  it('returns found:false when explicit ledgerPath does not exist', async () => {
+    const gt = await collectGroundTruth({ projectDir: dir, events: [], ledgerPath: join(dir, 'nonexistent.json') });
+    expect(gt.ledger.found).toBe(false);
   });
 });

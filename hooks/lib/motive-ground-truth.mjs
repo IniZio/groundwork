@@ -21,7 +21,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, basename } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Session-scoped TASK_COMPLETE collection
@@ -121,6 +121,37 @@ function pickSlice(raw) {
 }
 
 /**
+ * Walk startDir (depth-bounded) to find all `.groundwork/runs` directories.
+ * Skips node_modules, .git, and worktrees to avoid false positives and slow walks.
+ * Used by readLedger to discover ledgers in nested project directories (e.g. pilots).
+ *
+ * @param {string} startDir  Root directory to walk from.
+ * @param {number} maxDepth  Maximum recursion depth (default 6).
+ * @returns {string[]}       Absolute paths of all found `.groundwork/runs` directories.
+ */
+function findGroundworkRunsDirs(startDir, maxDepth = 6) {
+  const result = [];
+  function walk(dir, depth) {
+    if (depth > maxDepth) return;
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const name = e.name;
+      if (name === 'node_modules' || name === '.git' || name === 'worktrees') continue;
+      const full = join(dir, name);
+      // Collect 'runs' dirs whose immediate parent is '.groundwork'
+      if (name === 'runs' && basename(dir) === '.groundwork') {
+        result.push(full);
+      }
+      walk(full, depth + 1);
+    }
+  }
+  walk(startDir, 0);
+  return result;
+}
+
+/**
  * Find and parse ledger file(s) in <projectDir>/.groundwork/runs/*.json,
  * falling back to the legacy <projectDir>/.groundwork/run.json.
  *
@@ -141,34 +172,75 @@ function pickSlice(raw) {
  *   - Each slice entry receives a `_session_id` annotation for callers that
  *     need to distinguish per-session provenance.
  *
- * Fallback: when motive is null OR no file matches the motive, the original
- * single-most-recent-file behavior is preserved (unchanged).
+ * Fallback: when motive is null OR no file matches the motive across ALL
+ * .groundwork/runs dirs (primary + nested), the original single-most-recent-file
+ * behavior is preserved for the motive=null path; when motive is provided and no
+ * match is found, returns { found: false } to avoid cross-attributing an unrelated
+ * ledger.
  *
  * Unparseable files are excluded from the motive match.
  * Returns { found: false } when no ledger is present (never throws).
  */
-function readLedger(projectDir, motive = null) {
-  const runsDir = join(projectDir, '.groundwork', 'runs');
+function readLedger(projectDir, motive = null, ledgerPath = null) {
+  // When an explicit path is provided, use only that file — skip all scanning.
+  if (ledgerPath != null) {
+    try {
+      const raw = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+      const slices = Array.isArray(raw.slices) ? raw.slices.map(pickSlice) : [];
+      const gate = raw.gate && typeof raw.gate === 'object' ? raw.gate : {};
+      return {
+        found: true,
+        path: ledgerPath,
+        session_id: raw.session_id ?? null,
+        session_ids: typeof raw.session_id === 'string' && raw.session_id ? [raw.session_id] : [],
+        active: raw.active ?? null,
+        slices,
+        gate,
+      };
+    } catch {
+      return { found: false, slices: [], gate: {} };
+    }
+  }
+
+  const primaryRunsDir = join(projectDir, '.groundwork', 'runs');
   let candidates = [];
 
-  try {
-    if (existsSync(runsDir) && statSync(runsDir).isDirectory()) {
-      const files = readdirSync(runsDir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => {
-          const full = join(runsDir, f);
-          try {
-            const mtime = statSync(full).mtimeMs;
-            return { path: full, mtime };
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean);
-      candidates.push(...files);
+  // Collect candidates from the primary runs dir
+  function collectFromDir(runsDir) {
+    try {
+      if (existsSync(runsDir) && statSync(runsDir).isDirectory()) {
+        const files = readdirSync(runsDir)
+          .filter(f => f.endsWith('.json'))
+          .map(f => {
+            const full = join(runsDir, f);
+            try {
+              const mtime = statSync(full).mtimeMs;
+              return { path: full, mtime };
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean);
+        candidates.push(...files);
+      }
+    } catch {
+      // directory unreadable — skip
     }
-  } catch {
-    // directory unreadable — continue to legacy fallback
+  }
+
+  collectFromDir(primaryRunsDir);
+
+  // When looking for a specific motive, also scan nested .groundwork/runs/ dirs
+  // (e.g. pilots, sub-projects) so cross-project motives can be found.
+  if (motive !== null) {
+    const seenDirs = new Set([primaryRunsDir]);
+    const nestedDirs = findGroundworkRunsDirs(projectDir);
+    for (const dir of nestedDirs) {
+      if (!seenDirs.has(dir)) {
+        seenDirs.add(dir);
+        collectFromDir(dir);
+      }
+    }
   }
 
   // legacy fallback
@@ -189,9 +261,11 @@ function readLedger(projectDir, motive = null) {
   // Fall back to the full candidate list if none match (legacy unlabelled runs).
   if (motive !== null) {
     const parsed = [];
+    let hasAnyMotive = false; // tracks whether any candidate carries a motive label
     for (const c of candidates) {
       try {
         const raw = JSON.parse(readFileSync(c.path, 'utf8'));
+        if (raw.motive != null) hasAnyMotive = true;
         if (raw.motive === motive) {
           parsed.push({ ...c, raw });
         }
@@ -228,15 +302,29 @@ function readLedger(projectDir, motive = null) {
         ? primary.raw.gate
         : {};
 
+      // Collect all distinct session_ids from the union so collectGroundTruth
+      // can query journal shards without re-reading ledger files.
+      const session_ids = [...new Set(parsed.map(p => p.raw.session_id).filter(
+        s => typeof s === 'string' && s,
+      ))];
+
       return {
         found: true,
         path: primary.path,
+        session_id: primary.raw.session_id ?? null,
+        session_ids,
         active: primary.raw.active ?? null,
         slices: [...sliceMap.values()].map(v => v.slice),
         gate,
       };
     }
-    // No matching file — fall through to unfiltered single-file behavior below.
+    // No matching file.
+    // If labeled runs exist but none match this motive, returning the most-recent
+    // labeled run would cross-attribute a different motive's ledger to this one (G1).
+    // Return not-found to prevent that.
+    // If NO labeled runs exist (only legacy un-labeled runs), fall through to the
+    // most-recent fallback for backward compat (those runs predate motive stamping).
+    if (hasAnyMotive) return { found: false, slices: [], gate: {} };
   }
 
   // pick most recently modified (fallback / no-motive path)
@@ -250,6 +338,8 @@ function readLedger(projectDir, motive = null) {
     return {
       found: true,
       path,
+      session_id: raw.session_id ?? null,
+      session_ids: typeof raw.session_id === 'string' && raw.session_id ? [raw.session_id] : [],
       active: raw.active ?? null,
       slices,
       gate,
@@ -310,7 +400,7 @@ function collectPaths(events, ledgerSlices) {
  * @param {string|null} [opts.motive] — motive name to scope ledger selection; null = unscoped
  * @returns {object}                — ground truth record; never throws
  */
-export async function collectGroundTruth({ projectDir, events = [], motive = null }) {
+export async function collectGroundTruth({ projectDir, events = [], motive = null, ledgerPath = null }) {
   const collected_at = new Date().toISOString();
 
   // --- git probes ----------------------------------------------------------
@@ -342,37 +432,32 @@ export async function collectGroundTruth({ projectDir, events = [], motive = nul
   // --- ledger --------------------------------------------------------------
   let ledger;
   try {
-    ledger = readLedger(projectDir, motive);
+    ledger = readLedger(projectDir, motive, ledgerPath);
   } catch {
     ledger = { found: false, not_checkable: { reason: 'ledger_read_error' }, slices: [], gate: {} };
   }
 
   // --- session-scoped TASK_COMPLETE witness --------------------------------
-  // When `ledger complete` runs before the ledger's `motive` field is set, the
-  // emitted TASK_COMPLETE events carry a synthetic motive ("session:<id>")
-  // rather than the real one.  The compile fold filters by motive, so those
-  // events are invisible to the divergence checker — causing false
-  // slice_state_mismatch findings.  We collect them here (outside the fold)
-  // and surface them as session_completed_ids so the checker can consult them.
+  // Collect TASK_COMPLETE events by session_id — handles both:
+  //   • Old events where the ledger had no motive field so TASK_COMPLETE carried
+  //     a synthetic motive ("session:<id>") instead of the real one.
+  //   • New events with the real motive — these are already in the compile fold,
+  //     so including them here is harmless (union with completedIds).
+  // readLedger now exposes session_ids directly, so no file re-read is needed.
   let session_completed_ids = [];
-  if (ledger.found) {
-    const raw = ledger._raw_session_id; // not stored yet — read from disk below
-    void raw; // suppress lint
-  }
   try {
-    // The ledger's session_id is the canonical key.  readLedger doesn't expose
-    // it yet, so we re-read the raw file via the path stored in ledger.path.
-    let sessionId = null;
-    if (ledger.found && typeof ledger.path === 'string') {
-      try {
-        const raw = JSON.parse(readFileSync(ledger.path, 'utf8'));
-        sessionId = typeof raw.session_id === 'string' ? raw.session_id : null;
-      } catch { /* ignore */ }
-    }
-    if (sessionId) {
+    const sessionIds = ledger.found
+      ? (ledger.session_ids ?? (ledger.session_id != null ? [ledger.session_id] : []))
+      : [];
+    if (sessionIds.length > 0) {
       const journalDir = join(projectDir, '.groundwork', 'journal');
-      const ids = collectSessionCompletedIds(journalDir, sessionId);
-      session_completed_ids = [...ids];
+      const all = new Set();
+      for (const sessionId of sessionIds) {
+        for (const id of collectSessionCompletedIds(journalDir, sessionId)) {
+          all.add(id);
+        }
+      }
+      session_completed_ids = [...all];
     }
   } catch {
     // non-fatal

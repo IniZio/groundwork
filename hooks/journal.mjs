@@ -119,7 +119,7 @@ const HELP = {
   },
   compile: {
     summary: 'compile a motive\'s journal events into a versioned spec view',
-    usage: 'journal compile <motive> [--at <ord|name>] [--html] [--tbd] [--json] [--stdout] [--force] [--no-ground-truth]',
+    usage: 'journal compile <motive> [--at <ord|name>] [--html] [--tbd] [--json] [--stdout] [--force] [--no-ground-truth] [--ledger <path>]',
     flags: [
       '<motive>           motive identifier (required positional)',
       '--at <ord|name>    fold only events 1..N; accepts a positive integer or a baseline name',
@@ -129,6 +129,7 @@ const HELP = {
       '--stdout           print without writing .groundwork/compiled/ files',
       '--force            overwrite even if compiler_version mismatches',
       '--no-ground-truth  skip ground-truth collection (divergence_checked: false)',
+      '--ledger <path>    use this ledger file for ground-truth instead of scanning $CLAUDE_PROJECT_DIR',
       '',
       `Compiler version: ${COMPILER_VERSION}`,
     ],
@@ -269,9 +270,10 @@ async function cmdCompile(args) {
 
   // Collect ground truth (unless --no-ground-truth)
   const noGroundTruth = 'no-ground-truth' in flags
+  const ledgerOverride = typeof flags.ledger === 'string' ? flags.ledger : null
   let groundTruth = undefined
   if (!noGroundTruth) {
-    groundTruth = await collectGroundTruth({ projectDir, events, motive })
+    groundTruth = await collectGroundTruth({ projectDir, events, motive, ledgerPath: ledgerOverride })
   }
 
   // Compile

@@ -15,13 +15,13 @@
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. MUST NOT use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (synthesizes a concise plan, deferring to any project planning convention) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
-- `Bash` — for one-shot git status checks, the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger), and the `journal` CLI (motive bookkeeping — `${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs …`); MUST NOT be used for exploration or implementation
+- `Bash` — for one-shot git status checks, the `ledger` CLI (`bin/ledger …` to update the run ledger — the wrapper resolves the plugin root itself), and the `journal` CLI (motive bookkeeping — `bin/journal …`); MUST NOT be used for exploration or implementation
 - `Write`/`Edit` — only for the two permitted path shapes; see **When the orchestrator may write directly** below
 
 **If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, `journal` CLI, and one-shot git status are the only sanctioned Bash uses.)
@@ -60,7 +60,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", complex feature | Feature | `interview` → _(plan-review)_ → `vertical-slice` (writes ledger) → 5-20 `general-purpose` parallel → `advisor` gate |
+| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → _(plan-review)_ → 5-20 `general-purpose` parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
@@ -70,7 +70,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | "plan this", "design this first", complex multi-file feature | Feature planning | `Task(subagent_type="groundwork:planner", model="opus")` → motive charter + DECISION events (motive ref) → fan-out `general-purpose` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | `groundwork:explore` |
-| "audit plan coverage before fan-out", "map plan to slices" | Plan coverage audit | load `plan-review` skill (pre-fan-out, read-only coverage audit) |
+| "audit plan coverage before fan-out", "map ACs to slices", "did we miss an AC?" | Plan coverage audit | load `plan-review` skill (read-only, post-slicing/pre-fan-out: maps charter AC ids → ledger slice ids + `doc/specs` requirement ids; flags zero-coverage and untestable ACs) |
 | "validate plan", "is this right" | Plan review | `advisor` |
 | "is it done", "verify", "confirm" | Completion | `advisor` (evidence+quality) |
 | interactive UI / live app / browser / TUI | Live verification | `qa` → feeds `advisor` |
@@ -108,15 +108,15 @@ Before classifying and delegating ANY new request, run these two checks:
 _Injected at SessionStart by hooks/session-reminder.mjs — see that injection for the stop-gate rules and orchestrator obligations._
 
 **Ledger CLI command reference** (use these; MUST NOT Read/Edit the run ledger file — `.groundwork/runs/<session_id>.json`, legacy `.groundwork/run.json` — by hand):
-- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing`).
-- Mark each verified slice complete as waves land: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs complete <id> [<id> …] --token <write_token>`. The write_token is printed at `init` and re-surfaced in the SessionStart injection (orchestrator-only — MUST NOT pass it to subagents).
-- Update slice status or fields mid-run: `ledger set <id> --status in_progress|complete [--wave N] [--desc "…"]`; add new slices with `ledger add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--kind plan|diagnose|design|impl]` (kind defaults to `impl`); remove with `ledger rm <id>`. Kinds let the ledger represent non-implementation phases (planning, diagnosis, design) as first-class items, making the ledger the whole-session spine rather than implementation-only.
-- Inspect a single slice in full: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs show <id>`.
-- View run summary: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs view` (token is redacted in output).
-- Record the advisor verdict in the ledger: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE --token <write_token>` (add `--citation … --rubric …` for the object form). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
-- Check progress cheaply any time with `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs status` instead of reading the file.
-- To abandon a run: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs abandon` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
-- For full command reference: `${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs help [<cmd>]` (also `-h` or bare `ledger`).
+- Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` — or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h AND a small verification surface), `GROUNDWORK ▸ trivial: single general-purpose, no slicing`.
+- Mark each verified slice complete as waves land: `bin/ledger complete <id> [<id> …] --token <write_token>`. The write_token is printed at `init` and re-surfaced in the SessionStart injection (orchestrator-only — MUST NOT pass it to subagents).
+- Update slice status or fields mid-run: `bin/ledger set <id> --status in_progress|complete [--wave N] [--desc "…"]`; add new slices with `bin/ledger add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--kind plan|diagnose|design|impl]` (kind defaults to `impl`); remove with `bin/ledger rm <id>`. Kinds let the ledger represent non-implementation phases (planning, diagnosis, design) as first-class items, making the ledger the whole-session spine rather than implementation-only.
+- Inspect a single slice in full: `bin/ledger show <id>`.
+- View run summary: `bin/ledger view` (token is redacted in output).
+- Record the advisor verdict in the ledger: `bin/ledger gate advisor APPROVE --token <write_token>` (add `--citation … --rubric …` for the object form). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
+- Check progress cheaply any time with `bin/ledger status` instead of reading the file.
+- To abandon a run: `bin/ledger abandon` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
+- For full command reference: `bin/ledger help [<cmd>]` (also `-h` or bare `ledger`).
 
 ---
 
@@ -208,7 +208,7 @@ Task(
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
-  PLAN: motive ref at .groundwork/motives/<slug>.charter.md
+  PLAN: motive ref at .groundwork/motives/<slug>/motive.md
   SUCCESS CRITERIA: <observable, verifiable outcome>
   SCOPE: touch only the files listed above.
   """

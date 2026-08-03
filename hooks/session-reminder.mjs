@@ -15,7 +15,13 @@
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
+
+/** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
+const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
+const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger')
+const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
@@ -152,7 +158,7 @@ function activeRunBlock(projectDir, sessionId) {
   lines.push('')
 
   if (typeof ledger.write_token === 'string' && ledger.write_token) {
-    lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`ledger gate\` and \`ledger complete\`. NEVER include this token in a subagent Task prompt.`)
+    lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`${LEDGER_BIN} gate\` and \`${LEDGER_BIN} complete\`. NEVER include this token in a subagent Task prompt.`)
     lines.push('')
   }
 
@@ -267,7 +273,10 @@ try {
   // Invalid JSON or stdin failure — proceed without session identity.
 }
 
-let additionalContext = reminder
+// Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\n- Ledger: \`${LEDGER_BIN}\` (run ledger mutations: complete, set, add, rm, gate, abandon)\n- Journal: \`${JOURNAL_BIN}\` (append VERIFICATION/DECISION events: \`${JOURNAL_BIN} append --type VERIFICATION …\`)`
+
+let additionalContext = reminder + cliToolsBlock
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
 // Best-effort: export session id to Claude Code's session-scoped env file so

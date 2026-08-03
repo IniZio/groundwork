@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Groundwork ledger CLI — stable, version-independent entry point.
+#
+# Symlink this file onto your PATH once:
+#   ln -s /path/to/groundwork/bin/ledger ~/.local/bin/ledger
+#
+# The wrapper resolves its own real location (following symlinks), then calls
+# hooks/ledger.mjs relative to that, so the symlink never goes stale on upgrades.
+#
+# Works for both local dev installs (stable repo path) and versioned plugin
+# cache installs (readlink follows the symlink to the real versioned file).
+
+_SELF="${BASH_SOURCE[0]}"
+# Follow symlinks portably (readlink -f on Linux, fallback for macOS/other)
+if command -v readlink >/dev/null 2>&1; then
+  _REAL=$(readlink -f "$_SELF" 2>/dev/null || readlink "$_SELF" 2>/dev/null || echo "$_SELF")
+else
+  _REAL="$_SELF"
+fi
+_DIR=$(dirname "$_REAL")
+
+exec node "$_DIR/../hooks/ledger.mjs" "$@"

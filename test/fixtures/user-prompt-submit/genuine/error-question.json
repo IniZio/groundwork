@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "why does this function fail when the input is an empty array? it's erroring in prod"
+}

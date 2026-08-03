@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "implement a dark mode toggle in the settings panel"
+}

@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "<local-command-stdout>\ngit status\n\nOn branch main\nYour branch is up to date with 'origin/main'.\n\nChanges not staged for commit:\n  modified:   hooks/keyword-router.mjs\n  modified:   test/hooks/keyword-router.test.ts\n\nno changes added to commit\n</local-command-stdout>"
+}

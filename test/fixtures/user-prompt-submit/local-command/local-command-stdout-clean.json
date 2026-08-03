@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "<local-command-stdout>\nnpm test\n\n> groundwork@2.6.0 test\n> vitest run\n\n✓ test/hooks/ledger.test.ts (42 tests)\n✓ test/lib/spec-io.test.ts (18 tests)\n\nTest Files  2 passed (2)\nTests       60 passed (60)\nDuration    1.23s\n</local-command-stdout>"
+}

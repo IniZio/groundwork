@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "diagnose why X crashes on startup — the logs show a null pointer in the auth module"
+}

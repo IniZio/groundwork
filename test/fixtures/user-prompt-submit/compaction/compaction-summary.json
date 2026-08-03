@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "<context_window_compaction>\n<summary>\nThis session has implemented the RFC CLI deletion (S3), de-RFC'd the rfc-io importers (S6), and updated the origin_rfc field to origin_decision_ref (S7). The run ledger shows 3/18 slices complete. The keyword-router misfire bug (S5) is blocked on S1 fixtures. All tests passing at last check.\n</summary>\n</context_window_compaction>"
+}

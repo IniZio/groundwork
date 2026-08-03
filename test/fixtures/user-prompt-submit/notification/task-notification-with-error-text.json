@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>\nAgent test-engineer-1 completed with warnings.\nSummary: 14 passed, 2 failed. The broken tests are in auth.test.ts. Regression introduced in last commit.\n</task-notification>"
+}

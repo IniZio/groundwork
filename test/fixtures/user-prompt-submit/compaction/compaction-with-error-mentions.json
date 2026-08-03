@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "<context_window_compaction>\n<summary>\nSession context: working on plugin-cleanup plan. Previous wave had 2 slices fail due to type errors in the generated agent-definitions file. The PR #8 for S3 was merged. The broken rfc-io import was fixed in S6. No regressions reported in the test suite after the fix.\n</summary>\n</context_window_compaction>"
+}

@@ -9,11 +9,20 @@
  * This converts "LLM trust" routing into deterministic enforcement.
  */
 
+/**
+ * Patterns that identify non-user-authored turns injected by the Claude Code
+ * harness (system notifications, task notifications, local-command output,
+ * context compaction summaries). These turns share the UserPromptSubmit event
+ * and role:"user" but are NOT written by the human — routing signals must be
+ * suppressed so harness chatter doesn't trigger specialist hints.
+ */
+const NON_USER_TURN = /^\s*(\[SYSTEM NOTIFICATION|<task-notification>|<local-command-stdout>|<context_window_compaction>)/
+
 const ROUTES = [
   {
     agents: ['groundwork:general-purpose'],
     patterns: [
-      /\b(bug|broken|doesn'?t work|not working|error|exception|stack trace|crash|fail|failure|regression|broke)\b/i,
+      /\b(bug|broken|doesn'?t work|not working|error|exception|stack trace|crash|fail(?:ed|s|ing|ure)?|regression)\b/i,
       /\b(debug|diagnose|root.?cause|investigate why|figure out why)\b/i,
     ],
     hint: 'Bug or regression detected. Load the `diagnose` skill FIRST — it owns the 6-phase diagnosis loop and will guide root-cause analysis before any fix, then delegate the diagnosis-and-fix to `groundwork:general-purpose`.',
@@ -48,7 +57,7 @@ const ROUTES = [
   {
     agents: ['groundwork:git-master'],
     patterns: [
-      /\b(commit|rebase|pull request|\bPR\b|merge|git history|squash|cherry.?pick|git log|branch strategy)\b/i,
+      /\b(commit|rebase|pull request|PR\s*#|merge|git history|squash|cherry.?pick|git log|branch strategy)\b/i,
     ],
     hint: 'Route to `groundwork:git-master` for git operations.',
   },
@@ -111,6 +120,14 @@ async function main() {
   // Claude Code UserPromptSubmit hook schema: { prompt: string, role: string, ... }
   const prompt = payload?.prompt ?? ''
   if (!prompt) {
+    console.log(JSON.stringify({ continue: true }))
+    return
+  }
+
+  // Skip routing for non-user-authored turns (system notifications, task
+  // notifications, local-command stdout, context compaction summaries).
+  // All share role:"user" — discrimination must be content-based.
+  if (NON_USER_TURN.test(prompt)) {
     console.log(JSON.stringify({ continue: true }))
     return
   }

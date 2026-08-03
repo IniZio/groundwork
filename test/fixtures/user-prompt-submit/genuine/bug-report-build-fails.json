@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "the build fails with a stack trace:\n\nError: Cannot find module './auth'\n    at Function.Module._resolveFilename (node:internal/modules/cjs/loader:933:15)"
+}

@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>\nAgent explore-1 completed.\nResult: found 3 files matching the pattern. No errors encountered.\n</task-notification>"
+}

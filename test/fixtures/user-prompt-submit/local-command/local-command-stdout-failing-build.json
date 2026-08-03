@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "role": "user",
+  "prompt": "<local-command-stdout>\npnpm run check\n\n> groundwork@2.6.0 check\n> tsc --noEmit\n\nsrc/lib/agent-definitions.generated.ts:12:3 - error TS2322: Type 'string' is not assignable to type 'number'.\n\nFound 1 error in src/lib/agent-definitions.generated.ts:12\n</local-command-stdout>"
+}

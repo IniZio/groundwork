@@ -1094,3 +1094,190 @@ describe("ledger CLI — init rejects schema violations on write (strict init)",
 	});
 });
 
+// ---------------------------------------------------------------------------
+// Motive propagation — journal events carry real motive from ledger
+// Resolves TBD-4: ledger-emitted TASK_COMPLETE events must carry the ledger's
+// real motive field (not synthetic "session:<id>") so motive-compile can join
+// (session_id, slice_id) → slice status without the synthetic-session hack.
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — motive propagation to journal events", () => {
+	it("ledger complete emits TASK_COMPLETE with real motive from ledger", () => {
+		// Write a ledger with a real motive and a write_token
+		const SESSION_ID = "motive-test-session";
+		const MOTIVE = "my-real-motive";
+		const src = path.join(projectDir, "plan-motive.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			session_id: SESSION_ID,
+			motive: MOTIVE,
+			slices: [{ id: "TM1", status: "pending" }],
+			gate: {},
+		}));
+		const sessionLedgerDir = path.join(projectDir, ".groundwork", "runs");
+		mkdirSync(sessionLedgerDir, { recursive: true });
+		// Init via CLI with --motive flag (also stamps write_token)
+		const initR = runWithSession(SESSION_ID, ["init", src, "--motive", MOTIVE]);
+		expect(initR.code).toBe(0);
+		const token = extractToken(initR.stdout);
+
+		// Complete a slice — this should emit a TASK_COMPLETE event to the journal
+		const completeR = runWithSession(SESSION_ID, ["complete", "TM1", "--token", token]);
+		expect(completeR.code).toBe(0);
+
+		// Read the journal shard and verify the emitted event
+		const journalDir = path.join(projectDir, ".groundwork", "journal");
+		const shards = readdirSync(journalDir).filter((f) => f.endsWith(".jsonl"));
+		expect(shards.length).toBeGreaterThan(0);
+
+		const events: any[] = [];
+		for (const shard of shards) {
+			const lines = readFileSync(path.join(journalDir, shard), "utf8")
+				.split("\n")
+				.filter(Boolean);
+			for (const line of lines) {
+				try { events.push(JSON.parse(line)); } catch { /* skip */ }
+			}
+		}
+
+		const taskCompletes = events.filter((e) => e.type === "TASK_COMPLETE");
+		expect(taskCompletes.length).toBeGreaterThan(0);
+
+		const ev = taskCompletes.find((e) => e.data?.slice === "TM1");
+		expect(ev).toBeDefined();
+		// Must carry the real motive, not the synthetic "session:<id>"
+		expect(ev?.motive).toBe(MOTIVE);
+		expect(ev?.motive).not.toMatch(/^session:/);
+		// Must carry slice id for the (session_id, slice_id) join
+		expect(ev?.data?.slice).toBe("TM1");
+		// Must carry session for the join key
+		expect(ev?.session).toBe(SESSION_ID);
+	});
+
+	it("ledger complete without motive falls back to synthetic motive (backward compat)", () => {
+		// A ledger WITHOUT motive field — should emit synthetic motive
+		const SESSION_ID = "no-motive-session";
+		const src = path.join(projectDir, "plan-no-motive.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			session_id: SESSION_ID,
+			// no motive field
+			slices: [{ id: "NM1", status: "pending" }],
+			gate: {},
+		}));
+		const initR = runWithSession(SESSION_ID, ["init", src]);
+		expect(initR.code).toBe(0);
+		const token = extractToken(initR.stdout);
+
+		runWithSession(SESSION_ID, ["complete", "NM1", "--token", token]);
+
+		const journalDir = path.join(projectDir, ".groundwork", "journal");
+		const shards = readdirSync(journalDir).filter((f) => f.endsWith(".jsonl"));
+		const events: any[] = [];
+		for (const shard of shards) {
+			const lines = readFileSync(path.join(journalDir, shard), "utf8")
+				.split("\n")
+				.filter(Boolean);
+			for (const line of lines) {
+				try { events.push(JSON.parse(line)); } catch { /* skip */ }
+			}
+		}
+
+		const ev = events.find((e) => e.type === "TASK_COMPLETE" && e.data?.slice === "NM1");
+		expect(ev).toBeDefined();
+		// Backward compat: synthetic motive when no motive field in ledger
+		expect(ev?.motive).toMatch(/^session:/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// frontier — slices a session can start right now
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — frontier", () => {
+	// Base ledger: S1 complete, S2 pending blocked by S1, S3 pending blocked by S1
+	// So frontier after S1 is complete = [S2, S3]
+
+	it("prints pending unblocked unclaimed slices", () => {
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		// S2 and S3 are both pending, blocked_by S1 which is complete
+		expect(r.stdout).toContain("S2");
+		expect(r.stdout).toContain("S3");
+	});
+
+	it("excludes complete slices", () => {
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).not.toContain("S1");
+	});
+
+	it("excludes in_progress slices", () => {
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").status = "in_progress";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).not.toContain("S2");
+		expect(r.stdout).toContain("S3");
+	});
+
+	it("excludes slices still blocked (blocked_by dep not complete)", () => {
+		// Write a ledger where S4 is blocked by S2 (pending)
+		const l = readLedger();
+		l.slices.push({ id: "S4", wave: 2, blocked_by: ["S2"], status: "pending" });
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).not.toContain("S4");
+		expect(r.stdout).toContain("S2");
+	});
+
+	it("excludes slices claimed by another session", () => {
+		// When no current session is set, any claimed_by value is treated as foreign
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").claimed_by = "other-session";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).not.toContain("S2");
+		expect(r.stdout).toContain("S3");
+	});
+
+	it("includes slices claimed by the current session", () => {
+		// Write ledger with session_id matching "my-session" so back-compat path resolves correctly
+		const l = readLedger();
+		l.session_id = "my-session";
+		l.slices.find((s: any) => s.id === "S2").claimed_by = "my-session";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["frontier", "--session", "my-session"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("S2");
+	});
+
+	it("shows empty-state message when no frontier slices exist", () => {
+		// All pending slices are blocked by a pending dep
+		const l = {
+			version: 1, active: true, session_id: "s", brief: "x", reinforcements: 0,
+			slices: [
+				{ id: "A", wave: 0, blocked_by: [], status: "pending" },
+				{ id: "B", wave: 1, blocked_by: ["A"], status: "pending" },
+			],
+			gate: {},
+		};
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		// Only A is on frontier; mark A as in_progress so nothing is available
+		l.slices[0].status = "in_progress";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("no frontier slices");
+	});
+
+	it("exits 0 and includes in help output", () => {
+		const r = run(["help", "frontier"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("frontier");
+	});
+});
+

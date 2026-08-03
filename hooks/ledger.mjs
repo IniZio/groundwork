@@ -32,7 +32,7 @@
  * Exit 0 on success, 2 on usage error, 1 on operational failure.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
@@ -111,27 +111,6 @@ const KNOWN_SLICE_KEYS = new Set([
   'acceptance', 'name',
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
-])
-
-/**
- * Known keys in tasks.yaml task entries. Near-miss typos in these keys are
- * caught at parse time (hard error, exit 1) so they never reach the slice
- * reconstructor where they would be silently dropped.
- *
- * Includes both the canonical ledger-side names AND the tasks.yaml sidecar
- * format aliases used by vertical-slice: title (alias for desc), ac (alias
- * for acceptance), files (informational, not mapped to a slice field).
- */
-const KNOWN_TASK_KEYS = new Set([
-  'id', 'wave', 'kind',
-  'blocked_by', 'depends_on', // depends_on = legacy alias
-  'desc', 'behavior',          // desc preferred; behavior = legacy
-  'title',                     // tasks.yaml sidecar alias for desc
-  'acceptance',
-  'ac',                        // tasks.yaml sidecar alias for acceptance
-  'files',                     // informational; not mapped to a slice field
-  'name',
-  'covers_ac',                 // AC coverage: which AC<n> labels this slice covers
 ])
 
 /** Simple Levenshtein distance, capped at 3 for performance. */
@@ -412,6 +391,13 @@ const HELP = {
     summary: 'render run.json as a human-readable markdown table grouped by wave/status',
     usage: 'ledger view',
     flags: [],
+  },
+  frontier: {
+    summary: 'print slices a session can start right now (pending/open, unblocked, unclaimed or same session)',
+    usage: 'ledger frontier [--session <id>]',
+    flags: [
+      '--session <id>   override session id (default: CLAUDE_CODE_SESSION_ID env)',
+    ],
   },
 }
 
@@ -978,6 +964,51 @@ function cmdView() {
 }
 
 // ---------------------------------------------------------------------------
+// FRONTIER — slices a session can start right now
+// ---------------------------------------------------------------------------
+
+function cmdFrontier(args) {
+  const { flags } = parseFlags(args)
+  const currentSession = resolveSessionId(flags)
+
+  const l = readLedger(ledgerPath())
+  if (!l) die('no ledger at ' + ledgerPath(), 1)
+  warnValidate(l)
+
+  const slices = Array.isArray(l.slices) ? l.slices : []
+
+  // Build set of complete slice ids for blocked_by resolution
+  const completeIds = new Set(
+    slices.filter((s) => s?.status === 'complete').map((s) => s.id),
+  )
+
+  const frontier = slices.filter((s) => {
+    if (!s) return false
+    // Must be pending or open (not complete, not in_progress, not skipped)
+    const status = s.status ?? 'pending'
+    if (status !== 'pending') return false
+    // All blocked_by must be complete
+    const blockedBy = Array.isArray(s.blocked_by) ? s.blocked_by : []
+    if (blockedBy.some((dep) => !completeIds.has(dep))) return false
+    // Unclaimed, or claimed by the current session
+    if (s.claimed_by && s.claimed_by !== currentSession) return false
+    return true
+  })
+
+  if (!frontier.length) {
+    process.stdout.write('no frontier slices — all pending slices are blocked, in progress, or claimed by another session\n')
+    return
+  }
+
+  for (const s of frontier) {
+    const wave = s.wave != null ? `w${s.wave}` : 'w0'
+    const desc = s.desc ? `  ${s.desc.slice(0, 60)}${s.desc.length > 60 ? '…' : ''}` : ''
+    const claim = s.claimed_by ? ` [claimed:${s.claimed_by}]` : ''
+    process.stdout.write(`${s.id}  ${wave}${claim}${desc}\n`)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -1011,6 +1042,7 @@ function main() {
       case 'claim':    return cmdClaim(rest)
       case 'show':     return cmdShow(rest[0])
       case 'view':     return cmdView()
+      case 'frontier': return cmdFrontier(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)
     }

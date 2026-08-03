@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Resume an active feature from its .feature.yaml program counter — reconstruct goal, open slices, and next actions without relying on transcripts or handoff docs.
+description: Resume a motive's in-flight work — reconstruct goal, open slices, and next actions from the motive spine (charter + journal + ledger) without relying on transcripts or handoff docs.
 disable-model-invocation: false
 ---
 
@@ -8,204 +8,187 @@ disable-model-invocation: false
 
 ## Purpose
 
-Continue a multi-session feature from durable feature-ledger state. **Read `.feature.yaml` FIRST** — not the transcript, not a handoff file. Handoff is a human-readable projection; the sidecar is the program counter.
+Continue a multi-session initiative from durable motive state. **Read the motive spine FIRST** — not the transcript, not a handoff file. The spine is the program counter: charter → compiled journal → run ledger.
 
-## When to Use
+## Entry conditions — when to use this skill
+
+Use `resume` when:
 
 - User invokes `/resume` or `/resume <slug>`
-- Starting a session that should pick up an in-flight feature
-- After context compression when a feature ledger exists
+- Starting a session that should pick up an in-flight motive
+- After context compression when a motive exists
 
-## Machine validator + resume printer
+Do **not** use `resume` when:
 
-A Wave-2 CLI validates sidecars and emits the same briefing this skill describes:
+- The goal is to **write a continuation document** for a later session — use `handoff` instead (it projects current state outward).
+- The goal is to **author or update a motive charter** — use `motive` instead (it owns the charter workflow).
+- The work is a one-off task that never had a motive (no `.groundwork/motives/<slug>/` dir).
+
+## Locate the motive
+
+1. If `<slug>` was provided: work from `.groundwork/motives/<slug>/`.
+2. Else scan `.groundwork/motives/*/motive.md` for active work:
+   - **Exactly one** motive with in-flight ledger slices → use it.
+   - **None** found → tell the user; offer to create one via `motive`.
+   - **Multiple** → list them (slug + objective excerpt) and ask which to resume.
 
 ```bash
-node hooks/feature.mjs validate <path>   # .feature.yaml file OR feature dir
-node hooks/feature.mjs resume <slug>     # .groundwork/features/<slug>/
+ls .groundwork/motives/               # enumerate slugs
 ```
 
-| Command | Behavior |
-|---------|----------|
-| `validate <path>` | Validates against `feature.schema.json` + the terminal/active `oneOf` invariant. Prints `OK` or field-named errors. Exit `0` valid / `1` invalid. |
-| `resume <slug>` | Loads `.groundwork/features/<slug>/.feature.yaml` (+ `spec.md` / `plan.md` / `tasks.md`), validates, prints the resume briefing (goal, AC met/unmet, program counter, next actions, null/`run_path` notes). Exit `0`/`1`. |
+## Reconstruct working state (always, in this order)
 
-**Recommendations:**
+Run these two commands up front; every state item below derives from their output.
 
-- Run `validate` after **any** write to `.feature.yaml`.
-- Agents MAY use `resume <slug>` CLI output **or** follow this procedure manually — **both MUST agree** on AC met/unmet, pointer, and next actions.
-- Do not invent fields; the schema is fail-closed (`additionalProperties: false`).
+```bash
+journal compile <slug> --stdout --json   # motive spine snapshot
+ledger view                              # run ledger (slice status, wave order, claimed_by)
+```
 
-## Resolve which feature
+Both commands are runnable without a build step (`journal` and `ledger` are in `hooks/`).
 
-1. If `<slug>` was provided: load `.groundwork/features/<slug>/.feature.yaml`.
-2. Else scan `.groundwork/features/*/.feature.yaml` for `active: true`:
-   - **Exactly one** → use it.
-   - **None** → tell the user no active feature exists; offer to list archived (`active: false`) or create via `feature`.
-   - **Multiple** → list them (`slug`, `status`, `health`, `resume.pointer`, short goal from `spec.md`) and ask which to resume.
+---
 
-Prefer `active: true` features. An explicit slug may open a paused or inactive feature for inspection, but do not silently treat archived features as the default.
+### 1. Objective (was: "Goal")
 
-Optional fast path: `node hooks/feature.mjs resume <slug>` performs resolve+briefing when the slug is already known.
+**Source:** `agent.objective` from `journal compile --json`; also readable as the `## Objective` line in `.groundwork/motives/<slug>/motive.md`.
 
-## Reconstruct (always, in this order)
+State the objective in one short paragraph. This replaces reading `spec.md` via `spec_ref`.
 
-Read `.feature.yaml` first, then the markdown it points at.
+---
 
-### 1. Goal
+### 2. AC met / unmet (was: "`ac_coverage` × `runs[*].slices_completed`")
 
-From `spec.md` (via `spec_ref` or default `.groundwork/features/<slug>/spec.md`). State the goal in one short paragraph.
+**Source:** `agent.ac_coverage` from `journal compile --json`.
 
-### 2. AC met / unmet — authoritative derivation (gap #2)
+The compiled JSON carries an `ac_coverage` map built from `AC_COVERAGE` events (added in motive-compile/1.2.0). Each key is an AC identifier; the value lists the slice ids that cover it.
 
-**Do not** derive AC status by parsing `plan.md` prose or `tasks.md` checkboxes alone. Those are secondary/corroborating only.
+Cross-reference with `ledger view` slice statuses:
 
-From `.feature.yaml`:
+- **MET** — all covering slices for that AC are `complete` in the ledger.
+- **UNMET** — covering slices missing, or at least one is not yet `complete`.
+- **NO COVERAGE DECLARED** — AC key absent from `agent.ac_coverage`; flag explicitly.
 
-1. Read `ac_coverage` — map of `AC#` → covering slice id arrays (keys match `^AC[0-9]+$`).
-2. Compute  
-   `completed = ⋃ runs[*].slices_completed`  
-   (optionally also union `history` rows with `type: slice_complete` and `ref` = slice id if a run row was lost).
-3. For each `ACn` in `ac_coverage` (and every `AC#` listed in `spec.md`):
-   - **MET** iff `ac_coverage[ACn]` is **non-empty** **and** every listed covering slice id is ∈ `completed`.
-   - **UNMET** if the key is missing, the array is empty, or any covering slice is not yet in `completed`.
+List each AC with met/unmet and covering slice ids. Never invent completion.
 
-List each `AC#` with met/unmet and the covering slices. Never invent completion.
+---
 
-`tasks.md` checkboxes (`- [ ]` open; `- [X]` / `- [x]` done; task ids `F<major>.<minor>`; slice ids `F<n>`; AC ids `AC<n>`) may corroborate progress for humans — they are **not** the machine source of truth.
+### 3. Negative scope rails (was: "`spec.md` `## Negative scope`")
 
-### 3. Negative scope rails
+**Source:** The `## Negative scope` section (or equivalent) in `.groundwork/motives/<slug>/motive.md`.
 
-From `spec.md` `## Negative scope` (or equivalent). These bound what not to do.
+If the charter has no negative-scope section, state that explicitly — do not silently omit.
 
-### 4. Program counter
+---
 
-From `resume`:
+### 4. Program counter (was: "`resume.pointer|slice_id|next_actions|blocked_reason|waiting_on`")
 
-- `pointer` — active: `slice:<id>` \| `milestone:<id>` \| `ac:<id>`; terminal: `done` or `null`
-- `slice_id`, `next_actions[]`, `blocked_reason`, `waiting_on`
-- `updated_at`, `updated_by_session`
+**Source (primary):** `agent.resume.next_actions` from `journal compile --json` — the compiled list of next steps derived from the journal event stream.
 
-### 5. Open slices in wave order
+**Source (secondary / corroborating):** `ledger view` — shows which slices are `in_progress`, `blocked`, or `complete`, and which session holds each `claimed_by` lock.
 
-From `plan.md` / `tasks.md`, with `blocked_by` / depends-on. Highlight the pointed slice. Slice ids are `F<n>` (or plan tokens) as referenced by `resume.pointer`, `runs[].slices_completed`, and `ac_coverage` values.
+If `agent.resume` is absent or empty in the compiled JSON, fall back to the open ledger slices as the program counter.
 
-### 6. Active slice context
+---
 
-`plan_ref`, `branch`, and files owned by the current slice (from plan/tasks).
+### 5. Open slices in wave order (was: "from `plan.md` / `tasks.md` with `blocked_by`")
 
-### 7. Last session link + null `run_path` fallback (gap #4)
+**Source:** `ledger view` (wave-grouped Markdown table) or `ledger status` (compact one-liner per slice).
 
-Read the last `runs[]` row (and earlier rows as needed): `session_id`, `run_path`, `gate_advisor`, `slices_completed`, timestamps.
+```bash
+ledger status            # compact view
+ledger view              # full wave/status table with blocked_by and claimed_by
+```
 
-**Canonical fallback when ephemeral run detail is unavailable:**
+Highlight any slice that is `blocked` or `in_progress`. The `claimed_by` column surfaces concurrent sessions holding a slice.
 
-- If `run_path` is `null`, **or**
-- If `run_path` is a non-null path but the file **does not exist on disk** (typical 7-day session-ledger prune),
+---
 
-then **do NOT fail**. Note that ephemeral run detail is unavailable and **proceed using `.feature.yaml` structural fields only**:
+### 6. Active slice context (was: "`plan_ref`, `branch`, files for current slice")
 
-- `ac_coverage` + `runs[*].slices_completed` for AC met/unmet
-- `resume.pointer` / `next_actions` / blocked fields for the program counter
-- `history` / `decisions` / `gate` for recent memory and feature-level advisor snapshot
+**Source:** `ledger show <id>` for the slice currently in progress or pointed to by the program counter.
 
-When `run_path` exists on disk, optionally enrich the briefing with incomplete slices / gate from that session run ledger — still treat feature `runs[]` + `resume` as authoritative if they disagree.
+```bash
+ledger show <slice-id>   # all fields: description, acceptance, blocked_by, claimed_by, status
+```
 
-### 8. Recent memory
+---
 
-Last ~5 `history` entries and last ~5 `decisions` (summaries only).
+### 7. Last session link (was: "last `runs[]` row")
 
-Present this reconstruction briefly to the user before acting (or rely on `node hooks/feature.mjs resume <slug>` output when it matches this shape).
+**Source:** The most recent entries in `agent.decision_log` from `journal compile --json`. Timestamps (`ts`) identify when decisions were recorded; `claimed_by` in the ledger identifies the last session to hold a slice.
 
-## Status enum (authoritative)
+Ephemeral run-ledger files may be pruned after 7 days. If a run ledger path no longer exists on disk, **do not fail** — the motive journal and the current ledger are sufficient to reconstruct state.
 
-Only these five values — never `in_progress`, `completed_acs`, or other aliases:
+---
 
-| Value | Meaning |
-|-------|---------|
-| `planned` | Spec/plan written; impl not started |
-| `started` | At least one session has linked a run or advanced a slice |
-| `paused` | Explicitly parked; resume pointer still valid |
-| `completed` | All ACs met; advisor APPROVE recorded; pointer terminal |
-| `canceled` | Abandoned; pointer terminal |
+### 8. Recent memory (was: "last ~5 `history` + `decisions`")
+
+**Source:** The last ~5 entries in `agent.decision_log` from `journal compile --json` (summaries: id, title, rationale).
+
+Also run with `--tbd` to surface open TBD/TBR items from the charter:
+
+```bash
+journal compile <slug> --stdout --tbd    # prints open-items count
+```
+
+---
+
+### 9. Concurrent sessions (new — no prior equivalent)
+
+**Source:** `claimed_by` column in `ledger view`. If any slice is claimed by a session other than the current one, surface this before continuing. Do not silently overwrite a concurrent claim.
+
+---
+
+Present this reconstruction briefly to the user before acting.
 
 ## Then act
 
-Branch on sidecar state:
+Branch on motive state:
 
 | Condition | Action |
 |-----------|--------|
-| `status ∈ {completed, canceled}` or `resume.pointer` ∈ `{done, null}` | Report finished/canceled; do not open impl waves. Offer archive confirm if still `active: true`. |
-| `resume.blocked_reason` or `waiting_on` set | Surface **blocked** state + reason; do not silently continue impl. Ask user how to unblock or whether to REPLAN. |
-| `health: offTrack` or last `gate_advisor: REPLAN` | Surface **REPLAN** — re-enter `interview` (spec wrong) or `vertical-slice` (decomposition wrong). Do not resume impl waves. |
-| `status: paused` and pointer valid | Set `status: started`, append `history` `type: resumed`, then continue as below. **Preserve the terminal/active invariant on write** (see below). Run `validate` after the write. |
-| Pointer names a concrete open slice and plan still sound | **Continue that slice**: restore goal rails, open or resume a session run ledger **with `feature_slug` set** to this slug, fan out only work for the pointed slice (and unblocked same-wave peers if appropriate). |
-| Pointer valid but no open session run | **Open a new run ledger** (host ledger interface / `vertical-slice`) with `feature_slug: <slug>`, `plan_ref` from the feature, slices seeded from remaining plan/ACs; append `runs[]` + `history` `type: run_linked`. |
-
-### Run ledger link rules
-
-- Always set optional top-level `feature_slug` on new or continued runs for this feature.
-- On link/update: maintain feature `runs[]` as the authoritative cross-session index.
-- On slice completion: advance `resume.*`, append `history` `type: slice_complete`, tick `tasks.md` (`- [ ]` → `- [X]` / `- [x]`).
-- If a session ledger is later pruned, set `run_path: null` (prefer null over a stale path). Consumers must tolerate null/missing paths (gap #4).
-
-### Invariant-on-write
-
-Any write to `.feature.yaml` **MUST** preserve the schema `oneOf` invariant:
-
-- **Terminal (A):** `status ∈ {completed, canceled}` **↔** `resume.pointer` is `done` or `null`/absent.
-- **Active (B):** `status ∈ {planned, started, paused}` **↔** `resume.pointer` matches `^(slice|milestone|ac):[A-Za-z0-9][A-Za-z0-9_.-]*$` (names a non-complete target).
-
-Illegal (must never write):
-
-- `status: completed` with `resume.pointer: slice:F2`
-- `status: started` with `resume.pointer: done` or `null`
-
-`node hooks/feature.mjs validate <path>` enforces this. Run it after every sidecar write.
-
-Do not introduce fields absent from `feature.schema.json`.
-
-## What to load vs ignore
-
-**Load:** `.feature.yaml` → `spec.md` → `plan.md` / `tasks.md` → latest `runs[].run_path` **if non-null and present on disk** → optional handoff only as secondary color.
-
-**Do not treat as source of truth:** raw transcripts, stale handoff markdown, session-only goal files that conflict with the feature (feature wins), `plan.md`/`tasks.md` alone for AC met/unmet.
+| All ACs met and no open slices | Report done. Offer to close/archive the motive or confirm with `advisor`. |
+| Any slice `blocked` | Surface **blocked** state + reason from `ledger show <id>`; do not silently continue impl. Ask user how to unblock or whether to REPLAN. |
+| Open TBD/TBR items | Surface the open-items register (`journal compile --tbd`); resolve before proceeding if they block the work. |
+| Open slices, no blockers | **Claim and continue**: `ledger claim <slice-id>`, restore goal rails, fan out work for the pointed slice and unblocked same-wave peers. |
+| `agent.decision_log` shows a REPLAN decision | Surface **REPLAN** — re-enter `interview` (objective wrong) or `vertical-slice` (decomposition wrong). Do not resume impl waves. |
+| Concurrent `claimed_by` detected | Surface the conflict; ask user whether to wait, take over, or split work. |
 
 ## Integration
 
-- **`feature`** — owns layout, schema, lifecycle; this skill consumes it. Schema: `skills/groundwork/feature/feature.schema.json`.
-- **`handoff`** — projection of the same state; writing handoff does not replace updating `.feature.yaml`.
-- **`goal`** — may mirror feature goal when exactly one active feature; on conflict, feature ledger wins.
-- **`vertical-slice` / implement** — continue or open slices; seed acceptance from `spec.md` ACs when decomposing; keep `ac_coverage` aligned when decomposition changes.
-- **Advisor REPLAN** — stop impl; route per verdict (`interview` vs `vertical-slice`).
-- **CLI** — `node hooks/feature.mjs validate|resume` (see above).
+- **`motive`** — owns charter authoring and event appending; `resume` reads what `motive` writes.
+- **`handoff`** — projects current state outward for a later session; writing a handoff does not replace updating the motive journal.
+- **`vertical-slice` / implement** — continue or open slices; seed acceptance criteria from the charter's AC list; append `AC_COVERAGE` events when a slice completes an AC.
+- **`journal compile`** — the single authoritative source for objective, ac_coverage, decision log, and next_actions. Re-run it at the start of each session to get a fresh snapshot.
+- **`ledger`** — session-scoped run state: slice status, claimed_by, blocked_by, wave order.
 
 ## Minimal resume checklist
 
 ```
-[ ] Resolved slug (arg | sole active | user picked)
-[ ] Read .feature.yaml first (or CLI: node hooks/feature.mjs resume <slug>)
-[ ] Goal from spec.md
-[ ] AC met/unmet from ac_coverage + ⋃ runs[*].slices_completed (NOT plan.md alone)
-[ ] Negative scope noted
-[ ] Program counter (pointer / next_actions / blocked_reason)
-[ ] Open slices + blocked_by in wave order
-[ ] plan_ref / branch / files for active slice
-[ ] Last runs[] row; if run_path null or missing on disk → note + continue on sidecar fields
-[ ] Last ~5 history + decisions
-[ ] Act: continue slice | new run with feature_slug | surface blocked/REPLAN
-[ ] Any .feature.yaml write preserves terminal/active invariant; validate after write
+[ ] Resolved slug (arg | inferred from active ledger | user picked)
+[ ] journal compile <slug> --stdout --json  (motive spine snapshot)
+[ ] ledger view  (slice status, wave order, claimed_by)
+[ ] Objective stated (from agent.objective)
+[ ] AC met/unmet from agent.ac_coverage × ledger slice statuses
+[ ] Negative scope noted (or explicitly absent from charter)
+[ ] Program counter (agent.resume.next_actions + open/blocked ledger slices)
+[ ] Open slices in wave order (ledger view); blocked_by highlighted
+[ ] Active slice detail (ledger show <id>)
+[ ] Last session link (decision_log timestamps + claimed_by)
+[ ] Recent memory (last ~5 decision_log entries; open TBD/TBR via --tbd)
+[ ] Concurrent-session check (claimed_by column)
+[ ] Act: claim slice + continue | surface blocked/REPLAN | report done
 ```
 
 ## What NOT to Do
 
-- Do NOT resume by grepping the transcript or re-reading a handoff as the program counter
-- Do NOT open impl waves when status is completed/canceled or verdict is REPLAN
-- Do NOT ignore `blocked_reason` / `waiting_on`
-- Do NOT create a run ledger without `feature_slug` when resuming a feature
-- Do NOT invent AC completion — only mark met via `ac_coverage` + `completed` slices (gap #2)
-- Do NOT fail resume when `runs[].run_path` is null or the file was pruned (gap #4)
-- Do NOT write `.feature.yaml` that breaks the terminal/active invariant
-- Do NOT use status aliases (`in_progress`, `completed_acs`, etc.) — only `planned|started|paused|completed|canceled`
-- Do NOT invent fields absent from `feature.schema.json`
-- Do NOT use resume for trivial fast-path work that never had a feature ledger
+- Do NOT resume by grepping the transcript or re-reading a handoff as the program counter.
+- Do NOT open impl waves when all ACs are met or a REPLAN decision is in the log.
+- Do NOT ignore `blocked` slices or open TBD/TBR items.
+- Do NOT claim a slice already held by another session without surfacing the conflict.
+- Do NOT invent AC completion — only mark met via `agent.ac_coverage` × completed slice ids.
+- Do NOT fail resume when ephemeral run-ledger files have been pruned; the motive journal is the durable record.
+- Do NOT use `resume` to author charter updates — that is `motive`'s job.
+- Do NOT use `resume` to write a handoff document — that is `handoff`'s job.
+- Do NOT hand-edit the Decision Log — it is generated by `journal compile`.

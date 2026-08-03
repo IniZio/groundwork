@@ -24,11 +24,10 @@ Resolve what exists; missing inputs are themselves findings:
 
 | Artifact | Typical path | Required? |
 |----------|--------------|-----------|
-| Spec / PRD / acceptance criteria | `plan_ref`, `.groundwork/features/<slug>/spec.md`, `.groundwork/plans/*` (gitignored) | Yes — without ACs, emit CRITICAL and stop |
-| Plan | `plan_ref`, `.groundwork/features/<slug>/plan.md` | Yes for non-trivial |
-| Slice ledger / proposed slices | `.groundwork/runs/<session_id>.json`, vertical-slice output, feature `tasks.md` | Yes — nothing to map otherwise |
+| Spec / acceptance criteria | `plan_ref`, `.groundwork/plans/*` (gitignored), or motive charter at `.groundwork/motives/<slug>/motive.md` | Yes — without ACs, emit CRITICAL and stop |
+| Plan | `plan_ref` or `motive_ref` in the ledger | Yes for non-trivial |
+| Slice ledger / proposed slices | `.groundwork/runs/<session_id>.json`, vertical-slice output | Yes — nothing to map otherwise |
 | Negative scope | spec `negative_scope`, interview "out of scope", rejection KB | Strongly preferred |
-| Feature sidecar (if any) | `.groundwork/features/<slug>/.feature.yaml` | Optional; use for `resume.pointer` / AC ids |
 
 Prefer stable AC ids (`AC1`, `AC2`, …) from the feature/spec contract. If the spec only has prose bullets, assign ephemeral ids `AC1..N` for this review and cite the source line.
 

@@ -58,10 +58,10 @@ During interviewing, these happen simultaneously:
 
 ### 0. Detect Project Planning Conventions (do this first)
 
-Groundwork does not impose a heavyweight PRD format. Before synthesizing a plan, find out how **this project** already plans, and defer to it:
+Before synthesizing a plan, find out how **this project** already plans, and defer to it:
 
-1. **Project planning skills/commands.** Check the available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, `/design-doc`, or `/rfc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
-2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/rfcs/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
+1. **Project planning skills/commands.** Check the available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, or `/design-doc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
+2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
 3. **Project instructions.** Honor any planning rules in `CLAUDE.md` / `AGENTS.md` (where plans live, whether they are committed, required sections).
 
 **Order of preference:** project planning skill → project plans convention → groundwork's default concise plan (below). State which one you're using before writing. Never override a project's own planning workflow with groundwork's default.
@@ -112,43 +112,17 @@ After synthesis and user confirmation, write the plan to a durable file. **Use w
 
 - **Project planning skill exists** → invoke it; it owns the format and location.
 - **Project plans convention exists** → write the plan there, matching the existing format/naming.
-- **No project convention** → use groundwork's default concise plan at `.groundwork/plans/<slug>.md`.
+- **No project convention** → use the **motive pattern**: invoke the `motive` skill to create or update a motive charter at `.groundwork/motives/<slug>/motive.md`. Capture the objective, key decisions (as `DECISION` events in the charter), acceptance criteria, and out-of-scope items. Set `motive_ref: <slug>` in the ledger — the stop-gate accepts a `motive_ref` pointing to an existing charter, satisfying the non-trivial-work gate without a separate plan file.
 
-The plan must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers (those go stale). It exists to feed `vertical-slice`, not to be an exhaustive document.
-
-**Default concise plan format** (`.groundwork/plans/<slug>.md`, slug = kebab-case identifier):
-```markdown
-# <Title>
-
-## Scope
-<bug | small-change | feature>
-
-## Decisions
-
-- **<decision area>**: <what was decided>
-- **<decision area>**: <what was decided>
-
-## Acceptance Criteria
-
-1. <observable, testable criterion>
-2. <criterion>
-
-## Out of Scope
-
-- <explicitly not covered>
-
-## Open Questions
-
-- <anything still uncertain, or "none">
-```
+The charter must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers (those go stale). It exists to feed `vertical-slice`, not to be an exhaustive document.
 
 **Rules:**
-- For features: this plan feeds `vertical-slice` — slices map to acceptance criteria, and the plan path becomes `plan_ref` in `.groundwork/run.json`.
-- For small changes: this plan IS the spec for `implement`.
+- For features: the motive charter anchors `vertical-slice` — slices map to the charter's acceptance items. Set `motive_ref` to the slug in the ledger so the stop-gate can verify the planning is grounded.
+- For small changes: the interview synthesis IS the spec for `implement`; a motive is optional.
 - For bugs: skip this step — bugs go directly to `diagnose`.
-- Respect the project's commit policy for plans (groundwork's `.groundwork/` default is not committed).
+- Respect the project's commit policy — motive charters live in `.groundwork/motives/` (gitignored) and are never staged.
 
-**Seed the ledger at plan time (features only).** After writing the plan file, run `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` (using the write token surfaced at SessionStart) and then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Plan written: <plan-path>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
+**Seed the ledger at plan time (features only).** After writing the motive charter, run `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` (using the write token surfaced at SessionStart) and set `motive_ref` to the slug so the stop-gate recognizes the planning anchor. Then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Motive: <slug>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
 
 ## Domain Glossary (CONTEXT.md)
 
@@ -186,7 +160,7 @@ Only create an ADR during interviewing when ALL THREE criteria are met:
 
 ## What NOT to Do
 
-- Do NOT write a PRD, spec, or any artifact during interviewing — understanding only (CONTEXT.md and ADRs are lightweight references, not specs)
+- Do NOT write a spec or any artifact during interviewing — understanding only (CONTEXT.md and ADRs are lightweight references, not specs)
 - Do NOT ask more than one question at a time
 - Do NOT skip the recommended answer for any question
 - Do NOT interview indefinitely — respect the question cap

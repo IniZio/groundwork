@@ -5,7 +5,7 @@ These rules apply to ALL agents in the groundwork workflow.
 ## Core Rules (Non-Negotiable)
 
 1. **No worktrees.** For new work, continue in the same session. Do not use `git worktree add` or similar.
-2. **Never commit PRDs** to git. Plans and design docs live in `.groundwork/plans/` (gitignored) — never staged.
+2. **Never commit plans or design docs** to git. They live in `.groundwork/plans/` or `.groundwork/motives/` (gitignored) — never staged.
 3. **Skill tool invocation (progressive disclosure).** Load skills when routing names them — they contain instructions not present in the bootstrap. If you start direct and hit ambiguity, stop and load the matching skill. If you load a skill unnecessarily, that's fine — better to have too much structure than too little. Skills are tools, not gatekeepers.
 <!-- PTY-SECTION-START -->
 4. **Use PTY for interactive and long-running commands; use `bash` for one-shot builds.** Use `pty_spawn`/`pty_write`/`pty_read`/`pty_kill` for: interactive commands (editors, `git rebase -i`, `git add -p`, `ssh`, `top`, `less`, `vim`); watch/long-running dev commands (`npm run dev`, `npm start`, `yarn dev`, `docker-compose up`, `docker compose up`, `make watch`, any `--watch` flag); CI babysitting (`gh pr checks --watch`, `gh run view --log-failed`). Use **`bash`** for one-shot commands that exit on their own: `npm run build`, `cargo build`, `go build`, `make` (non-watch), `tsc`, test runners that finish, linters, and similar.
@@ -51,7 +51,7 @@ The orchestrator may use Write/Edit directly ONLY for content it already holds v
 
 **For multi-step work, use the `goal` skill (`set_goal` tool).** It persists across context compression and session restarts, and injects a reminder into every message.
 
-For quick in-session tracking, pin the goal as the **first `todowrite` item**. Derived from the PRD's Acceptance Criteria or the interview spec's resolutions.
+For quick in-session tracking, pin the goal as the **first `todowrite` item**. Derived from the spec's Acceptance Criteria or the interview's resolutions.
 
 **When to use `set_goal` vs todowrite:**
 - `set_goal`: Testing multiple flows, multi-wave features, any work where losing focus across compression/restart has consequences
@@ -79,7 +79,7 @@ Capture non-obvious gotchas discovered during any work session. Lazy-created at 
 - Lazy creation — only create when there's genuinely non-obvious knowledge to capture
 - One bullet per gotcha — keep it scannable
 - Only genuinely surprising things — not routine findings
-- Never committed to git (lives alongside PRDs)
+- Never committed to git (lives alongside plans in `.groundwork/`)
 
 ### Domain Glossary (CONTEXT.md)
 
@@ -90,4 +90,4 @@ See `interview` skill for CONTEXT.md format and rules. Created and maintained du
 - **NEVER use `task` inside a subagent task.** Subagents cannot spawn further subagents — these tools are blocked in child sessions. Subagent prompts must be fully self-contained.
 - **NEVER use `question` tool in subagents.** Subagents must not ask questions — they must make decisions and do the work.
 - Do not use worktrees (`git worktree add` etc.)
-- Do not commit PRD or spec markdown files
+- Do not commit plan, spec, or design markdown files

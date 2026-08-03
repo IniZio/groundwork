@@ -107,13 +107,13 @@ Two forms are accepted. The **two-bullet form is preferred** for new requirement
 - **Criticality**: <must|should>
 ```
 
-The **single-line form** is the legacy format, still valid when brevity is preferred or when citing a Source RFC UID:
+The **single-line form** is the legacy format, still valid when brevity is preferred or when citing a source decision reference:
 
 ```
-- **Verification** <automated|manual|hybrid> · **Criticality** <must|should> · **Source** <rfc-uid>
+- **Verification** <automated|manual|hybrid> · **Criticality** <must|should> · **Source** <motive-slug>#D-<n>
 ```
 
-`Source` is **optional** in both forms. Include it when the requirement originates from a specific RFC (e.g. `Source R-20260726-K4M2QX`); omit it when the origin is not traced to an RFC.
+`Source` is **optional** in both forms. Include it when the requirement originates from a specific decision (e.g. `Source plugin-cleanup#D-3`); omit it when the origin is not traced to a decision.
 
 - `criticality: should` is surfaced in coverage reports but never blocks CI.
 - For `verification: manual`, the body should also include a `### Manual procedure` H3 sub-section directly after the annotation bullets, describing the exact steps to verify compliance. A manual verification without written steps is not reproducible by a second engineer. (Not a lint violation, but strongly recommended.)
@@ -141,11 +141,9 @@ Sequential per concept, zero-padded to 3 digits: `<CONCEPT>-R-NNN`, where `<CONC
 
 Tests reference requirements via `@verifies <id>` annotation comments in source code (e.g. `// @verifies ARTIFACT-R-001`). This convention remains valid and complementary to anchor links: the anchor is the canonical navigation target in Markdown; `@verifies` is the traceability tag in code. Use both when a test covers a specific requirement — link to the anchor in documentation, and annotate the test function with `@verifies`.
 
-### RFC reference (optional)
+### Decision reference (optional)
 
-Writes to `doc/specs/` do not require RFC authorization — specs are always editable. The `spec-guard.mjs` PreToolUse hook is advisory: it may emit a warning when `rfc_ref` is present but the write is not covered by the referenced RFC, but it never blocks the write. The `rfc_ref` ledger field is optional metadata that MAY be set by passing `--rfc <dir>` at ledger init; omitting it is normal and causes no warnings.
-
-RFCs are decision records — the WHY behind a requirement. Write one when the decision is significant enough to warrant traceability (a new constraint, a breaking change, a policy shift); skip for small or obvious changes. A requirement's `origin_rfc` field traces it back to the motivating RFC, so reviewers can follow the rationale chain from requirement to decision record.
+Decisions are the WHY behind a requirement. When a requirement stems from a significant choice (a new constraint, a breaking change, a policy shift), record it as a `DECISION` event in the relevant motive charter and set the requirement's `origin_decision_ref` field to `<motive-slug>#D-<n>` — reviewers can then follow the rationale chain from requirement back to the motivating decision. Skip for small or obvious changes where no explicit decision record is needed.
 
 ### Advisor validation after spec-backed implementation
 

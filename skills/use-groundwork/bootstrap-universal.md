@@ -5,7 +5,7 @@ These rules apply to every role in the groundwork workflow.
 ## Core Rules (Non-Negotiable)
 
 1. **No worktrees.** For new work, continue in the same session. Do not use `git worktree add` or similar.
-2. **Never commit PRDs** to git. Plans and design docs live in `.groundwork/plans/` (gitignored) — never staged.
+2. **Never commit plans or design docs** to git. They live in `.groundwork/plans/` or `.groundwork/motives/` (gitignored) — never staged.
 3. **Skill tool invocation (progressive disclosure).** Load skills when routing names them — they carry instructions not present in the bootstrap. If you start direct and hit ambiguity, stop and load the matching skill. Loading a skill unnecessarily is fine — better too much structure than too little. Skills are tools, not gatekeepers.
 4. **Prefer watch/follow over polling.** For long-running or status commands use `--watch`/`--follow`/`-f`/`--tail`, or run the process in the background and check it once. Repeated one-shot calls waste tokens.
 5. **Use compact evidence checks.** For ambiguity or impact, state the decision, evidence, and pass/fail criterion; do not repeat the full workflow bootstrap.
@@ -56,7 +56,7 @@ Capture non-obvious gotchas discovered during any work session. Lazy-created at 
 
 **Add learnings when:** surprising framework behavior; non-obvious configuration; integration pitfall; test setup complexity; anything that made you say "I didn't expect that."
 
-**Format:** one bullet per gotcha — `**<topic>**: <what happened, why it is surprising, what to do instead>`. Only genuinely surprising things; never committed to git (lives alongside PRDs).
+**Format:** one bullet per gotcha — `**<topic>**: <what happened, why it is surprising, what to do instead>`. Only genuinely surprising things; never committed to git (lives alongside plans in `.groundwork/`).
 
 ### Domain Glossary (CONTEXT.md)
 
@@ -65,6 +65,6 @@ See the `interview` skill for CONTEXT.md format and rules. Created and maintaine
 ## What NOT to Do
 
 - **Do not use worktrees** (`git worktree add` etc.).
-- **Do not commit PRD or spec markdown files.**
+- **Do not commit plan, spec, or design markdown files.**
 - **Do not skip the plan/slice step** for non-trivial work.
 - **Do not declare work done without fresh evidence** from the relevant checks.

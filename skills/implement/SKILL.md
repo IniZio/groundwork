@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implementation orchestration skill. Decompose into vertical slices for maximum general-purpose fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the .groundwork/run.json ledger.
+description: Implementation orchestration skill. Decompose into vertical slices for maximum general-purpose fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the run ledger (.groundwork/runs/<session_id>.json).
 ---
 
 # Implement
@@ -47,10 +47,10 @@ If you are about to implement non-trivial work and no plan_ref exists, STOP and 
 
 ### Feature Mode (a plan exists)
 A plan is whatever concrete spec the work is grounded in: an `interview` synthesis, a
-`planner` plan under `.groundwork/plans/`, or the project's own planning artifact (see
-`interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a `plan_ref` (plan file on disk) before `vertical-slice` fans out** — if missing, STOP and route to `interview` or `planner` first (HARD-GATE). Decompose its acceptance
+`planner` output, or the project's own planning artifact (see
+`interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a planning artifact (`plan_ref` or `motive_ref`) before `vertical-slice` fans out** — if missing, STOP and route to `interview` or `planner` first (HARD-GATE). Decompose its acceptance
 criteria into vertical slices — each criterion → one slice. Record the plan path as
-`plan_ref` in the ledger. **When implementing an RFC**, also set `rfc_ref` by using `ledger init --rfc <rfc-dir>` which seeds slices from the RFC's `tasks:` frontmatter block automatically.
+`plan_ref` (or the motive slug as `motive_ref`) in the ledger.
 
 ### Small-Change Mode (after `interview`, no separate plan)
 Lightweight decomposition into 3–5 vertical slices. The interview spec is the spec.
@@ -59,7 +59,7 @@ Lightweight decomposition into 3–5 vertical slices. The interview spec is the 
 
 ## Step 0: Banner
 
-Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/run.json`. This is the observable signal the workflow is engaged.
+Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json`. This is the observable signal the workflow is engaged.
 
 ## Step 1: Decompose with `vertical-slice`
 
@@ -102,7 +102,7 @@ Each general-purpose prompt must be **fully self-contained**: file paths, requir
 Wait for wave completion before launching the next wave. Update the host's plan and ledger interfaces when available. In Codex, record incomplete slices in the plan or handoff artifact and do not claim that a Stop-gate will block session termination.
 
 **Fan-out targets:**
-- Feature (PRD): 5-15 parallel slices per wave
+- Feature: 5-15 parallel slices per wave
 - Small change: 3-5 parallel slices
 - Single-slice wave = code smell — decompose harder or merge with adjacent wave
 

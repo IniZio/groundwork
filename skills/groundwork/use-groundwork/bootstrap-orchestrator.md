@@ -58,7 +58,7 @@ Sequence: `[qa if interactive UI]` → `advisor`
 
 **This gate is ORCHESTRATOR-ONLY.** Subagents never invoke `advisor` — they make local decisions and return their result. YOU own every advisor call, at two points:
 - **Mid-flow:** any architectural trade-off, destructive operation, or genuine uncertainty → `advisor` before committing to the path.
-- **At completion:** the `advisor` gate is never optional. Every path converges here. Never declare done without an APPROVE verdict (recorded as `gate.advisor` in `.groundwork/run.json`). "Should work" is not evidence.
+- **At completion:** the `advisor` gate is never optional. Every path converges here. Never declare done without an APPROVE verdict (recorded as `gate.advisor` in the run ledger). "Should work" is not evidence.
 
 ---
 

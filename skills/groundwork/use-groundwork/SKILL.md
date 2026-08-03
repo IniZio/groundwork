@@ -21,4 +21,6 @@ If you notice the core rules, routing, or skill triggers are missing from your c
 
 ## Non-trivial feature mandate
 
-A non-trivial feature MUST have a `plan_ref` (produced by `interview` or `planner` — a plan file on disk such as `.groundwork/plans/<slug>.md`) before `vertical-slice` fans out. The `planner` route is not an interview-free shortcut; it writes that artifact and returns `plan_ref`. Trivial / small-clear / docs / obvious-bug fast-paths remain direct → `advisor-gate`.
+A non-trivial feature MUST have a planning artifact produced by `interview` or `planner` before `vertical-slice` fans out. Acceptable forms: a `plan_ref` pointing to a plan file on disk, or a `motive_ref` pointing to a motive charter at `.groundwork/motives/<slug>/motive.md`. The `planner` route is not an interview-free shortcut; it writes that artifact and returns `plan_ref` or `motive_ref`. Trivial / small-clear / docs / obvious-bug fast-paths remain direct → `advisor-gate`.
+
+**Planning chain:** `interview` (requirements Q&A) → [`plan-review` (coverage audit, optional)] → `vertical-slice` (conflict-free decomposition + ledger) → `implement` or `ultrawork` (execution). Each step's SKILL.md states its entry conditions and what comes next.

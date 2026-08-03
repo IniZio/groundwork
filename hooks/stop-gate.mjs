@@ -70,10 +70,48 @@
  *   the enforcement-relevant ledger state at the last block, used to detect progress).
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import path from 'node:path'
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
+import { readCharter } from './lib/motive-charter.mjs'
+
+/**
+ * Advisory only — never blocks. Enabled by GROUNDWORK_TBD_GATE=1.
+ * Returns a newline-prefixed string of TBD/TBR count lines (one per motive),
+ * or '' when the env var is unset, the motives dir is absent, or any error occurs.
+ * @param {string} projectDir
+ * @returns {string}
+ */
+function tbdAdvisory(projectDir) {
+  if (process.env.GROUNDWORK_TBD_GATE !== '1') return ''
+  try {
+    const motivesDir = path.join(projectDir, '.groundwork', 'motives')
+    let slugs
+    try {
+      slugs = readdirSync(motivesDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+    } catch {
+      return ''
+    }
+    const lines = []
+    for (const slug of slugs) {
+      try {
+        const charter = readCharter({ projectDir, motive: slug })
+        if (!charter) continue
+        const n = Array.isArray(charter.open_items) ? charter.open_items.length : 0
+        if (n > 0) lines.push(`Open items: ${n} TBD/TBR unresolved for motive ${slug}`)
+      } catch {
+        // fail-open per motive
+      }
+    }
+    return lines.length > 0 ? '\n' + lines.join('\n') : ''
+  } catch {
+    return ''
+  }
+}
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
@@ -225,8 +263,8 @@ function detectYield(input) {
 }
 
 /** Emit a decision and exit. Default lets the stop proceed. */
-function allow() {
-  console.log(JSON.stringify({ continue: true }))
+function allow(notice = '') {
+  console.log(JSON.stringify(notice ? { continue: true, reason: notice } : { continue: true }))
   process.exit(0)
 }
 
@@ -354,7 +392,8 @@ async function main() {
       source: 'hook:stop-gate',
       data: { outcome: 'complete' },
     })
-    return allow()
+    // S7-AC3: TBD advisory surfaces on the normal-completion allow path (gate=1 only).
+    return allow(tbdAdvisory(projectDir))
   }
 
   // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).
@@ -417,7 +456,7 @@ async function main() {
     // Counter persistence is best-effort; still block this time.
   }
 
-  return block(buildReason(ledger, incomplete, count))
+  return block(buildReason(ledger, incomplete, count) + tbdAdvisory(projectDir))
 }
 
 main().catch(() => allow())

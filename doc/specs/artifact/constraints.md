@@ -16,15 +16,6 @@ When a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs` 
 
 See also: [ARTIFACT-R-003](#artifact-r-003)
 
-## ARTIFACT-R-002 — RFC reference field in ledger {#artifact-r-002}
-
-Where `--rfc <dir>` is passed at ledger init, the ledger **shall** record `rfc_ref` as an optional advisory field containing the RFC directory path.
-
-- **Why** — traceability tooling and audit trails benefit from knowing which RFC motivated a session's work; `rfc_ref` provides that link without gating spec writes or session close. Its absence is not an error: `spec-guard` and the Stop hook treat it as informational metadata only.
-- **Fit criterion** — initialize a run ledger with `--rfc <dir>` and confirm `rfc_ref` equals the given path; also confirm that a ledger initialized without `--rfc` contains no `rfc_ref` field, that spec writes succeed in both cases, and that session close is not blocked by a missing `rfc_ref`.
-- **Verification**: automated — the ledger CLI and Stop hook are tested against both the `--rfc` and no-`--rfc` initialization paths.
-- **Criticality**: should
-
 ## ARTIFACT-R-003 — Stop hook incomplete-slice guard {#artifact-r-003}
 
 If the Stop hook fires and the active run ledger contains any slice not marked complete, then the Stop hook **shall** block session end and emit a message citing the id of each incomplete slice.

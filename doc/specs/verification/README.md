@@ -4,7 +4,7 @@ type: concept
 title: Verification
 summary: "Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends."
 parent: C-GROUNDWORK
-origin_rfc: R-20260726-K4M2QX
+origin_decision_ref: plugin-cleanup#D-5
 ---
 
 # Verification

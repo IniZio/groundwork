@@ -32,10 +32,6 @@
       "type": "string",
       "description": "Opaque random token required for gate/complete mutations. Treated as a secret; never reproduced in logs."
     },
-    "feature_slug": {
-      "type": "string",
-      "description": "Optional link to .groundwork/features/<slug>/ for feature-ledger tracking."
-    },
     "reinforcements": {
       "description": "Arbitrary extra context or annotations attached by the orchestrator."
     },

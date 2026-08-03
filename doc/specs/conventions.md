@@ -18,7 +18,7 @@ doc/specs/<concept>/
   constraints.md      — optional view: testable normative invariants (self-contained: Why, Fit criterion, Criticality inline)
 ```
 
-`README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, and `parent` fields validated by `spec-concept.schema.json`; `origin_rfc` is an optional field that, when present, must be a valid non-empty RFC ref. Renaming it to `overview.md` is a deferred follow-up RFC; until that RFC lands, `README.md` remains the single indexed entry point per concept.
+`README.md` is the indexed concept node during the current transition period — it carries the `id`, `type: concept`, `title`, `summary`, and `parent` fields validated by `spec-concept.schema.json`; `origin_decision_ref` is an optional field that, when present, must be a valid decision ref in the form `<motive-slug>#D-<n>` (e.g. `plugin-cleanup#D-5`). Renaming it to `overview.md` is a deferred follow-up; until that lands, `README.md` remains the single indexed entry point per concept.
 
 ## 2a. Nested and multi-system layouts
 
@@ -276,24 +276,24 @@ The following table is the **single canonical source** for spec concept status v
 - **`accepted`** — set after the team has reviewed and approved the concept as normative. From this point, breaking changes (removing requirements, changing IDs, altering constraints) require an RFC.
 - **`deprecated`** — set when the concept is superseded or removed. The `README.md` SHOULD link to the replacement concept or the RFC that retired it.
 
-## 7. Status lifecycle — RFCs
+## 7. Origin decision ref — traceability field
 
-The following table is the **single canonical source** for RFC status values and their meanings. When `status_policy` is present inline in an `rfc.yaml`, `spec-lint` asserts that every entry matches this table.
+The `origin_decision_ref` field links a spec node back to the motive decision that introduced it.
 
-| Status | Meaning |
-|---|---|
-| `draft` | Initial draft; not yet ready for review |
-| `review` | Ready for review; `body_digest` stamped at this transition |
-| `accepted` | Decision recorded; `spec_delta` concepts updated |
-| `implementing` | Implementation in progress |
-| `implemented` | Implementation complete |
-| `rejected` | Decision recorded; no spec changes |
-| `superseded` | A newer RFC supersedes this one |
-| `abandoned` | Withdrawn without formal decision |
+**Format:** `<motive-slug>#D-<n>` — where `<motive-slug>` is the kebab-case slug of the motive (e.g. `plugin-cleanup`) and `D-<n>` is a decision identifier in that motive's Decision Log (e.g. `D-5`).
+
+**Example:** `origin_decision_ref: plugin-cleanup#D-5`
+
+**Semantics:**
+- The field is **optional** — omitting it is silent (no lint violation).
+- When present, the value **must** match the pattern `<motive-slug>#D-<n>` exactly; an empty value, the literal `null`, or any non-matching string is a `origin-decision-ref` lint violation.
+- The field does not carry referential-integrity enforcement at lint time — the target decision is not verified on disk. It is a human-readable traceability link.
+
+**Why optional:** not every spec change has a corresponding motive decision. Small fixes and obvious corrections need not carry a traceability ref.
 
 ## 8. Node ownership rule (transitional)
 
-`README.md` is the **indexed concept node** — it carries `id`, `type: concept`, `title`, `summary`, and `parent`, validated by `spec-concept.schema.json`. The `origin_rfc` field is optional; if present it must be a valid non-empty RFC ref. View files are **not** indexed nodes; they are reached via the `spec.yaml` `views` array.
+`README.md` is the **indexed concept node** — it carries `id`, `type: concept`, `title`, `summary`, and `parent`, validated by `spec-concept.schema.json`. The `origin_decision_ref` field is optional; if present it must be a valid decision ref in the form `<motive-slug>#D-<n>`. View files are **not** indexed nodes; they are reached via the `spec.yaml` `views` array.
 
 Creating an `overview.md` with a `type: overview` frontmatter field alongside `id: C-FOO` would collide on the concept node id — `spec lint` would see two nodes with the same `id`. The rename from `README.md` to `overview.md` as the indexed node is a deferred RFC; until it lands, do not create an `overview.md` that carries the concept's `id`.
 

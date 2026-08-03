@@ -19,7 +19,7 @@
  *     xref-dangling            — cross-references must resolve (same-file and relative-path)
  *     id-format                — requirement ids must be <CONCEPT>-R-NNN (exactly 3 zero-padded digits)
  *   All node invariants (concept README.md and other nodes):
- *     origin-rfc           — origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
+ *     origin-decision-ref  — origin_decision_ref if present must be a valid decision ref (absent is allowed)
  *     required-field       — all schema-required fields must be present and non-blank
  *     enum-values          — type, pattern, verification, criticality, status
  *     summary-length       — summary must be ≤25 words
@@ -188,12 +188,12 @@ function schemaErrorsToViolations(errors, nodeId, rawFm) {
     const { keyword, instancePath, params, schemaPath } = err
     const field = instancePath ? instancePath.replace(/^\//, '') : ''
 
-    // Skip not errors — origin_rfc 'null' sentinel is handled by origin-rfc invariant
+    // Skip not errors — origin_decision_ref 'null' sentinel is handled by origin-decision-ref invariant
     if (keyword === 'not') continue
 
-    // Skip all errors on origin_rfc — handled by the hand-written origin-rfc invariant
-    if (field === 'origin_rfc') continue
-    if (keyword === 'required' && params.missingProperty === 'origin_rfc') continue
+    // Skip all errors on origin_decision_ref — handled by the hand-written origin-decision-ref invariant
+    if (field === 'origin_decision_ref') continue
+    if (keyword === 'required' && params.missingProperty === 'origin_decision_ref') continue
 
     // Skip oneOf errors and errors from within oneOf branches (parent field)
     if (keyword === 'oneOf') continue
@@ -307,13 +307,13 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
     })
   }
 
-  // origin_rfc is optional; if present it must be a valid non-empty RFC ref
-  const originRfc = fileFm.origin_rfc
-  if (originRfc !== undefined) {
-    if (!originRfc || typeof originRfc !== 'string' || !String(originRfc).trim() || originRfc === 'null') {
+  // origin_decision_ref is optional; if present it must be a valid decision ref (<motive-slug>#D-<n>)
+  const originDecisionRef = fileFm.origin_decision_ref
+  if (originDecisionRef !== undefined) {
+    if (!originDecisionRef || typeof originDecisionRef !== 'string' || !String(originDecisionRef).trim() || originDecisionRef === 'null' || !/^[a-z0-9][a-z0-9-]*#D-\d+$/.test(String(originDecisionRef).trim())) {
       violations.push({
         nodeId: firstNodeId,
-        violation: `origin-rfc: file "${fileLabel}" has invalid origin_rfc in frontmatter`,
+        violation: `origin-decision-ref: file "${fileLabel}" has invalid origin_decision_ref in frontmatter (expected <motive-slug>#D-<n>, e.g. plugin-cleanup#D-5)`,
       })
     }
   }
@@ -496,10 +496,10 @@ function checkNodeInvariants(node, rawFm, index) {
     }
   }
 
-  // origin_rfc is optional; if present it must be a valid non-empty RFC ref
-  if (rawFm.origin_rfc !== undefined) {
-    if (!rawFm.origin_rfc || typeof rawFm.origin_rfc !== 'string' || !rawFm.origin_rfc.trim() || rawFm.origin_rfc === 'null') {
-      violations.push(`origin-rfc: node "${id}" has invalid origin_rfc in frontmatter`)
+  // origin_decision_ref is optional; if present it must be a valid decision ref (<motive-slug>#D-<n>)
+  if (rawFm.origin_decision_ref !== undefined) {
+    if (!rawFm.origin_decision_ref || typeof rawFm.origin_decision_ref !== 'string' || !rawFm.origin_decision_ref.trim() || rawFm.origin_decision_ref === 'null' || !/^[a-z0-9][a-z0-9-]*#D-\d+$/.test(rawFm.origin_decision_ref.trim())) {
+      violations.push(`origin-decision-ref: node "${id}" has invalid origin_decision_ref in frontmatter (expected <motive-slug>#D-<n>, e.g. plugin-cleanup#D-5)`)
     }
   }
 
@@ -568,7 +568,7 @@ Spec invariants (body-format requirements.md):
   id-format                requirement ids must be <CONCEPT>-R-NNN (3 zero-padded digits)
 
 Spec invariants (all nodes):
-  origin-rfc      origin_rfc if present must be a valid non-empty RFC ref (absent is allowed)
+  origin-decision-ref  origin_decision_ref if present must be a valid decision ref (<motive-slug>#D-<n>, absent is allowed)
   required-field  all schema-required fields must be present and non-blank
   enum-values     type, pattern, verification, criticality, status
   summary-length  summary must be ≤25 words

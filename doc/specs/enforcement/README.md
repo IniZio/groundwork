@@ -4,7 +4,7 @@ type: concept
 title: Enforcement Hooks
 summary: "Enforcement hooks mechanically bind CLAUDE.md prose rules as PreToolUse gates, blocking orchestrators and subagents from violating delegation constraints."
 parent: C-GROUNDWORK
-origin_rfc: R-20260726-K4M2QX
+origin_decision_ref: plugin-cleanup#D-5
 ---
 
 # Enforcement Hooks

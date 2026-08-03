@@ -1,6 +1,6 @@
 id: C-ARTIFACT
 title: Artifact Model
-summary: "The four groundwork artifact types—run ledger, RFC documents, session journal, and spec tree—are file-backed records that persist across sessions."
+summary: "The three groundwork artifact types—run ledger, session journal, and spec tree—are file-backed records that persist across sessions."
 status: review
 views:
   - type: overview

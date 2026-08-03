@@ -4,7 +4,7 @@ type: concept
 title: Orchestration Model
 summary: "The orchestrator classifies and delegates all implementation to specialist subagents and never writes code or edits files itself."
 parent: C-GROUNDWORK
-origin_rfc: R-20260726-K4M2QX
+origin_decision_ref: plugin-cleanup#D-5
 ---
 
 # Orchestration Model

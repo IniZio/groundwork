@@ -1,7 +1,7 @@
 /**
  * spec-io.mjs — shared I/O utilities for the spec CLI.
  *
- * Pure data functions; no process.exit. No cross-imports from rfc-io or journal-io.
+ * Pure data functions; no process.exit. No imports from other hook-lib modules.
  *
  * RFC-0003 (accepted 2026-07-27): normative requirement content lives in anchored H3
  * sections of a per-concept `requirements.md`.  Frontmatter is metadata only.
@@ -25,7 +25,7 @@ import { loadSchema } from './schema-io.mjs'
  */
 export const ALLOWED_FRONTMATTER_FIELDS = new Set([
   'id', 'type', 'concept', 'parent', 'title', 'summary',
-  'origin_rfc', 'status', 'pattern', 'verification', 'criticality',
+  'origin_decision_ref', 'status', 'pattern', 'verification', 'criticality',
 ])
 
 /**

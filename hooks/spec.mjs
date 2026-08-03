@@ -558,7 +558,7 @@ function cmdReqNew(args) {
     `verify: "TODO: describe how to verify this requirement."`,
     `verification: automated`,
     `criticality: must`,
-    `origin_rfc: TODO`,
+    `# origin_decision_ref: <motive-slug>#D-<n>  # optional: decision that introduced this node`,
     `superseded_by: null`,
     `status: active`,
     '---',

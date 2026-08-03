@@ -172,9 +172,9 @@ When creating or revising specs, ensure these sections are present:
 
 When a feature is being planned (via `interview`, deferring to the project's planning convention):
 
-1. The plan is synthesized (groundwork default: `.groundwork/plans/<feature>.md`)
+1. The planner emits a motive charter and DECISION events (`origin_decision_ref`)
 2. This skill creates the spec at `.pi/specs/<feature>.md`
-3. Spec frontmatter links to the plan: `linked_plan: .groundwork/plans/<feature>.md`
+3. Spec frontmatter links to the motive ref: `origin_decision_ref: <ref from planner>`
 4. Spec Context section references the plan's Overview / Acceptance Criteria
 
 ### Spec Revision → Plan Revision

@@ -9,6 +9,29 @@
  *   concurrent appenders cannot interleave partial lines.  Each event is
  *   serialized to a Buffer before the fd is opened, so the write is a single
  *   syscall with no read-modify-write and no partial-line risk.
+ *
+ * Evolution contract (no-seq decision, Step 2):
+ *   Events are ordered by `ts` (ISO 8601 UTC string sort — lexicographic ==
+ *   chronological).  No `seq` field is written: a monotonic counter would
+ *   require read-modify-write of a shared counter, destroying the single-syscall
+ *   atomicity guarantee.  The correct sort order is `ts`; ties are resolved by
+ *   insertion order within a shard (stable sort).
+ *
+ *   Extension contract: new optional keys may be added at any time.  Keys must
+ *   never be removed or repurposed while events exist in the stream.  If a
+ *   genuinely breaking change is ever needed, run `journal compile` over the
+ *   shard directory to rewrite events.
+ *
+ *   Motive-only schema (2026-08-03 user decision):
+ *   `emitHookEvent` writes ONLY the `motive` key.  No `rfc` mirror is written.
+ *   The `--rfc` CLI alias is removed from journal.mjs.  Existing shards that
+ *   carry only an `rfc` key become invisible to `--motive` filters — accepted.
+ *
+ * `msg` field contract:
+ *   `msg` is OPTIONAL on hook-written events (emitHookEvent does not require it;
+ *   some event types carry no human-readable summary).  The journal-append CLI
+ *   (journal.mjs cmdAppend) still requires --msg for human-authored entries.
+ *   Step-3 compiler implementations must treat `msg` as nullable.
  */
 
 import {
@@ -34,10 +57,138 @@ export const VALID_TYPES = [
   'WAIVER',
   'HANDOFF',
   'SESSION_START',
+  'SPEC_DRIFT',
+  'SESSION_END',
 ]
 
 /** Types that must never be folded into a digest summary (AC 9). */
 export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE'])
+
+// ---------------------------------------------------------------------------
+// Motive normalization (Step 2 dual-key back-compat)
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the motive id for an event.
+ * Canonical key is `motive`.
+ * @param {object} e
+ * @returns {string|undefined}
+ */
+export function eventMotive(e) {
+  return e.motive
+}
+
+/**
+ * Resolve the current motive id through a 4-step chain:
+ *   1. env GROUNDWORK_MOTIVE           (explicit override / test injection)
+ *   2. ledger.motive                   (forward-compatible field; nothing writes it yet)
+ *   3. ledger.rfc_ref                  (today's de-facto objective pointer)
+ *   4. "session:<sessionId>"           (synthetic — ALWAYS resolves)
+ *
+ * Returns `{ motive: string, provenance: string }`.
+ * Never throws; never returns null.  Callers may pass a pre-loaded ledger
+ * object to avoid a second file read.
+ *
+ * @param {{ projectDir?: string, sessionId?: string, ledger?: object|null }} opts
+ * @returns {{ motive: string, provenance: string }}
+ */
+export function resolveMotive({ projectDir, sessionId, ledger } = {}) {
+  // Step 1: explicit env override
+  if (process.env.GROUNDWORK_MOTIVE) {
+    return { motive: process.env.GROUNDWORK_MOTIVE, provenance: 'env' }
+  }
+
+  // Steps 2+3: try ledger fields (use supplied ledger, or read from disk)
+  let l = ledger
+  if (l === undefined) {
+    // Try to load the active ledger from disk without throwing.
+    const dir = projectDir ?? process.cwd()
+    l = null
+    // Try legacy run.json first (common in tests and shorter sessions)
+    try {
+      l = JSON.parse(readFileSync(path.join(dir, '.groundwork', 'run.json'), 'utf8'))
+    } catch { l = null }
+    // If not active, look for a session-matching file under runs/
+    if (!l?.active) {
+      let files = []
+      try { files = readdirSync(path.join(dir, '.groundwork', 'runs')) } catch { /* none */ }
+      for (const f of files) {
+        if (!f.endsWith('.json')) continue
+        try {
+          const candidate = JSON.parse(
+            readFileSync(path.join(dir, '.groundwork', 'runs', f), 'utf8'),
+          )
+          if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
+            l = candidate; break
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+
+  if (l?.motive) return { motive: l.motive, provenance: 'ledger.motive' }
+  if (l?.rfc_ref) return { motive: l.rfc_ref, provenance: 'ledger.rfc_ref' }
+
+  // Step 4: synthetic fallback — never null, never throws
+  const sid = sessionId ?? 'unknown'
+  return { motive: `session:${sid}`, provenance: 'synthetic' }
+}
+
+/**
+ * Emit a hook event to the journal.  Never throws; returns `{ ok: boolean }`.
+ * On failure: exactly one stderr line, zero stdout bytes.
+ * On success: zero stdout bytes (stdout must remain clean for hook JSON output).
+ *
+ * Writes ONLY `motive` (no `rfc` key — motive-only schema per 2026-08-03 decision).
+ *
+ * @param {{
+ *   projectDir: string,
+ *   sessionId:  string,
+ *   type:       string,
+ *   msg:        string,
+ *   source:     string,
+ *   data?:      object,
+ *   ledger?:    object|null,
+ *   date?:      string,
+ * }} opts
+ * @returns {{ ok: boolean, motive?: string, provenance?: string, error?: string }}
+ */
+export function emitHookEvent(opts = {}) {
+  const {
+    projectDir, sessionId, type, msg, source,
+    data, ledger, date,
+  } = opts
+
+  try {
+    if (!VALID_TYPES.includes(type)) {
+      process.stderr.write(
+        `journal: emitHookEvent: invalid type "${type}" — event not written\n`,
+      )
+      return { ok: false, error: `invalid type: ${type}` }
+    }
+
+    const { motive, provenance } = resolveMotive({ projectDir, sessionId, ledger })
+    const ts = new Date().toISOString()
+    const event = {
+      ts,
+      session: sessionId ?? 'unknown',
+      motive,  // canonical; rfc key not written (2026-08-03 user decision)
+      type,
+      msg,
+      source,
+    }
+    if (data !== undefined) event.data = { ...data, motive_provenance: provenance }
+
+    const shardPath = resolveShardPath(projectDir ?? process.cwd(), sessionId ?? 'unknown', date)
+    appendEvent(shardPath, event)
+    return { ok: true, motive, provenance }
+  } catch (err) {
+    process.stderr.write(
+      `journal: emitHookEvent: failed to write event: ${err?.message ?? err}\n`,
+    )
+    return { ok: false, error: err?.message ?? String(err) }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shard path resolution
@@ -135,14 +286,14 @@ export function readAllEvents(journalDir) {
  * is pure and testable without default injection.
  *
  * @param {object[]} events
- * @param {{ rfc?: string, type?: string, since?: string, last?: number }} opts
+ * @param {{ motive?: string, type?: string, since?: string, last?: number }} opts
  * @returns {{ shown: object[], withheld: number, total: number }}
  */
-export function filterEvents(events, { rfc, type, since, last } = {}) {
+export function filterEvents(events, { motive, type, since, last } = {}) {
   let filtered = events
 
-  if (rfc != null) {
-    filtered = filtered.filter(e => e.rfc === rfc)
+  if (motive != null) {
+    filtered = filtered.filter(e => eventMotive(e) === motive)
   }
 
   if (type != null) {

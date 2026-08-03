@@ -8,9 +8,6 @@
  *   journal digest --motive <id> [--rebuild]
  *   journal help [<cmd>]
  *
- * Deprecated aliases (emit a deprecation notice):
- *   --rfc <uid>  →  use --motive <id> instead
- *
  * Exit codes: 0 success  1 operational failure  2 usage error
  *
  * Session ID resolution (explicit and testable):
@@ -28,6 +25,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   VALID_TYPES,
   NEVER_COMPRESS,
+  eventMotive,
   resolveShardPath,
   appendEvent,
   readAllEvents,
@@ -84,7 +82,7 @@ const HELP = {
     summary: 'append one event to the journal shard for this session',
     usage: 'journal append --motive <id> --type <T> --msg <M> [--data <json>]',
     flags: [
-      '--motive <id>  motive identifier (required; --rfc is a deprecated alias)',
+      '--motive <id>  motive identifier (required)',
       '--type <T>     event type (required)',
       '--msg <M>      human-readable message (required)',
       '--data <json>  optional extra data as a JSON object',
@@ -96,7 +94,7 @@ const HELP = {
     summary: 'query journal events with defaults: --since 7d --last 30',
     usage: 'journal show [--motive <id>] [--type T[,T]] [--since <date|Nd>] [--last N] [--brief]',
     flags: [
-      '--motive <id>      filter by motive id (--rfc is a deprecated alias)',
+      '--motive <id>      filter by motive id',
       '--type T[,T]       filter by event type (comma-separated)',
       '--since <date|Nd>  filter events at or after date (e.g. 7d, 2026-07-01)',
       '--last N           emit only the N most recent matching events (default 30)',
@@ -107,7 +105,7 @@ const HELP = {
     summary: 'emit digest summary of prefix + verbatim tail for a motive',
     usage: 'journal digest --motive <id> [--rebuild]',
     flags: [
-      '--motive <id>  motive identifier (required; --rfc is a deprecated alias)',
+      '--motive <id>  motive identifier (required)',
       '--rebuild      force rebuild of digest from source',
     ],
   },
@@ -148,17 +146,9 @@ function cmdAppend(args) {
   const { flags } = parseFlags(args)
   const { type, msg } = flags
 
-  // --motive is primary; --rfc is a deprecated alias
-  let rfc = flags.motive
-  if (!rfc && flags.rfc) {
-    process.stderr.write(
-      'journal: --rfc is deprecated; use --motive instead\n',
-    )
-    rfc = flags.rfc
-  }
-
-  if (!rfc || !type || !msg) {
-    die('append requires --motive (or deprecated --rfc), --type, and --msg', 2)
+  const motive = flags.motive
+  if (!motive || !type || !msg) {
+    die('append requires --motive, --type, and --msg', 2)
   }
 
   if (!VALID_TYPES.includes(type)) {
@@ -178,7 +168,7 @@ function cmdAppend(args) {
 
   const { projectDir, sessionId } = resolveContext()
   const ts = new Date().toISOString()
-  const event = { ts, session: sessionId, rfc, type, msg }
+  const event = { ts, session: sessionId, motive, type, msg, source: 'cli:journal' }
   if (data !== undefined) event.data = data
 
   const shardPath = resolveShardPath(projectDir, sessionId)
@@ -193,8 +183,9 @@ function cmdAppend(args) {
 // ---------------------------------------------------------------------------
 
 function formatEventFull(event) {
+  const motive = eventMotive(event) ?? '—'
   const lines = [
-    `[${event.ts ?? '?'}] ${event.type ?? '?'} | rfc:${event.rfc ?? '—'} | session:${event.session ?? '—'}`,
+    `[${event.ts ?? '?'}] ${event.type ?? '?'} | motive:${motive} | session:${event.session ?? '—'}`,
     `  ${event.msg ?? ''}`,
   ]
   if (event.data !== undefined) {
@@ -217,23 +208,18 @@ function cmdShow(args) {
 
   const allEvents = readAllEvents(journalDir)
 
-  // Resolve --motive / --rfc (deprecated alias)
-  let motiveFilter = flags.motive
-  if (!motiveFilter && flags.rfc) {
-    process.stderr.write('journal: --rfc is deprecated; use --motive instead\n')
-    motiveFilter = flags.rfc
-  }
+  const motiveFilter = flags.motive
 
   // Default windowing (AC 6):
-  //   without --motive/--rfc and without --since → imply --since 7d
+  //   without --motive and without --since → imply --since 7d
   //   --last always defaults to 30
   const hasSince = flags.since != null
-  const hasRfc = motiveFilter != null
-  const since = hasSince ? flags.since : (!hasRfc ? '7d' : undefined)
+  const hasMotive = motiveFilter != null
+  const since = hasSince ? flags.since : (!hasMotive ? '7d' : undefined)
   const last = flags.last != null ? parseInt(String(flags.last), 10) : 30
 
   const { shown, withheld } = filterEvents(allEvents, {
-    rfc: motiveFilter,
+    motive: motiveFilter,
     type: flags.type,
     since,
     last,
@@ -251,7 +237,7 @@ function cmdShow(args) {
   if (withheld > 0) {
     const sincePart = since ? `, --since ${since}` : ''
     process.stdout.write(
-      `\n… ${withheld} older events not shown (--last ${last}${sincePart}). Narrow with --rfc/--type.\n`,
+      `\n… ${withheld} older events not shown (--last ${last}${sincePart}). Narrow with --motive/--type.\n`,
     )
   }
 }
@@ -299,18 +285,14 @@ function buildDigest(prefixEvents, watermark, rfc) {
 
 function cmdDigest(args) {
   const { flags } = parseFlags(args)
-  let rfc = flags.motive
-  if (!rfc && flags.rfc) {
-    process.stderr.write('journal: --rfc is deprecated; use --motive instead\n')
-    rfc = flags.rfc
-  }
-  if (!rfc || rfc === true) die('digest requires --motive (or deprecated --rfc)', 2)
+  const rfc = flags.motive
+  if (!rfc || rfc === true) die('digest requires --motive', 2)
 
   const { projectDir } = resolveContext()
   const journalDir = path.join(projectDir, '.groundwork', 'journal')
 
   const allEvents = readAllEvents(journalDir)
-  const rfcEvents = allEvents.filter(e => e.rfc === rfc)
+  const rfcEvents = allEvents.filter(e => eventMotive(e) === rfc)
 
   if (rfcEvents.length === 0) {
     process.stdout.write(`No journal events found for RFC ${rfc}\n`)
@@ -373,7 +355,7 @@ function cmdDigest(args) {
     // Recovery command for summarized range (AC 10)
     process.stdout.write('\nTo retrieve ground truth for the summarized range:\n')
     process.stdout.write(
-      `  journal show --rfc ${rfc} --since 9999d --last 9999\n\n`,
+      `  journal show --motive ${rfc} --since 9999d --last 9999\n\n`,
     )
   }
 
@@ -396,7 +378,7 @@ function cmdDigest(args) {
   if (watermark) {
     process.stdout.write(`\nWatermark: ${watermark}\n`)
     process.stdout.write(
-      `Recovery command: journal show --rfc ${rfc} --since 9999d --last 9999\n`,
+      `Recovery command: journal show --motive ${rfc} --since 9999d --last 9999\n`,
     )
   }
 }

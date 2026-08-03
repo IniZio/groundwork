@@ -4,7 +4,7 @@
  * AC coverage map:
  *  AC 1  — append-creates-line, append-exit-zero
  *  AC 2  — invalid-type-exits-2, invalid-type-lists-types
- *  AC 3  — show-rfc-filter-across-shards
+ *  AC 3  — show-motive-filter-across-shards
  *  AC 4  — concurrent-append-no-interleaving  (genuine multi-process)
  *  AC 5  — never-rewrite  (mutation proof)
  *  AC 6  — show-defaults-since7d-last30, withheld-footer  (mutation proof)
@@ -12,6 +12,7 @@
  *  AC 8  — digest-summary-plus-verbatim-tail
  *  AC 9  — decision-spec-change-never-compressed  (mutation proof)
  *  AC 10 — digest-prints-recovery-command
+ *  AC 11 — --motive is the only scope flag; --rfc is unknown/rejected
  */
 
 // @ts-nocheck
@@ -87,7 +88,7 @@ describe('AC 1 — append writes one line', () => {
   test('append-creates-shard-and-exits-0', () => {
     const env = journalEnv(tmp, 'sess1')
     const r = runJournal(
-      ['append', '--rfc', 'R-001', '--type', 'MILESTONE', '--msg', 'wave 1 landed'],
+      ['append', '--motive', 'R-001', '--type', 'MILESTONE', '--msg', 'wave 1 landed'],
       env,
     )
     expect(r.status, `stderr: ${r.stderr}`).toBe(0)
@@ -95,17 +96,18 @@ describe('AC 1 — append writes one line', () => {
     const events = readShard(shardPath(tmp, 'sess1'))
     expect(events).toHaveLength(1)
     const e = events[0] as any
-    expect(e.rfc).toBe('R-001')
+    expect(e.motive).toBe('R-001')
     expect(e.type).toBe('MILESTONE')
     expect(e.msg).toBe('wave 1 landed')
     expect(e.session).toBe('sess1')
+    expect(e.source).toBe('cli:journal')
     expect(typeof e.ts).toBe('string')
   })
 
   test('append-second-event-appends-not-overwrites', () => {
     const env = journalEnv(tmp, 'sess1')
-    runJournal(['append', '--rfc', 'R-001', '--type', 'MILESTONE', '--msg', 'first'], env)
-    runJournal(['append', '--rfc', 'R-001', '--type', 'FAILURE', '--msg', 'second'], env)
+    runJournal(['append', '--motive', 'R-001', '--type', 'MILESTONE', '--msg', 'first'], env)
+    runJournal(['append', '--motive', 'R-001', '--type', 'FAILURE', '--msg', 'second'], env)
 
     const events = readShard(shardPath(tmp, 'sess1'))
     expect(events).toHaveLength(2)
@@ -116,7 +118,7 @@ describe('AC 1 — append writes one line', () => {
   test('append-with-data-field', () => {
     const env = journalEnv(tmp, 'sess1')
     runJournal(
-      ['append', '--rfc', 'R-001', '--type', 'SPEC_CHANGE', '--msg', 'rev 2',
+      ['append', '--motive', 'R-001', '--type', 'SPEC_CHANGE', '--msg', 'rev 2',
         '--data', '{"concept":"C-FOO","revision":2}'],
       env,
     )
@@ -136,15 +138,15 @@ describe('AC 2 — invalid type error', () => {
 
   test('invalid-type-exits-2', () => {
     const r = runJournal(
-      ['append', '--rfc', 'R-001', '--type', 'BOGUS_TYPE', '--msg', 'hi'],
+      ['append', '--motive', 'R-001', '--type', 'BOGUS_TYPE', '--msg', 'hi'],
       journalEnv(tmp, 'sess1'),
     )
     expect(r.status).toBe(2)
   })
 
-  test('invalid-type-lists-all-13-types', () => {
+  test('invalid-type-lists-all-14-types-including-new', () => {
     const r = runJournal(
-      ['append', '--rfc', 'R-001', '--type', 'BOGUS', '--msg', 'hi'],
+      ['append', '--motive', 'R-001', '--type', 'BOGUS', '--msg', 'hi'],
       journalEnv(tmp, 'sess1'),
     )
     const combined = r.stderr + r.stdout
@@ -152,6 +154,7 @@ describe('AC 2 — invalid type error', () => {
       'DECISION', 'SPEC_CHANGE', 'LINT_DRIFT',
       'PROTOTYPE_RESULT', 'FAILURE', 'MILESTONE', 'TASK_COMPLETE',
       'GATE', 'VERIFICATION', 'WAIVER', 'HANDOFF', 'SESSION_START',
+      'SPEC_DRIFT', 'SESSION_END',
     ]
     for (const t of EXPECTED) {
       expect(combined, `missing type ${t} in error output`).toContain(t)
@@ -159,21 +162,21 @@ describe('AC 2 — invalid type error', () => {
   })
 
   test('missing-required-flags-exits-2', () => {
-    const r = runJournal(['append', '--rfc', 'R-001'], journalEnv(tmp, 'sess1'))
+    const r = runJournal(['append', '--motive', 'R-001'], journalEnv(tmp, 'sess1'))
     expect(r.status).toBe(2)
   })
 })
 
 // ---------------------------------------------------------------------------
-// AC 3 — show --rfc reads all shards and filters by rfc
+// AC 3 — show --motive reads all shards and filters by motive
 // ---------------------------------------------------------------------------
 
-describe('AC 3 — show --rfc across shards', () => {
+describe('AC 3 — show --motive across shards', () => {
   let tmp: string
   beforeEach(() => { tmp = mkTmp() })
   afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
 
-  test('show-rfc-filters-across-two-shards-ordered-by-ts', () => {
+  test('show-motive-filters-across-two-shards-ordered-by-ts', () => {
     const journalDir = path.join(tmp, '.groundwork', 'journal')
     mkdirSync(journalDir, { recursive: true })
 
@@ -183,16 +186,16 @@ describe('AC 3 — show --rfc across shards', () => {
 
     writeFileSync(
       path.join(journalDir, '2026-07-24-sessA.jsonl'),
-      JSON.stringify({ ts: ts1, session: 'sessA', rfc: 'R-001', type: 'MILESTONE', msg: 'first' }) + '\n' +
-      JSON.stringify({ ts: ts2, session: 'sessA', rfc: 'R-002', type: 'FAILURE', msg: 'other rfc' }) + '\n',
+      JSON.stringify({ ts: ts1, session: 'sessA', motive: 'R-001', type: 'MILESTONE', msg: 'first' }) + '\n' +
+      JSON.stringify({ ts: ts2, session: 'sessA', motive: 'R-002', type: 'FAILURE', msg: 'other motive' }) + '\n',
     )
     writeFileSync(
       path.join(journalDir, '2026-07-25-sessB.jsonl'),
-      JSON.stringify({ ts: ts3, session: 'sessB', rfc: 'R-001', type: 'GATE', msg: 'approved' }) + '\n',
+      JSON.stringify({ ts: ts3, session: 'sessB', motive: 'R-001', type: 'GATE', msg: 'approved' }) + '\n',
     )
 
     const r = runJournal(
-      ['show', '--rfc', 'R-001', '--since', '9999d', '--last', '9999'],
+      ['show', '--motive', 'R-001', '--since', '9999d', '--last', '9999'],
       { CLAUDE_PROJECT_DIR: tmp, JOURNAL_SESSION_ID: 'sessB' },
     )
     expect(r.status).toBe(0)
@@ -230,7 +233,7 @@ describe('AC 4 — concurrent append (multi-process)', () => {
       new Promise<void>((resolve, reject) => {
         const p = spawn('node', [
           CLI, 'append',
-          '--rfc', 'R-CONC',
+          '--motive', 'R-CONC',
           '--type', 'MILESTONE',
           '--msg', `concurrent event ${i}`,
         ], { env })
@@ -256,7 +259,7 @@ describe('AC 4 — concurrent append (multi-process)', () => {
       let parsed: any
       expect(() => { parsed = JSON.parse(line) }, `not valid JSON: ${line}`).not.toThrow()
       expect(parsed.type).toBe('MILESTONE')
-      expect(parsed.rfc).toBe('R-CONC')
+      expect(parsed.motive).toBe('R-CONC')
     }
   }, 30_000)
 })
@@ -272,13 +275,13 @@ describe('AC 5 — never rewrite / truncate', () => {
 
   test('second-append-does-not-truncate-first-line', () => {
     const env = journalEnv(tmp, 'sessNR')
-    runJournal(['append', '--rfc', 'R-1', '--type', 'DECISION', '--msg', 'keep me'], env)
+    runJournal(['append', '--motive', 'R-1', '--type', 'DECISION', '--msg', 'keep me'], env)
 
     // Capture byte length after first write
     const shard = shardPath(tmp, 'sessNR')
     const lenAfterFirst = readFileSync(shard).length
 
-    runJournal(['append', '--rfc', 'R-1', '--type', 'MILESTONE', '--msg', 'second'], env)
+    runJournal(['append', '--motive', 'R-1', '--type', 'MILESTONE', '--msg', 'second'], env)
 
     const lenAfterSecond = readFileSync(shard).length
     // File must have grown, never shrunk
@@ -289,11 +292,6 @@ describe('AC 5 — never rewrite / truncate', () => {
    * MUTATION PROOF for AC 5:
    * If we change appendEvent to use 'w' (truncate) instead of 'a' (append),
    * the test above fails because the file would only ever contain one line.
-   *
-   * Verified by temporarily setting openSync(shardPath, 'w') in journal-io.mjs
-   * and confirming this test fails with:
-   *   AssertionError: expected 102 to be greater than 137
-   * (second write shrinks the file to just the second event)
    */
   test('shard-file-is-never-shorter-after-append-mutation-guard', () => {
     const env = journalEnv(tmp, 'sessNR2')
@@ -301,7 +299,7 @@ describe('AC 5 — never rewrite / truncate', () => {
 
     // Write 5 events
     for (let i = 0; i < 5; i++) {
-      runJournal(['append', '--rfc', 'R-1', '--type', 'MILESTONE', '--msg', `event ${i}`], env)
+      runJournal(['append', '--motive', 'R-1', '--type', 'MILESTONE', '--msg', `event ${i}`], env)
     }
 
     const lines = readShard(shard)
@@ -324,7 +322,7 @@ describe('AC 6 — show defaults: --since 7d, --last 30, withheld footer', () =>
     const event = {
       ts: new Date().toISOString(),
       session: 'sx',
-      rfc: 'R-DEF',
+      motive: 'R-DEF',
       type: 'MILESTONE',
       msg: 'test',
       ...overrides,
@@ -350,7 +348,7 @@ describe('AC 6 — show defaults: --since 7d, --last 30, withheld footer', () =>
       { CLAUDE_PROJECT_DIR: tmp, JOURNAL_SESSION_ID: 'sx' },
     )
 
-    // No --rfc, no --since → shows ≤ 30 events from last 7d
+    // No --motive, no --since → shows ≤ 30 events from last 7d
     expect(r.stdout).not.toContain('ancient')
 
     // Footer must appear (35 recent events → 5 withheld by --last 30)
@@ -375,15 +373,6 @@ describe('AC 6 — show defaults: --since 7d, --last 30, withheld footer', () =>
     // 40 recent - 30 shown = 10 withheld
     expect(r.stdout).toContain('10 older events not shown')
   })
-
-  /**
-   * MUTATION PROOF for AC 6:
-   * If the --since 7d default is removed (bare show dumps all events),
-   * "ancient" appears in the output and the footer never shows.
-   * If --last defaults to something > 30, the withheld count changes.
-   *
-   * Both assertions above would fail, confirming the mutation is caught.
-   */
 })
 
 // ---------------------------------------------------------------------------
@@ -400,14 +389,14 @@ describe('AC 7 — --brief mode', () => {
 
     // Append event with data (full format would be 3 lines)
     runJournal(
-      ['append', '--rfc', 'R-007', '--type', 'SPEC_CHANGE', '--msg', 'rev 3',
+      ['append', '--motive', 'R-007', '--type', 'SPEC_CHANGE', '--msg', 'rev 3',
         '--data', '{"concept":"C-X","revision":3}'],
       env,
     )
-    runJournal(['append', '--rfc', 'R-007', '--type', 'MILESTONE', '--msg', 'done'], env)
+    runJournal(['append', '--motive', 'R-007', '--type', 'MILESTONE', '--msg', 'done'], env)
 
     const r = runJournal(
-      ['show', '--rfc', 'R-007', '--since', '9999d', '--brief'],
+      ['show', '--motive', 'R-007', '--since', '9999d', '--brief'],
       env,
     )
     expect(r.status).toBe(0)
@@ -430,13 +419,13 @@ describe('AC 8 — digest command', () => {
   beforeEach(() => { tmp = mkTmp() })
   afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
 
-  function writeManyEvents(journalDir: string, rfc: string, n: number) {
+  function writeManyEvents(journalDir: string, motive: string, n: number) {
     mkdirSync(journalDir, { recursive: true })
     const fp = path.join(journalDir, `${today()}-sd.jsonl`)
     for (let i = 0; i < n; i++) {
       const ts = new Date(Date.now() - (n - i) * 1000).toISOString()
       const line = JSON.stringify({
-        ts, session: 'sd', rfc, type: 'MILESTONE', msg: `event ${i}`,
+        ts, session: 'sd', motive, type: 'MILESTONE', msg: `event ${i}`,
       })
       writeFileSync(fp, line + '\n', { flag: 'a' })
     }
@@ -447,7 +436,7 @@ describe('AC 8 — digest command', () => {
     const journalDir = path.join(tmp, '.groundwork', 'journal')
     writeManyEvents(journalDir, 'R-DIG', 5)
 
-    const r = runJournal(['digest', '--rfc', 'R-DIG'], env)
+    const r = runJournal(['digest', '--motive', 'R-DIG'], env)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain('event 0')
     expect(r.stdout).toContain('event 4')
@@ -459,7 +448,7 @@ describe('AC 8 — digest command', () => {
     // Write 65 events → tail trigger (60) exceeded, folds 35 into prefix, keeps 30
     writeManyEvents(journalDir, 'R-DIG2', 65)
 
-    const r = runJournal(['digest', '--rfc', 'R-DIG2', '--rebuild'], env)
+    const r = runJournal(['digest', '--motive', 'R-DIG2', '--rebuild'], env)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain('DIGEST SUMMARY')
     expect(r.stdout).toContain('VERBATIM TAIL')
@@ -485,12 +474,12 @@ describe('AC 9 — DECISION/SPEC_CHANGE never in digest summary', () => {
     const baseTs = Date.now() - 200_000 // 200 s ago — oldest
     const tsD = new Date(baseTs).toISOString()
     writeFileSync(fp, JSON.stringify({
-      ts: tsD, session: 'sd9', rfc: 'R-NC', type: 'DECISION',
+      ts: tsD, session: 'sd9', motive: 'R-NC', type: 'DECISION',
       msg: 'chose approach A because of reason X',
     }) + '\n', { flag: 'a' })
     const tsSC = new Date(baseTs + 1000).toISOString()
     writeFileSync(fp, JSON.stringify({
-      ts: tsSC, session: 'sd9', rfc: 'R-NC', type: 'SPEC_CHANGE',
+      ts: tsSC, session: 'sd9', motive: 'R-NC', type: 'SPEC_CHANGE',
       msg: 'C-FOO rev 3->4',
     }) + '\n', { flag: 'a' })
 
@@ -498,12 +487,12 @@ describe('AC 9 — DECISION/SPEC_CHANGE never in digest summary', () => {
     for (let i = 0; i < 63; i++) {
       const ts = new Date(baseTs + 2000 + i * 1000).toISOString()
       writeFileSync(fp, JSON.stringify({
-        ts, session: 'sd9', rfc: 'R-NC', type: 'MILESTONE', msg: `event ${i}`,
+        ts, session: 'sd9', motive: 'R-NC', type: 'MILESTONE', msg: `event ${i}`,
       }) + '\n', { flag: 'a' })
     }
 
     const env = { CLAUDE_PROJECT_DIR: tmp, JOURNAL_SESSION_ID: 'sd9' }
-    const r = runJournal(['digest', '--rfc', 'R-NC', '--rebuild'], env)
+    const r = runJournal(['digest', '--motive', 'R-NC', '--rebuild'], env)
     expect(r.status).toBe(0)
 
     // DECISION and SPEC_CHANGE must NOT appear in the "N event(s)" summary counts
@@ -516,26 +505,18 @@ describe('AC 9 — DECISION/SPEC_CHANGE never in digest summary', () => {
     expect(r.stdout).toContain('chose approach A because of reason X')
     expect(r.stdout).toContain('C-FOO rev 3->4')
   })
-
-  /**
-   * MUTATION PROOF for AC 9:
-   * If NEVER_COMPRESS is emptied in journal-io.mjs, DECISION and SPEC_CHANGE
-   * would be folded into the summary counts like any other type.
-   * The assertion `expect(summarySection).not.toMatch(/DECISION:\s+\d+ event/)` fails,
-   * confirming the mutation is caught.
-   */
 })
 
 // ---------------------------------------------------------------------------
-// AC 11 — --motive flag (primary) and --rfc deprecation alias
+// AC 11 — --motive is the only scope flag; --rfc is unknown/rejected
 // ---------------------------------------------------------------------------
 
-describe('AC 11 — --motive primary flag and --rfc deprecation alias', () => {
+describe('AC 11 — --motive only; --rfc removed', () => {
   let tmp: string
   beforeEach(() => { tmp = mkTmp() })
   afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
 
-  test('append --motive works and emits no deprecation warning', () => {
+  test('append --motive writes motive key, no rfc key, source=cli:journal', () => {
     const env = journalEnv(tmp, 'sessM')
     const r = runJournal(
       ['append', '--motive', 'my-feature', '--type', 'MILESTONE', '--msg', 'motive test'],
@@ -547,23 +528,22 @@ describe('AC 11 — --motive primary flag and --rfc deprecation alias', () => {
     const events = readShard(shardPath(tmp, 'sessM'))
     expect(events).toHaveLength(1)
     const e = events[0] as any
-    expect(e.rfc).toBe('my-feature')
+    expect(e.motive).toBe('my-feature')
+    expect(e.rfc).toBeUndefined()
+    expect(e.source).toBe('cli:journal')
     expect(e.type).toBe('MILESTONE')
   })
 
-  test('append --rfc still works but emits a deprecation notice', () => {
-    const env = journalEnv(tmp, 'sessD')
+  test('append --rfc is treated as an unknown flag (no special handling)', () => {
+    const env = journalEnv(tmp, 'sessRfc')
+    // With --rfc alone (no --motive), append should exit 2 for missing --motive
     const r = runJournal(
       ['append', '--rfc', 'R-OLD', '--type', 'MILESTONE', '--msg', 'old caller'],
       env,
     )
-    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
-    expect(r.stderr).toContain('deprecated')
-    expect(r.stderr).toContain('--motive')
-
-    const events = readShard(shardPath(tmp, 'sessD'))
-    expect(events).toHaveLength(1)
-    expect((events[0] as any).rfc).toBe('R-OLD')
+    // No special deprecated handling — --rfc is just an unknown flag; --motive is missing
+    expect(r.status).toBe(2)
+    expect(r.stderr).not.toContain('deprecated')
   })
 
   test('show --motive works as filter without deprecation warning', () => {
@@ -578,17 +558,7 @@ describe('AC 11 — --motive primary flag and --rfc deprecation alias', () => {
     expect(r.stdout).not.toContain('feat-b')
   })
 
-  test('show --rfc still filters but emits deprecation notice', () => {
-    const env = journalEnv(tmp, 'sessRS')
-    runJournal(['append', '--motive', 'R-SHOW', '--type', 'MILESTONE', '--msg', 'kept'], env)
-
-    const r = runJournal(['show', '--rfc', 'R-SHOW', '--since', '9999d'], env)
-    expect(r.status).toBe(0)
-    expect(r.stderr).toContain('deprecated')
-    expect(r.stdout).toContain('kept')
-  })
-
-  test('append without --motive or --rfc exits 2', () => {
+  test('append without --motive exits 2', () => {
     const env = journalEnv(tmp, 'sessE')
     const r = runJournal(['append', '--type', 'MILESTONE', '--msg', 'no scope'], env)
     expect(r.status).toBe(2)
@@ -612,16 +582,16 @@ describe('AC 10 — digest prints recovery command', () => {
     for (let i = 0; i < 65; i++) {
       const ts = new Date(Date.now() - (70 - i) * 1000).toISOString()
       writeFileSync(fp, JSON.stringify({
-        ts, session: 'sd10', rfc: 'R-RC', type: 'MILESTONE', msg: `event ${i}`,
+        ts, session: 'sd10', motive: 'R-RC', type: 'MILESTONE', msg: `event ${i}`,
       }) + '\n', { flag: 'a' })
     }
 
     const env = { CLAUDE_PROJECT_DIR: tmp, JOURNAL_SESSION_ID: 'sd10' }
-    const r = runJournal(['digest', '--rfc', 'R-RC', '--rebuild'], env)
+    const r = runJournal(['digest', '--motive', 'R-RC', '--rebuild'], env)
     expect(r.status).toBe(0)
 
     // Must contain a command the user can run to retrieve ground truth
-    expect(r.stdout).toContain('journal show --rfc R-RC')
+    expect(r.stdout).toContain('journal show --motive R-RC')
     // Must print the watermark
     expect(r.stdout).toMatch(/Watermark: \d{4}-\d{2}-\d{2}/)
   })

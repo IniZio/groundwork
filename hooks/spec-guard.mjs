@@ -48,6 +48,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
+import { emitHookEvent } from './lib/journal-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 
@@ -221,18 +222,34 @@ async function main() {
   // Step 5: RFC status advisory (warn-only; does not block).
   const rfcStatus = frontmatter?.status
   if (!ALLOWED_RFC_STATUSES.has(rfcStatus)) {
-    return warnAndPermit(
-      `RFC ${rfcUid} is ${rfcStatus}; consider advancing to accepted/implementing before editing doc/specs/ (advisory only — write permitted)`,
-    )
+    const warnMsg = `RFC ${rfcUid} is ${rfcStatus}; consider advancing to accepted/implementing before editing doc/specs/ (advisory only — write permitted)`
+    emitHookEvent({
+      projectDir,
+      sessionId,
+      type: 'SPEC_DRIFT',
+      msg: warnMsg,
+      source: 'hook:spec-guard',
+      data: { kind: 'rfc-status', path: relPath, rfc_uid: rfcUid },
+      ledger,
+    })
+    return warnAndPermit(warnMsg)
   }
 
   // Steps 6–7: spec_delta coverage advisory (warn-only; does not block).
   const specDelta = Array.isArray(frontmatter?.spec_delta) ? frontmatter.spec_delta : []
   const covered = specDelta.some((entry) => entryCovers(entry, relPath))
   if (!covered) {
-    return warnAndPermit(
-      `no spec_delta entry in RFC ${rfcUid} covers ${rawPath}; consider adding an op to spec_delta (advisory only — write permitted)`,
-    )
+    const warnMsg = `no spec_delta entry in RFC ${rfcUid} covers ${rawPath}; consider adding an op to spec_delta (advisory only — write permitted)`
+    emitHookEvent({
+      projectDir,
+      sessionId,
+      type: 'SPEC_DRIFT',
+      msg: warnMsg,
+      source: 'hook:spec-guard',
+      data: { kind: 'spec-delta-uncovered', path: relPath, rfc_uid: rfcUid },
+      ledger,
+    })
+    return warnAndPermit(warnMsg)
   }
 
   // Step 8: permit.

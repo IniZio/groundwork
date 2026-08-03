@@ -73,6 +73,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
+import { emitHookEvent } from './lib/journal-io.mjs'
 
 /** Hard ceiling on how many times one run may block a stop before we give up. */
 const REINFORCEMENT_CAP = 12
@@ -339,7 +340,22 @@ async function main() {
 
   const workRemains = incomplete.length > 0 || !advisorApproved
   // Complete + APPROVE → allow before plan pre-gate (done runs need no plan check).
-  if (!workRemains) return allow()
+  // SESSION_END fires on exactly this path — ledger existed, was active, belonged to
+  // this session, all slices are terminal, and the advisor verdict is APPROVE.
+  // All other allow() paths (embedded agent, unparseable stdin, absent/inactive ledger,
+  // foreign session_id, yield, reinforcement-cap) emit nothing — see plan D5.
+  if (!workRemains) {
+    emitHookEvent({
+      projectDir,
+      sessionId,
+      ledger,
+      type: 'SESSION_END',
+      msg: 'session ended — run complete',
+      source: 'hook:stop-gate',
+      data: { outcome: 'complete' },
+    })
+    return allow()
+  }
 
   // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).
   // FAIL-OPEN: any error in this check falls through (never wedge the session).

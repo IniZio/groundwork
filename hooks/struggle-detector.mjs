@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 import { appendSignal } from './lib/signals-io.mjs'
 import { commandFingerprint, toSlug } from './lib/concept-slug.mjs'
+import { emitHookEvent } from './lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,6 +93,15 @@ function maybeEmit(tally, projectDir, sessionId, kind, fingerprint, detail) {
   } catch {
     // Swallow — fail-open.
   }
+  // Emit journal FAILURE event. emitHookEvent is itself fail-open (never throws).
+  emitHookEvent({
+    projectDir,
+    sessionId,
+    type: 'FAILURE',
+    msg: `struggle detected: ${kind} on ${fingerprint}`,
+    source: 'hook:struggle-detector',
+    data: { kind, fingerprint, ...detail },
+  })
   return true
 }
 

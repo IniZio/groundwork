@@ -35,6 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
+import { emitHookEvent } from './lib/journal-io.mjs'
 import { parseFrontmatter as parseRfcFrontmatter, readRfcFrontmatter, readTasksSidecar } from './lib/rfc-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 
@@ -463,9 +464,11 @@ function cmdComplete(args) {
   let done = 0
   let total = 0
   const missing = []
+  let capturedLedger = null
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
+    capturedLedger = l
     const slices = Array.isArray(l.slices) ? l.slices : []
     const byId = new Map(slices.map((s) => [s?.id, s]))
     const now = new Date().toISOString()
@@ -481,6 +484,21 @@ function cmdComplete(args) {
     total = slices.length
     done = slices.filter((s) => s?.status === 'complete').length
   })
+  // Emit one TASK_COMPLETE per found-and-marked id; must precede die() so partial
+  // successes (e.g. "ledger complete S1 BOGUS") are still recorded (AC8).
+  if (capturedLedger) {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    for (const id of ids.filter((id) => !missing.includes(id))) {
+      emitHookEvent({
+        projectDir,
+        sessionId: capturedLedger.session_id,
+        type: 'TASK_COMPLETE',
+        source: 'hook:ledger',
+        data: { slice: id },
+        ledger: capturedLedger,
+      })
+    }
+  }
   if (missing.length) die(`unknown slice id(s): ${missing.join(', ')}`, 2)
   process.stdout.write(`${ids.join(', ')} ✓ (${done}/${total} complete)\n`)
 }
@@ -513,15 +531,28 @@ function cmdGate(args) {
     value = verdictRaw
   }
   let runId = null
+  let capturedLedger = null
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
+    capturedLedger = l
     l.gate = l.gate ?? {}
     l.gate[which] = value
     runId = l.session_id ?? l.run_id ?? null
   })
   // Write gate artifact
   writeGateArtifact({ runId, which, verdictRaw, value, hasObj, flags })
+  if (capturedLedger) {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    emitHookEvent({
+      projectDir,
+      sessionId: capturedLedger.session_id,
+      type: 'GATE',
+      source: 'hook:ledger',
+      data: { which, verdict: verdictRaw, ...(flags.citation ? { citation: flags.citation } : {}), ...(flags.rubric ? { rubric: flags.rubric } : {}) },
+      ledger: capturedLedger,
+    })
+  }
   process.stdout.write(`${which}: ${hasObj ? value.verdict : value}\n`)
 }
 
@@ -562,10 +593,23 @@ function writeGateArtifact({ runId, which, verdictRaw, value, hasObj, flags }) {
 }
 
 function cmdAbandon() {
+  let capturedLedger = null
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to abandon')
+    capturedLedger = l
     l.active = false
   })
+  if (capturedLedger) {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    emitHookEvent({
+      projectDir,
+      sessionId: capturedLedger.session_id,
+      type: 'SESSION_END',
+      source: 'hook:ledger',
+      data: { outcome: 'abandoned' },
+      ledger: capturedLedger,
+    })
+  }
   process.stdout.write('run cancelled (active:false) — gate released\n')
 }
 

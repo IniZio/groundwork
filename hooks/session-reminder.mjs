@@ -21,7 +21,7 @@ import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
 import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 import { specDirPath, indexJsonPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
-import { resolveShardPath, appendEvent } from './lib/journal-io.mjs'
+import { emitHookEvent } from './lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Token estimation (rough: 1 token ≈ 4 chars for English/code text)
@@ -343,15 +343,18 @@ try {
       // AC7: drop skeleton before any other block; record a SESSION_START journal event
       try {
         if (sessionId) {
-          const shardPath = resolveShardPath(projectDir, sessionId)
-          appendEvent(shardPath, {
+          emitHookEvent({
+            projectDir,
+            sessionId,
             type: 'SESSION_START',
-            ts: new Date().toISOString(),
-            session: sessionId,
-            event: 'spec_skeleton_dropped',
-            reason: `injection cap (${TOTAL_TOKEN_CAP} tokens) would be exceeded`,
-            base_tokens: baseTokens,
-            skeleton_tokens: skeletonTokens,
+            source: 'hook:session-reminder',
+            msg: 'spec_skeleton_dropped',
+            data: {
+              event: 'spec_skeleton_dropped',
+              reason: `injection cap (${TOTAL_TOKEN_CAP} tokens) would be exceeded`,
+              base_tokens: baseTokens,
+              skeleton_tokens: skeletonTokens,
+            },
           })
         }
       } catch { /* best-effort */ }
@@ -363,14 +366,17 @@ try {
 try {
   const totalTokens = estimateTokens(additionalContext)
   if (totalTokens > TOTAL_TOKEN_ALARM && sessionId) {
-    const shardPath = resolveShardPath(projectDir, sessionId)
-    appendEvent(shardPath, {
+    emitHookEvent({
+      projectDir,
+      sessionId,
       type: 'SESSION_START',
-      ts: new Date().toISOString(),
-      session: sessionId,
-      event: 'injection_over_alarm',
-      total_tokens: totalTokens,
-      alarm_threshold: TOTAL_TOKEN_ALARM,
+      source: 'hook:session-reminder',
+      msg: 'injection_over_alarm',
+      data: {
+        event: 'injection_over_alarm',
+        total_tokens: totalTokens,
+        alarm_threshold: TOTAL_TOKEN_ALARM,
+      },
     })
   }
 } catch { /* best-effort */ }

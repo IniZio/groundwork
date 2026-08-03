@@ -75,6 +75,11 @@ code{font-size:.85em;padding:1px 4px;border-radius:3px;background:var(--code-bg)
 .open-item:last-child{border-bottom:none}
 .baseline{padding:4px 0;border-bottom:1px solid var(--border-light)}
 .baseline:last-child{border-bottom:none}
+.matrix-table{border-collapse:collapse;width:100%;margin-bottom:8px;font-size:.85em}
+.matrix-table th,.matrix-table td{border:1px solid var(--border);padding:4px 8px;text-align:left}
+.matrix-table th{background:var(--code-bg)}
+.no-coverage{padding:6px 0;font-size:.85em}
+pre.mermaid{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:12px;overflow-x:auto;font-size:.8em;white-space:pre}
 @media(prefers-color-scheme:light),:root[data-theme="light"]{
   --bg:#fff;--fg:#1a1a1a;--border:#e0e0e0;--border-light:#f0f0f0;
   --link:#0969da;--code-bg:#f6f8fa;--muted:#666;
@@ -252,6 +257,99 @@ ${rows}
 `
 }
 
+function renderAcSliceMatrix(agent) {
+  const acCoverage = agent?.ac_coverage ?? { met: [], unmet: [] }
+  const met = Array.isArray(acCoverage.met) ? acCoverage.met : []
+  const unmet = Array.isArray(acCoverage.unmet) ? acCoverage.unmet : []
+  const allAcs = [...met, ...unmet]
+
+  if (allAcs.length === 0) {
+    return `<h2>AC×Slice Traceability Matrix</h2>
+<p class="empty">No AC coverage data.</p>
+`
+  }
+
+  const completedIds = new Set(
+    (Array.isArray(agent?.all_slices) ? agent.all_slices : [])
+      .filter((s) => s.status === 'complete')
+      .map((s) => s.id)
+  )
+
+  const withCoverage = allAcs.filter((a) => a.covering.length > 0)
+  const noCoverage = allAcs.filter((a) => a.covering.length === 0)
+
+  let html = `<h2>AC×Slice Traceability Matrix</h2>\n`
+
+  if (withCoverage.length > 0) {
+    html += `<table class="matrix-table">
+<thead><tr><th>AC</th><th>Covering Slices</th><th>Status</th></tr></thead>
+<tbody>
+`
+    for (const a of withCoverage) {
+      const cells = a.covering.map((sid) => {
+        const done = completedIds.has(sid)
+        return `<code>${esc(sid)}</code> ${done ? '✓' : '○'}`
+      }).join(', ')
+      const statusCls = a.met ? 'ac-met' : 'ac-unmet'
+      const statusLabel = a.met ? '✓ met' : '✗ unmet'
+      html += `<tr><td><strong>${esc(a.id)}</strong></td><td>${cells}</td><td class="${statusCls}">${statusLabel}</td></tr>\n`
+    }
+    html += `</tbody></table>\n`
+  }
+
+  if (noCoverage.length > 0) {
+    html += `<div class="no-coverage"><strong>NO COVERAGE</strong> — no covering slices assigned:</div>
+<ul>
+`
+    for (const a of noCoverage) {
+      html += `<li><strong>${esc(a.id)}</strong></li>\n`
+    }
+    html += `</ul>\n`
+  }
+
+  return html
+}
+
+function renderSliceDag(agent) {
+  const slices = Array.isArray(agent?.all_slices) ? agent.all_slices : []
+
+  if (slices.length === 0) {
+    return `<h2>Slice Dependency DAG</h2>
+<p class="empty">No slices recorded.</p>
+`
+  }
+
+  const mermaidLines = ['graph TD']
+
+  for (const s of slices) {
+    const marker = s.status === 'complete' ? ' ✓' : ' ○'
+    const label = `${s.id}${marker}`
+    const nodeId = String(s.id).replace(/[^A-Za-z0-9_]/g, '_')
+    mermaidLines.push(`  ${nodeId}["${label.replace(/"/g, '\\"')}"]`)
+  }
+
+  let hasEdges = false
+  for (const s of slices) {
+    const blockers = Array.isArray(s.blocked_by) ? s.blocked_by : []
+    for (const bid of blockers) {
+      const fromId = String(bid).replace(/[^A-Za-z0-9_]/g, '_')
+      const toId = String(s.id).replace(/[^A-Za-z0-9_]/g, '_')
+      mermaidLines.push(`  ${fromId} --> ${toId}`)
+      hasEdges = true
+    }
+  }
+
+  if (!hasEdges) {
+    mermaidLines.push('  %% no dependencies')
+  }
+
+  const mermaidSrc = mermaidLines.join('\n')
+
+  return `<h2>Slice Dependency DAG</h2>
+<pre class="mermaid">${esc(mermaidSrc)}</pre>
+`
+}
+
 function renderBaselines(agent) {
   const baselines = Array.isArray(agent?.baselines) ? agent.baselines : []
   if (baselines.length === 0) {
@@ -295,6 +393,8 @@ export function renderHtml(view) {
   const objective = renderObjective(agent)
   const burnDown = renderBurnDown(agent)
   const acCoverage = renderAcCoverage(agent)
+  const acMatrix = renderAcSliceMatrix(agent)
+  const sliceDag = renderSliceDag(agent)
   const decisions = renderDecisionTimeline(agent)
   const readySet = renderReadySet(agent)
   const baselines = renderBaselines(agent)
@@ -311,6 +411,8 @@ export function renderHtml(view) {
 ${banner}${objective}
 ${burnDown}
 ${acCoverage}
+${acMatrix}
+${sliceDag}
 ${decisions}
 ${readySet}
 ${baselines}

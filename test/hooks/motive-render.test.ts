@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderView, buildHumanLayer } from '../../hooks/lib/motive-render.mjs';
 import { compile } from '../../hooks/lib/motive-compile.mjs';
+import { renderHtml } from '../../hooks/lib/motive-html.mjs';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -373,5 +374,228 @@ describe('DO NOT EDIT comment: placeholder when motive absent (fix-3)', () => {
     const view = makeView({ provenance: { compiler_version: '1.0.0', motive: 'my-feature', at_ord: 5 } });
     const out = renderView(view);
     expect(out).toContain("compile my-feature'");
+  });
+});
+
+// ── AC×Slice Matrix and Slice DAG helpers ─────────────────────────────────────
+
+function makeFullView(agentOverrides: Record<string, unknown> = {}) {
+  const agent = {
+    objective: 'Test objective',
+    objective_source: 'recorded:DECISION',
+    decision_log: [],
+    baselines: [],
+    open_items: [],
+    open_items_summary: { total: 0, open: 0, resolved: 0 },
+    open_items_source: null,
+    all_slices: [],
+    open_slices: [],
+    blocked: [],
+    last_gate: null,
+    gates: {},
+    failures: [],
+    drift: [],
+    waivers: [],
+    resume: { next_actions: [] },
+    confidence: 'low',
+    confidence_notes: [],
+    sessions: [],
+    decisions: [],
+    last_handoff: null,
+    verifications: [],
+    milestones: [],
+    spec_changes: [],
+    ac_coverage: { met: [], unmet: [] },
+    ...agentOverrides,
+  };
+  return {
+    compiler_version: '1.0.0',
+    agent,
+    human: null,
+    provenance: {
+      compiler_version: '1.0.0',
+      motive: 'test-motive',
+      at_ord: 0,
+      at_marker: null,
+      events_folded: 0,
+      malformed_lines: 0,
+      unknown_type_events: 0,
+    },
+    divergence: { checked: false, findings: [] },
+  };
+}
+
+// ── AC×Slice Traceability Matrix (Markdown) ───────────────────────────────────
+
+describe('AC×Slice Traceability Matrix — Markdown', () => {
+  it('emits section heading', () => {
+    const view = makeFullView({
+      ac_coverage: { met: [{ id: 'AC1', covering: ['s1'], missing: [], met: true }], unmet: [] },
+      all_slices: [{ id: 's1', status: 'complete' }],
+    });
+    expect(renderView(view)).toContain('## AC×Slice Traceability Matrix');
+  });
+
+  it('marks complete slice with ✓ and pending with ○', () => {
+    const view = makeFullView({
+      ac_coverage: {
+        met: [{ id: 'AC1', covering: ['s1'], missing: [], met: true }],
+        unmet: [{ id: 'AC2', covering: ['s2'], missing: ['s2'], met: false }],
+      },
+      all_slices: [
+        { id: 's1', status: 'complete' },
+        { id: 's2', status: 'in_progress' },
+      ],
+    });
+    const md = renderView(view);
+    expect(md).toContain('s1 ✓');
+    expect(md).toContain('s2 ○');
+  });
+
+  it('puts zero-covering ACs in NO COVERAGE section, not table', () => {
+    const view = makeFullView({
+      ac_coverage: { met: [], unmet: [{ id: 'AC3', covering: [], missing: [], met: false }] },
+      all_slices: [],
+    });
+    const md = renderView(view);
+    expect(md).toContain('NO COVERAGE');
+    expect(md).toContain('**AC3**');
+    // Must NOT appear as a table row
+    expect(md).not.toMatch(/\| \*\*AC3\*\*/);
+  });
+
+  it('emits empty fallback when no AC data at all', () => {
+    const view = makeFullView({ ac_coverage: { met: [], unmet: [] }, all_slices: [] });
+    expect(renderView(view)).toContain('No AC coverage data.');
+  });
+
+  it('shows met and unmet status columns', () => {
+    const view = makeFullView({
+      ac_coverage: {
+        met: [{ id: 'AC1', covering: ['s1'], missing: [], met: true }],
+        unmet: [{ id: 'AC2', covering: ['s2'], missing: ['s2'], met: false }],
+      },
+      all_slices: [{ id: 's1', status: 'complete' }, { id: 's2', status: 'pending' }],
+    });
+    const md = renderView(view);
+    expect(md).toContain('✓ met');
+    expect(md).toContain('✗ unmet');
+  });
+});
+
+// ── Slice Dependency DAG (Markdown) ──────────────────────────────────────────
+
+describe('Slice Dependency DAG — Markdown', () => {
+  it('emits DAG section heading', () => {
+    const view = makeFullView({ all_slices: [{ id: 's1', status: 'complete', blocked_by: [] }] });
+    expect(renderView(view)).toContain('## Slice Dependency DAG');
+  });
+
+  it('emits mermaid graph TD fence', () => {
+    const view = makeFullView({ all_slices: [{ id: 's1', status: 'complete', blocked_by: [] }] });
+    const md = renderView(view);
+    expect(md).toContain('```mermaid');
+    expect(md).toContain('graph TD');
+  });
+
+  it('adds ✓ for complete and ○ for non-complete', () => {
+    const view = makeFullView({
+      all_slices: [
+        { id: 's1', status: 'complete', blocked_by: [] },
+        { id: 's2', status: 'in_progress', blocked_by: [] },
+      ],
+    });
+    const md = renderView(view);
+    expect(md).toContain('s1 ✓');
+    expect(md).toContain('s2 ○');
+  });
+
+  it('emits blocked_by edge as mermaid arrow', () => {
+    const view = makeFullView({
+      all_slices: [
+        { id: 'dep', status: 'complete', blocked_by: [] },
+        { id: 'child', status: 'pending', blocked_by: ['dep'] },
+      ],
+    });
+    const md = renderView(view);
+    expect(md).toContain('dep --> child');
+  });
+
+  it('emits no-dependencies comment when no edges', () => {
+    const view = makeFullView({ all_slices: [{ id: 's1', status: 'complete', blocked_by: [] }] });
+    expect(renderView(view)).toContain('%% no dependencies');
+  });
+
+  it('emits empty fallback when no slices', () => {
+    const view = makeFullView({ all_slices: [] });
+    expect(renderView(view)).toContain('No slices recorded.');
+  });
+
+  it('sanitises slice ids with special chars into valid mermaid node ids', () => {
+    const view = makeFullView({
+      all_slices: [
+        { id: 'slice-a', status: 'complete', blocked_by: [] },
+        { id: 'slice-b', status: 'pending', blocked_by: ['slice-a'] },
+      ],
+    });
+    const md = renderView(view);
+    // Hyphens should be replaced with underscores in the mermaid arrow
+    expect(md).toContain('slice_a --> slice_b');
+  });
+});
+
+// ── AC×Slice Matrix + DAG (HTML) ─────────────────────────────────────────────
+
+describe('AC×Slice Traceability Matrix — HTML', () => {
+  it('renders table heading and matrix-table', () => {
+    const view = makeFullView({
+      ac_coverage: { met: [{ id: 'AC1', covering: ['s1'], missing: [], met: true }], unmet: [] },
+      all_slices: [{ id: 's1', status: 'complete' }],
+    });
+    const html = renderHtml(view);
+    expect(html).toContain('AC×Slice Traceability Matrix');
+    expect(html).toContain('<table class="matrix-table">');
+  });
+
+  it('shows NO COVERAGE for zero-covering ACs', () => {
+    const view = makeFullView({
+      ac_coverage: { met: [], unmet: [{ id: 'AC5', covering: [], missing: [], met: false }] },
+      all_slices: [],
+    });
+    const html = renderHtml(view);
+    expect(html).toContain('NO COVERAGE');
+    expect(html).toContain('AC5');
+  });
+
+  it('renders empty fallback when no AC data', () => {
+    const view = makeFullView({ ac_coverage: { met: [], unmet: [] } });
+    expect(renderHtml(view)).toContain('No AC coverage data.');
+  });
+});
+
+describe('Slice Dependency DAG — HTML', () => {
+  it('renders DAG heading and mermaid pre block', () => {
+    const view = makeFullView({ all_slices: [{ id: 'sx', status: 'complete', blocked_by: [] }] });
+    const html = renderHtml(view);
+    expect(html).toContain('Slice Dependency DAG');
+    expect(html).toContain('<pre class="mermaid">');
+    expect(html).toContain('graph TD');
+  });
+
+  it('includes blocked_by edge in mermaid source (HTML-escaped)', () => {
+    const view = makeFullView({
+      all_slices: [
+        { id: 'a', status: 'complete', blocked_by: [] },
+        { id: 'b', status: 'pending', blocked_by: ['a'] },
+      ],
+    });
+    const html = renderHtml(view);
+    // The mermaid source is HTML-escaped inside the <pre>; --> becomes --&gt;
+    expect(html).toContain('a --&gt; b');
+  });
+
+  it('renders empty fallback when no slices', () => {
+    const view = makeFullView({ all_slices: [] });
+    expect(renderHtml(view)).toContain('No slices recorded.');
   });
 });

@@ -25,7 +25,7 @@ const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
-import { specDirPath, indexJsonPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
+import { specDirPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------

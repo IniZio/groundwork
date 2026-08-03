@@ -156,6 +156,12 @@ export function renderView(view) {
   }
   parts.push('');
 
+  // ── AC×Slice Traceability Matrix ──────────────────────────────────────────
+  parts.push(_renderAcSliceMatrix(agent));
+
+  // ── Slice Dependency DAG ───────────────────────────────────────────────────
+  parts.push(_renderSliceDag(agent));
+
   // ── Decision Log (S2) ─────────────────────────────────────────────────────
   parts.push('## Decision Log');
   parts.push('');
@@ -260,6 +266,110 @@ export function renderView(view) {
   }
 
   return parts.join('\n');
+}
+
+// ── AC×Slice Traceability Matrix ─────────────────────────────────────────────
+
+/**
+ * Render the AC×Slice traceability matrix as a Markdown table.
+ * Rows = AC ids; cells = covering slice ids with status marker.
+ * ACs with no covering slices appear in a NO COVERAGE section.
+ */
+function _renderAcSliceMatrix(agent) {
+  const acCoverage = agent.ac_coverage ?? { met: [], unmet: [] };
+  const met = acCoverage.met ?? [];
+  const unmet = acCoverage.unmet ?? [];
+  const allAcs = [...met, ...unmet];
+
+  if (allAcs.length === 0) {
+    return '## AC×Slice Traceability Matrix\n\n_No AC coverage data._\n';
+  }
+
+  // Build a set of completed slice ids from all_slices
+  const completedIds = new Set(
+    (agent.all_slices ?? []).filter((s) => s.status === 'complete').map((s) => s.id)
+  );
+
+  const lines = ['## AC×Slice Traceability Matrix', ''];
+
+  // ACs with coverage
+  const withCoverage = allAcs.filter((a) => a.covering.length > 0);
+  const noCoverage = allAcs.filter((a) => a.covering.length === 0);
+
+  if (withCoverage.length > 0) {
+    lines.push('| AC | Covering Slices | Status |');
+    lines.push('|---|---|---|');
+    for (const a of withCoverage) {
+      const cells = a.covering.map((sid) => {
+        const done = completedIds.has(sid);
+        return `${sid} ${done ? '✓' : '○'}`;
+      }).join(', ');
+      const status = a.met ? '✓ met' : a.status_unknown ? '? unknown' : '✗ unmet';
+      lines.push(`| **${a.id}** | ${cells} | ${status} |`);
+    }
+    lines.push('');
+  }
+
+  if (noCoverage.length > 0) {
+    lines.push('**NO COVERAGE** — the following ACs have no covering slices assigned:');
+    lines.push('');
+    for (const a of noCoverage) {
+      lines.push(`- **${a.id}**`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+// ── Slice Dependency DAG ──────────────────────────────────────────────────────
+
+/**
+ * Render the slice dependency graph as a Mermaid diagram (graph TD).
+ * Nodes = slices with status marker; edges = blocked_by relationships.
+ */
+function _renderSliceDag(agent) {
+  const slices = agent.all_slices ?? [];
+
+  if (slices.length === 0) {
+    return '## Slice Dependency DAG\n\n_No slices recorded._\n';
+  }
+
+  const lines = ['## Slice Dependency DAG', ''];
+  const mermaid = ['graph TD'];
+
+  for (const s of slices) {
+    const marker = s.status === 'complete' ? ' ✓' : ' ○';
+    const label = `${s.id}${marker}`;
+    // Mermaid node id must be alphanumeric; use index-based alias when id has special chars
+    const nodeId = _mermaidId(s.id);
+    mermaid.push(`  ${nodeId}["${label}"]`);
+  }
+
+  let hasEdges = false;
+  for (const s of slices) {
+    const blockers = Array.isArray(s.blocked_by) ? s.blocked_by : [];
+    for (const bid of blockers) {
+      mermaid.push(`  ${_mermaidId(bid)} --> ${_mermaidId(s.id)}`);
+      hasEdges = true;
+    }
+  }
+
+  if (!hasEdges) {
+    mermaid.push('  %% no dependencies');
+  }
+
+  lines.push('```mermaid');
+  lines.push(mermaid.join('\n'));
+  lines.push('```');
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/** Sanitise a slice id into a valid Mermaid node identifier. */
+function _mermaidId(id) {
+  return String(id).replace(/[^A-Za-z0-9_]/g, '_');
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────

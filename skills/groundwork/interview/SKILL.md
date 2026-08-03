@@ -61,7 +61,7 @@ During interviewing, these happen simultaneously:
 Before synthesizing a plan, find out how **this project** already plans, and defer to it:
 
 1. **Project planning skills/commands.** Check the available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, or `/design-doc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
-2. **Project planning conventions.** Look for an existing plans directory or convention: `.groundwork/plans/`, `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
+2. **Project planning conventions.** Look for an existing plans directory or convention: `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
 3. **Project instructions.** Honor any planning rules in `CLAUDE.md` / `AGENTS.md` (where plans live, whether they are committed, required sections).
 
 **Order of preference:** project planning skill → project plans convention → groundwork's default concise plan (below). State which one you're using before writing. Never override a project's own planning workflow with groundwork's default.
@@ -122,7 +122,7 @@ The charter must stay **concise and durable** — describe behaviors, interfaces
 - For bugs: skip this step — bugs go directly to `diagnose`.
 - Respect the project's commit policy — motive charters live in `.groundwork/motives/` (gitignored) and are never staged.
 
-**Seed the ledger at plan time (features only).** After writing the motive charter, run `node ${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs init` (using the write token surfaced at SessionStart) and set `motive_ref` to the slug so the stop-gate recognizes the planning anchor. Then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Motive: <slug>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
+**Seed the ledger at plan time (features only).** After writing the motive charter, run `bin/ledger init` (using the write token surfaced at SessionStart) and set `motive_ref` to the slug so the stop-gate recognizes the planning anchor. Then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Motive: <slug>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
 
 ## Domain Glossary (CONTEXT.md)
 

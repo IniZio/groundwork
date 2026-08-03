@@ -649,8 +649,8 @@ Fire exploration and implementation waves together ONLY when implementation does
 These rules apply regardless of platform or how instructions are injected:
 
 1. **NEVER edit, write, or commit code yourself.** All implementation goes to \`general-purpose\`. All git work (commits, rebases, PRs) goes to \`git-master\`. Violating this is the #1 regression signal.
-2. **Completion gate is mandatory for non-trivial work.** Before declaring done: \`[qa if interactive UI] → advisor (evidence+quality) APPROVE\`. No APPROVE = not done. Record the verdict: \`\${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs gate advisor APPROVE\`.
-3. **Ledger CLI only.** Never Read/Edit \`.groundwork/run.json\` directly. Use \`\${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs\` for all run ledger mutations (complete, set, add, rm, gate, abandon).
+2. **Completion gate is mandatory for non-trivial work.** Before declaring done: \`[qa if interactive UI] → advisor (evidence+quality) APPROVE\`. No APPROVE = not done. Record the verdict with the ledger CLI (the exact absolute path is injected by the SessionStart, stop-gate, and ledger/impl-guard hooks; manual form: \`<plugin-root>/bin/ledger gate advisor APPROVE\`).
+3. **Ledger CLI only.** Never Read/Edit \`.groundwork/run.json\` directly. Use the ledger CLI for all run ledger mutations (complete, set, add, rm, gate, abandon). The exact absolute path is injected by the SessionStart hook's "Groundwork CLI tools" block; manual form: \`<plugin-root>/bin/ledger\`.
 4. **Model must be explicit on every Task call.** Never omit \`model:\` — it silently inherits the expensive session model. Set each \`model:\` to the value that agent maps to in \`model-registry.json\` for the active platform; never pass a bare tier alias like \`sonnet\` (it resolves to the latest Sonnet, not the pinned \`claude-sonnet-4-6\`).
 5. **Do NOT use \`question\` to wait for background tasks.** When background tasks are running and you have nothing else to do, end your turn — completion notifications re-invoke you automatically.
 `,
@@ -914,12 +914,14 @@ Produce a written report (see Output Format). Cite every artifact by path. advis
 After producing the report, append a \`VERIFICATION\` journal event for every requirement id you exercised during the pass:
 
 \`\`\`
-\${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \\
+<plugin-root>/bin/journal append \\
   --rfc <rfc-uid> \\
   --type VERIFICATION \\
   --msg "qa verification pass: <brief description>" \\
   --data '{"req_ids":["REQ-<id-1>","REQ-<id-2>"],"overall":"PASS|FAIL|PARTIAL"}'
 \`\`\`
+
+(The exact absolute path to \`bin/journal\` is provided in the SessionStart injection's "Groundwork CLI tools" block. Use \`<plugin-root>/bin/journal\` as the manual form.)
 
 If you do not know the RFC uid, omit \`--rfc\` — the event still records. One \`append\` call per pass (or per exploratory session — see Exploratory Testing below) is sufficient; do not emit one event per requirement.
 
@@ -928,7 +930,7 @@ If you do not know the RFC uid, omit \`--rfc\` — the event still records. One 
 When you perform **exploratory** (unscripted) testing, record it as a journal \`VERIFICATION\` event with \`"mode": "exploratory"\` in the \`--data\` payload:
 
 \`\`\`
-\${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \\
+<plugin-root>/bin/journal append \\
   --rfc <rfc-uid> \\
   --type VERIFICATION \\
   --msg "exploratory pass: <what you explored>" \\

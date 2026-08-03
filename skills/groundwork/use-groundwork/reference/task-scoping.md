@@ -28,7 +28,7 @@ When a task fails:
 4. **Embed source in prompts.** Subagents cannot reliably read large source files — embed reference material directly in the prompt text. Do NOT tell the subagent to "read file X".
 5. **Verify task output immediately.** If result says `(No text output)` or wrong files were created, relaunch with corrections.
 
-6. **Non-trivial work needs a planning artifact first.** Before fanning out `general-purpose` on a feature/SmallRisky task, the orchestrator MUST have a durable planning artifact from `interview` or `planner`: either a `plan_ref` pointing to a file on disk, or a `motive_ref` pointing to an existing motive charter at `.groundwork/motives/<slug>/motive.md`. Do not embed a memory-only plan and fan out. Trivial / small-clear / docs / obvious-bug paths stay exempt.
+6. **Non-trivial work needs a planning artifact first.** Before fanning out `general-purpose` on a feature/SmallRisky task, the orchestrator MUST have a durable `motive_ref` from `interview` or `planner` pointing to a motive charter at `.groundwork/motives/<slug>/motive.md`. Do not embed a memory-only plan and fan out. Trivial / small-clear / docs / obvious-bug paths stay exempt.
 
 ## Failed Task Recovery
 
@@ -55,7 +55,7 @@ task(
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
-  PLAN: .groundwork/plans/feature.md step 3   # or MOTIVE: <slug>
+  MOTIVE: <slug>   # motive charter at .groundwork/motives/<slug>/motive.md
   SUCCESS CRITERIA: <observable, verifiable outcome>
   SCOPE: touch only the files listed above.
   """

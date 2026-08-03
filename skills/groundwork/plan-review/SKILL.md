@@ -5,13 +5,13 @@ description: READ-ONLY cross-artifact coverage map run BEFORE fan-out (spec-kit 
 
 # Plan Review
 
-Read-only pre-fan-out coverage analysis. Analogous to spec-kit `analyze`: map the approved plan/spec against the proposed slice decomposition **before** implementation waves start. This skill never edits code, never mutates the run ledger, and never writes slices.
+Read-only pre-fan-out coverage analysis. Analogous to spec-kit `analyze`: map the approved motive charter + spec against the proposed slice decomposition **before** implementation waves start. This skill never edits code, never mutates the run ledger, and never writes slices.
 
-It is the softer `analyze` path that complements the P1 HARD-GATE (`plan_ref` must exist before non-trivial impl). HARD-GATE asks "is there a plan?"; plan-review asks "does the plan actually cover the contract?"
+It is the softer `analyze` path that complements the P1 HARD-GATE (a motive charter must exist before non-trivial impl). HARD-GATE asks "is there a charter?"; plan-review asks "does the charter actually cover the contract?"
 
 ## When to Use
 
-- **Before fan-out** on any non-trivial feature (after `interview`/`planner` produced a `plan_ref`, and after `vertical-slice` proposed slices — before general-purpose agents start)
+- **Before fan-out** on any non-trivial feature (after `interview`/`planner` produced a motive charter, and after `vertical-slice` proposed slices — before general-purpose agents start)
 - When advisor scores **`plan_soundness` low** (≤1) or returns **REPLAN** and you need a structured gap list before re-entering `interview` or `vertical-slice`
 - When the user asks to "check coverage", "analyze the plan", "are the slices complete?", or "did we miss an AC?"
 - Optional mid-flight: after a wave lands and new coupling or scope drift is suspected — still read-only; route fixes through `vertical-slice` / `interview`, not this skill
@@ -24,10 +24,10 @@ Resolve what exists; missing inputs are themselves findings:
 
 | Artifact | Typical path | Required? |
 |----------|--------------|-----------|
-| Spec / acceptance criteria | `plan_ref`, `.groundwork/plans/*` (gitignored), or motive charter at `.groundwork/motives/<slug>/motive.md` | Yes — without ACs, emit CRITICAL and stop |
-| Plan | `plan_ref` or `motive_ref` in the ledger | Yes for non-trivial |
+| Motive charter (ACs + DECISION events) | `.groundwork/motives/<slug>/motive.md` (`motive_ref` in the ledger) | Yes — without ACs, emit CRITICAL and stop |
+| Spec / functional requirements | `doc/specs/<concept-dir>/requirements/*.md` | Yes when referenced by the charter |
 | Slice ledger / proposed slices | `.groundwork/runs/<session_id>.json`, vertical-slice output | Yes — nothing to map otherwise |
-| Negative scope | spec `negative_scope`, interview "out of scope", rejection KB | Strongly preferred |
+| Negative scope | charter negative_scope, interview "out of scope", rejection KB | Strongly preferred |
 
 Prefer stable AC ids (`AC1`, `AC2`, …) from the feature/spec contract. If the spec only has prose bullets, assign ephemeral ids `AC1..N` for this review and cite the source line.
 
@@ -48,15 +48,23 @@ Use these labels exactly — they feed Contract A `plan_soundness` and REPLAN pa
 
 ### 1. Collect artifacts
 
-Read plan, spec/ACs, negative scope, and the proposed slice list. Do **not** explore the full codebase for implementation detail — this is a coverage map, not an arch review. If a path is missing, record `missing_artifact` and continue with what remains.
+Read the motive charter, `doc/specs/` requirements, negative scope, and the proposed slice list. Do **not** explore the full codebase for implementation detail — this is a coverage map, not an arch review. If a path is missing, record `missing_artifact` and continue with what remains.
+
+AC ids come from the charter (e.g. `AC1`, `AC2`). The ledger's `AC_COVERAGE` events carry the pair `(d.ac, d.slice)` — use these to pre-populate the coverage table and flag gaps.
 
 ### 2. Build the coverage table
 
-For every AC / functional requirement / named spec scenario, assign:
+For every AC in the charter, assign:
 
 ```text
-AC id | statement (short) | slice id(s) | status | notes
+AC id | summary | covering slice id | requirement id
 ```
+
+Columns:
+- **AC id** — stable id from the motive charter (e.g. `AC1`)
+- **summary** — short restatement of the acceptance criterion
+- **covering slice id** — ledger slice id(s) that implement this AC, or `—` if none
+- **requirement id** — `doc/specs/` requirement id that grounds this AC, or `—` if charter-only
 
 **Status values:**
 
@@ -98,11 +106,11 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 
 ## Coverage
 
-| AC | Statement | Slice(s) | Status | Notes |
-|----|-----------|----------|--------|-------|
-| AC1 | ... | S1, S3 | covered | |
-| AC2 | ... | — | uncovered | no slice |
-| AC3 | ... | S2 | partial | auth happy-path only |
+| AC id | Summary | Covering slice id | Requirement id |
+|-------|---------|-------------------|----------------|
+| AC1 | ... | S1, S3 | REQ-42 |
+| AC2 | ... | — | REQ-43 |
+| AC3 | ... | S2 | — |
 
 ## CRITICAL
 - [missing] AC2: no slice covers <quote> (spec.md §…)
@@ -122,7 +130,7 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 
 | Signal | Route |
 |--------|--------|
-| No `plan_ref` / no plan artifact | HARD-GATE → `interview` or `planner` (not this skill's job to create the plan) |
+| No motive charter / no charter ACs | HARD-GATE → `interview` or `planner` (not this skill's job to create the charter) |
 | CRITICAL `missing` / `partial` heavy / bad decomposition | Re-enter **`vertical-slice`** |
 | CRITICAL `contradicts` on spec intent, wrong problem | Re-enter **`interview`** |
 | CRITICAL `unrequested` negative-scope | Strip slices or re-scope with user; do not impl |
@@ -139,7 +147,7 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 
 ## Orchestrator integration
 
-1. Non-trivial feature path: `interview`/`planner` → `plan_ref` → `vertical-slice` (ledger) → **`plan-review`** → fan-out only if no blocking CRITICAL (or user override).
+1. Non-trivial feature path: `interview`/`planner` → motive charter (`motive_ref`) → `vertical-slice` (ledger) → **`plan-review`** → fan-out only if no blocking CRITICAL (or user override).
 2. On advisor **REPLAN** or low `plan_soundness`: run `plan-review` on the current spec + slices, attach the coverage table + gap_types to the re-entry prompt.
 3. Record nothing mandatory in the ledger from this skill; the orchestrator may paste the verdict hint into the run `brief` or feature `history` if useful.
 

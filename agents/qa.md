@@ -77,12 +77,14 @@ Produce a written report (see Output Format). Cite every artifact by path. advis
 After producing the report, append a `VERIFICATION` journal event for every requirement id you exercised during the pass:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \
+<plugin-root>/bin/journal append \
   --rfc <rfc-uid> \
   --type VERIFICATION \
   --msg "qa verification pass: <brief description>" \
   --data '{"req_ids":["REQ-<id-1>","REQ-<id-2>"],"overall":"PASS|FAIL|PARTIAL"}'
 ```
+
+(The exact absolute path to `bin/journal` is provided in the SessionStart injection's "Groundwork CLI tools" block. Use `<plugin-root>/bin/journal` as the manual form.)
 
 If you do not know the RFC uid, omit `--rfc` — the event still records. One `append` call per pass (or per exploratory session — see Exploratory Testing below) is sufficient; do not emit one event per requirement.
 
@@ -91,7 +93,7 @@ If you do not know the RFC uid, omit `--rfc` — the event still records. One `a
 When you perform **exploratory** (unscripted) testing, record it as a journal `VERIFICATION` event with `"mode": "exploratory"` in the `--data` payload:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs append \
+<plugin-root>/bin/journal append \
   --rfc <rfc-uid> \
   --type VERIFICATION \
   --msg "exploratory pass: <what you explored>" \

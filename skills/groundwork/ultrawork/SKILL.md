@@ -30,15 +30,7 @@ do not claim that ending the session is mechanically blocked.
 
 ## Emit the banner FIRST (compliance tripwire)
 
-Your **first line of output** after engaging ultrawork MUST be one of:
-
-```
-GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json
-```
-or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)):
-```
-GROUNDWORK ▸ trivial: single general-purpose, no slicing
-```
+Your **first line of output** after engaging ultrawork MUST be the banner defined in CLAUDE.md §Run ledger & Stop-gate (on Claude Code hosts it is also injected at SessionStart by `hooks/session-reminder.mjs`). This skill defers to those sources rather than restating the format.
 
 ## The Prime Directive
 
@@ -64,9 +56,7 @@ Before each wave, state for each task: **Agent** · **Reason** · **Success crit
 
 ## As Slices Land
 
-Mark slices complete through the host's documented ledger interface. If no such
-interface exists, keep the slice table in the plan or handoff artifact and
-report it as advisory. Never invent plugin-root paths or claim hook enforcement.
+Mark slices complete through the ledger CLI. On Claude Code hosts the exact commands are defined in CLAUDE.md §Run ledger & Stop-gate and injected at SessionStart; this skill defers to those sources. On other hosts (Codex, pi) where the injection is absent, track slice state in the plan or handoff artifact and report ledger operations as advisory — never invent plugin-root paths or claim hook enforcement.
 
 ## Anti-Patterns — These Are Failures
 

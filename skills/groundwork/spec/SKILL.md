@@ -267,8 +267,14 @@ ln -s /path/to/groundwork/bin/spec ~/.local/bin/spec
 /path/to/groundwork/bin/spec <command>
 ```
 
-Inside Claude Code hook execution `${CLAUDE_PLUGIN_ROOT}/hooks/spec.mjs`
-also works — `CLAUDE_PLUGIN_ROOT` is set by the hook runner to this plugin's
-root directory during hook execution.
+Inside Claude Code hook execution `bin/spec` (from repo root) also works.
 
 Run `spec --help` for full command documentation.
+
+## Lint behavior — language boundaries
+
+### `type_names` data-model check (TypeScript only)
+
+The `lint.data-model.type_names` rule validates that entity type names in `data-model` views follow the project's naming conventions. This check is implemented in `hooks/spec-lint.mjs` and runs **only for TypeScript projects**. When the detected language is not TypeScript, the check is skipped cleanly — a short informational message is emitted and the lint run continues without an error or warning. No configuration is needed to suppress the skip message; it is normal output confirming the boundary was reached.
+
+Decision D-9 (motive `groundwork-development`) records that support for Kotlin and other languages is intentionally deferred. If you need `type_names` enforcement for a non-TypeScript codebase, open a new motive and reference D-9 as prior context.

@@ -19,7 +19,6 @@ import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
-import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 import { specDirPath, indexJsonPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 
@@ -29,26 +28,6 @@ import { emitHookEvent } from './lib/journal-io.mjs'
 
 function estimateTokens(text) {
   return Math.ceil((text || '').length / 4)
-}
-
-// ---------------------------------------------------------------------------
-// RFC status resolver (AC3)
-// ---------------------------------------------------------------------------
-
-/**
- * Try to resolve the RFC status for a given rfc_ref uid.
- * Returns the status string or null if not resolvable (fail-open).
- */
-function resolveRfcStatus(projectDir, rfcRef) {
-  try {
-    const rfcsDir = path.join(projectDir, '.groundwork', 'rfcs')
-    const rfcDir = findRfcByUid(rfcsDir, rfcRef)
-    if (!rfcDir) return null
-    const { frontmatter } = readRfcFrontmatter(rfcDir)
-    return typeof frontmatter.status === 'string' ? frontmatter.status : null
-  } catch {
-    return null
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +147,6 @@ function activeRunBlock(projectDir, sessionId) {
   const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
   if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
   if (typeof ledger.plan_ref === 'string' && ledger.plan_ref) lines.push(`Plan: ${ledger.plan_ref}`)
-  // AC3: display rfc_ref and its current status when present
-  if (typeof ledger.rfc_ref === 'string' && ledger.rfc_ref) {
-    const rfcStatus = resolveRfcStatus(projectDir, ledger.rfc_ref)
-    lines.push(`RFC: ${ledger.rfc_ref} (status: ${rfcStatus ?? 'unknown'})`)
-  }
   const ledgerRef = ledger.session_id ? `.groundwork/runs/${ledger.session_id}.json` : `.groundwork/run.json`
   lines.push(`Ledger: ${ledgerRef} — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
   lines.push('')

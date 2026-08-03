@@ -1,70 +1,42 @@
 #!/usr/bin/env node
 /**
- * Groundwork spec-guard — PreToolUse hook that advises on RFC-authorized writes
- * to doc/specs/ and docs/steering/.
+ * Groundwork spec-guard — PreToolUse hook that guards writes to doc/specs/
+ * and docs/steering/.
  *
- * ── ADVISORY-ONLY MODE (RFC gate intentionally disabled) ──
- *
- * The RFC status gate and spec_delta coverage gate previously issued hard denials
- * (exit 2). They have been converted to warn-and-permit (exit 0 + WARN to stderr)
- * so that editing a spec file does NOT require an RFC. The hook file and its
- * hooks.json registration are intentionally retained for future re-enable; to
- * restore enforcement, change the two warnAndPermit() calls at Steps 5 and 6–7
- * back to deny() calls and reinstate the deny() helper.
- *
- * Current behaviour summary:
- *  - All writes exit 0 (permit). Advisory WARNs are emitted to stderr when the
- *    RFC status is not accepted/implementing, or when no spec_delta entry covers
- *    the target path, but these WARNs do NOT block the write.
- *  - doc/specs/_generated/ is unconditionally exempt (no WARN, no ledger load).
- *  - FAIL-OPEN: any read/parse/resolution error → permit + WARN to stderr.
- *    A guard must never wedge real work.
- *
- * Exit codes:
- *  0 — permit (always, in advisory mode)
- *
- * Advisory messages are written to stderr; stdout is always empty.
+ * Current behaviour: pass-through for all writes (RFC gate removed in S6).
+ * The hook registration is retained for future re-enable.
  *
  * ── KNOWN FAIL-OPEN PATHS (pinned by tests) ──
  *
- * 1. Cross-repo writes are NOT authorization-checked.
+ * 1. Cross-repo writes are NOT intercepted.
  *    GUARDED_PREFIXES contains project-root-relative strings ("doc/specs/",
- *    "docs/steering/"). When the hook fires for a write in another repo (e.g.
- *    /home/newman/magic/hanlun-lms/doc/specs/...), relativeFromProject() returns
- *    the absolute path unchanged (it is outside projectDir). The absolute path
- *    does not start with "doc/specs/", so isGuarded = false → immediate
- *    passthrough(), with no RFC check performed.
- *    See: the isGuarded block at ~line 146-149 and relativeFromProject() at ~line 67.
+ *    "docs/steering/"). Writes in another repo fall outside projectDir so
+ *    isGuarded = false → immediate passthrough().
+ *    See: the isGuarded block at ~line 75 and relativeFromProject() at ~line 50.
  *
  * 2. A session with no run ledger is fail-open.
- *    When no ledger file exists on disk for the current session, the guard emits
- *    a WARN to stderr and exits 0 (permit).
- *    See: the `if (!ledger) return warnAndPermit(...)` block at ~line 169-171.
+ *    When no ledger file exists on disk for the current session, the guard
+ *    emits a WARN to stderr and exits 0 (permit).
+ *    See: the `if (!ledger) return warnAndPermit(...)` block at ~line 100.
  *
  * Both behaviors are intentional and are pinned by tests.
- * If the design decision later flips to fail-closed, invert those tests.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
-import { emitHookEvent } from './lib/journal-io.mjs'
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
-import { findRfcByUid, readRfcFrontmatter } from './lib/rfc-io.mjs'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Canonical tool names (after normalization) that this guard intercepts. */
 const GUARDED_TOOLS = new Set(['edit', 'write', 'multiedit'])
 
-/** Relative path prefixes (from project root) that require RFC authorization. */
+/** Relative path prefixes (from project root) that this guard intercepts. */
 const GUARDED_PREFIXES = ['doc/specs/', 'docs/steering/']
 
 /** Paths under this prefix are unconditionally permitted (generated files). */
 const GENERATED_EXEMPT = 'doc/specs/_generated/'
-
-/** RFC statuses that allow writes. */
-const ALLOWED_RFC_STATUSES = new Set(['accepted', 'implementing'])
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -96,47 +68,6 @@ function relativeFromProject(filePath, projectDir) {
   // If it's absolute and outside the project, the prefix check will fail → pass-through.
   const norm = filePath.replace(/\\/g, '/')
   return norm
-}
-
-/**
- * Locate an RFC directory given `rfc_ref`.
- *
- * `rfc_ref` may be:
- *  1. A relative path from projectDir: `.groundwork/rfcs/0001-spec-rfc-journal`
- *  2. An RFC UID string: `"0001"` or `"RFC-0001"` — searched via findRfcByUid.
- *
- * Returns the absolute path to the RFC directory, or null if not found.
- * Never throws.
- */
-function resolveRfcDir(projectDir, rfcRef) {
-  try {
-    // Strategy 1: treat as a relative (or absolute) path to the RFC directory.
-    const candidate = path.isAbsolute(rfcRef)
-      ? rfcRef
-      : path.join(path.resolve(projectDir), rfcRef)
-    // Accept the directory if it contains rfc.yaml (sidecar) or rfc.md (legacy).
-    if (existsSync(path.join(candidate, 'rfc.yaml'))) return candidate
-    if (existsSync(path.join(candidate, 'rfc.md'))) return candidate
-
-    // Strategy 2: treat as a UID and search .groundwork/rfcs/.
-    const rfcsDir = path.join(path.resolve(projectDir), '.groundwork', 'rfcs')
-    return findRfcByUid(rfcsDir, rfcRef)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Returns true when a spec_delta entry covers `relPath`.
- * Match is exact OR target is a prefix of relPath (directory coverage).
- */
-function entryCovers(entry, relPath) {
-  const target = entry?.target
-  if (typeof target !== 'string' || !target) return false
-  if (relPath === target) return true
-  // Prefix match: target must be followed by '/' (avoids 'doc/specs/foo' matching 'doc/specs/foobar').
-  const withSlash = target.endsWith('/') ? target : target + '/'
-  return relPath.startsWith(withSlash)
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -194,65 +125,6 @@ async function main() {
     return warnAndPermit(`no run ledger found — permitting write to ${relPath}`)
   }
 
-  const rfcRef = ledger.rfc_ref
-  if (!rfcRef || typeof rfcRef !== 'string') {
-    return warnAndPermit(`ledger has no rfc_ref — permitting write to ${relPath}`)
-  }
-
-  // ── Steps 5–8: validate RFC status and spec_delta coverage ────────────────
-  let frontmatter = null
-  let rfcUid = rfcRef
-
-  try {
-    const rfcDir = resolveRfcDir(projectDir, rfcRef)
-    if (!rfcDir) {
-      return warnAndPermit(
-        `RFC not found for rfc_ref "${rfcRef}" — permitting write (fail-open)`,
-      )
-    }
-    const parsed = readRfcFrontmatter(rfcDir)
-    frontmatter = parsed.frontmatter
-    rfcUid = typeof frontmatter.uid === 'string' ? frontmatter.uid : rfcRef
-  } catch {
-    return warnAndPermit(
-      `could not parse RFC frontmatter for "${rfcRef}" — permitting write (fail-open)`,
-    )
-  }
-
-  // Step 5: RFC status advisory (warn-only; does not block).
-  const rfcStatus = frontmatter?.status
-  if (!ALLOWED_RFC_STATUSES.has(rfcStatus)) {
-    const warnMsg = `RFC ${rfcUid} is ${rfcStatus}; consider advancing to accepted/implementing before editing doc/specs/ (advisory only — write permitted)`
-    emitHookEvent({
-      projectDir,
-      sessionId,
-      type: 'SPEC_DRIFT',
-      msg: warnMsg,
-      source: 'hook:spec-guard',
-      data: { kind: 'rfc-status', path: relPath, rfc_uid: rfcUid },
-      ledger,
-    })
-    return warnAndPermit(warnMsg)
-  }
-
-  // Steps 6–7: spec_delta coverage advisory (warn-only; does not block).
-  const specDelta = Array.isArray(frontmatter?.spec_delta) ? frontmatter.spec_delta : []
-  const covered = specDelta.some((entry) => entryCovers(entry, relPath))
-  if (!covered) {
-    const warnMsg = `no spec_delta entry in RFC ${rfcUid} covers ${rawPath}; consider adding an op to spec_delta (advisory only — write permitted)`
-    emitHookEvent({
-      projectDir,
-      sessionId,
-      type: 'SPEC_DRIFT',
-      msg: warnMsg,
-      source: 'hook:spec-guard',
-      data: { kind: 'spec-delta-uncovered', path: relPath, rfc_uid: rfcUid },
-      ledger,
-    })
-    return warnAndPermit(warnMsg)
-  }
-
-  // Step 8: permit.
   return passthrough()
 }
 

@@ -21,10 +21,10 @@
 - `Task(subagent_type=...)` — to delegate ALL work
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
-- `Bash` — for one-shot git status checks AND the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger); MUST NOT be used for exploration or implementation
+- `Bash` — for one-shot git status checks, the `ledger` CLI (`${CLAUDE_PLUGIN_ROOT}/hooks/ledger.mjs …` to update the run ledger), and the `journal` CLI (motive bookkeeping — `${CLAUDE_PLUGIN_ROOT}/hooks/journal.mjs …`); MUST NOT be used for exploration or implementation
 - `Write`/`Edit` — only for the two permitted path shapes; see **When the orchestrator may write directly** below
 
-**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI and one-shot git status are the only sanctioned Bash uses.)
+**If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, `journal` CLI, and one-shot git status are the only sanctioned Bash uses.)
 
 **Edits to orchestrator-rule files (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) MUST be delegated to `groundwork:general-purpose` + the `advisor` gate.**
 
@@ -60,14 +60,14 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → 5-20 `general-purpose` parallel → `advisor` gate |
+| "build X", "implement Y", complex feature | Feature | `interview` → _(plan-review)_ → `vertical-slice` (writes ledger) → 5-20 `general-purpose` parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
-| "plan this", "design this first", complex multi-file feature | Feature planning | `Task(subagent_type="groundwork:planner", model="opus")` → read `.groundwork/plans/*.md` → fan-out `general-purpose` |
+| "plan this", "design this first", complex multi-file feature | Feature planning | `Task(subagent_type="groundwork:planner", model="opus")` → motive charter + DECISION events (motive ref) → fan-out `general-purpose` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | `groundwork:explore` |
 | "audit plan coverage before fan-out", "map plan to slices" | Plan coverage audit | load `plan-review` skill (pre-fan-out, read-only coverage audit) |
@@ -75,11 +75,16 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | "is it done", "verify", "confirm" | Completion | `advisor` (evidence+quality) |
 | interactive UI / live app / browser / TUI | Live verification | `qa` → feeds `advisor` |
 | Architecture trade-off, hard decision | Decision | `advisor` |
-| "architecture review", "how's the structure", "any concerns", "retrospect", "improve architecture" | Arch review | load `/groundwork:arch-review` |
+| "architecture review", "how's the structure", "any concerns", "improve architecture" | Arch review | load `/groundwork:arch-review` |
+| "capture intent", "what do I want to build", durable goal, charter authoring | Motive authoring | load `motive` skill |
+| "resume", "continue from last session", multi-session continuity | Continuity | load `resume` skill + `handoff` skill |
+| "capture requirements", "clarify scope", intent capture | Requirements clarification | `interview` |
+| "update spec", "spec upkeep", "spec is stale" | Spec upkeep | load `spec` skill |
+| "retrospect", "reflect on this session", session retrospective | Retrospective | load `/groundwork:retrospective` |
 
 All **agent types** in this table are invoked via `Task`/`Agent` — NOT via `Skill()`. `Skill()` loads instruction sets; `Task`/`Agent` dispatches to compute targets. Mixing these registries causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill" instead of launching the explore agent). All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-purpose", ...)`.
 
-**Why planner is an agent, not a skill:** Planning involves heavy research — reading source, searching across the codebase, weighing alternatives — and doing that inline burns the orchestrator's context window for the rest of the session. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` offloads all of that work into the subagent's context; only the plan file reference returns, keeping the orchestrator's window clear for fan-out.
+**Why planner is an agent, not a skill:** Planning involves heavy research — reading source, searching across the codebase, weighing alternatives — and doing that inline burns the orchestrator's context window for the rest of the session. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` offloads all of that work into the subagent's context; only the motive charter reference (motive ref) returns, keeping the orchestrator's window clear for fan-out.
 
 **Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself. Root failure this prevents: an unresolved routing target leaves the orchestrator with no compute path, so it implements inline — blowing context budget and defeating the delegation model entirely.
 
@@ -203,7 +208,7 @@ Task(
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
-  PLAN: .groundwork/plans/feature.md step 3
+  PLAN: motive ref at .groundwork/motives/<slug>.charter.md
   SUCCESS CRITERIA: <observable, verifiable outcome>
   SCOPE: touch only the files listed above.
   """
@@ -296,7 +301,7 @@ Same subtask fails 3× in a row:
 
 ## Full bootstrap
 
-Load `/groundwork:use-groundwork` for complete skill routing, PRD flow, and BDD implementation rules.
+Load `/groundwork:use-groundwork` for complete skill routing, motive-driven implementation flow, and BDD implementation rules.
 Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task.
 
 ---
@@ -317,8 +322,20 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 | `skills/` | Skill definition files by namespace |
 | `src/` | TypeScript source |
 | `test/` + `tests/` | Vitest test files |
-| `.groundwork/` | Runtime artefacts: run ledgers, RFCs, journal shards, plans |
+| `.groundwork/` | Runtime artefacts: run ledgers, journal shards, motives |
 | `.claude/` | Claude Code project settings (`settings.json` with hooks) |
+
+### Skill-tree authority
+
+Three trees, three editing rules — never confuse them:
+
+| Tree | Role | Edit rule |
+|---|---|---|
+| `skills/groundwork/` | **Authority** — source of truth for groundwork skills | Hand-edit here |
+| `skills/` | **Generated** — mirrors of `skills/groundwork/` produced by build | Never hand-edit; run `pnpm run generate:agents` to regenerate |
+| `.pi/skills/` | **Independent** — pi-overlay skills; validated by `check:pi` | Hand-edit here; run `check:pi` after |
+
+> **`--check` before fixing a generated tree:** if `pnpm run generate:agents` shows a diff in `skills/` that you didn't expect, first run `--check` on the source tree (`skills/groundwork/`) to confirm the authority copy is correct before regenerating.
 
 ### Key files
 
@@ -333,7 +350,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 - Agent source files: `agents-src/<name>.md` with YAML frontmatter.
 - Skills: `skills/<namespace>/<skill-name>/SKILL.md`.
 - Spec requirements: `doc/specs/<concept-dir>/requirements/<kebab-name>.md`.
-- Runtime state (ledgers, journal shards, plans): `.groundwork/`, excluded in this repo via the committed `.gitignore`. When groundwork runs inside a **host project's** repo, exclude `.groundwork/` via `.git/info/exclude` instead — never touch that project's committed `.gitignore`.
+- Runtime state (ledgers, journal shards, motives): `.groundwork/`, excluded in this repo via the committed `.gitignore`. When groundwork runs inside a **host project's** repo, exclude `.groundwork/` via `.git/info/exclude` instead — never touch that project's committed `.gitignore`.
 
 ### Runtime and tooling
 

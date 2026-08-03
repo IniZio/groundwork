@@ -14,7 +14,7 @@ All agents require the `groundwork:` prefix: `Task(subagent_type="groundwork:exp
 | Agent | Role | Writes? |
 |-------|------|---------|
 | `explore` | Codebase exploration, file reading, "how does X work?" | READ-ONLY |
-| `planner` | Feature planning, codebase research, writes `.groundwork/plans/*.md` | READ-ONLY |
+| `planner` | Feature planning, codebase research, emits motive charter + DECISION events | READ-ONLY |
 | `general-purpose` | Implementation, tests, builds | YES |
 | `designer` | UI/UX, styling, visual polish | YES |
 | `general-purpose` | Root-cause analysis, error diagnosis | READ-ONLY |
@@ -35,7 +35,7 @@ Task(
   CONTEXT:
   - File to edit: src/lib/foo.ts:45-80 (implements X)
   - Constraint: must not break Y (see src/lib/bar.ts:12)
-  - Plan: .groundwork/plans/feature-xyz.md (step 3)
+  - Motive ref: <origin_decision_ref from planner output> (step 3)
   
   SUCCESS CRITERIA:
   - <concrete observable outcome>

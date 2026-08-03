@@ -93,7 +93,7 @@ A judge that can't tell good from bad must not score. Before recording a verdict
 
 ### Recording the verdict in the run ledger
 
-If a run ledger exists (`.groundwork/run.json`), the orchestrator MUST record the gate result so the Stop-gate can release the session. Record the **object form** (a bare string is still accepted for backward compatibility):
+If a run ledger exists (`.groundwork/runs/<session_id>.json`), the orchestrator MUST record the gate result so the Stop-gate can release the session. Record the **object form** (a bare string is still accepted for backward compatibility):
 
 ```json
 "advisor": {

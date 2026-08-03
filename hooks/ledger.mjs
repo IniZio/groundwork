@@ -25,6 +25,7 @@
  *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending] [--feature-slug <s>]
  *   ledger.mjs rm <id> [<id> …]                 remove slice(s)
  *   ledger.mjs set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]
+ *   ledger.mjs claim <id> [<id> …] [--json] [--strict]  claim slice(s) for the current session (no --token)
  *   ledger.mjs show <id>                        print all fields of one slice
  *
  * All writes are atomic and lock-serialized with the stop-gate hook (lib/ledger-io.mjs).
@@ -109,6 +110,7 @@ const KNOWN_SLICE_KEYS = new Set([
   'id', 'status', 'wave', 'kind', 'desc',
   'blocked_by', 'depends_on', // depends_on = legacy alias for blocked_by
   'acceptance', 'name',
+  'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
 ])
 
 /**
@@ -372,6 +374,7 @@ const HELP = {
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
       '--feature-slug <s>  (optional) link run to .groundwork/features/<slug>/',
+      '--claimed-by <sid>  (optional) set claimed_by on the new slice',
     ],
   },
   rm: {
@@ -388,6 +391,16 @@ const HELP = {
       '--desc "…"           new description',
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
+      '--claimed-by <sid>  set claimed_by on the slice',
+    ],
+  },
+  claim: {
+    summary: 'claim one or more slices for the current session (no --token required)',
+    usage: 'ledger claim <id> [<id> ...] [--json] [--strict]',
+    flags: [
+      '--session <id>   override session id (default: CLAUDE_CODE_SESSION_ID env)',
+      '--json           print JSON result to stdout: {claimed, refused, ok} (ok=false on any refusal)',
+      '--strict         exit non-zero when any id was refused (default: always exit 0)',
     ],
   },
   show: {
@@ -448,7 +461,8 @@ function cmdStatus() {
     const sym = SYMBOL[s?.status] ?? `?${s?.status ?? ''}`
     const dep = Array.isArray(s?.blocked_by) && s.blocked_by.length ? ` ⟵${s.blocked_by.join(',')}` : ''
     const wave = s?.wave != null ? `w${s.wave}` : ''
-    return `${s?.id ?? '?'}${sym}${wave ? ' ' + wave : ''}${dep}`
+    const claim = s?.claimed_by ? ` [claimed:${s.claimed_by}]` : ''
+    return `${s?.id ?? '?'}${sym}${wave ? ' ' + wave : ''}${dep}${claim}`
   })
   const gate = l.gate ?? {}
   process.stdout.write(
@@ -479,6 +493,8 @@ function cmdComplete(args) {
         s.status = 'complete'
         s.completed_at = now
         s.session_id = l.session_id ?? null
+        delete s.claimed_by
+        delete s.claimed_at
       }
     }
     total = slices.length
@@ -745,6 +761,10 @@ function cmdAdd(args) {
     // absent, which is valid; present+empty is now a validation error).
     if (acceptance.length > 0) item.acceptance = acceptance
     if (flags.kind != null) item.kind = flags.kind
+    if (flags['claimed-by'] != null) {
+      item.claimed_by = flags['claimed-by']
+      item.claimed_at = new Date().toISOString()
+    }
     ledger.slices.push(item)
     // Optional top-level link to a durable feature ledger (Contract B.1 / R4).
     // Mirrors plan_ref/brief: set on the run object, not on the slice.
@@ -784,8 +804,8 @@ function cmdSet(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
   if (!id) die('usage: ledger set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]', 2)
-  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance'].some((k) => flags[k] != null)
-  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance', 2)
+  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance', 'claimed-by'].some((k) => flags[k] != null)
+  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance --claimed-by', 2)
   if (flags.status != null) assertStatus(flags.status)
 
   const updated = []
@@ -803,6 +823,11 @@ function cmdSet(args) {
       if (flags.status === 'complete') {
         s.completed_at = new Date().toISOString()
         s.session_id = l.session_id ?? null
+        delete s.claimed_by
+        delete s.claimed_at
+      } else if (flags.status === 'skipped') {
+        delete s.claimed_by
+        delete s.claimed_at
       }
       updated.push(`status=${flags.status}`)
     }
@@ -815,6 +840,11 @@ function cmdSet(args) {
     if (flags.acceptance != null) {
       s.acceptance = flags.acceptance.split(';').map((v) => v.trim()).filter(Boolean)
       updated.push(`acceptance(${s.acceptance.length})`)
+    }
+    if (flags['claimed-by'] != null) {
+      s.claimed_by = flags['claimed-by']
+      s.claimed_at = new Date().toISOString()
+      updated.push(`claimed_by=${flags['claimed-by']}`)
     }
   })
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -850,6 +880,71 @@ function cmdShow(id) {
 }
 
 // ---------------------------------------------------------------------------
+// CLAIM — concurrent-session slice ownership
+// ---------------------------------------------------------------------------
+
+function cmdClaim(args) {
+  // Extract boolean flags before parseFlags (which treats every --flag as having a value)
+  const jsonMode = args.includes('--json')
+  const strictMode = args.includes('--strict')
+  const filteredArgs = args.filter((a) => a !== '--json' && a !== '--strict')
+
+  const { flags, positionals: ids } = parseFlags(filteredArgs)
+  if (!ids.length) die('usage: ledger claim <id> [<id> ...] [--json] [--strict]', 2)
+  const currentSession = resolveSessionId(flags)
+  if (!currentSession) die('claim requires a session id — set CLAUDE_CODE_SESSION_ID or pass --session <id>', 1)
+
+  const refused = /** @type {{id: string, claimed_by: string}[]} */ ([])
+  const claimed = []
+
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    const slices = Array.isArray(l.slices) ? l.slices : []
+    const byId = new Map(slices.map((s) => [s?.id, s]))
+    const missing = ids.filter((id) => !byId.has(id))
+    if (missing.length) {
+      const e = new Error(`unknown slice id(s): ${missing.join(', ')}`)
+      e.exitCode = 2
+      throw e
+    }
+    const now = new Date().toISOString()
+    for (const id of ids) {
+      const s = byId.get(id)
+      const existingOwner = s.claimed_by
+      if (!existingOwner || existingOwner === currentSession) {
+        // Unclaimed, or same session reclaiming (idempotent) — set/refresh
+        s.claimed_by = currentSession
+        s.claimed_at = now
+        claimed.push(id)
+      } else {
+        // Different session holds the claim.
+        // Allow reclaim only if the ledger is inactive (stale run).
+        if (l.active === false) {
+          s.claimed_by = currentSession
+          s.claimed_at = now
+          claimed.push(id)
+        } else {
+          refused.push({ id, claimed_by: existingOwner })
+        }
+      }
+    }
+  })
+
+  if (jsonMode) {
+    const ok = refused.length === 0
+    process.stdout.write(JSON.stringify({ claimed, refused, ok }) + '\n')
+    if (strictMode && !ok) process.exit(1)
+  } else {
+    // Default text output — byte-identical to previous behaviour
+    for (const r of refused) {
+      process.stderr.write(`ledger: ${r.id} already claimed by ${r.claimed_by} — skipping\n`)
+    }
+    if (claimed.length) process.stdout.write(`claimed: ${claimed.join(', ')} [session: ${currentSession}]\n`)
+    if (strictMode && refused.length > 0) process.exit(1)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // VIEW — human-readable markdown kanban
 // ---------------------------------------------------------------------------
 
@@ -880,8 +975,8 @@ function cmdView() {
   for (const w of waves) {
     lines.push(`## Wave ${w}`)
     lines.push(``)
-    lines.push(`| ID | Kind | Status | Blocked By | Description |`)
-    lines.push(`|---|---|---|---|---|`)
+    lines.push(`| ID | Kind | Status | Blocked By | Claimed By | Description |`)
+    lines.push(`|---|---|---|---|---|---|`)
     for (const s of byWave.get(w)) {
       const id = s?.id ?? '?'
       const status = s?.status ?? 'pending'
@@ -890,7 +985,8 @@ function cmdView() {
       const desc = (s?.desc || '').replace(/\|/g, '\\|')
       const kindRaw = s?.kind ?? null
       const kindCol = kindRaw != null ? (KIND_LABEL[kindRaw] ?? kindRaw) : '⚙ impl'
-      lines.push(`| \`${id}\` | ${kindCol} | ${sym} ${status} | ${blocked} | ${desc} |`)
+      const claimedBy = s?.claimed_by ?? '—'
+      lines.push(`| \`${id}\` | ${kindCol} | ${sym} ${status} | ${blocked} | ${claimedBy} | ${desc} |`)
     }
     lines.push(``)
   }
@@ -953,6 +1049,7 @@ function main() {
       case 'add':      return cmdAdd(rest)
       case 'rm':       return cmdRm(rest)
       case 'set':      return cmdSet(rest)
+      case 'claim':    return cmdClaim(rest)
       case 'show':     return cmdShow(rest[0])
       case 'view':     return cmdView()
       default:

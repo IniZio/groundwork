@@ -323,8 +323,8 @@ describe("ledger CLI — view", () => {
 	it("renders a markdown table with ID, Kind, Status, Blocked By, and Description columns", () => {
 		const r = run(["view"]);
 		expect(r.code).toBe(0);
-		expect(r.stdout).toContain("| ID | Kind | Status | Blocked By | Description |");
-		expect(r.stdout).toContain("|---|---|---|---|---|");
+		expect(r.stdout).toContain("| ID | Kind | Status | Blocked By | Claimed By | Description |");
+		expect(r.stdout).toContain("|---|---|---|---|---|---|");
 		// Slice IDs appear as inline code spans
 		expect(r.stdout).toContain("`S1`");
 		expect(r.stdout).toContain("`S2`");
@@ -458,7 +458,7 @@ describe("ledger CLI — kind field (add + show + view)", () => {
 	it("view has a Kind column header", () => {
 		const r = run(["view"]);
 		expect(r.code).toBe(0);
-		expect(r.stdout).toContain("| ID | Kind | Status | Blocked By | Description |");
+		expect(r.stdout).toContain("| ID | Kind | Status | Blocked By | Claimed By | Description |");
 	});
 
 	it("view shows the kind label for a slice that has kind set", () => {

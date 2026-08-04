@@ -252,8 +252,9 @@ describe('regenerateMotiveMap — decisions', () => {
     ])
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Shorter truncation must be gone; longer version must appear once
-    const matches = content.match(/ASD-STE100 not adopted/g)
+    // Shorter truncation must be gone; longer version must appear once in the Decisions section
+    const decisionsSection = content.split('## Decisions so far')[1]?.split('##')[0] ?? ''
+    const matches = decisionsSection.match(/ASD-STE100 not adopted/g)
     expect(matches).toHaveLength(1)
     expect(content).toContain('degraded readability')
   })
@@ -455,5 +456,179 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     expect(content).toContain('dark mode')
+  })
+
+  it('Out of scope section surfaces DECISION events with data.status=rejected', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'GraphQL API rejected',
+        data: { id: 'D-1', title: 'GraphQL API rejected — too complex', status: 'rejected' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).toContain('[D-1]')
+    expect(oosSection).toContain('GraphQL API rejected')
+    expect(oosSection).not.toContain('_Nothing explicitly ruled out yet._')
+  })
+
+  it('Out of scope section surfaces DECISION events with data.rejects field', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Decision to not use microservices',
+        data: { id: 'D-2', title: 'Microservices approach ruled out', rejects: 'microservices-proposal', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).toContain('[D-2]')
+    expect(oosSection).toContain('Microservices approach ruled out')
+  })
+
+  it('Out of scope section surfaces DECISION events with "reject" in title', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'STE100 controlled-prose style NOT adopted. Verdict: do not adopt.',
+        data: { id: 'D-6', title: 'STE100 rejected — trial evidence', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).toContain('[D-6]')
+    expect(oosSection).toContain('STE100 rejected')
+  })
+
+  it('Out of scope deduplicates dir entries and rejection decisions by label', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    const oos = join(dir, '.groundwork', 'out-of-scope')
+    mkdirSync(oos, { recursive: true })
+    writeFileSync(join(oos, 'dark-mode.md'), '# dark mode', 'utf8')
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'dark mode',
+        data: { id: 'D-3', title: 'dark mode', status: 'rejected' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    // 'dark mode' should appear exactly once as a bullet
+    const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
+    const darkModeBullets = bullets.filter((l: string) => l.toLowerCase().includes('dark mode'))
+    expect(darkModeBullets.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('Out of scope shows placeholder only when all three sources are empty', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    // No out-of-scope dir, no rejection decisions, no charter out_of_scope
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).toContain('_Nothing explicitly ruled out yet._')
+  })
+
+  it('Out of scope does not show placeholder when only rejection decisions present', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'not adopted this approach',
+        data: { id: 'D-4', title: 'Approach X not adopted', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).not.toContain('_Nothing explicitly ruled out yet._')
+    expect(oosSection).toContain('[D-4]')
+  })
+
+  it('first-sentence prefix dedup: shorter summary form merged into longer prose form, prose kept with id suffix', () => {
+    // Regression: two DECISION events describe the same rejection. The id-bearing event
+    // has a SHORTER first sentence that is a strict prefix of the no-id event's first sentence.
+    // Identity rule: first-sentence strict prefix — the shorter first sentence is the "summary
+    // form"; the longer is the "full prose". Keep full prose (P-E human-first), append id.
+    // NOT fuzzy shared-prefix-length heuristic; NOT session-based suppression.
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        // Longer first sentence: "ASD-STE100 controlled-prose style NOT adopted for spec files"
+        msg: 'ASD-STE100 controlled-prose style NOT adopted for spec files. Trial showed no benefit.',
+        data: { status: 'accepted' },
+      },
+      {
+        ts: '2026-01-01T00:01:00Z', session: 's', motive: 'm', type: 'DECISION',
+        // Shorter first sentence: "ASD-STE100 controlled-prose style NOT adopted"
+        // (strict prefix of the above)
+        msg: 'ASD-STE100 controlled-prose style NOT adopted. Verdict: do not adopt.',
+        data: { id: 'D-6', title: 'STE100 rejected — trial evidence', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    // Full prose bullet kept, id appended
+    expect(oosSection).toContain('for spec files')
+    expect(oosSection).toContain('D-6')
+    // The terse "[D-6] STE100 rejected" title must NOT appear as a separate bullet
+    const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
+    expect(bullets.length).toBe(1)
+  })
+
+  it('first-sentence prefix dedup: unrelated rejection in same session survives alongside id-bearing one', () => {
+    // Regression guard: session-based suppression was too broad — it dropped DISTINCT
+    // rejections that happened to share a session with an id-bearing rejection.
+    // A no-id rejection whose first sentence is NOT a prefix of any id-bearing rejection
+    // must render regardless of session.
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 'shared-session', motive: 'm', type: 'DECISION',
+        // Distinct rejection: different topic, not a prefix of the D-6 event
+        msg: 'Problem definition adopted as yardstick. A proposal that violates P-D should be rejected.',
+        data: { status: 'accepted' },
+      },
+      {
+        ts: '2026-01-01T00:00:30Z', session: 'shared-session', motive: 'm', type: 'DECISION',
+        // Unrelated id-bearing rejection in the SAME session
+        msg: 'ASD-STE100 controlled-prose style NOT adopted. Verdict: do not adopt.',
+        data: { id: 'D-6', title: 'STE100 rejected', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    // Both must appear — they are distinct rejections
+    expect(oosSection).toContain('Problem definition adopted')
+    expect(oosSection).toContain('[D-6]')
+    const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
+    expect(bullets.length).toBe(2)
+  })
+
+  it('DECISION events for other motives do not appear in Out of scope', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'other', type: 'DECISION',
+        msg: 'Reject this for other motive',
+        data: { id: 'D-5', title: 'Other motive rejection', status: 'rejected' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
+    expect(oosSection).toContain('_Nothing explicitly ruled out yet._')
+    expect(oosSection).not.toContain('Other motive rejection')
   })
 })

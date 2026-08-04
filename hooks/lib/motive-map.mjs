@@ -45,11 +45,12 @@ function _generate(projectDir, motive) {
   const motiveDir = join(projectDir, '.groundwork', 'motives', motive)
   if (!existsSync(motiveDir)) return  // no charter directory yet — skip silently
 
-  const charter      = readCharter({ projectDir, motive })
-  const slices       = _readMotiveSlices(projectDir, motive)
-  const decisions    = _readDecisions(projectDir, motive)
-  const outOfScope   = _readOutOfScope(projectDir)
-  const allEvents    = _readAllMotiveEvents(projectDir, motive)
+  const charter            = readCharter({ projectDir, motive })
+  const slices             = _readMotiveSlices(projectDir, motive)
+  const decisions          = _readDecisions(projectDir, motive)
+  const outOfScope         = _readOutOfScope(projectDir)
+  const rejectionDecisions = _readRejectionDecisions(projectDir, motive)
+  const allEvents          = _readAllMotiveEvents(projectDir, motive)
 
   // Generate per-ticket drill-down files (errors swallowed inside)
   regenerateMotiveTickets(motiveDir, {
@@ -58,7 +59,7 @@ function _generate(projectDir, motive) {
     events: allEvents,
   })
 
-  const md = _renderMap({ motive, charter, slices, decisions, outOfScope })
+  const md = _renderMap({ motive, charter, slices, decisions, outOfScope, rejectionDecisions })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -188,6 +189,117 @@ function _readOutOfScope(projectDir) {
 }
 
 /**
+ * Return formatted labels for DECISION events that carry a rejection marker.
+ * Detection: data.status==='rejected', data.rejects truthy, or "reject"/"not adopted"
+ * appears in data.title or msg (case-insensitive).
+ *
+ * Dedup rule — first-sentence strict prefix (structural identity, not fuzzy prose):
+ *   Two rejection events are considered the same rejection when one event's first
+ *   sentence (text before the first ". " or end of msg) is a strict prefix of the
+ *   other's first sentence after case-folding and whitespace normalisation.
+ *   The shorter first sentence is the "summary form"; the longer is the "full prose".
+ *   We keep the FULL PROSE (P-E: human-first content).  If the summary form carried a
+ *   structured data.id, we append it to the kept label as " (D-X)" so the id is not lost.
+ *
+ * This is deliberately more conservative than a shared-prefix-length heuristic: it only
+ * merges when the entire first sentence of one event is a strict prefix of the other's.
+ * When the relationship is unclear, both entries are rendered.
+ *
+ * NOT used: session-level suppression — session identity ≠ rejection identity.
+ */
+function _readRejectionDecisions(projectDir, motive) {
+  const journalDir = join(projectDir, '.groundwork', 'journal')
+  if (!existsSync(journalDir)) return []
+  try {
+    const all            = readAllEvents(journalDir)
+    const { shown = [] } = filterEvents(all, { motive, type: 'DECISION' })
+
+    // Collect rejection events
+    const rejections = []
+    for (const ev of shown) {
+      const data  = ev.data ?? {}
+      const title = (data.title ?? '').toLowerCase()
+      const msg   = (ev.msg   ?? '').toLowerCase()
+      const isRejection =
+        data.status === 'rejected' ||
+        !!data.rejects ||
+        /\breject(ed|s)?\b/.test(title) ||
+        /\bnot adopted\b/.test(msg) ||
+        /\bdo not adopt\b/.test(msg) ||
+        /\brejected\b/.test(msg)
+      if (!isRejection) continue
+      rejections.push(ev)
+    }
+
+    // Extract first sentence for comparison: text before the first ". " (or whole msg)
+    const firstSentence = (ev) => {
+      const msg = (ev.msg ?? '').replace(/\s+/g, ' ').trim()
+      const cut = msg.indexOf('. ')
+      return (cut >= 0 ? msg.slice(0, cut) : msg).toLowerCase()
+    }
+
+    // First-sentence strict-prefix dedup:
+    //   For each pair, if A's first sentence is a strict prefix of B's first sentence,
+    //   A is the summary form and B is the full prose.  Mark A as merged-into-B.
+    const mergedInto = new Map()  // index → index of the richer entry
+    const absorbedIds = new Map() // index-of-kept → Set of ids from absorbed entries
+
+    for (let i = 0; i < rejections.length; i++) {
+      if (mergedInto.has(i)) continue
+      const fsI = firstSentence(rejections[i])
+      for (let j = 0; j < rejections.length; j++) {
+        if (i === j || mergedInto.has(j)) continue
+        const fsJ = firstSentence(rejections[j])
+        if (fsJ === fsI) continue  // exact — handled by seenLabels below
+        // Determine which is the prefix (shorter first sentence = summary form)
+        if (fsI.startsWith(fsJ + ' ') || fsI === fsJ) {
+          // fsJ is prefix of fsI → rejections[i] is the longer (full prose), j is summary
+          mergedInto.set(j, i)
+          const jId = rejections[j].data?.id
+          if (jId) {
+            if (!absorbedIds.has(i)) absorbedIds.set(i, new Set())
+            absorbedIds.get(i).add(jId)
+          }
+        } else if (fsJ.startsWith(fsI + ' ') || fsJ === fsI) {
+          // fsI is prefix of fsJ → rejections[j] is the longer (full prose), i is summary
+          mergedInto.set(i, j)
+          const iId = rejections[i].data?.id
+          if (iId) {
+            if (!absorbedIds.has(j)) absorbedIds.set(j, new Set())
+            absorbedIds.get(j).add(iId)
+          }
+          break  // i is now merged; skip remaining j comparisons
+        }
+      }
+    }
+
+    // Build labels for surviving (non-merged) events
+    const seenLabels = new Set()
+    const results = []
+    for (let i = 0; i < rejections.length; i++) {
+      if (mergedInto.has(i)) continue  // subsumed by a longer entry
+      const ev   = rejections[i]
+      const data = ev.data ?? {}
+      let label  = data.id
+        ? `[${data.id}] ${data.title ?? ev.msg}`
+        : (data.title ?? ev.msg)
+
+      // Append ids absorbed from shorter summary-form entries (P-E: keep prose, surface id)
+      const extra = absorbedIds.get(i)
+      if (extra?.size) {
+        label += ` (${[...extra].join(', ')})`
+      }
+
+      const key = label.toLowerCase().trim()
+      if (!seenLabels.has(key)) { seenLabels.add(key); results.push(label) }
+    }
+    return results
+  } catch {
+    return []
+  }
+}
+
+/**
  * Return all journal events for a motive (all types, newest first).
  * Used to feed the ticket generator with related events.
  */
@@ -207,7 +319,7 @@ function _readAllMotiveEvents(projectDir, motive) {
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
+function _renderMap({ motive, charter, slices, decisions, outOfScope, rejectionDecisions = [] }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -326,8 +438,16 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
     parts.push(charterOos)
     parts.push('')
   }
-  if (outOfScope.length) {
-    for (const entry of outOfScope) {
+
+  // Merge dir entries and rejection decisions, deduplicated (case-insensitive)
+  const seenOos = new Set()
+  const allOos  = []
+  for (const entry of [...outOfScope, ...rejectionDecisions]) {
+    const key = entry.toLowerCase().trim()
+    if (!seenOos.has(key)) { seenOos.add(key); allOos.push(entry) }
+  }
+  if (allOos.length) {
+    for (const entry of allOos) {
       parts.push(`- ${entry}`)
     }
   } else if (!hasCharterOos) {

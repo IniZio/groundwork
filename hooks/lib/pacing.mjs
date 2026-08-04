@@ -89,33 +89,37 @@ export function resolvedUnits(doc) {
   if (!pacing) return 0
 
   const slices = getSlices(doc)
-  const { exempt_kinds: exemptKinds = [], policy } = pacing
+  const { exempt_kinds: exemptKinds = [], policy, offset = 0 } = pacing
 
+  let raw
   if (policy === 'slice') {
     // Each non-exempt slice is its own unit; count slices that are complete.
-    return slices.filter(
+    raw = slices.filter(
       (s) => !isExemptSlice(s, exemptKinds) && s.status === 'complete',
     ).length
+  } else {
+    // policy === 'wave'
+    // Group non-exempt slices by wave.
+    /** @type {Map<number, { total: number, complete: number }>} */
+    const waves = new Map()
+    for (const s of slices) {
+      if (isExemptSlice(s, exemptKinds)) continue
+      const w = s.wave ?? 0
+      const entry = waves.get(w) ?? { total: 0, complete: 0 }
+      entry.total++
+      if (s.status === 'complete') entry.complete++
+      waves.set(w, entry)
+    }
+
+    raw = 0
+    for (const { total, complete } of waves.values()) {
+      if (total > 0 && complete === total) raw++
+    }
   }
 
-  // policy === 'wave'
-  // Group non-exempt slices by wave.
-  /** @type {Map<number, { total: number, complete: number }>} */
-  const waves = new Map()
-  for (const s of slices) {
-    if (isExemptSlice(s, exemptKinds)) continue
-    const w = s.wave ?? 0
-    const entry = waves.get(w) ?? { total: 0, complete: 0 }
-    entry.total++
-    if (s.status === 'complete') entry.complete++
-    waves.set(w, entry)
-  }
-
-  let count = 0
-  for (const { total, complete } of waves.values()) {
-    if (total > 0 && complete === total) count++
-  }
-  return count
+  // Subtract the adoption offset so completions carried in from a prior-session
+  // seed JSON don't count against the current session's budget (F14 fix).
+  return Math.max(0, raw - offset)
 }
 
 /**

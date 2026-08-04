@@ -23,6 +23,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 // @ts-ignore
 import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
+// @ts-ignore
+import { loadSchema } from '../../hooks/lib/schema-io.mjs'
+
+// Helper: write a hand-authored ticket file to tickets/
+function writeTicketFile(dir: string, motive: string, stem: string, body = `# ${stem}\n\nContent.\n`) {
+  const ticketsDir = join(dir, '.groundwork', 'motives', motive, 'tickets')
+  mkdirSync(ticketsDir, { recursive: true })
+  writeFileSync(join(ticketsDir, `${stem}.md`), body, 'utf8')
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -906,5 +915,413 @@ Cloud sync or any network storage.
     expect(content).not.toContain('_No objective recorded yet._')
     expect(content).toContain('The real objective text.')
     expect(content).toContain('TBD-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T5: MAP renders from tickets + retires dedupe
+// ---------------------------------------------------------------------------
+
+describe('T5-AC1 — MAP renders one row per ticket with ledger status overlay', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('Tickets section lists each ticket file with its linked slice status', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't1')
+    writeTicketFile(dir, 'm', 't2')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 'T1', status: 'complete', desc: 'First task' },
+        { id: 'S2', ticket: 'T2', status: 'in_progress', desc: 'Active task' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('## Tickets')
+    // T1 completed
+    expect(content).toContain('[t1](tickets/t1.md)')
+    expect(content).toContain('complete')
+    // T2 in progress
+    expect(content).toContain('[t2](tickets/t2.md)')
+    expect(content).toContain('in progress')
+  })
+
+  it('ticket status badge shows pending for pending slice', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't3')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S3', ticket: 'T3', status: 'pending', desc: 'Not started' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    expect(ticketsSection).toContain('[t3](tickets/t3.md)')
+    expect(ticketsSection).toContain('pending')
+  })
+})
+
+describe('T5-AC2 — ticket with no slice renders unstarted; slice with no ticket in Unlinked', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('ticket with no linked slice renders with unstarted status', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 'orphan')
+    // No slices reference this ticket
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', status: 'complete', desc: 'Done' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    expect(ticketsSection).toContain('[orphan](tickets/orphan.md)')
+    expect(ticketsSection).toContain('unstarted')
+  })
+
+  it('slice with no ticket field appears in Unlinked section', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't1')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 'T1', status: 'pending', desc: 'Has ticket' },
+        { id: 'S2', status: 'pending', desc: 'No ticket here' },  // unlinked
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    expect(ticketsSection).toContain('Unlinked')
+    expect(ticketsSection).toContain('S2')
+    expect(ticketsSection).toContain('No ticket here')
+  })
+
+  it('Unlinked section is absent when all slices have tickets', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't1')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', ticket: 'T1', status: 'pending', desc: 'Has ticket' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    expect(ticketsSection).not.toContain('Unlinked')
+  })
+})
+
+describe('T5-AC3 — MAP ticket links resolve to existing files', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('every markdown link in MAP.md resolves (open-items + tickets)', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test.',
+      '',
+      '## Open items',
+      '- TBD-1: Should we use Redis?',
+    ].join('\n'))
+    writeTicketFile(dir, 'm', 't1')
+    writeTicketFile(dir, 'm', 't2')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 'T1', status: 'pending', desc: 'Task one' },
+        { id: 'S2', ticket: 'T2', status: 'complete', desc: 'Task two' },
+        { id: 'S3', status: 'pending', desc: 'No ticket' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const motiveDir = join(dir, '.groundwork', 'motives', 'm')
+    const map = readFileSync(join(motiveDir, 'MAP.md'), 'utf8')
+    const linkRe = /\]\(([^)]+)\)/g
+    const broken: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = linkRe.exec(map)) !== null) {
+      const target = m[1]
+      if (target.startsWith('#') || /^https?:\/\//.test(target)) continue
+      const resolved = join(motiveDir, target)
+      if (!existsSync(resolved)) broken.push(target)
+    }
+    expect(broken).toEqual([])
+  })
+})
+
+describe('T5-AC4 — decision dedupe honours data.retires', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('retired decision (via data.retires) is excluded from Decisions section', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's1', motive: 'm', type: 'DECISION',
+        msg: 'Old approach: use monolith',
+        data: { id: 'D-10', status: 'accepted' },
+      },
+      {
+        ts: '2026-01-02T00:00:00Z', session: 's2', motive: 'm', type: 'DECISION',
+        msg: 'New approach: use modular design (retires D-10)',
+        data: { id: 'D-11', retires: 'D-10', status: 'accepted' },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('modular design')
+    expect(content).not.toContain('use monolith')
+  })
+
+  it('data.retires as array retires all listed ids', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      { ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Decision A', data: { id: 'D-1', status: 'accepted' } },
+      { ts: '2026-01-01T00:01:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Decision B', data: { id: 'D-2', status: 'accepted' } },
+      { ts: '2026-01-02T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Unified decision (retires both D-1 and D-2)',
+        data: { id: 'D-3', retires: ['D-1', 'D-2'], status: 'accepted' } },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('Unified decision')
+    expect(content).not.toContain('Decision A')
+    expect(content).not.toContain('Decision B')
+  })
+})
+
+describe('T5-AC5 — empty ticket corpus: no regression in pure slice view', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('no tickets/ dir: ## Tickets section is absent', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', status: 'pending', desc: 'A task' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('## Tickets')
+    // Existing sections still present
+    expect(content).toContain('## Frontier')
+    expect(content).toContain('## Progress')
+  })
+
+  it('empty tickets/ dir: ## Tickets section is absent', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    // Create empty tickets/ dir
+    const ticketsDir = join(dir, '.groundwork', 'motives', 'm', 'tickets')
+    mkdirSync(ticketsDir, { recursive: true })
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', status: 'pending', desc: 'A task' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('## Tickets')
+    expect(content).toContain('## Frontier')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// F19: retires-aware dedupe — descriptive references
+// ---------------------------------------------------------------------------
+
+describe('F19-AC1 — descriptive retires reference (D-32 corpus shape) dedupes legacy entry', () => {
+  // Regression: D-32 retires "Implement ledger slice tickets (tickets-autogen) as ambient human
+  // projection" but the legacy decision text is "Implement tickets-autogen: ambient tickets/<id>.md
+  // per slice to surface human-readable drilldowns from MAP.md (TBD-21)". Exact-text match fails;
+  // token-overlap (≥60% of significant tokens, floor 2) must match and exclude the legacy entry.
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('D-32 payload (verbatim corpus): legacy tickets-autogen decision is excluded from MAP', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      // Legacy id-less decision (verbatim msg from the groundwork-development corpus)
+      {
+        ts: '2026-08-04T05:00:00.000Z',
+        session: '7083670a-5489-4bf3-851d-accef4fa47a8',
+        motive: 'm',
+        type: 'DECISION',
+        msg: 'Implement tickets-autogen: ambient tickets/<id>.md per slice to surface human-readable drilldowns from MAP.md (TBD-21)',
+      },
+      // D-32 (verbatim data from the groundwork-development corpus), retires descriptively
+      {
+        ts: '2026-08-04T09:07:40.708Z',
+        session: '54de8760-7d4d-42a6-9dcb-1502661a3345',
+        motive: 'm',
+        type: 'DECISION',
+        msg: "D-32: TICKETS are the primary durable work object; SLICES are a derived execution/scheduling projection — retires the id-less 'ledger slice tickets as ambient human projection' decision",
+        data: {
+          id: 'D-32',
+          status: 'accepted',
+          retires: 'Implement ledger slice tickets (tickets-autogen) as ambient human projection',
+        },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // D-32 (newer) must appear
+    expect(content).toContain('TICKETS are the primary durable work object')
+    // Legacy entry must be gone — tokens-autogen phrase is distinctive enough
+    expect(content).not.toContain('ambient tickets/<id>.md')
+  })
+
+  it('over-match guard: id-less decision sharing only 2 of 8 tokens is NOT deduped', () => {
+    // The real over-match risk is for id-less decisions (token-overlap only targets those).
+    // This unrelated id-less decision shares "implement" + "ambient" with the retires ref
+    // but only 2/8 tokens (25%) — below the 60% threshold — so it must survive.
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeDecisions(dir, 'm', [
+      // Unrelated id-less decision — shares "implement" and "ambient" but not the distinctive tokens
+      {
+        ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Implement ambient configuration loading for all plugins',
+      },
+      // Retiring decision with descriptive retires ref
+      // retires tokens: ["implement","ledger","slice","tickets","autogen","ambient","human","projection"] (8)
+      // above id-less msg contains: "implement" + "ambient" = 2/8 = 25% < 60% → no match
+      {
+        ts: '2026-01-02T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
+        msg: 'Use static configuration instead of dynamic loading',
+        data: {
+          id: 'D-6', status: 'accepted',
+          retires: 'Implement ledger slice tickets (tickets-autogen) as ambient human projection',
+        },
+      },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // Unrelated id-less decision is NOT retired (token overlap too low)
+    expect(content).toContain('ambient configuration loading')
+    expect(content).toContain('static configuration')
+  })
+})
+
+describe('F19-AC2 — linked ticket render: slice with ticket field shows status overlay, not Unlinked', () => {
+  // Real-corpus-shaped test: a ticket file exists at tickets/t1.md and a slice references it.
+  // The MAP Tickets section must show the ticket with the slice's actual status,
+  // and the slice must NOT appear under Unlinked slices.
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('linked ticket shows slice status; slice absent from Unlinked', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't1')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 't1', status: 'complete', desc: 'Linked task' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    // Ticket row appears with its linked slice status
+    expect(ticketsSection).toContain('[t1](tickets/t1.md)')
+    expect(ticketsSection).toContain('complete')
+    // The linked slice must NOT appear as Unlinked
+    expect(ticketsSection).not.toContain('Unlinked')
+    expect(ticketsSection).not.toContain('unstarted')
+  })
+
+  it('linked ticket with in_progress slice shows in progress badge', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 'f19')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'F19', ticket: 'f19', status: 'in_progress', desc: 'In-flight work' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    expect(ticketsSection).toContain('[f19](tickets/f19.md)')
+    expect(ticketsSection).toContain('in progress')
+    expect(ticketsSection).not.toContain('Unlinked')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// F20 regression — bare-id ticket join and schema rejection of path shapes
+// ---------------------------------------------------------------------------
+
+describe('F20 regression — bare-id ticket join', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('bare-id ticket ref (e.g. "t1") renders linked overlay — status shown, not unstarted, not Unlinked', () => {
+    // Production shape: slice.ticket = 't1' (bare id), file = tickets/t1.md
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 't1')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 't1', status: 'complete', desc: 'Bare id join' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    // Overlay: slice status shown, not "unstarted — no slice"
+    expect(ticketsSection).toContain('[t1](tickets/t1.md)')
+    expect(ticketsSection).toContain('complete')
+    expect(ticketsSection).not.toContain('unstarted')
+    // Slice must not appear as Unlinked
+    expect(ticketsSection).not.toContain('Unlinked')
+  })
+
+  it('schema rejects path-shaped ticket value "tickets/t1.md"', () => {
+    const validate = loadSchema('run-ledger')
+    const badLedger = {
+      session_id: 'test-session',
+      active: true,
+      slices: [{ id: 'S1', status: 'pending', ticket: 'tickets/t1.md' }],
+    }
+    const valid = validate(badLedger)
+    expect(valid).toBe(false)
+    const errors = validate.errors ?? []
+    const ticketError = errors.find((e: { instancePath: string }) => e.instancePath.includes('ticket'))
+    expect(ticketError).toBeDefined()
+  })
+
+  it('schema accepts bare-id ticket value "t1"', () => {
+    const validate = loadSchema('run-ledger')
+    const goodLedger = {
+      session_id: 'test-session',
+      active: true,
+      slices: [{ id: 'S1', status: 'pending', ticket: 't1' }],
+    }
+    const valid = validate(goodLedger)
+    expect(valid).toBe(true)
   })
 })

@@ -1,14 +1,20 @@
+// @verifies ARTIFACT-R-008
 /**
  * Tests for hooks/lib/motive-tickets.mjs and the ticket integration in motive-map.mjs
  *
+ * T4 ownership inversion:
+ *   - tickets/ is agent/human-authored territory; this module NEVER writes there.
+ *   - Open-item drill-downs move to open-items/ (sibling of tickets/).
+ *   - Sweep is scoped to open-items/ only.
+ *
  * Covers:
  *   - sanitizeId: valid ids, path-traversal guard
- *   - regenerateMotiveTickets: creates slice tickets, creates open-item tickets
- *   - regenerateMotiveTickets: updates tickets on second call
- *   - regenerateMotiveTickets: removes stale ticket files
+ *   - regenerateMotiveTickets: slices produce NO files (T4-AC2)
+ *   - regenerateMotiveTickets: open-item drill-downs in open-items/ (T4-AC3)
+ *   - regenerateMotiveTickets: tickets/ is never created or swept (T4-AC1, T4-AC4)
+ *   - regenerateMotiveTickets: stale open-item files removed from open-items/ only
  *   - regenerateMotiveTickets: never throws (error resilience)
- *   - regenerateMotiveMap: tickets/ created alongside MAP.md
- *   - MAP.md: ids are links to ticket files
+ *   - regenerateMotiveMap: tickets integration (MAP.md links unchanged — T5 scope)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -46,24 +52,32 @@ function makeCharter(dir: string, motive: string, content: string) {
   writeFileSync(join(motiveDir, 'motive.md'), content, 'utf8')
 }
 
-function writeLedger(dir: string, motive: string, data: object) {
+function writeLedger(dir: string, _motive: string, data: object) {
   const runsDir = join(dir, '.groundwork', 'runs')
   mkdirSync(runsDir, { recursive: true })
   writeFileSync(join(runsDir, `run-test.json`), JSON.stringify(data), 'utf8')
 }
 
-function readTicket(motiveDir: string, safeName: string): string {
-  return readFileSync(join(motiveDir, 'tickets', `${safeName}.md`), 'utf8')
+/** Read an open-item drill-down from open-items/ */
+function readOpenItem(motiveDir: string, safeName: string): string {
+  return readFileSync(join(motiveDir, 'open-items', `${safeName}.md`), 'utf8')
 }
 
-function ticketExists(motiveDir: string, safeName: string): boolean {
-  return existsSync(join(motiveDir, 'tickets', `${safeName}.md`))
+/** Check existence in open-items/ */
+function openItemExists(motiveDir: string, safeName: string): boolean {
+  return existsSync(join(motiveDir, 'open-items', `${safeName}.md`))
 }
 
-function listTickets(motiveDir: string): string[] {
-  const dir = join(motiveDir, 'tickets')
+/** List files in open-items/ */
+function listOpenItems(motiveDir: string): string[] {
+  const dir = join(motiveDir, 'open-items')
   if (!existsSync(dir)) return []
   return readdirSync(dir).filter((f) => f.endsWith('.md'))
+}
+
+/** Check existence in tickets/ (must NOT be created by this module) */
+function ticketExists(motiveDir: string, safeName: string): boolean {
+  return existsSync(join(motiveDir, 'tickets', `${safeName}.md`))
 }
 
 // ---------------------------------------------------------------------------
@@ -99,17 +113,16 @@ describe('sanitizeId', () => {
   })
 
   it('TBD-1 and TBD.1 produce the same stem (collision scenario)', () => {
-    // Both sanitize to "tbd-1" — the implementation should emit a warning and not crash
     expect(sanitizeId('TBD-1')).toBe('tbd-1')
     expect(sanitizeId('TBD.1')).toBe('tbd-1')
   })
 })
 
 // ---------------------------------------------------------------------------
-// regenerateMotiveTickets — slice tickets
+// T4-AC2 — slice inputs produce NO files anywhere
 // ---------------------------------------------------------------------------
 
-describe('regenerateMotiveTickets — slice tickets', () => {
+describe('regenerateMotiveTickets — slices produce no files (T4-AC2)', () => {
   let dir: string
   let motiveDir: string
 
@@ -119,7 +132,7 @@ describe('regenerateMotiveTickets — slice tickets', () => {
   })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('creates a ticket file for each slice', () => {
+  it('creates NO ticket files for slices — tickets/ is not created', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [
         { id: 'S1', status: 'complete', desc: 'First task', wave: 1 },
@@ -128,34 +141,21 @@ describe('regenerateMotiveTickets — slice tickets', () => {
       openItems: [],
       events: [],
     })
-    expect(ticketExists(motiveDir, 's1')).toBe(true)
-    expect(ticketExists(motiveDir, 's2')).toBe(true)
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
   })
 
-  it('slice ticket contains id, description, and status', () => {
+  it('slice ids do not appear in open-items/ either', () => {
     regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'complete', desc: 'Build the thing', wave: 1 }],
+      slices: [
+        { id: 'S1', status: 'pending', desc: 'Foo', wave: 3, kind: 'impl' },
+      ],
       openItems: [],
       events: [],
     })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('S1')
-    expect(content).toContain('Build the thing')
-    expect(content).toContain('complete')
+    expect(openItemExists(motiveDir, 's1')).toBe(false)
   })
 
-  it('slice ticket shows wave and kind in Details', () => {
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'pending', desc: 'Foo', wave: 3, kind: 'impl' }],
-      openItems: [],
-      events: [],
-    })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('**Wave:** 3')
-    expect(content).toContain('**Kind:** impl')
-  })
-
-  it('slice ticket lists acceptance criteria as checklist (checked when complete)', () => {
+  it('slice with acceptance criteria — no file created', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [{
         id: 'S1',
@@ -166,78 +166,35 @@ describe('regenerateMotiveTickets — slice tickets', () => {
       openItems: [],
       events: [],
     })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('[x] AC1 passes')
-    expect(content).toContain('[x] AC2 passes')
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
   })
 
-  it('acceptance criteria unchecked when status is not complete', () => {
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{
-        id: 'S1',
-        status: 'pending',
-        desc: 'Foo',
-        acceptance: ['AC1 passes'],
-      }],
-      openItems: [],
-      events: [],
-    })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('[ ] AC1 passes')
-  })
-
-  it('status line says "blocked by" when blocked_by is set', () => {
+  it('slice with blocked_by — no file created', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [{ id: 'S2', status: 'pending', desc: 'Blocked', blocked_by: ['S1'] }],
       openItems: [],
       events: [],
     })
-    const content = readTicket(motiveDir, 's2')
-    expect(content).toContain('blocked')
-    expect(content).toContain('S1')
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
   })
 
-  it('status line says "ready" when not blocked and not in progress', () => {
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'pending', desc: 'Ready', blocked_by: [] }],
-      openItems: [],
-      events: [],
-    })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('ready')
-  })
-
-  it('includes related events (TASK_COMPLETE) in Related events section', () => {
+  it('slice-related events do not produce files', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [{ id: 'S1', status: 'complete', desc: 'Foo' }],
       openItems: [],
       events: [
         { ts: '2026-01-01T00:00:00Z', type: 'TASK_COMPLETE', motive: 'm', data: { slice: 'S1' }, msg: 'done' },
-        { ts: '2026-01-01T00:00:00Z', type: 'TASK_COMPLETE', motive: 'm', data: { slice: 'S2' }, msg: 'other done' },
       ],
     })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('## Related events')
-    expect(content).toContain('TASK_COMPLETE')
-    expect(content).not.toContain('other done')
-  })
-
-  it('ticket has auto-generated footer', () => {
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'pending', desc: 'Foo' }],
-      openItems: [],
-      events: [],
-    })
-    const content = readTicket(motiveDir, 's1')
-    expect(content).toContain('Auto-generated')
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
   })
 })
 
 // ---------------------------------------------------------------------------
-// regenerateMotiveTickets — open item tickets
+// T4-AC3 — open-item drill-downs go to open-items/
 // ---------------------------------------------------------------------------
 
-describe('regenerateMotiveTickets — open item tickets', () => {
+describe('regenerateMotiveTickets — open item drill-downs in open-items/ (T4-AC3)', () => {
   let dir: string
   let motiveDir: string
 
@@ -247,7 +204,7 @@ describe('regenerateMotiveTickets — open item tickets', () => {
   })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('creates a ticket file for each open item', () => {
+  it('creates a drill-down file for each open item in open-items/', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [
@@ -256,34 +213,37 @@ describe('regenerateMotiveTickets — open item tickets', () => {
       ],
       events: [],
     })
-    expect(ticketExists(motiveDir, 'tbd-1')).toBe(true)
-    expect(ticketExists(motiveDir, 'tbd-2')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(true)
+    // NOT in tickets/
+    expect(ticketExists(motiveDir, 'tbd-1')).toBe(false)
+    expect(ticketExists(motiveDir, 'tbd-2')).toBe(false)
   })
 
-  it('open item ticket contains id, statement, and kind', () => {
+  it('open item drill-down contains id, statement, and kind', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Should we use Redis?' }],
       events: [],
     })
-    const content = readTicket(motiveDir, 'tbd-1')
+    const content = readOpenItem(motiveDir, 'tbd-1')
     expect(content).toContain('TBD-1')
     expect(content).toContain('Should we use Redis?')
     expect(content).toContain('TBD')
   })
 
-  it('open item ticket shows blocked_by when set', () => {
+  it('open item drill-down shows blocked_by when set', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-2', kind: 'TBD', statement: 'Cache format?', blocked_by: 'TBD-1' }],
       events: [],
     })
-    const content = readTicket(motiveDir, 'tbd-2')
+    const content = readOpenItem(motiveDir, 'tbd-2')
     expect(content).toContain('Blocked by')
     expect(content).toContain('TBD-1')
   })
 
-  it('open item ticket shows related decisions when a DECISION event mentions the id', () => {
+  it('open item drill-down shows related decisions when a DECISION event mentions the id', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Use flat JSON?' }],
@@ -297,12 +257,12 @@ describe('regenerateMotiveTickets — open item tickets', () => {
         },
       ],
     })
-    const content = readTicket(motiveDir, 'tbd-1')
+    const content = readOpenItem(motiveDir, 'tbd-1')
     expect(content).toContain('## Related decisions')
     expect(content).toContain('use flat JSON')
   })
 
-  it('open item status is "open" when item is present in open_items, even if decisions mention it', () => {
+  it('open item status is "open" when present in open_items', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Something?' }],
@@ -310,8 +270,7 @@ describe('regenerateMotiveTickets — open item tickets', () => {
         { ts: '2026-01-15T00:00:00Z', type: 'DECISION', motive: 'm', msg: 'TBD-1: decided', data: {} },
       ],
     })
-    const content = readTicket(motiveDir, 'tbd-1')
-    // Status is sourced from charter membership — open_items presence means open
+    const content = readOpenItem(motiveDir, 'tbd-1')
     expect(content).toContain('**open**')
     expect(content).not.toContain('**resolved**')
   })
@@ -322,12 +281,12 @@ describe('regenerateMotiveTickets — open item tickets', () => {
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Something?', resolved_by: 'DEC-42' }],
       events: [],
     })
-    const content = readTicket(motiveDir, 'tbd-1')
+    const content = readOpenItem(motiveDir, 'tbd-1')
     expect(content).toContain('**resolved**')
     expect(content).toContain('DEC-42')
   })
 
-  it('TBD-1 ticket does NOT list a decision that only mentions TBD-12 (no substring match)', () => {
+  it('TBD-1 drill-down does NOT list a decision that only mentions TBD-12 (no substring match)', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Something?' }],
@@ -341,14 +300,14 @@ describe('regenerateMotiveTickets — open item tickets', () => {
         },
       ],
     })
-    const content = readTicket(motiveDir, 'tbd-1')
+    const content = readOpenItem(motiveDir, 'tbd-1')
     expect(content).not.toContain('## Related decisions')
     expect(content).not.toContain('use postgres')
   })
 })
 
 // ---------------------------------------------------------------------------
-// regenerateMotiveTickets — stale removal + idempotency
+// T4-AC4 — stale sweep hits open-items/ only; tickets/ never swept
 // ---------------------------------------------------------------------------
 
 describe('regenerateMotiveTickets — stale removal and update', () => {
@@ -361,47 +320,7 @@ describe('regenerateMotiveTickets — stale removal and update', () => {
   })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('removes stale ticket files when slice is removed', () => {
-    // First call: S1 and S2
-    regenerateMotiveTickets(motiveDir, {
-      slices: [
-        { id: 'S1', status: 'complete', desc: 'Done' },
-        { id: 'S2', status: 'pending', desc: 'TODO' },
-      ],
-      openItems: [],
-      events: [],
-    })
-    expect(ticketExists(motiveDir, 's1')).toBe(true)
-    expect(ticketExists(motiveDir, 's2')).toBe(true)
-
-    // Second call: only S1 remains
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'complete', desc: 'Done' }],
-      openItems: [],
-      events: [],
-    })
-    expect(ticketExists(motiveDir, 's1')).toBe(true)
-    expect(ticketExists(motiveDir, 's2')).toBe(false)
-  })
-
-  it('updates ticket content when slice status changes', () => {
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'pending', desc: 'My task' }],
-      openItems: [],
-      events: [],
-    })
-    expect(readTicket(motiveDir, 's1')).toContain('ready')
-
-    regenerateMotiveTickets(motiveDir, {
-      slices: [{ id: 'S1', status: 'complete', desc: 'My task' }],
-      openItems: [],
-      events: [],
-    })
-    expect(readTicket(motiveDir, 's1')).toContain('complete')
-    expect(readTicket(motiveDir, 's1')).not.toContain('ready')
-  })
-
-  it('removes stale open item tickets when TBD is removed', () => {
+  it('removes stale open-item files when TBD is removed from charter', () => {
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [
@@ -410,19 +329,58 @@ describe('regenerateMotiveTickets — stale removal and update', () => {
       ],
       events: [],
     })
-    expect(ticketExists(motiveDir, 'tbd-1')).toBe(true)
-    expect(ticketExists(motiveDir, 'tbd-2')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(true)
 
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Question A' }],
       events: [],
     })
-    expect(ticketExists(motiveDir, 'tbd-1')).toBe(true)
-    expect(ticketExists(motiveDir, 'tbd-2')).toBe(false)
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(false)
   })
 
-  it('emits a stderr warning when two ids collide on the same filename stem', () => {
+  it('does NOT sweep tickets/ — hand-authored files survive even when matching id disappears', () => {
+    const ticketsDir = join(motiveDir, 'tickets')
+    mkdirSync(ticketsDir, { recursive: true })
+    const handWritten = '# TBD-1\n\nHand authored content.\n'
+    writeFileSync(join(ticketsDir, 'tbd-1.md'), handWritten, 'utf8')
+
+    // Run with no open items (would sweep if tickets/ were in scope)
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [],
+      events: [],
+    })
+
+    expect(readFileSync(join(ticketsDir, 'tbd-1.md'), 'utf8')).toBe(handWritten)
+  })
+
+  it('slices being removed does NOT delete anything from open-items/', () => {
+    // Establish an open-item file
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Keep me' }],
+      events: [],
+    })
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+
+    // Second call: slices change but open items unchanged
+    regenerateMotiveTickets(motiveDir, {
+      slices: [
+        { id: 'S1', status: 'complete', desc: 'Done' },
+        { id: 'S2', status: 'pending', desc: 'TODO' },
+      ],
+      openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Keep me' }],
+      events: [],
+    })
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    // slices produce no files
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
+  })
+
+  it('emits a stderr warning when two open-item ids collide on the same filename stem', () => {
     const stderrMessages: string[] = []
     const origWrite = process.stderr.write.bind(process.stderr)
     const spy = (msg: Parameters<typeof process.stderr.write>[0], ...args: Parameters<typeof process.stderr.write>[1][]) => {
@@ -446,22 +404,24 @@ describe('regenerateMotiveTickets — stale removal and update', () => {
     }
   })
 
-  it('is idempotent — calling twice produces the same files', () => {
+  it('is idempotent — calling twice with same inputs produces the same open-items/ files', () => {
     const opts = {
       slices: [{ id: 'S1', status: 'pending', desc: 'Foo' }],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Bar' }],
       events: [],
     }
     regenerateMotiveTickets(motiveDir, opts)
-    const before = listTickets(motiveDir).sort()
+    const before = listOpenItems(motiveDir).sort()
     regenerateMotiveTickets(motiveDir, opts)
-    const after = listTickets(motiveDir).sort()
+    const after = listOpenItems(motiveDir).sort()
     expect(after).toEqual(before)
+    // tickets/ still absent
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
   })
 })
 
 // ---------------------------------------------------------------------------
-// regenerateMotiveTickets — error resilience
+// Error resilience — never throws
 // ---------------------------------------------------------------------------
 
 describe('regenerateMotiveTickets — error resilience', () => {
@@ -475,19 +435,19 @@ describe('regenerateMotiveTickets — error resilience', () => {
     ).not.toThrow()
   })
 
-  it('skips slices with path-traversal ids without throwing', () => {
+  it('skips open items with path-traversal ids without throwing', () => {
     const dir = tmp()
     const motiveDir = makeMotiveDir(dir, 'm')
     try {
       expect(() =>
         regenerateMotiveTickets(motiveDir, {
           slices: [{ id: '../evil', status: 'pending', desc: 'Bad' }],
-          openItems: [],
+          openItems: [{ id: '../evil', kind: 'TBD', statement: 'Bad' }],
           events: [],
         }),
       ).not.toThrow()
-      // No file should be created outside the tickets/ dir
-      expect(listTickets(motiveDir)).toHaveLength(0)
+      // No files created in open-items/ for traversal ids
+      expect(listOpenItems(motiveDir)).toHaveLength(0)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -495,7 +455,7 @@ describe('regenerateMotiveTickets — error resilience', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Integration: regenerateMotiveMap creates tickets/ and links MAP.md ids
+// Integration: regenerateMotiveMap — MAP.md links (T5 scope; MAP text unchanged)
 // ---------------------------------------------------------------------------
 
 describe('regenerateMotiveMap — tickets integration', () => {
@@ -504,7 +464,7 @@ describe('regenerateMotiveMap — tickets integration', () => {
   beforeEach(() => { dir = tmp() })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('creates tickets/ directory with slice and open item tickets', () => {
+  it('does NOT create tickets/ directory for slices; open-items/ created for open items', () => {
     makeCharter(dir, 'm', [
       '# motive: m',
       '',
@@ -524,12 +484,13 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
 
     const motiveDir = join(dir, '.groundwork', 'motives', 'm')
-    expect(existsSync(join(motiveDir, 'tickets'))).toBe(true)
-    expect(ticketExists(motiveDir, 's1')).toBe(true)
-    expect(ticketExists(motiveDir, 'tbd-1')).toBe(true)
+    // tickets/ must NOT be created by ticket generation machinery
+    expect(ticketExists(motiveDir, 's1')).toBe(false)
+    // open-items/ created for TBD-1
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
   })
 
-  it('MAP.md Frontier section links slice ids to ticket files', () => {
+  it('MAP.md Frontier section renders slice ids as bold when no ticket ref', () => {
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     writeLedger(dir, 'm', {
       motive: 'm',
@@ -541,8 +502,9 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
     const map = readFileSync(join(dir, '.groundwork', 'motives', 'm', 'MAP.md'), 'utf8')
 
-    // Should contain a Markdown link, not just bold text
-    expect(map).toContain('[S1](tickets/s1.md)')
+    // No ticket ref on slice → rendered as bold, not a link to tickets/
+    expect(map).toContain('**S1**')
+    expect(map).not.toContain('[S1](tickets/')
   })
 
   it('MAP.md Open items section links TBD ids to ticket files', () => {
@@ -559,10 +521,10 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
     const map = readFileSync(join(dir, '.groundwork', 'motives', 'm', 'MAP.md'), 'utf8')
 
-    expect(map).toContain('[TBD-1](tickets/tbd-1.md)')
+    expect(map).toContain('[TBD-1](open-items/tbd-1.md)')
   })
 
-  it('MAP.md In progress section links in-progress slice ids', () => {
+  it('MAP.md In progress section renders in-progress slice ids as bold when no ticket ref', () => {
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     writeLedger(dir, 'm', {
       motive: 'm',
@@ -574,7 +536,8 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
     const map = readFileSync(join(dir, '.groundwork', 'motives', 'm', 'MAP.md'), 'utf8')
 
-    expect(map).toContain('[WIP-1](tickets/wip-1.md)')
+    expect(map).toContain('**WIP-1**')
+    expect(map).not.toContain('[WIP-1](tickets/')
   })
 
   it('MAP.md Progress section links completed slice tickets', () => {
@@ -592,14 +555,13 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
     const map = readFileSync(join(dir, '.groundwork', 'motives', 'm', 'MAP.md'), 'utf8')
 
-    // Progress must link completed slices
     expect(map).toContain('## Progress')
-    expect(map).toContain('[S1](tickets/s1.md)')
-    // Pending slice NOT in the completed list
+    expect(map).toContain('**S1**')
+    expect(map).not.toContain('[S1](tickets/')
     expect(map).not.toMatch(/✓.*\[S2\]/)
   })
 
-  it('stale tickets are removed when slice is removed after second regeneration', () => {
+  it('second regeneration with fewer slices: no ticket files affected in tickets/', () => {
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     writeLedger(dir, 'm', {
       motive: 'm',
@@ -613,7 +575,8 @@ describe('regenerateMotiveMap — tickets integration', () => {
     regenerateMotiveMap(dir, 'm')
 
     const motiveDir = join(dir, '.groundwork', 'motives', 'm')
-    expect(ticketExists(motiveDir, 's2')).toBe(true)
+    // tickets/ should NOT exist at all — slices don't write there
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
 
     // S2 removed
     writeLedger(dir, 'm', {
@@ -624,7 +587,50 @@ describe('regenerateMotiveMap — tickets integration', () => {
     })
     regenerateMotiveMap(dir, 'm')
 
-    expect(ticketExists(motiveDir, 's1')).toBe(true)
-    expect(ticketExists(motiveDir, 's2')).toBe(false)
+    // Still no tickets/
+    expect(existsSync(join(motiveDir, 'tickets'))).toBe(false)
+  })
+
+  // SC3 / T5-AC3 — every relative link emitted in MAP.md resolves to a file that regeneration writes
+  it('SC3 T5-AC3: every relative markdown link in MAP.md resolves to an existing file', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test.',
+      '',
+      '## Open items',
+      '- TBD-1: Should we use Redis?',
+      '- TBD-2: Pick a format?',
+    ].join('\n'))
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'S1', status: 'pending', desc: 'Frontier task', blocked_by: [] },
+        { id: 'S2', status: 'in_progress', desc: 'Active work' },
+        { id: 'S3', status: 'complete', desc: 'Done' },
+      ],
+      gate: {},
+    })
+
+    regenerateMotiveMap(dir, 'm')
+
+    const motiveDir = join(dir, '.groundwork', 'motives', 'm')
+    const map = readFileSync(join(motiveDir, 'MAP.md'), 'utf8')
+
+    // Extract all relative markdown link targets: [text](target)
+    // Skip anchors (#) and absolute URLs (http/https)
+    const linkRe = /\]\(([^)]+)\)/g
+    const broken: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = linkRe.exec(map)) !== null) {
+      const target = m[1]
+      if (target.startsWith('#') || /^https?:\/\//.test(target)) continue
+      const resolved = join(motiveDir, target)
+      if (!existsSync(resolved)) broken.push(target)
+    }
+
+    expect(broken).toEqual([])
   })
 })

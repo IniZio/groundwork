@@ -36,7 +36,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
-import { checkPace } from './lib/pacing.mjs'
+import { checkPace, resolvedUnits } from './lib/pacing.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
@@ -112,6 +112,14 @@ function assertStatus(val) {
   if (!VALID_STATUSES.has(val)) die(`invalid status "${val}". Must be: pending | in_progress | complete | skipped`, 2)
 }
 
+/** Validate a ticket id, die(exit 2) if it looks like a path or has a .md suffix. */
+const VALID_TICKET_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+function assertTicket(val) {
+  if (!VALID_TICKET_RE.test(val)) {
+    die(`invalid ticket id "${val}". Must be a bare id (e.g. "t1", "my-ticket") — no path separators or .md suffix.`, 2)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // LEDGER VALIDATION — schema + custom structural invariants
 // ---------------------------------------------------------------------------
@@ -127,6 +135,7 @@ const KNOWN_SLICE_KEYS = new Set([
   'acceptance', 'name',
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
+  'ticket',                   // ticket document id/path this slice is scoped to
 ])
 
 /** Simple Levenshtein distance, capped at 3 for performance. */
@@ -369,6 +378,8 @@ const HELP = {
       '--status <s>         pending | in_progress | complete | skipped (default pending)',
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
+      '--ticket <tid>      ticket document id or path this slice is scoped to',
+      '--covers-ac "a,b"   comma-separated AC labels this slice covers (drives AC_COVERAGE on complete)',
       '--claimed-by <sid>  (optional) set claimed_by on the new slice',
     ],
   },
@@ -386,6 +397,8 @@ const HELP = {
       '--desc "…"           new description',
       '--blocked-by a,b,c  comma-separated list of blocking slice ids',
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
+      '--ticket <tid>      ticket document id or path this slice is scoped to',
+      '--covers-ac "a,b"   comma-separated AC labels this slice covers (drives AC_COVERAGE on complete)',
       '--claimed-by <sid>  set claimed_by on the slice',
     ],
   },
@@ -698,10 +711,11 @@ function cmdInit(args) {
   obj.write_token = writeToken
   // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
   if (!('active' in obj)) obj.active = true
-  // Stamp session_id: prefer env, then input, then generate a stable opaque id so the
-  // required schema field is always satisfied even in test/offline contexts.
+  // Stamp session_id: always overwrite with the current session so that ledgers
+  // seeded from a prior session's JSON carry the correct (new) session id.
+  // The file path already encodes the new session id; the body must match.
   const sessionId = resolveSessionId(null)
-  if (!obj.session_id) obj.session_id = sessionId ?? randomBytes(16).toString('hex')
+  obj.session_id = sessionId ?? randomBytes(16).toString('hex')
   // Stamp motive: --motive flag overrides JSON input; JSON input is preserved as-is.
   if (flags.motive != null) obj.motive = flags.motive
   // Stamp pacing defaults on new runs (D-28): only when the input has no pacing field.
@@ -709,6 +723,12 @@ function cmdInit(args) {
   if (!('pacing' in obj)) {
     obj.pacing = { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] }
   }
+  // Record pacing offset: the number of already-resolved units carried in from
+  // the seed JSON.  The pacing engine subtracts this so that prior-session
+  // completions don't count against this session's budget (F14 fix).
+  // We compute it AFTER the pacing field is guaranteed present but BEFORE
+  // validation so the schema can enforce the field type.
+  obj.pacing.offset = resolvedUnits(obj)
   // Validate before writing — strict: schema violations are hard errors at init
   // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)
@@ -737,6 +757,7 @@ function cmdAdd(args) {
   const desc = flags.desc ?? ''
   const blocked_by = flags['blocked-by'] ? flags['blocked-by'].split(',').map((s) => s.trim()).filter(Boolean) : []
   const acceptance = flags.acceptance ? flags.acceptance.split(';').map((s) => s.trim()).filter(Boolean) : []
+  const coversAcRaw = flags['covers-ac'] != null ? flags['covers-ac'].split(',').map((s) => s.trim()).filter(Boolean) : null
 
   mutateLedgerChecked(ledgerPath(), (l) => {
     // Create a minimal ledger skeleton if none exists yet
@@ -753,6 +774,8 @@ function cmdAdd(args) {
     // absent, which is valid; present+empty is now a validation error).
     if (acceptance.length > 0) item.acceptance = acceptance
     if (flags.kind != null) item.kind = flags.kind
+    if (flags.ticket != null) { assertTicket(flags.ticket); item.ticket = flags.ticket }
+    if (coversAcRaw != null && coversAcRaw.length > 0) item.covers_ac = coversAcRaw
     if (flags['claimed-by'] != null) {
       item.claimed_by = flags['claimed-by']
       item.claimed_at = new Date().toISOString()
@@ -794,8 +817,8 @@ function cmdSet(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
   if (!id) die('usage: ledger set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]', 2)
-  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance', 'claimed-by'].some((k) => flags[k] != null)
-  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance --claimed-by', 2)
+  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance', 'claimed-by', 'ticket', 'covers-ac'].some((k) => flags[k] != null)
+  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance --claimed-by --ticket --covers-ac', 2)
   if (flags.status != null) assertStatus(flags.status)
 
   const updated = []
@@ -845,6 +868,11 @@ function cmdSet(args) {
       s.claimed_at = new Date().toISOString()
       updated.push(`claimed_by=${flags['claimed-by']}`)
     }
+    if (flags.ticket != null) { assertTicket(flags.ticket); s.ticket = flags.ticket; updated.push(`ticket=${flags.ticket}`) }
+    if (flags['covers-ac'] != null) {
+      s.covers_ac = flags['covers-ac'].split(',').map((v) => v.trim()).filter(Boolean)
+      updated.push(`covers_ac=[${s.covers_ac.join(',')}]`)
+    }
   })
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -871,6 +899,7 @@ function cmdShow(id) {
       ? s.covers_ac
       : '(none)'
   const claimedBy = s.claimed_by || '(none)'
+  const ticket = s.ticket || '(none)'
   process.stdout.write(
     [
       `id:         ${s.id}`,
@@ -878,6 +907,7 @@ function cmdShow(id) {
       `wave:       ${s.wave ?? 0}`,
       `status:     ${s.status ?? 'pending'}`,
       `desc:       ${s.desc || '(none)'}`,
+      `ticket:     ${ticket}`,
       `blocked_by: ${blocked}`,
       `covers_ac:  ${coversAc}`,
       `claimed_by: ${claimedBy}`,
@@ -1134,7 +1164,7 @@ function cmdAutopilot(args) {
       throw e
     }
     l.pacing.grant = {
-      range,
+      range: (l.pacing.grant?.range ?? 0) + range,
       granted_at: new Date().toISOString(),
       granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
       reason,

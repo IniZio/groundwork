@@ -189,6 +189,16 @@ export function compile(events, opts = {}) {
                 target.superseded_by = d.id
               }
             }
+            // data.retires is the authoring vocabulary for retraction (D-36).
+            // Compile: mark the retired decision superseded/retired by this one.
+            if (d.retires != null) {
+              entry.retires = d.retires
+              const target = decisionLogMap.get(d.retires)
+              if (target != null) {
+                target.status = 'superseded'
+                target.superseded_by = d.id
+              }
+            }
           } else {
             // Update existing entry's status (and other optional fields)
             if (d.status != null) existing.status = d.status
@@ -199,6 +209,14 @@ export function compile(events, opts = {}) {
             if (d.supersedes != null) {
               existing.supersedes = d.supersedes
               const target = decisionLogMap.get(d.supersedes)
+              if (target != null) {
+                target.status = 'superseded'
+                target.superseded_by = d.id
+              }
+            }
+            if (d.retires != null) {
+              existing.retires = d.retires
+              const target = decisionLogMap.get(d.retires)
               if (target != null) {
                 target.status = 'superseded'
                 target.superseded_by = d.id

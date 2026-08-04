@@ -41,8 +41,10 @@ const SPEC_GUARD = path.join(ROOT, 'hooks', 'spec-guard.mjs')
 const STRUGGLE_DETECTOR = path.join(ROOT, 'hooks', 'struggle-detector.mjs')
 const JOURNAL_CLI = path.join(ROOT, 'hooks', 'journal.mjs')
 
-// Fixture destination (Step-3 compiler input)
-const FIXTURE_DEST = path.join(ROOT, 'test', 'fixtures', 'hook-only-stream.jsonl')
+// Fixture destination — written to a temp dir during tests to avoid dirtying the committed file.
+// The committed fixture at test/fixtures/hook-only-stream.jsonl is the stable golden reference
+// consumed by motive-compile and journal-order tests.
+let FIXTURE_DEST: string
 
 // Real repo journal dir — must remain untouched (AC7)
 const REAL_JOURNAL_DIR = path.join(ROOT, '.groundwork', 'journal')
@@ -256,6 +258,8 @@ beforeAll(async () => {
 
   // ── 1. Create isolated temp project dir ────────────────────────────────────
   tmpDir = mkdtempSync(path.join(tmpdir(), 'gw-s6-int-'))
+  // Point the fixture dest at the temp dir so the committed fixture stays clean.
+  FIXTURE_DEST = path.join(tmpDir, 'hook-only-stream.jsonl')
 
   // ── 2. Create directory skeleton ─────────────────────────────────────────
   mkdirSync(path.join(tmpDir, '.groundwork', 'rfcs', RFC_DIR_NAME), { recursive: true })

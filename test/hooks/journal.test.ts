@@ -664,14 +664,16 @@ describe('AC 12 — DECISION schema validation', () => {
     expect(r.stderr).toContain('rationale')
   })
 
-  test('missing data.id exits 2 (D-11 preserved)', () => {
+  test('missing data.id exits 0 with loud warning (T6: warn, not block)', () => {
     const d = JSON.stringify({ decision: 'use X', rationale: 'why' })
     const r = runJournal(
       ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch', '--data', d],
       env,
     )
-    expect(r.status).toBe(2)
-    expect(r.stderr).toContain('id')
+    // T6: id-less DECISION is stored (exit 0) but warns to stderr
+    expect(r.status).toBe(0)
+    expect(r.stderr).toContain('data.id')
+    expect(r.stderr).toContain('Decision Log')
   })
 
   test('non-DECISION type is unaffected by schema check', () => {

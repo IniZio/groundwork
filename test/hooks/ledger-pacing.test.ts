@@ -19,6 +19,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { Pacing } from '../../hooks/lib/pacing.d.mts'
 
 const CLI = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'ledger.mjs')
 
@@ -68,7 +69,7 @@ const exhaustedLedger = () => ({
   session_id: 'sess-paced',
   brief: 'paced run',
   write_token: 'tok-paced',
-  pacing: { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] },
+  pacing: { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] } as Pacing,
   slices: [
     { id: 'W0', wave: 0, status: 'complete', desc: 'wave 0 slice' },
     { id: 'W1a', wave: 1, status: 'pending', desc: 'wave 1 slice a' },
@@ -354,6 +355,59 @@ describe('ledger autopilot', () => {
     expect(r.code).toBe(1)
     expect(r.stderr).toMatch(/reason/i)
   })
+
+  // F15 regression — additive grant semantics
+  // Sequence: grant +2, consume 2 units, grant +1 → one more unit must be available.
+  // Prior bug: second autopilot REPLACED the grant, instantly re-exhausting the budget.
+  it('F15: second autopilot adds to remaining allowance, not replaces it', () => {
+    // Build a ledger: budget=1, wave 0 complete (1 unit consumed), grant.range=2 already set.
+    // cap = 1 + 2 = 3. We then consume 2 more waves (1 and 2) to exhaust the grant.
+    // resolvedUnits for policy=wave counts waves where ALL non-exempt slices are complete.
+    const l = exhaustedLedger()
+    // exhaustedLedger: W0(wave0,complete), W1a(wave1,pending), W1b(wave1,pending), PLAN(exempt)
+    // Fully complete wave 1 by marking both W1a and W1b complete.
+    const w1a = l.slices.find((s: any) => s.id === 'W1a')
+    if (!w1a) throw new Error('fixture slice W1a not found')
+    w1a.status = 'complete'
+    const w1b = l.slices.find((s: any) => s.id === 'W1b')
+    if (!w1b) throw new Error('fixture slice W1b not found')
+    w1b.status = 'complete'
+    // Add a fully-complete wave 2.
+    l.slices.push({ id: 'W2a', wave: 2, status: 'complete', desc: 'wave 2' })
+    // Set grant.range=2 (was granted earlier).
+    l.pacing.grant = { range: 2, granted_at: new Date().toISOString(), granted_by: 'test', reason: 'initial grant' }
+    // Now: resolvedUnits = 3 (waves 0,1,2 all fully complete), cap = 1+2 = 3 → exhausted.
+    // Add a pending wave-3 slice as the next work item.
+    l.slices.push({ id: 'W3a', wave: 3, status: 'pending', desc: 'wave 3 slice' })
+    writeLedger(l)
+
+    // Confirm exhausted before grant
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'sess-paced' }
+    const blockedR = spawnSync('node', [CLI, 'claim', 'W3a'], { env, encoding: 'utf8' })
+    expect(blockedR.status).toBe(1)
+
+    // Grant +1 more via autopilot (additive → grant.range becomes 3, cap becomes 4)
+    const grantR = run(['autopilot', '--range', '1', '--token', 'tok-paced', '--reason', 'extend by 1'])
+    expect(grantR.code).toBe(0)
+
+    // Verify grant.range accumulated (was 2, +1 → should be 3)
+    const afterGrant = readLedger()
+    expect(afterGrant.pacing.grant.range).toBe(3)
+
+    // Wave 3 should now be claimable (cap=4, consumed=3 → 1 unit remains)
+    const claimR = spawnSync('node', [CLI, 'claim', 'W3a'], { env, encoding: 'utf8' })
+    expect(claimR.status).toBe(0)
+  })
+
+  it('F15: stdout message reflects the incremental range granted, not accumulated total', () => {
+    // Grant +2 first
+    writeLedger(exhaustedLedger())
+    run(['autopilot', '--range', '2', '--token', 'tok-paced', '--reason', 'first grant'])
+    // Grant +1 more — message should say +1, not +3
+    const r = run(['autopilot', '--range', '1', '--token', 'tok-paced', '--reason', 'second grant'])
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('+1 unit')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -383,5 +437,108 @@ describe('ledger claim — block message routes through operator (PACING-R-006b)
     const r = run(['set', 'W1a', '--status', 'in_progress'])
     expect(r.code).toBe(1)
     expect(r.stderr).toMatch(/ask the operator/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// F14 regression — ledger init from a prior-session seed
+// ---------------------------------------------------------------------------
+
+describe('ledger init — F14: prior-session seed does not consume this session budget', () => {
+  /** Simulate what `cat old-session.json | ledger init -` produces when seeding from a
+   *  prior session that had already completed wave 0. */
+  const priorSessionSeed = () => ({
+    version: 1,
+    active: true,
+    session_id: 'old-session-id',
+    brief: 'prior session work',
+    pacing: { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] },
+    slices: [
+      { id: 'W0', wave: 0, status: 'complete', desc: 'wave 0 done in prior session' },
+      { id: 'W1a', wave: 1, status: 'pending', desc: 'wave 1 slice a' },
+      { id: 'W1b', wave: 1, status: 'pending', desc: 'wave 1 slice b' },
+    ],
+    gate: {},
+  })
+
+  function runWithSession(sessionId: string, args: string[]) {
+    const r = spawnSync('node', [CLI, ...args], {
+      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: sessionId },
+      encoding: 'utf8',
+    })
+    return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
+  }
+
+  it('restamps session_id in the body to the current session, not the seed session', () => {
+    const seed = priorSessionSeed()
+    const seedFile = path.join(projectDir, 'seed.json')
+    writeFileSync(seedFile, JSON.stringify(seed))
+
+    const r = runWithSession('new-session-id', ['init', seedFile])
+    expect(r.code).toBe(0)
+
+    const ledgerPath = path.join(projectDir, '.groundwork', 'runs', 'new-session-id.json')
+    const ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'))
+    expect(ledger.session_id).toBe('new-session-id')
+    expect(ledger.session_id).not.toBe('old-session-id')
+  })
+
+  it('stores pacing.offset equal to the number of resolved units in the seed', () => {
+    const seed = priorSessionSeed()
+    const seedFile = path.join(projectDir, 'seed.json')
+    writeFileSync(seedFile, JSON.stringify(seed))
+
+    runWithSession('new-session-id', ['init', seedFile])
+
+    const ledgerPath = path.join(projectDir, '.groundwork', 'runs', 'new-session-id.json')
+    const ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'))
+    // wave 0 was fully complete in the seed → offset should be 1
+    expect(ledger.pacing.offset).toBe(1)
+  })
+
+  it('claiming a wave-1 slice does NOT trip pacing after init from a seed with completed wave 0', () => {
+    const seed = priorSessionSeed()
+    const seedFile = path.join(projectDir, 'seed.json')
+    writeFileSync(seedFile, JSON.stringify(seed))
+
+    const initR = runWithSession('new-session-id', ['init', seedFile])
+    expect(initR.code).toBe(0)
+
+    // claim W1a in the new session — this would open wave 1, but since wave 0
+    // was completed by the OLD session, it must not count against the new budget
+    const claimR = runWithSession('new-session-id', ['claim', 'W1a'])
+    expect(claimR.code).toBe(0)
+    expect(claimR.stderr).not.toMatch(/Pacing budget exhausted/i)
+  })
+
+  it('pacing still blocks a second new wave after the first is opened in the new session', () => {
+    // Seed with wave 0 complete (prior session), wave 1 pending (to be worked now),
+    // wave 2 pending (should be blocked after wave 1 is opened).
+    const seed = {
+      ...priorSessionSeed(),
+      slices: [
+        { id: 'W0', wave: 0, status: 'complete', desc: 'prior complete' },
+        { id: 'W1a', wave: 1, status: 'pending', desc: 'new wave a' },
+        { id: 'W2a', wave: 2, status: 'pending', desc: 'would be too far' },
+      ],
+    }
+    const seedFile = path.join(projectDir, 'seed.json')
+    writeFileSync(seedFile, JSON.stringify(seed))
+
+    runWithSession('new-session-id', ['init', seedFile])
+
+    // Claim W1a — opens wave 1 (the only new unit this session is allowed)
+    const claimW1 = runWithSession('new-session-id', ['claim', 'W1a'])
+    expect(claimW1.code).toBe(0)
+
+    // Complete W1a so wave 1 is resolved (now 1 unit consumed this session)
+    const ledgerPath = path.join(projectDir, '.groundwork', 'runs', 'new-session-id.json')
+    const tok = JSON.parse(readFileSync(ledgerPath, 'utf8')).write_token
+    runWithSession('new-session-id', ['complete', 'W1a', '--token', tok])
+
+    // Claiming W2a would open wave 2 — budget exhausted, must be blocked
+    const claimW2 = runWithSession('new-session-id', ['claim', 'W2a'])
+    expect(claimW2.code).toBe(1)
+    expect(claimW2.stderr).toMatch(/Pacing budget exhausted/i)
   })
 })

@@ -66,7 +66,9 @@ function _generate(projectDir, motive) {
     events: allEvents,
   })
 
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions })
+  const ticketFiles = _readTicketFiles(motiveDir)
+
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -112,6 +114,24 @@ function _readMotiveLedgerDoc(projectDir, motive) {
  * Exact-normalized-text duplicates are dropped; when one entry is a prefix/truncation
  * of another the longer one is kept.
  */
+/**
+ * Return the stems of ticket files found in <motiveDir>/tickets/.
+ * Each stem is the filename without the .md extension (e.g. "t1", "t2").
+ * Returns [] when the directory does not exist or is empty.
+ */
+function _readTicketFiles(motiveDir) {
+  const ticketsDir = join(motiveDir, 'tickets')
+  if (!existsSync(ticketsDir)) return []
+  try {
+    return readdirSync(ticketsDir)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => f.slice(0, -3))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
 function _readDecisions(projectDir, motive) {
   const journalDir = join(projectDir, '.groundwork', 'journal')
   if (!existsSync(journalDir)) return []
@@ -143,23 +163,67 @@ function _readDecisions(projectDir, motive) {
  */
 function _dedupeDecisions(decisions) {
   // ── Step 1: honour supersession by structured data.id ────────────────────
+  const knownIds = new Set(decisions.map((d) => d.data?.id).filter(Boolean))
   const supersededIds = new Set()
+  // Descriptive retires values — refs whose text doesn't match any known structured id.
+  // These need token-overlap matching instead of exact-text matching.
+  const descriptiveRetires = []
   for (const d of decisions) {
     const s = d.data?.supersedes
-    if (s == null) continue
-    if (Array.isArray(s)) s.forEach((id) => supersededIds.add(id))
-    else supersededIds.add(s)
+    if (s != null) {
+      if (Array.isArray(s)) s.forEach((id) => supersededIds.add(id))
+      else supersededIds.add(s)
+    }
+    // data.retires is the authoring vocabulary for retraction (D-36); honour it here
+    // so that a retiring decision causes its target to be excluded from the MAP.
+    const r = d.data?.retires
+    if (r != null) {
+      const refs = Array.isArray(r) ? r : [r]
+      for (const ref of refs) {
+        supersededIds.add(ref)
+        // If this ref is not a known structured id, it's a descriptive reference.
+        // Exact-text matching will fail; use token-overlap as a fallback.
+        if (!knownIds.has(ref)) descriptiveRetires.push(ref)
+      }
+    }
   }
+  // normalise: used both for filtering and for step-2 dedup
+  const normText = (d) =>
+    (d.msg ?? JSON.stringify(d.data ?? '')).toLowerCase().replace(/\s+/g, ' ').trim()
+  const normSupersededTexts = new Set([...supersededIds].map((s) => s.toLowerCase().replace(/\s+/g, ' ').trim()))
+
+  // Token-overlap matcher for descriptive retires references.
+  // Splits text on non-alphanumeric boundaries, keeps tokens ≥ 4 chars.
+  // A decision is matched when ≥ 60% of the retires tokens appear in its text,
+  // with a hard floor of 2 tokens (guards against single-word over-matching).
+  const _sigTokens = (text) => text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4)
+  const _tokenOverlapMatches = (retiresRef, decisionNorm) => {
+    const refTokens = _sigTokens(retiresRef)
+    if (refTokens.length === 0) return false
+    const matchCount = refTokens.filter((t) => decisionNorm.includes(t)).length
+    const required = Math.max(2, Math.ceil(refTokens.length * 0.6))
+    return matchCount >= required
+  }
+
   const active = supersededIds.size === 0
     ? decisions
     : decisions.filter((d) => {
         const id = d.data?.id
-        return id == null || !supersededIds.has(id)
+        // Match by structured id first
+        if (id != null && supersededIds.has(id)) return false
+        const dNorm = normText(d)
+        // Match by normalised message text (covers legacy id-less decisions retired by text ref)
+        if (normSupersededTexts.has(dNorm)) return false
+        // Token-overlap match for descriptive retires references.
+        // Only applied to id-less (legacy) decisions — structured ones (with data.id) are
+        // already handled by the supersededIds.has(id) check above, and the retiring decision
+        // itself must never be excluded by its own retires ref.
+        if (id == null && descriptiveRetires.length > 0 && descriptiveRetires.some((ref) => _tokenOverlapMatches(ref, dNorm))) return false
+        return true
       })
 
   // ── Step 2: exact and prefix/truncation dedup ─────────────────────────────
-  const norm = (d) =>
-    (d.msg ?? JSON.stringify(d.data ?? '')).toLowerCase().replace(/\s+/g, ' ').trim()
+  const norm = normText  // alias — same normalisation
 
   const result = []
   for (const d of active) {
@@ -326,7 +390,7 @@ function _readAllMotiveEvents(projectDir, motive) {
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [] }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [] }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -381,7 +445,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   parts.push('')
   if (frontierList.length) {
     for (const s of frontierList) {
-      parts.push(`- ${_sliceLink(s.id)} — ${s.desc ?? '(no description)'}`)
+      parts.push(`- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'}`)
     }
   } else {
     parts.push(
@@ -399,7 +463,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       parts.push('')
       for (const s of inProgressList) {
         const claim = s.claimed_by ? ` _(claimed by ${s.claimed_by})_` : ''
-        parts.push(`- ${_sliceLink(s.id)}${claim} — ${s.desc ?? '(no description)'}`)
+        parts.push(`- ${_sliceLink(s.id, s.ticket)}${claim} — ${s.desc ?? '(no description)'}`)
       }
       parts.push('')
     }
@@ -409,11 +473,57 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       for (const s of blockedList) {
         const pending = _deps(s).filter((d) => !completeIds.has(d))
         parts.push(
-          `- ${_sliceLink(s.id)} — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_`,
+          `- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_`,
         )
       }
       parts.push('')
     }
+  }
+
+  // ── Tickets ───────────────────────────────────────────────────────────────
+  // Only rendered when hand-authored ticket documents exist in tickets/.
+  // When the corpus is empty the section is omitted entirely (pure slice view preserved).
+  if (ticketFiles.length > 0) {
+    // Build lookup: sanitized ticket stem → slice
+    const sliceByTicketStem = new Map()
+    for (const s of slices) {
+      if (s.ticket) {
+        const safe = sanitizeId(String(s.ticket))
+        if (safe) sliceByTicketStem.set(safe, s)
+      }
+    }
+
+    const ticketStemSet = new Set(ticketFiles)
+
+    // Slices that have no ticket file (either no ticket field, or file not found)
+    const unlinkedSlices = slices.filter((s) => {
+      if (!s.ticket) return true
+      const safe = sanitizeId(String(s.ticket))
+      return !safe || !ticketStemSet.has(safe)
+    })
+
+    parts.push('## Tickets')
+    parts.push('')
+
+    for (const stem of ticketFiles) {
+      const slice = sliceByTicketStem.get(stem)
+      const badge = slice
+        ? _statusBadge(slice.status ?? 'pending')
+        : _statusBadge('no-slice')
+      const desc  = slice?.desc ? ` — ${slice.desc}` : ''
+      parts.push(`- [${stem}](tickets/${stem}.md) ${badge}${desc}`)
+    }
+
+    if (unlinkedSlices.length > 0) {
+      parts.push('')
+      parts.push('**Unlinked slices** _(no ticket document):_')
+      parts.push('')
+      for (const s of unlinkedSlices) {
+        parts.push(`- ${_sliceLink(s.id, undefined)} — ${s.desc ?? '(no description)'}`)
+      }
+    }
+
+    parts.push('')
   }
 
   // ── Open items ────────────────────────────────────────────────────────────
@@ -472,7 +582,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       parts.push('')
       for (const s of doneSlices) {
         const desc = s.desc ? ` — ${s.desc}` : ''
-        parts.push(`- ✓ ${_sliceLink(s.id)}${desc}`)
+        parts.push(`- ✓ ${_sliceLink(s.id, s.ticket)}${desc}`)
       }
     }
     parts.push('')
@@ -536,6 +646,16 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
 // Helpers
 // ---------------------------------------------------------------------------
 
+function _statusBadge(status) {
+  switch (status) {
+    case 'complete':    return '(complete)'
+    case 'in_progress': return '(in progress)'
+    case 'pending':     return '(pending)'
+    case 'no-slice':    return '(unstarted — no slice)'
+    default:            return `(${status})`
+  }
+}
+
 function _deps(slice) {
   if (Array.isArray(slice.blocked_by)) return slice.blocked_by
   if (slice.blocked_by) return [slice.blocked_by]
@@ -543,17 +663,23 @@ function _deps(slice) {
 }
 
 /**
- * Render a slice id as a Markdown link to its ticket, or bold text if unsanitizable.
+ * Render a slice id as a Markdown link to its hand-authored ticket, or bold text.
+ * Links to tickets/<ticket>.md only when the slice carries a ticket reference;
+ * nothing in the regeneration path writes ticket files for slices automatically.
  */
-function _sliceLink(id) {
-  const safe = sanitizeId(id)
-  return safe ? `[${id}](tickets/${safe}.md)` : `**${id}**`
+function _sliceLink(id, ticketRef) {
+  if (ticketRef) {
+    const safe = sanitizeId(ticketRef)
+    if (safe) return `[${id}](tickets/${safe}.md)`
+  }
+  const safeId = sanitizeId(id)
+  return safeId ? `**${id}**` : `**${id}**`
 }
 
 /**
- * Render an open-item id as a Markdown link to its ticket, or bold text if unsanitizable.
+ * Render an open-item id as a Markdown link to its drill-down in open-items/.
  */
 function _openItemLink(id) {
   const safe = sanitizeId(id)
-  return safe ? `[${id}](tickets/${safe}.md)` : `**${id}**`
+  return safe ? `[${id}](open-items/${safe}.md)` : `**${id}**`
 }

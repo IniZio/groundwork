@@ -56,7 +56,7 @@
     },
     "pacing": {
       "type": "object",
-      "description": "Optional session-pacing policy (D-28). Absent means pacing is disabled; existing ledgers without this field validate unchanged. Consumption (resolved units) is derived at runtime — not stored here.",
+      "description": "Optional session-pacing policy (D-28). Absent means pacing is disabled; existing ledgers without this field validate unchanged. Consumption (resolved units) is derived at runtime and adjusted by the stored offset.",
       "required": ["policy", "budget"],
       "properties": {
         "policy": {
@@ -76,6 +76,11 @@
             "enum": ["plan", "diagnose", "design", "impl", "fog"]
           },
           "description": "Slice kinds that are always claimable and never counted against budget (e.g. orientation work: plan, diagnose, design, fog)."
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of units already resolved in the seed ledger at init time. Subtracted from resolvedUnits so prior-session completions don't count against this session's budget (F14 fix)."
         },
         "grant": {
           "type": "object",
@@ -198,6 +203,18 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Observable acceptance criteria strings. Satisfaction is NOT evaluated by this schema."
+        },
+        "ticket": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+          "description": "Bare ticket id (e.g. 't1', 'my-ticket') — no path separators, no .md suffix. Path-shaped values like 'tickets/t1.md' are rejected."
+        },
+        "covers_ac": {
+          "description": "AC coverage: string | string[] — which AC<n> labels this slice covers.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
         }
       },
       "additionalProperties": true

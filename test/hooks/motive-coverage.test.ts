@@ -66,8 +66,8 @@ function acDeclEvent(ac: string, motive = 'motive-test') {
 // S8-AC5 — COMPILER_VERSION
 // ---------------------------------------------------------------------------
 
-it('S8-AC5: COMPILER_VERSION is motive-compile/1.2.2', () => {
-  expect(COMPILER_VERSION).toBe('motive-compile/1.2.2')
+it('S8-AC5: COMPILER_VERSION is motive-compile/1.3.0', () => {
+  expect(COMPILER_VERSION).toBe('motive-compile/1.3.0')
 })
 
 // ---------------------------------------------------------------------------

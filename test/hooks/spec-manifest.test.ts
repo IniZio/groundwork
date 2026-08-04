@@ -170,6 +170,7 @@ describe("S0: spec-io schema and index API", () => {
         "ARTIFACT-R-007",
         "ARTIFACT-R-008",
         "ARTIFACT-R-009",
+        "ARTIFACT-R-010",
         "C-ARTIFACT",
         "C-ENFORCEMENT",
         "C-GROUNDWORK",

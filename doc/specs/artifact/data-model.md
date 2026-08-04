@@ -22,6 +22,7 @@ erDiagram
         string blocked_by
         string acceptance
         string completed_at
+        string decisions
     }
     Gate {
         string advisor
@@ -93,6 +94,8 @@ erDiagram
 A ticket document contains the following required H2 sections in order: **Question**, **Context**, **Evidence**, **Decision**, **Ruled out**, **Revisions**, **Links**. The planner fills Question and Context when opening the ticket; the implementer appends Evidence, Decision, and Ruled out at completion (ORCHESTRATION-R-003).
 
 The `Slice.ticket` field (optional string) records which ticket a slice is delivering against, establishing the 1..n relationship: one ticket may be addressed by one or more slices across one or more sessions.
+
+The `Slice.decisions` field (optional string or string array) records zero or more journal DECISION event ids that this slice produces or is governed by, establishing the m..n relationship: one decision may be cited by multiple slices, and one slice may cite multiple decisions.
 
 ## RFC fields
 

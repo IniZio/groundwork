@@ -120,11 +120,12 @@ Add each task from Phase 3 as a ledger slice so the orchestrator can track progr
 
 ```bash
 node hooks/ledger.mjs add <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \
-  --ticket <task-id> --covers-ac "<task-id>-AC1,<task-id>-AC2"
+  --ticket <task-id> --covers-ac "<task-id>-AC1,<task-id>-AC2" --decisions "D-1,D-2"
 ```
 
 - `--ticket <tid>` links the slice to its ticket document under `.groundwork/motives/<slug>/tickets/`. Tickets are hand/agent-authored documents; they are **never auto-generated per slice** and **never deleted by regeneration**. The ticket file is created (if absent) when the planner writes Question and Context — it is not created by the ledger `add` command itself.
 - `--covers-ac "a,b"` records which acceptance criteria from Phase 3 this slice covers. This drives `AC_COVERAGE` events on completion and the coverage overlay in MAP.md.
+- `--decisions "D-1,D-2"` attaches journal decision ids to this slice, declaring which decisions it implements. Mirrors `--covers-ac`.
 
 If a task's ticket does not yet exist, create it via the hook:
 ```bash

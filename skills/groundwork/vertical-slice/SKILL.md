@@ -135,7 +135,8 @@ mechanical Stop-gate; use the schema below as an advisory record.
       "status": "pending",
       "kind": "impl",
       "ticket": "T1",
-      "covers_ac": ["T1-AC1", "T1-AC2"] }
+      "covers_ac": ["T1-AC1", "T1-AC2"],
+      "decisions": ["D-1"] }
   ],
   "gate": { "advisor": "pending" }
 }
@@ -148,11 +149,12 @@ Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | i
 ```bash
 ledger add S1 --desc "add workspace disk min-size" --wave 0 \
   --acceptance "image_sparse rejects small workspace;test covers boundary" \
-  --ticket T1 --covers-ac "T1-AC1,T1-AC2"
+  --ticket T1 --covers-ac "T1-AC1,T1-AC2" --decisions "D-1"
 ```
 
 - `--ticket <tid>` — links the slice to a ticket document (id or path). Tickets are hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/`; they are **never auto-generated per slice** and **never deleted by regeneration**.
 - `--covers-ac "a,b"` — comma-separated AC labels this slice covers; emits `AC_COVERAGE` events on complete and drives the MAP coverage overlay.
+- `--decisions "D-1,D-2"` — comma-separated journal decision ids this slice implements. Mirrors `--covers-ac`.
 
 **tickets/ vs open-items/ ownership:**
 

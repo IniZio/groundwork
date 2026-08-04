@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { readCharter } from './motive-charter.mjs'
 import { readAllEvents, filterEvents } from './journal-io.mjs'
+import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -48,6 +49,14 @@ function _generate(projectDir, motive) {
   const slices       = _readMotiveSlices(projectDir, motive)
   const decisions    = _readDecisions(projectDir, motive)
   const outOfScope   = _readOutOfScope(projectDir)
+  const allEvents    = _readAllMotiveEvents(projectDir, motive)
+
+  // Generate per-ticket drill-down files (errors swallowed inside)
+  regenerateMotiveTickets(motiveDir, {
+    slices,
+    openItems: charter?.open_items ?? [],
+    events: allEvents,
+  })
 
   const md = _renderMap({ motive, charter, slices, decisions, outOfScope })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
@@ -178,6 +187,22 @@ function _readOutOfScope(projectDir) {
   }
 }
 
+/**
+ * Return all journal events for a motive (all types, newest first).
+ * Used to feed the ticket generator with related events.
+ */
+function _readAllMotiveEvents(projectDir, motive) {
+  const journalDir = join(projectDir, '.groundwork', 'journal')
+  if (!existsSync(journalDir)) return []
+  try {
+    const all            = readAllEvents(journalDir)
+    const { shown = [] } = filterEvents(all, { motive })
+    return shown.slice().reverse()  // newest first
+  } catch {
+    return []
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Renderer
 // ---------------------------------------------------------------------------
@@ -237,7 +262,7 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
   parts.push('')
   if (frontierList.length) {
     for (const s of frontierList) {
-      parts.push(`- **${s.id}** — ${s.desc ?? '(no description)'}`)
+      parts.push(`- ${_sliceLink(s.id)} — ${s.desc ?? '(no description)'}`)
     }
   } else {
     parts.push(
@@ -255,7 +280,7 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
       parts.push('')
       for (const s of inProgressList) {
         const claim = s.claimed_by ? ` _(claimed by ${s.claimed_by})_` : ''
-        parts.push(`- **${s.id}**${claim} — ${s.desc ?? '(no description)'}`)
+        parts.push(`- ${_sliceLink(s.id)}${claim} — ${s.desc ?? '(no description)'}`)
       }
       parts.push('')
     }
@@ -265,7 +290,7 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
       for (const s of blockedList) {
         const pending = _deps(s).filter((d) => !completeIds.has(d))
         parts.push(
-          `- **${s.id}** — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_`,
+          `- ${_sliceLink(s.id)} — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_`,
         )
       }
       parts.push('')
@@ -281,7 +306,7 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
       const owner   = item.owner      ? ` @${item.owner}`                    : ''
       const blocker = item.blocked_by ? ` _(blocked by ${item.blocked_by})_` : ''
       const statement = (item.statement ?? '').replace(/\s*\n\s*/g, ' ').trim()
-      parts.push(`- **${item.id}**: ${statement}${owner}${blocker}`)
+      parts.push(`- ${_openItemLink(item.id)}: ${statement}${owner}${blocker}`)
     }
   } else {
     parts.push('_No open items._')
@@ -312,10 +337,17 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope }) {
 
   // ── Progress ──────────────────────────────────────────────────────────────
   if (slices.length > 0) {
-    const done = slices.filter((s) => s.status === 'complete').length
+    const doneSlices = slices.filter((s) => s.status === 'complete')
     parts.push('## Progress')
     parts.push('')
-    parts.push(`${done} / ${slices.length} slices complete`)
+    parts.push(`${doneSlices.length} / ${slices.length} slices complete`)
+    if (doneSlices.length > 0) {
+      parts.push('')
+      for (const s of doneSlices) {
+        const desc = s.desc ? ` — ${s.desc}` : ''
+        parts.push(`- ✓ ${_sliceLink(s.id)}${desc}`)
+      }
+    }
     parts.push('')
   }
 
@@ -336,4 +368,20 @@ function _deps(slice) {
   if (Array.isArray(slice.blocked_by)) return slice.blocked_by
   if (slice.blocked_by) return [slice.blocked_by]
   return []
+}
+
+/**
+ * Render a slice id as a Markdown link to its ticket, or bold text if unsanitizable.
+ */
+function _sliceLink(id) {
+  const safe = sanitizeId(id)
+  return safe ? `[${id}](tickets/${safe}.md)` : `**${id}**`
+}
+
+/**
+ * Render an open-item id as a Markdown link to its ticket, or bold text if unsanitizable.
+ */
+function _openItemLink(id) {
+  const safe = sanitizeId(id)
+  return safe ? `[${id}](tickets/${safe}.md)` : `**${id}**`
 }

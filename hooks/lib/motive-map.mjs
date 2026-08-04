@@ -49,7 +49,12 @@ function _generate(projectDir, motive) {
   const charter            = readCharter({ projectDir, motive })
   const ledgerDoc          = _readMotiveLedgerDoc(projectDir, motive)
   const slices             = Array.isArray(ledgerDoc?.slices) ? ledgerDoc.slices.filter(Boolean) : []
-  const decisions          = _readDecisions(projectDir, motive)
+  const journalDecisions   = _readDecisions(projectDir, motive)
+  // Fall back to decisions embedded in the charter file (# Decisions section) when the
+  // journal has no DECISION events — this covers host projects that never emitted them.
+  const decisions          = journalDecisions.length > 0
+    ? journalDecisions
+    : (charter?.decisions ?? []).map((d) => ({ msg: `${d.id}: ${d.text}` }))
   const outOfScope         = _readOutOfScope(projectDir)
   const rejectionDecisions = _readRejectionDecisions(projectDir, motive)
   const allEvents          = _readAllMotiveEvents(projectDir, motive)

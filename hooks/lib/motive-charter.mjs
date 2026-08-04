@@ -86,8 +86,10 @@ Kind is derived from the id prefix (TBD or TBR). -->
 // readCharter — impure: reads and parses the charter file
 // ---------------------------------------------------------------------------
 
-// Matches a section heading: ## Section Name
-const SECTION_RE = /^##\s+(.+)$/
+// Matches a section heading at any level (1–6).
+// Group 1 = the run of '#' characters (used to determine level).
+// Group 2 = heading title text.
+const SECTION_RE = /^(#{1,6})\s+(.+)$/
 
 // Matches a valid open-item bullet:
 //   - TBD-<id>: statement [@owner] [blocked-by:<ref>]
@@ -104,6 +106,11 @@ const BLOCKED_BY_RE = /\bblocked-by:(\S+)/i
  * Parse open-item bullets from the Open items section body.
  * Malformed bullet lines (starting with "- " but not matching the format)
  * are counted and warned to stderr once; valid items are returned.
+ *
+ * Strikethrough filtering: a bullet whose statement (including any continuation
+ * lines) starts with `~~` is considered resolved/closed and excluded from the
+ * returned items.  This matches the repo convention of wrapping the original
+ * intent in `~~…~~` and appending a RESOLVED or CLOSED annotation.
  *
  * @param {string} body
  * @returns {{ items: Array<object>, malformedCount: number }}
@@ -159,33 +166,79 @@ function parseOpenItems(body) {
     items.push(item)
   }
 
-  return { items, malformedCount }
+  // Post-pass: drop resolved items (statement starts with `~~` after all
+  // continuations have been joined).  Checked here rather than inline so that
+  // multi-line strikethrough entries (where the closing `~~` is on a later
+  // continuation line) are evaluated with their full accumulated statement.
+  const openItems = items.filter((item) => !item.statement.startsWith('~~'))
+
+  return { items: openItems, malformedCount }
 }
 
 /**
  * Split markdown into sections keyed by heading name (lowercased, trimmed).
  * Returns Map<string, string> where values are the section body text.
  *
+ * Level-aware, two-pass heading detection:
+ *
+ *   The "section-boundary level" is established by the SECOND heading encountered.
+ *   The first heading is often a document title (e.g. `# motive: my-motive`) at a
+ *   shallower depth than the actual content sections (`## Objective`, `## Notes`, …).
+ *   Using the second heading's level avoids treating the document title's level as the
+ *   boundary, which would otherwise swallow all `##` sections into the `#` title body.
+ *
+ *   Once the boundary level is established, headings at that level or shallower open
+ *   new sections; deeper headings are kept as body text so that `### Sub-detail` inside
+ *   `## Objective` does not truncate the Objective body.
+ *
+ *   When the file has only one heading (no second heading to set the boundary), that
+ *   single heading's level is used.
+ *
  * @param {string} src
  * @returns {Map<string, string>}
  */
 function splitSections(src) {
-  const sections = new Map()
-  let currentKey = null
-  const bodyLines = []
+  const sections   = new Map()
+  let currentKey   = null
+  let sectionLevel = 0   // established section-boundary level (0 = not yet known)
+  const bodyLines  = []
 
   for (const line of src.split('\n')) {
     const m = SECTION_RE.exec(line)
     if (m) {
-      if (currentKey != null) {
-        sections.set(currentKey, bodyLines.join('\n').trim())
+      const level = m[1].length          // e.g. '##' → 2
+      const title = m[2].trim().toLowerCase()
+
+      if (sectionLevel === 0) {
+        if (currentKey === null) {
+          // First heading: tentative section — boundary level not yet established.
+          currentKey   = title
+          bodyLines.length = 0
+        } else {
+          // Second heading: now we know the boundary level.  Close the first section
+          // and use THIS heading's level as the boundary going forward.
+          sectionLevel = level
+          sections.set(currentKey, bodyLines.join('\n').trim())
+          currentKey   = title
+          bodyLines.length = 0
+        }
+      } else if (level <= sectionLevel) {
+        // At or above boundary level → new top-level section.
+        if (currentKey != null) {
+          sections.set(currentKey, bodyLines.join('\n').trim())
+        }
+        currentKey   = title
+        bodyLines.length = 0
+      } else {
+        // Deeper than boundary level → sub-heading, kept as body content.
+        bodyLines.push(line)
       }
-      currentKey = m[1].trim().toLowerCase()
-      bodyLines.length = 0
     } else {
       bodyLines.push(line)
     }
   }
+  // Flush the last section.  If sectionLevel was never established (single heading),
+  // treat that heading's own level as the boundary (single-section document).
   if (currentKey != null) {
     sections.set(currentKey, bodyLines.join('\n').trim())
   }
@@ -193,8 +246,33 @@ function splitSections(src) {
 }
 
 /**
+ * Parse "DECISION <id>: <text>" lines from the Decisions section body.
+ * Multi-line decisions (continuation lines before the next DECISION) are joined.
+ * Returns an array of { id: string, text: string }.
+ *
+ * @param {string} body
+ * @returns {Array<{ id: string, text: string }>}
+ */
+function _parseCharterDecisions(body) {
+  if (!body) return []
+  const DECISION_RE = /^DECISION\s+(\S+?):\s*(.*)$/i
+  const items = []
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim()
+    const m = DECISION_RE.exec(trimmed)
+    if (m) {
+      items.push({ id: m[1], text: m[2].trim() })
+    } else if (trimmed && items.length > 0) {
+      // continuation of the previous DECISION
+      items[items.length - 1].text += ' ' + trimmed
+    }
+  }
+  return items
+}
+
+/**
  * @param {{ projectDir: string, motive: string }} opts
- * @returns {{ objective: string, open_items: Array<object>, notes: string, out_of_scope: string, path: string } | null}
+ * @returns {{ objective: string, open_items: Array<object>, notes: string, out_of_scope: string, decisions: Array<{id: string, text: string}>, path: string } | null}
  */
 export function readCharter({ projectDir, motive }) {
   const filePath = charterPath(projectDir, motive)
@@ -213,6 +291,7 @@ export function readCharter({ projectDir, motive }) {
     const notes = sections.get('notes') ?? ''
     const out_of_scope = sections.get('out of scope') ?? ''
     const openItemsBody = sections.get('open items') ?? ''
+    const decisionsBody = sections.get('decisions') ?? ''
 
     const { items: open_items, malformedCount } = parseOpenItems(openItemsBody)
 
@@ -222,11 +301,17 @@ export function readCharter({ projectDir, motive }) {
       )
     }
 
+    // Extract inline DECISION lines from the Decisions section body.
+    // Each line of the form "DECISION <id>: <text>" (possibly paragraph-wrapped)
+    // becomes a synthetic entry { id, text } for the MAP decisions section.
+    const decisions = _parseCharterDecisions(decisionsBody)
+
     return {
       objective,
       open_items,
       notes,
       out_of_scope,
+      decisions,
       path: filePath,
     }
   } catch {

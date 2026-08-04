@@ -11,7 +11,7 @@
  *   S3-AC7 integration: readCharter output fed into compile(events, { charter }) — no throw
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -333,5 +333,213 @@ describe('S3-AC7 — compile integration with charter', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// splitSections — level-aware heading parsing (FIX 1 + FIX 2 regressions)
+// ---------------------------------------------------------------------------
+
+describe('readCharter — level-aware section splitting', () => {
+  let tmp: string
+  beforeEach(() => { tmp = mkTmp() })
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
+
+  // FIX 2: document-title pattern (`# motive: name` + `## sections`)
+  it('parses objective when charter starts with # title then ## sections', () => {
+    writeCharter(tmp, 'm', [
+      '# motive: my-project',
+      '',
+      '## Objective',
+      '',
+      'Build something great.',
+      '',
+      '## Notes',
+      '',
+      'Keep it simple.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Decide the API shape.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.objective?.trim()).toBe('Build something great.')
+    expect(charter?.open_items).toHaveLength(1)
+  })
+
+  // FIX 1: ### nested inside ## Objective body must not truncate the section
+  it('### nested inside ## Objective is kept as body text, not a new section', () => {
+    writeCharter(tmp, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      '',
+      'Primary goal.',
+      '',
+      '### Sub-detail',
+      '',
+      'Extra context that must stay in the Objective body.',
+      '',
+      '## Notes',
+      '',
+      'Note text.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.objective).toContain('Primary goal.')
+    expect(charter?.objective).toContain('Extra context that must stay in the Objective body.')
+  })
+
+  // FIX 1: ### nested inside ## Open items must not truncate TBD items after the sub-heading
+  it('### nested inside ## Open items does not drop items that follow it', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Do the thing.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: First item.',
+      '',
+      '### Context sub-heading',
+      '',
+      'Some clarifying notes.',
+      '',
+      '- TBD-2: Second item after sub-heading.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items[0].id).toBe('TBD-1')
+    expect(charter?.open_items[1].id).toBe('TBD-2')
+  })
+
+  // FIX 2 (pilot format): # headings throughout still parse correctly
+  it('pilot-style # headings parse objective, decisions, and open_items', () => {
+    writeCharter(tmp, 'm', [
+      '# Objective',
+      '',
+      'Ship the pilot CLI.',
+      '',
+      '# Decisions',
+      '',
+      'DECISION D-1: Use env var for store path.',
+      'DECISION D-2: Entry ids from crypto.randomUUID().',
+      '',
+      '# Open items',
+      '',
+      '- TBD-1: Confirm deployment target.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.objective?.trim()).toBe('Ship the pilot CLI.')
+    expect(charter?.decisions).toHaveLength(2)
+    expect(charter?.open_items).toHaveLength(1)
+  })
+
+  // Groundwork-format open items: multi-line + strikethrough (defensive regression)
+  // TBD-4 starts with ~~ so it is treated as resolved and excluded from open_items.
+  it('multi-line strikethrough TBD is excluded; surrounding items are kept', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Short item.',
+      '- TBD-4: ~~**Blocks something.** Original description.',
+      '  Continuation line.',
+      '  More continuation.~~ **RESOLVED** — fixed in commit abc.',
+      '- TBD-5: Another item after the resolved one.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    // TBD-4 starts with ~~ → filtered out; only TBD-1 and TBD-5 remain
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items[0].id).toBe('TBD-1')
+    expect(charter?.open_items[1].id).toBe('TBD-5')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Strikethrough filtering (charter-strikethrough-resolved)
+// ---------------------------------------------------------------------------
+
+describe('readCharter — strikethrough-wrapped TBDs are excluded from open_items', () => {
+  let tmp: string
+  beforeEach(() => { tmp = mkTmp() })
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
+
+  it('single-line struck TBD is excluded; unstruck TBDs remain', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Do it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Open item — still needs a decision.',
+      '- TBD-2: ~~**Resolved item.** Was blocking something.~~ RESOLVED.',
+      '- TBD-3: Another open item.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items.map((i: { id: string }) => i.id)).toEqual(['TBD-1', 'TBD-3'])
+  })
+
+  it('multi-line strikethrough (groundwork repo format) is excluded', () => {
+    // TBD-4 style: opening ~~ on the bullet line, closing ~~ on a continuation line.
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Still open.',
+      '- TBD-4: ~~**Blocks WS2 beyond its diagnose slice.** The graph must join',
+      '  DECISION events to ledger slices. Diagnose before any renderer work;',
+      '  V2–V4 stay unstarted until this resolves. See D-14.~~ RESOLVED — join',
+      '  implemented via slices tbd4-join-fix, F1, F2.',
+      '- TBD-5: Also open.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items.map((i: { id: string }) => i.id)).toEqual(['TBD-1', 'TBD-5'])
+  })
+
+  it('all four groundwork-style resolved TBDs (TBD-16, TBD-19, TBD-20 format) are excluded', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Open.',
+      '- TBD-16: ~~**Journal compile: multi-ledger support** — If a motive spans multiple',
+      '  runs, compile should fold events from all runs.~~ CLOSED — already ships.',
+      '- TBD-19: ~~**Discoverability: point docs at MAP.md** — Direct users to MAP.md.',
+      '  Include in docs pass.~~ RESOLVED — MAP.md path updated.',
+      '- TBD-20: ~~**MAP.md Out of scope section renders empty** — Should surface',
+      '  rejection-DECISION events.~~ RESOLVED — out of scope section now renders both.',
+      '- TBD-21: Open.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items.map((i: { id: string }) => i.id)).toEqual(['TBD-1', 'TBD-21'])
+  })
+
+  it('unstruck TBD with ~~ elsewhere in statement is NOT filtered', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Open item referencing ~~deprecated~~ approach. Still needs resolution.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    // statement starts with "Open item referencing", not "~~", so it is kept
+    expect(charter?.open_items).toHaveLength(1)
+    expect(charter?.open_items[0].id).toBe('TBD-1')
   })
 })

@@ -21,6 +21,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+// @ts-ignore
 import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,13 @@ function makeCharter(dir: string, motive: string, content: string) {
   writeFileSync(join(motiveDir, 'motive.md'), content, 'utf8')
 }
 
-function writeLedger(dir: string, motive: string, data: object) {
+function writeLedger(dir: string, _motive: string, data: object) {
   const runsDir = join(dir, '.groundwork', 'runs')
   mkdirSync(runsDir, { recursive: true })
   writeFileSync(join(runsDir, `run-test.json`), JSON.stringify(data), 'utf8')
 }
 
-function writeDecisions(dir: string, motive: string, decisions: object[]) {
+function writeDecisions(dir: string, _motive: string, decisions: object[]) {
   const journalDir = join(dir, '.groundwork', 'journal')
   mkdirSync(journalDir, { recursive: true })
   const lines = decisions.map((e) => JSON.stringify(e)).join('\n')
@@ -763,5 +764,147 @@ describe('regenerateMotiveMap — Pacing section', () => {
     // plan slice is exempt: 0 resolved, budget 1, new unit may be started
     expect(content).toContain('0 of 1')
     expect(content).toContain('new unit may be started')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Host-project level-1 heading format (regression: SECTION_RE was ##-only)
+// ---------------------------------------------------------------------------
+
+describe('regenerateMotiveMap — host-project level-1 heading format', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  // Fixture uses single-# headings (pilot project style) instead of the template's ##.
+  const PILOT_STYLE_CHARTER = `# Objective
+
+Ship tempo v1 — a local-first time-tracking CLI.
+
+# Acceptance Criteria
+
+- \`tempo start\` works.
+
+# Decisions
+
+DECISION D-1: Store path from TEMPO_STORE env var. Rationale: tests must not write to real home.
+DECISION D-2: Entry ids from crypto.randomUUID(). Rationale: built into Node 22.
+
+# Out of Scope
+
+Cloud sync or any network storage.
+`
+
+  it('objective renders from # Objective heading (not ## Objective)', () => {
+    makeCharter(dir, 'm', PILOT_STYLE_CHARTER)
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('_No objective recorded yet._')
+    expect(content).toContain('Ship tempo v1')
+  })
+
+  it('decisions render from # Decisions section when journal has no DECISION events', () => {
+    makeCharter(dir, 'm', PILOT_STYLE_CHARTER)
+    // No journal directory — no DECISION events at all
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('_No decisions recorded yet._')
+    expect(content).toContain('D-1:')
+    expect(content).toContain('D-2:')
+    expect(content).toContain('TEMPO_STORE')
+  })
+
+  it('journal DECISION events still win over charter decisions when both exist', () => {
+    makeCharter(dir, 'm', PILOT_STYLE_CHARTER)
+    writeDecisions(dir, 'm', [
+      { ts: '2026-01-01T00:00:00.000Z', session: 's1', motive: 'm', type: 'DECISION', msg: 'Use PostgreSQL for storage.' },
+    ])
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // Journal decision should appear
+    expect(content).toContain('Use PostgreSQL')
+    // Charter decisions should NOT appear (journal took precedence)
+    expect(content).not.toContain('D-1:')
+  })
+
+  it('out_of_scope renders from # Out of Scope heading', () => {
+    makeCharter(dir, 'm', PILOT_STYLE_CHARTER)
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('Cloud sync')
+  })
+
+  // FIX 1 regression: ### inside ## Objective must not truncate the objective body
+  it('### nested inside ## Objective body does not truncate the Destination section', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      '',
+      'Primary goal text.',
+      '',
+      '### Sub-detail',
+      '',
+      'Context that must survive.',
+      '',
+      '## Notes',
+      '',
+      'Note.',
+    ].join('\n'))
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('_No objective recorded yet._')
+    expect(content).toContain('Primary goal text.')
+    // Sub-detail body flows into the Destination section — it should NOT become a standalone MAP section.
+    // (Check as a line-anchored pattern to avoid false positive against '### Sub-detail' body text.)
+    expect(content).not.toMatch(/\n## Sub-detail\b/)
+  })
+
+  // FIX 1 regression: ### nested inside ## Open items must not drop items after the sub-heading
+  it('### nested inside ## Open items does not drop TBD items that follow the sub-heading', () => {
+    makeCharter(dir, 'm', [
+      '## Objective',
+      '',
+      'Do the thing.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: First item.',
+      '',
+      '### Context heading',
+      '',
+      'Clarifying notes.',
+      '',
+      '- TBD-2: Second item after sub-heading.',
+    ].join('\n'))
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // Both items must appear in the open items section
+    expect(content).toContain('TBD-1')
+    expect(content).toContain('TBD-2')
+  })
+
+  // FIX 2: # title + ## sections charter (groundwork template format) renders correctly
+  it('# motive title + ## Objective renders Destination — not "No objective recorded yet."', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      '',
+      'The real objective text.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: A tracked decision.',
+      '',
+      '## Out of scope',
+      '',
+      '<!-- nothing yet -->',
+    ].join('\n'))
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('_No objective recorded yet._')
+    expect(content).toContain('The real objective text.')
+    expect(content).toContain('TBD-1')
   })
 })

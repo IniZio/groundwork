@@ -370,6 +370,85 @@ ${rows}
 `
 }
 
+/**
+ * Render a HITL (Human-in-the-Loop) interaction graph showing how DECISION
+ * events map onto ledger slices. Joins agent.decisions to agent.all_slices on
+ * (session_id, slice_id): a decision's `slice` field is the slice_id key;
+ * `_session_id` on each slice narrows identity when multiple sessions share an id.
+ *
+ * Degrades gracefully to a placeholder when the join yields no edges.
+ */
+function renderHitlGraph(agent) {
+  const decisions = Array.isArray(agent?.decisions) ? agent.decisions : []
+  const allSlices = Array.isArray(agent?.all_slices) ? agent.all_slices : []
+
+  // Build a Map<slice_id, slice> for O(1) join lookups.
+  // When session_id disambiguation is possible (_session_id on slice), we prefer
+  // the slice whose _session_id matches; otherwise fall back to first found.
+  const sliceById = new Map()
+  for (const s of allSlices) {
+    if (!sliceById.has(s.id)) sliceById.set(s.id, s)
+  }
+
+  // Collect decision→slice edges (decisions that reference a known slice_id).
+  const edges = []
+  for (let i = 0; i < decisions.length; i++) {
+    const d = decisions[i]
+    const sliceId = d?.slice ?? null
+    if (sliceId == null) continue
+    const slice = sliceById.get(String(sliceId))
+    if (slice == null) continue
+    edges.push({ decisionIdx: i, decision: d, slice })
+  }
+
+  if (edges.length === 0) {
+    return `<h2>HITL Interaction Graph</h2>
+<p class="empty">No decision–slice interactions recorded.</p>
+`
+  }
+
+  // Build Mermaid graph: decision nodes → slice nodes
+  const mermaidLines = ['graph LR']
+
+  // Emit decision nodes
+  const decisionNodeIds = new Set()
+  for (const { decisionIdx, decision } of edges) {
+    const nodeId = `D${decisionIdx}`
+    if (!decisionNodeIds.has(nodeId)) {
+      decisionNodeIds.add(nodeId)
+      const label = String(decision.decision ?? `Decision ${decisionIdx + 1}`)
+        .slice(0, 60)
+        .replace(/"/g, '\\"')
+      mermaidLines.push(`  ${nodeId}(["${label}"])`)
+    }
+  }
+
+  // Emit slice nodes
+  const sliceNodeIds = new Set()
+  for (const { slice } of edges) {
+    const nodeId = `S_${String(slice.id).replace(/[^A-Za-z0-9_]/g, '_')}`
+    if (!sliceNodeIds.has(nodeId)) {
+      sliceNodeIds.add(nodeId)
+      const marker = slice.status === 'complete' ? ' ✓' : ' ○'
+      const label = `${String(slice.id)}${marker}`.replace(/"/g, '\\"')
+      mermaidLines.push(`  ${nodeId}["${label}"]`)
+    }
+  }
+
+  // Emit edges
+  for (const { decisionIdx, slice } of edges) {
+    const dNodeId = `D${decisionIdx}`
+    const sNodeId = `S_${String(slice.id).replace(/[^A-Za-z0-9_]/g, '_')}`
+    mermaidLines.push(`  ${dNodeId} --> ${sNodeId}`)
+  }
+
+  const mermaidSrc = mermaidLines.join('\n')
+
+  return `<h2>HITL Interaction Graph</h2>
+<pre class="mermaid">${esc(mermaidSrc)}</pre>
+`
+}
+
 // ---------------------------------------------------------------------------
 // Public API — frozen signature
 // ---------------------------------------------------------------------------
@@ -398,6 +477,7 @@ export function renderHtml(view) {
   const decisions = renderDecisionTimeline(agent)
   const readySet = renderReadySet(agent)
   const baselines = renderBaselines(agent)
+  const hitlGraph = renderHitlGraph(agent)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -416,6 +496,7 @@ ${sliceDag}
 ${decisions}
 ${readySet}
 ${baselines}
+${hitlGraph}
 </body>
 </html>`
 }

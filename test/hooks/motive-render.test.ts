@@ -599,3 +599,91 @@ describe('Slice Dependency DAG — HTML', () => {
     expect(renderHtml(view)).toContain('No slices recorded.');
   });
 });
+
+// ── HITL Interaction Graph (HTML) — D-14 ─────────────────────────────────────
+
+describe('HITL Interaction Graph — HTML (D-14)', () => {
+  it('renders section heading', () => {
+    const view = makeFullView({});
+    expect(renderHtml(view)).toContain('HITL Interaction Graph');
+  });
+
+  it('renders placeholder when no decisions reference a known slice', () => {
+    const view = makeFullView({
+      decisions: [{ decision: 'Use Mermaid', rationale: 'it works', slice: null }],
+      all_slices: [{ id: 'slice-1', status: 'complete', blocked_by: [] }],
+    });
+    const html = renderHtml(view);
+    expect(html).toContain('HITL Interaction Graph');
+    expect(html).toContain('No decision–slice interactions recorded.');
+  });
+
+  it('renders placeholder when decisions array is empty', () => {
+    const view = makeFullView({ decisions: [], all_slices: [] });
+    expect(renderHtml(view)).toContain('No decision–slice interactions recorded.');
+  });
+
+  it('renders mermaid graph LR when join yields edges', () => {
+    const view = makeFullView({
+      decisions: [
+        { decision: 'Adopt Mermaid for diagrams', rationale: 'readable', slice: 'hitl-1' },
+      ],
+      all_slices: [{ id: 'hitl-1', status: 'complete', blocked_by: [] }],
+    });
+    const html = renderHtml(view);
+    expect(html).toContain('<pre class="mermaid">');
+    expect(html).toContain('graph LR');
+  });
+
+  it('includes decision label in graph (truncated to 60 chars)', () => {
+    const view = makeFullView({
+      decisions: [{ decision: 'Adopt Mermaid for diagrams', slice: 'hitl-1' }],
+      all_slices: [{ id: 'hitl-1', status: 'complete', blocked_by: [] }],
+    });
+    const html = renderHtml(view);
+    // Decision label appears (HTML-escaped inside pre); the raw text is present
+    expect(html).toContain('Adopt Mermaid for diagrams');
+  });
+
+  it('adds ✓ for complete slice and ○ for non-complete slice in graph', () => {
+    const view = makeFullView({
+      decisions: [
+        { decision: 'Decision A', slice: 'done-slice' },
+        { decision: 'Decision B', slice: 'open-slice' },
+      ],
+      all_slices: [
+        { id: 'done-slice', status: 'complete', blocked_by: [] },
+        { id: 'open-slice', status: 'in_progress', blocked_by: [] },
+      ],
+    });
+    const html = renderHtml(view);
+    expect(html).toContain('done-slice ✓');
+    expect(html).toContain('open-slice ○');
+  });
+
+  it('renders a decision→slice edge arrow in mermaid source', () => {
+    const view = makeFullView({
+      decisions: [{ decision: 'Ship it', slice: 'my-slice' }],
+      all_slices: [{ id: 'my-slice', status: 'pending', blocked_by: [] }],
+    });
+    const html = renderHtml(view);
+    // Arrow is HTML-escaped inside <pre>: --> becomes --&gt;
+    expect(html).toContain('D0 --&gt; S_my_slice');
+  });
+
+  it('skips decisions whose slice id does not match any known slice (degraded join)', () => {
+    const view = makeFullView({
+      decisions: [{ decision: 'Orphaned decision', slice: 'nonexistent-slice' }],
+      all_slices: [{ id: 'other-slice', status: 'complete', blocked_by: [] }],
+    });
+    const html = renderHtml(view);
+    // No edge — falls back to placeholder
+    expect(html).toContain('No decision–slice interactions recorded.');
+  });
+
+  it('does not throw when agent is absent', () => {
+    const view = { agent: null, divergence: null, provenance: {} };
+    expect(() => renderHtml(view)).not.toThrow();
+    expect(renderHtml(view)).toContain('HITL Interaction Graph');
+  });
+});

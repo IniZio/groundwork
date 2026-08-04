@@ -407,7 +407,8 @@ describe('journal help', () => {
   it('journal help motive exits 0 with usage', () => {
     const r = run(['help', 'motive'])
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain('motive new')
+    expect(r.stdout).toContain('new')
+    expect(r.stdout).toContain('archive')
   })
 
   it('journal help baseline exits 0 with usage', () => {

@@ -17,7 +17,7 @@
 
 // @ts-nocheck
 import {
-  mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -275,7 +275,8 @@ describe('AC 5 — never rewrite / truncate', () => {
 
   test('second-append-does-not-truncate-first-line', () => {
     const env = journalEnv(tmp, 'sessNR')
-    runJournal(['append', '--motive', 'R-1', '--type', 'DECISION', '--msg', 'keep me'], env)
+    runJournal(['append', '--motive', 'R-1', '--type', 'DECISION', '--msg', 'keep me',
+      '--data', '{"id":"D-1","decision":"use ESM","rationale":"native Node support"}'], env)
 
     // Capture byte length after first write
     const shard = shardPath(tmp, 'sessNR')
@@ -594,5 +595,179 @@ describe('AC 10 — digest prints recovery command', () => {
     expect(r.stdout).toContain('journal show --motive R-RC')
     // Must print the watermark
     expect(r.stdout).toMatch(/Watermark: \d{4}-\d{2}-\d{2}/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC 12 (TBD-12) — DECISION schema validation
+// ---------------------------------------------------------------------------
+
+describe('AC 12 — DECISION schema validation', () => {
+  let tmp: string
+  let env: Record<string, string>
+
+  beforeEach(() => {
+    tmp = mkTmp()
+    env = journalEnv(tmp, 'sess-d12')
+  })
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  const validData = JSON.stringify({
+    id: 'D-1',
+    decision: 'use ESM modules',
+    rationale: 'native Node support',
+    alternatives: ['CJS', 'Bun'],
+  })
+
+  test('valid DECISION with all fields exits 0', () => {
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch choice',
+        '--data', validData],
+      env,
+    )
+    expect(r.status).toBe(0)
+  })
+
+  test('alternatives defaults to [] when absent', () => {
+    const d = JSON.stringify({ id: 'D-2', decision: 'chose X', rationale: 'why' })
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch', '--data', d],
+      env,
+    )
+    expect(r.status).toBe(0)
+    const journalDir = path.join(tmp, '.groundwork', 'journal')
+    const files = readdirSync(journalDir)
+    const line = JSON.parse(readFileSync(path.join(journalDir, files[0]), 'utf8').trim())
+    expect(line.data.alternatives).toEqual([])
+  })
+
+  test('missing decision key exits 2 and names the key', () => {
+    const d = JSON.stringify({ id: 'D-3', rationale: 'why' })
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch', '--data', d],
+      env,
+    )
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('decision')
+  })
+
+  test('missing rationale key exits 2 and names the key', () => {
+    const d = JSON.stringify({ id: 'D-4', decision: 'use X' })
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch', '--data', d],
+      env,
+    )
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('rationale')
+  })
+
+  test('missing data.id exits 2 (D-11 preserved)', () => {
+    const d = JSON.stringify({ decision: 'use X', rationale: 'why' })
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'DECISION', '--msg', 'arch', '--data', d],
+      env,
+    )
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('id')
+  })
+
+  test('non-DECISION type is unaffected by schema check', () => {
+    const r = runJournal(
+      ['append', '--motive', 'R-001', '--type', 'MILESTONE', '--msg', 'done'],
+      env,
+    )
+    expect(r.status).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC 13 — motive archive subcommand
+// ---------------------------------------------------------------------------
+
+describe('AC 13 — motive archive', () => {
+  let tmp: string
+  let env: Record<string, string>
+
+  beforeEach(() => {
+    tmp = mkTmp()
+    env = journalEnv(tmp, 'sess-archive')
+  })
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  function createMotive(projectDir: string, slug: string, openItems = ''): void {
+    const dir = path.join(projectDir, '.groundwork', 'motives', slug)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'motive.md'), [
+      `# motive: ${slug}`,
+      '',
+      '## Objective',
+      'test motive',
+      '',
+      '## Open items',
+      openItems,
+    ].join('\n'))
+  }
+
+  test('archives a motive with no open items (exit 0, dir moved)', () => {
+    createMotive(tmp, 'done-feat')
+    const r = runJournal(['motive', 'archive', 'done-feat'], env)
+    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
+    expect(r.stdout).toContain('archived motive "done-feat"')
+
+    // Source dir gone
+    const srcDir = path.join(tmp, '.groundwork', 'motives', 'done-feat')
+    expect(existsSync(srcDir)).toBe(false)
+
+    // Archive dir present
+    const archDir = path.join(tmp, '.groundwork', 'archive', 'motives', 'done-feat')
+    expect(existsSync(archDir)).toBe(true)
+    expect(existsSync(path.join(archDir, 'motive.md'))).toBe(true)
+  })
+
+  test('appends MILESTONE event to journal shard', () => {
+    createMotive(tmp, 'done-feat2')
+    runJournal(['motive', 'archive', 'done-feat2'], env)
+
+    const events = readShard(shardPath(tmp, 'sess-archive'))
+    const ev = (events as any[]).find(e => e.motive === 'done-feat2' && e.type === 'MILESTONE')
+    expect(ev).toBeDefined()
+    expect(ev.msg).toContain('archived')
+  })
+
+  test('refuses to archive motive with open TBD items unless --force', () => {
+    createMotive(tmp, 'open-feat', '- TBD-1: still open')
+    const r = runJournal(['motive', 'archive', 'open-feat'], env)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('open')
+
+    // Dir should still be in motives/
+    const srcDir = path.join(tmp, '.groundwork', 'motives', 'open-feat')
+    expect(existsSync(srcDir)).toBe(true)
+  })
+
+  test('--force archives despite open TBD items', () => {
+    createMotive(tmp, 'force-feat', '- TBD-1: still open')
+    const r = runJournal(['motive', 'archive', 'force-feat', '--force'], env)
+    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
+    const archDir = path.join(tmp, '.groundwork', 'archive', 'motives', 'force-feat')
+    expect(existsSync(archDir)).toBe(true)
+  })
+
+  test('exits 1 for unknown slug', () => {
+    const r = runJournal(['motive', 'archive', 'no-such-motive'], env)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('not found')
+  })
+
+  test('help documents archive subcommand', () => {
+    const r = runJournal(['help', 'motive'], env)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain('archive')
   })
 })

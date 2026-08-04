@@ -22,7 +22,7 @@
  */
 
 import path from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import {
   VALID_TYPES,
   NEVER_COMPRESS,
@@ -137,11 +137,15 @@ const HELP = {
   },
   motive: {
     summary: 'manage motives (charters and lifecycle events)',
-    usage: 'journal motive new <slug> [--objective "…"] [--force]',
+    usage: 'journal motive <new|archive> <slug> [flags]',
     flags: [
       'new <slug>         create a motive charter at .groundwork/motives/<slug>/motive.md',
-      '--objective "…"   initial objective text written into the charter',
-      '--force            overwrite an existing charter',
+      '  --objective "…"  initial objective text written into the charter',
+      '  --force          overwrite an existing charter',
+      '',
+      'archive <slug>     move .groundwork/motives/<slug>/ to .groundwork/archive/motives/<slug>/',
+      '                   and append a MILESTONE event',
+      '  --force          archive even if the motive has open items',
     ],
   },
   baseline: {
@@ -407,10 +411,69 @@ function cmdMotiveNew(args) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// motive archive
+// ---------------------------------------------------------------------------
+
+function cmdMotiveArchive(args) {
+  const { flags, positionals } = parseFlags(args)
+  const slug = positionals[0]
+  if (!slug) die('motive archive requires a <slug>', 2)
+
+  const { projectDir, sessionId } = resolveContext()
+  const motiveDir = path.join(projectDir, '.groundwork', 'motives', slug)
+
+  if (!existsSync(motiveDir)) {
+    die(`motive "${slug}" not found at ${path.relative(projectDir, motiveDir)}`, 1)
+  }
+
+  // Check for open items unless --force
+  if (!flags.force) {
+    const charterFile = path.join(motiveDir, 'motive.md')
+    if (existsSync(charterFile)) {
+      const content = readFileSync(charterFile, 'utf8')
+      // Detect non-empty open items: lines starting with "- TBD" or "- TBR" after the open items heading
+      const openItemsMatch = content.match(/##\s+Open items\s*\n([\s\S]*?)(?=\n##|$)/i)
+      if (openItemsMatch) {
+        // Strip HTML comments before checking for real open items
+        const openSection = openItemsMatch[1].replace(/<!--[\s\S]*?-->/g, '')
+        const hasOpenItems = openSection.split('\n').some(l => /^\s*-\s+TB[DR]/.test(l))
+        if (hasOpenItems) {
+          die(`motive "${slug}" has open TBD/TBR items. Resolve them or use --force to archive anyway.`, 1)
+        }
+      }
+    }
+  }
+
+  const archiveDir = path.join(projectDir, '.groundwork', 'archive', 'motives', slug)
+  mkdirSync(path.dirname(archiveDir), { recursive: true })
+  renameSync(motiveDir, archiveDir)
+
+  // Append MILESTONE event
+  const shardPath = resolveShardPath(projectDir, sessionId)
+  const ts = new Date().toISOString()
+  const event = {
+    ts,
+    session: sessionId,
+    motive: slug,
+    type: 'MILESTONE',
+    msg: `motive archived: ${slug}`,
+    source: 'cli:journal',
+    data: { archived_to: path.relative(projectDir, archiveDir) },
+  }
+  appendEvent(shardPath, event)
+  regenerateMotiveMap(projectDir, slug)
+
+  process.stdout.write(
+    `journal: archived motive "${slug}" to ${path.relative(projectDir, archiveDir)}\n`,
+  )
+}
+
 function cmdMotive(args) {
   const subcmd = args[0]
-  if (!subcmd) die('motive requires a subcommand (e.g. new)', 2)
+  if (!subcmd) die('motive requires a subcommand (e.g. new, archive)', 2)
   if (subcmd === 'new') return cmdMotiveNew(args.slice(1))
+  if (subcmd === 'archive') return cmdMotiveArchive(args.slice(1))
   die(`unknown motive subcommand "${subcmd}". Run journal help motive for usage.`, 2)
 }
 
@@ -483,6 +546,16 @@ function cmdAppend(args) {
     } catch (e) {
       die(`--data is not valid JSON: ${e.message}`, 2)
     }
+  }
+
+  // DECISION schema validation (D-11 + TBD-12)
+  if (type === 'DECISION') {
+    const d = data ?? {}
+    if (!d.id) die('DECISION event requires data.id', 2)
+    if (!d.decision) die('DECISION event requires data.decision', 2)
+    if (!d.rationale) die('DECISION event requires data.rationale', 2)
+    if (!Array.isArray(d.alternatives)) d.alternatives = []
+    data = d
   }
 
   const { projectDir, sessionId } = resolveContext()

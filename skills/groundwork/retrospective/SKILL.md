@@ -1,13 +1,13 @@
 ---
 name: retrospective
-description: Use when a mistake was corrected 2+ times in a session, a routing or coordination rule was discovered, the user said "remember this", or the struggle-detector surfaced a recurring signal in `.groundwork/struggle-signals.jsonl`.
+description: Use when a mistake was corrected 2+ times in a session, a routing or coordination rule was discovered, a streamlined recipe or improvement was found, the user said "remember this", or the struggle-detector surfaced a recurring signal in `.groundwork/struggle-signals.jsonl`.
 ---
 
 # Retrospective
 
 ## MUST Invoke
 
-Before ending any session where a recurring mistake was corrected, a routing rule was discovered, or the user said "remember this" — **you MUST invoke this skill. This is not optional.** Skipping it means the next session re-learns the same lesson from scratch. The Stop-gate does not enforce it; you do.
+Before ending any session where a recurring mistake was corrected, a routing rule was discovered, a streamlined recipe or improvement emerged (e.g. "local run guarantees CI before PR"), or the user said "remember this" — **you MUST invoke this skill. This is not optional.** Skipping it means the next session re-learns the same lesson from scratch. The Stop-gate does not enforce it; you do.
 
 The imperative is narrow: it fires only when the trigger conditions are met. A session that ran cleanly and finished on the first attempt does NOT require a retrospective.
 
@@ -19,6 +19,7 @@ The imperative is narrow: it fires only when the trigger conditions are met. A s
 - A non-obvious coordination rule was discovered (e.g., how the orchestrator should route a new signal type, which hook fires in which order)
 - A user correction was given that should become a standing rule
 - A "we should always…" or "never again…" insight emerged from a failed approach
+- A positive improvement or streamlined recipe was found that will save time in future sessions (e.g., a workflow shortcut, a faster diagnosis path, a reliable local-first check)
 - The user explicitly asked to codify something ("remember this", "add this to the rules")
 - The struggle-detector surfaced a recurring signal (repeated near-identical command, fail-then-retry, file thrashing, recurring error signature) in `.groundwork/struggle-signals.jsonl`
 
@@ -106,6 +107,7 @@ One file per concept. The slug is kebab-case, descriptive, and unique by concept
 ```markdown
 ---
 concept: <concept-slug>
+kind: mistake               # mistake | improvement
 status: LEARNING            # LEARNING | PROMOTED
 first_learned: YYYY-MM-DD
 recurrence: 1               # increment each time re-encountered
@@ -125,9 +127,11 @@ promoted_to: null           # path to SKILL.md or CLAUDE.md rule once promoted
 - YYYY-MM-DD — session <id> — <one-line description of the encounter>
 ```
 
+**`kind` field:** Set `kind: mistake` for corrected errors and wrong approaches; set `kind: improvement` for positive discoveries (streamlined recipes, workflow shortcuts, faster diagnosis paths). Both kinds flow through identical lifecycle rules — the `kind` field is metadata only and does not affect the promotion gate.
+
 **Lifecycle:**
 
-- A lesson stays `LEARNING` until `recurrence >= 2` OR explicitly flagged high-value.
+- A lesson stays `LEARNING` until `recurrence >= 2` OR explicitly flagged high-value. This threshold is sign-agnostic: improvements and mistakes reach the promotion gate identically.
 - On threshold, a distill step drafts the durable artifact and routes it per the apply policy above (advisor gate for high-blast).
 - On promotion, set `status: PROMOTED` and `promoted_to: <path>`. The KB entry becomes an index — it is not deleted.
 

@@ -39,6 +39,7 @@ import { buildHumanLayer, renderView } from './lib/motive-render.mjs'
 import { readCharter, charterPath, renderCharterTemplate } from './lib/motive-charter.mjs'
 import { resolveBaseline } from './lib/motive-baseline.mjs'
 import { renderHtml } from './lib/motive-html.mjs'
+import { regenerateMotiveMap } from './lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -352,6 +353,7 @@ async function cmdCompile(args) {
       const htmlPath = path.join(compiledDir, `${slug}.html`)
       writeFileSync(htmlPath, htmlOut)
     }
+    regenerateMotiveMap(projectDir, motive)
   }
 
   // --tbd: warn-only open-items count (never affects exit code)
@@ -490,6 +492,7 @@ function cmdAppend(args) {
 
   const shardPath = resolveShardPath(projectDir, sessionId)
   appendEvent(shardPath, event)
+  regenerateMotiveMap(projectDir, motive)
   process.stdout.write(
     `journal: appended ${type} to ${path.relative(projectDir, shardPath)}\n`,
   )

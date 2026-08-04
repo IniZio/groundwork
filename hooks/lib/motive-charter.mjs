@@ -117,7 +117,14 @@ function parseOpenItems(body) {
 
   for (const line of stripped.split('\n')) {
     const trimmed = line.trim()
-    if (!trimmed.startsWith('-')) continue
+
+    // Continuation line: indented (not a new bullet) — append to current item's statement
+    if (!trimmed.startsWith('-')) {
+      if (trimmed && items.length > 0) {
+        items[items.length - 1].statement += ' ' + trimmed
+      }
+      continue
+    }
 
     const m = OPEN_ITEM_RE.exec(trimmed)
     if (!m) {

@@ -725,3 +725,102 @@ describe("stop-gate — new skillset contracts (R1/R3)", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// D-13: DECISION research advisory (non-blocking)
+// ---------------------------------------------------------------------------
+
+/** Write a journal shard with one or more events and run the hook against a complete+APPROVE ledger. */
+function runHookWithJournal(
+	events: object[],
+	sessionId = "sess-1",
+): { continue?: boolean; decision?: string; reason?: string } {
+	const journalDir = path.join(projectDir, ".groundwork", "journal");
+	mkdirSync(journalDir, { recursive: true });
+	const shardPath = path.join(journalDir, `2099-01-01-${sessionId}.jsonl`);
+	writeFileSync(shardPath, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+
+	writeFileSync(
+		path.join(projectDir, ".groundwork", "run.json"),
+		JSON.stringify({
+			active: true,
+			session_id: sessionId,
+			reinforcements: 0,
+			slices: [{ id: "S1", status: "complete", acceptance: ["done"] }],
+			gate: { advisor: "APPROVE" },
+		}),
+	);
+
+	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
+	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	return JSON.parse(out);
+}
+
+// @verifies D-13
+describe("stop-gate — DECISION research advisory (D-13)", () => {
+	it("emits advisory finding when DECISION has blast=high and no data.research", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-1", blast: "high" } },
+		]);
+		// Non-blocking: session is allowed
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+		// Advisory text names the offending decision id
+		expect(decision.reason).toMatch(/D-1/);
+		expect(decision.reason).toMatch(/research/i);
+	});
+
+	it("emits advisory finding when DECISION has blast=medium and no data.research", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-2", blast: "medium" } },
+		]);
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+		expect(decision.reason).toMatch(/D-2/);
+		expect(decision.reason).toMatch(/research/i);
+	});
+
+	it("names all offending decision ids when multiple DECISION events lack research", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-5", blast: "high" } },
+			{ type: "DECISION", data: { id: "D-6", blast: "medium" } },
+		]);
+		expect(decision.continue).toBe(true);
+		expect(decision.reason).toMatch(/D-5/);
+		expect(decision.reason).toMatch(/D-6/);
+	});
+
+	it("produces no advisory when DECISION has data.research present (high blast)", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-3", blast: "high", research: "docs/research/d3.md" } },
+		]);
+		expect(decision.continue).toBe(true);
+		// No advisory: reason should be absent or not mention research warning
+		expect(decision.reason ?? "").not.toMatch(/D-3/);
+	});
+
+	it("produces no advisory when DECISION blast is low", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-4", blast: "low" } },
+		]);
+		expect(decision.continue).toBe(true);
+		expect(decision.reason ?? "").not.toMatch(/D-4/);
+	});
+
+	it("produces no advisory when DECISION has no blast field", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-7" } },
+		]);
+		expect(decision.continue).toBe(true);
+		expect(decision.reason ?? "").not.toMatch(/D-7/);
+	});
+
+	it("does not block the session — exit code 0, continue:true, no decision:block", () => {
+		const decision = runHookWithJournal([
+			{ type: "DECISION", data: { id: "D-8", blast: "high" } },
+		]);
+		// The hook always exits 0; the parsed output should show allow, not block
+		expect(decision.continue).toBe(true);
+		expect(decision.decision).toBeUndefined();
+	});
+});
+

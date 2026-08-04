@@ -77,7 +77,7 @@ import { fileURLToPath } from 'node:url'
 const LEDGER_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/ledger')
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
-import { emitHookEvent } from './lib/journal-io.mjs'
+import { emitHookEvent, readAllEvents } from './lib/journal-io.mjs'
 import { readCharter } from './lib/motive-charter.mjs'
 
 /**
@@ -111,6 +111,32 @@ function tbdAdvisory(projectDir) {
       }
     }
     return lines.length > 0 ? '\n' + lines.join('\n') : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Advisory only — never blocks.
+ * Returns a newline-prefixed string listing DECISION events with high|medium
+ * blast that lack a data.research field. Empty string when no such events exist
+ * or any error occurs.
+ * @param {string} projectDir
+ * @returns {string}
+ */
+function decisionResearchAdvisory(projectDir) {
+  try {
+    const journalDir = path.join(projectDir, '.groundwork', 'journal')
+    const events = readAllEvents(journalDir)
+    const missing = events.filter(
+      (e) =>
+        e?.type === 'DECISION' &&
+        /^(high|medium)$/i.test(e?.data?.blast ?? '') &&
+        !e?.data?.research,
+    )
+    if (missing.length === 0) return ''
+    const ids = missing.map((e) => e?.data?.id ?? e?.id ?? '(unknown)').join(', ')
+    return `\n⚠ DECISION event(s) with high/medium blast lack data.research: ${ids}. Add a research findings path to aid future reviewers.`
   } catch {
     return ''
   }
@@ -396,7 +422,8 @@ async function main() {
       data: { outcome: 'complete' },
     })
     // S7-AC3: TBD advisory surfaces on the normal-completion allow path (gate=1 only).
-    return allow(tbdAdvisory(projectDir))
+    // D-13: DECISION research advisory is non-blocking; appended on every allow path.
+    return allow(tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir))
   }
 
   // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).

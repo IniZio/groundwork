@@ -36,6 +36,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
+import { checkPace } from './lib/pacing.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
@@ -423,6 +424,15 @@ const HELP = {
       '--session <id>   override session id (default: CLAUDE_CODE_SESSION_ID env)',
     ],
   },
+  autopilot: {
+    summary: 'extend session pacing budget by N units (requires write-token authority)',
+    usage: 'ledger autopilot --range N --token <write_token> [--reason "..."]',
+    flags: [
+      '--range N        number of additional units to grant (required, ≥1)',
+      '--token <t>      write-token printed at init (required if ledger has write_token)',
+      '--reason "..."   human-readable rationale for the grant (optional)',
+    ],
+  },
 }
 
 function cmdHelp(args) {
@@ -694,6 +704,11 @@ function cmdInit(args) {
   if (!obj.session_id) obj.session_id = sessionId ?? randomBytes(16).toString('hex')
   // Stamp motive: --motive flag overrides JSON input; JSON input is preserved as-is.
   if (flags.motive != null) obj.motive = flags.motive
+  // Stamp pacing defaults on new runs (D-28): only when the input has no pacing field.
+  // Existing ledgers that already carry a pacing field are preserved as-is.
+  if (!('pacing' in obj)) {
+    obj.pacing = { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] }
+  }
   // Validate before writing — strict: schema violations are hard errors at init
   // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)
@@ -794,6 +809,15 @@ function cmdSet(args) {
       throw e
     }
     if (flags.status != null) {
+      // Pacing enforcement (D-28): block in_progress transitions when budget is exhausted.
+      if (flags.status === 'in_progress') {
+        const pace = checkPace(l, id)
+        if (!pace.allowed) {
+          const e = new Error(`${pace.reason}\n${pace.remedy}`)
+          e.exitCode = 1
+          throw e
+        }
+      }
       s.status = flags.status
       if (flags.status === 'complete') {
         s.completed_at = new Date().toISOString()
@@ -890,6 +914,16 @@ function cmdClaim(args) {
       const e = new Error(`unknown slice id(s): ${missing.join(', ')}`)
       e.exitCode = 2
       throw e
+    }
+    // Pacing enforcement (D-28): block claim when budget is exhausted.
+    // Check each slice; first blocked result aborts the whole operation.
+    for (const id of ids) {
+      const pace = checkPace(l, id)
+      if (!pace.allowed) {
+        const e = new Error(`${pace.reason}\n${pace.remedy}`)
+        e.exitCode = 1
+        throw e
+      }
     }
     const now = new Date().toISOString()
     for (const id of ids) {
@@ -1078,6 +1112,48 @@ function cmdFrontier(args) {
 }
 
 // ---------------------------------------------------------------------------
+// AUTOPILOT — extend pacing budget by N units (D-28)
+// ---------------------------------------------------------------------------
+
+function cmdAutopilot(args) {
+  const { flags } = parseFlags(args)
+  if (flags.range == null) die('usage: ledger autopilot --range N --token <t> [--reason "..."]', 2)
+  const range = Number(flags.range)
+  if (!Number.isInteger(range) || range < 1) die('--range must be a positive integer (≥1)', 2)
+  const reason = flags.reason ?? ''
+
+  let capturedLedger = null
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)
+    capturedLedger = l
+    if (!l.pacing) {
+      const e = new Error('ledger has no pacing field — autopilot only applies to paced runs')
+      e.exitCode = 1
+      throw e
+    }
+    l.pacing.grant = {
+      range,
+      granted_at: new Date().toISOString(),
+      granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
+      reason,
+    }
+  })
+  if (capturedLedger) {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    emitHookEvent({
+      projectDir,
+      sessionId: capturedLedger.session_id,
+      type: 'MILESTONE',
+      source: 'hook:ledger',
+      data: { event: 'autopilot', range, reason },
+      ledger: capturedLedger,
+    })
+  }
+  process.stdout.write(`autopilot granted: +${range} unit${range === 1 ? '' : 's'}${reason ? ` (${reason})` : ''}\n`)
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -1113,6 +1189,7 @@ function main() {
       case 'view':     return cmdView()
       case 'fog':      return cmdFog(rest)
       case 'frontier': return cmdFrontier(rest)
+      case 'autopilot': return cmdAutopilot(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)
     }

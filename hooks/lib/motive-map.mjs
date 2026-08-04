@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { readCharter } from './motive-charter.mjs'
 import { readAllEvents, filterEvents } from './journal-io.mjs'
 import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
+import { resolvedUnits, inFlightUnit, isExhausted } from './pacing.mjs'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -46,7 +47,8 @@ function _generate(projectDir, motive) {
   if (!existsSync(motiveDir)) return  // no charter directory yet — skip silently
 
   const charter            = readCharter({ projectDir, motive })
-  const slices             = _readMotiveSlices(projectDir, motive)
+  const ledgerDoc          = _readMotiveLedgerDoc(projectDir, motive)
+  const slices             = Array.isArray(ledgerDoc?.slices) ? ledgerDoc.slices.filter(Boolean) : []
   const decisions          = _readDecisions(projectDir, motive)
   const outOfScope         = _readOutOfScope(projectDir)
   const rejectionDecisions = _readRejectionDecisions(projectDir, motive)
@@ -59,7 +61,7 @@ function _generate(projectDir, motive) {
     events: allEvents,
   })
 
-  const md = _renderMap({ motive, charter, slices, decisions, outOfScope, rejectionDecisions })
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -68,10 +70,11 @@ function _generate(projectDir, motive) {
 // ---------------------------------------------------------------------------
 
 /**
- * Return slices from the most-relevant ledger for this motive.
+ * Return the whole chosen ledger document for this motive (not just slices).
  * Prefers the active ledger; falls back to the last-written one.
+ * Returns null when no matching ledger exists.
  */
-function _readMotiveSlices(projectDir, motive) {
+function _readMotiveLedgerDoc(projectDir, motive) {
   const candidates = []
 
   // Scan per-session ledgers in .groundwork/runs/
@@ -95,9 +98,8 @@ function _readMotiveSlices(projectDir, motive) {
     } catch { /* ignore */ }
   }
 
-  if (!candidates.length) return []
-  const chosen = candidates.find((c) => c.active) ?? candidates[candidates.length - 1]
-  return Array.isArray(chosen.slices) ? chosen.slices.filter(Boolean) : []
+  if (!candidates.length) return null
+  return candidates.find((c) => c.active) ?? candidates[candidates.length - 1]
 }
 
 /**
@@ -319,7 +321,7 @@ function _readAllMotiveEvents(projectDir, motive) {
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, decisions, outOfScope, rejectionDecisions = [] }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [] }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -468,6 +470,51 @@ function _renderMap({ motive, charter, slices, decisions, outOfScope, rejectionD
         parts.push(`- ✓ ${_sliceLink(s.id)}${desc}`)
       }
     }
+    parts.push('')
+  }
+
+  // ── Pacing ────────────────────────────────────────────────────────────────
+  if (ledgerDoc?.pacing) {
+    const pacing      = ledgerDoc.pacing
+    const budget      = pacing.budget ?? 1
+    const grant       = pacing.grant ?? null
+    const grantRange  = grant?.range ?? 0
+    const cap         = budget + grantRange
+    const unitWord    = pacing.policy === 'wave' ? 'wave' : 'slice'
+    const resolved    = resolvedUnits(ledgerDoc)
+    const inflight    = inFlightUnit(ledgerDoc)
+    const exhausted   = isExhausted(ledgerDoc)
+
+    parts.push('## Pacing')
+    parts.push('')
+
+    const budgetLine = grantRange > 0
+      ? `**Policy:** ${pacing.policy} · **Budget:** ${budget} ${unitWord}${budget === 1 ? '' : 's'} + ${grantRange} via autopilot (cap ${cap})`
+      : `**Policy:** ${pacing.policy} · **Budget:** ${budget} ${unitWord}${budget === 1 ? '' : 's'}`
+    parts.push(budgetLine)
+    parts.push(`**Consumption:** ${resolved} of ${cap} ${unitWord}${cap === 1 ? '' : 's'} resolved — ${resolved < cap ? 'new unit may be started' : 'budget consumed'}`)
+
+    if (inflight !== null) {
+      const label = pacing.policy === 'wave' ? `wave ${inflight}` : `"${inflight}"`
+      parts.push(`**In-flight ${unitWord}:** ${label}`)
+    }
+
+    if (grant) {
+      const grantedBy  = grant.granted_by ? ` by ${grant.granted_by}` : ''
+      const grantedAt  = grant.granted_at ? ` (${String(grant.granted_at).slice(0, 10)})` : ''
+      const reason     = grant.reason     ? ` — ${grant.reason}`      : ''
+      parts.push(`**Autopilot grant:** +${grant.range} ${unitWord}${grant.range === 1 ? '' : 's'}${grantedBy}${grantedAt}${reason}`)
+    }
+
+    if (exhausted) {
+      const exemptKinds = pacing.exempt_kinds ?? []
+      const remaining   = (ledgerDoc.slices ?? []).filter(
+        (s) => !exemptKinds.includes(s.kind) && s.status !== 'complete',
+      )
+      const ids = remaining.map((s) => s.id).join(', ')
+      parts.push(`**Session exhausted.** Run \`/groundwork:handoff\` and open a new session. Remaining work: ${ids || '(none listed)'}`)
+    }
+
     parts.push('')
   }
 

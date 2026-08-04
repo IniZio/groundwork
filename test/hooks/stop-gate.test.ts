@@ -824,3 +824,102 @@ describe("stop-gate — DECISION research advisory (D-13)", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// D-26: Spec advisory (non-blocking)
+// ---------------------------------------------------------------------------
+
+// @verifies D-26
+describe("stop-gate — spec advisory (D-26)", () => {
+	/** Init a git repo in projectDir, commit an initial state, then add/dirty specific files. */
+	function setupGitRepo(
+		uncommittedFiles: string[],
+		specFiles: string[] = [],
+	): void {
+		execFileSync("git", ["init", "-b", "main"], { cwd: projectDir });
+		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectDir });
+		execFileSync("git", ["config", "user.name", "Test"], { cwd: projectDir });
+		writeFileSync(path.join(projectDir, "README"), "placeholder");
+		execFileSync("git", ["add", "README"], { cwd: projectDir });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: projectDir });
+
+		for (const f of uncommittedFiles) {
+			const fullPath = path.join(projectDir, f);
+			mkdirSync(path.dirname(fullPath), { recursive: true });
+			writeFileSync(fullPath, "// changed");
+		}
+		for (const f of specFiles) {
+			const fullPath = path.join(projectDir, f);
+			mkdirSync(path.dirname(fullPath), { recursive: true });
+			writeFileSync(fullPath, "# spec");
+		}
+	}
+
+	function runHookInGitRepo(): { continue?: boolean; decision?: string; reason?: string } {
+		writeFileSync(
+			path.join(projectDir, ".groundwork", "run.json"),
+			JSON.stringify({
+				active: true,
+				session_id: "sess-git",
+				reinforcements: 0,
+				slices: [{ id: "S1", status: "complete", acceptance: ["done"] }],
+				gate: { advisor: "APPROVE" },
+			}),
+		);
+		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-git" });
+		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		return JSON.parse(out);
+	}
+
+	it("emits advisory when enforcement files changed and doc/specs/ untouched", () => {
+		setupGitRepo(["hooks/my-hook.mjs"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.decision).toBeUndefined();
+		expect(result.reason).toMatch(/hooks\/my-hook\.mjs/);
+		expect(result.reason).toMatch(/doc\/specs/i);
+	});
+
+	it("lists multiple changed enforcement files", () => {
+		setupGitRepo(["hooks/stop-gate.mjs", "bin/ledger"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.reason).toMatch(/hooks\/stop-gate\.mjs/);
+		expect(result.reason).toMatch(/bin\/ledger/);
+	});
+
+	it("emits no advisory when doc/specs/ was also touched", () => {
+		setupGitRepo(["hooks/my-hook.mjs"], ["doc/specs/foo/requirements/bar.md"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.reason ?? "").not.toMatch(/doc\/specs/i);
+	});
+
+	it("emits no advisory when no enforcement files changed", () => {
+		setupGitRepo([]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.reason ?? "").not.toMatch(/Enforcement-surface/i);
+	});
+
+	it("emits no advisory when only non-enforcement files changed", () => {
+		setupGitRepo(["src/something.ts"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.reason ?? "").not.toMatch(/Enforcement-surface/i);
+	});
+
+	it("handles hooks/lib/ files as enforcement surface", () => {
+		setupGitRepo(["hooks/lib/hook-io.mjs"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.reason).toMatch(/hooks\/lib\/hook-io\.mjs/);
+	});
+
+	it("does not block — continue:true and no decision:block", () => {
+		setupGitRepo(["hooks/my-hook.mjs"]);
+		const result = runHookInGitRepo();
+		expect(result.continue).toBe(true);
+		expect(result.decision).toBeUndefined();
+	});
+});
+

@@ -229,3 +229,97 @@ describe("session-reminder hook — CLAUDE_ENV_FILE export", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Pacing state injection
+
+describe("session-reminder hook — pacing state", () => {
+	const baseLedger = {
+		active: true,
+		session_id: "sess-1",
+		write_token: "tok-abc",
+		brief: "Pacing test run",
+		slices: [
+			{ id: "W1S1", wave: 1, status: "complete", behavior: "slice one" },
+			{ id: "W2S1", wave: 2, status: "pending", behavior: "slice two" },
+		],
+		gate: {},
+	};
+
+	it("does NOT emit pacing text when the ledger has no pacing field", () => {
+		// Ledger without pacing: output must be identical in shape to pre-change output.
+		const ctx = runReminder(baseLedger);
+		expect(ctx).toContain("ACTIVE RUN — RESUME HERE");
+		expect(ctx).not.toContain("Pacing policy");
+		expect(ctx).not.toContain("Pacing state");
+		expect(ctx).not.toContain("Budget exhausted");
+		expect(ctx).not.toContain("autopilot");
+	});
+
+	it("emits policy, budget, exempt kinds, and resolved/allowed counts when pacing is present", () => {
+		const ledger = {
+			...baseLedger,
+			pacing: { policy: "wave", budget: 1, exempt_kinds: ["plan", "diagnose", "design", "fog"] },
+		};
+		const ctx = runReminder(ledger);
+		expect(ctx).toContain("Pacing policy: wave, budget: 1 unit");
+		expect(ctx).toContain("exempt kinds: [plan, diagnose, design, fog]");
+		expect(ctx).toContain("Pacing state:");
+		// 1 resolved (W1), 1 total cap (budget=1, no grant)
+		expect(ctx).toContain("1 of 1 unit");
+	});
+
+	it("flags budget exhaustion and names ledger autopilot as the sanctioned path when exhausted", () => {
+		// W1S1 complete (wave 1 resolved), W2S1 pending (wave 2 would be new) → exhausted
+		const ledger = {
+			...baseLedger,
+			pacing: { policy: "wave", budget: 1, exempt_kinds: [] },
+		};
+		const ctx = runReminder(ledger);
+		expect(ctx).toContain("Budget exhausted");
+		expect(ctx).toContain("pacing policy, not a bug");
+		expect(ctx).toContain("autopilot --range N");
+		expect(ctx).toContain("--token tok-abc");
+		expect(ctx).toContain("NEVER pass token to subagents");
+	});
+
+	it("shows grant range in policy line and grant-in-effect message when grant present", () => {
+		const ledger = {
+			...baseLedger,
+			slices: [
+				{ id: "W1S1", wave: 1, status: "complete", behavior: "a" },
+				{ id: "W2S1", wave: 2, status: "in_progress", behavior: "b" },
+			],
+			pacing: { policy: "wave", budget: 1, exempt_kinds: [], grant: { range: 1 } },
+		};
+		const ctx = runReminder(ledger);
+		expect(ctx).toContain("grant of 1");
+		expect(ctx).toContain("Grant in effect");
+		// Not exhausted because wave 2 is in-flight
+		expect(ctx).not.toContain("Budget exhausted");
+	});
+
+	it("shows in-flight unit for the lowest wave containing any incomplete slice", () => {
+		// baseLedger: W1S1 complete (wave 1), W2S1 pending (wave 2) → in-flight = 2
+		const ledger = {
+			...baseLedger,
+			pacing: { policy: "wave", budget: 2, exempt_kinds: [] },
+		};
+		const ctx = runReminder(ledger);
+		expect(ctx).toContain("Pacing state:");
+		expect(ctx).toContain("in-flight unit: 2");
+	});
+
+	it("shows in-flight unit when a wave has an in_progress slice", () => {
+		const ledger = {
+			...baseLedger,
+			slices: [
+				{ id: "W1S1", wave: 1, status: "complete", behavior: "a" },
+				{ id: "W2S1", wave: 2, status: "in_progress", behavior: "b" },
+			],
+			pacing: { policy: "wave", budget: 2, exempt_kinds: [] },
+		};
+		const ctx = runReminder(ledger);
+		expect(ctx).toContain("in-flight unit: 2");
+	});
+});

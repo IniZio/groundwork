@@ -70,6 +70,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -79,6 +80,7 @@ import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { emitHookEvent, readAllEvents } from './lib/journal-io.mjs'
 import { readCharter } from './lib/motive-charter.mjs'
+import { isExhausted } from './lib/pacing.mjs'
 
 /**
  * Advisory only — never blocks. Enabled by GROUNDWORK_TBD_GATE=1.
@@ -137,6 +139,38 @@ function decisionResearchAdvisory(projectDir) {
     if (missing.length === 0) return ''
     const ids = missing.map((e) => e?.data?.id ?? e?.id ?? '(unknown)').join(', ')
     return `\n⚠ DECISION event(s) with high/medium blast lack data.research: ${ids}. Add a research findings path to aid future reviewers.`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * D-26: Spec advisory — non-blocking.
+ * Returns a newline-prefixed string listing changed enforcement-surface files
+ * (hooks/*.mjs, hooks/lib/*.mjs, bin/*, schemas/*) when doc/specs/ was NOT
+ * touched during the session. Empty string when specs were touched, no
+ * enforcement files changed, or any error occurs (non-git, git failure, etc.).
+ * @param {string} projectDir
+ * @returns {string}
+ */
+function specAdvisory(projectDir) {
+  try {
+    const raw = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+      cwd: projectDir,
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+    if (raw.status !== 0 || raw.error) return ''
+    const lines = (raw.stdout ?? '').split('\n').filter(Boolean)
+    // Extract file paths from porcelain output (cols 0-1 are status, col 2+ is path)
+    const changed = lines.map((l) => l.slice(3).trim())
+    const ENFORCEMENT_RE = /^(hooks\/[^/]+\.mjs|hooks\/lib\/[^/]+\.mjs|bin\/[^/]+|schemas\/[^/]+)/
+    const enforcementFiles = changed.filter((f) => ENFORCEMENT_RE.test(f))
+    if (enforcementFiles.length === 0) return ''
+    const specsTouched = changed.some((f) => f.startsWith('doc/specs/'))
+    if (specsTouched) return ''
+    const list = enforcementFiles.join(', ')
+    return `\n⚠ Enforcement-surface files changed (${list}) but doc/specs/ was not updated. Consider adding or updating a spec requirement.`
   } catch {
     return ''
   }
@@ -291,6 +325,36 @@ function detectYield(input) {
   return null
 }
 
+/**
+ * D-29: Build the pacing-exhaustion DIRECTIVE string.
+ * A directive is a mandatory instruction surfaced on the allow path when the
+ * session budget is spent and incomplete slices remain in not-yet-entered units.
+ * It names the remaining slice ids, the motive MAP.md path, and the handoff skill.
+ *
+ * @param {object} ledger
+ * @param {Array<object>} incomplete - Incomplete slice objects.
+ * @param {string} projectDir
+ * @returns {string}
+ */
+function pacingExhaustionDirective(ledger, incomplete, projectDir) {
+  const sliceIds = incomplete.map((s) => s.id ?? '?').join(', ')
+  const motiveSlug =
+    (typeof ledger.motive_ref === 'string' && ledger.motive_ref.length > 0 && ledger.motive_ref) ||
+    (typeof ledger.motive === 'string' && ledger.motive.length > 0 && ledger.motive) ||
+    null
+  const mapPath = motiveSlug
+    ? path.join(projectDir, '.groundwork', 'motives', motiveSlug, 'MAP.md')
+    : null
+
+  const lines = []
+  lines.push('⏱ GROUNDWORK PACING — session budget exhausted. This session ends here.')
+  lines.push('')
+  lines.push(`Remaining slices (carry into the next session): ${sliceIds}`)
+  if (mapPath) lines.push(`Motive map: ${mapPath}`)
+  lines.push('DIRECTIVE: run /groundwork:handoff, then open a new session to continue the remaining slices.')
+  return lines.join('\n')
+}
+
 /** Emit a decision and exit. Default lets the stop proceed. */
 function allow(notice = '') {
   console.log(JSON.stringify(notice ? { continue: true, reason: notice } : { continue: true }))
@@ -423,7 +487,26 @@ async function main() {
     })
     // S7-AC3: TBD advisory surfaces on the normal-completion allow path (gate=1 only).
     // D-13: DECISION research advisory is non-blocking; appended on every allow path.
-    return allow(tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir))
+    // D-26: Spec advisory is non-blocking; appended on every allow path.
+    return allow(tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir) + specAdvisory(projectDir))
+  }
+
+  // D-29: pacing exhaustion is a sanctioned release path.
+  // When the session budget is spent (isExhausted) and remaining incomplete slices
+  // all belong to not-yet-entered units (activeUnit is null by isExhausted contract),
+  // the session cannot claim any more work — allow the stop with a DIRECTIVE handoff
+  // instruction rather than blocking forever.  Existing advisories still append.
+  // FAIL-OPEN: any error falls through to normal enforcement.
+  try {
+    if (isExhausted(ledger)) {
+      return allow(
+        pacingExhaustionDirective(ledger, incomplete, projectDir) +
+          decisionResearchAdvisory(projectDir) +
+          specAdvisory(projectDir),
+      )
+    }
+  } catch {
+    // Fail-open: pacing check errors must never wedge the session.
   }
 
   // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).

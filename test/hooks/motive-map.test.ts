@@ -632,3 +632,136 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     expect(oosSection).not.toContain('Other motive rejection')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Pacing section
+// ---------------------------------------------------------------------------
+
+describe('regenerateMotiveMap — Pacing section', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('omits ## Pacing section when ledger has no pacing field', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [{ id: 'S1', status: 'pending', desc: 'A task' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('## Pacing')
+  })
+
+  it('omits ## Pacing section when no ledger at all', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    // No writeLedger call
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('## Pacing')
+  })
+
+  it('renders ## Pacing section with policy, budget, and consumption when pacing present', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'S1', wave: 1, status: 'complete', desc: 'Done' },
+        { id: 'S2', wave: 2, status: 'pending', desc: 'Todo' },
+      ],
+      pacing: { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose'] },
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('## Pacing')
+    expect(content).toContain('wave')
+    expect(content).toContain('Budget')
+    expect(content).toContain('Consumption')
+    // 1 wave resolved (S1 complete in wave 1)
+    expect(content).toContain('1 of 1')
+  })
+
+  it('uses resolvedUnits() from pacing engine (not a naive count)', () => {
+    // Two slices in wave 1, one complete — wave 1 not yet resolved
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'S1', wave: 1, status: 'complete', desc: 'Done' },
+        { id: 'S2', wave: 1, status: 'pending', desc: 'Also wave 1' },
+      ],
+      pacing: { policy: 'wave', budget: 2, exempt_kinds: [] },
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // Wave 1 is not fully resolved (S2 still pending) → 0 resolved
+    expect(content).toContain('0 of 2')
+  })
+
+  it('shows autopilot grant with range, granted_by, and reason when present', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'S1', wave: 1, status: 'complete', desc: 'Done' },
+      ],
+      pacing: {
+        policy: 'wave',
+        budget: 1,
+        exempt_kinds: [],
+        grant: { range: 2, granted_by: 'human', granted_at: '2026-08-04T10:00:00Z', reason: 'extra work approved' },
+      },
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('Autopilot grant')
+    expect(content).toContain('+2')
+    expect(content).toContain('human')
+    expect(content).toContain('extra work approved')
+  })
+
+  it('shows exhausted message with remaining slice ids when session is exhausted', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'S1', wave: 1, status: 'complete', desc: 'Done' },
+        { id: 'S2', wave: 2, status: 'pending', desc: 'Pending' },
+      ],
+      pacing: { policy: 'wave', budget: 1, exempt_kinds: [] },
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('exhausted')
+    expect(content).toContain('S2')
+  })
+
+  it('exempt-kind slices are excluded from consumption count', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm',
+      active: true,
+      slices: [
+        { id: 'P1', wave: 1, kind: 'plan', status: 'complete', desc: 'Plan (exempt)' },
+        { id: 'S1', wave: 2, status: 'pending', desc: 'Real work' },
+      ],
+      pacing: { policy: 'wave', budget: 1, exempt_kinds: ['plan'] },
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // plan slice is exempt: 0 resolved, budget 1, new unit may be started
+    expect(content).toContain('0 of 1')
+    expect(content).toContain('new unit may be started')
+  })
+})

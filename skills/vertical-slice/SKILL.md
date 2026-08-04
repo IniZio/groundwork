@@ -133,13 +133,33 @@ mechanical Stop-gate; use the schema below as an advisory record.
         "image_sparse_test covers the min-size boundary"
       ],
       "status": "pending",
-      "kind": "impl" }
+      "kind": "impl",
+      "ticket": "T1",
+      "covers_ac": ["T1-AC1", "T1-AC2"] }
   ],
   "gate": { "advisor": "pending" }
 }
 ```
 
 Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | impl`. Use non-`impl` kinds to track planning, diagnosis, or design phases as first-class ledger items. Gating is status-keyed — `kind` is metadata only and does not affect stop-gate logic.
+
+**Ticket linking:** Each slice MAY reference a ticket and the acceptance criteria it covers. Pass these when registering a slice:
+
+```bash
+ledger add S1 --desc "add workspace disk min-size" --wave 0 \
+  --acceptance "image_sparse rejects small workspace;test covers boundary" \
+  --ticket T1 --covers-ac "T1-AC1,T1-AC2"
+```
+
+- `--ticket <tid>` — links the slice to a ticket document (id or path). Tickets are hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/`; they are **never auto-generated per slice** and **never deleted by regeneration**.
+- `--covers-ac "a,b"` — comma-separated AC labels this slice covers; emits `AC_COVERAGE` events on complete and drives the MAP coverage overlay.
+
+**tickets/ vs open-items/ ownership:**
+
+| Directory | Owner | Swept? |
+|---|---|---|
+| `tickets/` | Human or agent (hand-authored) | No — never deleted by tooling |
+| `open-items/` | Generated drill-down views | Yes — tooling regenerates this directory; anything placed here is overwritten |
 
 Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — MUST NOT Read/Edit the file by hand.
 

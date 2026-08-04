@@ -65,6 +65,8 @@ Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> sl
 
 Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching agents. `vertical-slice` may also write a run ledger when the host provides that interface. In Codex, the ledger and advisor state are advisory unless a native host integration explicitly enforces them.
 
+When registering slices, link each slice to its ticket and acceptance criteria using `--ticket <id>` and `--covers-ac "<AC1>,<AC2>"`. Tickets are durable hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/` — they are never auto-generated per slice and are never deleted by regeneration.
+
 **Minimum decomposition:**
 - Feature: ≥5 slices (target 5-15 per wave)
 - Small change: ≥3 slices

@@ -87,6 +87,12 @@ an artifact the user can review and provide to a later session.
 3. Intent lives in a motive charter at `.groundwork/motives/<slug>/motive.md` with a compiled Decision Log; charters are runtime state and are not committed
 4. Interview before slicing — understanding before synthesis
 
+## Motive MAP — human entry point
+
+Each motive maintains a human-readable MAP at `.groundwork/motives/<slug>/MAP.md`. It is auto-regenerated and shows the motive's slices and progress in prose form. Open this file to review progress without running any CLI commands.
+
+The ledger and journal CLIs (`bin/ledger`, `bin/journal`) are the implementation detail behind the MAP — they mutate run state; the MAP surfaces it for humans.
+
 ## Run ledger (`.groundwork/runs/<session_id>.json`)
 
 Non-trivial runs are tracked in a per-session ledger the Stop-gate hook (`hooks/stop-gate.mjs`) enforces. Legacy `.groundwork/run.json` is still honored for in-flight runs. Key fields:

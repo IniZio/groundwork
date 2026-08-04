@@ -13,7 +13,7 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
@@ -273,11 +273,35 @@ try {
   // Invalid JSON or stdin failure — proceed without session identity.
 }
 
-// Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
-const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\n- Ledger: \`${LEDGER_BIN}\` (run ledger mutations: complete, set, add, rm, gate, abandon)\n- Journal: \`${JOURNAL_BIN}\` (append VERIFICATION/DECISION events: \`${JOURNAL_BIN} append --type VERIFICATION …\`)`
-
-let additionalContext = reminder + cliToolsBlock
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
+
+// MAP.md — auto-regenerated per-motive human read path.
+// Enumerate actual existing motive MAP files; fall back to generic wording when none exist yet.
+const _cwdForMap =
+  (typeof input?.cwd === 'string' && input.cwd) ||
+  process.env.CLAUDE_PROJECT_DIR ||
+  process.cwd()
+function _findMotiveMaps(projectDir) {
+  try {
+    const motivesDir = path.join(projectDir, '.groundwork', 'motives')
+    return readdirSync(motivesDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => path.join(motivesDir, d.name, 'MAP.md'))
+      .filter(p => existsSync(p))
+  } catch { return [] }
+}
+const _motiveMaps = _findMotiveMaps(_cwdForMap)
+const mapPointerBlock = (() => {
+  const header = '\n\n## Motive MAP — human read path\n\nEach motive maintains its own MAP at `.groundwork/motives/<slug>/MAP.md`. The MAP is auto-regenerated; it is the intended entry point for humans reviewing progress. CLI tools are the implementation detail behind it.'
+  if (_motiveMaps.length === 0) return header
+  const list = _motiveMaps.map(p => `- \`${p}\``).join('\n')
+  return `${header}\n\nCurrent motive MAP(s):\n${list}`
+})()
+
+// Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger: \`${LEDGER_BIN}\` · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference.`
+
+let additionalContext = reminder + mapPointerBlock + cliToolsBlock
 
 // Best-effort: export session id to Claude Code's session-scoped env file so
 // subsequent Bash subprocesses see CLAUDE_CODE_SESSION_ID even on hosts/versions

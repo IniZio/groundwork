@@ -49,6 +49,32 @@ describe("session-reminder hook — static rulebook (always present)", () => {
 		expect(ctx).not.toContain("ACTIVE RUN");
 	});
 
+	it("names the motive MAP.md as the human read path before any CLI enumeration", () => {
+		// Create a real per-motive MAP.md so the hook enumerates it.
+		const motiveDir = path.join(projectDir, ".groundwork", "motives", "test-motive");
+		mkdirSync(motiveDir, { recursive: true });
+		writeFileSync(path.join(motiveDir, "MAP.md"), "# MAP\n");
+		const expectedMapPath = path.join(motiveDir, "MAP.md");
+
+		const ctx = runReminder(undefined, "sess-1", "startup");
+		// Absolute motive MAP path derived from the actual writer location must be present.
+		expect(ctx).toContain(expectedMapPath);
+		// MAP pointer must appear before the CLI tools block.
+		const mapIdx = ctx.indexOf(expectedMapPath);
+		const cliIdx = ctx.indexOf("Groundwork CLI tools");
+		expect(mapIdx).toBeGreaterThanOrEqual(0);
+		expect(cliIdx).toBeGreaterThanOrEqual(0);
+		expect(mapIdx).toBeLessThan(cliIdx);
+	});
+
+	it("falls back to generic motive path wording when no MAP.md files exist yet", () => {
+		const ctx = runReminder(undefined, "sess-1", "startup");
+		expect(ctx).toContain(".groundwork/motives/<slug>/MAP.md");
+		// The MAP pointer must not reference the old runs/<session_id>/MAP.md path.
+		expect(ctx).not.toContain("runs/sess-1/MAP.md");
+		expect(ctx).not.toContain("runs/<session_id>/MAP.md");
+	});
+
 	it("includes session identity when provided", () => {
 		const ctx = runReminder(undefined, "sess-1", "resume");
 		expect(ctx).toContain("session_id: sess-1");

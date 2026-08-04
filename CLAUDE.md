@@ -107,6 +107,8 @@ Before classifying and delegating ANY new request, run these two checks:
 
 _Injected at SessionStart by hooks/session-reminder.mjs — see that injection for the stop-gate rules and orchestrator obligations._
 
+**Human read path:** Each motive maintains its MAP at `.groundwork/motives/<slug>/MAP.md`. The MAP is auto-regenerated; it is the intended entry point for humans reviewing progress. The SessionStart injection enumerates existing MAP files when motives are present. CLI tools are the implementation detail behind it.
+
 **Ledger CLI command reference** (use these; MUST NOT Read/Edit the run ledger file — `.groundwork/runs/<session_id>.json`, legacy `.groundwork/run.json` — by hand):
 - Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` — or, for a genuinely trivial task (≤2 files AND ≤1 user-facing behavior AND <1h AND a small verification surface), `GROUNDWORK ▸ trivial: single general-purpose, no slicing`.
 - Mark each verified slice complete as waves land: `bin/ledger complete <id> [<id> …] --token <write_token>`. The write_token is printed at `init` and re-surfaced in the SessionStart injection (orchestrator-only — MUST NOT pass it to subagents).

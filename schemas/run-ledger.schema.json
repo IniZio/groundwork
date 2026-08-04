@@ -126,8 +126,12 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["plan", "diagnose", "design", "impl"],
-          "description": "Work category. Absent slices default to 'impl' at runtime."
+          "enum": ["plan", "diagnose", "design", "impl", "fog"],
+          "description": "Work category. Absent slices default to 'impl' at runtime. 'fog' marks an open question with no acceptance criteria required."
+        },
+        "question": {
+          "type": "string",
+          "description": "The open question this fog slice is tracking. Only meaningful when kind is 'fog'."
         },
         "desc": {
           "type": "string",

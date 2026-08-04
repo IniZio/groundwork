@@ -1281,3 +1281,96 @@ describe("ledger CLI — frontier", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// fog command (TBD-13)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — fog command", () => {
+	it("creates a fog slice with kind:fog and empty acceptance array", () => {
+		const r = run(["fog", "F1", "--desc", "open question about auth", "--question", "Should we use JWT or sessions?"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("F1 added (fog)");
+		const l = readLedger();
+		const s = l.slices.find((x: any) => x.id === "F1");
+		expect(s).toBeDefined();
+		expect(s.kind).toBe("fog");
+		expect(s.question).toBe("Should we use JWT or sessions?");
+		expect(s.desc).toBe("open question about auth");
+		// fog slices have no acceptance criteria — key is omitted
+		expect(s.acceptance).toBeUndefined();
+	});
+
+	it("errors when --desc is missing", () => {
+		const r = run(["fog", "F2", "--question", "some question"]);
+		expect(r.code).not.toBe(0);
+		expect(r.stderr).toContain("--desc is required");
+	});
+
+	it("errors when --question is missing", () => {
+		const r = run(["fog", "F3", "--desc", "some desc"]);
+		expect(r.code).not.toBe(0);
+		expect(r.stderr).toContain("--question is required");
+	});
+
+	it("errors when no id is provided", () => {
+		const r = run(["fog", "--desc", "d", "--question", "q"]);
+		expect(r.code).toBe(2);
+	});
+
+	it("fog slices do NOT appear in frontier output", () => {
+		// F1 is unblocked and pending but kind:fog — should be excluded
+		run(["fog", "F1", "--desc", "open q", "--question", "how?"]);
+		const r = run(["frontier"]);
+		expect(r.stdout).not.toContain("F1");
+	});
+
+	it("frontier still shows non-fog pending unblocked slices", () => {
+		run(["fog", "F1", "--desc", "open q", "--question", "how?"]);
+		const r = run(["frontier"]);
+		// S2 and S3 are unblocked by S1 (complete) and not fog
+		expect(r.stdout).toContain("S2");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// show — covers_ac and claimed_by lines (TBD-14)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — show covers_ac and claimed_by", () => {
+	it("show prints covers_ac: (none) when absent", () => {
+		const r = run(["show", "S1"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("covers_ac:  (none)");
+	});
+
+	it("show prints claimed_by: (none) when absent", () => {
+		const r = run(["show", "S1"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("claimed_by: (none)");
+	});
+
+	it("show prints covers_ac value when set as array", () => {
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").covers_ac = ["AC1", "AC3"];
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["show", "S2"]);
+		expect(r.stdout).toContain("covers_ac:  AC1, AC3");
+	});
+
+	it("show prints covers_ac value when set as string", () => {
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").covers_ac = "AC2";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["show", "S2"]);
+		expect(r.stdout).toContain("covers_ac:  AC2");
+	});
+
+	it("show prints claimed_by value when set", () => {
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").claimed_by = "sess-xyz";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["show", "S2"]);
+		expect(r.stdout).toContain("claimed_by: sess-xyz");
+	});
+});
+

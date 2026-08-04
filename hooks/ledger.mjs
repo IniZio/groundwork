@@ -91,12 +91,12 @@ function parseFlags(args) {
 
 const SYMBOL = { complete: '✓', in_progress: '⋯', pending: '·' }
 const VALID_STATUSES = new Set(['pending', 'in_progress', 'complete', 'skipped'])
-const VALID_KINDS = new Set(['plan', 'diagnose', 'design', 'impl'])
-const KIND_LABEL = { plan: '📋 plan', diagnose: '🔍 diagnose', design: '🎨 design', impl: '⚙ impl' }
+const VALID_KINDS = new Set(['plan', 'diagnose', 'design', 'impl', 'fog'])
+const KIND_LABEL = { plan: '📋 plan', diagnose: '🔍 diagnose', design: '🎨 design', impl: '⚙ impl', fog: '🌫 fog' }
 
 /** Validate a kind string, die(exit 2) if invalid. */
 function assertKind(val) {
-  if (!VALID_KINDS.has(val)) die(`invalid kind "${val}". Must be: plan | diagnose | design | impl`, 2)
+  if (!VALID_KINDS.has(val)) die(`invalid kind "${val}". Must be: plan | diagnose | design | impl | fog`, 2)
 }
 
 function advisorVerdict(gate) {
@@ -406,6 +406,15 @@ const HELP = {
     summary: 'render run.json as a human-readable markdown table grouped by wave/status',
     usage: 'ledger view',
     flags: [],
+  },
+  fog: {
+    summary: 'add an open-question (fog) slice with no acceptance criteria required',
+    usage: 'ledger fog <id> --desc "…" --question "…" [--wave N]',
+    flags: [
+      '--desc "…"       human description (required)',
+      '--question "…"   the open question being tracked (required)',
+      '--wave N         wave number (default 0)',
+    ],
   },
   frontier: {
     summary: 'print slices a session can start right now (pending/open, unblocked, unclaimed or same session)',
@@ -832,6 +841,12 @@ function cmdShow(id) {
     ? s.blocked_by.join(', ')
     : '(none)'
   const kindDisplay = s.kind != null ? s.kind : 'impl (default)'
+  const coversAc = Array.isArray(s.covers_ac) && s.covers_ac.length
+    ? s.covers_ac.join(', ')
+    : typeof s.covers_ac === 'string' && s.covers_ac
+      ? s.covers_ac
+      : '(none)'
+  const claimedBy = s.claimed_by || '(none)'
   process.stdout.write(
     [
       `id:         ${s.id}`,
@@ -840,6 +855,8 @@ function cmdShow(id) {
       `status:     ${s.status ?? 'pending'}`,
       `desc:       ${s.desc || '(none)'}`,
       `blocked_by: ${blocked}`,
+      `covers_ac:  ${coversAc}`,
+      `claimed_by: ${claimedBy}`,
       `acceptance:`,
       acceptance,
     ].join('\n') + '\n',
@@ -990,6 +1007,33 @@ function cmdView() {
 // FRONTIER — slices a session can start right now
 // ---------------------------------------------------------------------------
 
+function cmdFog(args) {
+  const { flags, positionals } = parseFlags(args)
+  const id = positionals[0]
+  if (!id) die('usage: ledger fog <id> --desc "…" --question "…"', 2)
+  if (!flags.desc) die('ledger fog: --desc is required', 2)
+  if (!flags.question) die('ledger fog: --question is required', 2)
+
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    const slices = Array.isArray(l.slices) ? l.slices : []
+    if (slices.some((s) => s?.id === id)) throw Object.assign(new Error(`slice "${id}" already exists`), { exitCode: 2 })
+    const item = {
+      id,
+      status: 'pending',
+      wave: flags.wave != null ? Number(flags.wave) : 0,
+      kind: 'fog',
+      desc: flags.desc,
+      question: flags.question,
+      // acceptance intentionally omitted: fog slices have no acceptance criteria
+    }
+    slices.push(item)
+    l.slices = slices
+    return l
+  })
+  process.stdout.write(`${id} added (fog)\n`)
+}
+
 function cmdFrontier(args) {
   const { flags } = parseFlags(args)
   const currentSession = resolveSessionId(flags)
@@ -1010,6 +1054,8 @@ function cmdFrontier(args) {
     // Must be pending or open (not complete, not in_progress, not skipped)
     const status = s.status ?? 'pending'
     if (status !== 'pending') return false
+    // Fog slices are open questions, not actionable work items — exclude from frontier
+    if (s.kind === 'fog') return false
     // All blocked_by must be complete
     const blockedBy = Array.isArray(s.blocked_by) ? s.blocked_by : []
     if (blockedBy.some((dep) => !completeIds.has(dep))) return false
@@ -1065,6 +1111,7 @@ function main() {
       case 'claim':    return cmdClaim(rest)
       case 'show':     return cmdShow(rest[0])
       case 'view':     return cmdView()
+      case 'fog':      return cmdFog(rest)
       case 'frontier': return cmdFrontier(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)

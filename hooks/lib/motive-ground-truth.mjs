@@ -281,6 +281,34 @@ function readLedger(projectDir, motive = null, ledgerPath = null) {
       // distinct entries — they represent independent work across sessions.
       const sliceMap = new Map(); // `${session_id}::${slice_id}` -> { slice, mtime }
       for (const { raw, mtime } of parsed) {
+        // Retirement annotation (TBD-26): a run is retired when it is closed and
+        // no longer actionable.  Slices are tagged with _retired so that
+        // motive-compile.mjs can exclude them from resume.next_actions while
+        // still keeping them visible for divergence checks and history.
+        //
+        //   retired = active === false  OR  gate.advisor verdict === 'APPROVE'
+        //
+        // Rationale:
+        //   • active:false — the run was explicitly deactivated (abandoned or
+        //     superseded); its slices are not actionable.
+        //   • gate.advisor APPROVE — the advisor formally signed off; the run
+        //     is done even if active was not flipped to false.
+        //   • all-complete but NOT yet gate-approved — NOT retired; the next
+        //     action for that run is the advisor gate, so the compile output
+        //     correctly surfaces a 'run_advisor_gate' action.
+        //   • active:true + gate APPROVE + still-pending slices — NOT retired;
+        //     the advisor recorded APPROVE but then new slices were added (normal
+        //     workflow: CLAUDE.md mandates registering advisor findings as new
+        //     slices BEFORE recording APPROVE, and ledger.mjs does not clear
+        //     gate.advisor on add/set).  Retiring this run would silently drop
+        //     the pending slices from next_actions.
+        const advisorRaw = raw.gate?.advisor;
+        const advisorVerdict = typeof advisorRaw === 'string'
+          ? advisorRaw
+          : (advisorRaw?.verdict ?? null);
+        const runHasOpenWork = (raw.slices ?? []).some((s) => s.status !== 'complete');
+        const isRetired = raw.active === false || (advisorVerdict === 'APPROVE' && !runHasOpenWork);
+
         const sessionId = typeof raw.session_id === 'string' ? raw.session_id : '';
         const rawSlices = Array.isArray(raw.slices) ? raw.slices : [];
         for (const s of rawSlices) {
@@ -288,7 +316,7 @@ function readLedger(projectDir, motive = null, ledgerPath = null) {
           const existing = sliceMap.get(key);
           if (!existing || mtime > existing.mtime) {
             sliceMap.set(key, {
-              slice: { ...pickSlice(s), _session_id: sessionId },
+              slice: { ...pickSlice(s), _session_id: sessionId, _retired: isRetired },
               mtime,
             });
           }

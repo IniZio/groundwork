@@ -298,8 +298,8 @@ describe('S2-AC8 — no charter → explicit "no register found" in Open Items',
 // ── S2-AC9 ────────────────────────────────────────────────────────────────
 
 describe('S2-AC9 — COMPILER_VERSION and mismatch path', () => {
-  it('COMPILER_VERSION is motive-compile/1.3.0', () => {
-    expect(COMPILER_VERSION).toBe('motive-compile/1.3.0')
+  it('COMPILER_VERSION is motive-compile/1.4.0', () => {
+    expect(COMPILER_VERSION).toBe('motive-compile/1.4.0')
   })
 
   it('a .json written by 1.0.0 triggers the existing mismatch error when read via the CLI', () => {

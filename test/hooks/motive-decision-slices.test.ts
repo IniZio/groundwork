@@ -114,8 +114,8 @@ describe('G1-S2: decision_log[].slices join', () => {
     expect(d40.slices.map((s: { id: string }) => s.id)).toContain('S1')
   })
 
-  it('S2-AC4: COMPILER_VERSION is bumped (contains 1.3.)', () => {
-    expect(COMPILER_VERSION).toContain('1.3.')
+  it('S2-AC4: COMPILER_VERSION is bumped (contains 1.4.)', () => {
+    expect(COMPILER_VERSION).toContain('1.4.')
     const view = compile([])
     expect(view.compiler_version).toBe(COMPILER_VERSION)
   })

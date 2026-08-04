@@ -46,7 +46,7 @@
  *   opts.malformedLines — count from the reader; default 0
  */
 
-export const COMPILER_VERSION = 'motive-compile/1.3.0'
+export const COMPILER_VERSION = 'motive-compile/1.4.0'
 
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 }
 
@@ -409,7 +409,18 @@ export function compile(events, opts = {}) {
 
   // ── open / blocked slices ─────────────────────────────────────────────────
   const completedIds = new Set(completedSlices.keys())
-  const openSlices = allSlices.filter((s) => !completedIds.has(s.id))
+  // TBD-26: a slice is "open" only when ALL three conditions hold:
+  //   1. not completed in the fold (no TASK_COMPLETE event in completedIds)
+  //   2. not marked complete in the ledger (s.status !== 'complete') — handles
+  //      cases where TASK_COMPLETE was emitted under a synthetic motive so it
+  //      missed the fold but the ledger was updated correctly; divergence check
+  //      still fires the slice_state_mismatch finding independently
+  //   3. not from a retired run (_retired:true from readLedger) — retired runs
+  //      (active===false, or APPROVE with all slices complete) must never
+  //      resurface actionable work
+  const openSlices = allSlices.filter(
+    (s) => !completedIds.has(s.id) && s.status !== 'complete' && s._retired !== true,
+  )
   const readySlices = openSlices.filter((s) => {
     const blockers = Array.isArray(s.blocked_by) ? s.blocked_by : []
     return blockers.every((bid) => completedIds.has(bid))
@@ -621,9 +632,13 @@ export function compile(events, opts = {}) {
       why: 'blocked; listed so resume sees the whole graph',
     })
   }
+  // Only prompt for the advisor gate when there are non-retired slices — a run
+  // whose slices are all _retired (already APPROVE-gated or deactivated) does
+  // not need another gate pass.
+  const nonRetiredSlices = allSlices.filter((s) => s._retired !== true)
   if (
     openSlices.length === 0 &&
-    allSlices.length > 0 &&
+    nonRetiredSlices.length > 0 &&
     (!lastGate || lastGate.verdict !== 'APPROVE')
   ) {
     nextActions.push({ action: 'run_advisor_gate', why: 'all slices complete but no APPROVE gate recorded' })

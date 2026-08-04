@@ -358,8 +358,10 @@ const HELP = {
   },
   abandon: {
     summary: 'set active:false — releases the stop-gate for the current run',
-    usage: 'ledger abandon',
-    flags: [],
+    usage: 'ledger abandon [--session <id>]',
+    flags: [
+      '--session <id>   override session id (default: CLAUDE_CODE_SESSION_ID env)',
+    ],
   },
   init: {
     summary: 'write the initial ledger atomically from a JSON file or stdin',

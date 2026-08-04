@@ -542,3 +542,48 @@ describe('ledger init — F14: prior-session seed does not consume this session 
     expect(claimW2.stderr).toMatch(/Pacing budget exhausted/i)
   })
 })
+
+// ---------------------------------------------------------------------------
+// ledger help abandon — documents --session flag
+// ---------------------------------------------------------------------------
+
+describe('ledger help abandon', () => {
+  it('documents --session <id> in the help output', () => {
+    const r = run(['help', 'abandon'])
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('--session')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ledger abandon --session <id> — behavior pin
+// Pins existing behavior: main() resolves _ledgerPath from --session before
+// dispatch, so abandon already targets the right per-session file.
+// ---------------------------------------------------------------------------
+
+describe('ledger abandon --session <id> behavior pin', () => {
+  it('flips active:false on the targeted per-session run file without CLAUDE_CODE_SESSION_ID set', () => {
+    const sessionId = 'test-session-abc123'
+    const runsDir = path.join(projectDir, '.groundwork', 'runs')
+    mkdirSync(runsDir, { recursive: true })
+    const runFile = path.join(runsDir, `${sessionId}.json`)
+    const ledger = {
+      version: 1,
+      active: true,
+      session_id: sessionId,
+      brief: 'behavior-pin test run',
+      write_token: 'tok-reg',
+      slices: [],
+      gate: {},
+    }
+    writeFileSync(runFile, JSON.stringify(ledger, null, 2))
+
+    // Run without CLAUDE_CODE_SESSION_ID — relies on --session flag via main() dispatch path
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir }
+    delete env.CLAUDE_CODE_SESSION_ID
+    const r = spawnSync('node', [CLI, 'abandon', '--session', sessionId], { env, encoding: 'utf8' })
+    expect(r.status).toBe(0)
+    const updated = JSON.parse(readFileSync(runFile, 'utf8'))
+    expect(updated.active).toBe(false)
+  })
+})

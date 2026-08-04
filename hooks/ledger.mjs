@@ -426,11 +426,11 @@ const HELP = {
   },
   autopilot: {
     summary: 'extend session pacing budget by N units (requires write-token authority)',
-    usage: 'ledger autopilot --range N --token <write_token> [--reason "..."]',
+    usage: 'ledger autopilot --range N --token <write_token> --reason "..."',
     flags: [
       '--range N        number of additional units to grant (required, ≥1)',
       '--token <t>      write-token printed at init (required if ledger has write_token)',
-      '--reason "..."   human-readable rationale for the grant (optional)',
+      '--reason "..."   human-readable rationale for the grant (required, must be non-empty)',
     ],
   },
 }
@@ -1121,6 +1121,7 @@ function cmdAutopilot(args) {
   const range = Number(flags.range)
   if (!Number.isInteger(range) || range < 1) die('--range must be a positive integer (≥1)', 2)
   const reason = flags.reason ?? ''
+  if (!reason.trim()) die('--reason is required and must be non-empty (e.g. --reason "operator authorized: multi-wave emergency")', 1)
 
   let capturedLedger = null
   mutateLedgerChecked(ledgerPath(), (l) => {

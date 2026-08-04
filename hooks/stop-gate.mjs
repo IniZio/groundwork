@@ -336,6 +336,22 @@ function detectYield(input) {
  * @param {string} projectDir
  * @returns {string}
  */
+/**
+ * If the ledger has a pacing.grant, return a one-line summary for human review.
+ * Non-blocking — call this on any allow path where the ledger is available.
+ *
+ * @param {object} ledger
+ * @returns {string}
+ */
+function pacingGrantSummary(ledger) {
+  const grant = ledger?.pacing?.grant
+  if (!grant) return ''
+  const range = grant.range ?? '?'
+  const reason = grant.reason ? ` reason="${grant.reason}"` : ''
+  const by = grant.granted_by ? ` granted_by=${grant.granted_by}` : ''
+  return `\n⚠ Autopilot grant active this session: +${range} unit${range === 1 ? '' : 's'}${reason}${by}\n`
+}
+
 function pacingExhaustionDirective(ledger, incomplete, projectDir) {
   const sliceIds = incomplete.map((s) => s.id ?? '?').join(', ')
   const motiveSlug =
@@ -488,7 +504,7 @@ async function main() {
     // S7-AC3: TBD advisory surfaces on the normal-completion allow path (gate=1 only).
     // D-13: DECISION research advisory is non-blocking; appended on every allow path.
     // D-26: Spec advisory is non-blocking; appended on every allow path.
-    return allow(tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir) + specAdvisory(projectDir))
+    return allow(pacingGrantSummary(ledger) + tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir) + specAdvisory(projectDir))
   }
 
   // D-29: pacing exhaustion is a sanctioned release path.
@@ -500,7 +516,8 @@ async function main() {
   try {
     if (isExhausted(ledger)) {
       return allow(
-        pacingExhaustionDirective(ledger, incomplete, projectDir) +
+        pacingGrantSummary(ledger) +
+          pacingExhaustionDirective(ledger, incomplete, projectDir) +
           decisionResearchAdvisory(projectDir) +
           specAdvisory(projectDir),
       )

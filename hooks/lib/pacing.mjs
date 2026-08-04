@@ -289,7 +289,7 @@ export function checkPace(doc, sliceId) {
     `(budget=${budget}${grantRange > 0 ? `, grant.range=${grantRange}` : ''}). ` +
     `${unitLabel} would open a new unit but none remains for this session.`
   const remedy =
-    `Option A: run \`ledger autopilot --range N\` to extend the session by N units. ` +
+    `Option A: ask the operator to authorize \`ledger autopilot --range N --reason "…"\` — do not self-grant. ` +
     `Option B: run \`/groundwork:handoff\` and continue in a new session.`
 
   return { allowed: false, reason, remedy }

@@ -12,8 +12,9 @@
 
 // @verifies PACING-R-003
 // @verifies PACING-R-004
+// @verifies PACING-R-006
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -249,7 +250,8 @@ describe('ledger complete — never blocked by pacing', () => {
   it('completes a slice even when budget is exhausted', () => {
     const l = exhaustedLedger()
     // Manually put W1a in_progress so complete is meaningful
-    l.slices.find((s: any) => s.id === 'W1a').status = 'in_progress'
+    const w1a = l.slices.find((s: any) => s.id === 'W1a')
+    if (w1a) w1a.status = 'in_progress'
     writeLedger(l)
     const r = run(['complete', 'W1a', '--token', 'tok-paced'])
     expect(r.code).toBe(0)
@@ -290,7 +292,7 @@ describe('ledger autopilot', () => {
 
   it('prints confirmation message', () => {
     writeLedger(exhaustedLedger())
-    const r = run(['autopilot', '--range', '3', '--token', 'tok-paced'])
+    const r = run(['autopilot', '--range', '3', '--token', 'tok-paced', '--reason', 'operator authorized'])
     expect(r.code).toBe(0)
     expect(r.stdout).toContain('autopilot granted: +3 units')
   })
@@ -319,15 +321,67 @@ describe('ledger autopilot', () => {
 
   it('exits 1 when ledger has no pacing field', () => {
     writeLedger(legacyLedger())
-    const r = run(['autopilot', '--range', '1', '--token', 'tok-legacy'])
+    const r = run(['autopilot', '--range', '1', '--token', 'tok-legacy', '--reason', 'test'])
     expect(r.code).toBe(1)
     expect(r.stderr).toContain('no pacing field')
   })
 
   it('singular "unit" label for range=1', () => {
     writeLedger(exhaustedLedger())
-    const r = run(['autopilot', '--range', '1', '--token', 'tok-paced'])
+    const r = run(['autopilot', '--range', '1', '--token', 'tok-paced', '--reason', 'operator authorized'])
     expect(r.stdout).toContain('+1 unit')
     expect(r.stdout).not.toContain('+1 units')
+  })
+
+  // PACING-R-006(a): --reason is required and must be non-empty
+  it('exits 1 when --reason flag is missing', () => {
+    writeLedger(exhaustedLedger())
+    const r = run(['autopilot', '--range', '2', '--token', 'tok-paced'])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/reason/i)
+  })
+
+  it('exits 1 when --reason is empty string', () => {
+    writeLedger(exhaustedLedger())
+    const r = run(['autopilot', '--range', '2', '--token', 'tok-paced', '--reason', ''])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/reason/i)
+  })
+
+  it('exits 1 when --reason is whitespace only', () => {
+    writeLedger(exhaustedLedger())
+    const r = run(['autopilot', '--range', '2', '--token', 'tok-paced', '--reason', '   '])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/reason/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PACING-R-006(b): block message routes through operator, not self-grant
+// ---------------------------------------------------------------------------
+
+describe('ledger claim — block message routes through operator (PACING-R-006b)', () => {
+  it('block message instructs agent to ask the operator, not self-grant', () => {
+    writeLedger(exhaustedLedger())
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'sess-paced' }
+    const r = spawnSync('node', [CLI, 'claim', 'W1a'], { env, encoding: 'utf8' })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toMatch(/ask the operator/i)
+  })
+
+  it('block message does not instruct agent to run autopilot directly', () => {
+    writeLedger(exhaustedLedger())
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'sess-paced' }
+    const r = spawnSync('node', [CLI, 'claim', 'W1a'], { env, encoding: 'utf8' })
+    // The message should reference autopilot as something the operator runs, not the agent
+    // It must NOT say "run `ledger autopilot`" as a direct agent instruction in Option A
+    expect(r.stderr).not.toMatch(/Option A.*run `ledger autopilot/i)
+  })
+
+  it('set --status in_progress block message also routes through operator', () => {
+    writeLedger(exhaustedLedger())
+    const r = run(['set', 'W1a', '--status', 'in_progress'])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/ask the operator/i)
   })
 })

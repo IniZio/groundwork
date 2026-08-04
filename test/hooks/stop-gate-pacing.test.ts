@@ -20,6 +20,7 @@
  */
 
 // @verifies PACING-R-005
+// @verifies PACING-R-006
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -263,6 +264,86 @@ describe("edge cases", () => {
 		});
 		const result = runHook(ledger);
 		expect(result.continue).toBe(true);
+	});
+
+	it("reason contains grant summary when pacing.grant is present (exhaustion path with grant.range=0)", () => {
+		// budget=1, grant.range=0 → cap=1, resolved=1 → exhausted; grant is still recorded
+		const ledger = {
+			version: 1,
+			active: true,
+			session_id: "sess-1",
+			brief: "pacing grant present",
+			pacing: {
+				policy: "wave",
+				budget: 1,
+				exempt_kinds: [],
+				grant: { range: 0, reason: "operator approved extra waves", granted_by: "sess-op", granted_at: new Date().toISOString() },
+			},
+			gate: { advisor: "pending", verifier: "n/a" },
+			slices: [
+				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
+				{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
+			],
+		};
+		const result = runHook(ledger);
+		expect(result.continue).toBe(true);
+		expect(result.reason).toContain("Autopilot grant");
+		expect(result.reason).toContain("operator approved extra waves");
+	});
+
+	it("grant summary includes range, reason, and granted_by on pacing exhaustion path", () => {
+		// budget=1, grant.range=0 → cap=1, resolved=1 → exhausted; grant is still present
+		const exhaustedWithGrant = {
+			version: 1,
+			active: true,
+			session_id: "sess-1",
+			brief: "pacing grant test",
+			pacing: {
+				policy: "wave",
+				budget: 1,
+				exempt_kinds: [],
+				grant: { range: 0, reason: "operator approved", granted_by: "sess-op", granted_at: new Date().toISOString() },
+			},
+			gate: { advisor: "pending", verifier: "n/a" },
+			slices: [
+				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
+				{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
+			],
+		};
+		const result = runHook(exhaustedWithGrant);
+		expect(result.continue).toBe(true);
+		expect(result.reason).toContain("Autopilot grant");
+		expect(result.reason).toContain("operator approved");
+		expect(result.reason).toContain("sess-op");
+	});
+
+	it("no grant summary when pacing.grant is absent", () => {
+		const result = runHook(exhaustedLedger());
+		expect(result.reason).not.toContain("Autopilot grant");
+	});
+
+	it("grant summary appears on normal completion allow path when grant exists", () => {
+		const completedWithGrant = {
+			version: 1,
+			active: true,
+			session_id: "sess-1",
+			brief: "done with grant",
+			pacing: {
+				policy: "wave",
+				budget: 1,
+				exempt_kinds: [],
+				grant: { range: 1, reason: "needed extra wave", granted_by: "sess-op", granted_at: new Date().toISOString() },
+			},
+			gate: { advisor: "APPROVE", verifier: "n/a" },
+			slices: [
+				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
+			],
+		};
+		mkdirSync(path.join(projectDir, ".groundwork", "journal"), { recursive: true });
+		const result = runHook(completedWithGrant);
+		expect(result.continue).toBe(true);
+		expect(result.reason).toContain("Autopilot grant");
+		expect(result.reason).toContain("needed extra wave");
 	});
 
 	it("exempt slices do not count toward exhaustion (plan slice = exempt)", () => {

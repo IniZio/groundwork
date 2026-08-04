@@ -54,6 +54,58 @@
       },
       "additionalProperties": true
     },
+    "pacing": {
+      "type": "object",
+      "description": "Optional session-pacing policy (D-28). Absent means pacing is disabled; existing ledgers without this field validate unchanged. Consumption (resolved units) is derived at runtime — not stored here.",
+      "required": ["policy", "budget"],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["wave", "slice"],
+          "description": "Unit of pacing. 'wave' counts completed waves; 'slice' counts completed non-exempt slices."
+        },
+        "budget": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of units the session may start before pacing blocks further claims. 0 means no new units may be started without a grant."
+        },
+        "exempt_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["plan", "diagnose", "design", "impl", "fog"]
+          },
+          "description": "Slice kinds that are always claimable and never counted against budget (e.g. orientation work: plan, diagnose, design, fog)."
+        },
+        "grant": {
+          "type": "object",
+          "description": "Temporary budget extension written by 'ledger autopilot'. Expires with the session.",
+          "required": ["range", "granted_at", "granted_by", "reason"],
+          "properties": {
+            "range": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of additional units granted on top of budget."
+            },
+            "granted_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when the grant was issued."
+            },
+            "granted_by": {
+              "type": "string",
+              "description": "Identity that issued the grant (e.g. orchestrator session id or 'autopilot')."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Human-readable rationale for the grant."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "slices": {
       "type": "array",
       "description": "Ordered list of work slices tracked by this run.",

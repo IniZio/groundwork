@@ -22,3 +22,11 @@ When the orchestrator classifies a task as non-trivial, the orchestrator **shall
 4. If both conditions hold, the requirement is satisfied for that session.
 
 See also: [ENFORCEMENT-R-001](../enforcement/constraints.md#enforcement-r-001)
+
+## ORCHESTRATION-R-002 — Ledger fog slice tracks open questions without blocking frontier {#orchestration-r-002}
+
+When the orchestrator runs `ledger fog <id> --desc "…" --question "…"`, `hooks/ledger.mjs` **shall** create a slice with `kind: "fog"` and no acceptance criteria, and the `ledger frontier` command **shall** exclude all slices with `kind: "fog"` from its output.
+
+- **Why** — fog slices represent open questions (unknown unknowns) that are not actionable work items; including them in the frontier would mislead the orchestrator into treating unresolved questions as scheduled deliverables, distorting wave planning and completion accounting.
+- **Fit criterion** — after `ledger fog q1 --desc "open question" --question "…"`, `ledger view` shows `q1` with `kind: fog` and no acceptance field; `ledger frontier` output does not list `q1`.
+- **Verification** manual · **Criticality** must · **Source** groundwork-development#D-21

@@ -33,3 +33,11 @@ When a non-trivial task is complete, the orchestrator **shall** invoke the advis
 4. If both conditions hold, the requirement is satisfied for that session.
 
 See also: [VERIFICATION-R-001](#verification-r-001)
+
+## VERIFICATION-R-003 — Stop hook emits non-blocking advisory for DECISION events lacking research {#verification-r-003}
+
+If the Stop hook fires and any journal DECISION event for the current motive carries `data.blast` of `"high"` or `"medium"` (case-insensitive) and no `data.research` field, then the Stop hook **shall** append a non-blocking advisory message naming the ids of those DECISION events.
+
+- **Why** — high-blast decisions without documented research findings leave future reviewers unable to assess whether the choice was informed; surfacing the gap as a non-blocking advisory at session-end gives the orchestrator the option to add research before closing without preventing completion of sessions where research is intentionally deferred.
+- **Fit criterion** — with a DECISION event carrying `data.blast: "high"` and no `data.research`, the Stop hook output contains an advisory line naming the decision id and the session is permitted to end (the gate is not blocked); when `data.research` is present on all high/medium-blast DECISION events, no advisory is emitted.
+- **Verification** manual · **Criticality** should · **Source** groundwork-development#D-13

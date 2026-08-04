@@ -158,12 +158,15 @@ describe("S0: spec-io schema and index API", () => {
     expect(r.stdout.trim()).toBe("OK");
   });
 
-  it("S0-AC3: buildIndexData returns exactly the 11 known node IDs with and without spec.yaml files", () => {
+  it("S0-AC3: buildIndexData returns exactly the 21 known node IDs with and without spec.yaml files", () => {
     // Stringified here so we can embed them in the ESM script without a file round-trip.
     const expectedJson = JSON.stringify(
       [
         "ARTIFACT-R-001",
         "ARTIFACT-R-003",
+        "ARTIFACT-R-004",
+        "ARTIFACT-R-005",
+        "ARTIFACT-R-006",
         "C-ARTIFACT",
         "C-ENFORCEMENT",
         "C-GROUNDWORK",
@@ -171,8 +174,15 @@ describe("S0: spec-io schema and index API", () => {
         "C-VERIFICATION",
         "ENFORCEMENT-R-001",
         "ORCHESTRATION-R-001",
+        "ORCHESTRATION-R-002",
+        "PACING-R-001",
+        "PACING-R-002",
+        "PACING-R-003",
+        "PACING-R-004",
+        "PACING-R-005",
         "VERIFICATION-R-001",
         "VERIFICATION-R-002",
+        "VERIFICATION-R-003",
       ].sort(),
     );
 

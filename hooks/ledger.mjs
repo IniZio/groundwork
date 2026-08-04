@@ -120,6 +120,16 @@ function assertTicket(val) {
   }
 }
 
+/** Validate decision ids (shape-only). Ids not matching /^D-\d+$/ warn to stderr; exits 0. */
+const VALID_DECISION_RE = /^D-\d+$/
+function warnDecisions(ids) {
+  for (const id of ids) {
+    if (!VALID_DECISION_RE.test(id)) {
+      process.stderr.write(`warning: decision id "${id}" does not match expected format D-<n> (e.g. "D-40")\n`)
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // LEDGER VALIDATION — schema + custom structural invariants
 // ---------------------------------------------------------------------------
@@ -136,6 +146,7 @@ const KNOWN_SLICE_KEYS = new Set([
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
   'ticket',                   // ticket document id/path this slice is scoped to
+  'decisions',                // decision ids constraining this slice: string | string[]
 ])
 
 /** Simple Levenshtein distance, capped at 3 for performance. */
@@ -382,6 +393,7 @@ const HELP = {
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
       '--ticket <tid>      ticket document id or path this slice is scoped to',
       '--covers-ac "a,b"   comma-separated AC labels this slice covers (drives AC_COVERAGE on complete)',
+      '--decisions "D-1"   comma-separated decision ids this slice is constrained by',
       '--claimed-by <sid>  (optional) set claimed_by on the new slice',
     ],
   },
@@ -401,6 +413,7 @@ const HELP = {
       '--acceptance "a;b"  semicolon-separated acceptance criteria strings',
       '--ticket <tid>      ticket document id or path this slice is scoped to',
       '--covers-ac "a,b"   comma-separated AC labels this slice covers (drives AC_COVERAGE on complete)',
+      '--decisions "D-1"   comma-separated decision ids this slice is constrained by',
       '--claimed-by <sid>  set claimed_by on the slice',
     ],
   },
@@ -760,6 +773,7 @@ function cmdAdd(args) {
   const blocked_by = flags['blocked-by'] ? flags['blocked-by'].split(',').map((s) => s.trim()).filter(Boolean) : []
   const acceptance = flags.acceptance ? flags.acceptance.split(';').map((s) => s.trim()).filter(Boolean) : []
   const coversAcRaw = flags['covers-ac'] != null ? flags['covers-ac'].split(',').map((s) => s.trim()).filter(Boolean) : null
+  const decisionsRaw = flags['decisions'] != null ? flags['decisions'].split(',').map((s) => s.trim()).filter(Boolean) : null
 
   mutateLedgerChecked(ledgerPath(), (l) => {
     // Create a minimal ledger skeleton if none exists yet
@@ -778,6 +792,7 @@ function cmdAdd(args) {
     if (flags.kind != null) item.kind = flags.kind
     if (flags.ticket != null) { assertTicket(flags.ticket); item.ticket = flags.ticket }
     if (coversAcRaw != null && coversAcRaw.length > 0) item.covers_ac = coversAcRaw
+    if (decisionsRaw != null && decisionsRaw.length > 0) { warnDecisions(decisionsRaw); item.decisions = decisionsRaw }
     if (flags['claimed-by'] != null) {
       item.claimed_by = flags['claimed-by']
       item.claimed_at = new Date().toISOString()
@@ -819,8 +834,8 @@ function cmdSet(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
   if (!id) die('usage: ledger set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]', 2)
-  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance', 'claimed-by', 'ticket', 'covers-ac'].some((k) => flags[k] != null)
-  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance --claimed-by --ticket --covers-ac', 2)
+  const hasFields = ['status', 'wave', 'desc', 'blocked-by', 'acceptance', 'claimed-by', 'ticket', 'covers-ac', 'decisions'].some((k) => flags[k] != null)
+  if (!hasFields) die('ledger set: no fields provided. Specify at least one of --status --wave --desc --blocked-by --acceptance --claimed-by --ticket --covers-ac --decisions', 2)
   if (flags.status != null) assertStatus(flags.status)
 
   const updated = []
@@ -875,6 +890,11 @@ function cmdSet(args) {
       s.covers_ac = flags['covers-ac'].split(',').map((v) => v.trim()).filter(Boolean)
       updated.push(`covers_ac=[${s.covers_ac.join(',')}]`)
     }
+    if (flags['decisions'] != null) {
+      s.decisions = flags['decisions'].split(',').map((v) => v.trim()).filter(Boolean)
+      warnDecisions(s.decisions)
+      updated.push(`decisions=[${s.decisions.join(',')}]`)
+    }
   })
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -902,6 +922,11 @@ function cmdShow(id) {
       : '(none)'
   const claimedBy = s.claimed_by || '(none)'
   const ticket = s.ticket || '(none)'
+  const decisions = Array.isArray(s.decisions) && s.decisions.length
+    ? s.decisions.join(', ')
+    : typeof s.decisions === 'string' && s.decisions
+      ? s.decisions
+      : '(none)'
   process.stdout.write(
     [
       `id:         ${s.id}`,
@@ -912,6 +937,7 @@ function cmdShow(id) {
       `ticket:     ${ticket}`,
       `blocked_by: ${blocked}`,
       `covers_ac:  ${coversAc}`,
+      `decisions:  ${decisions}`,
       `claimed_by: ${claimedBy}`,
       `acceptance:`,
       acceptance,
@@ -1026,8 +1052,8 @@ function cmdView() {
   for (const w of waves) {
     lines.push(`## Wave ${w}`)
     lines.push(``)
-    lines.push(`| ID | Kind | Status | Blocked By | Claimed By | Description |`)
-    lines.push(`|---|---|---|---|---|---|`)
+    lines.push(`| ID | Kind | Status | Blocked By | Claimed By | Decisions | Description |`)
+    lines.push(`|---|---|---|---|---|---|---|`)
     for (const s of byWave.get(w)) {
       const id = s?.id ?? '?'
       const status = s?.status ?? 'pending'
@@ -1037,7 +1063,9 @@ function cmdView() {
       const kindRaw = s?.kind ?? null
       const kindCol = kindRaw != null ? (KIND_LABEL[kindRaw] ?? kindRaw) : '⚙ impl'
       const claimedBy = s?.claimed_by ?? '—'
-      lines.push(`| \`${id}\` | ${kindCol} | ${sym} ${status} | ${blocked} | ${claimedBy} | ${desc} |`)
+      const decisionsArr = Array.isArray(s?.decisions) ? s.decisions : (typeof s?.decisions === 'string' && s.decisions ? [s.decisions] : [])
+      const decisionsCol = decisionsArr.length ? decisionsArr.join(', ') : '—'
+      lines.push(`| \`${id}\` | ${kindCol} | ${sym} ${status} | ${blocked} | ${claimedBy} | ${decisionsCol} | ${desc} |`)
     }
     lines.push(``)
   }

@@ -23,6 +23,8 @@
  *                                      ACs declared with empty covering arrays (unmet-empty)
  *   Model-written / optional (may be entirely absent; fold degrades honestly):
  *     DECISION       d.decision, d.rationale, d.alternatives, d.slice
+ *                    decision_log[].slices built from: (a) DECISION data.slice and
+ *                    (b) reverse index of groundTruth.ledger.slices[].decisions; union deduped.
  *     HANDOFF        d.pointer, d.summary, d.next_actions
  *     VERIFICATION   d.claim, d.evidence, d.result
  *     MILESTONE      d.objective
@@ -44,7 +46,7 @@
  *   opts.malformedLines — count from the reader; default 0
  */
 
-export const COMPILER_VERSION = 'motive-compile/1.2.2'
+export const COMPILER_VERSION = 'motive-compile/1.3.0'
 
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 }
 
@@ -71,6 +73,8 @@ export function compile(events, opts = {}) {
   const decisions = []
   // Map<id, decision record> — keyed ADR decisions (id present)
   const decisionLogMap = new Map()
+  // Map<decisionId, Set<sliceId>> — slice refs from DECISION data.slice (source a)
+  const decisionSliceFromEvent = new Map()
   // insertion order for decision_log output
   const decisionLogOrder = []
   // Set of decision ids that resolved an open item (accepted only)
@@ -222,6 +226,11 @@ export function compile(events, opts = {}) {
                 target.superseded_by = d.id
               }
             }
+          }
+          // Track slice from data.slice (source a of the decision→slice join)
+          if (d.slice != null) {
+            if (!decisionSliceFromEvent.has(d.id)) decisionSliceFromEvent.set(d.id, new Set())
+            decisionSliceFromEvent.get(d.id).add(String(d.slice))
           }
           // Track accepted resolves for open-item burn-down
           const entry = decisionLogMap.get(d.id)
@@ -411,7 +420,29 @@ export function compile(events, opts = {}) {
   })
 
   // ── decision_log ──────────────────────────────────────────────────────────
-  const decisionLog = decisionLogOrder.map((id) => decisionLogMap.get(id))
+  // Source (b): reverse index — slices[].decisions → decision id
+  const decisionSliceFromLedger = new Map()
+  for (const s of allSlices) {
+    const decs = s.decisions == null ? [] : Array.isArray(s.decisions) ? s.decisions : [s.decisions]
+    for (const did of decs) {
+      if (!decisionSliceFromLedger.has(did)) decisionSliceFromLedger.set(did, new Set())
+      decisionSliceFromLedger.get(did).add(s.id)
+    }
+  }
+
+  const decisionLog = decisionLogOrder.map((id) => {
+    const entry = decisionLogMap.get(id)
+    // Union (a) DECISION data.slice + (b) ledger reverse index, deduped by slice id
+    const sliceIdSet = new Set([
+      ...(decisionSliceFromEvent.get(id) ?? []),
+      ...(decisionSliceFromLedger.get(id) ?? []),
+    ])
+    const slices = [...sliceIdSet].sort().map((sid) => {
+      const s = _sliceDedup.get(sid)
+      return { id: sid, status: s?.status ?? 'pending' }
+    })
+    return { ...entry, slices }
+  })
 
   // ── open items burn-down ──────────────────────────────────────────────────
   let openItems = []

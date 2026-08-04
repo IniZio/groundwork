@@ -407,6 +407,21 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   }
   parts.push('')
 
+  // ── Build decision→slices index (for edge rendering) ─────────────────────
+  // Maps decision id (e.g. "D-40") → [{id, status}] for slices that declare it.
+  const _decisionSlicesMap = new Map()
+  for (const s of slices) {
+    const decIds = s.decisions == null
+      ? []
+      : Array.isArray(s.decisions)
+        ? s.decisions
+        : String(s.decisions).split(',').map((x) => x.trim()).filter(Boolean)
+    for (const did of decIds) {
+      if (!_decisionSlicesMap.has(did)) _decisionSlicesMap.set(did, [])
+      _decisionSlicesMap.get(did).push({ id: s.id, status: s.status ?? 'pending' })
+    }
+  }
+
   // ── Decisions so far ──────────────────────────────────────────────────────
   parts.push('## Decisions so far')
   parts.push('')
@@ -414,7 +429,16 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     for (const d of decisions) {
       const ts  = (d.ts ?? '').slice(0, 10)
       const msg = d.msg ?? JSON.stringify(d.data ?? '')
-      parts.push(`- ${ts ? `[${ts}] ` : ''}${msg}`)
+      // Append slice edge suffix only for structured decisions with a data.id
+      let edgeSuffix = ''
+      const did = d.data?.id
+      if (did != null) {
+        const refs = _decisionSlicesMap.get(did)
+        if (refs?.length) {
+          edgeSuffix = ' → ' + refs.map((r) => `${r.id} (${r.status === 'complete' ? 'complete' : 'pending'})`).join(', ')
+        }
+      }
+      parts.push(`- ${ts ? `[${ts}] ` : ''}${msg}${edgeSuffix}`)
     }
   } else {
     parts.push('_No decisions recorded yet._')
@@ -439,13 +463,23 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     return deps.every((d) => completeIds.has(d))
   })
 
+  // Helper: render optional _(decisions: ...)_ suffix for a slice
+  const _decSuffix = (s) => {
+    const decIds = s.decisions == null
+      ? []
+      : Array.isArray(s.decisions)
+        ? s.decisions
+        : String(s.decisions).split(',').map((x) => x.trim()).filter(Boolean)
+    return decIds.length ? ` _(decisions: ${decIds.join(', ')})_` : ''
+  }
+
   parts.push('## Frontier')
   parts.push('')
   parts.push('_Slices that can start now (no pending blockers):_')
   parts.push('')
   if (frontierList.length) {
     for (const s of frontierList) {
-      parts.push(`- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'}`)
+      parts.push(`- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'}${_decSuffix(s)}`)
     }
   } else {
     parts.push(
@@ -463,7 +497,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       parts.push('')
       for (const s of inProgressList) {
         const claim = s.claimed_by ? ` _(claimed by ${s.claimed_by})_` : ''
-        parts.push(`- ${_sliceLink(s.id, s.ticket)}${claim} — ${s.desc ?? '(no description)'}`)
+        parts.push(`- ${_sliceLink(s.id, s.ticket)}${claim} — ${s.desc ?? '(no description)'}${_decSuffix(s)}`)
       }
       parts.push('')
     }
@@ -473,7 +507,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       for (const s of blockedList) {
         const pending = _deps(s).filter((d) => !completeIds.has(d))
         parts.push(
-          `- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_`,
+          `- ${_sliceLink(s.id, s.ticket)} — ${s.desc ?? '(no description)'} _(waiting on: ${pending.join(', ')})_${_decSuffix(s)}`,
         )
       }
       parts.push('')

@@ -110,7 +110,7 @@ function probeExists(p, projectDir) {
 /**
  * Slice fields that must round-trip (S3-AC3).
  */
-const SLICE_FIELDS = ['id', 'wave', 'status', 'desc', 'blocked_by', 'acceptance', 'kind'];
+const SLICE_FIELDS = ['id', 'wave', 'status', 'desc', 'blocked_by', 'acceptance', 'kind', 'decisions'];
 
 function pickSlice(raw) {
   const out = {};

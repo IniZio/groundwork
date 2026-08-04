@@ -215,6 +215,13 @@
             { "type": "string" },
             { "type": "array", "items": { "type": "string" } }
           ]
+        },
+        "decisions": {
+          "description": "Decision ids constraining this slice (e.g. \"D-40\"). string | string[] — shape-only, no referential check.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
         }
       },
       "additionalProperties": true

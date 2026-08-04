@@ -50,3 +50,30 @@ When MAP.md is regenerated, `hooks/lib/motive-map.mjs` **shall** merge the chart
 - **Why** — a single consolidated view of out-of-scope decisions prevents the orchestrator from re-planning rejected features; strict first-sentence dedup (not session-based) collapses summary and full-prose forms of the same rejection to the richer entry without losing the absorbed decision id; the empty-state line must be suppressed whenever any source has content, because mixing content with the placeholder produces a misleading section.
 - **Fit criterion** — with two rejection DECISION events where the earlier event's first sentence is a strict prefix of the later event's, only the later (longer) entry appears, with the earlier event's `data.id` appended as `(D-X)`; an `.groundwork/out-of-scope/dark-mode.md` file renders as `- dark mode`; the `_Nothing explicitly ruled out yet._` line is absent when any source contributes at least one entry.
 - **Verification** manual · **Criticality** must · **Source** groundwork-development#D-21
+
+## ARTIFACT-R-007 — Ticket is the durable work object {#artifact-r-007}
+
+A groundwork ticket **shall** be a markdown document with the following required top-level sections in this order: Question, Context, Evidence, Decision, Ruled out, Revisions, Links. Each section **shall** be rendered as an H2 heading with an empty body when the ticket is first created, leaving the body for the author to fill. The run-ledger `Slice` schema **shall** accept an optional `ticket` field (string) naming the ticket id that this slice delivers against.
+
+- **Why** — slices are session-scoped scheduling projections that disappear when a run ledger is no longer active; a ticket is the cross-session artifact that carries the question, the evidence gathered, and the decision reached. Without a canonical document shape, tickets written by different authors or tools diverge structurally and cannot be machine-parsed for open-section reporting or MAP.md rendering. The mattpocock section set (D-32) provides a proven, human-readable shape for engineering decisions.
+- **Fit criterion** — a freshly created ticket file contains exactly the seven H2 headings (Question, Context, Evidence, Decision, Ruled out, Revisions, Links) with empty bodies; `ledger add s1 --ticket tkt-1` records `ticket: "tkt-1"` on slice `s1`; `ledger view` displays the ticket id alongside the slice; a ledger with no `ticket` fields on any slice continues to function without error (back-compat).
+- **Verification**: automated — the ticket template renderer enforces the section set; the ledger schema accepts but does not require the `ticket` field.
+- **Criticality**: must · **Source** groundwork-development#D-32
+
+## ARTIFACT-R-008 — No-delete invariant for markdown files {#artifact-r-008}
+
+No groundwork code path **shall** remove a markdown file that it did not itself generate. A file is considered generated if and only if it was written by groundwork in the current process and carries the footer line `_Auto-generated — do not edit by hand._`. Any sweep, cleanup, or regeneration routine that iterates a directory of `.md` files **shall** skip files that lack this footer.
+
+- **Why** — `hooks/lib/motive-tickets.mjs` (lines 134-139) previously enumerated `tickets/` and called `rmSync` on every `.md` whose stem was absent from the current session's generated set. A durable, hand-authored ticket placed in that directory would be silently destroyed on the next regeneration under a fresh session ledger (D-33). The invariant prevents this class of data loss across all present and future sweep routines.
+- **Fit criterion** — place a hand-authored `tickets/my-ticket.md` (no auto-generated footer) alongside generated files in the same directory; trigger a MAP regeneration or ticket sweep; confirm `my-ticket.md` is still present and unmodified after the operation. A generated file carrying the footer may be deleted by the generating code path.
+- **Verification**: automated — the sweep routine checks the footer before any `rmSync` call; a regression test asserts that a hand-authored file survives the sweep.
+- **Criticality**: must · **Source** groundwork-development#D-33
+
+## ARTIFACT-R-009 — Ticket location resolution {#artifact-r-009}
+
+When resolving the directory in which to create or read ticket files for a motive, groundwork **shall** use the following resolution order: (1) if the motive charter contains a `tickets_dir` field, use that path; (2) otherwise default to `.groundwork/motives/<slug>/tickets/`. The resolved directory **shall** be created if absent. An empty or missing ticket corpus **shall** not cause any error in `ledger`, `journal`, or MAP.md regeneration.
+
+- **Why** — the default path is gitignored, giving tickets no version-control history and no PR review surface (D-37). Projects that want version-controlled tickets can point `tickets_dir` at a committed directory (e.g. `doc/tickets/`). The fallback default keeps zero-config motives working without any charter change, while the override lets teams adopt a committed workflow incrementally.
+- **Fit criterion** — a motive charter with `tickets_dir: doc/tickets` causes new tickets to be written under `doc/tickets/`; a charter without `tickets_dir` causes tickets to be written under `.groundwork/motives/<slug>/tickets/`; a motive with no ticket files at all completes `ledger add`, `ledger complete`, `journal append`, and MAP.md regeneration without error.
+- **Verification**: automated — the location resolver is tested with both a charter-override case and a default-fallback case; back-compat is verified by the T8 end-to-end test.
+- **Criticality**: must · **Source** groundwork-development#D-37

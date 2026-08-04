@@ -30,3 +30,21 @@ When the orchestrator runs `ledger fog <id> --desc "…" --question "…"`, `hoo
 - **Why** — fog slices represent open questions (unknown unknowns) that are not actionable work items; including them in the frontier would mislead the orchestrator into treating unresolved questions as scheduled deliverables, distorting wave planning and completion accounting.
 - **Fit criterion** — after `ledger fog q1 --desc "open question" --question "…"`, `ledger view` shows `q1` with `kind: fog` and no acceptance field; `ledger frontier` output does not list `q1`.
 - **Verification** manual · **Criticality** must · **Source** groundwork-development#D-21
+
+## ORCHESTRATION-R-003 — Authorship duties for ticket sections {#orchestration-r-003}
+
+When a ticket is created for a slice, the **planner** agent **shall** fill the Question and Context sections before handing off to implementation. When the implementing agent marks the slice complete, it **shall** append its findings to the Evidence section and record the outcome in the Decision and Ruled out sections. Neither agent is required to fill Revisions or Links; those sections remain available for subsequent sessions. An agent **shall** not leave Question or Context empty on a ticket it opens; a parser **should** warn (not block) when a completed slice's ticket has an empty Decision section.
+
+- **Why** — a ticket whose Question is never written is not a ticket — it is a placeholder. The authorship split (D-34) ensures that every ticket captures both the framing of the problem (planner's responsibility) and the outcome of the work (implementer's responsibility). Without this norm, tickets accumulate as empty shells that survive the no-delete invariant but carry no knowledge value. Warnings on empty Decision sections surface incomplete handoffs without blocking session end, keeping the gate non-disruptive.
+- **Fit criterion** — review session transcripts for ticket-linked slices: the planner's tool calls write Question and Context before delegating; the implementer's completion step appends to Evidence, Decision, and Ruled out. A parser called on a ticket with an empty Decision section emits a warning line naming the ticket id but exits 0.
+- **Verification**: manual — agent behaviour cannot be mechanically enforced at the hook layer; the parser warning is automated.
+- **Criticality**: should · **Source** groundwork-development#D-34
+
+## ORCHESTRATION-R-004 — Every DECISION event carries a structured data.id {#orchestration-r-004}
+
+When any orchestrator or subagent appends a journal event of type `DECISION`, the `--data` JSON payload **shall** include a non-empty `data.id` field (e.g. `"D-37"`). `hooks/journal.mjs` **shall** emit a warning when a DECISION event arrives without `data.id` and **shall** still persist the event (non-blocking). No other journal operation requires `data.id`.
+
+- **Why** — a DECISION event without a stable id cannot be referenced from MAP.md, from ticket cross-links, or from future supersession events (which record `data.retires: ["D-X"]`). An unaddressable decision is effectively invisible to tooling that traces the rationale chain. Persisting the event despite the warning avoids breaking in-flight sessions while surfacing the omission for later repair (D-36).
+- **Fit criterion** — `journal append --type DECISION --motive x --msg m --data '{"id":"D-42","decision":"d","rationale":"r"}'` exits 0 with no warning; omitting `data.id` from an otherwise valid DECISION payload causes the CLI to print a warning line containing the text `DECISION event has no data.id` and still exits 0 with the event persisted.
+- **Verification**: automated — `hooks/journal.mjs` enforces the warning on every DECISION append; T6-AC1 in `test/hooks/t6-decision-discipline.test.ts` covers exit 0, event persistence, and stderr warning for the missing-data.id path.
+- **Criticality**: must · **Source** groundwork-development#D-36

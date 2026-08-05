@@ -1325,3 +1325,96 @@ describe('F20 regression — bare-id ticket join', () => {
     expect(valid).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Acceptance criteria section
+// ---------------------------------------------------------------------------
+
+describe('regenerateMotiveMap — acceptance criteria', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('declared AC with no covering slice renders as visibly unmet', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test objective.',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- AC-1: The system must do X.',
+      '- AC-2: The system must do Y.',
+    ].join('\n') + '\n')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', status: 'pending', desc: 'Some work' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const acSection = content.split('## Acceptance criteria')[1]?.split('##')[0] ?? ''
+    // Both must appear as unmet
+    expect(acSection).toContain('AC-1')
+    expect(acSection).toContain('AC-2')
+    expect(acSection).toContain('unmet')
+    expect(acSection).toContain('no covering slices assigned')
+    // Must NOT appear as met
+    expect(acSection).not.toContain('✓')
+    expect(acSection).toContain('✗')
+  })
+
+  it('declared AC fully covered by a complete slice renders as met with slice id', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test objective.',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- AC-1: Criterion one.',
+      '- AC-2: Criterion two.',
+    ].join('\n') + '\n')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', status: 'complete', desc: 'Covers AC-1', covers_ac: ['AC-1'] },
+        { id: 'S2', status: 'pending',  desc: 'Covers AC-2', covers_ac: ['AC-2'] },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const acSection = content.split('## Acceptance criteria')[1]?.split('##')[0] ?? ''
+    // AC-1 complete → met with slice id
+    expect(acSection).toMatch(/✓.*AC-1/)
+    expect(acSection).toContain('S1')
+    expect(acSection).toContain('met')
+    // AC-2 pending → unmet with incomplete slice info
+    expect(acSection).toMatch(/✗.*AC-2/)
+    expect(acSection).toContain('incomplete slices: S2')
+  })
+
+  it('motive with NO acceptance criteria section renders MAP.md without AC section (backward compat)', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test objective with no ACs.',
+    ].join('\n') + '\n')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'S1', status: 'pending', desc: 'Work item' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    // Section must not appear at all
+    expect(content).not.toContain('## Acceptance criteria')
+    // Standard sections still present
+    expect(content).toContain('## Frontier')
+    expect(content).toContain('## Progress')
+  })
+})

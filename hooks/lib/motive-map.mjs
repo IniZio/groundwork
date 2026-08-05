@@ -606,6 +606,53 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   }
   parts.push('')
 
+  // ── Acceptance criteria ───────────────────────────────────────────────────
+  const acList = charter?.acceptance_criteria ?? []
+  if (acList.length > 0) {
+    // Build map: AC id → covering slices [{id, status}]
+    const acSlicesMap = new Map()
+    for (const ac of acList) {
+      if (ac?.id != null) acSlicesMap.set(String(ac.id), [])
+    }
+    for (const s of slices) {
+      const raw = s.covers_ac
+      const acIds = Array.isArray(raw)
+        ? raw
+        : typeof raw === 'string' && raw
+          ? raw.split(',').map((x) => x.trim()).filter(Boolean)
+          : []
+      for (const acId of acIds) {
+        if (acSlicesMap.has(acId)) {
+          acSlicesMap.get(acId).push({ id: s.id, status: s.status ?? 'pending' })
+        }
+      }
+    }
+
+    parts.push('## Acceptance criteria')
+    parts.push('')
+    for (const ac of acList) {
+      if (ac?.id == null) continue
+      const key = String(ac.id)
+      const covering = acSlicesMap.get(key) ?? []
+      const stmt = ac.statement
+        ? (ac.statement.length > 120 ? ac.statement.slice(0, 117) + '…' : ac.statement)
+        : ''
+      const stmtSuffix = stmt ? ` — ${stmt}` : ''
+      const isMet = covering.length > 0 && covering.every((s) => s.status === 'complete')
+      if (isMet) {
+        const coverIds = covering.map((s) => s.id).join(', ')
+        parts.push(`- ✓ **${key}** — met (covered by: ${coverIds})${stmtSuffix}`)
+      } else {
+        const incomplete = covering.filter((s) => s.status !== 'complete')
+        const why = covering.length === 0
+          ? 'no covering slices assigned'
+          : `incomplete slices: ${incomplete.map((s) => s.id).join(', ')}`
+        parts.push(`- ✗ **${key}** — unmet (${why})${stmtSuffix}`)
+      }
+    }
+    parts.push('')
+  }
+
   // ── Progress ──────────────────────────────────────────────────────────────
   if (slices.length > 0) {
     const doneSlices = slices.filter((s) => s.status === 'complete')

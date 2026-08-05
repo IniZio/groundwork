@@ -230,7 +230,7 @@ describe('T6-AC1 — journal DECISION without data.id warns loudly', () => {
   })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('appending a DECISION without data.id emits a WARNING to stderr and still exits 0', () => {
+  it('appending a DECISION without data.id exits 2 naming the missing key (ARTIFACT-R-004)', () => {
     const result = runJournal(
       [
         'append',
@@ -246,10 +246,9 @@ describe('T6-AC1 — journal DECISION without data.id warns loudly', () => {
       makeJournalEnv(dir),
     )
 
-    // Must warn about missing id
-    expect(result.stderr).toMatch(/WARNING.*DECISION.*id|DECISION.*WARNING.*id/i)
-    // Must NOT block — exit code 0
-    expect(result.status).toBe(0)
+    // ARTIFACT-R-004: id-less DECISION is now a hard error (exit 2)
+    expect(result.stderr).toContain('data.id')
+    expect(result.status).toBe(2)
   })
 
   it('appending a DECISION WITH data.id does NOT emit the id-less warning', () => {

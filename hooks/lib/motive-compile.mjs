@@ -77,6 +77,10 @@ export function compile(events, opts = {}) {
   const decisionSliceFromEvent = new Map()
   // insertion order for decision_log output
   const decisionLogOrder = []
+  // Map<id, number> — count of same-id merge hits (second+ event for a keyed id)
+  const decisionMergeHits = new Map()
+  // Set<id> — ids for which at least one merge event carried revises === id
+  const decisionRevisesMarked = new Set()
   // Set of decision ids that resolved an open item (accepted only)
   const resolvedByDecisions = new Map() // resolves-id → decision-id
   let lastHandoff = null
@@ -177,6 +181,7 @@ export function compile(events, opts = {}) {
               status: d.status ?? 'proposed',
               title: d.title ?? d.decision ?? null,
               rationale: d.rationale ?? null,
+              alternatives: Array.isArray(d.alternatives) ? d.alternatives : [],
               ord,
               ts,
               supersedes: d.supersedes ?? null,
@@ -208,8 +213,15 @@ export function compile(events, opts = {}) {
             if (d.status != null) existing.status = d.status
             if (d.title != null) existing.title = d.title
             if (d.rationale != null) existing.rationale = d.rationale
+            if (Array.isArray(d.alternatives)) existing.alternatives = d.alternatives
             if (d.superseded_by != null) existing.superseded_by = d.superseded_by
             if (d.resolves != null) existing.resolves = d.resolves
+            // Change B: track same-id merges; revises === id marks the merge intentional
+            decisionMergeHits.set(d.id, (decisionMergeHits.get(d.id) ?? 0) + 1)
+            if (d.revises === d.id) {
+              decisionRevisesMarked.add(d.id)
+              existing.revises = d.revises
+            }
             if (d.supersedes != null) {
               existing.supersedes = d.supersedes
               const target = decisionLogMap.get(d.supersedes)
@@ -452,7 +464,11 @@ export function compile(events, opts = {}) {
       const s = _sliceDedup.get(sid)
       return { id: sid, status: s?.status ?? 'pending' }
     })
-    return { ...entry, slices }
+    const isMerged = (decisionMergeHits.get(id) ?? 0) > 0
+    const result = { ...entry, slices }
+    // Change B: flag unmarked same-id collisions (merges where no event declared revises === id)
+    if (isMerged && !decisionRevisesMarked.has(id)) result.unmarked_collision = true
+    return result
   })
 
   // ── open items burn-down ──────────────────────────────────────────────────

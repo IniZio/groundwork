@@ -433,8 +433,10 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     expect(content).toContain('Should we use Redis?')
   })
 
-  it('multi-line open item statement is joined onto a single bullet line', () => {
-    // A charter where the TBD statement spans multiple physical lines
+  it('multi-line open item: MAP shows handle (statement) only; body is a separate field', () => {
+    // Parser contract change: continuation lines go into `body`, not `statement`.
+    // The MAP renderer uses `statement` (the handle), so the continuation text
+    // is NOT rendered in the MAP until the renderer slice lands.
     const charter = [
       '# motive: m',
       '',
@@ -448,14 +450,66 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     makeCharter(dir, 'm', charter)
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // The bullet must contain the full continuation without a bare newline inside it
+    // TBD-3 handle still appears
     expect(content).toContain('TBD-3')
-    expect(content).toContain('cannot correlate them')
-    // The statement must appear on a single line (no bare newline between the two halves)
+    // Continuation text lives in body; the MAP list line shows only the short handle
+    expect(content).not.toContain('cannot correlate them')
+    // Bullet line contains the handle text (first-line statement) only — body absent from bullet
     const lines = content.split('\n')
     const bullet = lines.find((l) => l.includes('TBD-3'))
     expect(bullet).toBeDefined()
-    expect(bullet).toContain('cannot correlate them')
+    expect(bullet).toContain('data.id')
+    expect(bullet).not.toContain('cannot correlate them')
+  })
+
+  it('open item bullet renders owner and blocked_by annotations', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test.',
+      '',
+      '## Open items',
+      '- TBD-5: Choose a cache strategy. @alice blocked-by:TBD-4',
+    ].join('\n'))
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const lines = content.split('\n')
+    const bullet = lines.find((l) => l.includes('TBD-5'))
+    expect(bullet).toBeDefined()
+    // Handle appears
+    expect(bullet).toContain('Choose a cache strategy')
+    // Owner annotation
+    expect(bullet).toContain('@alice')
+    // Blocker annotation
+    expect(bullet).toContain('blocked by TBD-4')
+  })
+
+  it('FAILABILITY — body text absent from MAP bullet line', () => {
+    // This test proves failable: if the renderer appends body to the bullet
+    // line, it will fail. Demonstrates the guard is load-bearing.
+    const charter = [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test.',
+      '',
+      '## Open items',
+      '- TBD-7: Short handle text.',
+      '  Continuation body that must not appear on the MAP bullet.',
+    ].join('\n')
+    makeCharter(dir, 'm', charter)
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const lines = content.split('\n')
+    const bullet = lines.find((l) => l.includes('TBD-7'))
+    expect(bullet).toBeDefined()
+    // Handle on the bullet
+    expect(bullet).toContain('Short handle text')
+    // Body must NOT appear on the bullet line
+    expect(bullet).not.toContain('Continuation body')
+    // Body must NOT appear anywhere in the MAP
+    expect(content).not.toContain('Continuation body')
   })
 
   it('Out of scope section lists .groundwork/out-of-scope/ entries', () => {

@@ -568,7 +568,9 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     for (const item of openItems) {
       const owner   = item.owner      ? ` @${item.owner}`                    : ''
       const blocker = item.blocked_by ? ` _(blocked by ${item.blocked_by})_` : ''
-      const statement = (item.statement ?? '').replace(/\s*\n\s*/g, ' ').trim()
+      // statement is the short handle; body (detail text) surfaces in the
+      // drill-down file (open-items/<id>.md) only — do NOT append it here.
+      const statement = (item.statement ?? '').trim()
       parts.push(`- ${_openItemLink(item.id)}: ${statement}${owner}${blocker}`)
     }
   } else {

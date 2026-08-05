@@ -455,6 +455,83 @@ describe('regenerateMotiveTickets — error resilience', () => {
 })
 
 // ---------------------------------------------------------------------------
+// _renderOpenItemTicket — body rendering (statement vs detail section)
+// ---------------------------------------------------------------------------
+
+describe('open item drill-down — body rendering', () => {
+  let dir: string
+  let motiveDir: string
+
+  beforeEach(() => {
+    dir = tmp()
+    motiveDir = makeMotiveDir(dir, 'm')
+  })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('(a) title line contains the short handle, NOT the body text', () => {
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        {
+          id: 'TBD-1',
+          kind: 'TBD',
+          statement: 'Choose a cache layer',
+          body: 'We need to decide between Redis and Memcached given our latency budget.',
+        },
+      ],
+      events: [],
+    })
+    const content = readOpenItem(motiveDir, 'tbd-1')
+    const titleLine = content.split('\n')[0]
+    expect(titleLine).toContain('Choose a cache layer')
+    expect(titleLine).not.toContain('Redis')
+    expect(titleLine).not.toContain('latency budget')
+  })
+
+  it('(b) body text appears in a section below the title when body is present', () => {
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        {
+          id: 'TBD-2',
+          kind: 'TBD',
+          statement: 'Pick a serialisation format',
+          body: 'Options are JSON, MessagePack, and Protobuf. See ADR-3.',
+        },
+      ],
+      events: [],
+    })
+    const content = readOpenItem(motiveDir, 'tbd-2')
+    const titleLine = content.split('\n')[0]
+    // body must NOT be in the title
+    expect(titleLine).not.toContain('MessagePack')
+    // body must appear somewhere after the title
+    const bodyIndex = content.indexOf('MessagePack')
+    const titleEnd = content.indexOf('\n')
+    expect(bodyIndex).toBeGreaterThan(titleEnd)
+  })
+
+  it('(c) a body-less item renders with no empty body section between the title and ## Status', () => {
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        { id: 'TBD-3', kind: 'TBD', statement: 'Single-line question?' },
+      ],
+      events: [],
+    })
+    const content = readOpenItem(motiveDir, 'tbd-3')
+    // The Status heading must still be present
+    expect(content).toContain('## Status')
+    // No dangling empty-body content between title and Status
+    const titleEnd = content.indexOf('\n')
+    const statusIdx = content.indexOf('## Status')
+    const between = content.slice(titleEnd, statusIdx)
+    // Between title and Status there should be only blank lines (no prose body)
+    expect(between.trim()).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Integration: regenerateMotiveMap — MAP.md links (T5 scope; MAP text unchanged)
 // ---------------------------------------------------------------------------
 

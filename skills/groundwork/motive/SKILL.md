@@ -52,22 +52,25 @@ All significant occurrences are recorded as typed journal events. The most impor
 **Decision:**
 ```
 journal append --motive <slug> --type DECISION --msg "Short human summary" \
-  --data '{"id":"D1","status":"proposed","title":"Use X over Y","rationale":"..."}'
+  --data '{"id":"D-1","decision":"Use X over Y","rationale":"X is faster and simpler","alternatives":["Y","Z"]}'
 ```
 
-Decision lifecycle: a decision starts as `proposed`, then becomes `accepted`, `rejected`, or `superseded`. Advance the status by appending a new DECISION event with the same `id` and the new status:
+Required fields (exit 2 if any are absent): `id`, `decision`, `rationale`.
+Optional fields: `alternatives` (array of alternatives considered; defaults to `[]` when absent), `revises`, `supersedes`, `resolves`, `status`, `blast`, `research`.
 
+To refine an existing decision in place (same id, intentional update):
 ```
-journal append --motive <slug> --type DECISION --msg "Accepted: use X" \
-  --data '{"id":"D1","status":"accepted"}'
+journal append --motive <slug> --type DECISION --msg "Refined: use X with caching" \
+  --data '{"id":"D-1","decision":"Use X with caching","rationale":"Updated after benchmarks","revises":"D-1"}'
 ```
+Setting `data.revises` to the entry's own id (e.g. `"D-1"`) marks this as an intentional same-id refinement. The two events are merged into one compiled entry (earliest `ts` retained) and no collision warning is emitted. A `revises` value naming a different id does not suppress the collision flag.
 
-To supersede an existing decision with a new one:
+To supersede an existing decision with a new one (different id):
 ```
 journal append --motive <slug> --type DECISION --msg "Accepted: use Z instead" \
-  --data '{"id":"D2","status":"accepted","supersedes":"D1","resolves":"TBD-3"}'
+  --data '{"id":"D-2","decision":"Use Z","rationale":"Z is now supported","supersedes":"D-1","resolves":"TBD-3"}'
 ```
-This marks D1 `superseded` (with `superseded_by: D2`) and resolves open item `TBD-3` if present in the charter. A `rejected` decision does NOT resolve its `resolves` target.
+This marks D-1 `superseded` (with `superseded_by: D-2`) and resolves open item `TBD-3` if present in the charter. Both D-1 and D-2 appear as separate rows in the compiled output. A `rejected` decision does NOT resolve its `resolves` target.
 
 **Other useful event types** (all via `journal append --motive <slug> --type <T> --msg "..."` with optional `--data`):
 

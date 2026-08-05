@@ -2,7 +2,7 @@
  * T6 — Journal DECISION structured-id discipline
  *
  * AC coverage:
- *  T6-AC1 — DECISION with no data.id: exit 0 (stored), loud stderr warning about Decision Log
+ *  T6-AC1 — DECISION with no data.id: exit 2, naming the missing key (revised by ARTIFACT-R-004)
  *  T6-AC2 — data.retires accepted on append (schema-valid); compile marks target superseded
  *  T6-AC3 — existing supersedes/resolves compile behaviour unchanged
  */
@@ -58,10 +58,10 @@ function readCompiledJson(projectDir: string, motive: string): Record<string, un
 }
 
 // ---------------------------------------------------------------------------
-// T6-AC1 — DECISION with no data.id: exit 0, event stored, loud warning to stderr
+// T6-AC1 — DECISION with no data.id: exit 2, naming the missing key (ARTIFACT-R-004)
 // ---------------------------------------------------------------------------
 
-describe('T6-AC1 — id-less DECISION: stored but warns', () => {
+describe('T6-AC1 — id-less DECISION: exit 2 (revised by ARTIFACT-R-004)', () => {
   let tmp: string
   let env: Record<string, string>
 
@@ -74,61 +74,42 @@ describe('T6-AC1 — id-less DECISION: stored but warns', () => {
     rmSync(tmp, { recursive: true, force: true })
   })
 
-  test('exits 0 when data.id is absent', () => {
+  test('exits 2 when data.id is absent', () => {
     const d = JSON.stringify({ decision: 'use Y', rationale: 'faster' })
     const r = runJournal(
       ['append', '--motive', 'feat-x', '--type', 'DECISION', '--msg', 'chose Y', '--data', d],
       env,
     )
-    expect(r.status, `stderr: ${r.stderr}`).toBe(0)
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('data.id')
   })
 
-  test('event is stored in the shard even without id', () => {
+  test('event is NOT stored when data.id is absent', () => {
     const d = JSON.stringify({ decision: 'use Y', rationale: 'faster' })
     runJournal(
       ['append', '--motive', 'feat-x', '--type', 'DECISION', '--msg', 'chose Y', '--data', d],
       env,
     )
+    // journal dir may not exist at all (early exit before shard creation)
     const journalDir = path.join(tmp, '.groundwork', 'journal')
-    const files = require('node:fs').readdirSync(journalDir)
-    expect(files).toHaveLength(1)
-    const lines = readFileSync(path.join(journalDir, files[0]), 'utf8')
-      .split('\n').filter(Boolean).map(l => JSON.parse(l))
-    expect(lines).toHaveLength(1)
-    expect(lines[0].type).toBe('DECISION')
-    expect(lines[0].data?.decision).toBe('use Y')
+    let files: string[]
+    try {
+      files = require('node:fs').readdirSync(journalDir)
+    } catch {
+      files = []
+    }
+    // No JSONL shards written on exit 2
+    const shards = files.filter(f => f.endsWith('.jsonl'))
+    expect(shards).toHaveLength(0)
   })
 
-  test('stderr warning mentions data.id and Decision Log', () => {
-    const d = JSON.stringify({ decision: 'use Y', rationale: 'faster' })
-    const r = runJournal(
-      ['append', '--motive', 'feat-x', '--type', 'DECISION', '--msg', 'chose Y', '--data', d],
-      env,
-    )
-    expect(r.stderr).toContain('data.id')
-    expect(r.stderr).toContain('Decision Log')
-  })
-
-  test('warning is printed to stderr not stdout', () => {
-    const d = JSON.stringify({ decision: 'use Y', rationale: 'faster' })
-    const r = runJournal(
-      ['append', '--motive', 'feat-x', '--type', 'DECISION', '--msg', 'chose Y', '--data', d],
-      env,
-    )
-    // stdout should only have the normal append confirmation
-    expect(r.stdout).toContain('appended DECISION')
-    // stdout must NOT contain the warning text
-    expect(r.stdout).not.toContain('Decision Log')
-  })
-
-  test('DECISION with valid data.id produces no warning', () => {
+  test('DECISION with valid data.id exits 0', () => {
     const d = JSON.stringify({ id: 'D-1', decision: 'use Y', rationale: 'faster' })
     const r = runJournal(
       ['append', '--motive', 'feat-x', '--type', 'DECISION', '--msg', 'chose Y', '--data', d],
       env,
     )
     expect(r.status).toBe(0)
-    expect(r.stderr).toBe('')
   })
 })
 

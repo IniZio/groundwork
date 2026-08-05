@@ -98,6 +98,15 @@ const HELP = {
       '--data <json>  optional extra data as a JSON object',
       '',
       `Valid types: ${VALID_TYPES.join(', ')}`,
+      '',
+      'DECISION payload (when --type DECISION):',
+      '  data.id           decision id, e.g. "D-42" (required — exit 2 if absent)',
+      '  data.decision     outcome text (required — exit 2 if absent)',
+      '  data.rationale    reasoning behind the decision (required — exit 2 if absent)',
+      '  data.alternatives array of alternatives considered; defaults to [] when absent',
+      '  data.revises      optional; set to this decision\'s own id (e.g. "D-42") to mark',
+      '                    this as an intentional same-id refinement of an earlier event,',
+      '                    suppressing the id-collision warning',
     ],
   },
   show: {
@@ -563,15 +572,7 @@ function cmdAppend(args) {
   // DECISION schema validation (D-11 revised by T6 + D-36)
   if (type === 'DECISION') {
     const d = data ?? {}
-    if (!d.id) {
-      // Warn loudly but store the event — an id-less DECISION is valid as a journal
-      // record but will NOT reach the compiled Decision Log (D-11).
-      process.stderr.write(
-        'journal: WARNING — DECISION event has no data.id.\n' +
-        '  This event will be stored but will NOT compile into the Decision Log.\n' +
-        '  Add data.id (e.g. "D-42") so the decision is tracked across sessions.\n',
-      )
-    }
+    if (!d.id) die('DECISION event requires data.id', 2)
     if (!d.decision) die('DECISION event requires data.decision', 2)
     if (!d.rationale) die('DECISION event requires data.rationale', 2)
     if (!Array.isArray(d.alternatives)) d.alternatives = []
@@ -579,6 +580,20 @@ function cmdAppend(args) {
   }
 
   const { projectDir, sessionId } = resolveContext()
+
+  // DECISION id-collision warning (motive-scoped — ids are NOT unique across motives)
+  if (type === 'DECISION' && data?.id) {
+    const journalDir = path.join(projectDir, '.groundwork', 'journal')
+    const { events } = readOrderedEvents(journalDir, { motive })
+    const prior = events.find(e => e.type === 'DECISION' && e.data?.id === data.id)
+    if (prior && data.revises !== data.id) {
+      process.stderr.write(
+        `journal: WARNING — DECISION id "${data.id}" already exists in motive "${motive}".\n` +
+        `  Prior event: [${prior.ts ?? '?'}] ${prior.msg ?? ''}\n` +
+        `  If this is an intentional refinement, set data.revises to this decision's own id (e.g. "${data.id}") to suppress this warning.\n`,
+      )
+    }
+  }
   const ts = new Date().toISOString()
   const event = { ts, session: sessionId, motive, type, msg, source: 'cli:journal' }
   if (data !== undefined) event.data = data

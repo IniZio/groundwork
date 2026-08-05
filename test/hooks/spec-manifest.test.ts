@@ -171,6 +171,7 @@ describe("S0: spec-io schema and index API", () => {
         "ARTIFACT-R-008",
         "ARTIFACT-R-009",
         "ARTIFACT-R-010",
+        "ARTIFACT-R-011",
         "C-ARTIFACT",
         "C-ENFORCEMENT",
         "C-GROUNDWORK",
@@ -190,6 +191,7 @@ describe("S0: spec-io schema and index API", () => {
         "VERIFICATION-R-001",
         "VERIFICATION-R-002",
         "VERIFICATION-R-003",
+        "VERIFICATION-R-004",
       ].sort(),
     );
 

@@ -78,9 +78,10 @@ import { fileURLToPath } from 'node:url'
 const LEDGER_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/ledger')
 import { mutateLedger, resolveLedgerPath } from './lib/ledger-io.mjs'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
-import { emitHookEvent, readAllEvents } from './lib/journal-io.mjs'
+import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { readCharter } from './lib/motive-charter.mjs'
 import { isExhausted } from './lib/pacing.mjs'
+import { compile } from './lib/motive-compile.mjs'
 
 /**
  * Advisory only — never blocks. Enabled by GROUNDWORK_TBD_GATE=1.
@@ -139,6 +140,135 @@ function decisionResearchAdvisory(projectDir) {
     if (missing.length === 0) return ''
     const ids = missing.map((e) => e?.data?.id ?? e?.id ?? '(unknown)').join(', ')
     return `\n⚠ DECISION event(s) with high/medium blast lack data.research: ${ids}. Add a research findings path to aid future reviewers.`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * D-59/D-60: Decision alternatives + unmarked-collision advisory — non-blocking.
+ *
+ * (a) Reports DECISION events (keyed by id) whose latest alternatives array is
+ *     absent or empty — the ruled-out reasoning was never captured. Sourced from
+ *     raw events (same pattern as decisionResearchAdvisory) so this fires even
+ *     when no .groundwork/motives/ directory exists.
+ * (b) Reports DECISION events with unmarked_collision: true in the compiled view
+ *     — a same-id merge not marked with data.revises, i.e. possible accidental
+ *     id reuse. Sourced from the compiled view because raw events cannot provide
+ *     this field; phrased as "verify intent", not as an assertion of error.
+ *
+ * Empty string when no offenders exist or any error occurs. Never blocks.
+ * @param {string} projectDir
+ * @returns {string}
+ */
+function decisionAlternativesAdvisory(projectDir) {
+  try {
+    const journalDir = path.join(projectDir, '.groundwork', 'journal')
+    const allEvents = readAllEvents(journalDir)
+
+    // Resolve known motive slugs — shared by both (a) and (b).
+    // null means the motives directory does not exist or is empty; each path
+    // handles null as its own documented fallback.
+    let slugs = null
+    try {
+      const motivesDir = path.join(projectDir, '.groundwork', 'motives')
+      const dirs = readdirSync(motivesDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+        .sort()
+      if (dirs.length > 0) slugs = dirs
+    } catch {
+      // no motives directory
+    }
+
+    // (a) Latest alternatives per keyed decision id.
+    // When motives exist: per-motive scope via filterEvents; one attributed line
+    //   per motive ([slug] prefix) so cross-motive ids never contaminate each other.
+    // When no motives dir: unscoped scan over all events (documented fallback —
+    //   fires even without a .groundwork/motives/ directory, un-attributed).
+    const noAltsLines = []
+    if (slugs !== null) {
+      for (const slug of slugs) {
+        try {
+          const { shown: motiveEvents } = filterEvents(allEvents, { motive: slug })
+          /** @type {Map<string, unknown[]|null>} id → alternatives array or null */
+          const latestAlts = new Map()
+          for (const e of motiveEvents) {
+            if (e?.type === 'DECISION' && e?.data?.id != null) {
+              const id = String(e.data.id)
+              if (Array.isArray(e.data.alternatives)) {
+                latestAlts.set(id, e.data.alternatives)
+              } else if (!latestAlts.has(id)) {
+                latestAlts.set(id, null)
+              }
+            }
+          }
+          const noAlts = [...latestAlts.entries()]
+            .filter(([, alts]) => !Array.isArray(alts) || alts.length === 0)
+            .map(([id]) => id)
+          if (noAlts.length > 0) {
+            noAltsLines.push(
+              `⚠ DECISION event(s) missing alternatives (ruled-out options not captured) [${slug}]: ${noAlts.join(', ')}.`,
+            )
+          }
+        } catch {
+          // fail-open per motive
+        }
+      }
+    } else {
+      // Fallback: no motives directory — unscoped scan, un-attributed line.
+      /** @type {Map<string, unknown[]|null>} id → alternatives array or null */
+      const latestAlts = new Map()
+      for (const e of allEvents) {
+        if (e?.type === 'DECISION' && e?.data?.id != null) {
+          const id = String(e.data.id)
+          if (Array.isArray(e.data.alternatives)) {
+            latestAlts.set(id, e.data.alternatives)
+          } else if (!latestAlts.has(id)) {
+            latestAlts.set(id, null)
+          }
+        }
+      }
+      const noAlts = [...latestAlts.entries()]
+        .filter(([, alts]) => !Array.isArray(alts) || alts.length === 0)
+        .map(([id]) => id)
+      if (noAlts.length > 0) {
+        noAltsLines.push(
+          `⚠ DECISION event(s) missing alternatives (ruled-out options not captured): ${noAlts.join(', ')}.`,
+        )
+      }
+    }
+
+    // (b) Unmarked collision — compiled view per motive (requires compile fold).
+    // NOTE: decisionResearchAdvisory is deliberately cross-motive (project-wide
+    // criterion); this advisory intentionally scopes per motive instead.
+    const unmarkedLines = []
+    try {
+      for (const slug of slugs ?? []) {
+        try {
+          const { shown: motiveEvents } = filterEvents(allEvents, { motive: slug })
+          const view = compile(motiveEvents)
+          const ids = []
+          for (const entry of view?.agent?.decision_log ?? []) {
+            if (entry?.unmarked_collision) {
+              ids.push(entry?.id ?? '(unknown)')
+            }
+          }
+          if (ids.length > 0) {
+            unmarkedLines.push(
+              `⚠ DECISION event(s) with possible unmarked id reuse — verify intent [${slug}]: ${ids.join(', ')}.`,
+            )
+          }
+        } catch {
+          // fail-open per motive
+        }
+      }
+    } catch {
+      // fail-open: unmarked collision check silently skips on any outer error
+    }
+
+    const lines = [...noAltsLines, ...unmarkedLines]
+    return lines.length > 0 ? '\n' + lines.join('\n') : ''
   } catch {
     return ''
   }
@@ -504,7 +634,7 @@ async function main() {
     // S7-AC3: TBD advisory surfaces on the normal-completion allow path (gate=1 only).
     // D-13: DECISION research advisory is non-blocking; appended on every allow path.
     // D-26: Spec advisory is non-blocking; appended on every allow path.
-    return allow(pacingGrantSummary(ledger) + tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir) + specAdvisory(projectDir))
+    return allow(pacingGrantSummary(ledger) + tbdAdvisory(projectDir) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir))
   }
 
   // D-29: pacing exhaustion is a sanctioned release path.
@@ -519,6 +649,7 @@ async function main() {
         pacingGrantSummary(ledger) +
           pacingExhaustionDirective(ledger, incomplete, projectDir) +
           decisionResearchAdvisory(projectDir) +
+          decisionAlternativesAdvisory(projectDir) +
           specAdvisory(projectDir),
       )
     }

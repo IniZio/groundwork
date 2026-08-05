@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
 
@@ -791,7 +790,16 @@ describe("stop-gate — DECISION research advisory (D-13)", () => {
 
 	it("produces no advisory when DECISION has data.research present (high blast)", () => {
 		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-3", blast: "high", research: "docs/research/d3.md" } },
+			{
+				type: "DECISION",
+				data: {
+					id: "D-3",
+					blast: "high",
+					research: "docs/research/d3.md",
+					// alternatives present so the new decisionAlternativesAdvisory does not fire
+					alternatives: ["Option A: rejected"],
+				},
+			},
 		]);
 		expect(decision.continue).toBe(true);
 		// No advisory: reason should be absent or not mention research warning
@@ -800,7 +808,14 @@ describe("stop-gate — DECISION research advisory (D-13)", () => {
 
 	it("produces no advisory when DECISION blast is low", () => {
 		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-4", blast: "low" } },
+			{
+				type: "DECISION",
+				data: {
+					id: "D-4",
+					blast: "low",
+					alternatives: ["Option A: rejected"],
+				},
+			},
 		]);
 		expect(decision.continue).toBe(true);
 		expect(decision.reason ?? "").not.toMatch(/D-4/);
@@ -808,7 +823,13 @@ describe("stop-gate — DECISION research advisory (D-13)", () => {
 
 	it("produces no advisory when DECISION has no blast field", () => {
 		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-7" } },
+			{
+				type: "DECISION",
+				data: {
+					id: "D-7",
+					alternatives: ["Option A: rejected"],
+				},
+			},
 		]);
 		expect(decision.continue).toBe(true);
 		expect(decision.reason ?? "").not.toMatch(/D-7/);

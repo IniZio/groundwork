@@ -486,6 +486,7 @@ export function compile(events, opts = {}) {
         id: item.id,
         kind: item.kind ?? null,
         statement: item.statement ?? null,
+        body: item.body ?? null,
         owner: item.owner ?? null,
         blocked_by: item.blocked_by ?? null,
         resolved_by: resolvedBy,

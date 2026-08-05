@@ -615,3 +615,103 @@ describe('readCharter — strikethrough-wrapped TBDs are excluded from open_item
     expect(charter?.open_items[0].id).toBe('TBD-1')
   })
 })
+
+// ---------------------------------------------------------------------------
+// S3-AC9 — parseOpenItems: handle/body split contract
+//
+//   statement = handle (first-line text after id, metadata stripped)
+//   body      = continuation lines joined with '\n'; OMITTED when no continuations
+// ---------------------------------------------------------------------------
+
+describe('S3-AC9 — parseOpenItems handle/body split', () => {
+  let tmp: string
+  beforeEach(() => { tmp = mkTmp() })
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
+
+  // (a) handle/body split: continuation lines go into body, not statement
+  it('continuation lines appear in body, not statement', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-3: DECISION id merge can\'t tell revision from collision',
+      '    motive-compile.mjs merges same-id events (later non-null wins);',
+      '    D-1/D-13 were accidental reuse that destroyed earlier text.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    const item = charter?.open_items[0]
+    expect(item?.id).toBe('TBD-3')
+    // statement is only the handle — no continuation text
+    expect(item?.statement).toBe("DECISION id merge can't tell revision from collision")
+    expect(item?.statement).not.toContain('motive-compile.mjs')
+    // body contains the continuation lines joined
+    expect(item?.body).toBeDefined()
+    expect(item?.body).toContain('motive-compile.mjs merges same-id events')
+    expect(item?.body).toContain('D-1/D-13 were accidental reuse')
+  })
+
+  // (b) single-line back-compat: no continuation → body undefined
+  it('single-line item has body undefined', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Some text with no continuation.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    const item = charter?.open_items[0]
+    expect(item?.statement).toBe('Some text with no continuation.')
+    expect(item?.body).toBeUndefined()
+  })
+
+  // (c) strikethrough filtering still works on the handle
+  it('resolved item with ~~ on handle line is still filtered out', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Open item.',
+      '- TBD-2: ~~Resolved handle with continuation.',
+      '    continuation body text that should not rescue the item.',
+      '- TBD-3: Also open.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    // TBD-2 statement starts with ~~ → filtered out
+    expect(charter?.open_items).toHaveLength(2)
+    expect(charter?.open_items.map((i: { id: string }) => i.id)).toEqual(['TBD-1', 'TBD-3'])
+  })
+
+  // (d) metadata (@owner, blocked-by) still stripped from the handle
+  it('@owner and blocked-by stripped from statement, not from body', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Open items',
+      '',
+      '- TBD-1: Decide the API shape. @alice blocked-by:TBD-2',
+      '    Some continuation detail.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    const item = charter?.open_items[0]
+    // owner and blocked_by extracted
+    expect(item?.owner).toBe('alice')
+    expect(item?.blocked_by).toBe('TBD-2')
+    // statement has neither @alice nor blocked-by:TBD-2
+    expect(item?.statement).toBe('Decide the API shape.')
+    expect(item?.statement).not.toContain('@alice')
+    expect(item?.statement).not.toContain('blocked-by')
+    // body has the continuation
+    expect(item?.body).toContain('Some continuation detail.')
+  })
+})

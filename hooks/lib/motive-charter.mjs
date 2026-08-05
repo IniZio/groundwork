@@ -135,10 +135,12 @@ function parseOpenItems(body) {
   for (const line of stripped.split('\n')) {
     const trimmed = line.trim()
 
-    // Continuation line: indented (not a new bullet) — append to current item's statement
+    // Continuation line: indented (not a new bullet) — collect into body
     if (!trimmed.startsWith('-')) {
       if (trimmed && items.length > 0) {
-        items[items.length - 1].statement += ' ' + trimmed
+        const current = items[items.length - 1]
+        if (current._bodyLines === undefined) current._bodyLines = []
+        current._bodyLines.push(trimmed)
       }
       continue
     }
@@ -176,10 +178,16 @@ function parseOpenItems(body) {
     items.push(item)
   }
 
-  // Post-pass: drop resolved items (statement starts with `~~` after all
-  // continuations have been joined).  Checked here rather than inline so that
-  // multi-line strikethrough entries (where the closing `~~` is on a later
-  // continuation line) are evaluated with their full accumulated statement.
+  // Post-pass: assemble body from collected continuation lines
+  for (const item of items) {
+    if (item._bodyLines !== undefined) {
+      item.body = item._bodyLines.join('\n')
+      delete item._bodyLines
+    }
+  }
+
+  // Post-pass: drop resolved items.  A resolved item has ~~ on its handle line
+  // (statement), so checking statement is sufficient.
   const openItems = items.filter((item) => !item.statement.startsWith('~~'))
 
   return { items: openItems, malformedCount }

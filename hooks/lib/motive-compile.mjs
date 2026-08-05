@@ -212,6 +212,7 @@ export function compile(events, opts = {}) {
             // Update existing entry's status (and other optional fields)
             if (d.status != null) existing.status = d.status
             if (d.title != null) existing.title = d.title
+            else if (d.decision != null) existing.title = d.decision
             if (d.rationale != null) existing.rationale = d.rationale
             if (Array.isArray(d.alternatives)) existing.alternatives = d.alternatives
             if (d.superseded_by != null) existing.superseded_by = d.superseded_by

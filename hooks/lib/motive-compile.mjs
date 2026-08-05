@@ -665,6 +665,16 @@ export function compile(events, opts = {}) {
   //   met     = covering non-empty AND every listed slice in completedSlices
   //   unmet   = absent | empty | any incomplete covering slice (and ledger found)
   //   unknown = covering non-empty but no ledger to verify completion status
+
+  // Seed from charter-declared ACs so they appear as unmet even with no events
+  if (charter != null && Array.isArray(charter.acceptance_criteria)) {
+    for (const ac of charter.acceptance_criteria) {
+      if (ac != null && ac.id != null && !acCoverageMap.has(String(ac.id))) {
+        acCoverageMap.set(String(ac.id), new Set())
+      }
+    }
+  }
+
   const ledgerFound = groundTruth?.ledger?.found ?? false
   const acMet = []
   const acUnmet = []

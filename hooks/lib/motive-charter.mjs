@@ -96,6 +96,16 @@ const SECTION_RE = /^(#{1,6})\s+(.+)$/
 //   - TBR-<id>: statement ...
 const OPEN_ITEM_RE = /^-\s+((?:TBD|TBR)-\S+):\s+(.+)$/i
 
+// Matches a valid acceptance-criteria bullet (STRICT — uppercase AC- only):
+//   - AC-<id>: statement
+// The /i flag is intentionally absent: lowercase `ac-` is a near-miss and
+// triggers a warning (see parseAcceptanceCriteria).
+const AC_ITEM_RE = /^-\s+(AC-\S+):\s+(.+)$/
+
+// Case-insensitive fallback — used ONLY to detect near-misses (lowercase/mixed
+// AC- prefix) so a helpful warning can be emitted.  Never used to accept items.
+const AC_ITEM_RE_CI = /^-\s+(AC-\S+):\s+(.+)$/i
+
 // Extracts @owner from remainder
 const OWNER_RE = /@(\S+)/
 
@@ -173,6 +183,51 @@ function parseOpenItems(body) {
   const openItems = items.filter((item) => !item.statement.startsWith('~~'))
 
   return { items: openItems, malformedCount }
+}
+
+/**
+ * Parse acceptance-criteria bullets from the Acceptance criteria section body.
+ *
+ * The id matcher is STRICT: only uppercase `AC-` prefix is accepted.  A line
+ * like `- ac-1: text` does NOT produce an item; instead it is collected in
+ * `caseMismatchLines` so the caller can emit a visible warning.  Silently
+ * dropping a human's intended criterion is a worse failure than the key-split
+ * the strict parser prevents — the warning surfaces the typo immediately.
+ *
+ * @param {string} body
+ * @returns {{ items: Array<{ id: string, statement: string }>, caseMismatchLines: string[] }}
+ */
+function parseAcceptanceCriteria(body) {
+  if (!body) return { items: [], caseMismatchLines: [] }
+  const stripped = body.replace(/<!--[\s\S]*?-->/g, '')
+  const items = []
+  const caseMismatchLines = []
+
+  for (const line of stripped.split('\n')) {
+    const trimmed = line.trim()
+
+    // Continuation line: not a new bullet — append to current item's statement
+    if (!trimmed.startsWith('-')) {
+      if (trimmed && items.length > 0) {
+        items[items.length - 1].statement += ' ' + trimmed
+      }
+      continue
+    }
+
+    const m = AC_ITEM_RE.exec(trimmed)
+    if (!m) {
+      // Near-miss: would have matched with a case-insensitive regex — warn, don't silently drop.
+      if (AC_ITEM_RE_CI.test(trimmed)) {
+        caseMismatchLines.push(trimmed)
+      }
+      // Other non-matching bullets (unrelated content) are skipped silently.
+      continue
+    }
+
+    items.push({ id: m[1], statement: m[2].trim() })
+  }
+
+  return { items, caseMismatchLines }
 }
 
 /**
@@ -292,6 +347,7 @@ export function readCharter({ projectDir, motive }) {
     const out_of_scope = sections.get('out of scope') ?? ''
     const openItemsBody = sections.get('open items') ?? ''
     const decisionsBody = sections.get('decisions') ?? ''
+    const acBody = sections.get('acceptance criteria') ?? ''
 
     const { items: open_items, malformedCount } = parseOpenItems(openItemsBody)
 
@@ -306,12 +362,21 @@ export function readCharter({ projectDir, motive }) {
     // becomes a synthetic entry { id, text } for the MAP decisions section.
     const decisions = _parseCharterDecisions(decisionsBody)
 
+    const { items: acceptance_criteria, caseMismatchLines } = parseAcceptanceCriteria(acBody)
+
+    for (const line of caseMismatchLines) {
+      process.stderr.write(
+        `[motive-charter] warn: AC id must start with uppercase "AC-" — line skipped: "${line}" in ${filePath}\n`,
+      )
+    }
+
     return {
       objective,
       open_items,
       notes,
       out_of_scope,
       decisions,
+      acceptance_criteria,
       path: filePath,
     }
   } catch {

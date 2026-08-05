@@ -657,3 +657,81 @@ describe('G2: AC_COVERAGE array covers form — { slice, covers: [...] }', () =>
     expect(md).not.toContain('✗ unmet')
   })
 })
+
+// ---------------------------------------------------------------------------
+// S8-AC10 — charter-seeded AC coverage
+// ---------------------------------------------------------------------------
+
+describe('S8-AC10: charter-declared ACs visible in compile() without events', () => {
+  it('declared AC with no covering slices appears in unmet with covering=[]', () => {
+    const charter = {
+      acceptance_criteria: [
+        { id: 'AC-1', statement: 'Must do X.' },
+      ],
+    }
+    const view = compile([], { charter })
+    const cov = view.agent.ac_coverage
+    const ac1 = cov.unmet.find((a: any) => a.id === 'AC-1')
+    expect(ac1).toBeDefined()
+    expect(ac1.covering).toHaveLength(0)
+    expect(ac1.missing).toHaveLength(0)
+    expect(ac1.met).toBe(false)
+    expect(ac1.status_unknown).toBe(false)
+  })
+
+  it('declared AC claimed by a completed slice is met', () => {
+    const charter = {
+      acceptance_criteria: [
+        { id: 'AC-1', statement: 'Must do X.' },
+      ],
+    }
+    const events = [
+      acEvent('AC-1', 'S1'),
+      tcEvent('S1'),
+    ]
+    const view = compile(events, { charter })
+    const cov = view.agent.ac_coverage
+    expect(cov.met.map((a: any) => a.id)).toContain('AC-1')
+    expect(cov.unmet.map((a: any) => a.id)).not.toContain('AC-1')
+    const ac1 = cov.met.find((a: any) => a.id === 'AC-1')
+    expect(ac1.met).toBe(true)
+    expect(ac1.missing).toHaveLength(0)
+  })
+
+  it('undeclared AC (event only, no charter) still appears as before', () => {
+    // Event-only path must be unaffected by charter seeding
+    const events = [
+      acEvent('AC-99', 'S1'),
+    ]
+    const view = compile(events, {})
+    const cov = view.agent.ac_coverage
+    const all = [...cov.met, ...cov.unmet]
+    const ac99 = all.find((a: any) => a.id === 'AC-99')
+    expect(ac99).toBeDefined()
+    expect(ac99.covering).toContain('S1')
+  })
+
+  it('charter with empty acceptance_criteria produces same ac_coverage as no charter', () => {
+    // Backward compat: empty acceptance_criteria must not change event-driven output
+    const charter = {
+      acceptance_criteria: [],
+      open_items: [],
+      objective: 'x',
+      notes: '',
+      out_of_scope: '',
+      decisions: [],
+      path: '/tmp/x.md',
+    }
+    const events = [acEvent('AC-1', 'S1')]
+    const viewWith = compile(events, { charter })
+    const viewWithout = compile(events, {})
+    const withUnmet = viewWith.agent.ac_coverage.unmet.find((a: any) => a.id === 'AC-1')
+    const withoutUnmet = viewWithout.agent.ac_coverage.unmet.find((a: any) => a.id === 'AC-1')
+    expect(withUnmet).toEqual(withoutUnmet)
+  })
+
+  it('charter null (missing file) does not crash compile()', () => {
+    const events = [acEvent('AC-1', 'S1')]
+    expect(() => compile(events, { charter: null })).not.toThrow()
+  })
+})

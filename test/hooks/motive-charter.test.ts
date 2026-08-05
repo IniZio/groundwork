@@ -459,6 +459,78 @@ describe('readCharter — level-aware section splitting', () => {
 })
 
 // ---------------------------------------------------------------------------
+// S3-AC8 — parseAcceptanceCriteria (via readCharter): AC section parsing
+// ---------------------------------------------------------------------------
+
+describe('S3-AC8 — readCharter parses acceptance_criteria section', () => {
+  let tmp: string
+  beforeEach(() => { tmp = mkTmp() })
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
+
+  it('returns acceptance_criteria with id and statement for well-formed items', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- AC-1: The system must accept valid input.',
+      '- AC-2: Invalid input must be rejected.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.acceptance_criteria).toHaveLength(2)
+    expect(charter?.acceptance_criteria[0].id).toBe('AC-1')
+    expect(charter?.acceptance_criteria[0].statement).toBe('The system must accept valid input.')
+    expect(charter?.acceptance_criteria[1].id).toBe('AC-2')
+    expect(charter?.acceptance_criteria[1].statement).toBe('Invalid input must be rejected.')
+  })
+
+  it('returns empty acceptance_criteria when section is absent', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.acceptance_criteria).toEqual([])
+  })
+
+  it('silently ignores malformed lines (not matching AC-<id>: format)', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- AC-1: Valid item.',
+      '- not a valid AC item',
+      '- also invalid',
+      '- AC-2: Another valid item.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.acceptance_criteria).toHaveLength(2)
+    expect(charter?.acceptance_criteria.map((a: any) => a.id)).toEqual(['AC-1', 'AC-2'])
+  })
+
+  it('heading is matched case-insensitively', () => {
+    writeCharter(tmp, 'm', [
+      '## Objective',
+      '',
+      'Build it.',
+      '',
+      '## ACCEPTANCE CRITERIA',
+      '',
+      '- AC-1: Case-insensitive heading test.',
+    ].join('\n'))
+    const charter = readCharter({ projectDir: tmp, motive: 'm' })
+    expect(charter?.acceptance_criteria).toHaveLength(1)
+    expect(charter?.acceptance_criteria[0].id).toBe('AC-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Strikethrough filtering (charter-strikethrough-resolved)
 // ---------------------------------------------------------------------------
 

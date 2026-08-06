@@ -56,6 +56,7 @@ erDiagram
 
     Ticket {
         string id
+        string type
         string slug
         string motive_slug
         string status
@@ -85,7 +86,8 @@ erDiagram
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | string | Unique identifier for the ticket (e.g. `tkt-redesign-auth`) |
+| `id` | string | Unique identifier for the ticket; derived from the filename stem (e.g. `01-research-domain-model`) |
+| `type` | string | Controlled type prefix; one of the eight values in the closed vocabulary below |
 | `slug` | string | Kebab-case file stem used as the on-disk filename (without `.md`) |
 | `motive_slug` | string | Slug of the owning motive |
 | `status` | string | Lifecycle state: `open`, `decided`, `superseded` |
@@ -96,6 +98,23 @@ A ticket document contains the following required H2 sections in order: **Questi
 The `Slice.ticket` field (optional string) records which ticket a slice is delivering against, establishing the 1..n relationship: one ticket may be addressed by one or more slices across one or more sessions.
 
 The `Slice.decisions` field (optional string or string array) records zero or more journal DECISION event ids that this slice produces or is governed by, establishing the m..n relationship: one decision may be cited by multiple slices, and one slice may cite multiple decisions.
+
+### Ticket type vocabulary
+
+The `type` field is a **closed** enum. Exactly these eight values are valid (ARTIFACT-R-012):
+
+| Type | Intent | Maps to ledger `--kind` |
+|---|---|---|
+| `research` | Gather evidence; always requires a primary-source citation in Evidence | `plan` |
+| `choose` | Evaluate options and commit to one | `plan` |
+| `model` | Define or revise a domain model or schema | `design` |
+| `build` | Implement a slice of production behaviour | `impl` |
+| `grill` | Adversarial review or stress-test of a prior decision | `plan` |
+| `spec` | Author or update a spec requirement | `plan` |
+| `fix` | Diagnose and repair a defect | `diagnose` |
+| `chore` | Housekeeping with no user-facing behaviour change | `impl` |
+
+The filename convention for a ticket is `<NN>-<type>-<slug>.md`, where `<NN>` is a zero-padded two-digit ordinal unique within the motive's ticket corpus and `<slug>` is a kebab-case description. Example: `10-research-domain-model.md`. The `Type:` metadata field in the ticket document must match the filename type segment.
 
 ## RFC fields
 

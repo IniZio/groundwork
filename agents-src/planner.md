@@ -56,6 +56,13 @@ Key rules:
    - **Medium** (3-8 files, cross-cutting) → Charter with vertical slices
    - **Complex** (8+ files, architectural) → Charter with phased delivery + risk analysis
 
+3. **Tag every load-bearing premise (D-82 provenance mandate).** A "premise" is any claim about current state that the plan depends on — what code already exists, what a system does today, what a user expects. Every such premise MUST carry one of three provenance tokens:
+   - **`research:<ticket-id>`** — grounded by a `research`-type ticket under `.groundwork/motives/<slug>/tickets/`
+   - **`spec:<req-id>`** — grounded by a `doc/specs/` requirement (e.g. `spec:REQ-042`)
+   - **`unverified-assumption`** — the claim has not been confirmed against the current codebase or environment
+
+   Premises tagged `unverified-assumption` are legal but constrained: they MUST NOT anchor a Wave-0 ("confirmed-live") slice (enforced at Phase 3). A plan that assigns Wave-0 work to an unverified premise is a structural failure — this is the direct antidote to the "confirmed-live premise that was actually stale" failure mode.
+
 ## Phase 3: Decomposition
 
 Decompose the work into vertical slices. Each slice is independently testable end-to-end.
@@ -71,6 +78,8 @@ Every task in the charter must carry:
 - `conditional` + `trigger` — if this task is conditional
 
 For each acceptance criterion, note whether it is testable (`testable: true`) or requires manual verification (`testable: false`). If `testable: false`, verify that the corresponding requirement in `doc/specs/` declares `verification: manual` — if it does not, either reject the criterion or require the requirement to be updated before proceeding.
+
+**Wave-0 premise gate (D-82):** A task assigned to Wave 1 (or otherwise designated "confirmed-live") MUST NOT rest on a premise tagged `unverified-assumption` from Phase 2. If a Wave-0 task depends on an unverified premise, move it to Wave 2+ and add a `research` or verify-first task in Wave 1 to confirm the premise first.
 
 ## Phase 4: Coverage Verification (MANDATORY before RFC-READY)
 
@@ -148,6 +157,7 @@ motive_ref: <slug>
 scope_class: <Trivial | Simple | Medium | Complex>
 next_skill: vertical-slice   # or: direct-delegate (Trivial)
 coverage_table: (see Phase 4 output above)
+research_tickets_cited: [<ticket-id>, …]   # D-82: research-type tickets that grounded plan premises; [] if all premises are spec-grounded or confirmed inline
 ```
 
 ## Output Formats
@@ -182,3 +192,4 @@ Return this format on successful completion (see Phase 5, Step 4 above).
 - **Empty Requirement ID column** — every coverage-table row must trace to a requirement or be explicitly flagged `(untraced)`
 - **PLAN-READY with uncovered criteria** — any uncovered criterion is a blocker; convert it to a NEEDS-INPUT question first
 - **Using `LEARNING` as a journal event type** — it is not a valid type; use `DECISION` or `MILESTONE` instead
+- **`unverified-assumption` premise on Wave-0** — a premise tagged `unverified-assumption` MUST NOT anchor a Wave-0 slice; move the slice to Wave 2+ and add a `research`/verify-first slice in Wave 1 first (D-82)

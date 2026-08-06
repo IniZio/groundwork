@@ -96,6 +96,7 @@ Minimum checks (do all of them):
 5. **Missing seams** — shared files across slices, or AC with no owning interface (`missing_seam`)
 6. **Orphan slices** — impl slice with no AC (`unrequested`)
 7. **Wave / dependency sanity** — slice blocked_by cycles or impl before its plan/design dependency (WARN unless it guarantees a contradicting delivery order → CRITICAL)
+8. **Premise-provenance gate (D-82)** — if the PLAN-READY output or charter notes identify any Wave-1 ("confirmed-live") impl slice whose premise is tagged `unverified-assumption`, flag it CRITICAL (`missing` gap type — the confirming evidence is missing). The slice must be moved to Wave 2+ and a `research`/verify-first slice added in Wave 1. If `research_tickets_cited` in PLAN-READY is non-empty, cross-check that each cited ticket exists under `.groundwork/motives/<slug>/tickets/`; a missing ticket file is a WARN.
 
 ### 4. Output format (mandatory shape)
 

@@ -21,12 +21,13 @@
 
 // @ts-nocheck
 import {
-  mkdirSync, mkdtempSync, rmSync, writeFileSync,
+  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
 // Paths — relative to this test file's repo root
@@ -461,3 +462,59 @@ Lowercase-AC fixture for case-mismatch contract test.
     expect(allIds).not.toContain('ac-1')
   })
 })
+
+// ---------------------------------------------------------------------------
+// P-6: MAP–COMPILE PARITY on undeclared-but-claimed ACs (Bug map-compile-ac-divergence)
+//
+// When a slice claims an AC id not declared in the charter, compile shows it
+// (union behavior, D-85) but the pre-fix MAP dropped it via acSlicesMap.has().
+// Post-fix MAP must agree with compile: both surfaces show the undeclared AC.
+//
+// This test spans the seam between the MAP renderer (motive-map.mjs) and the
+// compile pipeline (journal compile --no-ground-truth) for identical input.
+// ---------------------------------------------------------------------------
+
+describe('P-6: MAP–compile parity — undeclared-but-claimed AC appears on both surfaces', () => {
+  test('AC-99 claimed by a completed slice appears in both MAP and compile output', () => {
+    // Same setup as P-3: charter declares AC-1, AC-2, AC-3; slice S3 claims AC-1 + AC-99
+    writeCharter()  // AC-1, AC-2, AC-3 only
+    const token = initLedger()
+
+    spawnLedger(['add', 'S3', '--wave', '1',
+      '--desc', 'slice with undeclared AC', '--covers-ac', 'AC-1,AC-99'])
+    spawnLedger(['complete', 'S3', '--token', token])
+
+    // ── Compile side ─────────────────────────────────────────────────────────
+    const { met: compileMet, unmet: compileUnmet } = compileAcCoverage()
+    const compileIds = new Set([...compileMet, ...compileUnmet].map((e: any) => e.id))
+
+    expect(compileIds).toContain('AC-99')  // compile shows undeclared AC
+
+    // ── MAP side ──────────────────────────────────────────────────────────────
+    regenerateMotiveMap(projectDir, MOTIVE)
+    const mapContent = readFileSync(
+      join(projectDir, '.groundwork', 'motives', MOTIVE, 'MAP.md'),
+      'utf8',
+    )
+
+    // Bug map-compile-ac-divergence: pre-fix MAP dropped AC-99; post-fix it appears.
+    expect(mapContent).toContain('AC-99')
+    expect(mapContent).toContain('not declared in charter')
+
+    // ── Parity: MAP and compile agree on the AC key set ───────────────────────
+    // Extract AC ids from the MAP ## Acceptance criteria section.
+    const acSection = mapContent.match(/## Acceptance criteria\n([\s\S]*?)(?:\n##|\s*$)/)?.[1] ?? ''
+    const mapAcIds = [...acSection.matchAll(/\*\*([^*]+)\*\*/g)].map((m) => m[1])
+
+    // Every AC id compile shows must also appear in MAP
+    for (const compileId of compileIds) {
+      expect(mapAcIds, `compile shows "${compileId}" but MAP does not`).toContain(compileId)
+    }
+
+    // Every AC id MAP shows must also appear in compile
+    for (const mapId of mapAcIds) {
+      expect(compileIds, `MAP shows "${mapId}" but compile does not`).toContain(mapId)
+    }
+  })
+})
+

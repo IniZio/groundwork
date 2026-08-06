@@ -49,6 +49,9 @@ function _generate(projectDir, motive) {
   const charter            = readCharter({ projectDir, motive })
   const ledgerDoc          = _readMotiveLedgerDoc(projectDir, motive)
   const slices             = Array.isArray(ledgerDoc?.slices) ? ledgerDoc.slices.filter(Boolean) : []
+  // AC renderer uses a separate union of ALL sessions' slices so that slice ids
+  // reused across sessions (D-12) are tracked per-session, not collapsed.
+  const acSlices           = _readAllMotiveSlicesForAC(projectDir, motive)
   const journalDecisions   = _readDecisions(projectDir, motive)
   // Fall back to decisions embedded in the charter file (# Decisions section) when the
   // journal has no DECISION events — this covers host projects that never emitted them.
@@ -68,7 +71,7 @@ function _generate(projectDir, motive) {
 
   const ticketFiles = _readTicketFiles(motiveDir)
 
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles })
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -107,6 +110,58 @@ function _readMotiveLedgerDoc(projectDir, motive) {
 
   if (!candidates.length) return null
   return candidates.find((c) => c.active) ?? candidates[candidates.length - 1]
+}
+
+/**
+ * Return a union of ALL sessions' slices for this motive, each tagged with
+ * `_session_id`. Keyed on composite `${session_id}::${slice_id}` so slices
+ * from different sessions that reuse the same bare id remain distinct (D-12).
+ *
+ * Used exclusively by the AC renderer — the main `slices` variable (frontier,
+ * progress, pacing) continues to come from the single selected ledger so that
+ * other MAP sections are unaffected by this union.
+ */
+function _readAllMotiveSlicesForAC(projectDir, motive) {
+  const sliceMap = new Map()  // composite key → annotated slice
+
+  const runsDir = join(projectDir, '.groundwork', 'runs')
+  if (existsSync(runsDir)) {
+    for (const f of readdirSync(runsDir)) {
+      if (!f.endsWith('.json')) continue
+      try {
+        const data = JSON.parse(readFileSync(join(runsDir, f), 'utf8'))
+        if (data.motive !== motive) continue
+        const sessionId = typeof data.session_id === 'string' ? data.session_id : ''
+        for (const s of (Array.isArray(data.slices) ? data.slices : [])) {
+          if (!s || s.id == null) continue
+          const key = `${sessionId}::${s.id}`
+          if (!sliceMap.has(key)) {
+            sliceMap.set(key, { ...s, _session_id: sessionId })
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // Legacy single-run ledger
+  const legacyPath = join(projectDir, '.groundwork', 'run.json')
+  if (existsSync(legacyPath)) {
+    try {
+      const data = JSON.parse(readFileSync(legacyPath, 'utf8'))
+      if (data.motive === motive) {
+        const sessionId = typeof data.session_id === 'string' ? data.session_id : ''
+        for (const s of (Array.isArray(data.slices) ? data.slices : [])) {
+          if (!s || s.id == null) continue
+          const key = `${sessionId}::${s.id}`
+          if (!sliceMap.has(key)) {
+            sliceMap.set(key, { ...s, _session_id: sessionId })
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return [...sliceMap.values()].filter(Boolean)
 }
 
 /**
@@ -390,7 +445,7 @@ function _readAllMotiveEvents(projectDir, motive) {
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [] }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -611,12 +666,26 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   // ── Acceptance criteria ───────────────────────────────────────────────────
   const acList = charter?.acceptance_criteria ?? []
   if (acList.length > 0) {
+    // Bug 1: use the all-sessions union (acSlices) so slices reusing the same
+    // bare id across sessions (D-12) are tracked per-session, not collapsed.
+    // Falls back to the single-session slices when acSlices is unavailable.
+    const acSourceSlices = acSlices ?? slices
+
     // Build map: AC id → covering slices [{id, status}]
+    // Seed charter ACs first so they appear even when no slice covers them.
     const acSlicesMap = new Map()
+    const charterAcKeys = new Set()
     for (const ac of acList) {
-      if (ac?.id != null) acSlicesMap.set(String(ac.id), [])
+      if (ac?.id != null) {
+        acSlicesMap.set(String(ac.id), [])
+        charterAcKeys.add(String(ac.id))
+      }
     }
-    for (const s of slices) {
+
+    // Bug 2: collect covering slices for ALL claimed AC ids (union, not intersection).
+    // Previously the acSlicesMap.has(acId) gate silently dropped undeclared ACs
+    // that implementers claimed — a signal that must not be swallowed (D-85).
+    for (const s of acSourceSlices) {
       const raw = s.covers_ac
       const acIds = Array.isArray(raw)
         ? raw
@@ -624,22 +693,40 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
           ? raw.split(',').map((x) => x.trim()).filter(Boolean)
           : []
       for (const acId of acIds) {
-        if (acSlicesMap.has(acId)) {
-          acSlicesMap.get(acId).push({ id: s.id, status: s.status ?? 'pending' })
+        if (!acSlicesMap.has(acId)) {
+          acSlicesMap.set(acId, [])  // undeclared-but-claimed AC
         }
+        // Bug 1: use composite session_id::slice_id as the covering entry's
+        // display id so two sessions' slices with the same bare id are not
+        // conflated (D-12 — slice ids are reused across sessions).
+        // Falsy guard: empty-string _session_id (legacy ledgers with no session_id)
+        // falls back to the bare slice id so display is not garbled with a "::S1" prefix.
+        const compositeId = s._session_id ? `${s._session_id}::${s.id}` : s.id
+        acSlicesMap.get(acId).push({ id: compositeId, status: s.status ?? 'pending' })
       }
+    }
+
+    // Statement lookup from charter
+    const acStatementMap = new Map()
+    for (const ac of acList) {
+      if (ac?.id != null && ac.statement) acStatementMap.set(String(ac.id), ac.statement)
     }
 
     parts.push('## Acceptance criteria')
     parts.push('')
-    for (const ac of acList) {
-      if (ac?.id == null) continue
-      const key = String(ac.id)
+
+    // Render charter ACs in charter order, then undeclared-but-claimed ACs sorted.
+    const charterAcIds = acList.filter((ac) => ac?.id != null).map((ac) => String(ac.id))
+    const undeclaredAcIds = [...acSlicesMap.keys()].filter((k) => !charterAcKeys.has(k)).sort()
+    const orderedAcIds = [...charterAcIds, ...undeclaredAcIds]
+
+    for (const key of orderedAcIds) {
       const covering = acSlicesMap.get(key) ?? []
-      const stmt = ac.statement
-        ? (ac.statement.length > 120 ? ac.statement.slice(0, 117) + '…' : ac.statement)
-        : ''
-      const stmtSuffix = stmt ? ` — ${stmt}` : ''
+      const rawStmt = acStatementMap.get(key) ?? ''
+      const stmt = rawStmt.length > 120 ? rawStmt.slice(0, 117) + '…' : rawStmt
+      const stmtSuffix = stmt
+        ? ` — ${stmt}`
+        : (charterAcKeys.has(key) ? '' : ' — _(not declared in charter)_')
       const isMet = covering.length > 0 && covering.every((s) => s.status === 'complete')
       if (isMet) {
         const coverIds = covering.map((s) => s.id).join(', ')

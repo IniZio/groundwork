@@ -131,6 +131,46 @@ Claiming does not require `--token`. A slice already claimed by a different sess
 
 ---
 
+## Charter style
+
+The charter is human-first prose. A reader who has never seen the motive must understand any section cold — without opening another document.
+
+### Open-items register
+
+Each entry follows a three-part shape:
+
+```
+- TBD-N: <plain-language sentence — what is open, readable cold; not a bare id or code path>
+    <1–3 sentences: why it matters and what is at stake, then the open question or direction>
+    refs: <D-ids, file:line, session ids>   ·   graduated-to: <ticket-stem>   (where applicable)
+```
+
+- The first line is a complete sentence. No bare D-ids, file paths, or jargon as the opener.
+- The body leads with rationale (why it matters / impact), then the open question or direction.
+- Machine citations — D-ids, `file:line`, session ids — belong on the trailing `refs:` line, not inline in the prose. Inline id-chains make an entry unreadable cold.
+- No ALL-CAPS. No multi-deep decision-citation chains inline.
+
+### Acceptance criteria
+
+One criterion per bullet; one complete human sentence per criterion. Enforcement detail (file paths, schema keys, hook names) belongs in a trailing `note:` line on that bullet, not embedded in the statement.
+
+```
+- AC-1: The open-items register displays a rationale body under every entry.
+    note: enforced by motive-compile; see hooks/lib/motive-compile.mjs
+```
+
+### Tickets pointer
+
+The charter does not duplicate the ticket list. Add a `## Tickets` section with a single pointer to `MAP.md` (the live auto-index); tooling keeps that file current.
+
+```markdown
+## Tickets
+
+See [MAP.md](MAP.md) for the live ticket index.
+```
+
+---
+
 ## Negative scope
 
 - Motive state (`.groundwork/motives/`, `.groundwork/compiled/`) is gitignored process state. Do not commit it.

@@ -316,15 +316,27 @@ function mutateLedgerChecked(lPath, fn) {
 }
 
 /**
- * Enforce write-token authority for gate/complete.
- * FAIL-OPEN: if the ledger has no write_token field, proceeds without requiring a token.
- * FAIL-CLOSED: if the ledger has a write_token AND --token is missing or wrong → throws
+ * Enforce write-token authority for gate/complete. FAIL-CLOSED.
+ * Three cases:
+ *   token_free === true  → explicit opt-out (--no-token at init); no token required
+ *   write_token present  → caller must supply the matching --token
+ *   neither present      → ledger is misconfigured; reject (the fail-open window has closed)
  * (caller is always inside mutateLedger which has a finally-cleanup for the lockfile;
  * we must throw rather than call die/process.exit to avoid bypassing that cleanup).
  */
 function assertWriteToken(ledger, passedToken) {
+  // Explicit opt-out: runs initialized with --no-token skip authority checks entirely.
+  if (ledger?.token_free === true) return
   const stored = ledger?.write_token
-  if (!stored) return // no token in ledger → legacy/back-compat, proceed
+  if (!stored) {
+    const e = new Error(
+      'gate/complete require write_token authority — this ledger has none.\n' +
+      '  Re-initialize via `ledger init <file>` (embeds a token) or\n' +
+      '  use `ledger init --no-token <file>` to explicitly opt out of token enforcement.',
+    )
+    e.exitCode = 1
+    throw e
+  }
   if (!passedToken || passedToken !== stored) {
     const e = new Error(
       'gate/complete are orchestrator-only — pass --token <write_token> printed at init\n' +
@@ -350,14 +362,14 @@ const HELP = {
     summary: 'mark one or more slices complete (sugar for set --status complete)',
     usage: 'ledger complete <id> [<id> ...] [--token <write_token>]',
     flags: [
-      '--token <t>          write-token printed at init (required if ledger has write_token)',
+      '--token <t>          write-token printed at init (required unless ledger is token-free)',
     ],
   },
   gate: {
     summary: 'set a gate verdict (advisor | verifier | qa)',
     usage: 'ledger gate <advisor|verifier|qa> <verdict> [flags]',
     flags: [
-      '--token <t>          write-token printed at init (required if ledger has write_token)',
+      '--token <t>          write-token printed at init (required unless ledger is token-free)',
       '--citation <text>    (advisor) citation string stored with verdict',
       '--rubric <text>      (advisor) rubric string stored with verdict',
       '--axes-correctness N (advisor) 0-3 axis score',
@@ -376,9 +388,10 @@ const HELP = {
   },
   init: {
     summary: 'write the initial ledger atomically from a JSON file or stdin',
-    usage: 'ledger init <file|-> [--motive <id>]',
+    usage: 'ledger init <file|-> [--motive <id>] [--no-token]',
     flags: [
       '--motive <id>        motive id to stamp on the ledger (overrides JSON input)',
+      '--no-token           opt out of token enforcement (sets token_free:true; gate/complete need no --token)',
     ],
   },
   add: {
@@ -703,7 +716,7 @@ function cmdInit(args) {
   const { flags, positionals } = parseFlags(argv)
   const src = positionals[0]
 
-  if (!src) die('usage: ledger init <file|->', 2)
+  if (!src) die('usage: ledger init <file|-> [--motive <id>] [--no-token]', 2)
 
   let obj = {}
 
@@ -721,9 +734,16 @@ function cmdInit(args) {
     }
   }
 
-  // Generate and embed the write-token for gate/complete authority
-  const writeToken = randomBytes(8).toString('hex')
-  obj.write_token = writeToken
+  // Generate and embed the write-token for gate/complete authority.
+  // --no-token opts out: sets token_free:true so gate/complete skip authority checks.
+  let writeToken
+  if ('no-token' in flags) {
+    obj.token_free = true
+    delete obj.write_token
+  } else {
+    writeToken = randomBytes(8).toString('hex')
+    obj.write_token = writeToken
+  }
   // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
   if (!('active' in obj)) obj.active = true
   // Stamp session_id: always overwrite with the current session so that ledgers
@@ -754,7 +774,11 @@ function cmdInit(args) {
   if (obj.motive) regenerateMotiveMap(projectDir, obj.motive)
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
-  process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete)\n`)
+  if (writeToken) {
+    process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete)\n`)
+  } else {
+    process.stdout.write(`token-free mode: gate/complete do not require --token\n`)
+  }
 }
 
 // ---------------------------------------------------------------------------

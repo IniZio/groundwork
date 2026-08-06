@@ -60,7 +60,7 @@ function readMap(projectDir: string, slug: string): string {
 
 /**
  * Minimal ledger JSON with the motive field stamped.
- * No write_token — complete/gate operations need no --token flag when it is absent.
+ * token_free:true — complete/gate operations need no --token flag (explicit opt-out).
  */
 function minimalLedger(slug: string, sessionId: string | null = null) {
   return {
@@ -70,6 +70,7 @@ function minimalLedger(slug: string, sessionId: string | null = null) {
     brief: `AC-7 test ledger for motive "${slug}"`,
     motive: slug,      // <-- required: _tryRefreshMap reads this to decide whether to regenerate
     reinforcements: 0,
+    token_free: true,  // opt out of token enforcement so tests don't need --token
     slices: [],
     gate: {},
   }

@@ -34,12 +34,13 @@ let ledgerFile: string
 const WRITE_TOKEN = 'tok-test-001'
 
 function baseLedger(overrides: Record<string, unknown> = {}) {
-  return {
+  const result: Record<string, unknown> = {
     version: 1,
     active: true,
     session_id: 'sess-test',
     brief: 'test run',
     reinforcements: 0,
+    token_free: true, // opt out of token enforcement so tests don't need --token
     slices: [
       { id: 'S1', name: 'tracer', wave: 0, blocked_by: [], status: 'pending', acceptance: ['a'] },
       { id: 'S2', name: 'feature', wave: 1, blocked_by: [], status: 'pending', acceptance: ['b'] },
@@ -47,6 +48,9 @@ function baseLedger(overrides: Record<string, unknown> = {}) {
     gate: {},
     ...overrides,
   }
+  // A ledger with write_token must not also carry token_free — token_free would bypass the check
+  if (result.write_token != null) delete result.token_free
+  return result
 }
 
 beforeEach(() => {

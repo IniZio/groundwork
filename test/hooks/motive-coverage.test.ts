@@ -468,6 +468,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
           session_id: 'sess-cov',
           brief: 'coverage test',
           reinforcements: 0,
+          token_free: true, // opt out of token enforcement so tests don't need --token
           slices,
           gate: {},
         },

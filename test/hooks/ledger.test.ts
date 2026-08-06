@@ -15,6 +15,9 @@ const baseLedger = () => ({
 	session_id: "sess-1",
 	brief: "test run",
 	reinforcements: 0,
+	// token_free:true so tests that exercise other behaviors (gate output, view, artifacts)
+	// don't need to supply a --token on every gate/complete call.
+	token_free: true,
 	slices: [
 		{ id: "S1", name: "tracer", wave: 0, blocked_by: [], status: "complete", acceptance: ["a"] },
 		{ id: "S2", name: "feature", wave: 1, blocked_by: ["S1"], status: "pending", acceptance: ["b", "c"] },
@@ -219,6 +222,19 @@ describe("ledger CLI — init & atomicity", () => {
 		expect(r.code).toBe(0);
 		expect(readLedger().motive).toBe("new-motive");
 	});
+
+	it("init --no-token sets token_free:true, omits write_token, and prints token-free notice", () => {
+		const src = path.join(projectDir, "plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		rmSync(ledgerFile);
+		const r = run(["init", src, "--no-token"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("token-free");
+		expect(r.stdout).not.toContain("write_token:");
+		const ledger = readLedger();
+		expect(ledger.token_free).toBe(true);
+		expect(ledger.write_token).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -226,10 +242,9 @@ describe("ledger CLI — init & atomicity", () => {
 // ---------------------------------------------------------------------------
 
 function writeLedgerWithToken(token: string) {
-	writeFileSync(
-		ledgerFile,
-		JSON.stringify({ ...baseLedger(), write_token: token }, null, 2),
-	);
+	const l = { ...baseLedger(), write_token: token } as any;
+	delete l.token_free; // token-guarded ledger must not also have token_free
+	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 	return token;
 }
 
@@ -284,19 +299,47 @@ describe("ledger CLI — write-token enforcement (complete)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fail-open: no write_token → gate/complete proceed without --token
+// Fail-CLOSED: tokenless ledger (no write_token AND no token_free) → REJECTED
+// token_free:true → explicit opt-out, gate/complete ALLOWED without --token
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — fail-open (no write_token)", () => {
-	it("gate proceeds without --token when ledger has no write_token (legacy compat)", () => {
-		// baseLedger() has no write_token field
+/**
+ * Write a ledger that has neither write_token nor token_free.
+ * This represents a misconfigured / genuinely-legacy ledger that predates both features.
+ */
+function writeLedgerNoToken() {
+	const l = { ...baseLedger() } as any;
+	delete l.token_free;
+	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+}
+
+describe("ledger CLI — fail-closed (tokenless ledger)", () => {
+	it("gate rejects (non-zero) when ledger has no write_token and no token_free — regression: fix for fail-open bug", () => {
+		// A ledger with neither write_token nor token_free must be REJECTED (fail-closed).
+		// Under the old fail-open code this test would have passed with exit 0 — it proves the fix bites.
+		writeLedgerNoToken();
+		const r = run(["gate", "advisor", "APPROVE"]);
+		expect(r.code).not.toBe(0);
+		// Gate must NOT have been written
+		expect(readLedger().gate?.advisor).toBeUndefined();
+	});
+
+	it("complete rejects (non-zero) when ledger has no write_token and no token_free", () => {
+		writeLedgerNoToken();
+		const r = run(["complete", "S2"]);
+		expect(r.code).not.toBe(0);
+		// Slice status must remain pending
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
+	});
+
+	it("gate succeeds when ledger has token_free:true (explicit opt-out path)", () => {
+		// baseLedger() has token_free:true — no --token needed
 		const r = run(["gate", "advisor", "APPROVE"]);
 		expect(r.code).toBe(0);
 		expect(readLedger().gate.advisor).toBe("APPROVE");
 	});
 
-	it("complete proceeds without --token when ledger has no write_token (legacy compat)", () => {
-		// baseLedger() has no write_token field
+	it("complete succeeds when ledger has token_free:true (explicit opt-out path)", () => {
 		const r = run(["complete", "S2"]);
 		expect(r.code).toBe(0);
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");

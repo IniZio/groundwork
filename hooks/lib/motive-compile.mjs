@@ -185,6 +185,7 @@ export function compile(events, opts = {}) {
               id: d.id,
               status: d.status ?? 'proposed',
               title: d.title ?? d.decision ?? null,
+              decision: d.decision ?? null,
               rationale: d.rationale ?? null,
               alternatives: Array.isArray(d.alternatives) ? d.alternatives : [],
               ord,
@@ -218,6 +219,7 @@ export function compile(events, opts = {}) {
             if (d.status != null) existing.status = d.status
             if (d.title != null) existing.title = d.title
             else if (d.decision != null) existing.title = d.decision
+            if (d.decision != null) existing.decision = d.decision
             if (d.rationale != null) existing.rationale = d.rationale
             if (Array.isArray(d.alternatives)) existing.alternatives = d.alternatives
             if (d.superseded_by != null) existing.superseded_by = d.superseded_by

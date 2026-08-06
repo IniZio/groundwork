@@ -253,3 +253,86 @@ Test objective.
     expect(map).toContain('_No decisions recorded yet._')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Janitorial retraction events must NOT appear in ## Decisions so far
+// ---------------------------------------------------------------------------
+
+/**
+ * P-E / ticket-05 regression:
+ *   A DECISION event whose sole purpose is to suppress a legacy id-less entry
+ *   (data.retires present AND decision body starts with "Retract") is agent
+ *   bookkeeping, not a human-readable decision.  It must be hidden from the
+ *   ## Decisions section even though its data.retires still suppresses the
+ *   original target.
+ *
+ * Sensitivity: a normal decision (no data.retires) must remain visible.
+ */
+describe('janitorial retraction events hidden from ## Decisions', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('hides a DECISION event with data.retires and decision starting with "Retract"', () => {
+    makeCharter(dir, MOTIVE, MINIMAL_CHARTER)
+    writeDecisionEvents(dir, [
+      // Substantive decision — must remain visible
+      {
+        type: 'DECISION',
+        motive: MOTIVE,
+        ts: '2026-01-01T00:00:00Z',
+        msg: 'D-1: Adopt foo as the standard.',
+        data: { id: 'D-1', decision: 'Adopt foo as the standard.', status: 'accepted' },
+      },
+      // Janitorial retraction — must be hidden
+      {
+        type: 'DECISION',
+        motive: MOTIVE,
+        ts: '2026-01-02T00:00:00Z',
+        msg: 'Retract legacy id-less duplicate of D-1: suppress MAP duplicate',
+        data: {
+          id: 'D-90',
+          decision: 'Retract legacy id-less duplicate of D-1 — suppress MAP duplicate.',
+          rationale: 'Janitorial: suppresses the id-less original.',
+          retires: 'Adopt foo as the standard.',
+          alternatives: [],
+        },
+      },
+    ])
+    writeLedger(dir, baseLedger([]))
+
+    regenerateMotiveMap(dir, MOTIVE)
+    const map = readMap(dir, MOTIVE)
+
+    // The janitorial retraction must NOT appear in ## Decisions
+    expect(map).not.toContain('Retract legacy id-less duplicate')
+    // The substantive decision must still appear
+    expect(map).toContain('D-1: Adopt foo as the standard.')
+  })
+
+  it('keeps a DECISION event with data.retires but a substantive (non-Retract) decision body', () => {
+    makeCharter(dir, MOTIVE, MINIMAL_CHARTER)
+    writeDecisionEvents(dir, [
+      // Substantive decision that also carries data.retires (e.g. D-32 pattern)
+      {
+        type: 'DECISION',
+        motive: MOTIVE,
+        ts: '2026-01-01T00:00:00Z',
+        msg: 'D-32: Invert ticket/slice primacy — retires prior approach.',
+        data: {
+          id: 'D-32',
+          decision: 'A TICKET is the durable unit of work; slices are derived.',
+          retires: 'Implement ledger slice tickets as ambient human projection',
+          status: 'accepted',
+        },
+      },
+    ])
+    writeLedger(dir, baseLedger([]))
+
+    regenerateMotiveMap(dir, MOTIVE)
+    const map = readMap(dir, MOTIVE)
+
+    // Substantive decision with data.retires must remain visible
+    expect(map).toContain('D-32: Invert ticket/slice primacy')
+  })
+})

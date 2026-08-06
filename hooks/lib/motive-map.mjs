@@ -62,6 +62,26 @@ function _generate(projectDir, motive) {
   const rejectionDecisions = _readRejectionDecisions(projectDir, motive)
   const allEvents          = _readAllMotiveEvents(projectDir, motive)
 
+  // Enrich open_items with resolved_by from accepted DECISION events in the journal.
+  // motive-compile does this in its pipeline; here we replicate the same logic so
+  // the lightweight MAP renderer can filter resolved items without the compile step.
+  if (charter?.open_items?.length) {
+    const resolvedByDecisions = new Map()
+    for (const ev of allEvents) {
+      if (ev.type === 'DECISION' && ev.data?.status === 'accepted' && ev.data?.resolves != null) {
+        if (!resolvedByDecisions.has(ev.data.resolves)) {
+          resolvedByDecisions.set(ev.data.resolves, ev.data.id ?? ev.data.resolves)
+        }
+      }
+    }
+    for (const item of charter.open_items) {
+      if (item.resolved_by == null) {
+        const resolvedBy = resolvedByDecisions.get(item.id)
+        if (resolvedBy != null) item.resolved_by = resolvedBy
+      }
+    }
+  }
+
   // Generate per-ticket drill-down files (errors swallowed inside)
   regenerateMotiveTickets(motiveDir, {
     slices,
@@ -308,7 +328,21 @@ function _dedupeDecisions(decisions) {
       else result.push(d)
     }
   }
-  return result
+
+  // ── Step 3: exclude janitorial retraction events ──────────────────────────
+  // A janitorial retraction is a DECISION event whose sole purpose is to suppress
+  // a legacy id-less entry: it carries data.retires AND its decision body starts
+  // with "Retract".  Such events still contribute to supersededIds above (so their
+  // targets stay suppressed), but they must NOT appear in the MAP ## Decisions
+  // section — they are agent bookkeeping, not human-readable decisions (P-E).
+  // Substantive decisions that also carry data.retires (e.g. D-32, which retires
+  // a prior approach while introducing a new one) have a non-"Retract" decision
+  // body and are therefore kept.
+  const isJanitorialRetraction = (d) =>
+    d.data?.retires != null &&
+    (d.data?.decision ?? '').trimStart().toLowerCase().startsWith('retract')
+
+  return result.filter((d) => !isJanitorialRetraction(d))
 }
 
 /**
@@ -352,9 +386,25 @@ function _readRejectionDecisions(projectDir, motive) {
     const all            = readAllEvents(journalDir)
     const { shown = [] } = filterEvents(all, { motive, type: 'DECISION' })
 
+    // Build the set of texts retired by data.retires fields, so that an event
+    // whose msg was retired by a later retraction is excluded from ## Out of scope.
+    // Uses the same normalisation as _dedupeDecisions step 1.
+    const retiredTexts = new Set()
+    for (const ev of shown) {
+      const r = ev.data?.retires
+      if (r != null) {
+        const refs = Array.isArray(r) ? r : [r]
+        refs.forEach((ref) => retiredTexts.add(ref.toLowerCase().replace(/\s+/g, ' ').trim()))
+      }
+    }
+
     // Collect rejection events
     const rejections = []
     for (const ev of shown) {
+      // Skip events whose text was retired by a data.retires reference
+      const normMsg = (ev.msg ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+      if (retiredTexts.has(normMsg)) continue
+
       const data  = ev.data ?? {}
       const title = (data.title ?? '').toLowerCase()
       const msg   = (ev.msg   ?? '').toLowerCase()
@@ -643,7 +693,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   // ── Open items ────────────────────────────────────────────────────────────
   parts.push('## Open items')
   parts.push('')
-  const openItems = charter?.open_items ?? []
+  const openItems = (charter?.open_items ?? []).filter((item) => !item.resolved_by)
   if (openItems.length) {
     for (const item of openItems) {
       const owner   = item.owner      ? ` @${item.owner}`                    : ''

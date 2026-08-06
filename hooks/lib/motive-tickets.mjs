@@ -92,6 +92,7 @@ function _regenerate(motiveDir, { openItems, events }) {
   const seenStems = new Map() // safeName → first raw id (for collision detection)
 
   for (const item of openItems) {
+    if (item.resolved_by) continue
     const safeName = sanitizeId(item.id)
     if (!safeName) continue
     if (seenStems.has(safeName)) {

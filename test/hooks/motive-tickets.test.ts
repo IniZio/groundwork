@@ -275,15 +275,15 @@ describe('regenerateMotiveTickets — open item drill-downs in open-items/ (T4-A
     expect(content).not.toContain('**resolved**')
   })
 
-  it('open item status is "resolved" when item has resolved_by field', () => {
+  it('open item with resolved_by is NOT written to open-items/ (resolved items are filtered out)', () => {
+    // Pre-ticket-03: this used to write a drill-down and show "**resolved**" status.
+    // Post-ticket-03: resolved items are filtered from the sweep entirely — no file written.
     regenerateMotiveTickets(motiveDir, {
       slices: [],
       openItems: [{ id: 'TBD-1', kind: 'TBD', statement: 'Something?', resolved_by: 'DEC-42' }],
       events: [],
     })
-    const content = readOpenItem(motiveDir, 'tbd-1')
-    expect(content).toContain('**resolved**')
-    expect(content).toContain('DEC-42')
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(false)
   })
 
   it('TBD-1 drill-down does NOT list a decision that only mentions TBD-12 (no substring match)', () => {
@@ -709,5 +709,88 @@ describe('regenerateMotiveMap — tickets integration', () => {
     }
 
     expect(broken).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Ticket-03 regression — resolved items (resolved_by set) must not render
+// ---------------------------------------------------------------------------
+
+describe('resolved_by filter — resolved items absent from MAP and drill-down', () => {
+  let dir: string
+  let motiveDir: string
+
+  beforeEach(() => {
+    dir = tmp()
+    motiveDir = makeMotiveDir(dir, 'm')
+  })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('drill-down: resolved item produces no file; open item produces a file', () => {
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        { id: 'TBD-1', kind: 'TBD', statement: 'Still open question' },
+        { id: 'TBD-2', kind: 'TBD', statement: 'Resolved question', resolved_by: 'D-99' },
+      ],
+      events: [],
+    })
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(false)
+  })
+
+  it('MAP: resolved item absent from ## Open items; open item present', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test.',
+      '',
+      '## Open items',
+      '- TBD-1: Still open question',
+      '- TBD-2: Resolved question',
+    ].join('\n'))
+
+    // Write an accepted DECISION journal event resolving TBD-2.
+    // Journal shards live at .groundwork/journal/ (project-level), not motive-level.
+    const journalDir = join(dir, '.groundwork', 'journal')
+    mkdirSync(journalDir, { recursive: true })
+    writeFileSync(join(journalDir, '2026-01-01-test.jsonl'), [
+      JSON.stringify({ ts: '2026-01-01T00:00:00Z', session: 'test', motive: 'm', type: 'DECISION', msg: 'resolve TBD-2', source: 'cli:journal', data: { id: 'D-99', status: 'accepted', resolves: 'TBD-2' } }),
+    ].join('\n') + '\n', 'utf8')
+
+    regenerateMotiveMap(dir, 'm')
+
+    const map = readFileSync(join(motiveDir, 'MAP.md'), 'utf8')
+    // Extract only the ## Open items section for targeted assertion
+    const openSection = map.split(/^## /m).find((s) => s.startsWith('Open items')) ?? ''
+    expect(openSection).toContain('TBD-1')
+    expect(openSection).not.toContain('TBD-2')
+  })
+
+  it('drill-down: stale file for a now-resolved item is swept on next regeneration', () => {
+    // First pass: both items unresolved → both files created
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        { id: 'TBD-1', kind: 'TBD', statement: 'Still open' },
+        { id: 'TBD-2', kind: 'TBD', statement: 'About to be resolved' },
+      ],
+      events: [],
+    })
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(true)
+
+    // Second pass: TBD-2 is now resolved → its file must be removed
+    regenerateMotiveTickets(motiveDir, {
+      slices: [],
+      openItems: [
+        { id: 'TBD-1', kind: 'TBD', statement: 'Still open' },
+        { id: 'TBD-2', kind: 'TBD', statement: 'About to be resolved', resolved_by: 'D-99' },
+      ],
+      events: [],
+    })
+    expect(openItemExists(motiveDir, 'tbd-1')).toBe(true)
+    expect(openItemExists(motiveDir, 'tbd-2')).toBe(false)
   })
 })

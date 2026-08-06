@@ -12,6 +12,7 @@ import {
   parseTicket,
   writeTicket,
   resolveTicketPath,
+  lintResearchCitation,
   REQUIRED_SECTIONS,
 } from '../hooks/lib/motive-ticket-doc.mjs'
 
@@ -139,6 +140,138 @@ describe('writeTicket (T3-AC3)', () => {
     const path = join(tmpDir, 'nested', 'dir', 'ticket.md')
     await writeTicket(path, { title: 'Nested' })
     expect(existsSync(path)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D-81 — lintResearchCitation: research tickets need >=1 resolvable ref
+// ---------------------------------------------------------------------------
+
+function makeTicket(type: string, evidenceBody: string, linksBody: string): string {
+  return [
+    '# Test ticket',
+    '',
+    `Type: ${type}`,
+    'Status: open',
+    'Blocked by: —',
+    '',
+    '## Question',
+    '',
+    'Some question.',
+    '',
+    '## Context',
+    '',
+    'Some context.',
+    '',
+    '## Evidence',
+    '',
+    evidenceBody,
+    '',
+    '## Decision',
+    '',
+    'TBD.',
+    '',
+    '## Ruled out',
+    '',
+    'Nothing yet.',
+    '',
+    '## Revisions',
+    '',
+    'None.',
+    '',
+    '## Links',
+    '',
+    linksBody,
+    '',
+  ].join('\n')
+}
+
+describe('lintResearchCitation (D-81)', () => {
+  it('REQUIRED_SECTIONS is unchanged — same 7-section set', () => {
+    expect(REQUIRED_SECTIONS).toEqual([
+      'Question', 'Context', 'Evidence', 'Decision', 'Ruled out', 'Revisions', 'Links',
+    ])
+  })
+
+  it('research ticket with URL in Evidence PASSES', () => {
+    const content = makeTicket('research', 'See https://example.com/paper for details.', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with relative file path in Evidence PASSES', () => {
+    const content = makeTicket('research', 'See ./doc/specs/foo/requirements/bar.md.', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with parent-relative path in Links PASSES', () => {
+    const content = makeTicket('research', '', '../some/reference.md')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with absolute path in Links PASSES', () => {
+    const content = makeTicket('research', '', '/home/user/docs/spec.md')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with http URL in Links PASSES', () => {
+    const content = makeTicket('research', '', 'http://example.com/ref')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with only prose in both Evidence and Links FAILS', () => {
+    const content = makeTicket('research', 'No concrete sources here.', 'Also nothing concrete.')
+    const { pass, reason } = lintResearchCitation(content)
+    expect(pass).toBe(false)
+    expect(reason).toMatch(/resolvable reference/)
+  })
+
+  it('research ticket with both Evidence and Links empty FAILS', () => {
+    const content = makeTicket('research', '', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(false)
+  })
+
+  it('non-research ticket (decision) with zero refs PASSES — rule is research-scoped', () => {
+    const content = makeTicket('decision', '', '')
+    const { pass, reason } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+    expect(reason).toBeNull()
+  })
+
+  it('non-research ticket (build) with zero refs PASSES', () => {
+    const content = makeTicket('build', 'some prose', 'some prose')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('ticket with no Type metadata treated as non-research — PASSES', () => {
+    const content = '# T\n\n## Evidence\n\nno refs\n\n## Links\n\nno refs\n'
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  // D-81 — requirement id as sole citation
+  it('research ticket with bare requirement id in Evidence PASSES', () => {
+    const content = makeTicket('research', 'Grounded in ARTIFACT-R-012.', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with bare requirement id in Links PASSES', () => {
+    const content = makeTicket('research', '', 'ARTIFACT-R-010')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('research ticket with only plain prose and no locator FAILS (over-broadening guard)', () => {
+    const content = makeTicket('research', 'The analysis showed several patterns.', 'See prior work above.')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(false)
   })
 })
 

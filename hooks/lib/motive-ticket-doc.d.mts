@@ -28,3 +28,10 @@ export declare function resolveTicketPath(
   motiveDir: string,
   ticketId: string,
 ): string
+
+export interface LintResearchCitationResult {
+  pass: boolean
+  reason: string | null
+}
+
+export declare function lintResearchCitation(content: string): LintResearchCitationResult

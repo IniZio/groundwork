@@ -137,6 +137,66 @@ export function resolveTicketPath(charter, motiveDir, ticketId) {
 }
 
 // ---------------------------------------------------------------------------
+// lintResearchCitation
+// ---------------------------------------------------------------------------
+
+/**
+ * A resolvable primary-source reference is any of:
+ *   - a URL (http:// or https://)
+ *   - a relative file path (starting with ./ or ../)
+ *   - an absolute file path (/ followed by a word character, at a word boundary)
+ *   - a doc/specs requirement id: bare token of the form <CONCEPT>-R-<digits>
+ *     e.g. ARTIFACT-R-012 (uppercase concept letters/digits, literal "-R-", digits)
+ *
+ * The regex is intentionally simple — it matches concrete locators, not
+ * prose descriptions.
+ */
+const RESOLVABLE_REF_RE = /https?:\/\/|\.\.?\/|(?:^|[ \t(["'])\/[a-zA-Z0-9_]|\b[A-Z][A-Z0-9]*-R-\d+\b/m
+
+/**
+ * Lint rule scoped to research-type tickets.
+ *
+ * A research ticket must carry at least one resolvable primary-source
+ * reference in its Evidence or Links section (D-81).
+ *
+ * Non-research ticket types always pass this rule.
+ *
+ * @param {string} content - raw markdown text
+ * @returns {{ pass: boolean, reason: string|null }}
+ */
+export function lintResearchCitation(content) {
+  const typeMatch = /^Type:\s*(.+)$/m.exec(content)
+  const type = typeMatch ? typeMatch[1].trim().toLowerCase() : ''
+
+  if (type !== 'research') {
+    return { pass: true, reason: null }
+  }
+
+  const evidenceBody = _extractSectionBody(content, 'Evidence')
+  const linksBody = _extractSectionBody(content, 'Links')
+  const combined = (evidenceBody ?? '') + '\n' + (linksBody ?? '')
+
+  if (RESOLVABLE_REF_RE.test(combined)) {
+    return { pass: true, reason: null }
+  }
+
+  return {
+    pass: false,
+    reason:
+      'research ticket must have ≥1 resolvable reference (URL, file path, or requirement id e.g. ARTIFACT-R-012) in Evidence or Links',
+  }
+}
+
+function _extractSectionBody(content, sectionName) {
+  const re = new RegExp(`^## ${escapeRegExp(sectionName)}\\s*$`, 'm')
+  const match = re.exec(content)
+  if (!match) return null
+  const after = content.slice(match.index + match[0].length)
+  const nextIdx = after.search(/^## /m)
+  return nextIdx === -1 ? after : after.slice(0, nextIdx)
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

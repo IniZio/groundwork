@@ -24,6 +24,7 @@ import {
   parseTicket,
   writeTicket,
   resolveTicketPath,
+  lintResearchCitation,
 } from './lib/motive-ticket-doc.mjs'
 
 const TICKET_TYPES = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore']
@@ -291,13 +292,18 @@ function lintFile(filePath) {
     return false
   }
   const { emptySections } = parseTicket(content)
-  if (emptySections.length === 0) {
+  const { pass: citationPass, reason: citationReason } = lintResearchCitation(content)
+
+  if (emptySections.length === 0 && citationPass) {
     process.stdout.write(`OK   ${filePath}\n`)
     return true
   }
   process.stdout.write(`FAIL ${filePath}\n`)
   for (const s of emptySections) {
     process.stdout.write(`       empty section: ${s}\n`)
+  }
+  if (!citationPass && citationReason) {
+    process.stdout.write(`       ${citationReason}\n`)
   }
   return false
 }

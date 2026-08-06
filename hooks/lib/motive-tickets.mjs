@@ -231,6 +231,12 @@ function _renderOpenItemTicket(item, relatedDecisions) {
   if (item.owner) parts.push(`**Owner:** @${item.owner}`)
   if (item.blocked_by) parts.push(`**Blocked by:** ${item.blocked_by}`)
   if (item.resolved_by) parts.push(`**Resolved by:** ${item.resolved_by}`)
+  // Graduation: forward link from open-item to ticket (D-75/D-76).
+  // The TBD remains in the open register until actually resolved (strikethrough).
+  // Rendered unconditionally from the field — ticket may not be authored yet (D-76 coexistence).
+  if (item.graduated_to) {
+    parts.push(`**Graduated to:** [tickets/${item.graduated_to}.md](../tickets/${item.graduated_to}.md)`)
+  }
   parts.push('')
 
   // Related decisions (mentions this open item — not a proxy for resolution status)

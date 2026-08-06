@@ -490,6 +490,7 @@ export function compile(events, opts = {}) {
         owner: item.owner ?? null,
         blocked_by: item.blocked_by ?? null,
         resolved_by: resolvedBy,
+        graduated_to: item.graduated_to ?? null,
       }
     })
     const resolved = openItems.filter((i) => i.resolved_by != null).length

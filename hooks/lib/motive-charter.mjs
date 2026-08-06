@@ -20,6 +20,7 @@
  *         statement: string,
  *         owner?: string,
  *         blocked_by?: string,
+ *         graduated_to?: string,
  *       }>,
  *       notes: string,
  *       out_of_scope: string,
@@ -112,6 +113,9 @@ const OWNER_RE = /@(\S+)/
 // Extracts blocked-by:<ref>
 const BLOCKED_BY_RE = /\bblocked-by:(\S+)/i
 
+// Extracts graduated-to:<ticket-id> — graduation is not resolution (D-75)
+const GRADUATED_TO_RE = /\bgraduated-to:(\S+)/i
+
 /**
  * Parse open-item bullets from the Open items section body.
  * Malformed bullet lines (starting with "- " but not matching the format)
@@ -162,27 +166,37 @@ function parseOpenItems(body) {
     const blockedByM = BLOCKED_BY_RE.exec(remainder)
     const blocked_by = blockedByM ? blockedByM[1] : undefined
 
-    // Strip @owner and blocked-by:... from statement
+    const graduatedToM = GRADUATED_TO_RE.exec(remainder)
+    const graduated_to = graduatedToM ? graduatedToM[1] : undefined
+
+    // Strip @owner, blocked-by:..., and graduated-to:... from statement
     let statement = remainder
       .replace(OWNER_RE, '')
       .replace(BLOCKED_BY_RE, '')
+      .replace(GRADUATED_TO_RE, '')
       .trim()
       // Collapse multiple spaces
       .replace(/\s{2,}/g, ' ')
 
-    /** @type {{ id: string, kind: 'TBD'|'TBR', statement: string, owner?: string, blocked_by?: string }} */
+    /** @type {{ id: string, kind: 'TBD'|'TBR', statement: string, owner?: string, blocked_by?: string, graduated_to?: string }} */
     const item = { id, kind, statement }
     if (owner) item.owner = owner
     if (blocked_by) item.blocked_by = blocked_by
+    if (graduated_to) item.graduated_to = graduated_to
 
     items.push(item)
   }
 
-  // Post-pass: assemble body from collected continuation lines
+  // Post-pass: assemble body from collected continuation lines; also scan body for
+  // graduated-to:<id> when not already declared on the handle line.
   for (const item of items) {
     if (item._bodyLines !== undefined) {
       item.body = item._bodyLines.join('\n')
       delete item._bodyLines
+    }
+    if (!item.graduated_to && item.body) {
+      const bodyGraduatedToM = GRADUATED_TO_RE.exec(item.body)
+      if (bodyGraduatedToM) item.graduated_to = bodyGraduatedToM[1]
     }
   }
 

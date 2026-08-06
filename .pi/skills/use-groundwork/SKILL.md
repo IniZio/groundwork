@@ -1,6 +1,6 @@
 ---
 name: use-groundwork
-description: Bootstrap skill for the groundwork workflow suite. Loaded at every conversation start. Establishes core rules, skill triggers, and the 1% escalation heuristic. ALWAYS load this first.
+description: Bootstrap skill for the groundwork workflow suite. Pre-loaded at conversation start — do NOT invoke again unless core rules were lost to context compression. Establishes core rules, skill triggers, and the 1% escalation heuristic.
 ---
 
 <!-- SUBAGENT-STOP: If you are a subagent (general-purpose, designer, general-purpose, planner, etc.) — STOP. Do not read further. This skill contains orchestrator-only rules that will confuse your executor role. -->

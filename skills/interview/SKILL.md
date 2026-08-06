@@ -148,7 +148,7 @@ Lazy-created at project root when interviewing resolves terminology ambiguity:
 - Term A relates to Term B via...
 ```
 
-## Architecture Decision Records (docs/adr/)
+## Architecture Decision Records
 
 Only create an ADR during interviewing when ALL THREE criteria are met:
 
@@ -156,7 +156,7 @@ Only create an ADR during interviewing when ALL THREE criteria are met:
 2. **Surprising without context** — someone reading the code later would ask "why?"
 3. **Genuine trade-off** — real alternatives existed, not just one obvious choice
 
-**Format:** `docs/adr/NNNN-<slug>.md` (sequential numbering). Minimalist — 1-3 sentences is fine. Optional sections: Considered Options, Consequences.
+**Location:** Use the host project's existing ADR convention (e.g. `docs/adr/`, `adr/`, or a project-specific path detected in Step 0). If the host has no convention, `docs/adr/NNNN-<slug>.md` is a reasonable default — adapt as needed; there is no fixed universal path. Minimalist — 1-3 sentences is fine. Optional sections: Considered Options, Consequences.
 
 ## What NOT to Do
 

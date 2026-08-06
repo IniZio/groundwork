@@ -125,13 +125,13 @@ Same tools as Step 3. Label: `after-<description>.png` or after-state test resul
 
 ## Step 7: Capture Learnings
 
-Append non-obvious gotchas to `docs/learnings.md`:
+Flag non-obvious gotchas in your evidence report to the orchestrator so they are not lost:
 - Surprising framework behavior
 - Non-obvious configuration requirements
 - Integration pitfalls discovered during implementation
 - Test setup complexity
 
-Format: `- **<topic>**: <description>`. Only genuinely surprising things — not routine findings.
+Only genuinely surprising things — not routine findings. The orchestrator captures durable learnings via `/retrospective` (Phase 4 — Learnings KB in the memory store). Do not write to `docs/learnings.md` — that path no longer exists.
 
 ## Step 8: Report Evidence to Orchestrator
 

@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reproduce, hypothesise, instrument, fix with regression test, cleanup with post-mortem. Use for all bugs. Ends with advisor-gate completion gate.
+description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reproduce, hypothesise, instrument, fix with regression test, cleanup with post-mortem. Use for all bugs. Ends with evidence handoff to the orchestrator, who runs the advisor-gate.
 ---
 
 # Diagnose

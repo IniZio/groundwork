@@ -1,6 +1,6 @@
 ---
 name: advisor-gate
-description: ORCHESTRATOR-ONLY skill. Executor/subagent agents MUST NOT invoke this. Advisor completion gate: mandatory APPROVE/REVISE/REJECT verdict before the orchestrator declares any task complete, plus decision-gate escalation for hard architectural trade-offs.
+description: ORCHESTRATOR-ONLY skill. Executor/subagent agents MUST NOT invoke this. Advisor completion gate: mandatory APPROVE/GAPS/CORRECTION/STOP/REPLAN verdict before the orchestrator declares any task complete, plus decision-gate escalation for hard architectural trade-offs.
 disable-model-invocation: true
 ---
 
@@ -12,10 +12,6 @@ Advisor review is a workflow checkpoint. Use a documented native advisor or
 subagent interface when the host provides one. In Codex, do not assume an
 advisor agent, `task` tool, ledger CLI, or Stop-gate; perform a clearly labeled
 manual self-review and report it as advisory.
-
-If you think there is even a 1% chance this skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
-
-IF THE SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
 
 > **ORCHESTRATOR-ONLY.** Executor agents (general-purpose) must never load this skill, invoke the advisor completion gate, or self-issue verdicts. Completion gating is the orchestrator's responsibility.
 

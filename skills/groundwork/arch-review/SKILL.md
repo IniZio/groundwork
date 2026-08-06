@@ -1,6 +1,6 @@
 ---
 name: arch-review
-description: Mid-session codebase architecture review. All exploration runs in isolated subagents so findings never pollute main context. Surfaces shallow modules, coupling smells, and testability gaps as an HTML report. Use between tasks to retrospect on architecture without bloating the session context window.
+description: Mid-session codebase architecture review. All exploration runs in isolated subagents so findings never pollute main context. Surfaces shallow modules, coupling smells, and testability gaps as an HTML report. Use between tasks to review architecture without bloating the session context window.
 ---
 
 # Architecture Review

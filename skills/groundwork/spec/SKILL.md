@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Manage structured requirement specifications under doc/specs/ — create, build, verify, and query spec nodes and their traceability data.
+description: Manage structured requirement specifications under doc/specs/ — create, build, verify, and query spec nodes and their traceability data. Triggers on: spec out, write requirements, add requirements, spec upkeep, spec is stale.
 disable-model-invocation: true
 ---
 

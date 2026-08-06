@@ -1,6 +1,6 @@
 ---
 name: housekeep
-description: Deletion-first codebase hygiene — deslop (default), deps, lint-debt, docs-staleness, and learnings-staleness modes.
+description: Deletion-first codebase hygiene — deslop (default), deps, lint-debt, docs-staleness, and learnings-staleness modes. Triggers on: deslop, anti-slop, ai slop, cleanup, tidy, housekeep.
 disable-model-invocation: true
 ---
 

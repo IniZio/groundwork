@@ -72,10 +72,29 @@ ${obj}
 
 ## Open items
 
-<!-- TBD/TBR register. One bullet per open item. Format:
-- TBD-1: What needs to be decided. @owner blocked-by:TBD-2
-- TBR-1: What needs to be researched.
-Kind is derived from the id prefix (TBD or TBR). -->
+<!-- TBD/TBR register. One bullet per open item. Human-first shape:
+
+- TBD-1: <One plain-language sentence naming what is open — readable cold, not a bare id or code path>
+    <1–3 sentences: why it matters and what is at stake, then the open question or direction>
+    refs: D-1, hooks/lib/foo.mjs:42   ·   graduated-to: 01-research-foo   (where applicable)
+
+- TBR-1: <One sentence stating what needs researching>
+    <Rationale — why this matters before the motive can move forward>
+
+Kind is derived from the id prefix (TBD or TBR).
+Machine citations (D-ids, file:line, session ids) go on the refs: line, not inline in prose. -->
+
+## Acceptance criteria
+
+<!-- One criterion per bullet; one complete human sentence each.
+Enforcement detail goes in a trailing note: line, not in the statement.
+
+- AC-1: <What must be true, stated plainly>
+    note: <how it is enforced, file/tool reference> -->
+
+## Tickets
+
+See [MAP.md](MAP.md) for the live ticket index.
 
 ## Out of scope
 
@@ -114,7 +133,8 @@ const OWNER_RE = /@(\S+)/
 const BLOCKED_BY_RE = /\bblocked-by:(\S+)/i
 
 // Extracts graduated-to:<ticket-id> — graduation is not resolution (D-75)
-const GRADUATED_TO_RE = /\bgraduated-to:(\S+)/i
+// Tolerates optional whitespace after the colon (human-first format uses a space)
+const GRADUATED_TO_RE = /\bgraduated-to:\s*(\S+)/i
 
 /**
  * Parse open-item bullets from the Open items section body.

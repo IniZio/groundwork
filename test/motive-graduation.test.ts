@@ -125,6 +125,56 @@ describe('D-75-AC2 — graduated-to declared in continuation body', () => {
 })
 
 // ---------------------------------------------------------------------------
+// SPACED FORMAT — human-first charter writes "graduated-to: T-42" with a space
+// These cases were silently broken before \s* was added to GRADUATED_TO_RE.
+// ---------------------------------------------------------------------------
+
+describe('spaced graduated-to format — handle line', () => {
+  let projectDir: string
+  const slug = 'grad-spaced-handle'
+
+  beforeEach(() => { projectDir = makeTmp() })
+  afterEach(() => { rmSync(projectDir, { recursive: true, force: true }) })
+
+  it('parses graduated_to when there is a space after the colon (handle line)', () => {
+    writeCharter(projectDir, slug, '- TBD-1: Which approach? graduated-to: T-42')
+    const charter = readCharter({ projectDir, motive: slug })
+    expect(charter).not.toBeNull()
+    const item = charter!.open_items.find((i: any) => i.id === 'TBD-1')
+    expect(item).toBeDefined()
+    expect(item!.graduated_to).toBe('T-42')
+  })
+
+  it('strips spaced graduated-to: from statement text', () => {
+    writeCharter(projectDir, slug, '- TBD-1: Which approach? graduated-to: T-42')
+    const charter = readCharter({ projectDir, motive: slug })
+    const item = charter!.open_items.find((i: any) => i.id === 'TBD-1')
+    expect(item!.statement).not.toContain('graduated-to:')
+    expect(item!.statement).toContain('Which approach?')
+  })
+})
+
+describe('spaced graduated-to format — body continuation line', () => {
+  let projectDir: string
+  const slug = 'grad-spaced-body'
+
+  beforeEach(() => { projectDir = makeTmp() })
+  afterEach(() => { rmSync(projectDir, { recursive: true, force: true }) })
+
+  it('parses graduated_to from a body line with space after colon', () => {
+    writeCharter(
+      projectDir,
+      slug,
+      '- TBD-3: Long open item.\n  refs: D-1 · graduated-to: T-99',
+    )
+    const charter = readCharter({ projectDir, motive: slug })
+    const item = charter!.open_items.find((i: any) => i.id === 'TBD-3')
+    expect(item).toBeDefined()
+    expect(item!.graduated_to).toBe('T-99')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // D-76-AC1  drill-down contains cross-link to tickets/<id>.md
 // ---------------------------------------------------------------------------
 

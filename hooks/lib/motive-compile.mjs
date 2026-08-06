@@ -65,6 +65,8 @@ export function compile(events, opts = {}) {
   const sessions = []
   // Map<id, {ord, ts}>
   const completedSlices = new Map()
+  // Map<compositeKey, {ord, ts}> — composite key is `${session_id}::${sliceId}` when session known
+  const completedSlicesComposite = new Map()
   // Map<which, record>
   const gates = new Map()
   const drift = []
@@ -114,6 +116,9 @@ export function compile(events, opts = {}) {
       case 'TASK_COMPLETE': {
         // d.slice — hooks/ledger.mjs emits { slice }. No wave, no paths (F2/D1).
         completedSlices.set(d.slice, { ord, ts })
+        if (session_id != null && d.slice != null) {
+          completedSlicesComposite.set(`${session_id}::${String(d.slice)}`, { ord, ts })
+        }
         break
       }
 
@@ -354,19 +359,25 @@ export function compile(events, opts = {}) {
         //   Array-covers form:{ slice, covers: ['AC-1'] } — registers slice as covering each listed AC
         //   Declaration form: { ac, covering: [] }        — declares AC with no covering slices
         //                     (slice absent/null)  so it appears as unmet in the view
+        //
+        // Store composite "${session_id}::${sliceId}" when session is known so the
+        // completion check is session-scoped (fixes STATUS-SEAM bug, D-12).
+        // Falls back to bare slice id for legacy events without a session field.
+        const sliceCompositeId = d.slice != null
+          ? (session_id != null ? `${session_id}::${String(d.slice)}` : String(d.slice))
+          : null
         if (d.ac != null) {
           const key = String(d.ac)
           if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
-          if (d.slice != null) acCoverageMap.get(key).add(String(d.slice))
+          if (sliceCompositeId != null) acCoverageMap.get(key).add(sliceCompositeId)
         }
         // Array covers form: { slice, covers: ['AC-1', 'AC-2'] }
-        if (Array.isArray(d.covers) && d.slice != null) {
-          const sliceId = String(d.slice)
+        if (Array.isArray(d.covers) && sliceCompositeId != null) {
           for (const ac of d.covers) {
             if (ac != null) {
               const key = String(ac)
               if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
-              acCoverageMap.get(key).add(sliceId)
+              acCoverageMap.get(key).add(sliceCompositeId)
             }
           }
         }
@@ -542,6 +553,26 @@ export function compile(events, opts = {}) {
   /** @param {string} id */
   const isCompleteAnywhere = (id) => isComplete(id) || ledgerCompleteIds.has(id)
 
+  // Session-scoped composite completion check (fixes STATUS-SEAM bug, D-12).
+  // _rawSlices have _session_id from motive-ground-truth.mjs:319.
+  const ledgerCompleteCompositeIds = new Set(
+    _rawSlices
+      .filter((s) => s.status === 'complete' && s.id != null)
+      .map((s) => {
+        const sid = s._session_id
+        return sid ? `${sid}::${String(s.id)}` : String(s.id)
+      })
+  )
+  /** @param {string} id — may be composite ("session::slice") or bare */
+  const isCompleteAnywhereComposite = (id) => {
+    // Composite id: check composite maps only (session-scoped).
+    if (id.includes('::')) {
+      return completedSlicesComposite.has(id) || ledgerCompleteCompositeIds.has(id)
+    }
+    // Bare id (legacy event without session field): fall back to bare check.
+    return isCompleteAnywhere(id)
+  }
+
   // ── divergence: pure function of injected data ────────────────────────────
   let divergence
   if (groundTruth == null) {
@@ -687,9 +718,19 @@ export function compile(events, opts = {}) {
     if (!isNaN(na) && !isNaN(nb)) return na - nb
     return a < b ? -1 : a > b ? 1 : 0
   })
+  // Project composite ids back to bare ids for output (MUST NOT leak composite
+  // keys into the view — output format is stable bare ids).
+  const toBare = (id) => {
+    const sep = id.indexOf('::')
+    return sep === -1 ? id : id.slice(sep + 2)
+  }
   for (const key of acKeys) {
-    const covering = [...acCoverageMap.get(key)]
-    const missing = covering.filter((s) => !isCompleteAnywhere(s))
+    const coveringComposite = [...acCoverageMap.get(key)]
+    // Output: deduplicated bare ids (composite projection).
+    const covering = [...new Set(coveringComposite.map(toBare))]
+    // Completion check: session-scoped via composite ids.
+    const missingComposite = coveringComposite.filter((s) => !isCompleteAnywhereComposite(s))
+    const missing = [...new Set(missingComposite.map(toBare))]
     const isMet = covering.length > 0 && missing.length === 0
     // status_unknown: covering exists but no ledger to verify completion
     const statusUnknown = !ledgerFound && covering.length > 0 && !isMet

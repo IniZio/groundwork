@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reproduce, hypothesise, instrument, fix with regression test, cleanup with post-mortem. Use for all bugs — bypasses PRD entirely. Ends with advisor-gate completion gate.
+description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reproduce, hypothesise, instrument, fix with regression test, cleanup with post-mortem. Use for all bugs. Ends with advisor-gate completion gate.
 ---
 
 # Diagnose
@@ -18,7 +18,7 @@ label delegation, ledger state, and advisor review as advisory.
 
 **Verify the claim before any fix is delegated (triage gate).** Reproduce the reported failure FIRST — run it, observe the actual symptom (Phases 1–2) — before routing a fix to a general-purpose. MUST NOT delegate a fix for a bug you have not reproduced: a fix for an unconfirmed claim is a guess, and guesses ship the wrong change. **If you cannot reproduce it**, do NOT proceed to a fix — stay in triage: sharpen the loop, gather evidence (logs, HAR, a failing input, environment access), or ask the user for the missing piece. "Can't reproduce" is a reason to investigate, not to guess-patch.
 
-This skill **replaces** `create-prd` and `implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`. No PRD needed.
+This skill **replaces** `implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`.
 
 ## When to Use
 
@@ -154,5 +154,5 @@ After Phase 6, return the following evidence to the **orchestrator** — the orc
 - Do NOT test hypotheses one at a time as they're generated — generate all 3-5 first, rank, then test
 - Do NOT write the fix before the regression test
 - Do NOT leave `[DEBUG-xxxx]` instrumentation in the code
-- Do NOT invoke `create-prd` or `implement` for bugs — this skill owns the entire bug path
+- Do NOT invoke `implement` for bugs — this skill owns the entire bug path
 - Do NOT skip the `advisor-gate` completion gate

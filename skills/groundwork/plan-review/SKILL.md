@@ -1,11 +1,11 @@
 ---
 name: plan-review
-description: READ-ONLY cross-artifact coverage map run BEFORE fan-out (spec-kit analyze analogue). Maps acceptance criteria / functional requirements / spec scenarios to slices; flags zero-coverage ACs, untestable ACs, spec↔plan contradictions, negative-scope violations, and missing seams. Use before fan-out on any non-trivial feature, or when advisor plan_soundness is low.
+description: READ-ONLY cross-artifact coverage map run BEFORE fan-out. Maps acceptance criteria / functional requirements / spec scenarios to slices; flags zero-coverage ACs, untestable ACs, spec↔plan contradictions, negative-scope violations, and missing seams. Use before fan-out on any non-trivial feature, or when advisor plan_soundness is low.
 ---
 
 # Plan Review
 
-Read-only pre-fan-out coverage analysis. Analogous to spec-kit `analyze`: map the approved motive charter + spec against the proposed slice decomposition **before** implementation waves start. This skill never edits code, never mutates the run ledger, and never writes slices.
+Read-only pre-fan-out coverage analysis. Map the approved motive charter + spec against the proposed slice decomposition **before** implementation waves start. This skill never edits code, never mutates the run ledger, and never writes slices.
 
 It is the softer `analyze` path that complements the P1 HARD-GATE (a motive charter must exist before non-trivial impl). HARD-GATE asks "is there a charter?"; plan-review asks "does the charter actually cover the contract?"
 

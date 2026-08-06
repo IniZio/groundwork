@@ -64,7 +64,7 @@ After the design question is answered:
 
 1. **Document the finding** — what did you learn? Which approach won and why?
 2. **Delete prototype code** — or absorb the portable logic module if it's reusable.
-3. **Proceed to next skill** — based on finding: `create-prd`, `implement`, or report results.
+3. **Proceed to next skill** — based on finding: `implement` or report results.
 4. **Advisor gate** — invoke if the finding changes planned direction.
 
 ## What NOT to Do

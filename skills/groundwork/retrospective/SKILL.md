@@ -230,8 +230,6 @@ _Blast radius: high. TDD-on-process + advisor gate. Orchestrator drives the gate
 
 When the promotion encodes a procedure that supersedes or contradicts a stale artifact — a dead task stub, a misleading state-file name, an obsolete comment, a confusing convention — **remove or annotate that artifact in the same change** that ships the promoted lesson.
 
-_Canonical example_: in the nexus codebase, task-state files named `dev:daemon:running` or `sshd.pid` mislead agents into thinking a service is live when it is not. When a lesson about checking process liveness (not just file presence) is promoted, the promotion diff must also rename, annotate, or remove those misleading files — not leave them in place for the next agent to stumble over.
-
 Rule: **codified knowledge and the cleanup that enables it ship together**. A promoted lesson that leaves its contradicting trap in place is incomplete.
 
 ### Step 5 — Record

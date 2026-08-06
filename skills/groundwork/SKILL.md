@@ -10,6 +10,6 @@ Groundwork provides specialized skills in this plugin. Choose the skill whose na
 - `implement` for implementation orchestration.
 - `diagnose` for bugs and regressions.
 - `advisor-gate` for completion review.
-- `qa`, `prototype`, `goal`, `handoff`, `arch-review`, `retrospective`, and `housekeep` for their named workflows.
+- `prototype`, `handoff`, `arch-review`, `retrospective`, and `housekeep` for their named workflows.
 
 Load the relevant specialized skill before acting on the task.

@@ -135,11 +135,11 @@ node hooks/ledger.mjs add <task-id> --desc "<title>" --wave <n> --acceptance "<A
 - `--covers-ac "a,b"` records which acceptance criteria from Phase 3 this slice covers. This drives `AC_COVERAGE` events on completion and the coverage overlay in MAP.md.
 - `--decisions "D-1,D-2"` attaches journal decision ids to this slice, declaring which decisions it implements. Mirrors `--covers-ac`.
 
-If a task's ticket does not yet exist, create it via the hook:
+If a task's ticket does not yet exist, scaffold it via the hook:
 ```bash
-node hooks/motive-ticket.mjs create <slug> <task-id> --title "<title>"
+node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>
 ```
-Then fill the Question and Context sections before handing off to implementation (ORCHESTRATION-R-003).
+(Types: `research`, `choose`, `model`, `build`, `grill`, `spec`, `fix`, `chore`. Filename is auto-named `NN-type-slug.md`.) Then fill the Question and Context sections before handing off to implementation (ORCHESTRATION-R-003).
 
 ### Step 4 — Report PLAN-READY
 

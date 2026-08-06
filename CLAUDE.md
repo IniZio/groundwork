@@ -15,7 +15,7 @@
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. MUST NOT use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
@@ -60,14 +60,13 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", complex feature | Feature | `interview` → `vertical-slice` (writes ledger) → _(plan-review)_ → 5-20 `general-purpose` parallel → `advisor` gate |
+| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `general-purpose` parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
-| "plan this", "design this first", complex multi-file feature | Feature planning | `Task(subagent_type="groundwork:planner", model="opus")` → motive charter + DECISION events (motive ref) → fan-out `general-purpose` |
 | Visual / UI / styling | Design | `designer` |
 | "how does", "understand", "where is", "trace" | Explore | `groundwork:explore` |
 | "audit plan coverage before fan-out", "map ACs to slices", "did we miss an AC?" | Plan coverage audit | load `plan-review` skill (read-only, post-slicing/pre-fan-out: maps charter AC ids → ledger slice ids + `doc/specs` requirement ids; flags zero-coverage and untestable ACs) |

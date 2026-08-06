@@ -23,10 +23,10 @@ Slice the work into independent end-to-end behaviors before launching any genera
 <HARD-GATE>
 For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), OR anything classified
 Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
-grounded in a motive charter (motive_ref) OR an interview/planner session has produced one.
+grounded in a motive charter (motive_ref) produced by the feature-planning pipeline (interview → planner).
 Trivial work (<1h, ≤2 files, fully specified, obvious typo/config, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) is EXEMPT — proceed directly.
 If you are about to implement non-trivial work and no motive_ref exists, STOP and route to
-`interview` or `planner` first.
+the feature-planning pipeline (`interview` → `planner`) first.
 </HARD-GATE>
 ```
 
@@ -48,7 +48,7 @@ If you are about to implement non-trivial work and no motive_ref exists, STOP an
 ### Feature Mode (a plan exists)
 A plan is whatever concrete spec the work is grounded in: an `interview` synthesis, a
 `planner` output, or the project's own planning artifact (see
-`interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a planning artifact (`motive_ref`) before `vertical-slice` fans out** — if missing, STOP and route to `interview` or `planner` first (HARD-GATE). Decompose its acceptance
+`interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a planning artifact (`motive_ref`) before `vertical-slice` fans out** — if missing, STOP and route to the feature-planning pipeline (`interview` → `planner`) first (HARD-GATE). Decompose its acceptance
 criteria into vertical slices — each criterion → one slice. Record the motive slug as
 `motive_ref` in the ledger.
 

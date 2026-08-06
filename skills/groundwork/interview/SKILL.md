@@ -1,6 +1,6 @@
 ---
 name: interview
-description: One-question-at-a-time planning interview; synthesizes a concise plan that feeds vertical-slice.
+description: One-question-at-a-time intent-capture interview; produces a motive charter that feeds the planner.
 ---
 
 # Interview
@@ -13,7 +13,7 @@ Interviewing is separate from writing the plan. When the two are conflated, the 
 
 ## When to Use
 
-- **Before implementing a feature** — full interview, then synthesize the plan
+- **Before implementing a feature** — full interview, then hand off to planner
 - **Before `diagnose`** for complex bugs — scope before debugging
 - **Standalone for small changes** — interview output serves as the lightweight spec
 - **Anytime understanding is incomplete before action** — when the approach is unclear, user says "help me plan", etc.
@@ -21,7 +21,7 @@ Interviewing is separate from writing the plan. When the two are conflated, the 
 **Do NOT use for:**
 - **Trivial tasks** (<1h, fully specified, ≤2 files, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) — default to direct implementation. Load skills only when routing names them; don't force a heavy classification phase before every action.
 
-**Versus the planner agent:** when the research load itself — reading source across many files, searching for constraints, weighing architectural options — would burn orchestrator context before a single question can be framed, dispatch `Task(subagent_type="groundwork:planner", model="opus")` instead. The planner absorbs all of that codebase reading in its own context and returns only the plan file reference.
+**Pipeline role:** interview is the human front door of the feature-planning pipeline. After capturing intent one question at a time, hand off to the planner agent for research and decomposition: interview → planner → vertical-slice → plan-review → fan out general-purpose. Interview and planner are complementary stages of the same pipeline, not competing alternatives.
 
 ## Two Modes
 
@@ -73,7 +73,7 @@ Ask: is this a bug, a small change (<1 day), or a feature (≥1 day)?
 This determines what follows:
 - **Bug** → hand off to `diagnose` (interview output is the bug scope)
 - **Small change** → proceed to `implement` (interview spec IS the spec)
-- **Feature** → synthesize the plan (Step 4), then `vertical-slice` → fan out `general-purpose`
+- **Feature** → produce the motive charter (Step 4), then `planner` → `vertical-slice` → fan out `general-purpose`
 
 ### 2. Interview
 
@@ -103,10 +103,10 @@ Areas to cover (adapt to context — not all apply to every situation):
 After interviewing (or when hitting the 8-10 question cap):
 
 1. **Summarize resolutions** — what was decided, what remains uncertain.
-2. **Propose next steps** — which skill follows (`diagnose`, `implement`, or fan-out via `vertical-slice`).
+2. **Propose next steps** — which skill follows (`diagnose`, `implement`, or hand off to `planner` for decomposition into slices).
 3. **Present via `question` tool** — user confirms next steps or requests more interviewing.
 
-### 4. Synthesize the Plan
+### 4. Produce the Motive Charter
 
 After synthesis and user confirmation, write the plan to a durable file. **Use whatever planning convention you detected in Step 0.** Only fall back to the default below when the project has no planning skill or convention of its own.
 
@@ -114,15 +114,15 @@ After synthesis and user confirmation, write the plan to a durable file. **Use w
 - **Project plans convention exists** → write the plan there, matching the existing format/naming.
 - **No project convention** → use the **motive pattern**: invoke the `motive` skill to create or update a motive charter at `.groundwork/motives/<slug>/motive.md`. Capture the objective, key decisions (as `DECISION` events in the charter), acceptance criteria, and out-of-scope items. Set `motive_ref: <slug>` in the ledger — the stop-gate accepts a `motive_ref` pointing to an existing charter, satisfying the non-trivial-work gate without a separate plan file.
 
-The charter must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers (those go stale). It exists to feed `vertical-slice`, not to be an exhaustive document.
+The charter must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers (those go stale). It exists to feed the planner, not to be an exhaustive document.
 
 **Rules:**
-- For features: the motive charter anchors `vertical-slice` — slices map to the charter's acceptance items. Set `motive_ref` to the slug in the ledger so the stop-gate can verify the planning is grounded.
+- For features: the motive charter is consumed by the planner, which decomposes it into slices. Set `motive_ref` to the slug so the planner can locate the charter.
 - For small changes: the interview synthesis IS the spec for `implement`; a motive is optional.
 - For bugs: skip this step — bugs go directly to `diagnose`.
 - Respect the project's commit policy — motive charters live in `.groundwork/motives/` (gitignored) and are never staged.
 
-**Seed the ledger at plan time (features only).** After writing the motive charter, run `bin/ledger init` (using the write token surfaced at SessionStart) and set `motive_ref` to the slug so the stop-gate recognizes the planning anchor. Then add a `plan`-kind entry: `ledger.mjs add planning --kind plan --desc "Motive: <slug>"`. This creates the run before `vertical-slice` touches it, so vertical-slice's subsequent `add` calls append impl slices to the same run rather than creating a late-born ledger. If `vertical-slice` finds no existing run it will `init` its own; seeding here simply makes the ledger exist from the planning phase forward.
+**Ledger is owned downstream.** `vertical-slice` initializes and writes the run ledger; the planner registers impl slices (via `ledger.mjs add`). Interview's role ends with the motive charter in place — do not run `bin/ledger init` or add impl slices at interview time.
 
 ## Domain Glossary (CONTEXT.md)
 

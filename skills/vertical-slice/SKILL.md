@@ -40,7 +40,7 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 
 **Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios). If any of ≥3 files, ≥2 user-facing behaviors, or a large verification surface applies, slicing is mandatory.**
 
-**Chain position:** `interview` or `planner` MUST have produced a planning artifact (`motive_ref`) before this skill runs on non-trivial work. After this skill, `plan-review` validates coverage before fan-out, then `implement` or `ultrawork` executes the slices.
+**Chain position:** The feature-planning pipeline (`interview` → `planner`) MUST have produced a planning artifact (`motive_ref`) before this skill runs on non-trivial work. After this skill, `plan-review` validates coverage before fan-out, then `implement` or `ultrawork` executes the slices.
 
 ## Decomposition Process
 

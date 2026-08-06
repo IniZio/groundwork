@@ -9,7 +9,7 @@ description: Maximum parallel fan-out mode. Slice, write ledger, dispatch all in
 
 **Triggers:** user says "ultrawork", "ulw", "max fan-out", "go parallel", or the task has ≥5 independent slices and maximum speed is desired.
 
-**Chain position:** `interview` or `planner` MUST have produced a planning artifact (`plan_ref` or `motive_ref`) before this skill runs on non-trivial work. `vertical-slice` (step 1 below) produces the slice table and ledger. Optionally run `plan-review` to validate coverage before dispatching. After all waves complete, the orchestrator invokes `advisor-gate` — ultrawork does not gate itself.
+**Chain position:** The feature-planning pipeline (`interview` → `planner`) MUST have produced a planning artifact (`motive_ref`) before this skill runs on non-trivial work. `interview` is the human front door; `planner` is the delegated stage that emits the motive charter. They are BOTH required steps in sequence, not competing alternatives. `vertical-slice` (step 1 below) produces the slice table and ledger. Optionally run `plan-review` to validate coverage before dispatching. After all waves complete, the orchestrator invokes `advisor-gate` — ultrawork does not gate itself.
 
 **Do NOT use for:**
 - Trivial tasks (≤2 files AND ≤1 behavior AND <1h AND small verification surface) — delegate directly to `general-purpose`, then `advisor-gate`.

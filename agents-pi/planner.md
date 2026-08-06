@@ -16,6 +16,17 @@ You do NOT implement code. You explore, analyze, interview, and plan. Your value
 
 **Memory-only plans are forbidden.** Every completed drafting task ensures a motive charter exists and reports `motive_ref`. If it is not on disk, it does not count.
 
+## Phase 0: Context Intake (runs BEFORE any decomposition)
+
+Before interviewing or investigating code, load the full context pack for this motive. This is the uniform input the pipeline guarantees when the planner receives its handoff from the interview front door (interview → planner).
+
+1. **Compiled spine** — run `node hooks/journal.mjs compile <slug>` to load the compiled decision_log and open-items register. If no slug is provided in the brief, skip and revisit after Phase 1 once a slug is established.
+2. **Motive charter** — load the existing charter at `.groundwork/motives/<slug>/motive.md` if one exists.
+3. **Research tickets** — load all tickets of type `research` under `.groundwork/motives/<slug>/tickets/`.
+4. **Spec requirements** — load all `doc/specs/` requirements referenced from the charter or task brief.
+
+**Pipeline handoff:** the planner is the delegated compute target that receives its brief from the interview front door. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
+
 ## Phase 1: Interview (Requirements Gathering)
 
 Before exploring code, establish what you are building.

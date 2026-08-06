@@ -21,6 +21,6 @@ If you notice the core rules, routing, or skill triggers are missing from your c
 
 ## Non-trivial feature mandate
 
-A non-trivial feature MUST have a planning artifact produced by `interview` or `planner` before `vertical-slice` fans out. The required form is a `motive_ref` pointing to a motive charter at `.groundwork/motives/<slug>/motive.md`. The `planner` route is not an interview-free shortcut; it writes that charter and returns `motive_ref`. Trivial / small-clear / docs / obvious-bug fast-paths remain direct → `advisor-gate`.
+A non-trivial feature MUST have a planning artifact produced by the feature-planning pipeline before `vertical-slice` fans out. The required form is a `motive_ref` pointing to a motive charter at `.groundwork/motives/<slug>/motive.md`. Trivial / small-clear / docs / obvious-bug fast-paths remain direct → `advisor-gate`.
 
-**Planning chain:** `interview` (requirements Q&A) → [`plan-review` (coverage audit, optional)] → `vertical-slice` (conflict-free decomposition + ledger) → `implement` or `ultrawork` (execution). Each step's SKILL.md states its entry conditions and what comes next.
+**Feature-planning pipeline:** `interview` (interactive intent capture — human front door) → `planner` (delegated: context intake, decomposition + coverage → emits motive charter + `motive_ref`) → `vertical-slice` (conflict-free decomposition + run ledger) → [`plan-review` (coverage audit, optional)] → `implement` or `ultrawork` (execution). `interview` and `planner` are BOTH retained, not competing alternatives — `planner` is the delegated stage that emits the motive charter. Each step's SKILL.md states its entry conditions and what comes next.

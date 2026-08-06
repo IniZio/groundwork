@@ -11,7 +11,7 @@ It is the softer `analyze` path that complements the P1 HARD-GATE (a motive char
 
 ## When to Use
 
-- **Before fan-out** on any non-trivial feature (after `interview`/`planner` produced a motive charter, and after `vertical-slice` proposed slices — before general-purpose agents start)
+- **Before fan-out** on any non-trivial feature (after the `interview` → `planner` pipeline produced a motive charter, and after `vertical-slice` proposed slices — before general-purpose agents start)
 - When advisor scores **`plan_soundness` low** (≤1) or returns **REPLAN** and you need a structured gap list before re-entering `interview` or `vertical-slice`
 - When the user asks to "check coverage", "analyze the plan", "are the slices complete?", or "did we miss an AC?"
 - Optional mid-flight: after a wave lands and new coupling or scope drift is suspected — still read-only; route fixes through `vertical-slice` / `interview`, not this skill
@@ -130,7 +130,7 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 
 | Signal | Route |
 |--------|--------|
-| No motive charter / no charter ACs | HARD-GATE → `interview` or `planner` (not this skill's job to create the charter) |
+| No motive charter / no charter ACs | HARD-GATE → feature-planning pipeline (`interview` → `planner`) — not this skill's job to create the charter |
 | CRITICAL `missing` / `partial` heavy / bad decomposition | Re-enter **`vertical-slice`** |
 | CRITICAL `contradicts` on spec intent, wrong problem | Re-enter **`interview`** |
 | CRITICAL `unrequested` negative-scope | Strip slices or re-scope with user; do not impl |
@@ -147,7 +147,7 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 
 ## Orchestrator integration
 
-1. Non-trivial feature path: `interview`/`planner` → motive charter (`motive_ref`) → `vertical-slice` (ledger) → **`plan-review`** → fan-out only if no blocking CRITICAL (or user override).
+1. Non-trivial feature path: `interview` → `planner` → motive charter (`motive_ref`) → `vertical-slice` (ledger) → **`plan-review`** → fan-out only if no blocking CRITICAL (or user override).
 2. On advisor **REPLAN** or low `plan_soundness`: run `plan-review` on the current spec + slices, attach the coverage table + gap_types to the re-entry prompt.
 3. Record nothing mandatory in the ledger from this skill; the orchestrator may paste the verdict hint into the run `brief` or feature `history` if useful.
 

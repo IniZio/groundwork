@@ -42,8 +42,8 @@ digraph flow {
   "invoke skill interview (quick)" -> "implement";
   "implement" -> "invoke skill advisor-gate";
 
-  "Feature path" -> "motive_ref via interview or planner";
-  "motive_ref via interview or planner" -> "invoke skill implement";
+  "Feature path" -> "feature-planning pipeline (interview -> planner) -> motive_ref";
+  "feature-planning pipeline (interview -> planner) -> motive_ref" -> "invoke skill implement";
   "invoke skill implement" -> "invoke skill vertical-slice (writes ledger)";
   "invoke skill vertical-slice (writes ledger)" -> "fan out general-purpose agents";
   "fan out general-purpose agents" -> "invoke skill advisor-gate";
@@ -88,9 +88,8 @@ digraph flow {
 ## Feature Path Detail
 
 - Only use when work is **clearly** multi-day or architectural from the start.
-- **Mandatory skill-tool invocations:** (`interview` **or** `planner`) → durable `motive_ref` (charter at `.groundwork/motives/<slug>/motive.md` + DECISION events) → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip.
-- **A non-trivial feature MUST have a `motive_ref` (produced by `interview` or `planner`) before `vertical-slice` fans out.** No memory-only plans; no fan-out until the charter exists.
-- The `planner` route is **not** an interview-free shortcut for non-trivial work — it writes the motive charter and returns `motive_ref`; the orchestrator then continues through `vertical-slice` / fan-out.
+- **Mandatory skill-tool invocations:** feature-planning pipeline (`interview` → `planner`) → durable `motive_ref` (charter at `.groundwork/motives/<slug>/motive.md` + DECISION events) → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip. `interview` and `planner` are BOTH retained, not competing alternatives — `interview` is the human front door; `planner` is the delegated stage that emits the motive charter.
+- **A non-trivial feature MUST have a `motive_ref` (produced by the `interview` → `planner` pipeline) before `vertical-slice` fans out.** No memory-only plans; no fan-out until the charter exists.
 - `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write the run ledger (recording `motive_ref`).
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed.
 - **Trivial / small-clear / docs / obvious-bug fast-paths stay unchanged** — HARD-GATE and `motive_ref` apply to non-trivial work only.

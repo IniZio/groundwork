@@ -1014,7 +1014,7 @@ describe('T5-AC1 — MAP renders one row per ticket with ledger status overlay',
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     expect(ticketsSection).toContain('[t3](tickets/t3.md)')
     expect(ticketsSection).toContain('pending')
   })
@@ -1036,7 +1036,7 @@ describe('T5-AC2 — ticket with no slice renders unstarted; slice with no ticke
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     expect(ticketsSection).toContain('[orphan](tickets/orphan.md)')
     expect(ticketsSection).toContain('unstarted')
   })
@@ -1054,7 +1054,7 @@ describe('T5-AC2 — ticket with no slice renders unstarted; slice with no ticke
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     expect(ticketsSection).toContain('Unlinked')
     expect(ticketsSection).toContain('S2')
     expect(ticketsSection).toContain('No ticket here')
@@ -1070,7 +1070,7 @@ describe('T5-AC2 — ticket with no slice renders unstarted; slice with no ticke
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     expect(ticketsSection).not.toContain('Unlinked')
   })
 })
@@ -1295,7 +1295,7 @@ describe('F19-AC2 — linked ticket render: slice with ticket field shows status
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     // Ticket row appears with its linked slice status
     expect(ticketsSection).toContain('[t1](tickets/t1.md)')
     expect(ticketsSection).toContain('complete')
@@ -1316,7 +1316,7 @@ describe('F19-AC2 — linked ticket render: slice with ticket field shows status
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     expect(ticketsSection).toContain('[f19](tickets/f19.md)')
     expect(ticketsSection).toContain('in progress')
     expect(ticketsSection).not.toContain('Unlinked')
@@ -1345,7 +1345,7 @@ describe('F20 regression — bare-id ticket join', () => {
     })
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    const ticketsSection = content.split('## Tickets')[1]?.split('##')[0] ?? ''
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
     // Overlay: slice status shown, not "unstarted — no slice"
     expect(ticketsSection).toContain('[t1](tickets/t1.md)')
     expect(ticketsSection).toContain('complete')
@@ -1377,6 +1377,94 @@ describe('F20 regression — bare-id ticket join', () => {
     }
     const valid = validate(goodLedger)
     expect(valid).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D-78 — Tickets section grouped by D-74 type vocabulary
+// ---------------------------------------------------------------------------
+
+describe('D-78 — Tickets section groups by type in vocab order', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('tickets with typed content appear under ### type subsections in vocab order', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 'fix-crash', `# fix-crash\n\nType: fix\n\nFix the crash.\n`)
+    writeTicketFile(dir, 'm', 'research-options', `# research-options\n\nType: research\n\nResearch approaches.\n`)
+    writeTicketFile(dir, 'm', 'build-core', `# build-core\n\nType: build\n\nBuild the core.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S1', ticket: 'research-options', status: 'complete', desc: 'Research done' },
+        { id: 'S2', ticket: 'build-core', status: 'in_progress', desc: 'Building' },
+        { id: 'S3', ticket: 'fix-crash', status: 'pending', desc: 'Fix pending' },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).toContain('## Tickets')
+    // Vocab order: research before build before fix
+    const researchIdx = content.indexOf('### research')
+    const buildIdx    = content.indexOf('### build')
+    const fixIdx      = content.indexOf('### fix')
+    expect(researchIdx).toBeGreaterThan(-1)
+    expect(buildIdx).toBeGreaterThan(-1)
+    expect(fixIdx).toBeGreaterThan(-1)
+    expect(researchIdx).toBeLessThan(buildIdx)
+    expect(buildIdx).toBeLessThan(fixIdx)
+    // Status overlay preserved under correct group
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
+    expect(ticketsSection).toContain('[research-options](tickets/research-options.md)')
+    expect(ticketsSection).toContain('complete')
+    expect(ticketsSection).toContain('[build-core](tickets/build-core.md)')
+    expect(ticketsSection).toContain('in progress')
+    expect(ticketsSection).toContain('[fix-crash](tickets/fix-crash.md)')
+    expect(ticketsSection).toContain('pending')
+  })
+
+  it('tickets without a Type: field fall into ### other at the end', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 'typed-ticket', `# typed-ticket\n\nType: spec\n\nContent.\n`)
+    writeTicketFile(dir, 'm', 'untyped-ticket', `# untyped-ticket\n\nNo type field here.\n`)
+    writeLedger(dir, 'm', { motive: 'm', active: true, slices: [], gate: {} })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
+    expect(ticketsSection).toContain('### spec')
+    expect(ticketsSection).toContain('### other')
+    // spec must appear before other
+    expect(ticketsSection.indexOf('### spec')).toBeLessThan(ticketsSection.indexOf('### other'))
+    expect(ticketsSection).toContain('[typed-ticket](tickets/typed-ticket.md)')
+    expect(ticketsSection).toContain('[untyped-ticket](tickets/untyped-ticket.md)')
+  })
+
+  it('empty ticket corpus produces no ## Tickets section and no ### type headers', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeLedger(dir, 'm', { motive: 'm', active: true, slices: [], gate: {} })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    expect(content).not.toContain('## Tickets')
+    expect(content).not.toContain('### research')
+    expect(content).not.toContain('### other')
+  })
+
+  it('status overlay is preserved per ticket under its type group', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
+    writeTicketFile(dir, 'm', 'chore-ci', `# chore-ci\n\nType: chore\n\nCI setup.\n`)
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [{ id: 'C1', ticket: 'chore-ci', status: 'complete', desc: 'CI done' }],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const ticketsSection = content.split('## Tickets')[1]?.split('\n## ')[0] ?? ''
+    expect(ticketsSection).toContain('### chore')
+    expect(ticketsSection).toContain('[chore-ci](tickets/chore-ci.md)')
+    expect(ticketsSection).toContain('complete')
   })
 })
 

@@ -174,14 +174,26 @@ function _readAllMotiveSlicesForAC(projectDir, motive) {
  * Each stem is the filename without the .md extension (e.g. "t1", "t2").
  * Returns [] when the directory does not exist or is empty.
  */
+// D-74 ticket type vocabulary (in render order); unknown types fall to 'other'.
+const TICKET_TYPE_ORDER = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore']
+
 function _readTicketFiles(motiveDir) {
   const ticketsDir = join(motiveDir, 'tickets')
   if (!existsSync(ticketsDir)) return []
   try {
     return readdirSync(ticketsDir)
       .filter((f) => f.endsWith('.md'))
-      .map((f) => f.slice(0, -3))
       .sort()
+      .map((f) => {
+        const stem = f.slice(0, -3)
+        let type = 'other'
+        try {
+          const content = readFileSync(join(ticketsDir, f), 'utf8')
+          const m = /^Type:\s*(.+)$/m.exec(content)
+          if (m) type = m[1].trim().toLowerCase()
+        } catch { /* leave type as 'other' */ }
+        return { stem, type }
+      })
   } catch {
     return []
   }
@@ -582,7 +594,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       }
     }
 
-    const ticketStemSet = new Set(ticketFiles)
+    const ticketStemSet = new Set(ticketFiles.map((t) => t.stem))
 
     // Slices that have no ticket file (either no ticket field, or file not found)
     const unlinkedSlices = slices.filter((s) => {
@@ -594,25 +606,38 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     parts.push('## Tickets')
     parts.push('')
 
-    for (const stem of ticketFiles) {
-      const slice = sliceByTicketStem.get(stem)
-      const badge = slice
-        ? _statusBadge(slice.status ?? 'pending')
-        : _statusBadge('no-slice')
-      const desc  = slice?.desc ? ` — ${slice.desc}` : ''
-      parts.push(`- [${stem}](tickets/${stem}.md) ${badge}${desc}`)
+    // Group tickets by D-74 type; unknown types → 'other' bucket at end.
+    const byType = new Map()
+    for (const { stem, type } of ticketFiles) {
+      const key = TICKET_TYPE_ORDER.includes(type) ? type : 'other'
+      if (!byType.has(key)) byType.set(key, [])
+      byType.get(key).push(stem)
+    }
+    const renderOrder = TICKET_TYPE_ORDER.filter((t) => byType.has(t))
+    if (byType.has('other')) renderOrder.push('other')
+
+    for (const typeKey of renderOrder) {
+      parts.push(`### ${typeKey}`)
+      parts.push('')
+      for (const stem of byType.get(typeKey)) {
+        const slice = sliceByTicketStem.get(stem)
+        const badge = slice
+          ? _statusBadge(slice.status ?? 'pending')
+          : _statusBadge('no-slice')
+        const desc  = slice?.desc ? ` — ${slice.desc}` : ''
+        parts.push(`- [${stem}](tickets/${stem}.md) ${badge}${desc}`)
+      }
+      parts.push('')
     }
 
     if (unlinkedSlices.length > 0) {
-      parts.push('')
       parts.push('**Unlinked slices** _(no ticket document):_')
       parts.push('')
       for (const s of unlinkedSlices) {
         parts.push(`- ${_sliceLink(s.id, undefined)} — ${s.desc ?? '(no description)'}`)
       }
+      parts.push('')
     }
-
-    parts.push('')
   }
 
   // ── Open items ────────────────────────────────────────────────────────────

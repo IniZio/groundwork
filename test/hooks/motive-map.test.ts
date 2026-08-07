@@ -25,6 +25,8 @@ import { join } from 'node:path'
 import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
 // @ts-ignore
 import { loadSchema } from '../../hooks/lib/schema-io.mjs'
+// @ts-ignore
+import { compile } from '../../hooks/lib/motive-compile.mjs'
 
 // Helper: write a hand-authored ticket file to tickets/
 function writeTicketFile(dir: string, motive: string, stem: string, body = `# ${stem}\n\nContent.\n`) {
@@ -1558,5 +1560,95 @@ describe('regenerateMotiveMap — acceptance criteria', () => {
     // Standard sections still present
     expect(content).toContain('## Frontier')
     expect(content).toContain('## Progress')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pause selection seam — motive-map vs motive-compile parity (regression)
+// ---------------------------------------------------------------------------
+
+/**
+ * Regression: when a motive has multiple PAUSE events, MAP.md must render
+ * the LATEST pause (not the oldest).
+ *
+ * Root cause: _readAllMotiveEvents returns events NEWEST-FIRST, so
+ * `.filter(...).pop()` returned the last array element = OLDEST event.
+ * Fix: use `.find()` which returns the FIRST (newest) element.
+ *
+ * Seam parity: motive-compile also tracks the latest PAUSE (it overwrites
+ * lastPause on each event in chronological order, ending on the newest).
+ * Both surfaces must agree on the same pointer.
+ */
+describe('regenerateMotiveMap — PAUSE selection (newest wins)', () => {
+  let dir: string
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'motive-map-pause-')) })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  function writePauseEvents(projectDir: string, motive: string, events: object[]) {
+    const journalDir = join(projectDir, '.groundwork', 'journal')
+    mkdirSync(journalDir, { recursive: true })
+    const lines = events.map((e) => JSON.stringify(e)).join('\n')
+    writeFileSync(join(journalDir, '2026-01-01-pause-test.jsonl'), lines + '\n', 'utf8')
+  }
+
+  it('MAP.md Pause section shows the NEWEST pointer, not the oldest, when two PAUSE events exist', () => {
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest pause selection.\n`)
+    writeLedger(dir, 'm', { motive: 'm', active: true, slices: [], gate: {} })
+
+    // Write events in chronological order (oldest line first) — _readAllMotiveEvents reverses
+    writePauseEvents(dir, 'm', [
+      {
+        ts: '2026-01-01T10:00:00.000Z', session: 's1', motive: 'm',
+        type: 'PAUSE',
+        data: { pointer: 'OLD-PAUSE', summary: 'First pause.', next_actions: [{ action: 'old_action' }] },
+        _order: { shard: '2026-01-01-pause-test.jsonl', line: 0 },
+      },
+      {
+        ts: '2026-01-01T11:00:00.000Z', session: 's2', motive: 'm',
+        type: 'PAUSE',
+        data: { pointer: 'NEW-PAUSE', summary: 'Second pause.', next_actions: [] },
+        _order: { shard: '2026-01-01-pause-test.jsonl', line: 1 },
+      },
+    ])
+
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+
+    // The Pause section must show the latest pointer
+    expect(content).toContain('NEW-PAUSE')
+    // The oldest pointer must NOT appear
+    expect(content).not.toContain('OLD-PAUSE')
+  })
+
+  it('motive-compile and motive-map agree on the same last_pause.pointer (seam parity)', () => {
+    // Events in chronological order (oldest first) — same as the JSONL file order
+    const olderPause = {
+      ts: '2026-01-01T10:00:00.000Z', session: 's1', motive: 'm',
+      type: 'PAUSE',
+      data: { pointer: 'OLD-PAUSE', summary: 'First pause.', next_actions: [] },
+      _order: { shard: '2026-01-01-pause-test.jsonl', line: 0 },
+    }
+    const newerPause = {
+      ts: '2026-01-01T11:00:00.000Z', session: 's2', motive: 'm',
+      type: 'PAUSE',
+      data: { pointer: 'NEW-PAUSE', summary: 'Second pause.', next_actions: [] },
+      _order: { shard: '2026-01-01-pause-test.jsonl', line: 1 },
+    }
+
+    // compile() takes events in chronological order (oldest first); last PAUSE wins
+    const view = compile([olderPause, newerPause], {})
+    const compilePointer: string = view?.agent?.last_pause?.pointer
+
+    // regenerateMotiveMap reads from the JSONL file (newest-first after reverse); first find() wins
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest pause seam.\n`)
+    writeLedger(dir, 'm', { motive: 'm', active: true, slices: [], gate: {} })
+    writePauseEvents(dir, 'm', [olderPause, newerPause])
+    regenerateMotiveMap(dir, 'm')
+    const mapContent = readMap(dir, 'm')
+
+    // Both surfaces must agree on the latest pointer
+    expect(compilePointer).toBe('NEW-PAUSE')
+    expect(mapContent).toContain(compilePointer)
+    expect(mapContent).not.toContain('OLD-PAUSE')
   })
 })

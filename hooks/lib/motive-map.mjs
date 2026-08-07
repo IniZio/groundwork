@@ -91,8 +91,9 @@ function _generate(projectDir, motive) {
 
   const ticketFiles = _readTicketFiles(motiveDir)
 
-  // Extract last_pause from PAUSE events (mirrors motive-compile logic, no compile dependency)
-  const lastPauseEvent = allEvents.filter((ev) => ev.type === 'PAUSE').pop() ?? null
+  // Extract last_pause from PAUSE events. allEvents is newest-first (see _readAllMotiveEvents),
+  // so the FIRST matching PAUSE is the most recent one — use find(), not filter().pop().
+  const lastPauseEvent = allEvents.find((ev) => ev.type === 'PAUSE') ?? null
   const lastPause = lastPauseEvent != null
     ? {
         pointer:      lastPauseEvent.data?.pointer ?? null,

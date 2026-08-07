@@ -82,6 +82,7 @@ import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs
 import { readCharter } from './lib/motive-charter.mjs'
 import { isExhausted } from './lib/pacing.mjs'
 import { compile } from './lib/motive-compile.mjs'
+import { verifySeal, readKey } from './lib/gate-seal.mjs'
 
 /**
  * Advisory only — never blocks. Enabled by GROUNDWORK_TBD_GATE=1.
@@ -319,6 +320,32 @@ function advisorVerdict(gate) {
   if (typeof a === 'string') return a.toUpperCase()
   if (a && typeof a === 'object' && a.verdict != null) return String(a.verdict).toUpperCase()
   return null
+}
+
+/**
+ * Seal check helper for the stop-gate release paths.
+ *
+ * Returns:
+ *   null  — ledger is NOT in the sealed regime (no gate.seal field); caller uses legacy behavior.
+ *   true  — sealed AND the HMAC verifies; release is safe.
+ *   false — sealed but verify failed OR key is missing; FAIL CLOSED.
+ *
+ * FAIL-CLOSED contract: any exception reading the key → false (missing key blocks, not opens).
+ *
+ * @param {object} ledger - parsed ledger object
+ * @param {string} projectDir
+ * @param {string} sessionId
+ * @returns {null|boolean}
+ */
+function checkSeal(ledger, projectDir, sessionId) {
+  const storedSeal = ledger?.gate?.seal
+  if (!storedSeal || typeof storedSeal !== 'string') return null // not sealed — legacy path
+  try {
+    const key = readKey({ projectDir, sessionId: sessionId || undefined })
+    return verifySeal(ledger, key)
+  } catch {
+    return false // missing/unreadable key on a sealed ledger → fail closed
+  }
 }
 
 /**
@@ -596,7 +623,21 @@ async function main() {
     return allow()
   }
 
-  if (!ledger || ledger.active !== true) return allow()
+  if (!ledger) return allow()
+
+  // active:false release path — sealed ledgers require a valid seal before honoring.
+  // FAIL-CLOSED: missing key or invalid seal on a sealed ledger blocks, not opens.
+  if (ledger.active !== true) {
+    const sealResult = checkSeal(ledger, projectDir, sessionId)
+    if (sealResult === false) {
+      return block(
+        'Seal verification failed on active:false release path — the ledger seal is invalid or the key is missing. ' +
+          'A subagent may have written active:false directly without going through the CLI. ' +
+          'Re-run `bin/ledger abandon` to produce a valid seal, or restore the key file.',
+      )
+    }
+    return allow()
+  }
 
   // Never block on a run owned by a different session (defensive layer for legacy fallback).
   if (typeof ledger.session_id === 'string' && ledger.session_id && sessionId && ledger.session_id !== sessionId) {
@@ -622,6 +663,17 @@ async function main() {
   // All other allow() paths (embedded agent, unparseable stdin, absent/inactive ledger,
   // foreign session_id, yield, reinforcement-cap) emit nothing — see plan D5.
   if (!workRemains) {
+    // Sealed ledgers require a valid seal before honoring the all-complete + APPROVE release.
+    // FAIL-CLOSED: missing key or invalid seal on a sealed ledger blocks, not opens.
+    const sealResult = checkSeal(ledger, projectDir, sessionId)
+    if (sealResult === false) {
+      return block(
+        'Seal verification failed on all-complete + APPROVE release path — the ledger seal is invalid or the key is missing. ' +
+          'A subagent may have written gate.advisor=APPROVE directly without going through the CLI. ' +
+          'Re-run `bin/ledger gate advisor APPROVE` to produce a valid seal, or restore the key file.',
+      )
+    }
+
     emitHookEvent({
       projectDir,
       sessionId,

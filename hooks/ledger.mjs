@@ -32,10 +32,11 @@
  * Exit 0 on success, 2 on usage error, 1 on operational failure.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
+import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey, keyPath } from './lib/gate-seal.mjs'
 import { checkPace, resolvedUnits } from './lib/pacing.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
@@ -316,30 +317,47 @@ function mutateLedgerChecked(lPath, fn) {
 }
 
 /**
- * Enforce write-token authority for gate/complete. FAIL-CLOSED.
- * Three cases:
- *   token_free === true  → explicit opt-out (--no-token at init); no token required
+ * Re-seal the ledger if it is in the sealed regime (gate.seal present OR key file on disk).
+ * No-op for legacy in-flight ledgers (no gate.seal AND no key file — pre-fix runs).
+ * Must be called INSIDE a mutateLedgerChecked callback so the updated seal is written atomically.
+ * @param {object} ledger  — the ledger object being mutated in place
+ * @param {string} projectDir — resolved project directory
+ */
+function reSeal(ledger, projectDir) {
+  const sid = ledger?.session_id
+  const kp = keyPath({ projectDir, sessionId: sid })
+  const isSealed = ledger?.gate?.seal != null
+  if (!isSealed && !existsSync(kp)) return  // legacy in-flight: skip silently
+  const key = readKey({ projectDir, sessionId: sid })
+  ledger.gate = ledger.gate ?? {}
+  ledger.gate.seal = computeSeal(canonicalReleaseState(ledger), key)
+}
+
+/**
+ * Enforce write-token authority for gate/complete/abandon/set-terminal. FAIL-CLOSED.
+ * Cases:
+ *   token_free === true AND no write_token → legacy opt-out ledger; bypass (backward compat)
  *   write_token present  → caller must supply the matching --token
  *   neither present      → ledger is misconfigured; reject (the fail-open window has closed)
+ * NOTE: new ledgers can no longer be initialized with token_free via --no-token (D-6),
+ *       but existing ledgers carrying token_free:true are still honoured for backward compat.
  * (caller is always inside mutateLedger which has a finally-cleanup for the lockfile;
  * we must throw rather than call die/process.exit to avoid bypassing that cleanup).
  */
 function assertWriteToken(ledger, passedToken) {
-  // Explicit opt-out: runs initialized with --no-token skip authority checks entirely.
-  if (ledger?.token_free === true) return
+  // token_free bypass REMOVED (D-6, D-9): every ledger must have a write_token; fail closed.
   const stored = ledger?.write_token
   if (!stored) {
     const e = new Error(
-      'gate/complete require write_token authority — this ledger has none.\n' +
-      '  Re-initialize via `ledger init <file>` (embeds a token) or\n' +
-      '  use `ledger init --no-token <file>` to explicitly opt out of token enforcement.',
+      'gate/complete/abandon require write_token authority — this ledger has none.\n' +
+      '  Re-initialize via `ledger init <file>` (embeds a token).',
     )
     e.exitCode = 1
     throw e
   }
   if (!passedToken || passedToken !== stored) {
     const e = new Error(
-      'gate/complete are orchestrator-only — pass --token <write_token> printed at init\n' +
+      'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init\n' +
       '  (run `ledger status` to check run state; the token itself is never displayed)',
     )
     e.exitCode = 1
@@ -381,17 +399,18 @@ const HELP = {
   },
   abandon: {
     summary: 'set active:false — releases the stop-gate for the current run',
-    usage: 'ledger abandon [--session <id>]',
+    usage: 'ledger abandon [--session <id>] [--token <write_token>]',
     flags: [
       '--session <id>   override session id (default: CLAUDE_CODE_SESSION_ID env)',
+      '--token <t>      write-token printed at init (required for sealed runs)',
     ],
   },
   init: {
     summary: 'write the initial ledger atomically from a JSON file or stdin',
-    usage: 'ledger init <file|-> [--motive <id>] [--no-token]',
+    usage: 'ledger init <file|-> [--motive <id>] [--token <existing-token>]',
     flags: [
       '--motive <id>        motive id to stamp on the ledger (overrides JSON input)',
-      '--no-token           opt out of token enforcement (sets token_free:true; gate/complete need no --token)',
+      '--token <t>          write-token of the existing active run (required to overwrite a live run)',
     ],
   },
   add: {
@@ -540,6 +559,7 @@ function cmdComplete(args) {
   let total = 0
   const missing = []
   let capturedLedger = null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
@@ -560,11 +580,11 @@ function cmdComplete(args) {
     }
     total = slices.length
     done = slices.filter((s) => s?.status === 'complete').length
+    reSeal(l, projectDir)  // S2-AC5: re-seal after mutation (no-op for legacy runs)
   })
   // Emit one TASK_COMPLETE per found-and-marked id; must precede die() so partial
   // successes (e.g. "ledger complete S1 BOGUS") are still recorded (AC8).
   if (capturedLedger) {
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     const sliceMap = new Map((capturedLedger.slices ?? []).map((s) => [s?.id, s]))
     for (const id of ids.filter((id) => !missing.includes(id))) {
       emitHookEvent({
@@ -625,6 +645,7 @@ function cmdGate(args) {
   }
   let runId = null
   let capturedLedger = null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
@@ -632,11 +653,11 @@ function cmdGate(args) {
     l.gate = l.gate ?? {}
     l.gate[which] = value
     runId = l.session_id ?? l.run_id ?? null
+    reSeal(l, projectDir)  // S2-AC5: re-seal after gate mutation (no-op for legacy runs)
   })
   // Write gate artifact
   writeGateArtifact({ runId, which, verdictRaw, value, hasObj, flags })
   if (capturedLedger) {
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     emitHookEvent({
       projectDir,
       sessionId: capturedLedger.session_id,
@@ -686,15 +707,20 @@ function writeGateArtifact({ runId, which, verdictRaw, value, hasObj }) {
   }
 }
 
-function cmdAbandon() {
+function cmdAbandon(args) {
+  const { flags } = parseFlags(args ?? [])
   let capturedLedger = null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to abandon')
+    // S2-AC3: abandon requires token (vector 4) — including cross-session abandon (--session
+    // flag). The caller must supply the target session's write_token via --token.
+    assertWriteToken(l, flags.token)
     capturedLedger = l
     l.active = false
+    reSeal(l, projectDir)  // S2-AC3: re-seal with active:false so stop-gate accepts abandon
   })
   if (capturedLedger) {
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     emitHookEvent({
       projectDir,
       sessionId: capturedLedger.session_id,
@@ -716,7 +742,7 @@ function cmdInit(args) {
   const { flags, positionals } = parseFlags(argv)
   const src = positionals[0]
 
-  if (!src) die('usage: ledger init <file|-> [--motive <id>] [--no-token]', 2)
+  if (!src) die('usage: ledger init <file|-> [--motive <id>] [--token <existing-token>]', 2)
 
   let obj = {}
 
@@ -734,16 +760,32 @@ function cmdInit(args) {
     }
   }
 
-  // Generate and embed the write-token for gate/complete authority.
-  // --no-token opts out: sets token_free:true so gate/complete skip authority checks.
-  let writeToken
-  if ('no-token' in flags) {
-    obj.token_free = true
-    delete obj.write_token
-  } else {
-    writeToken = randomBytes(8).toString('hex')
-    obj.write_token = writeToken
-  }
+  // S2-AC2 (vectors 1 & 2): refuse to overwrite an active tokened run without --token.
+  // This prevents a subagent from re-initializing the orchestrator's live run and
+  // either hijacking its seal or minting a new token it controls.
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  try {
+    const existing = readLedger(ledgerPath())
+    if (existing?.active === true && existing?.write_token) {
+      if (!flags.token || flags.token !== existing.write_token) {
+        die(
+          'init would overwrite an active run — pass --token <write_token> to confirm overwrite,\n' +
+          '  or wait for the run to end (abandon/gate) before re-initializing.',
+          2,
+        )
+      }
+    }
+  } catch { /* no existing ledger or unreadable — fresh init, proceed */ }
+
+  // Generate and embed the write-token for gate/complete/abandon authority (D-6).
+  // The --no-token escape hatch has been retired; every new run gets a token.
+  const writeToken = randomBytes(8).toString('hex')
+  obj.write_token = writeToken
+  delete obj.token_free  // retire any stale token_free from input
+
+  // Stamp schema_version to mark this ledger as sealed-regime (S2-AC1).
+  obj.schema_version = SCHEMA_VERSION
+
   // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
   if (!('active' in obj)) obj.active = true
   // Stamp session_id: always overwrite with the current session so that ledgers
@@ -767,18 +809,17 @@ function cmdInit(args) {
   // Validate before writing — strict: schema violations are hard errors at init
   // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)
+  // Mint the seal key and compute the initial seal (S2-AC1).
+  const key = ensureKey({ projectDir, sessionId: obj.session_id })
+  obj.gate = obj.gate ?? {}
+  obj.gate.seal = computeSeal(canonicalReleaseState(obj), key)
   // Best-effort prune stale per-session ledgers before writing
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   atomicWriteJsonSync(ledgerPath(), obj)
   if (obj.motive) regenerateMotiveMap(projectDir, obj.motive)
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
-  if (writeToken) {
-    process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete)\n`)
-  } else {
-    process.stdout.write(`token-free mode: gate/complete do not require --token\n`)
-  }
+  process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`)
 }
 
 // ---------------------------------------------------------------------------
@@ -829,12 +870,16 @@ function cmdAdd(args) {
   process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote})\n`)
 }
 
-function cmdRm(ids) {
-  if (!ids.length) die('usage: ledger rm <id> [<id> ...]', 2)
+function cmdRm(args) {
+  const { flags, positionals: ids } = parseFlags(Array.isArray(args) ? args : [])
+  if (!ids.length) die('usage: ledger rm <id> [<id> ...] [--token <write_token>]', 2)
   let remaining = 0
   const missing = []
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
+    // Vector 6: rm changes the canonical release state (slice set) — requires write token.
+    assertWriteToken(l, flags.token)
     const slices = Array.isArray(l.slices) ? l.slices : []
     const existingIds = new Set(slices.map((s) => s?.id))
     for (const id of ids) {
@@ -849,8 +894,9 @@ function cmdRm(ids) {
     const removeSet = new Set(ids)
     l.slices = slices.filter((s) => !removeSet.has(s?.id))
     remaining = l.slices.length
+    reSeal(l, projectDir)  // Vector 6: re-seal after rm (slice removal changes release predicate)
   })
-  _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
+  _tryRefreshMap(projectDir)
   process.stdout.write(`removed: ${ids.join(', ')} (${remaining} slice${remaining === 1 ? '' : 's'} remain)\n`)
 }
 
@@ -863,6 +909,8 @@ function cmdSet(args) {
   if (flags.status != null) assertStatus(flags.status)
 
   const updated = []
+  const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     const slices = Array.isArray(l.slices) ? l.slices : []
@@ -871,6 +919,11 @@ function cmdSet(args) {
       const e = new Error(`unknown slice id "${id}"`)
       e.exitCode = 2
       throw e
+    }
+    // S2-AC4 (vector 3): raw `set` to a terminal status requires the write token —
+    // prevents a subagent bypassing the complete guard. Fails closed if no write_token.
+    if (flags.status != null && TERMINAL_STATUSES.has(flags.status)) {
+      assertWriteToken(l, flags.token)
     }
     if (flags.status != null) {
       // Pacing enforcement (D-28): block in_progress transitions when budget is exhausted.
@@ -919,6 +972,7 @@ function cmdSet(args) {
       warnDecisions(s.decisions)
       updated.push(`decisions=[${s.decisions.join(',')}]`)
     }
+    reSeal(l, projectDir)  // S2-AC4: re-seal after any set (no-op for legacy runs)
   })
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -1208,6 +1262,7 @@ function cmdAutopilot(args) {
   if (!reason.trim()) die('--reason is required and must be non-empty (e.g. --reason "operator authorized: multi-wave emergency")', 1)
 
   let capturedLedger = null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)
@@ -1223,9 +1278,9 @@ function cmdAutopilot(args) {
       granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
       reason,
     }
+    reSeal(l, projectDir)  // S2-AC5: re-seal after autopilot grant (no-op for legacy runs)
   })
   if (capturedLedger) {
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     emitHookEvent({
       projectDir,
       sessionId: capturedLedger.session_id,
@@ -1264,7 +1319,7 @@ function main() {
       case 'status':   return cmdStatus()
       case 'complete': return cmdComplete(rest)
       case 'gate':     return cmdGate(rest)
-      case 'abandon':  return cmdAbandon()
+      case 'abandon':  return cmdAbandon(rest)
       case 'init':     return cmdInit(rest)
       case 'add':      return cmdAdd(rest)
       case 'rm':       return cmdRm(rest)

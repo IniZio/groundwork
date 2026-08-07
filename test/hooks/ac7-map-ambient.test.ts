@@ -58,9 +58,12 @@ function readMap(projectDir: string, slug: string): string {
   return existsSync(p) ? readFileSync(p, 'utf8') : ''
 }
 
+/** Token used by minimalLedger fixtures — pass --token AC7_TEST_TOKEN on mutations. */
+const AC7_TEST_TOKEN = 'test-token-ac7'
+
 /**
  * Minimal ledger JSON with the motive field stamped.
- * token_free:true — complete/gate operations need no --token flag (explicit opt-out).
+ * write_token set — complete/gate operations must pass --token AC7_TEST_TOKEN.
  */
 function minimalLedger(slug: string, sessionId: string | null = null) {
   return {
@@ -70,7 +73,7 @@ function minimalLedger(slug: string, sessionId: string | null = null) {
     brief: `AC-7 test ledger for motive "${slug}"`,
     motive: slug,      // <-- required: _tryRefreshMap reads this to decide whether to regenerate
     reinforcements: 0,
-    token_free: true,  // opt out of token enforcement so tests don't need --token
+    write_token: AC7_TEST_TOKEN,
     slices: [],
     gate: {},
   }
@@ -150,7 +153,7 @@ describe('AC-7 [legacy path] MAP.md regenerates on all four mutation verbs', () 
     const mapAfterAdd = readMap(fix.projectDir, SLUG)
     expect(mapAfterAdd).toContain('S-AC7-L-DONE')
 
-    runLedger(['complete', 'S-AC7-L-DONE'], fix.env)
+    runLedger(['complete', 'S-AC7-L-DONE', '--token', AC7_TEST_TOKEN], fix.env)
 
     const mapAfterComplete = readMap(fix.projectDir, SLUG)
     expect(mapAfterComplete).toContain('S-AC7-L-DONE')
@@ -207,7 +210,7 @@ describe('AC-7 [legacy path] MAP.md regenerates on all four mutation verbs', () 
     expect(mapAfterJournal).toContain('ac7-all-verbs-journal-probe')
 
     // ── 4. ledger complete ─────────────────────────────────────────────────────
-    runLedger(['complete', 'S-AC7-L-ALL'], fix.env)
+    runLedger(['complete', 'S-AC7-L-ALL', '--token', AC7_TEST_TOKEN], fix.env)
     const mapAfterComplete = readMap(fix.projectDir, SLUG)
     expect(mapAfterComplete).toContain('S-AC7-L-ALL')
     expect(mapAfterComplete).not.toBe(mapAfterJournal)
@@ -289,7 +292,7 @@ describe('AC-7 [production path] MAP.md regenerates on all four mutation verbs',
     expect(mapAfterJournal).toContain('ac7-prod-journal-probe')
 
     // ── 4. ledger complete ─────────────────────────────────────────────────────
-    runLedger(['complete', 'S-AC7-P-ALL'], prodEnv())
+    runLedger(['complete', 'S-AC7-P-ALL', '--token', AC7_TEST_TOKEN], prodEnv())
     const mapAfterComplete = readMap(fix.projectDir, SLUG)
     expect(mapAfterComplete).toContain('S-AC7-P-ALL')
     expect(mapAfterComplete).not.toBe(mapAfterJournal)

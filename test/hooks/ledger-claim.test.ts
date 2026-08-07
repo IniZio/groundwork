@@ -24,12 +24,15 @@ const SESSION_B = "sess-beta";
  * Base ledger has session_id: null so resolveLedgerPath falls back to legacy
  * run.json for any CLAUDE_CODE_SESSION_ID value.
  */
+const CLAIM_TEST_TOKEN = "test-token-claim";
+
 const baseLedger = () => ({
 	version: 1,
 	active: true,
 	session_id: null,
 	brief: "claim test run",
 	reinforcements: 0,
+	write_token: CLAIM_TEST_TOKEN, // tokened fixture — pass --token on terminal-status mutations
 	slices: [
 		{ id: "S1", name: "tracer", wave: 0, blocked_by: [], status: "pending", acceptance: ["a"] },
 		{ id: "S2", name: "feature", wave: 1, blocked_by: [], status: "pending", acceptance: ["b"] },
@@ -108,7 +111,7 @@ describe("ledger claim — S5-AC2: different session cannot overwrite, exits 0",
 describe("ledger claim — S5-AC3: completing a slice clears claimed_by", () => {
 	it("ledger set --status complete removes claimed_by", () => {
 		run(["claim", "S1"], SESSION_A);
-		run(["set", "S1", "--status", "complete"]);
+		run(["set", "S1", "--status", "complete", "--token", CLAIM_TEST_TOKEN]);
 		const s1 = readLedger().slices.find((s: any) => s.id === "S1");
 		expect(s1.claimed_by).toBeUndefined();
 		expect(s1.claimed_at).toBeUndefined();
@@ -116,7 +119,7 @@ describe("ledger claim — S5-AC3: completing a slice clears claimed_by", () => 
 
 	it("ledger set --status skipped also clears claimed_by", () => {
 		run(["claim", "S1"], SESSION_A);
-		run(["set", "S1", "--status", "skipped"]);
+		run(["set", "S1", "--status", "skipped", "--token", CLAIM_TEST_TOKEN]);
 		const s1 = readLedger().slices.find((s: any) => s.id === "S1");
 		expect(s1.claimed_by).toBeUndefined();
 	});

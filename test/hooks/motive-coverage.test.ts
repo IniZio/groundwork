@@ -468,7 +468,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
           session_id: 'sess-cov',
           brief: 'coverage test',
           reinforcements: 0,
-          token_free: true, // opt out of token enforcement so tests don't need --token
+          write_token: 'test-token-cov', // tokened fixture — pass --token on mutations
           slices,
           gate: {},
         },
@@ -509,7 +509,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
     writeLedger([
       { id: 'S1', wave: 1, status: 'pending', blocked_by: [], covers_ac: 'AC1' },
     ])
-    const result = run(['complete', 'S1'])
+    const result = run(['complete', 'S1', '--token', 'test-token-cov'])
     expect(result.status).toBe(0)
     const events = readShard()
     const acEvents = events.filter((e: any) => e.type === 'AC_COVERAGE')
@@ -522,7 +522,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
     writeLedger([
       { id: 'S1', wave: 1, status: 'pending', blocked_by: [], covers_ac: ['AC1', 'AC2'] },
     ])
-    const result = run(['complete', 'S1'])
+    const result = run(['complete', 'S1', '--token', 'test-token-cov'])
     expect(result.status).toBe(0)
     const events = readShard()
     const acEvents = events.filter((e: any) => e.type === 'AC_COVERAGE')
@@ -536,7 +536,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
     writeLedger([
       { id: 'S1', wave: 1, status: 'pending', blocked_by: [] },
     ])
-    const result = run(['complete', 'S1'])
+    const result = run(['complete', 'S1', '--token', 'test-token-cov'])
     expect(result.status).toBe(0)
     const events = readShard()
     const acEvents = events.filter((e: any) => e.type === 'AC_COVERAGE')
@@ -547,7 +547,7 @@ describe('S8-AC8: ledger complete emits AC_COVERAGE events for covers_ac slices'
     writeLedger([
       { id: 'S1', wave: 1, status: 'pending', blocked_by: [], covers_ac: 'AC1' },
     ])
-    run(['complete', 'S1'])
+    run(['complete', 'S1', '--token', 'test-token-cov'])
     const events = readShard()
     const tc = events.filter((e: any) => e.type === 'TASK_COMPLETE')
     const ac = events.filter((e: any) => e.type === 'AC_COVERAGE')

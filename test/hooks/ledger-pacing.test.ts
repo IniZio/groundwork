@@ -581,7 +581,7 @@ describe('ledger abandon --session <id> behavior pin', () => {
     // Run without CLAUDE_CODE_SESSION_ID — relies on --session flag via main() dispatch path
     const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir }
     delete env.CLAUDE_CODE_SESSION_ID
-    const r = spawnSync('node', [CLI, 'abandon', '--session', sessionId], { env, encoding: 'utf8' })
+    const r = spawnSync('node', [CLI, 'abandon', '--session', sessionId, '--token', 'tok-reg'], { env, encoding: 'utf8' })
     expect(r.status).toBe(0)
     const updated = JSON.parse(readFileSync(runFile, 'utf8'))
     expect(updated.active).toBe(false)

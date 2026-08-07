@@ -10,10 +10,12 @@
  * what actually saves context — the orchestrator never pulls the ~5 KB ledger in.
  *
  * Scope and safety:
- *  - Only Read/Edit/MultiEdit are intercepted. The one-shot initial `Write`
- *    (vertical-slice creating the ledger) is intentionally NOT touched.
- *  - Only the exact file `…/.groundwork/run.json` triggers a deny; everything
- *    else passes through untouched.
+ *  - Read/Edit/MultiEdit are intercepted for ALL callers on ledger paths.
+ *  - Write is intercepted for SUBAGENT callers only — the orchestrator's one-shot
+ *    init Write (vertical-slice creating the ledger) remains unblocked.
+ *  - Seal key (*.seal.key under .groundwork/runs/): Read AND Write/Edit/MultiEdit
+ *    are denied for ALL callers — nothing reads the key via tool (stop-gate and
+ *    gate-seal use node fs directly).
  *  - The stop-gate and other hooks read the ledger via node `readFileSync`, not
  *    the Read tool, so they are unaffected.
  *  - FAIL-OPEN: any error → emit nothing, exit 0 (let the call proceed).
@@ -54,6 +56,32 @@ function isLedgerPath(fp) {
   return false
 }
 
+/**
+ * Is this file path a seal key?
+ * Matches: …/.groundwork/runs/<id>.seal.key
+ */
+function isKeyPath(fp) {
+  if (typeof fp !== 'string' || !fp) return false
+  const norm = path.normalize(fp)
+  if (!norm.endsWith('.seal.key')) return false
+  if (path.basename(path.dirname(norm)) !== 'runs') return false
+  const grandparent = path.basename(path.dirname(path.dirname(norm)))
+  return grandparent === '.groundwork'
+}
+
+/**
+ * Is the caller a delegated subagent (as opposed to the orchestrator)?
+ * Mirrors the detection in orchestrator-impl-guard.mjs — self-contained copy.
+ */
+function isSubagentCall(input) {
+  const agentType = input?.agent_type
+  if (typeof agentType === 'string' && agentType.trim()) return true
+  if (input?.agent_id) return true
+  const tp = input?.transcript_path
+  if (typeof tp === 'string' && path.basename(tp).startsWith('agent-')) return true
+  return false
+}
+
 async function main() {
   // Embedded SDK agents have no groundwork ledger — no enforcement needed.
   if (isEmbeddedAgent()) return passthrough()
@@ -70,8 +98,33 @@ async function main() {
   // Normalize: lowercase + strip leading "fast_" to catch fast_read, fast_edit, fast_multiedit
   const toolNorm = rawTool.toLowerCase().replace(/^fast_/, '')
   const tool = rawTool // keep original for message rendering
+  const fp = input?.tool_input?.file_path
+
+  // --- Seal key: deny Read/Write/Edit/MultiEdit for ALL callers ---
+  if (isKeyPath(fp)) {
+    if (toolNorm === 'read' || toolNorm === 'write' || toolNorm === 'edit' || toolNorm === 'multiedit') {
+      return deny(
+        `groundwork: do not ${tool} the seal key directly — the key is read/written only by the gate system via node fs (stop-gate, gate-seal). Direct tool access is denied to protect ledger integrity.`,
+      )
+    }
+  }
+
+  // --- Ledger: deny Read/Edit/MultiEdit for ALL callers; Write only for subagents ---
+  if (!isLedgerPath(fp)) return passthrough()
+  if (toolNorm === 'write') {
+    // Allow the orchestrator's one-shot init Write; block subagent Write.
+    if (!isSubagentCall(input)) return passthrough()
+    return deny(
+      `groundwork: subagent Write to the run ledger is blocked — use the ledger CLI to mutate state:\n` +
+        `  ${LEDGER_BIN} init <file|->           — initialize the ledger from a JSON slice table\n` +
+        `  ${LEDGER_BIN} add <id> [--wave N] …   — add a new slice\n` +
+        `  ${LEDGER_BIN} set <id> [--status …]   — update a slice field\n` +
+        `  ${LEDGER_BIN} complete <id> [<id> …]  — mark slices complete\n` +
+        `  ${LEDGER_BIN} gate advisor APPROVE …  — record the advisor verdict\n` +
+        `  ${LEDGER_BIN} abandon                 — cancel the run`,
+    )
+  }
   if (toolNorm !== 'read' && toolNorm !== 'edit' && toolNorm !== 'multiedit') return passthrough()
-  if (!isLedgerPath(input?.tool_input?.file_path)) return passthrough()
 
   return deny(
     `groundwork: do not ${tool} the run ledger directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\n` +

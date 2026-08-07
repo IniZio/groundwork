@@ -22,11 +22,21 @@
         ]
       },
       {
-        "matcher": "Read|Edit|MultiEdit",
+        "matcher": "Read|Edit|MultiEdit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-guard.mjs",
+            "async": false
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-bash-guard.mjs",
             "async": false
           }
         ]

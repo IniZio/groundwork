@@ -33,14 +33,16 @@ let ledgerFile: string
 
 const WRITE_TOKEN = 'tok-test-001'
 
+const TEST_TOKEN = 'test-token-evt'
+
 function baseLedger(overrides: Record<string, unknown> = {}) {
-  const result: Record<string, unknown> = {
+  return {
     version: 1,
     active: true,
     session_id: 'sess-test',
     brief: 'test run',
     reinforcements: 0,
-    token_free: true, // opt out of token enforcement so tests don't need --token
+    write_token: TEST_TOKEN, // tokened fixture — pass --token test-token-evt on mutations
     slices: [
       { id: 'S1', name: 'tracer', wave: 0, blocked_by: [], status: 'pending', acceptance: ['a'] },
       { id: 'S2', name: 'feature', wave: 1, blocked_by: [], status: 'pending', acceptance: ['b'] },
@@ -48,9 +50,6 @@ function baseLedger(overrides: Record<string, unknown> = {}) {
     gate: {},
     ...overrides,
   }
-  // A ledger with write_token must not also carry token_free — token_free would bypass the check
-  if (result.write_token != null) delete result.token_free
-  return result
 }
 
 beforeEach(() => {
@@ -100,7 +99,7 @@ function readShard(sessionId = 'sess-test'): object[] {
 // ---------------------------------------------------------------------------
 
 test('S2-AC1: ledger complete S1 S2 appends exactly two TASK_COMPLETE events', () => {
-  const { code, stdout, stderr } = run(['complete', 'S1', 'S2'])
+  const { code, stdout, stderr } = run(['complete', 'S1', 'S2', '--token', TEST_TOKEN])
   expect(code).toBe(0)
   expect(stderr).toBe('')
 
@@ -123,7 +122,7 @@ test('S2-AC1: ledger complete S1 S2 appends exactly two TASK_COMPLETE events', (
 // ---------------------------------------------------------------------------
 
 test('S2-AC2: ledger gate advisor APPROVE --citation X --rubric Y appends one GATE event', () => {
-  const { code, stderr } = run(['gate', 'advisor', 'APPROVE', '--citation', 'TestCite', '--rubric', 'TestRubric'])
+  const { code, stderr } = run(['gate', 'advisor', 'APPROVE', '--citation', 'TestCite', '--rubric', 'TestRubric', '--token', TEST_TOKEN])
   expect(code).toBe(0)
   expect(stderr).toBe('')
 
@@ -143,7 +142,7 @@ test('S2-AC2: ledger gate advisor APPROVE --citation X --rubric Y appends one GA
 // ---------------------------------------------------------------------------
 
 test('S2-AC3: ledger abandon appends one SESSION_END event with outcome:abandoned', () => {
-  const { code, stderr } = run(['abandon'])
+  const { code, stderr } = run(['abandon', '--token', TEST_TOKEN])
   expect(code).toBe(0)
   expect(stderr).toBe('')
 
@@ -163,7 +162,7 @@ test('S2-AC3: ledger abandon appends one SESSION_END event with outcome:abandone
 describe('S2-AC4: motive provenance', () => {
   test('with rfc_ref → motive_provenance:"ledger.rfc_ref"', () => {
     writeFileSync(ledgerFile, JSON.stringify(baseLedger({ rfc_ref: 'rfc-uid-42' }), null, 2))
-    run(['complete', 'S1'])
+    run(['complete', 'S1', '--token', TEST_TOKEN])
     const events = readShard()
     const tc = events.find((e: any) => e.type === 'TASK_COMPLETE') as any
     expect(tc).toBeDefined()
@@ -172,7 +171,7 @@ describe('S2-AC4: motive provenance', () => {
   })
 
   test('without rfc_ref → motive="session:..." motive_provenance:"synthetic"', () => {
-    run(['complete', 'S1'])
+    run(['complete', 'S1', '--token', TEST_TOKEN])
     const events = readShard()
     const tc = events.find((e: any) => e.type === 'TASK_COMPLETE') as any
     expect(tc).toBeDefined()
@@ -193,7 +192,7 @@ test('S2-AC5: unwritable journal dir → exit 0, slice complete, stderr non-empt
 
   let result: { code: number; stdout: string; stderr: string }
   try {
-    result = run(['complete', 'S1'])
+    result = run(['complete', 'S1', '--token', TEST_TOKEN])
   } finally {
     // restore so afterEach cleanup can remove it
     chmodSync(journalDir, 0o755)
@@ -214,13 +213,13 @@ test('S2-AC5: unwritable journal dir → exit 0, slice complete, stderr non-empt
 // ---------------------------------------------------------------------------
 
 test('S2-AC6: stdout of complete / gate / abandon unchanged', () => {
-  const complete = run(['complete', 'S1'])
+  const complete = run(['complete', 'S1', '--token', TEST_TOKEN])
   expect(complete.stdout).toBe('S1 ✓ (1/2 complete)\n')
 
-  const gate = run(['gate', 'advisor', 'APPROVE'])
+  const gate = run(['gate', 'advisor', 'APPROVE', '--token', TEST_TOKEN])
   expect(gate.stdout).toBe('advisor: APPROVE\n')
 
-  const abandon = run(['abandon'])
+  const abandon = run(['abandon', '--token', TEST_TOKEN])
   expect(abandon.stdout).toBe('run cancelled (active:false) — gate released\n')
 })
 
@@ -244,7 +243,7 @@ test('S2-AC7: rejected write-token → no event appended', () => {
 // ---------------------------------------------------------------------------
 
 test('S2-AC8: ledger complete S1 BOGUS → exit 2, S1 complete, exactly one TASK_COMPLETE', () => {
-  const result = run(['complete', 'S1', 'BOGUS'])
+  const result = run(['complete', 'S1', 'BOGUS', '--token', TEST_TOKEN])
   expect(result.code).toBe(2)
 
   // S1 should be complete on disk

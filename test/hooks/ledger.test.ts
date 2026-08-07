@@ -9,15 +9,17 @@ const CLI = path.resolve(import.meta.dirname, "..", "..", "hooks", "ledger.mjs")
 let projectDir: string;
 let ledgerFile: string;
 
+/** Shared write token for baseLedger-based tests (replaces retired token_free escape hatch). */
+const TEST_TOKEN = "testtoken12345678";
+
 const baseLedger = () => ({
 	version: 1,
 	active: true,
 	session_id: "sess-1",
 	brief: "test run",
 	reinforcements: 0,
-	// token_free:true so tests that exercise other behaviors (gate output, view, artifacts)
-	// don't need to supply a --token on every gate/complete call.
-	token_free: true,
+	// write_token: all sealed-regime operations (complete/gate/abandon/set-terminal) require --token.
+	write_token: TEST_TOKEN,
 	slices: [
 		{ id: "S1", name: "tracer", wave: 0, blocked_by: [], status: "complete", acceptance: ["a"] },
 		{ id: "S2", name: "feature", wave: 1, blocked_by: ["S1"], status: "pending", acceptance: ["b", "c"] },
@@ -73,20 +75,20 @@ function runFull(args: string[], stdin?: string): { code: number; stdout: string
 
 describe("ledger CLI — complete", () => {
 	it("marks a slice complete and reports compact progress", () => {
-		const r = run(["complete", "S2"]);
+		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		expect(r.stdout.trim()).toBe("S2 ✓ (2/3 complete)");
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");
 	});
 
 	it("marks multiple slices in one call", () => {
-		const r = run(["complete", "S2", "S3"]);
+		const r = run(["complete", "S2", "S3", "--token", TEST_TOKEN]);
 		expect(r.stdout.trim()).toBe("S2, S3 ✓ (3/3 complete)");
 		expect(readLedger().slices.every((s: any) => s.status === "complete")).toBe(true);
 	});
 
 	it("errors (exit 2) on an unknown slice id and does not corrupt the ledger", () => {
-		const r = run(["complete", "S9"]);
+		const r = run(["complete", "S9", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(2);
 		expect(r.stderr).toContain("unknown slice id");
 		// S9 didn't exist; real slices untouched.
@@ -94,14 +96,14 @@ describe("ledger CLI — complete", () => {
 	});
 
 	it("output is tiny (the whole point) — single line, no ledger body echoed", () => {
-		const r = run(["complete", "S2"]);
+		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
 		expect(r.stdout.split("\n").filter(Boolean).length).toBe(1);
 		expect(r.stdout).not.toContain("acceptance");
 	});
 
 	// @verifies ARTIFACT-R-001
 	it("stamps completed_at (ISO-8601) and session_id on the completed slice", () => {
-		const r = run(["complete", "S2"]);
+		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		const ledger = readLedger();
 		const s = ledger.slices.find((s: any) => s.id === "S2");
@@ -117,13 +119,13 @@ describe("ledger CLI — complete", () => {
 
 describe("ledger CLI — gate", () => {
 	it("sets gate.advisor as a bare string verdict", () => {
-		const r = run(["gate", "advisor", "APPROVE"]);
+		const r = run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		expect(r.stdout.trim()).toBe("advisor: APPROVE");
 		expect(readLedger().gate.advisor).toBe("APPROVE");
 	});
 
 	it("sets gate.advisor as an OBJECT when citation/rubric/axes flags are present", () => {
-		run(["gate", "advisor", "CORRECTION", "--citation", "contact.ts:42", "--rubric", "v1", "--axes-correctness", "2"]);
+		run(["gate", "advisor", "CORRECTION", "--citation", "contact.ts:42", "--rubric", "v1", "--axes-correctness", "2", "--token", TEST_TOKEN]);
 		const a = readLedger().gate.advisor;
 		expect(a).toEqual({ verdict: "CORRECTION", rubric: "v1", citation: "contact.ts:42", axes: { correctness: 2 } });
 	});
@@ -136,12 +138,12 @@ describe("ledger CLI — gate", () => {
 
 describe("ledger CLI — abandon & status", () => {
 	it("abandon sets active:false", () => {
-		run(["abandon"]);
+		run(["abandon", "--token", TEST_TOKEN]);
 		expect(readLedger().active).toBe(false);
 	});
 
 	it("status prints a compact view with symbols and gate line, not the full JSON", () => {
-		run(["gate", "advisor", "APPROVE"]);
+		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		const r = run(["status"]);
 		expect(r.stdout).toContain("S1✓");
 		expect(r.stdout).toContain("S2");
@@ -179,7 +181,7 @@ describe("ledger CLI — init & atomicity", () => {
 		const spawnEnv = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
 		delete spawnEnv.CLAUDE_CODE_SESSION_ID;
 		const procs = ["S2", "S3"].map((id) =>
-			spawnSync("node", [CLI, "complete", id], { env: spawnEnv, encoding: "utf8" }),
+			spawnSync("node", [CLI, "complete", id, "--token", TEST_TOKEN], { env: spawnEnv, encoding: "utf8" }),
 		);
 		for (const p of procs) expect(p.status).toBe(0);
 		const l = readLedger();
@@ -223,17 +225,16 @@ describe("ledger CLI — init & atomicity", () => {
 		expect(readLedger().motive).toBe("new-motive");
 	});
 
-	it("init --no-token sets token_free:true, omits write_token, and prints token-free notice", () => {
+	it("init always mints a write_token (token-free escape hatch retired per D-6)", () => {
 		const src = path.join(projectDir, "plan.json");
 		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
 		rmSync(ledgerFile);
-		const r = run(["init", src, "--no-token"]);
+		const r = run(["init", src]);
 		expect(r.code).toBe(0);
-		expect(r.stdout).toContain("token-free");
-		expect(r.stdout).not.toContain("write_token:");
+		expect(r.stdout).toContain("write_token:");
 		const ledger = readLedger();
-		expect(ledger.token_free).toBe(true);
-		expect(ledger.write_token).toBeUndefined();
+		expect(ledger.write_token).toBeTruthy();
+		expect(ledger.token_free).toBeUndefined();
 	});
 });
 
@@ -243,7 +244,6 @@ describe("ledger CLI — init & atomicity", () => {
 
 function writeLedgerWithToken(token: string) {
 	const l = { ...baseLedger(), write_token: token } as any;
-	delete l.token_free; // token-guarded ledger must not also have token_free
 	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 	return token;
 }
@@ -299,24 +299,23 @@ describe("ledger CLI — write-token enforcement (complete)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fail-CLOSED: tokenless ledger (no write_token AND no token_free) → REJECTED
-// token_free:true → explicit opt-out, gate/complete ALLOWED without --token
+// Fail-CLOSED: tokenless ledger (no write_token) → REJECTED
+// (token_free escape hatch retired D-6; there is no longer an opt-out path)
 // ---------------------------------------------------------------------------
 
 /**
- * Write a ledger that has neither write_token nor token_free.
- * This represents a misconfigured / genuinely-legacy ledger that predates both features.
+ * Write a ledger that has no write_token (genuinely tokenless / broken).
+ * Represents a misconfigured ledger that predates token enforcement.
  */
 function writeLedgerNoToken() {
 	const l = { ...baseLedger() } as any;
-	delete l.token_free;
+	delete l.write_token;  // neither write_token — fail-closed must reject
 	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 }
 
 describe("ledger CLI — fail-closed (tokenless ledger)", () => {
-	it("gate rejects (non-zero) when ledger has no write_token and no token_free — regression: fix for fail-open bug", () => {
-		// A ledger with neither write_token nor token_free must be REJECTED (fail-closed).
-		// Under the old fail-open code this test would have passed with exit 0 — it proves the fix bites.
+	it("gate rejects (non-zero) when ledger has no write_token — regression: fix for fail-open bug", () => {
+		// A ledger with no write_token must be REJECTED (fail-closed).
 		writeLedgerNoToken();
 		const r = run(["gate", "advisor", "APPROVE"]);
 		expect(r.code).not.toBe(0);
@@ -324,7 +323,7 @@ describe("ledger CLI — fail-closed (tokenless ledger)", () => {
 		expect(readLedger().gate?.advisor).toBeUndefined();
 	});
 
-	it("complete rejects (non-zero) when ledger has no write_token and no token_free", () => {
+	it("complete rejects (non-zero) when ledger has no write_token", () => {
 		writeLedgerNoToken();
 		const r = run(["complete", "S2"]);
 		expect(r.code).not.toBe(0);
@@ -332,16 +331,140 @@ describe("ledger CLI — fail-closed (tokenless ledger)", () => {
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
 	});
 
-	it("gate succeeds when ledger has token_free:true (explicit opt-out path)", () => {
-		// baseLedger() has token_free:true — no --token needed
+	it("token_free:true no longer bypasses token enforcement (escape hatch retired, vector 1 closed)", () => {
+		// Write a ledger with token_free:true but no write_token — old opt-out form.
+		// After D-6, this must be REJECTED just like any other tokenless ledger.
+		const l = { ...baseLedger(), token_free: true } as any;
+		delete l.write_token;
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 		const r = run(["gate", "advisor", "APPROVE"]);
+		expect(r.code).not.toBe(0);
+		expect(readLedger().gate?.advisor).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Sealed-regime enforcement — vectors 1-4 (S2-AC1 through S2-AC5)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — sealed-regime vector coverage", () => {
+	// S2-AC1: init mints schema_version + key + seal
+	it("init mints schema_version, gate.seal, and writes the key file (S2-AC1)", () => {
+		const src = path.join(projectDir, "plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "X1", status: "pending" }], gate: {} }));
+		rmSync(ledgerFile, { force: true });
+		const r = run(["init", src]);
 		expect(r.code).toBe(0);
-		expect(readLedger().gate.advisor).toBe("APPROVE");
+		const ledger = readLedger();
+		// schema_version marks sealed regime
+		expect(ledger.schema_version).toBe(1);
+		// gate.seal is a hex string
+		expect(typeof ledger.gate?.seal).toBe("string");
+		expect(ledger.gate.seal).toMatch(/^[0-9a-f]{64}$/);  // HMAC-SHA256 = 64 hex chars
+		// key file must exist at .groundwork/runs/<session_id>.seal.key
+		const keyFile = path.join(projectDir, ".groundwork", "runs", `${ledger.session_id}.seal.key`);
+		expect(existsSync(keyFile)).toBe(true);
 	});
 
-	it("complete succeeds when ledger has token_free:true (explicit opt-out path)", () => {
-		const r = run(["complete", "S2"]);
+	// S2-AC2: init refuses to overwrite an active tokened run without --token (vectors 1 & 2)
+	it("init refuses to overwrite an active tokened run without --token (S2-AC2, vectors 1&2)", () => {
+		// baseLedger is already written at ledgerFile with write_token: TEST_TOKEN, active: true
+		const src = path.join(projectDir, "plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		// No token → rejected
+		const r = run(["init", src]);
+		expect(r.code).toBe(2);
+		expect(r.stderr).toContain("--token");
+		// Wrong token → rejected
+		const r2 = run(["init", src, "--token", "wrongtoken"]);
+		expect(r2.code).toBe(2);
+		// Correct token → succeeds and mints new run
+		const r3 = run(["init", src, "--token", TEST_TOKEN]);
+		expect(r3.code).toBe(0);
+		expect(r3.stdout).toContain("write_token:");
+	});
+
+	// S2-AC3: abandon requires --token and re-seals (vector 4)
+	it("abandon without --token is rejected (S2-AC3, vector 4)", () => {
+		const r = run(["abandon"]);
+		expect(r.code).not.toBe(0);
+		// active must remain true (write did not happen)
+		expect(readLedger().active).toBe(true);
+	});
+
+	it("abandon with correct --token sets active:false (S2-AC3)", () => {
+		const r = run(["abandon", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
+		expect(readLedger().active).toBe(false);
+	});
+
+	// S2-AC4: raw `set --status complete` requires --token (vector 3)
+	it("set --status complete without --token is rejected (S2-AC4, vector 3)", () => {
+		const r = run(["set", "S2", "--status", "complete"]);
+		expect(r.code).not.toBe(0);
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
+	});
+
+	it("set --status skipped without --token is rejected (S2-AC4, vector 3)", () => {
+		const r = run(["set", "S2", "--status", "skipped"]);
+		expect(r.code).not.toBe(0);
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
+	});
+
+	it("set --status complete with correct --token succeeds (S2-AC4)", () => {
+		const r = run(["set", "S2", "--status", "complete", "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");
+	});
+
+	// Non-terminal set still works without token (only terminal requires it)
+	it("set --status in_progress without --token succeeds (non-terminal, no token required)", () => {
+		const r = run(["set", "S2", "--status", "in_progress"]);
+		expect(r.code).toBe(0);
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("in_progress");
+	});
+
+	// S2-AC5: complete and gate re-seal after writing
+	it("complete re-seals the ledger in the sealed regime (S2-AC5)", () => {
+		// Use init to create a properly sealed ledger
+		const src = path.join(projectDir, "init-plan.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "T1", status: "pending" }], gate: {} }));
+		rmSync(ledgerFile, { force: true });
+		const initR = run(["init", src]);
+		expect(initR.code).toBe(0);
+		const token = initR.stdout.match(/write_token:\s+([0-9a-f]+)/)?.[1] ?? "";
+		const sealBefore = readLedger().gate?.seal;
+		// Complete changes slice state → seal must change
+		run(["complete", "T1", "--token", token]);
+		const sealAfter = readLedger().gate?.seal;
+		expect(typeof sealAfter).toBe("string");
+		expect(sealAfter).not.toBe(sealBefore);
+	});
+
+	it("gate re-seals the ledger in the sealed regime (S2-AC5)", () => {
+		const src = path.join(projectDir, "init-plan2.json");
+		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "T2", status: "pending" }], gate: {} }));
+		rmSync(ledgerFile, { force: true });
+		const initR = run(["init", src]);
+		expect(initR.code).toBe(0);
+		const token = initR.stdout.match(/write_token:\s+([0-9a-f]+)/)?.[1] ?? "";
+		const sealBefore = readLedger().gate?.seal;
+		run(["gate", "advisor", "APPROVE", "--token", token]);
+		const sealAfter = readLedger().gate?.seal;
+		expect(typeof sealAfter).toBe("string");
+		expect(sealAfter).not.toBe(sealBefore);
+	});
+
+	// Legacy ledger (no gate.seal, no key file) — mutations still work without seal errors
+	it("legacy ledger (no seal, no key file) mutates without error — re-seal is skipped (legacy safety)", () => {
+		// baseLedger() written by beforeEach has write_token but no gate.seal and no key file.
+		// This simulates an in-flight pre-fix run. complete should still work.
+		expect(readLedger().gate?.seal).toBeUndefined();
+		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		// Seal is not added to a legacy ledger
+		expect(readLedger().gate?.seal).toBeUndefined();
+		// But the slice is still completed
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");
 	});
 });
@@ -392,7 +515,7 @@ describe("ledger CLI — view", () => {
 	});
 
 	it("includes a Gate table section with advisor verdict", () => {
-		run(["gate", "advisor", "APPROVE"]);
+		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		const r = run(["view"]);
 		expect(r.stdout).toContain("## Gate");
 		expect(r.stdout).toContain("| Gate | Verdict |");
@@ -418,7 +541,7 @@ describe("ledger CLI — view", () => {
 
 describe("ledger CLI — gate artifact", () => {
 	it("creates .groundwork/gates/<session-id>.md after gate command", () => {
-		run(["gate", "advisor", "APPROVE"]);
+		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		const gatesDir = path.join(projectDir, ".groundwork", "gates");
 		expect(existsSync(gatesDir)).toBe(true);
 		// baseLedger session_id is "sess-1"
@@ -426,7 +549,7 @@ describe("ledger CLI — gate artifact", () => {
 	});
 
 	it("gate artifact first line is 'verdict: <VERDICT>'", () => {
-		run(["gate", "advisor", "APPROVE"]);
+		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		const artifactPath = path.join(projectDir, ".groundwork", "gates", "sess-1.md");
 		expect(existsSync(artifactPath)).toBe(true);
 		const firstLine = readFileSync(artifactPath, "utf8").split("\n")[0];
@@ -435,7 +558,7 @@ describe("ledger CLI — gate artifact", () => {
 	});
 
 	it("gate artifact first line contains the exact verdict for CORRECTION", () => {
-		run(["gate", "advisor", "CORRECTION"]);
+		run(["gate", "advisor", "CORRECTION", "--token", TEST_TOKEN]);
 		const firstLine = readFileSync(
 			path.join(projectDir, ".groundwork", "gates", "sess-1.md"),
 			"utf8",
@@ -726,7 +849,7 @@ describe("ledger CLI — skipped status", () => {
 	});
 
 	it("set --status skipped transitions an existing slice to skipped", () => {
-		const r = run(["set", "S2", "--status", "skipped"]);
+		const r = run(["set", "S2", "--status", "skipped", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("skipped");
 	});
@@ -738,7 +861,7 @@ describe("ledger CLI — skipped status", () => {
 	});
 
 	it("show displays status: skipped for a skipped slice", () => {
-		run(["set", "S2", "--status", "skipped"]);
+		run(["set", "S2", "--status", "skipped", "--token", TEST_TOKEN]);
 		const r = run(["show", "S2"]);
 		expect(r.code).toBe(0);
 		expect(r.stdout).toContain("status:     skipped");
@@ -999,14 +1122,14 @@ describe("ledger CLI — legacy shapes remain valid", () => {
 
 describe("ledger CLI — gate.advisor forms survive validation", () => {
 	it("bare string advisor gate is accepted", () => {
-		const r = runFull(["gate", "advisor", "APPROVE"]);
+		const r = runFull(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		// Schema-only issue: schema allows APPROVE — no warning expected
 		expect(r.stderr).toBe("");
 	});
 
 	it("object-form advisor gate is accepted", () => {
-		const r = runFull(["gate", "advisor", "APPROVE", "--citation", "src:42", "--rubric", "r1"]);
+		const r = runFull(["gate", "advisor", "APPROVE", "--citation", "src:42", "--rubric", "r1", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		expect(r.stderr).toBe("");
 	});
@@ -1014,7 +1137,7 @@ describe("ledger CLI — gate.advisor forms survive validation", () => {
 	it("non-schema verdict string (CORRECTION) emits schema warning but still exits 0", () => {
 		// CORRECTION is not in the schema enum but is used by some gate commands.
 		// Schema violations are warnings-only; the operation must succeed.
-		const r = runFull(["gate", "advisor", "CORRECTION"]);
+		const r = runFull(["gate", "advisor", "CORRECTION", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		// May or may not warn depending on Ajv schema strictness — just ensure no crash
 	});
@@ -1132,7 +1255,7 @@ describe("ledger CLI — init rejects schema violations on write (strict init)",
 		const l = JSON.parse(readFileSync(ledgerFile, "utf8"));
 		l.extraTopLevelField = "some value";
 		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
-		const r = run(["complete", "S2"]);
+		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 	});
 });

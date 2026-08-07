@@ -189,6 +189,7 @@ describe("S0: spec-io schema and index API", () => {
         "PACING-R-004",
         "PACING-R-005",
         "PACING-R-006",
+        "SEAL-R-001",
         "VERIFICATION-R-001",
         "VERIFICATION-R-002",
         "VERIFICATION-R-003",

@@ -27,6 +27,56 @@ import { readCharter } from './motive-charter.mjs'
 
 const SCHEMA_VERSION = 1
 
+/**
+ * Vocabulary of every edge kind emitted by assembleMotiveGraph().
+ *
+ * Each entry declares three layout/rendering properties consumed by downstream
+ * topology engines (e.g. the S2 layout engine):
+ *
+ *   drives_layering — true when this edge defines the parent→child hierarchy
+ *                     used to assign topological layers.
+ *   render          — how a canvas should draw the edge:
+ *                       'primary' — solid line
+ *                       'muted'   — faint / secondary line
+ *                       'hidden'  — not drawn (kept for layering only)
+ *   direction       — which way the topology flows for this edge:
+ *                       'down'    — target sits below source (child below parent)
+ *                       'up'      — target sits above source (source is the child)
+ *                       'lateral' — peer relationship, no vertical ordering
+ *
+ * Goal topology: objective at apex → decisions → slices (ordered by blocked_by)
+ *                → ACs as leaves.  spec_xref / resolved_by / graduated_to are
+ *                cross-links that do not contribute to vertical layering.
+ *
+ * @type {Record<string, { drives_layering: boolean, render: 'primary'|'muted'|'hidden', direction: 'down'|'up'|'lateral' }>}
+ */
+export const EDGE_KINDS = {
+  /** objective:root → decision:* — top of the hierarchy */
+  anchors: { drives_layering: true, render: 'primary', direction: 'down' },
+
+  /** openitem:* → decision:* — cross-link, not a hierarchy edge */
+  resolved_by: { drives_layering: false, render: 'muted', direction: 'lateral' },
+
+  /** openitem:* → ticket:* — cross-link, not a hierarchy edge */
+  graduated_to: { drives_layering: false, render: 'muted', direction: 'lateral' },
+
+  /** slice:* → slice:* — edge runs child→parent (blocked→blocker); blocker sits above */
+  blocked_by: { drives_layering: true, render: 'primary', direction: 'up' },
+
+  /** slice:* → ac:* — AC leaf sits below its parent slice */
+  covers_ac: { drives_layering: true, render: 'primary', direction: 'down' },
+
+  /**
+   * slice:* → decision:* — places each slice under its decision in the
+   * hierarchy; not drawn (diagonal noise) but kept for layering.
+   * Edge flows child→parent so direction is 'up'.
+   */
+  slice_decision: { drives_layering: true, render: 'hidden', direction: 'up' },
+
+  /** req:* → decision:* — cross-link, not a hierarchy edge */
+  spec_xref: { drives_layering: false, render: 'muted', direction: 'lateral' },
+}
+
 /** Truncate a string to at most `max` characters (adds ellipsis). */
 function trunc(str, max = 120) {
   if (str == null) return ''

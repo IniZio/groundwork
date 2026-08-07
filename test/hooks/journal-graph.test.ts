@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { assembleMotiveGraph } from '../../hooks/lib/motive-graph.mjs'
+import { assembleMotiveGraph, EDGE_KINDS } from '../../hooks/lib/motive-graph.mjs'
 
 // ---------------------------------------------------------------------------
 // Setup — resolve repo root the same way all other hook tests do
@@ -204,6 +204,73 @@ describe('8 — graduated_to shape', () => {
     }
 
     expect(violations, violations.join('\n')).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 10. EDGE_KINDS vocabulary
+// ---------------------------------------------------------------------------
+
+describe('10 — EDGE_KINDS vocabulary', () => {
+  const EXPECTED_KINDS = [
+    'anchors',
+    'resolved_by',
+    'graduated_to',
+    'blocked_by',
+    'covers_ac',
+    'slice_decision',
+    'spec_xref',
+  ] as const
+
+  it('EDGE_KINDS has exactly the 7 expected kind keys', () => {
+    const keys = Object.keys(EDGE_KINDS).sort()
+    expect(keys).toEqual([...EXPECTED_KINDS].sort())
+  })
+
+  it('PARITY: vocabulary keys match the set of kind values actually emitted by assembleMotiveGraph', () => {
+    const emittedKinds = new Set(graph.edges.map((e: { kind: string }) => e.kind))
+    const vocabKinds = new Set(Object.keys(EDGE_KINDS))
+    // Every emitted kind must be in the vocabulary
+    const missing = [...emittedKinds].filter((k) => !vocabKinds.has(k))
+    expect(missing, `Emitted kinds missing from vocabulary: ${missing.join(', ')}`).toHaveLength(0)
+  })
+
+  it('anchors: drives_layering=true, render=primary, direction=down', () => {
+    expect(EDGE_KINDS.anchors).toEqual({ drives_layering: true, render: 'primary', direction: 'down' })
+  })
+
+  it('resolved_by: drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.resolved_by).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  it('graduated_to: drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.graduated_to).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  it('blocked_by: drives_layering=true, render=primary, direction=up', () => {
+    expect(EDGE_KINDS.blocked_by).toEqual({ drives_layering: true, render: 'primary', direction: 'up' })
+  })
+
+  it('covers_ac: drives_layering=true, render=primary, direction=down', () => {
+    expect(EDGE_KINDS.covers_ac).toEqual({ drives_layering: true, render: 'primary', direction: 'down' })
+  })
+
+  it('slice_decision: drives_layering=true, render=hidden, direction=up', () => {
+    expect(EDGE_KINDS.slice_decision).toEqual({ drives_layering: true, render: 'hidden', direction: 'up' })
+  })
+
+  it('spec_xref: drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.spec_xref).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  it('every entry has the expected shape (drives_layering, render, direction)', () => {
+    const validRender = new Set(['primary', 'muted', 'hidden'])
+    const validDirection = new Set(['down', 'up', 'lateral'])
+    for (const [kind, entry] of Object.entries(EDGE_KINDS)) {
+      expect(typeof entry.drives_layering, `${kind}.drives_layering`).toBe('boolean')
+      expect(validRender.has(entry.render), `${kind}.render="${entry.render}" invalid`).toBe(true)
+      expect(validDirection.has(entry.direction), `${kind}.direction="${entry.direction}" invalid`).toBe(true)
+    }
   })
 })
 

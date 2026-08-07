@@ -329,7 +329,7 @@ describe('AC-9: blocked reason and remedy are informative', () => {
     expect(result.reason).toMatch(/wave 1/)
   })
 
-  it('remedy mentions autopilot and handoff', () => {
+  it('remedy mentions autopilot and pause', () => {
     const doc = {
       pacing: makePacing('wave', 1),
       slices: [
@@ -339,7 +339,7 @@ describe('AC-9: blocked reason and remedy are informative', () => {
     }
     const result = checkPace(doc, 'S2')
     expect(result.remedy).toMatch(/autopilot/)
-    expect(result.remedy).toMatch(/handoff/)
+    expect(result.remedy).toMatch(/pause/)
   })
 
   it('reason names slice id for policy=slice', () => {

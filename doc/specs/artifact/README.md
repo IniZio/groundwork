@@ -17,7 +17,7 @@ The artifact model covers the durable, file-backed records that groundwork creat
 
 ## Session journal
 
-`.groundwork/journal/` — append-only event log sharded per session. Events are written by `hooks/journal.mjs` and carry a type from the valid set: `DECISION`, `SPEC_CHANGE`, `LINT_DRIFT`, `PROTOTYPE_RESULT`, `FAILURE`, `MILESTONE`, `TASK_COMPLETE`, `GATE`, `VERIFICATION`, `WAIVER`, `HANDOFF`, `SESSION_START`.
+`.groundwork/journal/` — append-only event log sharded per session. Events are written by `hooks/journal.mjs` and carry a type from the valid set: `DECISION`, `SPEC_CHANGE`, `LINT_DRIFT`, `PROTOTYPE_RESULT`, `FAILURE`, `MILESTONE`, `TASK_COMPLETE`, `GATE`, `VERIFICATION`, `WAIVER`, `HANDOFF` (legacy), `PAUSE`, `SESSION_START`.
 
 ## Spec tree
 

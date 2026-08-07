@@ -25,7 +25,8 @@
  *     DECISION       d.decision, d.rationale, d.alternatives, d.slice
  *                    decision_log[].slices built from: (a) DECISION data.slice and
  *                    (b) reverse index of groundTruth.ledger.slices[].decisions; union deduped.
- *     HANDOFF        d.pointer, d.summary, d.next_actions
+ *     HANDOFF        d.pointer, d.summary, d.next_actions  (legacy — kept for back-compat)
+ *     PAUSE          d.pointer, d.summary, d.next_actions  (supersedes HANDOFF)
  *     VERIFICATION   d.claim, d.evidence, d.result
  *     MILESTONE      d.objective
  *     SPEC_CHANGE    d.spec_ref, d.change, d.reason
@@ -86,6 +87,7 @@ export function compile(events, opts = {}) {
   // Set of decision ids that resolved an open item (accepted only)
   const resolvedByDecisions = new Map() // resolves-id → decision-id
   let lastHandoff = null
+  let lastPause = null
   const verifications = []
   const milestones = []
   const specChanges = []
@@ -278,6 +280,16 @@ export function compile(events, opts = {}) {
       case 'HANDOFF': {
         modelWrittenCount++
         lastHandoff = {
+          pointer: d.pointer ?? null,
+          summary: d.summary ?? null,
+          next_actions: Array.isArray(d.next_actions) ? d.next_actions : [],
+        }
+        break
+      }
+
+      case 'PAUSE': {
+        modelWrittenCount++
+        lastPause = {
           pointer: d.pointer ?? null,
           summary: d.summary ?? null,
           next_actions: Array.isArray(d.next_actions) ? d.next_actions : [],
@@ -696,6 +708,18 @@ export function compile(events, opts = {}) {
     nextActions.push({ action: 'run_advisor_gate', why: 'all slices complete but no APPROVE gate recorded' })
   }
 
+  // ── Fold PAUSE / HANDOFF explicit next_actions (PAUSE takes precedence) ──
+  // Human-authored continuation intent leads; ledger-derived actions follow.
+  const explicitActions =
+    lastPause != null && lastPause.next_actions.length > 0
+      ? lastPause.next_actions
+      : lastHandoff != null && lastHandoff.next_actions.length > 0
+        ? lastHandoff.next_actions
+        : []
+  if (explicitActions.length > 0) {
+    nextActions.unshift(...explicitActions)
+  }
+
   // ── ac_coverage ───────────────────────────────────────────────────────────
   // AC coverage semantics:
   //   met     = covering non-empty AND every listed slice in completedSlices
@@ -798,6 +822,7 @@ export function compile(events, opts = {}) {
     sessions,
     decisions,
     last_handoff: lastHandoff,
+    last_pause: lastPause,
     verifications,
     milestones,
     spec_changes: specChanges,

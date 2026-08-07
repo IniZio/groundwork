@@ -459,7 +459,7 @@ function detectYield(input) {
  * D-29: Build the pacing-exhaustion DIRECTIVE string.
  * A directive is a mandatory instruction surfaced on the allow path when the
  * session budget is spent and incomplete slices remain in not-yet-entered units.
- * It names the remaining slice ids, the motive MAP.md path, and the handoff skill.
+ * It names the remaining slice ids, the motive MAP.md path, and the pause skill.
  *
  * @param {object} ledger
  * @param {Array<object>} incomplete - Incomplete slice objects.
@@ -497,7 +497,7 @@ function pacingExhaustionDirective(ledger, incomplete, projectDir) {
   lines.push('')
   lines.push(`Remaining slices (carry into the next session): ${sliceIds}`)
   if (mapPath) lines.push(`Motive map: ${mapPath}`)
-  lines.push('DIRECTIVE: run /groundwork:handoff, then open a new session to continue the remaining slices.')
+  lines.push('DIRECTIVE: run /groundwork:pause, then open a new session to continue the remaining slices.')
   return lines.join('\n')
 }
 

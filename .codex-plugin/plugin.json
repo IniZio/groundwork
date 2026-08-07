@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "Groundwork",
     "shortDescription": "Structured workflows for reliable coding tasks",
-    "longDescription": "Groundwork provides reusable planning, implementation, diagnosis, testing, handoff, and review workflows for AI coding agents.",
+    "longDescription": "Groundwork provides reusable planning, implementation, diagnosis, testing, pause, and review workflows for AI coding agents.",
     "developerName": "Newman",
     "category": "Coding",
     "capabilities": ["Interactive", "Read", "Write"],

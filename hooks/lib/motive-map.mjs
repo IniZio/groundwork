@@ -91,7 +91,17 @@ function _generate(projectDir, motive) {
 
   const ticketFiles = _readTicketFiles(motiveDir)
 
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices })
+  // Extract last_pause from PAUSE events (mirrors motive-compile logic, no compile dependency)
+  const lastPauseEvent = allEvents.filter((ev) => ev.type === 'PAUSE').pop() ?? null
+  const lastPause = lastPauseEvent != null
+    ? {
+        pointer:      lastPauseEvent.data?.pointer ?? null,
+        summary:      lastPauseEvent.data?.summary ?? null,
+        next_actions: Array.isArray(lastPauseEvent.data?.next_actions) ? lastPauseEvent.data.next_actions : [],
+      }
+    : null
+
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, lastPause })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -507,7 +517,7 @@ function _readAllMotiveEvents(projectDir, motive) {
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, lastPause = null }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -872,9 +882,26 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
         (s) => !exemptKinds.includes(s.kind) && s.status !== 'complete',
       )
       const ids = remaining.map((s) => s.id).join(', ')
-      parts.push(`**Session exhausted.** Run \`/groundwork:handoff\` and open a new session. Remaining work: ${ids || '(none listed)'}`)
+      parts.push(`**Session exhausted.** Run \`/groundwork:pause\` and open a new session. Remaining work: ${ids || '(none listed)'}`)
     }
 
+    parts.push('')
+  }
+
+  // ── Pause ─────────────────────────────────────────────────────────────────
+  if (lastPause != null) {
+    parts.push('## Pause')
+    parts.push('')
+    if (lastPause.pointer) parts.push(`**Pointer:** ${lastPause.pointer}`)
+    if (lastPause.summary) parts.push(lastPause.summary)
+    if (Array.isArray(lastPause.next_actions) && lastPause.next_actions.length > 0) {
+      parts.push('')
+      parts.push('**Next actions:**')
+      parts.push('')
+      for (const na of lastPause.next_actions) {
+        parts.push(`- **${na.action}:** ${na.detail ?? ''}`)
+      }
+    }
     parts.push('')
   }
 

@@ -22,7 +22,7 @@
 - `Read` — to load skill files
 - `AskUserQuestion` — for clarifying questions
 - `Bash` — for one-shot git status checks, the `ledger` CLI (`bin/ledger …` to update the run ledger — the wrapper resolves the plugin root itself), and the `journal` CLI (motive bookkeeping — `bin/journal …`); MUST NOT be used for exploration or implementation
-- `Write`/`Edit` — only for the two permitted path shapes; see **When the orchestrator may write directly** below
+- `Write`/`Edit` — only for the one permitted path shape; see **When the orchestrator may write directly** below
 
 **If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, `journal` CLI, and one-shot git status are the only sanctioned Bash uses.)
 
@@ -32,12 +32,11 @@
 
 **Test:** would delegating cost more context than doing it? Content already in your window → write it directly. Content requiring a read or search to compose → delegate; that's exploration.
 
-**Two path shapes `hooks/orchestrator-impl-guard.mjs` actually permits:**
+**The path shape `hooks/orchestrator-impl-guard.mjs` actually permits:**
 
 | Permitted | Pattern |
 |---|---|
 | Session/project memory | path is UNDER `~/.claude/projects/…/memory/`, home-anchored (incl. `MEMORY.md` index) |
-| Handoff documents | `handoff-*.md` inside `<any>/.groundwork/handoffs/` (i.e. the file's parent is `handoffs`, whose parent is `.groundwork`) |
 
 **Everything else is blocked.** Code, config, test files, and `.groundwork/out-of-scope/**` are never orchestrator-written regardless of how obvious the change appears. When the principle and the hook disagree, **the hook wins**.
 
@@ -76,7 +75,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | Architecture trade-off, hard decision | Decision | `advisor` |
 | "architecture review", "how's the structure", "any concerns", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 | "capture intent", "what do I want to build", durable goal, charter authoring | Motive authoring | load `motive` skill |
-| "resume", "continue from last session", multi-session continuity | Continuity | load `resume` skill + `handoff` skill |
+| "resume", "continue from last session", multi-session continuity | Continuity | load `resume` skill + `pause` skill |
 | "capture requirements", "clarify scope", intent capture | Requirements clarification | `interview` |
 | "update spec", "spec upkeep", "spec is stale" | Spec upkeep | load `spec` skill |
 | "retrospect", "reflect on this session", session retrospective | Retrospective | load `/groundwork:retrospective` |

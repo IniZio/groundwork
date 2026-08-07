@@ -474,16 +474,23 @@ function _buildNarrativeSections(agent) {
     sections.push({ title: 'Verdict', source: 'absent', content: null });
   }
 
-  // Handoff — from last handoff event
-  const handoff = agent.last_handoff;
-  if (handoff != null) {
+  // Pause — from last pause event (omitted entirely when absent)
+  const pause = agent.last_pause;
+  if (pause != null) {
+    const lines = [];
+    if (pause.pointer) lines.push(`**Pointer:** ${pause.pointer}`);
+    if (pause.summary) lines.push(pause.summary);
+    if (Array.isArray(pause.next_actions) && pause.next_actions.length > 0) {
+      lines.push(
+        '**Next actions:**\n' +
+        pause.next_actions.map((na) => `- **${na.action}:** ${na.detail ?? ''}`).join('\n')
+      );
+    }
     sections.push({
-      title: 'Handoff',
-      source: 'recorded:HANDOFF',
-      content: handoff.summary ?? handoff.content ?? JSON.stringify(handoff),
+      title: 'Pause',
+      source: 'recorded:PAUSE',
+      content: lines.join('\n\n'),
     });
-  } else {
-    sections.push({ title: 'Handoff', source: 'absent', content: null });
   }
 
   return sections;

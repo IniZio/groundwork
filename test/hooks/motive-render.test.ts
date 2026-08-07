@@ -269,13 +269,15 @@ describe('integration: renderView accepts compile() output directly', () => {
     expect(bannerIdx).toBeLessThan(titleIdx);
   });
 
-  it('all 6 narrative sections are present (absent ones have explicit sentence)', () => {
+  it('all 5 narrative sections are present (Pause omitted when absent)', () => {
     const view = compile(EMPTY_EVENTS, {});
     const out = renderView(view as Parameters<typeof renderView>[0]);
-    for (const title of ['Objective', 'Progress', 'Rationale', 'Trouble', 'Verdict', 'Handoff']) {
+    for (const title of ['Objective', 'Progress', 'Rationale', 'Trouble', 'Verdict']) {
       expect(out).toContain(`## ${title}`);
       expect(out).toContain('source:');
     }
+    // Pause section is omitted entirely when no PAUSE event exists
+    expect(out).not.toContain('## Pause');
     // All absent sections have explicit absence text
     expect(out).toMatch(/_No .+ was recorded for this motive\._/);
   });
@@ -287,7 +289,7 @@ describe('integration: renderView accepts compile() output directly', () => {
     expect(human).toHaveProperty('banner');
     expect(human).toHaveProperty('narrative_sections');
     expect(Array.isArray(human.narrative_sections)).toBe(true);
-    expect(human.narrative_sections).toHaveLength(6);
+    expect(human.narrative_sections).toHaveLength(5);
     // Every section must have a source label
     for (const s of human.narrative_sections) {
       expect(s).toHaveProperty('source');

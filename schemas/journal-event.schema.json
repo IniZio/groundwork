@@ -35,9 +35,10 @@
         "VERIFICATION",
         "WAIVER",
         "HANDOFF",
+        "PAUSE",
         "SESSION_START"
       ],
-      "description": "Event type drawn from VALID_TYPES in hooks/lib/journal-io.mjs (12 values as of 2026-07-26; STEERING_UPDATE was removed)."
+      "description": "Event type drawn from VALID_TYPES in hooks/lib/journal-io.mjs (13 values; HANDOFF is a legacy type retained for old shards; PAUSE added 2026-08-07)."
     },
     "msg": {
       "type": "string",

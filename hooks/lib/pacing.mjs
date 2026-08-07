@@ -294,7 +294,7 @@ export function checkPace(doc, sliceId) {
     `${unitLabel} would open a new unit but none remains for this session.`
   const remedy =
     `Option A: ask the operator to authorize \`ledger autopilot --range N --reason "…"\` — do not self-grant. ` +
-    `Option B: run \`/groundwork:handoff\` and continue in a new session.`
+    `Option B: run \`/groundwork:pause\` and continue in a new session.`
 
   return { allowed: false, reason, remedy }
 }

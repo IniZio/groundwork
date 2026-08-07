@@ -349,7 +349,7 @@ if (sessionId || transcriptPath) {
   const lines = ['', '## Session identity']
   if (sessionId) lines.push(`- session_id: ${sessionId}`)
   if (transcriptPath) lines.push(`- transcript_path: ${transcriptPath}`)
-  lines.push('', "When performing a session handoff (/groundwork:handoff), reference these values so the successor session can locate this session's transcript.")
+  lines.push('', "When performing a session pause (/groundwork:pause), reference these values so the successor session can locate this session's transcript.")
   additionalContext += `\n${lines.join('\n')}`
 }
 

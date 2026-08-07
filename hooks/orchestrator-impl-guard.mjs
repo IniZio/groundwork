@@ -106,16 +106,6 @@ function isSubagentCall(input) {
  *   files always live under the user's home directory, never inside a source
  *   tree.  See test "spoof path src/.claude/... → BLOCKED" for the assertion.
  *
- * Permit 2 — handoff documents:
- *   Basename must match handoff-*.md AND the immediate parent directory must
- *   be named "handoffs" AND that "handoffs" dir's parent must be a directory
- *   named ".groundwork".  Shape: <any>/.groundwork/handoffs/handoff-*.md.
- *   The old root-level shape (<any>/.groundwork/handoff-*.md, no handoffs
- *   sub-dir) is deliberately BLOCKED.
- *   The basename check is done AFTER path.resolve(), so a .. traversal
- *   (e.g. ".groundwork/handoffs/handoff-x.md/../../src/index.ts") collapses
- *   to "index.ts" as the basename, which fails the glob — BLOCKED.
- *
  * Fail-safe: any throw or malformed input returns false → BLOCK (not permit).
  */
 function isOrchestratorWritablePath(rawPath) {
@@ -134,17 +124,6 @@ function isOrchestratorWritablePath(rawPath) {
     const segments = rel.split(path.sep)
     // segments: [0]=hash, [1]="memory", [2+]=filename — require all three levels
     if (segments.length >= 3 && segments[1] === 'memory') return true
-  }
-
-  // Permit 2: handoff-*.md inside <any>/.groundwork/handoffs/
-  // Shape: <root>/.groundwork/handoffs/handoff-*.md
-  // The old root-level shape (.groundwork/handoff-*.md) is deliberately BLOCKED.
-  const basename = path.basename(resolved)
-  if (/^handoff-.+\.md$/.test(basename)) {
-    const dirParts = path.dirname(resolved).split(path.sep)
-    // immediate parent must be "handoffs", its parent must be ".groundwork"
-    const n = dirParts.length
-    if (n >= 2 && dirParts[n - 1] === 'handoffs' && dirParts[n - 2] === '.groundwork') return true
   }
 
   return false
@@ -176,7 +155,7 @@ async function main() {
   // The ledger file itself is governed by ledger-guard; its init Write stays free.
   if (isLedgerPath(input?.tool_input?.file_path)) return passthrough()
 
-  // Narrow permit: memory files and handoff docs the orchestrator composes in-context.
+  // Narrow permit: memory files the orchestrator composes in-context.
   if (isOrchestratorWritablePath(input?.tool_input?.file_path)) return passthrough()
 
   return deny(

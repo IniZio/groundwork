@@ -65,6 +65,7 @@ export const VALID_TYPES = [
   'VERIFICATION',
   'WAIVER',
   'HANDOFF',
+  'PAUSE',
   'SESSION_START',
   'SPEC_DRIFT',
   'SESSION_END',

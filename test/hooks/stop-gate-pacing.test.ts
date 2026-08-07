@@ -165,9 +165,9 @@ describe("AC3: directive names remaining slice ids, MAP.md, and handoff skill", 
 		expect(result.reason).toContain("legacy-motive");
 	});
 
-	it("reason contains the handoff skill reference", () => {
+	it("reason contains the pause skill reference", () => {
 		const result = runHook(exhaustedLedger());
-		expect(result.reason).toContain("/groundwork:handoff");
+		expect(result.reason).toContain("/groundwork:pause");
 	});
 
 	it("reason contains the word DIRECTIVE to distinguish it from advisories", () => {
@@ -231,7 +231,7 @@ describe("AC6: absent pacing field → unchanged block behaviour", () => {
 
 	it("no pacing exhaustion directive appears in block reason", () => {
 		const result = runHook(noPacingLedger());
-		expect(result.reason).not.toContain("/groundwork:handoff");
+		expect(result.reason).not.toContain("/groundwork:pause");
 		expect(result.reason).toContain("GROUNDWORK STOP-GATE");
 	});
 });

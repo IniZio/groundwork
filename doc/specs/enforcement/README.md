@@ -13,7 +13,7 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 
 ## orchestrator-impl-guard.mjs
 
-PreToolUse on `Edit|Write|MultiEdit`. Blocks the orchestrator from writing files directly, except for two narrow permit paths: session/project memory files under `~/.claude/projects/<hash>/memory/` and handoff documents at `<any>/.groundwork/handoffs/handoff-*.md`. Subagents are identified by the presence of `agent_type`, `agent_id`, or a `transcript_path` basename starting with `agent-`; they are not blocked.
+PreToolUse on `Edit|Write|MultiEdit`. Blocks the orchestrator from writing files directly, except for one narrow permit path: session/project memory files under `~/.claude/projects/<hash>/memory/`. Subagents are identified by the presence of `agent_type`, `agent_id`, or a `transcript_path` basename starting with `agent-`; they are not blocked.
 
 ## nesting-guard.mjs
 

@@ -148,6 +148,46 @@ function _loadMotiveFold(projectDir, motiveId) {
 }
 
 /**
+ * Load the declared acceptance-criterion ids from the motive's charter (motive.md).
+ *
+ * Parses the "## Acceptance criteria" section and extracts the id from each
+ * list item of the form "- <id>: description". Returns a Set of raw id strings
+ * (e.g. {'AC-1', 'AC-2', 'T1-AC1'}).
+ *
+ * This is the authoritative source for `covers_ac` validation: a charter AC is
+ * valid to reference even before any AC_COVERAGE event has been emitted for it.
+ *
+ * Graceful-degradation: returns an empty Set when motiveId is falsy, the
+ * motive.md file does not exist, or parsing fails for any reason.
+ *
+ * @param {string} projectDir
+ * @param {string|undefined} motiveId
+ * @returns {Set<string>}
+ */
+function _loadCharterAcIds(projectDir, motiveId) {
+  if (!motiveId || !projectDir) return new Set()
+  const motivePath = path.join(projectDir, '.groundwork', 'motives', motiveId, 'motive.md')
+  if (!existsSync(motivePath)) return new Set()
+  try {
+    const content = readFileSync(motivePath, 'utf8')
+    // Find the ## Acceptance criteria section (stops at next ## heading or EOF)
+    const headingMatch = content.match(/^## Acceptance criteria[^\n]*/m)
+    if (!headingMatch) return new Set()
+    const afterHeading = content.slice(headingMatch.index + headingMatch[0].length)
+    const nextHeadingIdx = afterHeading.search(/^## /m)
+    const section = nextHeadingIdx === -1 ? afterHeading : afterHeading.slice(0, nextHeadingIdx)
+    const ids = new Set()
+    for (const line of section.split('\n')) {
+      const m = line.match(/^- (\S+):/)
+      if (m) ids.add(m[1])
+    }
+    return ids
+  } catch {
+    return new Set()  // never crash a ledger write due to charter loading failure
+  }
+}
+
+/**
  * Validate slice ref ids against the canonical fold (MOTIVE-DAG-R-008).
  * Writes a named diagnostic to stderr and exits nonzero for dangling refs.
  * No-op when fold is null (graceful degradation: no motive / no journal / no events).
@@ -892,12 +932,18 @@ function cmdAdd(args) {
   const decisionsRaw = flags['decisions'] != null ? flags['decisions'].split(',').map((s) => s.trim()).filter(Boolean) : null
 
   // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
+  // covers_ac: valid if declared in the motive's charter AC list OR present as a fold AC node.
+  // decisions: valid only if present as a fold decision node.
   // Graceful degradation: skips validation when no motive, no journal, or no motive events.
   if (coversAcRaw != null || decisionsRaw != null) {
     const addProjectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     const existingLedger = readLedger(ledgerPath())
     const fold = _loadMotiveFold(addProjectDir, existingLedger?.motive)
-    if (coversAcRaw != null) _assertFoldRefs(fold, coversAcRaw, 'covers_ac', 'ac', 'ac:')
+    if (coversAcRaw != null) {
+      const charterAcIds = _loadCharterAcIds(addProjectDir, existingLedger?.motive)
+      const unknownAcIds = coversAcRaw.filter((id) => !charterAcIds.has(id))
+      _assertFoldRefs(fold, unknownAcIds, 'covers_ac', 'ac', 'ac:')
+    }
     if (decisionsRaw != null) _assertFoldRefs(fold, decisionsRaw, 'decisions', 'decision', 'decision:')
   }
 
@@ -974,13 +1020,17 @@ function cmdSet(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 
   // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
+  // covers_ac: valid if declared in the motive's charter AC list OR present as a fold AC node.
+  // decisions: valid only if present as a fold decision node.
   // Graceful degradation: skips validation when no motive, no journal, or no motive events.
   if (flags['covers-ac'] != null || flags['decisions'] != null) {
     const setLedger = readLedger(ledgerPath())
     const fold = _loadMotiveFold(projectDir, setLedger?.motive)
     if (flags['covers-ac'] != null) {
       const acIds = flags['covers-ac'].split(',').map((v) => v.trim()).filter(Boolean)
-      _assertFoldRefs(fold, acIds, 'covers_ac', 'ac', 'ac:')
+      const charterAcIds = _loadCharterAcIds(projectDir, setLedger?.motive)
+      const unknownAcIds = acIds.filter((id) => !charterAcIds.has(id))
+      _assertFoldRefs(fold, unknownAcIds, 'covers_ac', 'ac', 'ac:')
     }
     if (flags['decisions'] != null) {
       const decIds = flags['decisions'].split(',').map((v) => v.trim()).filter(Boolean)

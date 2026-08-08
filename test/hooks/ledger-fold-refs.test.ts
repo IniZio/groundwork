@@ -145,6 +145,54 @@ describe('R-008: fold-reference validation via ledger add', () => {
   })
 })
 
+// ── R-008: charter-AC regression fix ─────────────────────────────────────────
+//
+// Regression: commit d589da2 validated covers_ac ONLY against fold AC nodes,
+// which only exist after an AC_COVERAGE event. Charter ACs declared but not yet
+// covered were rejected as "unknown id" — breaking first-time coverage declaration.
+//
+// Fix: covers_ac is valid if the id appears in the charter (motive.md) OR in
+// the fold. AC-2 below is declared in the charter but has no AC_COVERAGE event,
+// confirming the regression (pre-fix exits nonzero) and the fix (exits zero).
+
+/**
+ * Write a motive charter declaring the given AC ids in ## Acceptance criteria.
+ * Pre-fix, --covers-ac on a charter-only AC would exit nonzero (R-008 false positive).
+ */
+function writeMotiveCharter(acIds: string[]): void {
+  const motiveDir = path.join(projectDir, '.groundwork', 'motives', MOTIVE_ID)
+  mkdirSync(motiveDir, { recursive: true })
+  const criteria = acIds.map((id) => `- ${id}: Test acceptance criterion`).join('\n')
+  writeFileSync(
+    path.join(motiveDir, 'motive.md'),
+    `## Acceptance criteria\n\n${criteria}\n`,
+  )
+}
+
+describe('R-008: charter-AC regression — declared-but-uncovered AC must be accepted', () => {
+  // AC-2 is in the charter but has NO AC_COVERAGE journal event (not yet a fold node).
+  // Pre-fix: `--covers-ac AC-2` would exit nonzero ("unknown id AC-2").
+  // Post-fix: exits zero because AC-2 is in the charter.
+  beforeEach(() => writeMotiveCharter(['AC-2']))
+
+  it('ledger add --covers-ac <charter AC, not in fold> exits zero (regression fix)', () => {
+    const r = run(['add', 'T-charter', '--covers-ac', 'AC-2', '--token', WRITE_TOKEN])
+    expect(r.code, `stderr: ${r.stderr}`).toBe(0)
+  })
+
+  it('ledger set --covers-ac <charter AC, not in fold> exits zero (regression fix)', () => {
+    const r = run(['set', 'S1', '--covers-ac', 'AC-2', '--token', WRITE_TOKEN])
+    expect(r.code, `stderr: ${r.stderr}`).toBe(0)
+  })
+
+  it('AC not in charter and not in fold still exits nonzero (R-008 still bites)', () => {
+    const r = run(['set', 'S1', '--covers-ac', 'AC-999', '--token', WRITE_TOKEN])
+    expect(r.code, `stderr: ${r.stderr}`).not.toBe(0)
+    expect(r.stderr).toMatch(/covers_ac/)
+    expect(r.stderr).toMatch(/AC-999/)
+  })
+})
+
 // ── R-008: graceful degradation ───────────────────────────────────────────────
 
 describe('R-008: graceful degradation — motive-less ledger skips fold validation', () => {

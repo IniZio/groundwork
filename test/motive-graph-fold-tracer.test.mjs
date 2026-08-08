@@ -202,6 +202,24 @@ describe('fold output structure', () => {
     expect(baselineNode.type).toBe('baseline')
   })
 
+  it('keyed decision nodes carry _ord and _ts attrs from the event envelope (first-seen semantics)', () => {
+    const keyedDecisions = fold.nodes.filter(
+      (n) => n.type === 'decision' && !n.id.startsWith('decision:_legacy_ord')
+    )
+    expect(keyedDecisions.length).toBeGreaterThan(0)
+    for (const n of keyedDecisions) {
+      expect(typeof n.attrs._ord, `${n.id} _ord must be a number`).toBe('number')
+      expect(typeof n.attrs._ts, `${n.id} _ts must be a string`).toBe('string')
+    }
+  })
+
+  it('baseline node carries _ord and _ts attrs from the event envelope', () => {
+    const baselineNode = fold.nodes.find((n) => n.type === 'baseline')
+    expect(baselineNode).toBeDefined()
+    expect(typeof baselineNode.attrs._ord).toBe('number')
+    expect(typeof baselineNode.attrs._ts).toBe('string')
+  })
+
   it('AC_COVERAGE events produce covers_ac edges', () => {
     const acEvents = events.filter((e) => e.type === 'AC_COVERAGE' && e.data?.ac && e.data?.slice)
     expect(acEvents.length).toBeGreaterThan(0)

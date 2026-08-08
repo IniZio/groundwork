@@ -222,19 +222,22 @@ function collectStructuralLosses(events) {
   return { losses, eventsChecked, fieldsCompared }
 }
 
-/** Build a one-shot event stream: MOTIVE_CREATED + one typed event. */
+/** Build a one-shot event stream: MOTIVE_CREATED + one typed event.
+ *  Events carry `ord` (replay index) so node handlers can persist _ord/_ts. */
 function makeStream(type, data = {}) {
   return [
     {
       type: 'MOTIVE_CREATED',
       motive: 'test',
       ts: '2026-01-01T00:00:00.000Z',
+      ord: 0,
       data: { objective: 'test' },
     },
     {
       type,
       motive: 'test',
       ts: '2026-01-01T00:00:01.000Z',
+      ord: 1,
       data,
     },
   ]
@@ -257,8 +260,19 @@ describe('S2-AC1 — all 19 VALID_TYPES have declared roles', () => {
   // missing or unwired: the fold silently no-ops and the assertion fails.
   const deltaChecks = {
     MOTIVE_CREATED:   (fold) => expect(fold.nodes.find((n) => n.id === 'objective:root')).toBeDefined(),
-    DECISION:         (fold) => expect(fold.nodes.some((n) => n.type === 'decision')).toBe(true),
-    BASELINE:         (fold) => expect(fold.nodes.some((n) => n.type === 'baseline')).toBe(true),
+    DECISION:         (fold) => {
+      const n = fold.nodes.find((m) => m.type === 'decision')
+      expect(n).toBeDefined()
+      // ord and ts from event envelope are persisted on first creation
+      expect(typeof n.attrs._ord).toBe('number')
+      expect(typeof n.attrs._ts).toBe('string')
+    },
+    BASELINE:         (fold) => {
+      const n = fold.nodes.find((m) => m.type === 'baseline')
+      expect(n).toBeDefined()
+      expect(typeof n.attrs._ord).toBe('number')
+      expect(typeof n.attrs._ts).toBe('string')
+    },
     AC_COVERAGE:      (fold) => expect(fold.edges.some((e) => e.kind === 'covers_ac')).toBe(true),
     GATE:             (fold) => expect(fold.attrs.gates.length).toBeGreaterThan(0),
     MILESTONE:        (fold) => expect(fold.attrs.milestones.length).toBeGreaterThan(0),
@@ -490,5 +504,97 @@ describe('S2-AC3 — synthetic fixtures for 8 real-stream-absent types', () => {
     const failureRecords = fold.attrs.failures
     expect(failureRecords.length).toBeGreaterThan(0)
     expect(failureRecords[0].extra_sentinel).toBe('passthrough-proof')
+  })
+})
+
+// ── First-event guard: _ord/_ts must not be overwritten by re-issued events ──
+//
+// The guard in handleDecision and handleBaseline:
+//   if (!nodesMap.has(nodeId)) { _ord = event.ord; _ts = event.ts }
+//
+// Without this guard, a second DECISION or BASELINE event for the same id/name
+// would clobber _ord/_ts with the later event's ord/ts — breaking compile()-
+// equivalent insertion ordering in decision_log and baselines.
+//
+// These are MULTI-EVENT tests: a single-event stream cannot distinguish guarded
+// from unguarded behaviour (both produce the same result when the node is new).
+// The mutation under test: remove `if (!nodesMap.has(nodeId))` so that every
+// DECISION/BASELINE event, including re-issues, overwrites _ord/_ts.
+
+describe('First-event guard — _ord/_ts not overwritten by re-issued DECISION/BASELINE', () => {
+  it('DECISION: re-issued second event does NOT overwrite _ord/_ts (guard bite test)', () => {
+    // Two DECISION events for the same id:
+    //   event 1: ord=5  → creates the node, sets _ord=5
+    //   event 2: ord=99 → updates status but MUST NOT overwrite _ord
+    // Mutant (guard removed): _ord would be 99 after the second event.
+    const stream = [
+      {
+        type: 'MOTIVE_CREATED',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:00:00.000Z',
+        ord: 0,
+        data: { objective: 'guard bite test' },
+      },
+      {
+        type: 'DECISION',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:01:00.000Z',
+        ord: 5,
+        data: { id: 'D-guard', title: 'initial decision', status: 'proposed' },
+      },
+      {
+        type: 'DECISION',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:02:00.000Z',
+        ord: 99,
+        data: { id: 'D-guard', status: 'accepted' },
+      },
+    ]
+    const fold = assembleGraphFold(stream)
+    const node = fold.nodes.find((n) => n.id === 'decision:D-guard')
+    expect(node, 'decision:D-guard must exist after two events').toBeDefined()
+    // First-event semantics: _ord and _ts must reflect the FIRST event, not the re-issue.
+    expect(node.attrs._ord, '_ord must be 5 (first event), not 99 (re-issue)').toBe(5)
+    expect(node.attrs._ts, '_ts must be first event ts').toBe('2026-01-01T00:01:00.000Z')
+    // The re-issue DID update other attrs via Object.assign.
+    expect(node.attrs.status, 'status updated by second event').toBe('accepted')
+  })
+
+  it('BASELINE: re-issued second event does NOT overwrite _ord/_ts (guard bite test)', () => {
+    // Two BASELINE events for the same name:
+    //   event 1: ord=3  → creates the node, sets _ord=3
+    //   event 2: ord=77 → updates shard but MUST NOT overwrite _ord
+    // Mutant (guard removed): _ord would be 77 after the second event.
+    const stream = [
+      {
+        type: 'MOTIVE_CREATED',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:00:00.000Z',
+        ord: 0,
+        data: { objective: 'guard bite test' },
+      },
+      {
+        type: 'BASELINE',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:01:00.000Z',
+        ord: 3,
+        data: { name: 'v1', shard: 'shard-001' },
+      },
+      {
+        type: 'BASELINE',
+        motive: 'guard-test',
+        ts: '2026-01-01T00:02:00.000Z',
+        ord: 77,
+        data: { name: 'v1', shard: 'shard-002' },
+      },
+    ]
+    const fold = assembleGraphFold(stream)
+    const node = fold.nodes.find((n) => n.id === 'baseline:v1')
+    expect(node, 'baseline:v1 must exist after two events').toBeDefined()
+    // First-event semantics: _ord and _ts must reflect the FIRST event.
+    expect(node.attrs._ord, '_ord must be 3 (first event), not 77 (re-issue)').toBe(3)
+    expect(node.attrs._ts, '_ts must be first event ts').toBe('2026-01-01T00:01:00.000Z')
+    // The re-issue DID update shard via Object.assign.
+    expect(node.attrs.shard, 'shard updated by second event').toBe('shard-002')
   })
 })

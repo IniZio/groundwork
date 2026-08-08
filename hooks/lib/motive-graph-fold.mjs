@@ -102,10 +102,14 @@ export const CONSUMED_FIELDS = Object.freeze({
       'items_registered',
       'decision',
       'motive_provenance',
+      // Event-envelope fields consumed by the handler (not data.* fields in the corpus;
+      // declared here to future-proof against data.ord/ts and to document the fold reads them).
+      'ord',
+      'ts',
     ])
   ),
 
-  BASELINE: Object.freeze(new Set(['name', 'shard'])),
+  BASELINE: Object.freeze(new Set(['name', 'shard', 'ord', 'ts'])),
 
   AC_COVERAGE: Object.freeze(
     new Set(['ac', 'slice', 'covering', 'motive_provenance'])
@@ -155,7 +159,7 @@ export const CONSUMED_FIELDS = Object.freeze({
  *   attrs: object
  * }}
  */
-export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = {}) {
+export function assembleGraphFold(orderedEvents, { at, charter: _charter, groundTruth: _groundTruth } = {}) {
   // ── Internal mutable state ────────────────────────────────────────────────
 
   /** @type {Map<string, {id:string, type:string, attrs:object, retired?:boolean}>} */
@@ -282,6 +286,13 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
     for (const [k, v] of Object.entries(candidates)) {
       if (v != null) nodeAttrs[k] = v
     }
+    // First-event guard: persist _ord/_ts only when creating the node.
+    // nodeAssert uses Object.assign for existing nodes — a later DECISION event's
+    // ord would overwrite the first-seen ord, breaking compile()-equivalent insertion ordering.
+    if (!nodesMap.has(nodeId)) {
+      if (event.ord != null) nodeAttrs._ord = event.ord
+      if (event.ts != null) nodeAttrs._ts = event.ts
+    }
     nodeAssert('decision', nodeId, nodeAttrs)
 
     if (nodesMap.has('objective:root')) {
@@ -300,9 +311,16 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
     if (revises)    emitLifecycleEdge('revises',    revises)
   }
 
-  function handleBaseline(data, _event) {
+  function handleBaseline(data, event) {
     const { name, shard } = data
-    nodeAssert('baseline', `baseline:${name}`, { name, shard })
+    const nodeId = `baseline:${name}`
+    const baseAttrs = { name, shard }
+    // First-event guard: persist _ord/_ts only when creating the node.
+    if (!nodesMap.has(nodeId)) {
+      if (event.ord != null) baseAttrs._ord = event.ord
+      if (event.ts != null) baseAttrs._ts = event.ts
+    }
+    nodeAssert('baseline', nodeId, baseAttrs)
   }
 
   function handleGate(data, event) {

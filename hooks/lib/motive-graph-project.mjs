@@ -18,13 +18,15 @@
  *   - Deterministic for a fixed fold graph.
  *
  * Fields compile() produces that are NOT reconstructible from fold alone:
- *   decision_log[].ord        — event ordinal not stored in fold node attrs
- *   decision_log[].ts         — event timestamp not stored in fold node attrs
  *   decision_log[].slices     — requires ledger ground truth (empty on both sides
  *                               when compile() is called without groundTruth)
- *   baselines[].ord           — event ordinal not stored in fold
- *   baselines[].ts            — event timestamp not stored in fold
  *   baselines[].line          — shard line offset not stored in fold
+ *
+ * Fields that WERE non-reconstructible and are NOW reconstructible (stored in fold node attrs):
+ *   decision_log[].ord        — stored as node.attrs._ord (first-event semantics)
+ *   decision_log[].ts         — stored as node.attrs._ts (first-event semantics)
+ *   baselines[].ord           — stored as node.attrs._ord (first-event semantics)
+ *   baselines[].ts            — stored as node.attrs._ts (first-event semantics)
  *
  * Implements S5 consumer-equivalence harness (D-7, R-006, R-007).
  */
@@ -41,11 +43,7 @@
  * @type {Readonly<Record<string, string>>}
  */
 export const NON_RECONSTRUCTIBLE_FIELDS = Object.freeze({
-  'decision_log[].ord':    'Event ordinal not stored in fold node attrs',
-  'decision_log[].ts':     'Event timestamp not stored in fold node attrs',
   'decision_log[].slices': 'Requires ledger ground truth; empty on both sides without groundTruth',
-  'baselines[].ord':       'Event ordinal not stored in fold',
-  'baselines[].ts':        'Event timestamp not stored in fold',
   'baselines[].line':      'Shard line offset not stored in fold',
 })
 
@@ -162,7 +160,9 @@ export function projectFoldGraph(foldGraph, { events } = {}) {
       decision: a.decision ?? null,
       rationale: a.rationale ?? null,
       alternatives: Array.isArray(a.alternatives) ? a.alternatives : [],
-      // ord and ts are non-reconstructible (listed in NON_RECONSTRUCTIBLE_FIELDS)
+      // ord and ts are now reconstructible from fold node attrs (first-event semantics).
+      ord: a._ord ?? null,
+      ts: a._ts ?? null,
       supersedes: a.supersedes ?? null,
       superseded_by: supersededBy.get(String(id)) ?? a.superseded_by ?? null,
       resolves: a.resolves ?? null,
@@ -171,6 +171,17 @@ export function projectFoldGraph(foldGraph, { events } = {}) {
       // slices is non-reconstructible without ledger ground truth
       slices: [],
     }
+  })
+
+  // Sort by first-event ord (tie-break ts) to replicate compile()'s insertion order.
+  // This ordering is graph-only — no events array is required.
+  decision_log.sort((a, b) => {
+    const ao = a.ord ?? Infinity
+    const bo = b.ord ?? Infinity
+    if (ao !== bo) return ao - bo
+    const at = a.ts ?? ''
+    const bt = b.ts ?? ''
+    return at < bt ? -1 : at > bt ? 1 : 0
   })
 
   // ── 3. ac_coverage ─────────────────────────────────────────────────────────
@@ -248,11 +259,16 @@ export function projectFoldGraph(foldGraph, { events } = {}) {
     : null
 
   // ── 5. baselines ────────────────────────────────────────────────────────────
-  // compile() stores { name, ord, ts, shard, line }; ord/ts/line are non-reconstructible.
-  // Project only reconstructible fields: name, shard.
+  // compile() stores { name, ord, ts, shard, line }; line is non-reconstructible.
+  // ord and ts are now reconstructible from fold node attrs (_ord, _ts).
   const baselines = nodes
     .filter((n) => n.type === 'baseline')
-    .map((n) => ({ name: n.attrs.name ?? null, shard: n.attrs.shard ?? null }))
+    .map((n) => ({
+      name: n.attrs.name ?? null,
+      shard: n.attrs.shard ?? null,
+      ord: n.attrs._ord ?? null,
+      ts: n.attrs._ts ?? null,
+    }))
 
   return {
     objective,

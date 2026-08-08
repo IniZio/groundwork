@@ -107,9 +107,12 @@ describe('S5-AC2 — compile-essentials: objective', () => {
 describe('S5-AC2 — compile-essentials: decision_log (reconstructible fields)', () => {
   it('NON_RECONSTRUCTIBLE_FIELDS is non-empty and documents genuine gaps', () => {
     expect(Object.keys(NON_RECONSTRUCTIBLE_FIELDS).length).toBeGreaterThan(0)
-    // Confirm ord and ts are declared non-reconstructible
-    expect(NON_RECONSTRUCTIBLE_FIELDS).toHaveProperty('decision_log[].ord')
-    expect(NON_RECONSTRUCTIBLE_FIELDS).toHaveProperty('decision_log[].ts')
+    // ord and ts are NOW reconstructible from fold node attrs (_ord, _ts) — must NOT be listed.
+    expect(NON_RECONSTRUCTIBLE_FIELDS).not.toHaveProperty('decision_log[].ord')
+    expect(NON_RECONSTRUCTIBLE_FIELDS).not.toHaveProperty('decision_log[].ts')
+    // slices and line remain genuinely non-reconstructible.
+    expect(NON_RECONSTRUCTIBLE_FIELDS).toHaveProperty('decision_log[].slices')
+    expect(NON_RECONSTRUCTIBLE_FIELDS).toHaveProperty('baselines[].line')
   })
 
   for (const slug of MOTIVES) {
@@ -258,6 +261,17 @@ describe('S5-AC2 — compile-essentials: baselines (reconstructible fields)', ()
       const projNames = projected.baselines.map((b) => b.name).sort()
       const compNames = compiled.agent.baselines.map((b) => b.name).sort()
       expect(projNames).toEqual(compNames)
+    })
+
+    it(`${slug}: projected baseline ord and ts match compile() per-name`, () => {
+      const { projected, compiled } = fixtures.get(slug)
+      // ord and ts were removed from NON_RECONSTRUCTIBLE_FIELDS — this test enforces that claim.
+      for (const b of projected.baselines) {
+        const cb = compiled.agent.baselines.find((c) => c.name === b.name)
+        if (!cb) continue // name mismatch covered by the names test above
+        expect(b.ord, `baseline ${b.name} ord`).toBe(cb.ord)
+        expect(b.ts, `baseline ${b.name} ts`).toBe(cb.ts)
+      }
     })
   }
 })
@@ -458,6 +472,24 @@ describe('T2-AC4 — events-free projection: projectFoldGraph(fold) without even
       const projIds = projectedNoEvents.decision_log.map((d) => d.id)
       const compIds = compiled.agent.decision_log.map((d) => d.id)
       expect(projIds).toEqual(compIds)
+    })
+
+    it(`${slug}: events-free decision_log id order matches compile() — graph-only, survives serialization`, () => {
+      // Proves ordering is reconstructible from the graph alone without events access.
+      // JSON.parse(JSON.stringify(fold)) severs any possible closure over the events array,
+      // proving ordering survives serialization and that nothing outside the graph is reachable.
+      // Asserting id ORDER (not just "array is sorted") bites: reversing the sort comparator
+      // or breaking the first-event guard on a multi-event decision would flip/misplace entries.
+      const { fold, compiled } = fixtures.get(slug)
+      const foldCopy = JSON.parse(JSON.stringify(fold))
+      const proj = projectFoldGraph(foldCopy)
+      const projIds = proj.decision_log.map((d) => d.id)
+      const compIds = compiled.agent.decision_log.map((d) => d.id)
+      // Confirm ords are present (non-null) — proves _ord was persisted in fold node attrs.
+      const ords = proj.decision_log.map((d) => d.ord)
+      expect(ords.filter((o) => o != null).length, `${slug}: no ords on serialized projection — fold missing _ord attrs`).toBeGreaterThan(0)
+      // The real assertion: graph-only id order == compile() id order.
+      expect(projIds, `${slug}: graph-only decision_log id order diverges from compile()`).toEqual(compIds)
     })
 
     it(`${slug}: events-free decision status matches compile() for all entries`, () => {

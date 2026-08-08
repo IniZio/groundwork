@@ -3,7 +3,7 @@
  *
  * Assembles a schema-stable graph document (nodes + edges) for a given motive
  * slug by drawing from the real data sources:
- *   1. Compiled charter (via compile() + readOrderedEvents + readCharter)
+ *   1. Event-sourced fold (via assembleGraphFold + projectFoldGraph + readCharter)
  *   2. Tickets from .groundwork/motives/<slug>/tickets/
  *   3. Slices from .groundwork/runs/*.json (most-recently-modified matching motive_ref)
  *   4. Spec requirements from doc/specs/ ** /constraints.md (recursive)
@@ -22,7 +22,8 @@
 import path from 'node:path'
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { readOrderedEvents } from './journal-order.mjs'
-import { compile } from './motive-compile.mjs'
+import { assembleGraphFold } from './motive-graph-fold.mjs'
+import { projectFoldGraph } from './motive-graph-project.mjs'
 import { readCharter } from './motive-charter.mjs'
 
 const SCHEMA_VERSION = 1
@@ -215,11 +216,71 @@ function parseSpecRequirements(projectDir) {
 export async function assembleMotiveGraph({ projectDir, slug }) {
   const journalDir = path.join(projectDir, '.groundwork', 'journal')
 
-  // ── 1. Compile charter ────────────────────────────────────────────────────
-  const { events, malformed_lines } = readOrderedEvents(journalDir, { motive: slug })
+  // ── 1. Build motive graph surface from canonical event-sourced fold ───────
+  const { events } = readOrderedEvents(journalDir, { motive: slug })
+  const fold = assembleGraphFold(events)
+  const projected = projectFoldGraph(fold, { events })
+
+  // open_items: read from charter; resolve via events directly (compile-exact semantics).
+  // Supersession by another decision mutates the target's status in compile's decisionLogMap
+  // WITHOUT re-running the resolvedByDecisions check for that target.  Using projected
+  // decision_log's final status would wrongly un-resolve items whose decision was later
+  // superseded by a different one — only the decision's OWN subsequent event can remove it.
   const charter = readCharter({ projectDir, motive: slug })
-  const view = compile(events, { charter, malformedLines: malformed_lines })
-  const agent = view.agent
+  const resolvedByDecisions = new Map()
+  const _decisionMerged = new Map() // id → { status, resolves } accumulated from own events
+  for (const evt of events) {
+    if (evt.type !== 'DECISION') continue
+    const d = evt.data ?? {}
+    if (!d.id) continue
+    const prior = _decisionMerged.get(d.id)
+    if (!prior) {
+      _decisionMerged.set(d.id, { status: d.status ?? null, resolves: d.resolves ?? null })
+    } else {
+      if (d.status != null) prior.status = d.status
+      if (d.resolves != null) prior.resolves = d.resolves
+    }
+    const entry = _decisionMerged.get(d.id)
+    if (entry.status === 'accepted' && entry.resolves != null) {
+      resolvedByDecisions.set(entry.resolves, d.id)
+    } else if (entry.status !== 'accepted' && entry.resolves != null) {
+      if (resolvedByDecisions.get(entry.resolves) === d.id) {
+        resolvedByDecisions.delete(entry.resolves)
+      }
+    }
+  }
+  const openItems = (charter?.open_items ?? []).map((item) => ({
+    id: item.id,
+    kind: item.kind ?? null,
+    statement: item.statement ?? null,
+    body: item.body ?? null,
+    owner: item.owner ?? null,
+    blocked_by: item.blocked_by ?? null,
+    resolved_by: resolvedByDecisions.get(item.id) ?? null,
+    graduated_to: item.graduated_to ?? null,
+  }))
+
+  // ac_coverage: merge charter-declared ACs as unmet when no events exist yet.
+  // compile() seeds charter.acceptance_criteria so they appear as unmet even without events.
+  // projectFoldGraph only sees ACs from fold nodes (AC_COVERAGE events) — no charter read.
+  // We merge the gap here to preserve schema stability (D-4).
+  const projectedAcIds = new Set([
+    ...(projected.ac_coverage?.met ?? []).map((a) => a.id),
+    ...(projected.ac_coverage?.unmet ?? []).map((a) => a.id),
+  ])
+  const charterOnlyUnmet = (charter?.acceptance_criteria ?? [])
+    .filter((ac) => ac?.id != null && !projectedAcIds.has(String(ac.id)))
+    .map((ac) => ({ id: String(ac.id), covering: [], missing: [], met: false, status_unknown: false }))
+
+  const agent = {
+    objective: projected.objective,
+    decision_log: projected.decision_log,
+    open_items: openItems,
+    ac_coverage: {
+      met: projected.ac_coverage?.met ?? [],
+      unmet: [...(projected.ac_coverage?.unmet ?? []), ...charterOnlyUnmet],
+    },
+  }
 
   const nodes = []
 

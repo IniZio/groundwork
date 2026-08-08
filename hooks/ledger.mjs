@@ -38,9 +38,10 @@ import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey, keyPath } from './lib/gate-seal.mjs'
 import { checkPace, resolvedUnits } from './lib/pacing.mjs'
-import { emitHookEvent } from './lib/journal-io.mjs'
+import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
+import { assembleGraphFold, validateFoldRefs } from './lib/motive-dag.mjs'
 
 /**
  * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
@@ -119,6 +120,56 @@ function assertTicket(val) {
   if (!VALID_TICKET_RE.test(val)) {
     die(`invalid ticket id "${val}". Must be a bare id (e.g. "t1", "my-ticket") — no path separators or .md suffix.`, 2)
   }
+}
+
+/**
+ * Load the canonical fold for a motive from its journal events.
+ *
+ * Graceful-degradation rule (R-008): returns null when motiveId is falsy,
+ * the journal directory does not exist, no events are found for the motive,
+ * or fold assembly fails for any reason. Callers skip validation on null.
+ *
+ * @param {string} projectDir
+ * @param {string|undefined} motiveId
+ * @returns {object|null}
+ */
+function _loadMotiveFold(projectDir, motiveId) {
+  if (!motiveId) return null
+  const journalDir = path.join(projectDir, '.groundwork', 'journal')
+  if (!existsSync(journalDir)) return null
+  try {
+    const allEvents = readAllEvents(journalDir)
+    const { shown: motiveEvents } = filterEvents(allEvents, { motive: motiveId })
+    if (motiveEvents.length === 0) return null
+    return assembleGraphFold(motiveEvents)
+  } catch {
+    return null // never crash a ledger write due to fold loading failure
+  }
+}
+
+/**
+ * Validate slice ref ids against the canonical fold (MOTIVE-DAG-R-008).
+ * Writes a named diagnostic to stderr and exits nonzero for dangling refs.
+ * No-op when fold is null (graceful degradation: no motive / no journal / no events).
+ *
+ * @param {object|null} fold      — canonical fold from _loadMotiveFold, or null
+ * @param {string[]} rawIds       — raw values from the ledger field (e.g. ['D-1', 'AC-1'])
+ * @param {string} fieldName      — 'covers_ac' or 'decisions'
+ * @param {string} nodeType       — 'ac' or 'decision' (passed to validateFoldRefs)
+ * @param {string} idPrefix       — 'ac:' or 'decision:' (prepended for fold lookup)
+ */
+function _assertFoldRefs(fold, rawIds, fieldName, nodeType, idPrefix) {
+  if (!fold || !rawIds || rawIds.length === 0) return
+  const prefixedIds = rawIds.map((id) => `${idPrefix}${id}`)
+  const { missing } = validateFoldRefs(fold, prefixedIds, nodeType)
+  if (missing.length === 0) return
+  for (const prefixedId of missing) {
+    const rawId = prefixedId.slice(idPrefix.length)
+    process.stderr.write(
+      `ledger error [MOTIVE-DAG-R-008]: ${fieldName} references unknown id "${rawId}" — not found in motive canonical fold\n`,
+    )
+  }
+  process.exit(1)
 }
 
 /** Validate decision ids (shape-only). Ids not matching /^D-\d+$/ warn to stderr; exits 0. */
@@ -840,6 +891,16 @@ function cmdAdd(args) {
   const coversAcRaw = flags['covers-ac'] != null ? flags['covers-ac'].split(',').map((s) => s.trim()).filter(Boolean) : null
   const decisionsRaw = flags['decisions'] != null ? flags['decisions'].split(',').map((s) => s.trim()).filter(Boolean) : null
 
+  // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
+  // Graceful degradation: skips validation when no motive, no journal, or no motive events.
+  if (coversAcRaw != null || decisionsRaw != null) {
+    const addProjectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+    const existingLedger = readLedger(ledgerPath())
+    const fold = _loadMotiveFold(addProjectDir, existingLedger?.motive)
+    if (coversAcRaw != null) _assertFoldRefs(fold, coversAcRaw, 'covers_ac', 'ac', 'ac:')
+    if (decisionsRaw != null) _assertFoldRefs(fold, decisionsRaw, 'decisions', 'decision', 'decision:')
+  }
+
   mutateLedgerChecked(ledgerPath(), (l) => {
     // Create a minimal ledger skeleton if none exists yet
     const ledger = l ?? { active: true, brief: '', slices: [], gate: {} }
@@ -911,6 +972,22 @@ function cmdSet(args) {
   const updated = []
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+
+  // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
+  // Graceful degradation: skips validation when no motive, no journal, or no motive events.
+  if (flags['covers-ac'] != null || flags['decisions'] != null) {
+    const setLedger = readLedger(ledgerPath())
+    const fold = _loadMotiveFold(projectDir, setLedger?.motive)
+    if (flags['covers-ac'] != null) {
+      const acIds = flags['covers-ac'].split(',').map((v) => v.trim()).filter(Boolean)
+      _assertFoldRefs(fold, acIds, 'covers_ac', 'ac', 'ac:')
+    }
+    if (flags['decisions'] != null) {
+      const decIds = flags['decisions'].split(',').map((v) => v.trim()).filter(Boolean)
+      _assertFoldRefs(fold, decIds, 'decisions', 'decision', 'decision:')
+    }
+  }
+
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
     const slices = Array.isArray(l.slices) ? l.slices : []

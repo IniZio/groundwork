@@ -187,6 +187,7 @@ describe("S0: spec-io schema and index API", () => {
         "MOTIVE-DAG-R-005",
         "MOTIVE-DAG-R-006",
         "MOTIVE-DAG-R-007",
+        "MOTIVE-DAG-R-008",
         "ORCHESTRATION-R-001",
         "ORCHESTRATION-R-002",
         "ORCHESTRATION-R-003",

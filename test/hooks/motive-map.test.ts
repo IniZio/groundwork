@@ -1652,3 +1652,56 @@ describe('regenerateMotiveMap — PAUSE selection (newest wins)', () => {
     expect(mapContent).not.toContain('OLD-PAUSE')
   })
 })
+
+// ---------------------------------------------------------------------------
+// AC-3 rollback guard — GROUNDWORK_MAP_LEGACY_DECISIONS sensitivity
+// ---------------------------------------------------------------------------
+
+describe('GROUNDWORK_MAP_LEGACY_DECISIONS rollback guard — sensitivity-proven', () => {
+  let dir: string
+  beforeEach(() => { dir = tmp() })
+  afterEach(() => {
+    delete process.env.GROUNDWORK_MAP_LEGACY_DECISIONS
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('fold path collapses multi-event same-id to one entry; legacy path keeps both (guard changes behavior)', () => {
+    // Two DECISION events sharing the same data.id but different msg text.
+    // Fold: id-keyed → one node, first event's msg via msgMap.
+    // Legacy: text-dedup sees different text → both entries kept (newest first).
+    makeCharter(dir, 'm', `# motive: m\n\n## Objective\nGuard test.\n`)
+    writeDecisions(dir, 'm', [
+      {
+        ts: '2026-01-01T10:00:00.000Z',
+        session: 's1',
+        motive: 'm',
+        type: 'DECISION',
+        msg: 'FIRST: initial decision text',
+        data: { id: 'D-guard' },
+      },
+      {
+        ts: '2026-01-01T11:00:00.000Z',
+        session: 's2',
+        motive: 'm',
+        type: 'DECISION',
+        msg: 'SECOND: revised decision text',
+        data: { id: 'D-guard' },
+      },
+    ])
+
+    // Fold path (default): one node per id — fold collapses same id; msgMap newest-wins.
+    // Only the newest event's msg appears; the original (first) is superseded.
+    delete process.env.GROUNDWORK_MAP_LEGACY_DECISIONS
+    regenerateMotiveMap(dir, 'm')
+    const foldContent = readMap(dir, 'm')
+    expect(foldContent).toContain('SECOND: revised decision text')   // newest-wins
+    expect(foldContent).not.toContain('FIRST: initial decision text') // first dropped by collapse
+
+    // Legacy path: both entries present — text-dedup keeps all entries with different msg text.
+    process.env.GROUNDWORK_MAP_LEGACY_DECISIONS = '1'
+    regenerateMotiveMap(dir, 'm')
+    const legacyContent = readMap(dir, 'm')
+    expect(legacyContent).toContain('SECOND: revised decision text')
+    expect(legacyContent).toContain('FIRST: initial decision text')
+  })
+})

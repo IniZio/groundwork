@@ -74,3 +74,13 @@ For every event type in `VALID_TYPES`, the fold **shall** map every field presen
 - **Verification**: manual — run equivalence harness over all 5 motive corpora; inspect diff output; confirm zero divergence lines; re-run after any fold change to detect regressions
 - **Criticality**: must
 - **Source** codify-motive-dag#D-7 · **Slices** S5
+
+## MOTIVE-DAG-R-008 — Consumer-side ledger reference validation against the canonical fold {#motive-dag-r-008}
+
+**When** a ledger operation writes or validates `covers_ac` or `decisions` fields on a slice, the ledger **shall** resolve each referenced id against the canonical event-sourced fold — confirming that every AC id and every decision id exists as a node in the current folded graph — and **shall** emit a named diagnostic identifying the field (`covers_ac` or `decisions`) and the unknown id, then exit with a nonzero status, for any dangling reference rather than silently accepting it.
+
+- **Why** — a dangling `covers_ac` reference reports false coverage for an AC that does not exist in the canonical graph, undermining the coverage guarantee that drives release decisions; a dangling `decisions` reference breaks the rationale audit chain (the link from implementation slice back to the recorded decision), violating the audit guarantee of D-5. The canonical fold (per [MOTIVE-DAG-R-001](#motive-dag-r-001)) is the single source of truth for which AC and decision nodes exist; any consumer that bypasses it creates a consistency gap between the ledger and the graph that cannot be detected by inspecting either alone.
+- **Fit criterion** — given a motive whose canonical fold contains AC node `AC-1` and decision node `D-1`, calling `ledger set <slice-id> --covers-ac "AC-999"` exits nonzero and prints a diagnostic naming `covers_ac` and `AC-999`; calling `ledger set <slice-id> --decisions "D-999"` exits nonzero and prints a diagnostic naming `decisions` and `D-999`; calling `ledger set <slice-id> --covers-ac "AC-1" --decisions "D-1"` exits zero and writes the fields; the diagnostic message is machine-readable enough for a human to identify which id is unknown and in which field.
+- **Verification**: automated — unit test: construct a synthetic fold with known node ids; assert that an unknown AC id causes exit code 1 with a diagnostic naming the field and the id; assert that an unknown decision id causes exit code 1 with a diagnostic naming the field and the id; assert that valid ids in both fields cause exit code 0.
+- **Criticality**: must
+- **Source** live-surface-cutover#AC-4

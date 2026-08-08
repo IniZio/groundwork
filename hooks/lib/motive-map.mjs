@@ -11,6 +11,8 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { readCharter } from './motive-charter.mjs'
 import { readAllEvents, filterEvents } from './journal-io.mjs'
+import { readOrderedEvents } from './journal-order.mjs'
+import { assembleGraphFold } from './motive-dag.mjs'
 import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
 import { resolvedUnits, inFlightUnit, isExhausted } from './pacing.mjs'
 
@@ -52,7 +54,10 @@ function _generate(projectDir, motive) {
   // AC renderer uses a separate union of ALL sessions' slices so that slice ids
   // reused across sessions (D-12) are tracked per-session, not collapsed.
   const acSlices           = _readAllMotiveSlicesForAC(projectDir, motive)
-  const journalDecisions   = _readDecisions(projectDir, motive)
+  const USE_LEGACY_DECISIONS = process.env.GROUNDWORK_MAP_LEGACY_DECISIONS === '1'
+  const journalDecisions   = USE_LEGACY_DECISIONS
+    ? _readDecisions(projectDir, motive)
+    : _readDecisionsFromFold(projectDir, motive)
   // Fall back to decisions embedded in the charter file (# Decisions section) when the
   // journal has no DECISION events — this covers host projects that never emitted them.
   const decisions          = journalDecisions.length > 0
@@ -229,6 +234,88 @@ function _readTicketFiles(motiveDir) {
     return []
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fold-based decision reader (AC-3: canonical fold path)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read decisions for MAP rendering via the canonical fold.
+ *
+ * Builds a msgMap keyed by event.ord → event.msg so that legacy decisions
+ * (no data.title / data.decision) can be recovered from the event stream.
+ * The fold node's attrs._ord points to the first event's ord, so the lookup
+ * is stable for single-event decisions (returns the only event's msg, identical
+ * to legacy) and shows first-event's msg for multi-event decisions (the
+ * accepted TBD-2 divergence for D-88/D-89).
+ *
+ * Guard: set GROUNDWORK_MAP_LEGACY_DECISIONS=1 to fall back to _readDecisions.
+ */
+function _readDecisionsFromFold(projectDir, motive) {
+  const journalDir = join(projectDir, '.groundwork', 'journal')
+  if (!existsSync(journalDir)) return []
+  try {
+    const { events: orderedEvents } = readOrderedEvents(journalDir, { motive })
+    // Build msgMap: first-event-ord → newest-event-msg per decision.
+    // Keyed by the first event's ord (= node.attrs._ord, stamped first-event-wins by the fold)
+    // so lookups via attrs._ord work without rebuilding the nodeId formula.
+    // For multi-event same-id decisions, newest-wins for msg so the surviving MAP line
+    // shows the most recent revision rather than the stale original text.
+    const msgMap = new Map()         // first-event-ord → newest msg
+    const idsFirstOrd = new Map()    // data.id → first event's ord (for grouping)
+    for (const ev of orderedEvents) {
+      if (ev.type !== 'DECISION') continue
+      const decId = ev.data?.id ?? null
+      if (decId) {
+        // Structured decision: group by id, track first ord, always update msg (newest wins)
+        if (!idsFirstOrd.has(decId)) idsFirstOrd.set(decId, ev.ord)
+        msgMap.set(idsFirstOrd.get(decId), ev.msg ?? null)
+      } else {
+        // Legacy (id-less) decision: each event has a unique _legacy_ord node; set once
+        if (!msgMap.has(ev.ord)) msgMap.set(ev.ord, ev.msg ?? null)
+      }
+    }
+    const fold = assembleGraphFold(orderedEvents)
+    // Use fold.nodes directly (fold already id-deduped via nodesMap) rather than
+    // readOrderedDecisionsFromFold — the latter's internal dedup uses attrs.title/decision
+    // for text comparison, which is null for msg-only events → collapses distinct decisions.
+    // Instead we recover msg via msgMap and apply _dedupeDecisions (which uses recovered msg).
+    const decisionNodes = fold.nodes
+      .filter((n) => n.type === 'decision')
+      .sort((a, b) => ((b.attrs._ord ?? 0) - (a.attrs._ord ?? 0)))
+    const decisionLikes = decisionNodes.map((node) => _foldNodeToDecisionLike(node, msgMap))
+    return _dedupeDecisions(decisionLikes)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Convert a fold decision node to the shape expected by the MAP renderer:
+ *   { ts, msg, data: { id, supersedes, retires, decision } }
+ *
+ * msg priority: event.msg (via msgMap on _ord) → attrs.title → attrs.decision → null
+ * This preserves the legacy event.msg label for single-event decisions while
+ * allowing attrs.title to surface for structured multi-event decisions.
+ */
+function _foldNodeToDecisionLike(node, msgMap) {
+  const rawId   = node.id.replace(/^decision:/, '')
+  const isLegacy = rawId.startsWith('_legacy_ord')
+  return {
+    ts:   node.attrs._ts   ?? null,
+    msg:  msgMap.get(node.attrs._ord) ?? node.attrs.title ?? node.attrs.decision ?? null,
+    data: {
+      id:         isLegacy ? null : rawId,
+      supersedes: node.attrs.supersedes ?? null,
+      retires:    node.attrs.retires    ?? null,
+      decision:   node.attrs.decision   ?? null,
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy decision reader (retained behind GROUNDWORK_MAP_LEGACY_DECISIONS=1)
+// ---------------------------------------------------------------------------
 
 function _readDecisions(projectDir, motive) {
   const journalDir = join(projectDir, '.groundwork', 'journal')

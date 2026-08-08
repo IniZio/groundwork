@@ -143,8 +143,9 @@ export declare function attrSetRevision(
 /**
  * Append a GRAPH_MUTATE event to a journal shard via O_APPEND atomic write.
  *
- * Uses `appendEvent()` directly (not `emitHookEvent`) to bypass the
- * VALID_TYPES guard — GRAPH_MUTATE is not yet registered in VALID_TYPES.
+ * Uses `appendEvent()` directly (not `emitHookEvent`) for minimal-dependency
+ * writes.  GRAPH_MUTATE is registered in VALID_TYPES and has a native fold
+ * handler in assembleGraphFold (T2-AC2).
  * The write is still append-only to the same shard directory.
  */
 export declare function appendMutationEvent(shardPath: string, event: MutationRevision): void
@@ -154,12 +155,12 @@ export declare function appendMutationEvent(shardPath: string, event: MutationRe
 /**
  * Fold a mixed stream of regular journal events and GRAPH_MUTATE revision events.
  *
- * Regular events are folded by `assembleGraphFold()`; GRAPH_MUTATE revisions
- * are overlaid in `ts` order with the same `at`-filter.  On a pure
- * GRAPH_MUTATE stream produces the same result as a native fold handler would.
+ * Thin wrapper around `assembleGraphFold()`.  GRAPH_MUTATE events are now
+ * natively handled by assembleGraphFold's dispatch table (T2-AC2 / D-11) and
+ * are interleaved by `ts` with regular events in a single pass.  Callers that
+ * previously depended on the overlay path receive the same result.
  *
- * `motive` is derived from the first event in the FULL stream (not just the
- * regular subset) so a pure GRAPH_MUTATE stream still reports the correct slug.
+ * `motive` is derived from the first event in the full stream.
  */
 export declare function foldWithMutations(
   allEvents: object[],

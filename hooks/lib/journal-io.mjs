@@ -72,6 +72,13 @@ export const VALID_TYPES = [
   'MOTIVE_CREATED',
   'BASELINE',
   /**
+   * GRAPH_MUTATE — direct graph-primitive event emitted by motive-graph-mutate.mjs.
+   * Carries one of five operations in data.op: node.assert, node.retire,
+   * edge.assert, edge.retire, attr.set.  Native fold handler in assembleGraphFold
+   * applies the operation directly to the working graph state.
+   */
+  'GRAPH_MUTATE',
+  /**
    * AC_COVERAGE — two payload forms:
    *   Coverage form:    { ac, slice }          — emitted by `ledger complete` for each
    *                                               (slice, AC) pair when the completed slice

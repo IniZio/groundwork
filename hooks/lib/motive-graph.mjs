@@ -75,6 +75,19 @@ export const EDGE_KINDS = {
 
   /** req:* → decision:* — cross-link, not a hierarchy edge */
   spec_xref: { drives_layering: false, render: 'muted', direction: 'lateral' },
+
+  // ── Decision-lifecycle cross-links (D-2) ────────────────────────────────
+  // None of these change layering or topology; all render muted as lateral
+  // peer links.  Nothing emits them yet (fold wiring is a separate slice).
+
+  /** decision:* → decision:* — this decision supersedes an older one */
+  supersedes: { drives_layering: false, render: 'muted', direction: 'lateral' },
+
+  /** decision:* → decision:* — this decision retires/closes another */
+  retires: { drives_layering: false, render: 'muted', direction: 'lateral' },
+
+  /** decision:* → decision:* — this decision revises (partially amends) another */
+  revises: { drives_layering: false, render: 'muted', direction: 'lateral' },
 }
 
 /** Truncate a string to at most `max` characters (adds ellipsis). */

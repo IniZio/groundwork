@@ -16,18 +16,15 @@
  * inject a timestamp.
  *
  * Write path: appendMutationEvent(shardPath, event) — uses appendEvent()
- * (O_APPEND atomic write) directly, bypassing emitHookEvent's VALID_TYPES
- * guard.  GRAPH_MUTATE is not yet in VALID_TYPES — this is a known follow-up:
- * a native fold handler + VALID_TYPES entry is needed for read-path visibility
- * (the current assembleGraphFold silently skips GRAPH_MUTATE events).
+ * (O_APPEND atomic write).  GRAPH_MUTATE is registered in VALID_TYPES and
+ * has a native fold handler in assembleGraphFold (T2-AC2); emitHookEvent
+ * would also accept it, but appendEvent is used for minimal-dependency writes.
  *
- * Fold path: foldWithMutations(allEvents, opts) — wraps assembleGraphFold()
- * for regular (non-GRAPH_MUTATE) events, then overlays GRAPH_MUTATE revisions
- * in ts order, applying the same `ts ≤ at` predicate as the frozen fold.
- * On a pure GRAPH_MUTATE stream it produces the same result as a native fold
- * handler would.  On mixed streams GRAPH_MUTATE events are applied after the
- * base fold ("mutation overlay" semantic); strict ts-merge requires a native
- * fold handler (follow-up).
+ * Fold path: foldWithMutations(allEvents, opts) — thin wrapper around
+ * assembleGraphFold().  GRAPH_MUTATE events are now handled natively by
+ * assembleGraphFold's dispatch table (interleaved by ts with regular events),
+ * so read-path consumers receive the correct ts-ordered graph state without a
+ * separate mutation-overlay pass.
  *
  * Purity contract:
  *   - Constructors are pure: (args, meta) → event object, no I/O.
@@ -183,32 +180,23 @@ export function appendMutationEvent(shardPath, event) {
 /**
  * foldWithMutations(allEvents, opts)
  *
- * Wraps assembleGraphFold() to handle GRAPH_MUTATE revision events alongside
- * the existing event vocabulary.
+ * Thin wrapper around assembleGraphFold() for mixed event streams that include
+ * GRAPH_MUTATE revision events.
  *
- * Strategy:
- *   1. Partition: separate GRAPH_MUTATE events from all other (regular) events.
- *   2. Fold regular events via the frozen assembleGraphFold() (applies at filter
- *      internally).
- *   3. Overlay GRAPH_MUTATE revisions onto the base graph in ts order, applying
- *      the same `ts ≤ at` predicate.
+ * GRAPH_MUTATE events are now registered in VALID_TYPES and handled natively
+ * by assembleGraphFold's dispatch table (T2-AC2 / D-11).  They are interleaved
+ * with regular events by ts, so the fold produces the correct ts-ordered graph
+ * state in a single pass.  No separate partition + overlay step is needed.
  *
- * On a pure GRAPH_MUTATE stream (all events are GRAPH_MUTATE), step 2 returns
- * an empty base graph and step 3 builds the full graph from the revisions —
- * producing the same result as a native fold handler would.
- *
- * motive is derived from the FULL allEvents array (not just the regular subset)
- * so a pure GRAPH_MUTATE stream still surfaces the correct motive slug.
- *
- * Known limitation (mixed streams): GRAPH_MUTATE events are applied AFTER the
- * base fold, not interleaved by ts.  "mutation overlay" semantic is documented;
- * strict ts-interleaving requires a native fold handler (follow-up).
+ * This function is kept as the public API for callers that were previously using
+ * the overlay path — the behaviour is now identical to calling assembleGraphFold
+ * directly with all events.
  *
  * @param {object[]} allEvents
  *   Pre-ordered journal events (regular + GRAPH_MUTATE mixed).
  * @param {object} [opts]
- * @param {string} [opts.at]         ISO-8601 cutoff; fold only events ≤ this ts.
- * @param {object} [opts.charter]    Passed through to assembleGraphFold.
+ * @param {string} [opts.at]          ISO-8601 cutoff; fold only events ≤ this ts.
+ * @param {object} [opts.charter]     Passed through to assembleGraphFold.
  * @param {object} [opts.groundTruth] Passed through to assembleGraphFold.
  * @returns {{
  *   schema_version: number,
@@ -218,85 +206,6 @@ export function appendMutationEvent(shardPath, event) {
  *   attrs: object
  * }}
  */
-export function foldWithMutations(allEvents, { at, charter, groundTruth } = {}) {
-  // Derive motive from the FULL stream (mirrors assembleGraphFold's derivation).
-  const motive = allEvents.length > 0 ? (allEvents[0].motive ?? '') : ''
-
-  // Partition.
-  const regularEvents = allEvents.filter((e) => e.type !== GRAPH_MUTATE)
-  const mutateEvents  = allEvents.filter((e) => e.type === GRAPH_MUTATE)
-
-  // Fold regular events via the frozen fold (applies at filter internally).
-  const base = assembleGraphFold(regularEvents, { at, charter, groundTruth })
-
-  // Build working graph on top of base fold result.
-  // base.nodes / base.edges are already retired-stripped; we track retired flag
-  // only for items we retire during mutation processing below.
-  /** @type {Map<string, {id:string, type:string, attrs:object, retired?:boolean}>} */
-  const nodesMap = new Map()
-  for (const n of base.nodes) {
-    nodesMap.set(n.id, { id: n.id, type: n.type, attrs: { ...n.attrs } })
-  }
-  /** @type {Array<{kind:string, from:string, to:string, retired?:boolean}>} */
-  const edgesArr = base.edges.map((e) => ({ ...e }))
-
-  // Apply GRAPH_MUTATE revisions filtered by at, sorted by ts (stable).
-  const filtered = mutateEvents.filter((e) => at == null || e.ts <= at)
-  filtered.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
-
-  for (const event of filtered) {
-    const d = event.data ?? {}
-    switch (d.op) {
-      case 'node.assert': {
-        const existing = nodesMap.get(d.id)
-        if (existing) {
-          // Mirror fold's nodeAssert: merge attrs without clearing retired.
-          Object.assign(existing.attrs, d.attrs ?? {})
-        } else {
-          nodesMap.set(d.id, { id: d.id, type: d.kind, attrs: { ...(d.attrs ?? {}) } })
-        }
-        break
-      }
-      case 'node.retire': {
-        const n = nodesMap.get(d.id)
-        if (n) {
-          n.retired = true
-          n.attrs._retired_by = d.by
-        }
-        break
-      }
-      case 'edge.assert': {
-        const dup = edgesArr.some(
-          (e) => e.kind === d.kind && e.from === d.from && e.to === d.to && !e.retired
-        )
-        if (!dup) edgesArr.push({ kind: d.kind, from: d.from, to: d.to })
-        break
-      }
-      case 'edge.retire': {
-        const e = edgesArr.find(
-          (e) => e.kind === d.kind && e.from === d.from && e.to === d.to && !e.retired
-        )
-        if (e) e.retired = true
-        break
-      }
-      case 'attr.set': {
-        const n = nodesMap.get(d.nodeId)
-        if (n) n.attrs[d.key] = d.value
-        break
-      }
-      // Unknown ops are silently skipped (forward-compatible).
-    }
-  }
-
-  // Build output: strip retired items (mirror assembleGraphFold output contract).
-  const nodes = Array.from(nodesMap.values()).filter((n) => !n.retired)
-  const edges = edgesArr.filter((e) => !e.retired)
-
-  return {
-    schema_version: base.schema_version,
-    motive,
-    nodes,
-    edges,
-    attrs: base.attrs,
-  }
+export function foldWithMutations(allEvents, opts = {}) {
+  return assembleGraphFold(allEvents, opts)
 }

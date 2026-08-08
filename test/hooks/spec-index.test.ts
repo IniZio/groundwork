@@ -4,7 +4,7 @@
  * These tests run against the real doc/specs/ tree (not a temp-dir fixture), because the
  * acceptance criteria reference the four concept directories that actually exist in this repo.
  *
- * S3-AC1 — index.md contains a ## Concepts table listing all 4 concept IDs
+ * S3-AC1 — index.md contains a ## Concepts table listing all 5 concept IDs
  * S3-AC2 — Concepts table rows use spec.yaml values (manifest path, not fallback)
  * S3-AC3 — doc/specs/INDEX.md does NOT exist after build
  * S3-AC4 — coverage.json is byte-identical across two consecutive builds; no generated_at field
@@ -58,11 +58,11 @@ function extractConceptsSection(md: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// S3-AC1 — ## Concepts table present; all 4 concept IDs appear
+// S3-AC1 — ## Concepts table present; all 5 concept IDs appear
 // ---------------------------------------------------------------------------
 
-describe('S3-AC1 — index.md Concepts section lists all 4 concept IDs', () => {
-  it('S3-AC1: build succeeds and index.md contains a ## Concepts table with all 4 concept IDs', { timeout: 30_000 }, () => {
+describe('S3-AC1 — index.md Concepts section lists all 5 concept IDs', () => {
+  it('S3-AC1: build succeeds and index.md contains a ## Concepts table with all 5 concept IDs', { timeout: 30_000 }, () => {
     const r = runBuild()
     expect(r.code, `build failed\nstdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0)
 
@@ -80,8 +80,8 @@ describe('S3-AC1 — index.md Concepts section lists all 4 concept IDs', () => {
     expect(section).toContain('| Status |')
     expect(section).toContain('| Views |')
 
-    // All 4 concept IDs must appear in the Concepts section table
-    const EXPECTED_CONCEPT_IDS = ['C-ARTIFACT', 'C-ENFORCEMENT', 'C-ORCHESTRATION', 'C-VERIFICATION']
+    // All 5 concept IDs must appear in the Concepts section table
+    const EXPECTED_CONCEPT_IDS = ['C-ARTIFACT', 'C-ENFORCEMENT', 'C-MOTIVE-DAG', 'C-ORCHESTRATION', 'C-VERIFICATION']
     for (const id of EXPECTED_CONCEPT_IDS) {
       expect(section, `Concepts section must contain concept ID "${id}"`).toContain(id)
     }
@@ -105,9 +105,9 @@ describe('S3-AC2 — Concepts table rows use spec.yaml manifest values', () => {
     expect(section).not.toContain('*(no manifest)*')
 
     // Status must not be the fallback value '—' for any concept row
-    // (All 4 spec.yaml files have status: review)
+    // (All 5 spec.yaml files have status: review)
     const rows = section.split('\n').filter(l => l.startsWith('| C-'))
-    expect(rows.length, 'Concepts table must have 4 data rows').toBe(4)
+    expect(rows.length, 'Concepts table must have 5 data rows').toBe(5)
 
     for (const row of rows) {
       const cells = row.split('|').map(c => c.trim())

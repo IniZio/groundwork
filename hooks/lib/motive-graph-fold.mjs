@@ -32,6 +32,21 @@ import { EDGE_KINDS } from './motive-graph.mjs'
 export const SCHEMA_VERSION = 1
 
 /**
+ * A Set subclass whose .has() always returns true.
+ *
+ * Used in CONSUMED_FIELDS for attribute-mutating handlers that preserve the
+ * WHOLE event data object via spread (passthrough semantics).  Any field name
+ * is therefore "consumed", making the fold structurally lossless by construction
+ * rather than by field enumeration.  Iterating the set (e.g. [...set]) returns
+ * [] since no elements are stored — the == losslessness check in the equivalence
+ * test correctly interprets this as "no declared-but-unpopulated fields".
+ */
+class AllFieldsSet extends Set {
+  // eslint-disable-next-line no-unused-vars
+  has(_field) { return true }
+}
+
+/**
  * Legal node kinds (R-001 node schema + `baseline` from D-8).
  * @type {ReadonlySet<string>}
  */
@@ -52,14 +67,14 @@ export const NODE_KINDS = Object.freeze(
  * Fields explicitly consumed per VALID_TYPE.
  *
  * Rules:
- *   - "motive_provenance" is explicitly-ignored provenance (S1-AC1 exemption).
- *     It appears in many events as an internal routing hint and is listed here
- *     so the losslessness test counts it as consumed.
- *   - S2 extends entries for MILESTONE, VERIFICATION, and PAUSE with fields
- *     observed in the full 5-motive corpus census.
- *   - Types absent from all 5 existing motive streams (SPEC_CHANGE, LINT_DRIFT,
- *     PROTOTYPE_RESULT, FAILURE, WAIVER, HANDOFF, SESSION_START, SPEC_DRIFT)
- *     are mapped to the fields used in S2-AC3 synthetic fixture events.
+ *   - MOTIVE_CREATED, DECISION, BASELINE, AC_COVERAGE: enumerated fields (structural
+ *     node-creating handlers where field names drive graph logic).
+ *   - All attribute-mutating handlers (GATE, MILESTONE, TASK_COMPLETE, SESSION_END,
+ *     VERIFICATION, PAUSE, SESSION_START, SPEC_CHANGE, LINT_DRIFT, PROTOTYPE_RESULT,
+ *     FAILURE, WAIVER, HANDOFF, SPEC_DRIFT): use AllFieldsSet — passthrough semantics,
+ *     any field is considered consumed, making losslessness structural rather than by
+ *     enumeration.  Prevents field-drop when events carry un-enumerated fields.
+ *   - GRAPH_MUTATE: uses AllFieldsSet — ops carry different field sets per op type.
  *
  * @type {Readonly<Record<string, ReadonlySet<string>>>}
  */
@@ -86,66 +101,34 @@ export const CONSUMED_FIELDS = Object.freeze({
       'supersedes',
       'items_registered',
       'decision',
+      'motive_provenance',
     ])
   ),
 
   BASELINE: Object.freeze(new Set(['name', 'shard'])),
 
-  GATE: Object.freeze(
-    new Set(['verdict', 'citation', 'rubric', 'which', 'motive_provenance'])
-  ),
-
-  MILESTONE: Object.freeze(
-    new Set([
-      'id',
-      'items',
-      'note',
-      'ownership',
-      'plan',
-      'range',
-      'reason',
-      'slices',
-      'supersedes',
-      'amendments',
-      'amends',
-      'decisions',
-      'event',
-      'motive_provenance',
-      // S2: fields observed in 5-motive corpus census
-      'waves',
-      'pacing_override',
-      'spec_traceability',
-    ])
-  ),
-
   AC_COVERAGE: Object.freeze(
     new Set(['ac', 'slice', 'covering', 'motive_provenance'])
   ),
 
-  TASK_COMPLETE: Object.freeze(
-    new Set(['slice', 'slice_id', 'session_id', 'motive_provenance'])
-  ),
+  // Attribute-mutating handlers: AllFieldsSet — passthrough, any field consumed.
+  GATE:             Object.freeze(new AllFieldsSet()),
+  MILESTONE:        Object.freeze(new AllFieldsSet()),
+  TASK_COMPLETE:    Object.freeze(new AllFieldsSet()),
+  SESSION_END:      Object.freeze(new AllFieldsSet()),
+  VERIFICATION:     Object.freeze(new AllFieldsSet()),
+  PAUSE:            Object.freeze(new AllFieldsSet()),
+  SESSION_START:    Object.freeze(new AllFieldsSet()),
+  SPEC_CHANGE:      Object.freeze(new AllFieldsSet()),
+  LINT_DRIFT:       Object.freeze(new AllFieldsSet()),
+  PROTOTYPE_RESULT: Object.freeze(new AllFieldsSet()),
+  FAILURE:          Object.freeze(new AllFieldsSet()),
+  WAIVER:           Object.freeze(new AllFieldsSet()),
+  HANDOFF:          Object.freeze(new AllFieldsSet()),
+  SPEC_DRIFT:       Object.freeze(new AllFieldsSet()),
 
-  SESSION_END: Object.freeze(new Set(['outcome', 'motive_provenance'])),
-
-  // S2: fields observed in graph-pilot and groundwork-development corpora.
-  VERIFICATION: Object.freeze(
-    new Set(['req_ids', 'overall', 'scenarios', 'node_count', 'edge_count', 'screenshot', 'mode', 'findings'])
-  ),
-
-  // S2: fields observed in codify-motive-dag and graph-authoring corpora.
-  PAUSE: Object.freeze(new Set(['pointer', 'summary', 'next_actions'])),
-
-  // Attribute-mutating types absent from all 5 existing motive corpora.
-  // Fields are mapped from synthetic fixture events authored for S2-AC3.
-  SESSION_START:    Object.freeze(new Set(['session_id'])),
-  SPEC_CHANGE:      Object.freeze(new Set(['file', 'change'])),
-  LINT_DRIFT:       Object.freeze(new Set(['node_id', 'invariant'])),
-  PROTOTYPE_RESULT: Object.freeze(new Set(['prototype', 'outcome'])),
-  FAILURE:          Object.freeze(new Set(['kind', 'slices'])),
-  WAIVER:           Object.freeze(new Set(['ac', 'reason'])),
-  HANDOFF:          Object.freeze(new Set(['to', 'summary'])),
-  SPEC_DRIFT:       Object.freeze(new Set(['spec_id', 'drift'])),
+  // GRAPH_MUTATE: op-dependent field sets; AllFieldsSet covers all ops.
+  GRAPH_MUTATE:     Object.freeze(new AllFieldsSet()),
 })
 
 /**
@@ -281,32 +264,40 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
       supersedes,
       items_registered,
       decision,
+      // motive_provenance is explicitly-ignored provenance (S1-AC1 exemption).
+      // eslint-disable-next-line no-unused-vars
+      motive_provenance: _mp,
     } = data
     // Events without an `id` field get a stable synthetic id from their ordinal.
     const nodeId = id ? `decision:${id}` : `decision:_legacy_ord${event.ord ?? event.ts}`
-    nodeAssert('decision', nodeId, {
-      id,
-      title,
-      status,
-      summary,
-      rationale,
-      source,
-      alternatives,
-      blast,
-      gaps,
-      relates_to,
-      resolves,
-      retires,
-      revises,
-      refs,
-      research,
-      supersedes,
-      items_registered,
-      decision,
-    })
+
+    // D-12: replicate compile()'s last-non-null-write guard — a later event's
+    // null/undefined field must not overwrite an earlier non-null value.
+    const candidates = {
+      id, title, status, summary, rationale, source, alternatives, blast, gaps,
+      relates_to, resolves, retires, revises, refs, research, supersedes,
+      items_registered, decision,
+    }
+    const nodeAttrs = {}
+    for (const [k, v] of Object.entries(candidates)) {
+      if (v != null) nodeAttrs[k] = v
+    }
+    nodeAssert('decision', nodeId, nodeAttrs)
+
     if (nodesMap.has('objective:root')) {
       edgeAssert('anchors', 'objective:root', nodeId)
     }
+
+    // T2-AC1 / D-11: lifecycle edges for supersedes/retires/revises.
+    // Only emit when the value looks like a structured decision id (no whitespace).
+    // Free-text "retires" descriptions (prose sentences) are skipped.
+    function emitLifecycleEdge(kind, targetRaw) {
+      if (!targetRaw || typeof targetRaw !== 'string' || /\s/.test(targetRaw)) return
+      edgeAssert(kind, nodeId, `decision:${targetRaw}`)
+    }
+    if (supersedes) emitLifecycleEdge('supersedes', supersedes)
+    if (retires)    emitLifecycleEdge('retires',    retires)
+    if (revises)    emitLifecycleEdge('revises',    revises)
   }
 
   function handleBaseline(data, _event) {
@@ -315,52 +306,13 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
   }
 
   function handleGate(data, event) {
-    // motive_provenance: explicitly-ignored provenance (S1-AC1 exemption).
-    const { verdict, citation, rubric, which, motive_provenance: _mp } = data
-    attrs.gates.push({ ts: event.ts, which, verdict, citation, rubric })
+    // Passthrough: preserve all data fields so no gate field is dropped.
+    attrs.gates.push({ ts: event.ts, ...data })
   }
 
   function handleMilestone(data, event) {
-    // motive_provenance: explicitly-ignored provenance (S1-AC1 exemption).
-    const {
-      id,
-      items,
-      note,
-      ownership,
-      plan,
-      range,
-      reason,
-      slices,
-      supersedes,
-      amendments,
-      amends,
-      decisions: milestoneDecisions,
-      event: evtName,
-      motive_provenance: _mp,
-      // S2: fields observed in 5-motive corpus census
-      waves,
-      pacing_override,
-      spec_traceability,
-    } = data
-    attrs.milestones.push({
-      ts: event.ts,
-      id,
-      items,
-      note,
-      ownership,
-      plan,
-      range,
-      reason,
-      slices,
-      supersedes,
-      amendments,
-      amends,
-      decisions: milestoneDecisions,
-      event: evtName,
-      waves,
-      pacing_override,
-      spec_traceability,
-    })
+    // Passthrough: preserve all data fields so no milestone field is dropped.
+    attrs.milestones.push({ ts: event.ts, ...data })
   }
 
   function handleAcCoverage(data, _event) {
@@ -381,87 +333,87 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
   }
 
   function handleTaskComplete(data, event) {
-    // motive_provenance: explicitly-ignored provenance (S1-AC1 exemption).
-    const { slice, slice_id, session_id, motive_provenance: _mp } = data
+    // Passthrough: upsert a slice node with ALL data fields so nothing is dropped.
+    const { slice, slice_id, motive_provenance: _mp, ...rest } = data
     const sliceKey = slice_id ?? slice
     if (sliceKey) {
-      const sliceId = `slice:${sliceKey}`
-      if (!nodesMap.has(sliceId)) {
-        nodeAssert('slice', sliceId, {
-          slice,
-          slice_id,
-          session_id,
-          _completed_at: event.ts,
-        })
-      } else {
-        if (session_id != null) attrSet(sliceId, 'session_id', session_id)
-        attrSet(sliceId, '_completed_at', event.ts)
-      }
+      nodeAssert('slice', `slice:${sliceKey}`, {
+        ...rest, slice, slice_id, _completed_at: event.ts,
+      })
     }
   }
 
   function handleSessionEnd(data, event) {
-    // motive_provenance: explicitly-ignored provenance (S1-AC1 exemption).
-    const { outcome, motive_provenance: _mp } = data
-    attrs.sessions.push({ ts: event.ts, session: event.session, outcome })
+    // Passthrough: preserve all data fields + event.session for session context.
+    attrs.sessions.push({ ts: event.ts, session: event.session, ...data })
   }
+
+  // ── Attribute-mutating handlers — passthrough semantics ───────────────────
+  // Each handler spreads the whole data object so no field is ever dropped,
+  // regardless of whether it was known at handler-authoring time.  Losslessness
+  // is structural (by construction) rather than by field enumeration.
 
   function handleVerification(data, event) {
-    // S2: fields observed in graph-pilot and groundwork-development corpora.
-    const { req_ids, overall, scenarios, node_count, edge_count, screenshot, mode, findings } = data
-    attrs.verifications.push({ ts: event.ts, req_ids, overall, scenarios, node_count, edge_count, screenshot, mode, findings })
+    attrs.verifications.push({ ts: event.ts, ...data })
   }
-
-  // ── Attribute-mutating handlers for types present in real streams ────────
 
   function handlePause(data, event) {
-    // S2: fields observed in codify-motive-dag and graph-authoring corpora.
-    const { pointer, summary, next_actions } = data
-    attrs.pauses.push({ ts: event.ts, pointer, summary, next_actions })
+    attrs.pauses.push({ ts: event.ts, ...data })
   }
 
-  // ── Attribute-mutating handlers for types absent from all 5 corpora ──────
-  // Each handler explicitly names the fields used in S2-AC3 synthetic fixtures
-  // (no field is silently dropped via a generic forward).
-
   function handleSessionStart(data, event) {
-    const { session_id } = data
-    attrs.session_starts.push({ ts: event.ts, session_id })
+    attrs.session_starts.push({ ts: event.ts, ...data })
   }
 
   function handleSpecChange(data, event) {
-    const { file, change } = data
-    attrs.spec_changes.push({ ts: event.ts, file, change })
+    attrs.spec_changes.push({ ts: event.ts, ...data })
   }
 
   function handleLintDrift(data, event) {
-    const { node_id, invariant } = data
-    attrs.lint_drifts.push({ ts: event.ts, node_id, invariant })
+    attrs.lint_drifts.push({ ts: event.ts, ...data })
   }
 
   function handlePrototypeResult(data, event) {
-    const { prototype, outcome } = data
-    attrs.prototype_results.push({ ts: event.ts, prototype, outcome })
+    attrs.prototype_results.push({ ts: event.ts, ...data })
   }
 
   function handleFailure(data, event) {
-    const { kind, slices } = data
-    attrs.failures.push({ ts: event.ts, kind, slices })
+    attrs.failures.push({ ts: event.ts, ...data })
   }
 
   function handleWaiver(data, event) {
-    const { ac, reason } = data
-    attrs.waivers.push({ ts: event.ts, ac, reason })
+    attrs.waivers.push({ ts: event.ts, ...data })
   }
 
   function handleHandoff(data, event) {
-    const { to, summary } = data
-    attrs.handoffs.push({ ts: event.ts, to, summary })
+    attrs.handoffs.push({ ts: event.ts, ...data })
   }
 
   function handleSpecDrift(data, event) {
-    const { spec_id, drift } = data
-    attrs.spec_drifts.push({ ts: event.ts, spec_id, drift })
+    attrs.spec_drifts.push({ ts: event.ts, ...data })
+  }
+
+  // ── GRAPH_MUTATE native handler (T2-AC2 / D-11) ───────────────────────────
+
+  function handleGraphMutate(data, _event) {
+    switch (data.op) {
+      case 'node.assert':
+        nodeAssert(data.kind, data.id, data.attrs ?? {})
+        break
+      case 'node.retire':
+        nodeRetire(data.id, data.by)
+        break
+      case 'edge.assert':
+        edgeAssert(data.kind, data.from, data.to)
+        break
+      case 'edge.retire':
+        edgeRetire(data.kind, data.from, data.to)
+        break
+      case 'attr.set':
+        attrSet(data.nodeId, data.key, data.value)
+        break
+      // Unknown ops silently skipped (forward-compatible).
+    }
   }
 
   // ── Dispatch table — one entry per VALID_TYPE ───────────────────────────────
@@ -484,6 +436,7 @@ export function assembleGraphFold(orderedEvents, { at, charter, groundTruth } = 
     PAUSE:            handlePause,
     SESSION_START:    handleSessionStart,
     SPEC_DRIFT:       handleSpecDrift,
+    GRAPH_MUTATE:     handleGraphMutate,
   }
 
   // ── Replay ────────────────────────────────────────────────────────────────

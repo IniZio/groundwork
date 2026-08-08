@@ -47,6 +47,9 @@ const ALLOWED_EDGE_KINDS = new Set([
   'covers_ac',
   'slice_decision',
   'spec_xref',
+  'supersedes',
+  'retires',
+  'revises',
 ])
 
 // ---------------------------------------------------------------------------
@@ -220,9 +223,12 @@ describe('10 — EDGE_KINDS vocabulary', () => {
     'covers_ac',
     'slice_decision',
     'spec_xref',
+    'supersedes',
+    'retires',
+    'revises',
   ] as const
 
-  it('EDGE_KINDS has exactly the 7 expected kind keys', () => {
+  it('EDGE_KINDS has exactly the 10 expected kind keys', () => {
     const keys = Object.keys(EDGE_KINDS).sort()
     expect(keys).toEqual([...EXPECTED_KINDS].sort())
   })
@@ -261,6 +267,19 @@ describe('10 — EDGE_KINDS vocabulary', () => {
 
   it('spec_xref: drives_layering=false, render=muted, direction=lateral', () => {
     expect(EDGE_KINDS.spec_xref).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  // Decision-lifecycle cross-links (D-2)
+  it('supersedes: cross-link — drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.supersedes).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  it('retires: cross-link — drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.retires).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
+  })
+
+  it('revises: cross-link — drives_layering=false, render=muted, direction=lateral', () => {
+    expect(EDGE_KINDS.revises).toEqual({ drives_layering: false, render: 'muted', direction: 'lateral' })
   })
 
   it('every entry has the expected shape (drives_layering, render, direction)', () => {

@@ -2,10 +2,15 @@
  * motive-graph-fold-reconcile.test.mjs — S2 reconciliation completeness.
  *
  * Verifies:
- *   S2-AC1: all 18 VALID_TYPES have an explicit handler + CONSUMED_FIELDS entry;
+ *   S2-AC1: all 19 VALID_TYPES have an explicit handler + CONSUMED_FIELDS entry;
  *           each handler produces an observable delta (not merely no-throw).
- *   S2-AC2: field-level losslessness (CONSUMED_FIELDS ⊇ corpus fields) across
- *           all 5 real motive streams.
+ *   S2-AC2: field-level losslessness STRUCTURAL CHECK — for each attribute-mutating
+ *           event in all 5 real motive streams, every data.* field is verified against
+ *           the corresponding record in the fold output.  Independent of
+ *           CONSUMED_FIELDS / AllFieldsSet — cannot be blinded by AllFieldsSet.has().
+ *           Covers: 13 attrs-bucket types (positional) + TASK_COMPLETE (node-based
+ *           last-write-wins simulation).  GRAPH_MUTATE is absent from all 5 real
+ *           streams and is not covered here — S2-AC1 observable-delta test covers it.
  *   S2-AC3: synthetic fixture events for the 8 types absent from all 5 real
  *           streams fold losslessly and produce observable attrs entries.
  *
@@ -27,23 +32,194 @@ const JOURNAL_DIR = path.join(ROOT, '.groundwork', 'journal')
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /**
- * Return (type, field) pairs present in events but absent from CONSUMED_FIELDS.
- * @param {object[]} events
- * @returns {{type:string, field:string, ts:string}[]}
+ * Maps each attrs-bucket event type to the fold.attrs bucket it populates.
+ * Each handler pushes { ts: event.ts, ...data } into these arrays in event-stream order.
+ * SESSION_END additionally adds session: event.session before the data spread.
+ *
+ * NOTE: GRAPH_MUTATE and TASK_COMPLETE use AllFieldsSet but are NOT attrs-bucket types.
+ * TASK_COMPLETE is covered separately below (node-based). GRAPH_MUTATE is absent from
+ * all 5 real motive streams and not covered by S2-AC2 — S2-AC1 observable-delta covers it.
+ *
+ * @type {Readonly<Record<string, string>>}
  */
-function collectLosses(events) {
+const ATTRS_BUCKET = Object.freeze({
+  GATE:             'gates',
+  MILESTONE:        'milestones',
+  SESSION_END:      'sessions',
+  VERIFICATION:     'verifications',
+  PAUSE:            'pauses',
+  SESSION_START:    'session_starts',
+  SPEC_CHANGE:      'spec_changes',
+  LINT_DRIFT:       'lint_drifts',
+  PROTOTYPE_RESULT: 'prototype_results',
+  FAILURE:          'failures',
+  WAIVER:           'waivers',
+  HANDOFF:          'handoffs',
+  SPEC_DRIFT:       'spec_drifts',
+})
+
+/**
+ * Structural losslessness detector.
+ *
+ * For each event in the stream, locates the corresponding record in the fold
+ * output and verifies every data.* field is present with the same value.
+ *
+ * Coverage:
+ *   - 13 attrs-bucket types: positional insertion-order matching against
+ *     fold.attrs.<bucket>[idx].  A post-walk bucket-alignment check asserts
+ *     bucketIdx[b] === fold.attrs[b].length so a guard skipping events would
+ *     be caught.
+ *   - TASK_COMPLETE: per-sliceKey last-write-wins simulation mirrors the fold's
+ *     Object.assign merge; expected node attrs are compared against fold.nodes.
+ *     motive_provenance is verified EXCLUDED (intentional drop per S1-AC1).
+ *
+ * NOT covered — named explicitly:
+ *   - GRAPH_MUTATE: op-based node mutations, no attrs bucket; absent from all 5
+ *     real motive streams — S2-AC1 observable-delta test covers it.
+ *
+ * INDEPENDENT of CONSUMED_FIELDS / AllFieldsSet — AllFieldsSet.has() cannot
+ * blind this check.
+ *
+ * @param {object[]} events
+ * @returns {{
+ *   losses: Array<{type:string, field:string, ts:string, expected:unknown, actual:unknown}>,
+ *   eventsChecked: number,
+ *   fieldsCompared: number
+ * }}
+ */
+function collectStructuralLosses(events) {
+  const fold = assembleGraphFold(events)
   const losses = []
+  let eventsChecked = 0
+  let fieldsCompared = 0
+
+  // ── Part 1: attrs-bucket types — positional insertion-order matching ──────
+
+  // Positional counter per bucket: advances once per attrs-bucket event of that type.
+  const bucketIdx = {}
+  for (const bucket of Object.values(ATTRS_BUCKET)) bucketIdx[bucket] = 0
+
   for (const event of events) {
-    if (!VALID_TYPES.includes(event.type)) continue
-    const dataFields = event.data ? Object.keys(event.data) : []
-    const consumed = CONSUMED_FIELDS[event.type] ?? new Set()
+    const bucketName = ATTRS_BUCKET[event.type]
+    if (!bucketName) continue // not an attrs-bucket type
+
+    eventsChecked++
+    const data = event.data ?? {}
+    const dataFields = Object.keys(data)
+
+    const idx = bucketIdx[bucketName]++
+    const record = fold.attrs[bucketName][idx]
+
+    if (!record) {
+      losses.push({
+        type: event.type,
+        field: '(record missing)',
+        ts: event.ts,
+        expected: `fold.attrs.${bucketName}[${idx}] to exist`,
+        actual: undefined,
+      })
+      continue
+    }
+
     for (const field of dataFields) {
-      if (!consumed.has(field)) {
-        losses.push({ type: event.type, field, ts: event.ts })
+      fieldsCompared++
+      const expected = data[field]
+      const actual = record[field]
+      // JSON.stringify for deep equality (handles nested objects/arrays).
+      if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+        losses.push({ type: event.type, field, ts: event.ts, expected, actual })
       }
     }
   }
-  return losses
+
+  // Post-walk bucket-alignment invariant: every record in every bucket must have
+  // been visited.  A handler that conditionally skips pushes would break alignment
+  // and would be caught here rather than silently comparing the wrong record.
+  for (const [type, bucket] of Object.entries(ATTRS_BUCKET)) {
+    const expected = fold.attrs[bucket].length
+    const walked = bucketIdx[bucket]
+    if (walked !== expected) {
+      losses.push({
+        type,
+        field: '(bucket length mismatch — positional alignment broken)',
+        ts: '',
+        expected: `walked ${walked} events`,
+        actual: `fold.attrs.${bucket}.length === ${expected}`,
+      })
+    }
+  }
+
+  // ── Part 2: TASK_COMPLETE — node-based last-write-wins simulation ──────────
+
+  // handleTaskComplete: const { slice, slice_id, motive_provenance: _mp, ...rest } = data
+  //   nodeAssert('slice', `slice:${sliceKey}`, { ...rest, slice, slice_id, _completed_at: event.ts })
+  // Multiple TASK_COMPLETE events for the same sliceKey merge via Object.assign (last-write wins).
+  // We simulate the same merge in stream order, then diff against fold.nodes.
+
+  /** @type {Map<string, { expected: object, lastTs: string }>} */
+  const expectedBySlice = new Map()
+
+  for (const event of events) {
+    if (event.type !== 'TASK_COMPLETE') continue
+    eventsChecked++
+    const data = event.data ?? {}
+    const { slice, slice_id, motive_provenance: _mp, ...rest } = data
+    const sliceKey = slice_id ?? slice
+    if (!sliceKey) continue
+
+    const nodeAttrs = { ...rest, slice, slice_id, _completed_at: event.ts }
+    const entry = expectedBySlice.get(sliceKey)
+    if (entry) {
+      Object.assign(entry.expected, nodeAttrs)
+      entry.lastTs = event.ts
+    } else {
+      expectedBySlice.set(sliceKey, { expected: { ...nodeAttrs }, lastTs: event.ts })
+    }
+  }
+
+  for (const [sliceKey, { expected, lastTs }] of expectedBySlice) {
+    const nodeId = `slice:${sliceKey}`
+    const node = fold.nodes.find((n) => n.id === nodeId)
+
+    if (!node) {
+      losses.push({
+        type: 'TASK_COMPLETE',
+        field: '(slice node missing)',
+        ts: lastTs,
+        expected: nodeId,
+        actual: undefined,
+      })
+      continue
+    }
+
+    for (const [field, expectedVal] of Object.entries(expected)) {
+      if (expectedVal == null) continue // undefined/null fields: Object.assign stores them as-is; skip
+      fieldsCompared++
+      const actual = node.attrs[field]
+      if (JSON.stringify(expectedVal) !== JSON.stringify(actual)) {
+        losses.push({
+          type: 'TASK_COMPLETE',
+          field,
+          ts: lastTs,
+          expected: expectedVal,
+          actual,
+        })
+      }
+    }
+
+    // Verify motive_provenance is EXCLUDED from the node (S1-AC1 explicit-ignore exemption).
+    if (node.attrs.motive_provenance !== undefined) {
+      losses.push({
+        type: 'TASK_COMPLETE',
+        field: 'motive_provenance',
+        ts: lastTs,
+        expected: '(must be absent — intentionally excluded by handler)',
+        actual: node.attrs.motive_provenance,
+      })
+    }
+  }
+
+  return { losses, eventsChecked, fieldsCompared }
 }
 
 /** Build a one-shot event stream: MOTIVE_CREATED + one typed event. */
@@ -64,9 +240,9 @@ function makeStream(type, data = {}) {
   ]
 }
 
-// ── S2-AC1: all 18 VALID_TYPES have declared roles ────────────────────────
+// ── S2-AC1: all 19 VALID_TYPES have declared roles ────────────────────────
 
-describe('S2-AC1 — all 18 VALID_TYPES have declared roles', () => {
+describe('S2-AC1 — all 19 VALID_TYPES have declared roles', () => {
   it('CONSUMED_FIELDS has an entry for every VALID_TYPE', () => {
     for (const type of VALID_TYPES) {
       expect(
@@ -98,6 +274,7 @@ describe('S2-AC1 — all 18 VALID_TYPES have declared roles', () => {
     WAIVER:           (fold) => expect(fold.attrs.waivers.length).toBeGreaterThan(0),
     HANDOFF:          (fold) => expect(fold.attrs.handoffs.length).toBeGreaterThan(0),
     SPEC_DRIFT:       (fold) => expect(fold.attrs.spec_drifts.length).toBeGreaterThan(0),
+    GRAPH_MUTATE:     (fold) => expect(fold.nodes.some((n) => n.type === 'decision')).toBe(true),
   }
 
   // Minimal payloads that trigger the observable output for each type.
@@ -120,6 +297,7 @@ describe('S2-AC1 — all 18 VALID_TYPES have declared roles', () => {
     WAIVER:           { ac: 'AC1', reason: 'out-of-scope' },
     HANDOFF:          { to: 'human', summary: 'review needed' },
     SPEC_DRIFT:       { spec_id: 'R-001', drift: 'undocumented change' },
+    GRAPH_MUTATE:     { op: 'node.assert', kind: 'decision', id: 'decision:D-gm', attrs: { title: 'via GRAPH_MUTATE' } },
   }
 
   for (const type of VALID_TYPES) {
@@ -149,13 +327,24 @@ describe('S2-AC2 — field-level losslessness across 5 real motive streams', () 
   ]
 
   for (const slug of REAL_MOTIVES) {
-    it(`${slug} folds losslessly`, () => {
+    it(`${slug} folds losslessly (structural check)`, () => {
       const { events } = readOrderedEvents(JOURNAL_DIR, { motive: slug })
       expect(events.length).toBeGreaterThan(0)
-      const losses = collectLosses(events)
+      const { losses, eventsChecked, fieldsCompared } = collectStructuralLosses(events)
+      // Non-vacuity guard: a structural oracle that walks zero records is as blind as AllFieldsSet.
+      // Each real motive has at least GATE + SESSION_END events, so eventsChecked must be > 0.
+      expect(
+        eventsChecked,
+        `${slug}: structural check walked 0 events — oracle is vacuous (no attrs-bucket or TASK_COMPLETE events found)`
+      ).toBeGreaterThan(0)
       if (losses.length > 0) {
-        const named = losses.map((l) => `${l.type}.${l.field} (at ${l.ts})`).join('\n  ')
-        expect.fail(`Named field losses in ${slug}:\n  ${named}`)
+        const named = losses
+          .map((l) => `${l.type}.${l.field} (at ${l.ts}): expected ${JSON.stringify(l.expected)}, got ${JSON.stringify(l.actual)}`)
+          .join('\n  ')
+        expect.fail(
+          `[S2-AC2] ${slug}: ${losses.length} field loss(es) detected by structural check ` +
+          `(${eventsChecked} events checked, ${fieldsCompared} fields compared):\n  ${named}`
+        )
       }
       expect(losses).toHaveLength(0)
     })
@@ -209,7 +398,11 @@ const SYNTHETIC_STREAM = [
     type: 'FAILURE',
     motive: 'synth-test',
     ts: '2026-01-01T00:04:00.000Z',
-    data: { kind: 'test', slices: ['S1'] },
+    // S2-AC3 non-circular passthrough proof: includes a field ('extra_sentinel')
+    // that was NOT enumerated in the original CONSUMED_FIELDS['FAILURE'] list.
+    // If the handler field-picks instead of doing passthrough, this field is
+    // dropped and the assertion below catches it — proving structural coverage.
+    data: { kind: 'test', slices: ['S1'], extra_sentinel: 'passthrough-proof' },
   },
   {
     type: 'WAIVER',
@@ -249,11 +442,21 @@ describe('S2-AC3 — synthetic fixtures for 8 real-stream-absent types', () => {
     expect(() => assembleGraphFold(SYNTHETIC_STREAM)).not.toThrow()
   })
 
-  it('synthetic stream folds losslessly', () => {
-    const losses = collectLosses(SYNTHETIC_STREAM)
+  it('synthetic stream folds losslessly (structural check)', () => {
+    const { losses, eventsChecked, fieldsCompared } = collectStructuralLosses(SYNTHETIC_STREAM)
+    // Non-vacuity guard: SYNTHETIC_STREAM has 8 absent-type events, so eventsChecked must be > 0.
+    expect(
+      eventsChecked,
+      'synthetic stream: structural check walked 0 events — oracle is vacuous'
+    ).toBeGreaterThan(0)
     if (losses.length > 0) {
-      const named = losses.map((l) => `${l.type}.${l.field} (at ${l.ts})`).join('\n  ')
-      expect.fail(`Named field losses in synthetic stream:\n  ${named}`)
+      const named = losses
+        .map((l) => `${l.type}.${l.field} (at ${l.ts}): expected ${JSON.stringify(l.expected)}, got ${JSON.stringify(l.actual)}`)
+        .join('\n  ')
+      expect.fail(
+        `[S2-AC3] Synthetic stream: ${losses.length} field loss(es) detected by structural check ` +
+        `(${eventsChecked} events checked, ${fieldsCompared} fields compared):\n  ${named}`
+      )
     }
     expect(losses).toHaveLength(0)
   })
@@ -278,4 +481,14 @@ describe('S2-AC3 — synthetic fixtures for 8 real-stream-absent types', () => {
       expect(arr.length).toBeGreaterThan(0)
     })
   }
+
+  // S2-AC3 non-circular passthrough proof: the FAILURE fixture carries
+  // extra_sentinel which was NOT in the original enumerated field list.
+  // A field-picking handler would drop it; a passthrough handler preserves it.
+  it('FAILURE passthrough: extra_sentinel field survives the fold (non-circular fixture proof)', () => {
+    const fold = assembleGraphFold(SYNTHETIC_STREAM)
+    const failureRecords = fold.attrs.failures
+    expect(failureRecords.length).toBeGreaterThan(0)
+    expect(failureRecords[0].extra_sentinel).toBe('passthrough-proof')
+  })
 })

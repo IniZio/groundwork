@@ -35,6 +35,7 @@ import { assembleMotiveGraph } from '../hooks/lib/motive-graph.mjs'
 import { compile } from '../hooks/lib/motive-compile.mjs'
 import { canonicalGraphState, computeSeal } from '../hooks/lib/graph-seal.mjs'
 import { projectFoldGraph, NON_RECONSTRUCTIBLE_FIELDS } from '../hooks/lib/motive-graph-project.mjs'
+import { checkFoldCompileParity, isLegacyDecisionOnlyDivergence } from '../hooks/lib/motive-graph-parity.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -94,6 +95,18 @@ describe('S5-AC3 — determinism via canonical seal', () => {
 })
 
 // ── S5-AC2: compile-essentials equivalence ────────────────────────────────────
+
+describe('S5-AC2 — compile-essentials: no hard divergences (checkFoldCompileParity)', () => {
+  // Exercises the module's comparison logic as the canonical oracle.
+  // Individual field assertions below provide targeted failure messages.
+  for (const slug of MOTIVES) {
+    it(`${slug}: checkFoldCompileParity — zero hard divergences with events`, () => {
+      const { projected, compiled, events } = fixtures.get(slug)
+      const result = checkFoldCompileParity(projected, compiled, { events })
+      expect(result.divergences, `${slug}: hard divergence(s) — do NOT soften; report as T2 finding`).toEqual([])
+    })
+  }
+})
 
 describe('S5-AC2 — compile-essentials: objective', () => {
   for (const slug of MOTIVES) {
@@ -382,68 +395,7 @@ describe('S5-AC1 — structural: event-sourced node types vs assembleMotiveGraph
 })
 
 // ── T2-AC4: events-free projection reaches compile() zero-divergence bar ─────────
-
-/**
- * Returns true if the divergence fits the "legacy decision-only later event" shape:
- * compile() derived its final title from a same-id DECISION event carrying a non-null
- * `decision` field but no `title` field, while fold's events-free path returned the
- * earlier stored title via (a.title ?? a.decision) — field-precedence, not event order.
- *
- * This is compile()'s legacy authoring pattern: the SAME mechanism as the superseded_by
- * forward-reference finding above.  It is NOT a fold correctness bug.
- *
- * Verification: simulates both compile() and fold events-free from the event stream and
- * checks that both simulations reproduce the observed values AND that the final compile()
- * title was set by a decision-only event (d.title == null, d.decision != null).
- *
- * @param {object[]} events - ordered journal events for the motive
- * @param {{ id: string, projected: string|null|undefined, compiled: string|null }} div
- * @returns {boolean}
- */
-function isLegacyDecisionOnlyDivergence(events, { id, projected: foldTitle, compiled: compileTitle }) {
-  const decisionEvents = events.filter((ev) => ev.type === 'DECISION' && ev.data?.id === id)
-  if (decisionEvents.length === 0) return false
-
-  // Simulate compile()'s non-null title/decision guard in event-stream order.
-  // Track whether the LAST mutation was from a decision-only event.
-  let simulatedCompileTitle = null
-  let lastUpdateWasDecisionOnly = false
-  for (const ev of decisionEvents) {
-    const d = ev.data ?? {}
-    if (simulatedCompileTitle === null) {
-      simulatedCompileTitle = d.title ?? d.decision ?? null
-      lastUpdateWasDecisionOnly = (d.title == null && d.decision != null)
-    } else {
-      if (d.title != null) {
-        simulatedCompileTitle = d.title
-        lastUpdateWasDecisionOnly = false
-      } else if (d.decision != null) {
-        simulatedCompileTitle = d.decision
-        lastUpdateWasDecisionOnly = true
-      }
-    }
-  }
-
-  // Simulate fold events-free: last-non-null write per field (D-12), then a.title ?? a.decision.
-  let foldAttrTitle = null
-  let foldAttrDecision = null
-  for (const ev of decisionEvents) {
-    const d = ev.data ?? {}
-    if (d.title != null) foldAttrTitle = d.title
-    if (d.decision != null) foldAttrDecision = d.decision
-  }
-  const simulatedEvFreeTitle = foldAttrTitle ?? foldAttrDecision ?? null
-
-  // All three must hold:
-  // 1. compile() simulation reproduces the observed compiled title.
-  // 2. fold events-free simulation reproduces the observed projected title.
-  // 3. The final compile() title came from a decision-only event (the legacy authoring class).
-  return (
-    simulatedCompileTitle === compileTitle &&
-    simulatedEvFreeTitle === foldTitle &&
-    lastUpdateWasDecisionOnly
-  )
-}
+// isLegacyDecisionOnlyDivergence is imported from hooks/lib/motive-graph-parity.mjs (single source).
 
 describe('T2-AC4 — events-free projection: projectFoldGraph(fold) without events', () => {
   // Events-free title recovery uses fold attrs (a.title ?? a.decision ?? null).

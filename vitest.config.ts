@@ -9,7 +9,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["test/**/*.test.ts"],
+		include: ["test/**/*.test.ts", "test/**/*.test.mjs"],
 		exclude: [
 			// Vitest built-in defaults (preserved so node_modules etc. remain excluded)
 			"**/node_modules/**",

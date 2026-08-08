@@ -54,6 +54,7 @@ Never cite by bare id text; anchor links are the machine-checkable citation form
 | C-ENFORCEMENT | `doc/specs/enforcement/` | PreToolUse hooks that mechanically enforce CLAUDE.md rules as hard gates. |
 | C-ORCHESTRATION | `doc/specs/orchestration/` | The orchestrator's delegation model: classify, delegate to specialists, never implement directly. |
 | C-VERIFICATION | `doc/specs/verification/` | The advisor-gate completion protocol: non-trivial tasks require an explicit APPROVE verdict. |
+| C-MOTIVE-DAG | `doc/specs/motive-dag/` | Typed node/edge DAG as canonical primary store for motive state, built by deterministic fold over an event-sourced journal mutation log. |
 
 ---
 

@@ -1,0 +1,9 @@
+id: C-MOTIVE-DAG
+title: Motive DAG Model
+summary: "Typed node/edge DAG as canonical primary store for motive state, built by deterministic fold over an event-sourced journal mutation log."
+status: review
+views:
+  - type: overview
+    file: README.md
+  - type: constraints
+    file: constraints.md

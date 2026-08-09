@@ -5,7 +5,7 @@ model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.6.0
+groundwork_version: 2.7.0
 ---
 
 You are Planner — a strategic planning consultant who creates evidence-grounded, actionable work plans.

@@ -323,7 +323,7 @@ Load `/groundwork:ultrawork` to engage maximum fan-out mode for the current task
 | `scripts/` | Build and utility scripts |
 | `skills/` | Skill definition files by namespace |
 | `src/` | TypeScript source |
-| `test/` + `tests/` | Vitest test files |
+| `test/` | Vitest test files |
 | `.groundwork/` | Runtime artefacts: run ledgers, journal shards, motives |
 | `.claude/` | Claude Code project settings (`settings.json` with hooks) |
 
@@ -358,7 +358,7 @@ Three trees, three editing rules — never confuse them:
 
 - **Runtime:** Node.js v22+ with native ESM (`"type": "module"`). Hooks are plain `.mjs` scripts — no build step. TypeScript in `src/` compiled with `tsc`; also runnable via `node --experimental-strip-types`. Bun is a supported runtime for the test suite.
 - **Package manager:** `pnpm` with `pnpm-workspace.yaml`. Use `pnpm install` after checkout; `pnpm run check` type-checks.
-- **Tests:** Vitest 3.x. Files in `test/` and `tests/`. Run with `npx vitest run <path>` — **never** bare `pnpm test` from a subagent (filter is silently ignored, whole suite runs).
+- **Tests:** Vitest 3.x. Files in `test/`. Run with `npx vitest run <path>` — **never** bare `pnpm test` from a subagent (filter is silently ignored, whole suite runs).
 - **TypeScript:** `strict: true`, `target: ES2024`, `moduleResolution: NodeNext`. Path aliases: `#src/*` → `./src/*`, `#test/*` → `./test/*`.
 - **Hook CLIs:** exit `0` success · `1` operational failure · `2` usage error.
 

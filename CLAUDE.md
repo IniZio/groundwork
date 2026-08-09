@@ -75,7 +75,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | Architecture trade-off, hard decision | Decision | `advisor` |
 | "architecture review", "how's the structure", "any concerns", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 | "capture intent", "what do I want to build", durable goal, charter authoring | Motive authoring | load `motive` skill |
-| "resume", "continue from last session", multi-session continuity | Continuity | load `resume` skill + `pause` skill |
+| "resume", "continue from last session", multi-session continuity | Continuity | load `continue` skill + `pause` skill |
 | "capture requirements", "clarify scope", intent capture | Requirements clarification | `interview` |
 | "update spec", "spec upkeep", "spec is stale" | Spec upkeep | load `spec` skill |
 | "retrospect", "reflect on this session", session retrospective | Retrospective | load `/groundwork:retrospective` |
@@ -247,7 +247,7 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 
 ## Sub-Orchestrator Delegation (Nested Orchestration)
 
-For complex multi-domain tasks, you MAY delegate to **sub-orchestrators** via `task(subagent_type="general-purpose")`.
+For complex multi-domain tasks, you MAY delegate to **sub-orchestrators** via `task(subagent_type="groundwork:general-purpose")`.
 
 ### When to Use Sub-Orchestrators
 - Task spans ≥3 independent sub-domains (e.g., auth + payments + UI)

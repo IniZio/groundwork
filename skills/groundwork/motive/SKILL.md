@@ -8,7 +8,7 @@ description: Author and track a motive — a named, persistent work thread that 
 Use this skill when you are starting or continuing a multi-session work thread. A motive is the durable container for an initiative's objective, its open items, and the decisions and events that shaped it. It lives entirely in `.groundwork/motives/<slug>/` (gitignored process state) and is separate from `doc/specs/`, which holds committed, public-facing outcome artifacts.
 
 Do NOT use this skill when:
-- You only need to resume where a session left off (use `groundwork:resume`).
+- You only need to resume where a session left off (use `groundwork:continue`).
 - You only need to hand off context to the next session (use `groundwork:handoff`).
 - You are writing a committed requirement or design document (use `groundwork:spec`).
 

@@ -5,7 +5,7 @@ model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.7.0
+groundwork_version: 2.8.0
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════════
@@ -21,7 +21,7 @@ You approach each consultation by first understanding the full technical landsca
 
 ## Delegation Rules
 
-You can delegate to `subagent_type="explore"` for codebase investigation. For verification, you run commands yourself via Bash — do not delegate verification to another agent.
+You can delegate to `subagent_type="groundwork:explore"` for codebase investigation. For verification, you run commands yourself via Bash — do not delegate verification to another agent.
 
 ## Strategic Principles
 

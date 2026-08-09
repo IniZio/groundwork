@@ -1,6 +1,6 @@
 ---
 name: pause
-description: Pause an active session — capture the continuation state (pointer, summary, next actions) into the motive spine as a PAUSE event so a later /resume picks up exactly where you left off. The write-side complement to resume.
+description: Pause an active session — capture the continuation state (pointer, summary, next actions) into the motive spine as a PAUSE event so a later /continue picks up exactly where you left off. The write-side complement to continue.
 disable-model-invocation: false
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 ## Purpose
 
-Durably record where you stopped so the next session can pick up with zero reconstruction overhead. **Write a PAUSE event into the motive journal** — not a prose note, not a handoff file. The journal is the program counter; a PAUSE event advances it with a pointer, a state summary, and an ordered list of next actions that `resume` reads back automatically via `agent.last_pause` and `agent.resume.next_actions`.
+Durably record where you stopped so the next session can pick up with zero reconstruction overhead. **Write a PAUSE event into the motive journal** — not a prose note, not a handoff file. The journal is the program counter; a PAUSE event advances it with a pointer, a state summary, and an ordered list of next actions that `continue` reads back automatically via `agent.last_pause` and `agent.resume.next_actions`.
 
 ## Entry conditions — when to use this skill
 
@@ -61,7 +61,7 @@ journal append \
 
 - **Concrete and ordered** — the first entry should be exactly what the next session does first; subsequent entries are the natural chain.
 - **Each action is resumable on its own** — phrase it so an agent reading it cold can act without needing the transcript.
-- **Include slice ids** when the action is ledger-tracked; the `resume` skill corroborates these against `ledger view`.
+- **Include slice ids** when the action is ledger-tracked; the `continue` skill corroborates these against `ledger view`.
 - **Avoid vague verbs** like "continue" or "work on" — prefer "implement X in file Y", "run tests for slice Z", "claim slice W and fan out wave 2".
 - **Three to seven actions** is the sweet spot; fewer may miss key steps, more adds noise.
 
@@ -79,7 +79,7 @@ Ledger slice state (`complete`, `in_progress`, `blocked`, `claimed_by`) is durab
 
 ## Integration
 
-- **`resume`** — the read side: at session start, `journal compile <slug> --json` folds the latest PAUSE event's `next_actions` into `agent.resume.next_actions` and exposes `agent.last_pause` (`{pointer, summary, next_actions}`). The program-counter section of `resume` reads these directly.
+- **`continue`** — the read side: at session start, `journal compile <slug> --json` folds the latest PAUSE event's `next_actions` into `agent.resume.next_actions` and exposes `agent.last_pause` (`{pointer, summary, next_actions}`). The program-counter section of `continue` reads these directly.
 - **`motive`** — owns the charter; `pause` never edits it.
 - **`ledger`** — the authoritative slice-status store; ensure it is current before appending a PAUSE event.
 - **`journal compile`** — produces the compiled snapshot; run it after pausing to verify the event was recorded (`agent.last_pause` should be present).

@@ -6,7 +6,7 @@ mode: primary
 prompt_mode: append
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.7.0
+groundwork_version: 2.8.0
 ---
 
 # Orchestrator
@@ -26,12 +26,12 @@ You are the ORCHESTRATOR. Your job is to classify, delegate, and review — NOT 
 
 ```
 # GOOD: Fan out mixed specialists simultaneously
-task(description="Explore auth module", prompt="...", subagent_type="explore")
-task(description="Explore user model", prompt="...", subagent_type="explore")
-task(description="Slice 1: auth flow", prompt="...", subagent_type="general-purpose")
-task(description="Slice 2: user profile", prompt="...", subagent_type="general-purpose")
-task(description="Slice 3: settings page", prompt="...", subagent_type="general-purpose")
-task(description="Slice 4: dashboard styling", prompt="...", subagent_type="designer")
+task(description="Explore auth module", prompt="...", subagent_type="groundwork:explore")
+task(description="Explore user model", prompt="...", subagent_type="groundwork:explore")
+task(description="Slice 1: auth flow", prompt="...", subagent_type="groundwork:general-purpose")
+task(description="Slice 2: user profile", prompt="...", subagent_type="groundwork:general-purpose")
+task(description="Slice 3: settings page", prompt="...", subagent_type="groundwork:general-purpose")
+task(description="Slice 4: dashboard styling", prompt="...", subagent_type="groundwork:designer")
 # All launch simultaneously — each task uses the right specialist
 ```
 

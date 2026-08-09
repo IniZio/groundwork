@@ -67,7 +67,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter).not.toBeNull()
       expect(charter.objective).toContain('Ship the wayfinder feature')
     } finally {
@@ -79,7 +79,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.notes).toContain('Keep it simple')
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -90,7 +90,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.out_of_scope).toContain('No dark mode')
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -101,7 +101,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.open_items).toHaveLength(3)
 
       const [item1, item2, item3] = charter.open_items
@@ -123,7 +123,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       const item1 = charter.open_items[0]
       expect(item1.owner).toBe('alice')
       expect(item1.blocked_by).toBe('TBD-2')
@@ -136,7 +136,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       const item2 = charter.open_items[1]
       expect(item2.owner).toBeUndefined()
       expect(item2.blocked_by).toBeUndefined()
@@ -149,7 +149,7 @@ describe('S3-AC1 — readCharter parses four sections', () => {
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', FULL_CHARTER)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.path).toBe(charterPath(tmp, 'demo'))
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -204,7 +204,7 @@ Some objective.
     const tmp = mkTmp()
     try {
       writeCharter(tmp, 'demo', CHARTER_WITH_MALFORMED)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.open_items).toHaveLength(2)
       expect(charter.open_items[0].id).toBe('TBD-1')
       expect(charter.open_items[1].id).toBe('TBR-2')
@@ -241,7 +241,7 @@ describe('S3-AC4 — renderCharterTemplate round-trips', () => {
       const objective = 'Improve developer experience.'
       const src = renderCharterTemplate({ motive: 'demo', objective })
       writeCharter(tmp, 'demo', src)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter).not.toBeNull()
       expect(charter.objective).toContain(objective)
     } finally {
@@ -254,7 +254,7 @@ describe('S3-AC4 — renderCharterTemplate round-trips', () => {
     try {
       const src = renderCharterTemplate({ motive: 'demo', objective: 'x' })
       writeCharter(tmp, 'demo', src)
-      const charter = readCharter({ projectDir: tmp, motive: 'demo' })
+      const charter = readCharter({ projectDir: tmp, motive: 'demo' })!
       expect(charter.open_items).toHaveLength(0)
     } finally {
       rmSync(tmp, { recursive: true, force: true })

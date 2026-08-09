@@ -97,16 +97,16 @@ describe('open-item seam parity — handle/body contract', () => {
   // ── 1. Parser (motive-charter.mjs) ────────────────────────────────────────
   describe('parser (motive-charter.mjs)', () => {
     it('item.statement contains HANDLE and NOT BODY', () => {
-      const charter = readCharter({ projectDir: dir, motive: MOTIVE })
+      const charter = readCharter({ projectDir: dir, motive: MOTIVE })!
       const item = charter.open_items.find((i: any) => i.id === ITEM_ID)
       expect(item, `${ITEM_ID} not found in parsed open_items`).toBeTruthy()
-      expect(item.statement).toContain(HANDLE)
-      expect(item.statement).not.toContain(BODY)
+      expect(item!.statement).toContain(HANDLE)
+      expect(item!.statement).not.toContain(BODY)
     })
 
     it('item.body contains BODY token', () => {
-      const charter = readCharter({ projectDir: dir, motive: MOTIVE })
-      const item = charter.open_items.find((i: any) => i.id === ITEM_ID)
+      const charter = readCharter({ projectDir: dir, motive: MOTIVE })!
+      const item = charter.open_items.find((i: any) => i.id === ITEM_ID)!
       expect(item.body).toContain(BODY)
     })
   })
@@ -114,7 +114,7 @@ describe('open-item seam parity — handle/body contract', () => {
   // ── 2. Ticket renderer (motive-tickets.mjs) ───────────────────────────────
   describe('ticket renderer (motive-tickets.mjs)', () => {
     it('title line (# TBD-SEAM: …) contains HANDLE and NOT BODY', () => {
-      const charter = readCharter({ projectDir: dir, motive: MOTIVE })
+      const charter = readCharter({ projectDir: dir, motive: MOTIVE })!
 
       regenerateMotiveTickets(motiveDir, {
         openItems: charter.open_items,

@@ -496,8 +496,8 @@ describe('S3-AC7 — motive cross-session ledger union', () => {
     // Both (sess-a, S1) and (sess-b, S1) are distinct entries
     expect(gt.ledger.slices.length).toBe(2);
     // Each entry carries its session's provenance — no cross-attribution
-    const sessA = gt.ledger.slices.find((s: any) => s._session_id === 'sess-a');
-    const sessB = gt.ledger.slices.find((s: any) => s._session_id === 'sess-b');
+    const sessA = gt.ledger.slices.find((s: any) => s._session_id === 'sess-a')!;
+    const sessB = gt.ledger.slices.find((s: any) => s._session_id === 'sess-b')!;
     expect(sessA).toBeDefined();
     expect(sessA.status).toBe('complete');
     expect(sessB).toBeDefined();

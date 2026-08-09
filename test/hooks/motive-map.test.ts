@@ -1637,7 +1637,7 @@ describe('regenerateMotiveMap — PAUSE selection (newest wins)', () => {
 
     // compile() takes events in chronological order (oldest first); last PAUSE wins
     const view = compile([olderPause, newerPause], {})
-    const compilePointer: string = view?.agent?.last_pause?.pointer
+    const compilePointer: string | undefined = view?.agent?.last_pause?.pointer
 
     // regenerateMotiveMap reads from the JSONL file (newest-first after reverse); first find() wins
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest pause seam.\n`)

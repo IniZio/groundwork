@@ -11,9 +11,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-// @ts-expect-error — .mjs, no types
 import { buildStruggleNudge } from '../hooks/lib/struggle-nudge.mjs'
-// @ts-expect-error — .mjs, no types
 import { appendSignal } from '../hooks/lib/signals-io.mjs'
 
 // ---------------------------------------------------------------------------

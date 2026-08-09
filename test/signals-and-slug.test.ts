@@ -15,14 +15,12 @@ import {
   resolveSignalsPath,
   appendSignal,
   readSignals,
-  // @ts-expect-error — .mjs, no types
 } from '../hooks/lib/signals-io.mjs'
 
 import {
   toSlug,
   normalizeCommand,
   commandFingerprint,
-  // @ts-expect-error — .mjs, no types
 } from '../hooks/lib/concept-slug.mjs'
 
 // ---------------------------------------------------------------------------

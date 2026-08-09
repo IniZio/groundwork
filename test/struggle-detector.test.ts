@@ -18,8 +18,6 @@ import { mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-// Dynamic imports — .mjs modules, no type declarations.
-// @ts-expect-error — .mjs, no types
 import { readSignals } from '../hooks/lib/signals-io.mjs'
 
 // ---------------------------------------------------------------------------

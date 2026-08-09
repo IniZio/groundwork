@@ -16,12 +16,10 @@ import {
   upsertLearning,
   listLearnings,
   promoteLearning,
-  // @ts-expect-error — .mjs, no types
 } from '../hooks/lib/learnings-io.mjs'
 
 import {
   toSlug,
-  // @ts-expect-error — .mjs, no types
 } from '../hooks/lib/concept-slug.mjs'
 
 // ---------------------------------------------------------------------------
@@ -292,7 +290,7 @@ describe('listLearnings', () => {
 describe('promoteLearning', () => {
   test('sets status to PROMOTED and records promoted_to path', () => {
     upsertLearning(tmpDir, { concept: 'prod-binary-deploy', session_id: 's1', detail: 'test' })
-    const fm = promoteLearning(tmpDir, 'prod-binary-deploy', 'skills/nexus-dev/SKILL.md')
+    const fm = promoteLearning(tmpDir, 'prod-binary-deploy', 'skills/nexus-dev/SKILL.md')!
     expect(fm.status).toBe('PROMOTED')
     expect(fm.promoted_to).toBe('skills/nexus-dev/SKILL.md')
   })
@@ -312,7 +310,7 @@ describe('promoteLearning', () => {
 
   test('slug alias works for promoteLearning', () => {
     upsertLearning(tmpDir, { concept: 'Prod Binary Deploy!', session_id: 's1', detail: 'test' })
-    const fm = promoteLearning(tmpDir, 'prod-binary-deploy', 'skills/deploy/SKILL.md')
+    const fm = promoteLearning(tmpDir, 'prod-binary-deploy', 'skills/deploy/SKILL.md')!
     expect(fm.status).toBe('PROMOTED')
   })
 

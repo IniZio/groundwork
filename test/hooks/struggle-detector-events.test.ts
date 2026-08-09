@@ -12,7 +12,6 @@ import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync
 import os from 'node:os'
 import path from 'node:path'
 
-// @ts-expect-error — .mjs, no types
 import { readAllEvents } from '../../hooks/lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------

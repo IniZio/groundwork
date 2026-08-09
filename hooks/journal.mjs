@@ -468,18 +468,39 @@ function cmdMotiveArchive(args) {
     die(`motive "${slug}" not found at ${path.relative(projectDir, motiveDir)}`, 1)
   }
 
-  // Check for open items unless --force
+  // Check for open items unless --force.
+  // Uses the structured charter + event-based resolution overlay so that open items
+  // resolved via accepted DECISION events do not block archive.  This mirrors the
+  // same resolution logic used by motive-map.mjs (lightweight MAP renderer).
   if (!flags.force) {
     const charterFile = path.join(motiveDir, 'motive.md')
     if (existsSync(charterFile)) {
-      const content = readFileSync(charterFile, 'utf8')
-      // Detect non-empty open items: lines starting with "- TBD" or "- TBR" after the open items heading
-      const openItemsMatch = content.match(/##\s+Open items\s*\n([\s\S]*?)(?=\n##|$)/i)
-      if (openItemsMatch) {
-        // Strip HTML comments before checking for real open items
-        const openSection = openItemsMatch[1].replace(/<!--[\s\S]*?-->/g, '')
-        const hasOpenItems = openSection.split('\n').some(l => /^\s*-\s+TB[DR]/.test(l))
-        if (hasOpenItems) {
+      const charter = readCharter({ projectDir, motive: slug })
+      if (charter != null && charter.open_items.length > 0) {
+        // Read motive events and build the accepted-resolves set — same logic as
+        // motive-map.mjs _readAllMotiveEvents + resolution overlay.
+        const journalDir = path.join(projectDir, '.groundwork', 'journal')
+        let allMotiveEvents = []
+        if (existsSync(journalDir)) {
+          try {
+            const all = readAllEvents(journalDir)
+            const { shown = [] } = filterEvents(all, { motive: slug })
+            allMotiveEvents = shown
+          } catch { /* treat as no events */ }
+        }
+        const resolvedByDecisions = new Map()
+        for (const ev of allMotiveEvents) {
+          if (ev.type === 'DECISION' && ev.data?.status === 'accepted' && ev.data?.resolves != null) {
+            if (!resolvedByDecisions.has(ev.data.resolves)) {
+              resolvedByDecisions.set(ev.data.resolves, ev.data.id ?? ev.data.resolves)
+            }
+          }
+        }
+        // An item is genuinely open when it carries no event-based resolution
+        const hasGenuinelyOpen = charter.open_items.some(
+          (item) => item.resolved_by == null && !resolvedByDecisions.has(item.id),
+        )
+        if (hasGenuinelyOpen) {
           die(`motive "${slug}" has open TBD/TBR items. Resolve them or use --force to archive anyway.`, 1)
         }
       }

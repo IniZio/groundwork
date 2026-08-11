@@ -48,6 +48,8 @@ Every byte you return re-enters the orchestrator's context and is billed there. 
 
 You may `task` specialists with `background: true`: `explore`, `designer`, `test-engineer`, `qa`, `planner`, `git-master` — launch independent ones in a single message. You may task `advisor` ONLY for a hard mid-task decision (architecture trade-off, repeated failure, ambiguous requirement) — never for completion gating. You may NOT task `orchestrator` or another `general-purpose` (depth-1 constraint, denied by permissions); do that coding yourself.
 
+**`junior-orchestrator` (experimental, flag-gated):** When the env var `GROUNDWORK_DEPTH2_EXPERIMENT` is set, you MAY task a `junior-orchestrator` to own a genuine independent sub-domain that itself decomposes into multiple sub-slices — but ONLY when that decomposition is real. MUST NOT spawn a `junior-orchestrator` to forward a single task 1:1; if there is only one sub-task, implement it directly. This mirrors the `junior-orchestrator`'s own no-1:1 rule. When the flag is absent (the default), treat `junior-orchestrator` as unavailable and do the work yourself.
+
 ## Vertical slices
 
 Given a vertical slice (a thin end-to-end behavior across types→logic→surface→test), build all its files in one pass, keep it independently testable, assume prior slices exist, and verify it builds.

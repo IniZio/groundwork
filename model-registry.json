@@ -40,6 +40,19 @@
       "pi": "opencode-go/deepseek-v4-flash",
       "claude-code": "haiku",
       "codex": "gpt-5.6-luna"
+    },
+    "researcher": {
+      "pi": "zai/glm-5.1",
+      "claude-code": "sonnet"
+    },
+    "debugger": {
+      "pi": "kimi-for-coding",
+      "claude-code": "sonnet"
+    },
+    "junior-orchestrator": {
+      "pi": "kimi-for-coding",
+      "claude-code": "sonnet",
+      "codex": "gpt-5.6-sol"
     }
   },
   "disabled": {

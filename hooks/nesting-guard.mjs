@@ -36,7 +36,13 @@ import path from 'node:path'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
 
 /** Agents that subagents (depth ≥ 1) are NOT allowed to dispatch. */
-const DENIED_AT_DEPTH_1 = new Set(['general-purpose', 'orchestrator'])
+const DENIED_AT_DEPTH_1 = new Set(['general-purpose', 'orchestrator', 'debugger'])
+
+/**
+ * Depth-2 experiment: types a junior-orchestrator caller IS allowed to spawn.
+ * Everything outside this set is denied. Gated behind GROUNDWORK_DEPTH2_EXPERIMENT.
+ */
+const JUNIOR_ALLOWED_SPAWN = new Set(['general-purpose', 'explore', 'advisor', 'designer', 'test-engineer', 'qa'])
 
 /**
  * Normalise a raw subagent_type to a bare name for policy matching.
@@ -88,15 +94,54 @@ async function main() {
   if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) return passthrough()
 
   const bare = normaliseName(toolInput.subagent_type)
-  if (!bare || !DENIED_AT_DEPTH_1.has(bare)) return passthrough()
+  if (!bare) return passthrough()
+
+  const rawTarget = typeof toolInput.subagent_type === 'string' ? toolInput.subagent_type : bare
+  const callerIsSubagent = isSubagentCall(input)
+  const callerBare = normaliseName(input?.agent_type)
+
+  // ── Depth-2 experiment (gated behind env flag) ──────────────────────────
+  if (process.env.GROUNDWORK_DEPTH2_EXPERIMENT) {
+    // FAIL-CLOSED junior spawn: spawning a junior-orchestrator is permitted
+    // only when the caller is positively identified as general-purpose.
+    // If the caller is a subagent with absent/ambiguous/other agent_type, deny.
+    if (bare === 'junior-orchestrator' && callerIsSubagent) {
+      if (callerBare !== 'general-purpose') {
+        return deny(
+          `groundwork nesting-guard: spawning "junior-orchestrator" denied.\n` +
+            `Fail-closed rule: only a general-purpose caller may spawn junior-orchestrator;\n` +
+            `caller agent_type "${callerBare || '(absent/ambiguous)'}" is not permitted.\n` +
+            `Surface the blocker to a general-purpose agent or the parent orchestrator.`,
+        )
+      }
+      // Caller is general-purpose — allow (depth-1 → depth-2 is the one valid path).
+      return passthrough()
+    }
+
+    // CALLER-TYPE CAP: if caller is junior-orchestrator, apply allow-list.
+    if (callerBare === 'junior-orchestrator' && callerIsSubagent) {
+      if (!JUNIOR_ALLOWED_SPAWN.has(bare)) {
+        return deny(
+          `groundwork nesting-guard: a junior-orchestrator may not dispatch "${rawTarget}".\n` +
+            `Depth-2 caller-type cap: junior-orchestrator may only delegate to:\n` +
+            `general-purpose, explore, advisor, designer, test-engineer, qa.\n` +
+            `Do the work yourself, or surface a blocker to the parent orchestrator.`,
+        )
+      }
+      // Target is in the allow-list — permit.
+      return passthrough()
+    }
+  }
+  // ── End depth-2 experiment ────────────────────────────────────────────────
+
+  if (!DENIED_AT_DEPTH_1.has(bare)) return passthrough()
 
   // Only deny when we can positively identify the caller as a subagent.
   // Ambiguous callers (no depth signals) are allowed — fail-open.
-  if (!isSubagentCall(input)) return passthrough()
+  if (!callerIsSubagent) return passthrough()
 
-  const raw = typeof toolInput.subagent_type === 'string' ? toolInput.subagent_type : bare
   return deny(
-    `groundwork nesting-guard: a subagent may not dispatch "${raw}".\n` +
+    `groundwork nesting-guard: a subagent may not dispatch "${rawTarget}".\n` +
       `Depth-1 constraint: subagents implement their own slice directly; they may only\n` +
       `delegate to: explore, advisor, designer, test-engineer, qa, planner.\n` +
       `Do the work yourself, or surface a blocker to the parent orchestrator.`,

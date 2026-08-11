@@ -83,8 +83,24 @@ const PLATFORM_ONLY_FRONTMATTER: Record<string, Frontmatter> = {
 	"git-master": { prompt_mode: "replace", tools: RO_TOOLS, permission: { task: { "*": "deny" } } },
 	orchestrator: { prompt_mode: "append", thinking: "minimal", mode: "primary", tools: RO_TOOLS },
 	planner: { prompt_mode: "replace", tools: RO_TOOLS },
+	"junior-orchestrator": {
+		prompt_mode: "replace",
+		tools: RW_TOOLS,
+		permission: {
+			task: {
+				"*": "deny",
+				"general-purpose": "allow",
+				explore: "allow",
+				advisor: "allow",
+				designer: "allow",
+				"test-engineer": "allow",
+				qa: "allow",
+			},
+		},
+	},
 	"test-engineer": { prompt_mode: "replace", tools: RW_TOOLS, permission: { task: { "*": "deny", explore: "allow" } } },
 	qa: { prompt_mode: "replace", tools: RW_TOOLS },
+	researcher: { prompt_mode: "replace", tools: RO_TOOLS },
 };
 const DEFAULT_PLATFORM_FRONTMATTER: Frontmatter = { prompt_mode: "replace", tools: RW_TOOLS };
 

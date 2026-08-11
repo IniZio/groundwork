@@ -14,7 +14,7 @@
 
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. MUST NOT use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
-3. **Debugging a bug?** → STOP. Load `/groundwork:diagnose` skill first.
+3. **Debugging a bug?** → STOP. Delegate to `groundwork:debugger` (it runs the 6-phase diagnose protocol). MUST NOT load diagnose skill as the routing front-door.
 4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
@@ -57,7 +57,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 
 | Signal | Classification | Path |
 |---|---|---|
-| "doesn't work", "broken", "error", stack trace | Bug | load `diagnose` skill → `general-purpose` (root-cause + fix) → `advisor` gate |
+| "doesn't work", "broken", "error", stack trace | Bug | `groundwork:debugger` (observe→hypothesize→isolate→fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
 | "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `general-purpose` parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
@@ -67,7 +67,8 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | "auth", "security", "OWASP", "injection" | Security | `advisor` gate |
 | "commit", "git", "rebase", "PR" | Git | `git-master` |
 | Visual / UI / styling | Design | `designer` |
-| "how does", "understand", "where is", "trace" | Explore | `groundwork:explore` |
+| "how does", "understand", "where is", "trace" | Explore (locate) | `groundwork:explore` |
+| "why does X behave this way", "prior art", "research", "cross-system tradeoff", open investigation question | Deep research | `groundwork:researcher` → `advisor` gate |
 | "audit plan coverage before fan-out", "map ACs to slices", "did we miss an AC?" | Plan coverage audit | load `plan-review` skill (read-only, post-slicing/pre-fan-out: maps charter AC ids → ledger slice ids + `doc/specs` requirement ids; flags zero-coverage and untestable ACs) |
 | "validate plan", "is this right" | Plan review | `advisor` |
 | "is it done", "verify", "confirm" | Completion | `advisor` (evidence+quality) |
@@ -188,13 +189,16 @@ Tier aliases (sonnet/opus/haiku/fable) resolve to the provider's *latest* versio
 | Agent | Model |
 | --- | --- |
 | advisor | opus |
+| debugger | sonnet |
 | designer | sonnet |
 | explore | haiku |
 | general-purpose | sonnet |
 | git-master | haiku |
+| junior-orchestrator | sonnet |
 | orchestrator | opus |
 | planner | opus |
 | qa | sonnet |
+| researcher | sonnet |
 | test-engineer | sonnet |
 <!-- AGENT-MODELS:END -->
 
@@ -225,11 +229,12 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 
 | Activity | Agent |
 |----------|-------|
-| Understanding codebase | `explore` |
+| Locating code / tracing a flow | `explore` (lightweight, haiku) |
+| Deep investigation / prior-art / open question / cross-system tradeoff | `researcher` (sonnet, read-only) |
 | Writing/editing code | `general-purpose` |
 | UI/UX, styling | `designer` |
 | Test strategy, coverage | `test-engineer` |
-| Root-cause analysis | `general-purpose` |
+| Root-cause analysis + fix (structured debug protocol) | `debugger` (sonnet) |
 | Code quality, SOLID, plan validation | `advisor` |
 | Security vulnerabilities | `advisor` |
 | Plan/architecture validation | `advisor` |
@@ -272,8 +277,26 @@ To run several domains in parallel, the PRIMARY orchestrator fans out one `gener
 ### Depth-1 Constraint (HARD-ENFORCED)
 - Primary orchestrator MAY task `general-purpose` sub-orchestrators and `orchestrator` for further decomposition
 - Sub-orchestrators MUST NOT task `orchestrator` or another `general-purpose` — enforced by `hooks/nesting-guard.mjs` on Claude Code (a `general-purpose` implements its own slice directly)
-- Sub-orchestrators MAY task supporting specialists: explore, advisor, designer, test-engineer, qa, planner
+- Sub-orchestrators MAY task supporting specialists: explore, researcher, planner, advisor, designer, test-engineer, qa
 - Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
+
+The above is the **default and production-ready behavior**. An experimental opt-in tier described below extends it by one additional sub-orchestrator layer under a flag (3 levels total: primary + 2 sub-orchestrator layers) — but the depth-1 rationale above applies whenever that flag is off.
+
+### Experimental Depth-2 Tier — `junior-orchestrator` (opt-in, OFF by default)
+
+**This tier is EXPERIMENTAL.** It is disabled unless the environment variable `GROUNDWORK_DEPTH2_EXPERIMENT=1` is explicitly set. When the flag is off, behavior is exactly as described in the Depth-1 Constraint above — nothing changes.
+
+**What it adds when enabled:** a `junior-orchestrator` agent type that sits between a `general-purpose` sub-orchestrator and its implementation workers, allowing a `general-purpose` to delegate sub-domain orchestration one level deeper rather than implementing all sub-domain code itself.
+
+**Enforcement model — what the hook enforces vs. what relies on agent discipline:**
+
+_Mechanically enforced by `hooks/nesting-guard.mjs` when `GROUNDWORK_DEPTH2_EXPERIMENT=1` is set:_
+- A `general-purpose` caller MAY spawn a `junior-orchestrator`. Spawning a junior is fail-closed: it is allowed only from a positively-identified `general-purpose` caller; any ambiguous or unrecognized caller is denied.
+- A `junior-orchestrator` MAY spawn `general-purpose` workers and read-only specialists (explore, advisor, designer, test-engineer, qa).
+- A `junior-orchestrator` is DENIED from spawning `orchestrator`, `debugger`, or another `junior-orchestrator`. The caller-agent-type cap on junior→junior spawning closes the runaway-regress loop mechanically.
+
+_Prose-only — NOT mechanically enforceable (state this limitation when briefing a junior):_
+- A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child. It must do genuine orchestration work — decomposition, sequencing, context isolation across multiple children — not merely relay the brief it received. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it never sees the child's inbound brief. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
 
 ---
 

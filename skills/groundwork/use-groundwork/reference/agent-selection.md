@@ -19,6 +19,9 @@ the role boundaries in the plan and execute locally.
 | `test-engineer` | Test strategy, integration/e2e coverage, flaky test hardening |
 | `git-master` | Atomic commits, rebasing, history management |
 | `planner` | Strategic planning, actionable work plans before non-trivial features |
+| `debugger` | Read-write structured root-cause debugging (observe→hypothesize→isolate→fix); use for real bugs needing disciplined diagnosis, not code-and-guess |
+| `researcher` | Read-only deep investigation of open questions, prior-art, external docs, cross-system tradeoffs; the tier above `explore` (which only locates code) |
+| `junior-orchestrator` | **EXPERIMENTAL** (behind `GROUNDWORK_DEPTH2_EXPERIMENT` flag, off by default) depth-2 tier; a `general-purpose` may delegate one further sub-orchestration level to it |
 
 All agents use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor", ...)`.
 

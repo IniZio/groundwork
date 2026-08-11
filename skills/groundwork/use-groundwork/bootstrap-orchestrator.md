@@ -62,6 +62,105 @@ Sequence: `[qa if interactive UI]` → `advisor`
 
 ---
 
+## Delegation Graph
+
+```
+                              ┌─────────────────────────┐
+                              │   orchestrator  [opus]   │
+                              │  classify · delegate ·   │
+                              │  review · NEVER implement│
+                              └───────────┬─────────────┘
+         ┌──────────┬──────────┬──────────┼──────────────────────────────────────┐
+         ▼          ▼          ▼          ▼          ▼          ▼                ▼
+  ┌──────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐    ┌───────────┐
+  │ planner  │ │interview│ │ general- │ │ debugger │ │  explore /   │    │  advisor  │
+  │ [opus]   │ │ (skill) │ │ purpose  │ │ [sonnet] │ │  researcher  │    │  [opus]   │
+  │decompose │ │intent   │ │ [sonnet] │ │ORCH-ONLY │ │  designer    │    │  GATE:    │
+  │+coverage │ │capture  │ │code write│ │RW bugs + │ │  test-eng    │    │ APPROVE / │
+  └──────────┘ └─────────┘ │& sub-orc │ │root-cause│ │  qa          │    │ CORRECT / │
+                            └────┬─────┘ └──────────┘ │  planner     │    │ REPLAN    │
+                                 │  (as sub-orch)      └──────────────┘    └─────▲─────┘
+                                 │  MAY re-delegate to:                          │
+                                 │  explore, researcher, planner,                │ gates
+                                 │  designer, test-engineer, qa, advisor         │ (never
+                                 │                                               │  skipped;
+                                 │  DENIED (depth-1 guard):                      │  completion
+                                 │  general-purpose · orchestrator · debugger    │  gate is
+                                 └──────────────────────────────────────────────▶│  ORCH-only)
+                                                                                 │
+  ── delegates to ──▶   (orchestrator → any agent above)
+  ════ gates ══════▶    (advisor APPROVE required before session end;
+                         sub-orchestrators MAY consult advisor mid-flow,
+                         but only the orchestrator RECORDS the gate verdict)
+
+  ⚠️ EXPERIMENTAL (GROUNDWORK_DEPTH2_EXPERIMENT=1, OFF by default):
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  general-purpose [sonnet]                                        │
+  │    └──▶ junior-orchestrator [sonnet]  (depth-2, one sub-domain) │
+  │           └──▶ {general-purpose, explore, advisor,               │
+  │                  designer, test-engineer, qa}                    │
+  │  DENIED from junior-orchestrator:                                │
+  │    orchestrator · debugger · junior-orchestrator (no nesting)   │
+  └──────────────────────────────────────────────────────────────────┘
+```
+
+**Which specialist to reach for:**
+- `explore` — read-only; you know *something* exists but not where. Fast/cheap (haiku).
+- `researcher` — open questions, prior-art investigation, deep reading of external docs. Read-only, but wider and slower than explore.
+- `debugger` — a real bug; read-write; performs root-cause + applies the fix.
+- `general-purpose` — all code writing and editing. The only agent that modifies the codebase.
+- `qa` — live verification (browser/TUI/CLI) when a human eyeball or scripted interaction is needed.
+- `advisor` — quality/completion gate. Sub-orchestrators MAY consult it mid-flow for trade-off decisions. The RECORDED completion gate (`gate.advisor` in ledger) is ORCHESTRATOR-ONLY — never let a subagent record the APPROVE verdict.
+
+---
+
+## Run Loop (Workflow)
+
+```
+classify request
+    │
+    ├─ trivial? ──▶ general-purpose ──▶ advisor gate ──▶ done
+    │
+    └─ non-trivial?
+           │
+           ▼
+      interview (intent capture, one question at a time)
+           │
+           ▼
+      planner [opus] (decomposition + acceptance criteria + coverage)
+           │  produces motive_ref on disk
+           ▼
+      vertical-slice (writes run ledger, decomposes into slices)
+           │
+           ▼
+      ┌────────────────────────────────┐
+      │  Wave N  (ALL in ONE message)  │
+      │  general-purpose × M          │
+      │  + explore / debugger / qa    │
+      │  (parallel fan-out)           │
+      └────────────┬───────────────────┘
+                   │ results land → mark slices complete
+                   ▼
+      more waves? ──▶ repeat (requires user-authorized autopilot for wave 2+)
+                   │
+                   ▼
+      [qa if interactive UI or CLI surface]
+                   │
+                   ▼
+      advisor gate → APPROVE → bin/ledger gate advisor APPROVE
+                   │
+                   ▼
+                 done
+```
+
+**Key loop constraints:**
+- All parallel tasks for a wave launch in ONE message (never sequential across messages).
+- Do NOT call `question` while background tasks run — end your turn instead.
+- Ledger pacing: impl waves throttled to 1/session. Wave 2+ requires user-authorized autopilot.
+- Every path converges at the advisor gate. "Should work" is not evidence.
+
+---
+
 ## Delegation Matrix
 
 See CLAUDE.md §Delegation matrix. Always use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor", ...)`.

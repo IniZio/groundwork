@@ -21,12 +21,13 @@ digraph flow {
   "Classify: Bug or not?" -> "Feature path" [label="feature"];
   "Classify: Bug or not?" -> "Spike" [label="uncertain approach"];
   "Classify: Bug or not?" -> "Docs-Only" [label="documentation"];
+  "Classify: Bug or not?" -> "Research path" [label="deep research, prior-art, open question"];
 
   "Bug path" -> "Assess: obvious?" [label="typo, known config"];
-  "Bug path" -> "invoke skill diagnose" [label="root cause unclear"];
+  "Bug path" -> "debugger agent (observe→hypothesize→isolate→fix)" [label="root cause unclear"];
   "Assess: obvious?" -> "implement directly (fix)";
   "implement directly (fix)" -> "invoke skill advisor-gate";
-  "invoke skill diagnose" -> "invoke skill advisor-gate";
+  "debugger agent (observe→hypothesize→isolate→fix)" -> "invoke skill advisor-gate";
 
   "Change path" -> "Assess scope";
   "Assess scope" -> "Trivial" [label="single-line, zero ambiguity"];
@@ -52,6 +53,11 @@ digraph flow {
   "invoke skill prototype" -> "Check escalation signals" [label="findings inform next step"];
 
   "Docs-Only" -> "implement directly";
+
+  "Research path" -> "explore agent (quick-locate)" [label="known codebase, find/trace"];
+  "Research path" -> "researcher agent (deep research)" [label="prior art, open question, survey"];
+  "researcher agent (deep research)" -> "invoke skill advisor-gate";
+
   "invoke skill advisor-gate" -> "Get APPROVE";
   "Get APPROVE" -> "Use question tool to present result";
 }
@@ -59,19 +65,19 @@ digraph flow {
 
 ## Bug Path Detail
 
-**Load `diagnose` for any bug that needs investigation.** Exception: obvious fix (typo in a known file, known config value, clear localized regression you can spot without exploration).
+**Route any bug that needs investigation to `groundwork:debugger`.** It runs the 6-phase diagnose protocol internally. Exception: obvious fix (typo in a known file, known config value, clear localized regression you can spot without exploration) → fix directly via `general-purpose`.
 
 ```
-[obvious typo/config]  fix directly → invoke skill "advisor-gate"
-[anything else]        invoke skill "diagnose" FIRST → (skill runs 6-phase loop) → invoke skill "advisor-gate"
+[obvious typo/config]  general-purpose direct → invoke skill "advisor-gate"
+[anything else]        task groundwork:debugger → (runs 6-phase diagnose loop) → invoke skill "advisor-gate"
 ```
 
-**Rule of thumb:** If you're about to explore the codebase with `task` to understand a bug → stop. Load `diagnose`. It has the exploration built in.
+**Rule of thumb:** If you're about to explore the codebase with `task` to understand a bug → stop. Delegate to `groundwork:debugger`. It has the exploration built in.
 
 **Examples:**
-- ❌ `"The filter is broken"` → don't explore; load `diagnose`
-- ❌ `"Submit button doesn't work"` → don't explore; load `diagnose`
-- ❌ `"Error on line 42"` without obvious fix → don't explore; load `diagnose`
+- ❌ `"The filter is broken"` → don't explore; delegate to `groundwork:debugger`
+- ❌ `"Submit button doesn't work"` → don't explore; delegate to `groundwork:debugger`
+- ❌ `"Error on line 42"` without obvious fix → don't explore; delegate to `groundwork:debugger`
 - ✅ `"Fix typo 'backgroud' → 'background'"` → obvious, fix directly
 - ✅ `"Port 8080 is already in use"` → known config, fix directly
 

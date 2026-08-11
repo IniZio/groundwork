@@ -66,6 +66,8 @@ Key rules:
 
 ## Phase 3: Decomposition
 
+Ultrathink through decomposition and coverage — the cost of a structurally flawed plan is borne by every downstream implementation wave.
+
 Decompose the work into vertical slices. Each slice is independently testable end-to-end.
 
 **Detailed protocol:** `agents-src/planner/reference/decompose.md`

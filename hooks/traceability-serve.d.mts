@@ -30,13 +30,35 @@ export declare function buildHtml(graph: ClassifiedGraph): string
  * Start the local HTTP server.
  *
  * Endpoints:
- *   GET /       → self-contained interactive HTML
- *   GET /graph  → classified graph JSON
+ *   GET /        → self-contained interactive HTML
+ *   GET /graph   → classified graph JSON
+ *   POST /rejudge → S7: on-demand single-link re-judge
  *
  * @param classifiedGraph - The classified graph to serve
  * @param port - Port to bind (0 = OS-assigned ephemeral port)
+ * @param opts - Optional slug and projectDir needed to support POST /rejudge
  */
 export declare function startServer(
   classifiedGraph: ClassifiedGraph,
   port?: number,
+  opts?: { slug?: string; projectDir?: string },
 ): Promise<{ server: Server; port: number; url: string }>
+
+/**
+ * Append a scoped GATE verdict event for a single link (S7, D-8, AC-5).
+ *
+ * MUST NOT be called by buildClassifiedGraph or any regen-hot-path function.
+ *
+ * @param linkId     - D-8 link identifier (typically a slice ID)
+ * @param verdict    - 'APPROVE' | 'CORRECTION' | 'REPLAN' | 'STOP'
+ * @param which      - Gate name stored as GATE.which (e.g. 'manual-rejudge')
+ * @param projectDir - Absolute project root
+ * @param slug       - Motive slug
+ */
+export declare function rejudgeLink(
+  linkId: string,
+  verdict: string,
+  which: string,
+  projectDir: string,
+  slug: string,
+): void

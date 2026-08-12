@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 /**
- * traceability-serve.mjs — S6 of motive tracking-viz (AC-1, AC-2, AC-3, D-2, D-6, D-9)
+ * traceability-serve.mjs — S6/S7 of motive tracking-viz (AC-1, AC-2, AC-3, AC-5, D-2, D-3, D-6, D-8, D-9)
  *
  * CLI: node hooks/traceability-serve.mjs <slug> [--port N]
  *
  * Starts a LOCAL HTTP server (Node built-in http only) serving:
- *   GET /       → self-contained interactive HTML (pan/zoom, hover, expand, Needs-You sidebar)
- *   GET /graph  → classified graph JSON (nodes + edges with classification field)
+ *   GET /        → self-contained interactive HTML (pan/zoom, hover, expand, Needs-You sidebar)
+ *   GET /graph   → classified graph JSON (nodes + edges with classification field)
+ *   POST /rejudge → S7: explicit on-demand re-judge for a single link (D-8, AC-5)
+ *                  Body: { link_id: string, verdict?: string, which?: string }
+ *                  Appends a scoped GATE event keyed by D-8 link_id and rebuilds graph.
+ *                  MUST NOT be called by buildClassifiedGraph or any regen-hot-path code.
  *
  * Approach — no build chain (D-2, D-6):
  *   All HTML, CSS, and JavaScript are inlined into a single response. The graph
@@ -25,6 +29,7 @@ import { NativeSpineAdapter } from './lib/traceability-adapter.mjs'
 import { buildTraceabilityGraph } from './lib/traceability-join.mjs'
 import { classifyTraceabilityGraph } from './lib/traceability-classify.mjs'
 import { readEvidence, markStaleness } from './lib/traceability-evidence.mjs'
+import { appendEvent, resolveShardPath } from './lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Pipeline assembly
@@ -47,6 +52,46 @@ export function buildClassifiedGraph(slug, projectDir) {
 
   const classified = classifyTraceabilityGraph(baseGraph, stampedRefs)
   return { ...classified, slug }
+}
+
+// ---------------------------------------------------------------------------
+// S7 — On-demand single-link re-judge (D-3, D-8, AC-5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a scoped GATE verdict event for a single link (S7, D-8, AC-5).
+ *
+ * This function is an EXPLICIT on-demand action invoked only from the
+ * POST /rejudge handler. It MUST NOT be called by buildClassifiedGraph or
+ * any regen-hot-path function — that separation is the load-bearing invariant
+ * for D-3 (classification never recomputed in the hot path).
+ *
+ * The event is keyed by the D-8 `link_id` field so the classifier can scope
+ * the verdict to a single link when the graph is rebuilt.
+ *
+ * @param {string} linkId      - D-8 link identifier (typically a slice ID)
+ * @param {string} verdict     - 'APPROVE' | 'CORRECTION' | 'REPLAN' | 'STOP'
+ * @param {string} which       - Gate name stored as GATE.which (e.g. 'manual-rejudge')
+ * @param {string} projectDir  - Absolute project root
+ * @param {string} slug        - Motive slug
+ */
+export function rejudgeLink(linkId, verdict, which, projectDir, slug) {
+  const ts = new Date().toISOString()
+  const shardPath = resolveShardPath(projectDir, 'traceability-serve', ts.slice(0, 10))
+  const event = {
+    ts,
+    session: 'traceability-serve',
+    motive: slug,
+    type: 'GATE',
+    msg: `re-judge link ${linkId}: ${verdict}`,
+    source: 'traceability-serve:rejudge',
+    data: {
+      which,
+      verdict,
+      link_id: linkId,
+    },
+  }
+  appendEvent(shardPath, event)
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +164,10 @@ html,body{height:100%;overflow:hidden;background:#0f172a;color:#e2e8f0;font-fami
 #popover .p-ev-title{color:#94a3b8;margin-bottom:4px}
 .p-ev-path{color:#7dd3fc;word-break:break-all;display:block;margin:2px 0}
 .p-ev-none{color:#475569;font-style:italic}
+/* Re-judge button (S7) */
+.rj-btn{margin-top:6px;padding:3px 10px;background:#1e3a5f;border:1px solid #3b82f6;border-radius:4px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:inherit;width:100%}
+.rj-btn:hover{background:#1d4ed8;color:#fff}
+.rj-btn:disabled{opacity:.4;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -147,6 +196,45 @@ html,body{height:100%;overflow:hidden;background:#0f172a;color:#e2e8f0;font-fami
 <script>
 (function () {
 'use strict';
+
+// ── S7: On-demand single-link re-judge ────────────────────────────────────
+/**
+ * Send POST /rejudge for the given link_id and reload on success.
+ * This is ONLY called from an explicit user action (button click) — never
+ * from the graph render or regen path.
+ *
+ * @param {string} linkId   - D-8 link identifier (typically a slice ID)
+ * @param {string} [verdict] - Gate verdict (default: 'APPROVE')
+ */
+function rejudge(linkId, verdict) {
+  fetch('/rejudge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ link_id: linkId, verdict: verdict || 'APPROVE' })
+  }).then(function (r) { return r.json(); }).then(function (data) {
+    if (data.ok) { window.location.reload(); }
+    else { alert('Re-judge failed: ' + (data.error || 'unknown error')); }
+  }).catch(function (err) { alert('Re-judge error: ' + String(err)); });
+}
+
+/**
+ * Extract a D-8 link_id from an edge (prefer slice source, then slice target).
+ * Returns null when neither endpoint is a slice and no fallback is applicable.
+ *
+ * @param {{ source: string, target: string, kind: string }} edge
+ * @param {{ id: string, type: string, sliceId?: string }[]} nodes
+ * @returns {string|null}
+ */
+function edgeLinkId(edge, nodes) {
+  var nodeById = {};
+  nodes.forEach(function (n) { nodeById[n.id] = n; });
+  var src = nodeById[edge.source];
+  var tgt = nodeById[edge.target];
+  if (src && src.type === 'slice' && src.sliceId) return src.sliceId;
+  if (tgt && tgt.type === 'slice' && tgt.sliceId) return tgt.sliceId;
+  // Fallback: use the raw source id (the GATE event classifier accepts any string)
+  return edge.source || null;
+}
 
 // ── Embedded graph data ────────────────────────────────────────────────────
 var G = ${graphJson};
@@ -545,6 +633,8 @@ if (nonProven.length === 0) {
     var tgtNode = G.nodes.find(function (n) { return n.id === e.target; });
     var srcLbl = ((srcNode && srcNode.label) || e.source).slice(0, 24);
     var tgtLbl = ((tgtNode && tgtNode.label) || e.target).slice(0, 24);
+    // S7: compute D-8 link_id for this edge so the button can scope the verdict
+    var linkId = edgeLinkId(e, G.nodes);
 
     var li = document.createElement('li');
     li.className = 'needs-item';
@@ -552,6 +642,21 @@ if (nonProven.length === 0) {
       '<div class="ni-label">' + srcLbl + ' → ' + tgtLbl + '</div>' +
       '<div class="ni-kind">' + e.kind + '</div>' +
       '<span class="ni-tag tag-' + e.classification + '">' + e.classification + '</span>';
+
+    // S7: Re-judge button — explicit on-demand action, never on the regen hot path
+    if (linkId) {
+      var btn = document.createElement('button');
+      btn.className = 'rj-btn';
+      btn.textContent = 'Re-judge → APPROVE';
+      btn.title = 'Append a scoped APPROVE verdict for link ' + linkId;
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = 'Re-judging…';
+        rejudge(linkId, 'APPROVE');
+      });
+      li.appendChild(btn);
+    }
 
     // Hover on sidebar item → highlight that edge pair
     li.addEventListener('mouseenter', function () {
@@ -586,25 +691,82 @@ if (nonProven.length === 0) {
  *
  * @param {{ nodes: object[], edges: object[], slug?: string, artifactEvidence?: object[] }} classifiedGraph
  * @param {number} [port=0]
+ * @param {{ slug?: string, projectDir?: string }} [opts]
+ *   Options for S7 re-judge support. When provided, enables POST /rejudge:
+ *   the handler appends a scoped GATE event and rebuilds the served graph.
  * @returns {Promise<{ server: import('node:http').Server, port: number, url: string }>}
  */
-export function startServer(classifiedGraph, port = 0) {
-  const html = buildHtml(classifiedGraph)
-  const graphJson = JSON.stringify(classifiedGraph)
+export function startServer(classifiedGraph, port = 0, opts = {}) {
+  const { slug = classifiedGraph.slug ?? null, projectDir = null } = opts
+
+  // Use `let` so POST /rejudge can atomically swap in a rebuilt graph.
+  let currentHtml = buildHtml(classifiedGraph)
+  let currentGraphJson = JSON.stringify(classifiedGraph)
 
   const server = http.createServer((req, res) => {
+    const url = req.url ?? '/'
+
+    // ── S7: POST /rejudge — explicit on-demand single-link re-judge ──────────
+    // INVARIANT: this block is the ONLY place rejudgeLink is called.
+    // buildClassifiedGraph MUST NOT call rejudgeLink — separation is load-bearing.
+    if (req.method === 'POST' && (url === '/rejudge' || url === '/rejudge?')) {
+      let body = ''
+      req.on('data', (chunk) => { body += chunk })
+      req.on('end', () => {
+        try {
+          const parsed = /** @type {Record<string,unknown>} */ (JSON.parse(body || '{}'))
+          const linkId  = typeof parsed.link_id === 'string' ? parsed.link_id : null
+          const verdict = typeof parsed.verdict  === 'string' ? parsed.verdict  : 'APPROVE'
+          const which   = typeof parsed.which    === 'string' ? parsed.which    : 'manual-rejudge'
+
+          if (!linkId) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ error: 'link_id is required' }))
+            return
+          }
+          if (!projectDir || !slug) {
+            res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ error: 'server not configured for rejudge (missing opts.slug / opts.projectDir)' }))
+            return
+          }
+
+          // Append the scoped verdict event — EXPLICIT action only, never in regen hot path
+          rejudgeLink(linkId, verdict, which, projectDir, slug)
+
+          // Rebuild classified graph so the updated verdict renders on next page load
+          try {
+            const rebuilt = buildClassifiedGraph(slug, projectDir)
+            currentHtml = buildHtml(rebuilt)
+            currentGraphJson = JSON.stringify(rebuilt)
+          } catch (rebuildErr) {
+            // Append succeeded but rebuild failed — report partial success with detail
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: true, regenError: String(rebuildErr) }))
+            return
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: String(err) }))
+        }
+      })
+      return
+    }
+
     if (req.method !== 'GET') {
-      res.writeHead(405, { Allow: 'GET' })
+      res.writeHead(405, { Allow: 'GET, POST' })
       res.end('Method Not Allowed')
       return
     }
-    const url = req.url ?? '/'
+
     if (url === '/graph' || url === '/graph?') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(graphJson)
+      res.end(currentGraphJson)
     } else if (url === '/' || url === '') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      res.end(html)
+      res.end(currentHtml)
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' })
       res.end('Not found')
@@ -688,11 +850,12 @@ if (isMain) {
     die('Failed to load motive "' + slug + '": ' + (err instanceof Error ? err.message : String(err)))
   }
 
-  startServer(graph, port)
+  startServer(graph, port, { slug, projectDir })
     .then(({ url }) => {
       process.stdout.write('traceability-serve: listening on ' + url + '\n')
       process.stdout.write('  Graph JSON : ' + url + '/graph\n')
       process.stdout.write('  Interactive: ' + url + '/\n')
+      process.stdout.write('  Re-judge   : POST ' + url + '/rejudge (body: { link_id, verdict?, which? })\n')
       // Keep the server running
     })
     .catch((err) => {

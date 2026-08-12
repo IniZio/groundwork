@@ -245,7 +245,7 @@ export class NativeSpineAdapter {
     const events = []
     try {
       const files = readdirSync(journalDir)
-        .filter((f) => f.endsWith('.ndjson'))
+        .filter((f) => f.endsWith('.jsonl'))
         .sort()
       for (const f of files) {
         const raw = readFileSync(path.join(journalDir, f), 'utf8')

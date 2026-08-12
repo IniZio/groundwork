@@ -1,0 +1,15 @@
+id: C-TRACEABILITY
+title: Traceability
+summary: "The traceability system makes the full spec→code→end-product-artifact chain legible by surfacing broken, unproven, stale, and missing links across one unified chain: objective→spec-req→slice→self-test→live-verify→gate."
+status: review
+views:
+  - type: overview
+    file: README.md
+  - type: constraints
+    file: constraints.md
+relations:
+  _note: "Informational only"
+  items:
+    - kind: part-of
+      target: C-GROUNDWORK
+lint: {}

@@ -126,9 +126,11 @@ export function compile(events, opts = {}) {
 
       case 'GATE': {
         // d.which, d.verdict — hooks/ledger.mjs; d.citation, d.rubric optional.
+        // d.link_id — optional per-link scope (D-8 additive field).
         const rec = { ord, ts, which: d.which, verdict: d.verdict }
         if (d.citation != null) rec.citation = d.citation
         if (d.rubric != null) rec.rubric = d.rubric
+        if (d.link_id != null) rec.link_id = d.link_id
         gates.set(d.which, rec)
         break
       }
@@ -299,7 +301,10 @@ export function compile(events, opts = {}) {
 
       case 'VERIFICATION': {
         modelWrittenCount++
-        verifications.push({ claim: d.claim ?? null, evidence: d.evidence ?? null, result: d.result ?? null })
+        // d.link_id — optional per-link scope (D-8 additive field).
+        const vRec = { claim: d.claim ?? null, evidence: d.evidence ?? null, result: d.result ?? null }
+        if (d.link_id != null) vRec.link_id = d.link_id
+        verifications.push(vRec)
         break
       }
 

@@ -61,6 +61,12 @@ export interface TraceEdge {
   source: string
   target: string
   kind: string
+  /**
+   * Optional per-link classification added by classifyTraceabilityGraph (S3).
+   * Absent on raw edges returned by buildTraceabilityGraph; present on all edges
+   * in the ClassifiedGraph returned by traceability-classify.mjs.
+   */
+  classification?: 'proven' | 'unproven' | 'stale' | 'missing'
 }
 
 export declare function makeSelfTestNode(opts: {

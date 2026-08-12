@@ -870,6 +870,37 @@ export function loadIndex(sd) {
 // Random suffix generation (AC5)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Spec requirements scanner — consumes walkSpecFiles + parseRequirementsDocument
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk all spec-requirements documents under the project's doc/specs directory
+ * and return the parsed requirement objects as a flat array.
+ *
+ * Used by NativeSpineAdapter.getSpecRequirements() in traceability-adapter.mjs.
+ *
+ * @param {string} projectDir - Absolute path to the project root.
+ * @returns {Array<{id:string, title:string, verification:string|null, criticality:string|null}>}
+ */
+export function parseSpecRequirements(projectDir) {
+  const sd = specDirPath(projectDir)
+  if (!existsSync(sd)) return []
+  const results = []
+  for (const { absPath, relPath } of walkSpecFiles(sd)) {
+    if (!isRequirementsDoc(relPath)) continue
+    try {
+      const markdown = readFileSync(absPath, 'utf8')
+      const reqs = parseRequirementsDocument(markdown)
+      for (const r of reqs) {
+        if (r.errors?.length && !r.id) continue  // skip unparseable entries
+        results.push(r)
+      }
+    } catch { /* skip unreadable files */ }
+  }
+  return results
+}
+
 const BASE32_CHARS = 'abcdefghijklmnopqrstuvwxyz234567'
 
 export function randomSuffix(existingIds) {

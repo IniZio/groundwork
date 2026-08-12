@@ -41,6 +41,7 @@ import { checkPace, resolvedUnits } from './lib/pacing.mjs'
 import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
+import { regenerateMotiveTraceHtml } from './lib/traceability-ambient.mjs'
 import { assembleGraphFold, validateFoldRefs } from './lib/motive-dag.mjs'
 
 /**
@@ -67,6 +68,7 @@ function _tryRefreshMap(projectDir) {
     const ledger = readLedger(ledgerPath())
     if (ledger?.motive) {
       regenerateMotiveMap(projectDir, ledger.motive)
+      regenerateMotiveTraceHtml(projectDir, ledger.motive)
     }
   } catch { /* best-effort */ }
 }
@@ -758,6 +760,7 @@ function cmdGate(args) {
       ledger: capturedLedger,
     })
     regenerateMotiveMap(projectDir, capturedLedger.motive)
+    regenerateMotiveTraceHtml(projectDir, capturedLedger.motive)
   }
   process.stdout.write(`${which}: ${hasObj ? value.verdict : value}\n`)
 }
@@ -821,6 +824,7 @@ function cmdAbandon(args) {
       ledger: capturedLedger,
     })
     regenerateMotiveMap(projectDir, capturedLedger.motive)
+    regenerateMotiveTraceHtml(projectDir, capturedLedger.motive)
   }
   process.stdout.write('run cancelled (active:false) — gate released\n')
 }
@@ -908,6 +912,7 @@ function cmdInit(args) {
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   atomicWriteJsonSync(ledgerPath(), obj)
   if (obj.motive) regenerateMotiveMap(projectDir, obj.motive)
+  if (obj.motive) regenerateMotiveTraceHtml(projectDir, obj.motive)
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
   process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`)

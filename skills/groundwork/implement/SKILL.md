@@ -107,6 +107,8 @@ Wait for wave completion before launching the next wave. Update the host's plan 
 - Feature: 5-15 parallel slices per wave
 - Small change: 3-5 parallel slices
 - Single-slice wave = code smell — decompose harder or merge with adjacent wave
+- Escalate a domain to `junior-orchestrator` when it decomposes into genuine sub-domains **OR** has >5 disjoint slices; dispatch `general-purpose` (leaf implementer, cannot spawn further general-purpose workers) directly for everything else.
+- **Worktree conflict-fallback:** when slices share files and would otherwise be serialized, use the worktree isolation mechanism documented in `vertical-slice` to preserve parallel width; reconcile serially after the wave lands.
 
 ## Step 5: Capture After State
 

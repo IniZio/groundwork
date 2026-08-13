@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "nesting-guard.mjs");
 
@@ -200,113 +200,85 @@ describe("nesting-guard — debugger is DENIED at depth ≥ 1 (self-nesting prev
 });
 
 // ---------------------------------------------------------------------------
-// Depth-2 experiment — GROUNDWORK_DEPTH2_EXPERIMENT flag
+// Junior-orchestrator tier — flagless truth table
 // ---------------------------------------------------------------------------
 
-describe("nesting-guard — depth-2 experiment (flag ON)", () => {
-	beforeEach(() => {
-		process.env.GROUNDWORK_DEPTH2_EXPERIMENT = "1";
-	});
-	afterEach(() => {
-		delete process.env.GROUNDWORK_DEPTH2_EXPERIMENT;
+describe("nesting-guard — junior-orchestrator tier (Rule 1: spawn gate)", () => {
+	// R1: top-level orchestrator → junior-orchestrator: ALLOW
+	it("R1-1. top-level orchestrator → junior-orchestrator is ALLOWED", () => {
+		// No agent_type / agent_id / transcript_path → main orchestrator (callerIsSubagent=false).
+		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	// 1. general-purpose caller → junior-orchestrator : ALLOW
-	it("D2-1. general-purpose caller → junior-orchestrator is ALLOWED", () => {
+	// R1: general-purpose subagent → junior-orchestrator: DENY
+	it("R1-2. general-purpose subagent → junior-orchestrator is DENIED", () => {
 		const caller = { agent_type: "general-purpose", agent_id: "gp001" };
 		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("primary orchestrator");
 	});
 
-	// 2. junior-orchestrator caller → general-purpose : ALLOW
-	it("D2-2. junior-orchestrator caller → general-purpose is ALLOWED", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "general-purpose", prompt: "implement" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-	});
-
-	// 3. junior-orchestrator caller → junior-orchestrator : DENY
-	it("D2-3. junior-orchestrator caller → junior-orchestrator is DENIED (caller-type cap)", () => {
+	// R1: junior-orchestrator subagent → junior-orchestrator: DENY
+	it("R1-3. junior-orchestrator subagent → junior-orchestrator is DENIED", () => {
 		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
 		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
-	// 4. junior-orchestrator caller → orchestrator : DENY
-	it("D2-4. junior-orchestrator caller → orchestrator is DENIED (caller-type cap)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "orchestrator", prompt: "orchestrate" }, "Agent", caller));
+	// R1: explore subagent → junior-orchestrator: DENY
+	it("R1-4. explore subagent → junior-orchestrator is DENIED", () => {
+		const caller = { agent_type: "explore", agent_id: "exp001" };
+		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
-	// 5. junior-orchestrator caller → debugger : DENY
-	it("D2-5. junior-orchestrator caller → debugger is DENIED (caller-type cap)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "debugger", prompt: "debug it" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-	});
-
-	// 6. junior-orchestrator caller → explore : ALLOW (read-only specialist)
-	it("D2-6. junior-orchestrator caller → explore is ALLOWED (read-only specialist)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "groundwork:explore", prompt: "find X" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
-	});
-
-	// 7. absent agent_type subagent caller → junior-orchestrator : DENY (fail-closed)
-	it("D2-7. absent-agent_type subagent caller → junior-orchestrator is DENIED (fail-closed)", () => {
-		// agent_id present (so callerIsSubagent=true) but no agent_type → callerBare='' ≠ 'general-purpose'
+	// R1: subagent with absent agent_type (only agent_id) → junior-orchestrator: DENY
+	it("R1-5. absent-agent_type subagent (agent_id only) → junior-orchestrator is DENIED", () => {
 		const caller = { agent_id: "unknown001" };
 		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-	});
-
-	// 8. some-other-subagent (designer) caller → junior-orchestrator : DENY (fail-closed)
-	it("D2-8. designer caller → junior-orchestrator is DENIED (only general-purpose may spawn junior)", () => {
-		const caller = { agent_type: "designer", agent_id: "des001" };
-		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
-		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-	});
-
-	// 9. junior-orchestrator caller → git-master (absent from both old deny-list and allow-list)
-	it("D2-9. junior-orchestrator caller → git-master is DENIED (allow-list: git-master not in set)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "git-master", prompt: "commit" }, "Agent", caller));
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 });
 
-describe("nesting-guard — depth-2 experiment (flag OFF — parity with pre-experiment)", () => {
-	// No beforeEach — env var must be absent to prove the flag gates.
+describe("nesting-guard — junior-orchestrator tier (Rule 2: caller-type cap)", () => {
+	const JUNIOR = { agent_type: "junior-orchestrator", agent_id: "jo001" };
 
-	// 9a. junior→junior with flag OFF: junior-orchestrator is not in DENIED_AT_DEPTH_1 → ALLOW
-	it("D2-9a. flag OFF: junior-orchestrator caller → junior-orchestrator is NOT denied (caller-type cap inactive)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
-		// Depth-1 set does not include junior-orchestrator, so it passes through.
+	// R2: junior-orchestrator → general-purpose: ALLOW
+	it("R2-1. junior-orchestrator subagent → general-purpose is ALLOWED", () => {
+		const d = runHook(agentCall({ subagent_type: "general-purpose", prompt: "implement" }, "Agent", JUNIOR));
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	// 9b. flag OFF: general-purpose → junior-orchestrator is ALLOWED (junior not in DENIED_AT_DEPTH_1)
-	it("D2-9b. flag OFF: general-purpose caller → junior-orchestrator is NOT denied (not in depth-1 set)", () => {
-		const caller = { agent_type: "general-purpose", agent_id: "gp001" };
-		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
+	// R2: junior-orchestrator → explore: ALLOW
+	it("R2-2. junior-orchestrator subagent → explore is ALLOWED", () => {
+		const d = runHook(agentCall({ subagent_type: "groundwork:explore", prompt: "find X" }, "Agent", JUNIOR));
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	// 9c. flag OFF: absent-agent_type → junior-orchestrator is ALLOWED (fail-open; junior not in denied set)
-	it("D2-9c. flag OFF: absent-agent_type subagent → junior-orchestrator is NOT denied (fail-closed rule inactive)", () => {
-		const caller = { agent_id: "unknown001" };
-		const d = runHook(agentCall({ subagent_type: "junior-orchestrator", prompt: "sub-orch" }, "Agent", caller));
+	// R2: junior-orchestrator → qa: ALLOW
+	it("R2-3. junior-orchestrator subagent → qa is ALLOWED", () => {
+		const d = runHook(agentCall({ subagent_type: "groundwork:qa", prompt: "verify" }, "Agent", JUNIOR));
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
 	});
 
-	// 9d. flag OFF: junior caller → git-master is ALLOWED (caller-type cap inactive)
-	it("D2-9d. flag OFF: junior-orchestrator caller → git-master is NOT denied (allow-list cap inactive)", () => {
-		const caller = { agent_type: "junior-orchestrator", agent_id: "jo001" };
-		const d = runHook(agentCall({ subagent_type: "git-master", prompt: "commit" }, "Agent", caller));
-		// git-master is not in DENIED_AT_DEPTH_1, so depth-1 logic passes through.
-		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	// R2: junior-orchestrator → orchestrator: DENY
+	it("R2-4. junior-orchestrator subagent → orchestrator is DENIED", () => {
+		const d = runHook(agentCall({ subagent_type: "orchestrator", prompt: "orchestrate" }, "Agent", JUNIOR));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("junior-orchestrator may delegate only to");
+	});
+
+	// R2: junior-orchestrator → debugger: DENY
+	it("R2-5. junior-orchestrator subagent → debugger is DENIED", () => {
+		const d = runHook(agentCall({ subagent_type: "debugger", prompt: "debug it" }, "Agent", JUNIOR));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// R2: junior-orchestrator → git-master (not in allow-list): DENY
+	it("R2-6. junior-orchestrator subagent → git-master is DENIED (not in allow-list)", () => {
+		const d = runHook(agentCall({ subagent_type: "git-master", prompt: "commit" }, "Agent", JUNIOR));
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 });
 

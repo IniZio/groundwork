@@ -44,11 +44,13 @@ Two tasks are independent ONLY if neither consumes the other's output AND they s
 2. **Write the ledger.** `vertical-slice` writes the run ledger with every slice `pending`. No ledger = no enforcement.
 3. **One objective per task.** If describing a task takes more than 2 sentences, split it.
 4. **ALL parallel Task calls in ONE message.** Task A in one message, Task B in the next is sequential execution.
-5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix.
+5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix. For any domain that decomposes into genuine sub-domains **OR** has >5 disjoint slices, dispatch a `junior-orchestrator` to own that domain end-to-end; `general-purpose` is the leaf implementer and cannot spawn further `general-purpose` workers.
 6. **Context-isolate by behavioral contract.** Describe each task by the interfaces/signatures it must satisfy and observable acceptance criteria — not pinned line numbers (they rot when siblings edit the file).
 7. **Fan-out.** When a wave is dispatched and you have no other work, write a one-line status and END YOUR TURN (you're re-invoked on each task completion).
 
 Fan-out ceilings, wave template, and completion-gate rules are in your agent definition's Fan-out Protocol section (self-contained, platform-independent).
+
+**Worktree conflict-fallback:** When slices would otherwise be serialized due to overlapping file ownership, you MAY preserve parallel width by isolating each slice in its own git worktree and reconciling serially after the wave lands. This is a fallback — default remains disjoint ownership. The full mechanism is documented in the `vertical-slice` skill.
 
 ## Pre-Delegation Declaration (mandatory)
 

@@ -4,7 +4,7 @@ These rules apply to ALL agents in the groundwork workflow.
 
 ## Core Rules (Non-Negotiable)
 
-1. **No worktrees.** For new work, continue in the same session. Do not use `git worktree add` or similar.
+1. **No manual worktrees.** Do not run `git worktree add` or any equivalent command — subagents must never create their own worktrees. (The orchestrator's use of Claude Code's managed `Task(..., isolation:"worktree")` as a conflict-fallback is a distinct mechanism handled by the orchestrator only; this rule does not apply to it.)
 2. **Never commit plans or design docs** to git. They live in `.groundwork/motives/` (gitignored) — never staged.
 3. **Skill tool invocation (progressive disclosure).** Load skills when routing names them — they contain instructions not present in the bootstrap. If you start direct and hit ambiguity, stop and load the matching skill. If you load a skill unnecessarily, that's fine — better to have too much structure than too little. Skills are tools, not gatekeepers.
 <!-- PTY-SECTION-START -->
@@ -89,5 +89,5 @@ See `interview` skill for CONTEXT.md format and rules. Created and maintained du
 
 - **NEVER use `task` inside a subagent task.** Subagents cannot spawn further subagents — these tools are blocked in child sessions. Subagent prompts must be fully self-contained.
 - **NEVER use `question` tool in subagents.** Subagents must not ask questions — they must make decisions and do the work.
-- Do not use worktrees (`git worktree add` etc.)
+- Do not create worktrees manually (`git worktree add` etc.) — this prohibition is for subagents; the orchestrator's CC-managed `Task(..., isolation:"worktree")` is a separate mechanism
 - Do not commit plan, spec, or design markdown files

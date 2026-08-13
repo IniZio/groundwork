@@ -84,8 +84,9 @@ Sequence: `[qa if interactive UI]` → `advisor`
                                  │  explore, researcher, planner,                │ gates
                                  │  designer, test-engineer, qa, advisor         │ (never
                                  │                                               │  skipped;
-                                 │  DENIED (depth-1 guard):                      │  completion
-                                 │  general-purpose · orchestrator · debugger    │  gate is
+                                 │  DENIED (leaf guard):                         │  completion
+                                 │  general-purpose · junior-orchestrator ·      │  gate is
+                                 │  orchestrator · debugger                      │
                                  └──────────────────────────────────────────────▶│  ORCH-only)
                                                                                  │
   ── delegates to ──▶   (orchestrator → any agent above)
@@ -93,14 +94,17 @@ Sequence: `[qa if interactive UI]` → `advisor`
                          sub-orchestrators MAY consult advisor mid-flow,
                          but only the orchestrator RECORDS the gate verdict)
 
-  ⚠️ EXPERIMENTAL (GROUNDWORK_DEPTH2_EXPERIMENT=1, OFF by default):
+  junior-orchestrator tier (permanent — spawned by the PRIMARY orchestrator):
   ┌──────────────────────────────────────────────────────────────────┐
-  │  general-purpose [sonnet]                                        │
-  │    └──▶ junior-orchestrator [sonnet]  (depth-2, one sub-domain) │
+  │  orchestrator [opus]                                             │
+  │    └──▶ junior-orchestrator [sonnet]  (one sub-domain with      │
+  │           genuine sub-domains OR >5 disjoint slices)            │
   │           └──▶ {general-purpose, explore, advisor,               │
   │                  designer, test-engineer, qa}                    │
   │  DENIED from junior-orchestrator:                                │
   │    orchestrator · debugger · junior-orchestrator (no nesting)   │
+  │  DENIED from general-purpose (leaf implementer):                 │
+  │    general-purpose · junior-orchestrator                         │
   └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,5 +188,6 @@ Full routing diagrams and extended examples → `reference/routing-detail.md`
 - **NEVER do implementation work directly when a general-purpose fails.** Relaunch with corrected prompt first.
 - **NEVER send `task` calls across multiple messages.** All parallel tasks launch in one message.
 - **NEVER end the conversation — use `question` tool.**
+- **Worktrees — subagents must not create them manually** (`git worktree add` etc.). The orchestrator MAY use `Task(..., isolation:"worktree")` as a conflict-fallback when two slices own the same file (see the `vertical-slice` skill for the mechanism) — this is orchestrator-only and never the default.
 
 Task scoping rules, retry patterns, context isolation → `reference/task-scoping.md`

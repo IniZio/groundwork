@@ -59,7 +59,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | `groundwork:debugger` (observe→hypothesize→isolate→fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `general-purpose` parallel → `advisor` gate |
+| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `general-purpose` (leaf, simple/localized domain) or `junior-orchestrator` (domain has genuine sub-domains OR >5 disjoint slices) parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
@@ -252,51 +252,64 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 
 ## Sub-Orchestrator Delegation (Nested Orchestration)
 
-For complex multi-domain tasks, you MAY delegate to **sub-orchestrators** via `task(subagent_type="groundwork:general-purpose")`.
+For complex multi-domain tasks, the primary orchestrator dispatches EITHER a `general-purpose` leaf implementer (for a simple, self-contained domain) OR a `junior-orchestrator` (for a domain that itself decomposes into genuine sub-domains **OR** has **>5 disjoint slices**). `junior-orchestrator` is a permanent, first-class tier — not experimental.
 
-### When to Use Sub-Orchestrators
-- Task spans ≥3 independent sub-domains (e.g., auth + payments + UI)
-- A single wave would have >15 slices — group by domain
-- A sub-problem needs its own multi-wave orchestration sequence
-- Direct delegation would consume too much context for review
+### Delegation hierarchy
 
-### When NOT to Use
-- Single-domain task → delegate directly to specialist
-- Task fits in one wave (≤15 slices) → fan out directly
-- Trivial sub-task (<3 files) → single general-purpose
+| Level | Role | MAY spawn |
+|---|---|---|
+| Primary orchestrator (depth 0) | Classifies, decomposes, fans out | `general-purpose` (leaf), `junior-orchestrator` (sub-domain orchestrator), read-only specialists |
+| `junior-orchestrator` (depth 1) | Owns one domain end-to-end, decomposes it | `general-purpose` workers, read-only specialists (explore, advisor, designer, test-engineer, qa) |
+| `general-purpose` leaf (any depth) | Implements its own slice directly | Read-only specialists only — MUST NOT spawn `general-purpose` or `junior-orchestrator` |
+
+### When to dispatch `junior-orchestrator` vs `general-purpose`
+
+Dispatch a **`junior-orchestrator`** when the domain:
+- Itself decomposes into ≥2 genuine sub-domains, OR
+- Has >5 disjoint slices requiring internal sequencing
+
+Dispatch a **`general-purpose`** (leaf) when the domain:
+- Is localized and self-contained
+- Fits in a single slice — implement it directly
 
 ### Domain Decomposition (not layer decomposition)
-Each sub-orchestrator owns a COMPLETE vertical slice for ONE domain. Because `general-purpose` is now the implementer (it cannot spawn another `general-purpose`), a sub-orchestrator **writes its domain's code itself** and delegates only supporting work to other specialists:
+
+A `junior-orchestrator` owns a COMPLETE vertical slice for ONE domain and fans out `general-purpose` workers. Example:
+
 ```
-Sub-orch 1 (auth):     implements auth directly + explore×1 + advisor×1
-Sub-orch 2 (payments): implements payments directly + explore×1
-Sub-orch 3 (UI):       designer×2 + implements glue logic directly
+Primary orchestrator:
+  → junior-orchestrator (auth — 6 slices across 3 sub-domains)
+      → general-purpose (token handler)
+      → general-purpose (session store)
+      → advisor (review)
+  → general-purpose (config loader — single file, leaf)
+  → designer (UI — single domain)
 ```
-To run several domains in parallel, the PRIMARY orchestrator fans out one `general-purpose` per domain — not a sub-orchestrator fanning out more `general-purpose`s.
 
-### Depth-1 Constraint (HARD-ENFORCED)
-- Primary orchestrator MAY task `general-purpose` sub-orchestrators and `orchestrator` for further decomposition
-- Sub-orchestrators MUST NOT task `orchestrator` or another `general-purpose` — enforced by `hooks/nesting-guard.mjs` on Claude Code (a `general-purpose` implements its own slice directly)
-- Sub-orchestrators MAY task supporting specialists: explore, researcher, planner, advisor, designer, test-engineer, qa
-- Maximum depth: 2 levels (primary + 1 sub-orchestrator layer)
+Only the primary orchestrator fans out juniors. A junior fans out `general-purpose` workers — not more juniors.
 
-The above is the **default and production-ready behavior**. An experimental opt-in tier described below extends it by one additional sub-orchestrator layer under a flag (3 levels total: primary + 2 sub-orchestrator layers) — but the depth-1 rationale above applies whenever that flag is off.
+### Depth constraint (HARD-ENFORCED by hooks/nesting-guard.mjs)
 
-### Experimental Depth-2 Tier — `junior-orchestrator` (opt-in, OFF by default)
+Three rules mechanically enforced:
 
-**This tier is EXPERIMENTAL.** It is disabled unless the environment variable `GROUNDWORK_DEPTH2_EXPERIMENT=1` is explicitly set. When the flag is off, behavior is exactly as described in the Depth-1 Constraint above — nothing changes.
+1. **Primary → junior: allowed.** The primary orchestrator MAY spawn a `junior-orchestrator`. Spawning is fail-closed: allowed only from a positively-identified primary caller; any ambiguous or unrecognized caller is denied.
+2. **Junior → general-purpose + specialists: allowed.** A `junior-orchestrator` MAY spawn `general-purpose` workers and read-only specialists (explore, advisor, designer, test-engineer, qa).
+3. **Junior → junior / orchestrator / debugger: DENIED.** A `junior-orchestrator` MUST NOT spawn another `junior-orchestrator`, an `orchestrator`, or a `debugger` — mechanically blocked.
 
-**What it adds when enabled:** a `junior-orchestrator` agent type that sits between a `general-purpose` sub-orchestrator and its implementation workers, allowing a `general-purpose` to delegate sub-domain orchestration one level deeper rather than implementing all sub-domain code itself.
+Additionally: a `general-purpose` leaf MUST NOT spawn another `general-purpose` or a `junior-orchestrator` — it implements its own slice directly and delegates only to read-only specialists.
+
+Maximum depth: 3 levels (primary orchestrator → junior-orchestrator → general-purpose workers).
 
 **Enforcement model — what the hook enforces vs. what relies on agent discipline:**
 
-_Mechanically enforced by `hooks/nesting-guard.mjs` when `GROUNDWORK_DEPTH2_EXPERIMENT=1` is set:_
-- A `general-purpose` caller MAY spawn a `junior-orchestrator`. Spawning a junior is fail-closed: it is allowed only from a positively-identified `general-purpose` caller; any ambiguous or unrecognized caller is denied.
-- A `junior-orchestrator` MAY spawn `general-purpose` workers and read-only specialists (explore, advisor, designer, test-engineer, qa).
-- A `junior-orchestrator` is DENIED from spawning `orchestrator`, `debugger`, or another `junior-orchestrator`. The caller-agent-type cap on junior→junior spawning closes the runaway-regress loop mechanically.
+_Mechanically enforced_ (rules above): spawn topology, caller identity, junior→junior block.
 
 _Prose-only — NOT mechanically enforceable (state this limitation when briefing a junior):_
-- A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child. It must do genuine orchestration work — decomposition, sequencing, context isolation across multiple children — not merely relay the brief it received. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it never sees the child's inbound brief. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
+A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child. It must do genuine orchestration work — decomposition, sequencing, context isolation across multiple children — not merely relay the brief it received. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it never sees the child's inbound brief. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
+
+### Worktree conflict-fallback (for overlapping-file slices)
+
+Slices in a wave normally need disjoint file ownership. When two slices genuinely overlap the same files, the orchestrator MAY run them in parallel each via `Task(..., isolation:"worktree")`, then reconcile after (serialized merge, highest-collision-first; clean-tree precondition; cleanup). This is a fallback only — not the default. Manual `git worktree add` by subagents remains prohibited. Full mechanism lives in the `vertical-slice` skill.
 
 ---
 

@@ -59,6 +59,14 @@ For each slice, list the files it will create or modify. A file owned by two sli
 - Serializing them (put one in Wave 0, one in Wave 1)
 - Splitting the file so each slice owns a non-overlapping section
 
+**Worktree conflict-fallback (optional).** When two slices genuinely overlap on file ownership and serializing them into separate waves would sacrifice real parallel width, the orchestrator MAY instead run them in parallel, each in its own Claude-Code-managed git worktree, via `Task(subagent_type=..., isolation:"worktree", ...)`. CC provisions a fresh worktree + branch per isolated task and auto-cleans it if unchanged. After the wave, the orchestrator reconciles:
+- **Precondition:** the working tree MUST be clean before dispatching worktree-isolated tasks (a dirty tree aborts worktree creation).
+- **Reconcile:** serialized merge — merge the highest-collision branch first, then the rest, resolving conflicts incrementally; OR apply each task's patch in sequence. There is NO auto-merge; reconciliation is the orchestrator's responsibility.
+- **node_modules:** symlink the shared install into each worktree rather than reinstalling (the in-repo `pi-subagents` worktree implementation is the reference pattern).
+- **Cleanup:** `git worktree remove --force` each, then `git worktree prune`.
+
+This is a FALLBACK ONLY — it is never the default. The default remains disjoint file ownership per wave. Do NOT reach for worktrees when slices already have non-overlapping ownership. Manual `git worktree add` inside a subagent stays prohibited; only the orchestrator's CC-managed `isolation:"worktree"` dispatch is sanctioned.
+
 ### 4. Assign waves by dependency
 
 ```

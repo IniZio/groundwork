@@ -13,11 +13,15 @@
  *
  * This hook is the mechanical backstop, mirroring agent-model-guard /
  * ledger-guard. On Edit/Write/MultiEdit (and their OpenCode fast_ variants) it
- * DENIES the call when:
+ * WARNS (non-blocking) when:
  *   1. the caller is the orchestrator (not a delegated subagent).
- * Subagent edits always pass through. The ledger-active precondition was
- * removed — orchestrator direct edits are wrong regardless of ledger state,
- * and the prior "trivial work (no ledger)" escape valve was the loophole.
+ * The edit still proceeds — the hook emits additionalContext (the documented
+ * PreToolUse channel that surfaces a message to the model) with a loud
+ * delegation reminder. No permissionDecision is emitted, so the user's normal
+ * Edit/Write permission flow is completely unaffected. Subagent edits always
+ * pass through silently. The ledger-active precondition was removed —
+ * orchestrator direct edits are discouraged regardless of ledger state, and
+ * the prior "trivial work (no ledger)" escape valve was the loophole.
  *
  * Tool-name normalization: OpenCode v1.17.x registers fast_edit, fast_write,
  * fast_multiedit as DISTINCT tool names. To catch these and any future
@@ -73,11 +77,17 @@ function normalizeToolName(raw) {
   return lower.startsWith('fast_') ? lower.slice(5) : lower
 }
 
-/** Deny the call with a reason that points at delegation / the escape valve. */
-function deny(reason) {
+/**
+ * Warn the orchestrator to delegate instead; the edit STILL PROCEEDS.
+ * Emits additionalContext — the documented PreToolUse channel that surfaces
+ * a message to the model without affecting the permission flow at all. No
+ * permissionDecision field is set, so the user's normal Edit/Write prompt
+ * is completely unaffected (true passthrough with an injected nudge).
+ */
+function warn(reason) {
   console.log(
     JSON.stringify({
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
+      hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: reason },
     }),
   )
   process.exit(0)
@@ -106,7 +116,7 @@ function isSubagentCall(input) {
  *   files always live under the user's home directory, never inside a source
  *   tree.  See test "spoof path src/.claude/... → BLOCKED" for the assertion.
  *
- * Fail-safe: any throw or malformed input returns false → BLOCK (not permit).
+ * Fail-safe: any throw or malformed input returns false → WARN (not silent passthrough).
  */
 function isOrchestratorWritablePath(rawPath) {
   if (typeof rawPath !== 'string' || !rawPath) return false
@@ -158,10 +168,11 @@ async function main() {
   // Narrow permit: memory files the orchestrator composes in-context.
   if (isOrchestratorWritablePath(input?.tool_input?.file_path)) return passthrough()
 
-  return deny(
-    `groundwork: orchestrator ${rawTool} blocked — delegate this change instead:\n` +
+  return warn(
+    `⚠️  groundwork: orchestrator ${rawTool} — HIGHLY ENCOURAGED to delegate this change instead of implementing directly:\n` +
       `  task(subagent_type="groundwork:general-purpose", background=true, model="claude-sonnet-4-6", prompt="<file path> + exact change + success criteria")\n` +
-      `  Then mark it complete: ${LEDGER_BIN} complete <id>`,
+      `  Then mark it complete: ${LEDGER_BIN} complete <id>\n` +
+      `  (Edit is proceeding, but delegation keeps expensive opus load off direct implementation.)`,
   )
 }
 

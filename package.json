@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
@@ -11,6 +11,7 @@
     "check": "pnpm run check:agents && pnpm run check:pi && pnpm run check:sep && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "token-meter": "node hooks/token-meter.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {

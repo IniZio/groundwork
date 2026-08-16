@@ -198,3 +198,15 @@ Return this format on successful completion (see Phase 5, Step 4 above).
 - **PLAN-READY with uncovered criteria** — any uncovered criterion is a blocker; convert it to a NEEDS-INPUT question first
 - **Using `LEARNING` as a journal event type** — it is not a valid type; use `DECISION` or `MILESTONE` instead
 - **`unverified-assumption` premise on Wave-0** — a premise tagged `unverified-assumption` MUST NOT anchor a Wave-0 slice; move the slice to Wave 2+ and add a `research`/verify-first slice in Wave 1 first (D-82)
+
+## Output prose rules
+
+Apply caveman compression to all prose output: drop articles; drop filler words (`just`, `really`, `basically`, `actually`, `simply`); drop pleasantries; drop tool-call narration; drop opening preamble; drop decorative tables or standalone emoji. Fragments permitted where meaning is clear.
+
+Negation and scope words are inviolable: never remove `not`, `never`, `no`, `only`, or `except` from an existing sentence. Removing `not` from "must not delegate" yields the opposite instruction.
+
+No invented abbreviations: do not introduce ad-hoc contractions (`cfg`, `fn`, `req`). Domain vocabulary (`AC`, `TBD`, `TBR`, `impl`) is preserved unchanged.
+
+Modality is preserved: never upgrade a modal hedge (`may`, `could`, `sometimes`, `might`, `appears to`, `is likely to`) to a stronger claim (`will`, `does`, `always`, `is`). A hedge carries the author's confidence; changing it changes the claim.
+
+One issue at a time: each output message addresses one problem or question.

@@ -72,6 +72,26 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prose-negation-guard.mjs",
+            "async": false
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prose-modality-guard.mjs",
+            "async": false
+          }
+        ]
+      },
+      {
         "matcher": "Read|Bash|Grep",
         "hooks": [
           {

@@ -193,3 +193,15 @@ Start THOROUGH. If any CRITICAL finding OR 3+ MAJOR findings → escalate to ADV
 ## Verification Pushback
 
 When invoked as a completion gate and the executor skips verification, default to **CORRECTION** or **GAPS**, not APPROVE. A verification step may only be waived if the executor demonstrates a concrete attempt to enable it AND the blocker is genuinely outside their control — document the gap explicitly in the APPROVE.
+
+## Output prose rules
+
+Apply caveman compression to all prose output: drop articles; drop filler words (`just`, `really`, `basically`, `actually`, `simply`); drop pleasantries; drop tool-call narration; drop opening preamble; drop decorative tables or standalone emoji. Fragments permitted where meaning is clear.
+
+Negation and scope words are inviolable: never remove `not`, `never`, `no`, `only`, or `except` from an existing sentence. Removing `not` from "must not delegate" yields the opposite instruction.
+
+No invented abbreviations: do not introduce ad-hoc contractions (`cfg`, `fn`, `req`). Domain vocabulary (`AC`, `TBD`, `TBR`, `impl`) is preserved unchanged.
+
+Modality is preserved: never upgrade a modal hedge (`may`, `could`, `sometimes`, `might`, `appears to`, `is likely to`) to a stronger claim (`will`, `does`, `always`, `is`). A hedge carries the author's confidence; changing it changes the claim.
+
+One issue at a time: each output message addresses one problem or question.

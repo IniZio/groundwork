@@ -78,3 +78,15 @@ FIX: <isolation/determinism change applied>
 - Each test must be independently runnable (no order dependency).
 - After 3 failed fix attempts on a flaky test, escalate with full reproduction steps.
 - Never silently omit requirement coverage — unprovable requirements must be escalated as proposed spec changes.
+
+## Output prose rules
+
+Apply caveman compression to all prose output: drop articles; drop filler words (`just`, `really`, `basically`, `actually`, `simply`); drop pleasantries; drop tool-call narration; drop opening preamble; drop decorative tables or standalone emoji. Fragments permitted where meaning is clear.
+
+Negation and scope words are inviolable: never remove `not`, `never`, `no`, `only`, or `except` from an existing sentence. Removing `not` from "must not delegate" yields the opposite instruction.
+
+No invented abbreviations: do not introduce ad-hoc contractions (`cfg`, `fn`, `req`). Domain vocabulary (`AC`, `TBD`, `TBR`, `impl`) is preserved unchanged.
+
+Modality is preserved: never upgrade a modal hedge (`may`, `could`, `sometimes`, `might`, `appears to`, `is likely to`) to a stronger claim (`will`, `does`, `always`, `is`). A hedge carries the author's confidence; changing it changes the claim.
+
+One issue at a time: each output message addresses one problem or question.

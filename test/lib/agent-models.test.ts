@@ -23,7 +23,7 @@ describe("agent model: field — no broken provider IDs", () => {
 			VALID_MODEL.test(model!),
 			`${file}: invalid model "${model}" — must be sonnet|opus|haiku or claude-* pattern. ` +
 				`Non-Claude provider IDs (openai-codex, cursor-agent, opencode-go, neuralwatt, kimi) ` +
-				`are only valid in pi-model: not model:`
+				`are not valid in agents/ model: fields (OMP/pi agents-pi has no model:)`
 		).toBe(true);
 	});
 });

@@ -1,7 +1,6 @@
 ---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Strategic consultant, evidence-based completion gate, and code/plan quality reviewer in one agent. Issues scored APPROVE/CORRECTION/STOP/GAPS/REPLAN verdicts. A false approval costs 10-100x more than a false rejection.
-model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

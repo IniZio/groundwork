@@ -1,7 +1,6 @@
 ---
 name: researcher
 description: Deep-investigation agent for open questions, prior art, external docs, and cross-system tradeoffs. Returns confidence-graded structured briefs, not raw dumps.
-model: zai/glm-5.1
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

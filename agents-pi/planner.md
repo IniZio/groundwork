@@ -1,7 +1,6 @@
 ---
 name: planner
 description: Strategic planning specialist that creates actionable, evidence-grounded work plans through structured analysis. Absorbs interview, decomposition, and coverage duties. Creates/updates a motive charter with DECISION events and reports motive_ref. Use BEFORE implementation for any non-trivial feature or multi-file change.
-model: zai/glm-5.2
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

@@ -1,66 +1,52 @@
 {
   "$schema": "https://groundwork.dev/model-registry/v1",
-  "version": "2.2.1",
-  "description": "Central model registry — maps each agent to a model per platform. Agent source files (agents-src/*.md) are model-neutral; this registry is the single source of truth for model assignments.",
+  "version": "2.3.0",
+  "description": "Central model registry — SSOT for claude-code model assignments (and optional codex routing). Agent source files (agents-src/*.md) are model-neutral; OMP/pi agents-pi definitions inherit the session model (no pi registry column).",
   "agents": {
     "orchestrator": {
-      "pi": "inherit",
       "claude-code": "opus"
     },
     "general-purpose": {
-      "pi": "kimi-for-coding",
       "claude-code": "sonnet",
       "codex": "gpt-5.6-sol"
     },
     "advisor": {
-      "pi": "zai/glm-5.2",
       "claude-code": "opus"
     },
     "designer": {
-      "pi": "kimi-for-coding",
       "claude-code": "sonnet"
     },
     "qa": {
-      "pi": "zai/glm-5.1",
       "claude-code": "sonnet"
     },
     "test-engineer": {
-      "pi": "zai/glm-5.1",
       "claude-code": "sonnet"
     },
     "planner": {
-      "pi": "zai/glm-5.2",
       "claude-code": "opus"
     },
     "git-master": {
-      "pi": "opencode-go/deepseek-v4-flash",
       "claude-code": "haiku"
     },
     "explore": {
-      "pi": "opencode-go/deepseek-v4-flash",
       "claude-code": "haiku",
       "codex": "gpt-5.6-luna"
     },
     "researcher": {
-      "pi": "zai/glm-5.1",
       "claude-code": "sonnet"
     },
     "debugger": {
-      "pi": "kimi-for-coding",
-      "claude-code": "sonnet"
+      "claude-code": "opus"
     },
     "junior-orchestrator": {
-      "pi": "kimi-for-coding",
       "claude-code": "sonnet",
       "codex": "gpt-5.6-sol"
     }
   },
   "disabled": {
-    "pi": [],
     "claude-code": []
   },
   "aliases": {
-    "pi": {},
     "claude-code": {}
   }
 }

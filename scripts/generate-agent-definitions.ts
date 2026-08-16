@@ -21,14 +21,18 @@ interface AgentSource {
 }
 
 export interface PlatformModelEntry {
-	pi?: string;
+	/** Claude Code model alias or explicit claude-* id (required for every agent). */
+	"claude-code"?: string;
+	/** Optional Codex routing model for CODEX_MODEL_GUIDANCE_ROLES. */
 	codex?: string;
 	[key: string]: string | undefined;
 }
 
 export interface ModelRegistry {
 	agents: Record<string, PlatformModelEntry>;
+	/** Per-platform disable lists. Pi has no registry models; do not use disabled.pi. */
 	disabled?: Record<string, string[] | undefined>;
+	/** Per-platform name aliases. Pi aliases are not supported (no pi registry column). */
 	aliases?: Record<string, Record<string, string> | undefined>;
 }
 
@@ -70,7 +74,8 @@ const CODEX_MODEL_GUIDANCE_PATH = join("use-groundwork", "reference", "agent-sel
 // Frontmatter fields that belong ONLY to the pi platform — NOT Claude Code.
 // The model-neutral source (agents-src/*.md) carries only name, description, and
 // disallowedTools (a CC-only enforcement field). These platform-only fields are
-// re-injected here so the generated pi/opencode trees are behaviorally unchanged.
+// re-injected here so the generated agents-pi/ tree is behaviorally unchanged.
+// agents-pi is model-neutral: no `model:` frontmatter (session inherit).
 // Agents not listed get DEFAULT_PLATFORM_FRONTMATTER.
 // Claude Code output (agents/) is handled by transformForClaudeCode() — no injection.
 const RO_TOOLS = "read, bash, grep, find, ls";
@@ -125,7 +130,7 @@ const FRONTMATTER_ORDER = [
 // ─── pi built-in overrides ───────────────────────────────────────────────────
 // Suppress pi's built-in `Explore` and `Plan` agents. These are NOT part of the
 // model-neutral source set (agents-src/*.md) and are never written to the filesystem;
-// they appear only in the pi branch of the embedded TS.
+// they appear only in the pi branch of the embedded TS (agents-pi is model-neutral).
 // Kept per advisor-gate decision to preserve runtime behavior.
 function piBuiltinOverrides(version: string): AgentDefinition[] {
 	return [
@@ -199,6 +204,10 @@ function validateRegistry(sources: Map<string, AgentSource>, registry: ModelRegi
 		if (!registryNames.has(name)) {
 			throw new Error(`Source agent "${name}" has no entry in model-registry.json`);
 		}
+		const cc = registry.agents[name]?.["claude-code"];
+		if (typeof cc !== "string" || cc.length === 0) {
+			throw new Error(`Registry missing claude-code model for agent "${name}"`);
+		}
 	}
 	for (const name of registryNames) {
 		if (!sourceNames.has(name)) {
@@ -241,36 +250,11 @@ export function applyCodexModelGuidance(
 	return `${content.trimEnd()}\n\n${renderCodexModelGuidance(registry)}`;
 }
 
-// ─── Per-platform transformation ─────────────────────────────────────────────
+// ─── Per-platform transformation (pi / agents-pi — model-neutral) ────────────
+// OMP/pi agents never read model-registry for models. Roster is agents-pi via
+// PI_SUBAGENTS_EXTRA_AGENTS_DIR; each agent inherits the session model.
 
-function platformModel(registry: ModelRegistry, name: string, platform: Platform): string {
-	const entry = registry.agents[name];
-	const model = entry?.[platform];
-	if (model === undefined) {
-		throw new Error(`Registry missing ${platform} model for agent "${name}"`);
-	}
-	return model;
-}
-
-function isDisabled(registry: ModelRegistry, name: string, platform: Platform, model: string): boolean {
-	const disabledList = registry.disabled?.[platform] ?? [];
-	return disabledList.includes(name) || model === "DISABLED";
-}
-
-function platformAlias(registry: ModelRegistry, name: string, platform: Platform): string | undefined {
-	return registry.aliases?.[platform]?.[name];
-}
-
-function transformForPlatform(
-	src: AgentSource,
-	registry: ModelRegistry,
-	platform: Platform,
-	version: string,
-): TransformedAgent {
-	const model = platformModel(registry, src.name, platform);
-	const disabled = isDisabled(registry, src.name, platform, model);
-	const alias = platformAlias(registry, src.name, platform);
-
+function transformForPi(src: AgentSource, version: string): TransformedAgent {
 	const fm: Frontmatter = { ...src.frontmatter };
 
 	// `disallowedTools`, `skills`, and `memory` are Claude-Code-only frontmatter fields;
@@ -286,30 +270,15 @@ function transformForPlatform(
 		fm[key] = value;
 	}
 
-	if (disabled) {
-		fm.enabled = false;
-	}
-	// DISABLED models omit the model field.
-	// pi uses the literal "inherit" keyword to inherit the parent/session model.
-	const omitModel = model === "DISABLED" || model === "inherit";
-	if (omitModel) {
-		delete fm.model;
-	} else {
-		fm.model = model;
-	}
-
-	// Apply alias so output filename stem == frontmatter `name` == platform identity.
-	const definitionName = alias ?? src.name;
-	if (alias) {
-		fm.name = alias;
-	}
+	// Always omit model — session inherit for OMP/pi (no pi registry column).
+	delete fm.model;
 
 	fm.managed_by = "groundwork";
 	fm.groundwork_version = version;
 
 	return {
-		outputName: `${definitionName}.md`,
-		definitionName,
+		outputName: `${src.name}.md`,
+		definitionName: src.name,
 		content: buildFileContent(fm, src.body),
 	};
 }
@@ -375,7 +344,8 @@ function generatePlatformFiles(
 			const t = transformForClaudeCode(src, registry, version);
 			files.set(t.outputName, t.content);
 		} else {
-			const t = transformForPlatform(src, registry, platform, version);
+			// pi: model-neutral transform (no registry models)
+			const t = transformForPi(src, version);
 			files.set(t.outputName, t.content);
 		}
 	}
@@ -585,13 +555,13 @@ function renderDefinition(def: AgentDefinition): string {
 
 function toDefinitions(
 	sources: Map<string, AgentSource>,
-	registry: ModelRegistry,
-	platform: "pi",
+	_registry: ModelRegistry,
+	_platform: "pi",
 	version: string,
 ): AgentDefinition[] {
 	const defs: AgentDefinition[] = [];
 	for (const src of sources.values()) {
-		const t = transformForPlatform(src, registry, platform, version);
+		const t = transformForPi(src, version);
 		defs.push({ name: t.definitionName, version, content: t.content });
 	}
 	return defs;
@@ -601,7 +571,8 @@ function renderModule(version: string, piDefs: AgentDefinition[]): string {
 	const piItems = [...piBuiltinOverrides(version), ...piDefs].map(renderDefinition).join("\n\n");
 
 	return `// AUTO-GENERATED. Do not edit. Run: pnpm run generate:agents
-// Source: agents-src/*.md (model-neutral) + model-registry.json → agents/ (claude-code), agents-pi/, and this file.
+// Source: agents-src/*.md (model-neutral) + model-registry.json (claude-code/codex only)
+// → agents/ (claude-code), agents-pi/ (model-neutral, session inherit), and this file.
 
 import type { AgentDefinition } from "./agent-definitions.js";
 

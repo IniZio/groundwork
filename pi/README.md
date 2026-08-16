@@ -66,7 +66,7 @@ Exact counts from `pi/pi.ts` (do not drift without updating this doc):
 
 ### Providers (3)
 
-Registered via `registerGroundworkProviders(pi)` (`src/lib/provider-registry.ts`). Keys must match agent `.md` `model:` fields:
+Registered via `registerGroundworkProviders(pi)` (`src/lib/provider-registry.ts`). Provider keys are for custom model backends registered with Pi; **agents-pi roster entries do not embed `model:` from `model-registry.json`** — they are model-neutral and inherit the OMP/Pi session model.
 
 | Provider name | Role (as documented in registry) |
 |---------------|----------------------------------|
@@ -82,7 +82,7 @@ Set in the default export of `pi/pi.ts`:
 
 | Variable | Where | Value / effect |
 |----------|-------|----------------|
-| `PI_SUBAGENTS_EXTRA_AGENTS_DIR` | extension init | Appends `<repo>/agents-pi` (resolved next to `pi/`) so pi-subagents load the Pi agent roster, separate from OpenCode agents. |
+| `PI_SUBAGENTS_EXTRA_AGENTS_DIR` | extension init | Appends `<repo>/agents-pi` (resolved next to `pi/`) so pi-subagents load the **model-neutral** Groundwork agent roster (session-inherited models; no registry `pi` column). Separate from OpenCode/Claude Code agents under `agents/`. |
 | `CLAUDE_CODE_SESSION_ID` | `exportSessionEnv` on `session_start` | Current Pi session id (when present). |
 | `CLAUDE_PROJECT_DIR` | `exportSessionEnv` on `session_start` | Project directory passed into the extension. |
 

@@ -1,7 +1,6 @@
 ---
 name: debugger
 description: Structured root-cause debugging agent that enforces observe→hypothesize→isolate→fix protocol. Cannot jump to a fix before evidence is in hand.
-model: kimi-for-coding
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork

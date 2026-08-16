@@ -1,7 +1,6 @@
 ---
 name: qa
 description: Use when a change needs live verification — browser/TUI/CLI exploratory + scripted testing, fixture generation, and standing up a running env for human eyeball-check.
-model: zai/glm-5.1
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork

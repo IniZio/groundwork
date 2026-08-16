@@ -1,7 +1,6 @@
 ---
 name: designer
 description: UI/UX specialist for styling, layouts, visual consistency, component architecture, and animations. Delegate all user-visible design work here.
-model: kimi-for-coding
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork

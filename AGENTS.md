@@ -9,11 +9,11 @@ Load the `/groundwork:use-groundwork` skill at session start to activate full sk
 ## Editing Agents
 
 - **Behavior change:** edit `agents-src/<name>.md` (model-neutral; no `model:` field).
-- **Model change:** edit `model-registry.json` (`pi` / `claude-code` columns).
+- **Model change:** edit `model-registry.json` (`claude-code` column; optional `codex` for Codex routing roles). Not `pi` — OMP/Pi do not take models from the registry.
 - **Regenerate:** `pnpm run generate:agents`
 - **Verify:** `pnpm run check`
 
-Do **not** hand-edit `agents/`, `agents-pi/`, or `src/lib/agent-definitions.generated.ts` — they are generated output.
+Do **not** hand-edit `agents/`, `agents-pi/`, or `src/lib/agent-definitions.generated.ts` — they are generated output. `agents-pi/` is a **model-neutral** session-inherit roster for OMP/Pi (no `model:` frontmatter from the registry); agents inherit the active session model.
 
 ## WARNING: `plugin.json`
 

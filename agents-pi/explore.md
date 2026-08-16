@@ -1,7 +1,6 @@
 ---
 name: explore
 description: Read-only codebase exploration — traces flows, locates symbols, maps dependencies. Use to understand how or where something works.
-model: opencode-go/deepseek-v4-flash
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork

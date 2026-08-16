@@ -28,6 +28,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { parseSpecRequirements } from './spec-io.mjs'
+import { resolveMotiveSlug } from './motive-ref.mjs'
 
 // ---------------------------------------------------------------------------
 // SpineAdapter interface (JSDoc @typedef — no runtime representation)
@@ -224,7 +225,11 @@ export class NativeSpineAdapter {
         for (const { f } of files) {
           try {
             const ledger = JSON.parse(readFileSync(path.join(runsDir, f), 'utf8'))
-            if (this._slug && ledger.motive_ref && !String(ledger.motive_ref).includes(this._slug)) continue
+            // Canonical form is SLUG. resolveMotiveSlug normalises path-form values so
+            // ledgers written with the old path form are not silently skipped.
+            // Ledgers with no motive_ref are not filtered — they may be legacy runs.
+            const _refSlug = ledger.motive_ref ? resolveMotiveSlug(ledger.motive_ref) : null
+            if (this._slug && _refSlug !== null && _refSlug !== this._slug) continue
             if (ledger.active !== false) return ledger
           } catch { /* skip corrupt file */ }
         }

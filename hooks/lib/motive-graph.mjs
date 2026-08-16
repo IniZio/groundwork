@@ -25,6 +25,7 @@ import { readOrderedEvents } from './journal-order.mjs'
 import { assembleGraphFold } from './motive-graph-fold.mjs'
 import { projectFoldGraph } from './motive-graph-project.mjs'
 import { readCharter } from './motive-charter.mjs'
+import { resolveMotiveSlug } from './motive-ref.mjs'
 
 const SCHEMA_VERSION = 1
 
@@ -118,7 +119,7 @@ function findLedger(projectDir, slug) {
     try {
       const raw = readFileSync(fp, 'utf8')
       const ledger = JSON.parse(raw)
-      if (ledger.motive_ref !== slug) continue
+      if (resolveMotiveSlug(ledger.motive_ref) !== slug) continue
       const mtime = statSync(fp).mtimeMs
       if (mtime > bestMtime) {
         bestMtime = mtime

@@ -83,6 +83,7 @@ import { readCharter } from './lib/motive-charter.mjs'
 import { isExhausted } from './lib/pacing.mjs'
 import { compile } from './lib/motive-compile.mjs'
 import { verifySeal, readKey } from './lib/gate-seal.mjs'
+import { resolveMotiveSlug } from './lib/motive-ref.mjs'
 
 /**
  * Advisory only — never blocks. Enabled by GROUNDWORK_TBD_GATE=1.
@@ -512,7 +513,7 @@ function pacingGrantSummary(ledger) {
 function pacingExhaustionDirective(ledger, incomplete, projectDir) {
   const sliceIds = incomplete.map((s) => s.id ?? '?').join(', ')
   const motiveSlug =
-    (typeof ledger.motive_ref === 'string' && ledger.motive_ref.length > 0 && ledger.motive_ref) ||
+    resolveMotiveSlug(ledger.motive_ref) ||
     (typeof ledger.motive === 'string' && ledger.motive.length > 0 && ledger.motive) ||
     null
   const mapPath = motiveSlug
@@ -725,11 +726,8 @@ async function main() {
         planRef.length > 0 &&
         existsSync(planRef)
       const motiveSlug =
-        typeof ledger.motive_ref === 'string' && ledger.motive_ref.length > 0
-          ? ledger.motive_ref
-          : typeof ledger.motive === 'string' && ledger.motive.length > 0
-            ? ledger.motive
-            : null
+        resolveMotiveSlug(ledger.motive_ref) ??
+        (typeof ledger.motive === 'string' && ledger.motive.length > 0 ? ledger.motive : null)
       const motiveOk =
         motiveSlug !== null &&
         existsSync(

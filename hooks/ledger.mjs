@@ -348,6 +348,43 @@ function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
     }
   }
 
+  // 5. Wave-order invariant: every blocker must be in a strictly earlier wave.
+  //    Checks both blocked_by and depends_on (legacy alias for blocked_by).
+  //    Violations are WARNINGS only — never errors — so existing runs with this
+  //    inconsistency are not bricked; they just surface a diagnostic.
+  const sliceById = new Map(slices.map((s) => [s?.id, s]))
+  for (const s of slices) {
+    if (!s || typeof s !== 'object') continue
+    const sid = s.id ?? '?'
+    const sWave = s.wave  // may be undefined / null
+
+    for (const field of ['blocked_by', 'depends_on']) {
+      if (!Array.isArray(s[field])) continue
+      for (const ref of s[field]) {
+        if (typeof ref !== 'string' || !ref) continue
+        const blocker = sliceById.get(ref)
+        if (!blocker) {
+          // Dangling ref — already caught by referential integrity above.
+          // Emit a distinct wave-check note so callers can identify the source.
+          warnings.push(`slice "${sid}": ${field} "${ref}" — wave order cannot be verified (blocker not found in ledger)`)
+          continue
+        }
+        const bWave = blocker.wave  // may be undefined / null
+        if (sWave == null || bWave == null) {
+          // Cannot compare: at least one wave is undefined.
+          // Skip silently — legacy ledgers without wave fields are valid shapes
+          // and must not produce spurious warnings. No throw.
+          continue
+        }
+        if (bWave >= sWave) {
+          warnings.push(
+            `slice "${sid}" (wave ${sWave}): ${field} "${ref}" is in wave ${bWave} — blocker must be in a strictly earlier wave`,
+          )
+        }
+      }
+    }
+  }
+
   return { errors, warnings }
 }
 
@@ -904,12 +941,16 @@ function cmdInit(args) {
   // Validate before writing — strict: schema violations are hard errors at init
   // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)
+  // Best-effort prune stale per-session ledgers FIRST.
+  // Order matters: prune co-deletes each stale ledger's `.seal.key` sibling, and
+  // a prior run for THIS session id (abandoned → active:false) shares that exact
+  // key path.  Minting before pruning let the prune delete the key it had just
+  // created, leaving a ledger no token-authenticated write could reseal.
+  try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   // Mint the seal key and compute the initial seal (S2-AC1).
   const key = ensureKey({ projectDir, sessionId: obj.session_id })
   obj.gate = obj.gate ?? {}
   obj.gate.seal = computeSeal(canonicalReleaseState(obj), key)
-  // Best-effort prune stale per-session ledgers before writing
-  try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   atomicWriteJsonSync(ledgerPath(), obj)
   if (obj.motive) regenerateMotiveMap(projectDir, obj.motive)
   if (obj.motive) regenerateMotiveTraceHtml(projectDir, obj.motive)

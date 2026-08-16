@@ -9,6 +9,10 @@
  * "allow"; findings are surfaced via permissionDecisionReason so the model
  * sees the warning but the write proceeds.
  *
+ * Detection cliff: the guard detects negation loss only when roughly 40% or
+ * more of a sentence's vocabulary survives the edit. Wholesale rewrites pass
+ * silently BY DESIGN — see hooks/lib/prose-helpers.mjs for the measurement.
+ *
  * Escape hatches:
  *   - env var GROUNDWORK_PROSE_NEGATION_GUARD=0  → passthrough
  *   - content contains `// prose-negation-guard:disable`  → passthrough
@@ -18,47 +22,11 @@
 
 import fs from 'node:fs'
 import { readStdin, passthrough } from './lib/hook-io.mjs'
+import { isProse, splitSentences, matchSentence } from './lib/prose-helpers.mjs'
 
 const GUARDED = new Set(['Edit', 'Write', 'MultiEdit'])
 
 const NEGATION_WORDS = ['not', 'never', 'no', 'only', 'except']
-
-/** Returns true if this file path is a prose surface that the guard should protect. */
-function isProse(filePath) {
-  if (typeof filePath !== 'string' || filePath === '') return false
-  // Code and config: never guard
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
-  if (['ts', 'js', 'mjs', 'cjs', 'json', 'yaml', 'yml', 'toml', 'sh', 'bash'].includes(ext)) return false
-  // Prose surfaces: .md files and agent/skill definition directories
-  if (filePath.endsWith('.md')) return true
-  if (/\/(agents|agents-src|agents-pi|skills)\//.test(filePath)) return true
-  return false
-}
-
-/** Split text into sentences (boundaries: .!? followed by whitespace, or newlines). */
-function splitSentences(text) {
-  return text.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 3)
-}
-
-/** Jaccard similarity of word sets (case-insensitive). */
-function jaccard(a, b) {
-  const wa = new Set(a.toLowerCase().match(/\w+/g) ?? [])
-  const wb = new Set(b.toLowerCase().match(/\w+/g) ?? [])
-  let isect = 0
-  for (const w of wa) if (wb.has(w)) isect++
-  const union = wa.size + wb.size - isect
-  return union === 0 ? 0 : isect / union
-}
-
-/** Find best-matching sentence in newSents for oldSent. Returns null if below threshold. */
-function matchSentence(oldSent, newSents, threshold = 0.4) {
-  let best = null, bestScore = -1
-  for (const ns of newSents) {
-    const s = jaccard(oldSent, ns)
-    if (s > bestScore) { bestScore = s; best = ns }
-  }
-  return bestScore >= threshold ? best : null
-}
 
 function advise(reason) {
   console.log(

@@ -1,102 +1,80 @@
 ---
 name: ultrawork
-description: Engage maximum parallel fan-out mode. Use when you want to work 10x faster by dispatching all independent work simultaneously to specialist agents. Triggers on "ultrawork", "ulw", "fan out hard", "go parallel".
+description: Maximum parallel fan-out mode. Slice, write ledger, dispatch all independent slices simultaneously. Triggers on "ultrawork", "ulw", "max fan-out", "go parallel".
 ---
 
-# Ultrawork Mode — Maximum Fan-Out Protocol
+# Ultrawork — Maximum Fan-Out
 
-You are now operating in **Ultrawork Mode**. This changes your default execution behavior for the rest of this session.
+## When to Use
+
+**Triggers:** user says "ultrawork", "ulw", "max fan-out", "go parallel", or the task has ≥5 independent slices and maximum speed is desired.
+
+**Chain position:** The feature-planning pipeline (`interview` → `planner`) MUST have produced a planning artifact (`motive_ref`) before this skill runs on non-trivial work. `interview` is the human front door; `planner` is the delegated stage that emits the motive charter. They are BOTH required steps in sequence, not competing alternatives. `vertical-slice` (step 1 below) produces the slice table and ledger. Optionally run `plan-review` to validate coverage before dispatching. After all waves complete, the orchestrator invokes `advisor-gate` — ultrawork does not gate itself.
+
+**Do NOT use for:**
+- Trivial tasks (≤2 files AND ≤1 behavior AND <1h AND small verification surface) — delegate directly to `general-purpose`, then `advisor-gate`.
+- Bugs — use `diagnose` instead.
+
+## Platform contract
+
+The workflow is platform-neutral, but enforcement is not. Claude Code and
+OpenCode may provide native delegation and hook surfaces; use those only when
+the host documents them. In Codex, this skill is guidance: use native Codex
+subagent/delegation tools only when they are actually available in the current
+session. Otherwise execute slices sequentially and say that fan-out, ledger
+tracking, and completion gating are advisory.
+
+You are now in **Ultrawork Mode**. Where the host supplies a Stop-gate hook,
+it may enforce the run ledger. Codex has no such guarantee from a skill alone;
+do not claim that ending the session is mechanically blocked.
+
+## Emit the banner FIRST (compliance tripwire)
+
+Your **first line of output** after engaging ultrawork MUST be the banner defined in CLAUDE.md §Run ledger & Stop-gate (on Claude Code hosts it is also injected at SessionStart by `hooks/session-reminder.mjs`). This skill defers to those sources rather than restating the format.
 
 ## The Prime Directive
 
 **Fire all independent agent calls simultaneously. NEVER serialize independent work.**
 
-Sequential execution is the #1 velocity killer. If two tasks don't share state, they run in parallel. Always.
+Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure whether two slices are independent, ask: does slice B import a symbol or file that slice A creates, or must B observe A's runtime behavior, or do both slices edit the same pre-existing file? If none is clearly yes, treat them as independent. Add a blocked_by edge only when you can name the specific artifact consumed.
 
 ## Execution Policy
 
-1. **Fan out FIRST.** Before writing a single line, decompose the full task into the smallest independent slices and launch all of them at once.
-2. **One objective per task.** If describing a task takes more than 2 sentences — split it. "Implement auth + tests + logging" = 3 tasks.
-3. **ALL parallel Task calls in ONE message.** Sending Task A in one message, then Task B in the next is sequential execution in disguise.
-4. **Route to the right specialist.** Don't use `general-purpose` for exploration. Don't use `explore` for implementation. Use the right tool.
-5. **Use cheapest capable model tier per slice** (already set per agent; trust the defaults).
-6. **Context-isolate every task — durably.** Each Task prompt must be self-contained (never rely on "the agent knows what we discussed"), but describe the work by **behavioral contract, not pinned line numbers**: the files the slice owns, the interfaces/signatures it must satisfy, and observable acceptance criteria. Line ranges rot the instant a sibling slice edits the file — a contract survives. The ledger's `files[]` still lists ownership for conflict detection; that is structural, not the brief.
+1. **Decompose first.** Load `vertical-slice` and cut the work into the maximum number of conflict-free slices. Each slice = ONE user-facing behavior through all layers.
+2. **Write the ledger.** `vertical-slice` writes the run ledger with every slice `pending`. No ledger = no enforcement.
+3. **One objective per task.** If describing a task takes more than 2 sentences, split it.
+4. **ALL parallel Task calls in ONE message.** Task A in one message, Task B in the next is sequential execution.
+5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix. Dispatch `junior-orchestrator` by **default** to own a domain end-to-end. Drop to `general-purpose` (leaf implementer, cannot spawn further workers) ONLY when ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface. If ANY clause fails → `junior-orchestrator`.
+6. **Context-isolate by behavioral contract.** Describe each task by the interfaces/signatures it must satisfy and observable acceptance criteria — not pinned line numbers (they rot when siblings edit the file).
+7. **Fan-out.** When a wave is dispatched and you have no other work, write a one-line status and END YOUR TURN (you're re-invoked on each task completion).
 
-## Agent Dispatch — Exact Syntax
+Fan-out ceilings, wave template, and completion-gate rules are in your agent definition's Fan-out Protocol section (self-contained, platform-independent).
 
-```
-# Wave 1: Parallel exploration (fire all at once)
-Task(subagent_type="groundwork:explore", prompt="TASK: Map the auth module...\nCONTEXT: src/auth/\nSUCCESS: Return file list + key function names")
-Task(subagent_type="groundwork:explore", prompt="TASK: Find all callers of validateUser...\nCONTEXT: src/\nSUCCESS: Return file:line references")
+**Worktree conflict-fallback:** When slices would otherwise be serialized due to overlapping file ownership, you MAY preserve parallel width by isolating each slice in its own git worktree and reconciling serially after the wave lands. This is a fallback — default remains disjoint ownership. The full mechanism is documented in the `vertical-slice` skill.
 
-# Wave 2: Parallel implementation (fire all at once, after wave 1 results)
-Task(subagent_type="groundwork:general-purpose", prompt="TASK: Add rate limiting to POST /login\nCONTEXT: src/routes/auth.ts:45-80\nSCOPE: only this file\nSUCCESS: 429 returned after 5 failed attempts")
-Task(subagent_type="groundwork:general-purpose", prompt="TASK: Add audit log on auth failure\nCONTEXT: src/services/logger.ts:12-30\nSCOPE: only this file\nSUCCESS: WARN log emitted with userId + IP")
-Task(subagent_type="groundwork:general-purpose", prompt="TASK: Add test for rate limiter\nCONTEXT: tests/auth.test.ts\nSCOPE: only this file\nSUCCESS: test passes, covers 5-attempt threshold")
-Task(subagent_type="groundwork:designer", prompt="TASK: Add error state UI for rate-limit response\nCONTEXT: src/components/LoginForm.tsx:20-60\nSCOPE: only this file\nSUCCESS: red banner shown with retry-after time")
+## Pre-Delegation Declaration (mandatory)
 
-# Wave 3: Verification (after wave 2 completes — for interactive UI changes, add qa task first)
-Task(subagent_type="groundwork:advisor", prompt="TASK: Verify auth rate limiting works end to end (fresh evidence + quality review)\nACCEPTANCE: 5 failed attempts → 429; audit log written; UI shows error\nSCOPE: run the test suite and check logs; reject any 'should work' claims without proof")
-```
+Before each wave, state for each task: **Agent** · **Reason** · **Success criteria**.
+
+## As Slices Land
+
+Mark slices complete through the ledger CLI. On Claude Code hosts the exact commands are defined in CLAUDE.md §Run ledger & Stop-gate and injected at SessionStart; this skill defers to those sources. On other hosts (Codex, pi) where the injection is absent, track slice state in the plan or handoff artifact and report ledger operations as advisory — never invent plugin-root paths or claim hook enforcement.
 
 ## Anti-Patterns — These Are Failures
 
 ```
-# BAD: Sequential — costs 3x wall time
-Task(general-purpose, "add rate limiting") → wait → Task(general-purpose, "add audit log") → wait → Task(general-purpose, "add tests")
+# BAD: Sequential — costs Nx wall time
+Task(general-purpose, "slice 1") → wait → Task(general-purpose, "slice 2") → ...
 
 # BAD: Orchestrator implementing directly
-Edit(file, "add rate limiting logic here")  ← YOU ARE THE ORCHESTRATOR, NOT THE CODER
+Edit(file, ...)   ← YOU ARE THE ORCHESTRATOR, NOT THE CODER
 
 # BAD: Mega-task
-Task(general-purpose, "implement rate limiting + audit logging + tests + UI error state")  ← 4 tasks in 1
+Task(general-purpose, "rate limiting + audit logging + tests + UI")  ← 4 tasks in 1
 
 # BAD: Vague context
 Task(general-purpose, "implement as we discussed")  ← subagent has no session history
 
-# BAD: Under-sliced wave
-Task(general-purpose, "do step 1")  ← if you have only 1-2 tasks on a non-trivial feature, you haven't sliced hard enough
+# BAD: No ledger
+Fan out without writing the run ledger  ← the gate has nothing to enforce
 ```
-
-## Task Graph Template (for non-trivial work)
-
-Before dispatching, declare:
-
-```
-TASK GRAPH:
-Wave 0 (tracer bullet — 1 task): [prove E2E path works]
-Wave 1 (exploration — parallel): [list each explore task]
-Wave 2 (implementation — parallel): [list each general-purpose/designer task]
-Wave 3 (verification): [qa if interactive UI] → advisor (evidence+quality) APPROVE
-```
-
-Then fire Wave 0, wait, assess, fire Wave 1+2 together if Wave 0 passed.
-
-## Fan-Out Targets
-
-| Agent | Tasks per wave |
-|---|---|
-| `explore` | 3–7 (one per area/module) |
-| `general-purpose` | 5–20 (one per semantic slice) |
-| `designer` | 2–5 |
-| `test-engineer` | 2–5 |
-| `advisor` | 1–2 (decision gates only) |
-
-## Pre-Delegation Declaration (mandatory)
-
-Before every Task call, state:
-```
-Agent: [which specialist]
-Reason: [why this agent, not another]
-Success criteria: [how I'll know it worked]
-```
-
-This surfaces bad routing before the token is spent.
-
-## Completion Gate
-
-When ALL waves finish (non-trivial work — trivial single-file changes go directly to advisor):
-1. `groundwork:qa` — if the change involves interactive UI or live behavior (optional, skip for non-UI)
-2. `groundwork:advisor` — fresh evidence only (rejects "should", "probably", "seems to") PLUS code-quality review if code changed → APPROVE / REVISE / REJECT
-
-No APPROVE = not done. "It should work" is not evidence.

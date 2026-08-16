@@ -128,3 +128,15 @@ These rules apply regardless of platform or how instructions are injected:
 3. **Ledger CLI only.** Never Read/Edit `.groundwork/run.json` directly. Use the ledger CLI for all run ledger mutations (complete, set, add, rm, gate, abandon). The exact absolute path is injected by the SessionStart hook's "Groundwork CLI tools" block; manual form: `<plugin-root>/bin/ledger`.
 4. **Model must be explicit on every Task call.** Never omit `model:` — it silently inherits the expensive session model. Set each `model:` to the value that agent maps to in `model-registry.json` for the active platform; never pass a bare tier alias like `sonnet` (it resolves to the latest Sonnet, not the pinned `claude-sonnet-4-6`).
 5. **Do NOT use `question` to wait for background tasks.** When background tasks are running and you have nothing else to do, end your turn — completion notifications re-invoke you automatically.
+
+## Output prose rules
+
+Apply caveman compression to all prose output: drop articles; drop filler words (`just`, `really`, `basically`, `actually`, `simply`); drop pleasantries; drop tool-call narration; drop opening preamble; drop decorative tables or standalone emoji. Fragments permitted where meaning is clear.
+
+Negation and scope words are inviolable: never remove `not`, `never`, `no`, `only`, or `except` from an existing sentence. Removing `not` from "must not delegate" yields the opposite instruction.
+
+No invented abbreviations: do not introduce ad-hoc contractions (`cfg`, `fn`, `req`). Domain vocabulary (`AC`, `TBD`, `TBR`, `impl`) is preserved unchanged.
+
+Modality is preserved: never upgrade a modal hedge (`may`, `could`, `sometimes`, `might`, `appears to`, `is likely to`) to a stronger claim (`will`, `does`, `always`, `is`). A hedge carries the author's confidence; changing it changes the claim.
+
+One issue at a time: each output message addresses one problem or question.

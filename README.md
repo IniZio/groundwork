@@ -82,7 +82,7 @@ an artifact the user can review and provide to a later session.
 
 ## Rules
 
-1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out general-purpose agents → advisor gate
+1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out junior-orchestrator (or general-purpose for leaf slices satisfying all four carve-out conditions) → advisor gate
 2. Advisor gate before declaring done; recorded in the run ledger and enforced by the Stop-gate hook
 3. Intent lives in a motive charter at `.groundwork/motives/<slug>/motive.md` with a compiled Decision Log; charters are runtime state and are not committed
 4. Interview before slicing — understanding before synthesis
@@ -120,8 +120,9 @@ When using Pi with `pi-subagents`, the following agent types are auto-configured
 | Agent | Purpose |
 |-------|---------|
 | `orchestrator` | Main workflow coordinator |
+| `junior-orchestrator` | Sub-domain orchestrator; default target for non-trivial implementation |
 | `advisor` | Strategic decisions, architecture, code review |
-| `general-purpose` | Fast implementation, tests, build verification |
+| `general-purpose` | Leaf implementation for slices meeting all four carve-out conditions |
 | `designer` | UI/UX, styling, responsive design |
 | `explore` | Codebase exploration (read-only) |
 

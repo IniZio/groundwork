@@ -125,6 +125,16 @@ function deny(reason) {
   process.exit(0)
 }
 
+/** Warn and allow a dispatch with an un-prefixed groundwork agent name. */
+function warnAllow(reason) {
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: reason },
+    }),
+  )
+  process.exit(0)
+}
+
 /** Auto-approve the call with a rewritten input that carries `model`. */
 function injectModel(toolInput, model, reason) {
   console.log(
@@ -218,11 +228,26 @@ async function main() {
     )
   }
 
-  // Operator intent wins: never override an explicit, non-empty model.
-  if (typeof toolInput.model === 'string' && toolInput.model.trim()) return passthrough()
-
   const registry = loadRegistry()
   if (!registry) return passthrough()
+
+  // Prefix warning: a bare groundwork agent name (no ':') that matches a key in
+  // model-registry.json but is not banned — warn and allow. The caller should use
+  // the namespaced form ("groundwork:<name>") for correct model-registry routing
+  // and the groundwork role prompt. Case-insensitive match; derived from registry.
+  if (rawType && !rawType.includes(':')) {
+    const bare = rawType.toLowerCase()
+    const groundworkAgents = new Set(Object.keys(registry.agents || {}))
+    if (groundworkAgents.has(bare)) {
+      return warnAllow(
+        `groundwork prefix-guard: bare "${rawType}" — use "groundwork:${bare}" to run with the groundwork role prompt and model-registry tier. ` +
+          `The harness will not auto-prefix bare names; dispatching "${rawType}" uses the built-in agent with neither.`,
+      )
+    }
+  }
+
+  // Operator intent wins: never override an explicit, non-empty model.
+  if (typeof toolInput.model === 'string' && toolInput.model.trim()) return passthrough()
 
   const subagentType = toolInput.subagent_type
   const resolved = resolveModel(registry, subagentType)

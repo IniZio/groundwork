@@ -11,7 +11,7 @@ It is the softer `analyze` path that complements the P1 HARD-GATE (a motive char
 
 ## When to Use
 
-- **Before fan-out** on any non-trivial feature (after the `interview` → `planner` pipeline produced a motive charter, and after `vertical-slice` proposed slices — before general-purpose agents start)
+- **Before fan-out** on any non-trivial feature (after the `interview` → `planner` pipeline produced a motive charter, and after `vertical-slice` proposed slices — before implementation agents start)
 - When advisor scores **`plan_soundness` low** (≤1) or returns **REPLAN** and you need a structured gap list before re-entering `interview` or `vertical-slice`
 - When the user asks to "check coverage", "analyze the plan", "are the slices complete?", or "did we miss an AC?"
 - Optional mid-flight: after a wave lands and new coupling or scope drift is suspected — still read-only; route fixes through `vertical-slice` / `interview`, not this skill
@@ -24,7 +24,7 @@ Resolve what exists; missing inputs are themselves findings:
 
 | Artifact | Typical path | Required? |
 |----------|--------------|-----------|
-| Motive charter (ACs + DECISION events) | `.groundwork/motives/<slug>/motive.md` (`motive_ref` in the ledger) | Yes — without ACs, emit CRITICAL and stop |
+| Motive charter (ACs + DECISION events) | `.groundwork/motives/<slug>/motive.md` (`motive_ref` in the ledger is the **slug**, not the path) | Yes — without ACs, emit CRITICAL and stop |
 | Spec / functional requirements | `doc/specs/<concept-dir>/requirements/*.md` | Yes when referenced by the charter |
 | Slice ledger / proposed slices | `.groundwork/runs/<session_id>.json`, vertical-slice output | Yes — nothing to map otherwise |
 | Negative scope | charter negative_scope, interview "out of scope", rejection KB | Strongly preferred |
@@ -127,7 +127,7 @@ Return **only** this structure to the orchestrator/user (keep it scannable):
 - If block/re-enter: name the re-entry skill and the gap_types driving it
 ```
 
-**CRITICAL findings SHOULD block implement** — do not fan out general-purpose impl slices until CRITICAL is empty or the user explicitly overrides. This complements (does not replace) the P1 HARD-GATE and the advisor REPLAN path:
+**CRITICAL findings SHOULD block implement** — do not fan out implementation slices until CRITICAL is empty or the user explicitly overrides. This complements (does not replace) the P1 HARD-GATE and the advisor REPLAN path:
 
 | Signal | Route |
 |--------|--------|

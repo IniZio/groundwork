@@ -54,6 +54,10 @@ const MANIFEST = [
 		pi: ".pi/skills/use-groundwork/bootstrap-universal.md",
 		authority: "skills/groundwork/use-groundwork/bootstrap-universal.md",
 	},
+	{
+		pi: ".pi/skills/ultrawork/SKILL.md",
+		authority: "skills/groundwork/ultrawork/SKILL.md",
+	},
 ];
 
 // Allow overriding roots for testing (mkdtemp-pinned temp dirs).

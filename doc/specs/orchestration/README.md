@@ -13,7 +13,8 @@ The orchestration model defines how groundwork splits reasoning from execution. 
 
 ## Delegation rules
 
-- `groundwork:general-purpose` — all implementation, debugging, and code editing
+- `groundwork:junior-orchestrator` — default implementation target for non-trivial tasks; owns one domain end-to-end and fans out leaf workers
+- `groundwork:general-purpose` — leaf implementation for slices that satisfy all four carve-out conditions (single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface)
 - `groundwork:explore` — read-only codebase discovery and summarisation
 - `groundwork:advisor` — plan validation and completion gate
 - `groundwork:designer`, `groundwork:test-engineer`, `groundwork:qa` — specialist domains

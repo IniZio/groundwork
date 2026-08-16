@@ -21,7 +21,7 @@ the role boundaries in the plan and execute locally.
 | `planner` | Strategic planning, actionable work plans before non-trivial features |
 | `debugger` | Read-write structured root-cause debugging (observe→hypothesize→isolate→fix); use for real bugs needing disciplined diagnosis, not code-and-guess |
 | `researcher` | Read-only deep investigation of open questions, prior-art, external docs, cross-system tradeoffs; the tier above `explore` (which only locates code) |
-| `junior-orchestrator` | Sub-domain orchestrator spawned by the **primary orchestrator** when a domain has genuine sub-domains or >5 disjoint slices; may spawn general-purpose workers + read-only specialists; general-purpose (leaf implementer) may not spawn it |
+| `junior-orchestrator` | **Default** sub-domain orchestrator spawned by the **primary orchestrator**; use for any domain unless ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface — if ANY clause fails, dispatch `junior-orchestrator`. May spawn general-purpose workers + read-only specialists; general-purpose (leaf implementer) may not spawn it |
 
 All agents use the `groundwork:` prefix: `task(subagent_type="groundwork:advisor", ...)`.
 
@@ -38,7 +38,7 @@ Per-agent models are configured in `model-registry.json` at the project root. Th
 
 ## Why Delegation Matters
 
-1. **Velocity**: Fan out aggressively — launch 5-15 parallel general-purpose tasks. Parallelism = faster delivery. Sequential work is the #1 time waste.
+1. **Velocity**: Fan out aggressively — launch 5–20 parallel tasks (default `junior-orchestrator` per slice; `general-purpose` only for leaf carve-outs meeting ALL four criteria). Parallelism = faster delivery. Sequential work is the #1 time waste.
 2. **Quality**: Each agent is specialized — general-purpose writes better code, explore maps faster, advisor thinks deeper, designer has visual taste.
 3. **Context**: You preserve your context window for orchestration decisions instead of filling it with code details.
 4. **Model diversity**: Different agents use different models matched to their domain.

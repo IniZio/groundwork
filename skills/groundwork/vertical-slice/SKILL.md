@@ -18,7 +18,7 @@ A vertical slice is a **thin end-to-end behavior** that cuts through ALL layers 
 
 ## Default Posture
 
-Decompose by default. The question is never "should I slice?" but "what is the maximum number of conflict-free slices?". Maximize parallel width within each wave; the only constraints on slicing are real file-ownership conflicts and genuine data dependencies.
+Decompose by default. The question is never "should I slice?" but "what is the maximum number of conflict-free slices?". Maximize parallel width within each wave; the only constraints on slicing are real file-ownership conflicts and genuine data dependencies. A blocked_by edge is valid when the blocking slice creates a file, type, or binary artifact that the blocked slice must import or execute against. Sequencing preference, general caution, or a shared-file concern that could instead be resolved by splitting file ownership are NOT valid grounds for an edge.
 
 **Horizontal (wrong) — delays validation, blocks fan-out:**
 ```
@@ -36,7 +36,7 @@ Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
 
 ## When to Use
 
-**This skill is MANDATORY** — not optional — for any task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) before delegating to general-purpose agents.
+**This skill is MANDATORY** — not optional — for any task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) before delegating to implementation agents.
 
 **Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios). If any of ≥3 files, ≥2 user-facing behaviors, or a large verification surface applies, slicing is mandatory.**
 
@@ -75,6 +75,8 @@ Wave 1: slices that only depend on tracer output
 Wave 2: slices that depend on Wave 1 output
 ```
 
+This template shows the minimum structure, not a target shape. In practice Wave 1 may hold 10 independent slices that all depend only on the Wave 0 tracer. Use as few waves as the dependency DAG requires and make each wave as wide as the DAG permits.
+
 Slices in the same wave MUST have non-overlapping file ownership.
 
 ### 5. Write the slice table
@@ -89,7 +91,7 @@ Slice N: <behavior name>
 
 ## Fan-Out Targets
 
-Fan-out targets (from your agent definition's Fan-out Protocol section): general-purpose 5–20, explore 3–7, designer 2–5, advisor 1–2 per wave. **Single-slice waves on non-trivial work are a failure — decompose harder.**
+Fan-out targets (from your agent definition's Fan-out Protocol section): junior-orchestrator 5–20 (DEFAULT — one per slice), general-purpose 5–20 (leaf carve-out only: single domain, ≤2 files, no sub-domains, small verification surface — ALL four must hold), explore 3–7, designer 2–5, advisor 1–2 per wave. These are ceilings, not quotas. **Single-slice waves on non-trivial work are a failure — decompose harder.**
 
 ## Conflict-Free Rules
 

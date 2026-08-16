@@ -11,11 +11,12 @@ capabilities. Keep the reminder to one or two lines after the initial load.
 ## Fan-Out Maximization
 
 Fan-out targets by specialist type (mix freely in the same wave):
-- **general-purpose:** 5-15 parallel tasks for implementation slices
-- **explore:** 2-5 parallel tasks for codebase understanding (one per area/module)
-- **designer:** 1-3 parallel tasks for UI/UX work
-- **qa:** 1-2 tasks for live verification after implementation
-- **advisor:** 1 task at a time for strategic decisions
+- **junior-orchestrator:** 5–20 parallel tasks for implementation slices (DEFAULT — one per slice)
+- **general-purpose:** 5–20 parallel tasks for leaf carve-outs (single domain / ≤2 files / no internal sequencing / small verification surface — ALL four must hold)
+- **explore:** 3–7 parallel tasks for codebase understanding (one per area/module)
+- **designer:** 2–5 parallel tasks for UI/UX work
+- **qa:** 1–2 tasks for live verification after implementation
+- **advisor:** 1–2 tasks for strategic decisions
 
 Rules:
 1. **Within a wave, launch ALL independent slices simultaneously.** Never wait for Slice A before launching Slice B if they don't share code.
@@ -28,11 +29,11 @@ Rules:
 # GOOD: Fan out mixed specialists simultaneously
 task(description="Explore auth module", prompt="...", subagent_type="groundwork:explore")
 task(description="Explore user model", prompt="...", subagent_type="groundwork:explore")
-task(description="Slice 1: auth flow", prompt="...", subagent_type="groundwork:general-purpose")
-task(description="Slice 2: user profile", prompt="...", subagent_type="groundwork:general-purpose")
-task(description="Slice 3: settings page", prompt="...", subagent_type="groundwork:general-purpose")
+task(description="Slice 1: auth flow", prompt="...", subagent_type="groundwork:junior-orchestrator")
+task(description="Slice 2: user profile", prompt="...", subagent_type="groundwork:junior-orchestrator")
+task(description="Slice 3: settings page", prompt="...", subagent_type="groundwork:junior-orchestrator")
 task(description="Slice 4: dashboard styling", prompt="...", subagent_type="groundwork:designer")
-task(description="Slice 5: notifications logic", prompt="...", subagent_type="groundwork:general-purpose")
+task(description="Slice 5: notifications logic", prompt="...", subagent_type="groundwork:junior-orchestrator")
 # All launch at once — each uses the right specialist
 
 # BAD: Sequential — never do this
@@ -45,7 +46,7 @@ task(description="Slice 1", ...) → wait → task(description="Slice 2", ...) �
 WRONG:  Classify → read files → write code → run tests → review → advisor-gate
         (orchestrator does everything sequentially)
 
-RIGHT:  Classify → fan out mixed specialists (explore×2, general-purpose×5-15, designer×1-3)
+RIGHT:  Classify → fan out mixed specialists (explore×3, junior-orchestrator×5–20, designer×2)
         → collect all outputs → review → advisor-gate
         (orchestrator delegates, reviews, orchestrates — MAXIMIZE fan-out width)
 

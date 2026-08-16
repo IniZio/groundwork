@@ -36,7 +36,7 @@ Your **first line of output** after engaging ultrawork MUST be the banner define
 
 **Fire all independent agent calls simultaneously. NEVER serialize independent work.**
 
-Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file. When unsure, serialize into Wave 0.
+Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure whether two slices are independent, ask: does slice B import a symbol or file that slice A creates, or must B observe A's runtime behavior, or do both slices edit the same pre-existing file? If none is clearly yes, treat them as independent. Add a blocked_by edge only when you can name the specific artifact consumed.
 
 ## Execution Policy
 
@@ -44,7 +44,7 @@ Two tasks are independent ONLY if neither consumes the other's output AND they s
 2. **Write the ledger.** `vertical-slice` writes the run ledger with every slice `pending`. No ledger = no enforcement.
 3. **One objective per task.** If describing a task takes more than 2 sentences, split it.
 4. **ALL parallel Task calls in ONE message.** Task A in one message, Task B in the next is sequential execution.
-5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix. For any domain that decomposes into genuine sub-domains **OR** has >5 disjoint slices, dispatch a `junior-orchestrator` to own that domain end-to-end; `general-purpose` is the leaf implementer and cannot spawn further `general-purpose` workers.
+5. **Route to the right specialist.** See CLAUDE.md §Delegation matrix. Dispatch `junior-orchestrator` by **default** to own a domain end-to-end. Drop to `general-purpose` (leaf implementer, cannot spawn further workers) ONLY when ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface. If ANY clause fails → `junior-orchestrator`.
 6. **Context-isolate by behavioral contract.** Describe each task by the interfaces/signatures it must satisfy and observable acceptance criteria — not pinned line numbers (they rot when siblings edit the file).
 7. **Fan-out.** When a wave is dispatched and you have no other work, write a one-line status and END YOUR TURN (you're re-invoked on each task completion).
 

@@ -9,10 +9,12 @@
 
 import { execFileSync } from "node:child_process";
 import {
-	cpSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
+	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,8 +28,6 @@ const CHECK_MJS = path.resolve(
 	"scripts",
 	"check-pi-skills.mjs",
 );
-
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /** The first entry in the MANIFEST — used as the mutation target. */
 const MANIFEST_FIRST = {
@@ -89,8 +89,14 @@ function buildTree(piContent: string, authorityContent: string) {
 			".pi/skills/use-groundwork/bootstrap-universal.md",
 			"skills/groundwork/use-groundwork/bootstrap-universal.md",
 		],
+		[
+			".pi/skills/ultrawork/SKILL.md",
+			"skills/groundwork/ultrawork/SKILL.md",
+		],
 	];
 	for (const [pi, auth] of remaining) {
+		mkdirSync(path.join(piRoot, path.dirname(pi)), { recursive: true });
+		mkdirSync(path.join(authRoot, path.dirname(auth)), { recursive: true });
 		writeFileSync(path.join(piRoot, pi), "# stub\n");
 		writeFileSync(path.join(authRoot, auth), "# stub\n");
 	}
@@ -146,8 +152,120 @@ describe("check-pi-skills", () => {
 				"# stub\n",
 			);
 		}
+		// Stub the ultrawork manifest entry in both trees.
+		mkdirSync(path.join(piRoot, ".pi/skills/ultrawork"), { recursive: true });
+		mkdirSync(path.join(authRoot, "skills/groundwork/ultrawork"), { recursive: true });
+		writeFileSync(path.join(piRoot, ".pi/skills/ultrawork/SKILL.md"), "# stub\n");
+		writeFileSync(path.join(authRoot, "skills/groundwork/ultrawork/SKILL.md"), "# stub\n");
 		const { code, out } = run(piRoot, authRoot);
 		expect(code).toBe(1);
 		expect(out).toContain("MISSING");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Manifest completeness — guards against omissions in the MANIFEST
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the MANIFEST array literal from the check-pi-skills.mjs source text.
+ * The MANIFEST contains only plain object literals with string values, so
+ * evaluating it with Function is safe and avoids importing the module (which
+ * has side-effect checks that may fail in test context).
+ */
+function parseManifest(scriptPath: string): Array<{ pi: string; authority: string }> {
+	const source = readFileSync(scriptPath, "utf8");
+	const match = source.match(/const MANIFEST = (\[[\s\S]*?\]);/);
+	if (!match) {
+		throw new Error(`Could not find MANIFEST array in ${scriptPath}`);
+	}
+	// eslint-disable-next-line no-new-func
+	return new Function(`return ${match[1]}`)() as Array<{ pi: string; authority: string }>;
+}
+
+/**
+ * Recursively collect all regular files under a directory, returning paths
+ * relative to that directory (using forward slashes).
+ *
+ * Symlinks are skipped entirely — a symlink into the groundwork tree cannot
+ * drift by definition (it IS the authority source), so it needs no MANIFEST
+ * entry. Only actual file copies can drift and therefore need registration.
+ */
+function walkRelative(dir: string, base = ""): string[] {
+	const results: string[] = [];
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		// Skip symlinks — they point directly at the source and cannot drift.
+		if (entry.isSymbolicLink()) continue;
+		const rel = base ? `${base}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) {
+			results.push(...walkRelative(path.join(dir, entry.name), rel));
+		} else if (entry.isFile()) {
+			results.push(rel);
+		}
+	}
+	return results;
+}
+
+describe("pi-skills manifest completeness", () => {
+	/**
+	 * Every .pi/skills/ file that has a byte-for-byte counterpart candidate at
+	 * the corresponding skills/groundwork/ path must appear in the MANIFEST.
+	 *
+	 * Files that are genuinely pi-specific despite a same-named groundwork
+	 * counterpart (e.g. advisor-gate, which diverges by design) are listed in
+	 * EXEMPTIONS with a justification comment. The exemption list is deliberately
+	 * small — a growing exemption list is a signal that the test logic needs review.
+	 *
+	 * Red→green proof: remove the ultrawork entry from MANIFEST, run this test →
+	 * it reports ".pi/skills/ultrawork/SKILL.md" as missing. Restore → passes.
+	 */
+	it("every .pi/skills/ file with a skills/groundwork/ counterpart is in the MANIFEST", () => {
+		const REPO_ROOT = path.resolve(CHECK_MJS, "..", "..");
+		const PI_ROOT = path.join(REPO_ROOT, ".pi", "skills");
+		const GW_ROOT = path.join(REPO_ROOT, "skills", "groundwork");
+
+		// Files that are intentionally pi-specific even though a same-named file
+		// exists under skills/groundwork/ (they diverge by design and must NOT
+		// be byte-for-byte mirrors). Add an entry here only with a justification.
+		const EXEMPTIONS = new Set<string>([
+			".pi/skills/advisor-gate/SKILL.md",
+			// Documented as intentionally pi-specific in scripts/check-pi-skills.mjs:
+			// "Files NOT in MANIFEST are Pi-specific (e.g. acp, advisor-gate body, autoresearch)"
+		]);
+
+		const manifest = parseManifest(CHECK_MJS);
+		const manifestPiPaths = new Set(manifest.map((e) => e.pi));
+
+		// Walk every file under .pi/skills/ and check whether a skills/groundwork/
+		// counterpart exists at the same relative path.
+		const piFiles = walkRelative(PI_ROOT);
+		const unregistered: string[] = [];
+
+		for (const rel of piFiles) {
+			const piKey = `.pi/skills/${rel}`;
+			const gwCounterpart = path.join(GW_ROOT, rel);
+
+			let counterpartExists = false;
+			try {
+				// Only match file-to-file — if the groundwork path is a directory
+				// (not a file), it is not a copy counterpart.
+				counterpartExists = statSync(gwCounterpart).isFile();
+			} catch {
+				// No groundwork counterpart — pi-specific file, nothing to register.
+			}
+
+			if (counterpartExists && !EXEMPTIONS.has(piKey) && !manifestPiPaths.has(piKey)) {
+				unregistered.push(piKey);
+			}
+		}
+
+		expect(
+			unregistered,
+			`These .pi/skills/ files have a skills/groundwork/ counterpart ` +
+				`but are absent from the MANIFEST in scripts/check-pi-skills.mjs:\n` +
+				`  ${unregistered.join("\n  ")}\n` +
+				`Add each to the MANIFEST (if it is a byte-for-byte mirror) or ` +
+				`add it to EXEMPTIONS in this test with a justification comment.`,
+		).toEqual([]);
 	});
 });

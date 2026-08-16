@@ -202,6 +202,34 @@ function activeRunBlock(projectDir, sessionId) {
   } else {
     lines.push(`All slices complete and advisor APPROVE — this run is finished. Set \`"active": false\` in ${ledgerRef} to close it out so the Stop-gate stands down.`)
   }
+
+  // Wave-width diagnostic: emit a notice for any impl wave that was PLANNED with exactly 1
+  // non-exempt slice and still has that slice pending. A wave that was planned wide but is
+  // nearly finished (e.g. 4 of 5 slices complete) must NOT fire — check the TOTAL slice count
+  // per wave, not just the incomplete count, to avoid spurious late-run notices.
+  // Read-only, fail-open — must not block or throw.
+  try {
+    const EXEMPT_KINDS = new Set(['plan', 'diagnose', 'design', 'fog'])
+    /** @type {Record<string|number, number>} */
+    const totalWaveCount = {}
+    /** @type {Record<string|number, number>} */
+    const incompleteWaveCount = {}
+    for (const s of slices) {
+      if (!s || EXEMPT_KINDS.has(s.kind ?? 'impl')) continue
+      const w = s.wave ?? 0
+      totalWaveCount[w] = (totalWaveCount[w] ?? 0) + 1
+      if (s.status !== 'complete') {
+        incompleteWaveCount[w] = (incompleteWaveCount[w] ?? 0) + 1
+      }
+    }
+    for (const [wave, total] of Object.entries(totalWaveCount)) {
+      // Fire only when the wave was planned with exactly 1 impl slice AND that slice is still pending.
+      if (total === 1 && (incompleteWaveCount[wave] ?? 0) === 1) {
+        lines.push(`NOTICE: wave ${wave} has 1 impl slice — if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`)
+      }
+    }
+  } catch { /* fail-open — never block the hook */ }
+
   return `\n${lines.join('\n')}`
 }
 
@@ -211,11 +239,11 @@ You are the ORCHESTRATOR. Classify, decompose, delegate, review. NEVER implement
 
 ## Routing
 
-Routing: see the issue-type routing table in CLAUDE.md (always loaded).
+See the issue-type routing table in CLAUDE.md (always loaded).
 
 ## Prime directive
 
-Fire all independent agent calls simultaneously; never serialize independent work. If two tasks don't share state, they run in parallel, always. ALL parallel Task calls MUST be in ONE message — Task A in one message then Task B in the next is sequential execution in disguise. Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure, serialize the dependency into Wave 0.
+Fire all independent agent calls simultaneously; never serialize independent work. ALL parallel Task calls MUST be in ONE message — Task A then Task B in separate messages is sequential execution in disguise. Two tasks are independent ONLY if neither consumes the other's output AND they share no undefined type, schema, or file — when unsure, ask: (1) does slice B import a symbol or file that slice A creates? (2) must B observe A's runtime behavior? (3) does either slice edit a file the other also edits? If ANY of the three is clearly yes, the slices are NOT independent — add a blocked_by edge. Otherwise, treat them as independent. Add a blocked_by edge only when you can name the specific artifact consumed.
 
 ## Background fan-out
 
@@ -231,7 +259,7 @@ When you have background tasks running and no other work to do:
 
 ## Vertical-slice gate (mandatory)
 
-Before launching general-purpose agents on ANY task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), you MUST decompose into conflict-free vertical slices first (load the \`vertical-slice\` skill). A vertical slice is a thin end-to-end behavior cutting through all layers (types→logic→surface→test) for ONE outcome. Each file is owned by exactly ONE slice per wave (no two parallel slices touch the same file). Shared types/interfaces needed by multiple slices are defined in the tracer-bullet slice (Wave 0), so parallel implementers never race on an undefined type. Single-slice waves on non-trivial work are a failure — look harder.
+Before launching implementation agents (junior-orchestrator or general-purpose) on ANY task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), you MUST decompose into conflict-free vertical slices first (load the \`vertical-slice\` skill). A vertical slice is a thin end-to-end behavior cutting through all layers (types→logic→surface→test) for ONE outcome. Each file is owned by exactly ONE slice per wave. Shared types/interfaces needed by multiple slices are defined in the tracer-bullet slice (Wave 0), so parallel implementers never race on an undefined type. Single-slice waves on non-trivial work are a failure — look harder.
 
 ## Run ledger & Stop-gate (mechanical enforcement — not advisory)
 
@@ -239,7 +267,7 @@ Before launching general-purpose agents on ANY task touching ≥3 files OR ≥2 
 
 Your obligations as orchestrator (the hook only reads — it cannot update the ledger for you):
 - **Banner first.** Your first line on a non-trivial task: \`GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json\`. For trivial work: \`GROUNDWORK ▸ trivial: single general-purpose agent, no slicing\`.
-- **Write the ledger** when you slice (vertical-slice does this), stamping it with this session's \`session_id\` from the Session identity block below.
+- **Write the ledger** when you slice (vertical-slice does this), using this session's \`session_id\` from the Session identity block.
 - **Give each slice \`acceptance\`** (a string[] of verifiable done-conditions) and \`blocked_by\` (the canonical wave-ordering dependency; \`depends_on\` is a legacy alias). A slice can't be \`complete\` until its \`blocked_by\` slices are.
 - **Update slice status to \`complete\`** as each verified wave lands.
 - **Record the advisor verdict** after the completion gate. Prefer the object form — \`gate.advisor = { "verdict": "APPROVE", "rubric": "...", "axes": { "correctness", "completeness", "over_engineering" }, "citation": "..." }\` — so the verdict carries its own rubric and evidence; the bare string \`"APPROVE"\` is still accepted. Every REVISE/REJECT needs a concrete \`citation\`.
@@ -254,15 +282,16 @@ Fire the entire wave in ONE message — never serialize tasks that don't share s
 | Agent | Tasks per wave |
 |---|---|
 | \`explore\` | 3–7 (one per area/module) |
-| \`general-purpose\` | 5–20 (one per semantic slice) |
+| \`junior-orchestrator\` | 5–20 (DEFAULT — one per slice) |
+| \`general-purpose\` | 5–20 (leaf carve-out ONLY: ALL of — single domain, ≤2 files, no internal sequencing, small verification surface; if ANY clause fails → junior-orchestrator) |
 | \`designer\` | 2–5 |
 | \`advisor\` | 1–2 (decision gates only) |
 
-These are ceilings, not quotas. Do NOT invent or artificially fragment slices to hit a number — the only valid slices are real, independently-testable behaviors with non-overlapping file ownership.
+These are ceilings, not quotas. Do NOT invent or fragment slices to hit a number — the only valid slices are real, independently-testable behaviors with non-overlapping file ownership.
 
 ## One objective per task
 
-If describing a task takes more than 2 sentences, split it. "Implement auth + tests + logging" = 3 tasks. Every Task prompt must be self-contained: exact file paths, line ranges, constraints, and explicit SUCCESS criteria. Never rely on "as we discussed" — subagents have no session history.
+If describing a task takes more than 2 sentences, split it. Every Task prompt must be self-contained: exact file paths, line ranges, constraints, and explicit SUCCESS criteria. Never rely on "as we discussed" — subagents have no session history.
 
 ## Pre-delegation declaration
 
@@ -276,7 +305,7 @@ Fire exploration and implementation waves together ONLY when the implementation 
 TASK GRAPH:
 Wave 0 (tracer bullet — 1–2 tasks): [prove E2E path; define shared types]
 Wave 1 (exploration — parallel): [one explore per area/module]
-Wave 2 (implementation — parallel): [one general-purpose/designer per slice]
+Wave 2 (implementation — parallel): [one junior-orchestrator/general-purpose/designer per slice]
 Wave 3 (verification): [qa if interactive UI] → advisor (evidence+quality) APPROVE
 \`\`\`
 
@@ -319,7 +348,7 @@ function _findMotiveMaps(projectDir) {
 }
 const _motiveMaps = _findMotiveMaps(_cwdForMap)
 const mapPointerBlock = (() => {
-  const header = '\n\n## Motive MAP — human read path\n\nEach motive maintains its own MAP at `.groundwork/motives/<slug>/MAP.md`. The MAP is auto-regenerated; it is the intended entry point for humans reviewing progress. CLI tools are the implementation detail behind it.'
+  const header = '\n\n## Motive MAP — human read path\n\nEach motive\'s MAP is at `.groundwork/motives/<slug>/MAP.md` — auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.'
   if (_motiveMaps.length === 0) return header
   const list = _motiveMaps.map(p => `- \`${p}\``).join('\n')
   return `${header}\n\nCurrent motive MAP(s):\n${list}`

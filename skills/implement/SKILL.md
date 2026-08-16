@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implementation orchestration skill. Decompose into vertical slices for maximum general-purpose fan-out, then validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the run ledger (.groundwork/runs/<session_id>.json).
+description: Implementation orchestration skill. Decompose into vertical slices and fan out to junior-orchestrators by default; general-purpose is a leaf carve-out only. Validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the run ledger (.groundwork/runs/<session_id>.json).
 ---
 
 # Implement
@@ -17,7 +17,7 @@ sequentially and label fan-out and ledger state as advisory.
 
 **Decompose first, fan out maximally, validate behavior.**
 
-Slice the work into independent end-to-end behaviors before launching any general-purpose agents. Fan out all independent slices simultaneously — 5-15 parallel general-purpose agents per wave is the target. Validate what the system *does* from the user's perspective, not how the code is structured.
+Slice the work into independent end-to-end behaviors before launching agents. Fan out all independent slices simultaneously — 5–20 parallel agents per wave is the target (junior-orchestrators by default; general-purpose only for leaf carve-outs). Validate what the system *does* from the user's perspective, not how the code is structured.
 
 ```
 <HARD-GATE>
@@ -68,7 +68,7 @@ Run `vertical-slice` to produce a conflict-free slice table with wave assignment
 When registering slices, link each slice to its ticket and acceptance criteria using `--ticket <id>` and `--covers-ac "<AC1>,<AC2>"`. Use `--decisions "D-1,D-2"` to attach journal decision ids (mirrors `--covers-ac`). Tickets are durable hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/` following the `NN-type-slug.md` naming convention (types: `research`, `choose`, `model`, `build`, `grill`, `spec`, `fix`, `chore`) — they are never auto-generated per slice and are never deleted by regeneration. Scaffold new tickets with `node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>`.
 
 **Minimum decomposition:**
-- Feature: ≥5 slices (target 5-15 per wave)
+- Feature: ≥5 slices (target 5–20 per wave)
 - Small change: ≥3 slices
 - If you can't reach 3 slices, the change is trivial — skip this skill
 
@@ -99,15 +99,15 @@ Use one native delegation call per independent slice when the host documents
 parallel calls. Otherwise run the slices in dependency order; do not imitate a
 host-specific task API in prose or tooling.
 
-Each general-purpose prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Coders have no shared state.
+Each agent prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Agents have no shared state.
 
 Wait for wave completion before launching the next wave. Update the host's plan and ledger interfaces when available. In Codex, record incomplete slices in the plan or handoff artifact and do not claim that a Stop-gate will block session termination.
 
 **Fan-out targets:**
-- Feature: 5-15 parallel slices per wave
+- Feature: 5–20 parallel slices per wave
 - Small change: 3-5 parallel slices
 - Single-slice wave = code smell — decompose harder or merge with adjacent wave
-- Escalate a domain to `junior-orchestrator` when it decomposes into genuine sub-domains **OR** has >5 disjoint slices; dispatch `general-purpose` (leaf implementer, cannot spawn further general-purpose workers) directly for everything else.
+- Dispatch `junior-orchestrator` by **default** to own a domain end-to-end. The carve-out to `general-purpose` (leaf implementer, cannot spawn further general-purpose workers) applies ONLY when ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface. If ANY clause fails → `junior-orchestrator`.
 - **Worktree conflict-fallback:** when slices share files and would otherwise be serialized, use the worktree isolation mechanism documented in `vertical-slice` to preserve parallel width; reconcile serially after the wave lands.
 
 ## Step 5: Capture After State

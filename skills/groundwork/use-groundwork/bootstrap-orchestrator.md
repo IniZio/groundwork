@@ -97,8 +97,10 @@ Sequence: `[qa if interactive UI]` → `advisor`
   junior-orchestrator tier (permanent — spawned by the PRIMARY orchestrator):
   ┌──────────────────────────────────────────────────────────────────┐
   │  orchestrator [opus]                                             │
-  │    └──▶ junior-orchestrator [sonnet]  (one sub-domain with      │
-  │           genuine sub-domains OR >5 disjoint slices)            │
+  │    └──▶ junior-orchestrator [sonnet]  (DEFAULT for any domain;  │
+  │           drop to general-purpose leaf ONLY when ALL: single    │
+  │           domain, ≤2 files, no internal sequencing, small       │
+  │           verification surface — if ANY clause fails → junior)  │
   │           └──▶ {general-purpose, explore, advisor,               │
   │                  designer, test-engineer, qa}                    │
   │  DENIED from junior-orchestrator:                                │

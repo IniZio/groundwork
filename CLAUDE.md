@@ -12,10 +12,10 @@
 
 ## 🛑 MANDATORY PRE-FLIGHT — before ANY tool call
 
-1. **Writing or editing code?** → STOP. Delegate to `groundwork:general-purpose`. MUST NOT use Edit/Write yourself.
+1. **Writing or editing code?** → STOP. Delegate to `groundwork:junior-orchestrator` (default) or `groundwork:general-purpose` (leaf only — ALL: single domain, ≤2 files, no internal sequencing, small verification surface). MUST NOT use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Delegate to `groundwork:debugger` (it runs the 6-phase diagnose protocol). MUST NOT load diagnose skill as the routing front-door.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out general-purpose agents. Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out `junior-orchestrator` by default; `general-purpose` only for leaf slices (ALL: single domain, ≤2 files, no internal sequencing, small verification surface). Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
@@ -26,7 +26,7 @@
 
 **If you find yourself using Edit, Write, or Bash for exploration/implementation → YOU ARE DOING IT WRONG. Stop and delegate.** (The `ledger` CLI, `journal` CLI, and one-shot git status are the only sanctioned Bash uses.)
 
-**Edits to orchestrator-rule files (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) MUST be delegated to `groundwork:general-purpose` + the `advisor` gate.**
+**Edits to orchestrator-rule files (`CLAUDE.md`, `bootstrap-orchestrator.md`, `bootstrap-universal.md`) MUST be delegated to `groundwork:general-purpose` + the `advisor` gate.** (Deliberate carve-out, not an old-regime leftover: these files define orchestrator identity, so routing them through `junior-orchestrator` would create a circular dependency on the rules being edited.)
 
 ### When the orchestrator may write directly
 
@@ -59,7 +59,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | `groundwork:debugger` (observe→hypothesize→isolate→fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `general-purpose` (leaf, simple/localized domain) or `junior-orchestrator` (domain has genuine sub-domains OR >5 disjoint slices) parallel → `advisor` gate |
+| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `junior-orchestrator` (default) or `general-purpose` (leaf — only when ALL: single domain, ≤2 files, no internal sequencing, small verification surface) parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
 | Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
@@ -85,7 +85,7 @@ All **agent types** in this table are invoked via `Task`/`Agent` — NOT via `Sk
 
 **Why planner is an agent, not a skill:** Planning involves heavy research — reading source, searching across the codebase, weighing alternatives — and doing that inline burns the orchestrator's context window for the rest of the session. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` offloads all of that work into the subagent's context; only the motive charter reference (motive ref) returns, keeping the orchestrator's window clear for fan-out.
 
-**Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself. Root failure this prevents: an unresolved routing target leaves the orchestrator with no compute path, so it implements inline — blowing context budget and defeating the delegation model entirely.
+**Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself. (Deliberate carve-out, not an old-regime leftover: `general-purpose` is always available and requires no routing resolution, making it the only safe unconditional fallback target.) Root failure this prevents: an unresolved routing target leaves the orchestrator with no compute path, so it implements inline — blowing context budget and defeating the delegation model entirely.
 
 _Small verification surface = no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios. Large verification surface (triggers slicing) = requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients._
 
@@ -189,7 +189,7 @@ Tier aliases (sonnet/opus/haiku/fable) resolve to the provider's *latest* versio
 | Agent | Model |
 | --- | --- |
 | advisor | opus |
-| debugger | sonnet |
+| debugger | opus |
 | designer | sonnet |
 | explore | haiku |
 | general-purpose | sonnet |
@@ -234,7 +234,7 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 | Writing/editing code | `general-purpose` |
 | UI/UX, styling | `designer` |
 | Test strategy, coverage | `test-engineer` |
-| Root-cause analysis + fix (structured debug protocol) | `debugger` (sonnet) |
+| Root-cause analysis + fix (structured debug protocol) | `debugger` (opus) |
 | Code quality, SOLID, plan validation | `advisor` |
 | Security vulnerabilities | `advisor` |
 | Plan/architecture validation | `advisor` |
@@ -252,7 +252,7 @@ Avoid: vague "as discussed", file dumps without line ranges, full session summar
 
 ## Sub-Orchestrator Delegation (Nested Orchestration)
 
-For complex multi-domain tasks, the primary orchestrator dispatches EITHER a `general-purpose` leaf implementer (for a simple, self-contained domain) OR a `junior-orchestrator` (for a domain that itself decomposes into genuine sub-domains **OR** has **>5 disjoint slices**). `junior-orchestrator` is a permanent, first-class tier — not experimental.
+For complex multi-domain tasks, the primary orchestrator dispatches `junior-orchestrator` by default. `general-purpose` (leaf) is used ONLY when a slice meets ALL four conditions: single domain with no sub-domains, ≤2 files, no internal sequencing, and small verification surface. If ANY condition fails, dispatch `junior-orchestrator`. `junior-orchestrator` is a permanent, first-class tier — not experimental.
 
 ### Delegation hierarchy
 
@@ -264,13 +264,15 @@ For complex multi-domain tasks, the primary orchestrator dispatches EITHER a `ge
 
 ### When to dispatch `junior-orchestrator` vs `general-purpose`
 
-Dispatch a **`junior-orchestrator`** when the domain:
-- Itself decomposes into ≥2 genuine sub-domains, OR
-- Has >5 disjoint slices requiring internal sequencing
+**`junior-orchestrator` is the DEFAULT.** Dispatch it unless the slice passes every leaf condition below.
 
-Dispatch a **`general-purpose`** (leaf) when the domain:
-- Is localized and self-contained
-- Fits in a single slice — implement it directly
+Dispatch a **`general-purpose`** (leaf) ONLY when ALL of the following hold:
+- Single domain — no sub-domains
+- ≤2 files
+- No internal sequencing
+- Small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)
+
+If ANY clause fails → dispatch `junior-orchestrator`.
 
 ### Domain Decomposition (not layer decomposition)
 
@@ -305,7 +307,7 @@ Maximum depth: 3 levels (primary orchestrator → junior-orchestrator → genera
 _Mechanically enforced_ (rules above): spawn topology, caller identity, junior→junior block.
 
 _Prose-only — NOT mechanically enforceable (state this limitation when briefing a junior):_
-A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child. It must do genuine orchestration work — decomposition, sequencing, context isolation across multiple children — not merely relay the brief it received. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it never sees the child's inbound brief. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
+A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child — never simply relay the brief to a single general-purpose worker. When a junior finds its domain genuinely fits the leaf carve-out (single domain, ≤2 files, no internal sequencing, small verification surface), it implements that domain directly rather than manufacturing children to justify its existence. In all other cases it does genuine orchestration work — decomposition, sequencing, context isolation across multiple children. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it never sees the child's inbound brief. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
 
 ### Worktree conflict-fallback (for overlapping-file slices)
 

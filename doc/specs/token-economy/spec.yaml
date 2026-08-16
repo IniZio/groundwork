@@ -1,0 +1,15 @@
+id: C-TOKEN-ECONOMY
+title: Token Economy
+summary: "Groundwork defines prose-compression rules, per-surface intensity levels, and forbidden zones so that agent output stays terse without fabricating evidence or erasing meaning."
+status: review
+views:
+  - type: overview
+    file: README.md
+  - type: constraints
+    file: constraints.md
+relations:
+  _note: "Informational only"
+  items:
+    - kind: depends-on
+      target: C-ORCHESTRATION
+lint: {}

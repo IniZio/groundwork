@@ -179,15 +179,22 @@ export function resolveLedgerPath({ projectDir, sessionId } = {}) {
 export function pruneStaleSessionLedgers(projectDir) {
   const runsDir = path.join(projectDir, '.groundwork', 'runs')
   const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+  // Helper: delete the .json and its .seal.key sibling (if any) together so
+  // orphaned .seal.key files do not accumulate in the runs/ directory.
+  function pruneFile(fp) {
+    unlinkSync(fp)
+    const keyPath = fp.replace(/\.json$/, '.seal.key')
+    try { unlinkSync(keyPath) } catch { /* missing sibling is fine */ }
+  }
   try {
     const files = readdirSync(runsDir).filter((f) => f.endsWith('.json'))
     for (const f of files) {
       const fp = path.join(runsDir, f)
       try {
         const st = statSync(fp)
-        if (Date.now() - st.mtimeMs > sevenDaysMs) { unlinkSync(fp); continue }
+        if (Date.now() - st.mtimeMs > sevenDaysMs) { pruneFile(fp); continue }
         const obj = JSON.parse(readFileSync(fp, 'utf8'))
-        if (obj.active === false) unlinkSync(fp)
+        if (obj.active === false) pruneFile(fp)
       } catch {
         /* ignore per-file errors */
       }

@@ -107,7 +107,8 @@ function _generate(projectDir, motive) {
       }
     : null
 
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, lastPause })
+  const journalAcCoverage = _buildJournalAcCoverage(allEvents)
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, lastPause })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -602,10 +603,78 @@ function _readAllMotiveEvents(projectDir, motive) {
 }
 
 // ---------------------------------------------------------------------------
+// Journal-derived AC coverage (fallback when ledger is absent)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build AC coverage from journal AC_COVERAGE and TASK_COMPLETE events.
+ *
+ * Returns Map<acId, [{id: sliceId, status: 'complete'|'pending'}]>.
+ *
+ * This is the fallback source when all ledger files for a motive have been
+ * pruned by pruneStaleSessionLedgers.  AC_COVERAGE events are in NEVER_COMPRESS
+ * so they survive any journal digest pass; TASK_COMPLETE events record the
+ * authoritative completion signal.  Together they let the MAP renderer show the
+ * correct "met" status even after the ephemeral ledger is gone.
+ *
+ * Three AC_COVERAGE payload forms (mirrors motive-compile.mjs):
+ *   Single-AC form:    { ac, slice }              — one slice covers one AC
+ *   Array-covers form: { slice, covers: ['AC-1'] } — one slice covers many ACs
+ *   Declaration form:  { ac, covering: [] }        — AC known but no covering slice
+ */
+function _buildJournalAcCoverage(events) {
+  // Collect completed slice bare ids from TASK_COMPLETE events.
+  const completedSlices = new Set()
+  for (const ev of events) {
+    if (ev.type === 'TASK_COMPLETE' && ev.data?.slice != null) {
+      completedSlices.add(String(ev.data.slice))
+    }
+  }
+
+  // Map<acId, Map<sliceId, {id, status}>> — deduped by sliceId per AC.
+  const acMap = new Map()
+
+  for (const ev of events) {
+    if (ev.type !== 'AC_COVERAGE') continue
+    const d = ev.data ?? {}
+
+    // Collect acIds and sliceId from this event
+    const acIds = []
+    if (d.ac != null) acIds.push(String(d.ac))
+    if (Array.isArray(d.covers)) {
+      for (const a of d.covers) { if (a != null) acIds.push(String(a)) }
+    }
+
+    const sliceId = d.slice != null ? String(d.slice) : null
+
+    // Declaration form (no slice): register AC so it appears even with zero coverage
+    if (sliceId == null) {
+      for (const acId of acIds) {
+        if (!acMap.has(acId)) acMap.set(acId, new Map())
+      }
+      continue
+    }
+
+    const status = completedSlices.has(sliceId) ? 'complete' : 'pending'
+    for (const acId of acIds) {
+      if (!acMap.has(acId)) acMap.set(acId, new Map())
+      acMap.get(acId).set(sliceId, { id: sliceId, status })
+    }
+  }
+
+  // Flatten to Map<acId, [{id, status}]>
+  const result = new Map()
+  for (const [acId, slicesMap] of acMap) {
+    result.set(acId, [...slicesMap.values()])
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, lastPause = null }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, lastPause = null }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -894,7 +963,11 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     const orderedAcIds = [...charterAcIds, ...undeclaredAcIds]
 
     for (const key of orderedAcIds) {
-      const covering = acSlicesMap.get(key) ?? []
+      const ledgerCovering = acSlicesMap.get(key) ?? []
+      // Fallback: when the ledger has no covering slices (e.g. pruned by pruneStaleSessionLedgers),
+      // use journal-derived coverage from AC_COVERAGE + TASK_COMPLETE events.  The journal is the
+      // durable record (AC_COVERAGE is in NEVER_COMPRESS) and must win when ledger data is absent.
+      const covering = ledgerCovering.length > 0 ? ledgerCovering : (journalAcCoverage?.get(key) ?? [])
       const rawStmt = acStatementMap.get(key) ?? ''
       const stmt = rawStmt.length > 120 ? rawStmt.slice(0, 117) + '…' : rawStmt
       const stmtSuffix = stmt

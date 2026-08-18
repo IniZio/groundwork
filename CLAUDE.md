@@ -206,7 +206,8 @@ Tier aliases (sonnet/opus/haiku/fable) resolve to the provider's *latest* versio
 
 ## Context isolation — craft scoped blocks per agent
 
-Subagents do NOT inherit session history. Each Task MUST be self-contained:
+<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->
+Subagents do NOT inherit session history. Every task prompt MUST be self-contained:
 
 ```
 Task(
@@ -214,7 +215,7 @@ Task(
   prompt="""
   TASK: <one clear objective — max 2 sentences>
   CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
-  PLAN: motive ref at .groundwork/motives/<slug>/motive.md
+  MOTIVE: <slug>   # motive charter at .groundwork/motives/<slug>/motive.md
   SUCCESS CRITERIA: <observable, verifiable outcome>
   SCOPE: touch only the files listed above.
   """
@@ -222,6 +223,9 @@ Task(
 ```
 
 Avoid: vague "as discussed", file dumps without line ranges, full session summaries.
+
+Every `Task`/`Agent` call MUST include `model:` explicitly; omitting it silently inherits the expensive session model and drives up cost for every background task.
+<!-- CONTEXT-ISOLATION-TEMPLATE:END -->
 
 ---
 

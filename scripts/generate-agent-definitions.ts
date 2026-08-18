@@ -6,7 +6,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
@@ -276,10 +276,15 @@ function transformForPi(src: AgentSource, version: string): TransformedAgent {
 	fm.managed_by = "groundwork";
 	fm.groundwork_version = version;
 
+	// Normalise tool-call casing: Claude Code surfaces use `Task(` but pi/Codex
+	// uses lowercase `task(`. Partials are authored with `Task(` (CC-canonical);
+	// replace here so pi-generated agents carry the correct lowercase form.
+	const body = src.body.replaceAll("Task(", "task(");
+
 	return {
 		outputName: `${src.name}.md`,
 		definitionName: src.name,
-		content: buildFileContent(fm, src.body),
+		content: buildFileContent(fm, body),
 	};
 }
 
@@ -593,6 +598,83 @@ const CLAUDE_MD_PATH = join(rootDir, "CLAUDE.md");
 const AGENT_MODELS_BEGIN = "<!-- AGENT-MODELS:BEGIN";
 const AGENT_MODELS_END = "<!-- AGENT-MODELS:END -->";
 
+// ─── Rule-partial injection ───────────────────────────────────────────────────
+
+const PARTIAL_DIR = join(rootDir, "partials");
+
+/** A single canonical partial → target-file injection entry. */
+export interface PartialEntry {
+	/** Filename stem under partials/ (no .md extension). */
+	partial: string;
+	/** HTML comment begin marker, e.g. "<!-- FANOUT-TARGETS:BEGIN -->". */
+	beginMarker: string;
+	/** HTML comment end marker, e.g. "<!-- FANOUT-TARGETS:END -->". */
+	endMarker: string;
+	/** Absolute path of the target file to inject into. */
+	targetPath: string;
+}
+
+/**
+ * Registry of all rule-partial → target-file injections.
+ * Adding a new partial is a data change here — no new bespoke code required.
+ */
+export const RULE_PARTIAL_REGISTRY: readonly PartialEntry[] = [
+	{
+		partial: "fan-out-targets",
+		beginMarker: "<!-- FANOUT-TARGETS:BEGIN -->",
+		endMarker: "<!-- FANOUT-TARGETS:END -->",
+		targetPath: join(sourceAgentsDir, "junior-orchestrator.md"),
+	},
+	{
+		partial: "one-message-parallel",
+		beginMarker: "<!-- ONE-MESSAGE-PARALLEL:BEGIN -->",
+		endMarker: "<!-- ONE-MESSAGE-PARALLEL:END -->",
+		targetPath: join(sourceAgentsDir, "junior-orchestrator.md"),
+	},
+	{
+		partial: "vertical-slice-gate",
+		beginMarker: "<!-- VERTICAL-SLICE-GATE:BEGIN -->",
+		endMarker: "<!-- VERTICAL-SLICE-GATE:END -->",
+		targetPath: join(sourceAgentsDir, "junior-orchestrator.md"),
+	},
+	{
+		partial: "context-isolation-template",
+		beginMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->",
+		endMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:END -->",
+		targetPath: join(sourceAgentsDir, "junior-orchestrator.md"),
+	},
+	{
+		partial: "fan-out-targets",
+		beginMarker: "<!-- FANOUT-TARGETS:BEGIN -->",
+		endMarker: "<!-- FANOUT-TARGETS:END -->",
+		targetPath: join(sourceAgentsDir, "orchestrator.md"),
+	},
+	{
+		partial: "one-message-parallel",
+		beginMarker: "<!-- ONE-MESSAGE-PARALLEL:BEGIN -->",
+		endMarker: "<!-- ONE-MESSAGE-PARALLEL:END -->",
+		targetPath: join(sourceAgentsDir, "orchestrator.md"),
+	},
+	{
+		partial: "context-isolation-template",
+		beginMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->",
+		endMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:END -->",
+		targetPath: CLAUDE_MD_PATH,
+	},
+	{
+		partial: "context-isolation-template",
+		beginMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->",
+		endMarker: "<!-- CONTEXT-ISOLATION-TEMPLATE:END -->",
+		targetPath: join(codexSkillsSourceDir, "use-groundwork", "reference", "task-scoping.md"),
+	},
+	{
+		partial: "vertical-slice-gate",
+		beginMarker: "<!-- VERTICAL-SLICE-GATE:BEGIN -->",
+		endMarker: "<!-- VERTICAL-SLICE-GATE:END -->",
+		targetPath: join(codexSkillsSourceDir, "vertical-slice", "SKILL.md"),
+	},
+];
+
 /** Build the markdown table fragment from registry claude-code models. */
 function buildModelTable(registry: ModelRegistry): string {
 	const rows = Object.entries(registry.agents)
@@ -648,11 +730,77 @@ function injectModelTable(filePath: string, table: string): void {
 	// If identical, no write → true idempotency (mtime unchanged).
 }
 
+/** Read a named rule partial from the canonical partials directory. */
+export function buildRulePartial(name: string): string {
+	return readFileSync(join(PARTIAL_DIR, `${name}.md`), "utf8");
+}
+
+/**
+ * Inject `content` strictly between `beginMarker` … `endMarker` in `filePath`.
+ * Preserves marker lines and ALL content outside the markers byte-for-byte.
+ * Throws a loud error if either marker is missing or misordered.
+ * Idempotent: a second call with the same content produces no change.
+ */
+export function injectRulePartial(
+	filePath: string,
+	beginMarker: string,
+	endMarker: string,
+	content: string,
+): void {
+	const original = readFileSync(filePath, "utf8");
+
+	const beginIdx = original.indexOf(beginMarker);
+	if (beginIdx === -1) {
+		throw new Error(
+			`${beginMarker} not found in ${filePath}. Add the marker pair before running.`,
+		);
+	}
+	const endIdx = original.indexOf(endMarker);
+	if (endIdx === -1) {
+		throw new Error(
+			`${endMarker} not found in ${filePath}. The marker file may be corrupt — restore it from git.`,
+		);
+	}
+	if (endIdx <= beginIdx) {
+		throw new Error(`${endMarker} appears before ${beginMarker} in ${filePath}.`);
+	}
+
+	const beginLineEnd = original.indexOf("\n", beginIdx);
+	if (beginLineEnd === -1) {
+		throw new Error(`${beginMarker} line has no trailing newline in ${filePath}.`);
+	}
+
+	const before = original.slice(0, beginLineEnd + 1); // up to and including \n after BEGIN line
+	const after = original.slice(endIdx); // from END marker to EOF
+
+	const injected = before + content + after;
+
+	if (injected !== original) {
+		writeFileSync(filePath, injected);
+	}
+	// If identical, no write → true idempotency (mtime unchanged).
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 function main(): void {
 	const version = readPackageVersion();
 	const registry = loadRegistry();
+
+	// ── Rule-partial injections: all run BEFORE loadAgentSources() ───────────────
+	// Must precede loadAgentSources() so the platform generation loop picks up
+	// the canonical content from each partial.
+	if (!shouldCheck) {
+		for (const entry of RULE_PARTIAL_REGISTRY) {
+			injectRulePartial(
+				entry.targetPath,
+				entry.beginMarker,
+				entry.endMarker,
+				buildRulePartial(entry.partial),
+			);
+		}
+	}
+
 	const sources = loadAgentSources();
 	validateRegistry(sources, registry);
 
@@ -718,6 +866,27 @@ function main(): void {
 		}
 	}
 
+	// ── Rule-partial drift checks ─────────────────────────────────────────────
+	// (injections ran early, before loadAgentSources; these checks are --check-only)
+	if (shouldCheck) {
+		for (const entry of RULE_PARTIAL_REGISTRY) {
+			const content = buildRulePartial(entry.partial);
+			const src = readFileSync(entry.targetPath, "utf8");
+			const relPath = relative(rootDir, entry.targetPath);
+			const beginIdx = src.indexOf(entry.beginMarker);
+			const endIdx = src.indexOf(entry.endMarker);
+			if (beginIdx === -1 || endIdx === -1) {
+				drift.push(`${relPath}: ${entry.partial} markers missing`);
+			} else {
+				const beginLineEnd = src.indexOf("\n", beginIdx);
+				const currentContent = src.slice(beginLineEnd + 1, endIdx);
+				if (currentContent !== content) {
+					drift.push(`${relPath}: ${entry.partial} partial (stale)`);
+				}
+			}
+		}
+	}
+
 	if (shouldCheck) {
 		if (!existsSync(generatedTsPath)) {
 			drift.push(`${generatedTsPath} (missing)`);
@@ -732,6 +901,11 @@ function main(): void {
 			console.log("All agent definitions in sync.");
 		}
 		return;
+	}
+
+	for (const entry of RULE_PARTIAL_REGISTRY) {
+		const relPath = relative(rootDir, entry.targetPath);
+		console.log(`${relPath}: ${entry.partial} partial injected`);
 	}
 
 	injectModelTable(CLAUDE_MD_PATH, table);

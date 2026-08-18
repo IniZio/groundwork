@@ -88,6 +88,84 @@ When you do spawn, every prompt must be self-contained: include file paths, line
 
 ---
 
+## Fan-out width targets
+
+<!-- FANOUT-TARGETS:BEGIN -->
+| Agent | Tasks per wave |
+|---|---|
+| `junior-orchestrator` | 5–20 (DEFAULT — one per slice) |
+| `general-purpose` | 5–20 (leaf carve-out only) |
+| `explore` | 3–7 (one per area/module) |
+| `designer` | 2–5 |
+| `advisor` | 1–2 (decision gates only) |
+
+These are CEILINGS, not quotas — do not invent or fragment slices to hit a number.
+<!-- FANOUT-TARGETS:END -->
+
+---
+
+## Parallel execution
+
+<!-- ONE-MESSAGE-PARALLEL:BEGIN -->
+Fire all independent agent calls in ONE message — separate messages execute sequentially, not in parallel. Task A in one message followed by Task B in the next is sequential execution in disguise.
+
+Two tasks are independent only when BOTH hold: (1) neither consumes the other's output, AND (2) they share no undefined type, schema, or file that the other must produce first. Add a `blocked_by` edge only when you can name the specific artifact consumed.
+
+```
+# GOOD — all three calls in one message → parallel
+task(subagent_type="groundwork:explore",         prompt="…")
+task(subagent_type="groundwork:general-purpose", prompt="…")
+task(subagent_type="groundwork:test-engineer",   prompt="…")
+
+# BAD — Task A then Task B in separate messages → sequential
+task(subagent_type="groundwork:general-purpose", prompt="Task A …")
+# ← turn boundary; Task B waits for A to finish
+task(subagent_type="groundwork:general-purpose", prompt="Task B …")
+```
+<!-- ONE-MESSAGE-PARALLEL:END -->
+
+---
+
+## Vertical slice discipline
+
+<!-- VERTICAL-SLICE-GATE:BEGIN -->
+A vertical slice is a thin end-to-end behavior cutting through all layers (types → logic → surface → test) for ONE outcome. Each file is owned by exactly ONE slice per wave — no shared ownership across siblings.
+
+Shared types needed by multiple slices MUST be defined in the tracer-bullet (first) slice; all slices that depend on those types list the tracer-bullet in `blocked_by` and do not re-define them.
+
+- Test files: each slice owns its own test file; shared harness/fixtures go in Wave 0.
+- Generated or schema files: treat as a single-owner file, serialize in Wave 0.
+
+Single-slice waves on non-trivial work are a failure mode — they mean the domain was not decomposed. If you find yourself authoring only one slice, reconsider whether genuine parallelism exists before proceeding.
+<!-- VERTICAL-SLICE-GATE:END -->
+
+---
+
+## Context isolation
+
+<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->
+Subagents do NOT inherit session history. Every task prompt MUST be self-contained:
+
+```
+Task(
+  subagent_type="groundwork:general-purpose",
+  prompt="""
+  TASK: <one clear objective — max 2 sentences>
+  CONTEXT: src/lib/foo.ts:45-80 implements X; constraint: don't break Y
+  MOTIVE: <slug>   # motive charter at .groundwork/motives/<slug>/motive.md
+  SUCCESS CRITERIA: <observable, verifiable outcome>
+  SCOPE: touch only the files listed above.
+  """
+)
+```
+
+Avoid: vague "as discussed", file dumps without line ranges, full session summaries.
+
+Every `Task`/`Agent` call MUST include `model:` explicitly; omitting it silently inherits the expensive session model and drives up cost for every background task.
+<!-- CONTEXT-ISOLATION-TEMPLATE:END -->
+
+---
+
 ## How you work
 
 - **Smallest viable diff.** Match existing patterns. No new abstractions for single-use logic, no "while I'm here" changes.

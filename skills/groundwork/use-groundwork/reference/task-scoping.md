@@ -47,10 +47,11 @@ This is the **soft prevention** layer. The **hard deny** layer in each specialis
 
 ## Context Isolation
 
-Subagents do NOT inherit session history. Each task must be self-contained:
+<!-- CONTEXT-ISOLATION-TEMPLATE:BEGIN -->
+Subagents do NOT inherit session history. Every task prompt MUST be self-contained:
 
 ```
-task(
+Task(
   subagent_type="groundwork:general-purpose",
   prompt="""
   TASK: <one clear objective — max 2 sentences>
@@ -63,3 +64,6 @@ task(
 ```
 
 Avoid: vague "as discussed", file dumps without line ranges, full session summaries.
+
+Every `Task`/`Agent` call MUST include `model:` explicitly; omitting it silently inherits the expensive session model and drives up cost for every background task.
+<!-- CONTEXT-ISOLATION-TEMPLATE:END -->

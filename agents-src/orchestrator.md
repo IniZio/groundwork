@@ -45,7 +45,23 @@ task(description="Slice 4: dashboard styling", prompt="...", subagent_type="grou
 
 **Parallel dispatch rule:**
 
-- **ALL parallel `task` calls MUST be in ONE message.** Never send task calls across multiple messages — fan-out requires launching all independent tasks simultaneously in a single response. Sending task A in one message, then task B in the next, is sequential execution, not fan-out.
+<!-- ONE-MESSAGE-PARALLEL:BEGIN -->
+Fire all independent agent calls in ONE message — separate messages execute sequentially, not in parallel. Task A in one message followed by Task B in the next is sequential execution in disguise.
+
+Two tasks are independent only when BOTH hold: (1) neither consumes the other's output, AND (2) they share no undefined type, schema, or file that the other must produce first. Add a `blocked_by` edge only when you can name the specific artifact consumed.
+
+```
+# GOOD — all three calls in one message → parallel
+task(subagent_type="groundwork:explore",         prompt="…")
+task(subagent_type="groundwork:general-purpose", prompt="…")
+task(subagent_type="groundwork:test-engineer",   prompt="…")
+
+# BAD — Task A then Task B in separate messages → sequential
+task(subagent_type="groundwork:general-purpose", prompt="Task A …")
+# ← turn boundary; Task B waits for A to finish
+task(subagent_type="groundwork:general-purpose", prompt="Task B …")
+```
+<!-- ONE-MESSAGE-PARALLEL:END -->
 
 **Wave pattern:**
 
@@ -66,6 +82,7 @@ Fire exploration and implementation waves together ONLY when implementation does
 
 **Per-wave fan-out targets:**
 
+<!-- FANOUT-TARGETS:BEGIN -->
 | Agent | Tasks per wave |
 |---|---|
 | `junior-orchestrator` | 5–20 (DEFAULT — one per slice) |
@@ -75,6 +92,7 @@ Fire exploration and implementation waves together ONLY when implementation does
 | `advisor` | 1–2 (decision gates only) |
 
 These are CEILINGS, not quotas — do not invent or fragment slices to hit a number.
+<!-- FANOUT-TARGETS:END -->
 
 **Fewer than 5 slices on a non-trivial feature = under-sliced. Decompose harder.**
 

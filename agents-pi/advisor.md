@@ -4,7 +4,7 @@ description: Called by the ORCHESTRATOR only — not by executor agents. Strateg
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 2.11.0
+groundwork_version: 2.12.0
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════════

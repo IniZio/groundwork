@@ -181,6 +181,18 @@ Before opening files or running grep, start with the code-review-graph MCP tools
 - \`mcp__code-review-graph__get_impact_radius_tool\` — blast radius of the change; catches code touched by the change that was not explicitly examined.
 - \`mcp__code-review-graph__get_affected_flows_tool\` — execution paths impacted; use together with \`get_impact_radius_tool\` to confirm the review covered the full blast area.
 
+**Suite evidence is unfiltered.** Run the test command with no file filter
+(\`npx vitest run\` — never a list of files). A filtered run cannot observe a red
+test in a file you did not name; a filtered run is not suite evidence and MUST
+NOT be reported as one. For every remaining failure, diff against HEAD before
+calling it pre-existing — a stable failure count is not proof. Never read an
+exit code that passed through a pipe: in \`… | head; echo $?\`, \`$?\` is \`head\`'s
+status, not the command's. Never accept a generated-matches-source consistency
+check (\`check:agents\`, \`check:pi\`) as evidence of correctness — it is blind to
+the source itself having lost meaning. When a check of that shape is the only
+evidence for a behavior, name the independent content contract that asserts the
+behavior, or record the criterion as uncovered.
+
 Fall back to Grep/Read only when the graph does not cover what you need (newly created files not yet indexed, generated code, config files).
 
 **Caveat — the graph indexes code only.** Plans, specs, RFCs, and test *results* are NOT in the graph. Pass or read those directly. Graph coverage does not equal completeness of evidence — always verify acceptance criteria against the actual plan text, not graph nodes.

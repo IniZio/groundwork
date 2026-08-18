@@ -9,7 +9,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, statSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, statSync, rmSync, existsSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -34,9 +35,9 @@ function makeLedger(overrides: Record<string, unknown> = {}) {
     active: true,
     gate: { advisor: 'APPROVE' },
     slices: [
-      { id: 'S1', status: 'complete', wave: 0, desc: 'ignored-field' },
-      { id: 'S2', status: 'complete', wave: 1 },
-      { id: 'S3', status: 'pending', wave: 1 },
+      { id: 'S1', status: 'complete', created_by: 'orchestrator', wave: 0, desc: 'ignored-field' },
+      { id: 'S2', status: 'complete', created_by: 'orchestrator', wave: 1 },
+      { id: 'S3', status: 'pending', created_by: 'orchestrator', wave: 1 },
     ],
     write_token: 'tok-secret',  // unrelated — must be ignored by canonical
     ...overrides,
@@ -61,9 +62,9 @@ describe('canonicalReleaseState (AC1)', () => {
     const ledgerA = makeLedger()
     const ledgerB = makeLedger({
       slices: [
-        { id: 'S3', status: 'pending' },
-        { id: 'S1', status: 'complete' },
-        { id: 'S2', status: 'complete' },
+        { id: 'S3', status: 'pending', created_by: 'orchestrator' },
+        { id: 'S1', status: 'complete', created_by: 'orchestrator' },
+        { id: 'S2', status: 'complete', created_by: 'orchestrator' },
       ],
     })
     expect(canonicalReleaseState(ledgerA)).toBe(canonicalReleaseState(ledgerB))
@@ -75,9 +76,9 @@ describe('canonicalReleaseState (AC1)', () => {
       write_token: 'different-token',
       extra_field: 'ignored',
       slices: [
-        { id: 'S1', status: 'complete', wave: 99, desc: 'changed', unrelated: true },
-        { id: 'S2', status: 'complete', tags: ['x'] },
-        { id: 'S3', status: 'pending', blocked_by: ['S1'] },
+        { id: 'S1', status: 'complete', created_by: 'orchestrator', wave: 99, desc: 'changed', unrelated: true },
+        { id: 'S2', status: 'complete', created_by: 'orchestrator', tags: ['x'] },
+        { id: 'S3', status: 'pending', created_by: 'orchestrator', blocked_by: ['S1'] },
       ],
     }))
     expect(base).toBe(withExtra)
@@ -89,6 +90,28 @@ describe('canonicalReleaseState (AC1)', () => {
       gate: { advisor: { verdict: 'APPROVE', citation: 'ignored', rubric: 'ignored' } },
     }))
     expect(stringAdvisor).toBe(objAdvisor)
+  })
+
+  // S7-AC1: created_by is a covered field — changes produce different canonical strings
+  it('slice created_by changes produce different canonical strings (attribution is covered)', () => {
+    const withAttribution = canonicalReleaseState(makeLedger())
+    const forged = canonicalReleaseState(makeLedger({
+      slices: [
+        { id: 'S1', status: 'complete', created_by: 'forged-subagent', wave: 0 },
+        { id: 'S2', status: 'complete', created_by: 'orchestrator', wave: 1 },
+        { id: 'S3', status: 'pending', created_by: 'orchestrator', wave: 1 },
+      ],
+    }))
+    expect(withAttribution).not.toBe(forged)
+  })
+
+  // S7-AC1: slices without created_by serialize as created_by: null (backward compat)
+  it('slices without created_by serialize created_by as null', () => {
+    const state = canonicalReleaseState(makeLedger({
+      slices: [{ id: 'S1', status: 'complete' }],
+    }))
+    const parsed = JSON.parse(state)
+    expect(parsed.slices[0]).toEqual({ id: 'S1', status: 'complete', created_by: null })
   })
 
   it('different release-relevant fields produce different strings', () => {
@@ -109,9 +132,9 @@ describe('canonicalReleaseState (AC1)', () => {
     ])
     expect(parsed.advisor_verdict).toBe('APPROVE')
     expect(parsed.slices).toEqual([
-      { id: 'S1', status: 'complete' },
-      { id: 'S2', status: 'complete' },
-      { id: 'S3', status: 'pending' },
+      { id: 'S1', status: 'complete', created_by: 'orchestrator' },
+      { id: 'S2', status: 'complete', created_by: 'orchestrator' },
+      { id: 'S3', status: 'pending', created_by: 'orchestrator' },
     ])
   })
 })
@@ -144,6 +167,30 @@ describe('computeSeal / verifySeal (AC2)', () => {
       ...ledger,
       slices: ledger.slices.map((s: Record<string, unknown>, i: number) =>
         i === 0 ? { ...s, status: 'pending' } : s,
+      ),
+    }
+    expect(verifySeal(tampered as object, TEST_KEY)).toBe(false)
+  })
+
+  // S7-AC2: tampering created_by invalidates the seal (attribution is sealed)
+  it('verifySeal returns false when a slice created_by is changed (attribution tamper)', () => {
+    const ledger = sealedLedger(makeLedger())
+    const tampered = {
+      ...ledger,
+      slices: ledger.slices.map((s: Record<string, unknown>, i: number) =>
+        i === 0 ? { ...s, created_by: 'forged-subagent' } : s,
+      ),
+    }
+    expect(verifySeal(tampered as object, TEST_KEY)).toBe(false)
+  })
+
+  // S7-AC2: erasing created_by (setting to null) also invalidates the seal
+  it('verifySeal returns false when slice created_by is erased (set to null)', () => {
+    const ledger = sealedLedger(makeLedger())
+    const tampered = {
+      ...ledger,
+      slices: ledger.slices.map((s: Record<string, unknown>, i: number) =>
+        i === 0 ? { ...s, created_by: null } : s,
       ),
     }
     expect(verifySeal(tampered as object, TEST_KEY)).toBe(false)
@@ -255,5 +302,114 @@ describe('keyPath / ensureKey / readKey (AC3)', () => {
   it('SCHEMA_VERSION is a positive integer', () => {
     expect(Number.isInteger(SCHEMA_VERSION)).toBe(true)
     expect(SCHEMA_VERSION).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S-TOKEN — scoped_tokens seal coverage (security fix)
+// ---------------------------------------------------------------------------
+
+const STOP_GATE_HOOK = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'stop-gate.mjs')
+
+describe('scoped_tokens seal coverage (S-TOKEN)', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), 'gate-seal-token-'))
+    mkdirSync(path.join(tmpDir, '.groundwork', 'runs'), { recursive: true })
+    mkdirSync(path.join(tmpDir, '.groundwork', 'motives', 'test-motive'), { recursive: true })
+    writeFileSync(
+      path.join(tmpDir, '.groundwork', 'motives', 'test-motive', 'motive.md'),
+      '# Test motive\n',
+    )
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  function makeSealedLedgerWithTokens(scoped_tokens?: Array<{scope: string, token: string}>) {
+    const sessionId = 'token-test-sess'
+    const key = ensureKey({ projectDir: tmpDir, sessionId })
+    const ledger: Record<string, unknown> = {
+      schema_version: SCHEMA_VERSION,
+      session_id: sessionId,
+      active: true,
+      motive_ref: 'test-motive',
+      slices: [{ id: 'S1', status: 'complete', created_by: 'orchestrator' }],
+      gate: { advisor: 'APPROVE' },
+      ...(scoped_tokens !== undefined ? { scoped_tokens } : {}),
+    }
+    const stateString = canonicalReleaseState(ledger as any)
+    const seal = computeSeal(stateString, key)
+    ledger.gate = { ...(ledger.gate as Record<string, unknown>), seal }
+    return { ledger, key, sessionId }
+  }
+
+  // S-TOKEN-AC1: injecting a scoped_token into a sealed ledger (that had none) breaks the seal
+  it('S-TOKEN-AC1: injecting scoped_tokens into a sealed ledger (that had none) breaks verifySeal', () => {
+    const { ledger, key } = makeSealedLedgerWithTokens() // no scoped_tokens
+    expect(verifySeal(ledger as any, key)).toBe(true) // baseline: valid
+    // Attacker injects a token — the field goes from absent to present
+    const tampered = { ...ledger, scoped_tokens: [{ scope: 'attacker', token: 'evil-tok' }] }
+    expect(verifySeal(tampered as any, key)).toBe(false)
+  })
+
+  // S-TOKEN-AC2: swapping the token VALUE for an existing scope also breaks the seal
+  it('S-TOKEN-AC2: swapping a token value for an existing scope breaks verifySeal', () => {
+    const { ledger, key } = makeSealedLedgerWithTokens([{ scope: 'orchestrator', token: 'legit-tok' }])
+    expect(verifySeal(ledger as any, key)).toBe(true) // baseline
+    // Attacker knows the scope, swaps in their own token
+    const tampered = { ...ledger, scoped_tokens: [{ scope: 'orchestrator', token: 'swapped-tok' }] }
+    expect(verifySeal(tampered as any, key)).toBe(false)
+  })
+
+  // S-TOKEN-AC3: determinism — different scoped_tokens array order yields the same seal
+  it('S-TOKEN-AC3: scoped_tokens array order does not affect the canonical string', () => {
+    const tokens = [
+      { scope: 'beta', token: 'tok-b' },
+      { scope: 'alpha', token: 'tok-a' },
+    ]
+    const ledgerA = makeLedger({ scoped_tokens: tokens })
+    const ledgerB = makeLedger({ scoped_tokens: [...tokens].reverse() })
+    expect(canonicalReleaseState(ledgerA)).toBe(canonicalReleaseState(ledgerB))
+  })
+
+  // S-TOKEN-AC4: same seal computed twice from the same state
+  it('S-TOKEN-AC4: canonicalReleaseState is deterministic with scoped_tokens present', () => {
+    const ledger = makeLedger({ scoped_tokens: [{ scope: 'orch', token: 'abc' }] })
+    expect(canonicalReleaseState(ledger)).toBe(canonicalReleaseState(ledger))
+  })
+
+  // S-TOKEN-AC5: absent scoped_tokens (legacy) vs present-empty produce DIFFERENT canonicals
+  // (because absent = excluded from canonical; present-empty = included as [])
+  // This ensures an attacker cannot smuggle an empty array without breaking the seal.
+  it('S-TOKEN-AC5: absent scoped_tokens and present-empty scoped_tokens produce different canonicals', () => {
+    const withoutField = makeLedger() // no scoped_tokens
+    const withEmptyField = makeLedger({ scoped_tokens: [] })
+    expect(canonicalReleaseState(withoutField)).not.toBe(canonicalReleaseState(withEmptyField))
+  })
+
+  // S-TOKEN-AC6: STOP-GATE BLOCKS — the full attack: inject token into sealed fixture, run stop-gate
+  it('S-TOKEN-AC6: stop-gate BLOCKS when scoped_tokens is injected into a sealed ledger', () => {
+    const { ledger, sessionId } = makeSealedLedgerWithTokens() // sealed without scoped_tokens
+    // Attacker injects token — seal now invalid
+    const tampered = { ...ledger, scoped_tokens: [{ scope: 'attacker', token: 'evil-tok' }] }
+    // Write tampered ledger to disk
+    const ledgerPath = path.join(tmpDir, '.groundwork', 'runs', `${sessionId}.json`)
+    writeFileSync(ledgerPath, JSON.stringify(tampered, null, 2))
+    const input = JSON.stringify({ cwd: tmpDir, session_id: sessionId })
+    const out = execFileSync('node', [STOP_GATE_HOOK], { input, encoding: 'utf8' })
+    const result = JSON.parse(out)
+    // stop-gate returns {decision:"block",...} when it blocks (not {continue:false})
+    expect(result.decision).toBe('block')
+    expect(result.reason ?? '').toMatch(/seal/i)
+  })
+
+  // S-TOKEN-LEGACY: ledger sealed without scoped_tokens field still verifies (backward compat)
+  it('S-TOKEN-LEGACY: ledger sealed under old shape (no scoped_tokens field) still verifies', () => {
+    const { ledger, key } = makeSealedLedgerWithTokens() // sealed without scoped_tokens
+    // No injection — just verify the original
+    expect(verifySeal(ledger as any, key)).toBe(true)
   })
 })

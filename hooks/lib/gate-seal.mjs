@@ -48,7 +48,11 @@ function extractAdvisorVerdict(gate) {
  *
  * Included fields (and only these):
  *   schema_version, session_id, active, advisor_verdict,
- *   slices: [{id, status}] sorted by id ascending.
+ *   slices: [{id, status, created_by}] sorted by id ascending.
+ *
+ * created_by is included so that completion attribution cannot be forged or
+ * erased without invalidating the seal.  A slice with no created_by field
+ * serializes as created_by: null (backward-compatible with pre-S7 ledgers).
  *
  * Key ordering is fixed; slice array is sorted by id — same logical state always
  * produces the same byte string regardless of key order or insertion order.
@@ -60,7 +64,7 @@ function extractAdvisorVerdict(gate) {
 export function canonicalReleaseState(ledger) {
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
   const sortedSlices = slices
-    .map(s => ({ id: String(s.id), status: String(s.status) }))
+    .map(s => ({ id: String(s.id), status: String(s.status), created_by: s.created_by ?? null }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   const state = {
@@ -70,6 +74,26 @@ export function canonicalReleaseState(ledger) {
     advisor_verdict: extractAdvisorVerdict(ledger.gate),
     slices: sortedSlices,
   }
+
+  // Include scoped_tokens only when the field is explicitly present in the ledger
+  // (i.e., not undefined).  This preserves backward compatibility: ledgers sealed
+  // under the old shape — where scoped_tokens was absent — still verify correctly
+  // because the canonical string is unchanged for them.  Crucially, any injection
+  // of scoped_tokens into such a ledger moves the field from absent to present,
+  // which changes the canonical string and therefore breaks the seal — the attack
+  // is detected.  Token VALUES are included (not just scope names) so that swapping
+  // a known scope's token also invalidates the seal.  Sorting by scope then token
+  // ensures insertion-order differences never produce spurious mismatches.
+  if (ledger.scoped_tokens !== undefined) {
+    const rawTokens = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
+    state.scoped_tokens = rawTokens
+      .map(t => ({ scope: String(t.scope ?? ''), token: String(t.token ?? '') }))
+      .sort((a, b) =>
+        a.scope < b.scope ? -1 : a.scope > b.scope ? 1
+          : a.token < b.token ? -1 : a.token > b.token ? 1 : 0,
+      )
+  }
+
   return JSON.stringify(state)
 }
 

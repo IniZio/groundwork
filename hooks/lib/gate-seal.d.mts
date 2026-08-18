@@ -5,7 +5,10 @@ export declare const SCHEMA_VERSION: number
 
 /**
  * Reduce a ledger to its release-affecting state as a deterministic JSON string.
- * Included: schema_version, session_id, active, advisor_verdict, slices[{id,status}] sorted by id.
+ * Included: schema_version, session_id, active, advisor_verdict, slices[{id,status,created_by}] sorted by id.
+ * When scoped_tokens is present in the ledger, it is also included as sorted [{scope,token}] pairs
+ * (sorted by scope then token). Absent scoped_tokens is excluded to preserve backward compatibility
+ * with ledgers sealed before this field was introduced.
  */
 export declare function canonicalReleaseState(ledger: object): string
 

@@ -243,3 +243,165 @@ describe("ledger-bash-guard — S4-AC3: subagent Bash mutation/exfil is denied",
 		expect(out.trim()).toBe("");
 	});
 });
+
+// ─── S6-AC1: narrow allow — subagent ledger complete with scoped token ────────
+describe("ledger-bash-guard — S6: scoped-token narrow allow for `ledger complete`", () => {
+	const SUBAGENT = { agentType: "groundwork:general-purpose" };
+	const SCT = "sct_f3d143ce086e4336"; // representative scoped-token shape
+
+	// ── Allow path ───────────────────────────────────────────────────────────
+	it("ALLOWS subagent `ledger complete S1 --token sct_<hex>` (bin/ledger form)", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `ledger complete` via node invocation with scoped token", () => {
+		const d = runBashHook(`node hooks/ledger.mjs complete S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `ledger complete` via absolute-path invocation with scoped token", () => {
+		const d = runBashHook(`/usr/local/bin/ledger complete S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `ledger complete` with extra whitespace and scoped token", () => {
+		const d = runBashHook(`bin/ledger  complete  S1  --token  ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS orchestrator `ledger complete` without scoped token (unchanged)", () => {
+		// Orchestrator has no agent markers — retains full access.
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT}`);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	// ── Deny: plain (non-scoped) token stays denied (test 30 baseline) ───────
+	it("DENIES subagent `ledger complete` with plain write token (no sct_ prefix)", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token abc`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger complete` with no token at all", () => {
+		const d = runBashHook(`bin/ledger complete S1`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Deny: other mutating subcommands stay denied even with sct_ token ───
+	it("DENIES subagent `ledger gate advisor APPROVE --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger gate advisor APPROVE --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger init --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger init /tmp/s.json --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger abandon --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger abandon --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger set S1 --status complete --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger set S1 --status complete --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger rm S1 --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger rm S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger autopilot --token sct_<hex>`", () => {
+		const d = runBashHook(`bin/ledger autopilot --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Deny: scope-token issuance is orchestrator-only ──────────────────────
+	it("DENIES subagent `ledger scope-token` (issuance is orchestrator-only)", () => {
+		const d = runBashHook(`bin/ledger scope-token myagent --token abc`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger scope-token` even with sct_-shaped token", () => {
+		const d = runBashHook(`bin/ledger scope-token myagent --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("ALLOWS orchestrator `ledger scope-token` (no agent markers)", () => {
+		const d = runBashHook(`bin/ledger scope-token myagent --token abc`);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	// ── Bypass shapes — all DENIED ────────────────────────────────────────────
+	it("DENIES chained: `ledger complete --token sct_x ; ledger gate advisor APPROVE`", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT}; bin/ledger gate advisor APPROVE --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES chained with &&: `ledger complete --token sct_x && ledger gate advisor APPROVE`", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT} && bin/ledger gate advisor APPROVE --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES chained with ||: `ledger complete --token sct_x || true`", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT} || true`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES piped: `ledger complete --token sct_x | cat`", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT} | cat`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES newline-separated commands", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token ${SCT}\nbin/ledger gate advisor APPROVE --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES command substitution $(...) in token position", () => {
+		const d = runBashHook(`bin/ledger complete S1 --token $(cat /secret)`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES backtick substitution in token position", () => {
+		const d = runBashHook("bin/ledger complete S1 --token `cat /secret`", SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES leading env assignment with chaining: `TOKEN=x; ledger complete --token sct_x`", () => {
+		const d = runBashHook(`TOKEN=abc; bin/ledger complete S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES leading env assignment with && chaining", () => {
+		const d = runBashHook(`TOKEN=abc && bin/ledger complete S1 --token ${SCT}`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Redirection bypass regression (S4-AC3 + S6 intersection) ────────────
+	it("DENIES `ledger complete --token sct_<hex>` combined with > into ledger JSON", () => {
+		const d = runBashHook(
+			`bin/ledger complete S1 --token ${SCT} > /proj/.groundwork/runs/sess.json`,
+			{ agentType: "groundwork:junior-orchestrator" },
+		);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES `ledger complete --token sct_<hex>` combined with >> into seal.key", () => {
+		const d = runBashHook(
+			`bin/ledger complete S1 --token ${SCT} >> /proj/.groundwork/runs/sess.seal.key`,
+			{ agentType: "groundwork:junior-orchestrator" },
+		);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES `ledger complete --token sct_<hex>` combined with < stdin redirect", () => {
+		const d = runBashHook(
+			`bin/ledger complete S1 --token ${SCT} < /etc/passwd`,
+			{ agentType: "groundwork:junior-orchestrator" },
+		);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});

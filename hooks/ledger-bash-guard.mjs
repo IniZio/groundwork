@@ -67,13 +67,47 @@ const SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/
 
 /**
  * Mutating ledger CLI invocations — matches the bin wrapper and direct node invocation.
- * Subcommands: init | set | complete | gate | abandon | autopilot | rm
+ * Subcommands: init | set | complete | gate | abandon | autopilot | rm | scope-token
  * Pattern allows: `bin/ledger complete`, `node hooks/ledger.mjs complete`, etc.
+ *
+ * scope-token is explicitly included: issuance must remain orchestrator-only.
+ * A subagent that could mint its own scoped token would defeat the auth design.
  */
-const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|autopilot|rm)\b/
+const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|autopilot|rm|scope-token)\b/
 
 /** Read-only ledger CLI subcommands — these are explicitly allowed. */
 const READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/
+
+/**
+ * Narrow allow: returns true iff the command is ONLY a `ledger complete`
+ * invocation carrying a scoped token (`sct_` + lowercase hex), with no shell
+ * chaining operators.
+ *
+ * Fail-closed design:
+ *  - Shell-operator check (`; | & \n \` $(`) rejects all chained commands
+ *    before any subcommand inspection.
+ *  - The subcommand check requires `complete` specifically — any other mutating
+ *    subcommand (including new ones added to MUTATING_LEDGER_CMD_RE later)
+ *    won't match and falls through to deny.
+ *  - The token-format check requires the `sct_` prefix that only `ledger
+ *    scope-token` emits; plain write tokens (bare hex) do not match.
+ *
+ * This guard is defense-in-depth only. Real authorization lives in
+ * assertScopedOrWriteToken in hooks/ledger.mjs, which rejects fabricated
+ * tokens, unowned slices, and missing created_by. A subagent faking an
+ * sct_-shaped token passes the guard and is then correctly rejected by the CLI.
+ */
+function isScopedCompleteOnly(cmd) {
+  // Reject any shell chaining or redirection that could hide a second command or
+  // redirect output/input unexpectedly. < is included to block stdin-hijack even
+  // though MUTATION_PATTERNS only guards against paths in the ledger/key tree.
+  if (/[;|&\n`<>]|\$\(/.test(cmd)) return false
+  // Require specifically the `complete` subcommand (not init/gate/etc.).
+  if (!/\bledger(?:\.mjs)?\s+complete\b/.test(cmd)) return false
+  // Require a scoped token with the distinguishable `sct_` prefix + hex chars.
+  if (!/--token\s+sct_[0-9a-f]+\b/.test(cmd)) return false
+  return true
+}
 
 /**
  * Mutation verb patterns — only checked when the command also references a ledger/key path.
@@ -124,16 +158,10 @@ async function main() {
   const cmd = typeof input?.tool_input?.command === 'string' ? input.tool_input.command : ''
   if (!cmd) return passthrough()
 
-  // --- Check 1: mutating ledger CLI subcommand ---
-  // Allow read-only subcommands first (status/view/show/help).
-  if (READONLY_LEDGER_CMD_RE.test(cmd)) return passthrough()
-  if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
-    return deny(
-      `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm require the write token). Detected in command: ${cmd.slice(0, 120)}`,
-    )
-  }
-
-  // --- Check 2: filesystem mutation patterns on ledger/key paths ---
+  // --- Check 1: filesystem mutation patterns on ledger/key paths ---
+  // IMPORTANT: these run BEFORE the narrow-allow block so that a scoped-token
+  // `ledger complete` command carrying a shell redirection operator can never
+  // short-circuit past them.
   if (LEDGER_OR_KEY_RE.test(cmd)) {
     for (const [pattern, label] of MUTATION_PATTERNS) {
       if (pattern.test(cmd)) {
@@ -144,7 +172,7 @@ async function main() {
     }
   }
 
-  // --- Check 3: seal key exfiltration ---
+  // --- Check 2: seal key exfiltration ---
   if (SEAL_KEY_RE.test(cmd)) {
     for (const [pattern, label] of EXFIL_PATTERNS) {
       if (pattern.test(cmd)) {
@@ -153,6 +181,19 @@ async function main() {
         )
       }
     }
+  }
+
+  // --- Check 3: mutating ledger CLI subcommand ---
+  // Allow read-only subcommands first (status/view/show/help).
+  if (READONLY_LEDGER_CMD_RE.test(cmd)) return passthrough()
+  if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
+    // Narrow allow: `ledger complete` with a scoped token (sct_ prefix) and no
+    // shell operators.  All other mutating subcommands remain denied regardless
+    // of token shape.
+    if (isScopedCompleteOnly(cmd)) return passthrough()
+    return deny(
+      `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`,
+    )
   }
 
   return passthrough()

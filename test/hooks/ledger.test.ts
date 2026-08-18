@@ -1538,5 +1538,362 @@ describe("ledger CLI — show covers_ac and claimed_by", () => {
 		const r = run(["show", "S2"]);
 		expect(r.stdout).toContain("claimed_by: sess-xyz");
 	});
+
+	it("show prints created_by: (none) when absent", () => {
+		const r = run(["show", "S1"]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("created_by: (none)");
+	});
+
+	it("show prints created_by value when set via direct fixture", () => {
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S2").created_by = "junior-orch-42";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = run(["show", "S2"]);
+		expect(r.stdout).toContain("created_by: junior-orch-42");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// created_by field (S4)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — created_by field (S4)", () => {
+	it("add --created-by persists the field on the slice", () => {
+		const r = run(["add", "CB1", "--created-by", "junior-orch-7"]);
+		expect(r.code).toBe(0);
+		const slice = readLedger().slices.find((s: any) => s.id === "CB1");
+		expect(slice).toBeDefined();
+		expect(slice.created_by).toBe("junior-orch-7");
+	});
+
+	it("add without --created-by omits the field (key absent)", () => {
+		run(["add", "CB2"]);
+		const slice = readLedger().slices.find((s: any) => s.id === "CB2");
+		expect(slice).toBeDefined();
+		expect(Object.prototype.hasOwnProperty.call(slice, "created_by")).toBe(false);
+	});
+
+	it("created_by does NOT generate an unknown-key warning (it is a known key)", () => {
+		run(["add", "CB3", "--created-by", "agent-scope"]);
+		const r = runFull(["status"]);
+		expect(r.stderr).not.toContain("created_by");
+	});
+
+	it("a genuinely bogus field near 'created_by' still triggers the near-miss warning (unknown-key guard preserved)", () => {
+		// Inject a typo key close enough to trigger the near-miss detector
+		const l = readLedger();
+		l.slices.find((s: any) => s.id === "S1").creatd_by = "typo-value";
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const r = runFull(["status"]);
+		expect(r.code).toBe(0);
+		// Near-miss detector should warn about the unknown key
+		expect(r.stderr).toContain("creatd_by");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Scoped token (S5)
+// ---------------------------------------------------------------------------
+
+describe("ledger CLI — scoped token (S5)", () => {
+	/** Helper: write a ledger with a slice owned by a given scope. */
+	function writeLedgerWithOwnedSlice(scope: string, extraSlice?: object) {
+		const l = readLedger() as any;
+		l.slices.push({ id: "OWN1", wave: 1, status: "pending", created_by: scope });
+		if (extraSlice) l.slices.push(extraSlice);
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+	}
+
+	/** Issue a scoped token via the CLI and return its hex string. */
+	function issueScopedToken(scope: string): string {
+		const r = run(["scope-token", scope, "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		const m = r.stdout.match(/scoped_token:\s+(sct_[0-9a-f]+)/);
+		if (!m) throw new Error(`scope-token output did not contain sct_-prefixed token: ${r.stdout}`);
+		return m[1];
+	}
+
+	// SC-issuance: scope-token command writes to ledger.scoped_tokens
+	it("scope-token stores the issued token in ledger.scoped_tokens", () => {
+		const r = run(["scope-token", "junior-orch-1", "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("scoped_token:");
+		expect(r.stdout).toContain('scope: junior-orch-1');
+		const l = readLedger() as any;
+		expect(Array.isArray(l.scoped_tokens)).toBe(true);
+		expect(l.scoped_tokens).toHaveLength(1);
+		expect(l.scoped_tokens[0].scope).toBe("junior-orch-1");
+		expect(l.scoped_tokens[0].token).toMatch(/^sct_[0-9a-f]{16}$/);
+	});
+
+	// SC-issuance-auth: scope-token requires the orchestrator write_token
+	it("scope-token is rejected when --token is wrong (issuance is orchestrator-only)", () => {
+		const r = run(["scope-token", "junior-orch-1", "--token", "wrongtoken"]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// SC-issuance-auth-absent: scope-token requires --token present
+	it("scope-token is rejected when --token is absent", () => {
+		const r = run(["scope-token", "junior-orch-1"]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// SC1: scoped token CAN complete a slice whose created_by matches its scope
+	it("SC1: scoped token completes a slice whose created_by matches the scope", () => {
+		writeLedgerWithOwnedSlice("junior-orch-2");
+		const tok = issueScopedToken("junior-orch-2");
+		const r = run(["complete", "OWN1", "--token", tok]);
+		expect(r.code).toBe(0);
+		const l = readLedger() as any;
+		const s = l.slices.find((x: any) => x.id === "OWN1");
+		expect(s.status).toBe("complete");
+	});
+
+	// SC2: scoped token CANNOT complete a slice with a DIFFERENT created_by
+	it("SC2: scoped token is rejected for a slice owned by a different scope", () => {
+		writeLedgerWithOwnedSlice("other-orch");
+		const tok = issueScopedToken("junior-orch-3");
+		const r = run(["complete", "OWN1", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		// Slice must remain incomplete
+		const l = readLedger() as any;
+		const s = l.slices.find((x: any) => x.id === "OWN1");
+		expect(s.status).toBe("pending");
+	});
+
+	// SC3: scoped token CANNOT complete a slice with NO created_by
+	it("SC3: scoped token is rejected for a slice with no created_by set", () => {
+		// S2 in baseLedger has no created_by
+		const tok = issueScopedToken("junior-orch-4");
+		const r = run(["complete", "S2", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		const l = readLedger() as any;
+		const s = l.slices.find((x: any) => x.id === "S2");
+		expect(s.status).toBe("pending");
+	});
+
+	// SC4: scoped token is REJECTED by gate (highest-value assertion)
+	it("SC4: scoped token is rejected by gate — subagent cannot record advisor verdict", () => {
+		const tok = issueScopedToken("junior-orch-5");
+		const r = run(["gate", "advisor", "APPROVE", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		// gate.advisor must remain unset
+		const l = readLedger() as any;
+		expect(l.gate?.advisor).toBeUndefined();
+	});
+
+	// SC5: scoped token is REJECTED by init (overwrite protection)
+	it("SC5: scoped token is rejected by init (cannot overwrite a live run)", () => {
+		const tok = issueScopedToken("junior-orch-6");
+		// init with --token validates against write_token — scoped token must be rejected
+		const r = run(["init", ledgerFile, "--token", tok]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// SC6: scoped token is REJECTED by abandon
+	it("SC6: scoped token is rejected by abandon", () => {
+		const tok = issueScopedToken("junior-orch-7");
+		const r = run(["abandon", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		// ledger must still be active
+		const l = readLedger() as any;
+		expect(l.active).toBe(true);
+	});
+
+	// SC7: scoped token is REJECTED by rm
+	it("SC7: scoped token is rejected by rm", () => {
+		const tok = issueScopedToken("junior-orch-8");
+		const r = run(["rm", "S1", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		// S1 must still exist
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "S1")).toBeDefined();
+	});
+
+	// SC8: scoped token is REJECTED by autopilot
+	it("SC8: scoped token is rejected by autopilot", () => {
+		// Ensure ledger has pacing field so autopilot doesn't fail on missing pacing
+		const l = readLedger() as any;
+		l.pacing = { policy: "wave", budget: 1, exempt_kinds: [] };
+		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
+		const tok = issueScopedToken("junior-orch-9");
+		const r = run(["autopilot", "--range", "1", "--reason", "test", "--token", tok]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// SC9: orchestrator write_token retains FULL authority — can complete any slice
+	it("SC9: orchestrator write_token completes slices regardless of created_by", () => {
+		writeLedgerWithOwnedSlice("some-other-scope");
+		// Orchestrator uses TEST_TOKEN — must succeed even though created_by != anything
+		const r = run(["complete", "OWN1", "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("complete");
+	});
+
+	// SC9b: orchestrator write_token completes a no-created_by slice
+	it("SC9b: orchestrator write_token completes a slice with no created_by", () => {
+		const r = run(["complete", "S1", "--token", TEST_TOKEN]);
+		expect(r.code).toBe(0);
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "S1").status).toBe("complete");
+	});
+
+	// SC10: assertWriteToken remains fail-closed — absent token always denied (complete path)
+	it("SC10: complete with no --token is denied even for owned slices (fail-closed)", () => {
+		writeLedgerWithOwnedSlice("junior-orch-x");
+		const r = run(["complete", "OWN1"]);
+		expect(r.code).not.toBe(0);
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
+	});
+
+	// SC11: a fabricated scoped-looking token not in ledger.scoped_tokens is denied
+	it("SC11: a fabricated scoped token (not issued by scope-token) is denied by complete", () => {
+		writeLedgerWithOwnedSlice("junior-orch-y");
+		// Use a random hex that was never issued
+		const fakeToken = "deadbeef12345678";
+		const r = run(["complete", "OWN1", "--token", fakeToken]);
+		expect(r.code).not.toBe(0);
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
+	});
+
+	// SC12: multiple slices — scoped token denied if ANY slice lacks ownership
+	it("SC12: scoped token denied when completing a mix of owned and unowned slices", () => {
+		// OWN1 is owned by junior-orch-z; S2 is pending with no created_by
+		writeLedgerWithOwnedSlice("junior-orch-z");
+		const tok = issueScopedToken("junior-orch-z");
+		const r = run(["complete", "OWN1", "S2", "--token", tok]);
+		expect(r.code).not.toBe(0);
+		// Neither slice should be marked complete (atomic failure; mutateLedger aborts on throw)
+		const l = readLedger() as any;
+		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
+		expect(l.slices.find((s: any) => s.id === "S2").status).toBe("pending");
+	});
+});
+
+// S8 — schema gap: scoped_tokens declared + top-level additionalProperties tightened
+describe("ledger schema validation — scoped_tokens and top-level additionalProperties (S8)", () => {
+	// AC1: well-formed scoped_tokens is accepted by init
+	it("AC1: init accepts a ledger containing a well-formed scoped_tokens array", () => {
+		const src = path.join(projectDir, "s8-ac1.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			scoped_tokens: [{ scope: "junior-1", token: "aaaabbbbccccdddd" }],
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).toBe(0);
+		const l = readLedger() as any;
+		expect(Array.isArray(l.scoped_tokens)).toBe(true);
+		expect(l.scoped_tokens[0].scope).toBe("junior-1");
+	});
+
+	// AC2a: scoped_tokens entry missing `scope` is REJECTED at init
+	it("AC2a: init rejects a scoped_tokens entry missing the required `scope` field", () => {
+		const src = path.join(projectDir, "s8-ac2a.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			scoped_tokens: [{ token: "aaaabbbbccccdddd" }],
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// AC2b: scoped_tokens entry missing `token` is REJECTED at init
+	it("AC2b: init rejects a scoped_tokens entry missing the required `token` field", () => {
+		const src = path.join(projectDir, "s8-ac2b.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			scoped_tokens: [{ scope: "junior-1" }],
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// AC2c: scoped_tokens entry with a spurious extra field is REJECTED (additionalProperties:false on items)
+	it("AC2c: init rejects a scoped_tokens entry with an unknown extra field", () => {
+		const src = path.join(projectDir, "s8-ac2c.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			scoped_tokens: [{ scope: "junior-1", token: "aaaabbbbccccdddd", extra: "bad" }],
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// AC2d: scoped_tokens is not an array is REJECTED at init
+	it("AC2d: init rejects scoped_tokens that is not an array", () => {
+		const src = path.join(projectDir, "s8-ac2d.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			scoped_tokens: { scope: "junior-1", token: "aaaabbbbccccdddd" },
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).not.toBe(0);
+	});
+
+	// Regression: motive_ref is a legitimate top-level key read by stop-gate — must not be rejected
+	it("motive_ref is accepted by init and preserved in the written ledger", () => {
+		const src = path.join(projectDir, "s8-motive-ref.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			motive_ref: "junior-orchestrator-parity",
+		}));
+		rmSync(ledgerFile);
+		const r = runFull(["init", src]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).not.toContain("must NOT have additional properties");
+		const l = readLedger() as any;
+		expect(l.motive_ref).toBe("junior-orchestrator-parity");
+	});
+
+	// Regression: motive and motive_ref both accepted together
+	it("motive and motive_ref are both accepted when present together", () => {
+		const src = path.join(projectDir, "s8-both-motives.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			motive: "my-motive",
+			motive_ref: "my-motive-ref",
+		}));
+		rmSync(ledgerFile);
+		const r = runFull(["init", src]);
+		expect(r.code).toBe(0);
+		expect(r.stderr).not.toContain("must NOT have additional properties");
+	});
+
+	// AC3: a genuinely unknown top-level key is REJECTED by ledger init
+	it("AC3: init rejects a ledger containing an unknown top-level key", () => {
+		const src = path.join(projectDir, "s8-ac3.json");
+		writeFileSync(src, JSON.stringify({
+			active: true,
+			slices: [],
+			gate: {},
+			totally_bogus_key: 1,
+		}));
+		rmSync(ledgerFile);
+		const r = run(["init", src]);
+		expect(r.code).not.toBe(0);
+	});
 });
 

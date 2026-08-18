@@ -117,9 +117,54 @@
       "items": {
         "$ref": "#/$defs/slice"
       }
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version marking the sealed regime (S2). Absent on pre-sealed legacy ledgers. Written by cmdInit when the sealed regime is active."
+    },
+    "version": {
+      "type": "integer",
+      "description": "Legacy schema version field used before the sealed regime (pre-S2). Superseded by schema_version. Accepted for backward compatibility with old ledgers on disk."
+    },
+    "motive": {
+      "type": "string",
+      "description": "Motive id (slug) this run is linked to. Written by `ledger init --motive <id>`."
+    },
+    "motive_ref": {
+      "type": "string",
+      "description": "Motive slug passed via init input JSON. Read by stop-gate to satisfy the plan-artifact requirement (alternative to motive)."
+    },
+    "rfc_ref": {
+      "type": "string",
+      "description": "Legacy objective pointer read by journal-io.mjs as a fallback motive source. Informational; does not block session close."
+    },
+    "session_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Multi-session id list read by motive-ground-truth.mjs (ledger.session_ids ?? [ledger.session_id]). Optional; normally derived from session_id."
+    },
+    "scoped_tokens": {
+      "type": "array",
+      "description": "Scoped tokens issued to junior-orchestrators via `ledger scope-token`. Each entry authorises the named scope to complete slices it created.",
+      "items": {
+        "type": "object",
+        "required": ["scope", "token"],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "Scope identifier (e.g. junior-orchestrator name or session label)."
+          },
+          "token": {
+            "type": "string",
+            "description": "Opaque random token passed as --token to `ledger complete`."
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
 
   "$defs": {
     "advisorGate": {
@@ -208,6 +253,10 @@
           "type": "string",
           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
           "description": "Bare ticket id (e.g. 't1', 'my-ticket') — no path separators, no .md suffix. Path-shaped values like 'tickets/t1.md' are rejected."
+        },
+        "created_by": {
+          "type": "string",
+          "description": "Agent or scope identifier that created this slice (S4). Free-form string; distinct from session-scoped claimed_by."
         },
         "covers_ac": {
           "description": "AC coverage: string | string[] — which AC<n> labels this slice covers.",

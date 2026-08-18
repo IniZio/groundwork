@@ -238,6 +238,7 @@ const KNOWN_SLICE_KEYS = new Set([
   'blocked_by', 'depends_on', // depends_on = legacy alias for blocked_by
   'acceptance', 'name',
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
+  'created_by',               // S4: agent/scope identifier that created this slice (free-form string)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
   'ticket',                   // ticket document id/path this slice is scoped to
   'decisions',                // decision ids constraining this slice: string | string[]
@@ -495,6 +496,75 @@ function assertWriteToken(ledger, passedToken) {
   }
 }
 
+/**
+ * Token check for `complete` — the ONLY command that accepts scoped tokens.
+ * Explicit allowlist: every other command calls `assertWriteToken` directly,
+ * so any new command defaults to full-token-required unless deliberately added here.
+ *
+ * Accepts either:
+ *   (a) the orchestrator write_token  → full authority over all slices
+ *   (b) a scoped token in ledger.scoped_tokens  → only slices whose
+ *       `created_by` matches the token's scope
+ *
+ * Returns the scope string when a scoped token was used, or null for full authority.
+ * Throws (fail-closed) on any authorization failure — absent, empty, mismatched, or
+ * a scoped token that doesn't own all requested slices.
+ */
+function assertScopedOrWriteToken(ledger, passedToken, sliceIds) {
+  const stored = ledger?.write_token
+  if (!stored) {
+    const e = new Error(
+      'complete requires write_token authority — this ledger has none.\n' +
+      '  Re-initialize via `ledger init <file>` (embeds a token).',
+    )
+    e.exitCode = 1
+    throw e
+  }
+  // (a) Orchestrator full authority — write_token matches
+  if (passedToken && passedToken === stored) return null
+
+  // (b) Scoped token authority — explicit allowlist for `complete` only.
+  // A scoped token must be found in ledger.scoped_tokens AND every target slice
+  // must carry a matching created_by.  If either check fails → reject.
+  const scopedTokens = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
+  const entry = passedToken
+    ? scopedTokens.find((st) => st?.token && st.token === passedToken)
+    : undefined
+  if (!entry) {
+    const e = new Error(
+      'complete requires the orchestrator write_token or a valid scoped token.\n' +
+      '  Orchestrator: pass --token <write_token> printed at init.\n' +
+      '  Junior orchestrator: pass --token <scoped_token> issued by `ledger scope-token <scope> --token <write_token>`.',
+    )
+    e.exitCode = 1
+    throw e
+  }
+  // Scoped token verified — check ownership of every requested slice.
+  const scope = entry.scope
+  const slices = Array.isArray(ledger.slices) ? ledger.slices : []
+  const byId = new Map(slices.map((s) => [s?.id, s]))
+  for (const id of sliceIds) {
+    const s = byId.get(id)
+    if (!s) continue  // unknown slice id — handled separately by cmdComplete
+    if (!s.created_by) {
+      const e = new Error(
+        `scoped token for "${scope}" cannot complete slice "${id}": no created_by set.\n` +
+        '  Set --created-by when adding the slice, or use the orchestrator write_token.',
+      )
+      e.exitCode = 1
+      throw e
+    }
+    if (s.created_by !== scope) {
+      const e = new Error(
+        `scoped token for "${scope}" cannot complete slice "${id}": owned by "${s.created_by}".`,
+      )
+      e.exitCode = 1
+      throw e
+    }
+  }
+  return scope
+}
+
 // ---------------------------------------------------------------------------
 // HELP
 // ---------------------------------------------------------------------------
@@ -557,6 +627,14 @@ const HELP = {
       '--covers-ac "a,b"   comma-separated AC labels this slice covers (drives AC_COVERAGE on complete)',
       '--decisions "D-1"   comma-separated decision ids this slice is constrained by',
       '--claimed-by <sid>  (optional) set claimed_by on the new slice',
+      '--created-by <scope> agent/scope identifier that owns this slice',
+    ],
+  },
+  'scope-token': {
+    summary: 'issue a scoped token authorizing a junior-orchestrator to complete its own slices',
+    usage: 'ledger scope-token <scope> --token <write_token>',
+    flags: [
+      '--token <t>   orchestrator write-token (required — issuance is orchestrator-only)',
     ],
   },
   rm: {
@@ -692,7 +770,10 @@ function cmdComplete(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)
+    // S5: accept orchestrator write_token (full authority) OR a valid scoped token
+    // (restricted to slices owned by the token's scope).  All other commands
+    // retain assertWriteToken — this explicit allowlist is the security boundary.
+    assertScopedOrWriteToken(l, flags.token, ids)
     capturedLedger = l
     const slices = Array.isArray(l.slices) ? l.slices : []
     const byId = new Map(slices.map((s) => [s?.id, s]))
@@ -744,6 +825,34 @@ function cmdComplete(args) {
   if (missing.length) die(`unknown slice id(s): ${missing.join(', ')}`, 2)
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${ids.join(', ')} ✓ (${done}/${total} complete)\n`)
+}
+
+/**
+ * S5: Issue a scoped token bound to <scope>.  Only slices whose `created_by`
+ * matches this scope can be completed using the returned token.  Issuance
+ * requires the orchestrator write_token — scoped tokens cannot bootstrap
+ * themselves and cannot escalate to full authority.
+ */
+function cmdScopeToken(args) {
+  const { flags, positionals } = parseFlags(args)
+  const scope = positionals[0]
+  if (!scope) die('usage: ledger scope-token <scope> --token <write_token>', 2)
+  let scopedToken = null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)  // orchestrator-only
+    const tok = 'sct_' + randomBytes(8).toString('hex')
+    if (!Array.isArray(l.scoped_tokens)) l.scoped_tokens = []
+    l.scoped_tokens.push({ scope, token: tok })
+    scopedToken = tok
+    reSeal(l, projectDir)
+  })
+  process.stdout.write(
+    `scoped_token: ${scopedToken}\n` +
+    `  scope: ${scope}\n` +
+    `  (pass as --token to \`ledger complete\` for slices with created_by="${scope}")\n`,
+  )
 }
 
 function cmdGate(args) {
@@ -1015,6 +1124,7 @@ function cmdAdd(args) {
       item.claimed_by = flags['claimed-by']
       item.claimed_at = new Date().toISOString()
     }
+    if (flags['created-by'] != null) item.created_by = flags['created-by']
     ledger.slices.push(item)
     return l === null ? ledger : undefined // return new object only if we created it
   })
@@ -1172,6 +1282,7 @@ function cmdShow(id) {
       ? s.covers_ac
       : '(none)'
   const claimedBy = s.claimed_by || '(none)'
+  const createdBy = s.created_by || '(none)'
   const ticket = s.ticket || '(none)'
   const decisions = Array.isArray(s.decisions) && s.decisions.length
     ? s.decisions.join(', ')
@@ -1190,6 +1301,7 @@ function cmdShow(id) {
       `covers_ac:  ${coversAc}`,
       `decisions:  ${decisions}`,
       `claimed_by: ${claimedBy}`,
+      `created_by: ${createdBy}`,
       `acceptance:`,
       acceptance,
     ].join('\n') + '\n',
@@ -1503,6 +1615,7 @@ function main() {
       case 'fog':      return cmdFog(rest)
       case 'frontier': return cmdFrontier(rest)
       case 'autopilot': return cmdAutopilot(rest)
+      case 'scope-token': return cmdScopeToken(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)
     }

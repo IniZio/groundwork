@@ -25,4 +25,15 @@ export declare function isExhausted(doc: object): boolean
 export declare function checkPace(
   doc: object,
   sliceId: string,
+  currentBuildHash?: string | null,
 ): { allowed: boolean; reason?: string; remedy?: string }
+
+/**
+ * Fail-closed artifact freshness check (PACING-R-009).
+ * When currentBuildHash is null and any artifact declares a captured_build_hash,
+ * that artifact is classified stale — supply --build-hash to ledger claim.
+ */
+export declare function checkMilestoneArtifacts(
+  doc: object,
+  currentBuildHash?: string | null,
+): { satisfied: boolean; staleArtifacts: string[]; reason?: string }

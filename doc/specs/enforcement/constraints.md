@@ -80,6 +80,48 @@ Three HITL (human-in-the-loop) requirements for the pacing escape hatch:
 - **Criticality**: must
 - **Source**: groundwork-development#D-28
 
+## PACING-R-007 — Milestone policy gates on human-verified shippable deliverables, not wave count {#pacing-r-007}
+
+When `pacing.policy` is `"milestone"`, the pacing unit is a named shippable increment rather than a wave or slice count. A milestone is defined by the set of evidence artifacts declared in `pacing.milestone_artifacts`. The pacing gate **shall** hold (block new units from starting beyond the current in-flight set) until a human sign-off is recorded in `pacing.milestone_signoff` with `verdict: "APPROVE"`. Until S7 implements milestone enforcement, the policy falls back to wave-unit counting (see `hooks/lib/pacing.mjs` S7 stub comment).
+
+- **Why** — Wave/slice count pacing is a proxy for delivery checkpoints. Milestone pacing replaces the proxy with a direct human-verified shippable increment: the gate releases only when a named human has confirmed the named artifacts. This aligns the pacing model with the motive definition of a milestone ("a shippable increment with named artifacts that a human signs off on; pacing gate releases on human verification, not wave count").
+- **Fit criterion** — With `pacing.policy = "milestone"` and `milestone_artifacts` declared but `milestone_signoff` absent (or `verdict: "REJECT"`), `ledger claim` for a slice in a new unit exits 1 and the block message names the outstanding milestone. With `milestone_signoff.verdict = "APPROVE"` present, `ledger claim` exits 0.
+- **Verification**: automated — covered by tests in S7's test suite (milestone enforcement). S6 (this spec) is design-only; the fit criterion is not testable until S7 lands.
+- **Criticality**: must
+- **Source**: spine-beads-hitl-portability#S6
+
+## PACING-R-008 — Milestone sign-off requires write_token authority; subagents must not self-sign {#pacing-r-008}
+
+When S7 records a `milestone_signoff` object in the ledger, the CLI command that writes it **shall** require the orchestrator `write_token` (the same token that gates `ledger gate` and `ledger complete`). Invoking the sign-off command without a valid `write_token` **shall** exit 1 with a message naming the missing authority. A subagent that cannot present the `write_token` cannot record a sign-off — preventing a subagent from approving its own work.
+
+- **Why** — The milestone sign-off is the human verification event that releases the pacing gate. If a subagent can write it without token authority, the human-in-the-loop guarantee is defeated: any subagent can self-certify completion. The write_token is the existing credential that denotes orchestrator-level authority; requiring it here extends the same trust boundary that already protects `ledger gate advisor APPROVE`. The token is never passed to subagents (CLAUDE.md: "MUST NOT pass it to subagents"), so requiring it structurally excludes them.
+- **Fit criterion** — Invoking the sign-off command without `--token <write_token>` exits 1 with an error citing missing token authority. Invoking it with a valid token succeeds and writes `milestone_signoff` to the ledger.
+- **Verification**: automated — S7 test suite covers both token-absent (exit 1) and token-present (exit 0 + ledger updated) cases.
+- **Criticality**: must
+- **Source**: spine-beads-hitl-portability#S6
+
+## PACING-R-009 — Milestone artifacts are hook-validatable; staleness is derived from build-hash comparison {#pacing-r-009}
+
+Each entry in `pacing.milestone_artifacts` **shall** carry a `path` (local file path or URL), a `kind` (one of `screenshot`, `run_output`, `live_url`, `file`), and optionally a `captured_build_hash`. A hook **shall** be able to validate milestone artifacts mechanically: (1) confirm the path/URL is reachable or the file exists; (2) when `captured_build_hash` is present, compare it against the current build hash and classify the artifact as `fresh` or `stale` — using the same comparison semantics as the traceability evidence freshness mechanism (`traceability-classify.mjs`) rather than a second independent scheme.
+
+**Fail-closed enforcement (V9 amendment):** When an artifact declares a `captured_build_hash` and the current build hash is not supplied (i.e. `--build-hash` is absent from `ledger claim` or `ledger set --status in_progress`), the artifact **shall** be classified as STALE and the gate **shall** block. Omitting `--build-hash` is not a bypass — it is treated as inability to verify freshness, which fails closed. To release the gate, the operator must pass `--build-hash <current>` explicitly. Artifacts that declare no `captured_build_hash` are unaffected (existence-only validation, no hash check).
+
+- **Why** — Milestone artifacts must be machine-checkable for the gate to be meaningful. A path alone is verifiable (exists / reachable). Adding `captured_build_hash` enables staleness detection: if the underlying data was regenerated after the artifact was captured, the hash drifts and the hook marks the artifact stale — preventing a human from approving screenshots that do not reflect the current state of the system. Reusing the existing freshness mechanism (`captured_build_hash` field, `fresh`/`stale` classification) avoids inventing a second freshness scheme and keeps the two mechanisms consistent by design. The fail-closed rule (V9) closes the gap where the deployed path (`bin/ledger claim` with no `--build-hash`) silently skipped the freshness check while the pure-function tests appeared green — matching the exact shape documented in the `tests-bypass-deployed-invocation-path` memory entry.
+- **Fit criterion** — Given a `milestone_artifact` with `captured_build_hash` equal to the current build hash, the hook classifies it as `fresh`. After a data regeneration that changes the build hash, the same artifact is classified as `stale`. A `milestone_artifact` with no `captured_build_hash` is validated for existence only (no freshness check). Invoking `bin/ledger claim <id>` with NO `--build-hash` against a ledger with APPROVE sign-off and a hashed artifact exits 1 (blocked); the same invocation with `--build-hash <matching>` exits 0 (released).
+- **Verification**: automated — deployed-path coverage in `test/hooks/ledger-claim-milestone-deployed.test.ts`; pure-function coverage in `test/hooks/pacing-milestone.test.ts`.
+- **Criticality**: must
+- **Source**: spine-beads-hitl-portability#S6, spine-beads-hitl-portability#V9
+
+## PACING-R-010 — Milestone sign-off composes with awaiting_human; the two mechanisms must not conflict {#pacing-r-010}
+
+When `pacing.policy = "milestone"` and the gate is waiting for human sign-off, the orchestrator **shall** be able to set `awaiting_human = true` (via `ledger await-human --token <write_token>`) to suppress the stop-gate nag while the human decides. The `awaiting_human` hold does not release the milestone gate — it only suppresses the nagging until the human either approves or rejects. Clearing `awaiting_human` (via `--clear`) resumes normal milestone enforcement. S7 MUST ensure that clearing the hold AND receiving `milestone_signoff.verdict = "APPROVE"` are two separate events — collapsing them into one write would lose auditability.
+
+- **Why** — Without `awaiting_human` composition, the stop-gate would nag continuously while a milestone is awaiting human review — the nag is correct (work is incomplete) but disruptive during a legitimate wait. The `awaiting_human` field was introduced exactly for this pattern (token-gated hold that pauses enforcement without bypassing it). Milestone pacing is the most natural consumer. The two-event separation preserves the audit trail: the ledger records both when the hold was set and when the sign-off arrived, providing a complete timeline.
+- **Fit criterion** — With `pacing.policy = "milestone"` and `milestone_signoff` absent, setting `awaiting_human = true` causes the stop-gate to suppress the block nag. The milestone gate itself still holds (no new units may be claimed). Clearing `awaiting_human` restores normal stop-gate behavior. Receiving `milestone_signoff.verdict = "APPROVE"` releases the milestone gate independently of the `awaiting_human` state.
+- **Verification**: automated — S7 test suite covers the interaction between `awaiting_human` and the milestone gate.
+- **Criticality**: must
+- **Source**: spine-beads-hitl-portability#S6
+
 ## Fail-Open Guards
 
 The nesting guard and spec guard **shall** fail-open when the caller's depth or RFC coverage cannot be determined: if the detection signal is absent, the call is permitted and a warning is emitted. This preserves liveness over strictness for advisory checks, in contrast to the hard-block behavior of the orchestrator impl-guard.

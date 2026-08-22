@@ -97,9 +97,12 @@ export function resolvedUnits(doc) {
     raw = slices.filter(
       (s) => !isExemptSlice(s, exemptKinds) && s.status === 'complete',
     ).length
-  } else {
-    // policy === 'wave'
-    // Group non-exempt slices by wave.
+  } else if (policy === 'wave' || policy === 'milestone') {
+    // policy=wave: count fully-resolved waves.
+    // policy=milestone: unit count = resolved waves (same computation as wave).
+    // The milestone gate's human sign-off check lives in checkPace — when the
+    // budget is consumed, checkPace requires pacing.milestone_signoff.verdict=APPROVE
+    // before allowing a new unit.  resolvedUnits is policy-neutral for wave/milestone.
     /** @type {Map<number, { total: number, complete: number }>} */
     const waves = new Map()
     for (const s of slices) {
@@ -115,6 +118,10 @@ export function resolvedUnits(doc) {
     for (const { total, complete } of waves.values()) {
       if (total > 0 && complete === total) raw++
     }
+  } else {
+    // Unrecognized policy — fail-safe: treat as 0 units resolved so enforcement
+    // does not block on unknown future policies.
+    raw = 0
   }
 
   // Subtract the adoption offset so completions carried in from a prior-session
@@ -246,11 +253,21 @@ export function isExhausted(doc) {
  * Returns `{ allowed: false, reason: string, remedy: string }` when the slice
  * would open a new unit and the budget (plus any grant) is already consumed.
  *
- * @param {object} doc      - Ledger document.
- * @param {string} sliceId  - Slice being claimed or set in-progress.
+ * For policy=milestone, an APPROVE sign-off releases the gate ONLY when artifact
+ * freshness also holds: every declared artifact whose captured_build_hash differs
+ * from currentBuildHash is treated as stale, and the gate remains closed until
+ * artifacts are re-captured.  When currentBuildHash is omitted/null AND any artifact
+ * declares a captured_build_hash, those artifacts are treated as unverifiable and
+ * classified stale (fail-closed — supply --build-hash to ledger claim).  When no
+ * artifact declares a captured_build_hash, the hash check is a no-op.
+ *
+ * @param {object} doc               - Ledger document.
+ * @param {string} sliceId           - Slice being claimed or set in-progress.
+ * @param {string|null} [currentBuildHash] - Current build hash for artifact-freshness
+ *   check (milestone policy only).  Pure — no I/O; the caller supplies this value.
  * @returns {{ allowed: boolean, reason?: string, remedy?: string }}
  */
-export function checkPace(doc, sliceId) {
+export function checkPace(doc, sliceId, currentBuildHash) {
   const pacing = getPacing(doc)
   // No pacing config → everything is allowed (pre-pacing back-compat).
   if (!pacing) return { allowed: true }
@@ -286,7 +303,54 @@ export function checkPace(doc, sliceId) {
     return { allowed: true }
   }
 
-  // Budget exhausted — block the claim.
+  // Budget exhausted — for milestone policy, check human sign-off before blocking.
+  if (policy === 'milestone') {
+    const signoff = pacing.milestone_signoff
+    if (signoff?.verdict === 'APPROVE') {
+      // BOTH conditions must hold (PACING-R-007):
+      // (b) sign-off APPROVE is present — check passed.
+      // (a) all declared artifacts must be FRESH — check now.
+      const artCheck = checkMilestoneArtifacts(doc, currentBuildHash ?? null)
+      if (!artCheck.satisfied) {
+        // Sign-off recorded but artifacts became stale after a rebuild.
+        // DESIGN: hold the gate rather than invalidate the sign-off — the human's
+        // decision was correct at sign-off time; the build changed afterward.
+        // Remedy: re-capture artifacts against the current build, then re-sign.
+        // The original sign-off is preserved in the ledger for audit.
+        const staleList = artCheck.staleArtifacts.join(', ')
+        const hashContext = currentBuildHash
+          ? `(build hash changed since sign-off)`
+          : `(no current build hash supplied — pass --build-hash <hash> to ledger claim)`
+        const staleReason =
+          `Milestone gate: APPROVE sign-off is present but artifacts cannot be verified as fresh ` +
+          `${hashContext}.\n` +
+          `Stale artifacts: ${staleList}\n` +
+          `Re-capture these artifacts against the current build, then record a fresh sign-off.`
+        const staleRemedy =
+          `1. Re-capture the stale artifacts (current build hash: ${currentBuildHash ?? 'unknown'}).\n` +
+          `2. ledger milestone-signoff --verdict APPROVE --verified-by <name> ` +
+          `--build-hash <current> --token <write_token>`
+        return { allowed: false, reason: staleReason, remedy: staleRemedy }
+      }
+      // Both conditions satisfied — release the gate.
+      return { allowed: true }
+    }
+    // Gate holds — generate milestone-specific block message.
+    const artifacts = Array.isArray(pacing.milestone_artifacts) ? pacing.milestone_artifacts : []
+    const artifactList = artifacts.length > 0
+      ? artifacts.map((a) => `  • ${a.label ?? a.path ?? '(unnamed)'} (${a.kind ?? 'unknown'})`).join('\n')
+      : '  (no artifacts declared)'
+    const milestoneReason =
+      `Milestone gate: human sign-off required before opening wave ${targetUnit}.\n` +
+      `Declared artifacts:\n${artifactList}\n` +
+      (signoff ? `Last verdict: ${signoff.verdict} (by ${signoff.verified_by}).` : 'No sign-off recorded yet.')
+    const milestoneRemedy =
+      `Record a human-verified sign-off with:\n` +
+      `  ledger milestone-signoff --verdict APPROVE --verified-by <name> --token <write_token>`
+    return { allowed: false, reason: milestoneReason, remedy: milestoneRemedy }
+  }
+
+  // Wave/slice budget exhausted — generic block.
   const unitLabel = policy === 'slice' ? `slice "${sliceId}"` : `wave ${targetUnit}`
   const reason =
     `Pacing budget exhausted: ${consumed} of ${cap} unit${cap === 1 ? '' : 's'} consumed ` +
@@ -297,4 +361,59 @@ export function checkPace(doc, sliceId) {
     `Option B: run \`/groundwork:pause\` and continue in a new session.`
 
   return { allowed: false, reason, remedy }
+}
+
+/**
+ * Validate milestone artifact freshness.
+ *
+ * Pure function — no filesystem I/O. File existence must be checked by the caller.
+ *
+ * Fail-closed semantics (PACING-R-009):
+ *   - Artifact declares captured_build_hash + currentBuildHash matches → FRESH.
+ *   - Artifact declares captured_build_hash + currentBuildHash differs  → STALE.
+ *   - Artifact declares captured_build_hash + currentBuildHash is null  → STALE
+ *     (cannot verify freshness without a current hash; fail closed — caller must
+ *     supply the hash via --build-hash on ledger claim/set).
+ *   - Artifact has NO captured_build_hash                               → FRESH
+ *     (no freshness tracking declared; existence-only).
+ *
+ * @param {object} doc - Ledger document.
+ * @param {string|null} [currentBuildHash] - Current build hash for staleness comparison.
+ *   When null/undefined AND an artifact declares a captured_build_hash, that artifact
+ *   is classified stale (fail-closed).  Pass the hash explicitly via --build-hash.
+ * @returns {{ satisfied: boolean, staleArtifacts: string[], reason?: string }}
+ */
+export function checkMilestoneArtifacts(doc, currentBuildHash) {
+  const pacing = getPacing(doc)
+  if (!pacing) return { satisfied: true, staleArtifacts: [] }
+  const artifacts = Array.isArray(pacing.milestone_artifacts) ? pacing.milestone_artifacts : []
+  if (artifacts.length === 0) return { satisfied: true, staleArtifacts: [] }
+
+  const stale = []
+  let anyHashUnknown = false
+  for (const artifact of artifacts) {
+    if (artifact.captured_build_hash) {
+      if (!currentBuildHash) {
+        // Artifact declares a build hash but no current hash was supplied.
+        // Fail closed: cannot verify freshness — treat as stale.
+        stale.push(artifact.path ?? '(unknown)')
+        anyHashUnknown = true
+      } else if (artifact.captured_build_hash !== currentBuildHash) {
+        // Hash mismatch → stale.
+        stale.push(artifact.path ?? '(unknown)')
+      }
+    }
+  }
+
+  const reason = stale.length > 0
+    ? anyHashUnknown
+      ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
+      : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
+    : undefined
+
+  return {
+    satisfied: stale.length === 0,
+    staleArtifacts: stale,
+    ...(reason != null ? { reason } : {}),
+  }
 }

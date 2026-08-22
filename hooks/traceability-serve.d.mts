@@ -1,6 +1,7 @@
 // Type declarations for traceability-serve.mjs
 
 import type { Server } from 'node:http'
+import type { DagSlice } from './lib/dag-utils.mjs'
 
 /** Classified traceability graph (output of classifyTraceabilityGraph + slug). */
 export interface ClassifiedGraph {
@@ -9,6 +10,24 @@ export interface ClassifiedGraph {
   artifactEvidence?: object[]
   slug?: string
 }
+
+/** Result of computeWaveBands — the authoritative wave-band assignment. */
+export interface WaveBandResult {
+  /** Slice id → wave band number (explicit ledger wave, or topo depth fallback; null for cycle members). */
+  waveBySliceId: Map<string, number | null>
+  /** Set of slice ids that are on the ready frontier (pending, all blockers complete). */
+  frontierIds: Set<string>
+  /** Slice id → full set of transitive blocker ids. */
+  blockersBySliceId: Map<string, string[]>
+}
+
+/**
+ * Compute wave-band assignments, frontier set, and transitive blocker maps
+ * for a set of slices. Delegates entirely to dag-utils — never reimplements.
+ * Both the JSON surface and the HTML surface call this function, guaranteeing
+ * they always agree on these computed values.
+ */
+export declare function computeWaveBands(slices: DagSlice[]): WaveBandResult
 
 /**
  * Build and classify the traceability graph for a motive from disk.

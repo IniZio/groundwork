@@ -37,6 +37,7 @@ export interface SliceNode {
   sliceId: string
   status: string
   desc: string | null
+  wave: number | null
   label: string
 }
 

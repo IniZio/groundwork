@@ -22,6 +22,7 @@ import { join } from 'node:path'
 // fires inside _generate (already wrapped in try/catch) rather than at ledger module load time.
 import { buildTraceabilityGraph } from './traceability-join.mjs'
 import { classifyTraceabilityGraph } from './traceability-classify.mjs'
+import { topoLayers, frontier, transitiveBlockers, hasCycle } from './dag-utils.mjs'
 
 // ---------------------------------------------------------------------------
 // Tier layout constants
@@ -90,16 +91,99 @@ function shortLabel(node) {
 }
 
 /**
- * Compute layout: returns a Map<nodeId, {x, y, tier}> and an array of tier bands.
- * @param {object[]} nodes
+ * Compute layout: returns positions, tier bands, frontier/blocker sets, and SVG height.
+ *
+ * Slice nodes are banded by WAVE — explicit ledger `wave` takes precedence; topological
+ * depth via dag-utils.topoLayers() is used as a fallback when `wave` is null.
+ * Non-slice nodes remain in canonical tier order.
+ *
+ * @param {object[]} nodes  Graph nodes.
+ * @param {object[]} edges  Graph edges (used to derive blocked_by when absent from nodes).
+ * @returns {{ positions: Map, tierBands: object[], svgH: number,
+ *             frontierIds: Set<string>, blockerChains: Map<string,Set<string>>,
+ *             cycleDetected: boolean }}
  */
-function computeLayout(nodes) {
-  // Group nodes by tier
+function computeLayout(nodes, edges = []) {
+  // ── Separate slice nodes from non-slice nodes ─────────────────────────
+  const sliceNodes = nodes.filter((n) => String(n.type ?? '') === 'slice')
+  const nonSliceNodes = nodes.filter((n) => String(n.type ?? '') !== 'slice')
+
+  // Build DagSlice-compatible objects for slice nodes.
+  // Prefer node.blocked_by (ledger data embedded in node); fall back to
+  // graph edges with kind === 'blocked_by'.
+  const sliceIdSet = new Set(sliceNodes.map((n) => String(n.id)))
+  /** @type {Map<string, string[]>} */
+  const sliceEdgeBlockers = new Map()
+  for (const edge of edges) {
+    if (edge.kind === 'blocked_by') {
+      const src = String(edge.source)
+      const tgt = String(edge.target)
+      if (sliceIdSet.has(src) && sliceIdSet.has(tgt)) {
+        if (!sliceEdgeBlockers.has(src)) sliceEdgeBlockers.set(src, [])
+        sliceEdgeBlockers.get(src).push(tgt)
+      }
+    }
+  }
+
+  const dagSlices = sliceNodes.map((n) => ({
+    id: String(n.id),
+    blocked_by: Array.isArray(n.blocked_by)
+      ? n.blocked_by
+      : (sliceEdgeBlockers.get(String(n.id)) ?? []),
+    status: String(n.status ?? 'pending'),
+    wave: n.wave ?? null,
+    kind: String(n.kind ?? 'impl'),
+  }))
+
+  // ── Wave assignment: explicit ledger wave > topological fallback ───────
+  const cycleDetected = hasCycle(dagSlices)
+  const topoResult = cycleDetected ? [] : topoLayers(dagSlices)
+  /** @type {Map<string, number>} */
+  const topoWaveById = new Map()
+  for (let i = 0; i < topoResult.length; i++) {
+    for (const id of topoResult[i]) topoWaveById.set(id, i)
+  }
+
+  /** @type {Map<string, number | null>} */
+  const waveById = new Map()
+  for (const s of dagSlices) {
+    // null for cycle members (no valid topological position) — layout falls back to ?? 0 for display
+    const w = s.wave != null ? s.wave : (topoWaveById.get(s.id) ?? null)
+    waveById.set(s.id, w)
+  }
+
+  // ── Frontier (actionable-now) and transitive blocker chains ───────────
+  const frontierSlices = frontier(dagSlices)
+  const frontierIds = new Set(frontierSlices.map((s) => s.id))
+
+  /** @type {Map<string, string[]>} */
+  const blockerChains = new Map()
+  for (const s of dagSlices) {
+    const bl = s.blocked_by
+    if (Array.isArray(bl) && bl.length > 0) {
+      const chain = transitiveBlockers(dagSlices, s.id)
+      if (chain.length > 0) blockerChains.set(s.id, chain)
+    }
+  }
+
+  // ── Group slices by wave ───────────────────────────────────────────────
+  /** @type {Map<number, object[]>} */
+  const waveGroups = new Map()
+  for (const n of sliceNodes) {
+    const w = waveById.get(String(n.id)) ?? 0
+    if (!waveGroups.has(w)) waveGroups.set(w, [])
+    waveGroups.get(w).push(n)
+  }
+  const sortedWaves = [...waveGroups.keys()].sort((a, b) => a - b)
+
+  // ── Group non-slice nodes by tier ─────────────────────────────────────
   /** @type {Map<string, object[]>} */
   const byTier = new Map()
-  for (const t of TIER_ORDER) byTier.set(t, [])
+  for (const t of TIER_ORDER) {
+    if (t !== 'slice') byTier.set(t, [])
+  }
   const unknownTier = []
-  for (const n of nodes) {
+  for (const n of nonSliceNodes) {
     const t = String(n.type ?? '')
     if (byTier.has(t)) {
       byTier.get(t).push(n)
@@ -107,24 +191,46 @@ function computeLayout(nodes) {
       unknownTier.push(n)
     }
   }
-  // Assign tiers (unknown types go at bottom)
-  if (unknownTier.length) {
-    byTier.set('unknown', unknownTier)
-  }
 
-  // Compute tier y positions
-  const tierBands = []  // { tier, label, y, nodes }
+  // ── Build tier bands: pre-slice tiers, wave bands, post-slice tiers ───
+  const PRE_SLICE  = ['objective', 'spec-requirement']
+  const POST_SLICE = ['self-test', 'live-verify', 'gate', 'artifact-evidence']
+
+  /** @type {{ tier: string, label: string, y: number, nodes: object[] }[]} */
+  const tierBands = []
   let y = PAD_TOP
-  const activeTiers = TIER_ORDER.filter((t) => (byTier.get(t)?.length ?? 0) > 0)
 
-  for (const tier of activeTiers) {
+  for (const tier of PRE_SLICE) {
     const tierNodes = byTier.get(tier) ?? []
+    if (tierNodes.length === 0) continue
     tierBands.push({ tier, label: TIER_LABELS[tier] ?? tier, y, nodes: tierNodes })
     y += TIER_H
   }
+
+  // One swimlane per wave; single-wave motives show "Slices" (no wave suffix)
+  for (const w of sortedWaves) {
+    const waveNodes = waveGroups.get(w) ?? []
+    if (waveNodes.length === 0) continue
+    const label = sortedWaves.length === 1 ? TIER_LABELS['slice'] : `Slices — Wave ${w}`
+    tierBands.push({ tier: 'slice', label, y, nodes: waveNodes })
+    y += TIER_H
+  }
+
+  for (const tier of POST_SLICE) {
+    const tierNodes = byTier.get(tier) ?? []
+    if (tierNodes.length === 0) continue
+    tierBands.push({ tier, label: TIER_LABELS[tier] ?? tier, y, nodes: tierNodes })
+    y += TIER_H
+  }
+
+  if (unknownTier.length > 0) {
+    tierBands.push({ tier: 'unknown', label: 'Unknown', y, nodes: unknownTier })
+    y += TIER_H
+  }
+
   const svgH = y + PAD_TOP
 
-  // Compute node positions within each tier
+  // ── Node positions within each band ───────────────────────────────────
   /** @type {Map<string, {x: number, y: number, tier: string}>} */
   const positions = new Map()
   for (const band of tierBands) {
@@ -142,14 +248,14 @@ function computeLayout(nodes) {
     }
   }
 
-  return { positions, tierBands, svgH }
+  return { positions, tierBands, svgH, frontierIds, blockerChains, cycleDetected }
 }
 
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
 
-function renderSvg(nodes, edges, positions, tierBands, svgH) {
+function renderSvg(nodes, edges, positions, tierBands, svgH, frontierIds, blockerChains) {
   const lines = []
   lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_W} ${svgH}" width="${SVG_W}" height="${svgH}" role="img" aria-label="Traceability chain">`)
   lines.push(`  <defs>`)
@@ -201,15 +307,38 @@ function renderSvg(nodes, edges, positions, tierBands, svgH) {
     const y = pos.y - NODE_H / 2
     const label = shortLabel(node)
     const nodeType = String(node.type ?? 'unknown')
+    const nodeId = String(node.id)
+
+    const isFrontier = frontierIds?.has(nodeId) ?? false
+    const blockers = blockerChains?.get(nodeId)   // string[] | undefined
+    const hasBlockers = (blockers?.length ?? 0) > 0
+
+    const extraClass = isFrontier ? ' node-frontier' : (hasBlockers ? ' node-blocked' : '')
+    const frontierAttr = isFrontier ? ' data-frontier="true"' : ''
+    const blockersAttr = hasBlockers
+      ? ` data-blockers="${esc(blockers.slice().sort().join(','))}"`
+      : ''
+
+    // Gold ring drawn BEFORE the node rect so it appears behind the fill
+    const frontierRing = isFrontier
+      ? `<rect x="${x - 3}" y="${y - 3}" width="${NODE_W + 6}" height="${NODE_H + 6}" rx="8" ` +
+        `fill="none" stroke="#f59e0b" stroke-width="2.5" class="frontier-ring"/>`
+      : ''
+
+    // Tooltip includes actionability / blocker chain info
+    const titleExtra = isFrontier
+      ? ' | READY — actionable now'
+      : (hasBlockers ? ` | Blocked by: ${blockers.slice().sort().join(', ')}` : '')
 
     lines.push(
-      `  <g class="node node-${esc(nodeType)}" data-type="${esc(nodeType)}" ` +
-      `data-id="${esc(String(node.id))}">` +
+      `  <g class="node node-${esc(nodeType)}${extraClass}" data-type="${esc(nodeType)}" ` +
+      `data-id="${esc(nodeId)}"${frontierAttr}${blockersAttr}>` +
+      frontierRing +
       `<rect x="${x}" y="${y}" width="${NODE_W}" height="${NODE_H}" rx="6" ` +
       `fill="var(--node-fill)" stroke="var(--node-stroke-${esc(nodeType.replace('-', '_'))})" stroke-width="1.5"/>` +
       `<text x="${pos.x}" y="${pos.y + 4}" text-anchor="middle" font-size="11" font-family="system-ui,sans-serif" ` +
-      `fill="var(--node-text)" clip-path="url(#clip-${esc(String(node.id).replace(/[^a-z0-9]/gi, '_'))})">${esc(label.length > 18 ? label.slice(0, 17) + '…' : label)}</text>` +
-      `<title>${esc(nodeType)}: ${esc(String(node.id))}</title>` +
+      `fill="var(--node-text)" clip-path="url(#clip-${esc(nodeId.replace(/[^a-z0-9]/gi, '_'))})">${esc(label.length > 18 ? label.slice(0, 17) + '…' : label)}</text>` +
+      `<title>${esc(nodeType)}: ${esc(nodeId)}${titleExtra}</title>` +
       `</g>`,
     )
   }
@@ -254,6 +383,71 @@ function renderNeedsYou(edges, nodes) {
 <ul class="needs-list">
 ${rows.join('\n')}
 </ul>
+</section>`
+}
+
+// ---------------------------------------------------------------------------
+// wave-status: ready-frontier + blocked chains
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the wave-status section: frontier (ready-now) slices and blocked-chain list.
+ *
+ * Pure — same input → same output.
+ *
+ * @param {object[]}              nodes
+ * @param {Set<string>}           frontierIds
+ * @param {Map<string,Set<string>>} blockerChains
+ * @returns {string} HTML section or empty string when there are no slice nodes.
+ */
+function renderWaveStatus(nodes, frontierIds, blockerChains) {
+  const sliceNodes = nodes.filter((n) => String(n.type ?? '') === 'slice')
+  if (sliceNodes.length === 0) return ''
+
+  const frontierItems = sliceNodes.filter((n) => frontierIds?.has(String(n.id)))
+  const blockedItems  = sliceNodes.filter((n) => {
+    const ch = blockerChains?.get(String(n.id))
+    return ch && ch.length > 0
+  })
+
+  if (frontierItems.length === 0 && blockedItems.length === 0) return ''
+
+  const parts = []
+
+  if (frontierItems.length > 0) {
+    const rows = frontierItems.map((n) =>
+      `  <li class="frontier-item">` +
+      `<span class="badge-frontier">READY</span> ` +
+      `<span class="node-ref">${esc(shortLabel(n))}</span>` +
+      `</li>`
+    )
+    parts.push(
+      `<div class="frontier-section">\n` +
+      `<h3>Ready Now <span class="count">(${frontierItems.length})</span></h3>\n` +
+      `<ul class="frontier-list">\n${rows.join('\n')}\n</ul>\n</div>`
+    )
+  }
+
+  if (blockedItems.length > 0) {
+    const rows = blockedItems.map((n) => {
+      const ch = blockerChains.get(String(n.id))
+      const blockerList = ch.slice().sort().join(', ')
+      return `  <li class="blocked-item">` +
+        `<span class="node-ref">${esc(shortLabel(n))}</span>` +
+        ` ← blocked by: ` +
+        `<span class="blockers-list">${esc(blockerList)}</span>` +
+        `</li>`
+    })
+    parts.push(
+      `<div class="blocked-chains-section">\n` +
+      `<h3>Blocked Chains <span class="count">(${blockedItems.length})</span></h3>\n` +
+      `<ul class="blocked-list">\n${rows.join('\n')}\n</ul>\n</div>`
+    )
+  }
+
+  return `<section class="wave-status">
+<h2>Wave Status</h2>
+${parts.join('\n')}
 </section>`
 }
 
@@ -483,6 +677,66 @@ h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; }
 .stat-unproven .num { color: #d97706; }
 .stat-stale   .num { color: #ef4444; }
 .stat-missing .num { color: #dc2626; }
+
+/* ── frontier / blocked node markers ────────────────────────────────── */
+.node-frontier .frontier-ring { animation: frontier-pulse 2s ease-in-out infinite; }
+@keyframes frontier-pulse {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.4; }
+}
+
+.node-blocked rect:not([class]) { opacity: 0.6; }
+
+/* ── wave-status section ─────────────────────────────────────────────── */
+.wave-status {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.wave-status h2 { width: 100%; margin-bottom: 0; }
+
+.frontier-section, .blocked-chains-section { flex: 1; min-width: 200px; }
+
+.frontier-list, .blocked-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.frontier-item, .blocked-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.03);
+}
+
+.badge-frontier {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
+}
+
+.blockers-list {
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
 `
 
 // ---------------------------------------------------------------------------
@@ -504,8 +758,9 @@ export function renderTraceHtml(classifiedGraph, slug = '') {
   const nodes = Array.isArray(classifiedGraph?.nodes) ? classifiedGraph.nodes : []
   const edges = Array.isArray(classifiedGraph?.edges) ? classifiedGraph.edges : []
 
-  const { positions, tierBands, svgH } = computeLayout(nodes)
-  const svgMarkup = renderSvg(nodes, edges, positions, tierBands, svgH)
+  const { positions, tierBands, svgH, frontierIds, blockerChains } = computeLayout(nodes, edges)
+  const svgMarkup = renderSvg(nodes, edges, positions, tierBands, svgH, frontierIds, blockerChains)
+  const waveStatus = renderWaveStatus(nodes, frontierIds, blockerChains)
   const needsYou = renderNeedsYou(edges, nodes)
   const legend = renderLegend()
 
@@ -544,6 +799,7 @@ ${legend}
 <div class="chart-wrap">
 ${svgMarkup}
 </div>
+${waveStatus}
 ${needsYou}
 </body>
 </html>`

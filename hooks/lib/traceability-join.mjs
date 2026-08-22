@@ -74,8 +74,8 @@ function makeSpecReqNode(req) {
 }
 
 /**
- * @param {{ id: string, status: string, desc?: string|null }} slice
- * @returns {{ type: 'slice', id: string, sliceId: string, status: string, desc: string|null, label: string }}
+ * @param {{ id: string, status: string, desc?: string|null, wave?: number|null }} slice
+ * @returns {{ type: 'slice', id: string, sliceId: string, status: string, desc: string|null, wave: number|null, label: string }}
  */
 function makeSliceNode(slice) {
   const desc = slice.desc ?? null
@@ -85,6 +85,7 @@ function makeSliceNode(slice) {
     sliceId: slice.id,
     status: slice.status,
     desc,
+    wave: slice.wave ?? null,
     label: desc ? `${slice.id}: ${desc}` : slice.id,
   }
 }

@@ -30,6 +30,64 @@ import { buildTraceabilityGraph } from './lib/traceability-join.mjs'
 import { classifyTraceabilityGraph } from './lib/traceability-classify.mjs'
 import { readEvidence, markStaleness } from './lib/traceability-evidence.mjs'
 import { appendEvent, resolveShardPath } from './lib/journal-io.mjs'
+import { topoLayers, frontier, transitiveBlockers, hasCycle } from './lib/dag-utils.mjs'
+
+// ---------------------------------------------------------------------------
+// V4 — Wave-band computation (shared semantics; consumed by /graph JSON + HTML)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute wave-band assignments, frontier set, and transitive blocker maps
+ * for a set of slices. Uses dag-utils for all graph operations — never
+ * reimplements them. Both the JSON surface and the HTML surface call this
+ * function so they are guaranteed to agree on every result.
+ *
+ * @param {import('./lib/dag-utils.mjs').DagSlice[]} slices
+ * @returns {{
+ *   waveBySliceId: Map<string, number|null>,
+ *   frontierIds: Set<string>,
+ *   blockersBySliceId: Map<string, string[]>,
+ * }}
+ */
+export function computeWaveBands(slices) {
+  // Guard cycles — hasCycle() returns true when present; topoLayers() still
+  // runs but cycle members get no layer assignment.
+  const cyclePresent = hasCycle(slices)
+  const layers = topoLayers(slices) // string[][]
+
+  // Build topoDepth map: sliceId → layer index
+  const topoDepth = new Map()
+  layers.forEach((layer, depth) => {
+    layer.forEach((id) => topoDepth.set(id, depth))
+  })
+
+  // Wave band: prefer explicit ledger `wave` (non-null), fall back to topo depth.
+  // Cycle members (no topo layer) get null — layout must handle gracefully.
+  const waveBySliceId = new Map()
+  for (const slice of slices) {
+    const explicit = slice.wave != null ? slice.wave : null
+    if (explicit !== null) {
+      waveBySliceId.set(slice.id, explicit)
+    } else if (topoDepth.has(slice.id)) {
+      waveBySliceId.set(slice.id, topoDepth.get(slice.id))
+    } else {
+      // Cycle member — assign null so layout can skip or clamp
+      waveBySliceId.set(slice.id, cyclePresent ? null : 0)
+    }
+  }
+
+  // Frontier: pending slices with all blockers complete
+  const frontierSlices = frontier(slices)
+  const frontierIds = new Set(frontierSlices.map((s) => s.id))
+
+  // Transitive blockers for each slice
+  const blockersBySliceId = new Map()
+  for (const slice of slices) {
+    blockersBySliceId.set(slice.id, transitiveBlockers(slices, slice.id))
+  }
+
+  return { waveBySliceId, frontierIds, blockersBySliceId }
+}
 
 // ---------------------------------------------------------------------------
 // Pipeline assembly
@@ -37,6 +95,9 @@ import { appendEvent, resolveShardPath } from './lib/journal-io.mjs'
 
 /**
  * Load motive data and run the full classify pipeline.
+ * Augments each slice node with wave-band data: waveBand, isFrontier,
+ * transitiveBlockers. These fields drive both the /graph JSON response and
+ * the interactive HTML layout — computed once here, never re-derived.
  *
  * @param {string} slug        - Motive slug
  * @param {string} projectDir  - Absolute project root
@@ -44,6 +105,7 @@ import { appendEvent, resolveShardPath } from './lib/journal-io.mjs'
  */
 export function buildClassifiedGraph(slug, projectDir) {
   const adapter = new NativeSpineAdapter({ projectDir, slug })
+  const slices = adapter.getSlices()
   const baseGraph = buildTraceabilityGraph(adapter)
 
   // Load stamped evidence refs and mark staleness
@@ -51,7 +113,21 @@ export function buildClassifiedGraph(slug, projectDir) {
   const stampedRefs = markStaleness(rawRefs, null) // null = no current hash → all stale-check deferred
 
   const classified = classifyTraceabilityGraph(baseGraph, stampedRefs)
-  return { ...classified, slug }
+
+  // Augment slice nodes with wave-band data (V4)
+  const { waveBySliceId, frontierIds, blockersBySliceId } = computeWaveBands(slices)
+  const nodes = classified.nodes.map((node) => {
+    if (node.type !== 'slice') return node
+    const sid = /** @type {string} */ (node.sliceId)
+    return {
+      ...node,
+      waveBand: waveBySliceId.has(sid) ? waveBySliceId.get(sid) : null,
+      isFrontier: frontierIds.has(sid),
+      transitiveBlockers: blockersBySliceId.get(sid) ?? [],
+    }
+  })
+
+  return { ...classified, nodes, slug }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +216,11 @@ html,body{height:100%;overflow:hidden;background:#0f172a;color:#e2e8f0;font-fami
 /* Tier separators (background) */
 .tier-sep{stroke:#1e293b;stroke-width:1}
 .tier-lbl{fill:#334155;font-size:10px;font-style:italic;dominant-baseline:hanging}
+/* Wave-band sub-separators within slice tier */
+.wave-sep{stroke:#1e3a5f;stroke-width:1;stroke-dasharray:4,4}
+.wave-lbl{fill:#1e3a5f;font-size:9px;font-style:italic;dominant-baseline:hanging}
+/* Frontier node ring */
+.n-frontier .n-circle{stroke:#10b981 !important;stroke-width:3 !important;stroke-dasharray:6,2}
 /* Edges */
 .e-line{fill:none;stroke-width:1.5}
 .ec-proven{stroke:#22c55e}
@@ -168,6 +249,10 @@ html,body{height:100%;overflow:hidden;background:#0f172a;color:#e2e8f0;font-fami
 .rj-btn{margin-top:6px;padding:3px 10px;background:#1e3a5f;border:1px solid #3b82f6;border-radius:4px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:inherit;width:100%}
 .rj-btn:hover{background:#1d4ed8;color:#fff}
 .rj-btn:disabled{opacity:.4;cursor:not-allowed}
+/* Wave / frontier / blocker info in popover */
+.p-wave{margin-top:4px;font-size:10px;color:#7dd3fc}
+.p-frontier{margin-top:4px;font-size:10px;color:#10b981;font-weight:600}
+.p-blockers{margin-top:4px;font-size:10px;color:#f87171;word-break:break-all}
 </style>
 </head>
 <body>
@@ -260,6 +345,16 @@ var TIER_LABELS = [
 
 var NUM_TIERS = 6;
 
+// ── V4: Wave-band layout for slice nodes ──────────────────────────────────────
+// Compute the number of distinct wave bands present in the graph data.
+var maxWaveBand = -1;
+G.nodes.forEach(function (n) {
+  if (n.type === 'slice' && n.waveBand != null && n.waveBand > maxWaveBand) {
+    maxWaveBand = n.waveBand;
+  }
+});
+var NUM_WAVE_BANDS = maxWaveBand >= 0 ? maxWaveBand + 1 : 1;
+
 // ── Node type → fill color ──────────────────────────────────────────────────
 var NODE_FILL = {
   'objective':              '#4c1d95',
@@ -298,25 +393,56 @@ var H = svg.clientHeight || window.innerHeight;
 var TIER_H = H / NUM_TIERS;
 
 // ── Build initial node positions ─────────────────────────────────────────────
+// Slice nodes are grouped by wave band; other nodes by tier.
+var SLICE_TIER_TOP = TIER_MAP['slice'] * TIER_H;
+var WAVE_BAND_H = TIER_H / NUM_WAVE_BANDS;
+
+function nodeTargetY(type, waveBand) {
+  var t = TIER_MAP[type] != null ? TIER_MAP[type] : 2;
+  if (type === 'slice' && waveBand != null) {
+    return SLICE_TIER_TOP + (waveBand + 0.5) * WAVE_BAND_H;
+  }
+  return (t + 0.5) * TIER_H;
+}
+
+// Count nodes per tier/wave-band for horizontal spacing
 var tierCount = {};
+var waveBandCount = {};
 G.nodes.forEach(function (n) {
-  var t = TIER_MAP[n.type] != null ? TIER_MAP[n.type] : 2;
-  tierCount[t] = (tierCount[t] || 0) + 1;
+  if (n.type === 'slice') {
+    var wb = n.waveBand != null ? n.waveBand : 0;
+    waveBandCount[wb] = (waveBandCount[wb] || 0) + 1;
+  } else {
+    var t = TIER_MAP[n.type] != null ? TIER_MAP[n.type] : 2;
+    tierCount[t] = (tierCount[t] || 0) + 1;
+  }
 });
 
 var tierIdx = {};
+var waveBandIdx = {};
 var simNodes = G.nodes.map(function (n) {
-  var t = TIER_MAP[n.type] != null ? TIER_MAP[n.type] : 2;
-  var idx = tierIdx[t] || 0;
-  tierIdx[t] = idx + 1;
-  var total = tierCount[t] || 1;
+  var idx, total;
+  if (n.type === 'slice') {
+    var wb = n.waveBand != null ? n.waveBand : 0;
+    idx = waveBandIdx[wb] || 0;
+    waveBandIdx[wb] = idx + 1;
+    total = waveBandCount[wb] || 1;
+  } else {
+    var t = TIER_MAP[n.type] != null ? TIER_MAP[n.type] : 2;
+    idx = tierIdx[t] || 0;
+    tierIdx[t] = idx + 1;
+    total = tierCount[t] || 1;
+  }
   var r = n.type === 'objective' ? 22 : (n.type === 'slice' || n.type === 'spec-requirement') ? 16 : 12;
   return {
     id: n.id,
     type: n.type,
     label: n.label || n.id,
+    waveBand: n.waveBand != null ? n.waveBand : null,
+    isFrontier: n.isFrontier || false,
+    transitiveBlockers: n.transitiveBlockers || [],
     x: (idx + 1) * W / (total + 1),
-    y: (t + 0.5) * TIER_H,
+    y: nodeTargetY(n.type, n.waveBand),
     vx: 0, vy: 0,
     r: r,
     ref: n  // original node data
@@ -373,9 +499,9 @@ function nodeY(type) {
       b.vx -= fx; b.vy -= fy;
     });
 
-    // Band gravity — pull each node toward its tier's Y band
+    // Band gravity — pull each node toward its tier/wave-band Y
     simNodes.forEach(function (n) {
-      var ty = nodeY(n.type);
+      var ty = nodeTargetY(n.type, n.waveBand);
       n.vy += (ty - n.y) * 0.18 * alpha;
       // Weak horizontal centering
       n.vx += (W / 2 - n.x) * 0.004 * alpha;
@@ -419,6 +545,19 @@ for (var ti = 0; ti < NUM_TIERS; ti++) {
     });
     bgLayer.appendChild(sep);
   }
+}
+
+// ── V4: Wave-band sub-separators within the slice tier ────────────────────────
+var SLICE_TIER_INDEX = TIER_MAP['slice']; // 3
+for (var wb = 0; wb < NUM_WAVE_BANDS; wb++) {
+  var wbY = SLICE_TIER_INDEX * TIER_H + wb * WAVE_BAND_H;
+  if (wb > 0) {
+    var wbSep = svgEl('line', { x1: 0, y1: wbY, x2: W, y2: wbY, 'class': 'wave-sep' });
+    bgLayer.appendChild(wbSep);
+  }
+  var wbLbl = svgEl('text', { x: W - 70, y: wbY + 4, 'class': 'wave-lbl' });
+  wbLbl.textContent = 'Wave ' + wb;
+  bgLayer.appendChild(wbLbl);
 }
 
 // ── Compute per-node status from incoming classified edges ────────────────────
@@ -474,11 +613,15 @@ simNodes.forEach(function (n) {
   var status = nodeStatus[n.id] || 'unproven';
   var strokeColor = CLASS_COLOR[status] || '#475569';
   var fillColor = NODE_FILL[n.type] || '#1f2937';
+  // V4: frontier nodes get a distinct class for CSS styling
+  var grpClass = 'n-grp' + (n.isFrontier ? ' n-frontier' : '');
 
   var grp = svgEl('g', {
-    'class': 'n-grp',
+    'class': grpClass,
     'transform': 'translate(' + n.x + ',' + n.y + ')',
-    'data-id': n.id
+    'data-id': n.id,
+    'data-wave': n.waveBand != null ? String(n.waveBand) : '',
+    'data-frontier': n.isFrontier ? '1' : '0'
   });
 
   var circle = svgEl('circle', {
@@ -523,10 +666,25 @@ function showPopover(n, screenX, screenY) {
     evHtml = '<span class="p-ev-none">No artifact evidence recorded</span>';
   }
 
+  // V4: wave-band, frontier, and blocked-chain info for slice nodes
+  var waveHtml = '';
+  if (n.type === 'slice') {
+    if (n.waveBand != null) {
+      waveHtml += '<div class="p-wave">Wave ' + n.waveBand + '</div>';
+    }
+    if (n.isFrontier) {
+      waveHtml += '<div class="p-frontier">▶ Ready to start (frontier)</div>';
+    }
+    if (n.transitiveBlockers && n.transitiveBlockers.length > 0) {
+      waveHtml += '<div class="p-blockers">Blocked by: ' + n.transitiveBlockers.join(', ') + '</div>';
+    }
+  }
+
   popover.innerHTML =
     '<h3>' + (n.label || n.id).slice(0, 50) + '</h3>' +
     '<div class="p-type">' + n.type + '</div>' +
     '<span class="p-badge pb-' + status + '">' + badgeText + '</span>' +
+    waveHtml +
     '<div class="p-ev">' + evHtml + '</div>';
 
   var pw = 290, ph = 160;

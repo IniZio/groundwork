@@ -31,6 +31,7 @@ import {
   buildHtml,
   buildClassifiedGraph,
   rejudgeLink,
+  computeWaveBands,
 } from '../../hooks/traceability-serve.mjs'
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,125 @@ describe('traceability-serve — GET /graph', () => {
     expect(body.slug).toBe('test-serve-motive')
   })
 })
+
+// ---------------------------------------------------------------------------
+// V4 — Wave-band fields on /graph nodes
+// ---------------------------------------------------------------------------
+
+const WAVE_FIXTURE_SLICES = [
+  { id: 'W1', status: 'complete', blocked_by: [],   wave: null, kind: 'impl' as const },
+  { id: 'W2', status: 'pending',  blocked_by: ['W1'], wave: null, kind: 'impl' as const },
+  { id: 'W3', status: 'pending',  blocked_by: ['W1'], wave: null, kind: 'impl' as const },
+  { id: 'W4', status: 'pending',  blocked_by: ['W2', 'W3'], wave: null, kind: 'impl' as const },
+]
+
+function buildWaveFixtureGraph() {
+  const adapter = makeAdapter({ slug: 'wave-test', slices: WAVE_FIXTURE_SLICES })
+  const base = buildTraceabilityGraph(adapter)
+  const classified = classifyTraceabilityGraph(base, [])
+  // computeWaveBands augments via buildClassifiedGraph; here we test the pure function directly
+  const { waveBySliceId, frontierIds, blockersBySliceId } = computeWaveBands(WAVE_FIXTURE_SLICES as any)
+  const nodes = classified.nodes.map((n: any) => {
+    if (n.type !== 'slice') return n
+    const sid = n.sliceId as string
+    return {
+      ...n,
+      waveBand: waveBySliceId.has(sid) ? waveBySliceId.get(sid) : null,
+      isFrontier: frontierIds.has(sid),
+      transitiveBlockers: blockersBySliceId.get(sid) ?? [],
+    }
+  })
+  return { ...classified, nodes, slug: 'wave-test' }
+}
+
+describe('traceability-serve — V4 wave-band fields', () => {
+  it('computeWaveBands assigns wave 0 to root slices and wave 1 to dependents', () => {
+    const { waveBySliceId } = computeWaveBands(WAVE_FIXTURE_SLICES as any)
+    expect(waveBySliceId.get('W1')).toBe(0)
+    expect(waveBySliceId.get('W2')).toBe(1)
+    expect(waveBySliceId.get('W3')).toBe(1)
+    expect(waveBySliceId.get('W4')).toBe(2)
+  })
+
+  it('computeWaveBands identifies frontier (W2 and W3 — W1 complete, W4 blocked)', () => {
+    const { frontierIds } = computeWaveBands(WAVE_FIXTURE_SLICES as any)
+    // W1 is complete → not frontier. W2/W3 pending with all blockers complete → frontier.
+    // W4 blocked by W2/W3 (not complete) → not frontier.
+    expect(frontierIds.has('W2')).toBe(true)
+    expect(frontierIds.has('W3')).toBe(true)
+    expect(frontierIds.has('W1')).toBe(false)
+    expect(frontierIds.has('W4')).toBe(false)
+  })
+
+  it('computeWaveBands returns transitive blockers for W4', () => {
+    const { blockersBySliceId } = computeWaveBands(WAVE_FIXTURE_SLICES as any)
+    const w4Blockers = blockersBySliceId.get('W4') ?? []
+    // W4 is blocked by W2, W3, and transitively by W1
+    expect(w4Blockers).toContain('W2')
+    expect(w4Blockers).toContain('W3')
+    expect(w4Blockers).toContain('W1')
+  })
+
+  it('/graph nodes carry waveBand, isFrontier, transitiveBlockers on slice nodes', async () => {
+    const graph = buildWaveFixtureGraph()
+    const { server, url } = await startServer(graph, 0)
+    openServers.push(server)
+
+    const body = await fetch(url + '/graph').then((r) => r.json()) as { nodes: any[] }
+    const sliceNodes = body.nodes.filter((n: any) => n.type === 'slice')
+    expect(sliceNodes.length).toBeGreaterThan(0)
+    for (const n of sliceNodes) {
+      expect(n).toHaveProperty('waveBand')
+      expect(n).toHaveProperty('isFrontier')
+      expect(n).toHaveProperty('transitiveBlockers')
+      expect(typeof n.isFrontier).toBe('boolean')
+      expect(Array.isArray(n.transitiveBlockers)).toBe(true)
+    }
+    // W4 must be identified as not-frontier with transitive blockers
+    const w4 = sliceNodes.find((n: any) => n.sliceId === 'W4')
+    expect(w4).toBeDefined()
+    expect(w4.isFrontier).toBe(false)
+    expect(w4.transitiveBlockers).toContain('W1')
+  })
+
+  it('buildHtml embeds waveBand, isFrontier in page source for slice nodes', () => {
+    const graph = buildWaveFixtureGraph()
+    const html = buildHtml(graph)
+    // The embedded JSON must carry the wave-band fields
+    expect(html).toContain('"waveBand"')
+    expect(html).toContain('"isFrontier"')
+    expect(html).toContain('"transitiveBlockers"')
+  })
+
+  it('uses explicit wave field from ledger when present (overrides topo depth)', () => {
+    const slicesWithExplicit = [
+      { id: 'E1', status: 'complete', blocked_by: [], wave: 5, kind: 'impl' as const },
+      { id: 'E2', status: 'pending',  blocked_by: ['E1'], wave: null, kind: 'impl' as const },
+    ]
+    const { waveBySliceId } = computeWaveBands(slicesWithExplicit as any)
+    // E1 has explicit wave=5 (overrides topo depth 0)
+    expect(waveBySliceId.get('E1')).toBe(5)
+    // E2 has no explicit wave → topo depth 1
+    expect(waveBySliceId.get('E2')).toBe(1)
+  })
+
+  it('cycle in blockers does not hang (hasCycle guard)', () => {
+    const cycleSlices = [
+      { id: 'C1', status: 'pending', blocked_by: ['C2'], wave: null, kind: 'impl' as const },
+      { id: 'C2', status: 'pending', blocked_by: ['C1'], wave: null, kind: 'impl' as const },
+    ]
+    // Must complete without throwing or hanging
+    expect(() => computeWaveBands(cycleSlices as any)).not.toThrow()
+    const { waveBySliceId } = computeWaveBands(cycleSlices as any)
+    // Cycle members get null (not hung at any specific wave)
+    expect(waveBySliceId.get('C1')).toBeNull()
+    expect(waveBySliceId.get('C2')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// V4 — POST /rejudge still works (regression guard)
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // S6 — GET /

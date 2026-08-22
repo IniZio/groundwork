@@ -15,6 +15,7 @@ import { readOrderedEvents } from './journal-order.mjs'
 import { assembleGraphFold } from './motive-dag.mjs'
 import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
 import { resolvedUnits, inFlightUnit, isExhausted } from './pacing.mjs'
+import { frontier as dagFrontier } from './dag-utils.mjs'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -662,6 +663,19 @@ function _buildJournalAcCoverage(events) {
     }
   }
 
+  // Post-loop: apply AC_RETRACTION events.  Collected after the full event
+  // scan so the result is order-independent — a retraction before or after
+  // the original claim produces the same outcome.
+  for (const ev of events) {
+    if (ev.type !== 'AC_RETRACTION') continue
+    const d = ev.data ?? {}
+    const acId = d.ac != null ? String(d.ac) : null
+    const sliceId = d.slice != null ? String(d.slice) : null
+    if (acId == null || sliceId == null) continue
+    const slicesMap = acMap.get(acId)
+    if (slicesMap) slicesMap.delete(sliceId)
+  }
+
   // Flatten to Map<acId, [{id, status}]>
   const result = new Map()
   for (const [acId, slicesMap] of acMap) {
@@ -740,12 +754,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     const deps = _deps(s)
     return deps.length > 0 && deps.some((d) => !completeIds.has(d))
   })
-  const frontierList = slices.filter((s) => {
-    if (s.status === 'complete' || s.status === 'in_progress') return false
-    if (s.claimed_by) return false
-    const deps = _deps(s)
-    return deps.every((d) => completeIds.has(d))
-  })
+  const frontierList = dagFrontier(slices).filter((s) => !s.claimed_by)
 
   // Helper: render optional _(decisions: ...)_ suffix for a slice
   const _decSuffix = (s) => {
@@ -977,12 +986,13 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       if (isMet) {
         const coverIds = covering.map((s) => s.id).join(', ')
         parts.push(`- ✓ **${key}** — met (covered by: ${coverIds})${stmtSuffix}`)
+      } else if (covering.length === 0) {
+        // PLANNING HOLE — no slice has declared covers_ac for this AC.
+        // Visually distinct from "covered but incomplete" so a reader can spot it at a glance.
+        parts.push(`- ⚠ **${key}** — PLANNING HOLE: no covering slices assigned${stmtSuffix}`)
       } else {
         const incomplete = covering.filter((s) => s.status !== 'complete')
-        const why = covering.length === 0
-          ? 'no covering slices assigned'
-          : `incomplete slices: ${incomplete.map((s) => s.id).join(', ')}`
-        parts.push(`- ✗ **${key}** — unmet (${why})${stmtSuffix}`)
+        parts.push(`- ✗ **${key}** — covered, incomplete (slices: ${incomplete.map((s) => s.id).join(', ')})${stmtSuffix}`)
       }
     }
     parts.push('')

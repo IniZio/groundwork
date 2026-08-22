@@ -37,12 +37,13 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey, keyPath } from './lib/gate-seal.mjs'
-import { checkPace, resolvedUnits } from './lib/pacing.mjs'
+import { checkPace, resolvedUnits, checkMilestoneArtifacts } from './lib/pacing.mjs'
 import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
 import { regenerateMotiveTraceHtml } from './lib/traceability-ambient.mjs'
 import { assembleGraphFold, validateFoldRefs } from './lib/motive-dag.mjs'
+import { frontier as dagFrontier } from './lib/dag-utils.mjs'
 
 /**
  * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
@@ -637,6 +638,25 @@ const HELP = {
       '--token <t>   orchestrator write-token (required — issuance is orchestrator-only)',
     ],
   },
+  'await-human': {
+    summary: 'set or clear the awaiting-human hold (silences the stop-gate while paused for a human decision)',
+    usage: 'ledger await-human [clear] --token <write_token>',
+    flags: [
+      'clear         positional — pass "clear" as the first argument to release the hold',
+      '--token <t>   orchestrator write-token (required — hold is orchestrator-only)',
+    ],
+  },
+  'milestone-signoff': {
+    summary: 'record a human sign-off on the current milestone (policy=milestone only; SECURITY: requires write_token)',
+    usage: 'ledger milestone-signoff --verdict APPROVE|REJECT --verified-by <name> --token <write_token>',
+    flags: [
+      '--verdict APPROVE|REJECT    required — APPROVE releases the pacing gate; REJECT holds it',
+      '--verified-by <name>        required — identity of the human signer',
+      '--note "…"                  optional — remediation note (recommended for REJECT)',
+      '--build-hash <hash>         optional — current build hash; artifacts with a different captured_build_hash are rejected as stale',
+      '--token <t>                 orchestrator write-token (required — sign-off is orchestrator-only; subagents must not self-sign)',
+    ],
+  },
   rm: {
     summary: 'remove one or more slices from the ledger',
     usage: 'ledger rm <id> [<id> ...]',
@@ -825,6 +845,128 @@ function cmdComplete(args) {
   if (missing.length) die(`unknown slice id(s): ${missing.join(', ')}`, 2)
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${ids.join(', ')} ✓ (${done}/${total} complete)\n`)
+}
+
+/**
+ * S5: Set or clear the awaiting-human hold on the ledger.
+ *
+ * While the hold is active (awaiting_human:true, valid seal), the stop-gate will
+ * NOT block and will NOT increment the reinforcements counter.  The hold defers
+ * nagging; it does NOT bypass the completion gate — releasing it resumes normal
+ * enforcement (all slices complete + advisor APPROVE still required).
+ *
+ * The hold requires the orchestrator write_token (same as complete/gate/abandon).
+ * Any direct file write adding awaiting_human:true changes the canonical release
+ * state without updating the HMAC → seal fails → stop-gate blocks (fail-closed).
+ */
+function cmdAwaitHuman(args) {
+  const { flags, positionals } = parseFlags(args ?? [])
+  // Use a positional subcommand "clear" rather than a boolean --flag, because
+  // parseFlags always consumes the next arg as a flag value — --clear --token X
+  // would set flags['clear']='--token' and lose the token entirely.
+  const clearing = positionals[0] === 'clear'
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)  // orchestrator-only — same authority as complete/gate/abandon
+    if (clearing) {
+      delete l.awaiting_human
+    } else {
+      l.awaiting_human = true
+    }
+    reSeal(l, projectDir)  // re-seal so stop-gate can verify the hold was set legitimately
+  })
+  if (clearing) {
+    process.stdout.write('awaiting-human hold cleared — normal gate enforcement resumes\n')
+  } else {
+    process.stdout.write('awaiting-human hold set — stop-gate will not nag until the hold is cleared\n')
+  }
+}
+
+/**
+ * S7: Record a human milestone sign-off on the ledger.
+ *
+ * SECURITY — write_token required (same authority as complete/gate/abandon).
+ * A subagent cannot present the write_token (CLAUDE.md: "MUST NOT pass it to
+ * subagents"), so requiring it here structurally prevents self-signing.
+ *
+ * For verdict=APPROVE with --build-hash supplied, each declared artifact whose
+ * captured_build_hash differs from the supplied current hash is rejected as stale;
+ * the command exits 1 and does NOT write the sign-off.
+ *
+ * The written milestone_signoff is included in canonicalReleaseState (gate-seal.mjs),
+ * so any direct file write that injects an APPROVE verdict without going through this
+ * command changes the seal → stop-gate blocks (fail-closed).
+ */
+function cmdMilestoneSignoff(args) {
+  const { flags } = parseFlags(args ?? [])
+
+  const verdict = flags.verdict
+  if (!verdict || !['APPROVE', 'REJECT'].includes(verdict)) {
+    die('milestone-signoff requires --verdict APPROVE|REJECT', 2)
+  }
+  const verifiedBy = flags['verified-by']
+  if (!verifiedBy) {
+    die('milestone-signoff requires --verified-by <name>', 2)
+  }
+  const note = flags.note ?? undefined
+  const currentBuildHash = flags['build-hash'] ?? null
+
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)  // SECURITY: orchestrator-only — same authority as complete/gate/abandon
+
+    if (l.pacing?.policy !== 'milestone') {
+      const e = new Error(
+        `milestone-signoff requires pacing.policy = "milestone". Current policy: ${l.pacing?.policy ?? 'none'}.`,
+      )
+      e.exitCode = 1
+      throw e
+    }
+
+    // Artifact freshness gate: reject stale artifacts before writing APPROVE.
+    if (verdict === 'APPROVE') {
+      // Hash-based staleness (pure, via pacing.mjs — same mechanism as traceability-classify.mjs).
+      const hashCheck = checkMilestoneArtifacts(l, currentBuildHash)
+      if (!hashCheck.satisfied) {
+        const e = new Error(
+          `Milestone sign-off rejected: ${hashCheck.reason}\n` +
+          `Stale artifacts must be re-captured against the current build before an APPROVE can be recorded.\n` +
+          `Stale paths: ${hashCheck.staleArtifacts.join(', ')}`,
+        )
+        e.exitCode = 1
+        throw e
+      }
+
+      // File-existence gate: each declared artifact path must exist on disk.
+      const artifacts = Array.isArray(l.pacing.milestone_artifacts) ? l.pacing.milestone_artifacts : []
+      for (const artifact of artifacts) {
+        if (artifact.kind !== 'live_url' && artifact.path && !existsSync(artifact.path)) {
+          const e = new Error(
+            `Milestone artifact not found on disk: ${artifact.path}\n` +
+            `Ensure the artifact exists before recording an APPROVE sign-off.`,
+          )
+          e.exitCode = 1
+          throw e
+        }
+      }
+    }
+
+    const artifacts = Array.isArray(l.pacing?.milestone_artifacts) ? l.pacing.milestone_artifacts : []
+    const artifactsVerified = artifacts.map((a) => a.path ?? '').filter(Boolean)
+
+    if (!l.pacing) l.pacing = {}
+    l.pacing.milestone_signoff = {
+      verdict,
+      verified_by: verifiedBy,
+      verified_at: new Date().toISOString(),
+      artifacts_verified: artifactsVerified,
+      ...(note !== undefined ? { note } : {}),
+    }
+    reSeal(l, projectDir)
+  })
+  process.stdout.write(`milestone-signoff: ${verdict} by ${verifiedBy}\n`)
 }
 
 /**
@@ -1210,8 +1352,9 @@ function cmdSet(args) {
     }
     if (flags.status != null) {
       // Pacing enforcement (D-28): block in_progress transitions when budget is exhausted.
+      // --build-hash enables milestone artifact-freshness check (pure — no I/O in checkPace).
       if (flags.status === 'in_progress') {
-        const pace = checkPace(l, id)
+        const pace = checkPace(l, id, flags['build-hash'] ?? null)
         if (!pace.allowed) {
           const e = new Error(`${pace.reason}\n${pace.remedy}`)
           e.exitCode = 1
@@ -1337,9 +1480,11 @@ function cmdClaim(args) {
       throw e
     }
     // Pacing enforcement (D-28): block claim when budget is exhausted.
+    // --build-hash enables milestone artifact-freshness check at claim time (pure).
+    const claimBuildHash = flags['build-hash'] ?? null
     // Check each slice; first blocked result aborts the whole operation.
     for (const id of ids) {
-      const pace = checkPace(l, id)
+      const pace = checkPace(l, id, claimBuildHash)
       if (!pace.allowed) {
         const e = new Error(`${pace.reason}\n${pace.remedy}`)
         e.exitCode = 1
@@ -1501,24 +1646,10 @@ function cmdFrontier(args) {
 
   const slices = Array.isArray(l.slices) ? l.slices : []
 
-  // Build set of complete slice ids for blocked_by resolution
-  const completeIds = new Set(
-    slices.filter((s) => s?.status === 'complete').map((s) => s.id),
-  )
-
-  const frontier = slices.filter((s) => {
-    if (!s) return false
-    // Must be pending or open (not complete, not in_progress, not skipped)
-    const status = s.status ?? 'pending'
-    if (status !== 'pending') return false
-    // Fog slices are open questions, not actionable work items — exclude from frontier
-    if (s.kind === 'fog') return false
-    // All blocked_by must be complete
-    const blockedBy = Array.isArray(s.blocked_by) ? s.blocked_by : []
-    if (blockedBy.some((dep) => !completeIds.has(dep))) return false
+  // Delegate pure predicate to dagFrontier; add session-specific claimed_by filter here.
+  const frontier = dagFrontier(slices).filter((s) => {
     // Unclaimed, or claimed by the current session
-    if (s.claimed_by && s.claimed_by !== currentSession) return false
-    return true
+    return !s.claimed_by || s.claimed_by === currentSession
   })
 
   if (!frontier.length) {
@@ -1616,6 +1747,8 @@ function main() {
       case 'frontier': return cmdFrontier(rest)
       case 'autopilot': return cmdAutopilot(rest)
       case 'scope-token': return cmdScopeToken(rest)
+      case 'await-human': return cmdAwaitHuman(rest)
+      case 'milestone-signoff': return cmdMilestoneSignoff(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)
     }

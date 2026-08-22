@@ -94,6 +94,30 @@ export function canonicalReleaseState(ledger) {
       )
   }
 
+  // awaiting_human is included only when explicitly set on the ledger.
+  // Same conditional pattern as scoped_tokens: absent fields do not alter the canonical
+  // string (backward-compatible with pre-S5 ledgers).  Any direct file write that
+  // introduces awaiting_human on a sealed ledger changes this string without updating
+  // the HMAC → seal fails → stop-gate blocks (fail-closed).
+  if (ledger.awaiting_human !== undefined) {
+    state.awaiting_human = ledger.awaiting_human === true
+  }
+
+  // milestone_signoff is included when present in pacing — same fail-closed pattern as
+  // awaiting_human.  The milestone_signoff.verdict = 'APPROVE' is what releases the pacing
+  // gate under policy=milestone.  Without sealing, an attacker could write the APPROVE
+  // verdict directly to the ledger file (bypassing the CLI's write_token check) and the
+  // stop-gate would release.  Including it here means any such direct file write changes
+  // the canonical string → HMAC mismatch → seal fails → stop-gate blocks.
+  if (ledger.pacing?.milestone_signoff !== undefined) {
+    const ms = ledger.pacing.milestone_signoff
+    state.milestone_signoff = {
+      verdict: String(ms.verdict ?? ''),
+      verified_by: String(ms.verified_by ?? ''),
+      verified_at: String(ms.verified_at ?? ''),
+    }
+  }
+
   return JSON.stringify(state)
 }
 

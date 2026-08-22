@@ -645,6 +645,27 @@ async function main() {
     return allow()
   }
 
+  // Awaiting-human hold — the orchestrator has signaled it is correctly paused waiting
+  // for a human decision.  While held, the gate MUST NOT nag and MUST NOT increment
+  // reinforcements.  The hold is silenced only while the seal is valid; a direct file
+  // write adding awaiting_human:true on a sealed ledger changes the canonical release
+  // state without updating the HMAC, so the seal fails and the gate blocks (fail-closed).
+  // FAIL-CLOSED: missing key or invalid seal on a sealed ledger → block, never open.
+  if (ledger.awaiting_human === true) {
+    const sealResult = checkSeal(ledger, projectDir, sessionId)
+    if (sealResult === false) {
+      return block(
+        'awaiting_human hold is set but the ledger seal is invalid or the key is missing. ' +
+          'A subagent may have set awaiting_human directly without the orchestrator write_token. ' +
+          'Re-run `bin/ledger await-human --token <write_token>` to restore a valid hold, ' +
+          'or `bin/ledger await-human --clear --token <write_token>` to release it.',
+      )
+    }
+    // Valid hold (or unseal legacy ledger) — session is correctly paused awaiting a human.
+    // Return allow without incrementing reinforcements.
+    return allow()
+  }
+
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
 
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])

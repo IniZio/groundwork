@@ -38,6 +38,10 @@
     "progressSig": {
       "description": "Opaque progress signal used by the stop-gate hook."
     },
+    "awaiting_human": {
+      "type": "boolean",
+      "description": "When true, the stop-gate will not nag while the orchestrator is correctly paused awaiting a human decision. Set only via `ledger await-human --token <write_token>`. Cleared with --clear. Does NOT bypass the completion gate — releasing the hold resumes normal enforcement."
+    },
     "gate": {
       "type": "object",
       "description": "Gate verdicts keyed by gate name (advisor, verifier, qa).",
@@ -61,8 +65,8 @@
       "properties": {
         "policy": {
           "type": "string",
-          "enum": ["wave", "slice"],
-          "description": "Unit of pacing. 'wave' counts completed waves; 'slice' counts completed non-exempt slices."
+          "enum": ["wave", "slice", "milestone"],
+          "description": "Unit of pacing. 'wave' counts completed waves; 'slice' counts completed non-exempt slices; 'milestone' gates on human-verified shippable deliverables (see milestone_artifacts and milestone_signoff)."
         },
         "budget": {
           "type": "integer",
@@ -107,6 +111,17 @@
             }
           },
           "additionalProperties": false
+        },
+        "milestone_artifacts": {
+          "type": "array",
+          "description": "Declared evidence artifacts for milestone sign-off (policy=milestone). A hook validates each artifact's presence and freshness by comparing captured_build_hash against the current build hash — reusing the traceability evidence freshness mechanism rather than inventing a second scheme.",
+          "items": {
+            "$ref": "#/$defs/milestoneArtifact"
+          }
+        },
+        "milestone_signoff": {
+          "$ref": "#/$defs/milestoneSignoff",
+          "description": "Human sign-off on the milestone. SECURITY: S7 MUST require write_token authority to record this field — a subagent must not be able to sign off on its own work (see PACING-R-008)."
         }
       },
       "additionalProperties": false
@@ -207,6 +222,64 @@
           "additionalProperties": false
         }
       ]
+    },
+
+    "milestoneArtifact": {
+      "type": "object",
+      "required": ["path", "kind"],
+      "description": "A named, hook-validatable evidence artifact declared for milestone verification. A hook can mechanically check: (1) that path/URL is reachable or exists on disk; (2) that captured_build_hash matches the current build hash (stale detection).",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Local file path or URL pointing to the artifact (screenshot file, run-output log, live URL)."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["screenshot", "run_output", "live_url", "file"],
+          "description": "Evidence category. 'screenshot' — image of running UI; 'run_output' — captured stdout/stderr of a command; 'live_url' — reachable HTTP endpoint; 'file' — any other deliverable file."
+        },
+        "captured_build_hash": {
+          "type": "string",
+          "description": "Opaque build/data hash recorded when the artifact was captured. A hook compares this against the current hash to detect staleness — reuses the same freshness mechanism as traceability-classify.mjs (ref.captured_build_hash vs current hash → 'fresh' | 'stale')."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label for the artifact (e.g. 'dashboard screenshot after regeneration'). Optional; aids human review during sign-off."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "milestoneSignoff": {
+      "type": "object",
+      "required": ["verdict", "verified_by", "verified_at", "artifacts_verified"],
+      "description": "Human sign-off record for a milestone. SECURITY: S7 MUST require write_token authority to write this object; recording it without the orchestrator token must be a hard error (exit 1). This prevents a subagent from signing off on its own work.",
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["APPROVE", "REJECT"],
+          "description": "Human decision. APPROVE: pacing gate releases, session may proceed. REJECT: gate holds, remediation required."
+        },
+        "verified_by": {
+          "type": "string",
+          "description": "Identity of the human signer — typically a session_id or operator username. Recorded for audit. Must not be a subagent-supplied value when write_token is required."
+        },
+        "verified_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of the sign-off, set by the CLI at write time."
+        },
+        "artifacts_verified": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths or URLs of artifacts the human reviewed and confirmed present and correct. Should be a subset of the paths declared in milestone_artifacts."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional human-written note — observations, caveats, or conditions on the APPROVE. Surfaced by the stop-gate when the milestone gate holds."
+        }
+      },
+      "additionalProperties": false
     },
 
     "slice": {

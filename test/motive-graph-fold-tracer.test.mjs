@@ -1,7 +1,7 @@
 /**
  * motive-graph-fold-tracer.test.mjs — Wave-0 tracer bullet for assembleGraphFold.
  *
- * Replays the groundwork-development journal stream (9/19 VALID_TYPES) through
+ * Replays the groundwork-development journal stream (9/20 VALID_TYPES) through
  * the pure fold engine and asserts:
  *
  *   S1-AC1: field-level losslessness — CONSUMED_FIELDS[type] ⊇ corpus fields
@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { readOrderedEvents } from '../hooks/lib/journal-order.mjs'
 import { assembleGraphFold, CONSUMED_FIELDS, NODE_KINDS } from '../hooks/lib/motive-graph-fold.mjs'
 import { assembleMotiveGraph, EDGE_KINDS } from '../hooks/lib/motive-graph.mjs'
+import { VALID_TYPES } from '../hooks/lib/journal-io.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -74,6 +75,12 @@ describe('corpus sanity', () => {
     expect(events.length).toBeGreaterThan(0)
   })
 
+  it('VALID_TYPES has the expected total count (drift guard)', () => {
+    // If a new type is added to VALID_TYPES without updating this test,
+    // this assertion fails — keeping the comment at line 4 honest.
+    expect(VALID_TYPES.length).toBe(20)
+  })
+
   it('all 9 expected event types are present in the corpus', () => {
     const presentTypes = new Set(events.map((e) => e.type))
     const expected = [
@@ -87,6 +94,8 @@ describe('corpus sanity', () => {
       'TASK_COMPLETE',
       'VERIFICATION',
     ]
+    // Drift guard: this count must match the "9" in the file header comment.
+    expect(expected.length).toBe(9)
     for (const t of expected) {
       expect(presentTypes.has(t), `expected event type ${t} in corpus`).toBe(true)
     }

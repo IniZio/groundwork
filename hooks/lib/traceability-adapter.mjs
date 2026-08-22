@@ -42,6 +42,7 @@ import { resolveMotiveSlug } from './motive-ref.mjs'
  * @property {string[]} [covers_ac]  - AC ids this slice covers
  * @property {string[]} [decisions]  - Decision ids constraining this slice
  * @property {string[]} [test_paths] - OPTIONAL: repo-relative paths to self-test files (direct linkage mechanism)
+ * @property {number|null} wave      - Wave number (integer) or null when absent/unset
  * @property {string}   [ticket]     - Linked ticket id
  * @property {string}   [desc]       - Human-readable description
  */
@@ -144,6 +145,7 @@ export class NativeSpineAdapter {
       covers_ac: normStringArray(s.covers_ac),
       decisions: normStringArray(s.decisions),
       test_paths: normStringArray(s.test_paths),   // additive optional field
+      wave: typeof s.wave === 'number' ? s.wave : null,
       ticket: typeof s.ticket === 'string' ? s.ticket : undefined,
       desc: typeof s.desc === 'string' ? s.desc : undefined,
     }))

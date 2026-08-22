@@ -136,6 +136,86 @@ describe('NativeSpineAdapter._readJournalEvents — real .jsonl shard seam', () 
     expect(adapter.getVerificationEvents()).toEqual([])
   })
 
+// ---------------------------------------------------------------------------
+// getSlices — wave field (V2 additive)
+// ---------------------------------------------------------------------------
+
+describe('NativeSpineAdapter.getSlices — wave field exposure', () => {
+  function makeRunsDir(base: string): string {
+    const dir = path.join(base, '.groundwork', 'runs')
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  function writeLedger(runsDir: string, slices: object[]): void {
+    const ledger = {
+      active: true,
+      motive_ref: 'test-motive',
+      slices,
+    }
+    writeFileSync(path.join(runsDir, '2026-01-01-test.json'), JSON.stringify(ledger), 'utf8')
+  }
+
+  it('exposes wave when present as an integer', () => {
+    const runsDir = makeRunsDir(tmpDir)
+    writeLedger(runsDir, [{ id: 'S1', status: 'complete', wave: 1 }])
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const slices = adapter.getSlices()
+
+    expect(slices).toHaveLength(1)
+    expect(slices[0].wave).toBe(1)
+  })
+
+  it('returns null for wave when the field is explicitly null', () => {
+    const runsDir = makeRunsDir(tmpDir)
+    writeLedger(runsDir, [{ id: 'S1', status: 'pending', wave: null }])
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const slices = adapter.getSlices()
+
+    expect(slices).toHaveLength(1)
+    expect(slices[0].wave).toBeNull()
+  })
+
+  it('returns null for wave when the field is absent', () => {
+    const runsDir = makeRunsDir(tmpDir)
+    writeLedger(runsDir, [{ id: 'S1', status: 'pending' }])
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const slices = adapter.getSlices()
+
+    expect(slices).toHaveLength(1)
+    expect(slices[0].wave).toBeNull()
+  })
+
+  it('preserves all existing fields alongside wave', () => {
+    const runsDir = makeRunsDir(tmpDir)
+    writeLedger(runsDir, [{
+      id: 'S2',
+      status: 'in_progress',
+      wave: 2,
+      blocked_by: ['S1'],
+      covers_ac: ['AC-1'],
+      decisions: ['D-1'],
+      ticket: 'T-42',
+      desc: 'some slice',
+    }])
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const slices = adapter.getSlices()
+
+    expect(slices[0].id).toBe('S2')
+    expect(slices[0].status).toBe('in_progress')
+    expect(slices[0].wave).toBe(2)
+    expect(slices[0].blocked_by).toEqual(['S1'])
+    expect(slices[0].covers_ac).toEqual(['AC-1'])
+    expect(slices[0].decisions).toEqual(['D-1'])
+    expect(slices[0].ticket).toBe('T-42')
+    expect(slices[0].desc).toBe('some slice')
+  })
+})
+
   it('reads events from multiple .jsonl shards in a single call', () => {
     const journalDir = makeJournalDir(tmpDir)
     writeShard(journalDir, '2026-01-01-session-a.jsonl', [

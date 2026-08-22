@@ -8,6 +8,8 @@ export interface SliceRecord {
   covers_ac: string[]
   decisions: string[]
   test_paths: string[]
+  /** Wave number the slice belongs to, or null when absent/unset in the ledger. */
+  wave: number | null
   ticket?: string
   desc?: string
 }

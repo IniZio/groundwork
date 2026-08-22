@@ -115,6 +115,11 @@ export const CONSUMED_FIELDS = Object.freeze({
     new Set(['ac', 'slice', 'covering', 'motive_provenance'])
   ),
 
+  // AC_RETRACTION: enumerated fields (structural — field names drive graph logic).
+  AC_RETRACTION: Object.freeze(
+    new Set(['ac', 'slice', 'reason', 'motive_provenance'])
+  ),
+
   // Attribute-mutating handlers: AllFieldsSet — passthrough, any field consumed.
   GATE:             Object.freeze(new AllFieldsSet()),
   MILESTONE:        Object.freeze(new AllFieldsSet()),
@@ -187,6 +192,7 @@ export function assembleGraphFold(orderedEvents, { at, charter: _charter, ground
     waivers:          /** @type {object[]} */ ([]),
     handoffs:         /** @type {object[]} */ ([]),
     spec_drifts:      /** @type {object[]} */ ([]),
+    ac_retractions:   /** @type {object[]} */ ([]),
   }
 
   // Derive motive slug from the first event's motive field.
@@ -350,6 +356,18 @@ export function assembleGraphFold(orderedEvents, { at, charter: _charter, ground
     }
   }
 
+  function handleAcRetraction(data, event) {
+    // Retract a prior covers_ac edge — retire it so the graph no longer shows
+    // the slice as covering the AC.  Order-independent: edgeRetire is a no-op
+    // if the edge does not exist (retraction may arrive before the claim event).
+    // Also recorded in attrs.ac_retractions for observability.
+    const { ac, slice, reason, motive_provenance: _mp } = data
+    if (ac && slice) {
+      edgeRetire('covers_ac', `slice:${slice}`, `ac:${ac}`)
+    }
+    attrs.ac_retractions.push({ ts: event.ts, ac, slice, reason })
+  }
+
   function handleTaskComplete(data, event) {
     // Passthrough: upsert a slice node with ALL data fields so nothing is dropped.
     const { slice, slice_id, motive_provenance: _mp, ...rest } = data
@@ -442,6 +460,7 @@ export function assembleGraphFold(orderedEvents, { at, charter: _charter, ground
     GATE:             handleGate,
     MILESTONE:        handleMilestone,
     AC_COVERAGE:      handleAcCoverage,
+    AC_RETRACTION:    handleAcRetraction,
     TASK_COMPLETE:    handleTaskComplete,
     SESSION_END:      handleSessionEnd,
     VERIFICATION:     handleVerification,

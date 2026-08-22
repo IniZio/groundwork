@@ -1,7 +1,7 @@
 /**
  * motive-graph-fold-tracer.test.mjs — Wave-0 tracer bullet for assembleGraphFold.
  *
- * Replays the groundwork-development journal stream (9/18 VALID_TYPES) through
+ * Replays the groundwork-development journal stream (9/19 VALID_TYPES) through
  * the pure fold engine and asserts:
  *
  *   S1-AC1: field-level losslessness — CONSUMED_FIELDS[type] ⊇ corpus fields
@@ -119,7 +119,7 @@ describe('S1-AC1 — field-level losslessness (CONSUMED_FIELDS ⊇ corpus fields
     expect(losses).toHaveLength(0)
   })
 
-  it('CONSUMED_FIELDS covers all 18 VALID_TYPES (no type left unregistered)', async () => {
+  it('CONSUMED_FIELDS covers all 19 VALID_TYPES (no type left unregistered)', async () => {
     // Dynamically load VALID_TYPES to avoid hardcoding the list.
     const { VALID_TYPES } = await import('../hooks/lib/journal-io.mjs')
     for (const type of VALID_TYPES) {

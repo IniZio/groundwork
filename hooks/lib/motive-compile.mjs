@@ -95,6 +95,8 @@ export function compile(events, opts = {}) {
   const baselines = []
   // Map<ac_key, Set<sliceId>> — built from AC_COVERAGE events
   const acCoverageMap = new Map()
+  // Set<"acKey::bareSlice"> — built from AC_RETRACTION events; applied post-loop
+  const retractedPairs = new Set()
 
   let objective = null
   let objectiveSource = 'absent'
@@ -403,9 +405,36 @@ export function compile(events, opts = {}) {
         break
       }
 
+      case 'AC_RETRACTION': {
+        // Retraction: record this (ac, bare-slice) pair for post-loop removal.
+        // Collected here and applied after the full event loop so the fold is
+        // order-independent — a retraction arriving before or after the claim
+        // it targets produces the same result.
+        if (d.ac != null && d.slice != null) {
+          retractedPairs.add(`${String(d.ac)}::${String(d.slice)}`)
+        }
+        break
+      }
+
       default: {
         unknownTypeEvents++
         break
+      }
+    }
+  }
+
+  // ── post-pass: apply AC_RETRACTION events ─────────────────────────────────
+  // Remove all composite ids matching a retracted (ac, bare-slice) pair.
+  // Done after the full event loop so order-independence is guaranteed.
+  for (const pair of retractedPairs) {
+    const sep = pair.indexOf('::')
+    const acKey = pair.slice(0, sep)
+    const bareSlice = pair.slice(sep + 2)
+    const coverSet = acCoverageMap.get(acKey)
+    if (coverSet) {
+      for (const compositeId of [...coverSet]) {
+        const bare = compositeId.includes('::') ? compositeId.slice(compositeId.indexOf('::') + 2) : compositeId
+        if (bare === bareSlice) coverSet.delete(compositeId)
       }
     }
   }

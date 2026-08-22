@@ -2,7 +2,7 @@
  * motive-graph-fold-reconcile.test.mjs — S2 reconciliation completeness.
  *
  * Verifies:
- *   S2-AC1: all 19 VALID_TYPES have an explicit handler + CONSUMED_FIELDS entry;
+ *   S2-AC1: all 20 VALID_TYPES have an explicit handler + CONSUMED_FIELDS entry;
  *           each handler produces an observable delta (not merely no-throw).
  *   S2-AC2: field-level losslessness STRUCTURAL CHECK — for each attribute-mutating
  *           event in all 5 real motive streams, every data.* field is verified against
@@ -243,9 +243,9 @@ function makeStream(type, data = {}) {
   ]
 }
 
-// ── S2-AC1: all 19 VALID_TYPES have declared roles ────────────────────────
+// ── S2-AC1: all 20 VALID_TYPES have declared roles ────────────────────────
 
-describe('S2-AC1 — all 19 VALID_TYPES have declared roles', () => {
+describe('S2-AC1 — all 20 VALID_TYPES have declared roles', () => {
   it('CONSUMED_FIELDS has an entry for every VALID_TYPE', () => {
     for (const type of VALID_TYPES) {
       expect(
@@ -274,6 +274,7 @@ describe('S2-AC1 — all 19 VALID_TYPES have declared roles', () => {
       expect(typeof n.attrs._ts).toBe('string')
     },
     AC_COVERAGE:      (fold) => expect(fold.edges.some((e) => e.kind === 'covers_ac')).toBe(true),
+    AC_RETRACTION:    (fold) => expect(fold.attrs.ac_retractions.length).toBeGreaterThan(0),
     GATE:             (fold) => expect(fold.attrs.gates.length).toBeGreaterThan(0),
     MILESTONE:        (fold) => expect(fold.attrs.milestones.length).toBeGreaterThan(0),
     TASK_COMPLETE:    (fold) => expect(fold.nodes.some((n) => n.type === 'slice')).toBe(true),
@@ -297,6 +298,7 @@ describe('S2-AC1 — all 19 VALID_TYPES have declared roles', () => {
     DECISION:         { id: 'D-1', title: 'test decision' },
     BASELINE:         { name: 'v1', shard: 'shard-001' },
     AC_COVERAGE:      { ac: 'AC1', slice: 'S1' },
+    AC_RETRACTION:    { ac: 'AC1', slice: 'S1', reason: 'mistake' },
     GATE:             { verdict: 'APPROVE', which: 'advisor' },
     MILESTONE:        { id: 'M1', items: [] },
     TASK_COMPLETE:    { slice: 'S1' },

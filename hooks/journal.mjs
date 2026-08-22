@@ -878,6 +878,51 @@ function cmdMigrateTickets(args) {
 }
 
 // ---------------------------------------------------------------------------
+// ac-retract
+// ---------------------------------------------------------------------------
+
+/**
+ * Record an append-only retraction of a mistaken AC_COVERAGE claim.
+ * Usage: journal ac-retract --motive <slug> --ac <ac-id> --slice <slice-id> --reason <text>
+ *
+ * This command only REMOVES a prior coverage claim — it cannot add one.
+ * The retraction is a new AC_RETRACTION journal event; no existing event is
+ * deleted or mutated.  Both coverage folds (motive-map.mjs, motive-compile.mjs)
+ * honour AC_RETRACTION events in an order-independent post-loop pass.
+ */
+function cmdAcRetract(args) {
+  const { flags } = parseFlags(args)
+  const motive = flags.motive
+  const ac = flags.ac
+  const slice = flags.slice
+  const reason = flags.reason
+
+  if (!motive || motive === true) die('ac-retract requires --motive <slug>', 2)
+  if (!ac || ac === true) die('ac-retract requires --ac <ac-id>', 2)
+  if (!slice || slice === true) die('ac-retract requires --slice <slice-id>', 2)
+  if (!reason || reason === true) die('ac-retract requires --reason <text>', 2)
+
+  const { projectDir, sessionId } = resolveContext()
+  const shardPath = resolveShardPath(projectDir, sessionId)
+  const ts = new Date().toISOString()
+  const event = {
+    ts,
+    session: sessionId,
+    motive,
+    type: 'AC_RETRACTION',
+    msg: `retract AC coverage: ${ac} no longer covered by ${slice} — ${reason}`,
+    source: 'cli:journal',
+    data: { ac: String(ac), slice: String(slice), reason: String(reason) },
+  }
+  appendEvent(shardPath, event)
+  regenerateMotiveMap(projectDir, motive)
+
+  process.stdout.write(
+    `journal: AC_RETRACTION recorded — ${ac} / ${slice} retracted for motive "${motive}"\n`,
+  )
+}
+
+// ---------------------------------------------------------------------------
 // graph
 // ---------------------------------------------------------------------------
 
@@ -923,6 +968,7 @@ async function main() {
       case 'motive':   return cmdMotive(rest)
       case 'baseline': return cmdBaseline(rest)
       case 'migrate-tickets': return cmdMigrateTickets(rest)
+      case 'ac-retract':   return cmdAcRetract(rest)
       case 'graph':        return await cmdGraph(rest)
       default:
         die(`unknown command "${cmd}". Run journal help for a list.`, 2)

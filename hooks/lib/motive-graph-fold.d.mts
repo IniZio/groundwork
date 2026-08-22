@@ -39,6 +39,7 @@ export interface FoldAttrs {
   waivers:           Array<Record<string, unknown>>
   handoffs:          Array<Record<string, unknown>>
   spec_drifts:       Array<Record<string, unknown>>
+  ac_retractions:    Array<Record<string, unknown>>
 }
 
 export interface FoldGraph {

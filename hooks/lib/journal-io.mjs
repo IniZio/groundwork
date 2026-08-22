@@ -92,10 +92,21 @@ export const VALID_TYPES = [
    * Never compressed: coverage facts must survive any digest pass.
    */
   'AC_COVERAGE',
+  /**
+   * AC_RETRACTION — append-only correction for a mistaken AC_COVERAGE claim.
+   *   Payload: { ac: string, slice: string, reason: string }
+   *   Removes the (ac, slice) pair from the coverage fold without deleting or
+   *   mutating the original AC_COVERAGE event.  Both folds honour this event
+   *   in a post-loop pass so the result is order-independent (a retraction
+   *   arriving before or after the original claim produces the same outcome).
+   *   Can only REMOVE a claim — never adds one (requirement 4).
+   * Never compressed: a compressed-away retraction would resurrect the false claim.
+   */
+  'AC_RETRACTION',
 ]
 
 /** Types that must never be folded into a digest summary (AC 9). */
-export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE', 'MOTIVE_CREATED', 'BASELINE', 'AC_COVERAGE'])
+export const NEVER_COMPRESS = new Set(['DECISION', 'SPEC_CHANGE', 'MOTIVE_CREATED', 'BASELINE', 'AC_COVERAGE', 'AC_RETRACTION'])
 
 // ---------------------------------------------------------------------------
 // Motive normalization (Step 2 dual-key back-compat)

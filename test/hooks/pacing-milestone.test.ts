@@ -16,7 +16,11 @@
 // @verifies PACING-R-009
 // @verifies PACING-R-010
 
-import { describe, it, expect } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, it, expect } from 'vitest'
 import { checkPace, resolvedUnits, checkMilestoneArtifacts } from '../../hooks/lib/pacing.mjs'
 
 // ---------------------------------------------------------------------------
@@ -207,16 +211,17 @@ describe('PACING-R-007+R-009 — APPROVE sign-off requires FRESH artifacts at ga
     expect(result.allowed, 'gate must block when hash argument is omitted and artifact declares one').toBe(false)
   })
 
-  it('APPROVE + artifact without captured_build_hash + no currentBuildHash → gate releases (no hash tracking)', () => {
-    // When artifact declares NO captured_build_hash, freshness tracking is not active.
-    // Gate should release on APPROVE + no hash supplied.
+  it('APPROVE + run_output WITH captured_build_hash (matching) → gate releases', () => {
+    // run_output requires captured_build_hash. Supply it and match the current build hash.
+    // (Previously this test declared run_output without a hash — that was exercising the
+    // defect where stale-able artifacts could bypass freshness by omitting the field.)
     const doc = {
       pacing: {
         policy: 'milestone',
         budget: 1,
         exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] as string[],
         milestone_artifacts: [
-          { path: '/tmp/run.log', kind: 'run_output' },  // no captured_build_hash
+          { path: '/tmp/run.log', kind: 'run_output', captured_build_hash: 'hash-run' },
         ],
         milestone_signoff: APPROVE_SIGNOFF,
       },
@@ -225,8 +230,8 @@ describe('PACING-R-007+R-009 — APPROVE sign-off requires FRESH artifacts at ga
         { id: 'W1a', wave: 1, kind: 'impl', status: 'pending' },
       ],
     }
-    const result = checkPace(doc, 'W1a', null)
-    expect(result.allowed, 'artifact without hash tracking must not block gate').toBe(true)
+    const result = checkPace(doc, 'W1a', 'hash-run')
+    expect(result.allowed, 'APPROVE + fresh run_output artifact must release gate').toBe(true)
   })
 
   it('stale-block message names the remedy (re-capture and re-sign)', () => {
@@ -269,39 +274,46 @@ describe('PACING-R-009 — stale artifact does not satisfy evidence requirement'
     expect(result.reason).toMatch(/cannot verify freshness/i)
   })
 
-  it('no currentBuildHash + artifact has NO captured_build_hash → still fresh (nothing to compare)', () => {
-    // When artifact declares no captured_build_hash, freshness tracking is not active.
-    // No hash to compare → treat as fresh regardless of currentBuildHash.
+  it('run_output WITH captured_build_hash (matching) + no currentBuildHash → stale (fail-closed)', () => {
+    // run_output requires captured_build_hash. When the current build hash is not supplied
+    // the artifact cannot be verified — fail-closed means treated as stale.
+    // (Previously this test declared run_output without a hash — that was exercising the
+    // defect where stale-able artifacts could bypass freshness by omitting the field.)
     const doc = {
       pacing: {
         policy: 'milestone',
         budget: 1,
         exempt_kinds: [] as string[],
         milestone_artifacts: [
-          { path: '/tmp/run.log', kind: 'run_output' },  // no captured_build_hash
+          { path: '/tmp/run.log', kind: 'run_output', captured_build_hash: 'hash-run' },
         ],
       },
       slices: [],
     }
     const result = checkMilestoneArtifacts(doc, null)
-    expect(result.satisfied, 'artifact without hash tracking + no current hash must be fresh').toBe(true)
-    expect(result.staleArtifacts).toHaveLength(0)
+    expect(result.satisfied, 'run_output with hash + no current hash → stale (fail-closed)').toBe(false)
+    expect(result.staleArtifacts).toContain('/tmp/run.log')
+    expect(result.reason).toMatch(/cannot verify freshness/i)
   })
 
-  it('artifact without captured_build_hash → treated as fresh (existence-only)', () => {
+  it('run_output WITH matching captured_build_hash → fresh', () => {
+    // run_output requires captured_build_hash. When supplied and matching → fresh.
+    // (Previously this test declared run_output without a hash and expected "fresh"
+    // via existence-only — that was exercising the defect.)
     const doc = {
       pacing: {
         policy: 'milestone',
         budget: 1,
         exempt_kinds: [] as string[],
         milestone_artifacts: [
-          { path: '/tmp/run.log', kind: 'run_output' },  // no captured_build_hash
+          { path: '/tmp/run.log', kind: 'run_output', captured_build_hash: 'hash-run' },
         ],
       },
       slices: [],
     }
-    const result = checkMilestoneArtifacts(doc, 'hash-current')
-    expect(result.satisfied, 'artifact without hash is treated as fresh').toBe(true)
+    const result = checkMilestoneArtifacts(doc, 'hash-run')
+    expect(result.satisfied, 'run_output with matching hash is fresh').toBe(true)
+    expect(result.staleArtifacts).toHaveLength(0)
   })
 
   it('no milestone_artifacts → satisfied=true', () => {
@@ -379,5 +391,212 @@ describe('Existing wave/slice policies unaffected by milestone changes', () => {
     const result = checkPace(doc, 'S1')
     expect(result.allowed).toBe(false)
     expect(result.reason).toMatch(/Pacing budget exhausted/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PACING-R-009 — stale-able artifact without captured_build_hash is REJECTED
+// ---------------------------------------------------------------------------
+
+describe('PACING-R-009 — stale-able artifact without captured_build_hash is rejected (fail-closed)', () => {
+  it('screenshot without captured_build_hash → rejected (satisfied=false)', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: '/tmp/screen.png', kind: 'screenshot' },  // no captured_build_hash
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'any-hash')
+    expect(result.satisfied).toBe(false)
+    expect(result.staleArtifacts).toContain('/tmp/screen.png')
+    expect(result.reason).toMatch(/captured_build_hash/)
+  })
+
+  it('run_output without captured_build_hash → rejected (satisfied=false)', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: '/tmp/run.log', kind: 'run_output' },  // no captured_build_hash
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'any-hash')
+    expect(result.satisfied).toBe(false)
+    expect(result.staleArtifacts).toContain('/tmp/run.log')
+    expect(result.reason).toMatch(/captured_build_hash/)
+  })
+
+  it('file without captured_build_hash → accepted (not stale-able)', () => {
+    // file kind does not go stale; hash is optional.
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: '/tmp/report.html', kind: 'file' },  // no hash — OK for file
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'any-hash')
+    expect(result.satisfied).toBe(true)
+    expect(result.staleArtifacts).toHaveLength(0)
+  })
+
+  it('live_url without captured_build_hash → accepted (not stale-able)', () => {
+    // live_url kind does not go stale; hash is optional.
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: 'https://example.com/app', kind: 'live_url' },  // no hash — OK
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'any-hash')
+    expect(result.satisfied).toBe(true)
+    expect(result.staleArtifacts).toHaveLength(0)
+  })
+
+  it('unknown kind → rejected (fail-closed) regardless of hash', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: '/tmp/recording.mp4', kind: 'video', captured_build_hash: 'hash-abc' },
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'hash-abc')
+    expect(result.satisfied).toBe(false)
+    expect(result.staleArtifacts).toContain('/tmp/recording.mp4')
+  })
+
+  it('absent kind → rejected (fail-closed)', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: '/tmp/thing', captured_build_hash: 'hash-abc' },  // no kind field
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'hash-abc')
+    expect(result.satisfied).toBe(false)
+    expect(result.staleArtifacts).toContain('/tmp/thing')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEPLOYED PATH — declaration via bin/ledger rejects stale-able artifact without hash
+// ---------------------------------------------------------------------------
+
+const CLI = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'ledger.mjs')
+const SESSION_DPH = 'sess-pacing-declaration-hash-test'
+
+let deployedProjectDir: string
+
+beforeEach(() => {
+  deployedProjectDir = mkdtempSync(path.join(tmpdir(), 'pacing-declaration-hash-'))
+  mkdirSync(path.join(deployedProjectDir, '.groundwork', 'runs'), { recursive: true })
+})
+
+afterEach(() => {
+  rmSync(deployedProjectDir, { recursive: true, force: true })
+})
+
+function writeDeclarationLedger(artifactOverride: object): void {
+  const ledger = {
+    version: 1,
+    active: true,
+    session_id: SESSION_DPH,
+    brief: 'declaration-hash enforcement test',
+    write_token: 'tok-dh-test',
+    pacing: {
+      policy: 'milestone',
+      budget: 1,
+      exempt_kinds: ['plan', 'diagnose', 'design', 'fog'],
+      milestone_artifacts: [artifactOverride],
+      milestone_signoff: {
+        verdict: 'APPROVE',
+        verified_by: 'human-reviewer',
+        verified_at: '2026-08-22T00:00:00.000Z',
+        artifacts_verified: [],
+      },
+    },
+    slices: [
+      { id: 'W0', wave: 0, kind: 'impl', status: 'complete', completed_at: '2026-08-22T00:00:00.000Z' },
+      { id: 'W1a', wave: 1, kind: 'impl', status: 'pending', desc: 'wave 1 slice' },
+    ],
+    gate: {},
+  }
+  writeFileSync(
+    path.join(deployedProjectDir, '.groundwork', 'runs', `${SESSION_DPH}.json`),
+    JSON.stringify(ledger, null, 2),
+  )
+}
+
+function runClaim(args: string[]): { code: number; stdout: string; stderr: string } {
+  const env = {
+    ...process.env,
+    CLAUDE_PROJECT_DIR: deployedProjectDir,
+    CLAUDE_CODE_SESSION_ID: SESSION_DPH,
+  }
+  const r = spawnSync('node', [CLI, ...args], { env, encoding: 'utf8' })
+  return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
+}
+
+describe('DEPLOYED PATH — ledger claim rejects stale-able artifact missing captured_build_hash', () => {
+  it('run_output WITHOUT captured_build_hash: exits 1 (REJECTED via deployed path)', () => {
+    // PROVE THE BITE: stale-able artifact with no hash must be rejected on the real CLI path.
+    // Before the fix, this exited 0 (existence-only, bypassed freshness).
+    // After the fix, it must exit 1 with a message naming captured_build_hash.
+    writeDeclarationLedger({ path: '/tmp/run.log', kind: 'run_output' })
+    const r = runClaim(['claim', 'W1a', '--build-hash', 'hash-any'])
+    expect(r.code, `exit code must be 1 (rejected); stderr: ${r.stderr}`).toBe(1)
+    // Verify the actual rejection reason mentions the required field.
+    expect(r.stderr + r.stdout).toMatch(/captured_build_hash/)
+  })
+
+  it('screenshot WITHOUT captured_build_hash: exits 1 (REJECTED via deployed path)', () => {
+    writeDeclarationLedger({ path: '/tmp/screen.png', kind: 'screenshot' })
+    const r = runClaim(['claim', 'W1a', '--build-hash', 'hash-any'])
+    expect(r.code, `exit code must be 1 (rejected); stderr: ${r.stderr}`).toBe(1)
+    expect(r.stderr + r.stdout).toMatch(/captured_build_hash/)
+  })
+
+  it('exit code comes from spawnSync.status (not a pipe) — DEPLOYED PATH proof', () => {
+    writeDeclarationLedger({ path: '/tmp/run.log', kind: 'run_output' })
+    const r = runClaim(['claim', 'W1a', '--build-hash', 'hash-any'])
+    expect(typeof r.code).toBe('number')
+    expect(r.code).toBe(1)
+  })
+})
+
+describe('DEPLOYED PATH — ledger claim ACCEPTS non-stale-able artifact without hash', () => {
+  it('file WITHOUT captured_build_hash: exits 0 (accepted — existence-only kind)', () => {
+    // file kind is not stale-able; hash is not required; claim must succeed.
+    writeDeclarationLedger({ path: '/tmp/report.html', kind: 'file', captured_build_hash: undefined })
+    const r = runClaim(['claim', 'W1a', '--build-hash', 'hash-any'])
+    expect(r.code, `exit code must be 0 (accepted); stderr: ${r.stderr}`).toBe(0)
   })
 })

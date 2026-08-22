@@ -1,5 +1,10 @@
 // Type declarations for pacing.mjs
 
+/** Artifact kinds that can go stale and therefore require captured_build_hash. */
+export declare const STALEABLE_ARTIFACT_KINDS: string[]
+/** All known artifact kinds for milestone_artifacts validation. */
+export declare const KNOWN_ARTIFACT_KINDS: string[]
+
 export interface PacingGrant {
   range: number
   granted_at: string
@@ -29,9 +34,11 @@ export declare function checkPace(
 ): { allowed: boolean; reason?: string; remedy?: string }
 
 /**
- * Fail-closed artifact freshness check (PACING-R-009).
- * When currentBuildHash is null and any artifact declares a captured_build_hash,
- * that artifact is classified stale — supply --build-hash to ledger claim.
+ * Fail-closed artifact freshness and declaration check (PACING-R-009).
+ * - Unknown kind → rejected (fail-closed).
+ * - screenshot/run_output without captured_build_hash → rejected (fail-closed).
+ * - currentBuildHash null and artifact has captured_build_hash → stale.
+ * - live_url/file without captured_build_hash → fresh (existence-only).
  */
 export declare function checkMilestoneArtifacts(
   doc: object,

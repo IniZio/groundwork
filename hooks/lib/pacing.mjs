@@ -55,6 +55,16 @@ function isExemptSlice(slice, exemptKinds) {
 }
 
 // ---------------------------------------------------------------------------
+// Artifact kind classification for milestone freshness enforcement.
+// Stale-able kinds MUST carry captured_build_hash — omitting the field is
+// treated as a required-field violation and rejected (fail-closed).
+// Non-stale-able kinds (live_url, file) are verified by existence/reachability
+// only; hash tracking is not required for these kinds.
+// ---------------------------------------------------------------------------
+export const STALEABLE_ARTIFACT_KINDS = ['screenshot', 'run_output']
+export const KNOWN_ARTIFACT_KINDS = ['screenshot', 'run_output', 'live_url', 'file']
+
+// ---------------------------------------------------------------------------
 // Exported API
 // ---------------------------------------------------------------------------
 
@@ -317,14 +327,13 @@ export function checkPace(doc, sliceId, currentBuildHash) {
         // decision was correct at sign-off time; the build changed afterward.
         // Remedy: re-capture artifacts against the current build, then re-sign.
         // The original sign-off is preserved in the ledger for audit.
-        const staleList = artCheck.staleArtifacts.join(', ')
         const hashContext = currentBuildHash
           ? `(build hash changed since sign-off)`
           : `(no current build hash supplied — pass --build-hash <hash> to ledger claim)`
         const staleReason =
           `Milestone gate: APPROVE sign-off is present but artifacts cannot be verified as fresh ` +
           `${hashContext}.\n` +
-          `Stale artifacts: ${staleList}\n` +
+          `${artCheck.reason}\n` +
           `Re-capture these artifacts against the current build, then record a fresh sign-off.`
         const staleRemedy =
           `1. Re-capture the stale artifacts (current build hash: ${currentBuildHash ?? 'unknown'}).\n` +
@@ -364,18 +373,22 @@ export function checkPace(doc, sliceId, currentBuildHash) {
 }
 
 /**
- * Validate milestone artifact freshness.
+ * Validate milestone artifact freshness and declaration requirements.
  *
  * Pure function — no filesystem I/O. File existence must be checked by the caller.
  *
  * Fail-closed semantics (PACING-R-009):
- *   - Artifact declares captured_build_hash + currentBuildHash matches → FRESH.
- *   - Artifact declares captured_build_hash + currentBuildHash differs  → STALE.
- *   - Artifact declares captured_build_hash + currentBuildHash is null  → STALE
+ *   - Artifact kind not in KNOWN_ARTIFACT_KINDS                          → REJECTED
+ *     (unknown kind; cannot determine staleness semantics; fail-closed).
+ *   - Artifact kind in STALEABLE_ARTIFACT_KINDS + no captured_build_hash → REJECTED
+ *     (stale-able kinds require a hash at declaration time; fail-closed).
+ *   - Artifact declares captured_build_hash + currentBuildHash matches   → FRESH.
+ *   - Artifact declares captured_build_hash + currentBuildHash differs   → STALE.
+ *   - Artifact declares captured_build_hash + currentBuildHash is null   → STALE
  *     (cannot verify freshness without a current hash; fail closed — caller must
  *     supply the hash via --build-hash on ledger claim/set).
- *   - Artifact has NO captured_build_hash                               → FRESH
- *     (no freshness tracking declared; existence-only).
+ *   - Non-stale-able kind (live_url, file) with no captured_build_hash   → FRESH
+ *     (existence-only; hash tracking not required for these kinds).
  *
  * @param {object} doc - Ledger document.
  * @param {string|null} [currentBuildHash] - Current build hash for staleness comparison.
@@ -391,24 +404,50 @@ export function checkMilestoneArtifacts(doc, currentBuildHash) {
 
   const stale = []
   let anyHashUnknown = false
+  let anyMissingHash = false
+  let anyUnknownKind = false
+
   for (const artifact of artifacts) {
+    const kind = artifact.kind ?? ''
+    const pathLabel = artifact.path ?? '(unknown)'
+
+    // Fail-closed: unknown kind — cannot determine staleness semantics; reject.
+    if (!KNOWN_ARTIFACT_KINDS.includes(kind)) {
+      stale.push(pathLabel)
+      anyUnknownKind = true
+      continue
+    }
+
+    // Stale-able kinds MUST declare captured_build_hash.
+    // Omitting it bypasses freshness enforcement — reject (fail-closed).
+    if (STALEABLE_ARTIFACT_KINDS.includes(kind) && !artifact.captured_build_hash) {
+      stale.push(pathLabel)
+      anyMissingHash = true
+      continue
+    }
+
+    // Hash comparison for artifacts that declare a captured_build_hash.
     if (artifact.captured_build_hash) {
       if (!currentBuildHash) {
         // Artifact declares a build hash but no current hash was supplied.
         // Fail closed: cannot verify freshness — treat as stale.
-        stale.push(artifact.path ?? '(unknown)')
+        stale.push(pathLabel)
         anyHashUnknown = true
       } else if (artifact.captured_build_hash !== currentBuildHash) {
         // Hash mismatch → stale.
-        stale.push(artifact.path ?? '(unknown)')
+        stale.push(pathLabel)
       }
     }
   }
 
   const reason = stale.length > 0
-    ? anyHashUnknown
-      ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
-      : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
+    ? anyUnknownKind
+      ? `Artifact with unknown kind rejected (fail-closed — must be one of: ${KNOWN_ARTIFACT_KINDS.join(', ')}): ${stale.join(', ')}`
+      : anyMissingHash
+        ? `screenshot and run_output artifacts require captured_build_hash — omitting the field is rejected (fail-closed): ${stale.join(', ')}`
+        : anyHashUnknown
+          ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
+          : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
     : undefined
 
   return {

@@ -565,8 +565,12 @@ describe('AC×Slice Traceability Matrix — HTML', () => {
       all_slices: [],
     });
     const html = renderHtml(view);
-    expect(html).toContain('NO COVERAGE');
+    // V5: zero-coverage now renders as PLANNING HOLE with ac-uncovered class, not 'NO COVERAGE'
+    expect(html).toContain('PLANNING HOLE');
+    expect(html).toContain('ac-uncovered-badge');
     expect(html).toContain('AC5');
+    // Must NOT look like covered-incomplete — that uses UNMET badge text (not just CSS class)
+    expect(html).not.toContain('>UNMET<');
   });
 
   it('renders empty fallback when no AC data', () => {

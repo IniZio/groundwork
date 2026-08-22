@@ -212,8 +212,12 @@ describe('MAP AC coverage — pruned-ledger fallback', () => {
 
     regenerateMotiveMap(projectDir, slug)
     const map = readMap(projectDir, slug)
-    expect(map).toContain('✗ **AC-1**')
+    // V5: zero-coverage renders as ⚠ PLANNING HOLE, distinct from covered-incomplete (✗)
+    expect(map).toContain('⚠ **AC-1**')
+    expect(map).toContain('PLANNING HOLE')
     expect(map).toContain('no covering slices assigned')
+    // Must NOT look like covered-incomplete — that uses ✗
+    expect(map).not.toContain('✗ **AC-1**')
   })
 })
 

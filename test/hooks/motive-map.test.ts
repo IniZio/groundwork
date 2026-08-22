@@ -1479,7 +1479,7 @@ describe('regenerateMotiveMap — acceptance criteria', () => {
   beforeEach(() => { dir = tmp() })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('declared AC with no covering slice renders as visibly unmet', () => {
+  it('declared AC with no covering slice renders as PLANNING HOLE (⚠), not ✗', () => {
     makeCharter(dir, 'm', [
       '# motive: m',
       '',
@@ -1499,14 +1499,56 @@ describe('regenerateMotiveMap — acceptance criteria', () => {
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     const acSection = content.split('## Acceptance criteria')[1]?.split('##')[0] ?? ''
-    // Both must appear as unmet
+    // Both must appear as planning holes
     expect(acSection).toContain('AC-1')
     expect(acSection).toContain('AC-2')
-    expect(acSection).toContain('unmet')
+    expect(acSection).toContain('PLANNING HOLE')
     expect(acSection).toContain('no covering slices assigned')
+    // Must use ⚠ symbol, NOT ✗ (those are reserved for covered-but-incomplete)
+    expect(acSection).toContain('⚠')
+    expect(acSection).not.toContain('✗')
     // Must NOT appear as met
     expect(acSection).not.toContain('✓')
+  })
+
+  it('uncovered AC renders with ⚠ distinct from covered-incomplete AC with ✗', () => {
+    makeCharter(dir, 'm', [
+      '# motive: m',
+      '',
+      '## Objective',
+      'Test objective.',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- AC-1: Must be covered by nobody.',
+      '- AC-2: Must be covered by pending slice.',
+      '- AC-3: Must be covered by complete slice.',
+    ].join('\n') + '\n')
+    writeLedger(dir, 'm', {
+      motive: 'm', active: true,
+      slices: [
+        { id: 'S2', status: 'pending',  desc: 'Covers AC-2', covers_ac: ['AC-2'] },
+        { id: 'S3', status: 'complete', desc: 'Covers AC-3', covers_ac: ['AC-3'] },
+      ],
+      gate: {},
+    })
+    regenerateMotiveMap(dir, 'm')
+    const content = readMap(dir, 'm')
+    const acSection = content.split('## Acceptance criteria')[1]?.split('##')[0] ?? ''
+    // AC-1: planning hole — ⚠
+    expect(acSection).toMatch(/⚠.*AC-1/)
+    expect(acSection).toContain('PLANNING HOLE')
+    // AC-2: covered but incomplete — ✗
+    expect(acSection).toMatch(/✗.*AC-2/)
+    expect(acSection).toContain('covered, incomplete')
+    expect(acSection).toContain('S2')
+    // AC-3: covered and complete — ✓
+    expect(acSection).toMatch(/✓.*AC-3/)
+    expect(acSection).toContain('S3')
+    // All three symbols present
+    expect(acSection).toContain('⚠')
     expect(acSection).toContain('✗')
+    expect(acSection).toContain('✓')
   })
 
   it('declared AC fully covered by a complete slice renders as met with slice id', () => {
@@ -1536,9 +1578,10 @@ describe('regenerateMotiveMap — acceptance criteria', () => {
     expect(acSection).toMatch(/✓.*AC-1/)
     expect(acSection).toContain('S1')
     expect(acSection).toContain('met')
-    // AC-2 pending → unmet with incomplete slice info
+    // AC-2 pending → covered, incomplete with slice id
     expect(acSection).toMatch(/✗.*AC-2/)
-    expect(acSection).toContain('incomplete slices: S2')
+    expect(acSection).toContain('covered, incomplete')
+    expect(acSection).toContain('S2')
   })
 
   it('motive with NO acceptance criteria section renders MAP.md without AC section (backward compat)', () => {

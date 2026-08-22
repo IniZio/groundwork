@@ -79,6 +79,13 @@ code{font-size:.85em;padding:1px 4px;border-radius:3px;background:var(--code-bg)
 .matrix-table th,.matrix-table td{border:1px solid var(--border);padding:4px 8px;text-align:left}
 .matrix-table th{background:var(--code-bg)}
 .no-coverage{padding:6px 0;font-size:.85em}
+.ac-item{padding:4px 0;margin:2px 0}
+.ac-met{border-left:3px solid var(--green);padding-left:8px}
+.ac-unmet{border-left:3px solid var(--red);padding-left:8px}
+.ac-uncovered{border-left:3px solid var(--orange);padding-left:8px;font-weight:500}
+.ac-met-badge{background:var(--green);color:#fff}
+.ac-unmet-badge{background:var(--red);color:#fff}
+.ac-uncovered-badge{background:var(--orange);color:#000}
 pre.mermaid{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:12px;overflow-x:auto;font-size:.8em;white-space:pre}
 @media(prefers-color-scheme:light),:root[data-theme="light"]{
   --bg:#fff;--fg:#1a1a1a;--border:#e0e0e0;--border-light:#f0f0f0;
@@ -208,6 +215,9 @@ function renderAcCoverage(agent) {
   const coverage = agent?.ac_coverage ?? { met: [], unmet: [] }
   const met = Array.isArray(coverage.met) ? coverage.met : []
   const unmet = Array.isArray(coverage.unmet) ? coverage.unmet : []
+  // Split unmet into planning holes (zero covering slices) vs covered-but-incomplete.
+  const uncovered = unmet.filter((a) => a.covering.length === 0)
+  const coveredIncomplete = unmet.filter((a) => a.covering.length > 0)
   if (met.length === 0 && unmet.length === 0) {
     return `<h2>AC Coverage</h2>
 <p class="empty">No AC coverage recorded.</p>
@@ -217,12 +227,13 @@ function renderAcCoverage(agent) {
     ...met.map((a) =>
       `<div class="ac-item ac-met"><span class="badge ac-met-badge">MET</span> <strong>${esc(a.id)}</strong> — covering: ${a.covering.map((s) => `<code>${esc(s)}</code>`).join(', ')}</div>`
     ),
-    ...unmet.map((a) => {
-      const why = a.covering.length === 0
-        ? 'no covering slices assigned'
-        : `missing: ${a.missing.map((s) => `<code>${esc(s)}</code>`).join(', ')}`
+    ...coveredIncomplete.map((a) => {
+      const why = `missing: ${a.missing.map((s) => `<code>${esc(s)}</code>`).join(', ')}`
       return `<div class="ac-item ac-unmet"><span class="badge ac-unmet-badge">UNMET</span> <strong>${esc(a.id)}</strong> — covering: ${a.covering.map((s) => `<code>${esc(s)}</code>`).join(', ')} (${why})</div>`
     }),
+    ...uncovered.map((a) =>
+      `<div class="ac-item ac-uncovered"><span class="badge ac-uncovered-badge">HOLE</span> <strong>${esc(a.id)}</strong> — planning hole: no covering slices assigned</div>`
+    ),
   ].join('\n')
   return `<h2>AC Coverage</h2>
 ${rows}
@@ -298,11 +309,11 @@ function renderAcSliceMatrix(agent) {
   }
 
   if (noCoverage.length > 0) {
-    html += `<div class="no-coverage"><strong>NO COVERAGE</strong> — no covering slices assigned:</div>
+    html += `<div class="no-coverage ac-uncovered"><strong>⚠ PLANNING HOLE</strong> — no covering slices assigned:</div>
 <ul>
 `
     for (const a of noCoverage) {
-      html += `<li><strong>${esc(a.id)}</strong></li>\n`
+      html += `<li><strong>${esc(a.id)}</strong> — planning hole: no covering slices assigned</li>\n`
     }
     html += `</ul>\n`
   }

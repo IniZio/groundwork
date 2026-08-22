@@ -38,7 +38,8 @@ export declare function checkPace(
  * - Unknown kind → rejected (fail-closed).
  * - screenshot/run_output without captured_build_hash → rejected (fail-closed).
  * - currentBuildHash null and artifact has captured_build_hash → stale.
- * - live_url/file without captured_build_hash → fresh (existence-only).
+ * - live_url without a captured companion (file, run_output, or screenshot) in the same milestone → rejected.
+ * - live_url/file without captured_build_hash (but with companion) → passes hash check (existence-only).
  */
 export declare function checkMilestoneArtifacts(
   doc: object,

@@ -58,8 +58,10 @@ function isExemptSlice(slice, exemptKinds) {
 // Artifact kind classification for milestone freshness enforcement.
 // Stale-able kinds MUST carry captured_build_hash — omitting the field is
 // treated as a required-field violation and rejected (fail-closed).
-// Non-stale-able kinds (live_url, file) are verified by existence/reachability
-// only; hash tracking is not required for these kinds.
+// Non-stale-able kinds: `file` artifacts are verified for local-file existence
+// at sign-off time (ledger.mjs); `live_url` artifacts require a captured companion
+// (`file`, `run_output`, or `screenshot`) — no reachability probe is performed.
+// Hash tracking is optional for both kinds.
 // ---------------------------------------------------------------------------
 export const STALEABLE_ARTIFACT_KINDS = ['screenshot', 'run_output']
 export const KNOWN_ARTIFACT_KINDS = ['screenshot', 'run_output', 'live_url', 'file']
@@ -440,14 +442,31 @@ export function checkMilestoneArtifacts(doc, currentBuildHash) {
     }
   }
 
+  // Cross-artifact check: live_url alone does not satisfy the gate.
+  // A live_url MUST be accompanied by at least one captured companion
+  // (file, run_output, or screenshot) in the same milestone.
+  const CAPTURED_KINDS = ['file', 'run_output', 'screenshot']
+  const hasLiveUrl = artifacts.some(a => a.kind === 'live_url')
+  const hasCapturedCompanion = artifacts.some(a => CAPTURED_KINDS.includes(a.kind ?? ''))
+  let anyLiveUrlAlone = false
+  if (hasLiveUrl && !hasCapturedCompanion) {
+    // Push ALL live_url paths into stale to trigger rejection.
+    for (const artifact of artifacts) {
+      if (artifact.kind === 'live_url') stale.push(artifact.path ?? '(unknown)')
+    }
+    anyLiveUrlAlone = true
+  }
+
   const reason = stale.length > 0
-    ? anyUnknownKind
-      ? `Artifact with unknown kind rejected (fail-closed — must be one of: ${KNOWN_ARTIFACT_KINDS.join(', ')}): ${stale.join(', ')}`
-      : anyMissingHash
-        ? `screenshot and run_output artifacts require captured_build_hash — omitting the field is rejected (fail-closed): ${stale.join(', ')}`
-        : anyHashUnknown
-          ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
-          : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
+    ? anyLiveUrlAlone
+      ? `live_url artifact requires a captured companion (file, run_output, or screenshot) in the same milestone — a URL alone is not a capture`
+      : anyUnknownKind
+        ? `Artifact with unknown kind rejected (fail-closed — must be one of: ${KNOWN_ARTIFACT_KINDS.join(', ')}): ${stale.join(', ')}`
+        : anyMissingHash
+          ? `screenshot and run_output artifacts require captured_build_hash — omitting the field is rejected (fail-closed): ${stale.join(', ')}`
+          : anyHashUnknown
+            ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
+            : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
     : undefined
 
   return {

@@ -225,8 +225,12 @@ describe('PACING-R-009 — stale artifacts rejected by milestone-signoff CLI', (
       milestone_artifacts: [
         {
           path: '/tmp/evidence.png',
-          kind: 'live_url',  // live_url → no disk existence check
+          kind: 'live_url',  // live_url — companion required; no disk existence check for the URL itself
           captured_build_hash: 'old-hash',
+        },
+        {
+          path: ledgerFile,  // companion: exists on disk (written by writeLedger above)
+          kind: 'file',
         },
       ],
     }))
@@ -248,8 +252,12 @@ describe('PACING-R-009 — stale artifacts rejected by milestone-signoff CLI', (
       milestone_artifacts: [
         {
           path: '/tmp/evidence.png',
-          kind: 'live_url',  // live_url → no disk existence check
+          kind: 'live_url',  // live_url — companion required; no disk existence check for the URL itself
           captured_build_hash: 'current-hash',
+        },
+        {
+          path: ledgerFile,  // companion: exists on disk (written by writeLedger above)
+          kind: 'file',
         },
       ],
     }))

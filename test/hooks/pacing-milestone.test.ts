@@ -453,22 +453,73 @@ describe('PACING-R-009 — stale-able artifact without captured_build_hash is re
     expect(result.staleArtifacts).toHaveLength(0)
   })
 
-  it('live_url without captured_build_hash → accepted (not stale-able)', () => {
-    // live_url kind does not go stale; hash is optional.
+  it('lone live_url without captured companion → rejected (companion required)', () => {
+    // live_url alone no longer satisfies the gate — it needs a captured companion.
     const doc = {
       pacing: {
         policy: 'milestone',
         budget: 1,
         exempt_kinds: [] as string[],
         milestone_artifacts: [
-          { path: 'https://example.com/app', kind: 'live_url' },  // no hash — OK
+          { path: 'https://example.com/app', kind: 'live_url' },
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'any-hash')
+    expect(result.satisfied).toBe(false)
+    expect(result.reason).toMatch(/captured companion/)
+  })
+
+  it('live_url + file companion → satisfied=true', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: 'https://example.com/app', kind: 'live_url' },
+          { path: '/tmp/output.txt', kind: 'file' },
         ],
       },
       slices: [],
     }
     const result = checkMilestoneArtifacts(doc, 'any-hash')
     expect(result.satisfied).toBe(true)
-    expect(result.staleArtifacts).toHaveLength(0)
+  })
+
+  it('live_url + run_output companion → satisfied=true', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: 'https://example.com/app', kind: 'live_url' },
+          { path: '/tmp/run.log', kind: 'run_output', captured_build_hash: 'build-abc' },
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'build-abc')
+    expect(result.satisfied).toBe(true)
+  })
+
+  it('live_url + screenshot companion → satisfied=true', () => {
+    const doc = {
+      pacing: {
+        policy: 'milestone',
+        budget: 1,
+        exempt_kinds: [] as string[],
+        milestone_artifacts: [
+          { path: 'https://example.com/app', kind: 'live_url' },
+          { path: '/tmp/screen.png', kind: 'screenshot', captured_build_hash: 'build-xyz' },
+        ],
+      },
+      slices: [],
+    }
+    const result = checkMilestoneArtifacts(doc, 'build-xyz')
+    expect(result.satisfied).toBe(true)
   })
 
   it('unknown kind → rejected (fail-closed) regardless of hash', () => {

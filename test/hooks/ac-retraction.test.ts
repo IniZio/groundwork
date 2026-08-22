@@ -318,25 +318,15 @@ describe('R-AC4: PARITY — both folds agree on retraction', () => {
       tcEvent('S1'),
       acRetractEvent('AC-1', 'S1', 'D-23 rejected this requirement'),
     ]
-
-    // ── motive-compile fold ──────────────────────────────────────────────────
-    const view = compile(events.filter((e: any) => e.motive === MOTIVE), {})
-    const all: any[] = [...view.agent.ac_coverage.met, ...view.agent.ac_coverage.unmet]
-    const compileEntry = all.find((a: any) => a.id === 'AC-1')
-    const compileCovering: string[] = compileEntry?.covering ?? []
-    const compileRetracted = !compileCovering.includes('S1')
-
-    // ── motive-map fold (via regenerateMotiveMap) ────────────────────────────
     writeCharter(dir, MOTIVE, ['AC-1'])
-    writeJournalShard(dir, events)
-    regenerateMotiveMap(dir, MOTIVE)
-    const mapMd = readMap(dir, MOTIVE)
-    // AC-1 should NOT render as "met (covered by: S1)"
-    const mapRetracted = !mapMd.includes('✓ **AC-1**')
-
-    // PARITY ASSERTION: both folds must agree
-    expect(compileRetracted).toBe(true)
-    expect(mapRetracted).toBe(true)
+    // computeThreeFoldCoverage checks at (ac, slice) granularity across all three
+    // folds — the map arm parses the "covered by:" clause into Map<acId, Set<sliceId>>
+    // so a two-slice scenario where AC-1 remains met via S2 would not fool it
+    // (the old AC-level `!mapMd.includes('✓ **AC-1**')` would).
+    const results = computeThreeFoldCoverage('AC-1', 'S1', events, dir, MOTIVE)
+    expect(results.compile).toBe(false)
+    expect(results.graphFold).toBe(false)
+    expect(results.map).toBe(false)
   })
 
   it('compile and regenerateMotiveMap both show unretracted AC-2 as still covered', () => {
@@ -347,23 +337,14 @@ describe('R-AC4: PARITY — both folds agree on retraction', () => {
       tcEvent('S2', TS4),
       acRetractEvent('AC-1', 'S1', 'D-23 rejected this requirement'),
     ]
-
-    // ── motive-compile fold ──────────────────────────────────────────────────
-    const view = compile(events.filter((e: any) => e.motive === MOTIVE), {})
-    const met: any[] = view.agent.ac_coverage.met
-    const compileAc2 = met.find((a: any) => a.id === 'AC-2')
-    const compileAc2Covered = compileAc2?.covering?.includes('S2') ?? false
-
-    // ── motive-map fold ──────────────────────────────────────────────────────
     writeCharter(dir, MOTIVE, ['AC-1', 'AC-2'])
-    writeJournalShard(dir, events)
-    regenerateMotiveMap(dir, MOTIVE)
-    const mapMd = readMap(dir, MOTIVE)
-    const mapAc2Covered = mapMd.includes('✓ **AC-2**')
-
-    // PARITY ASSERTION: both folds preserve unretracted coverage
-    expect(compileAc2Covered).toBe(true)
-    expect(mapAc2Covered).toBe(true)
+    // The map arm checks specifically that S2 is listed in AC-2's "covered by:"
+    // clause — the old AC-level `mapMd.includes('✓ **AC-2**')` would pass even
+    // if the rendering listed the wrong slice (e.g. "covered by: S3").
+    const results = computeThreeFoldCoverage('AC-2', 'S2', events, dir, MOTIVE)
+    expect(results.compile).toBe(true)
+    expect(results.graphFold).toBe(true)
+    expect(results.map).toBe(true)
   })
 
   it('all THREE folds agree on the same event stream: retracted (AC-1, S1) is not covered', () => {

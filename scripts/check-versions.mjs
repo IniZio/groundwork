@@ -43,7 +43,28 @@ for (const { label, version } of surfaces) {
 
 if (failed) {
   console.error('\nVersion mismatch — run the bump across all manifests before releasing.');
+}
+
+// Guard $schema consistency across both plugin manifests.
+const EXPECTED_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+const schemaManifests = [
+  { label: 'plugin.json ($schema)', schema: readJson('plugin.json').$schema },
+  { label: '.claude-plugin/plugin.json ($schema)', schema: readJson('.claude-plugin/plugin.json').$schema },
+];
+
+console.log('');
+for (const { label, schema } of schemaManifests) {
+  if (schema !== EXPECTED_SCHEMA) {
+    console.error(`  FAIL  ${label}: ${schema ?? '(missing)'} (expected ${EXPECTED_SCHEMA})`);
+    failed = true;
+  } else {
+    console.log(`  OK    ${label}`);
+  }
+}
+
+if (failed) {
+  console.error('\nCheck failed — fix the mismatches above before releasing.');
   process.exit(1);
 } else {
-  console.log('\nAll version surfaces agree.');
+  console.log('\nAll version and schema surfaces agree.');
 }

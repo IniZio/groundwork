@@ -24,14 +24,12 @@ import {
   findProjectRoot,
   specDirPath,
   generatedDirPath,
-  indexJsonPath,
   walkSpecFiles,
   isIndexStale,
   buildIndexData,
   loadIndex,
   findConceptDir,
   randomSuffix,
-  firstSentence,
   loadSpecManifest,
 } from './lib/spec-io.mjs'
 import { scanVerifies } from './lib/verifies-scan.mjs'
@@ -441,13 +439,13 @@ function cmdHelp(args) {
 // Commands
 // ---------------------------------------------------------------------------
 
-function cmdInit(args) {
+function cmdInit(_args) {
   const sd = resolveSpecDir()
 
   if (existsSync(sd)) {
-    const readme = join(sd, 'README.md')
-    if (existsSync(readme)) {
-      die(`doc/specs/README.md already exists. Remove it or run "spec build" to update the index.`, 1)
+    const indexMd = join(sd, 'index.md')
+    if (existsSync(indexMd)) {
+      die(`doc/specs/index.md already exists. Remove it or run "spec build" to update the index.`, 1)
     }
   }
 
@@ -487,11 +485,11 @@ function cmdInit(args) {
     '',
   ].join('\n')
 
-  writeFileSync(join(sd, 'README.md'), readme, 'utf8')
-  process.stdout.write(`spec: created doc/specs/README.md (concept ${conceptId})\n`)
+  writeFileSync(join(sd, 'index.md'), readme, 'utf8')
+  process.stdout.write(`spec: created doc/specs/index.md (concept ${conceptId})\n`)
 }
 
-async function cmdBuild(args) {
+async function cmdBuild(_args) {
   const sd = resolveSpecDir()
   if (!existsSync(sd)) die('doc/specs/ not found — run "spec init" first', 1)
   await runBuild(sd)
@@ -510,7 +508,7 @@ function cmdReq(args) {
 }
 
 function cmdReqNew(args) {
-  const { flags, positionals } = parseFlags(args)
+  const { positionals } = parseFlags(args)
   const [conceptId, kebabName] = positionals
   if (!conceptId || !kebabName) die('usage: spec req new <concept-id> <kebab-name>', 2)
 

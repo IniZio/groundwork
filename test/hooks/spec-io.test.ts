@@ -15,9 +15,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-// We use createRequire so we can import the .mjs module from TypeScript
-import { createRequire } from 'node:module'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
 const SPEC_IO = path.resolve(
   import.meta.dirname,
@@ -29,6 +27,7 @@ const {
   parseRequirementsDocument,
   buildIndexData,
   ALLOWED_FRONTMATTER_FIELDS,
+  isRequirementsDoc,
 } = await import(pathToFileURL(SPEC_IO).href)
 
 // ---------------------------------------------------------------------------
@@ -229,7 +228,7 @@ describe('parseRequirementsDocument — missing required bullets', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Suite 5: ALLOWED_FRONTMATTER_FIELDS excludes ears and verify
+// Suite 5: ALLOWED_FRONTMATTER_FIELDS excludes ears and verify; includes D-15 fields
 // ---------------------------------------------------------------------------
 
 describe('ALLOWED_FRONTMATTER_FIELDS', () => {
@@ -245,6 +244,44 @@ describe('ALLOWED_FRONTMATTER_FIELDS', () => {
     for (const field of ['id', 'type', 'concept', 'parent', 'title', 'summary', 'origin_decision_ref', 'status', 'pattern', 'verification', 'criticality']) {
       expect(ALLOWED_FRONTMATTER_FIELDS.has(field), `expected ${field} to be allowed`).toBe(true)
     }
+  })
+
+  it('includes D-15 RequirementSchema fields', () => {
+    for (const field of ['ears_pattern', 'verification_method', 'design', 'source', 'verifies']) {
+      expect(ALLOWED_FRONTMATTER_FIELDS.has(field), `expected D-15 field ${field} to be allowed`).toBe(true)
+    }
+  })
+
+  it('includes D-15 ConceptIndexSchema fields', () => {
+    for (const field of ['tags', 'aliases', 'depends_on', 'date_updated']) {
+      expect(ALLOWED_FRONTMATTER_FIELDS.has(field), `expected D-15 field ${field} to be allowed`).toBe(true)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 5b: isRequirementsDoc — D-15 requirements/ subdir detection
+// ---------------------------------------------------------------------------
+
+describe('isRequirementsDoc — D-15 requirements/ subdir', () => {
+  it('returns true for a file inside requirements/ subdir', () => {
+    expect(isRequirementsDoc('enforcement/requirements/enforcement-r-001-something.md')).toBe(true)
+  })
+
+  it('returns true for requirements/ at root level', () => {
+    expect(isRequirementsDoc('requirements/test-r-001.md')).toBe(true)
+  })
+
+  it('still returns true for monolithic constraints.md', () => {
+    expect(isRequirementsDoc('artifact/constraints.md')).toBe(true)
+  })
+
+  it('still returns true for monolithic requirements.md', () => {
+    expect(isRequirementsDoc('artifact/requirements.md')).toBe(true)
+  })
+
+  it('returns false for a file not in requirements/', () => {
+    expect(isRequirementsDoc('enforcement/design/overview.md')).toBe(false)
   })
 })
 
@@ -350,5 +387,186 @@ describe('buildIndexData — unknown frontmatter fields rejected', () => {
     expect(Object.keys(nodes)).toContain('ARTIFACT-R-002')
     expect(nodes['ARTIFACT-R-001'].type).toBe('requirement')
     expect(nodes['ARTIFACT-R-001'].ears).toContain('**shall**')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 7: buildIndexData — D-15 individual requirement files in requirements/
+// ---------------------------------------------------------------------------
+
+const VALID_D15_REQ_FILE = `---
+id: ENFORCEMENT-R-001
+title: Nesting guard blocks depth-2 spawns
+concept: C-ENFORCEMENT
+criticality: must
+verification: automated
+---
+
+## Statement
+
+**When** a depth-1 junior-orchestrator attempts to spawn another
+junior-orchestrator, the nesting-guard hook **shall** deny the spawn and
+exit non-zero.
+
+## Why
+
+Unconstrained nesting depth defeats the delegation model and makes fan-out
+analysis impossible.
+
+## Fit criterion
+
+Given a junior-orchestrator trying to spawn a junior-orchestrator, the hook
+exits 1 and the outer task receives an error rather than a spawned child.
+
+## Verification procedure
+
+Run the nesting-guard hook with a synthetic payload simulating a depth-2
+junior-orchestrator spawn and assert exit code 1.
+`
+
+describe('buildIndexData — D-15 individual requirement files', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), 'gw-spec-io-d15-'))
+    writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'test' }))
+  })
+
+  afterEach(() => rmSync(tmpDir, { recursive: true, force: true }))
+
+  function specDir() {
+    return path.join(tmpDir, 'doc', 'specs')
+  }
+
+  it('indexes a D-15 individual requirement file with correct id and type', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const reqDir = path.join(conceptDir, 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---',
+      'id: C-ENFORCEMENT',
+      'type: moc',
+      'title: Enforcement',
+      'summary: "Enforcement hooks."',
+      'status: draft',
+      '---',
+      '',
+      '# Enforcement',
+    ].join('\n'))
+    writeFileSync(path.join(reqDir, 'enforcement-r-001-nesting-guard.md'), VALID_D15_REQ_FILE)
+
+    const { nodes, errors } = buildIndexData(specDir())
+    expect(errors.filter((e: { type: string }) => e.type !== 'requirement_parse_error')).toHaveLength(0)
+    expect(Object.keys(nodes)).toContain('ENFORCEMENT-R-001')
+    expect(nodes['ENFORCEMENT-R-001'].type).toBe('requirement')
+    expect(nodes['ENFORCEMENT-R-001'].title).toBe('Nesting guard blocks depth-2 spawns')
+    expect(nodes['ENFORCEMENT-R-001'].verification).toBe('automated')
+    expect(nodes['ENFORCEMENT-R-001'].criticality).toBe('must')
+  })
+
+  it('extracts normative statement from ## Statement section', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const reqDir = path.join(conceptDir, 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---', 'id: C-ENFORCEMENT', 'type: moc', 'title: Enforcement', '---', '',
+    ].join('\n'))
+    writeFileSync(path.join(reqDir, 'enforcement-r-001-nesting-guard.md'), VALID_D15_REQ_FILE)
+
+    const { nodes } = buildIndexData(specDir())
+    expect(nodes['ENFORCEMENT-R-001'].ears).toContain('**shall**')
+  })
+
+  it('emits error when D-15 file is missing ## Statement with **shall**', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const reqDir = path.join(conceptDir, 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---', 'id: C-ENFORCEMENT', 'type: moc', 'title: Enforcement', '---', '',
+    ].join('\n'))
+    writeFileSync(path.join(reqDir, 'enforcement-r-002-bad.md'), [
+      '---',
+      'id: ENFORCEMENT-R-002',
+      'title: Bad requirement',
+      '---',
+      '',
+      '## Why',
+      '',
+      'Because.',
+      '',
+      '## Fit criterion',
+      '',
+      'Passes.',
+    ].join('\n'))
+
+    const { errors } = buildIndexData(specDir())
+    const parseErrors = errors.filter((e: { type: string }) => e.type === 'requirement_parse_error')
+    expect(parseErrors.some((e: { message: string }) => e.message.includes('**shall**'))).toBe(true)
+  })
+
+  it('skips D-15 files without id frontmatter', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const reqDir = path.join(conceptDir, 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---', 'id: C-ENFORCEMENT', 'type: moc', 'title: Enforcement', '---', '',
+    ].join('\n'))
+    writeFileSync(path.join(reqDir, 'no-id.md'), '# Just markdown, no frontmatter id\n')
+
+    const { nodes } = buildIndexData(specDir())
+    // Only C-ENFORCEMENT should be indexed
+    expect(Object.keys(nodes)).toEqual(['C-ENFORCEMENT'])
+  })
+
+  it('rejects unknown frontmatter fields in D-15 individual files', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const reqDir = path.join(conceptDir, 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---', 'id: C-ENFORCEMENT', 'type: moc', 'title: Enforcement', '---', '',
+    ].join('\n'))
+    writeFileSync(path.join(reqDir, 'enforcement-r-003-stale.md'), [
+      '---',
+      'id: ENFORCEMENT-R-003',
+      'title: Stale',
+      'ears: old stale field',
+      '---',
+      '',
+      '## Statement',
+      '',
+      'The system **shall** do something.',
+      '',
+      '## Why',
+      '',
+      'Because.',
+      '',
+      '## Fit criterion',
+      '',
+      'It does the thing.',
+    ].join('\n'))
+
+    const { errors } = buildIndexData(specDir())
+    const unknownErrors = errors.filter((e: { type: string }) => e.type === 'unknown_frontmatter_field')
+    expect(unknownErrors.some((e: { field: string }) => e.field === 'ears')).toBe(true)
+  })
+
+  it('skips files in design/ subdirectory', () => {
+    const conceptDir = path.join(specDir(), 'enforcement')
+    const designDir = path.join(conceptDir, 'design')
+    mkdirSync(designDir, { recursive: true })
+    writeFileSync(path.join(conceptDir, 'index.md'), [
+      '---', 'id: C-ENFORCEMENT', 'type: moc', 'title: Enforcement', '---', '',
+    ].join('\n'))
+    writeFileSync(path.join(designDir, 'overview.md'), [
+      '# Design overview',
+      '',
+      'Some design content.',
+    ].join('\n'))
+
+    const { nodes } = buildIndexData(specDir())
+    // design/overview.md has no id, so it should be skipped anyway; C-ENFORCEMENT indexed
+    expect(Object.keys(nodes)).toContain('C-ENFORCEMENT')
+    // no phantom node for the design file
+    expect(Object.values(nodes).every((n: any) => n.relPath !== 'enforcement/design/overview.md')).toBe(true)
   })
 })

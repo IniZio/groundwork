@@ -204,12 +204,50 @@ describe('4 — type→color encoding', () => {
         violations.push(`node "${cn.id}" (type "${d5type}") color is "${cn.color}", expected TYPE_COLORS["${d5type}"] = "${expected}"`)
     }
 
-    // Require that all 6 non-spec-requirement D-5 types are exercised by this motive.
-    // spec-requirement is excluded: it has 0 nodes in groundwork-development.
-    const ALL_SEVEN = ['objective','decision','open-item','ticket','acceptance-criterion','slice','spec-requirement']
-    const missingFromAllSeven = ALL_SEVEN.filter(t => t !== 'spec-requirement' && !typesSeen.has(t))
-    expect(missingFromAllSeven, `Missing expected type(s) in canvas: ${missingFromAllSeven.join(', ')}`).toHaveLength(0)
+    // Require the DURABLE types to be exercised by this motive.
+    //
+    // Durable = derived from the committed journal or the committed charter, which is
+    // the premise this file states up front. Two D-5 types are NOT durable for a fixed
+    // motive and are therefore excluded here:
+    //   - spec-requirement: parsed from doc/specs/**; 0 nodes in groundwork-development.
+    //   - slice: read from .groundwork/runs/*.json by motive-graph.mjs findLedger().
+    //     Run ledgers are gitignored, per-session, and rotate away; whether ANY ledger
+    //     on disk is stamped with this motive is ambient state, not a committed fact.
+    //     Requiring it here made the assertion depend on runtime data the repo does not
+    //     carry. Colour encoding for both excluded types is covered deterministically by
+    //     the synthetic positive control below, which cannot go vacuous.
+    const DURABLE_TYPES = ['objective','decision','open-item','ticket','acceptance-criterion']
+    const missingDurable = DURABLE_TYPES.filter(t => !typesSeen.has(t))
+    expect(missingDurable, `Missing expected type(s) in canvas: ${missingDurable.join(', ')}`).toHaveLength(0)
 
+    expect(violations, violations.join('\n')).toHaveLength(0)
+  })
+
+  it('positive control — toJsonCanvas encodes every TYPE_COLORS type exactly (synthetic, all 7)', () => {
+    // Deterministic yardstick for the colour transform across ALL seven D-5 types,
+    // including the two the ambient corpus cannot guarantee (slice, spec-requirement).
+    const ALL_SEVEN = [
+      'objective','decision','open-item','ticket','acceptance-criterion','slice','spec-requirement',
+    ]
+    expect(Object.keys(TYPE_COLORS).sort(), 'TYPE_COLORS key set drifted from the D-5 type vocabulary')
+      .toEqual([...ALL_SEVEN].sort())
+
+    const doc = {
+      nodes: ALL_SEVEN.map(t => ({ id: `${t}:probe`, type: t, label: `probe ${t}` })),
+      edges: [],
+    }
+    const synthetic = toJsonCanvas(doc as never)
+
+    expect(synthetic.nodes).toHaveLength(ALL_SEVEN.length)
+    const violations: string[] = []
+    for (const t of ALL_SEVEN) {
+      const cn = synthetic.nodes.find(n => n.id === `${t}:probe`)
+      if (!cn) { violations.push(`type "${t}" produced no canvas node`); continue }
+      if (cn.color !== TYPE_COLORS[t as keyof typeof TYPE_COLORS])
+        violations.push(`type "${t}" color is "${cn.color}", expected "${TYPE_COLORS[t as keyof typeof TYPE_COLORS]}"`)
+      if (!cn.text.startsWith(`[${t}]`))
+        violations.push(`type "${t}" text does not start with "[${t}]": ${JSON.stringify(cn.text)}`)
+    }
     expect(violations, violations.join('\n')).toHaveLength(0)
   })
 })

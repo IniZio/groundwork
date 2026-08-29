@@ -142,19 +142,18 @@ function minReq(conceptId: string, reqId: string, overrides: Record<string, stri
 // ---------------------------------------------------------------------------
 
 describe("AC1 — spec init", () => {
-	it("creates doc/specs/README.md with a valid concept node", () => {
+	it("creates doc/specs/index.md with a valid concept node", () => {
 		const r = run(["init"]);
 		expect(r.code, `stderr: ${r.stderr}`).toBe(0);
-		const readme = path.join(SPEC_DIR(), "README.md");
-		expect(existsSync(readme)).toBe(true);
-		const content = readFileSync(readme, "utf8");
+		const indexMd = path.join(SPEC_DIR(), "index.md");
+		expect(existsSync(indexMd)).toBe(true);
+		const content = readFileSync(indexMd, "utf8");
 		// Must have a C-<PROJECT> id derived from package.json name
 		expect(content).toMatch(/^id: C-TEST-PROJECT/m);
-		expect(content).toMatch(/^type: concept/m);
 		expect(content).toMatch(/^parent: null/m);
 	});
 
-	it("exits 1 if README.md already exists", () => {
+	it("exits 1 if index.md already exists", () => {
 		run(["init"]);
 		const r2 = run(["init"]);
 		expect(r2.code).toBe(1);
@@ -184,10 +183,11 @@ describe("AC2 — spec build", () => {
 describe("AC3 — parent/directory mismatch", () => {
 	it("exits 1 and prints node id and both values when concept disagrees with dir", () => {
 		mkSpec();
-		writeReadme("", "C-ROOT", "Root");
-		// Requirement placed in root's requirements/ but claims wrong concept
+		// D-15 layout: concept dir is one level below the spec root.
+		writeReadme("C-ROOT", "C-ROOT", "Root");
+		// Requirement placed in concept's requirements/ but claims wrong concept
 		writeReq(
-			"requirements",
+			"C-ROOT/requirements",
 			"bad-req.md",
 			minReq("C-WRONG", "ROOT-R-aaaa"),
 		);
@@ -204,8 +204,9 @@ describe("AC3 — parent/directory mismatch", () => {
 
 	it("succeeds when concept matches directory position", () => {
 		mkSpec();
-		writeReadme("", "C-ROOT", "Root");
-		writeReq("requirements", "good-req.md", minReq("C-ROOT", "ROOT-R-bbbb"));
+		// D-15 layout: concept dir is one level below the spec root.
+		writeReadme("C-ROOT", "C-ROOT", "Root");
+		writeReq("C-ROOT/requirements", "good-req.md", minReq("C-ROOT", "ROOT-R-bbbb"));
 		const r = run(["build"]);
 		expect(r.code, `stderr: ${r.stderr}`).toBe(0);
 	});

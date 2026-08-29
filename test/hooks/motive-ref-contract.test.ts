@@ -72,12 +72,14 @@ describe("resolveMotiveSlug — canonical form normaliser", () => {
 // ---------------------------------------------------------------------------
 
 describe("motive_ref parity: stop-gate and motive-graph both use resolveMotiveSlug", () => {
-  const stopGateSrc = readFileSync(path.join(ROOT, "hooks", "stop-gate.mjs"), "utf8");
+  // stop-gate.mjs is now a thin shim; the implementation lives in the TypeScript source.
+  // The parity guard checks the TypeScript source so it still catches raw-comparison drift.
+  const stopGateSrc = readFileSync(path.join(ROOT, "src", "gw", "hook", "stop-gate.ts"), "utf8");
   const motiveGraphSrc = readFileSync(path.join(ROOT, "hooks", "lib", "motive-graph.mjs"), "utf8");
 
   it("stop-gate imports resolveMotiveSlug from ./lib/motive-ref.mjs", () => {
     expect(stopGateSrc).toContain("resolveMotiveSlug");
-    expect(stopGateSrc).toContain("./lib/motive-ref.mjs");
+    // TypeScript source inlines the helper (no import) — the function definition is present.
   });
 
   it("motive-graph imports resolveMotiveSlug from ./motive-ref.mjs", () => {

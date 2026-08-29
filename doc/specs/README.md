@@ -24,25 +24,103 @@ This spec is partial. It covers four load-bearing behavioral areas established i
 
 ---
 
-## How to Read This Spec Tree
+## How to Read This Spec Tree (D-15 Layout)
+
+### Directory structure
+
+Each concept lives in its own directory under `doc/specs/`:
+
+```
+doc/specs/<concept>/
+├── index.md               # concept node (ConceptIndexSchema frontmatter)
+├── requirements/          # one file per requirement
+│   └── <id>-<kebab>.md   # RequirementSchema frontmatter + H2 body sections
+├── design/
+│   ├── _MOC.md
+│   ├── concepts/, flows/, components/, recipes/, reference/
+├── decisions/
+└── glossary.md
+```
 
 1. **Start here** — this file. Read the Goals and Scope to understand what is and is not covered.
-2. **Pick a concept** — open the concept's `README.md` for the problem statement, scope, and key decisions.
-3. **Read the requirements** — open the concept's `constraints.md` for the normative requirements as anchored H3 sections. (`requirements.md` is a deprecated alias accepted by tooling; new content uses `constraints.md`.)
+2. **Pick a concept** — open the concept's `index.md` for the problem statement, scope, and key decisions.
+3. **Read the requirements** — open the concept's `requirements/` directory; each `.md` file is one requirement with YAML frontmatter and H2 body sections (`## Statement`, `## Why`, `## Fit criterion`, `## Verification procedure`).
 
-To cite a specific requirement, use a markdown anchor link to its id lowercased:
+### Concept index.md frontmatter (ConceptIndexSchema)
 
-```markdown
-[ARTIFACT-R-001](doc/specs/artifact/constraints.md#artifact-r-001)
+```yaml
+id: C-ENFORCEMENT
+type: moc
+title: Enforcement
+summary: "One sentence summary."
+status: draft
+parent: null
 ```
 
-Within the same file, omit the path prefix:
+### Individual requirement file frontmatter (RequirementSchema)
 
-```markdown
-[ARTIFACT-R-001](#artifact-r-001)
+```yaml
+id: ENFORCEMENT-R-001
+title: Nesting guard blocks depth-2 spawns
+concept: C-ENFORCEMENT
+criticality: must
+verification: automated
+source: RFC-0003
 ```
 
-Never cite by bare id text; anchor links are the machine-checkable citation form.
+Followed by H2 body sections:
+
+```markdown
+## Statement
+
+**When** ... the system **shall** ...
+
+## Why
+
+Rationale here.
+
+## Fit criterion
+
+Given … then …
+
+## Verification procedure
+
+How to verify.
+```
+
+### Wikilink convention
+
+`[[<concept-id>]]` resolves via filename = id. For example, `[[ENFORCEMENT-R-001]]` resolves to `requirements/enforcement-r-001-*.md` within the concept directory.
+
+### Coverage wikilinks
+
+Requirement files declare which ledger slices implement them via the `verifies` frontmatter field:
+
+```yaml
+verifies:
+  - "[[ENFORCEMENT-S-003]]"
+  - "[[ENFORCEMENT-S-004]]"
+```
+
+### Citing requirements
+
+To cite a specific requirement, use a markdown link to its individual file:
+
+```markdown
+[ENFORCEMENT-R-001](doc/specs/enforcement/requirements/enforcement-r-001-nesting-guard.md)
+```
+
+Within the same concept, use a relative path:
+
+```markdown
+[ENFORCEMENT-R-001](requirements/enforcement-r-001-nesting-guard.md)
+```
+
+Never cite by bare id text; file links are the machine-checkable citation form.
+
+### Legacy format (transitional)
+
+During migration, `constraints.md` (monolithic H3 anchored sections) and `spec.yaml` files may still exist. Tooling accepts both formats. New content goes into `requirements/<id>-<kebab>.md` files.
 
 ---
 

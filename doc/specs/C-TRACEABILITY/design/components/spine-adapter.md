@@ -1,0 +1,72 @@
+---
+title: "SpineAdapter Component"
+concept: "[[C-TRACEABILITY/index]]"
+status: "draft"
+date_updated: "2026-08-29"
+source: "hooks/lib/traceability-adapter.mjs"
+---
+
+# SpineAdapter
+
+`SpineAdapter` is a read-only interface defined in `hooks/lib/traceability-adapter.mjs`. It isolates the traceability graph assembler and render surfaces from the backing data store (D-7). If the store is ever swapped (e.g. to a beads-based CAS), only the adapter is reimplemented; the traceability model, join engine, and render surfaces remain unchanged.
+
+## Interface (JSDoc typedef)
+
+```js
+/**
+ * @typedef {object} SpineAdapter
+ * @property {() => string}               getObjective         - Motive objective string
+ * @property {() => string}               getMotive            - Motive slug
+ * @property {() => SliceRecord[]}        getSlices            - All ledger slices
+ * @property {() => VerificationEvent[]}  getVerificationEvents - VERIFICATION journal events
+ * @property {() => GateEvent[]}          getGateEvents        - GATE journal events
+ * @property {() => SpecReqRecord[]}      getSpecRequirements  - All spec-requirement nodes
+ * @property {() => CoverageMap}          getCoverageMap       - coverage.json by_requirement map
+ */
+```
+
+All methods are synchronous. Caching is the adapter's concern, not the caller's.
+
+## SliceRecord fields
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Slice identifier (e.g. `S1`) |
+| `status` | `string` | `pending` \| `in_progress` \| `complete` \| `skipped` |
+| `blocked_by` | `string[]` | Ids of prerequisite slices |
+| `covers_ac` | `string[]` | AC ids this slice covers |
+| `decisions` | `string[]` | Decision ids constraining this slice |
+| `test_paths` | `string[]` | Optional — repo-relative paths to self-test files (direct linkage) |
+| `wave` | `number\|null` | Wave number or null |
+| `ticket` | `string` | Linked ticket id |
+| `desc` | `string` | Human description |
+
+## SpecReqRecord fields
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Requirement id (e.g. `TRACEABILITY-R-001`) |
+| `title` | `string` | Human title |
+| `verification` | `string\|null` | `automated` \| `manual` \| null |
+| `criticality` | `string\|null` | `must` \| `should` \| null |
+| `origin_decision_ref` | `string\|null` | Decision ref (e.g. `tracking-viz#D-7`) |
+
+## NativeSpineAdapter
+
+`NativeSpineAdapter` is the default implementation. It reads from groundwork's native data sources:
+
+| Data | Source path |
+|---|---|
+| Ledger slices | `.groundwork/runs/<session>.json` (or legacy `.groundwork/run.json`) |
+| Journal events | `.groundwork/journal/` |
+| Spec requirements | `doc/specs/**/constraints.md` (via `spec-io.mjs` `parseSpecRequirements`) |
+| Coverage map | `doc/specs/coverage.json` |
+| Motive objective | `.groundwork/motives/<slug>/motive.md` |
+
+Constructor: `new NativeSpineAdapter({ projectDir, slug })`
+
+## Self-test linkage mechanisms
+
+**Direct** (preferred): slice carries `test_paths` field → adapter emits direct `confirms` edges.
+
+**Decision-mediated** (fallback): when `test_paths` is absent, adapter cross-joins `slice.decisions` against `spec-requirement.origin_decision_ref` in `coverage.json`. This is coarse (one-to-many) and labeled as decision-mediated in the graph output.

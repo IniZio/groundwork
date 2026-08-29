@@ -1,0 +1,31 @@
+---
+id: pacing-r-009
+title: Milestone artifacts are hook-validatable; staleness is derived from build-hash comparison
+concept: "[[enforcement/index]]"
+criticality: must
+verification: unverified
+ears_pattern: Ubiquitous
+verification_method: Test
+design: "[[design/reference/enforcement-hooks-reference]]"
+status: open
+source: spine-beads-hitl-portability#S6
+verifies: []
+---
+
+## Statement
+
+Each entry in `pacing.milestone_artifacts` **shall** carry a `path` (local file path or URL), a `kind` (one of `screenshot`, `run_output`, `live_url`, `file`), and a `captured_build_hash` — **required** for `screenshot` and `run_output` (rejected without one); **optional** for `live_url` and `file`. A hook **shall** be able to validate milestone artifacts mechanically: (1) for `file` artifacts, confirm the local file exists; for `live_url` artifacts, confirm a captured companion (`file`, `run_output`, or `screenshot`) is present in the same milestone — no network probe is performed; (2) when `captured_build_hash` is present, compare it against the current build hash and classify the artifact as `fresh` or `stale` — using the same comparison semantics as the traceability evidence freshness mechanism (`traceability-classify.mjs`) rather than a second independent scheme.
+
+**Fail-closed enforcement (V9 amendment):** When an artifact declares a `captured_build_hash` and the current build hash is not supplied (i.e. `--build-hash` is absent from `ledger claim` or `ledger set --status in_progress`), the artifact **shall** be classified as STALE and the gate **shall** block. Omitting `--build-hash` is not a bypass — it is treated as inability to verify freshness, which fails closed. To release the gate, the operator must pass `--build-hash <current>` explicitly. Artifacts of kind `screenshot` or `run_output` that declare no `captured_build_hash` are **rejected** (missing required field — fail-closed, not existence-only). `file` artifacts that declare no `captured_build_hash` are validated for local-file existence only (no hash check). `live_url` artifacts require a captured companion (`file`, `run_output`, or `screenshot`) in the same milestone — a URL alone is not a capture; no network reachability probe is performed. An artifact with an unknown or absent kind is also rejected fail-closed.
+
+## Why
+
+Milestone artifacts must be machine-checkable for the gate to be meaningful. For `file` artifacts, local-file existence is sufficient for mechanical validation. For `live_url` artifacts, a URL is a string, not a capture; gate-time reachability proves only that a URL resolved at gate time, not that it showed the claimed behaviour — therefore a `live_url` requires a captured companion (`file` for a HAR or export, `run_output` for a newman/postman run report, or `screenshot`) in the same milestone. No network probe is performed on any `live_url` (by design: no probe means no false-fails from network flakiness). For `screenshot` and `run_output` artifacts, `captured_build_hash` is additionally required — omitting it is a required-field violation, not a bypass. Adding `captured_build_hash` enables staleness detection: if the underlying data was regenerated after the artifact was captured, the hash drifts and the hook marks the artifact stale — preventing a human from approving screenshots that do not reflect the current state of the system. Reusing the existing freshness mechanism (`captured_build_hash` field, `fresh`/`stale` classification) avoids inventing a second freshness scheme and keeps the two mechanisms consistent by design. The fail-closed rule (V9) closes the gap where the deployed path (`bin/ledger claim` with no `--build-hash`) silently skipped the freshness check while the pure-function tests appeared green.
+
+## Fit criterion
+
+Given a `milestone_artifact` with `captured_build_hash` equal to the current build hash, the hook classifies it as `fresh`. After a data regeneration that changes the build hash, the same artifact is classified as `stale`. A `milestone_artifact` of kind `file` with no `captured_build_hash` is checked for local-file existence only (no freshness check). A `milestone_artifact` of kind `live_url` with no captured companion (`file`, `run_output`, or `screenshot`) in the same milestone is **rejected** — a URL alone is not a capture; a `live_url` with a captured companion passes (no hash check required for the URL itself). A `milestone_artifact` of kind `screenshot` or `run_output` with no `captured_build_hash` is **rejected** — the field is required for those kinds. Invoking `bin/ledger claim <id>` with NO `--build-hash` against a ledger with APPROVE sign-off and a hashed artifact exits 1 (blocked); the same invocation with `--build-hash <matching>` exits 0 (released).
+
+## Verification procedure
+
+Automated — deployed-path coverage in `test/hooks/ledger-claim-milestone-deployed.test.ts`; pure-function coverage in `test/hooks/pacing-milestone.test.ts`.

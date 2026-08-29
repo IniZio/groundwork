@@ -56,6 +56,7 @@ import {
   isRequirementsDoc,
   hasNormativeVerb,
   extractAllHeadingAnchors,
+  buildIndexData,
 } from './lib/spec-io.mjs'
 import { verifiedIds } from './lib/verifies-scan.mjs'
 
@@ -65,9 +66,19 @@ import { verifiedIds } from './lib/verifies-scan.mjs'
 
 function loadSpecIndex(projectDir) {
   const indexPath = join(projectDir, 'doc', 'specs', '_generated', 'index.json')
-  if (!existsSync(indexPath)) return null
+  if (existsSync(indexPath)) {
+    try {
+      return JSON.parse(readFileSync(indexPath, 'utf8'))
+    } catch {
+      return null
+    }
+  }
+  // D-15 migration: _generated/ is deleted; build index in-memory from requirements/*.md
+  const specDir = join(projectDir, 'doc', 'specs')
+  if (!existsSync(specDir)) return null
   try {
-    return JSON.parse(readFileSync(indexPath, 'utf8'))
+    const { nodes } = buildIndexData(specDir)
+    return { nodes }
   } catch {
     return null
   }
@@ -490,14 +501,19 @@ function checkNodeInvariants(node, rawFm, index) {
     if (Object.prototype.hasOwnProperty.call(rawFm, 'verify')) {
       violations.push(`stale-frontmatter: node "${id}" has "verify" in frontmatter (fit criterion belongs in body prose)`)
     }
+    // D-15 individual requirement files live in a requirements/ subdirectory (e.g.
+    // concept/requirements/concept-r-001.md). They use lowercase IDs and additional
+    // frontmatter fields not present in old-format nodes.
+    const isD15ReqFile = !!(node.relPath && node.relPath.includes('/requirements/'))
+
     // Unknown fields check (for non-concept nodes not covered by schema)
     for (const field of Object.keys(rawFm)) {
       if (!ALLOWED_FRONTMATTER_FIELDS.has(field) && field !== 'ears' && field !== 'verify') {
         violations.push(`unknown-field: node "${id}" has unknown frontmatter key "${field}"`)
       }
     }
-    // Strict requirement ID format
-    if (rawFm.id && !STRICT_REQ_ID_RE.test(String(rawFm.id))) {
+    // Strict requirement ID format — skip D-15 individual files (they use lowercase ids)
+    if (!isD15ReqFile && rawFm.id && !STRICT_REQ_ID_RE.test(String(rawFm.id))) {
       violations.push(`id-format: requirement "${rawFm.id}" does not match <CONCEPT>-R-NNN (exactly 3 zero-padded digits)`)
     }
   }
@@ -509,9 +525,11 @@ function checkNodeInvariants(node, rawFm, index) {
     }
   }
 
-  // Summary length ≤25 words (all node types)
+  // Summary length ≤25 words (all node types except D-15 individual requirement files,
+  // which use body sections for normative content rather than a frontmatter summary gloss)
+  const _isD15ForSummary = !isConcept && !!(node.relPath && node.relPath.includes('/requirements/'))
   const summary = rawFm.summary || node.summary
-  if (summary && summary.trim()) {
+  if (!_isD15ForSummary && summary && summary.trim()) {
     const wordCount = summary.trim().split(/\s+/).length
     if (wordCount > 25) {
       violations.push(`summary-length: node "${id}" summary has ${wordCount} words (max 25)`)
@@ -626,11 +644,13 @@ const specDir = join(projectDir, 'doc', 'specs')
 const index = loadSpecIndex(projectDir)
 if (!index) {
   if (!existsSync(specDir)) {
-    process.stdout.write('spec lint: clean — no spec tree found.\n')
+    const indexPath = join(specDir, '_generated', 'index.json')
+    const msg = `spec lint: no spec tree found; looked at ${indexPath}\n`
+    process.stdout.write(msg)
+    process.stderr.write(msg)
     process.exit(0)
   }
-  const indexPath = join(specDir, '_generated', 'index.json')
-  process.stderr.write(`spec lint: spec index not found at ${indexPath}. Run "spec build" first.\n`)
+  process.stderr.write(`spec lint: failed to build spec index from ${specDir}.\n`)
   process.exit(1)
 }
 
@@ -722,7 +742,11 @@ for (const [relPath, nodes] of byFile) {
 // automated-unverified: every automated requirement must have ≥1 @verifies test
 // ---------------------------------------------------------------------------
 
-const automatedNodes = targetNodes.filter(n => n.verification === 'automated')
+// D-15 individual requirement files (in requirements/ subdirs) use verification_method for
+// traceability and are not expected to carry @verifies comments in the test suite.
+const automatedNodes = targetNodes.filter(n =>
+  n.verification === 'automated' && !(n.relPath && n.relPath.includes('/requirements/')),
+)
 if (automatedNodes.length > 0) {
   const verified = verifiedIds(projectDir)
   for (const node of automatedNodes) {

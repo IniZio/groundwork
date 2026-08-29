@@ -435,8 +435,7 @@ describe('Bug 4 — lint index path resolution falls back to cwd', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(tmpdir(), 'gw-sf-bug4-'))
     writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'test' }))
-    // Create a doc/specs tree but NO _generated/index.json — triggers the not-found path
-    mkdirSync(path.join(tmpDir, 'doc', 'specs'), { recursive: true })
+    // D-15: do NOT create doc/specs/ — absence of the spec tree triggers the not-found path
   })
 
   afterEach(() => rmSync(tmpDir, { recursive: true, force: true }))

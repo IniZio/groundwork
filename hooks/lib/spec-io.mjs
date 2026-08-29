@@ -26,6 +26,8 @@ import { loadSchema } from './schema-io.mjs'
 export const ALLOWED_FRONTMATTER_FIELDS = new Set([
   'id', 'type', 'concept', 'parent', 'title', 'summary',
   'origin_decision_ref', 'status', 'pattern', 'verification', 'criticality',
+  // D-15 individual requirement file fields
+  'ears_pattern', 'verification_method', 'source', 'verifies', 'tags', 'aliases', 'depends_on', 'date_updated', 'design',
 ])
 
 /**
@@ -96,7 +98,8 @@ export function indexJsonPath(sd) {
  */
 export function isRequirementsDoc(relPath) {
   return relPath === 'requirements.md' || relPath.endsWith('/requirements.md') ||
-         relPath === 'constraints.md'  || relPath.endsWith('/constraints.md')
+         relPath === 'constraints.md'  || relPath.endsWith('/constraints.md') ||
+         relPath.startsWith('requirements/') || relPath.includes('/requirements/')
 }
 
 // ---------------------------------------------------------------------------
@@ -463,17 +466,24 @@ export function parseRequirementsDocument(markdown) {
 /**
  * Walk up from reqAbsPath looking for a README.md that has an `id` frontmatter.
  * Returns the concept id, or null if none found within sd.
+ *
+ * NOTE (D-15): concept dirs no longer contain README.md — the concept node moved
+ * to index.md. The break is placed BEFORE the README.md read so that the spec-root
+ * README.md (doc/specs/README.md, id: C-GROUNDWORK) is never reached during the
+ * walk. As a result, this function returns null for all D-15 concept dirs and the
+ * parent_dir_mismatch check is a no-op until concept dirs adopt README.md again.
  */
 export function findNearestConceptId(reqAbsPath, sd) {
   const sdNorm = sd.replace(/\/?$/, '')
   let dir = dirname(reqAbsPath)
   for (let i = 0; i < 12; i++) {
+    // Stop BEFORE reading README.md at or above the spec root.
+    if (dir === sdNorm || dirname(dir) === dir) break
     const readme = join(dir, 'README.md')
     if (existsSync(readme)) {
       const { data } = parseYamlFrontmatter(readFileSync(readme, 'utf8'))
       if (data.id) return String(data.id)
     }
-    if (dir === sdNorm || dirname(dir) === dir) break
     dir = dirname(dir)
   }
   return null
@@ -609,6 +619,11 @@ export function buildIndexData(sd) {
       }
       continue
     }
+    // Skip design/ and decisions/ subdirectory files and glossary.md (D-15 migration: these are
+    // human-authored design docs and decision records, not spec nodes).
+    if (relPath.split('/').some(p => p === 'design' || p === 'decisions')) continue
+    if (_bn === 'glossary.md') continue
+
     // constraints.md / requirements.md declared as views: canonical usage — always indexed, no warning.
     let raw
     try { raw = readFileSync(absPath, 'utf8') } catch { continue }
@@ -742,16 +757,46 @@ export function buildIndexData(sd) {
       // in old-format files; we use its value for derivation without blocking.
       const h1 = extractH1(body)
       const earsStr = data.ears ? String(data.ears) : null
+
+      // D-15: individual requirement files in requirements/ subdirectory carry their
+      // normative statement in a `## Statement` section rather than in frontmatter.
+      const isD15ReqFile = relPath.startsWith('requirements/') || relPath.includes('/requirements/')
+      let d15Statement = null
+      if (isD15ReqFile) {
+        // Split body on H2 boundaries to extract ## Statement content reliably
+        const h2Parts = body.split(/\n(?=## )/)
+        const stmtPart = h2Parts.find(p => /^## Statement/.test(p))
+        if (stmtPart) {
+          d15Statement = stmtPart.replace(/^## Statement[^\n]*\n/, '').trim()
+          if (!d15Statement.includes('**shall**')) {
+            errors.push({
+              type: 'requirement_parse_error',
+              nodeId: id,
+              message: `${relPath}: ## Statement section must contain **shall**`,
+              path: absPath,
+            })
+          }
+        } else {
+          errors.push({
+            type: 'requirement_parse_error',
+            nodeId: id,
+            message: `${relPath}: D-15 requirement file must have a ## Statement section with **shall**`,
+            path: absPath,
+          })
+        }
+      }
+
+      const effectiveEars = d15Statement ?? earsStr
       const summary = data.summary
         ? String(data.summary)
-        : earsStr
-          ? firstSentence(earsStr)
+        : effectiveEars
+          ? firstSentence(effectiveEars)
           : h1 ?? (data.title ? String(data.title) : firstSentence(body || id))
 
       nodes[id] = {
         id,
         type: data.type ? String(data.type) : (data.concept ? 'requirement' : 'concept'),
-        title: String(data.title || data.summary || (earsStr ? firstSentence(earsStr) : null) || h1 || id),
+        title: String(data.title || data.summary || (effectiveEars ? firstSentence(effectiveEars) : null) || h1 || id),
         summary,
         refs,
         byteSize,
@@ -765,8 +810,8 @@ export function buildIndexData(sd) {
         pattern: data.pattern ? String(data.pattern) : null,
         verification: data.verification ? String(data.verification) : null,
         criticality: data.criticality ? String(data.criticality) : 'must',
-        // ears: preserved from old-format frontmatter for display/search consumers
-        ears: earsStr,
+        // ears: from ## Statement body (D-15) or old-format frontmatter
+        ears: effectiveEars,
       }
 
       // S0: attach views from spec.yaml manifest to the concept node (README.md).

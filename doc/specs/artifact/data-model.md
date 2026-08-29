@@ -1,6 +1,5 @@
 ---
 type: data-model
-id: C-ARTIFACT
 ---
 
 # Artifact Data Model

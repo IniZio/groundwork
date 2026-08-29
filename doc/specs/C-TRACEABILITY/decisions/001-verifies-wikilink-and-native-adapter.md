@@ -1,0 +1,61 @@
+# ADR-001: Verifies annotation convention and NativeSpineAdapter as default
+
+**Date**: 2026-08-29
+**Status**: Accepted
+**Deciders**: groundwork core
+
+---
+
+## Context
+
+The traceability system must connect spec requirements to the tests that verify them and to the ledger slices that implement them. Two design decisions were settled together:
+
+1. **How should a test file declare that it verifies a requirement?** Options considered: a separate JSON/YAML registry, a central index file, inline code annotation.
+2. **What should the default SpineAdapter implementation read from?** The SpineAdapter interface (D-7) allows any backing store. A concrete default is needed.
+
+---
+
+## Decisions
+
+### 1 — `@verifies` inline annotation convention
+
+Test files declare which requirements they verify using an inline `@verifies` annotation:
+
+```ts
+// @verifies TRACEABILITY-R-002, TRACEABILITY-R-004
+```
+
+The annotation may appear anywhere in the file (comment or string). `verifies-scan.mjs` walks `test/` and `tests/` directories to collect all annotations and produce a mapping from requirement ID to test file paths.
+
+**Rationale**:
+- Keeps the link co-located with the test — no separate registry to drift.
+- The ID grammar is shared with `spec-io.mjs` (`ID_RE_SRC`) so the scanner reuses the canonical parser.
+- A single annotation line may list multiple IDs (comma or space separated), reducing boilerplate.
+- No tooling change is needed to add a new requirement — just annotate the test.
+
+**Rejected alternatives**:
+- Separate JSON registry — requires two edits per requirement link; drifts silently when tests move.
+- Central index file — same drift problem; no co-location benefit.
+
+### 2 — `NativeSpineAdapter` as the default implementation
+
+`NativeSpineAdapter` (defined in `hooks/lib/traceability-adapter.mjs`) is the default `SpineAdapter`. It reads from groundwork's native data sources: run ledger, journal events, `doc/specs` coverage.json, and motive.md.
+
+**Rationale**:
+- Groundwork's native store (ledger + journal) is the authoritative source for slice and event data.
+- Wrapping it behind the `SpineAdapter` interface ensures a future store-swap (e.g. beads CAS) requires only reimplementing the adapter — the assembler and render surfaces are unchanged.
+- All methods are synchronous; caching is the adapter's concern, keeping the interface simple.
+- Constructor takes `{ projectDir, slug }` — no global state, safe to instantiate per-call.
+
+**Rejected alternatives**:
+- Directly reading ledger/journal in the assembler — couples the assembler to the native store layout; blocks a future store-swap without touching assembler logic.
+- A beads-based adapter as default — beads was not adopted (D-17/D-18, 2026-08-22); native store remains the only implementation.
+
+---
+
+## Consequences
+
+- All test files intending to verify a requirement MUST carry `@verifies <REQ-ID>` to appear in the traceability chain.
+- `NativeSpineAdapter` is the only production implementation; no injection is needed in the common case.
+- Future store-swap implementers must satisfy the full `SpineAdapter` typedef (all seven methods).
+- `verifies-scan.mjs` must be run as part of coverage reporting; its output feeds `coverage.json`.

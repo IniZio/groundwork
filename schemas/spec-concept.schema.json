@@ -4,7 +4,7 @@
   "$comment": "Deliberately NOT covered by this schema (handled by spec-lint.mjs at runtime):\n  1. summary-length: ≤25-word limit — JSON Schema has no word-count keyword.\n  2. origin_decision_ref referential integrity: whether the value resolves to a real decision in a motive's Decision Log.\n  3. superseded_by referential integrity: whether the target node exists.\n  4. snapshot_of referential integrity: whether the referenced snapshot exists.\n  5. parent-agrees-with-directory-path: the parent field value must match the concept's containing directory path.\nThe origin_decision_ref 'null' sentinel (literal string \"null\") IS rejected here via not:{const:\"null\"}.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "type", "title", "summary", "parent"],
+  "required": ["id", "type", "title", "summary"],
   "properties": {
     "id": {
       "type": "string",
@@ -12,7 +12,8 @@
       "description": "Concept node identifier; matches RFC §2.2 pattern C-<SEGMENT>(-<SEGMENT>)*"
     },
     "type": {
-      "const": "concept"
+      "enum": ["concept", "moc"],
+      "description": "concept = RFC-0001 concept node; moc = D-15 Map of Content node"
     },
     "title": {
       "type": "string",
@@ -43,6 +44,34 @@
     "snapshot_of": {
       "type": "string",
       "minLength": 1
+    },
+    "status": {
+      "type": "string"
+    },
+    "depends_on": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "D-15 ConceptIndex: concepts this node depends on"
+    },
+    "date_updated": {
+      "type": "string",
+      "description": "D-15 ConceptIndex: last meaningful update date"
+    },
+    "tags": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "null" }
+      ]
+    },
+    "aliases": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "null" }
+      ]
     }
   }
 }

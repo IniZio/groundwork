@@ -1,0 +1,74 @@
+---
+title: "Traceability Glossary"
+concept: "[[C-TRACEABILITY/index]]"
+status: "draft"
+date_updated: "2026-08-29"
+---
+
+# Traceability Glossary
+
+**`@verifies` annotation**
+An inline code comment (`// @verifies <REQ-ID>`) placed in a test file to declare that the test verifies a specific spec requirement. Scanned by `verifies-scan.mjs`. Multiple IDs may appear on one line, comma or space separated.
+
+**artifact-evidence node**
+A node in the traceability graph representing a captured artifact (screenshot, CSV, live URL) and the build/data hash it was captured against. Emitted from VERIFICATION journal events. Used for staleness detection.
+
+**build hash**
+A content-addressable hash identifying a specific build or data generation run. Stored on artifact-evidence nodes at capture time. Compared against the current build hash at assembly time to detect stale evidence.
+
+**confirms edge**
+A traceability edge of kind `confirms`, running from a self-test node to a ledger slice. Emitted via `@verifies` annotation (direct) or via decision-mediated cross-join (fallback).
+
+**covers edge**
+A traceability edge of kind `covers`, running from a ledger slice to a spec-requirement node. Emitted when a slice declares `covers_ac` or `decisions` that match the requirement's `origin_decision_ref`.
+
+**decision-mediated linkage**
+The fallback mechanism for connecting a slice to a self-test when `test_paths` is absent. The adapter cross-joins `slice.decisions` against `requirement.origin_decision_ref` values in `coverage.json`. Labeled as coarse in the graph output.
+
+**direct linkage**
+The preferred mechanism for connecting a slice to its self-tests. The slice carries a `test_paths` field with repo-relative paths to test files. The adapter emits `confirms` edges without ambiguity.
+
+**evidences edge**
+A traceability edge of kind `evidences`, running from an artifact-evidence node to a live-verify node.
+
+**live-verify node**
+A node in the traceability graph representing a live verification event. Emitted from VERIFICATION journal events. Sits between a self-test and a gate in the chain.
+
+**mechanical link**
+A traceability edge derived deterministically from structured data (ledger slice fields, journal event fields, coverage.json). Contrast with semantic link.
+
+**missing**
+Edge classification state: a required link is absent from the assembled graph entirely. Rendered visibly to distinguish from unproven.
+
+**NativeSpineAdapter**
+The default `SpineAdapter` implementation. Reads from groundwork's native data sources: run ledger, journal events, `doc/specs` coverage.json, and motive.md. Constructed with `{ projectDir, slug }`.
+
+**proven**
+Edge classification state: a GATE APPROVE event and a live-verify pass are both on record for this link.
+
+**seals edge**
+A traceability edge of kind `seals`, running from a gate node to a ledger slice. Emitted when a GATE APPROVE journal event names the slice.
+
+**semantic link**
+A traceability edge whose classification (proven/unproven/stale/missing) is derived from the meaning of recorded journal events (GATE APPROVE, VERIFICATION), not from structural data alone. Contrast with mechanical link.
+
+**SpineAdapter**
+The read-only interface (`hooks/lib/traceability-adapter.mjs`) that isolates the traceability graph assembler and render surfaces from the backing data store. Defines seven synchronous methods: `getObjective`, `getMotive`, `getSlices`, `getVerificationEvents`, `getGateEvents`, `getSpecRequirements`, `getCoverageMap`.
+
+**stale**
+Edge classification state: the evidence hash stored on an artifact-evidence node does not match the current build hash. Indicates that the captured artifact was valid for a previous build and human re-review is needed.
+
+**test_paths**
+An optional field on a ledger slice (`string[]`). Carries repo-relative paths to self-test files for that slice. When present, enables direct self-test linkage without the decision-mediated cross-join.
+
+**traceability chain**
+The directed path: objective → spec-req → slice → self-test → live-verify → gate. The core structure assembled by the traceability graph assembler.
+
+**traceability graph assembler**
+The pure function that reads from a `SpineAdapter` and produces a deterministic node-and-edge graph covering the full traceability chain. Classifies every edge. Input: ledger slices, journal events, spec requirements, coverage.json. Output: stable JSON graph.
+
+**unproven**
+Edge classification state: a slice exists in the graph but no live-verify or gate event has been recorded for it.
+
+**verifies-scan**
+The scanner in `hooks/lib/verifies-scan.mjs` that walks `test/` and `tests/` directories to collect all `@verifies` annotations and return a mapping from requirement ID to test file paths.

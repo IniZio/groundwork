@@ -106,6 +106,26 @@ function writeReadme(relDir: string, id: string, title = "Test Concept") {
 	);
 }
 
+/** D-15 layout: concept dirs use index.md instead of README.md. */
+function writeIndex(relDir: string, id: string, title = "Test Concept") {
+	const dir = path.join(SPEC_DIR(), relDir);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		path.join(dir, "index.md"),
+		[
+			"---",
+			`id: ${id}`,
+			`type: concept`,
+			`title: ${title}`,
+			`parent: null`,
+			"---",
+			"",
+			`# ${title}`,
+			"",
+		].join("\n"),
+	);
+}
+
 function writeReq(
 	relDir: string,
 	filename: string,
@@ -183,8 +203,8 @@ describe("AC2 — spec build", () => {
 describe("AC3 — parent/directory mismatch", () => {
 	it("exits 1 and prints node id and both values when concept disagrees with dir", () => {
 		mkSpec();
-		// D-15 layout: concept dir is one level below the spec root.
-		writeReadme("C-ROOT", "C-ROOT", "Root");
+		// D-15 layout: concept dir uses index.md.
+		writeIndex("C-ROOT", "C-ROOT", "Root");
 		// Requirement placed in concept's requirements/ but claims wrong concept
 		writeReq(
 			"C-ROOT/requirements",
@@ -204,8 +224,8 @@ describe("AC3 — parent/directory mismatch", () => {
 
 	it("succeeds when concept matches directory position", () => {
 		mkSpec();
-		// D-15 layout: concept dir is one level below the spec root.
-		writeReadme("C-ROOT", "C-ROOT", "Root");
+		// D-15 layout: concept dir uses index.md.
+		writeIndex("C-ROOT", "C-ROOT", "Root");
 		writeReq("C-ROOT/requirements", "good-req.md", minReq("C-ROOT", "ROOT-R-bbbb"));
 		const r = run(["build"]);
 		expect(r.code, `stderr: ${r.stderr}`).toBe(0);

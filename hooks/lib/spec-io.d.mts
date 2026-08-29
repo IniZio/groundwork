@@ -89,6 +89,13 @@ export declare function parseRequirementsDocument(markdown: string): object[]
 export declare function findNearestConceptId(reqAbsPath: string, sd: string): string | null
 
 /**
+ * Resolve an Obsidian wikilink concept reference (e.g. [[artifact/index]]) to a
+ * plain concept id by reading the referenced index.md under `sd`.
+ * Plain ids are returned unchanged.
+ */
+export declare function resolveConceptRef(rawConcept: string, sd: string): string
+
+/**
  * Find the concept directory for a concept ID under `sd`.
  */
 export declare function findConceptDir(conceptId: string, sd: string): string | null

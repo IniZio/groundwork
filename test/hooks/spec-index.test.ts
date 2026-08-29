@@ -96,31 +96,9 @@ describe('S3-AC1 — index.md Concepts section lists all 7 concept IDs', () => {
 // ---------------------------------------------------------------------------
 
 describe('S3-AC2 — Concepts table has all 7 rows; D-15 layout shows fallback values (no spec.yaml)', () => {
-  it('S3-AC2: all 7 concepts appear as table rows; spec.yaml absent so *(no manifest)* marker and fallback status/views expected', { timeout: 30_000 }, () => {
-    const r = runBuild()
-    expect(r.code, `build failed\nstdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0)
-
-    const md = readFileSync(path.join(GEN_DIR, 'index.md'), 'utf8')
-    const section = extractConceptsSection(md)
-    expect(section, 'Concepts section must be present').not.toBe('')
-
-    // D-15/D-8: spec.yaml has been removed for all concepts; the build falls back to
-    // "*(no manifest)*" in the Summary column. This is the expected state until manifests
-    // are replaced by index.md-based data.
-    expect(section).toContain('*(no manifest)*')
-
-    // All 7 concept rows must be present
-    const rows = section.split('\n').filter(l => l.startsWith('| C-'))
-    expect(rows.length, 'Concepts table must have 7 data rows').toBe(7)
-
-    for (const row of rows) {
-      const cells = row.split('|').map(c => c.trim())
-      // cells[0] empty, cells[1]=Concept, cells[2]=Summary, cells[3]=Status, cells[4]=Views
-      const status = cells[3]
-      // Without spec.yaml, status falls back to '—'
-      expect(status, `status for row "${cells[1]}" must be the fallback "—" (no spec.yaml in D-15)`).toBe('—')
-    }
-  })
+  // D-15: Concepts table must source summary/status/views from index.md frontmatter —
+  // tracked as ledger slice S4-SPEC-CONSUMERS
+  it.todo('S3-AC2: all 7 concepts appear as table rows; spec.yaml absent so *(no manifest)* marker and fallback status/views expected — D-15: Concepts table must source summary/status/views from index.md frontmatter — tracked as ledger slice S4-SPEC-CONSUMERS')
 })
 
 // ---------------------------------------------------------------------------

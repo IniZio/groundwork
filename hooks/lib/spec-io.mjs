@@ -464,25 +464,24 @@ export function parseRequirementsDocument(markdown) {
 // ---------------------------------------------------------------------------
 
 /**
- * Walk up from reqAbsPath looking for a README.md that has an `id` frontmatter.
- * Returns the concept id, or null if none found within sd.
- *
- * NOTE (D-15): concept dirs no longer contain README.md — the concept node moved
- * to index.md. The break is placed BEFORE the README.md read so that the spec-root
- * README.md (doc/specs/README.md, id: C-GROUNDWORK) is never reached during the
- * walk. As a result, this function returns null for all D-15 concept dirs and the
- * parent_dir_mismatch check is a no-op until concept dirs adopt README.md again.
+ * Walk up from reqAbsPath looking for index.md (D-15 layout) or README.md (legacy)
+ * that has an `id` frontmatter field. Returns the concept id, or null if none
+ * found within sd. Stops before reaching the spec root so that the root-level
+ * README/index is never mistaken for a concept node.
  */
 export function findNearestConceptId(reqAbsPath, sd) {
   const sdNorm = sd.replace(/\/?$/, '')
   let dir = dirname(reqAbsPath)
   for (let i = 0; i < 12; i++) {
-    // Stop BEFORE reading README.md at or above the spec root.
+    // Stop before reading any file at or above the spec root.
     if (dir === sdNorm || dirname(dir) === dir) break
-    const readme = join(dir, 'README.md')
-    if (existsSync(readme)) {
-      const { data } = parseYamlFrontmatter(readFileSync(readme, 'utf8'))
-      if (data.id) return String(data.id)
+    // D-15 layout uses index.md; fall back to README.md for legacy fixtures.
+    for (const filename of ['index.md', 'README.md']) {
+      const candidate = join(dir, filename)
+      if (existsSync(candidate)) {
+        const { data } = parseYamlFrontmatter(readFileSync(candidate, 'utf8'))
+        if (data.id) return String(data.id)
+      }
     }
     dir = dirname(dir)
   }
@@ -490,13 +489,35 @@ export function findNearestConceptId(reqAbsPath, sd) {
 }
 
 /**
+ * Resolve a concept reference to a plain concept id.
+ * Handles Obsidian wikilink format: [[path/index]] → looks up sd/path/index.md and
+ * returns its `id` frontmatter field.  Plain ids are returned unchanged.
+ *
+ * @param {string} rawConcept - Raw concept field value from a requirement's frontmatter.
+ * @param {string} sd         - Spec directory root (absolute path).
+ * @returns {string}          - Resolved concept id, or rawConcept if not resolvable.
+ */
+export function resolveConceptRef(rawConcept, sd) {
+  const s = String(rawConcept)
+  const m = s.match(/^\[\[(.+?)(?:\/index)?\]\]$/)
+  if (!m) return s
+  // m[1] is the concept dir path relative to spec root, e.g. "artifact" or "C-TRACEABILITY"
+  const indexPath = join(sd, m[1], 'index.md')
+  if (existsSync(indexPath)) {
+    const { data } = parseYamlFrontmatter(readFileSync(indexPath, 'utf8'))
+    if (data.id) return String(data.id)
+  }
+  return s
+}
+
+/**
  * Find the directory of a concept node given its id.
- * Returns the abs dir path whose README.md has that id, or null.
+ * Returns the abs dir path whose index.md (D-15) or README.md (legacy) has that id, or null.
  */
 export function findConceptDir(conceptId, sd) {
   const files = walkSpecFiles(sd)
   for (const { absPath } of files) {
-    if (!absPath.endsWith('README.md')) continue
+    if (!absPath.endsWith('index.md') && !absPath.endsWith('README.md')) continue
     const { data } = parseYamlFrontmatter(readFileSync(absPath, 'utf8'))
     if (String(data.id) === conceptId) return dirname(absPath)
   }
@@ -730,11 +751,13 @@ export function buildIndexData(sd) {
       // AC3: parent frontmatter field vs directory position
       if (data.concept) {
         const expectedConcept = findNearestConceptId(absPath, sd)
-        if (expectedConcept && String(data.concept) !== expectedConcept) {
+        // Resolve Obsidian wikilinks (e.g. [[artifact/index]]) to plain concept ids.
+        const statedConcept = resolveConceptRef(data.concept, sd)
+        if (expectedConcept && statedConcept !== expectedConcept) {
           errors.push({
             type: 'parent_dir_mismatch',
             nodeId: id,
-            frontmatter: String(data.concept),
+            frontmatter: statedConcept,
             directory: expectedConcept,
             path: absPath,
           })

@@ -81,9 +81,10 @@ describe("spec-guard — pass-through (paths outside guarded prefixes)", () => {
 	});
 });
 
-describe("spec-guard — generated files are unconditionally exempt", () => {
-	it("permits writes to doc/specs/_generated/ regardless of RFC state", () => {
-		// No ledger, no RFC → would normally fail-open, but generated is exempt even earlier.
+describe("spec-guard — _generated/ writes go through normal ledger check (D-15)", () => {
+	it("permits writes to doc/specs/_generated/ with WARN when no ledger (fail-open, not unconditionally exempt)", () => {
+		// D-15: GENERATED_EXEMPT branch removed; _generated/ writes now reach the ledger check.
+		// No ledger → fail-open WARN + permit, same as any other guarded spec path.
 		const projectDir = makeProjectDir();
 		const r = runHook({
 			tool_name: "Write",
@@ -92,8 +93,8 @@ describe("spec-guard — generated files are unconditionally exempt", () => {
 			session_id: "sess-1",
 		});
 		expect(r.exitCode).toBe(0);
-		// No WARN (exempt before ledger load)
-		expect(r.stderr).toBe("");
+		// WARN emitted because no ledger found (fail-open)
+		expect(r.stderr).toContain("spec-guard: WARN");
 	});
 });
 

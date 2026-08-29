@@ -98,7 +98,31 @@ describe('S3-AC1 — index.md Concepts section lists all 7 concept IDs', () => {
 describe('S3-AC2 — Concepts table has all 7 rows; D-15 layout shows fallback values (no spec.yaml)', () => {
   // D-15: Concepts table must source summary/status/views from index.md frontmatter —
   // tracked as ledger slice S4-SPEC-CONSUMERS
-  it.todo('S3-AC2: all 7 concepts appear as table rows; spec.yaml absent so *(no manifest)* marker and fallback status/views expected — D-15: Concepts table must source summary/status/views from index.md frontmatter — tracked as ledger slice S4-SPEC-CONSUMERS')
+  it('S3-AC2: all 7 concepts appear as rows sourced from index.md frontmatter', { timeout: 30_000 }, () => {
+    const r = runBuild()
+    expect(r.code, `build failed\n${r.stdout}\n${r.stderr}`).toBe(0)
+
+    const indexMd = path.join(GEN_DIR, 'index.md')
+    const md = readFileSync(indexMd, 'utf8')
+    const section = extractConceptsSection(md)
+
+    // All 7 concept IDs must appear as rows
+    const ids = [
+      'C-ARTIFACT', 'C-ENFORCEMENT', 'C-MOTIVE-DAG', 'C-ORCHESTRATION',
+      'C-VERIFICATION', 'C-TRACEABILITY', 'C-TOKEN-ECONOMY',
+    ]
+    for (const id of ids) {
+      expect(section, `row for "${id}" missing`).toContain(id)
+    }
+
+    // POSITIVE control: summary sourced from index.md frontmatter (not a bare placeholder)
+    // doc/specs/verification/index.md summary field:
+    const knownSummary = 'Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends.'
+    expect(section, 'summary must come from index.md frontmatter, not a bare placeholder').toContain(knownSummary)
+
+    // No *(no manifest)* marker — D-15 removes spec.yaml dependency
+    expect(section).not.toContain('*(no manifest)*')
+  })
 })
 
 // ---------------------------------------------------------------------------

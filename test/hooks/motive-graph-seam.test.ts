@@ -109,6 +109,57 @@ function makeProject(ledgerFields: Record<string, unknown>): string {
   return dir
 }
 
+// ---------------------------------------------------------------------------
+// 3 — parseSpecRequirements indexes D-15 requirements/*.md frontmatter
+// ---------------------------------------------------------------------------
+
+// Bite proof: comment out the parseRequirementFile() call in parseSpecRequirements()
+// in hooks/lib/motive-graph.mjs; this test fails with "expected [] to include req:seam-r-001"
+describe('3 — D-15 requirements/*.md files are indexed as req: nodes', () => {
+  it('a requirement frontmatter file under doc/specs/<concept>/requirements/ yields a req: node', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-motive-graph-seam-'))
+    tmpDirs.push(dir)
+    // Wire up minimal project structure
+    fs.mkdirSync(path.join(dir, '.groundwork', 'runs'), { recursive: true })
+    // Journal with one DECISION event so the req's source#D-1 resolves
+    const journalDir = path.join(dir, '.groundwork', 'journal')
+    fs.mkdirSync(journalDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(journalDir, `${MOTIVE}-001.jsonl`),
+      JSON.stringify({
+        ord: 1,
+        ts: '2026-01-01T00:00:01.000Z',
+        motive: MOTIVE,
+        type: 'DECISION',
+        data: { id: 'D-1', decision: 'seam test decision', status: 'accepted' },
+      }) + '\n',
+    )
+    fs.mkdirSync(path.join(dir, '.groundwork', 'motives', MOTIVE), { recursive: true })
+    fs.writeFileSync(path.join(dir, '.groundwork', 'motives', MOTIVE, 'motive.md'), `# ${MOTIVE}\n`)
+    // D-15 requirement file — source includes #D-1 so the req is linked to the decision above
+    fs.mkdirSync(path.join(dir, 'doc', 'specs', 'seam-concept', 'requirements'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, 'doc', 'specs', 'seam-concept', 'requirements', 'seam-r-001.md'),
+      [
+        '---',
+        'id: "seam-r-001"',
+        'title: "Seam requirement for positive control"',
+        'concept: "[[seam-concept/index]]"',
+        'criticality: must',
+        'source: "groundwork-development#D-1"',
+        '---',
+        '',
+        '## Statement',
+        '',
+        'This requirement exists only to verify that the D-15 walker indexes it.',
+      ].join('\n'),
+    )
+    const graph = await assembleMotiveGraph({ projectDir: dir, slug: MOTIVE })
+    const reqIds = graph.nodes.filter((n) => n.type === 'spec-requirement').map((n) => n.id)
+    expect(reqIds, `expected nodes to include req:seam-r-001, got ${JSON.stringify(reqIds)}`).toContain('req:seam-r-001')
+  })
+})
+
 describe('2 — findLedger honours both run-ledger motive keys', () => {
   it('a ledger stamped with `motive` (written by `ledger init --motive`) yields slice nodes', async () => {
     const dir = makeProject({ motive: MOTIVE })

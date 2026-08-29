@@ -20,7 +20,7 @@
  */
 
 import path from 'node:path'
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { readOrderedEvents } from './journal-order.mjs'
 import { assembleGraphFold } from './motive-graph-fold.mjs'
 import { projectFoldGraph } from './motive-graph-project.mjs'
@@ -151,6 +151,35 @@ function parseSpecRequirements(projectDir) {
   const specsDir = path.join(projectDir, 'doc', 'specs')
   const reqs = []
 
+  function parseFrontmatter(content) {
+    const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+    if (!m) return {}
+    const out = {}
+    for (const line of m[1].split('\n')) {
+      const colon = line.indexOf(':')
+      if (colon < 1) continue
+      const key = line.slice(0, colon).trim()
+      let val = line.slice(colon + 1).trim()
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1)
+      }
+      out[key] = val
+    }
+    return out
+  }
+
+  function parseRequirementFile(filePath) {
+    let content
+    try { content = readFileSync(filePath, 'utf8') } catch { return }
+    const fm = parseFrontmatter(content)
+    if (!fm.id) return
+    const req = { id: fm.id, label: fm.title || fm.id, file: filePath }
+    if (typeof fm.source === 'string' && /#D-\d+/.test(fm.source)) {
+      req.originDecisionRef = fm.source
+    }
+    reqs.push(req)
+  }
+
   function walkDir(dir) {
     let entries
     try {
@@ -161,7 +190,18 @@ function parseSpecRequirements(projectDir) {
     for (const e of entries) {
       const full = path.join(dir, e.name)
       if (e.isDirectory()) {
-        walkDir(full)
+        if (e.name === 'requirements') {
+          // D-15: per-file requirements — parse frontmatter of each .md
+          let reqEntries
+          try { reqEntries = readdirSync(full, { withFileTypes: true }) } catch { continue }
+          for (const re of reqEntries) {
+            if (re.isFile() && re.name.endsWith('.md')) {
+              parseRequirementFile(path.join(full, re.name))
+            }
+          }
+        } else {
+          walkDir(full)
+        }
       } else if (e.name === 'constraints.md') {
         parseConstraintsFile(full)
       }

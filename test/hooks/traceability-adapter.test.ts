@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { NativeSpineAdapter, type GateEvent } from '../../hooks/lib/traceability-adapter.mjs'
+import { buildTraceabilityGraph } from '../../hooks/lib/traceability-join.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,5 +246,153 @@ describe('NativeSpineAdapter.getSlices — wave field exposure', () => {
     expect(gates).toHaveLength(2)
     const verdicts = gates.map((g: GateEvent) => g.verdict).sort()
     expect(verdicts).toEqual(['APPROVE', 'CORRECTION'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getCoverageMap — coverage.json merge seam (S6-COVERAGE-MAP-RESTORE)
+// ---------------------------------------------------------------------------
+
+describe('NativeSpineAdapter.getCoverageMap — _generated/coverage.json merge', () => {
+  /**
+   * Write a minimal requirements file with one requirement section.
+   * Uses the RFC-0003 H3 format that parseRequirementsDocument expects.
+   * Path placed under doc/specs/<concept>/requirements/ so isRequirementsDoc matches.
+   */
+  function writeRequirementFixture(projectDir: string, reqId: string, verification: string | null): void {
+    const reqDir = path.join(projectDir, 'doc', 'specs', 'test-concept', 'requirements')
+    mkdirSync(reqDir, { recursive: true })
+    // Also create index.md so findNearestConceptId works (D-15 layout)
+    writeFileSync(
+      path.join(projectDir, 'doc', 'specs', 'test-concept', 'index.md'),
+      `---\nid: TEST-CONCEPT\ntype: concept\ntitle: Test Concept\n---\n`,
+      'utf8',
+    )
+    const anchor = reqId.toLowerCase().replace(/-/g, '-')
+    const verLine = verification ? `- **Verification** ${verification} · **Criticality** must\n` : ''
+    writeFileSync(
+      path.join(reqDir, 'r001.md'),
+      `### ${reqId} — Test requirement {#${anchor}}\n\n**When** a test runs **shall** pass.\n\n${verLine}`,
+      'utf8',
+    )
+  }
+
+  function writeCoverageJson(projectDir: string, byRequirement: Record<string, unknown>): void {
+    const genDir = path.join(projectDir, 'doc', 'specs', '_generated')
+    mkdirSync(genDir, { recursive: true })
+    writeFileSync(
+      path.join(genDir, 'coverage.json'),
+      JSON.stringify({ by_requirement: byRequirement }, null, 2),
+      'utf8',
+    )
+  }
+
+  it('merges tests and verified from coverage.json when file exists', () => {
+    const reqId = 'TEST-R-001'
+    writeRequirementFixture(tmpDir, reqId, 'automated')
+    writeCoverageJson(tmpDir, {
+      [reqId]: { declared: 'automated', verified: true, tests: ['test/hooks/some.test.ts'] },
+    })
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const map = adapter.getCoverageMap()
+
+    expect(map[reqId]).toBeDefined()
+    expect(map[reqId].tests).toEqual(['test/hooks/some.test.ts'])
+    expect(map[reqId].verified).toBe(true)
+  })
+
+  it('returns tests:[] verified:false when coverage.json is absent', () => {
+    const reqId = 'TEST-R-001'
+    writeRequirementFixture(tmpDir, reqId, 'automated')
+    // No coverage.json written
+
+    const adapter = new NativeSpineAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const map = adapter.getCoverageMap()
+
+    expect(map[reqId]).toBeDefined()
+    expect(map[reqId].tests).toEqual([])
+    expect(map[reqId].verified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildTraceabilityGraph seam — getCoverageMap.tests flows through join
+//
+// The decision-mediated self-test path in traceability-join.mjs reads
+// coverageMap[reqId].tests at ~line 287 to find test file paths.
+// parseRequirementsDocument does not expose origin_decision_ref from H3 body
+// sections (only verification/criticality/source are extracted from the
+// attribute line), so the subclass below injects it for exactly one req while
+// leaving getCoverageMap() real — exercising the coverage.json → join seam.
+// ---------------------------------------------------------------------------
+
+describe('buildTraceabilityGraph — getCoverageMap.tests seam (S6-COVERAGE-MAP-RESTORE)', () => {
+  const TEST_PATH = 'test/hooks/some.test.ts'
+  const REQ_ID = 'SEAM-R-001'
+  const DEC_REF = 'D-7'
+  const SLICE_ID = 'S1'
+
+  /**
+   * NativeSpineAdapter subclass that injects origin_decision_ref so the
+   * decision-mediated self-test path in the join fires.  getCoverageMap is
+   * inherited unchanged — it reads from the real coverage.json fixture.
+   */
+  class SeamTestAdapter extends NativeSpineAdapter {
+    override getSpecRequirements() {
+      return [{ id: REQ_ID, title: 'Seam req', verification: 'automated', criticality: 'must', origin_decision_ref: DEC_REF }]
+    }
+    override getObjective() { return 'seam test objective' }
+    override getMotive()    { return 'test-motive' }
+    override getSlices() {
+      return [{
+        id: SLICE_ID, status: 'complete', blocked_by: [], covers_ac: [], decisions: [DEC_REF],
+        test_paths: [], wave: 1,
+      }]
+    }
+    override getVerificationEvents() { return [] }
+    override getGateEvents()         { return [] }
+  }
+
+  function writeCoverageJson(projectDir: string, byRequirement: Record<string, unknown>): void {
+    const genDir = path.join(projectDir, 'doc', 'specs', '_generated')
+    mkdirSync(genDir, { recursive: true })
+    writeFileSync(path.join(genDir, 'coverage.json'), JSON.stringify({ by_requirement: byRequirement }), 'utf8')
+  }
+
+  it('self-test node and verifies edge appear when coverage.json lists the test path', () => {
+    writeCoverageJson(tmpDir, {
+      [REQ_ID]: { declared: 'automated', verified: true, tests: [TEST_PATH] },
+    })
+
+    const adapter = new SeamTestAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const graph = buildTraceabilityGraph(adapter)
+
+    const expectedNodeId = `self-test:${SLICE_ID}:${TEST_PATH}`
+    const stNode = graph.nodes.find((n: { id: string }) => n.id === expectedNodeId)
+    expect(stNode, `self-test node ${expectedNodeId} must exist in graph`).toBeDefined()
+
+    const edge = graph.edges.find(
+      (e: { source: string; target: string; kind: string }) =>
+        e.source === expectedNodeId && e.target === `slice:${SLICE_ID}` && e.kind === 'verifies',
+    )
+    expect(edge, `verifies edge self-test:${SLICE_ID}:${TEST_PATH} → slice:${SLICE_ID} must exist`).toBeDefined()
+  })
+
+  it('self-test node and verifies edge are absent when coverage.json is absent', () => {
+    // No coverage.json written — getCoverageMap returns tests:[] for all reqs
+
+    const adapter = new SeamTestAdapter({ projectDir: tmpDir, slug: 'test-motive' })
+    const graph = buildTraceabilityGraph(adapter)
+
+    const expectedNodeId = `self-test:${SLICE_ID}:${TEST_PATH}`
+    const stNode = graph.nodes.find((n: { id: string }) => n.id === expectedNodeId)
+    expect(stNode, `self-test node must be absent without coverage.json`).toBeUndefined()
+
+    const edge = graph.edges.find(
+      (e: { source: string; target: string; kind: string }) =>
+        e.source === expectedNodeId && e.kind === 'verifies',
+    )
+    expect(edge, `verifies edge must be absent without coverage.json`).toBeUndefined()
   })
 })

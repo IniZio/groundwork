@@ -254,8 +254,7 @@ async function runBuild(sd, { silent = false } = {}) {
           : '—'
       } else {
         summary = (conceptNode ? conceptNode.summary : '') || '—'
-        summary += ' *(no manifest)*'
-        status = '—'
+        status = conceptNode?.status || '—'
         views = '—'
       }
 

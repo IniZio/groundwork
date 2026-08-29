@@ -41,7 +41,7 @@ export interface SpecReqRecord {
   origin_decision_ref: string | null
 }
 
-/** Coverage map keyed by requirement id (from coverage.json by_requirement). */
+/** Coverage map keyed by requirement id (computed from requirements/*.md frontmatter). */
 export type CoverageMap = Record<string, { declared: string | null; verified: boolean; tests: string[] }>
 
 /**
@@ -69,6 +69,6 @@ export declare class NativeSpineAdapter {
   /** All spec-requirement nodes parsed from doc/specs. */
   getSpecRequirements(): SpecReqRecord[]
 
-  /** coverage.json by_requirement map. */
+  /** Coverage map: declared from frontmatter; tests/verified merged from _generated/coverage.json when present. */
   getCoverageMap(): CoverageMap
 }

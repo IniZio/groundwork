@@ -35,9 +35,6 @@ const GUARDED_TOOLS = new Set(['edit', 'write', 'multiedit'])
 /** Relative path prefixes (from project root) that this guard intercepts. */
 const GUARDED_PREFIXES = ['doc/specs/', 'docs/steering/']
 
-/** Paths under this prefix are unconditionally permitted (generated files). */
-const GENERATED_EXEMPT = 'doc/specs/_generated/'
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Normalize a tool name: lowercase, strip leading "fast_". */
@@ -103,10 +100,7 @@ async function main() {
   )
   if (!isGuarded) return passthrough()
 
-  // ── Step 3: unconditionally permit _generated/ ─────────────────────────────
-  if (relPath.startsWith(GENERATED_EXEMPT)) return passthrough()
-
-  // ── Step 4: load session ledger ────────────────────────────────────────────
+  // ── Step 3: load session ledger ────────────────────────────────────────────
   const sessionId = process.env.CLAUDE_SESSION_ID ?? input?.session_id
   let ledger = null
   let ledgerPath = null

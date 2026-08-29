@@ -200,14 +200,28 @@ export class NativeSpineAdapter {
   }
 
   getCoverageMap() {
-    const covPath = path.join(this._projectDir, 'doc', 'specs', '_generated', 'coverage.json')
-    if (!existsSync(covPath)) return {}
-    try {
-      const raw = JSON.parse(readFileSync(covPath, 'utf8'))
-      return raw.by_requirement ?? {}
-    } catch {
-      return {}
+    // 'declared' comes from the verification field in requirements/*.md frontmatter.
+    // When doc/specs/_generated/coverage.json exists (produced by `gw spec build`),
+    // its per-requirement `tests` and `verified` values are merged in.
+    // Absent file → tests:[] verified:false as fallback.
+    const map = {}
+    for (const r of this.getSpecRequirements()) {
+      map[r.id] = { declared: r.verification ?? null, verified: false, tests: [] }
     }
+    const covPath = path.join(this._projectDir, 'doc', 'specs', '_generated', 'coverage.json')
+    if (existsSync(covPath)) {
+      try {
+        const cov = JSON.parse(readFileSync(covPath, 'utf8'))
+        const byReq = cov.by_requirement ?? {}
+        for (const [reqId, entry] of Object.entries(byReq)) {
+          if (map[reqId]) {
+            map[reqId].tests = Array.isArray(entry.tests) ? entry.tests : []
+            map[reqId].verified = Boolean(entry.verified)
+          }
+        }
+      } catch { /* skip unreadable/malformed coverage.json */ }
+    }
+    return map
   }
 
   // ---------------------------------------------------------------------------

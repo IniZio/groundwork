@@ -1,0 +1,21 @@
+{
+  "hook": "agent-model-guard.mjs",
+  "hook_path": "hooks/agent-model-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "model_already_present",
+  "description": "tool_input.model already set — passthrough unchanged (operator intent wins)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS",
+  "injected_model": null
+}

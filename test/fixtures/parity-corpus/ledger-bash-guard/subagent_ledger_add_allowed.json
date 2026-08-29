@@ -1,0 +1,20 @@
+{
+  "hook": "ledger-bash-guard.mjs",
+  "hook_path": "hooks/ledger-bash-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_ledger_add_allowed",
+  "description": "Subagent \"ledger add\" — passes because \"add\" is NOT in the MUTATING_LEDGER_CMD_RE deny list (only init|set|complete|gate|abandon|autopilot|rm|scope-token)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "agent_type": "general-purpose",
+    "tool_input": {
+      "command": "ledger add s1 --wave 1"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

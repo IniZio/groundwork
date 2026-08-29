@@ -1,0 +1,19 @@
+{
+  "hook": "ledger-guard.mjs",
+  "hook_path": "hooks/ledger-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "orchestrator_read_ledger_denied",
+  "description": "Orchestrator reads ledger file directly — Read/Edit/MultiEdit denied for ALL callers on ledger paths",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "/home/user/.groundwork/runs/abc-session-123.json"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork: do not Read the run ledger directly — it forces the whole ledger into the orchestrator's context and races the stop-gate hook's writes. Use the ledger CLI instead (locked, atomic, one-line output):\\n  /home/newman/.local/share/groundwork/bin/ledger status                 — compact progress view (use this instead of reading the file)\\n  /home/newman/.local/share/groundwork/bin/ledger show <id>              — all fields of one slice\\n  /home/newman/.local/share/groundwork/bin/ledger add <id> [--wave N] [--desc \\\"…\\\"] [--blocked-by a,b] [--acceptance \\\"a;b\\\"] [--status …]\\n  /home/newman/.local/share/groundwork/bin/ledger set <id> [--status … | --wave N | --desc … | --blocked-by … | --acceptance …]\\n  /home/newman/.local/share/groundwork/bin/ledger rm <id> [<id> …]       — remove slice(s)\\n  /home/newman/.local/share/groundwork/bin/ledger complete <id> [<id> …] — mark slices complete\\n  /home/newman/.local/share/groundwork/bin/ledger gate advisor APPROVE [--citation … --rubric … --axes-correctness N …]\\n  /home/newman/.local/share/groundwork/bin/ledger abandon                — cancel the run (active:false)\\n  /home/newman/.local/share/groundwork/bin/ledger help [<cmd>]           — full usage\"}}",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

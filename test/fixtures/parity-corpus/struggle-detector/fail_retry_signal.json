@@ -1,0 +1,69 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "fail_retry_signal",
+  "description": "Same command called after prior failure — fail-retry signal fires when hadFail && count >= 2",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "2",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-fail-retry-s3",
+        "tool_input": {
+          "command": "tsc --noEmit"
+        },
+        "tool_response": {
+          "exit_code": 1,
+          "result": "",
+          "stderr": "error TS2345: argument of type"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-fail-retry-s3",
+        "tool_input": {
+          "command": "tsc --noEmit"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": true,
+  "signal_kind": "fail-retry",
+  "final_detector_state": {
+    "fingerprints": {
+      "50979f87c667": {
+        "count": 2,
+        "lastExitCode": 0,
+        "lastCmd": "tsc --noEmit",
+        "fails": 1
+      }
+    },
+    "errorSigs": {
+      "22c6b47e631b": 1
+    },
+    "emitted": {
+      "fail-retry:50979f87c667": true,
+      "repeat-command:50979f87c667": true
+    }
+  },
+  "decision": "SIGNAL"
+}

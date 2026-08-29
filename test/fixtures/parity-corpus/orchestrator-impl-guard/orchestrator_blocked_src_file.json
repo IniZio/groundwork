@@ -1,0 +1,19 @@
+{
+  "hook": "orchestrator-impl-guard.mjs",
+  "hook_path": "hooks/orchestrator-impl-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "orchestrator_blocked_src_file",
+  "description": "Orchestrator (no agent signals) tries to Edit a src/ file — WARN with delegation nudge",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/src/foo.ts"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"⚠️  groundwork: orchestrator Edit — HIGHLY ENCOURAGED to delegate this change instead of implementing directly:\\n  task(subagent_type=\\\"groundwork:general-purpose\\\", background=true, model=\\\"claude-sonnet-4-6\\\", prompt=\\\"<file path> + exact change + success criteria\\\")\\n  Then mark it complete: /home/newman/.local/share/groundwork/bin/ledger complete <id>\\n  (Edit is proceeding, but delegation keeps expensive opus load off direct implementation.)\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

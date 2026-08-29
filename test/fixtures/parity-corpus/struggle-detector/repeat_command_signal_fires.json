@@ -1,0 +1,65 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "repeat_command_signal_fires",
+  "description": "Same Bash command called 2x with threshold=2 — repeat-command signal fires on 2nd call",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "2",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-repeat-cmd-s2",
+        "tool_input": {
+          "command": "npm test"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-repeat-cmd-s2",
+        "tool_input": {
+          "command": "npm test"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": true,
+  "signal_kind": "repeat-command",
+  "final_detector_state": {
+    "fingerprints": {
+      "cefb9267289f": {
+        "count": 2,
+        "lastExitCode": 0,
+        "lastCmd": "npm test",
+        "fails": 0
+      }
+    },
+    "errorSigs": {},
+    "emitted": {
+      "repeat-command:cefb9267289f": true
+    }
+  },
+  "decision": "SIGNAL"
+}

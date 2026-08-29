@@ -1,0 +1,19 @@
+{
+  "hook": "nesting-guard.mjs",
+  "hook_path": "hooks/nesting-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "non_agent_tool_passthrough",
+  "description": "tool_name=Bash — not an agent dispatch, passthrough immediately",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo hello"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

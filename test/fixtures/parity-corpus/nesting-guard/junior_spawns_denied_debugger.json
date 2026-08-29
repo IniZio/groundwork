@@ -1,0 +1,21 @@
+{
+  "hook": "nesting-guard.mjs",
+  "hook_path": "hooks/nesting-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "junior_spawns_denied_debugger",
+  "description": "junior-orchestrator spawns debugger — Rule 2 DENY (not in JUNIOR_ALLOWED_SPAWN)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:debugger"
+    },
+    "agent_type": "groundwork:junior-orchestrator",
+    "agent_id": "abc123"
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork nesting-guard: a junior-orchestrator may delegate only to: general-purpose, explore, advisor, designer, test-engineer, qa. It must not spawn \\\"groundwork:debugger\\\".\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

@@ -1,0 +1,19 @@
+{
+  "hook": "ledger-guard.mjs",
+  "hook_path": "hooks/ledger-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "non_read_tool_passes",
+  "description": "Bash tool call — passthrough, guard only fires on Read/Edit/MultiEdit/Write",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "ls"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

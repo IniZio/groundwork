@@ -1,0 +1,19 @@
+{
+  "hook": "ledger-guard.mjs",
+  "hook_path": "hooks/ledger-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "orchestrator_write_ledger_allowed",
+  "description": "Orchestrator one-shot init Write to ledger — allowed (no agent markers)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/home/user/.groundwork/runs/abc-session-123.json"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

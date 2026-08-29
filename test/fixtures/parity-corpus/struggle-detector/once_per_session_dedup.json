@@ -1,0 +1,82 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "once_per_session_dedup",
+  "description": "3 calls, threshold=2: signal fires on 2nd call, 3rd call does NOT re-emit (once-per-session dedup via emitted map in tally)",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "2",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-dedup-s6",
+        "tool_input": {
+          "command": "npm test"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-dedup-s6",
+        "tool_input": {
+          "command": "npm test"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-dedup-s6",
+        "tool_input": {
+          "command": "npm test"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": ""
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": true,
+  "signal_kind": "repeat-command",
+  "final_detector_state": {
+    "fingerprints": {
+      "cefb9267289f": {
+        "count": 3,
+        "lastExitCode": 0,
+        "lastCmd": "npm test",
+        "fails": 0
+      }
+    },
+    "errorSigs": {},
+    "emitted": {
+      "repeat-command:cefb9267289f": true
+    }
+  },
+  "signals_count": 1,
+  "decision": "SIGNAL"
+}

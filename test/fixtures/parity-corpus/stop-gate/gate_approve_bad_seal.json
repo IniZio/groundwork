@@ -1,0 +1,40 @@
+{
+  "hook": "stop-gate.mjs",
+  "hook_path": "hooks/stop-gate.mjs",
+  "event_type": "Stop",
+  "scenario_name": "gate_approve_bad_seal",
+  "description": "gate.advisor=APPROVE, all slices complete, but gate.seal is a fake HMAC value and no key file exists. checkSeal returns false → fail-closed → EXIT 1 (block).",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>"
+  },
+  "disk_state_setup": [
+    {
+      "path": ".groundwork/runs/test-gate-approve-bad-seal-006.json",
+      "content_summary": "active=true, 1 complete slice, gate.advisor=APPROVE, gate.seal=<invalid_hmac> (no key file)",
+      "content": {
+        "active": true,
+        "session_id": "test-gate-approve-bad-seal-006",
+        "brief": "trivial",
+        "slices": [
+          {
+            "id": "s1",
+            "status": "complete",
+            "wave": 1,
+            "desc": "done slice"
+          }
+        ],
+        "gate": {
+          "advisor": "APPROVE",
+          "seal": "fakeseal-intentionally-invalid-hmac-value"
+        }
+      }
+    }
+  ],
+  "stdin_payload": {
+    "session_id": "test-gate-approve-bad-seal-006"
+  },
+  "stdout": "{\"decision\":\"block\",\"reason\":\"Seal verification failed on all-complete + APPROVE release path — the ledger seal is invalid or the key is missing. A subagent may have written gate.advisor=APPROVE directly without going through the CLI. Re-run `bin/ledger gate advisor APPROVE` to produce a valid seal, or restore the key file.\",\"hookSpecificOutput\":{\"hookEventName\":\"Stop\",\"additionalContext\":\"Seal verification failed on all-complete + APPROVE release path — the ledger seal is invalid or the key is missing. A subagent may have written gate.advisor=APPROVE directly without going through the CLI. Re-run `bin/ledger gate advisor APPROVE` to produce a valid seal, or restore the key file.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

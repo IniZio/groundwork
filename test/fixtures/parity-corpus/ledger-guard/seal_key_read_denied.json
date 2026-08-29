@@ -1,0 +1,19 @@
+{
+  "hook": "ledger-guard.mjs",
+  "hook_path": "hooks/ledger-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "seal_key_read_denied",
+  "description": "Any caller reads seal key — denied for ALL callers",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "/home/user/.groundwork/runs/abc-session-123.seal.key"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork: do not Read the seal key directly — the key is read/written only by the gate system via node fs (stop-gate, gate-seal). Direct tool access is denied to protect ledger integrity.\"}}",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

@@ -1,0 +1,20 @@
+{
+  "hook": "agent-model-guard.mjs",
+  "hook_path": "hooks/agent-model-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "unknown_subagent_type",
+  "description": "subagent_type=groundwork:unknown-type not in registry — injects DEFAULT_MODEL (fail-open)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:unknown-type"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"groundwork model-guard: groundwork:unknown-type has no registry mapping; injected default \\\"sonnet\\\" to avoid inheriting the opus session model\",\"updatedInput\":{\"subagent_type\":\"groundwork:unknown-type\",\"model\":\"sonnet\"}}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "INJECT",
+  "injected_model": "sonnet"
+}

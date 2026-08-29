@@ -1,0 +1,21 @@
+{
+  "hook": "orchestrator-impl-guard.mjs",
+  "hook_path": "hooks/orchestrator-impl-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_always_passes",
+  "description": "Caller is subagent (agent_type set) — always passthrough regardless of file_path",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/src/foo.ts"
+    },
+    "agent_type": "groundwork:general-purpose",
+    "agent_id": "abc123"
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

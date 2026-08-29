@@ -1,0 +1,18 @@
+{
+  "hook": "stop-gate.mjs",
+  "hook_path": "hooks/stop-gate.mjs",
+  "event_type": "Stop",
+  "scenario_name": "no_ledger",
+  "description": "No .groundwork/runs/ dir exists — hook reads stdin but finds no ledger. Fail-open: EXIT 0 (allow).",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "session_id": "test-no-ledger-001"
+  },
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

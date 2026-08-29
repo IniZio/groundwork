@@ -1,0 +1,21 @@
+{
+  "hook": "ledger-guard.mjs",
+  "hook_path": "hooks/ledger-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_write_ledger_denied",
+  "description": "Subagent Write to ledger — denied (Write intercepted for subagent callers)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Write",
+    "agent_type": "general-purpose",
+    "agent_id": "agent-123",
+    "tool_input": {
+      "file_path": "/home/user/.groundwork/runs/abc-session-123.json"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork: subagent Write to the run ledger is blocked — use the ledger CLI to mutate state:\\n  /home/newman/.local/share/groundwork/bin/ledger init <file|->           — initialize the ledger from a JSON slice table\\n  /home/newman/.local/share/groundwork/bin/ledger add <id> [--wave N] …   — add a new slice\\n  /home/newman/.local/share/groundwork/bin/ledger set <id> [--status …]   — update a slice field\\n  /home/newman/.local/share/groundwork/bin/ledger complete <id> [<id> …]  — mark slices complete\\n  /home/newman/.local/share/groundwork/bin/ledger gate advisor APPROVE …  — record the advisor verdict\\n  /home/newman/.local/share/groundwork/bin/ledger abandon                 — cancel the run\"}}",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

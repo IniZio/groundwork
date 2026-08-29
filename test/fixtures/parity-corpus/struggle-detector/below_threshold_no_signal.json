@@ -1,0 +1,63 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "below_threshold_no_signal",
+  "description": "Same Bash command called 2x with threshold=3 — count stays below threshold, no signal emitted",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "3",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-below-thresh-s1",
+        "tool_input": {
+          "command": "ls /tmp"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": "file1"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Bash",
+        "session_id": "sess-below-thresh-s1",
+        "tool_input": {
+          "command": "ls /tmp"
+        },
+        "tool_response": {
+          "exit_code": 0,
+          "result": "file1"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": false,
+  "signal_kind": null,
+  "final_detector_state": {
+    "fingerprints": {
+      "ebfdec641529": {
+        "count": 2,
+        "lastExitCode": 0,
+        "lastCmd": "ls /tmp",
+        "fails": 0
+      }
+    },
+    "errorSigs": {},
+    "emitted": {}
+  },
+  "decision": "NO-SIGNAL"
+}

@@ -1,0 +1,63 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "file_thrash_signal",
+  "description": "Edit on same file_path called 2x with threshold=2 — file-thrash signal fires on 2nd call",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "2",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Edit",
+        "session_id": "sess-file-thrash-s4",
+        "tool_input": {
+          "file_path": "/home/user/project/src/foo.ts"
+        },
+        "tool_response": {
+          "result": "ok"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "stdin_payload": {
+        "tool_name": "Edit",
+        "session_id": "sess-file-thrash-s4",
+        "tool_input": {
+          "file_path": "/home/user/project/src/foo.ts"
+        },
+        "tool_response": {
+          "result": "ok"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": true,
+  "signal_kind": "file-thrash",
+  "final_detector_state": {
+    "fingerprints": {
+      "home-user-project-src-foo-ts": {
+        "count": 2,
+        "lastExitCode": 0,
+        "lastCmd": "/home/user/project/src/foo.ts",
+        "fails": 0
+      }
+    },
+    "errorSigs": {},
+    "emitted": {
+      "file-thrash:home-user-project-src-foo-ts": true
+    }
+  },
+  "decision": "SIGNAL"
+}

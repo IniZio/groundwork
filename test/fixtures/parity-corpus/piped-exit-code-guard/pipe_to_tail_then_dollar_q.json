@@ -1,0 +1,19 @@
+{
+  "hook": "piped-exit-code-guard.mjs",
+  "hook_path": "hooks/piped-exit-code-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "pipe_to_tail_then_dollar_q",
+  "description": "pipe | tail then ; echo $? — denied, $? captures tail not upstream cmd",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "some_cmd | tail -n 20; echo $?"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"This command reads $? after piping through a filter (head/tail/grep/sort/uniq/wc/cut/awk/sed). $? captures the last pipeline element — the filter — not the upstream command. Filter commands almost always exit 0, so the check is a silent no-op. Remedies: (1) use ${PIPESTATUS[0]} to read the first command's exit status; (2) drop the pipe and capture a count: n=$(cmd | wc -l); echo $n.\"}}",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

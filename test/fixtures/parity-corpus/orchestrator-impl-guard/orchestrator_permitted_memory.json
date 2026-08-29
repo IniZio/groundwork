@@ -1,0 +1,19 @@
+{
+  "hook": "orchestrator-impl-guard.mjs",
+  "hook_path": "hooks/orchestrator-impl-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "orchestrator_permitted_memory",
+  "description": "Orchestrator writes to ~/.claude/projects/<hash>/memory/MEMORY.md — PASS (permit path)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.claude/projects/abc123def456/memory/MEMORY.md"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

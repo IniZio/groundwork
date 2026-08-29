@@ -1,0 +1,20 @@
+{
+  "hook": "agent-model-guard.mjs",
+  "hook_path": "hooks/agent-model-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "model_absent_explore",
+  "description": "No model in tool_input, subagent_type=groundwork:explore — injects haiku from registry",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:explore"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"groundwork model-guard: injected model \\\"haiku\\\" for groundwork:explore (was unset — would have inherited the opus session model)\",\"updatedInput\":{\"subagent_type\":\"groundwork:explore\",\"model\":\"haiku\"}}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "INJECT",
+  "injected_model": "haiku"
+}

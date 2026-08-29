@@ -1,0 +1,21 @@
+{
+  "hook": "nesting-guard.mjs",
+  "hook_path": "hooks/nesting-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "junior_spawns_allowed_explore",
+  "description": "junior-orchestrator spawns explore — Rule 2 PASS (in JUNIOR_ALLOWED_SPAWN)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:explore"
+    },
+    "agent_type": "groundwork:junior-orchestrator",
+    "agent_id": "abc123"
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

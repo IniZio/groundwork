@@ -1,0 +1,21 @@
+{
+  "hook": "nesting-guard.mjs",
+  "hook_path": "hooks/nesting-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "leaf_spawns_denied_gp",
+  "description": "general-purpose leaf tries to spawn another general-purpose — Rule 3 DENY (DENIED_AT_DEPTH_1)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:general-purpose"
+    },
+    "agent_type": "groundwork:general-purpose",
+    "agent_id": "abc123"
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork nesting-guard: a subagent may not dispatch \\\"groundwork:general-purpose\\\".\\nDepth-1 constraint: subagents implement their own slice directly; they may only\\ndelegate to: explore, advisor, designer, test-engineer, qa, planner.\\nDo the work yourself, or surface a blocker to the parent orchestrator.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

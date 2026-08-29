@@ -1,0 +1,36 @@
+{
+  "hook": "stop-gate.mjs",
+  "hook_path": "hooks/stop-gate.mjs",
+  "event_type": "Stop",
+  "scenario_name": "abandoned",
+  "description": "ledger.active=false with no gate.seal (unsealed/legacy path). checkSeal returns null → legacy: allow. EXIT 0.",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>"
+  },
+  "disk_state_setup": [
+    {
+      "path": ".groundwork/runs/test-abandoned-007.json",
+      "content_summary": "active=false, no gate.seal (checkSeal → null, legacy allow path)",
+      "content": {
+        "active": false,
+        "session_id": "test-abandoned-007",
+        "brief": "trivial",
+        "slices": [
+          {
+            "id": "s1",
+            "status": "pending",
+            "wave": 1,
+            "desc": "slice never completed"
+          }
+        ]
+      }
+    }
+  ],
+  "stdin_payload": {
+    "session_id": "test-abandoned-007"
+  },
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

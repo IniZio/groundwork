@@ -1,0 +1,39 @@
+{
+  "hook": "stop-gate.mjs",
+  "hook_path": "hooks/stop-gate.mjs",
+  "event_type": "Stop",
+  "scenario_name": "gate_correction",
+  "description": "gate.advisor = CORRECTION — advisorApproved = false, workRemains = true. Hook blocks: EXIT 1.",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>"
+  },
+  "disk_state_setup": [
+    {
+      "path": ".groundwork/runs/test-gate-correction-004.json",
+      "content_summary": "active=true, 1 complete slice, gate.advisor=CORRECTION",
+      "content": {
+        "active": true,
+        "session_id": "test-gate-correction-004",
+        "brief": "trivial",
+        "slices": [
+          {
+            "id": "s1",
+            "status": "complete",
+            "wave": 1,
+            "desc": "done slice"
+          }
+        ],
+        "gate": {
+          "advisor": "CORRECTION"
+        }
+      }
+    }
+  ],
+  "stdin_payload": {
+    "session_id": "test-gate-correction-004"
+  },
+  "stdout": "{\"decision\":\"block\",\"reason\":\"⛔ GROUNDWORK STOP-GATE — this run is NOT complete.\\n\\nRun: trivial\\nSlices: 1/1 complete.\\n\\nCompletion gate — advisor: CORRECTION (must be APPROVE). [verifier: n/a — informational only]\\n\\nREMEMBER THE FAN-OUT RULES:\\n- Launch every independent slice in the next wave in ONE message — splitting Task calls across messages is sequential execution in disguise.\\n- Each file is owned by exactly ONE slice per wave; shared types live in the Wave 0 tracer.\\n- One objective per Task; each prompt self-contained (paths, constraints, success criteria).\\n- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.\\n\\nTO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `/home/newman/.local/share/groundwork/bin/ledger complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with `/home/newman/.local/share/groundwork/bin/ledger gate advisor APPROVE`. Check progress any time with `/home/newman/.local/share/groundwork/bin/ledger status`.\\nTO ABANDON: run `/home/newman/.local/share/groundwork/bin/ledger abandon` (sets active:false — the run is cancelled and the gate releases).\",\"hookSpecificOutput\":{\"hookEventName\":\"Stop\",\"additionalContext\":\"⛔ GROUNDWORK STOP-GATE — this run is NOT complete.\\n\\nRun: trivial\\nSlices: 1/1 complete.\\n\\nCompletion gate — advisor: CORRECTION (must be APPROVE). [verifier: n/a — informational only]\\n\\nREMEMBER THE FAN-OUT RULES:\\n- Launch every independent slice in the next wave in ONE message — splitting Task calls across messages is sequential execution in disguise.\\n- Each file is owned by exactly ONE slice per wave; shared types live in the Wave 0 tracer.\\n- One objective per Task; each prompt self-contained (paths, constraints, success criteria).\\n- You are the ORCHESTRATOR — delegate to groundwork:general-purpose. Do not implement slices yourself.\\n\\nTO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run `/home/newman/.local/share/groundwork/bin/ledger complete <id>`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with `/home/newman/.local/share/groundwork/bin/ledger gate advisor APPROVE`. Check progress any time with `/home/newman/.local/share/groundwork/bin/ledger status`.\\nTO ABANDON: run `/home/newman/.local/share/groundwork/bin/ledger abandon` (sets active:false — the run is cancelled and the gate releases).\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

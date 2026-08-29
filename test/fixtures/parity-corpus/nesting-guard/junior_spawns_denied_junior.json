@@ -1,0 +1,21 @@
+{
+  "hook": "nesting-guard.mjs",
+  "hook_path": "hooks/nesting-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "junior_spawns_denied_junior",
+  "description": "junior-orchestrator tries to spawn another junior-orchestrator — Rule 1 DENY (callerIsSubagent=true, target=junior-orchestrator)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Agent",
+    "tool_input": {
+      "subagent_type": "groundwork:junior-orchestrator"
+    },
+    "agent_type": "groundwork:junior-orchestrator",
+    "agent_id": "abc123"
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork nesting-guard: only the primary orchestrator may spawn a junior-orchestrator. A subagent (a general-purpose worker or another junior-orchestrator) must not — implement the slice directly or surface a blocker to the parent orchestrator.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

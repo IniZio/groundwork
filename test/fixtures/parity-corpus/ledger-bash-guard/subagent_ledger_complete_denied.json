@@ -1,0 +1,20 @@
+{
+  "hook": "ledger-bash-guard.mjs",
+  "hook_path": "hooks/ledger-bash-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_ledger_complete_denied",
+  "description": "Subagent \"bin/ledger complete\" with plain write token — denied (not a scoped sct_ token)",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "agent_type": "general-purpose",
+    "tool_input": {
+      "command": "bin/ledger complete s1 --token abc"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: bin/ledger complete s1 --token abc\"}}",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

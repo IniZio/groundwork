@@ -1,0 +1,19 @@
+{
+  "hook": "piped-exit-code-guard.mjs",
+  "hook_path": "hooks/piped-exit-code-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "pipe_no_status_check_allowed",
+  "description": "multi-pipe with no $? check — passes, no status read after pipe",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "cat file.txt | grep foo | sort"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

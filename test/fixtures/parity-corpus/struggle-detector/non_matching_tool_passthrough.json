@@ -1,0 +1,35 @@
+{
+  "hook": "struggle-detector.mjs",
+  "hook_path": "hooks/struggle-detector.mjs",
+  "event_type": "PostToolUse",
+  "scenario_name": "non_matching_tool_passthrough",
+  "description": "tool_name=Read — hook only tracks Bash/Edit/Write; Read is ignored, no tally file created",
+  "env": {
+    "GROUNDWORK_STRUGGLE_THRESHOLD": "2",
+    "CLAUDE_PROJECT_DIR": "<temp_dir>"
+  },
+  "disk_state_setup": [
+    "mkdir -p <temp_dir>/.groundwork/runs"
+  ],
+  "invocations": [
+    {
+      "stdin_payload": {
+        "tool_name": "Read",
+        "session_id": "sess-passthrough-s5",
+        "tool_input": {
+          "file_path": "/home/user/foo.ts"
+        },
+        "tool_response": {
+          "result": "content"
+        }
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ],
+  "signal_emitted": false,
+  "signal_kind": null,
+  "final_detector_state": null,
+  "decision": "NO-SIGNAL"
+}

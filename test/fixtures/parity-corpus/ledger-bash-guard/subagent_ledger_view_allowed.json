@@ -1,0 +1,20 @@
+{
+  "hook": "ledger-bash-guard.mjs",
+  "hook_path": "hooks/ledger-bash-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_ledger_view_allowed",
+  "description": "Subagent \"ledger view\" — passes, view is in READONLY_LEDGER_CMD_RE allow list",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "agent_type": "general-purpose",
+    "tool_input": {
+      "command": "ledger view"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

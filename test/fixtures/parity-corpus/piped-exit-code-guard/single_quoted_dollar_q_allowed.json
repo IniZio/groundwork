@@ -1,0 +1,19 @@
+{
+  "hook": "piped-exit-code-guard.mjs",
+  "hook_path": "hooks/piped-exit-code-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "single_quoted_dollar_q_allowed",
+  "description": "$? inside single quotes — passes, hook strips single-quoted strings before matching",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo '$?' | cat"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

@@ -1,0 +1,19 @@
+{
+  "hook": "piped-exit-code-guard.mjs",
+  "hook_path": "hooks/piped-exit-code-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "dollar_q_without_pipe_allowed",
+  "description": "$? after plain command with no pipe — passes, not the guarded pattern",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "ls foo; echo $?"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

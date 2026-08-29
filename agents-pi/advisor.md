@@ -98,7 +98,7 @@ If the RFC's `classification` is `spec_change`, refuse immediately and state tha
 
 Before accepting a `tactical` RFC, answer all three §5.3 tripwires **in writing**, each with a citation from the RFC's task list or body. Verify each citation against the source — do not accept a summary from a report.
 
-1. **New noun.** Do the tasks introduce a user-visible entity, state, or verb that `spec build`'s index does not already contain?
+1. **New noun.** Do the tasks introduce a user-visible entity, state, or verb not yet covered by a requirement file under `doc/specs/<concept>/requirements/`?
 2. **Truth change.** Would any existing requirement's `ears` sentence become false, or become true in a case where it is currently false, if these tasks ship?
 3. **Removal.** Do the tasks delete, rename, or make unreachable anything a spec node references?
 

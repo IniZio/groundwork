@@ -120,7 +120,7 @@ Never cite by bare id text; file links are the machine-checkable citation form.
 
 ### Legacy format (transitional)
 
-During migration, `constraints.md` (monolithic H3 anchored sections) and `spec.yaml` files may still exist. Tooling accepts both formats. New content goes into `requirements/<id>-<kebab>.md` files.
+New content goes into `requirements/<id>-<kebab>.md` files. Legacy `constraints.md` and `spec.yaml` files from prior concepts are accepted by tooling but are not the authoring target for new requirements.
 
 ---
 
@@ -140,13 +140,7 @@ During migration, `constraints.md` (monolithic H3 anchored sections) and `spec.y
 
 **Authoring guide** — [`doc/specs/conventions.md`](conventions.md): the normative rules for frontmatter, requirement body shape, EARS sentence discipline, anchors, and ID scheme. Read this before writing any requirement.
 
-**Generated index** — [`doc/specs/_generated/index.md`](_generated/index.md): auto-built table of all concepts and requirements with status and summaries.
-
-**Build the index:**
-
-```sh
-node hooks/spec.mjs build
-```
+**Coverage** — `spec lint` surfaces uncovered `automated` requirements via the `automated-unverified` rule: it scans test files for `// @verifies <ID>` comments (`hooks/lib/verifies-scan.mjs`). The `verifies:` frontmatter field on requirement files declares which ledger slices implement that requirement (slice linkage only — no lint rule reads it for coverage).
 
 **Lint all spec files:**
 

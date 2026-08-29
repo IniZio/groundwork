@@ -1,6 +1,6 @@
 ---
 name: spec
-description: "Manage structured requirement specifications under doc/specs/ — create, build, verify, and query spec nodes and their traceability data. Triggers on: spec out, write requirements, add requirements, spec upkeep, spec is stale."
+description: "Manage structured requirement specifications under doc/specs/ — create, verify, and query spec concept nodes and their traceability data. Triggers on: spec out, write requirements, add requirements, spec upkeep, spec is stale."
 disable-model-invocation: false
 ---
 
@@ -12,45 +12,30 @@ Use this skill to manage structured requirement specifications in a groundwork-m
 
 - User asks to "spec out", "write requirements for", or "create a spec" for a feature
 - A feature plan references a `spec_ref` and the spec file is missing
-- A build error mentions `doc/specs/` or `spec build` failures
+- A lint error mentions `doc/specs/` or missing requirement fields
 - Reviewing requirement completeness or coverage
 
-## View types
+## Concept directory structure
 
-Every concept directory may declare views in `spec.yaml`. Seven core types are built in:
+Each concept lives in its own subdirectory under `doc/specs/`:
 
-| Type | What it describes | Nearest neighbour |
-|---|---|---|
-| `overview` | Concept narrative and rationale | — |
-| `data-model` | Entities, fields, relations | — |
-| `flows` | Internal collaboration sequences (what happens inside) | `scenarios` — choose `flows` for component interaction diagrams |
-| `api` | Declared operations / interface | — |
-| `constraints` | Testable normative invariants (each entry becomes a requirement node with Why / Fit criterion / Criticality) | `cases` — choose `constraints` only when every entry deserves a full requirement node |
-| `scenarios` | External input alphabet: situations, stimuli, or test inputs the system must handle | `flows` — choose `scenarios` for "what can happen to the system", `flows` for "what the system does internally when it happens" |
-| `cases` | A register of instances (test cases, failure cases, edge cases) that do not individually warrant full requirement nodes | `constraints` — choose `cases` when entries lack or should not carry their own Why / Fit criterion / Criticality |
-
-If none of the core types fit, declare a project-local extension in `spec.yaml`:
-
-```yaml
-view_types:
-  - name: fixtures
-    concern: "Which canned datasets exist and what each one is for."
-    contents: "Table of named fixture datasets with provenance and intended use."
+```
+doc/specs/<concept>/
+  index.md            — concept node (frontmatter: id, type, title, summary, parent, status)
+  requirements/       — one file per requirement (<id>-<kebab>.md)
+  design/             — design documents (optional)
+  decisions/          — decision documents (optional)
+  glossary.md         — term definitions (optional)
 ```
 
-A project-declared name must not shadow a core type. An undeclared name in `views[].type` is a `spec-lint unknown-view-type` violation with an error that lists all legal values and shows the escape-hatch snippet pre-filled with the rejected name.
+`index.md` is the indexed entry point. It carries `id`, `type: concept`, `title`, `summary`, and `parent` in frontmatter. The `parent` field references the parent concept id (e.g. `C-ENFORCEMENT` is a child of `C-GROUNDWORK`).
 
 ## Workflow
 
-1. **Init** (first time): `spec init` — creates `doc/specs/README.md` with the project concept node.
-2. **Add sub-concept** (for a major component): create `doc/specs/<component>/README.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
-3. **Add requirements**: append an anchored H3 section to the concept's existing `doc/specs/<concept>/constraints.md`. Do NOT create a `requirements/` sub-directory or one file per requirement — one `constraints.md` per concept, always. (`requirements.md` is accepted by tooling as a deprecated **filename** alias — the view type in `spec.yaml` must still be `type: constraints`, not `type: requirements`. Writing `type: requirements` triggers an `unknown-view-type` lint violation. New content uses `constraints.md`.)
-4. **Build index**: `spec build` — validates the tree and writes `_generated/`. Exits 1 on:
-   - Duplicate requirement ids or missing `{#anchor}` attributes
-   - `concept` frontmatter disagreeing with directory position
-   - Requirements missing `**Why**` or `**Fit criterion**` bullets
-   - `ears:` or `verify:` frontmatter fields (both are abolished; see §Writing requirements below)
-5. **Browse**: `spec tree`, `spec search <q>`, `spec show <id>`, `spec deps <id>`
+1. **Init** (first time): `spec init` — creates `doc/specs/index.md` with the project concept node.
+2. **Add sub-concept** (for a major component): create `doc/specs/<component>/index.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
+3. **Add a requirement**: create `requirements/<id>-<kebab>.md` with the required frontmatter and body structure (see §Writing requirements below).
+4. **Browse**: `spec tree`, `spec search <q>`, `spec show <id>`, `spec deps <id>`
 
 ## Writing requirements
 
@@ -129,9 +114,9 @@ The **single-line form** is the legacy format, still valid when brevity is prefe
 Every requirement carries `{#<id-lowercased>}` on its H3 heading line — this is the machine-readable anchor and stable citation target. All cross-references are markdown anchor links:
 
 - Same file: `[ARTIFACT-R-002](#artifact-r-002)`
-- Cross-concept: `[VERIFICATION-R-001](../verification/constraints.md#verification-r-001)`
+- Cross-concept: `[VERIFICATION-R-001](../verification/requirements/verification-r-001.md)`
 
-Never write a bare id in prose — bare ids cannot be navigated and `spec lint` flags them.
+Cross-concept links point to individual requirement files, not anchors in a monolithic file. Never write a bare id in prose — bare ids cannot be navigated and `spec lint` flags them.
 
 ### ID scheme
 
@@ -172,27 +157,9 @@ The following is a copy-pasteable example taken from `conventions.md` (the norma
 
 ## Frontmatter rules enforced by tooling
 
-### `summary` — ≤25 words, byte-identical in two places
+### `summary` — ≤25 words
 
-Every concept node carries a `summary` field in two files:
-
-1. `README.md` frontmatter (the indexed entry point)
-2. `spec.yaml` (the machine manifest)
-
-**Both rules are enforced as lint violations:**
-
-- `summary-length` — `spec lint` rejects a summary exceeding 25 words in either file. Exactly 25 passes; 26 fails.
-- `manifest-mismatch` — `spec lint` rejects any `id`, `title`, or `summary` value that differs between `spec.yaml` and `README.md`. The error message names both file paths and both values so you can see which copy to fix:
-
-  ```
-  LINT_DRIFT <id>: manifest-mismatch: concept "<id>" summary differs —
-    /path/to/spec.yaml: "value in spec.yaml" vs
-    /path/to/README.md: "value in README.md"
-  ```
-
-**Practical consequence:** when you edit one file, update the other in the same commit. A `spec lint` run in CI catches any drift before it merges.
-
-_(Long-term, deriving one from the other would eliminate the duplication. That redesign is deferred; the lint check is the current guard.)_
+Every concept node carries a `summary` field in `index.md` frontmatter. The `summary-length` lint rule rejects summaries exceeding 25 words. Exactly 25 passes; 26 fails.
 
 ## Concept layout — flat and nested
 
@@ -200,56 +167,44 @@ _(Long-term, deriving one from the other would eliminate the duplication. That r
 
 ```
 doc/specs/
-  README.md          ← root concept node (created by `spec init`)
+  index.md           ← root concept node (created by `spec init`)
   <concept-a>/
-    README.md
-    spec.yaml
-    constraints.md
+    index.md
+    requirements/
+      <concept-a>-r-001-<kebab>.md
   <concept-b>/
-    README.md
-    spec.yaml
+    index.md
+    requirements/
 ```
 
-`spec init` creates the root at `doc/specs/README.md` and assumes this flat model.
+`spec init` creates the root at `doc/specs/index.md` and assumes this flat model.
 
 ### Nested / multi-system layout
 
-`findNearestConceptId` walks up to 12 directory levels to find a parent concept's `README.md`. Arbitrary nesting is supported by the indexer — there is no enforced limit beyond 12 levels, and nothing requires `parent` to equal the directory name.
+`findNearestConceptId` walks up to 12 directory levels to find a parent concept's `index.md`. Arbitrary nesting is supported by the indexer — there is no enforced limit beyond 12 levels, and nothing requires `parent` to equal the directory name.
 
 A repo with more than one system can root each system under `doc/specs/<system>/`:
 
 ```
 doc/specs/
   frontend/
-    README.md   ← system concept (id: C-FRONTEND)
-    spec.yaml
+    index.md   ← system concept (id: C-FRONTEND)
     auth/
-      README.md ← sub-concept (id: C-FRONTEND-AUTH, parent: C-FRONTEND)
-      spec.yaml
-      constraints.md
+      index.md ← sub-concept (id: C-FRONTEND-AUTH, parent: C-FRONTEND)
+      requirements/
+        frontend-auth-r-001-<kebab>.md
   backend/
-    README.md   ← system concept (id: C-BACKEND)
-    spec.yaml
+    index.md   ← system concept (id: C-BACKEND)
+    requirements/
 ```
 
-`spec build` indexes all three concept nodes correctly. Requirements in `auth/constraints.md` associate with `C-FRONTEND-AUTH`.
+`spec lint` validates all concept nodes correctly. Requirements in `auth/requirements/` associate with `C-FRONTEND-AUTH`.
 
-**`spec init` assumption:** the command creates only `doc/specs/README.md` as a single root. For a multi-system repo, create each system's `README.md` manually with the appropriate `id` and `parent` fields.
+**`spec init` assumption:** the command creates only `doc/specs/index.md` as a single root. For a multi-system repo, create each system's `index.md` manually with the appropriate `id` and `parent` fields.
 
-## Coverage report
+## Coverage
 
-`spec build` writes `doc/specs/_generated/coverage.json`:
-```json
-{
-  "total": 12,
-  "by_source": { "R-20260726-K4M2QX": 12 },
-  "by_concept": { "C-ARTIFACT": 3, "C-ENFORCEMENT": 4, "C-ORCHESTRATION": 5 },
-  "by_verification": { "automated": 9, "manual": 2, "hybrid": 1 },
-  "by_criticality": { "must": 10, "should": 2 }
-}
-```
-
-`by_concept` maps concept id → requirement count. An area with 0 or 1 requirements is visible at a glance as potentially under-specified.
+Coverage is tracked via `// @verifies <ID>` comments in test files, scanned by `hooks/lib/verifies-scan.mjs`. `spec lint` surfaces `automated` requirements with no test carrying `// @verifies <ID>` (the `automated-unverified` rule). Slices in the run ledger use `--covers-ac` to record which acceptance criteria they address. The `verifies:` frontmatter field on requirement files declares which ledger slices implement that requirement (slice linkage only — no lint rule reads it for coverage).
 
 ## CLI reference
 

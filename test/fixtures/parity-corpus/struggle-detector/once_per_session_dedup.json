@@ -78,5 +78,13 @@
     }
   },
   "signals_count": 1,
-  "decision": "SIGNAL"
+  "decision": "SIGNAL",
+  "expected_journal_events": [
+    {
+      "type": "FAILURE",
+      "source": "hook:struggle-detector",
+      "msg_contains": "repeat-command on cefb9267289f",
+      "data": { "kind": "repeat-command", "fingerprint": "cefb9267289f" }
+    }
+  ]
 }

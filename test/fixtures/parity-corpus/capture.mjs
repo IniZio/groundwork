@@ -2,8 +2,10 @@
 /**
  * Master parity-corpus capture harness.
  *
- * Re-runs all per-hook capture scripts in sequence and prints a summary table.
- * Pass --dry-run to forward that flag to each per-hook script (no fixture writes).
+ * WARNING: This corpus is frozen (pre-conversion, D-10). The per-hook capture
+ * scripts are guarded to refuse execution when the target hook is a gw shim.
+ * Do not re-run capture to "refresh fixtures" — the corpus is the ground truth
+ * and must not be overwritten with shim output.
  *
  * Usage:
  *   node test/fixtures/parity-corpus/capture.mjs [--dry-run]

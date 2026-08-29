@@ -59,5 +59,13 @@
       "file-thrash:home-user-project-src-foo-ts": true
     }
   },
-  "decision": "SIGNAL"
+  "decision": "SIGNAL",
+  "expected_journal_events": [
+    {
+      "type": "FAILURE",
+      "source": "hook:struggle-detector",
+      "msg_contains": "file-thrash on home-user-project-src-foo-ts",
+      "data": { "kind": "file-thrash", "fingerprint": "home-user-project-src-foo-ts" }
+    }
+  ]
 }

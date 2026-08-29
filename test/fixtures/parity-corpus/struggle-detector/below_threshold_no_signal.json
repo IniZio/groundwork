@@ -59,5 +59,6 @@
     "errorSigs": {},
     "emitted": {}
   },
-  "decision": "NO-SIGNAL"
+  "decision": "NO-SIGNAL",
+  "expected_journal_events": []
 }

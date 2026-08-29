@@ -23,6 +23,15 @@ const REPO_ROOT = join(__dirname, '..', '..', '..', '..')
 const HOOK_PATH = join(REPO_ROOT, 'hooks', 'stop-gate.mjs')
 const LEDGER_BIN = join(REPO_ROOT, 'bin', 'ledger')
 
+// Shim guard — refuse if the hook has been converted to a gw shim
+{
+  const hookContent = readFileSync(HOOK_PATH, 'utf8')
+  if (hookContent.includes('src/gw/cli/main.ts')) {
+    console.error('REFUSED: hooks/stop-gate.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
+    process.exit(1)
+  }
+}
+
 /**
  * Spawn the stop-gate hook as an executable (not via `node <path>`).
  * @param {string} projectDir

@@ -18,6 +18,9 @@
  * known divergences — every corpus scenario must match exactly.
  */
 
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   loadCorpus,
@@ -32,6 +35,8 @@ import {
   runMultiInvocations,
   classifyDecision,
 } from './runner.js'
+
+const CORPUS_DIR = new URL('../../fixtures/parity-corpus', import.meta.url).pathname
 
 // ── Known legitimate divergences ──────────────────────────────────────────────
 //
@@ -53,6 +58,109 @@ for (const scenario of corpus) {
   group.push(scenario)
   byHook.set(scenario.hookName, group)
 }
+
+// ── Corpus integrity ──────────────────────────────────────────────────────────
+
+const MANIFEST = JSON.parse(readFileSync(join(CORPUS_DIR, 'MANIFEST.json'), 'utf8')) as {
+  version: number
+  generated: string
+  fixtures: Record<string, string>
+}
+
+describe('corpus integrity', () => {
+  it('corpus fixture checksums match MANIFEST.json', () => {
+    for (const [relPath, expectedHash] of Object.entries(MANIFEST.fixtures)) {
+      const fullPath = join(CORPUS_DIR, relPath)
+      const content = readFileSync(fullPath)
+      const actualHash = createHash('sha256').update(content).digest('hex')
+      expect(
+        actualHash,
+        `checksum mismatch for ${relPath}\n  expected: ${expectedHash}\n  actual:   ${actualHash}`,
+      ).toBe(expectedHash)
+    }
+  })
+})
+
+// ── Struggle-detector journal oracle ─────────────────────────────────────────
+//
+// For each struggle-detector fixture that has expected_journal_events, run the
+// invocations and assert that the gw hook wrote matching FAILURE events to the
+// journal shard at <tempDir>/.groundwork/journal/<date>-<sessionId>.jsonl.
+//
+// This catches silent loss of emitHookEvent calls that the decision oracle cannot see.
+
+describe('struggle-detector journal oracle', () => {
+  const struggleScenarios = corpus.filter(s => s.hookName === 'struggle-detector')
+
+  for (const { fixture, filePath } of struggleScenarios) {
+    if (!isMultiFixture(fixture)) continue
+    const multi = fixture as MultiFixture
+    if (multi.expected_journal_events === undefined) continue
+
+    it(`journal oracle: ${multi.scenario_name}`, () => {
+      const { tempDir, cleanup } = setupTempDir(multi.disk_state_setup)
+      try {
+        const env = buildEnv(multi.env, tempDir)
+        runMultiInvocations('struggle-detector', multi.invocations, env)
+
+        // Derive shard path — matches resolveShardPath in src/gw/hook/struggle-detector.ts
+        const firstPayload = multi.invocations[0].stdin_payload as { session_id: string }
+        const sessionId = firstPayload.session_id
+        const date = new Date().toISOString().slice(0, 10)
+        const shardPath = join(tempDir, '.groundwork', 'journal', `${date}-${sessionId}.jsonl`)
+
+        // expected_journal_events is defined here: outer loop skipped if undefined
+        const expectedEvents = multi.expected_journal_events!
+
+        if (expectedEvents.length === 0) {
+          // No FAILURE events expected — shard may not exist or must have no FAILURE lines
+          if (existsSync(shardPath)) {
+            const lines = readFileSync(shardPath, 'utf8').split('\n').filter(l => l.trim())
+            const failureEvents = lines
+              .map(l => { try { return JSON.parse(l) as Record<string, unknown> } catch { return null } })
+              .filter((e): e is Record<string, unknown> => e !== null && e['type'] === 'FAILURE')
+            expect(
+              failureEvents,
+              `expected no FAILURE events in shard but found ${failureEvents.length}\n  file: ${filePath}`,
+            ).toHaveLength(0)
+          }
+        } else {
+          // FAILURE events expected — shard must exist and contain matching entries
+          expect(
+            existsSync(shardPath),
+            `journal shard not found at ${shardPath}\n  file: ${filePath}`,
+          ).toBe(true)
+          const lines = readFileSync(shardPath, 'utf8').split('\n').filter(l => l.trim())
+          const events = lines
+            .map(l => { try { return JSON.parse(l) as Record<string, unknown> } catch { return null } })
+            .filter((e): e is Record<string, unknown> => e !== null)
+
+          for (const expected of expectedEvents) {
+            const match = events.find(e => {
+              const data = e['data'] as Record<string, unknown> | undefined
+              return (
+                e['type'] === expected.type &&
+                e['source'] === expected.source &&
+                typeof e['msg'] === 'string' &&
+                (e['msg'] as string).includes(expected.msg_contains) &&
+                data !== null &&
+                data !== undefined &&
+                data['kind'] === expected.data.kind &&
+                data['fingerprint'] === expected.data.fingerprint
+              )
+            })
+            expect(
+              match,
+              `no journal event matching type=${expected.type} msg_contains="${expected.msg_contains}" kind=${expected.data.kind} fingerprint=${expected.data.fingerprint}\n  file: ${filePath}`,
+            ).toBeDefined()
+          }
+        }
+      } finally {
+        cleanup()
+      }
+    })
+  }
+})
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 

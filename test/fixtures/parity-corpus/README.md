@@ -1,5 +1,7 @@
 # Parity Corpus — Groundwork Hook Fixtures
 
+> **FROZEN** — This corpus is a pre-conversion recording from D-10. Fixture files must not be hand-edited or regenerated. The per-hook capture scripts are guarded to refuse execution when the target hook is a gw shim.
+
 ## Purpose
 
 This directory contains a replayable scenario corpus capturing real verdicts from the 9 registered groundwork hooks. It is the ground truth for **AC-3 parity testing**: when the legacy `.mjs` hooks are rewritten in Bun/TypeScript, the new implementation must produce identical decisions against every scenario here.

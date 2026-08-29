@@ -21,6 +21,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const HOOK = path.resolve(__dirname, '../../../../hooks/struggle-detector.mjs')
 const OUT_DIR = __dirname
 
+// Shim guard — refuse if the hook has been converted to a gw shim
+{
+  const hookContent = readFileSync(HOOK, 'utf8')
+  if (hookContent.includes('src/gw/cli/main.ts')) {
+    console.error('REFUSED: hooks/struggle-detector.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
+    process.exit(1)
+  }
+}
+
 function runInvocation(stdinPayload, projectDir, env = {}) {
   const r = spawnSync(HOOK, [], {
     input: JSON.stringify(stdinPayload),

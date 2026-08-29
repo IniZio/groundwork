@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +17,15 @@ const OUT_DIR = __dirname
 
 const HOOK_NAME = 'agent-model-guard.mjs'
 const HOOK_REL = 'hooks/agent-model-guard.mjs'
+
+// Shim guard — refuse if the hook has been converted to a gw shim
+{
+  const hookContent = readFileSync(HOOK_PATH, 'utf8')
+  if (hookContent.includes('src/gw/cli/main.ts')) {
+    console.error('REFUSED: hooks/agent-model-guard.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
+    process.exit(1)
+  }
+}
 
 const scenarios = [
   {

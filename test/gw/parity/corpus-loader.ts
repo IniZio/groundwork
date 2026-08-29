@@ -54,6 +54,12 @@ export interface MultiFixture
   signal_emitted?: boolean
   signal_kind?: string
   final_detector_state?: unknown
+  expected_journal_events?: Array<{
+    type: string
+    source: string
+    msg_contains: string
+    data: { kind: string; fingerprint: string }
+  }>
 }
 
 export type ParityFixture = SingleFixture | MultiFixture

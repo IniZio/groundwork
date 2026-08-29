@@ -31,5 +31,6 @@
   "signal_emitted": false,
   "signal_kind": null,
   "final_detector_state": null,
-  "decision": "NO-SIGNAL"
+  "decision": "NO-SIGNAL",
+  "expected_journal_events": []
 }

@@ -5,13 +5,22 @@
  * Writes one JSON fixture file per scenario to this directory.
  */
 import { spawnSync } from 'child_process'
-import { writeFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const HOOK = path.resolve(__dirname, '../../../../hooks/ledger-guard.mjs')
 const OUT_DIR = __dirname
+
+// Shim guard — refuse if the hook has been converted to a gw shim
+{
+  const hookContent = readFileSync(HOOK, 'utf8')
+  if (hookContent.includes('src/gw/cli/main.ts')) {
+    console.error('REFUSED: hooks/ledger-guard.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
+    process.exit(1)
+  }
+}
 
 function run(stdinPayload, env = {}) {
   const r = spawnSync(HOOK, [], {

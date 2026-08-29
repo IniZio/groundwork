@@ -11,7 +11,7 @@
  * NEVER touches .groundwork/ in the repo root — each scenario uses an isolated temp dir.
  */
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +20,15 @@ import { tmpdir } from 'node:os'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..')
 const HOOK_PATH = join(REPO_ROOT, 'hooks', 'session-reminder.mjs')
+
+// Shim guard — refuse if the hook has been converted to a gw shim
+{
+  const hookContent = readFileSync(HOOK_PATH, 'utf8')
+  if (hookContent.includes('src/gw/cli/main.ts')) {
+    console.error('REFUSED: hooks/session-reminder.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
+    process.exit(1)
+  }
+}
 
 /**
  * Spawn the session-reminder hook as an executable (not via `node <path>`).

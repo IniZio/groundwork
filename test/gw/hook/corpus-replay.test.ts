@@ -307,17 +307,60 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
 }
 
 // ---------------------------------------------------------------------------
-// Exec-bit + shim-spawn tests
+// Exec-bit + shim-spawn tests (parametric over all hooks in hooks/hooks.json)
 // ---------------------------------------------------------------------------
 
-describe('stop-gate.mjs exec-bit and shim-spawn', () => {
-  it('hooks/stop-gate.mjs has exec bit set', () => {
-    const hookPath = join(REPO_ROOT, 'hooks/stop-gate.mjs')
-    const mode = statSync(hookPath).mode
-    // at least one of owner/group/other exec bits must be set
-    expect(mode & 0o111).toBeGreaterThan(0)
-  })
+// Parse hooks.json at module load time to derive the unique set of .mjs filenames.
+const HOOKS_JSON_PATH = join(REPO_ROOT, 'hooks/hooks.json')
+const _hooksJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8')) as {
+  hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>
+}
+const _allHookFiles: string[] = []
+for (const eventHooks of Object.values(_hooksJson.hooks)) {
+  for (const entry of eventHooks) {
+    for (const h of entry.hooks) {
+      if (h.command && h.command.endsWith('.mjs')) {
+        // Strip the variable prefix to get the bare filename
+        const filename = h.command.replace(/.*\/hooks\//, '')
+        if (!_allHookFiles.includes(filename)) {
+          _allHookFiles.push(filename)
+        }
+      }
+    }
+  }
+}
 
+describe('hook exec-bit and shim-spawn', () => {
+  for (const hookFile of _allHookFiles) {
+    it(`hooks/${hookFile} has exec bit set`, () => {
+      const hookPath = join(REPO_ROOT, 'hooks', hookFile)
+      const mode = statSync(hookPath).mode
+      // at least one of owner/group/other exec bits must be set
+      expect(mode & 0o111).toBeGreaterThan(0)
+    })
+
+    it(`hooks/${hookFile} spawns correctly when invoked by bare path`, () => {
+      const hookPath = join(REPO_ROOT, 'hooks', hookFile)
+      const tmpDir = mkdtempSync(join(os.tmpdir(), 'gw-spawn-'))
+      try {
+        const result = spawnSync(hookPath, [], {
+          input: '{}',
+          encoding: 'utf8',
+          env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir },
+          timeout: 5000,
+        })
+        // Success criterion: the process executed — no spawn error (e.g. not a 126 EACCES).
+        // Exit code may be 0 or non-zero depending on the hook's validation logic.
+        expect(result.error).toBeUndefined()
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+// stop-gate-specific test: verify the allow path returns continue:true
+describe('stop-gate.mjs shim-spawn (allow path)', () => {
   it('hooks/stop-gate.mjs spawns correctly when invoked by path (not node <path>)', () => {
     const hookPath = join(REPO_ROOT, 'hooks/stop-gate.mjs')
     const tmpDir = mkdtempSync(join(os.tmpdir(), 'gw-stopgate-spawn-'))

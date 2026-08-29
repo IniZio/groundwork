@@ -1,0 +1,517 @@
+{
+  "active": true,
+  "brief": "",
+  "slices": [
+    {
+      "id": "S0-PROTO",
+      "wave": 0,
+      "status": "complete",
+      "desc": "TBD-1/TBD-2 prototype: rewrite ORCHESTRATION+ENFORCEMENT in both spec shapes, verify Obsidian symlink, end at user decision",
+      "blocked_by": [],
+      "acceptance": [
+        "ORCHESTRATION (4 reqs) and ENFORCEMENT (13 reqs: ENFORCEMENT-R-001, PACING-R-001..011, SEAL-R-001) each rendered in BOTH shapes: requirement-per-file and concept-per-file-with-sections",
+        ".groundwork/specs -> ../doc/specs symlink created and Obsidian confirmed to follow it (or fallback relative-link sample produced)",
+        "both shapes opened in Obsidian with screenshots of properties pane and backlinks",
+        "ENDS with an explicit user decision point recorded as a DECISION event resolving TBD-1 and TBD-2",
+        "no production spec files under doc/specs are modified - prototype output lives in a scratch dir"
+      ],
+      "kind": "design",
+      "ticket": "01-choose-spec-shape-prototype",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D7",
+        "D8"
+      ],
+      "completed_at": "2026-08-28T16:55:13.047Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-PARITY-CORPUS",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Capture gate/pacing/guard scenario corpus from CURRENT hooks before new implementation lands",
+      "blocked_by": [],
+      "acceptance": [
+        "Corpus of recorded input/verdict pairs captured from the LEGACY hooks at HEAD covering stop-gate, pacing, and the PreToolUse guards",
+        "each scenario stores the full hook stdin payload plus the observed exit code and decision output, not a summary",
+        "corpus is committed as fixture data so it is replayable after legacy code is deleted",
+        "corpus includes at minimum one scenario per PACING-R-001..011 and ENFORCEMENT-R-001 and SEAL-R-001",
+        "capture harness invokes hooks by their registered path so the deployed invocation path is exercised"
+      ],
+      "kind": "design",
+      "ticket": "02-research-parity-corpus-capture",
+      "covers_ac": [
+        "AC-3"
+      ],
+      "decisions": [
+        "D6"
+      ],
+      "completed_at": "2026-08-28T17:08:26.111Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-INVENTORY",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Enumerate all persisted artefact types with producers/consumers; classify durable vs ephemeral for gw migrate",
+      "blocked_by": [],
+      "acceptance": [
+        "Every persisted artefact type under .groundwork/ and doc/specs/ is listed with its producing module and consuming modules resolved against HEAD",
+        "each artefact classified durable (migrates) or ephemeral (not migrated) with the charter D5 rule cited",
+        "the 6 modules that reference doc/specs/_generated are enumerated",
+        "output identifies which fields have no destination in the Markdown+frontmatter model - the lossy set - before migration is written"
+      ],
+      "kind": "plan",
+      "ticket": "03-research-artefact-inventory",
+      "covers_ac": [
+        "AC-4"
+      ],
+      "decisions": [
+        "D1",
+        "D5"
+      ],
+      "completed_at": "2026-08-28T16:53:57.630Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S1-SCHEMA",
+      "wave": 1,
+      "status": "complete",
+      "desc": "TRACER BULLET: shared Zod frontmatter schemas + file-layout contract + gray-matter/wikilink primitives that all later slices import",
+      "blocked_by": [
+        "S0-INVENTORY"
+      ],
+      "acceptance": [
+        "One shared Zod schema module defines frontmatter for every note kind \u2014 motive, slice, gate, decision (MADR), ticket, requirement (D-13 hybrid: ears_pattern, verification_method), concept index, and the D-15 design note kinds (MOC, concept, flow, component, recipe, reference, glossary) \u2014 and is the single import point for CLI and hooks",
+        "file-layout contract documents the exact on-disk path for every note kind incl. the design/ folder IA, assets/ adjacency, and the tracker_path config indirection",
+        "decision-id normalization: schema accepts legacy D1..D8 and canonical D-n, emits canonical D-n",
+        "gray-matter round-trip proven by a test that parses and re-serializes a note with unusual YAML and byte-compares the result",
+        "surgical single-key frontmatter write patches only the target line range \u2014 test asserts untouched lines are byte-identical including comments and key order",
+        "wikilink formatter escapes # | ^ [ ] and strips .md \u2014 test covers each escape character",
+        "zod and gray-matter added as direct dependencies in package.json",
+        "NO other slice may define a frontmatter type \u2014 this slice owns src/gw/schema and src/gw/fm exclusively"
+      ],
+      "kind": "impl",
+      "ticket": "04-model-frontmatter-schema-contract",
+      "decisions": [
+        "D1",
+        "D3",
+        "D4"
+      ],
+      "covers_ac": [
+        "AC-2"
+      ],
+      "completed_at": "2026-08-29T10:00:31.674Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S2-CLI",
+      "wave": 2,
+      "status": "complete",
+      "desc": "gw binary skeleton: Bun single-binary build, command router, --json envelope on every command",
+      "blocked_by": [
+        "S1-SCHEMA"
+      ],
+      "acceptance": [
+        "bun build produces a single self-contained gw binary and gw --help lists every command",
+        "every command accepts --json and emits a machine-parseable envelope on both success and failure",
+        "exit codes preserve the existing contract 0 success 1 operational failure 2 usage error",
+        "owns src/gw/cli and the build config only - does not touch store or hook modules"
+      ],
+      "kind": "impl",
+      "ticket": "05-build-gw-cli-skeleton",
+      "covers_ac": [
+        "AC-1"
+      ],
+      "decisions": [
+        "D4"
+      ],
+      "completed_at": "2026-08-29T10:18:02.292Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S2-MOTIVE",
+      "wave": 2,
+      "status": "in_progress",
+      "desc": "Motive charter, ticket, and decision notes as Markdown+frontmatter on the new parallel layout",
+      "blocked_by": [
+        "S1-SCHEMA"
+      ],
+      "acceptance": [
+        "Charter, ticket, and decision notes read and write through the S1 schema with no local type definitions",
+        "decisions carry status and rationale as frontmatter properties and relations as wikilinks",
+        "TBD/TBR open items are represented as notes - note that TBD is NOT a journal event type today so the source is charter prose",
+        "writes land in the parallel directory per D5 so existing hooks keep working",
+        "owns src/gw/store/motive only"
+      ],
+      "kind": "impl",
+      "ticket": "06-build-motive-note-store",
+      "covers_ac": [
+        "AC-2"
+      ],
+      "decisions": [
+        "D1",
+        "D2"
+      ],
+      "claimed_by": "a2f49e92-6706-4e3d-91c5-020a94b83f0f",
+      "claimed_at": "2026-08-29T10:08:01.068Z"
+    },
+    {
+      "id": "S2-SLICE",
+      "wave": 2,
+      "status": "in_progress",
+      "desc": "Slice-as-note, per-session gate note, and seal sidecar replacing the run ledger JSON",
+      "blocked_by": [
+        "S1-SCHEMA"
+      ],
+      "acceptance": [
+        "Each slice is a note under its motive with session and wave frontmatter properties per D2",
+        "blocked_by and covers_ac are wikilink relations resolvable as Obsidian backlinks",
+        "the write-seal is a sidecar hash file NOT a frontmatter key so a human edit in Obsidian does not invalidate machine trust - test edits a note by hand and asserts the seal detects it",
+        "querying slices by session property reproduces what the ledger session_id field returns today",
+        "owns src/gw/store/slice, gate, seal only"
+      ],
+      "kind": "impl",
+      "ticket": "07-build-slice-gate-seal-store",
+      "covers_ac": [
+        "AC-2"
+      ],
+      "decisions": [
+        "D1",
+        "D2"
+      ],
+      "claimed_by": "a2f49e92-6706-4e3d-91c5-020a94b83f0f",
+      "claimed_at": "2026-08-29T10:08:01.068Z"
+    },
+    {
+      "id": "S2-MIGRATE",
+      "wave": 3,
+      "status": "pending",
+      "desc": "gw migrate: lossless conversion of durable artefacts over the real corpus; ephemeral state untouched",
+      "blocked_by": [
+        "S1-SCHEMA",
+        "S0-INVENTORY",
+        "S2-MOTIVE"
+      ],
+      "acceptance": [
+        "gw migrate --dry-run reports zero lossy conversions over the real motive corpus - note HEAD has 15 motive dirs not the 14 the charter states",
+        "round-trip test converts and converts back and byte-compares the semantic content for every motive",
+        "ephemeral state (per-session ledgers, seals, struggle tallies, open-items) is provably untouched - test asserts mtimes unchanged",
+        "lossy set identified in S0-INVENTORY is either handled or explicitly reported, never silently dropped",
+        "owns src/gw/migrate only"
+      ],
+      "kind": "impl",
+      "ticket": "08-build-gw-migrate",
+      "covers_ac": [
+        "AC-4"
+      ],
+      "decisions": [
+        "D5"
+      ]
+    },
+    {
+      "id": "S3-HOOKS",
+      "wave": 3,
+      "status": "pending",
+      "desc": "Port stop-gate/pacing/guard logic into gw; hooks become one-line shims invoking gw hook <name>",
+      "blocked_by": [
+        "S2-CLI",
+        "S2-SLICE"
+      ],
+      "acceptance": [
+        "Every hook registered in hooks/hooks.json is a one-line shim invoking gw hook <name>",
+        "shims are invoked by their registered bare path and are executable - assert the exec bit, do not test via node <path>",
+        "stop-gate reads slices by session property and the session gate note verdict per D2 rather than a ledger JSON file",
+        "pacing counts distinct waves among the session slices and preserves the PACING-R-001 default of budget 1 with exempt_kinds plan/diagnose/design/fog",
+        "NO gate/pacing/guard semantics change - this is a port, behavior deltas are defects not improvements"
+      ],
+      "kind": "impl",
+      "ticket": "09-build-hook-shims-port",
+      "covers_ac": [
+        "AC-1",
+        "AC-2"
+      ],
+      "decisions": [
+        "D4",
+        "D6"
+      ]
+    },
+    {
+      "id": "S4-PARITY-TEST",
+      "wave": 4,
+      "status": "pending",
+      "desc": "Parity suite replaying the S0 corpus against legacy and new implementations, diffing verdicts",
+      "blocked_by": [
+        "S0-PARITY-CORPUS",
+        "S3-HOOKS"
+      ],
+      "acceptance": [
+        "Suite feeds every recorded S0 scenario to BOTH the legacy hook path and the new gw hook path and asserts identical decision output and exit code",
+        "tests execute both surfaces - they MUST NOT assert on source text, and a source-text assertion is a rejection",
+        "a red-green bite proof is included: mutate one new-path decision and show the parity test fails",
+        "the suite runs unfiltered as part of the normal test command, not as a named-file run",
+        "any scenario where legacy and new legitimately differ is listed explicitly with a charter citation, never silently normalized"
+      ],
+      "kind": "impl",
+      "ticket": "10-grill-behavior-parity-suite",
+      "covers_ac": [
+        "AC-3"
+      ],
+      "decisions": [
+        "D6"
+      ]
+    },
+    {
+      "id": "S4-SPEC-MIGRATE",
+      "wave": 4,
+      "status": "in_progress",
+      "desc": "Migrate all 7 concepts / 55 requirement ids to the D-15 layout (index.md + requirements/ hybrid template + design/ folder IA + decisions/ + glossary.md); PILOT one concept first (stop-gate/enforcement) and re-run the S1-EVAL-BASELINE comprehension eval before/after; delete spec.yaml, constraints.md, _generated/; rewire the 5 consumer modules (spec-io, spec.mjs, spec-lint, spec-guard, traceability-adapter)",
+      "blocked_by": [
+        "S0-PROTO-4",
+        "S1-SCHEMA",
+        "S1-EVAL-BASELINE"
+      ],
+      "acceptance": [
+        "All 7 concepts migrated to the shape chosen in S0-PROTO with every one of the 55 requirement ids preserved - no id renamed or dropped",
+        "doc/specs/_generated and every spec.yaml and constraints.md are absent",
+        "the 6 modules referencing _generated (hooks/lib/spec-io.mjs, hooks/lib/traceability-adapter.mjs, hooks/spec-lint.mjs, hooks/spec-guard.mjs, hooks/journal.mjs, hooks/spec.mjs) are updated - a repo-wide sweep is required, not a named-file edit list",
+        "each concept has an index.md carrying concept metadata in frontmatter - note this renames the existing README.md overview file",
+        "coverage is expressed as verifies wikilinks on slices and the Obsidian backlinks pane shows the coverage report"
+      ],
+      "kind": "impl",
+      "ticket": "11-spec-spec-corpus-migration",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-13",
+        "D-14",
+        "D-15"
+      ],
+      "claimed_by": "a2f49e92-6706-4e3d-91c5-020a94b83f0f",
+      "claimed_at": "2026-08-29T10:08:01.068Z"
+    },
+    {
+      "id": "S5-VAULT-VERIFY",
+      "wave": 5,
+      "status": "pending",
+      "desc": "Manual Obsidian vault verification: notes, typed properties, graph view, slice-to-requirement link resolution",
+      "blocked_by": [
+        "S2-MOTIVE",
+        "S2-SLICE",
+        "S4-SPEC-MIGRATE"
+      ],
+      "acceptance": [
+        "Opening .groundwork/ as an Obsidian vault shows motives, slices, gates, and decisions as linked notes with typed properties in the properties pane",
+        "slice-to-requirement verifies links resolve with no unresolved-link placeholders",
+        "screenshot of graph view and of an open linked note captured as evidence",
+        "verification is manual per the charter AC-5 note - evidence is re-captured against the final build, never reused from an earlier build"
+      ],
+      "kind": "design",
+      "ticket": "12-grill-obsidian-vault-verification",
+      "covers_ac": [
+        "AC-5"
+      ],
+      "decisions": [
+        "D7"
+      ]
+    },
+    {
+      "id": "S6-CUTOVER",
+      "wave": 6,
+      "status": "pending",
+      "desc": "Cut over from the parallel layout; retire legacy .mjs readers/writers and bin/ledger + bin/journal",
+      "blocked_by": [
+        "S4-PARITY-TEST",
+        "S5-VAULT-VERIFY",
+        "S2-MIGRATE"
+      ],
+      "acceptance": [
+        "bin/ledger and bin/journal are removed and every caller invokes gw",
+        "the legacy .mjs reader/writer modules superseded by gw are deleted, not left dormant - deletion and replacement land in the SAME slice",
+        "file-extension audit of .groundwork/ after a representative session shows Markdown only, with .seal sidecar hash files the sole exemption",
+        "plugin.json, hooks.json, and model-registry.json remain JSON per D1",
+        "full unfiltered test suite is green against a HEAD baseline, and the baseline failure count is recorded before the slice starts"
+      ],
+      "kind": "impl",
+      "ticket": "13-chore-legacy-retirement-cutover",
+      "covers_ac": [
+        "AC-1",
+        "AC-2"
+      ],
+      "decisions": [
+        "D1",
+        "D4",
+        "D5"
+      ]
+    },
+    {
+      "id": "S0-PROTO-3",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Round 3: ORCHESTRATION design.md with mermaid (state machine, stop-gate flow, slice data shape) to judge the requirements/design split in Obsidian",
+      "blocked_by": [],
+      "acceptance": [
+        "design.md exists with \u22653 rendering mermaid blocks each wikilinking the requirements it realizes",
+        "REVIEW-3.md with review procedure and blank Decision"
+      ],
+      "kind": "design",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-12"
+      ],
+      "completed_at": "2026-08-29T07:15:20.478Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-DESIGN-RESEARCH",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Per-aspect survey of design-spec conventions (data shapes, flows, state, interfaces, decisions, NFRs) across Kiro/Spec Kit/arc42/C4/RFC/OpenAPI; recommend a shape per aspect",
+      "blocked_by": [],
+      "acceptance": [
+        "ticket with per-aspect recommendation table, each row citing \u22651 source",
+        "explicit mermaid/Obsidian renderability verdict per aspect"
+      ],
+      "kind": "plan",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-12"
+      ],
+      "completed_at": "2026-08-29T07:16:02.831Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-EVAL-DESIGN",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Design the dogfooding eval loop: how spec-shape changes are evaluated by using the new flow on groundwork itself (metrics, mechanisms, prior art)",
+      "blocked_by": [],
+      "acceptance": [
+        "ticket proposing \u22653 measurable signals with capture mechanism each",
+        "names what would make a shape change a regression"
+      ],
+      "kind": "plan",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-12"
+      ],
+      "completed_at": "2026-08-29T07:19:43.506Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-DESIGN-PATTERNS",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Survey recognized design-documentation patterns (design-system component pages, Diataxis, Obsidian MOC, Storybook, cookbook/recipes, arc42 views) and recommend the design-folder IA per aspect",
+      "blocked_by": [],
+      "acceptance": [
+        "ticket with IA recommendation citing \u22654 real design-system/doc sources",
+        "page template per note type"
+      ],
+      "kind": "plan",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-14"
+      ],
+      "completed_at": "2026-08-29T09:27:57.544Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S0-PROTO-4",
+      "wave": 0,
+      "status": "complete",
+      "desc": "Round 4: ORCHESTRATION design as a folder of presented notes (MOC index, concepts, flows, components w/ visual embeds, specs, recipes) per recognized patterns",
+      "blocked_by": [],
+      "acceptance": [
+        "design/ folder with MOC index and \u22655 note types rendering in Obsidian",
+        "REVIEW-4.md with procedure and blank Decision"
+      ],
+      "kind": "design",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-14"
+      ],
+      "completed_at": "2026-08-29T09:30:14.828Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S1-EVAL-BASELINE",
+      "wave": 1,
+      "status": "complete",
+      "desc": "Eval minimal slice (no doc/specs writes): compute LINT_DRIFT + struggle-signal + AC-retraction baselines from existing journals and record them as journal events; author the stop-gate agent-comprehension eval suite (claude plugin eval, --ablation none); document the A/B procedure S4-SPEC-MIGRATE runs on its pilot concept",
+      "blocked_by": [
+        "S0-PROTO-4"
+      ],
+      "acceptance": [
+        "baseline numbers for \u22653 signals recorded as journal events with their capture command",
+        "comprehension eval suite (5\u20138 questions answerable from the spec alone) runs green on the CURRENT stop-gate spec with --ablation none and its score is recorded",
+        "no file under doc/specs modified"
+      ],
+      "kind": "impl",
+      "covers_ac": [
+        "AC-6"
+      ],
+      "decisions": [
+        "D-14"
+      ],
+      "completed_at": "2026-08-29T09:55:08.419Z",
+      "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f"
+    },
+    {
+      "id": "S3-COMMANDS",
+      "wave": 3,
+      "status": "pending",
+      "desc": "Wire the ledger/journal command vocabulary in gw to the S2 stores (replace NOT_IMPLEMENTED stubs): status/add/set/complete/rm/show/view/gate/abandon/fog/frontier/claim/await-human/autopilot/scope-token and journal append/show/compile, all with --json",
+      "blocked_by": [
+        "S2-CLI",
+        "S2-MOTIVE",
+        "S2-SLICE"
+      ],
+      "acceptance": [
+        "every stub from S2-CLI is replaced by a store-backed implementation - no NOT_IMPLEMENTED remains in the router",
+        "each command's semantics match bin/ledger and bin/journal help text - a table test runs the same scenario through the legacy CLI and gw and compares normalized output",
+        "token/seal authority for gate/complete/abandon/autopilot is enforced via the S2-SLICE seal - test proves a write without authority is rejected",
+        "owns src/gw/cli/commands only"
+      ],
+      "kind": "impl",
+      "covers_ac": [
+        "AC-1"
+      ],
+      "decisions": [
+        "D-12"
+      ]
+    }
+  ],
+  "session_id": "a2f49e92-6706-4e3d-91c5-020a94b83f0f",
+  "motive": "obsidian-native-groundwork",
+  "pacing": {
+    "policy": "wave",
+    "budget": 1,
+    "exempt_kinds": [
+      "plan",
+      "diagnose",
+      "design",
+      "fog"
+    ],
+    "offset": 0,
+    "grant": {
+      "range": 1,
+      "granted_at": "2026-08-29T10:08:00.934Z",
+      "granted_by": "a2f49e92-6706-4e3d-91c5-020a94b83f0f",
+      "reason": "User granted autopilot for wave 2 + S4-SPEC-MIGRATE (AskUserQuestion 2026-08-29)"
+    }
+  }
+}

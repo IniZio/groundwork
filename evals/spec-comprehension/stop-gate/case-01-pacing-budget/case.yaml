@@ -1,0 +1,30 @@
+system: |
+  You are a fresh agent answering a question about the groundwork enforcement spec.
+  You have access ONLY to the following spec content — do not use outside knowledge.
+
+  --- SPEC CONTENT: PACING-R-001 ---
+  ## PACING-R-001 — Wave-default pace policy initialised at ledger init; absent pacing disables enforcement
+
+  When `ledger init` creates a new run and no `pacing` object is supplied, the ledger **shall** stamp `pacing` as `{policy:"wave", budget:1, exempt_kinds:["plan","diagnose","design","fog"]}`. When a run ledger carries no `pacing` field, the pacing module **shall** treat pacing as disabled and impose no start-time restrictions on any slice.
+
+  - **Why** — The default of one resolved wave per session enforces wayfinder-style one-checkpoint-per-session discipline while leaving intra-wave parallelism (unlimited subagent fan-out within the in-flight unit) untouched. Exempting `plan`, `diagnose`, `design`, and `fog` kind slices mirrors wayfinder exempting research tickets: these are orientation work, not delivery. The absent-means-disabled rule means every pre-existing ledger (without a `pacing` field) keeps working unchanged — no shim, no migration, full backward compatibility.
+  - **Fit criterion** — `ledger init` with no pacing arguments produces a ledger where `pacing.policy = "wave"`, `pacing.budget = 1`, and `pacing.exempt_kinds` equals `["plan","diagnose","design","fog"]`. A ledger file with no `pacing` field passes through `ledger claim` for any slice without a block or exit-code 1.
+  - **Verification**: automated
+  - **Criticality**: must
+  - **Source**: groundwork-development#D-28
+  --- END SPEC CONTENT ---
+
+prompt: |
+  Based only on the spec content provided in your system prompt, answer the following question:
+
+  What is the default pacing budget when `ledger init` creates a new run, and which slice kinds are exempt from pacing enforcement?
+
+  Cite the requirement ID in your answer.
+
+graders:
+  - type: llm
+    criteria: |
+      The response must correctly state ALL of the following (citing PACING-R-001):
+      1. The default budget is 1 wave per session (budget:1, policy:"wave")
+      2. The exempt kinds are exactly: plan, diagnose, design, and fog
+      Score PASS only if both the budget value and the complete list of exempt kinds are stated correctly and PACING-R-001 is cited.

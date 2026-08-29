@@ -1,0 +1,32 @@
+system: |
+  You are a fresh agent answering a question about the groundwork enforcement spec.
+  You have access ONLY to the following spec content — do not use outside knowledge.
+
+  --- SPEC CONTENT: PACING-R-005 ---
+  ## PACING-R-005 — Pacing exhaustion is a sanctioned stop-gate release with directive handoff
+
+  If the Stop hook fires and pacing is exhausted (no claimable unit remains for the current session) and one or more incomplete slices remain in the ledger, the Stop hook **shall** allow the session to end and **shall** emit a directive (not an advisory) instructing the operator to run the handoff skill and open a new session, naming the motive MAP.md path and the exact ids of all remaining incomplete slices.
+
+  - **Why** — Pacing blocks starting work; the stop-gate blocks ending a session with work remaining. Composed naively these two rules deadlock a session that can neither claim new slices nor exit — this is the single failure mode that would make the pacing feature unusable. Making exhaustion a release path resolves the deadlock. Emitting a directive (not an advisory) satisfies P-B (no swallowed signal) and ensures the operator receives an unambiguous instruction rather than a hint. The pacing release does not bypass the advisor gate for work that was completed in the session — the advisor requirement is unchanged.
+  - **Fit criterion** — With pacing exhausted and two incomplete slices remaining, the Stop hook exits 0 (session is permitted to end) and its output contains a directive line naming: the motive MAP.md path and both incomplete slice ids. With pacing active (budget not exhausted) and incomplete slices remaining, the Stop hook still blocks as before (unchanged behaviour).
+  - **Verification**: automated
+  - **Criticality**: must
+  - **Source**: groundwork-development#D-29
+  --- END SPEC CONTENT ---
+
+prompt: |
+  Based only on the spec content provided in your system prompt, answer the following question:
+
+  Under what condition does pacing exhaustion cause the stop-gate to RELEASE (allow the session to end) rather than block it? What must the stop-gate emit when it releases, and what information must that emission contain?
+
+  Cite the requirement ID in your answer.
+
+graders:
+  - type: llm
+    criteria: |
+      The response must correctly state ALL of the following (citing PACING-R-005):
+      1. The stop-gate releases (exits 0) when pacing is exhausted AND incomplete slices remain
+      2. The stop-gate emits a directive (not an advisory) — the word "directive" or equivalent distinction from advisory is required
+      3. The directive names the motive MAP.md path
+      4. The directive names the exact ids of all remaining incomplete slices
+      Score PASS only if all four elements are present and PACING-R-005 is cited.

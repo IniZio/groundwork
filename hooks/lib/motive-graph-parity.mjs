@@ -242,14 +242,30 @@ export function checkFoldCompileParity(projected, compiled, { events } = {}) {
     divergences.push({ field: 'baselines.names', projected: projBNames, compiled: compBNames })
   }
 
-  for (const b of projected.baselines) {
-    const cb = compiled.agent.baselines.find((c) => c.name === b.name)
-    if (!cb) continue
+  // Pair the two lists positionally after sorting by ord, NOT by name lookup.
+  // A name lookup cannot pair records that share a name — a motive may hold several
+  // BASELINE events with no data.name (name === null), and find() then matched every
+  // projected record against the first compiled one, reporting spurious ord/ts
+  // divergences. `ord` is the per-motive event ordinal and is unique per record, so
+  // ord order is a total order on both lists. This also compares `name` per position,
+  // which the previous find()-based pairing could not: it is strictly stricter than
+  // the code it replaces, and it no longer skips an unpaired record silently.
+  const byOrd = (a, b) => (a.ord ?? 0) - (b.ord ?? 0)
+  const projBaselines = [...projected.baselines].sort(byOrd)
+  const compBaselines = [...compiled.agent.baselines].sort(byOrd)
+  // Length mismatch is already reported above as a baselines.names divergence.
+  const pairCount = Math.min(projBaselines.length, compBaselines.length)
+  for (let i = 0; i < pairCount; i++) {
+    const b = projBaselines[i]
+    const cb = compBaselines[i]
+    if (b.name !== cb.name) {
+      divergences.push({ field: `baselines[${i}].name`, projected: b.name, compiled: cb.name })
+    }
     if (b.ord !== cb.ord) {
-      divergences.push({ field: `baselines[${b.name}].ord`, projected: b.ord, compiled: cb.ord })
+      divergences.push({ field: `baselines[${i}].ord`, projected: b.ord, compiled: cb.ord })
     }
     if (b.ts !== cb.ts) {
-      divergences.push({ field: `baselines[${b.name}].ts`, projected: b.ts, compiled: cb.ts })
+      divergences.push({ field: `baselines[${i}].ts`, projected: b.ts, compiled: cb.ts })
     }
     // b.line vs cb.line — NON_RECONSTRUCTIBLE_FIELDS['baselines[].line'] → skip
   }

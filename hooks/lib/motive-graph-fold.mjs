@@ -319,7 +319,14 @@ export function assembleGraphFold(orderedEvents, { at, charter: _charter, ground
 
   function handleBaseline(data, event) {
     const { name, shard } = data
-    const nodeId = `baseline:${name}`
+    // Node identity is the baseline name — re-pinning a name updates the same node,
+    // matching resolveBaseline()'s latest-wins semantics. A BASELINE event written
+    // without data.name (e.g. via generic `journal append --type BASELINE`) has no
+    // name to key on; interpolating undefined produced the shared id
+    // `baseline:undefined`, collapsing every nameless pin in a motive into one node
+    // and dropping the rest — compile() keeps one record per BASELINE event.
+    // Fall back to the event ordinal so each nameless pin keeps its own node.
+    const nodeId = name != null ? `baseline:${name}` : `baseline:@${event.ord ?? event.ts}`
     const baseAttrs = { name, shard }
     // First-event guard: persist _ord/_ts only when creating the node.
     if (!nodesMap.has(nodeId)) {

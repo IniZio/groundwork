@@ -119,7 +119,13 @@ function findLedger(projectDir, slug) {
     try {
       const raw = readFileSync(fp, 'utf8')
       const ledger = JSON.parse(raw)
-      if (resolveMotiveSlug(ledger.motive_ref) !== slug) continue
+      // The run-ledger schema carries the motive under EITHER key: `motive`
+      // (written by `ledger init --motive <id>`, the standard path) or
+      // `motive_ref` (carried through from init input JSON). Reading only
+      // `motive_ref` skipped every CLI-created ledger, so no motive ever
+      // received slice nodes. Prefer `motive` — the order journal-io.mjs
+      // resolveMotive() uses.
+      if (resolveMotiveSlug(ledger.motive ?? ledger.motive_ref) !== slug) continue
       const mtime = statSync(fp).mtimeMs
       if (mtime > bestMtime) {
         bestMtime = mtime

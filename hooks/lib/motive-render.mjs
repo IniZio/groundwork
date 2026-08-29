@@ -483,7 +483,13 @@ function _buildNarrativeSections(agent) {
     if (Array.isArray(pause.next_actions) && pause.next_actions.length > 0) {
       lines.push(
         '**Next actions:**\n' +
-        pause.next_actions.map((na) => `- **${na.action}:** ${na.detail ?? ''}`).join('\n')
+        pause.next_actions.map((na) => {
+          if (typeof na === 'string') return `- ${na}`;
+          const label = na.slice ?? na.action ?? '?';
+          const wave = na.wave != null ? ` (w${na.wave})` : '';
+          const desc = na.desc ?? na.detail ?? '';
+          return `- **${label}**${wave}${desc ? ': ' + desc : ''}`;
+        }).join('\n')
       );
     }
     sections.push({

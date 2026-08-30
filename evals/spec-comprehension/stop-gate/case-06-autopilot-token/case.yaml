@@ -1,37 +1,69 @@
-system: |
-  You are a fresh agent answering a question about the groundwork enforcement spec.
-  You have access ONLY to the following spec content — do not use outside knowledge.
+schema_version: "1.0"
+name: autopilot-token-gated
 
-  --- SPEC CONTENT: PACING-R-004 ---
-  ## PACING-R-004 — Autopilot grant is token-gated, recorded in the ledger, and run-scoped
+execution:
+  system: "Answer the question using ONLY the spec content provided in the user message. Do not use outside knowledge or search the codebase."
 
-  When `ledger autopilot --range N` is invoked, the ledger CLI **shall** write `pacing.grant = {range: N, granted_at: <ISO-8601 timestamp>, granted_by: <session-id, falling back to "orchestrator">, reason: <reason string>}` to the active run ledger and emit a MILESTONE journal event; the grant **shall** expire automatically with the run because it is stored in the session-scoped ledger file. A second invocation of `ledger autopilot --range N` overwrites the existing grant (one-shot cap raise, not cumulative).
+  prompt: |
+    The following is the complete spec content you must use to answer the questions below. Do not use any other knowledge.
 
-  - **Why** — The autopilot grant is an explicit, auditable escape hatch for sessions that legitimately need to resolve more units than the default budget allows. Recording the grant in the ledger (with timestamp and reason) makes every overage visible in the audit trail and prevents silent budget inflation. Emitting a MILESTONE journal event makes the grant discoverable in the motive history. Scoping the grant to the run (rather than a global config) means each session's overage is independent and intentional — a new session always starts fresh from the configured budget.
-  - **Criticality**: must
-  - **Source**: groundwork-development#D-28
+    --- SPEC CONTENT (D-15): doc/specs/enforcement/requirements/pacing-r-004-autopilot-grant-token-gated-recorded-run-scoped.md ---
+    id: pacing-r-004
+    title: Autopilot grant is token-gated, recorded in the ledger, and run-scoped
+    criticality: must
+    verification: unverified
+    source: groundwork-development#D-28
 
-  --- SPEC CONTENT: PACING-R-008 ---
-  ## PACING-R-008 — Milestone sign-off requires write_token authority; subagents must not self-sign
+    ## Statement
 
-  When S7 records a `milestone_signoff` object in the ledger, the CLI command that writes it **shall** require the orchestrator `write_token` (the same token that gates `ledger gate` and `ledger complete`). Invoking the sign-off command without a valid `write_token` **shall** exit 1 with a message naming the missing authority. A subagent that cannot present the `write_token` cannot record a sign-off — preventing a subagent from approving its own work.
+    When `ledger autopilot --range N` is invoked, the ledger CLI **shall** write `pacing.grant = {range: N, granted_at: <ISO-8601 timestamp>, granted_by: <session-id, falling back to "orchestrator">, reason: <reason string>}` to the active run ledger and emit a MILESTONE journal event; the grant **shall** expire automatically with the run because it is stored in the session-scoped ledger file. A second invocation of `ledger autopilot --range N` overwrites the existing grant (one-shot cap raise, not cumulative).
 
-  - **Why** — The milestone sign-off is the human verification event that releases the pacing gate. If a subagent can write it without token authority, the human-in-the-loop guarantee is defeated: any subagent can self-certify completion. The write_token is the existing credential that denotes orchestrator-level authority; requiring it here extends the same trust boundary that already protects `ledger gate advisor APPROVE`. The token is never passed to subagents (CLAUDE.md: "MUST NOT pass it to subagents"), so requiring it structurally excludes them.
-  - **Criticality**: must
-  - **Source**: spine-beads-hitl-portability#S6
-  --- END SPEC CONTENT ---
+    ## Why
 
-prompt: |
-  Based only on the spec content provided in your system prompt, answer the following questions:
+    The autopilot grant is an explicit, auditable escape hatch for sessions that legitimately need to resolve more units than the default budget allows. Recording the grant in the ledger (with timestamp and reason) makes every overage visible in the audit trail and prevents silent budget inflation. Emitting a MILESTONE journal event makes the grant discoverable in the motive history. Scoping the grant to the run (rather than a global config) means each session's overage is independent and intentional — a new session always starts fresh from the configured budget.
 
-  1. Who can grant an autopilot extension, and what credential is required?
-  2. Where is the autopilot grant recorded, and how long does it last?
-  3. Can a subagent record a milestone sign-off on its own? Why or why not?
+    ## Fit criterion
 
-  Cite the requirement IDs in your answer.
+    After `ledger autopilot --range 2 --reason "multi-wave emergency"`, the active ledger's `pacing.grant` equals `{range:2, granted_by:<session-id or "orchestrator">, reason:"multi-wave emergency"}` and contains a valid `granted_at` ISO timestamp; `ledger claim` for a slice in the next new unit exits 0; the journal for the current motive contains a MILESTONE event referencing the autopilot grant.
+
+    ## Verification procedure
+
+    Automated — run `ledger autopilot --range 2 --reason "test"` and inspect the ledger `pacing.grant` field and the journal MILESTONE event; confirm a subsequent `ledger claim` for a new unit exits 0.
+    --- END SPEC CONTENT ---
+
+    --- SPEC CONTENT (D-15): doc/specs/enforcement/requirements/pacing-r-008-milestone-signoff-requires-write-token-authority.md ---
+    id: pacing-r-008
+    title: Milestone sign-off requires write_token authority; subagents must not self-sign
+    criticality: must
+    verification: unverified
+    source: spine-beads-hitl-portability#S6
+
+    ## Statement
+
+    When S7 records a `milestone_signoff` object in the ledger, the CLI command that writes it **shall** require the orchestrator `write_token` (the same token that gates `ledger gate` and `ledger complete`). Invoking the sign-off command without a valid `write_token` **shall** exit 1 with a message naming the missing authority. A subagent that cannot present the `write_token` cannot record a sign-off — preventing a subagent from approving its own work.
+
+    ## Why
+
+    The milestone sign-off is the human verification event that releases the pacing gate. If a subagent can write it without token authority, the human-in-the-loop guarantee is defeated: any subagent can self-certify completion. The write_token is the existing credential that denotes orchestrator-level authority; requiring it here extends the same trust boundary that already protects `ledger gate advisor APPROVE`. The token is never passed to subagents (CLAUDE.md: "MUST NOT pass it to subagents"), so requiring it structurally excludes them.
+
+    ## Fit criterion
+
+    Invoking the sign-off command without `--token <write_token>` exits 1 with an error citing missing token authority. Invoking it with a valid token succeeds and writes `milestone_signoff` to the ledger.
+
+    ## Verification procedure
+
+    Automated — S7 test suite covers both token-absent (exit 1) and token-present (exit 0 + ledger updated) cases.
+    --- END SPEC CONTENT ---
+
+    QUESTIONS: Based only on the spec content above, answer the following:
+    1. Who can grant an autopilot extension, and what credential is required?
+    2. Where is the autopilot grant recorded, and how long does it last?
+    3. Can a subagent record a milestone sign-off on its own? Why or why not?
+    Cite the requirement IDs in your answer.
 
 graders:
-  - type: llm
+  - name: check-autopilot-token
+    type: llm
     criteria: |
       The response must correctly state ALL of the following (citing PACING-R-004 and PACING-R-008):
       1. The autopilot grant is token-gated (requires the write_token / orchestrator token) — subagents cannot self-grant

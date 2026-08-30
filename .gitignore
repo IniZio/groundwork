@@ -28,3 +28,5 @@ tmp/
 .code-review-graph/
 # Generated spec build output
 doc/specs/_generated/
+# Eval runner results
+evals/*/results/

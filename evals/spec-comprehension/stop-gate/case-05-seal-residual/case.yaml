@@ -1,28 +1,41 @@
-system: |
-  You are a fresh agent answering a question about the groundwork enforcement spec.
-  You have access ONLY to the following spec content — do not use outside knowledge.
+schema_version: "1.0"
+name: seal-accepted-residual
 
-  --- SPEC CONTENT: SEAL-R-001 ---
-  ## SEAL-R-001 — Accepted residual: arbitrary-code-execution as the same OS user can forge a valid seal
+execution:
+  system: "Answer the question using ONLY the spec content provided in the user message. Do not use outside knowledge or search the codebase."
 
-  The sealed-gate design provides tamper-evidence against the realistic threat model (CLI misuse, direct `Write`/`Edit` tool calls, and simple Bash mutation patterns) but **shall not** be construed as guaranteeing containment against a subagent with arbitrary code execution running as the same OS user. Such a subagent can read the seal key from disk and write a correctly re-sealed ledger via `computeSeal(canonicalReleaseState(ledger), key)`, bypassing the stop-gate entirely. This is an accepted, documented residual risk.
+  prompt: |
+    The following is the complete spec content you must use to answer the question below. Do not use any other knowledge.
 
-  - **Why** — Perfect containment without OS-level isolation (a separate UID, container boundary, seccomp policy, or equivalent mechanism) is impossible: any process running as the same user can read and write any file that user owns. The sealed-gate feature is a defense-in-depth measure against common, non-adversarial failure modes — accidental CLI misuse, guard-bypass via direct file writes, and simple Bash injection. It is not a security boundary. Documenting this residual explicitly prevents over-reliance on the mechanism and provides a clear anchor for future hardening decisions (e.g. storing the key in a separate process, kernel keyring, or external secret store).
-  - **Fit criterion** — Not automatically testable. Verification requires threat-model review: confirm that `hooks/lib/gate-seal.mjs` stores the key at a filesystem path readable by the ambient process user, and that nothing at the OS level prevents an arbitrary process running as that user from reading the key and calling `computeSeal` to produce a valid seal for any desired ledger state.
-  - **Verification**: manual — not automatable
-  - **Criticality**: must
-  - **Source**: sealed-gate#D-10
-  --- END SPEC CONTENT ---
+    --- SPEC CONTENT (D-15): doc/specs/enforcement/requirements/seal-r-001-accepted-residual-ace-same-os-user.md ---
+    id: seal-r-001
+    title: Accepted residual — arbitrary-code-execution as the same OS user can forge a valid seal
+    criticality: must
+    verification: manual
+    source: sealed-gate#D-10
 
-prompt: |
-  Based only on the spec content provided in your system prompt, answer the following question:
+    ## Statement
 
-  What is the accepted residual risk for the seal mechanism? In other words, what attack is the sealed-gate design explicitly acknowledged to NOT protect against?
+    The sealed-gate design provides tamper-evidence against the realistic threat model (CLI misuse, direct `Write`/`Edit` tool calls, and simple Bash mutation patterns) but **shall not** be construed as guaranteeing containment against a subagent with arbitrary code execution running as the same OS user. Such a subagent can read the seal key from disk and write a correctly re-sealed ledger via `computeSeal(canonicalReleaseState(ledger), key)`, bypassing the stop-gate entirely. This is an accepted, documented residual risk.
 
-  Cite the requirement ID in your answer.
+    ## Why
+
+    Perfect containment without OS-level isolation (a separate UID, container boundary, seccomp policy, or equivalent mechanism) is impossible: any process running as the same user can read and write any file that user owns. The sealed-gate feature is a defense-in-depth measure against common, non-adversarial failure modes — accidental CLI misuse, guard-bypass via direct file writes, and simple Bash injection. It is not a security boundary. Documenting this residual explicitly prevents over-reliance on the mechanism and provides a clear anchor for future hardening decisions (e.g. storing the key in a separate process, kernel keyring, or external secret store).
+
+    ## Fit criterion
+
+    Not automatically testable. Verification requires threat-model review: confirm that `hooks/lib/gate-seal.mjs` stores the key at a filesystem path readable by the ambient process user (`<projectDir>/.groundwork/runs/<sessionId>.seal.key`, mode 0600), and that nothing at the OS level prevents an arbitrary process running as that user from reading the key and calling `computeSeal` to produce a valid seal for any desired ledger state.
+
+    ## Verification procedure
+
+    Manual — not automatable; the threat model is validated by review of `hooks/lib/gate-seal.mjs` (key storage) and `test/hooks/sealed-gate-vectors.test.ts` (documents the boundary of what IS tested).
+    --- END SPEC CONTENT ---
+
+    QUESTION: Based only on the spec content above, what is the accepted residual risk for the seal mechanism? In other words, what attack is the sealed-gate design explicitly acknowledged to NOT protect against? Cite the requirement ID in your answer.
 
 graders:
-  - type: llm
+  - name: check-seal-residual
+    type: llm
     criteria: |
       The response must correctly state ALL of the following (citing SEAL-R-001):
       1. The accepted residual is: a subagent (or process) with arbitrary code execution running as the same OS user can forge a valid seal

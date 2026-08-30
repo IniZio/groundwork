@@ -1,28 +1,41 @@
-system: |
-  You are a fresh agent answering a question about the groundwork enforcement spec.
-  You have access ONLY to the following spec content — do not use outside knowledge.
+schema_version: "1.0"
+name: pacing-budget-default
 
-  --- SPEC CONTENT: PACING-R-001 ---
-  ## PACING-R-001 — Wave-default pace policy initialised at ledger init; absent pacing disables enforcement
+execution:
+  system: "Answer the question using ONLY the spec content provided in the user message. Do not use outside knowledge or search the codebase."
 
-  When `ledger init` creates a new run and no `pacing` object is supplied, the ledger **shall** stamp `pacing` as `{policy:"wave", budget:1, exempt_kinds:["plan","diagnose","design","fog"]}`. When a run ledger carries no `pacing` field, the pacing module **shall** treat pacing as disabled and impose no start-time restrictions on any slice.
+  prompt: |
+    The following is the complete spec content you must use to answer the question below. Do not use any other knowledge.
 
-  - **Why** — The default of one resolved wave per session enforces wayfinder-style one-checkpoint-per-session discipline while leaving intra-wave parallelism (unlimited subagent fan-out within the in-flight unit) untouched. Exempting `plan`, `diagnose`, `design`, and `fog` kind slices mirrors wayfinder exempting research tickets: these are orientation work, not delivery. The absent-means-disabled rule means every pre-existing ledger (without a `pacing` field) keeps working unchanged — no shim, no migration, full backward compatibility.
-  - **Fit criterion** — `ledger init` with no pacing arguments produces a ledger where `pacing.policy = "wave"`, `pacing.budget = 1`, and `pacing.exempt_kinds` equals `["plan","diagnose","design","fog"]`. A ledger file with no `pacing` field passes through `ledger claim` for any slice without a block or exit-code 1.
-  - **Verification**: automated
-  - **Criticality**: must
-  - **Source**: groundwork-development#D-28
-  --- END SPEC CONTENT ---
+    --- SPEC CONTENT (D-15): doc/specs/enforcement/requirements/pacing-r-001-wave-default-pace-policy.md ---
+    id: pacing-r-001
+    title: Wave-default pace policy initialised at ledger init; absent pacing disables enforcement
+    criticality: must
+    verification: unverified
+    source: groundwork-development#D-28
 
-prompt: |
-  Based only on the spec content provided in your system prompt, answer the following question:
+    ## Statement
 
-  What is the default pacing budget when `ledger init` creates a new run, and which slice kinds are exempt from pacing enforcement?
+    When `ledger init` creates a new run and no `pacing` object is supplied, the ledger **shall** stamp `pacing` as `{policy:"wave", budget:1, exempt_kinds:["plan","diagnose","design","fog"]}`. When a run ledger carries no `pacing` field, the pacing module **shall** treat pacing as disabled and impose no start-time restrictions on any slice.
 
-  Cite the requirement ID in your answer.
+    ## Why
+
+    The default of one resolved wave per session enforces wayfinder-style one-checkpoint-per-session discipline while leaving intra-wave parallelism (unlimited subagent fan-out within the in-flight unit) untouched. Exempting `plan`, `diagnose`, `design`, and `fog` kind slices mirrors wayfinder exempting research tickets: these are orientation work, not delivery. The absent-means-disabled rule means every pre-existing ledger (without a `pacing` field) keeps working unchanged — no shim, no migration, full backward compatibility.
+
+    ## Fit criterion
+
+    `ledger init` with no pacing arguments produces a ledger where `pacing.policy = "wave"`, `pacing.budget = 1`, and `pacing.exempt_kinds` equals `["plan","diagnose","design","fog"]`. A ledger file with no `pacing` field passes through `ledger claim` for any slice without a block or exit-code 1.
+
+    ## Verification procedure
+
+    Automated — confirmed by inspecting the ledger produced by `ledger init` for the default `pacing` object, and by running `ledger claim` against a pacing-absent ledger and observing no block.
+    --- END SPEC CONTENT ---
+
+    QUESTION: Based only on the spec content above, what is the default pacing budget when `ledger init` creates a new run, and which slice kinds are exempt from pacing enforcement? Cite the requirement ID in your answer.
 
 graders:
-  - type: llm
+  - name: check-budget-and-exempt-kinds
+    type: llm
     criteria: |
       The response must correctly state ALL of the following (citing PACING-R-001):
       1. The default budget is 1 wave per session (budget:1, policy:"wave")

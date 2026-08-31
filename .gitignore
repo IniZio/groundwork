@@ -21,6 +21,8 @@ tmp/
 .pi1/
 .omc/
 .groundwork/
+!test/fixtures/motive-corpus/.groundwork/
+!test/fixtures/motive-corpus/.groundwork/**
 /groundwork/
 .opencode/background-tasks/
 .vscode/

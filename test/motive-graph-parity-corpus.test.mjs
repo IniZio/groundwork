@@ -25,18 +25,27 @@ import { readCharter } from '../hooks/lib/motive-charter.mjs'
 import { readOrderedEvents } from '../hooks/lib/journal-order.mjs'
 import { assembleGraphFold } from '../hooks/lib/motive-graph-fold.mjs'
 import { projectFoldGraph } from '../hooks/lib/motive-graph-project.mjs'
+import { FIXTURE_DIR, FIXTURE_JOURNAL_DIR, FIXTURE_SLUGS } from './fixtures/motive-corpus/index.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(__dirname, '..')
-const JOURNAL_DIR = path.join(ROOT, '.groundwork', 'journal')
-const MOTIVES_DIR = path.join(ROOT, '.groundwork', 'motives')
+const USE_LIVE = !!process.env.USE_LIVE_CORPUS
 
-// Enumerate motives dynamically — never hardcode this list.
-// A hardcoded list silently ignores newly-created motives; the harness goes vacuous.
-const allMotives = fs.readdirSync(MOTIVES_DIR, { withFileTypes: true })
-  .filter((d) => d.isDirectory())
-  .map((d) => d.name)
-  .sort()
+const ROOT = USE_LIVE
+  ? path.resolve(__dirname, '..')
+  : FIXTURE_DIR
+const JOURNAL_DIR = USE_LIVE
+  ? path.join(ROOT, '.groundwork', 'journal')
+  : FIXTURE_JOURNAL_DIR
+
+// Fixed slug set (exact fixture snapshot) — replaces dynamic glob when in fixture mode.
+// A dynamic glob would enumerate live motive dirs that rotate across sessions and make
+// negative assertions vacuous (ambient-project-dir-vacuous-tests.md memory).
+const allMotives = USE_LIVE
+  ? fs.readdirSync(path.join(ROOT, '.groundwork', 'motives'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort()
+  : [...FIXTURE_SLUGS].sort()
 
 describe('motive-graph-parity-corpus — fold ≡ compile for all motives', () => {
   it('discovers at least one motive (guards against vacuous glob)', () => {
@@ -58,6 +67,13 @@ describe('motive-graph-parity-corpus — fold ≡ compile for all motives', () =
       }
     })
   }
+
+  it('positive control — fixture includes groundwork-development (golden ids verifiable)', () => {
+    expect(allMotives, 'groundwork-development missing from corpus — golden id assertions would be vacuous')
+      .toContain('groundwork-development')
+    expect(allMotives, 'obsidian-native-groundwork missing from corpus')
+      .toContain('obsidian-native-groundwork')
+  })
 })
 
 // ── AC-6: fold-synthesized agent ≡ compile-with-charter on consumed fields ────
@@ -207,6 +223,12 @@ describe('fold-synthesized agent ≡ compile-with-charter on consumed fields (AC
       }
     })
   }
+
+  it('positive control — groundwork-development has at least one decision (non-vacuous)', () => {
+    const { events } = readOrderedEvents(JOURNAL_DIR, { motive: 'groundwork-development' })
+    const decisionEvents = events.filter(e => e.type === 'DECISION')
+    expect(decisionEvents.length, 'No DECISION events for groundwork-development — fold-compile parity assertions are vacuous').toBeGreaterThan(0)
+  })
 })
 
 // ── FIX 2: pin the REQUIRE-EVENTS contract ───────────────────────────────────

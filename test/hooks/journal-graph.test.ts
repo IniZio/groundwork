@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { assembleMotiveGraph, EDGE_KINDS } from '../../hooks/lib/motive-graph.mjs'
+import { FIXTURE_DIR } from '../fixtures/motive-corpus/index.mjs'
 
 // ---------------------------------------------------------------------------
 // Setup — resolve repo root the same way all other hook tests do
@@ -26,6 +27,8 @@ import { assembleMotiveGraph, EDGE_KINDS } from '../../hooks/lib/motive-graph.mj
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/\/$/, '')
 const SLUG = 'groundwork-development'
+const USE_LIVE = !!process.env.USE_LIVE_CORPUS
+const PROJ_DIR = USE_LIVE ? ROOT : FIXTURE_DIR
 
 // Canonical type → id-prefix map (must match the source in motive-graph.mjs)
 const TYPE_PREFIX: Record<string, string> = {
@@ -59,7 +62,7 @@ const ALLOWED_EDGE_KINDS = new Set([
 let graph: Awaited<ReturnType<typeof assembleMotiveGraph>>
 
 beforeAll(async () => {
-  graph = await assembleMotiveGraph({ projectDir: ROOT, slug: SLUG })
+  graph = await assembleMotiveGraph({ projectDir: PROJ_DIR, slug: SLUG })
 })
 
 // ---------------------------------------------------------------------------
@@ -308,5 +311,28 @@ describe('9 — CLI error path (optional)', () => {
     // A non-zero exit or an error property indicates the motive was rejected
     const exited = result.status !== null ? result.status !== 0 : result.error != null
     expect(exited).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Positive control — fixture contains required golden ids
+// ---------------------------------------------------------------------------
+
+describe('positive control — golden ids present in fixture', () => {
+  it('fixture contains decision:D-81 (guards against vacuous run)', () => {
+    const node = graph.nodes.find((n) => n.id === 'decision:D-81')
+    expect(node, 'decision:D-81 not found — fixture may be missing groundwork-development events').toBeDefined()
+  })
+
+  it('fixture contains objective:root (guards against vacuous run)', () => {
+    const node = graph.nodes.find((n) => n.id === 'objective:root')
+    expect(node, 'objective:root not found — fixture is missing').toBeDefined()
+  })
+
+  it('fixture contains anchors edge objective:root → decision:D-81', () => {
+    const edge = graph.edges.find(
+      (e) => e.source === 'objective:root' && e.target === 'decision:D-81' && e.kind === 'anchors',
+    )
+    expect(edge, 'anchors edge objective:root → decision:D-81 not found').toBeDefined()
   })
 })

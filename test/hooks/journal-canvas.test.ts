@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { assembleMotiveGraph } from '../../hooks/lib/motive-graph.mjs'
 import { toJsonCanvas, TYPE_COLORS } from '../../hooks/lib/motive-canvas.mjs'
+import { FIXTURE_DIR } from '../fixtures/motive-corpus/index.mjs'
 
 // ---------------------------------------------------------------------------
 // Setup — resolve repo root the same way all other hook tests do
@@ -26,6 +27,8 @@ import { toJsonCanvas, TYPE_COLORS } from '../../hooks/lib/motive-canvas.mjs'
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/\/$/, '')
 const SLUG = 'groundwork-development'
+const USE_LIVE = !!process.env.USE_LIVE_CORPUS
+const PROJ_DIR = USE_LIVE ? ROOT : FIXTURE_DIR
 
 // ---------------------------------------------------------------------------
 // Data — loaded once, shared across all tests
@@ -35,7 +38,7 @@ let graph: Awaited<ReturnType<typeof assembleMotiveGraph>>
 let canvas: ReturnType<typeof toJsonCanvas>
 
 beforeAll(async () => {
-  graph = await assembleMotiveGraph({ projectDir: ROOT, slug: SLUG })
+  graph = await assembleMotiveGraph({ projectDir: PROJ_DIR, slug: SLUG })
   canvas = toJsonCanvas(graph)
 })
 

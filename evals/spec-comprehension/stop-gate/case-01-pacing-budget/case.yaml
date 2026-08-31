@@ -2,6 +2,16 @@ schema_version: "1.0"
 name: pacing-budget-default
 
 execution:
+  # HAZARD (S6-EVAL-SYSTEM-PROMPT-LEAK): When this eval suite is run from inside the
+  # groundwork repo, hooks/session-reminder.mjs injects the orchestrator persona into
+  # the system prompt via SessionStart, overriding any constraint placed here.
+  # The guard in session-reminder.mjs:322 only suppresses injection for sdk-py|sdk-js
+  # entrypoints; `claude plugin eval` spawns probes as `claude -p` (CLAUDE_CODE_ENTRYPOINT=cli),
+  # which is indistinguishable from a normal interactive session — no reliable guard exists.
+  #
+  # RULE: All grading constraints and persona instructions MUST live in `execution.prompt`
+  # (the user-turn message), NOT here. This field is best-effort and may be dominated by
+  # the orchestrator injection. See tickets/s0-eval-design.md § "Known hazard" for details.
   system: "Answer the question using ONLY the spec content provided in the user message. Do not use outside knowledge or search the codebase."
 
   prompt: |

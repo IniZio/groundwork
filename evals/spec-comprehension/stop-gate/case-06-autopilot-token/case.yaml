@@ -66,7 +66,6 @@ graders:
     type: llm
     criteria: |
       The response must correctly state ALL of the following (citing PACING-R-004 and PACING-R-008):
-      1. The autopilot grant is token-gated (requires the write_token / orchestrator token) — subagents cannot self-grant
-      2. The grant is recorded in the ledger (pacing.grant field) and is run-scoped (expires with the run/session)
-      3. A subagent CANNOT record a milestone sign-off because it cannot present the write_token (MUST NOT is passed to subagents)
-      Score PASS only if all three elements are stated correctly and both PACING-R-004 and PACING-R-008 are cited.
+      1. Per PACING-R-004, the autopilot grant is recorded in the active ledger's pacing.grant field with fields: range (N), granted_at (ISO-8601 timestamp), granted_by (session-id or "orchestrator"), and reason; the grant is run-scoped — it expires automatically with the session because it lives in the session-scoped ledger file; a second invocation overwrites the existing grant (one-shot cap raise, not cumulative); and it emits a MILESTONE journal event.
+      2. Per PACING-R-008, a subagent CANNOT record a milestone sign-off because the sign-off command requires the orchestrator write_token, and the token is never passed to subagents.
+      Score PASS only if both elements are stated correctly and both PACING-R-004 and PACING-R-008 are cited.

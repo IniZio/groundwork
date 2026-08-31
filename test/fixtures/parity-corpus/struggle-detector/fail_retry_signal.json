@@ -72,6 +72,12 @@
       "source": "hook:struggle-detector",
       "msg_contains": "fail-retry on 50979f87c667",
       "data": { "kind": "fail-retry", "fingerprint": "50979f87c667" }
+    },
+    {
+      "type": "FAILURE",
+      "source": "hook:struggle-detector",
+      "msg_contains": "repeat-command on 50979f87c667",
+      "data": { "kind": "repeat-command", "fingerprint": "50979f87c667" }
     }
   ]
 }

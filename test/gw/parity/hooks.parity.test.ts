@@ -135,6 +135,13 @@ describe('struggle-detector journal oracle', () => {
             .map(l => { try { return JSON.parse(l) as Record<string, unknown> } catch { return null } })
             .filter((e): e is Record<string, unknown> => e !== null)
 
+          // AC [2]: exact count — FAILURE events in shard must equal expected list length
+          const failureEvents = events.filter(e => e['type'] === 'FAILURE')
+          expect(
+            failureEvents.length,
+            `expected exactly ${expectedEvents.length} FAILURE event(s) in shard but found ${failureEvents.length}\n  file: ${filePath}`,
+          ).toBe(expectedEvents.length)
+
           for (const expected of expectedEvents) {
             const match = events.find(e => {
               const data = e['data'] as Record<string, unknown> | undefined

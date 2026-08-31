@@ -61,7 +61,7 @@
     "stop-gate/motive_ref_missing.json": "6556c3687c015840d6896a3c552e66dc1c2560a73ff24220189db01da941d2ed",
     "stop-gate/no_ledger.json": "6c242eb5860cd329a1024d81da78a6db5a9a6611c04f056835d75c22ef736561",
     "struggle-detector/below_threshold_no_signal.json": "18f1367cabd04b382cea4fc64526814e1102bf718d308442f29dd4353bae0999",
-    "struggle-detector/fail_retry_signal.json": "b1e1363628bd9a270209a62efcb4255cb9c556fff3b11fcadcbb2158d5036355",
+    "struggle-detector/fail_retry_signal.json": "13207212489eccfc0c6096ce15d412828c04083e34f6efcc8d0ed1493ea6e040",
     "struggle-detector/file_thrash_signal.json": "c890e0d8e19dea0bc00767874b5024c61e2ec74e4b2d1729c49ed54d778dfc9b",
     "struggle-detector/non_matching_tool_passthrough.json": "42fc579f7ca32bc7d301ac02ba664d0416114cc078ec147ebf6ea397aec0cf10",
     "struggle-detector/once_per_session_dedup.json": "66d785591dc1357c142223e882eb43669dfb5f3dc37bfd207b4898741da834de",

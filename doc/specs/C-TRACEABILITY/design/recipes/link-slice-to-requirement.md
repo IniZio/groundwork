@@ -37,7 +37,7 @@ If the requirement carries an `origin_decision_ref` (e.g. `tracking-viz#D-7`), a
 bin/ledger add S3 --decisions "tracking-viz#D-7"
 ```
 
-The adapter cross-joins `slice.decisions` against `requirement.origin_decision_ref` via `coverage.json`. This path is coarse (one slice may cover multiple requirements sharing the same decision ref) and labeled as decision-mediated in the graph.
+The adapter cross-joins `slice.decisions` against `requirement.origin_decision_ref` via `doc/specs/_generated/coverage.json`. This path is coarse (one slice may cover multiple requirements sharing the same decision ref) and labeled as decision-mediated in the graph.
 
 Prefer `--covers-ac` for precision; use `--decisions` only when the requirement set is not known at slice authoring time.
 

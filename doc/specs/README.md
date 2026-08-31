@@ -153,3 +153,9 @@ node hooks/spec.mjs lint
 ```sh
 node hooks/spec.mjs lint --rfc <rfc-uid>
 ```
+
+**Spec build** — `spec build` compiles the full spec tree and writes `doc/specs/_generated/{index.md,index.json,coverage.json}`. The generated `coverage.json` carries a `by_requirement` map (keyed by requirement id, with `declared` verification type, `verified` boolean, and `tests` list). `getCoverageMap()` in `hooks/lib/traceability-adapter.mjs` reads this file at runtime; `buildTraceabilityGraph` in `hooks/lib/traceability-join.mjs` merges it into the traceability graph used by serve and advisor workflows. Run after adding or editing requirements.
+
+```sh
+node hooks/spec.mjs build
+```

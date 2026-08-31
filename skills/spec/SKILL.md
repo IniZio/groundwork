@@ -1,6 +1,6 @@
 ---
 name: spec
-description: "Manage structured requirement specifications under doc/specs/ — create, verify, and query spec concept nodes and their traceability data. Triggers on: spec out, write requirements, add requirements, spec upkeep, spec is stale."
+description: "Manage structured requirement specifications under doc/specs/ — create, verify, query, and build spec concept nodes and their traceability data. Triggers on: spec out, write requirements, add requirements, spec upkeep, spec is stale, build spec, spec build."
 disable-model-invocation: false
 ---
 
@@ -36,6 +36,7 @@ doc/specs/<concept>/
 2. **Add sub-concept** (for a major component): create `doc/specs/<component>/index.md` with frontmatter `id`, `type: concept`, `parent: C-<PROJECT>`.
 3. **Add a requirement**: create `requirements/<id>-<kebab>.md` with the required frontmatter and body structure (see §Writing requirements below).
 4. **Browse**: `spec tree`, `spec search <q>`, `spec show <id>`, `spec deps <id>`
+5. **Build**: `spec build` — compiles `doc/specs/_generated/{index.md,index.json,coverage.json}`. Run after adding or editing requirements to refresh traceability data.
 
 ## Writing requirements
 
@@ -205,6 +206,16 @@ doc/specs/
 ## Coverage
 
 Coverage is tracked via `// @verifies <ID>` comments in test files, scanned by `hooks/lib/verifies-scan.mjs`. `spec lint` surfaces `automated` requirements with no test carrying `// @verifies <ID>` (the `automated-unverified` rule). Slices in the run ledger use `--covers-ac` to record which acceptance criteria they address. The `verifies:` frontmatter field on requirement files declares which ledger slices implement that requirement (slice linkage only — no lint rule reads it for coverage).
+
+## Spec build
+
+`spec build` compiles the full spec tree and writes three files to `doc/specs/_generated/`:
+
+- **`coverage.json`** — per-requirement coverage data: `total` count, `by_source`, `by_concept`, `by_verification`, `by_criticality`, `verified` count, `unverified_automated` ids, and a `by_requirement` map keyed by requirement id with `declared` verification type, `verified` boolean, and `tests` list.
+- **`index.json`** — queryable JSON index of all nodes (id, type, why, fitCriterion, source, views, concept).
+- **`index.md`** — human-readable full normative statement listing, grouped by concept with working anchor links.
+
+`getCoverageMap()` in `hooks/lib/traceability-adapter.mjs` reads `_generated/coverage.json` at runtime and returns its `by_requirement` map. `buildTraceabilityGraph` in `hooks/lib/traceability-join.mjs` merges it into the traceability graph used by the serve and advisor workflows. Run `spec build` after adding or editing requirements, or before querying traceability views.
 
 ## CLI reference
 

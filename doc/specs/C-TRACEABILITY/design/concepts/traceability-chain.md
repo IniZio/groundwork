@@ -24,7 +24,7 @@ Each arrow is a typed edge. Each node type has a fixed source of truth.
 | `objective` | Motive charter (`motive.md`) | "Users can see traceability chains" |
 | `spec-req` | `doc/specs/*/constraints.md` | `TRACEABILITY-R-002` |
 | `slice` | Active run ledger (`.groundwork/runs/`) | `S3` |
-| `self-test` | `test_paths` on a slice, or decision-mediated via coverage.json | `test/hooks/traceability.test.ts` |
+| `self-test` | `test_paths` on a slice, or decision-mediated via `doc/specs/_generated/coverage.json` | `test/hooks/traceability.test.ts` |
 | `live-verify` | VERIFICATION journal events | A screenshot captured at build `abc` |
 | `gate` | GATE journal events | Advisor APPROVE verdict |
 | `artifact-evidence` | Artifact URL + build hash from a VERIFICATION event | `https://claude.ai/artifacts/xyz` |
@@ -53,4 +53,4 @@ Classification is derived exclusively from recorded journal events (D-3). The as
 
 **Direct linkage** (preferred): the slice carries a `test_paths` field listing repo-relative paths to its test files. The adapter emits these as direct self-test nodes with no ambiguity.
 
-**Decision-mediated linkage** (fallback): when `test_paths` is absent, the adapter cross-joins `slice.decisions` against `spec-requirement.origin_decision_ref` values in `coverage.json`. This path is coarse (one-to-many) and labeled accordingly in the graph.
+**Decision-mediated linkage** (fallback): when `test_paths` is absent, the adapter cross-joins `slice.decisions` against `spec-requirement.origin_decision_ref` values in `doc/specs/_generated/coverage.json`. This path is coarse (one-to-many) and labeled accordingly in the graph.

@@ -12,7 +12,7 @@ source: "tracking-viz#D-3"
 
 ## Statement
 
-The traceability graph assembler **shall** be a pure function of its input data: given the same ledger slices, journal events, spec requirements, and coverage.json, it **shall** produce byte-for-byte identical node and edge sets on every invocation, with no timestamps, random ids, or nondeterministic ordering.
+The traceability graph assembler **shall** be a pure function of its input data: given the same ledger slices, journal events, spec requirements, and doc/specs/_generated/coverage.json, it **shall** produce byte-for-byte identical node and edge sets on every invocation, with no timestamps, random ids, or nondeterministic ordering.
 
 ## Why
 
@@ -20,12 +20,12 @@ Nondeterministic output makes it impossible to diff two regenerations and detect
 
 ## Fit criterion
 
-Running the assembler twice against the same frozen inputs (ledger snapshot, journal snapshot, coverage.json snapshot) produces identical JSON output both times; diffing the two outputs reports no differences.
+Running the assembler twice against the same frozen inputs (ledger snapshot, journal snapshot, doc/specs/_generated/coverage.json snapshot) produces identical JSON output both times; diffing the two outputs reports no differences.
 
 ## Verification procedure
 
 Automated test asserting deterministic output:
-1. Freeze a set of inputs: ledger slice list, journal event list, spec requirements, coverage.json.
+1. Freeze a set of inputs: ledger slice list, journal event list, spec requirements, doc/specs/_generated/coverage.json.
 2. Run the graph assembler against those frozen inputs twice in succession.
 3. Serialize both outputs to JSON with stable key ordering.
 4. Assert the two outputs are byte-for-byte identical (deep-equal or string comparison).

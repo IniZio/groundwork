@@ -1,2 +1,22 @@
-#!/usr/bin/env node
-import{spawnSync}from'node:child_process';import{existsSync}from'node:fs';import{resolve,dirname}from'node:path';const d=dirname(new URL(import.meta.url).pathname);const g=resolve(d,'../dist/gw');const[b,...a]=existsSync(g)?[g]:['bun',resolve(d,'../src/gw/cli/main.ts')];process.exit(spawnSync(b,[...a,'hook','session-reminder'],{stdio:'inherit'}).status??0);
+#!/usr/bin/env bash
+# hooks/session-start — SessionStart hook shim.
+#
+# Delegates to bin/gw-hook (the canonical runtime-selection wrapper) so this
+# shim never depends on dist/gw. dist/gw may be absent on a fresh install, or
+# may have stale path resolution after a rebuild — both break the hook silently.
+#
+# bin/gw-hook handles runtime selection (bun → node --experimental-strip-types)
+# and fails loudly if neither is available. stdin/stdout/stderr/exit code all
+# pass through via exec — no wrapping, no buffering, no stray bytes.
+
+_SELF="${BASH_SOURCE[0]}"
+
+# Follow symlinks portably (readlink -f on Linux; fallback for macOS/other)
+if command -v readlink >/dev/null 2>&1; then
+  _REAL=$(readlink -f "$_SELF" 2>/dev/null || readlink "$_SELF" 2>/dev/null || echo "$_SELF")
+else
+  _REAL="$_SELF"
+fi
+_DIR=$(dirname "$_REAL")
+
+exec "$_DIR/../bin/gw-hook" hook session-reminder "$@"

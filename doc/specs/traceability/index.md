@@ -3,7 +3,7 @@ id: "C-TRACEABILITY"
 type: "moc"
 title: "Traceability"
 summary: "Links spec requirements to ledger slices and verification evidence; SpineAdapter isolates the data store."
-parent: null
+parent: "C-GROUNDWORK"
 status: "draft"
 depends_on: []
 date_updated: "2026-08-29"

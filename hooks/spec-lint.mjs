@@ -27,6 +27,11 @@
  *     unknown-field        — frontmatter must not contain keys not defined in the schema
  *   Traceability invariants (requirement nodes only):
  *     automated-unverified — every automated requirement must have ≥1 test carrying // @verifies <id>
+ *   Hierarchy invariants (concept tree; full-tree mode only, skipped with --rfc):
+ *     exactly-one-root     — exactly one concept may declare parent: null; zero or >1 is an error
+ *     parent-resolves      — every non-root concept's parent must match a known concept id
+ *     no-cycles            — following parent links from any concept must terminate at the root
+ *     parent-field-present — every concept must have a parent field (absent → implicit second root)
  *   S1 manifest invariants (concept nodes with spec.yaml):
  *     manifest-invalid     — spec.yaml must be valid per the spec-manifest schema
  *     missing-view-file    — every declared view file must exist on disk
@@ -332,6 +337,31 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
 
   // Parse body sections
   const sections = parseRequirementsDocument(fileContent)
+
+  // Reject old-format individual requirement files (no anchored H3/H2 heading).
+  // Files in a requirements/ subdir that lack the "## REQ-ID — Title {#anchor}"
+  // heading are using the deprecated ## Statement format and must be converted to H2+bullets.
+  const isIndividualReqFile = fileAbsPath.includes('/requirements/') &&
+    !fileAbsPath.endsWith('/requirements.md') && !fileAbsPath.endsWith('/constraints.md')
+  if (sections.length === 0 && isIndividualReqFile) {
+    violations.push({
+      nodeId: firstNodeId,
+      violation: `old-format-rejected: requirement file "${fileLabel}" has no anchored H3/H2 heading (old ## Statement format) — convert to "## REQ-ID — Title {#req-id}" H2+bullets format`,
+    })
+    return violations
+  }
+
+  // Reject H3-headed individual requirement files. Canonical Shape A is H2 (##).
+  if (sections.length > 0 && isIndividualReqFile) {
+    const H3_HEADING_RE = /^### [A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-/m
+    if (H3_HEADING_RE.test(fileContent)) {
+      violations.push({
+        nodeId: firstNodeId || (sections[0] && sections[0].id) || fileLabel,
+        violation: `h3-heading-rejected: individual requirement file "${fileLabel}" uses H3 (###) heading — use H2 (## REQ-ID — Title {#req-id}) as the canonical Shape A format`,
+      })
+    }
+  }
+
   const fileAnchors = new Set(sections.map(s => s.anchor))
   const sectionChunks = getSectionChunks(fileContent)
   const targetIds = new Set(targetNodes.map(n => n.id))
@@ -598,6 +628,12 @@ Spec invariants (all nodes):
   summary-length  summary must be ≤25 words
   snapshot-of     if snapshot_of is declared, the referenced node must exist
   unknown-field   frontmatter must not contain keys not defined in the schema
+
+Hierarchy invariants (full-tree mode only; skipped with --rfc):
+  exactly-one-root     exactly one concept may declare parent: null; zero or >1 is an error
+  parent-resolves      every non-root concept's parent must match a known concept id
+  no-cycles            following parent links from any concept must terminate at the root
+  parent-field-present every concept must declare a parent field (absent treated as implicit root)
 
 Traceability invariants (requirement nodes only):
   automated-unverified  every automated requirement must have ≥1 test with // @verifies <id>
@@ -969,6 +1005,112 @@ for (const conceptNode of conceptNodes) {
           }
         }
       }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hierarchy invariants (D-22): exactly-one-root, parent-resolves, no-cycles,
+// parent-field-present.  Applied to the full concept tree in non-RFC mode.
+// _generated/** is already excluded: walkSpecFiles skips the _generated dir,
+// so no _generated nodes appear in allNodes.
+// ---------------------------------------------------------------------------
+
+if (!rfcMode) {
+  // Concept nodes are index.md or README.md files with an id field.
+  // (type may be 'concept' or 'moc' depending on frontmatter; filter by filename.)
+  const allConceptNodes = allNodes.filter(n =>
+    n.relPath && (
+      n.relPath === 'README.md' ||
+      n.relPath.endsWith('/README.md') ||
+      n.relPath.endsWith('/index.md')
+    ),
+  )
+
+  // The spec index collapses both `parent: null` (explicit) and absent parent
+  // to node.parent===null.  Re-read raw frontmatter to distinguish them so that
+  // invariant 4 (parent-field-present) can fire on truly absent fields.
+  const parentFieldAbsent = new Set()
+  for (const cn of allConceptNodes) {
+    if (!cn.relPath) continue
+    const absPath = join(specDir, cn.relPath)
+    let raw
+    try { raw = readFileSync(absPath, 'utf8') } catch { continue }
+    const { data } = parseYamlFrontmatter(raw)
+    if (!Object.prototype.hasOwnProperty.call(data, 'parent')) {
+      parentFieldAbsent.add(cn.id)
+    }
+  }
+
+  // Build id→node lookup for O(1) parent resolution and cycle walks.
+  const conceptNodeById = new Map(allConceptNodes.map(n => [n.id, n]))
+
+  // Invariant 4: parent-field-present — a concept without a parent field is an
+  // implicit second root and must be reported before the root-count check so the
+  // user sees which node is the culprit.
+  for (const cn of allConceptNodes) {
+    if (parentFieldAbsent.has(cn.id)) {
+      violations.push({
+        nodeId: cn.id,
+        violation: `parent-field-present: concept "${cn.id}" has no "parent" field — add parent: null for the root, or parent: "<concept-id>" for children`,
+      })
+    }
+  }
+
+  // Root concepts: node.parent===null covers both explicit `parent: null` and absent parent.
+  const rootNodes = allConceptNodes.filter(cn => cn.parent === null)
+
+  // Invariant 1: exactly-one-root
+  if (rootNodes.length === 0) {
+    violations.push({
+      nodeId: '(tree)',
+      violation: `exactly-one-root: spec tree has no root concept — exactly one concept must declare parent: null`,
+    })
+  } else if (rootNodes.length > 1) {
+    const ids = rootNodes.map(n => n.id).join(', ')
+    violations.push({
+      nodeId: '(tree)',
+      violation: `exactly-one-root: spec tree has ${rootNodes.length} root concepts (${ids}) — exactly one is allowed`,
+    })
+  }
+
+  // Invariant 2: parent-resolves — non-root concepts must reference an existing concept id
+  const conceptIdSet = new Set(allConceptNodes.map(n => n.id))
+  for (const cn of allConceptNodes) {
+    if (cn.parent === null) continue // root (or absent-parent, already reported)
+    if (!conceptIdSet.has(cn.parent)) {
+      violations.push({
+        nodeId: cn.id,
+        violation: `parent-resolves: concept "${cn.id}" declares parent "${cn.parent}" which does not exist in the spec tree`,
+      })
+    }
+  }
+
+  // Invariant 3: no-cycles — follow parent links from every concept; a revisited
+  // node signals a cycle.  Guard against unknown parents (invariant 2) with a
+  // belt-and-suspenders null check so we never loop infinitely.
+  const reportedInCycle = new Set()
+  for (const startNode of allConceptNodes) {
+    if (reportedInCycle.has(startNode.id)) continue
+    const visited = new Set()
+    let cur = startNode.id
+    while (cur !== null && cur !== undefined) {
+      if (visited.has(cur)) {
+        // Every node on the path from startNode to cur is in the cycle.
+        // Report the starting node (one violation per cycle participant).
+        if (!reportedInCycle.has(startNode.id)) {
+          reportedInCycle.add(startNode.id)
+          violations.push({
+            nodeId: startNode.id,
+            violation: `no-cycles: concept "${startNode.id}" is part of a parent-link cycle (revisited "${cur}")`,
+          })
+        }
+        break
+      }
+      visited.add(cur)
+      const node = conceptNodeById.get(cur)
+      if (!node || node.parent === null) break
+      cur = node.parent
     }
   }
 }

@@ -1,18 +1,15 @@
 ---
 id: pacing-r-006
+type: requirement
+concept: C-ENFORCEMENT
 title: Autopilot grant requires non-empty reason; block message routes authorization through the operator; stop-gate surfaces active grants
-concept: "[[enforcement/index]]"
-criticality: must
-verification: unverified
-ears_pattern: Complex
-verification_method: Test
-design: "[[design/recipes/authorize-autopilot-grant]]"
 status: implemented
-source: groundwork-development#D-28
-verifies: []
+verification: unverified
+criticality: must
+design: "[[design/recipes/authorize-autopilot-grant]]"
 ---
 
-## Statement
+## PACING-R-006 — Autopilot grant requires non-empty reason; block message routes authorization through the operator; stop-gate surfaces active grants {#pacing-r-006}
 
 Three HITL (human-in-the-loop) requirements for the pacing escape hatch:
 
@@ -22,14 +19,7 @@ Three HITL (human-in-the-loop) requirements for the pacing escape hatch:
 
 **(c) Stop-gate surfaces active grants.** When the Stop hook allows a session to end and the active ledger contains `pacing.grant`, the Stop hook **shall** emit a human-readable summary line in its output stating the grant's range, reason, and granted_by session — so a grant is never silent at session end. This is non-blocking; it does not prevent the session from ending.
 
-## Why
-
-Without (a), an agent can self-grant by omitting a reason, defeating the audit trail. Without (b), the block message itself advertises the self-grant path as the primary remedy ("Option A"), making agent bypass the path of least resistance. Without (c), an operator reviewing session output has no visibility into an autopilot grant that silently extended the session budget. Together, these three changes make the escape hatch operator-mediated rather than agent-self-serve, satisfying the HITL design intent of D-28.
-
-## Fit criterion
-
-(a) `ledger autopilot --range 2 --token <t>` (no `--reason`) exits 1 with a message containing "reason"; `ledger autopilot --range 2 --token <t> --reason "  "` (whitespace-only) also exits 1. (b) `ledger claim` on an exhausted budget prints a block message whose Option A contains "ask the operator" and does not contain "run `ledger autopilot`" as a direct instruction. (c) When a Stop hook fires on a ledger with `pacing.grant = {range:2, reason:"test", granted_by:"sess-x"}`, the hook output contains a summary line mentioning "+2 unit", "test", and "sess-x".
-
-## Verification procedure
-
-Automated — covered by tests in `test/hooks/ledger-pacing.test.ts` (cases a and b) and `test/hooks/stop-gate-pacing.test.ts` (case c).
+- **Why** — Without (a), an agent can self-grant by omitting a reason, defeating the audit trail. Without (b), the block message itself advertises the self-grant path as the primary remedy ("Option A"), making agent bypass the path of least resistance. Without (c), an operator reviewing session output has no visibility into an autopilot grant that silently extended the session budget. Together, these three changes make the escape hatch operator-mediated rather than agent-self-serve, satisfying the HITL design intent of D-28.
+- **Fit criterion** — (a) `ledger autopilot --range 2 --token <t>` (no `--reason`) exits 1 with a message containing "reason"; `ledger autopilot --range 2 --token <t> --reason "  "` (whitespace-only) also exits 1. (b) `ledger claim` on an exhausted budget prints a block message whose Option A contains "ask the operator" and does not contain "run `ledger autopilot`" as a direct instruction. (c) When a Stop hook fires on a ledger with `pacing.grant = {range:2, reason:"test", granted_by:"sess-x"}`, the hook output contains a summary line mentioning "+2 unit", "test", and "sess-x".
+- **Verification**: unverified — covered by tests in `test/hooks/ledger-pacing.test.ts` (cases a and b) and `test/hooks/stop-gate-pacing.test.ts` (case c).
+- **Criticality**: must

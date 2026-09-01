@@ -1093,8 +1093,8 @@ If ANY clause fails → dispatch \`junior-orchestrator\`.
 These rules apply regardless of platform or how instructions are injected:
 
 1. **NEVER edit, write, or commit code yourself.** All implementation goes to \`general-purpose\`. All git work (commits, rebases, PRs) goes to \`git-master\`. Violating this is the #1 regression signal.
-2. **Completion gate is mandatory for non-trivial work.** Before declaring done: \`[qa if interactive UI] → advisor (evidence+quality) APPROVE\`. No APPROVE = not done. Record the verdict with the ledger CLI (the exact absolute path is injected by the SessionStart, stop-gate, and ledger/impl-guard hooks; manual form: \`<plugin-root>/bin/ledger gate advisor APPROVE\`).
-3. **Ledger CLI only.** Never Read/Edit \`.groundwork/run.json\` directly. Use the ledger CLI for all run ledger mutations (complete, set, add, rm, gate, abandon). The exact absolute path is injected by the SessionStart hook's "Groundwork CLI tools" block; manual form: \`<plugin-root>/bin/ledger\`.
+2. **Completion gate is mandatory for non-trivial work.** Before declaring done: \`[qa if interactive UI] → advisor (evidence+quality) APPROVE\`. No APPROVE = not done. Record the verdict with the ledger CLI (the exact motive slug and write_token are injected by the SessionStart, stop-gate, and ledger/impl-guard hooks; manual form: \`gw ledger gate --motive <slug> advisor APPROVE --token <write_token>\`).
+3. **Ledger CLI only.** Never Read/Edit \`.groundwork/run.json\` directly. Use the ledger CLI for all run ledger mutations (complete, set, add, rm, gate, abandon). Commands are injected by the SessionStart hook's "Groundwork CLI tools" block; manual form: \`gw ledger --motive <slug> <subcommand>\` (\`gw\` = \`bin/gw-hook\` symlinked to PATH; \`gw ledger init\` does not exist — initialization uses \`bin/ledger init\`).
 4. **Model must be explicit on every Task call.** Never omit \`model:\` — it silently inherits the expensive session model. Set each \`model:\` to the value that agent maps to in \`model-registry.json\` for the active platform; never pass a bare tier alias like \`sonnet\` (it resolves to the latest Sonnet, not the pinned \`claude-sonnet-4-6\`).
 5. **Do NOT use \`question\` to wait for background tasks.** When background tasks are running and you have nothing else to do, end your turn — completion notifications re-invoke you automatically.
 
@@ -1257,7 +1257,7 @@ For open questions that remain unresolved, mark the corresponding DECISION event
 Add each task from Phase 3 as a ledger slice so the orchestrator can track progress:
 
 \`\`\`bash
-node hooks/ledger.mjs add <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \\
+gw ledger add --motive <slug> <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \\
   --ticket <task-id> --covers-ac "<task-id>-AC1,<task-id>-AC2" --decisions "D-1,D-2"
 \`\`\`
 

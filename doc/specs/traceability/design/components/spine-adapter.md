@@ -1,6 +1,6 @@
 ---
 title: "SpineAdapter Component"
-concept: "[[C-TRACEABILITY/index]]"
+concept: "[[traceability/index]]"
 status: "draft"
 date_updated: "2026-08-29"
 source: "hooks/lib/traceability-adapter.mjs"

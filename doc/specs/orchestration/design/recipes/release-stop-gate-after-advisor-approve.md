@@ -18,7 +18,7 @@ End a session cleanly, with the stop-gate allowing the stop rather than blocking
 
 - All implementation slices must be `complete` or `skipped`
 - The advisor (`groundwork:advisor`) has been invoked with real evidence — not a filtered test run
-- You have the `write_token` (printed at `ledger init`; re-surfaced in the SessionStart injection)
+- You have the `write_token` (printed at `bin/ledger init`; re-surfaced in the SessionStart injection)
 - The `write_token` must remain orchestrator-only — never pass it to a subagent
 
 ---
@@ -28,7 +28,7 @@ End a session cleanly, with the stop-gate allowing the stop rather than blocking
 **1. Confirm no incomplete slices remain**
 
 ```
-bin/ledger frontier
+gw ledger frontier --motive <slug>
 ```
 
 Expected output when done: empty (no lines).
@@ -40,7 +40,7 @@ If slices appear here, they are still `pending` or `in_progress`. Complete or sk
 **2. Check the current gate state**
 
 ```
-bin/ledger view
+gw ledger view --motive <slug>
 ```
 
 Look at the `gate` section. If `advisor` is already `APPROVE`, skip to step 4.
@@ -52,12 +52,12 @@ Look at the `gate` section. If `advisor` is already `APPROVE`, skip to step 4.
 Only after the advisor agent has returned an APPROVE with real evidence:
 
 ```
-bin/ledger gate advisor APPROVE --token <write_token>
+gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
 ```
 
 With evidence citation (recommended):
 ```
-bin/ledger gate advisor APPROVE \
+gw ledger gate --motive <slug> advisor APPROVE \
   --token <write_token> \
   --citation "test/orchestration.test.ts — 41 pass, unfiltered" \
   --rubric "All ACs confirmed against source; no parity gaps; spec matches implementation"
@@ -75,7 +75,7 @@ Expected output:
 **4. Verify gate state**
 
 ```
-bin/ledger view
+gw ledger view --motive <slug>
 ```
 
 Confirm:
@@ -112,7 +112,7 @@ In that case, do not edit the ledger file directly. Contact the session owner fo
 If the work is genuinely cancelled:
 
 ```
-bin/ledger abandon
+gw ledger abandon --motive <slug>
 ```
 
 This sets `active: false` and triggers `reSeal()`. The stop-gate will allow on the next stop.

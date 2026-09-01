@@ -16,19 +16,19 @@ _Derived from `KNOWN_SLICE_KEYS`, `TERMINAL_STATUSES`, and the `claim`/`set`/`co
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending : ledger add
+    [*] --> pending : gw ledger add
 
-    pending --> in_progress : ledger claim / set --status in_progress\n[pacing gate + blocked_by resolved]
-    pending --> skipped : ledger set --status skipped\n[write_token required]
+    pending --> in_progress : gw ledger claim / set --status in_progress\n[pacing gate + blocked_by resolved]
+    pending --> skipped : gw ledger set --status skipped\n[write_token required]
 
-    in_progress --> complete : ledger complete / set --status complete\n[write_token required]
-    in_progress --> skipped : ledger set --status skipped\n[write_token required]
+    in_progress --> complete : gw ledger complete / set --status complete\n[write_token required]
+    in_progress --> skipped : gw ledger set --status skipped\n[write_token required]
 
     complete --> [*]
     skipped --> [*]
 
     state "fog (kind=fog)" as fog_state
-    [*] --> fog_state : ledger fog\n[no acceptance criteria]
+    [*] --> fog_state : gw ledger fog\n[no acceptance criteria]
     fog_state --> pending : resolved\n(manually converted to impl)
 
     note right of in_progress
@@ -50,11 +50,11 @@ stateDiagram-v2
 
 | Step | Actor | Transition | CLI command | Source function | Token required? |
 |------|-------|-----------|-------------|----------------|----------------|
-| 1 | Orchestrator | Create slice `pending` | `ledger add <id>` | `add()` in ledger.mjs | No |
-| 1a | Orchestrator | Create fog slice | `ledger fog <id> --question "..."` | `fog()` in ledger.mjs | No |
-| 2 | Subagent | Claim: `pending → in_progress` | `ledger claim <id>` or `ledger set <id> --status in_progress` | `claim()` / `set()` | No (but blocked by pacing gate and `blocked_by`) |
-| 3 | Subagent | Complete: `in_progress → complete` | `ledger complete <id> --token <write_token>` | `complete()` | **Yes** |
-| 3a | Orchestrator | Skip: any → `skipped` | `ledger set <id> --status skipped --token <write_token>` | `set()` | **Yes** |
+| 1 | Orchestrator | Create slice `pending` | `gw ledger add --motive <slug> <id>` | `add()` in ledger.mjs | No |
+| 1a | Orchestrator | Create fog slice | `gw ledger fog --motive <slug> <id> --question "..."` | `fog()` in ledger.mjs | No |
+| 2 | Subagent | Claim: `pending → in_progress` | `gw ledger claim --motive <slug> <id>` or `gw ledger set --motive <slug> <id> --status in_progress` | `claim()` / `set()` | No (but blocked by pacing gate and `blocked_by`) |
+| 3 | Subagent | Complete: `in_progress → complete` | `gw ledger complete --motive <slug> <id> --token <write_token>` | `complete()` | **Yes** |
+| 3a | Orchestrator | Skip: any → `skipped` | `gw ledger set --motive <slug> <id> --status skipped --token <write_token>` | `set()` | **Yes** |
 | 4 | Orchestrator | Fog → impl (manual) | Edit `kind` from `fog` to `impl`; add `acceptance` | n/a | n/a |
 
 ---
@@ -76,7 +76,7 @@ stateDiagram-v2
 When `pacing.policy === "wave"` and the budget is exhausted, `claim` is blocked. `complete` is never blocked by pacing (PACING-R-003). The orchestrator can extend the budget with:
 
 ```
-bin/ledger autopilot --range N --reason "..." --token <write_token>
+gw ledger autopilot --motive <slug> --range N --reason "..." --token <write_token>
 ```
 
 ---

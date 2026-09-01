@@ -21,7 +21,7 @@ tags: [reference, slice, ledger, fields]
 | `ticket` | string | No | `--ticket <tid>` | — | Id of the linked ticket document (filename stem) |
 | `covers_ac` | string[] | No | `--covers-ac "AC1,AC2"` | `[]` | Motive-charter acceptance-criterion ids covered by this slice |
 | `decisions` | string\|string[] | No | `--decisions "D-1,D-2"` | — | Journal DECISION event ids this slice produces or is governed by |
-| `completed_at` | string | No | set by `complete` | — | ISO-8601 timestamp; set automatically on `ledger complete` |
+| `completed_at` | string | No | set by `complete` | — | ISO-8601 timestamp; set automatically on `gw ledger complete` |
 | `session_id` | string | No | set by `complete` | — | Id of the session that completed this slice |
 | `created_by` | string | No | set at add time | — | Id of the session that created this slice |
 
@@ -59,15 +59,15 @@ tags: [reference, slice, ledger, fields]
 
 | Command | Purpose |
 |---|---|
-| `ledger add <id> [flags]` | Add a new slice |
-| `ledger set <id> [flags]` | Update slice fields |
-| `ledger complete <id> [<id>…]` | Mark slices complete (requires `--token`) |
-| `ledger rm <id>` | Remove a slice |
-| `ledger show <id>` | Inspect one slice in full |
-| `ledger view` | View run summary |
-| `ledger status` | Quick progress check |
-| `ledger gate advisor APPROVE --token <t>` | Record advisor verdict |
-| `ledger abandon` | Abandon the run |
+| `gw ledger add --motive <slug> <id> [flags]` | Add a new slice |
+| `gw ledger set --motive <slug> <id> [flags]` | Update slice fields |
+| `gw ledger complete --motive <slug> <id> [<id>…]` | Mark slices complete (requires `--token`) |
+| `gw ledger rm --motive <slug> <id>` | Remove a slice |
+| `gw ledger show --motive <slug> <id>` | Inspect one slice in full |
+| `gw ledger view --motive <slug>` | View run summary |
+| `gw ledger status --motive <slug>` | Quick progress check |
+| `gw ledger gate --motive <slug> advisor APPROVE --token <t>` | Record advisor verdict |
+| `gw ledger abandon --motive <slug>` | Abandon the run |
 
 ## Related requirements
 

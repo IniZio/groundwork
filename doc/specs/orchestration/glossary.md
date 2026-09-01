@@ -22,7 +22,7 @@ The `groundwork:advisor` agent. The only entity whose APPROVE verdict can satisf
 
 ## APPROVE
 
-The only stop-gate-releasing advisor verdict. Written to the ledger by the orchestrator via `bin/ledger gate advisor APPROVE --token <write_token>`. Other verdicts (`CORRECTION`, `STOP`, `GAPS`, `REPLAN`) keep the gate blocking.
+The only stop-gate-releasing advisor verdict. Written to the ledger by the orchestrator via `gw ledger gate --motive <slug> advisor APPROVE --token <write_token>`. Other verdicts (`CORRECTION`, `STOP`, `GAPS`, `REPLAN`) keep the gate blocking.
 
 ## Blocked-by
 
@@ -42,11 +42,11 @@ The act of dispatching multiple subagents in parallel to cover independent slice
 
 ## Fog slice
 
-A ledger slice with `kind: "fog"`. Represents an open question that cannot yet be scoped as actionable work. Excluded from `ledger frontier` output. Must not carry acceptance criteria.
+A ledger slice with `kind: "fog"`. Represents an open question that cannot yet be scoped as actionable work. Excluded from `gw ledger frontier --motive <slug>` output. Must not carry acceptance criteria.
 
 ## Frontier
 
-The set of slices that are `pending` and not blocked. Returned by `ledger frontier`. Fog slices and complete/skipped slices are excluded. The frontier is what the orchestrator fans out in the next wave.
+The set of slices that are `pending` and not blocked. Returned by `gw ledger frontier --motive <slug>`. Fog slices and complete/skipped slices are excluded. The frontier is what the orchestrator fans out in the next wave.
 
 ## Gate note
 
@@ -66,7 +66,7 @@ Four conditions that must ALL hold for a slice to be dispatched to `general-purp
 
 ## Ledger
 
-The run ledger file (`.groundwork/runs/<session_id>.json`). Tracks all slices, their statuses, the gate object, pacing state, and the write token. Managed exclusively via the `bin/ledger` CLI — never edited by hand.
+The run ledger file (`.groundwork/runs/<session_id>.json`). Tracks all slices, their statuses, the gate object, pacing state, and the write token. Managed exclusively via the `gw ledger` CLI — never edited by hand.
 
 ## Nesting guard
 

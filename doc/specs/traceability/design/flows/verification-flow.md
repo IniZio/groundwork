@@ -1,6 +1,6 @@
 ---
 title: "Verification Flow"
-concept: "[[C-TRACEABILITY/index]]"
+concept: "[[traceability/index]]"
 status: "draft"
 date_updated: "2026-08-29"
 ---
@@ -16,7 +16,7 @@ A requirement is written in `doc/specs/<concept>/constraints.md` with a unique I
 
 ### 2. Slice links the requirement
 When a ledger slice is created or updated, the implementer declares which requirements it covers:
-- Via `--covers-ac "TRACEABILITY-R-002"` on `bin/ledger add` (explicit AC coverage), or
+- Via `--covers-ac "TRACEABILITY-R-002"` on `gw ledger add --motive <slug>` (explicit AC coverage), or
 - Via `--decisions "tracking-viz#D-7"` when the requirement's `origin_decision_ref` matches
 
 The SpineAdapter reads these fields to emit `covers` edges.
@@ -39,7 +39,7 @@ When live verification passes (a screenshot, artifact URL, or CLI output is capt
 The adapter reads VERIFICATION events to emit `live-verify` and `artifact-evidence` nodes.
 
 ### 5. Gate verdict recorded
-The orchestrator runs `bin/ledger gate advisor APPROVE --token <token>` after the advisor issues an APPROVE verdict. This writes a GATE event to the journal.
+The orchestrator runs `gw ledger gate --motive <slug> advisor APPROVE --token <token>` after the advisor issues an APPROVE verdict. This writes a GATE event to the journal.
 
 The adapter reads GATE events to emit `gate` nodes and `seals` edges.
 

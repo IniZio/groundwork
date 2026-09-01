@@ -93,12 +93,12 @@ _Derived from `schemas/run-ledger.schema.json`. "Source fn" column refers to the
 
 **Minimal slice (implementation):**
 ```
-bin/ledger add S1 --desc "Add ticket storage" --wave 1 --acceptance "ticket id persists across restart"
+gw ledger add --motive <slug> S1 --desc "Add ticket storage" --wave 1 --acceptance "ticket id persists across restart"
 ```
 
 **Slice linked to a ticket and AC:**
 ```
-bin/ledger add S2 \
+gw ledger add --motive <slug> S2 \
   --desc "Wire auth middleware" \
   --wave 2 \
   --blocked-by S1 \
@@ -109,7 +109,7 @@ bin/ledger add S2 \
 
 **Fog slice (open question):**
 ```
-bin/ledger fog Q1 --desc "Retry policy TBD" --question "What retry interval suits the stop-gate hook?"
+gw ledger fog --motive <slug> Q1 --desc "Retry policy TBD" --question "What retry interval suits the stop-gate hook?"
 ```
 
 See [[../recipes/add-slice-with-acceptance-criteria]] for a full walkthrough.

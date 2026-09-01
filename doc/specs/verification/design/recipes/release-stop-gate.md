@@ -12,11 +12,11 @@ How to get from a blocked stop gate to a permitted session end.
 ### 1. Verify all slices are terminal
 
 ```bash
-bin/ledger status
+gw ledger status --motive <slug>
 ```
 
 Every slice must show `complete` or `skipped`. If any show `pending` or `in_progress`:
-- Mark genuinely complete slices: `bin/ledger complete <id> --token <write_token>`
+- Mark genuinely complete slices: `gw ledger complete --motive <slug> <id> --token <write_token>`
 - For blocked slices, resolve the blocker first
 
 ### 2. Invoke the advisor
@@ -42,7 +42,7 @@ For tier-2 findings (not CORRECTION): register them as new ledger slices before 
 ### 4. Record the APPROVE verdict
 
 ```bash
-bin/ledger gate advisor APPROVE --token <write_token>
+gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
 ```
 
 This writes `gate.advisor = "APPROVE"` into the run ledger.
@@ -53,6 +53,6 @@ The stop gate will now allow the session to end. The next Stop hook invocation w
 
 ## What can go wrong
 
-- **Subagent writes the gate** — only the orchestrator may call `bin/ledger gate` with the write token. A subagent doing this is a security violation (see memory note `stopgate-token-bypass`).
+- **Subagent writes the gate** — only the orchestrator may call `gw ledger gate` with the write token. A subagent doing this is a security violation (see memory note `stopgate-token-bypass`).
 - **Filtered test run** — an advisor verdict based on a filtered test run (named file list, not full suite) must be rejected. Demand a full suite run.
 - **Self-reported evidence** — advisor must run commands itself; self-reports from implementers are not accepted.

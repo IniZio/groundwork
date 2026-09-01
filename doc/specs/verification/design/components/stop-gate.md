@@ -34,4 +34,4 @@ Anatomy of `hooks/stop-gate.mjs` as a system component.
 
 ## State it reads (never writes)
 
-The hook is read-only with respect to the ledger. It cannot mark slices complete or record gate verdicts — only the orchestrator (via `bin/ledger`) can do that.
+The hook is read-only with respect to the ledger. It cannot mark slices complete or record gate verdicts — only the orchestrator (via `gw ledger`) can do that.

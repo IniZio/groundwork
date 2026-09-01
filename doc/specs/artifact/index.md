@@ -3,7 +3,7 @@ id: "C-ARTIFACT"
 type: "moc"
 title: "Artifact Model"
 summary: "The three groundwork artifact types—run ledger, session journal, and spec tree—are file-backed records that persist across sessions."
-parent: null
+parent: "C-GROUNDWORK"
 status: draft
 depends_on:
   - "C-GROUNDWORK"

@@ -13,7 +13,7 @@ Create a durable ticket document for cross-session tracking and link it to one o
 
 ## Before you start
 
-- You have an active run ledger (`ledger status` shows an active run).
+- You have an active run ledger (`gw ledger status --motive <slug>` shows an active run).
 - You know the motive slug (e.g. `my-feature`).
 - You have a kebab-case description for the ticket (e.g. `auth-token-design`).
 - You know the ticket type (one of: `research`, `choose`, `model`, `build`, `grill`, `spec`, `fix`, `chore`).
@@ -64,7 +64,7 @@ The seven H2 sections are required and must appear in this order (ARTIFACT-R-007
 When adding or updating a slice, supply `--ticket` with the ticket id (the filename stem without `.md`):
 
 ```bash
-ledger add s3 --desc "Implement auth token handler" \
+gw ledger add --motive <slug> s3 --desc "Implement auth token handler" \
   --ticket 03-build-auth-token-design \
   --kind build
 ```
@@ -72,13 +72,13 @@ ledger add s3 --desc "Implement auth token handler" \
 Or update an existing slice:
 
 ```bash
-ledger set s3 --ticket 03-build-auth-token-design
+gw ledger set --motive <slug> s3 --ticket 03-build-auth-token-design
 ```
 
 ### 4. Verify the link
 
 ```bash
-ledger show s3
+gw ledger show --motive <slug> s3
 # Output includes: ticket: "03-build-auth-token-design"
 ```
 

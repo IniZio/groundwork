@@ -3,7 +3,7 @@ id: "C-VERIFICATION"
 type: "moc"
 title: "Verification"
 summary: "Non-trivial tasks require advisor validation — confirming real-world completeness — before the session ends."
-parent: null
+parent: C-GROUNDWORK
 status: "draft"
 ---
 

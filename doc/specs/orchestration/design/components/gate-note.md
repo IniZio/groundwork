@@ -91,7 +91,7 @@ _Derived from `schemas/run-ledger.schema.json` and the `advisorVerdict()` helper
 |-------|----------------|-------------------|
 | Absent / `pending` | Initial | Blocks (counts as not approved) |
 | Non-APPROVE verdict | `advisor()` returned CORRECTION/STOP/etc. | Blocks |
-| `APPROVE` (either form) | `ledger gate advisor APPROVE --token <write_token>` | **Releases** (if slices also complete) |
+| `APPROVE` (either form) | `gw ledger gate --motive <slug> advisor APPROVE --token <write_token>` | **Releases** (if slices also complete) |
 
 ---
 
@@ -99,18 +99,18 @@ _Derived from `schemas/run-ledger.schema.json` and the `advisorVerdict()` helper
 
 **Record an APPROVE verdict (orchestrator only):**
 ```
-bin/ledger gate advisor APPROVE --token <write_token>
+gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
 ```
 
 With citation and rubric (object form — stored by the ledger CLI):
 ```
-bin/ledger gate advisor APPROVE \
+gw ledger gate --motive <slug> advisor APPROVE \
   --token <write_token> \
   --citation "test/slice-s1.test.ts — 41 pass" \
   --rubric "All ACs verified against source; no parity gaps found"
 ```
 
-> The `write_token` is printed at `ledger init` and re-surfaced in the SessionStart injection. Never pass it to subagents.
+> The `write_token` is printed at `bin/ledger init` and re-surfaced in the SessionStart injection. Never pass it to subagents.
 
 ---
 

@@ -16,7 +16,7 @@ The advisor is the `groundwork:advisor` agent (or native `advisor()` tool). When
 
 ## How APPROVE is recorded
 
-The orchestrator runs `bin/ledger gate advisor APPROVE --token <write_token>` after receiving an APPROVE verdict. This writes `gate.advisor = "APPROVE"` into the active run ledger, which the stop gate reads on the next session-end attempt.
+The orchestrator runs `gw ledger gate --motive <slug> advisor APPROVE --token <write_token>` after receiving an APPROVE verdict. This writes `gate.advisor = "APPROVE"` into the active run ledger, which the stop gate reads on the next session-end attempt.
 
 **APPROVE must be recorded in the ledger by the orchestrator.** A subagent writing the gate without the orchestrator's write token is a stop-gate token bypass (see memory note `stopgate-token-bypass`).
 

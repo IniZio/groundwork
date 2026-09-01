@@ -39,6 +39,22 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 | Id | Title | Status |
 |----|-------|--------|
 | [[requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits\|ENFORCEMENT-R-001]] | Impl-guard blocks orchestrator direct edits outside permitted paths | implemented |
+| [[requirements/enforcement-r-002-nesting-guard-spawn-topology\|ENFORCEMENT-R-002]] | Nesting-guard enforces agent spawn topology via type allowlist | implemented |
+| [[requirements/enforcement-r-003-agent-model-guard-model-injection\|ENFORCEMENT-R-003]] | Agent-model-guard injects registry-mapped model tier when model is absent | implemented |
+| [[requirements/enforcement-r-004-ledger-guard-direct-file-access\|ENFORCEMENT-R-004]] | Ledger-guard blocks direct tool access to run-ledger and seal-key files | implemented |
+| [[requirements/enforcement-r-005-ledger-bash-guard-bash-manipulation\|ENFORCEMENT-R-005]] | Ledger-bash-guard blocks subagent bash manipulation of ledger and seal key | implemented |
+| [[requirements/enforcement-r-006-piped-exit-code-guard-pipe-status\|ENFORCEMENT-R-006]] | Piped-exit-code-guard blocks reading $? after piping through a filter | implemented |
+| [[requirements/enforcement-r-007-stop-gate-session-end-enforcement\|ENFORCEMENT-R-007]] | Stop-gate blocks session end when run is incomplete or gate is unsealed | implemented |
+| [[requirements/enforcement-r-008-struggle-detector-failure-signal\|ENFORCEMENT-R-008]] | Struggle-detector emits FAILURE journal event on consecutive tool failures | implemented |
+| [[requirements/enforcement-r-009-deslop-guard-advisory\|ENFORCEMENT-R-009]] | Deslop-guard emits advisory on AI-fingerprint comment patterns | implemented |
+| [[requirements/enforcement-r-010-prose-negation-guard-advisory\|ENFORCEMENT-R-010]] | Prose-negation-guard warns when negation words are removed from surviving sentences | implemented |
+| [[requirements/enforcement-r-011-prose-modality-guard-advisory\|ENFORCEMENT-R-011]] | Prose-modality-guard warns when modal hedges are upgraded to strong assertions | implemented |
+| [[requirements/enforcement-r-012-doc-read-guard-progressive-disclosure\|ENFORCEMENT-R-012]] | Doc-read-guard enforces toc-first access for over-budget doc-class files | implemented |
+| [[requirements/enforcement-r-013-doc-size-guard-over-budget-advisory\|ENFORCEMENT-R-013]] | Doc-size-guard emits advisory when doc-class file exceeds budget without structure | implemented |
+| [[requirements/enforcement-r-014-spec-guard-warn-on-no-ledger\|ENFORCEMENT-R-014]] | Spec-guard warns and permits spec writes when no active ledger exists | implemented |
+| [[requirements/enforcement-r-015-keyword-router-hint-injection\|ENFORCEMENT-R-015]] | Keyword-router injects deterministic routing hints for user prompts | implemented |
+| [[requirements/enforcement-r-016-session-reminder-context-injection\|ENFORCEMENT-R-016]] | Session-reminder injects ledger state and orchestrator rules at session start | implemented |
+| [[requirements/enforcement-r-017-gw-hook-shim-requires-bun\|ENFORCEMENT-R-017]] | gw-hook shim selects bun as primary runtime; node fallback fails for gw source | implemented |
 | [[requirements/pacing-r-001-wave-default-pace-policy\|PACING-R-001]] | Wave-default pace policy initialised at ledger init | implemented |
 | [[requirements/pacing-r-002-start-time-hard-block-with-exact-reason-messaging\|PACING-R-002]] | Start-time hard block with exact-reason messaging | implemented |
 | [[requirements/pacing-r-003-ledger-complete-never-blocked-by-pacing\|PACING-R-003]] | `ledger complete` is never blocked by pacing | implemented |

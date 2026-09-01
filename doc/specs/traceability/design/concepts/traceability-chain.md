@@ -1,6 +1,6 @@
 ---
 title: "Traceability Chain"
-concept: "[[C-TRACEABILITY/index]]"
+concept: "[[traceability/index]]"
 status: "draft"
 date_updated: "2026-08-29"
 ---

@@ -6,7 +6,7 @@ This recipe explains the validation path for `covers_ac` and `decisions` fields 
 
 ## When validation fires
 
-Validation runs on every `ledger set <slice-id> --covers-ac "..."` or `ledger set <slice-id> --decisions "..."` call. It also runs on `ledger add` when either flag is present.
+Validation runs on every `gw ledger set --motive <slug> <slice-id> --covers-ac "..."` or `gw ledger set --motive <slug> <slice-id> --decisions "..."` call. It also runs on `gw ledger add --motive <slug>` when either flag is present.
 
 ---
 
@@ -48,17 +48,17 @@ The field name (`covers_ac` or `decisions`) and the unknown id are always named 
 
 ```bash
 # Valid — AC-1 is in the fold
-ledger set s1 --covers-ac "AC-1"   # exit 0
+gw ledger set --motive <slug> s1 --covers-ac "AC-1"   # exit 0
 
 # Valid — AC-2 is charter-declared (not yet in fold)
-ledger set s1 --covers-ac "AC-2"   # exit 0
+gw ledger set --motive <slug> s1 --covers-ac "AC-2"   # exit 0
 
 # Invalid — AC-999 is neither in charter nor in fold
-ledger set s1 --covers-ac "AC-999" # exit 1, diagnostic printed
+gw ledger set --motive <slug> s1 --covers-ac "AC-999" # exit 1, diagnostic printed
 
 # Valid — D-1 is in the fold
-ledger set s1 --decisions "D-1"    # exit 0
+gw ledger set --motive <slug> s1 --decisions "D-1"    # exit 0
 
 # Invalid — D-999 is not in the fold
-ledger set s1 --decisions "D-999"  # exit 1, diagnostic printed
+gw ledger set --motive <slug> s1 --decisions "D-999"  # exit 1, diagnostic printed
 ```

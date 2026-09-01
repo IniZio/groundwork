@@ -33,5 +33,5 @@ The Stop hook is the only option that fires unconditionally on every session-end
 - **Positive:** Mechanical enforcement; cannot be bypassed by LLM rationalization
 - **Positive:** Fail-open design means stuck sessions eventually release (bounded reinforcement counter)
 - **Positive:** Yield-aware design prevents misfiring when the orchestrator legitimately yields to await background agents
-- **Negative:** The hook can only read the ledger, not write it; the orchestrator must record progress explicitly via `bin/ledger`
+- **Negative:** The hook can only read the ledger, not write it; the orchestrator must record progress explicitly via `gw ledger`
 - **Negative:** A garbled or missing ledger causes fail-open, which means the gate may release prematurely if the ledger is corrupted

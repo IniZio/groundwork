@@ -21,7 +21,8 @@ import { resolvedUnits, inFlightUnit, isExhausted } from './lib/pacing.mjs'
 
 /** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
 const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
-const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger')
+const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger') // kept: init and help have no gw equivalent
+const GW_HOOK_BIN = path.resolve(_hooksDir, '../bin/gw-hook') // operational gw ledger commands
 const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
@@ -150,6 +151,7 @@ function activeRunBlock(projectDir, sessionId) {
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
   const incomplete = slices.filter((s) => s?.status !== 'complete')
   const verdict = advisorVerdict(ledger.gate)
+  const motiveSlug = typeof ledger.motive === 'string' && ledger.motive ? ledger.motive : '<motive-slug>'
 
   const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
   if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
@@ -159,7 +161,7 @@ function activeRunBlock(projectDir, sessionId) {
   lines.push('')
 
   if (typeof ledger.write_token === 'string' && ledger.write_token) {
-    lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`${LEDGER_BIN} gate\` and \`${LEDGER_BIN} complete\`. NEVER include this token in a subagent Task prompt.`)
+    lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`${GW_HOOK_BIN} ledger gate … --motive ${motiveSlug}\` and \`${GW_HOOK_BIN} ledger complete … --motive ${motiveSlug}\`. NEVER include this token in a subagent Task prompt.`)
     lines.push('')
   }
 
@@ -182,7 +184,7 @@ function activeRunBlock(projectDir, sessionId) {
     if (exhausted) {
       const tokenArg = typeof ledger.write_token === 'string' && ledger.write_token ? ` --token ${ledger.write_token}` : ''
       pacingLines.push(`⚠ Budget exhausted — \`ledger claim\` and \`ledger set --status in_progress\` will exit 1 for new units. This is the pacing policy, not a bug.`)
-      pacingLines.push(`  Sanctioned overage: \`${LEDGER_BIN} autopilot --range N${tokenArg}\` (orchestrator-only; NEVER pass token to subagents).`)
+      pacingLines.push(`  Sanctioned overage: \`${GW_HOOK_BIN} ledger autopilot --range N${tokenArg} --motive ${motiveSlug}\` (orchestrator-only; NEVER pass token to subagents).`)
     } else if (grantRange > 0) {
       pacingLines.push(`Grant in effect: autopilot extended budget by ${grantRange} unit${grantRange === 1 ? '' : 's'}.`)
     }
@@ -355,7 +357,12 @@ const mapPointerBlock = (() => {
 })()
 
 // Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
-const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger: \`${LEDGER_BIN}\` · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference.`
+// Subcommand list covers the operational set (13) + scope-token + milestone-signoff (orchestrator-
+// only token-gated commands; omitting them causes the orchestrator to assume they don't exist).
+// `autopilot` is intentionally omitted here: activeRunBlock surfaces it dynamically with full
+// usage only when the pacing budget is exhausted — listing it statically adds noise and it is
+// never applicable outside that context.
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist — use \`${LEDGER_BIN} init\` to start a new run.)`
 
 let additionalContext = reminder + mapPointerBlock + cliToolsBlock
 

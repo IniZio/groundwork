@@ -784,8 +784,10 @@ export function buildIndexData(sd) {
       // D-15: individual requirement files in requirements/ subdirectory carry their
       // normative statement in a `## Statement` section rather than in frontmatter.
       const isD15ReqFile = relPath.startsWith('requirements/') || relPath.includes('/requirements/')
+      // Gate: skip D-15 checks for files already in H3+bullets format (anchored heading present).
+      const HAS_ANCHORED_HEADING = /^#{2,3} [A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-\S+\s+[—–]\s+.+?\s+\{#[^}]+\}/m
       let d15Statement = null
-      if (isD15ReqFile) {
+      if (isD15ReqFile && !HAS_ANCHORED_HEADING.test(body)) {
         // Split body on H2 boundaries to extract ## Statement content reliably
         const h2Parts = body.split(/\n(?=## )/)
         const stmtPart = h2Parts.find(p => /^## Statement/.test(p))
@@ -809,7 +811,21 @@ export function buildIndexData(sd) {
         }
       }
 
-      const effectiveEars = d15Statement ?? earsStr
+      // Extract anchor and title from body heading (Shape A: ## REQ-ID — Title {#anchor})
+      const HEADING_EXTRACT_RE = /^#{2,3} [A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-[^\s]+\s+[—–]\s+(.+?)\s+\{#([^}]+)\}/m
+      const headingMatch = body.match(HEADING_EXTRACT_RE)
+      const reqAnchor = headingMatch ? headingMatch[2] : null
+      const headingTitle = headingMatch ? headingMatch[1] : null
+
+      // Extract normative statement (paragraph between heading and first bullet)
+      let normativeStatement = null
+      if (headingMatch && headingMatch.index != null) {
+        const afterHeading = body.slice(body.indexOf('\n', headingMatch.index) + 1).trim()
+        const bulletIdx = afterHeading.search(/^[-*]/m)
+        normativeStatement = bulletIdx > 0 ? afterHeading.slice(0, bulletIdx).trim() : null
+      }
+
+      const effectiveEars = normativeStatement ?? d15Statement ?? earsStr
       const summary = data.summary
         ? String(data.summary)
         : effectiveEars
@@ -819,7 +835,7 @@ export function buildIndexData(sd) {
       nodes[id] = {
         id,
         type: data.type ? String(data.type) : (data.concept ? 'requirement' : 'concept'),
-        title: String(data.title || data.summary || (effectiveEars ? firstSentence(effectiveEars) : null) || h1 || id),
+        title: String(headingTitle || data.title || data.summary || (effectiveEars ? firstSentence(effectiveEars) : null) || h1 || id),
         summary,
         refs,
         byteSize,
@@ -833,7 +849,8 @@ export function buildIndexData(sd) {
         pattern: data.pattern ? String(data.pattern) : null,
         verification: data.verification ? String(data.verification) : null,
         criticality: data.criticality ? String(data.criticality) : 'must',
-        // ears: from ## Statement body (D-15) or old-format frontmatter
+        anchor: reqAnchor,
+        // ears: from heading paragraph (Shape A), ## Statement body (D-15), or old-format frontmatter
         ears: effectiveEars,
       }
 

@@ -1,6 +1,6 @@
 ---
 title: "Requirement Fields Reference"
-concept: "[[C-TRACEABILITY/index]]"
+concept: "[[traceability/index]]"
 status: "draft"
 date_updated: "2026-08-29"
 ---
@@ -15,7 +15,7 @@ All fields used in a `doc/specs/<concept>/requirements/<id>-<kebab>.md` requirem
 |---|---|---|---|
 | `id` | string | yes | Lowercase requirement identifier, e.g. `"traceability-r-001"` |
 | `title` | string | yes | Short human title |
-| `concept` | string | yes | Wikilink to the concept index, e.g. `"[[C-TRACEABILITY/index]]"` |
+| `concept` | string | yes | Wikilink to the concept index, e.g. `"[[traceability/index]]"` |
 | `criticality` | `must` \| `should` | yes | Requirement strength per RFC 2119 |
 | `verification` | `automated` \| `manual` | yes | How the requirement is verified |
 | `ears_pattern` | string | recommended | EARS pattern type (e.g. `IF-THEN`, `UBIQUITOUS`, `EVENT-DRIVEN`) |

@@ -10,7 +10,7 @@ The second condition the stop gate checks. The orchestrator must invoke the advi
 
 ## advisor verdict
 
-The scored output of an advisor invocation. One of: `APPROVE` (gate opens), `CORRECTION` (blocking issues; gate stays blocked), `STOP` (re-planning required; gate stays blocked). Recorded in the run ledger by the orchestrator via `bin/ledger gate advisor APPROVE --token <write_token>`.
+The scored output of an advisor invocation. One of: `APPROVE` (gate opens), `CORRECTION` (blocking issues; gate stays blocked), `STOP` (re-planning required; gate stays blocked). Recorded in the run ledger by the orchestrator via `gw ledger gate --motive <slug> advisor APPROVE --token <write_token>`.
 
 ## APPROVE
 

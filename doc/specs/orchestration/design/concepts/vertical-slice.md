@@ -50,7 +50,7 @@ Five kinds are defined in `schemas/run-ledger.schema.json`. Missing `kind` defau
 A fog slice tracks something unknown that cannot yet be scoped. Example: "What is the correct retry policy for the hook?" might not be answerable until the hook is prototyped.
 
 ```
-bin/ledger fog Q1 --desc "open question" --question "What retry policy suits the hook?"
+gw ledger fog --motive <slug> Q1 --desc "open question" --question "What retry policy suits the hook?"
 ```
 
 Fog slices:

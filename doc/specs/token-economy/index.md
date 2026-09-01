@@ -3,7 +3,7 @@ id: "C-TOKEN-ECONOMY"
 type: "moc"
 title: "Token Economy"
 summary: "Groundwork defines prose-compression rules, per-surface intensity levels, and forbidden zones so that agent output stays terse without fabricating evidence or erasing meaning."
-parent: null
+parent: C-GROUNDWORK
 status: "draft"
 ---
 

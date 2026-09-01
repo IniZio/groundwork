@@ -23,8 +23,8 @@ Slice {
   ticket      string?         — id of the linked ticket document
   covers_ac   string[]?       — acceptance-criterion ids from the motive charter
   decisions   string|string[]?— DECISION event id(s) this slice produces or implements
-  completed_at string?        — ISO-8601 timestamp; set by `ledger complete`
-  session_id  string?         — session that completed this slice; set by `ledger complete`
+  completed_at string?        — ISO-8601 timestamp; set by `gw ledger complete`
+  session_id  string?         — session that completed this slice; set by `gw ledger complete`
   created_by  string?         — session that created this slice
 }
 ```

@@ -672,7 +672,7 @@ async function cmdTree(args) {
   if (!idx) die('index not found — run "spec build" first', 1)
 
   const nodes = idx.nodes
-  const concepts = Object.values(nodes).filter(n => n.type === 'concept')
+  const concepts = Object.values(nodes).filter(n => n.type === 'concept' || n.type === 'moc')
   const requirements = Object.values(nodes).filter(n => n.type === 'requirement')
 
   // Build parent→children map for concepts

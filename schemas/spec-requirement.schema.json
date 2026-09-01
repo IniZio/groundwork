@@ -1,14 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "spec-requirement.schema.json",
-  "$comment": "Deliberately NOT covered by this schema (handled by spec-lint.mjs at runtime):\n  1. summary-length: ≤25-word limit — JSON Schema has no word-count keyword.\n  2. origin_decision_ref referential integrity: whether the value resolves to a real decision in a motive's Decision Log.\n  3. superseded_by referential integrity: whether the target node exists.\n  4. snapshot_of referential integrity: whether the referenced snapshot exists.\n  5. parent-agrees-with-directory-path: N/A for requirements (no parent field), but concept agreement is not validated here.\nThe ears-or-summary either/or rule IS encoded here via anyOf (neither field is individually required).\nThe origin_decision_ref 'null' sentinel (literal string \"null\") IS rejected here via not:{const:\"null\"}.",
+  "$comment": "Deliberately NOT covered by this schema (handled by spec-lint.mjs at runtime):\n  1. summary-length: ≤25-word limit — JSON Schema has no word-count keyword.\n  2. origin_decision_ref referential integrity: whether the value resolves to a real decision in a motive's Decision Log.\n  3. superseded_by referential integrity: whether the target node exists.\n  4. snapshot_of referential integrity: whether the referenced snapshot exists.\n  5. parent-agrees-with-directory-path: N/A for requirements (no parent field), but concept agreement is not validated here.\n  6. verify, ears, summary: stale frontmatter per RFC-0003 — spec-lint.mjs emits stale-frontmatter errors for these at runtime; they are kept as optional properties here so additionalProperties:false does not add a second error on top. The anyOf requiring ears-or-summary is removed for the same reason.\nThe origin_decision_ref 'null' sentinel (literal string \"null\") IS rejected here via not:{const:\"null\"}.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "type", "concept", "pattern", "verify", "verification", "status"],
-  "anyOf": [
-    { "required": ["ears"], "properties": { "ears": { "type": "string", "minLength": 1 } } },
-    { "required": ["summary"], "properties": { "summary": { "type": "string", "minLength": 1 } } }
-  ],
+  "required": ["id", "type", "concept", "verification", "status"],
   "properties": {
     "id": {
       "type": "string",
@@ -23,16 +19,21 @@
       "pattern": "^C-[A-Z0-9]+(-[A-Z0-9]+)*$",
       "description": "Id of the parent concept node"
     },
+    "title": {
+      "type": "string",
+      "description": "Human-readable requirement title"
+    },
     "pattern": {
-      "enum": ["ubiquitous", "event", "state", "option", "unwanted"]
+      "enum": ["ubiquitous", "event", "state", "option", "unwanted"],
+      "description": "EARS pattern classification; optional per D-24 (0/104 corpus files carry it)"
     },
     "verify": {
       "type": "string",
       "minLength": 1,
-      "description": "Human-readable verification procedure"
+      "description": "Stale frontmatter per RFC-0003 — kept optional so additionalProperties:false does not double-report alongside spec-lint stale-frontmatter check"
     },
     "verification": {
-      "enum": ["automated", "manual", "hybrid"]
+      "enum": ["automated", "manual", "hybrid", "unverified"]
     },
     "origin_decision_ref": {
       "type": "string",
@@ -46,12 +47,12 @@
     "ears": {
       "type": "string",
       "minLength": 1,
-      "description": "EARS-format requirement sentence; required unless summary is present"
+      "description": "Stale frontmatter per RFC-0003 — kept optional so additionalProperties:false does not double-report alongside spec-lint stale-frontmatter check"
     },
     "summary": {
       "type": "string",
       "minLength": 1,
-      "description": "Plain-English summary; required unless ears is present; ≤25 words enforced by spec-lint.mjs"
+      "description": "Stale frontmatter per RFC-0003 — kept optional so additionalProperties:false does not double-report alongside spec-lint stale-frontmatter check; ≤25 words enforced by spec-lint.mjs"
     },
     "criticality": {
       "enum": ["must", "should"]
@@ -63,6 +64,18 @@
     "snapshot_of": {
       "type": "string",
       "minLength": 1
+    },
+    "depends_on": {
+      "type": "string",
+      "description": "D-24 canonical field; dependency reference"
+    },
+    "date_updated": {
+      "type": "string",
+      "description": "D-24 canonical field; ISO date of last update"
+    },
+    "design": {
+      "type": "string",
+      "description": "D-24 canonical field; design reference or link"
     }
   }
 }

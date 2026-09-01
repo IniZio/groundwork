@@ -70,7 +70,7 @@ The gate reads `gate.advisor` from the ledger. The field accepts two forms:
 
 The orchestrator writes this field with:
 ```
-bin/ledger gate advisor APPROVE --token <write_token>
+gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
 ```
 
 The `write_token` is orchestrator-only — subagents must never receive it.

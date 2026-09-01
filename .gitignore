@@ -31,4 +31,4 @@ tmp/
 # Generated spec build output
 doc/specs/_generated/
 # Eval runner results
-evals/*/results/
+evals/**/results/

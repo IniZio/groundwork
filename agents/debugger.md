@@ -54,7 +54,7 @@ Work through ranked hypotheses until one is confirmed. When a hypothesis is fals
 
 - Apply the **smallest diff** that addresses the confirmed root cause. Do not refactor, gold-plate, or "improve" adjacent code in the same change — that obscures the fix and widens the blast radius.
 - Write (or update) a **regression test** that:
-  1. Fails on the unfixed code (prove it bites).
+  1. Proves it bites — using the two-run invariant: the test file is byte-identical between the red run and the green run (`git diff --exit-code <testfile>` shows no output); the only diff between runs is production source reached through the product's own import path (not a formula re-implemented inside the test); the red failure message names the diverging PRODUCTION values. When a perturbation is needed, use a scratch copy outside the repo (`cp <file> /tmp/backup`) and restore from it, never a stash-based restore.
   2. Passes on the fixed code (prove the fix works).
   3. Will catch a recurrence if the bug is reintroduced later.
 - Run the full relevant test suite, not just the new regression test. Confirm no existing tests regressed.

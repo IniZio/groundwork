@@ -272,6 +272,7 @@ Your obligations as orchestrator (the hook only reads — it cannot update the l
 - **Write the ledger** when you slice (vertical-slice does this), using this session's \`session_id\` from the Session identity block.
 - **Give each slice \`acceptance\`** (a string[] of verifiable done-conditions) and \`blocked_by\` (the canonical wave-ordering dependency; \`depends_on\` is a legacy alias). A slice can't be \`complete\` until its \`blocked_by\` slices are.
 - **Update slice status to \`complete\`** as each verified wave lands.
+- **Commit each verified wave** before fanning out the next — uncommitted-wave accumulation is what made a subagent's \`git stash\` destructive (see memory entry \`uncommitted-wave-accumulation\`).
 - **Record the advisor verdict** after the completion gate. Prefer the object form — \`gate.advisor = { "verdict": "APPROVE", "rubric": "...", "axes": { "correctness", "completeness", "over_engineering" }, "citation": "..." }\` — so the verdict carries its own rubric and evidence; the bare string \`"APPROVE"\` is still accepted. Every REVISE/REJECT needs a concrete \`citation\`.
 - **To abandon a run**, set \`"active": false\` — the gate releases. Trivial tasks write no ledger, so the gate stays out of the way.
 

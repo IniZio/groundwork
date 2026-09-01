@@ -108,7 +108,7 @@ If no correct seam exists, that itself is the finding — flag for architecture 
 **For general-purpose:** Implement the fix and regression test yourself. Use a native verification delegate only when the host documents one.
 
 **Sequence:**
-1. Minimise reproduction → write failing test → watch it fail
+1. Minimise reproduction → write failing test → watch it fail using the **two-run invariant**: test file is byte-identical between the red run and the green run (`git diff --exit-code <testfile>` shows no output); the only diff between runs is production source reached through the product's own import path — not a formula re-implemented in the test; the red failure message names the diverging PRODUCTION values. When a perturbation is needed, use a scratch copy outside the repo (`cp <file> /tmp/backup`) and restore from it, never a stash-based restore.
 2. Apply fix → watch test pass
 3. Re-run original feedback loop → confirm fix
 

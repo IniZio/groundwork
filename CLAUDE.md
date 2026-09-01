@@ -120,6 +120,7 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Check progress cheaply any time with `gw ledger status --motive <slug>` instead of reading the file.
 - To abandon a run: `gw ledger abandon --motive <slug>` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 - For full command reference: `bin/ledger help [<cmd>]` (also `-h` or bare `bin/ledger`; `gw ledger` has no `help` subcommand).
+- **Commit each verified wave before fanning out the next.** Uncommitted-wave accumulation is what made a subagent's `git stash` destructive and cost a full-run loss. For the recovery procedure if it happens anyway, see memory entry `uncommitted-wave-accumulation`.
 
 ---
 
@@ -332,6 +333,8 @@ Completion gate is **risk-tiered** — scale cost to risk. For non-trivial work,
 _hooks/session-reminder.mjs re-injects a brief reminder post-compaction; this tier table is authoritative._
 
 Reject an advisor verdict whose test evidence came from a filtered run (a named file list rather than the whole suite), or whose exit code passed through a pipe. Evidence rules live in the advisor's Verification Protocol; the orchestrator does not run them, it refuses verdicts that skipped them.
+
+**Two-run invariant (bite proof).** A regression test's red→green proof is valid ONLY when: (a) the test file is byte-identical between the red run and the green run, proven by `git diff --exit-code <testfile>` showing no output; (b) the only diff between the two runs is production source, reached through the product's own import path — not a formula re-implemented inside the test file; (c) the red failure message names the diverging PRODUCTION values. When a perturbation is needed to obtain the red run, use a scratch copy outside the repository (`cp <file> /tmp/backup`), never a stash or in-repo restore; restore from the copy and verify byte-identity (`cmp` produces empty output) before reporting the proof. This prevents perturbing a tracked file from silently reverting a sibling slice's uncommitted work.
 
 ---
 

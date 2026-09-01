@@ -1,10 +1,14 @@
 ---
-id: "orchestration-r-004"
+id: "ORCHESTRATION-R-004"
+# Uppercase deliberate — the traceability join is case-sensitive: ID_RE_SRC in hooks/lib/spec-io.mjs
+# extracts only UPPERCASE ids, and spec-lint's verified.has(node.id) compares case-sensitively.
+# This is currently the only live `verification: automated` node in the corpus.
+# T51 owns normalizing the convention (either direction) across all requirements.
 type: requirement
 concept: C-ORCHESTRATION
 title: "Every DECISION event carries a structured data.id"
 criticality: must
-verification: unverified
+verification: automated
 status: open
 design: "[[design#Ledger CLI interface]]"
 ---

@@ -687,11 +687,10 @@ const specDir = join(projectDir, 'doc', 'specs')
 const index = loadSpecIndex(projectDir)
 if (!index) {
   if (!existsSync(specDir)) {
-    const indexPath = join(specDir, '_generated', 'index.json')
-    const msg = `spec lint: no spec tree found; looked at ${indexPath}\n`
+    const msg = `spec lint: no spec tree found; expected ${specDir}\n`
     process.stdout.write(msg)
     process.stderr.write(msg)
-    process.exit(0)
+    process.exit(1)
   }
   process.stderr.write(`spec lint: failed to build spec index from ${specDir}.\n`)
   process.exit(1)

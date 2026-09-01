@@ -718,11 +718,12 @@ describe("AC13 — delegation of verify/lint/metrics/doc", () => {
 	// Assertions are specific to each script's documented exit codes so that
 	// a mutation (removing the script) causes a concrete assertion failure.
 	describe("present script → reaches implementation (not 127)", () => {
-		it("spec lint with no args exits 0 (informational scan), reaching spec-lint.mjs", () => {
+		it("spec lint with no args reaches spec-lint.mjs and exits 1 (no spec tree in fixture)", () => {
 			const r = run(["lint"]);
-			// exit 0 = clean informational run from spec-lint.mjs; 127 would mean script absent
-			expect(r.code).toBe(0);
-			expect(r.stdout).toContain("spec lint");
+			// Fixture has no doc/specs/ → hits the no-spec-tree branch introduced in T50 → exit 1.
+			// exit 127 would mean the dispatch script itself was absent (regression target for AC13).
+			expect(r.code).toBe(1);
+			expect(r.stdout + r.stderr).toContain("spec lint");
 		});
 	});
 });

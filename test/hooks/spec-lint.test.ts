@@ -1258,3 +1258,28 @@ describe("loadSpecIndex cache-vs-disk parity", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// no-spec-tree exit code: must exit non-zero, not 0
+//
+// Regression for the defect where the "no spec tree found" branch called
+// process.exit(0), making a run that linted nothing indistinguishable from
+// a clean lint.
+//
+// Two-run invariant: test file byte-identical between runs; only production
+// source differs (process.exit(0) → process.exit(1)).
+// ---------------------------------------------------------------------------
+
+describe("no-spec-tree: exits non-zero when doc/specs does not exist", () => {
+  it("exits 1 (not 0) when the project has no doc/specs directory", () => {
+    // Do NOT call mkSpec() — the fixture has no spec tree at all.
+    const r = lint();
+    // Before fix: code was 0 (false success). After fix: code is 1.
+    expect(
+      r.code,
+      `expected non-zero exit when no spec tree found, got ${r.code}; stdout: ${r.stdout}; stderr: ${r.stderr}`,
+    ).not.toBe(0);
+    // The message must name the missing directory so the user knows what to look at.
+    expect(r.stdout + r.stderr).toContain("no spec tree found");
+  });
+});

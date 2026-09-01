@@ -461,9 +461,10 @@ describe('Bug 4 — lint index path resolution falls back to cwd', () => {
     // KEY ASSERTION: the error message must contain an absolute path (starts with /)
     // Before the fix: the path could be relative (e.g. "doc/specs/_generated/index.json")
     // making it impossible to trace where lint actually looked.
-    expect(stderr).toContain('index.json')
+    // The message format is: "spec lint: no spec tree found; expected <absPath>"
+    expect(stderr).toContain('no spec tree found')
     // The path in the message must be absolute (resolves to tmpDir)
-    const pathMatch = stderr.match(/at (.+index\.json)/)
+    const pathMatch = stderr.match(/expected (.+doc\/specs)/)
     expect(pathMatch).not.toBeNull()
     const reportedPath = pathMatch![1]
     expect(path.isAbsolute(reportedPath)).toBe(true)

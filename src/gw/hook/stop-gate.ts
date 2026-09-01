@@ -1099,10 +1099,8 @@ export const run: HookFn = async (
     const inp = (input ?? {}) as Record<string, unknown>
     const sessionId = typeof inp.session_id === 'string' ? inp.session_id : ''
     const projectDir =
-      (typeof inp.cwd === 'string' && inp.cwd
-        ? inp.cwd
-        : undefined) ??
-      env.CLAUDE_PROJECT_DIR ??
+      (typeof inp.cwd === 'string' && inp.cwd ? inp.cwd : null) ||
+      env.CLAUDE_PROJECT_DIR ||
       process.cwd()
 
     let ledger: Record<string, unknown> | undefined

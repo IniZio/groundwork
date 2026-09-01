@@ -9,6 +9,7 @@ import type { JournalEvent } from '../../schema/journal.js'
 import { JournalEventType } from '../../schema/journal.js'
 import { type GwEnvelope, errEnvelope, okEnvelope } from '../envelope.js'
 import { writeDecision } from '../../store/motive/decision.js'
+import { DEFAULT_TRACKER_PATH } from '../../schema/layout.js'
 
 export const JOURNAL_SUBCOMMANDS = ['append', 'show', 'compile'] as const
 
@@ -135,7 +136,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   const rest = args.slice(1)
   const { flags, positionals } = parseFlags(rest)
   const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
-  const tracker = '.groundwork/next'
+  const tracker = DEFAULT_TRACKER_PATH
 
   if (subcmd === 'append') {
     const sessionId = process.env['CLAUDE_CODE_SESSION_ID']
@@ -246,6 +247,22 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
     if (events.length > lastN) events = events.slice(events.length - lastN)
 
     if (events.length === 0) {
+      // Guard: refuse silent empty-success when the legacy JSONL store has data
+      // but the new Obsidian-native store (under <tracker>/motives/) has none.
+      // This signals the divergence loudly rather than lying "no events found".
+      const legacyJournalDir = join(repoRoot, '.groundwork', 'journal')
+      let legacyShards: string[] = []
+      try { legacyShards = readdirSync(legacyJournalDir).filter(f => f.endsWith('.jsonl')) } catch { /* no legacy dir */ }
+      if (legacyShards.length > 0) {
+        return errEnvelope(
+          'journal show',
+          'STORE_DIVERGENCE',
+          `journal: 0 events in new store at ${join(repoRoot, tracker, 'motives')} ` +
+          `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} — ` +
+          `use bin/journal to read the legacy store until migration is complete`,
+          1,
+        )
+      }
       return okEnvelope('journal show', { content: 'no events found\n' })
     }
 

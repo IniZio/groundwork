@@ -7,13 +7,14 @@ import fs from 'node:fs'
 const REPO_ROOT = '/home/newman/.local/share/groundwork'
 const CLI_PATH = path.join(REPO_ROOT, 'src/gw/cli/main.ts')
 
-function runCli(args: string[], opts?: { cwd?: string }): {
+function runCli(args: string[], opts?: { cwd?: string; env?: Record<string, string> }): {
   stdout: string
   stderr: string
   status: number | null
 } {
   const result = spawnSync('bun', [CLI_PATH, ...args], {
     cwd: opts?.cwd ?? REPO_ROOT,
+    env: { ...process.env, ...(opts?.env ?? {}) },
     encoding: 'utf8',
   })
   return {
@@ -23,7 +24,7 @@ function runCli(args: string[], opts?: { cwd?: string }): {
   }
 }
 
-function runJson(args: string[], opts?: { cwd?: string }) {
+function runJson(args: string[], opts?: { cwd?: string; env?: Record<string, string> }) {
   const r = runCli([...args, '--json'], opts)
   return { ...r, envelope: JSON.parse(r.stdout) }
 }
@@ -249,12 +250,19 @@ describe('Group 9 — ledger and journal: missing required flags → USAGE_ERROR
     })
   }
 
-  // journal show without --motive is valid (returns empty event list)
+  // journal show without --motive is valid (--motive is optional, not required)
+  // Uses an isolated empty dir so the legacy-store divergence guard does not fire.
   it('gw journal show (no --motive) → exit 0, ok=true', () => {
-    const { envelope, status } = runJson(['journal', 'show'])
-    expect(status).toBe(0)
-    expect(envelope.ok).toBe(true)
-    expect(envelope.exit).toBe(0)
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-journal-env-'))
+    try {
+      fs.mkdirSync(path.join(tmpDir, '.groundwork'), { recursive: true })
+      const { envelope, status } = runJson(['journal', 'show'], { env: { CLAUDE_PROJECT_DIR: tmpDir } })
+      expect(status).toBe(0)
+      expect(envelope.ok).toBe(true)
+      expect(envelope.exit).toBe(0)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
   })
 
   // Missing subcommand → usage error (exit 2)

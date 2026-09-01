@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-model-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook agent-model-guard",
             "async": false
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nesting-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook nesting-guard",
             "async": false
           }
         ]
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-guard",
             "async": false
           }
         ]
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-bash-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-bash-guard",
             "async": false
           }
         ]
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/piped-exit-code-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook piped-exit-code-guard",
             "async": false
           }
         ]
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/orchestrator-impl-guard.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook orchestrator-impl-guard",
             "async": false
           }
         ]
@@ -142,7 +142,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/struggle-detector.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook struggle-detector",
             "async": false
           }
         ]
@@ -164,7 +164,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-gate.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook stop-gate",
             "async": false
           }
         ]

@@ -9,7 +9,6 @@ import type { JournalEvent } from '../../schema/journal.js'
 import { JournalEventType } from '../../schema/journal.js'
 import { type GwEnvelope, errEnvelope, okEnvelope } from '../envelope.js'
 import { writeDecision } from '../../store/motive/decision.js'
-import { findGitRoot } from '../git-root.js'
 
 export const JOURNAL_SUBCOMMANDS = ['append', 'show', 'compile'] as const
 
@@ -135,11 +134,19 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
 
   const rest = args.slice(1)
   const { flags, positionals } = parseFlags(rest)
-  const repoRoot = findGitRoot(cwd) ?? (process.env['CLAUDE_PROJECT_DIR'] ?? cwd)
+  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] ?? cwd
   const tracker = '.groundwork/next'
-  const sessionId = process.env['CLAUDE_CODE_SESSION_ID'] ?? 'default'
 
   if (subcmd === 'append') {
+    const sessionId = process.env['CLAUDE_CODE_SESSION_ID']
+    if (!sessionId) {
+      return errEnvelope(
+        'journal append',
+        'NO_SESSION',
+        'CLAUDE_CODE_SESSION_ID is not set — cannot resolve session; run inside a Claude Code session or pass --session <id>',
+        1,
+      )
+    }
     const motive = flags['motive']
     const type = flags['type']
     const msg = flags['msg']

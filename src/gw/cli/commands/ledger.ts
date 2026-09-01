@@ -1,22 +1,23 @@
 /**
- * ledger.ts — `gw ledger <subcommand>` — store-backed implementations.
+ * ledger.ts — `gw ledger <subcommand>` — legacy JSON run store.
+ *
+ * Retargeted (T16) from the obsidian-native .groundwork/next/ store to the
+ * legacy .groundwork/runs/<session_id>.json store — the same file and format
+ * that hooks/ledger.mjs and bin/ledger read and write.  The two CLIs now
+ * operate on the same run for the same session id.
+ *
+ * Path resolution mirrors resolveLedgerPath() in hooks/lib/ledger-io.mjs.
+ * Auth mirrors enforceWriteTokenAuth() in hooks/ledger.mjs (direct
+ * write_token comparison, not HMAC key-file).
  */
-import { existsSync, unlinkSync } from 'node:fs'
-import { createHmac } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import path from 'node:path'
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
-import {
-  writeSlice,
-  readSlice,
-  listSlices,
-  frontier as storeFrontier,
-} from '../../store/slice/index.js'
-import { writeGate, readGate } from '../../store/gate/index.js'
-import { readKey } from '../../store/seal/index.js'
-import { motiveDir, sliceNotePath } from '../../schema/index.js'
-import { findGitRoot } from '../git-root.js'
-import type { Slice, Gate } from '../../schema/index.js'
 
-const TRACKER = '.groundwork/next'
+// ---------------------------------------------------------------------------
+// Subcommand registry
+// ---------------------------------------------------------------------------
 
 export const LEDGER_SUBCOMMANDS = [
   'status',
@@ -41,6 +42,108 @@ type LedgerSubcmd = (typeof LEDGER_SUBCOMMANDS)[number]
 
 function isLedgerSubcmd(s: string): s is LedgerSubcmd {
   return (LEDGER_SUBCOMMANDS as readonly string[]).includes(s)
+}
+
+// ---------------------------------------------------------------------------
+// JSON ledger types
+// ---------------------------------------------------------------------------
+
+interface SliceJson {
+  id: string
+  wave?: number | null
+  status: string
+  kind?: string
+  desc?: string
+  blocked_by?: string[]
+  acceptance?: string[]
+  covers_ac?: string[]
+  decisions?: string[]
+  ticket?: string
+  created_by?: string
+  claimed_by?: string
+  claimed_at?: string
+  completed_at?: string
+  session_id?: string
+  question?: string
+}
+
+interface GateJson {
+  advisor?: string | { verdict: string; rubric?: string; citation?: string }
+  awaiting_human?: { reason: string; set_at: string } | null
+  autopilot?: Array<{ units: number; reason: string; ts: string }>
+  verifier?: string
+  [key: string]: unknown
+}
+
+interface LedgerJson {
+  active?: boolean
+  session_id?: string
+  motive?: string
+  write_token?: string
+  schema_version?: number
+  slices?: SliceJson[]
+  gate?: GateJson
+  pacing?: Record<string, unknown>
+  scoped_tokens?: Array<{ token: string; scope: string }>
+  [key: string]: unknown
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/
+
+// ---------------------------------------------------------------------------
+// Path resolution — mirrors resolveLedgerPath in hooks/lib/ledger-io.mjs
+// ---------------------------------------------------------------------------
+
+function resolveRunPath(projectDir: string, sessionId: string): string {
+  const legacyPath = path.join(projectDir, '.groundwork', 'run.json')
+
+  if (!SAFE_ID.test(sessionId)) return legacyPath
+
+  const perSessionPath = path.join(projectDir, '.groundwork', 'runs', `${sessionId}.json`)
+
+  if (existsSync(perSessionPath)) return perSessionPath
+
+  if (existsSync(legacyPath)) {
+    let legacy: LedgerJson | null = null
+    try {
+      legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) as LedgerJson
+    } catch {
+      /* ignore */
+    }
+    const legacyOwner = legacy?.session_id
+    if (!legacyOwner || legacyOwner === sessionId) return legacyPath
+  }
+
+  return perSessionPath
+}
+
+// ---------------------------------------------------------------------------
+// Read / atomic write
+// ---------------------------------------------------------------------------
+
+function readLedger(runPath: string): LedgerJson | null {
+  try {
+    return JSON.parse(readFileSync(runPath, 'utf8')) as LedgerJson
+  } catch {
+    return null
+  }
+}
+
+function atomicWrite(runPath: string, data: LedgerJson): void {
+  const dir = path.dirname(runPath)
+  mkdirSync(dir, { recursive: true })
+  const tmp = `${runPath}.tmp.${randomBytes(4).toString('hex')}`
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', 'utf8')
+  renameSync(tmp, runPath)
+}
+
+/** Strip the legacy gate seal when rebuilding a gate object (seal is stale after mutation). */
+function gateWithoutSeal(gate: GateJson): GateJson {
+  return Object.fromEntries(Object.entries(gate).filter(([k]) => k !== 'seal')) as GateJson
 }
 
 // ---------------------------------------------------------------------------
@@ -77,8 +180,9 @@ function parseFlags(args: string[]): {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function currentSession(): string {
-  return process.env['CLAUDE_CODE_SESSION_ID'] ?? 'default'
+function currentSession(): string | null {
+  const id = process.env['CLAUDE_CODE_SESSION_ID']
+  return id && id.length > 0 ? id : null
 }
 
 function symForStatus(status: string): string {
@@ -101,60 +205,69 @@ function kindIcon(kind?: string): string {
   }
 }
 
-function extractGateVerdict(gate: (Gate & { sealed?: true | false | null }) | null): string {
+function extractGateVerdict(gate: GateJson | undefined): string {
   if (!gate || !gate.advisor) return 'pending'
   if (typeof gate.advisor === 'string') return gate.advisor
   if (typeof gate.advisor === 'object' && 'verdict' in gate.advisor) {
-    return (gate.advisor as { verdict: string }).verdict
+    return gate.advisor.verdict
   }
   return 'pending'
 }
 
-function assertWriteToken(mDir: string, passedToken: string | true | undefined): void {
+// ---------------------------------------------------------------------------
+// Auth — mirrors enforceWriteTokenAuth in hooks/ledger.mjs
+// ---------------------------------------------------------------------------
+
+function assertWriteToken(ledger: LedgerJson | null, passedToken: string | true | undefined): void {
   if (!passedToken || passedToken === true) {
-    throw Object.assign(new Error('write operations require --token <write_token>'), { exitCode: 1 })
+    throw Object.assign(
+      new Error(
+        'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init',
+      ),
+      { exitCode: 1 },
+    )
   }
-  let key: Buffer
-  try {
-    key = readKey(mDir)
-  } catch {
-    throw Object.assign(new Error('no seal key found — motive not initialized'), { exitCode: 1 })
+  const stored = ledger?.write_token
+  if (!stored) {
+    throw Object.assign(
+      new Error(
+        'gate/complete/abandon require write_token authority — this ledger has none.\n' +
+        '  Re-initialize via `ledger init <file>` (embeds a token).',
+      ),
+      { exitCode: 1 },
+    )
   }
-  if (key.toString('hex') !== passedToken) {
-    throw Object.assign(new Error('invalid token — write operations are orchestrator-only'), {
-      exitCode: 1,
-    })
+  if (stored !== (passedToken as string)) {
+    throw Object.assign(
+      new Error(
+        'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init\n' +
+        '  (run `ledger status` to check run state; the token itself is never displayed)',
+      ),
+      { exitCode: 1 },
+    )
   }
 }
 
+/** Returns true if passedToken is a valid scoped token that owns all sliceIds. */
 function checkScopedToken(
-  mDir: string,
+  ledger: LedgerJson | null,
   passedToken: string | true | undefined,
   sliceIds: string[],
-  allSlices: Slice[],
+  allSlices: SliceJson[],
 ): boolean {
   if (!passedToken || passedToken === true) return false
   const t = passedToken as string
-  const colonIdx = t.indexOf(':')
-  if (colonIdx < 0) return false
-  const scope = t.slice(0, colonIdx)
-  const givenHmac = t.slice(colonIdx + 1)
-  let key: Buffer
-  try {
-    key = readKey(mDir)
-  } catch {
-    return false
-  }
-  const expectedHmac = createHmac('sha256', key).update(scope).digest('hex')
-  if (expectedHmac !== givenHmac) return false
+  // Master token is not a scoped token
+  if (ledger?.write_token && ledger.write_token === t) return false
+  const scopedTokens = Array.isArray(ledger?.scoped_tokens) ? (ledger!.scoped_tokens ?? []) : []
+  const match = scopedTokens.find(st => st?.token === t)
+  if (!match) return false
+  const scope = match.scope
   const sliceMap = new Map(allSlices.map(s => [s.id, s]))
   return sliceIds.every(id => sliceMap.get(id)?.created_by === scope)
 }
 
-function authErr(
-  cmd: string,
-  e: unknown,
-): GwEnvelope {
+function authErr(cmd: string, e: unknown): GwEnvelope {
   const err = e as { message?: string; exitCode?: number }
   return errEnvelope(cmd, 'AUTH_ERROR', err.message ?? 'auth error', (err.exitCode ?? 1) as 1 | 2)
 }
@@ -196,17 +309,37 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   }
   const motive = motiveFlag as string
 
-  const repoRoot = findGitRoot(cwd) ?? cwd
-  const mDir = motiveDir(repoRoot, TRACKER, motive)
-  const sessionId = (flags['session'] as string | undefined) ?? currentSession()
+  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] ?? cwd
+  const explicitSession = flags['session'] as string | undefined
+  const sessionId = explicitSession ?? currentSession()
+  if (!sessionId) {
+    return errEnvelope(
+      `ledger ${subcmd}`,
+      'NO_SESSION',
+      'CLAUDE_CODE_SESSION_ID is not set — cannot resolve the active run store; run inside a Claude Code session or pass --session <id>',
+      1,
+    )
+  }
+  const runPath = resolveRunPath(repoRoot, sessionId)
 
   try {
     switch (subcmd) {
       // -----------------------------------------------------------------------
       case 'status': {
-        const all = listSlices(repoRoot, TRACKER, motive)
-        const gate = readGate(repoRoot, TRACKER, motive, sessionId)
-        const verdict = extractGateVerdict(gate)
+        const ledger = readLedger(runPath)
+        if (!ledger) {
+          return errEnvelope('ledger status', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        }
+        if (ledger.motive && ledger.motive !== motive) {
+          return errEnvelope(
+            'ledger status',
+            'MOTIVE_MISMATCH',
+            `ledger motive is "${ledger.motive}", not "${motive}"`,
+            1,
+          )
+        }
+        const all = ledger.slices ?? []
+        const verdict = extractGateVerdict(ledger.gate)
         const done = all.filter(s => s.status === 'complete').length
         const rows = all
           .map(s => {
@@ -214,7 +347,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             const wave = s.wave != null ? `w${s.wave}` : 'w?'
             const claimed = s.claimed_by ? ` [claimed:${s.claimed_by}]` : ''
             const blockers =
-              (s.blocked_by ?? []).length > 0 ? ` [⟵${s.blocked_by!.join(',')}]` : ''
+              (s.blocked_by ?? []).length > 0 ? ` [⟵${(s.blocked_by ?? []).join(',')}]` : ''
             return `  ${s.id}${sym}${wave}${claimed}${blockers}`
           })
           .join('\n')
@@ -226,8 +359,20 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'add': {
         const id = positionals[0]
         if (!id) return errEnvelope('ledger add', 'USAGE_ERROR', 'add requires <id>', 2)
-        const existing = listSlices(repoRoot, TRACKER, motive)
-        if (existing.some(s => s.id === id)) {
+        const ledger = readLedger(runPath)
+        if (!ledger) {
+          return errEnvelope('ledger add', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        }
+        if (ledger.motive && ledger.motive !== motive) {
+          return errEnvelope(
+            'ledger add',
+            'MOTIVE_MISMATCH',
+            `ledger motive is "${ledger.motive}", not "${motive}"`,
+            1,
+          )
+        }
+        const slices = ledger.slices ?? []
+        if (slices.some(s => s.id === id)) {
           return errEnvelope('ledger add', 'ALREADY_EXISTS', `slice ${id} already exists`, 1)
         }
         const wave = flags['wave'] ? parseInt(flags['wave'] as string, 10) : 0
@@ -244,20 +389,24 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const decisions = flags['decisions']
           ? (flags['decisions'] as string).split(',').map(s => s.trim())
           : undefined
-        const slice: Slice = {
+        const slice: SliceJson = {
           id,
           wave,
-          status: (flags['status'] as Slice['status']) ?? 'pending',
-          kind: kind as Slice['kind'],
-          desc: flags['desc'] as string | undefined,
-          blocked_by: blockedBy,
-          acceptance,
-          covers_ac: coversAc,
-          decisions,
-          ticket: flags['ticket'] as string | undefined,
-          created_by: flags['created-by'] as string | undefined,
+          status: (flags['status'] as string | undefined) ?? 'pending',
+          kind,
+          ...(flags['desc'] && flags['desc'] !== true ? { desc: flags['desc'] as string } : {}),
+          ...(blockedBy ? { blocked_by: blockedBy } : {}),
+          ...(acceptance ? { acceptance } : {}),
+          ...(coversAc ? { covers_ac: coversAc } : {}),
+          ...(decisions ? { decisions } : {}),
+          ...(flags['ticket'] && flags['ticket'] !== true
+            ? { ticket: flags['ticket'] as string }
+            : {}),
+          ...(flags['created-by'] && flags['created-by'] !== true
+            ? { created_by: flags['created-by'] as string }
+            : {}),
         }
-        writeSlice({ repoRoot, tracker: TRACKER, motive, slice })
+        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
         return okEnvelope('ledger add', { content: `${id} added\n` })
       }
 
@@ -265,21 +414,23 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'set': {
         const id = positionals[0]
         if (!id) return errEnvelope('ledger set', 'USAGE_ERROR', 'set requires <id>', 2)
-        const all = listSlices(repoRoot, TRACKER, motive)
-        const existing = all.find(s => s.id === id)
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger set', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        const slices = ledger.slices ?? []
+        const existing = slices.find(s => s.id === id)
         if (!existing) return errEnvelope('ledger set', 'NOT_FOUND', `slice ${id} not found`, 1)
         const newStatus = flags['status'] as string | undefined
         const terminal = newStatus === 'complete' || newStatus === 'skipped'
         if (terminal) {
           try {
-            assertWriteToken(mDir, flags['token'])
+            assertWriteToken(ledger, flags['token'])
           } catch (e) {
             return authErr('ledger set', e)
           }
         }
-        const updated: Slice = {
+        const updated: SliceJson = {
           ...existing,
-          ...(newStatus ? { status: newStatus as Slice['status'] } : {}),
+          ...(newStatus ? { status: newStatus } : {}),
           ...(flags['wave'] != null && flags['wave'] !== true
             ? { wave: parseInt(flags['wave'] as string, 10) }
             : {}),
@@ -303,7 +454,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             ? { claimed_by: flags['claimed-by'] as string }
             : {}),
         }
-        writeSlice({ repoRoot, tracker: TRACKER, motive, slice: updated })
+        const newSlices = slices.map(s => (s.id === id ? updated : s))
+        atomicWrite(runPath, { ...ledger, slices: newSlices })
         const changed = Object.entries(flags)
           .filter(([k]) =>
             [
@@ -322,29 +474,35 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ids.length) {
           return errEnvelope('ledger complete', 'USAGE_ERROR', 'complete requires <id> [<id>...]', 2)
         }
-        const all = listSlices(repoRoot, TRACKER, motive)
-        // Auth: master token or scoped token
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger complete', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        const slices = ledger.slices ?? []
         const masterOk = (() => {
           try {
-            assertWriteToken(mDir, flags['token'])
+            assertWriteToken(ledger, flags['token'])
             return true
           } catch {
             return false
           }
         })()
-        const scopedOk = checkScopedToken(mDir, flags['token'], ids, all)
+        const scopedOk = checkScopedToken(ledger, flags['token'], ids, slices)
         if (!masterOk && !scopedOk) {
-          return errEnvelope('ledger complete', 'AUTH_ERROR', 'write operations require --token <write_token>', 1)
+          return errEnvelope(
+            'ledger complete',
+            'AUTH_ERROR',
+            'write operations require --token <write_token>',
+            1,
+          )
         }
         const terminalSet = new Set(
-          all.filter(s => s.status === 'complete' || s.status === 'skipped').map(s => s.id),
+          slices.filter(s => s.status === 'complete' || s.status === 'skipped').map(s => s.id),
         )
         for (const id of ids) {
-          const sl = all.find(s => s.id === id)
+          const sl = slices.find(s => s.id === id)
           if (!sl) return errEnvelope('ledger complete', 'NOT_FOUND', `slice ${id} not found`, 2)
           const unmet = (sl.blocked_by ?? []).filter(b => !terminalSet.has(b))
           if (unmet.length > 0) {
-            const blockerStatus = all.find(s => s.id === unmet[0])?.status ?? 'unknown'
+            const blockerStatus = slices.find(s => s.id === unmet[0])?.status ?? 'unknown'
             return errEnvelope(
               'ledger complete',
               'BLOCKED',
@@ -354,37 +512,39 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           }
         }
         const now = new Date().toISOString()
+        let updatedSlices = [...slices]
         for (const id of ids) {
-          const sl = all.find(s => s.id === id)!
-          const updated: Slice = {
-            ...sl,
-            status: 'complete',
-            completed_at: now,
-            session: sessionId,
-          }
-          writeSlice({ repoRoot, tracker: TRACKER, motive, slice: updated })
+          updatedSlices = updatedSlices.map(s =>
+            s.id === id
+              ? { ...s, status: 'complete', completed_at: now, session_id: sessionId }
+              : s,
+          )
           terminalSet.add(id)
         }
-        const finalAll = listSlices(repoRoot, TRACKER, motive)
-        const done = finalAll.filter(s => s.status === 'complete').length
-        return okEnvelope('ledger complete', { content: `${done}/${finalAll.length} slices complete\n` })
+        atomicWrite(runPath, { ...ledger, slices: updatedSlices })
+        const done = updatedSlices.filter(s => s.status === 'complete').length
+        return okEnvelope('ledger complete', {
+          content: `${done}/${updatedSlices.length} slices complete\n`,
+        })
       }
 
       // -----------------------------------------------------------------------
       case 'rm': {
         const ids = positionals
-        if (!ids.length) return errEnvelope('ledger rm', 'USAGE_ERROR', 'rm requires <id> [<id>...]', 2)
+        if (!ids.length)
+          return errEnvelope('ledger rm', 'USAGE_ERROR', 'rm requires <id> [<id>...]', 2)
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger rm', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        const slices = ledger.slices ?? []
         const removed: string[] = []
         for (const id of ids) {
-          const notePath = sliceNotePath(repoRoot, TRACKER, motive, id)
-          if (!existsSync(notePath)) {
-            return errEnvelope('ledger rm', 'NOT_FOUND', `slice note not found: ${id}`, 1)
+          if (!slices.some(s => s.id === id)) {
+            return errEnvelope('ledger rm', 'NOT_FOUND', `slice not found: ${id}`, 1)
           }
-          unlinkSync(notePath)
-          const sealPath = `${notePath}.seal`
-          if (existsSync(sealPath)) unlinkSync(sealPath)
           removed.push(id)
         }
+        const rmSet = new Set(removed)
+        atomicWrite(runPath, { ...ledger, slices: slices.filter(s => !rmSet.has(s.id)) })
         return okEnvelope('ledger rm', { content: `removed: ${removed.join(', ')}\n` })
       }
 
@@ -392,16 +552,11 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'show': {
         const id = positionals[0]
         if (!id) return errEnvelope('ledger show', 'USAGE_ERROR', 'show requires <id>', 2)
-        const all = listSlices(repoRoot, TRACKER, motive)
-        const sl = all.find(s => s.id === id)
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger show', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        const slices = ledger.slices ?? []
+        const sl = slices.find(s => s.id === id)
         if (!sl) return errEnvelope('ledger show', 'NOT_FOUND', `slice ${id} not found`, 1)
-        let sealed: true | false | null = null
-        try {
-          const s = readSlice(sliceNotePath(repoRoot, TRACKER, motive, id))
-          sealed = s.sealed
-        } catch {
-          /* file may have slug — sealed stays null */
-        }
         const lines = [
           `id:         ${sl.id}`,
           `kind:       ${sl.kind ?? 'impl'}`,
@@ -414,7 +569,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           `decisions:  ${(sl.decisions ?? []).join(', ') || '(none)'}`,
           `claimed_by: ${sl.claimed_by ?? '(none)'}`,
           `created_by: ${sl.created_by ?? '(none)'}`,
-          `sealed:     ${sealed}`,
+          `sealed:     null`,
         ]
         if ((sl.acceptance ?? []).length > 0) {
           lines.push('acceptance:')
@@ -427,11 +582,20 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
 
       // -----------------------------------------------------------------------
       case 'view': {
-        const all = listSlices(repoRoot, TRACKER, motive)
-        const gate = readGate(repoRoot, TRACKER, motive, sessionId)
-        const verdict = extractGateVerdict(gate)
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger view', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive) {
+          return errEnvelope(
+            'ledger view',
+            'MOTIVE_MISMATCH',
+            `ledger motive is "${ledger.motive}", not "${motive}"`,
+            1,
+          )
+        }
+        const all = ledger.slices ?? []
+        const verdict = extractGateVerdict(ledger.gate)
         const done = all.filter(s => s.status === 'complete').length
-        const waveMap = new Map<number, Slice[]>()
+        const waveMap = new Map<number, SliceJson[]>()
         for (const sl of all) {
           const w = sl.wave ?? 0
           if (!waveMap.has(w)) waveMap.set(w, [])
@@ -496,8 +660,10 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             2,
           )
         }
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger gate', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger gate', e)
         }
@@ -505,36 +671,30 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const rubric = flags['rubric'] as string | undefined
         const advisorField =
           citation || rubric
-            ? {
-                verdict,
-                ...(rubric ? { rubric } : {}),
-                ...(citation ? { citation } : {}),
-              }
+            ? { verdict, ...(rubric ? { rubric } : {}), ...(citation ? { citation } : {}) }
             : verdict
-        const gate: Gate = {
-          session: sessionId,
-          motive,
-          created_at: new Date().toISOString(),
-          advisor: advisorField as Gate['advisor'],
+        const newGate: GateJson = {
+          ...gateWithoutSeal(ledger.gate ?? {}),
+          advisor: advisorField,
         }
-        writeGate({ repoRoot, tracker: TRACKER, motive, gate })
+        atomicWrite(runPath, { ...ledger, gate: newGate })
         return okEnvelope('ledger gate', { content: `advisor: ${verdict}\n` })
       }
 
       // -----------------------------------------------------------------------
       case 'abandon': {
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger abandon', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger abandon', e)
         }
-        const gate: Gate = {
-          session: sessionId,
-          motive,
-          created_at: new Date().toISOString(),
+        const newGate: GateJson = {
+          ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: 'STOP',
         }
-        writeGate({ repoRoot, tracker: TRACKER, motive, gate })
+        atomicWrite(runPath, { ...ledger, active: false, gate: newGate })
         return okEnvelope('ledger abandon', { content: `motive "${motive}" abandoned\n` })
       }
 
@@ -542,11 +702,22 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'fog': {
         const id = positionals[0]
         if (!id) return errEnvelope('ledger fog', 'USAGE_ERROR', 'fog requires <id>', 2)
-        if (!flags['desc'] || flags['desc'] === true || !flags['question'] || flags['question'] === true) {
+        if (
+          !flags['desc'] ||
+          flags['desc'] === true ||
+          !flags['question'] ||
+          flags['question'] === true
+        ) {
           return errEnvelope('ledger fog', 'USAGE_ERROR', 'fog requires --desc and --question', 2)
         }
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger fog', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        const slices = ledger.slices ?? []
+        if (slices.some(s => s.id === id)) {
+          return errEnvelope('ledger fog', 'ALREADY_EXISTS', `slice ${id} already exists`, 1)
+        }
         const wave = flags['wave'] ? parseInt(flags['wave'] as string, 10) : 0
-        const slice: Slice = {
+        const slice: SliceJson = {
           id,
           wave,
           status: 'pending',
@@ -554,20 +725,36 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           desc: flags['desc'] as string,
           question: flags['question'] as string,
         }
-        writeSlice({ repoRoot, tracker: TRACKER, motive, slice })
+        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
         return okEnvelope('ledger fog', { content: `${id} added (fog)\n` })
       }
 
       // -----------------------------------------------------------------------
       case 'frontier': {
-        const slices = storeFrontier(repoRoot, TRACKER, motive, sessionId)
-        if (!slices.length) {
+        const ledger = readLedger(runPath)
+        if (!ledger) {
           return okEnvelope('ledger frontier', {
             content:
               'no frontier slices — all pending slices are blocked, in progress, or claimed by another session\n',
           })
         }
-        const rows = slices.map(sl => {
+        const slices = ledger.slices ?? []
+        const terminalSet = new Set(
+          slices.filter(s => s.status === 'complete' || s.status === 'skipped').map(s => s.id),
+        )
+        const frontier = slices.filter(
+          s =>
+            s.status === 'pending' &&
+            (s.blocked_by ?? []).every(id => terminalSet.has(id)) &&
+            (s.claimed_by === undefined || s.claimed_by === sessionId),
+        )
+        if (!frontier.length) {
+          return okEnvelope('ledger frontier', {
+            content:
+              'no frontier slices — all pending slices are blocked, in progress, or claimed by another session\n',
+          })
+        }
+        const rows = frontier.map(sl => {
           const wave = sl.wave != null ? `w${sl.wave}` : 'w?'
           const claimed = sl.claimed_by ? ` [claimed:${sl.claimed_by}]` : ''
           const desc = (sl.desc ?? '').slice(0, 60)
@@ -582,19 +769,22 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ids.length) {
           return errEnvelope('ledger claim', 'USAGE_ERROR', 'claim requires <id> [<id>...]', 2)
         }
-        const all = listSlices(repoRoot, TRACKER, motive)
+        const ledger = readLedger(runPath)
+        if (!ledger) return errEnvelope('ledger claim', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        let slices = ledger.slices ?? []
         const claimed: string[] = []
         const lines: string[] = []
         const now = new Date().toISOString()
         for (const id of ids) {
-          const sl = all.find(s => s.id === id)
+          const sl = slices.find(s => s.id === id)
           if (!sl) {
             lines.push(`${id} not found`)
             continue
           }
           if (!sl.claimed_by) {
-            const updated: Slice = { ...sl, claimed_by: sessionId, claimed_at: now }
-            writeSlice({ repoRoot, tracker: TRACKER, motive, slice: updated })
+            slices = slices.map(s =>
+              s.id === id ? { ...s, claimed_by: sessionId, claimed_at: now } : s,
+            )
             claimed.push(id)
           } else if (sl.claimed_by === sessionId) {
             // already claimed by same session — silent skip
@@ -602,45 +792,59 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             lines.push(`${id} already claimed by ${sl.claimed_by}`)
           }
         }
-        if (claimed.length) lines.unshift(`claimed: ${claimed.join(', ')}`)
+        if (claimed.length) {
+          atomicWrite(runPath, { ...ledger, slices })
+          lines.unshift(`claimed: ${claimed.join(', ')}`)
+        }
         return okEnvelope('ledger claim', { content: lines.join('\n') + '\n' })
       }
 
       // -----------------------------------------------------------------------
       case 'await-human': {
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger await-human', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger await-human', e)
         }
         const clearing = positionals[0] === 'clear'
-        const existing = readGate(repoRoot, TRACKER, motive, sessionId)
-        const { sealed: _sealed, ...existingData } = existing ?? {}
-        const gateBase: Gate = existing
-          ? (existingData as Gate)
-          : { session: sessionId, motive, created_at: new Date().toISOString() }
+        const base = gateWithoutSeal(ledger.gate ?? {})
         if (clearing) {
-          const updated = { ...gateBase, awaiting_human: null }
-          writeGate({ repoRoot, tracker: TRACKER, motive, gate: updated as Gate })
+          atomicWrite(runPath, { ...ledger, gate: { ...base, awaiting_human: null } })
           return okEnvelope('ledger await-human', { content: 'awaiting-human hold cleared\n' })
         } else {
-          const updated = {
-            ...gateBase,
-            awaiting_human: { reason: 'set via gw ledger await-human', set_at: new Date().toISOString() },
-          }
-          writeGate({ repoRoot, tracker: TRACKER, motive, gate: updated as Gate })
+          atomicWrite(runPath, {
+            ...ledger,
+            gate: {
+              ...base,
+              awaiting_human: {
+                reason: 'set via gw ledger await-human',
+                set_at: new Date().toISOString(),
+              },
+            },
+          })
           return okEnvelope('ledger await-human', { content: 'awaiting-human hold set\n' })
         }
       }
 
       // -----------------------------------------------------------------------
       case 'autopilot': {
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger autopilot', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger autopilot', e)
         }
-        if (!flags['range'] || flags['range'] === true || !flags['reason'] || flags['reason'] === true) {
+        if (
+          !flags['range'] ||
+          flags['range'] === true ||
+          !flags['reason'] ||
+          flags['reason'] === true
+        ) {
           return errEnvelope(
             'ledger autopilot',
             'USAGE_ERROR',
@@ -650,19 +854,22 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const range = parseInt(flags['range'] as string, 10)
         const reason = flags['reason'] as string
-        const existingAp = readGate(repoRoot, TRACKER, motive, sessionId)
-        const { sealed: _sealedAp, ...existingApData } = existingAp ?? {}
-        const gateBaseAp: Gate = existingAp
-          ? (existingApData as Gate)
-          : { session: sessionId, motive, created_at: new Date().toISOString() }
-        const existingGrants = Array.isArray((gateBaseAp as Record<string, unknown>)['autopilot'])
-          ? ((gateBaseAp as Record<string, unknown>)['autopilot'] as unknown[])
-          : []
-        const updatedAp = {
-          ...gateBaseAp,
-          autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }],
-        }
-        writeGate({ repoRoot, tracker: TRACKER, motive, gate: updatedAp as Gate })
+        const base = gateWithoutSeal(ledger.gate ?? {})
+        const rawGrants: unknown[] = Array.isArray(base['autopilot']) ? base['autopilot'] : []
+        const existingGrants = rawGrants.filter(
+          (g): g is { units: number; reason: string; ts: string } =>
+            typeof g === 'object' && g !== null &&
+            typeof (g as Record<string, unknown>)['units'] === 'number' &&
+            typeof (g as Record<string, unknown>)['reason'] === 'string' &&
+            typeof (g as Record<string, unknown>)['ts'] === 'string',
+        )
+        atomicWrite(runPath, {
+          ...ledger,
+          gate: {
+            ...base,
+            autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }],
+          },
+        })
         return okEnvelope('ledger autopilot', {
           content: `autopilot extended by ${range} waves (reason: ${reason})\n`,
         })
@@ -674,16 +881,23 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!scope) {
           return errEnvelope('ledger scope-token', 'USAGE_ERROR', 'scope-token requires <scope>', 2)
         }
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger scope-token', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger scope-token', e)
         }
-        const key = readKey(mDir)
-        const hmac = createHmac('sha256', key).update(scope).digest('hex')
-        const token = `${scope}:${hmac}`
+        // Generate a random scoped token, persist in ledger.scoped_tokens
+        const token = randomBytes(16).toString('hex')
+        const existing = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
+        const updated = [...existing.filter(st => st.scope !== scope), { token, scope }]
+        atomicWrite(runPath, { ...ledger, scoped_tokens: updated })
         return okEnvelope('ledger scope-token', {
-          content: `scope_token: ${token}\n  (pass as --token to complete for slices created_by ${scope})\n`,
+          content:
+            `scope_token: ${token}\n` +
+            `  (pass as --token to complete for slices created_by ${scope})\n`,
         })
       }
 
@@ -707,18 +921,19 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             2,
           )
         }
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger milestone-signoff', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(mDir, flags['token'])
+          assertWriteToken(ledger, flags['token'])
         } catch (e) {
           return authErr('ledger milestone-signoff', e)
         }
-        const gate: Gate = {
-          session: sessionId,
-          motive,
-          created_at: new Date().toISOString(),
+        const newGate: GateJson = {
+          ...gateWithoutSeal(ledger.gate ?? {}),
           verifier: verdict,
         }
-        writeGate({ repoRoot, tracker: TRACKER, motive, gate })
+        atomicWrite(runPath, { ...ledger, gate: newGate })
         return okEnvelope('ledger milestone-signoff', {
           content: `milestone signed off: ${verdict} by ${verifiedBy}\n`,
         })

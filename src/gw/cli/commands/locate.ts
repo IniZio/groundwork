@@ -1,5 +1,4 @@
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
-import { findGitRoot } from '../git-root.js'
 import {
   DEFAULT_TRACKER_PATH,
   motiveDir,
@@ -27,7 +26,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
     )
   }
   const id = args[0]
-  const repoRoot = findGitRoot(cwd) ?? cwd
+  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] ?? cwd
   const tracker = DEFAULT_TRACKER_PATH
 
   const colonIdx = id.indexOf(':')

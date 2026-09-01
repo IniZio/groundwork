@@ -228,11 +228,31 @@ describe("S0: spec-io schema and index API", () => {
     expect(idsLive).toEqual(idsNoManifest);
 
     // Sanity floor: corpus is non-trivial — guards against buildIndexData silently
-    // returning an empty set. Current corpus: 115 nodes (11 concepts + 104 requirements,
-    // as of 2026-09-01). Floor set to 100 (87% of 115) — catches catastrophic node-loss
-    // while tolerating organic additions without requiring floor maintenance on every
-    // new requirement. Raise this when the corpus grows past ~115 (i.e. floor + 15).
-    expect(idsLive.length).toBeGreaterThan(100);
+    // returning an empty set. NOT tautological: countSpecNodes counts files on disk
+    // (README.md per concept + requirement .md files); buildIndexData is a separate
+    // code path that parses YAML frontmatter. A parsing bug could drop nodes without
+    // removing files — disk count stays at N while idsLive shrinks, triggering this.
+    function countSpecNodes(dir: string): number {
+      let count = 0;
+      function walk(d: string): void {
+        for (const entry of readdirSync(d, { withFileTypes: true })) {
+          if (entry.isDirectory()) {
+            walk(path.join(d, entry.name));
+          } else if (
+            entry.name === "README.md" ||
+            /^[a-z]+-r-\d{3}.*\.md$/.test(entry.name)
+          ) {
+            count++;
+          }
+        }
+      }
+      walk(dir);
+      return count;
+    }
+    const diskNodeCount = countSpecNodes(LIVE_SPEC_DIR);
+    // Floor at diskNodeCount - 5: buffer for in-flight additions while catching
+    // catastrophic loss. Update comment when corpus grows significantly.
+    expect(idsLive.length).toBeGreaterThan(diskNodeCount - 5);
 
     // Anchor: stable concept IDs that must always be present. A concept removal or
     // rename shows up here with a clear failure message. Add/remove anchors

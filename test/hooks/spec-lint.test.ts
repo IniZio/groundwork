@@ -20,10 +20,12 @@
  *   unknown-field       — frontmatter must not contain unknown keys
  *   spec_delta path     — a delta targeting a nonexistent path must FAIL
  *   exit-code bug fix   — violations without --rfc → exit 1 (was: exit 0)
+ *   automated-unverified cache parity — stale cache cannot suppress exit 1
  */
 
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -1046,6 +1048,38 @@ describe("automated-unverified: automated requirement must have a @verifies test
     expect(r.stdout + r.stderr).not.toContain("automated-unverified");
     expect(r.code).toBe(0);
   });
+
+  it("flags a D-15 requirement file (in requirements/ subdir) with verification=automated and no @verifies test", () => {
+    // Positive-control test: proves the fixed filter includes D-15 req files.
+    // Before the fix, the dead conjunct excluded any node whose relPath contained
+    // '/requirements/', so this would have wrongly passed clean.
+    mkSpec();
+    writeConcept("root", minConcept("C-ROOT"));
+    // Write a D-15-style individual requirement file in a requirements/ subdir.
+    const reqDir = path.join(SPEC_DIR(), "root", "requirements");
+    mkdirSync(reqDir, { recursive: true });
+    writeFileSync(
+      path.join(reqDir, "root-r-ab1c.md"),
+      [
+        "---",
+        "id: ROOT-R-ab1c",
+        "type: requirement",
+        "concept: C-ROOT",
+        "verification: automated",
+        "status: active",
+        "---",
+        "",
+        "<!-- D-15 requirement file — no @verifies backing -->",
+        "",
+      ].join("\n"),
+    );
+    // No test/ directory → verifiedIds returns empty set
+    const r = buildAndLint();
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain("automated-unverified");
+    expect(combined).toContain("ROOT-R-ab1c");
+    expect(r.code).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1154,5 +1188,73 @@ describe("anchor-mismatch: anchor must equal id lowercased", () => {
     const r = buildAndLint();
     expect(r.stdout + r.stderr).not.toContain("anchor-mismatch");
     expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cache-vs-disk parity: loadSpecIndex must be disk-authoritative
+//
+// Regression for the fail-open bug where a stale _generated/index.json caused
+// spec-lint to exit 0 even though disk truth would produce a violation.
+// Paired experiment: same fixture tree, same mutation, same violation — the
+// only variable is whether the cache directory is present or absent.
+// Both runs MUST produce the same exit code (1) and name automated-unverified.
+// ---------------------------------------------------------------------------
+
+describe("loadSpecIndex cache-vs-disk parity", () => {
+  it("automated-unverified: exits 1 whether a stale cache is present or absent", () => {
+    // Build a clean fixture tree with verification: unverified
+    mkSpec();
+    writeConcept("", minConcept("C-ROOT"));
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { verification: "unverified" }),
+    ]);
+
+    // Build the cache — index now reflects unverified state
+    const br = build();
+    expect(br.code, `build stderr: ${br.stderr}`).toBe(0);
+    const cacheDir = path.join(
+      projectDir,
+      "doc",
+      "specs",
+      "_generated",
+    );
+    expect(existsSync(cacheDir)).toBe(true); // cache was created
+
+    // Mutate on disk: unverified → automated (no @verifies annotation exists).
+    // Cache is now stale: it still records verification=unverified for ROOT-R-001.
+    writeRequirementsDoc("", [
+      minSection("ROOT-R-001", { verification: "automated" }),
+    ]);
+
+    // Run lint WITH the stale cache present.
+    // Before the fix, loadSpecIndex read the cache → unverified node → no
+    // automated-unverified violation → exit 0 (fail-open).
+    // After the fix, loadSpecIndex always rebuilds from disk → automated node
+    // → no @verifies → automated-unverified violation → exit 1.
+    const withCache = lint();
+
+    // Delete the cache and run again.
+    rmSync(cacheDir, { recursive: true, force: true });
+    expect(existsSync(cacheDir)).toBe(false);
+    const withoutCache = lint();
+
+    // Both runs must exit 1 with an automated-unverified violation.
+    // A divergence (withCache.code===0, withoutCache.code===1) proves the
+    // cache-preferred branch is still active.
+    expect(
+      withCache.code,
+      `with-cache stdout: ${withCache.stdout}`,
+    ).toBe(1);
+    expect(
+      withoutCache.code,
+      `without-cache stdout: ${withoutCache.stdout}`,
+    ).toBe(1);
+    expect(withCache.stdout + withCache.stderr).toContain(
+      "automated-unverified",
+    );
+    expect(withoutCache.stdout + withoutCache.stderr).toContain(
+      "automated-unverified",
+    );
   });
 });

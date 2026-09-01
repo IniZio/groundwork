@@ -70,15 +70,11 @@ import { verifiedIds } from './lib/verifies-scan.mjs'
 // ---------------------------------------------------------------------------
 
 function loadSpecIndex(projectDir) {
-  const indexPath = join(projectDir, 'doc', 'specs', '_generated', 'index.json')
-  if (existsSync(indexPath)) {
-    try {
-      return JSON.parse(readFileSync(indexPath, 'utf8'))
-    } catch {
-      return null
-    }
-  }
-  // D-15 migration: _generated/ is deleted; build index in-memory from requirements/*.md
+  // Always build from disk — never read the generated cache.
+  // The cache (_generated/index.json) is gitignored and drifts silently; a
+  // machine holding a stale cache would pass automated-unverified (and every
+  // other node-level rule) against nodes that no longer reflect disk truth.
+  // Disk is authoritative; the cache is only a build artefact for other tools.
   const specDir = join(projectDir, 'doc', 'specs')
   if (!existsSync(specDir)) return null
   try {
@@ -523,6 +519,17 @@ function checkNodeInvariants(node, rawFm, index) {
       }
     }
   } else {
+    // Schema validation for requirement nodes (handles required-field, enum-values, unknown-field)
+    try {
+      const validate = loadSchema('spec-requirement')
+      if (!validate(rawFm)) {
+        for (const line of schemaErrorsToViolations(validate.errors, id, rawFm)) {
+          violations.push(line)
+        }
+      }
+    } catch {
+      // Schema not found — hand-written checks below cover the essentials
+    }
     // Old-format requirement nodes (not from requirements.md):
     // Check for stale fields that moved to body in RFC-0003
     if (Object.prototype.hasOwnProperty.call(rawFm, 'ears')) {
@@ -778,11 +785,9 @@ for (const [relPath, nodes] of byFile) {
 // automated-unverified: every automated requirement must have ≥1 @verifies test
 // ---------------------------------------------------------------------------
 
-// D-15 individual requirement files (in requirements/ subdirs) use verification_method for
-// traceability and are not expected to carry @verifies comments in the test suite.
-const automatedNodes = targetNodes.filter(n =>
-  n.verification === 'automated' && !(n.relPath && n.relPath.includes('/requirements/')),
-)
+// D-15 individual requirement files (in requirements/ subdirs) that carry
+// verification: automated MUST have @verifies backing — this rule enforces it.
+const automatedNodes = targetNodes.filter(n => n.verification === 'automated')
 if (automatedNodes.length > 0) {
   const verified = verifiedIds(projectDir)
   for (const node of automatedNodes) {

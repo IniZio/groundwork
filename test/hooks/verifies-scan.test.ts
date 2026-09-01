@@ -63,23 +63,23 @@ describe('scanVerifies — comment-form annotation', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['FOO-R-001']).toBeDefined()
-    expect(mapping['FOO-R-001']).toContain('test/foo.test.ts')
+    expect(mapping['foo-r-001']).toBeDefined()
+    expect(mapping['foo-r-001']).toContain('test/foo.test.ts')
   })
 
   it('returns path relative to rootDir, not absolute', () => {
     writeTestFile('test/bar.test.ts', '// @verifies BAR-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['BAR-R-001'][0]).not.toContain(rootDir)
-    expect(mapping['BAR-R-001'][0]).toBe('test/bar.test.ts')
+    expect(mapping['bar-r-001'][0]).not.toContain(rootDir)
+    expect(mapping['bar-r-001'][0]).toBe('test/bar.test.ts')
   })
 
   it('handles a multi-segment subdirectory path', () => {
     writeTestFile('test/hooks/deep.test.ts', '// @verifies DEEP-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['DEEP-R-001']).toContain(path.join('test', 'hooks', 'deep.test.ts'))
+    expect(mapping['deep-r-001']).toContain(path.join('test', 'hooks', 'deep.test.ts'))
   })
 })
 
@@ -96,8 +96,8 @@ describe('scanVerifies — title-string annotation', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['TITLE-R-001']).toBeDefined()
-    expect(mapping['TITLE-R-001']).toContain('test/title.test.ts')
+    expect(mapping['title-r-001']).toBeDefined()
+    expect(mapping['title-r-001']).toContain('test/title.test.ts')
   })
 
   it('extracts id from @verifies in an it() title string', () => {
@@ -106,7 +106,7 @@ describe('scanVerifies — title-string annotation', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['IT-R-002']).toBeDefined()
+    expect(mapping['it-r-002']).toBeDefined()
   })
 })
 
@@ -121,8 +121,8 @@ describe('scanVerifies — multi-id annotations', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['MULTI-R-001']).toContain('test/multi.test.ts')
-    expect(mapping['MULTI-R-002']).toContain('test/multi.test.ts')
+    expect(mapping['multi-r-001']).toContain('test/multi.test.ts')
+    expect(mapping['multi-r-002']).toContain('test/multi.test.ts')
   })
 
   it('extracts multiple space-separated ids from one line', () => {
@@ -131,9 +131,9 @@ describe('scanVerifies — multi-id annotations', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['SPACE-R-001']).toBeDefined()
-    expect(mapping['SPACE-R-002']).toBeDefined()
-    expect(mapping['SPACE-R-003']).toBeDefined()
+    expect(mapping['space-r-001']).toBeDefined()
+    expect(mapping['space-r-002']).toBeDefined()
+    expect(mapping['space-r-003']).toBeDefined()
   })
 
   it('handles mixed comma-and-space separation', () => {
@@ -142,7 +142,7 @@ describe('scanVerifies — multi-id annotations', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(Object.keys(mapping).filter(k => k.startsWith('MIXED-'))).toHaveLength(3)
+    expect(Object.keys(mapping).filter(k => k.startsWith('mixed-'))).toHaveLength(3)
   })
 })
 
@@ -151,13 +151,13 @@ describe('scanVerifies — multi-id annotations', () => {
 // ---------------------------------------------------------------------------
 
 describe('scanVerifies — malformed ids are not extracted', () => {
-  it('does not extract lowercase requirement ids', () => {
+  it('detects lowercase requirement ids (case-insensitive extraction)', () => {
     writeTestFile('test/lowercase.test.ts', [
       '// @verifies foo-r-001',
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['foo-r-001']).toBeUndefined()
+    expect(mapping['foo-r-001']).toBeDefined()
   })
 
   it('does not extract bare words that lack the -R- segment', () => {
@@ -185,8 +185,8 @@ describe('scanVerifies — malformed ids are not extracted', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['BEFORE-R-001']).toBeUndefined()
-    expect(mapping['AFTER-R-001']).toBeDefined()
+    expect(mapping['before-r-001']).toBeUndefined()
+    expect(mapping['after-r-001']).toBeDefined()
   })
 })
 
@@ -221,9 +221,9 @@ describe('scanVerifies — multiple files per requirement', () => {
     writeTestFile('test/beta.test.ts', '// @verifies SHARED-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['SHARED-R-001']).toHaveLength(2)
-    expect(mapping['SHARED-R-001']).toContain('test/alpha.test.ts')
-    expect(mapping['SHARED-R-001']).toContain('test/beta.test.ts')
+    expect(mapping['shared-r-001']).toHaveLength(2)
+    expect(mapping['shared-r-001']).toContain('test/alpha.test.ts')
+    expect(mapping['shared-r-001']).toContain('test/beta.test.ts')
   })
 
   it('does not duplicate a file that has @verifies on multiple lines for the same id', () => {
@@ -233,7 +233,7 @@ describe('scanVerifies — multiple files per requirement', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['DUP-R-001']).toHaveLength(1)
+    expect(mapping['dup-r-001']).toHaveLength(1)
   })
 })
 
@@ -246,8 +246,8 @@ describe('scanVerifies — tests/ directory', () => {
     writeTestFile('tests/plural.test.ts', '// @verifies PLURAL-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['PLURAL-R-001']).toBeDefined()
-    expect(mapping['PLURAL-R-001'][0]).toMatch(/^tests\//)
+    expect(mapping['plural-r-001']).toBeDefined()
+    expect(mapping['plural-r-001'][0]).toMatch(/^tests\//)
   })
 
   it('merges results from both test/ and tests/ directories', () => {
@@ -255,7 +255,7 @@ describe('scanVerifies — tests/ directory', () => {
     writeTestFile('tests/beta.test.ts', '// @verifies BOTH-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['BOTH-R-001']).toHaveLength(2)
+    expect(mapping['both-r-001']).toHaveLength(2)
   })
 })
 
@@ -268,14 +268,14 @@ describe('scanVerifies — ignored directories', () => {
     writeTestFile('test/node_modules/hidden.test.ts', '// @verifies HIDDEN-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['HIDDEN-R-001']).toBeUndefined()
+    expect(mapping['hidden-r-001']).toBeUndefined()
   })
 
   it('does not scan files inside worktrees/', () => {
     writeTestFile('test/worktrees/branch.test.ts', '// @verifies WORKTREE-R-001\n')
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['WORKTREE-R-001']).toBeUndefined()
+    expect(mapping['worktree-r-001']).toBeUndefined()
   })
 })
 
@@ -292,14 +292,42 @@ describe('verifiedIds()', () => {
 
     const ids = verifiedIds(rootDir)
     expect(ids).toBeInstanceOf(Set)
-    expect(ids.has('IDS-R-001')).toBe(true)
-    expect(ids.has('IDS-R-002')).toBe(true)
-    expect(ids.has('IDS-R-003')).toBe(true)
+    expect(ids.has('ids-r-001')).toBe(true)
+    expect(ids.has('ids-r-002')).toBe(true)
+    expect(ids.has('ids-r-003')).toBe(true)
     expect(ids.size).toBe(3)
   })
 
   it('returns an empty Set when no annotations exist', () => {
     const ids = verifiedIds(rootDir)
     expect(ids.size).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 10: case-insensitive extraction (D-30)
+// ---------------------------------------------------------------------------
+
+describe('scanVerifies — case-insensitive extraction', () => {
+  it('detects a lowercase annotation // @verifies foo-r-001 (primary bite target)', () => {
+    writeTestFile('test/lowercase-detect.test.ts', [
+      '// @verifies foo-r-001',
+    ].join('\n'))
+
+    const mapping = scanVerifies(rootDir)
+    // Assert on the key set so a red run names what the scanner actually produced
+    expect(Object.keys(mapping)).toContain('foo-r-001')
+    expect(mapping['foo-r-001']).toContain('test/lowercase-detect.test.ts')
+  })
+
+  it('detects an uppercase annotation // @verifies FOO-R-001 and normalizes key to lowercase (backward compat)', () => {
+    writeTestFile('test/uppercase-detect.test.ts', [
+      '// @verifies FOO-R-001',
+    ].join('\n'))
+
+    const mapping = scanVerifies(rootDir)
+    // Assert on the key set so a red run names what the scanner actually produced
+    expect(Object.keys(mapping)).toContain('foo-r-001')
+    expect(mapping['foo-r-001']).toContain('test/uppercase-detect.test.ts')
   })
 })

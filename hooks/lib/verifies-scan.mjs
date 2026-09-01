@@ -55,6 +55,7 @@ function walkTestFiles(dir) {
 /**
  * Extract all requirement IDs that follow a `@verifies` token on a single line.
  * Everything after the `@verifies` token is scanned with the shared ID regex.
+ * Extraction is case-insensitive; all returned IDs are normalized to lowercase.
  *
  * @param {string} line
  * @returns {string[]}
@@ -63,11 +64,11 @@ function extractVerifiesFromLine(line) {
   const idx = line.indexOf('@verifies')
   if (idx === -1) return []
   const after = line.slice(idx + '@verifies'.length)
-  const idRe = new RegExp(ID_RE_SRC, 'g')
+  const idRe = new RegExp(ID_RE_SRC, 'gi')
   const ids = []
   let m
   while ((m = idRe.exec(after)) !== null) {
-    ids.push(m[1])
+    ids.push(m[1].toLowerCase())
   }
   return ids
 }

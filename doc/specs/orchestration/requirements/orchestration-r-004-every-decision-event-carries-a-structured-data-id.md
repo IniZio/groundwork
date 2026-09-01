@@ -1,9 +1,8 @@
 ---
-id: "ORCHESTRATION-R-004"
-# Uppercase deliberate — the traceability join is case-sensitive: ID_RE_SRC in hooks/lib/spec-io.mjs
-# extracts only UPPERCASE ids, and spec-lint's verified.has(node.id) compares case-sensitively.
-# This is currently the only live `verification: automated` node in the corpus.
-# T51 owns normalizing the convention (either direction) across all requirements.
+id: orchestration-r-004
+# Lowercase is canonical (D-30). The traceability join is now case-insensitive:
+# verifies-scan extracts with 'gi' flag and lowercases ids; spec-lint compares
+# verified.has(node.id.toLowerCase()). This was the workaround node that drove T51.
 type: requirement
 concept: C-ORCHESTRATION
 title: "Every DECISION event carries a structured data.id"

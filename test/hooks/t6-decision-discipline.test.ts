@@ -7,7 +7,7 @@
  *  T6-AC3 — existing supersedes/resolves compile behaviour unchanged
  */
 
-// @verifies ORCHESTRATION-R-004
+// @verifies orchestration-r-004
 // @ts-nocheck
 import {
   mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,

@@ -134,7 +134,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
 
   const rest = args.slice(1)
   const { flags, positionals } = parseFlags(rest)
-  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] ?? cwd
+  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
   const tracker = '.groundwork/next'
 
   if (subcmd === 'append') {

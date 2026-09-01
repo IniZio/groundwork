@@ -309,7 +309,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   }
   const motive = motiveFlag as string
 
-  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] ?? cwd
+  const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
   const explicitSession = flags['session'] as string | undefined
   const sessionId = explicitSession ?? currentSession()
   if (!sessionId) {

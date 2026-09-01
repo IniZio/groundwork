@@ -115,6 +115,9 @@ describe('coverage completeness', () => {
     // gwHookEntries tracks only the `bin/gw-hook hook <name>` registrations specifically
     // (distinct from .mjs/.bare registrations) — used for the phantom-registration assertion below.
     const gwHookEntries = new Set<string>()
+    // barePathShims maps shim-name (e.g. 'session-start') to its absolute file path.
+    // Used below to resolve the handler each shim actually dispatches to via gw-hook.
+    const barePathShims = new Map<string, string>()
     const commandsWalked: string[] = []
     const classifiedCommands = new Set<string>()
     const collectRegisteredHooks = (obj: unknown): void => {
@@ -132,12 +135,54 @@ describe('coverage completeness', () => {
         // Bare-path: /hooks/<name> with no extension — matches at end of string so .mjs
         // variants (already caught above) are not double-counted.
         const mBare = cmd.match(/\/hooks\/([^./\s]+)$/)
-        if (mBare) { hooksJsonNames.add(mBare[1]); classified = true }
+        if (mBare) {
+          hooksJsonNames.add(mBare[1])
+          // Record the shim file path so we can resolve its dispatch target below.
+          barePathShims.set(mBare[1], join(ROOT, 'hooks', mBare[1]))
+          classified = true
+        }
         if (classified) classifiedCommands.add(cmd)
       }
       Object.values(o).forEach(collectRegisteredHooks)
     }
     collectRegisteredHooks(hooksJsonRaw)
+
+    // Resolve shim indirection: read each bare-path shim and extract the gw handler
+    // it dispatches to (via `gw-hook hook <name>`).  This models the case where a shim
+    // like hooks/session-start is the registered command but internally invokes a gw
+    // TypeScript handler (session-reminder) — the handler is effectively registered even
+    // though its literal name never appears in hooks.json.
+    //
+    // Deriving the target from the shim source (rather than hard-coding an exemption
+    // list) means the assertion keeps tracking reality: if the shim is repointed or a
+    // new shim appears, the mapping updates automatically.
+    const shimDispatchTargets = new Map<string, string>() // shim-name → gw handler name
+    for (const [shimName, shimPath] of barePathShims) {
+      try {
+        const shimSrc = readFileSync(shimPath, 'utf8')
+        // The shim may quote the path: `"$DIR/bin/gw-hook" hook <name>` — allow an
+        // optional closing quote/space between `gw-hook` and the `hook` subcommand.
+        const mDispatch = shimSrc.match(/gw-hook["']?\s+hook\s+([^\s"'$@]+)/)
+        if (mDispatch) {
+          shimDispatchTargets.set(shimName, mDispatch[1])
+        }
+      } catch {
+        // shim not readable — caught by unresolvableShims assertion below
+      }
+    }
+
+    // Shims that exist as bare-path registrations but have no parseable dispatch target.
+    const unresolvableShims = [...barePathShims.keys()].filter(n => !shimDispatchTargets.has(n)).sort()
+    expect(
+      unresolvableShims,
+      `bare-path shims have no extractable 'gw-hook hook <name>' dispatch target —\n` +
+      `  shim file missing, unexecutable, or pattern changed:\n` +
+      `  ${unresolvableShims.join(', ')}`,
+    ).toEqual([])
+
+    // The full set of effectively-registered handler names: direct registrations PLUS
+    // any handler reachable via a registered shim.
+    const effectivelyRegistered = new Set([...hooksJsonNames, ...shimDispatchTargets.values()])
 
     // Set 2: hook names declared in the gw TypeScript registry
     const gwIndexSrc = readFileSync(join(ROOT, 'src/gw/hook/index.ts'), 'utf8')
@@ -192,19 +237,34 @@ describe('coverage completeness', () => {
       `  gw registry (${gwRegistryNames.size}): ${[...gwRegistryNames].sort().join(', ')}`,
     ).toEqual([])
 
-    // Assert gwRegistryNames ⊆ hooksJsonNames: every gw TypeScript handler must be registered
-    // in hooks/hooks.json, otherwise the hook exists in code but is never wired — a silent
-    // production failure.  The reverse direction (hooksJsonNames ⊆ gwRegistryNames) is
-    // intentionally NOT asserted: hooksJsonNames legitimately contains .mjs-only hooks (D-20:
-    // spec-guard, deslop-guard, prose-negation-guard, prose-modality-guard, doc-read-guard,
-    // doc-size-guard, keyword-router) and the bare-path session-start, none of which have a
-    // gw implementation.
-    const gwMissingFromHooksJson = [...gwRegistryNames].filter(h => !hooksJsonNames.has(h)).sort()
+    // Assert shim integrity: every bare-path shim must dispatch to a real gw handler.
+    // A shim that dispatches to a handler absent from the registry is a silent production
+    // failure — the hook fires but immediately errors out at dispatch.
+    const brokenShims = [...shimDispatchTargets.entries()]
+      .filter(([, target]) => !gwRegistryNames.has(target))
+      .map(([shim, target]) => `${shim}→${target}`)
+      .sort()
+    expect(
+      brokenShims,
+      `bare-path shims dispatch to handler names absent from gw TypeScript registry:\n` +
+      `  broken: ${brokenShims.join(', ')}\n` +
+      `  gwRegistryNames (${gwRegistryNames.size}): ${[...gwRegistryNames].sort().join(', ')}`,
+    ).toEqual([])
+
+    // Assert gwRegistryNames ⊆ effectivelyRegistered: every gw TypeScript handler must be
+    // reachable from hooks/hooks.json — either via a direct registration or via a registered
+    // shim that dispatches to it.  A handler absent from both is never wired — a silent
+    // production failure.  The reverse direction (effectivelyRegistered ⊆ gwRegistryNames)
+    // is intentionally NOT asserted: effectivelyRegistered legitimately contains .mjs-only
+    // hooks (D-20: spec-guard, deslop-guard, prose-negation-guard, prose-modality-guard,
+    // doc-read-guard, doc-size-guard, keyword-router) and bare-path shim names
+    // (e.g. session-start), none of which have a gw implementation.
+    const gwMissingFromHooksJson = [...gwRegistryNames].filter(h => !effectivelyRegistered.has(h)).sort()
     expect(
       gwMissingFromHooksJson,
-      `gw TypeScript handlers not registered in hooks/hooks.json — hook exists in code but never fires:\n` +
-      `  missing from hooks.json: ${gwMissingFromHooksJson.join(', ')}\n` +
-      `  hooksJsonNames (${hooksJsonNames.size}): ${[...hooksJsonNames].sort().join(', ')}\n` +
+      `gw TypeScript handlers not registered in hooks/hooks.json (directly or via shim) — hook exists in code but never fires:\n` +
+      `  missing: ${gwMissingFromHooksJson.join(', ')}\n` +
+      `  effectivelyRegistered (${effectivelyRegistered.size}): ${[...effectivelyRegistered].sort().join(', ')}\n` +
       `  gwRegistryNames (${gwRegistryNames.size}): ${[...gwRegistryNames].sort().join(', ')}`,
     ).toEqual([])
 

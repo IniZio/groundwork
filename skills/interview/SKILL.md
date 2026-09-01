@@ -122,7 +122,7 @@ The charter must stay **concise and durable** — describe behaviors, interfaces
 - For bugs: skip this step — bugs go directly to `diagnose`.
 - Respect the project's commit policy — motive charters live in `.groundwork/motives/` (gitignored) and are never staged.
 
-**Ledger is owned downstream.** `vertical-slice` initializes and writes the run ledger; the planner registers impl slices (via `ledger.mjs add`). Interview's role ends with the motive charter in place — do not run `bin/ledger init` or add impl slices at interview time.
+**Ledger is owned downstream.** `vertical-slice` initializes and writes the run ledger; the planner registers impl slices (via `gw ledger add --motive <slug>`). Interview's role ends with the motive charter in place — do not run `bin/ledger init` or add impl slices at interview time.
 
 ## Domain Glossary (CONTEXT.md)
 

@@ -138,7 +138,7 @@ For open questions that remain unresolved, mark the corresponding DECISION event
 Add each task from Phase 3 as a ledger slice so the orchestrator can track progress:
 
 ```bash
-node hooks/ledger.mjs add <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \
+gw ledger add --motive <slug> <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \
   --ticket <task-id> --covers-ac "<task-id>-AC1,<task-id>-AC2" --decisions "D-1,D-2"
 ```
 

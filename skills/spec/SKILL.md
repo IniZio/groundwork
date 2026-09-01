@@ -112,7 +112,7 @@ The **single-line form** is the legacy format, still valid when brevity is prefe
 
 ### Anchors and cross-references
 
-Every requirement carries `{#<id-lowercased>}` on its H3 heading line — this is the machine-readable anchor and stable citation target. All cross-references are markdown anchor links:
+Every requirement carries `{#<id-lowercased>}` on its H2 heading line — this is the machine-readable anchor and stable citation target. All cross-references are markdown anchor links:
 
 - Same file: `[ARTIFACT-R-002](#artifact-r-002)`
 - Cross-concept: `[VERIFICATION-R-001](../verification/requirements/verification-r-001.md)`
@@ -140,7 +140,16 @@ After implementing a change backed by spec requirements, invoke `advisor()` (the
 The following is a copy-pasteable example taken from `conventions.md` (the normative source). Use this exact structure.
 
 ```markdown
-### ARTIFACT-R-001 — Ledger records slice completion {#artifact-r-001}
+---
+id: artifact-r-001
+type: requirement
+concept: C-ARTIFACT
+criticality: must
+verification: automated
+status: implemented
+---
+
+## ARTIFACT-R-001 — Ledger records slice completion {#artifact-r-001}
 
 **When** a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs`
 **shall** persist the slice id, completion timestamp, and session id to
@@ -152,7 +161,8 @@ The following is a copy-pasteable example taken from `conventions.md` (the norma
   premature termination.
 - **Fit criterion** — after `ledger complete s3`, the `s3` entry carries non-null
   `id`, ISO-8601 `completed_at`, and `session_id` matching the completing session.
-- **Verification** automated · **Criticality** must · **Source** R-20260726-K4M2QX
+- **Verification**: automated — vitest tests in test/ exercise the ledger complete command.
+- **Criticality**: must
 - **See also** [ARTIFACT-R-002](#artifact-r-002)
 ```
 

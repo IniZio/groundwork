@@ -153,7 +153,7 @@ classify request
       [qa if interactive UI or CLI surface]
                    │
                    ▼
-      advisor gate → APPROVE → bin/ledger gate advisor APPROVE
+      advisor gate → APPROVE → gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
                    │
                    ▼
                  done

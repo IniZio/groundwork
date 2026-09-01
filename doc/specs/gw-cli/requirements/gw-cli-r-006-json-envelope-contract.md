@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "--json envelope shape and stdout contract"
 criticality: should
-verification: automated
+verification: unverified
 status: open
 ---
 

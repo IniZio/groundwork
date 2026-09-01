@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "Write-token authority on mutating subcommands"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

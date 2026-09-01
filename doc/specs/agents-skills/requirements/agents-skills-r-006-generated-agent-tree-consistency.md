@@ -4,7 +4,7 @@ type: requirement
 title: "Generated agent tree consistency"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

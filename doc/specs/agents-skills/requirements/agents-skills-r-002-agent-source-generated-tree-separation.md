@@ -4,7 +4,7 @@ type: requirement
 title: "Agent source/generated tree separation"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

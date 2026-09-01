@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "Subcommand registry — 16 subcommands, no init"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

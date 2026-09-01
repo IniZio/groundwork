@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "Motive slug validation against ledger"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

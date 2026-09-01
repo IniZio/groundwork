@@ -4,7 +4,7 @@ type: requirement
 concept: C-ORCHESTRATION
 title: "Every DECISION event carries a structured data.id"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 design: "[[design#Ledger CLI interface]]"
 ---

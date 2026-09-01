@@ -4,7 +4,7 @@ type: requirement
 title: "Pi skills drift detection"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "Run-store path contract matches legacy hooks"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

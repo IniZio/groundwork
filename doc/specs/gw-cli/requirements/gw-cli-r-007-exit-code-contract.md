@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "Exit-code semantics: 0 / 1 / 2"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

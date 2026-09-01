@@ -4,7 +4,7 @@ type: requirement
 title: "Model assignment via model-registry.json"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

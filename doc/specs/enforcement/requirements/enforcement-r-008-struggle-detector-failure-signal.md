@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: Struggle-detector emits FAILURE journal event on consecutive tool failures
 status: implemented
-verification: automated
+verification: unverified
 criticality: should
 design: "[[design/reference/enforcement-hooks-reference]]"
 ---

@@ -4,7 +4,7 @@ type: requirement
 concept: C-GW-CLI
 title: "--motive flag required on every subcommand"
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

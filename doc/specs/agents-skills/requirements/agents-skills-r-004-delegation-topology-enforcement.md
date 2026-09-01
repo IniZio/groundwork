@@ -4,7 +4,7 @@ type: requirement
 title: "Delegation topology enforcement"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

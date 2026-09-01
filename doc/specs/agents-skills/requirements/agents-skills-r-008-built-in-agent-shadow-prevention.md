@@ -4,7 +4,7 @@ type: requirement
 title: "Built-in agent shadow prevention"
 concept: C-AGENTS-SKILLS
 criticality: must
-verification: automated
+verification: unverified
 status: open
 ---
 

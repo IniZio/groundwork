@@ -3,7 +3,7 @@ id: journal-motive-r-003
 type: requirement
 concept: C-JOURNAL-MOTIVE
 criticality: must
-verification: automated
+verification: unverified
 status: open
 title: "DECISION event required fields"
 ---

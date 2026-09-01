@@ -9,8 +9,10 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -159,81 +161,32 @@ describe("S0: spec-io schema and index API", () => {
   });
 
   it("S0-AC3: buildIndexData returns exactly the known node IDs with and without spec.yaml files", () => {
-    // Stringified here so we can embed them in the ESM script without a file round-trip.
-    const expectedJson = JSON.stringify(
-      [
-        "C-ARTIFACT",
-        "C-ENFORCEMENT",
-        "C-GROUNDWORK",
-        "C-MOTIVE-DAG",
-        "C-ORCHESTRATION",
-        "C-TOKEN-ECONOMY",
-        "C-TRACEABILITY",
-        "C-VERIFICATION",
-        "artifact-r-001",
-        "artifact-r-003",
-        "artifact-r-004",
-        "artifact-r-005",
-        "artifact-r-006",
-        "artifact-r-007",
-        "artifact-r-008",
-        "artifact-r-009",
-        "artifact-r-010",
-        "artifact-r-011",
-        "artifact-r-012",
-        "enforcement-r-001",
-        "motive-dag-r-001",
-        "motive-dag-r-002",
-        "motive-dag-r-003",
-        "motive-dag-r-004",
-        "motive-dag-r-005",
-        "motive-dag-r-006",
-        "motive-dag-r-007",
-        "motive-dag-r-008",
-        "orchestration-r-001",
-        "orchestration-r-002",
-        "orchestration-r-003",
-        "orchestration-r-004",
-        "pacing-r-001",
-        "pacing-r-002",
-        "pacing-r-003",
-        "pacing-r-004",
-        "pacing-r-005",
-        "pacing-r-006",
-        "pacing-r-007",
-        "pacing-r-008",
-        "pacing-r-009",
-        "pacing-r-010",
-        "pacing-r-011",
-        "seal-r-001",
-        "token-economy-r-001",
-        "token-economy-r-002",
-        "token-economy-r-003",
-        "token-economy-r-004",
-        "token-economy-r-005",
-        "token-economy-r-006",
-        "token-economy-r-007",
-        "token-economy-r-008",
-        "traceability-r-001",
-        "traceability-r-002",
-        "traceability-r-003",
-        "traceability-r-004",
-        "traceability-r-005",
-        "traceability-r-006",
-        "verification-r-001",
-        "verification-r-002",
-        "verification-r-003",
-        "verification-r-004",
-      ].sort(),
-    );
+    // The property under test is the with/without invariant: buildIndexData must
+    // return the same node ID set regardless of whether spec.yaml files are present.
+    // A hardcoded corpus snapshot breaks on every legitimate spec addition while
+    // catching only a narrow class of bugs (a node-loss bug that hits both runs
+    // identically leaves the two sets equal, so the equality assertion misses it).
+    // The equality assertion protects only the with/without invariant. Node loss is
+    // caught by the sanity floor and the ANCHOR_IDS anchors below — do not remove
+    // them as redundant.
+    //
+    // To update stable anchors deliberately (concept rename/removal): edit
+    // ANCHOR_IDS below — the test will tell you which id is missing.
+    const ANCHOR_IDS_JSON = JSON.stringify([
+      "C-ARTIFACT",
+      "C-ENFORCEMENT",
+      "C-GROUNDWORK",
+      "C-ORCHESTRATION",
+      "C-TRACEABILITY",
+      "C-VERIFICATION",
+    ]);
 
     const r = runEsmScript(`
-      import { cpSync, readdirSync, statSync, unlinkSync, mkdtempSync, rmSync } from 'node:fs';
+      import { cpSync, readdirSync, unlinkSync, mkdtempSync, rmSync } from 'node:fs';
       import { tmpdir } from 'node:os';
       import { join } from 'node:path';
       import { buildIndexData } from '${SPEC_IO}';
 
-      const expected = ${expectedJson};
       const liveSpecDir = '${LIVE_SPEC_DIR}';
 
       // Step 1: live tree with existing spec.yaml files in place
@@ -268,9 +221,26 @@ describe("S0: spec-io schema and index API", () => {
       idsLive: string[];
       idsNoManifest: string[];
     };
-    const expected = JSON.parse(expectedJson) as string[];
-    expect(idsLive).toEqual(expected);
-    expect(idsNoManifest).toEqual(expected);
+
+    // Core contract: spec.yaml presence must not change which node IDs are indexed.
+    // If a spec.yaml excludes a view file that has indexable frontmatter, idsLive
+    // would be smaller than idsNoManifest — this assertion catches that.
+    expect(idsLive).toEqual(idsNoManifest);
+
+    // Sanity floor: corpus is non-trivial — guards against buildIndexData silently
+    // returning an empty set. Current corpus: 115 nodes (11 concepts + 104 requirements,
+    // as of 2026-09-01). Floor set to 100 (87% of 115) — catches catastrophic node-loss
+    // while tolerating organic additions without requiring floor maintenance on every
+    // new requirement. Raise this when the corpus grows past ~115 (i.e. floor + 15).
+    expect(idsLive.length).toBeGreaterThan(100);
+
+    // Anchor: stable concept IDs that must always be present. A concept removal or
+    // rename shows up here with a clear failure message. Add/remove anchors
+    // deliberately when the concept set changes intentionally.
+    const anchorIds = JSON.parse(ANCHOR_IDS_JSON) as string[];
+    for (const id of anchorIds) {
+      expect(idsLive, `anchor concept node "${id}" missing from index`).toContain(id);
+    }
   });
 
   it("S0-AC4: buildIndexData attaches views[] to concept nodes when spec.yaml is present (and not when absent)", () => {

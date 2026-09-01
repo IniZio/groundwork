@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, afterEach, beforeAll } from 'vitest'
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
@@ -68,10 +69,42 @@ function initLegacy(dir: string, motive = 'tm'): { token: string } {
   return { token: m ? m[1] : '' }
 }
 
-// Get gw write token (seal key hex) after first write to motive
-function gwToken(dir: string, motive = 'tm'): string {
-  const kp = path.join(dir, '.groundwork', 'next', 'motives', motive, '.seal.key')
-  return fs.existsSync(kp) ? fs.readFileSync(kp).toString('hex') : ''
+// Get gw write token from the legacy JSON run store (T16: gw ledger retargeted to JSON).
+// Scans .groundwork/runs/ and falls back to run.json.
+function gwToken(dir: string, _motive = 'tm'): string {
+  const runsDir = path.join(dir, '.groundwork', 'runs')
+  if (fs.existsSync(runsDir)) {
+    for (const f of fs.readdirSync(runsDir)) {
+      if (!f.endsWith('.json')) continue
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8')) as { write_token?: string }
+        if (j.write_token) return j.write_token
+      } catch { /* ignore */ }
+    }
+  }
+  const legacy = path.join(dir, '.groundwork', 'run.json')
+  if (fs.existsSync(legacy)) {
+    try { return (JSON.parse(fs.readFileSync(legacy, 'utf8')) as { write_token?: string }).write_token ?? '' } catch { return '' }
+  }
+  return ''
+}
+
+// Create a minimal JSON ledger for gw ledger tests (no bin/ledger dependency).
+// Uses the ambient CLAUDE_CODE_SESSION_ID so gw ledger resolves the same file.
+function initGw(dir: string, motive = 'tm'): { token: string } {
+  const sessId = process.env['CLAUDE_CODE_SESSION_ID'] ?? 'default'
+  const token = randomBytes(8).toString('hex')
+  const runsDir = path.join(dir, '.groundwork', 'runs')
+  fs.mkdirSync(runsDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(runsDir, `${sessId}.json`),
+    JSON.stringify({
+      active: true, session_id: sessId, motive, write_token: token,
+      schema_version: 1, slices: [], gate: {},
+    }, null, 2) + '\n',
+    'utf8',
+  )
+  return { token }
 }
 
 // ============================================================
@@ -120,8 +153,9 @@ describe('AC2 — two-surface parity: status after add', () => {
   })
   it('new: status exits 0 after add', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--desc', 'first'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const r = runGw(['ledger', 'status', '--motive', 'tm'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--desc', 'first'], {}, gwDir)
+    const r = runGw(['ledger', 'status', '--motive', 'tm'], {}, gwDir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
   })
@@ -138,8 +172,9 @@ describe('AC2 — two-surface parity: add + show', () => {
   })
   it('new: show S1 exits 0, contains desc', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--desc', 'test desc', '--wave', '1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const r = runGw(['ledger', 'show', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--desc', 'test desc', '--wave', '1'], {}, gwDir)
+    const r = runGw(['ledger', 'show', '--motive', 'tm', 'S1'], {}, gwDir)
     expect(r.status).toBe(0)
     const content = String((r.envelope as { data?: { content?: string } }).data?.content ?? '')
     expect(content).toContain('test desc')
@@ -158,9 +193,10 @@ describe('AC2 — two-surface parity: set --wave', () => {
   })
   it('new: set --wave 3 reflected in show', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--wave', '1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    runGw(['ledger', 'set', '--motive', 'tm', 'S1', '--wave', '3'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const r = runGw(['ledger', 'show', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1', '--wave', '1'], {}, gwDir)
+    runGw(['ledger', 'set', '--motive', 'tm', 'S1', '--wave', '3'], {}, gwDir)
+    const r = runGw(['ledger', 'show', '--motive', 'tm', 'S1'], {}, gwDir)
     expect(r.status).toBe(0)
     const content = String((r.envelope as { data?: { content?: string } }).data?.content ?? '')
     expect(content).toMatch(/wave.*3|3.*wave/i)
@@ -180,10 +216,10 @@ describe('AC2 — two-surface parity: complete with unmet blocked_by', () => {
   })
   it('new: complete S2 blocked by pending S1 → exit 1', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const tok = gwToken(gwDir)
-    const r = runGw(['ledger', 'complete', '--motive', 'tm', 'S2', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], {}, gwDir)
+    const r = runGw(['ledger', 'complete', '--motive', 'tm', 'S2', '--token', token], {}, gwDir)
     expect(r.status).toBe(1)
     expect(r.envelope.ok).toBe(false)
   })
@@ -201,11 +237,11 @@ describe('AC2 — two-surface parity: complete after blocker done', () => {
   })
   it('new: complete S2 after S1 done → exit 0', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const tok = gwToken(gwDir)
-    runGw(['ledger', 'complete', '--motive', 'tm', 'S1', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const r = runGw(['ledger', 'complete', '--motive', 'tm', 'S2', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], {}, gwDir)
+    runGw(['ledger', 'complete', '--motive', 'tm', 'S1', '--token', token], {}, gwDir)
+    const r = runGw(['ledger', 'complete', '--motive', 'tm', 'S2', '--token', token], {}, gwDir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
   })
@@ -224,11 +260,11 @@ describe('AC2 — two-surface parity: frontier', () => {
   })
   it('new: frontier shows S2 after S1 complete', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const tok = gwToken(gwDir)
-    runGw(['ledger', 'complete', '--motive', 'tm', 'S1', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const r = runGw(['ledger', 'frontier', '--motive', 'tm'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S2', '--blocked-by', 'S1'], {}, gwDir)
+    runGw(['ledger', 'complete', '--motive', 'tm', 'S1', '--token', token], {}, gwDir)
+    const r = runGw(['ledger', 'frontier', '--motive', 'tm'], {}, gwDir)
     expect(r.status).toBe(0)
     const content = String((r.envelope as { data?: { content?: string } }).data?.content ?? '')
     expect(content).toContain('S2')
@@ -244,9 +280,9 @@ describe('AC2 — two-surface parity: gate advisor APPROVE', () => {
   })
   it('new: gate advisor APPROVE → exit 0', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const tok = gwToken(gwDir)
-    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], {}, gwDir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
   })
@@ -261,10 +297,10 @@ describe('AC2 — two-surface parity: await-human set/clear', () => {
   })
   it('new: await-human set then clear → both exit 0', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
-    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], { CLAUDE_PROJECT_DIR: gwDir }, gwDir)
-    const tok = gwToken(gwDir)
-    expect(runGw(['ledger', 'await-human', '--motive', 'tm', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir).status).toBe(0)
-    expect(runGw(['ledger', 'await-human', '--motive', 'tm', 'clear', '--token', tok], { CLAUDE_PROJECT_DIR: gwDir }, gwDir).status).toBe(0)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    expect(runGw(['ledger', 'await-human', '--motive', 'tm', '--token', token], {}, gwDir).status).toBe(0)
+    expect(runGw(['ledger', 'await-human', '--motive', 'tm', 'clear', '--token', token], {}, gwDir).status).toBe(0)
   })
 })
 
@@ -360,5 +396,43 @@ describe('isolation guard — live store must be unmodified', () => {
       return // dir removed — also fine
     }
     expect(currentMtime).toBe(liveNextMtimeBefore)
+  })
+})
+
+// ============================================================
+// GW-CLI-R-004: session-id resolution — loud failure when absent
+// ============================================================
+describe('GW-CLI-R-004 — session-id resolution', () => {
+  it('exits non-zero and names CLAUDE_CODE_SESSION_ID on stderr when session env is absent', () => {
+    const dir = makeTmpDir(); cleanups.push(dir)
+    // Build env without CLAUDE_CODE_SESSION_ID — the value under test must not be injected.
+    const env: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (k !== 'CLAUDE_CODE_SESSION_ID' && v !== undefined) env[k] = v
+    }
+    const r = spawnSync('bun', [CLI_PATH, 'ledger', 'status', '--motive', 'tm'], {
+      cwd: dir, encoding: 'utf8', env,
+    })
+    expect(r.status, 'CLI must exit non-zero when CLAUDE_CODE_SESSION_ID is absent').not.toBe(0)
+    expect(r.stderr, 'stderr must name the missing variable').toContain('CLAUDE_CODE_SESSION_ID')
+  })
+
+  it('resolves .groundwork/runs/<session>.json when CLAUDE_CODE_SESSION_ID is set', () => {
+    const dir = makeTmpDir(); cleanups.push(dir)
+    const sessId = 'testsession123'
+    const token = randomBytes(8).toString('hex')
+    const runsDir = path.join(dir, '.groundwork', 'runs')
+    fs.mkdirSync(runsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(runsDir, `${sessId}.json`),
+      JSON.stringify({
+        active: true, session_id: sessId, motive: 'tm',
+        write_token: token, schema_version: 1, slices: [], gate: {},
+      }, null, 2) + '\n',
+      'utf8',
+    )
+    const r = runGw(['ledger', 'status', '--motive', 'tm'], { CLAUDE_CODE_SESSION_ID: sessId }, dir)
+    expect(r.status).toBe(0)
+    expect(r.envelope.ok).toBe(true)
   })
 })

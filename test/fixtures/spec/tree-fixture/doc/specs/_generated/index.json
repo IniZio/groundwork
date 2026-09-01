@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-09-01T09:50:04.144Z",
+  "nodes": {
+    "C-TREE-ROOT": {
+      "id": "C-TREE-ROOT",
+      "type": "concept",
+      "title": "Tree Fixture Root",
+      "summary": "Tree Fixture Root",
+      "refs": [],
+      "inbound": [
+        "C-MOC-CHILD"
+      ],
+      "byteSize": 121,
+      "relPath": "README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": null,
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null,
+      "views": null
+    },
+    "C-MOC-CHILD": {
+      "id": "C-MOC-CHILD",
+      "type": "moc",
+      "title": "MOC Child Concept",
+      "summary": "MOC Child Concept",
+      "refs": [
+        "C-TREE-ROOT"
+      ],
+      "inbound": [],
+      "byteSize": 155,
+      "relPath": "moc-child/README.md",
+      "status": null,
+      "pattern": null,
+      "verification": null,
+      "criticality": "must",
+      "concept": null,
+      "parent": "C-TREE-ROOT",
+      "ears": null,
+      "anchor": null,
+      "why": null,
+      "fitCriterion": null,
+      "source": null,
+      "views": null
+    }
+  }
+}

@@ -127,3 +127,18 @@ export function scanVerifies(rootDir) {
 export function verifiedIds(rootDir) {
   return new Set(Object.keys(scanVerifies(rootDir)))
 }
+
+/**
+ * Normalizing lookup helper — the single place where a requirement ID is
+ * lowercased before indexing into a scanVerifies() map.
+ *
+ * All consumers MUST call this instead of `verifiesMap[reqId.toLowerCase()]`
+ * so that any future consumer cannot accidentally skip normalization.
+ *
+ * @param {{ [reqId: string]: string[] }} verifiesMap - result of scanVerifies()
+ * @param {string} reqId - requirement id (any case)
+ * @returns {string[]} sorted array of test file paths, or [] if none
+ */
+export function lookupVerifies(verifiesMap, reqId) {
+  return verifiesMap[reqId.toLowerCase()] ?? []
+}

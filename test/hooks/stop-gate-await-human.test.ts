@@ -14,6 +14,8 @@
  *   AC7: CLI await-human --clear with write_token → hold cleared, stop-gate blocks again
  */
 
+// @verifies PACING-R-010
+
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

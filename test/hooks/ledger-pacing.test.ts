@@ -10,6 +10,8 @@
  *   - ledger autopilot writes a grant and emits a MILESTONE event
  */
 
+// @verifies PACING-R-001
+// @verifies PACING-R-002
 // @verifies PACING-R-003
 // @verifies PACING-R-004
 // @verifies PACING-R-006
@@ -125,8 +127,8 @@ describe('ledger init — pacing defaults', () => {
     expect(ledger.pacing).toMatchObject({
       policy: 'wave',
       budget: 1,
-      exempt_kinds: expect.arrayContaining(['plan', 'diagnose', 'design', 'fog']),
     })
+    expect(ledger.pacing.exempt_kinds).toEqual(['plan', 'diagnose', 'design', 'fog'])
   })
 
   it('preserves existing pacing field when input already has one', () => {

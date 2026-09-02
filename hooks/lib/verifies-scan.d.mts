@@ -11,3 +11,9 @@ export declare function scanVerifies(rootDir: string): { [reqId: string]: string
  * Return the set of requirement IDs that have at least one `@verifies` annotation.
  */
 export declare function verifiedIds(rootDir: string): Set<string>
+
+/**
+ * Normalizing lookup helper — lowercase reqId before indexing into a scanVerifies() map.
+ * All consumers must call this instead of verifiesMap[reqId.toLowerCase()].
+ */
+export declare function lookupVerifies(verifiesMap: { [reqId: string]: string[] }, reqId: string): string[]

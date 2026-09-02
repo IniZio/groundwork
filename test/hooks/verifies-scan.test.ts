@@ -24,7 +24,7 @@ const VERIFIES_SCAN = path.resolve(
   '..', '..', 'hooks', 'lib', 'verifies-scan.mjs',
 )
 
-const { scanVerifies, verifiedIds } = await import(pathToFileURL(VERIFIES_SCAN).href)
+const { scanVerifies, verifiedIds, lookupVerifies } = await import(pathToFileURL(VERIFIES_SCAN).href)
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -329,5 +329,38 @@ describe('scanVerifies — case-insensitive extraction', () => {
     // Assert on the key set so a red run names what the scanner actually produced
     expect(Object.keys(mapping)).toContain('foo-r-001')
     expect(mapping['foo-r-001']).toContain('test/uppercase-detect.test.ts')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 11: lookupVerifies — normalizing lookup helper
+// ---------------------------------------------------------------------------
+
+describe('lookupVerifies — normalizing lookup helper', () => {
+  it('finds entry when reqId is uppercase but map keys are lowercase (bites if normalization removed)', () => {
+    // verifiesMap keys are always lowercase (as scanVerifies produces)
+    const map: { [k: string]: string[] } = { 'foo-r-001': ['test/foo.test.ts'] }
+    // An UPPERCASE lookup must still find the entry — this is what bites when bypassed
+    const result = lookupVerifies(map, 'FOO-R-001')
+    expect(result).toEqual(['test/foo.test.ts'])
+  })
+
+  it('returns empty array when reqId has no entry (any case)', () => {
+    const map: { [k: string]: string[] } = { 'foo-r-001': ['test/foo.test.ts'] }
+    expect(lookupVerifies(map, 'MISSING-R-001')).toEqual([])
+    expect(lookupVerifies(map, 'missing-r-001')).toEqual([])
+  })
+
+  it('finds entry when reqId is mixed case', () => {
+    const map: { [k: string]: string[] } = { 'foo-r-001': ['test/foo.test.ts'] }
+    expect(lookupVerifies(map, 'Foo-R-001')).toEqual(['test/foo.test.ts'])
+  })
+
+  it('works correctly with a real scanVerifies() map', () => {
+    writeTestFile('test/lookup.test.ts', '// @verifies LOOKUP-R-001\n')
+    const map = scanVerifies(rootDir)
+    // map key is 'lookup-r-001' (lowercase); lookup with uppercase must work
+    expect(lookupVerifies(map, 'LOOKUP-R-001')).toContain('test/lookup.test.ts')
+    expect(lookupVerifies(map, 'lookup-r-001')).toContain('test/lookup.test.ts')
   })
 })

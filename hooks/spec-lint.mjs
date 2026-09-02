@@ -63,7 +63,7 @@ import {
   extractAllHeadingAnchors,
   buildIndexData,
 } from './lib/spec-io.mjs'
-import { verifiedIds } from './lib/verifies-scan.mjs'
+import { scanVerifies, lookupVerifies } from './lib/verifies-scan.mjs'
 
 // ---------------------------------------------------------------------------
 // Spec index loader
@@ -788,9 +788,9 @@ for (const [relPath, nodes] of byFile) {
 // verification: automated MUST have @verifies backing — this rule enforces it.
 const automatedNodes = targetNodes.filter(n => n.verification === 'automated')
 if (automatedNodes.length > 0) {
-  const verified = verifiedIds(projectDir)
+  const verifiesMap = scanVerifies(projectDir)
   for (const node of automatedNodes) {
-    if (!verified.has(node.id.toLowerCase())) {
+    if (lookupVerifies(verifiesMap, node.id).length === 0) {
       const violation = `automated-unverified: verification=automated but no test carries // @verifies ${node.id}`
       violations.push({ nodeId: node.id, violation })
       emitLintDrift(projectDir, rfcForJournal, node.id, violation)

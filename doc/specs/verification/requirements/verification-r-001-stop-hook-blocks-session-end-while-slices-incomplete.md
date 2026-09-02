@@ -4,7 +4,7 @@ type: requirement
 concept: C-VERIFICATION
 title: "Stop hook blocks session end while slices are incomplete"
 criticality: must
-verification: unverified
+verification: automated
 status: open
 ---
 
@@ -14,7 +14,7 @@ If the Stop hook fires and the active run ledger contains any slices whose statu
 
 - **Why** — Without mechanical enforcement at the Stop boundary, an orchestrator (an LLM) can rationalize ending the session before all delegated slices have landed, leaving work unfinished and no audit trail. The Stop hook forces every session-end attempt through a ledger check, making incomplete delegations visible and preventing accidental completions that bypass the fan-out model.
 - **Fit criterion** — Run the Stop hook against a ledger with one or more pending slices and confirm it emits a block. Run it with all slices complete but `gate.advisor` not `APPROVE` and confirm it still blocks. Run it with all slices complete AND `gate.advisor = "APPROVE"` and confirm the session is permitted to end.
-- **Verification**: unverified — the Stop hook enforces this mechanically on every session-end attempt.
+- **Verification**: automated — the Stop hook enforces this mechanically on every session-end attempt.
   1. Invoke the Stop hook with a ledger containing a slice with `status: "pending"`. Confirm the hook exits non-zero (blocked).
   2. Invoke the Stop hook with all slices `complete` but `gate.advisor` absent or not `"APPROVE"`. Confirm blocked.
   3. Invoke the Stop hook with all slices `complete` and `gate.advisor = "APPROVE"`. Confirm the hook exits zero (allowed).

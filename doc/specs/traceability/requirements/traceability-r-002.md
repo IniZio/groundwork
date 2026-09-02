@@ -4,7 +4,7 @@ type: requirement
 concept: C-TRACEABILITY
 title: "Full chain is rendered end-to-end"
 criticality: must
-verification: unverified
+verification: automated
 status: open
 ---
 
@@ -14,7 +14,7 @@ The traceability graph assembler **shall** include nodes of every type in the ch
 
 - **Why** — If any link in the chain is silently dropped by the assembler, the rendered view shows a broken chain that a user cannot distinguish from a genuinely unproven link. The assembler must surface all discovered links so that the render surface can classify them as proven, unproven, stale, or missing.
 - **Fit criterion** — Given a motive with at least one slice (with `covers_ac` and `decisions` set), one VERIFICATION event, one GATE APPROVE event, and one spec requirement whose `origin_decision_ref` matches a slice decision, the assembled graph contains nodes of types: objective, slice, spec-requirement, live-verify, gate; and edges of kinds: covers, confirms, seals.
-- **Verification**: unverified — Automated test covering the assembler output contract:
+- **Verification**: automated — Automated test covering the assembler output contract:
   1. Construct a frozen fixture with a ledger slice (`covers_ac`, `decisions`), a VERIFICATION event, a GATE APPROVE event, and a spec requirement with matching `origin_decision_ref`.
   2. Run the graph assembler against the fixture.
   3. Assert the output contains nodes of every required type and edges of kinds covers, confirms, seals.

@@ -4,7 +4,7 @@ type: requirement
 concept: C-MOTIVE-DAG
 title: Consumer-side ledger reference validation against the motive's declared AC set and canonical fold
 status: open
-verification: unverified
+verification: automated
 criticality: must
 design: "[[design/recipes/validate-ac-references]]"
 ---
@@ -23,5 +23,5 @@ design: "[[design/recipes/validate-ac-references]]"
   5. `ledger set <slice-id> --decisions "D-1"` exits zero.
   
   The diagnostic message is machine-readable enough for a human to identify which id is unknown and in which field.
-- **Verification**: unverified — Unit test: construct a synthetic fold with known node ids plus a charter declaring additional uncovered AC ids. Assert that a charter-only AC causes exit code 0. Assert that an unknown AC (not in charter, not in fold) causes exit code 1 with a diagnostic naming `covers_ac` and the id. Assert that an unknown decision id causes exit code 1 with a diagnostic naming `decisions` and the id.
+- **Verification**: automated — Unit test: construct a synthetic fold with known node ids plus a charter declaring additional uncovered AC ids. Assert that a charter-only AC causes exit code 0. Assert that an unknown AC (not in charter, not in fold) causes exit code 1 with a diagnostic naming `covers_ac` and the id. Assert that an unknown decision id causes exit code 1 with a diagnostic naming `decisions` and the id.
 - **Criticality**: must

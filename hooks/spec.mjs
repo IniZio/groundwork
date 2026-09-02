@@ -32,7 +32,7 @@ import {
   randomSuffix,
   loadSpecManifest,
 } from './lib/spec-io.mjs'
-import { scanVerifies } from './lib/verifies-scan.mjs'
+import { scanVerifies, lookupVerifies } from './lib/verifies-scan.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -177,7 +177,7 @@ async function runBuild(sd, { silent = false } = {}) {
   /** @type {Record<string, {declared: string|null, verified: boolean, tests: string[]}>} */
   const byRequirement = {}
   for (const req of reqs) {
-    const tests = verifiesMap[req.id.toLowerCase()] ?? []
+    const tests = lookupVerifies(verifiesMap, req.id)
     byRequirement[req.id] = {
       declared: req.verification ?? null,
       verified: tests.length > 0,
@@ -187,7 +187,7 @@ async function runBuild(sd, { silent = false } = {}) {
 
   // IDs that declare automated verification but have no verifying test yet
   const unverifiedAutomated = reqs
-    .filter(r => r.verification === 'automated' && (verifiesMap[r.id.toLowerCase()] ?? []).length === 0)
+    .filter(r => r.verification === 'automated' && lookupVerifies(verifiesMap, r.id).length === 0)
     .map(r => r.id)
     .sort()
 
@@ -200,7 +200,7 @@ async function runBuild(sd, { silent = false } = {}) {
     by_verification: countBy(reqs, 'verification'),
     by_criticality: countBy(reqs, 'criticality'),
     // actual verification evidence from @verifies annotations in test files
-    verified: reqs.filter(r => (verifiesMap[r.id.toLowerCase()] ?? []).length > 0).length,
+    verified: reqs.filter(r => lookupVerifies(verifiesMap, r.id).length > 0).length,
     unverified_automated: unverifiedAutomated,
     by_requirement: byRequirement,
   }

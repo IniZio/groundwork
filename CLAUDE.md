@@ -38,7 +38,7 @@
 |---|---|
 | Session/project memory | path is UNDER `~/.claude/projects/…/memory/`, home-anchored (incl. `MEMORY.md` index) |
 
-**Everything else is blocked.** Code, config, test files, and `.groundwork/out-of-scope/**` are never orchestrator-written regardless of how obvious the change appears. When the principle and the hook disagree, **the hook wins**.
+**Everything else triggers an advisory warning.** Code, config, test files, and `.groundwork/out-of-scope/**` are never orchestrator-written regardless of how obvious the change appears — the hook emits a delegation reminder via `additionalContext` and the edit proceeds, but the delegation obligation is still a MUST. When the principle and the hook disagree, **the hook wins**.
 
 ---
 

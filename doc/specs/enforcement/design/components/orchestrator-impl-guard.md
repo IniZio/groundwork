@@ -16,20 +16,21 @@ The ONE permitted path shape for orchestrator writes:
 ~/.claude/projects/<hash>/memory/**
 ```
 
-This covers session/project memory files (including `MEMORY.md` and topic sidecars) that the orchestrator must compose in-context. Any other path is blocked.
+This covers session/project memory files (including `MEMORY.md` and topic sidecars) that the orchestrator must compose in-context. Everything else triggers an advisory warning — the hook emits a delegation reminder via `additionalContext` and the edit proceeds. The orchestrator delegation obligation remains a MUST; the hook enforces it through a visible reminder, not a hard block.
 
-## Deny block structure
+## Advisory warning structure
 
-When the hook blocks a call, it returns:
+When the hook detects an orchestrator write outside the permitted path, it emits an advisory warning and allows the edit to proceed:
 
 ```json
 {
-  "decision": "block",
-  "reason": "Orchestrator direct edit blocked: <path> is not a permitted memory file. Delegate to a subagent."
+  "hookSpecificOutput": {
+    "additionalContext": "Orchestrator direct edit on <path>: this path should be delegated to a subagent. Delegation obligation is a MUST — this warning is advisory only and the edit will proceed."
+  }
 }
 ```
 
-Exit code: `0` with block decision (not exit 1 — the block is a valid response, not an error).
+Exit code: `0`, no `permissionDecision` — the edit proceeds. The hook issues no block decision; enforcement is through the visible delegation reminder, not a hard block.
 
 ## Subagent pass-through
 
@@ -49,13 +50,14 @@ Paths are resolved to canonical form before the permit check. A path like `~/.cl
 ```
 PreToolUse event (Edit|Write|MultiEdit)
   │
-  ├── Is caller a subagent? ──Yes──> PERMIT
+  ├── Is caller a subagent? ──Yes──> PERMIT (silent)
   │
   └── No (orchestrator identity)
         │
-        ├── Is path under ~/.claude/projects/*/memory/? ──Yes──> PERMIT
+        ├── Is path under ~/.claude/projects/*/memory/? ──Yes──> PERMIT (silent)
         │
-        └── No ──> BLOCK (deny block with reason)
+        └── No ──> ADVISORY WARNING via additionalContext
+                    (edit proceeds; exit 0; no permissionDecision)
 ```
 
 ## Fail-open cases

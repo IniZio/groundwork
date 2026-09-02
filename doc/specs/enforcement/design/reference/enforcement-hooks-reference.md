@@ -7,7 +7,7 @@
 
 | Hook | Event | Matcher | Mode | Gated action | Requirements |
 |------|-------|---------|------|-------------|--------------|
-| `orchestrator-impl-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Hard-block | Orchestrator direct edits outside memory/ permit path | [[../../requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits\|ENFORCEMENT-R-001]] |
+| `orchestrator-impl-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Advisory (exit 0, no block) | Orchestrator direct edits outside memory/ permit path — emits delegation reminder via `additionalContext`, edit proceeds | [[../../requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits\|ENFORCEMENT-R-001]] |
 | `nesting-guard.mjs` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open | Depth-1 subagents dispatching `general-purpose` or `orchestrator` | (advisory) |
 | `stop-gate.mjs` | Stop | (none) | Hard-block / release | Session end while incomplete slices or absent advisor APPROVE remain | [[../../requirements/pacing-r-005-pacing-exhaustion-stop-gate-release-directive-handoff\|PACING-R-005]] |
 | `deslop-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Fail-open | Quality constraints on written content | (advisory) |

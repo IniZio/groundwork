@@ -43,8 +43,12 @@ describe("orchestrator-impl-guard — warns on direct implementation (non-blocki
 
 	it("WARNS on orchestrator Write and MultiEdit too (edit still proceeds)", () => {
 		const cwd = makeProject(ACTIVE);
-		expect(runHook({ tool_name: "Write", tool_input: { file_path: `${cwd}/src/b.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.additionalContext).toBeTruthy();
-		expect(runHook({ tool_name: "MultiEdit", tool_input: { file_path: `${cwd}/src/c.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.additionalContext).toBeTruthy();
+		const dWrite = runHook({ tool_name: "Write", tool_input: { file_path: `${cwd}/src/b.ts` }, cwd, session_id: "sess-1" });
+		expect(dWrite.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(dWrite.hookSpecificOutput?.permissionDecision).toBeUndefined();
+		const dMultiEdit = runHook({ tool_name: "MultiEdit", tool_input: { file_path: `${cwd}/src/c.ts` }, cwd, session_id: "sess-1" });
+		expect(dMultiEdit.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(dMultiEdit.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 
 	it("WARNS on OpenCode fast_edit (same canonical form as Edit after normalization)", () => {
@@ -58,27 +62,35 @@ describe("orchestrator-impl-guard — warns on direct implementation (non-blocki
 		const cwd = makeProject(ACTIVE);
 		const d = runHook({ tool_name: "fast_write", tool_input: { file_path: `${cwd}/src/b.ts` }, cwd, session_id: "sess-1" });
 		expect(d.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 
 	it("WARNS on OpenCode fast_multiedit", () => {
 		const cwd = makeProject(ACTIVE);
 		const d = runHook({ tool_name: "fast_multiedit", tool_input: { file_path: `${cwd}/src/c.ts` }, cwd, session_id: "sess-1" });
 		expect(d.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 
 	it("WARNS even when there is NO ledger (trivial task / no run — removed escape valve)", () => {
 		const cwd = makeProject();
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.additionalContext).toBeTruthy();
+		const d = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 
 	it("WARNS when the ledger is inactive (active:false — not a loophole)", () => {
 		const cwd = makeProject({ active: false, session_id: "sess-1", slices: [] });
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.additionalContext).toBeTruthy();
+		const d = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 
 	it("WARNS when the active ledger is owned by a DIFFERENT session (session ownership is irrelevant now)", () => {
 		const cwd = makeProject({ active: true, session_id: "other-sess", slices: [] });
-		expect(runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" }).hookSpecificOutput?.additionalContext).toBeTruthy();
+		const d = runHook({ tool_name: "Edit", tool_input: { file_path: `${cwd}/src/a.ts` }, cwd, session_id: "sess-1" });
+		expect(d.hookSpecificOutput?.additionalContext).toBeTruthy();
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 });
 

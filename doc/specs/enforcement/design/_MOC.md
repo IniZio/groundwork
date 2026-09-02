@@ -11,7 +11,7 @@
 2. **Flows** — decision paths and state machines
    - [[flows/stop-gate-decision-path]] — how the Stop hook decides whether to block, release, or emit a directive
 3. **Components** — concrete artefacts
-   - [[components/orchestrator-impl-guard]] — the impl-guard hook: permit list, deny logic, fail-open variants
+   - [[components/orchestrator-impl-guard]] — the impl-guard hook: permit list, advisory warning on non-permitted paths, fail-open variants
 4. **Recipes** — how-to guides
    - [[recipes/authorize-autopilot-grant]] — how to authorize an autopilot grant when pacing budget is exhausted
 5. **Reference**
@@ -39,7 +39,7 @@
 
 | Note | Summary |
 |------|---------|
-| [[components/orchestrator-impl-guard]] | Orchestrator impl-guard hook: permit path shape, deny block structure, subagent pass-through |
+| [[components/orchestrator-impl-guard]] | Orchestrator impl-guard hook: permit path shape, advisory warning structure, subagent pass-through |
 
 ---
 

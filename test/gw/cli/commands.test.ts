@@ -402,6 +402,7 @@ describe('isolation guard — live store must be unmodified', () => {
 // ============================================================
 // GW-CLI-R-004: session-id resolution — loud failure when absent
 // ============================================================
+// @verifies GW-CLI-R-004
 describe('GW-CLI-R-004 — session-id resolution', () => {
   it('exits non-zero and names CLAUDE_CODE_SESSION_ID on stderr when session env is absent', () => {
     const dir = makeTmpDir(); cleanups.push(dir)
@@ -434,5 +435,52 @@ describe('GW-CLI-R-004 — session-id resolution', () => {
     const r = runGw(['ledger', 'status', '--motive', 'tm'], { CLAUDE_CODE_SESSION_ID: sessId }, dir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
+  })
+
+  it('falls back to run.json when CLAUDE_CODE_SESSION_ID does not satisfy [A-Za-z0-9_-]{1,128}', () => {
+    const dir = makeTmpDir(); cleanups.push(dir)
+    const badId = 'invalid!!session' // contains ! — fails SAFE_ID
+    const token = randomBytes(8).toString('hex')
+    const gwDir = path.join(dir, '.groundwork')
+    fs.mkdirSync(gwDir, { recursive: true })
+    // Give run.json a different session_id — this is the case that distinguishes
+    // the SAFE_ID guard from the legacyOwner fallback: without the guard the
+    // legacyOwner check would skip run.json (owner != badId) and try a non-existent
+    // perSessionPath, yielding a non-zero exit.
+    fs.writeFileSync(
+      path.join(gwDir, 'run.json'),
+      JSON.stringify({
+        active: true, session_id: 'other-session', motive: 'tm',
+        write_token: token, schema_version: 1, slices: [], gate: {},
+      }, null, 2) + '\n',
+      'utf8',
+    )
+    const r = runGw(['ledger', 'status', '--motive', 'tm'], { CLAUDE_CODE_SESSION_ID: badId }, dir)
+    expect(r.status, 'CLI must exit 0 reading run.json when sessionId fails SAFE_ID pattern').toBe(0)
+    expect(r.envelope.ok, 'envelope must be ok').toBe(true)
+  })
+
+  it('uses CLAUDE_PROJECT_DIR over process.cwd() when non-empty', () => {
+    const dir = makeTmpDir(); cleanups.push(dir)
+    const sessId = 'projdirtest'
+    const token = randomBytes(8).toString('hex')
+    const runsDir = path.join(dir, '.groundwork', 'runs')
+    fs.mkdirSync(runsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(runsDir, `${sessId}.json`),
+      JSON.stringify({
+        active: true, session_id: sessId, motive: 'tm',
+        write_token: token, schema_version: 1, slices: [], gate: {},
+      }, null, 2) + '\n',
+      'utf8',
+    )
+    // cwd defaults to REPO_ROOT (which has no ledger for this motive/session)
+    // CLAUDE_PROJECT_DIR points to dir — CLI must read from there
+    const r = runGw(
+      ['ledger', 'status', '--motive', 'tm'],
+      { CLAUDE_CODE_SESSION_ID: sessId, CLAUDE_PROJECT_DIR: dir },
+    )
+    expect(r.status, 'CLI must exit 0 when CLAUDE_PROJECT_DIR overrides cwd').toBe(0)
+    expect(r.envelope.ok, 'envelope must be ok').toBe(true)
   })
 })

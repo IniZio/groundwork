@@ -103,6 +103,7 @@ function buildTree(piContent: string, authorityContent: string) {
 	return { piRoot, authRoot };
 }
 
+// @verifies AGENTS-SKILLS-R-007
 describe("check-pi-skills", () => {
 	it("exits 0 when Pi copy matches authority", () => {
 		const content = "# Groundwork Use-Groundwork\n\nIdentical content.\n";
@@ -267,5 +268,23 @@ describe("pi-skills manifest completeness", () => {
 				`Add each to the MANIFEST (if it is a byte-for-byte mirror) or ` +
 				`add it to EXEMPTIONS in this test with a justification comment.`,
 		).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Build-configuration invariant — package.json aggregate gate
+// ---------------------------------------------------------------------------
+
+// @verifies AGENTS-SKILLS-R-007
+describe("check:pi build-configuration invariant", () => {
+	it("package.json 'check' script includes 'check:pi' as a required gate", () => {
+		const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
+		const pkg = JSON.parse(
+			readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+		) as { scripts: Record<string, string> };
+		expect(
+			pkg.scripts.check,
+			"'check' script must include 'check:pi' to enforce the Pi-skills drift gate",
+		).toContain("check:pi");
 	});
 });

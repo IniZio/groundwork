@@ -203,6 +203,7 @@ describe("nesting-guard — debugger is DENIED at depth ≥ 1 (self-nesting prev
 // Junior-orchestrator tier — flagless truth table
 // ---------------------------------------------------------------------------
 
+// @verifies AGENTS-SKILLS-R-004
 describe("nesting-guard — junior-orchestrator tier (Rule 1: spawn gate)", () => {
 	// R1: top-level orchestrator → junior-orchestrator: ALLOW
 	it("R1-1. top-level orchestrator → junior-orchestrator is ALLOWED", () => {
@@ -297,6 +298,30 @@ describe("nesting-guard — FleetView remote harness transcript_path signal", ()
 				"Agent",
 				{ transcript_path: "/sessions/agent-abc123.jsonl" },
 			),
+		);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AGENTS-SKILLS-R-004 — prefix-normalisation path for junior-orchestrator via
+// tool_name "Task" (neither form appeared in any prior test case).
+// ---------------------------------------------------------------------------
+
+// @verifies AGENTS-SKILLS-R-004
+describe("nesting-guard — groundwork:junior-orchestrator via Task (prefix + tool_name gap)", () => {
+	// ALLOW half: primary orchestrator (no agent signals) → groundwork:junior-orchestrator via Task
+	it("T-1. primary orchestrator Task(groundwork:junior-orchestrator) is ALLOWED", () => {
+		// No agent_type / agent_id → callerIsSubagent=false → Rule 1 early-exit allows.
+		const d = runHook(agentCall({ subagent_type: "groundwork:junior-orchestrator", prompt: "sub-orch" }, "Task"));
+		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+
+	// DENY half: junior-orchestrator subagent → groundwork:junior-orchestrator via Task
+	it("T-2. junior-orchestrator subagent Task(groundwork:junior-orchestrator) is DENIED", () => {
+		const caller = { agent_type: "junior-orchestrator", agent_id: "jo002" };
+		const d = runHook(
+			agentCall({ subagent_type: "groundwork:junior-orchestrator", prompt: "sub-orch" }, "Task", caller),
 		);
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});

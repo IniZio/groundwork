@@ -76,7 +76,7 @@ describe("deslop-guard — advisory-only: always continues, surfaces findings vi
 });
 
 describe("deslop-guard — allow-list: JSDoc / annotations / shebang never fire", () => {
-	it("does NOT trigger on a JSDoc block (/** … */)", () => {
+	it("does NOT trigger on a JSDoc block (/** … */) EXCEPT for block-comment body slop", () => {
 		const jsdoc =
 			"/**\n" +
 			" * Adds two numbers. Let's note this is a JSDoc, not a slop comment.\n" +
@@ -86,9 +86,13 @@ describe("deslop-guard — allow-list: JSDoc / annotations / shebang never fire"
 			" */\n" +
 			"export function add(a: number, b: number) {\n  return a + b;\n}\n";
 		const out = runWrite(jsdoc);
-		// JSDoc lines are allow-listed — no warning even though they contain
-		// "Let's" and "Now we", because they live inside a docblock.
-		expect(out.hookSpecificOutput).toBeUndefined();
+		// The `* Now we just return the sum.` line matches the SLOP_BLOCK pattern
+		// (AI-fingerprint opener in block comment). The `* Adds two numbers. Let's…`
+		// line does NOT fire because the slop phrase is not at the start after `* `.
+		// @param lines remain exempt via ALLOW_BLOCK_BODY. The write still proceeds
+		// (advisory only).
+		expect(out.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(out.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
 	});
 
 	it("does NOT trigger on a @ts-ignore / @eslint-disable line annotation", () => {
@@ -252,5 +256,88 @@ describe("deslop-guard — scope and fail-open (mirror sibling guards)", () => {
 		const d = runWrite(verySloppy);
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
 		expect(d.hookSpecificOutput?.permissionDecision).not.toBe("deny");
+	});
+});
+
+describe("deslop-guard — block-comment body scan (new)", () => {
+	it("WARNS on ' * Let\\'s do this.' in a block comment", () => {
+		const content = "/*\n * Let's do this.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("WARNS on ' * Now we process the data.'", () => {
+		const content = "/*\n * Now we process the data.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("WARNS on ' * Step 1: initialize.'", () => {
+		const content = "/*\n * Step 1: initialize.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("WARNS on ' * Simply return the value.'", () => {
+		const content = "/*\n * Simply return the value.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("WARNS on emoji in a block comment body (' * 🚀 ship it')", () => {
+		const content = "/*\n * 🚀 ship it\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("emoji");
+	});
+
+	it("does NOT fire on the block opener /** (structural line exempt)", () => {
+		// /** matches ALLOW_BLOCK_BODY — no SLOP_BLOCK scan runs on it
+		const d = runWrite("/**\n */\nexport const x = 1;\n");
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("does NOT fire on the block closer */ (structural line exempt)", () => {
+		// */ matches ALLOW_BLOCK_BODY — no SLOP_BLOCK scan runs on it
+		const content = "/*\n * neutral body line\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("does NOT fire on ' * @param foo bar' (@-annotation exempt)", () => {
+		// @-annotation lines match ALLOW_BLOCK_BODY — skipped from block-comment body scan
+		const content = "/**\n * @param foo bar description\n */\nexport function f(foo: string) { return foo; }\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("// deslop:disable anywhere in content suppresses block-comment body slop too", () => {
+		const content =
+			"// deslop:disable\n" +
+			"/*\n * Now we process the data.\n */\nexport const x = 1;\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("env var GROUNDWORK_DESLOP_GUARD=0 suppresses block-comment body slop too", () => {
+		const payload = {
+			hook_event_name: "PreToolUse",
+			tool_name: "Write",
+			tool_input: {
+				file_path: "/p/src/x.ts",
+				content: "/*\n * Now we process the data.\n */\nexport const x = 1;\n",
+			},
+		};
+		const out = execFileSync("node", [HOOK], {
+			input: JSON.stringify(payload),
+			encoding: "utf8",
+			env: { ...process.env, GROUNDWORK_DESLOP_GUARD: "0" },
+		});
+		const d = out.trim() ? JSON.parse(out) : {};
+		expect(d.hookSpecificOutput).toBeUndefined();
 	});
 });

@@ -29,9 +29,16 @@
  *  - CONSERVATIVE. Patterns favor false negatives — only egregious AI
  *    fingerprints fire. JSDoc/TSDoc, shebangs, license headers, and
  *    annotation comments (@ts-ignore etc.) are allow-listed before detection.
+ *  - INLINE-REGEX FALLBACK RISK. The block-comment body scan uses classifyLines
+ *    from comment-scan.mjs (stateful) to skip non-block lines. The inline
+ *    fallback regex (^\s*[*]) cannot distinguish a block-comment body from a
+ *    multiplication continuation (`  * note: …`) or template-literal content —
+ *    it would produce false positives on those lines. The shared library is the
+ *    authoritative classifier; the fallback is last-resort only.
  */
 
 import { readStdin, passthrough } from './lib/hook-io.mjs'
+import { classifyLines } from './lib/comment-scan.mjs'
 
 const GUARDED = new Set(['Edit', 'Write', 'MultiEdit'])
 
@@ -91,6 +98,42 @@ const SLOP = [
   {
     label: 'AI emoji in a comment',
     re: /^\s*\/\/.*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/u,
+  },
+]
+
+/**
+ * Lines that are structural within a block comment (opener, closer, or
+ * @-annotation). These are skipped in the block-comment body scan even though
+ * classifyLines() classifies them as 'block-comment' — they carry no slop risk.
+ */
+const ALLOW_BLOCK_BODY = [
+  /^\s*\/\*\*?/, // /** or /* open
+  /^\s*\*\//, // */ close
+  /^\s*\*\s*@/, // @param, @returns, @ts-ignore, etc.
+]
+
+/**
+ * Block-comment-body variants of the SLOP patterns. Applied to lines that
+ * match ^\s*\* and are not caught by ALLOW_BLOCK_BODY or LICENSE_LINE.
+ * These are structurally identical to SLOP but anchored to the `* ` prefix
+ * instead of `// `.
+ */
+const SLOP_BLOCK = [
+  {
+    label: 'AI-fingerprint opener in block comment ("Let\'s/Let us/Now we/Here we/Next we/Now I/I\'ll")',
+    re: /^\s*\*\s*(let's|let us|now we|here we|next we|first,?\s+let's|now i|i'll|i will)\b/i,
+  },
+  {
+    label: 'narrator/step marker in block comment ("Step N", "Phase N", "Firstly/Secondly/Finally")',
+    re: /^\s*\*\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i,
+  },
+  {
+    label: 'apologetic/hedging filler in block comment ("Note: ", "Disclaimer: ", "Just ", "Simply ")',
+    re: /^\s*\*\s*(note:\s|disclaimer:\s|just\s+|simply\s+)/i,
+  },
+  {
+    label: 'AI emoji in block comment',
+    re: /^\s*\*.*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/u,
   },
 ]
 
@@ -296,6 +339,16 @@ function detectSlop(content) {
   const lines = content.split(/\r?\n/)
   const findings = []
 
+  // Classify all lines using the shared library so this hook and
+  // scripts/check-comments.mjs share one notion of "block-comment body line".
+  // Wrapped in try/catch so a library error does not break fail-open behaviour.
+  let lineKinds = null
+  try {
+    lineKinds = classifyLines(content)
+  } catch {
+    // Falls back to inline predicate in the block-comment scan below.
+  }
+
   // Per-line pattern scan (after allow-list).
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -306,6 +359,27 @@ function detectSlop(content) {
       if (re.test(line)) {
         findings.push(`line ${i + 1}: ${label} — ${line.trim().slice(0, 120)}`)
         break // one finding per line is enough
+      }
+    }
+  }
+
+  // Block-comment body scan: apply SLOP_BLOCK patterns to block-comment body
+  // lines that were exempt from the per-line scan above. Uses classifyLines
+  // from comment-scan.mjs (shared library) — BOTH surfaces share one notion
+  // of "this line is a block-comment body". Falls back to the inline predicate
+  // if classifyLines is unavailable. Structural lines (/**  /*  */) and
+  // @-annotation lines are still skipped via ALLOW_BLOCK_BODY.
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    // Prefer shared-library classification; fall back to inline regex.
+    const isBlockComment = lineKinds ? lineKinds[i] === 'block-comment' : /^\s*\*/.test(line)
+    if (!isBlockComment) continue
+    if (ALLOW_BLOCK_BODY.some((re) => re.test(line))) continue
+    if (i < 5 && LICENSE_LINE.test(line)) continue
+    for (const { label, re } of SLOP_BLOCK) {
+      if (re.test(line)) {
+        findings.push(`line ${i + 1}: ${label} — ${line.trim().slice(0, 120)}`)
+        break
       }
     }
   }

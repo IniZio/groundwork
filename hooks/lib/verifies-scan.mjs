@@ -6,8 +6,9 @@
  * to the test file paths (relative to rootDir) that carry the annotation.
  *
  * Convention: `@verifies` followed by one or more space/comma-separated
- * requirement IDs, appearing anywhere in the file (comment or string).
- * A single annotation line may list multiple IDs:
+ * requirement IDs. The token must be the first non-whitespace content after a
+ * `//` or `*` comment marker — mid-line and trailing forms (including inside
+ * string literals) are not matched.  A single annotation line may list multiple IDs:
  *   // @verifies ARTIFACT-R-001, ARTIFACT-R-002
  *
  * ID grammar is shared with hooks/lib/spec-io.mjs (ID_RE_SRC).
@@ -52,17 +53,25 @@ function walkTestFiles(dir) {
   return results
 }
 
+// An @verifies token is only treated as a real annotation when it is the
+// FIRST non-whitespace content following a comment marker (// or *).
+// Mid-line trailing annotations — e.g. `doSomething() // @verifies FOO-R-001`
+// — are intentionally not supported.  This prevents prose descriptions of the
+// annotation convention from being scanned as real annotations.
+const VERIFIES_COMMENT_RE = /^\s*(?:\/\/|\*)\s*@verifies\b/
+
 /**
- * Extract all requirement IDs that follow a `@verifies` token on a single line.
- * Everything after the `@verifies` token is scanned with the shared ID regex.
+ * Extract all requirement IDs that follow a `@verifies` token on a single line,
+ * but only when `@verifies` is the first non-whitespace content after a comment
+ * marker (`//` or `*`).  Mid-line trailing uses are intentionally ignored.
  * Extraction is case-insensitive; all returned IDs are normalized to lowercase.
  *
  * @param {string} line
  * @returns {string[]}
  */
 function extractVerifiesFromLine(line) {
+  if (!VERIFIES_COMMENT_RE.test(line)) return []
   const idx = line.indexOf('@verifies')
-  if (idx === -1) return []
   const after = line.slice(idx + '@verifies'.length)
   const idRe = new RegExp(ID_RE_SRC, 'gi')
   const ids = []

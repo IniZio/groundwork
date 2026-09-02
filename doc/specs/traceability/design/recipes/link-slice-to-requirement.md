@@ -43,7 +43,7 @@ Prefer `--covers-ac` for precision; use `--decisions` only when the requirement 
 
 ## Adding `@verifies` to a test
 
-To emit a `confirms` edge from a test file to a requirement, add the annotation anywhere in the test file (comment or string):
+To emit a `confirms` edge from a test file to a requirement, add the annotation as the first non-whitespace content after a `//` or `*` comment marker in the test file:
 
 ```ts
 // @verifies TRACEABILITY-R-002

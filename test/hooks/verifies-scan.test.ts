@@ -3,7 +3,7 @@
  *
  * Covers:
  *   1. Comment-form annotations (`// @verifies FOO-R-001`)
- *   2. Title-string annotations (`it('// @verifies FOO-R-001', ...)`)
+ *   2. Mid-line / title-string forms are NOT extracted (scanner requires `@verifies` as first non-whitespace after `//` or `*`)
  *   3. Multi-id annotations on one line (space- and comma-separated)
  *   4. Malformed ids that must NOT match
  *   5. Files with no annotations produce no entries
@@ -84,11 +84,18 @@ describe('scanVerifies — comment-form annotation', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Suite 2: title-string annotation
+// Suite 2: mid-line annotations are intentionally NOT matched
+//
+// @verifies is only recognized when it is the first non-whitespace content
+// following a comment marker (// or *).  Forms where @verifies appears inside
+// a string literal or after other code on the same line are deliberately
+// unsupported — they produce false positives when prose describes the
+// convention.
 // ---------------------------------------------------------------------------
 
-describe('scanVerifies — title-string annotation', () => {
-  it('extracts id from a @verifies token inside a describe/it title string', () => {
+describe('scanVerifies — mid-line annotations are not matched (intentional)', () => {
+  it('does NOT extract @verifies from inside a describe/it title string', () => {
+    // @verifies is mid-line here (inside a string arg), not after a comment marker
     writeTestFile('test/title.test.ts', [
       'describe("// @verifies TITLE-R-001: the feature works", () => {',
       '  it("passes", () => {})',
@@ -96,17 +103,19 @@ describe('scanVerifies — title-string annotation', () => {
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['title-r-001']).toBeDefined()
-    expect(mapping['title-r-001']).toContain('test/title.test.ts')
+    // Mid-line @verifies inside a string is intentionally not scanned
+    expect(mapping['title-r-001']).toBeUndefined()
   })
 
-  it('extracts id from @verifies in an it() title string', () => {
+  it('does NOT extract @verifies from an it() title string (mid-line)', () => {
+    // @verifies is mid-line here (inside a string arg), not after a comment marker
     writeTestFile('test/it-title.test.ts', [
       'it("@verifies IT-R-002 — blocks when incomplete", () => {})',
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
-    expect(mapping['it-r-002']).toBeDefined()
+    // Mid-line @verifies inside a string is intentionally not scanned
+    expect(mapping['it-r-002']).toBeUndefined()
   })
 })
 
@@ -178,14 +187,18 @@ describe('scanVerifies — malformed ids are not extracted', () => {
     expect(mapping['FOO-R-001']).toBeUndefined()
   })
 
-  it('does not pick up ids that appear before @verifies on the same line', () => {
-    // Only ids AFTER @verifies should be captured
+  it('does not pick up ids mentioned in prose without a proper annotation marker', () => {
+    // A requirement id that appears in plain prose (no @verifies marker at start of
+    // comment) is not captured — the full line must match the comment-first pattern.
     writeTestFile('test/before.test.ts', [
-      '// BEFORE-R-001 is mentioned then @verifies AFTER-R-001',
+      '// BEFORE-R-001 is described here without being an annotation',
+      '// @verifies AFTER-R-001',
     ].join('\n'))
 
     const mapping = scanVerifies(rootDir)
+    // BEFORE-R-001 is in prose only — not extracted
     expect(mapping['before-r-001']).toBeUndefined()
+    // AFTER-R-001 is on a proper annotation line — extracted
     expect(mapping['after-r-001']).toBeDefined()
   })
 })
@@ -276,6 +289,64 @@ describe('scanVerifies — ignored directories', () => {
 
     const mapping = scanVerifies(rootDir)
     expect(mapping['worktree-r-001']).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 12: annotation position gate — both-directions bite
+//
+// The gate rejects @verifies unless it is the FIRST non-whitespace content
+// after a comment marker (// or *).  This suite asserts BOTH directions:
+//   - Positive: genuine comment-first annotations ARE found (scanner is live)
+//   - Negative: prose mentions and mid-line trailing annotations are rejected
+//
+// A suite where every assertion is a negative cannot distinguish a live scanner
+// from one that matches nothing.  The positive controls below prevent that.
+// ---------------------------------------------------------------------------
+
+describe('scanVerifies — annotation position gate (both-directions bite)', () => {
+  it('positive: // @verifies is matched when @verifies is first after // (gate open)', () => {
+    writeTestFile('test/gate-comment.test.ts', '// @verifies GATE-R-001\n')
+    const mapping = scanVerifies(rootDir)
+    // Must be defined — proves the scanner is live and the gate lets real annotations through
+    expect(mapping['gate-r-001']).toBeDefined()
+    expect(mapping['gate-r-001']).toContain('test/gate-comment.test.ts')
+  })
+
+  it('positive: JSDoc * @verifies is matched when @verifies is first after * (gate open)', () => {
+    writeTestFile('test/gate-jsdoc.test.ts', [
+      '/**',
+      ' * @verifies JSDOC-R-001',
+      ' */',
+    ].join('\n'))
+    const mapping = scanVerifies(rootDir)
+    // Must be defined — proves the * form is also a live gate
+    expect(mapping['jsdoc-r-001']).toBeDefined()
+    expect(mapping['jsdoc-r-001']).toContain('test/gate-jsdoc.test.ts')
+  })
+
+  it('negative: prose mention of @verifies inside a JSDoc description is rejected (gate closed)', () => {
+    // A description comment that mentions @verifies as convention prose — must NOT be scanned.
+    // This is the false-positive case the gate was added to fix.
+    writeTestFile('test/gate-prose.test.ts', [
+      '/**',
+      ' * Covers the annotation convention: @verifies PROSE-R-001 appears here as prose.',
+      ' * Use @verifies in your test comments to register coverage.',
+      ' */',
+    ].join('\n'))
+    const mapping = scanVerifies(rootDir)
+    // Prose mention must be rejected — @verifies is not the first thing after *
+    expect(mapping['prose-r-001']).toBeUndefined()
+  })
+
+  it('negative: trailing mid-line @verifies (code // @verifies) is rejected (gate closed)', () => {
+    // A trailing comment after real code — must NOT be scanned (mid-line trailing is intentionally unsupported).
+    writeTestFile('test/gate-trailing.test.ts', [
+      'doSomething() // @verifies TRAILING-R-001',
+    ].join('\n'))
+    const mapping = scanVerifies(rootDir)
+    // Trailing comment after code is intentionally not supported
+    expect(mapping['trailing-r-001']).toBeUndefined()
   })
 })
 

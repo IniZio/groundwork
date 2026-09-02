@@ -27,6 +27,8 @@ Test files declare which requirements they verify using an inline `@verifies` an
 
 The annotation may appear anywhere in the file (comment or string). `verifies-scan.mjs` walks `test/` and `tests/` directories to collect all annotations and produce a mapping from requirement ID to test file paths.
 
+> **Superseded (2026-09-02):** The placement rule in the sentence above has been narrowed — `@verifies` must now be the first non-whitespace content after a `//` or `*` comment marker. See [Amendment — 2026-09-02](#amendment--2026-09-02-t67-motive-obsidian-native-groundwork).
+
 **Rationale**:
 - Keeps the link co-located with the test — no separate registry to drift.
 - The ID grammar is shared with `spec-io.mjs` (`ID_RE_SRC`) so the scanner reuses the canonical parser.
@@ -59,3 +61,22 @@ The annotation may appear anywhere in the file (comment or string). `verifies-sc
 - `NativeSpineAdapter` is the only production implementation; no injection is needed in the common case.
 - Future store-swap implementers must satisfy the full `SpineAdapter` typedef (all seven methods).
 - `verifies-scan.mjs` must be run as part of coverage reporting; its output feeds `doc/specs/_generated/coverage.json` (via `hooks/spec.mjs`).
+
+---
+
+## Amendment — 2026-09-02 (T67, motive: obsidian-native-groundwork)
+
+**Narrows the annotation placement rule in Decision 1.**
+
+The sentence in Decision 1 that read:
+
+> The annotation may appear anywhere in the file (comment or string).
+
+is replaced by:
+
+> The annotation must be the first non-whitespace content after a `//` or `*`
+> comment marker. Mid-line and trailing forms — including tokens inside string
+> literals — are not matched. This constraint is enforced by `VERIFIES_COMMENT_RE`
+> in `hooks/lib/verifies-scan.mjs`.
+
+**Rationale:** `verifies-scan.mjs` was narrowed (T64/T67) to eliminate silent false positives from `@verifies` tokens embedded inside string literals (e.g. `it('// @verifies …', …)`). The original "anywhere" wording was already inconsistent with the example in the decision body, which showed only the `// @verifies …` comment form. The valid form has always been a stand-alone comment line; this amendment makes the rule explicit.

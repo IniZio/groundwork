@@ -12,7 +12,7 @@
  *   - Tests must FAIL against the old code (before the fix) to count as regressions.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -561,5 +561,66 @@ describe('Bug 7 — build-then-lint succeeds when CLAUDE_PROJECT_DIR is unset', 
       reportedSubstantiveOutput,
       `lint output was unexpected: ${combined}`,
     ).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bug 5: INDEX.JSON REQUIREMENT-COUNT PARITY WITH REQUIREMENT FILES
+//
+// Old behaviour: when a requirement file's YAML frontmatter is malformed,
+// spec.mjs build silently drops that file from the index (no error, exit 0,
+// plausible-looking total). The resulting index.json has fewer requirement
+// nodes than there are requirement files on disk — a silent data-loss.
+//
+// Fixed behaviour: the live index.json requirement-node count MUST equal the
+// live requirement-file count. When they differ, the test names every file
+// whose relPath is missing from the index so the author knows exactly which
+// files were silently dropped.
+//
+// Assertion that would have caught the old bug:
+//   expect(missingFiles).toEqual([])  — Vitest prints the actual array on
+//   failure, naming every dropped file.
+// ---------------------------------------------------------------------------
+
+describe('Bug 5 — index.json requirement-count parity with requirement files', () => {
+  const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..')
+  const SPEC_DIR = path.join(REPO_ROOT, 'doc', 'specs')
+  const INDEX_PATH = path.join(SPEC_DIR, '_generated', 'index.json')
+
+  /** Recursively collect all *.md files under any `requirements/` directory inside baseDir.
+   *  Returns paths relative to baseDir (matching index node relPath values). */
+  function collectRequirementFiles(dir: string, baseDir: string): string[] {
+    const results: string[] = []
+    const entries = readdirSync(dir)
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry)
+      const st = statSync(fullPath)
+      if (st.isDirectory()) {
+        results.push(...collectRequirementFiles(fullPath, baseDir))
+      } else if (entry.endsWith('.md') && path.basename(path.dirname(fullPath)) === 'requirements') {
+        results.push(path.relative(baseDir, fullPath))
+      }
+    }
+    return results
+  }
+
+  it('requirement-node count in index.json equals requirement-file count on disk; names any missing files', () => {
+    // Read the live index as built on disk (do NOT rebuild inside the test).
+    const indexRaw = readFileSync(INDEX_PATH, 'utf8')
+    const index = JSON.parse(indexRaw) as { nodes: Record<string, { type: string; relPath?: string }> }
+
+    const requirementNodes = Object.values(index.nodes).filter(n => n.type === 'requirement')
+    const indexedRelPaths = new Set(requirementNodes.map(n => n.relPath ?? ''))
+
+    // Walk the live spec tree for all *.md files under requirements/ dirs.
+    const requirementFiles = collectRequirementFiles(SPEC_DIR, SPEC_DIR)
+
+    // KEY ASSERTION: every file on disk must be present in the index.
+    // Vitest prints the actual array on failure, naming every dropped file.
+    const missingFiles = requirementFiles.filter(f => !indexedRelPaths.has(f))
+    expect(missingFiles).toEqual([])
+
+    // Also assert the totals agree (catches phantom nodes that have no backing file).
+    expect(requirementNodes.length).toBe(requirementFiles.length)
   })
 })

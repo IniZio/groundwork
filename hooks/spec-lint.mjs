@@ -44,12 +44,18 @@
  *     unknown-view-type    — views[].type must be a core type or declared in view_types
  *     view-type-collision  — view_types[].name must not shadow a core type
  *     view-type-mismatch   — view file frontmatter type must match the spec.yaml declaration
+ *   File-walk invariants (full-tree mode; skipped with --rfc for count-parity):
+ *     yaml-parse-error (file-walk) — requirement file with unparseable YAML frontmatter causes
+ *                                    no index node; detected by direct file walk before byFile loop
+ *     count-parity                 — on-disk requirement file count must equal index requirement
+ *                                    node count; catches silent-drop cases (bad frontmatter that
+ *                                    did not throw, missing id field, etc.)
  *
  * Exit codes: 0 success  1 violations found (both modes)  2 usage error
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, dirname, basename, resolve } from 'node:path'
+import { join, dirname, basename, resolve, relative } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { load as yamlLoad } from 'js-yaml'
 import { loadSchema } from './lib/schema-io.mjs'
@@ -302,7 +308,10 @@ function extractRelativeLinks(text) {
  */
 function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
   const violations = []
-  const { data: fileFm } = parseYamlFrontmatter(fileContent)
+  const { data: fileFm, parseError } = parseYamlFrontmatter(fileContent)
+  if (parseError) {
+    return [{ nodeId: targetNodes[0]?.id ?? null, violation: `yaml-parse-error: ${fileAbsPath}: ${parseError.message}` }]
+  }
   const fileLabel = basename(fileAbsPath)
   const firstNodeId = targetNodes[0]?.id || '(file)'
 
@@ -605,6 +614,53 @@ function emitLintDrift(projectDir, rfcUid, nodeId, violation) {
 }
 
 // ---------------------------------------------------------------------------
+// Frontmatter verification ↔ body **Verification** agreement (hard error)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare frontmatter `verification:` with the parsed body `**Verification**` label.
+ * Fires in both directions (fm=unverified/body=automated AND the reverse).
+ * Returns violation objects — mismatches are hard errors that exit non-zero.
+ *
+ * @param {string}   fileContent  Raw file text
+ * @param {string}   fileAbsPath  Absolute path (for error messages)
+ * @param {object[]} targetNodes  Index nodes expected from this file
+ * @returns {{ nodeId: string, violation: string }[]}
+ */
+function checkFmBodyVerificationMismatch(fileContent, fileAbsPath, targetNodes, projectDir) {
+  const { data: fileFm, parseError } = parseYamlFrontmatter(fileContent)
+  if (parseError) {
+    return [{ nodeId: null, violation: `yaml-parse-error: ${fileAbsPath}: ${parseError.message}` }]
+  }
+  const fmVerification = fileFm && typeof fileFm.verification === 'string'
+    ? fileFm.verification.toLowerCase().trim()
+    : null
+  if (!fmVerification) return []
+
+  const sections = parseRequirementsDocument(fileContent)
+  // Index node ids are lowercased (from frontmatter); section ids are from heading text (may differ in case).
+  // Normalize both to lowercase for the membership check.
+  const targetIds = new Set(targetNodes.map(n => n.id.toLowerCase()))
+  const results = []
+
+  for (const section of sections) {
+    if (!targetIds.has(section.id.toLowerCase())) continue
+    const bodyVerification = section.verification && section.verification !== 'unknown'
+      ? section.verification.toLowerCase().trim()
+      : null
+    if (!bodyVerification) continue
+    if (fmVerification !== bodyVerification) {
+      results.push({
+        nodeId: section.id,
+        violation: `verification-mismatch: requirement "${section.id}" frontmatter verification=${fmVerification} disagrees with body **Verification**: ${bodyVerification} (${projectDir ? relative(projectDir, fileAbsPath) : basename(fileAbsPath)})`,
+      })
+    }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Usage
 // ---------------------------------------------------------------------------
 
@@ -680,6 +736,36 @@ if (rfcFlagPresent && !rfcMode) {
   process.exit(2)
 }
 
+// ---------------------------------------------------------------------------
+// File-walk helper — collects *.md files under requirements/ subdirectories
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively collect *.md files whose immediate parent directory is named
+ * `requirements`. Used for the file-walk YAML-parse scan and count-parity check.
+ * @param {string} dir  Absolute path to walk
+ * @returns {string[]}  Absolute paths
+ */
+function walkReqFiles(dir) {
+  const results = []
+  if (!existsSync(dir)) return results
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      results.push(...walkReqFiles(full))
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      // Match the same predicate as isRequirementsDoc:
+      //   - any file named requirements.md or constraints.md (old-style multi-req files)
+      //   - any *.md file whose immediate parent directory is named requirements/ (new-style)
+      const name = entry.name
+      if (name === 'requirements.md' || name === 'constraints.md' || basename(dir) === 'requirements') {
+        results.push(full)
+      }
+    }
+  }
+  return results
+}
+
 const projectDir = process.env.GROUNDWORK_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd()
 const specDir = join(projectDir, 'doc', 'specs')
 
@@ -744,6 +830,54 @@ if (rfcMode) {
 
 const violations = []
 
+// ---------------------------------------------------------------------------
+// Pass 0a: File-walk YAML-parse scan
+// ---------------------------------------------------------------------------
+// Walk every *.md under requirements/ and attempt a YAML frontmatter parse.
+// Files with unparseable frontmatter produce no index node (buildIndexData
+// silently skips them), so checkRequirementsFile is never called for them —
+// this pass is the only gate for that case.
+// Note: parseYamlFrontmatter returns {data:{}, body} with NO parseError for
+// no-frontmatter files (no ---) and non-object YAML (e.g. bare `true`) —
+// those cases do not throw. Count-parity (Pass 0b) is the backstop for them.
+const diskReqFiles = walkReqFiles(specDir)
+
+for (const absReqPath of diskReqFiles) {
+  let raw
+  try { raw = readFileSync(absReqPath, 'utf8') } catch { continue }
+  const { parseError } = parseYamlFrontmatter(raw)
+  if (parseError) {
+    const v = `yaml-parse-error: ${absReqPath}: ${parseError.message}`
+    violations.push({ nodeId: null, violation: v })
+    emitLintDrift(projectDir, rfcForJournal, null, v)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pass 0b: Count-parity check (full-tree mode only)
+// ---------------------------------------------------------------------------
+// The index is built fresh from disk (loadSpecIndex calls buildIndexData, not
+// the gitignored _generated/index.json cache), so a count mismatch means a
+// file was silently dropped (bad frontmatter that did not throw, missing id
+// field, etc.). Skipped in RFC mode: that mode scans a subset, so counts
+// diverge by design.
+if (!rfcMode) {
+  const diskCount = diskReqFiles.length
+  // Compare files to unique indexed file paths, not raw node count: one file
+  // may contain multiple requirement sections (multiple nodes, one relPath).
+  // A silently-dropped file produces zero nodes for its relPath — that's the
+  // mismatch we're detecting.
+  const indexedFileCount = new Set(
+    allNodes.filter(n => n.type === 'requirement' && n.relPath).map(n => n.relPath),
+  ).size
+  if (diskCount !== indexedFileCount) {
+    const v =
+      `count-parity: ${diskCount} requirement file(s) on disk but ${indexedFileCount} requirement file(s) in index — run \`node scripts/build-spec-index.mjs\` (or equivalent) to rebuild`
+    violations.push({ nodeId: null, violation: v })
+    emitLintDrift(projectDir, rfcForJournal, null, v)
+  }
+}
+
 // Group target nodes by their source file (relPath)
 const byFile = new Map()
 for (const node of targetNodes) {
@@ -768,6 +902,11 @@ for (const [relPath, nodes] of byFile) {
       violations.push({ nodeId, violation })
       emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
     }
+    // Hard error: frontmatter verification↔body **Verification** agreement
+    for (const { nodeId, violation } of checkFmBodyVerificationMismatch(fileContent, absPath, nodes, projectDir)) {
+      violations.push({ nodeId, violation })
+      emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
+    }
   } else {
     // Concept/metadata nodes: check frontmatter-based invariants
     const { data: rawFm } = parseYamlFrontmatter(fileContent)
@@ -776,6 +915,13 @@ for (const [relPath, nodes] of byFile) {
         violations.push({ nodeId: node.id, violation: v })
         emitLintDrift(projectDir, rfcForJournal, node.id, v)
       }
+    }
+    // Hard error: frontmatter verification↔body **Verification** agreement
+    // D-15 individual requirement files carry both a frontmatter `verification:` and a body
+    // `**Verification**` bullet; they land here (not in isReqFile) but the hard check applies equally.
+    for (const { nodeId, violation } of checkFmBodyVerificationMismatch(fileContent, absPath, nodes, projectDir)) {
+      violations.push({ nodeId, violation })
+      emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
     }
   }
 }

@@ -2,7 +2,7 @@
 id: pacing-r-003
 type: requirement
 concept: C-ENFORCEMENT
-title: `ledger complete` is never blocked by pacing
+title: "`ledger complete` is never blocked by pacing"
 status: implemented
 verification: automated
 criticality: must

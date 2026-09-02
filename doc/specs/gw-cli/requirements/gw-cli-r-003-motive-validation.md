@@ -14,7 +14,7 @@ If `--motive <slug>` is supplied and the loaded ledger's `motive` field is set a
 
 - **Why** — Without cross-checking the flag against the stored motive, a caller passing the wrong slug could silently read or mutate a different session's ledger. The `MOTIVE_MISMATCH` error makes the mismatch visible rather than silently operating on the wrong run.
 - **Fit criterion** — Given a ledger file with `"motive": "alpha"`, running `gw ledger status --motive beta --json` against that file exits 1 and produces `error.code === "MOTIVE_MISMATCH"`. Running `gw ledger status --motive alpha --json` against the same file does not produce `MOTIVE_MISMATCH`.
-- **Verification**: automated — the motive check is a conditional in `status` (and only `status`) as implemented.
+- **Verification**: unverified — candidate: the motive check is a conditional in `status` (and only `status`) as implemented.
 
   1. Copy a real ledger JSON to a temp file, set `"motive": "alpha"` in it, run `gw ledger status --motive beta --json` pointed at that session; assert `exit === 1` and `error.code === "MOTIVE_MISMATCH"`.
   2. Run same command with `--motive alpha`; assert no `MOTIVE_MISMATCH`.

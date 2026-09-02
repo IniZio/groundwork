@@ -14,5 +14,5 @@ status: open
 
 - **Why** — Omitting `model:` causes a background `Task` to inherit the orchestrator's opus session model. Opus is the most expensive tier; silently billing it for every haiku-appropriate `explore` or `git-master` task multiplies token cost without any visible indication. The guard makes the default safe rather than expensive.
 - **Fit criterion** — Send a PreToolUse input with `tool_name: "Task"` and `tool_input.subagent_type: "groundwork:explore"` with no `model:` field. The `agent-model-guard` hook **shall** emit a log line confirming injection of `model: "haiku"` (the `model-registry.json` entry for `explore`). Send the same input with `model: "sonnet"` explicitly set; the guard **shall** not override it.
-- **Verification**: automated — `agent-model-guard` PreToolUse hook runs on every Agent/Task/TaskCreate call; injection and passthrough paths are exercised by unit tests under `test/`.
+- **Verification**: unverified — candidate: `agent-model-guard` PreToolUse hook runs on every Agent/Task/TaskCreate call; injection and passthrough paths are exercised by unit tests under `test/`.
 - **Criticality**: must

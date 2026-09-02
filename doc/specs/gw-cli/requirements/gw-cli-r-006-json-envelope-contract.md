@@ -14,7 +14,7 @@ status: open
 
 - **Why** — Without a stable machine-parseable envelope, tooling and tests cannot reliably extract error codes or distinguish operational failures (exit 1) from usage errors (exit 2); both are non-zero but require different handling.
 - **Fit criterion** — `gw ledger status --motive m --json` (against a missing ledger) produces a single parseable JSON line with `ok: false`, an `error.code` string, and `exit: 1`. `gw ledger status --motive m --json` (against a valid ledger) produces a single parseable JSON line with `ok: true` and `exit: 0`. In both cases `JSON.parse(stdout)` succeeds without error.
-- **Verification**: automated — the envelope is serialised in `src/gw/cli/main.ts` for every command.
+- **Verification**: unverified — candidate: the envelope is serialised in `src/gw/cli/main.ts` for every command.
 
   1. Run `gw ledger status --motive m --json` against a non-existent run store; capture stdout; assert `JSON.parse(stdout)` succeeds; assert parsed `ok === false` and `exit === 1`.
   2. Run `gw ledger status --motive nosubcmd_test --json` (wrong subcmd spelling as a control); assert exit 2 and `error.code === "UNKNOWN_SUBCOMMAND"`.

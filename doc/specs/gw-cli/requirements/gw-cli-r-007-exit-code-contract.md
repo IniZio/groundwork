@@ -14,7 +14,7 @@ The `gw ledger` command **shall** exit 0 on success, exit 1 on operational failu
 
 - **Why** — Shell callers and CI scripts distinguish failure modes by exit code; if `gw` used inconsistent or undocumented codes, a script catching exit 1 would silently swallow usage errors (exit 2), and a script checking `if [ $? -ne 0 ]` could not tell whether it supplied wrong arguments or the ledger was genuinely absent.
 - **Fit criterion** — Three distinct observable outcomes: (a) `gw ledger status --motive m --json` against a valid ledger exits 0; (b) `gw ledger status --motive m --json` against a missing ledger exits 1 with `error.code === "NOT_FOUND"`; (c) `gw ledger badcmd --motive m --json` exits 2 with `error.code === "UNKNOWN_SUBCOMMAND"`.
-- **Verification**: automated — `process.exit(envelope.exit)` in `src/gw/cli/main.ts` propagates the envelope exit code unconditionally.
+- **Verification**: unverified — candidate: `process.exit(envelope.exit)` in `src/gw/cli/main.ts` propagates the envelope exit code unconditionally.
 
   1. Run `gw ledger status --motive m --json` with a valid ledger; `echo $?` → `0`.
   2. Run `gw ledger status --motive m --json` with no ledger on disk; `echo $?` → `1`.

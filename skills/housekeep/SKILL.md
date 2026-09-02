@@ -120,7 +120,9 @@ Sweep the scoped surface. Collect EVERY smell instance as a Finding — do not f
 | **Boundary violations** | Hidden coupling, misplaced responsibilities, wrong-layer imports or side effects |
 | **Missing tests** | Behavior not locked, weak regression coverage, edge-case gaps |
 | **UI/design defaults** | Generic visual patterns that make an AI-built interface feel unreviewed |
-| **Redundant comments** | Narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of obvious code (`// increment counter` above `count++`), section-divider banners, apologetic/hedging filler. **Keep:** non-obvious *why* rationale, invariants/constraints, warnings/gotchas, issue/spec links, public API doc-comments |
+| **Redundant comments** | Narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of obvious code (`// increment counter` above `count++`), section-divider banners used as narration (restating what the next block does, step-marking), apologetic/hedging filler. **Note:** section-divider banners used as consistent structural markers throughout a file are house style and are not a finding — flag only dividers that narrate or step-mark. **Keep:** non-obvious *why* rationale, invariants/constraints, warnings/gotchas, issue/spec links, public API doc-comments |
+
+Run `pnpm run check:comments` before reading files — it pre-ranks the surface by comment volume (ratio ≥ 45% of non-blank lines, or a single block occupying ≥ 20% of the file). It is advisory and exits 0 always. It measures SIZE only: it cannot detect narration, restatement, or step markers, which still require reading the flagged files. Start with the highest-ratio files from its output.
 
 ### Step 3 — Classify & score by severity
 
@@ -145,7 +147,7 @@ Bound the plan to accepted Findings only. Order the work from safest deletion to
 - **Pass 1: Dead code deletion**
 - **Pass 2: Duplicate removal**
 - **Pass 3: Naming and error-handling cleanup**
-- **Pass 4: Comment cleanup** — remove narration, step markers, restatements; keep *why*, invariants, gotchas, doc-comments (see the Redundant comments smell above; `hooks/deslop-guard.mjs` flags some patterns at write-time as an advisory signal)
+- **Pass 4: Comment cleanup** — remove narration, step markers, restatements; keep *why*, invariants, gotchas, doc-comments (see the Redundant comments smell above; `hooks/deslop-guard.mjs` flags comment PATTERNS at write time on an edit fragment; `check:comments` measures comment SIZE across whole files — both are advisory)
 - **Pass 5: Test reinforcement**
 - Re-run targeted verification after EACH pass.
 - Do not bundle unrelated refactors into the same edit set.
@@ -155,7 +157,7 @@ Bound the plan to accepted Findings only. Order the work from safest deletion to
 
 - Keep regression tests green.
 - Run the relevant lint, typecheck, and unit/integration tests for the touched area.
-- Run existing static or security checks when available.
+- Run existing static or security checks when available (`pnpm run check:comments` for comment volume; typecheck, lint, and security scanners as applicable).
 - If a gate fails, fix the issue or back out the risky cleanup. Never force a cleanup through a failing gate.
 
 ### Step 8 — Close with the structured report

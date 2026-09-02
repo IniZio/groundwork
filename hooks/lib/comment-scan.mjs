@@ -11,9 +11,16 @@
  *   'code'          — any other non-blank line
  *   'blank'         — empty or whitespace-only
  *
- * Limitation: no string-literal or regex-literal awareness. A `//` or `/*`
- * that appears inside a string value will be miscounted. In practice this
- * produces small miscounts on this repo — no file is grossly misclassified.
+ * Limitations:
+ *   - No string-literal or regex-literal awareness. A `//` or `/*` that
+ *     appears inside a string value will be miscounted. In practice this
+ *     produces small miscounts on this repo — no file is grossly misclassified.
+ *   - Mid-line block openers are not tracked. A line like `foo(); /* start`
+ *     is classified 'code' and the in-block state is never set, so the body
+ *     lines that follow are also misclassified as 'code' until the parser
+ *     encounters a line whose trimmed form starts with `/*`. The shipped
+ *     ratio/block-share thresholds were calibrated against this behaviour —
+ *     do not change classifyLines to fix it without recalibrating.
  * The function is intentionally simple (pure line scanning, no AST) to match
  * the bespoke regex-only idiom of this hook suite.
  */

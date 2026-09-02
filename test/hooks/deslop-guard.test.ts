@@ -341,3 +341,132 @@ describe("deslop-guard — block-comment body scan (new)", () => {
 		expect(d.hookSpecificOutput).toBeUndefined();
 	});
 });
+
+describe("deslop-guard — SLOP_BLOCK narrowed patterns (regression + positive controls)", () => {
+	// --- Regression: legitimate NOTE: annotations must NOT fire ---
+
+	it("does NOT fire on '* NOTE: do NOT use process.stdin.isTTY …' (design annotation)", () => {
+		// Named false-positive: hooks/lib/hook-io.mjs:31. NOTE: in block-comment body
+		// is a standard documentation convention, not AI filler.
+		const content =
+			"/*\n" +
+			" * NOTE: do NOT use process.stdin.isTTY here — Claude Code always pipes JSON to\n" +
+			" * the hook, so isTTY is always false regardless of terminal attachment.\n" +
+			" */\n" +
+			"export function readStdin() { return process.stdin; }\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toMatch(/block comment/i);
+	});
+
+	it("does NOT fire on '* NOTE: new ledgers can no longer …' (design annotation)", () => {
+		// Named false-positive: hooks/ledger.mjs:474.
+		const content =
+			"/*\n" +
+			" * NOTE: new ledgers can no longer be initialized with token_free via --no-token.\n" +
+			" */\n" +
+			"export function init() {}\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toMatch(/block comment/i);
+	});
+
+	it("does NOT fire on '* Note: decision_log[].title is …' (design annotation)", () => {
+		// Named false-positive: hooks/lib/motive-dag.mjs:252.
+		const content =
+			"/*\n" +
+			" * Note: the covering field here reflects declaration-form events.\n" +
+			" */\n" +
+			"export function mapDecisions() {}\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toMatch(/block comment/i);
+	});
+
+	// --- Regression: legitimate ⚠ / ✓ symbols must NOT fire ---
+
+	it("does NOT fire on '⚠ DIVERGENCE banner' in a block comment (U+26A0, Misc Symbols)", () => {
+		// Named false-positive: test/acceptance/motive-compile.test.ts:12.
+		// ⚠ (U+26A0) is in the \u{2600}-\u{27BF} range, now excluded from SLOP_BLOCK.
+		const content =
+			"/*\n" +
+			" * S6-AC4 — Divergence fires: slice_state_mismatch + ⚠ DIVERGENCE banner;\n" +
+			" */\n" +
+			"export const x = 1;\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("emoji");
+	});
+
+	it("does NOT fire on ✓ (U+2713, Dingbats) in a block comment body", () => {
+		// Named false-positive: test/hooks/ac-retraction.test.ts:116-117.
+		// ✓ and ✔ are ordinary check-mark symbols, not AI decoration.
+		const content =
+			"/*\n" +
+			" * `✓ **<acId>** — met (covered by: <s1>, <s2>)`\n" +
+			" */\n" +
+			"export const x = 1;\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("emoji");
+	});
+
+	// --- Positive controls: genuine slop still fires ---
+
+	it("STILL warns on ' * Now we initialize the system.' (AI-fingerprint opener)", () => {
+		// Positive control: 'Now we' opener remains in SLOP_BLOCK unchanged.
+		const content = "/*\n * Now we initialize the system.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("STILL warns on ' * Step 1: begin' (narrator/step marker)", () => {
+		// Positive control: step-marker pattern unchanged.
+		const content = "/*\n * Step 1: begin the setup.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("STILL warns on ' * Simply delegate to the helper.' (filler)", () => {
+		// Positive control: 'simply ' remains in the narrowed filler pattern.
+		const content = "/*\n * Simply delegate to the helper.\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toMatch(/block comment/i);
+	});
+
+	it("STILL warns on 🚀 (U+1F680) in a block comment body (AI-decoration range)", () => {
+		// Positive control: \u{1F680}-\u{1F6FF} range kept in SLOP_BLOCK.
+		const content = "/*\n * 🚀 ship it\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("emoji");
+	});
+
+	it("FIRES on ✨ (U+2728) in a block comment body — explicit AI-decoration set", () => {
+		// ✨ is in the dropped \u{2600}-\u{27BF} range but added back explicitly.
+		const content = "/*\n * ✨ Enhanced!\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("emoji");
+	});
+
+	it("FIRES on ✅ (U+2705) in a block comment body — explicit AI-decoration set", () => {
+		// ✅ is in the dropped range but added back explicitly.
+		const content = "/*\n * ✅ Done\n */\nexport const x = 1;\n";
+		const d = runWrite(content);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("allow");
+		expect(d.hookSpecificOutput?.permissionDecisionReason).toContain("emoji");
+	});
+
+	it("does NOT fire on ⚠ (U+26A0) in a block comment body — legitimate annotation", () => {
+		// Regression: ⚠ Warning: is a legitimate annotation mark; must not be flagged.
+		const content = "/*\n * ⚠ Warning: races here\n */\nexport const x = 1;\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("emoji");
+	});
+
+	it("does NOT fire on ✓ (U+2713) in a block comment body — legitimate check-mark", () => {
+		// Regression: ✓ verified is a standard annotation mark; must not be flagged.
+		const content = "/*\n * ✓ verified\n */\nexport const x = 1;\n";
+		const out = runWrite(content);
+		expect(out.hookSpecificOutput?.permissionDecisionReason ?? "").not.toContain("emoji");
+	});
+});

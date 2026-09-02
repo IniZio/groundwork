@@ -128,12 +128,28 @@ const SLOP_BLOCK = [
     re: /^\s*\*\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i,
   },
   {
-    label: 'apologetic/hedging filler in block comment ("Note: ", "Disclaimer: ", "Just ", "Simply ")',
-    re: /^\s*\*\s*(note:\s|disclaimer:\s|just\s+|simply\s+)/i,
+    label: 'apologetic/hedging filler in block comment ("Just ", "Simply ")',
+    // NOTE: and Disclaimer: are standard design-annotation conventions in block-comment
+    // bodies and produced 12/12 false positives on legitimate load-bearing notes in this
+    // codebase (e.g. hooks/lib/hook-io.mjs "* NOTE: do NOT use process.stdin.isTTY").
+    // Those keywords are kept in the SLOP line-comment patterns where the signal is
+    // stronger. Only 'just ' and 'simply ' remain here as reliable block-comment filler.
+    // KNOWN FALSE NEGATIVE (deliberate): "* Note: this function loops over the array"
+    // will NOT fire because 'note:' was dropped to eliminate the false-positive flood.
+    // The // SLOP line-comment patterns still catch note:/disclaimer: in single-line
+    // comments. The two uses are not separable by regex in block-comment context.
+    re: /^\s*\*\s*(just\s+|simply\s+)/i,
   },
   {
     label: 'AI emoji in block comment',
-    re: /^\s*\*.*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/u,
+    // An explicit symbol set is used here rather than a broad range because the enclosing
+    // Unicode blocks (\u{2600}-\u{27BF} Misc Symbols + Dingbats) contain ordinary annotation
+    // marks — ⚠ (U+26A0), ✓ (U+2713), ✔ (U+2714), ➜ (U+279C) — that appear legitimately
+    // in test fixtures, spec prose, and doc bodies of this codebase (6 confirmed false
+    // positives on the full tracked file sweep). The three retained ranges plus the six
+    // explicit code points below are reliable AI-decoration fingerprints and produced
+    // 0 findings across all 329 tracked .ts/.mjs/.js files while still catching ✨/✅/❌/⚡.
+    re: /^\s*\*.*[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2728}\u{2705}\u{274C}\u{26A1}\u{2B50}\u{2757}]/u,
   },
 ]
 

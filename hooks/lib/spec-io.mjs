@@ -54,8 +54,8 @@ export function parseYamlFrontmatter(content) {
     const parsed = yamlLoad(m[1])
     const data = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {}
     return { data, body: m[2] }
-  } catch {
-    return { data: {}, body: content }
+  } catch (e) {
+    return { data: {}, body: content, parseError: e }
   }
 }
 
@@ -285,19 +285,20 @@ function parseBulletItems(sectionBody) {
  */
 function extractAttributeLine(sectionBody) {
   // Form 1 (inline): **Verification** <v> · **Criticality** <c> · **Source** <s>
-  const re1 = /\*\*Verification\*\*\s+(\S+)\s*[·•]\s*\*\*Criticality\*\*\s+(\S+)\s*[·•]\s*\*\*Source\*\*\s+(\S+)/
+  // Anchored so that prose *quoting* this syntax (e.g. in backtick code) is not miscaptured.
+  const re1 = /^\*\*Verification\*\*\s+(\S+)\s*[·•]\s*\*\*Criticality\*\*\s+(\S+)\s*[·•]\s*\*\*Source\*\*\s+(\S+)/
   // Form 2 (multi-bullet): separate lines for Verification: <v> and Criticality: <c>
   // **Verification**: <v> [— <method prose>]
   // **Criticality**: <c>
   // **Source**: <s>  (optional)
-  const re2v = /\*\*Verification\*\*\s*:\s*(\S+)/
-  const re2c = /\*\*Criticality\*\*\s*:\s*(\S+)/
-  const re2s = /\*\*Source\*\*\s*:\s*(\S+)/
+  const re2v = /^\*\*Verification\*\*\s*:\s*(\S+)/
+  const re2c = /^\*\*Criticality\*\*\s*:\s*(\S+)/
+  const re2s = /^\*\*Source\*\*\s*:\s*(\S+)/
 
   let form2v = null, form2c = null, form2s = null
 
   for (const line of sectionBody.split('\n')) {
-    const bare = line.startsWith('- ') || line.startsWith('* ') ? line.slice(2) : line
+    const bare = /^\s*[-*]\s+/.test(line) ? line.replace(/^\s*[-*]\s+/, '') : line
     // Try form 1 first
     const m1 = bare.match(re1)
     if (m1) return { verification: m1[1], criticality: m1[2], source: m1[3] }

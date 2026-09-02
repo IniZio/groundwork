@@ -26,7 +26,7 @@ export interface RequirementDoc {
  * Parse YAML frontmatter from markdown content.
  * Returns `{ data, body }`.
  */
-export declare function parseYamlFrontmatter(content: string): { data: Record<string, unknown>; body: string }
+export declare function parseYamlFrontmatter(content: string): { data: Record<string, unknown>; body: string; parseError?: Error }
 
 /**
  * Walk up from `startDir` to find the nearest directory containing package.json or .git.

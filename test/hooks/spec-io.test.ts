@@ -286,6 +286,116 @@ describe('isRequirementsDoc — D-15 requirements/ subdir', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Suite 5c: extractAttributeLine — indented bullet (TRAP 1) and prose-quote (TRAP 2)
+//
+// T69 hardened the parser in two ways:
+//   (a) Added ^ anchors to re1/re2v/re2c/re2s.
+//   (b) Widened `bare` from `line.slice(2)` to `line.replace(/^\s*[-*]\s+/, '')`,
+//       stripping any leading `<whitespace><bullet><space>` prefix, not just "- ".
+//
+// TRAP 1 tests (INDENTED_ATTRS fixture) are ANCHOR-REGRESSION GUARDS, not bite
+// proofs.  The pre-T69 parser's unanchored re2v/re2c/re2s matched indented
+// attribute bullets by accident — the regex found "**Verification**" mid-string
+// even when `bare` left the leading "  - " in place.  So the old parser returned
+// the correct value; these three tests pass against both the old and the new
+// parser.  They exist solely to prevent a future regression where the ^ anchors
+// are kept but the widened `bare` is reverted: without the whitespace strip,
+// an indented bullet ("  - **Verification**: x") would not match the anchored
+// regex and the field would be silently dropped.  They do NOT demonstrate that
+// the pre-anchor parser was broken or that T69 fixed a pre-existing silent drop.
+//
+// TRAP 2 tests (PROSE_QUOTING_FORM1 fixture) are GENUINE bite proofs.  The
+// pre-T69 unanchored re1 matched form-1 syntax quoted inside a **Why** bullet,
+// returning source "R-FAKE`" (with trailing backtick).  The ^ anchor on re1
+// prevents mid-string matching, so form-2 fields win and return "R-REAL".
+//
+// Corpus differential — 229 files (186 under doc/specs + 43 under test/),
+// old parser (HEAD before T69) vs new parser (T69 working tree):
+//   1 file differs:
+//     doc/specs/spec-tooling/requirements/
+//       spec-tooling-r-006-requirement-body-structure.md [SPEC-TOOLING-R-006]
+//       verification: "`" -> "manual"
+//       criticality:  "`" -> "must"
+//   This is the TRAP 2 fix (anchored re1) firing on a real corpus file whose
+//   **Why** bullet prose-quoted the form-1 attribute syntax in backticks.
+//   All other 228 files produce identical output from the old and new parsers.
+// ---------------------------------------------------------------------------
+
+describe('extractAttributeLine — T69 parser hardening', () => {
+  // Fixture: attribute fields appear as indented sub-bullets (two spaces + dash)
+  const INDENTED_ATTRS = `---
+concept: C-TEST
+---
+
+# Test
+
+### TEST-R-001 — Indented attribute bullet {#test-r-001}
+
+**When** something, the system **shall** do a thing.
+
+- **Why** — because reasons.
+- **Fit criterion** — it does the thing.
+  - **Verification**: automated
+  - **Criticality**: must
+  - **Source**: R-TRAP1
+`
+
+  // These three tests are anchor-regression guards (see suite comment above).
+  // They pass against both old and new parsers and do NOT bite against the
+  // pre-anchor parser.  Their purpose: if a future change keeps ^ anchors on
+  // re2v/re2c/re2s but reverts bare's whitespace strip, these turn red.
+  it('TRAP 1 anchor-regression guard — indented Verification bullet still reaches anchored re2v', () => {
+    const sections = parseRequirementsDocument(INDENTED_ATTRS)
+    expect(sections).toHaveLength(1)
+    expect(sections[0].verification).toBe('automated')
+  })
+
+  it('TRAP 1 anchor-regression guard — indented Criticality bullet still reaches anchored re2c', () => {
+    const sections = parseRequirementsDocument(INDENTED_ATTRS)
+    expect(sections[0].criticality).toBe('must')
+  })
+
+  it('TRAP 1 anchor-regression guard — indented Source bullet still reaches anchored re2s', () => {
+    const sections = parseRequirementsDocument(INDENTED_ATTRS)
+    expect(sections[0].source).toBe('R-TRAP1')
+  })
+
+  // Fixture: a **Why** bullet prose-quotes the form-1 syntax in backtick code;
+  // the real attributes appear as form-2 bullets below.
+  // TRAP 2: unanchored re1 would match mid-string inside the Why bullet,
+  // returning the fake quoted value instead of the real form-2 attribute.
+  const PROSE_QUOTING_FORM1 = `---
+concept: C-TEST
+---
+
+# Test
+
+### TEST-R-002 — Prose-quoted form-1 syntax {#test-r-002}
+
+**When** something, the system **shall** do a thing.
+
+- **Why** — the format \`**Verification** automated · **Criticality** must · **Source** R-FAKE\` is a valid attribute line.
+- **Fit criterion** — it does the thing.
+- **Verification**: real-automated
+- **Criticality**: must
+- **Source**: R-REAL
+`
+
+  it('TRAP 2 — does not miscapture prose-quoted form-1 syntax; returns real form-2 Source', () => {
+    const sections = parseRequirementsDocument(PROSE_QUOTING_FORM1)
+    expect(sections).toHaveLength(1)
+    // Before the fix, re1 was unanchored and matched mid-string inside the Why bullet,
+    // returning source 'R-FAKE`' (with trailing backtick). After the fix, form-2 wins.
+    expect(sections[0].source).toBe('R-REAL')
+  })
+
+  it('TRAP 2 — does not miscapture prose-quoted form-1 syntax; returns real form-2 Verification', () => {
+    const sections = parseRequirementsDocument(PROSE_QUOTING_FORM1)
+    expect(sections[0].verification).toBe('real-automated')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Suite 6: buildIndexData — ears/verify in frontmatter rejected
 // ---------------------------------------------------------------------------
 

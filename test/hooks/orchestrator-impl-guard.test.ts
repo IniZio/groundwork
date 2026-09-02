@@ -195,7 +195,7 @@ describe("orchestrator-impl-guard — memory file permit", () => {
 		// a path that does NOT start with the homedir() + "/.claude/projects" prefix,
 		// so it is not silently passed through — a delegation warning is emitted.
 		const p = path.join(
-			"/home/newman/.local/share/groundwork",
+			makeProject(),
 			"src",
 			".claude",
 			"projects",
@@ -213,7 +213,7 @@ describe("orchestrator-impl-guard — handoff document carve-out removed", () =>
 	// pause writes only journal events (no doc file), so no file-write carve-out
 	// is needed. All paths that previously were ALLOWED must now emit a warning
 	// (non-blocking) rather than being silently passed through.
-	const gwDir = "/home/newman/.local/share/groundwork/.groundwork";
+	const gwDir = path.join(makeProject(), ".groundwork");
 
 	it(".groundwork/handoffs/handoff-*.md → WARNS (carve-out removed, edit proceeds with delegation nudge)", () => {
 		const d = runHook(orchestratorWrite(path.join(gwDir, "handoffs", "handoff-2026-07-26-session.md")));
@@ -233,7 +233,7 @@ describe("orchestrator-impl-guard — handoff document carve-out removed", () =>
 
 describe("orchestrator-impl-guard — warn-and-allow regressions", () => {
 	it("orchestrator Write to src/index.ts → WARNS (core regression: additionalContext emitted, delegation nudge contains general-purpose)", () => {
-		const d = runHook(orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"));
+		const d = runHook(orchestratorWrite(path.join(makeProject(), "src", "index.ts")));
 		expect(d.hookSpecificOutput?.additionalContext).toContain("general-purpose");
 		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
@@ -257,7 +257,7 @@ describe("orchestrator-impl-guard — warn-and-allow regressions", () => {
 describe("orchestrator-impl-guard — subagent passthrough regressions (line 112)", () => {
 	it("subagent Write to src/index.ts → ALLOWED (line 112 passthrough intact)", () => {
 		const d = runHook({
-			...orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"),
+			...orchestratorWrite(path.join(makeProject(), "src", "index.ts")),
 			agent_type: "general-purpose",
 			agent_id: "abc123",
 		});
@@ -268,7 +268,7 @@ describe("orchestrator-impl-guard — subagent passthrough regressions (line 112
 		// Retrospective forks have an agent-*.jsonl transcript_path but no agent_type.
 		// They must remain permitted so the retrospective skill continues to work.
 		const d = runHook({
-			...orchestratorWrite("/home/newman/.local/share/groundwork/src/index.ts"),
+			...orchestratorWrite(path.join(makeProject(), "src", "index.ts")),
 			transcript_path: "/sessions/agent-retro-fork.jsonl",
 		});
 		expect(d.hookSpecificOutput).toBeUndefined();

@@ -180,7 +180,7 @@ async function runBuild(sd, { silent = false } = {}) {
     const tests = lookupVerifies(verifiesMap, req.id)
     byRequirement[req.id] = {
       declared: req.verification ?? null,
-      verified: tests.length > 0,
+      verified: tests.length > 0 && req.verification === 'automated',
       tests,
     }
   }
@@ -200,7 +200,7 @@ async function runBuild(sd, { silent = false } = {}) {
     by_verification: countBy(reqs, 'verification'),
     by_criticality: countBy(reqs, 'criticality'),
     // actual verification evidence from @verifies annotations in test files
-    verified: reqs.filter(r => lookupVerifies(verifiesMap, r.id).length > 0).length,
+    verified: reqs.filter(r => r.verification === 'automated' && lookupVerifies(verifiesMap, r.id).length > 0).length,
     unverified_automated: unverifiedAutomated,
     by_requirement: byRequirement,
   }

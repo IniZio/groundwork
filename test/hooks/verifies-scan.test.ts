@@ -10,7 +10,7 @@
  *   6. Multiple test files annotating the same requirement
  *   7. Files in both test/ and tests/ are scanned
  *   8. node_modules and worktrees/ dirs are ignored
- *   9. verifiedIds() returns a Set of all annotated req ids
+ *   9. (removed — verifiedIds() was a dead export wrapping scanVerifies; deleted with T60)
  */
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -24,7 +24,7 @@ const VERIFIES_SCAN = path.resolve(
   '..', '..', 'hooks', 'lib', 'verifies-scan.mjs',
 )
 
-const { scanVerifies, verifiedIds, lookupVerifies } = await import(pathToFileURL(VERIFIES_SCAN).href)
+const { scanVerifies, lookupVerifies } = await import(pathToFileURL(VERIFIES_SCAN).href)
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -276,31 +276,6 @@ describe('scanVerifies — ignored directories', () => {
 
     const mapping = scanVerifies(rootDir)
     expect(mapping['worktree-r-001']).toBeUndefined()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Suite 9: verifiedIds()
-// ---------------------------------------------------------------------------
-
-describe('verifiedIds()', () => {
-  it('returns a Set of all requirement ids that appear in @verifies annotations', () => {
-    writeTestFile('test/ids.test.ts', [
-      '// @verifies IDS-R-001, IDS-R-002',
-      '// @verifies IDS-R-003',
-    ].join('\n'))
-
-    const ids = verifiedIds(rootDir)
-    expect(ids).toBeInstanceOf(Set)
-    expect(ids.has('ids-r-001')).toBe(true)
-    expect(ids.has('ids-r-002')).toBe(true)
-    expect(ids.has('ids-r-003')).toBe(true)
-    expect(ids.size).toBe(3)
-  })
-
-  it('returns an empty Set when no annotations exist', () => {
-    const ids = verifiedIds(rootDir)
-    expect(ids.size).toBe(0)
   })
 })
 

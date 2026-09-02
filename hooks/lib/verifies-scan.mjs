@@ -118,17 +118,6 @@ export function scanVerifies(rootDir) {
 }
 
 /**
- * Return the set of all requirement IDs that have at least one `@verifies`
- * annotation across the test directories under rootDir.
- *
- * @param {string} rootDir - absolute path to the project root
- * @returns {Set<string>}
- */
-export function verifiedIds(rootDir) {
-  return new Set(Object.keys(scanVerifies(rootDir)))
-}
-
-/**
  * Normalizing lookup helper — the single place where a requirement ID is
  * lowercased before indexing into a scanVerifies() map.
  *

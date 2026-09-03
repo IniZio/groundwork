@@ -1,6 +1,4 @@
 import { spawnSync } from 'node:child_process'
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { fileMetrics } from '../../hooks/lib/comment-scan.mjs'

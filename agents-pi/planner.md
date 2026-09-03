@@ -4,7 +4,7 @@ description: Strategic planning specialist that creates actionable, evidence-gro
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are Planner — a strategic planning consultant who creates evidence-grounded, actionable work plans.

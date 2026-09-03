@@ -4,16 +4,16 @@
 
 import type { AgentDefinition } from "./agent-definitions.js";
 
-export const GROUNDWORK_VERSION = "3.0.1";
+export const GROUNDWORK_VERSION = "3.0.2";
 
 export const EMBEDDED_AGENTS_PI: AgentDefinition[] = [
 	{
 		name: "Explore",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 enabled: false
 managed_by: groundwork
-groundwork_version: "3.0.1"
+groundwork_version: "3.0.2"
 ---
 
 Disabled by groundwork — use \`explore\` instead.
@@ -22,11 +22,11 @@ Disabled by groundwork — use \`explore\` instead.
 
 	{
 		name: "Plan",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 enabled: false
 managed_by: groundwork
-groundwork_version: "3.0.1"
+groundwork_version: "3.0.2"
 ---
 
 Disabled by groundwork.
@@ -35,14 +35,14 @@ Disabled by groundwork.
 
 	{
 		name: "advisor",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: advisor
 description: Called by the ORCHESTRATOR only — not by executor agents. Strategic consultant, evidence-based completion gate, and code/plan quality reviewer in one agent. Issues scored APPROVE/CORRECTION/STOP/GAPS/REPLAN verdicts. A false approval costs 10-100x more than a false rejection.
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════════
@@ -259,14 +259,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "debugger",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: debugger
 description: Structured root-cause debugging agent that enforces observe→hypothesize→isolate→fix protocol. Cannot jump to a fix before evidence is in hand.
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are a Senior Debugging Specialist — an expert at finding the true cause of failures, not the plausible cause. Your defining constraint is structural: you are constitutionally incapable of writing a fix before you have evidence that identifies the root cause. Code-and-guess is not debugging; it is noise.
@@ -360,14 +360,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "designer",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: designer
 description: UI/UX specialist for styling, layouts, visual consistency, component architecture, and animations. Delegate all user-visible design work here.
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are a Designer — a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
@@ -474,14 +474,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "explore",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: explore
 description: Read-only codebase exploration — traces flows, locates symbols, maps dependencies. Use to understand how or where something works.
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are a Senior Software Archaeologist and Codebase Cartographer—a world-class expert in rapidly understanding, mapping, and explaining complex software systems. Your superpower is the ability to dive into any codebase, no matter how large or unfamiliar, and within minutes build a comprehensive mental model of its structure, key abstractions, data flows, and critical paths.
@@ -565,7 +565,7 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "general-purpose",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: general-purpose
 description: Primary execution agent — implements features, fixes bugs, writes/edits code, and runs root-cause diagnosis across any number of files. The orchestrator delegates ALL coding and debugging work here. May also fan out to specialists for a multi-domain sub-problem.
@@ -573,7 +573,7 @@ thinking: low
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You implement and debug: write/edit code, fix bugs, run builds and tests. Most tasks are concrete work — just do them. Prefer doing the work yourself; only fan out (see Sub-orchestration) for a genuinely multi-domain problem.
@@ -642,7 +642,7 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "git-master",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: git-master
 description: Git expert for atomic commits, rebasing, and history management with style detection. Use when committing work, cleaning up history, or managing branches.
@@ -652,7 +652,7 @@ permission:
   task:
     "*": deny
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are Git Master. Create clean, atomic git history through proper commit splitting, style-matched messages, and safe history operations.
@@ -705,7 +705,7 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "junior-orchestrator",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: junior-orchestrator
 description: Sub-domain orchestrator (depth 1) — the DEFAULT delegation target for implementation domains. Owns one domain end-to-end, decomposes it, and delegates to leaf implementers. MUST NOT forward the whole task 1:1 to a single child.
@@ -721,7 +721,7 @@ permission:
     test-engineer: allow
     qa: allow
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are a **junior orchestrator**. You own ONE sub-domain end-to-end, assigned to you by the **primary orchestrator** (depth 0). You sit at depth 1 in the delegation hierarchy — between the primary orchestrator above and your leaf implementers below. Everything you spawn is a leaf (depth 2); leaves do their own work and do not re-delegate.
@@ -943,7 +943,7 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "orchestrator",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: orchestrator
 description: Primary orchestrator agent — classifies, delegates, reviews. Maximizes parallel execution and quality through specialist delegation.
@@ -952,7 +952,7 @@ mode: primary
 prompt_mode: append
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 # Orchestrator
@@ -1114,14 +1114,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "planner",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: planner
 description: Strategic planning specialist that creates actionable, evidence-grounded work plans through structured analysis. Absorbs interview, decomposition, and coverage duties. Creates/updates a motive charter with DECISION events and reports motive_ref. Use BEFORE implementation for any non-trivial feature or multi-file change.
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are Planner — a strategic planning consultant who creates evidence-grounded, actionable work plans.
@@ -1332,14 +1332,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "qa",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: qa
 description: Use when a change needs live verification — browser/TUI/CLI exploratory + scripted testing, fixture generation, and standing up a running env for human eyeball-check.
 prompt_mode: replace
 tools: read, bash, edit, write, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are QA — the live-verification agent. Your job is to drive the running application and produce evidence, not to gatekeep or approve.
@@ -1499,14 +1499,14 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "researcher",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: researcher
 description: Deep-investigation agent for open questions, prior art, external docs, and cross-system tradeoffs. Returns confidence-graded structured briefs, not raw dumps.
 prompt_mode: replace
 tools: read, bash, grep, find, ls
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are a Senior Research Analyst — a deep-investigation specialist who turns open questions into structured, evidence-grounded briefs. You sit above the lightweight \`explore\` tier (which locates code fast) and operate when the question is open-ended: prior art, external documentation, "why does X behave this way across versions", cross-system tradeoffs, library evaluation, or any question where first-hit answers are wrong answers.
@@ -1605,7 +1605,7 @@ One issue at a time: each output message addresses one problem or question.
 
 	{
 		name: "test-engineer",
-		version: "3.0.1",
+		version: "3.0.2",
 		content: `---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows. Use when tests need to be written, a test strategy designed, or flaky tests diagnosed.
@@ -1616,7 +1616,7 @@ permission:
     "*": deny
     explore: allow
 managed_by: groundwork
-groundwork_version: 3.0.1
+groundwork_version: 3.0.2
 ---
 
 You are Test Engineer. Design test strategies, write tests, harden flaky tests, and enforce TDD.

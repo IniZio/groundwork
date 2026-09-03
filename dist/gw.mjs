@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 5578fe78559d62d05143293bcfa7e796d5e49574c1ac26551c966d103c1a10a7
+// @bundle-source-hash: 532c05bbea112bf45ebbc68d4d0d8d74ac9201ae5f211e11bc6b0fb8e8877b8a
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -25198,14 +25198,19 @@ var init_stop_gate = __esm(() => {
 });
 
 // src/gw/hook/session-reminder.ts
+import { existsSync as existsSync6 } from "fs";
 import { spawnSync as spawnSync2 } from "child_process";
 import { resolve, dirname as dirname2 } from "path";
 import { fileURLToPath } from "url";
-var __dir, _repoRoot, LEGACY_MJS, run10 = async (input2, _env) => {
-  const result = spawnSync2("node", [LEGACY_MJS], {
+var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run10 = async (input2, _env) => {
+  const useBundle = existsSync6(BUNDLE);
+  const runtime = useBundle ? "bun" : "node";
+  const script = useBundle ? BUNDLE : LEGACY_MJS;
+  const result = spawnSync2(runtime, [script], {
     input: JSON.stringify(input2),
     encoding: "utf8",
-    timeout: 30000
+    timeout: 30000,
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: process.env.CLAUDE_PLUGIN_ROOT ?? _repoRoot }
   });
   return {
     stdout: result.stdout ?? "",
@@ -25217,6 +25222,7 @@ var init_session_reminder = __esm(() => {
   __dir = dirname2(fileURLToPath(import.meta.url));
   _repoRoot = process.env.GW_REPO_ROOT ?? resolve(__dir, "../../../");
   LEGACY_MJS = resolve(_repoRoot, "hooks/session-reminder.mjs");
+  BUNDLE = resolve(_repoRoot, "dist/hooks-session-reminder.mjs");
 });
 
 // src/gw/hook/nesting-guard.ts
@@ -26179,16 +26185,16 @@ var init_hook2 = __esm(() => {
 
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
-import { existsSync as existsSync6 } from "fs";
+import { existsSync as existsSync7 } from "fs";
 import path17 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
   const activeDir = path17.join(repoRoot, legacyTracker, "journal");
   const archiveDir = path17.join(repoRoot, legacyTracker, "archive", "journal");
-  if (existsSync6(activeDir))
+  if (existsSync7(activeDir))
     journalDirs.push(activeDir);
-  if (existsSync6(archiveDir))
+  if (existsSync7(archiveDir))
     journalDirs.push(archiveDir);
   const allEvents = [];
   let skippedEphemeral = 0;
@@ -26381,7 +26387,7 @@ var init_motive2 = __esm(() => {
 
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
-import { existsSync as existsSync7, mkdirSync as mkdirSync11 } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync11 } from "fs";
 import path21 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
   return path21.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
@@ -26460,7 +26466,7 @@ async function migrateMotive(opts) {
     report.charter_error = String(err);
   }
   const ticketsDir = path21.join(sourceDir, "tickets");
-  if (existsSync7(ticketsDir)) {
+  if (existsSync8(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
@@ -26581,7 +26587,7 @@ var init_runner = __esm(() => {
 
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
-import { existsSync as existsSync8 } from "fs";
+import { existsSync as existsSync9 } from "fs";
 import path22 from "path";
 async function migrate(opts) {
   const {
@@ -26593,7 +26599,7 @@ async function migrate(opts) {
   } = opts;
   const activeSlugs = [];
   const activeMotivesDir = path22.join(repoRoot, legacyTracker, "motives");
-  if (existsSync8(activeMotivesDir)) {
+  if (existsSync9(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -26609,7 +26615,7 @@ async function migrate(opts) {
   }
   const archivedSlugs = [];
   const archiveMotivesDir = path22.join(repoRoot, legacyTracker, "archive", "motives");
-  if (existsSync8(archiveMotivesDir)) {
+  if (existsSync9(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
       for (const entry of entries) {

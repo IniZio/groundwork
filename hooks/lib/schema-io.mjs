@@ -20,22 +20,24 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Static ESM imports let bun's bundler inline these CJS packages into the committed
+// bundle (dist/hooks-spec-lint.mjs) so the bundle runs with zero node_modules.
+// Node 22+ ESM interop exposes CJS module.exports as the default export.
+import Ajv2020 from 'ajv/dist/2020.js'
+import addFormats from 'ajv-formats'
 
-// Ajv and ajv-formats are CommonJS packages — use createRequire for clean ESM interop.
-const require = createRequire(import.meta.url)
-const Ajv2020 = require('ajv/dist/2020')
-const addFormats = require('ajv-formats')
-
-/** Absolute path to the repo root `schemas/` directory. */
-const SCHEMAS_DIR = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'schemas',
-)
+/** Absolute path to the repo root `schemas/` directory.
+ *
+ * When running from the committed bundle (dist/hooks-spec-lint.mjs), import.meta.url
+ * points to the bundle file rather than the source, so the relative navigation
+ * breaks. CLAUDE_PLUGIN_ROOT (set by the Claude Code harness during hook invocation
+ * and by build scripts that run the bundle) anchors the path correctly in all contexts.
+ */
+const SCHEMAS_DIR = process.env.CLAUDE_PLUGIN_ROOT
+  ? resolve(process.env.CLAUDE_PLUGIN_ROOT, 'schemas')
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'schemas')
 
 /** Single Ajv instance shared across all compiled schemas in this process. */
 const ajv = new Ajv2020({ strict: true, allErrors: true })

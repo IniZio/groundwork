@@ -19,4 +19,15 @@ else
 fi
 _DIR=$(dirname "$_REAL")
 
-exec node "$_DIR/../hooks/spec.mjs" "$@"
+_BUNDLE="$_DIR/../dist/hooks-spec.mjs"
+
+# Prefer committed bundle (runs with zero node_modules on remote installs).
+# Fall back to node + source for local dev (where node_modules IS present).
+if [ -f "$_BUNDLE" ] && command -v bun >/dev/null 2>&1; then
+  # CLAUDE_PLUGIN_ROOT tells the bundle where the repo root is — import.meta.url
+  # inside a bundle resolves to dist/hooks-spec.mjs, not hooks/, so naive
+  # dirname navigation would land in dist/ rather than the repo root.
+  CLAUDE_PLUGIN_ROOT="$_DIR/.." exec bun run "$_BUNDLE" "$@"
+else
+  exec node "$_DIR/../hooks/spec.mjs" "$@"
+fi

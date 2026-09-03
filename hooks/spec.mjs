@@ -16,7 +16,7 @@
  */
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
-import { join, dirname, basename } from 'node:path'
+import { join, dirname, basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import {
@@ -746,9 +746,17 @@ async function cmdDeps(args) {
  */
 function cmdDelegate(sub, args) {
   const hooksDir = dirname(fileURLToPath(import.meta.url))
-  const scriptPath = join(hooksDir, `spec-${sub}.mjs`)
+  // When running as a committed bundle (dist/hooks-spec.mjs), import.meta.url
+  // resolves to dist/, not hooks/. Use CLAUDE_PLUGIN_ROOT (set by bin/spec) to
+  // find the repo root reliably in both source and bundle modes.
+  const repoRoot = process.env.CLAUDE_PLUGIN_ROOT ?? resolve(dirname(hooksDir), '')
+  const bundlePath = resolve(repoRoot, `dist/hooks-spec-${sub}.mjs`)
+  const scriptPath = resolve(repoRoot, `hooks/spec-${sub}.mjs`)
 
-  if (!existsSync(scriptPath)) {
+  const useBundle = existsSync(bundlePath)
+  const useSource = !useBundle && existsSync(scriptPath)
+
+  if (!useBundle && !useSource) {
     process.stderr.write(
       `spec: the "${sub}" subcommand requires spec-${sub}.mjs which is not installed.\n` +
       `  Expected path: ${scriptPath}\n`,
@@ -756,7 +764,9 @@ function cmdDelegate(sub, args) {
     process.exit(127)
   }
 
-  const result = spawnSync('node', [scriptPath, ...args], { stdio: 'inherit' })
+  const runtime = useBundle ? 'bun' : 'node'
+  const target = useBundle ? bundlePath : scriptPath
+  const result = spawnSync(runtime, [target, ...args], { stdio: 'inherit' })
   process.exit(result.status ?? 1)
 }
 

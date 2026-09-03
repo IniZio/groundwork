@@ -1,6 +1,10 @@
 node_modules/
 dist/*
 !dist/gw.mjs
+!dist/hooks-ledger.mjs
+!dist/hooks-session-reminder.mjs
+!dist/hooks-spec.mjs
+!dist/hooks-spec-lint.mjs
 *.log
 .DS_Store
 .opencode/goal.json

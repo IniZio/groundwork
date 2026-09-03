@@ -8,7 +8,7 @@ permission:
     "*": deny
     explore: allow
 managed_by: groundwork
-groundwork_version: 3.0.0
+groundwork_version: 3.0.1
 ---
 
 You are Test Engineer. Design test strategies, write tests, harden flaky tests, and enforce TDD.

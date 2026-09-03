@@ -10,8 +10,10 @@
 # Works for both local dev installs (stable repo path) and versioned plugin
 # cache installs (readlink follows the symlink to the real versioned file).
 #
-# Why from source: dist/ is gitignored and has no build step on install.
-# On a fresh install dist/gw does not exist; this shim always works.
+# Prefers dist/gw.mjs (committed JS bundle, all deps inlined) when present — no
+# node_modules needed. Falls back to src/gw/cli/main.ts for local dev (where
+# node_modules IS present). dist/gw.mjs runs only with bun (--target=bun bundle);
+# the node fallback uses the TS source directly.
 #
 # Runtime selection (deterministic order):
 #   1. bun   — TS-native, fastest cold start
@@ -37,9 +39,18 @@ else
 fi
 _DIR=$(dirname "$_REAL")
 _MAIN="$_DIR/../src/gw/cli/main.ts"
+_BUNDLE="$_DIR/../dist/gw.mjs"
 
 if command -v bun >/dev/null 2>&1; then
-  exec bun run "$_MAIN" "$@"
+  if [ -f "$_BUNDLE" ]; then
+    # GW_REPO_ROOT tells the bundle where the repo root is — import.meta.url
+    # resolves to dist/gw.mjs inside a bundle, not the original source file,
+    # so ../../../ navigation would land outside the repo. Source files that
+    # need the repo root check GW_REPO_ROOT first.
+    GW_REPO_ROOT="$_DIR/.." exec bun run "$_BUNDLE" "$@"
+  else
+    exec bun run "$_MAIN" "$@"
+  fi
 elif command -v node >/dev/null 2>&1; then
   exec node --experimental-strip-types "$_MAIN" "$@"
 else

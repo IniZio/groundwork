@@ -1076,9 +1076,12 @@ function findNewLayoutLedger(
 // ---------------------------------------------------------------------------
 
 function resolveLedgerBin(): string {
-  // import.meta.url gives the compiled file path; go up 3 dirs to project root.
-  const fileDir = path.dirname(new URL(import.meta.url).pathname)
-  const projectRoot = path.resolve(fileDir, '../../..')
+  // GW_REPO_ROOT is set by gw-hook when running the committed bundle (where
+  // import.meta.url resolves to dist/gw.mjs, not src/gw/hook/stop-gate.ts).
+  // Fall back to three-levels-up for direct source execution.
+  const projectRoot =
+    process.env.GW_REPO_ROOT ??
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..')
   return path.join(projectRoot, 'bin', 'ledger')
 }
 

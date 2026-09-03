@@ -11,10 +11,13 @@ import type { HookFn } from './types.js'
 
 const __dir = dirname(fileURLToPath(import.meta.url))
 /**
- * Works from both src/gw/hook/ and dist/gw/hook/ — three levels up reaches the
- * groundwork repo root, then we descend into hooks/.
+ * Repo root: prefer GW_REPO_ROOT (set by gw-hook when running the committed
+ * bundle, where import.meta.url resolves to dist/gw.mjs rather than the
+ * original src/gw/hook/ location), then fall back to three-levels-up for
+ * direct source execution.
  */
-const LEGACY_MJS = resolve(__dir, '../../../hooks/session-reminder.mjs')
+const _repoRoot = process.env.GW_REPO_ROOT ?? resolve(__dir, '../../../')
+const LEGACY_MJS = resolve(_repoRoot, 'hooks/session-reminder.mjs')
 
 export const run: HookFn = async (input, _env) => {
   const result = spawnSync('node', [LEGACY_MJS], {

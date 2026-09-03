@@ -11,11 +11,13 @@
     "check:versions": "node scripts/check-versions.mjs",
     "check:comments": "node scripts/check-comments.mjs",
     "check:spec-lint": "node hooks/spec-lint.mjs",
-    "check": "pnpm run check:agents && pnpm run check:pi && pnpm run check:sep && pnpm run check:versions && pnpm run check:spec-lint && pnpm run check:comments && tsc --noEmit",
+    "check": "pnpm run check:agents && pnpm run check:pi && pnpm run check:sep && pnpm run check:versions && pnpm run check:spec-lint && pnpm run check:comments && pnpm run check:bundle && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "token-meter": "node hooks/token-meter.mjs",
     "build:gw": "bun build --compile --target=bun src/gw/cli/main.ts --outfile dist/gw",
+    "build:bundle": "node scripts/build-bundle.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {

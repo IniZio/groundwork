@@ -2,7 +2,9 @@ import path from 'node:path'
 import type { HookFn, HookResult } from './types.js'
 
 /** Absolute path to the ledger bin wrapper — used in deny message text. */
-const LEDGER_BIN = path.resolve(import.meta.dirname, '../../../bin/ledger')
+// GW_REPO_ROOT is set by gw-hook when running the committed bundle; fall back
+// to ../../../ for direct source execution (where import.meta.dirname is src/gw/hook/).
+const LEDGER_BIN = path.resolve(process.env.GW_REPO_ROOT ?? path.resolve(import.meta.dirname, '../../../'), 'bin/ledger')
 
 function passthrough(): HookResult {
   return { stdout: '', stderr: '', exit: 0 }

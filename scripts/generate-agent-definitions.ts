@@ -531,9 +531,18 @@ function diffCodexSkills(expected: Map<string, string>): string[] {
 		else if (readFileSync(filePath, "utf8") !== content) problems.push(`${relativePath} (stale)`);
 	}
 	for (const relativePath of existing) {
-		if (!expected.has(relativePath)) problems.push(`${relativePath} (extraneous)`);
+		if (!expected.has(relativePath))
+			problems.push(`${relativePath} (extraneous — no authority source at skills/groundwork/${relativePath})`);
 	}
 	return problems;
+}
+
+export function formatOrphanDeletionWarning(relativePath: string): string {
+	return (
+		`WARNING: deleting orphaned mirror file skills/${relativePath} — ` +
+		`no authority source at skills/groundwork/${relativePath}. ` +
+		`To keep this file, create the authority copy at skills/groundwork/${relativePath}.`
+	);
 }
 
 function writeCodexSkills(expected: Map<string, string>): void {
@@ -544,7 +553,10 @@ function writeCodexSkills(expected: Map<string, string>): void {
 		writeFileSync(filePath, content);
 	}
 	for (const relativePath of existing) {
-		if (!expected.has(relativePath)) rmSync(join(codexSkillsDir, relativePath));
+		if (!expected.has(relativePath)) {
+			console.warn(formatOrphanDeletionWarning(relativePath));
+			rmSync(join(codexSkillsDir, relativePath));
+		}
 	}
 }
 

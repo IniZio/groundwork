@@ -11,5 +11,6 @@ Groundwork provides specialized skills in this plugin. Choose the skill whose na
 - `diagnose` for bugs and regressions.
 - `advisor-gate` for completion review.
 - `prototype`, `pause`, `arch-review`, `retrospective`, and `housekeep` for their named workflows.
+- `prove-the-check-can-fail` to verify that any assertion, test, or deployment check can turn red before reporting it green.
 
 Load the relevant specialized skill before acting on the task.

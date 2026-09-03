@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * motive-baseline.mjs — Pure baseline resolver.
  *

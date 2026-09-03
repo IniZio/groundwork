@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * Regression guard: T17 — spec tree must render moc-typed concept nodes.
  *

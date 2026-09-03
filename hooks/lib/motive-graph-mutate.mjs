@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * motive-graph-mutate.mjs — Event-sourced mutation vocabulary for the motive DAG.
  *

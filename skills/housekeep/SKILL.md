@@ -122,7 +122,7 @@ Sweep the scoped surface. Collect EVERY smell instance as a Finding — do not f
 | **UI/design defaults** | Generic visual patterns that make an AI-built interface feel unreviewed |
 | **Redundant comments** | Narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of obvious code (`// increment counter` above `count++`), section-divider banners used as narration (restating what the next block does, step-marking), apologetic/hedging filler. **Note:** section-divider banners used as consistent structural markers throughout a file are house style and are not a finding — flag only dividers that narrate or step-mark. **Keep:** non-obvious *why* rationale, invariants/constraints, warnings/gotchas, issue/spec links, public API doc-comments |
 
-Run `pnpm run check:comments` before reading files — it pre-ranks the surface by comment volume (ratio ≥ 45% of non-blank lines, or a single block occupying ≥ 20% of the file). It is advisory and exits 0 always. It measures SIZE only: it cannot detect narration, restatement, or step markers, which still require reading the flagged files. Start with the highest-ratio files from its output.
+Run `pnpm run check:comments` first — it pre-ranks the surface by comment density (ratio ≥ 45% of non-blank lines, or a single block occupying ≥ 20% of the file). Advisory only, exits 0. It measures SIZE only: narration, restatement, and step markers still require reading the flagged files. Start with the highest-ratio files from its output.
 
 ### Step 3 — Classify & score by severity
 
@@ -147,7 +147,7 @@ Bound the plan to accepted Findings only. Order the work from safest deletion to
 - **Pass 1: Dead code deletion**
 - **Pass 2: Duplicate removal**
 - **Pass 3: Naming and error-handling cleanup**
-- **Pass 4: Comment cleanup** — remove narration, step markers, restatements; keep *why*, invariants, gotchas, doc-comments (see the Redundant comments smell above; `hooks/deslop-guard.mjs` flags comment PATTERNS at write time on an edit fragment; `check:comments` measures comment SIZE across whole files — both are advisory)
+- **Pass 4: Comment cleanup** — remove narration, step markers, restatements; keep *why*, invariants, gotchas, doc-comments (see Redundant comments smell above). A comment earns its place only if it states a *why* that is not evident from the code itself — a constraint, a gotcha, an invariant, an issue/spec link, or a public API doc-comment. Remove: narration (`// Let's...`, `// Now we...`), step markers (`// Step 1`), restatements of the line below, section-divider banners that narrate, commented-out code, apologetic hedging. Record the comment count before and after the pass (e.g. `grep -c '//' file.mjs` or the `check:comments` output ratio); the cleanup report MUST include both numbers so the reduction is observable.
 - **Pass 5: Test reinforcement**
 - Re-run targeted verification after EACH pass.
 - Do not bundle unrelated refactors into the same edit set.
@@ -157,7 +157,7 @@ Bound the plan to accepted Findings only. Order the work from safest deletion to
 
 - Keep regression tests green.
 - Run the relevant lint, typecheck, and unit/integration tests for the touched area.
-- Run existing static or security checks when available (`pnpm run check:comments` for comment volume; typecheck, lint, and security scanners as applicable).
+- Run existing static or security checks when available. For a deslop run: `pnpm run check:comments --strict` MUST pass (exits 0) after comment cleanup — if it fails, either reduce comments further or add `// check-comments-exempt` to a file whose high density is intentional (complex hook library, etc.). Then run typecheck, lint, and security scanners as applicable.
 - If a gate fails, fix the issue or back out the risky cleanup. Never force a cleanup through a failing gate.
 
 ### Step 8 — Close with the structured report
@@ -189,7 +189,13 @@ Use this template exactly. Present it as the final deliverable.
 - Regression tests: PASS / FAIL
 - Lint: PASS / FAIL
 - Typecheck: PASS / FAIL
+- `check:comments --strict`: PASS / FAIL
 - Other: <gate name>: PASS / FAIL
+
+**Comment Reduction (Pass 4):**
+| file | before ratio | after ratio | before count | after count |
+|---|---|---|---|---|
+| <path> | <x%> | <y%> | <n> | <m> |
 
 **Changed Files:**
 | file | simplification |

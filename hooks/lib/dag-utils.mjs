@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * dag-utils.mjs — Pure-function DAG utilities for groundwork run-ledger slices.
  *

@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * Parity test — output-prose ruleset present in every generated agent definition.
  *

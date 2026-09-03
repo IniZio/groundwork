@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * Shared sentence-similarity helpers used by prose-negation-guard.mjs and
  * prose-modality-guard.mjs (TOKEN-ECONOMY-R-004 / R-005).

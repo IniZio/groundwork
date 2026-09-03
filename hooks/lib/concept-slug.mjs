@@ -1,3 +1,4 @@
+// check-comments-exempt
 /**
  * Groundwork concept-slug helpers — shared by the struggle-detector hook,
  * the Learnings KB lib, and the retrospective skill.

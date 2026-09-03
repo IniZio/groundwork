@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — hook lib; traceability invariants documented inline
 /**
  * traceability-evidence.mjs
  *

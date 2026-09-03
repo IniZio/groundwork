@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; DAG traversal with dense invariants
 /**
  * motive-dag.mjs — Shared fold-reading seam for live-surface-cutover consumers.
  *

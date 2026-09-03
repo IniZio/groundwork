@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// check-comments-exempt — script; opening block-comment is the tool doc
 /**
  * check-pi-skills.mjs — drift checker for .pi/skills/ mirror files.
  *

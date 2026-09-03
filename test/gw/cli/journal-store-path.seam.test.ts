@@ -1,3 +1,4 @@
+// check-comments-exempt — test; opening comment block documents the seam
 /**
  * test/gw/cli/journal-store-path.seam.test.ts
  *

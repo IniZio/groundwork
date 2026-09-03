@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; schema format documented inline
 /**
  * Groundwork schema I/O — shared JSON Schema loader for hooks.
  *

@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; verification scanning with inline contracts
 /**
  * verifies-scan.mjs — scanner for @verifies annotations in test files.
  *

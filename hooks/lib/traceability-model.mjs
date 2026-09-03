@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; traceability model with dense type docs
 /**
  * Traceability graph model — extends the motive-graph node/edge vocabulary.
  *

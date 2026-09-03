@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; projection logic with inline contracts
 /**
  * motive-graph-project.mjs — Consumer-equivalence projector for the motive DAG fold.
  *

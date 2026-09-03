@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// check-comments-exempt — hook; opening block-comment is the tool doc
 /**
  * Groundwork PostToolUse hook — doc-size-guard.
  *

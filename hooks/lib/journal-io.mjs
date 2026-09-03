@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; journal append format documented inline
 /**
  * Groundwork journal I/O — append-only JSONL shards per session.
  *

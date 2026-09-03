@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — hook lib; baseline comparison with dense invariants
 /**
  * motive-baseline.mjs — Pure baseline resolver.
  *

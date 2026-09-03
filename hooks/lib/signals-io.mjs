@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; signals format documented inline
 /**
  * Groundwork struggle-signal store — cross-session append-only signal log at
  * `<projectDir>/.groundwork/struggle-signals.jsonl`.

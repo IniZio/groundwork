@@ -1,22 +1,28 @@
 #!/usr/bin/env node
+// check-comments-exempt — script; opening block-comment is the tool doc
 /**
  * check-comments.mjs — advisory comment-density checker.
  *
  * Walks all tracked .ts, .mjs, .js files and reports two findings:
- *   (a) Files whose comment-to-code ratio exceeds RATIO_THRESHOLD.
- *   (b) Files whose largest contiguous block-comment dominates BLOCK_SHARE_THRESHOLD.
+ *   (a) Files whose comment-to-code ratio exceeds RATIO_THRESHOLD (45%).
+ *   (b) Files whose largest contiguous block-comment dominates BLOCK_SHARE_THRESHOLD (20%).
  *
  * Always exits 0 in advisory mode — does not fail the build.
  *
  * Usage:
- *   node scripts/check-comments.mjs            # advisory, always exits 0
- *   node scripts/check-comments.mjs --strict   # exits 1 if any non-exempt file exceeds
- *                                               # RATIO_STRICT or BLOCK_SHARE_STRICT
+ *   node scripts/check-comments.mjs               # advisory, always exits 0
+ *   node scripts/check-comments.mjs --strict      # exits 1 if any non-exempt file exceeds
+ *                                                  # RATIO_STRICT (45%) or BLOCK_SHARE_STRICT (20%)
+ *   node scripts/check-comments.mjs --list-exempt # after processing, print all files whose
+ *                                                  # top-of-file pragma was found, with metrics;
+ *                                                  # still exits 0
  *
  * Exemption pragma:
- *   Add the comment  // check-comments-exempt  anywhere in a file to exempt it from
- *   strict enforcement. Use this for hook libs and test files whose high comment density
- *   is intentional (complex invariants, inline documentation, fixture-heavy tests).
+ *   Add the comment  // check-comments-exempt  within the FIRST 5 LINES of a file to exempt
+ *   it from strict enforcement (analogous to // @ts-nocheck — must appear at the top of the
+ *   file, not buried mid-file). Use this for hook libs and test files whose high comment
+ *   density is intentional (complex invariants, inline documentation, fixture-heavy tests).
+ *   A pragma on line 6 or later is ignored and grants no exemption.
  *   Advisory output still prints for exempt files; they just do not cause exit 1.
  */
 
@@ -33,15 +39,18 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..')
 const RATIO_THRESHOLD = 0.45
 const BLOCK_SHARE_THRESHOLD = 0.20
 
-// Strict thresholds — fires only on egregiously over-commented files.
-// At 60%+ ratio, only 5 hooks/lib files hit; at 30%+ block-share, only 4 files hit.
-// These earn the // check-comments-exempt pragma. Future sloppy files fail without it.
-const RATIO_STRICT = 0.60
-const BLOCK_SHARE_STRICT = 0.30
+// Strict thresholds — same bar as advisory (one standard).
+// Files exceeding these thresholds need the // check-comments-exempt pragma in the first
+// 5 lines to avoid failing strict mode. Future sloppy files fail without it.
+const RATIO_STRICT = 0.45
+const BLOCK_SHARE_STRICT = 0.20
 
 const MIN_LINES = 40
 
 const strict = process.argv.includes('--strict')
+const listExempt = process.argv.includes('--list-exempt')
+
+const exemptFiles = []
 
 const allFiles = execSync('git ls-files', { cwd: REPO_ROOT, encoding: 'utf8' })
   .split('\n')
@@ -63,14 +72,16 @@ for (const relpath of allFiles) {
   const m = fileMetrics(src)
   if (m.commentLines + m.codeLines < MIN_LINES) continue
 
-  const isExempt = src.includes('check-comments-exempt')
+  const pragmaLines = src.split('\n').slice(0, 5)
+  const isExempt = pragmaLines.some(l => l.includes('check-comments-exempt'))
+  if (isExempt) exemptFiles.push({ relpath, ratio: m.ratio, blockShare: m.blockShare })
 
   if (m.ratio >= RATIO_THRESHOLD) {
     const pct = (m.ratio * 100).toFixed(1)
     console.log(`${relpath}: comment ratio ${pct}% (threshold 45%)`)
     ratioFindings++
     if (strict && !isExempt && m.ratio >= RATIO_STRICT) {
-      console.log(`  [strict] FAIL: ratio ${pct}% >= 60% and no exemption pragma`)
+      console.log(`  [strict] FAIL: ratio ${pct}% >= 45% and no exemption pragma`)
       strictFailures++
     }
   }
@@ -82,9 +93,18 @@ for (const relpath of allFiles) {
     )
     blockShareFindings++
     if (strict && !isExempt && m.blockShare >= BLOCK_SHARE_STRICT) {
-      console.log(`  [strict] FAIL: block-share ${pct}% >= 30% and no exemption pragma`)
+      console.log(`  [strict] FAIL: block-share ${pct}% >= 20% and no exemption pragma`)
       strictFailures++
     }
+  }
+}
+
+if (listExempt) {
+  console.log(`check-comments: ${exemptFiles.length} exempt file(s):`)
+  for (const f of exemptFiles) {
+    const ratioPct = (f.ratio * 100).toFixed(1)
+    const blockPct = (f.blockShare * 100).toFixed(1)
+    console.log(`  ${f.relpath}  ratio=${ratioPct}%  blockShare=${blockPct}%`)
   }
 }
 

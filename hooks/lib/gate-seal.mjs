@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; tamper-evident gate sealing with invariant docs
 /**
  * gate-seal.mjs — tamper-evident gate-release seal for the stop-gate.
  *

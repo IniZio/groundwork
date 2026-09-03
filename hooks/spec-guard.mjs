@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// check-comments-exempt — hook; opening block-comment is the tool doc
 /**
  * Groundwork spec-guard — PreToolUse hook that guards writes to doc/specs/
  * and docs/steering/.

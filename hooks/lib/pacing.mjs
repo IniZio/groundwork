@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; pacing rules documented inline
 /**
  * Groundwork session-pacing policy engine.
  *

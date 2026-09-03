@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; tamper-evident graph sealing with invariant docs
 /**
  * graph-seal.mjs — tamper-evident seal over a folded motive graph.
  *

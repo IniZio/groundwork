@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — hook lib; DAG graph utilities with dense algorithmic comments
 /**
  * dag-utils.mjs — Pure-function DAG utilities for groundwork run-ledger slices.
  *

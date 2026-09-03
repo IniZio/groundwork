@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; metric scanner with dense inline contracts
 /**
  * comment-scan.mjs — shared comment-classification library.
  *

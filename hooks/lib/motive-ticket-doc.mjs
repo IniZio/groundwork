@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; ticket document format documented inline
 // hooks/lib/motive-ticket-doc.mjs
 // Ticket document format + writer library.
 //

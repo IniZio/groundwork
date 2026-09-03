@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — hook lib; slug canonicalization rules with inline invariants
 /**
  * Groundwork concept-slug helpers — shared by the struggle-detector hook,
  * the Learnings KB lib, and the retrospective skill.

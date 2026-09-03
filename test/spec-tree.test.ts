@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — test; opening comment block documents fixture shape
 /**
  * Regression guard: T17 — spec tree must render moc-typed concept nodes.
  *

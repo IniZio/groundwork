@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — test; opening comment block documents parity harness
 /**
  * Parity test — output-prose ruleset present in every generated agent definition.
  *

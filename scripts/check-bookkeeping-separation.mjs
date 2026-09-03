@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// check-comments-exempt — script; opening block-comment is the tool doc
 /**
  * check-bookkeeping-separation.mjs — AC-6 (P-E) enforcement
  *

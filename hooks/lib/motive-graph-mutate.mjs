@@ -1,4 +1,4 @@
-// check-comments-exempt
+// check-comments-exempt — hook lib; graph mutation vocabulary with dense docs
 /**
  * motive-graph-mutate.mjs — Event-sourced mutation vocabulary for the motive DAG.
  *

@@ -302,7 +302,7 @@ function isValidClaudeCodeModel(model: string): boolean {
 function transformForClaudeCode(
 	src: AgentSource,
 	registry: ModelRegistry,
-	version: string,
+	_version: string,
 ): TransformedAgent {
 	const model = registry.agents[src.name]?.["claude-code"];
 	if (model === undefined) {

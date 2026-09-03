@@ -1,3 +1,4 @@
+// check-comments-exempt — test; inline setup comments document fixture logic
 /**
  * AC-5 — DECISION one-shot compile
  *

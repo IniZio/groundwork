@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; ordering invariants documented inline
 /**
  * journal-order.mjs — ordered event reader for the motive compiler (Step 3).
  *

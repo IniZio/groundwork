@@ -9,9 +9,8 @@
  *     exists in skills/, then deletes it.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";

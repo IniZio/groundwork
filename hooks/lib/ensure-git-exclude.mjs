@@ -1,3 +1,4 @@
+// check-comments-exempt — hook lib; gitignore semantics documented inline
 /**
  * Side-effect-free helper: ensure `.groundwork/` is excluded from git status
  * in the host project by writing to `.git/info/exclude` (never `.gitignore`).

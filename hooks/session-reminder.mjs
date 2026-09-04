@@ -13,7 +13,7 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
@@ -147,7 +147,11 @@ function activeRunBlock(projectDir, sessionId) {
   const motiveSlug = typeof ledger.motive === 'string' && ledger.motive ? ledger.motive : '<motive-slug>'
 
   const lines = ['', '## ⚠ ACTIVE RUN — RESUME HERE', '']
-  if (typeof ledger.brief === 'string' && ledger.brief) lines.push(`Run: ${ledger.brief}`)
+  const BRIEF_MAX_CHARS = 200
+  if (typeof ledger.brief === 'string' && ledger.brief) {
+    const b = ledger.brief
+    lines.push(`Run: ${b.length > BRIEF_MAX_CHARS ? b.slice(0, BRIEF_MAX_CHARS) + '…' : b}`)
+  }
   if (typeof ledger.plan_ref === 'string' && ledger.plan_ref) lines.push(`Plan: ${ledger.plan_ref}`)
   const ledgerRef = ledger.session_id ? `.groundwork/runs/${ledger.session_id}.json` : `.groundwork/run.json`
   lines.push(`Ledger: ${ledgerRef} — ${slices.length} slices, advisor gate: ${verdict ?? 'not recorded'}`)
@@ -223,11 +227,20 @@ function activeRunBlock(projectDir, sessionId) {
         incompleteWaveCount[w] = (incompleteWaveCount[w] ?? 0) + 1
       }
     }
+    // Cap the number of wave-width notices to prevent unbounded growth with many waves.
+    const WAVE_NOTICE_CAP = 5
+    let waveNoticeCount = 0
     for (const [wave, total] of Object.entries(totalWaveCount)) {
       // Fire only when the wave was planned with exactly 1 impl slice AND that slice is still pending.
       if (total === 1 && (incompleteWaveCount[wave] ?? 0) === 1) {
-        lines.push(`NOTICE: wave ${wave} has 1 impl slice — if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`)
+        if (waveNoticeCount < WAVE_NOTICE_CAP) {
+          lines.push(`NOTICE: wave ${wave} has 1 impl slice — if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`)
+        }
+        waveNoticeCount++
       }
+    }
+    if (waveNoticeCount > WAVE_NOTICE_CAP) {
+      lines.push(`  (wave-width notices capped at ${WAVE_NOTICE_CAP} — ${waveNoticeCount - WAVE_NOTICE_CAP} more wave(s) with a single slice omitted)`)
     }
   } catch { /* fail-open — never block the hook */ }
 
@@ -349,11 +362,22 @@ function _findMotiveMaps(projectDir) {
   } catch { return [] }
 }
 const _motiveMaps = _findMotiveMaps(_cwdForMap)
+// Sort by mtime descending so the most recently active motive appears first.
+const _sortedMotiveMaps = _motiveMaps.slice().sort((a, b) => {
+  try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
+})
+// Cap at MOTIVE_MAP_CAP to bound payload growth: each additional motive adds ~25 tokens.
+// With ~320 tokens of worst-case headroom before the cap was added, 12+ motives would
+// silently drop the spec skeleton.
+const MOTIVE_MAP_CAP = 5
 const mapPointerBlock = (() => {
   const header = '\n\n## Motive MAP — human read path\n\nEach motive\'s MAP is at `.groundwork/motives/<slug>/MAP.md` — auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.'
-  if (_motiveMaps.length === 0) return header
-  const list = _motiveMaps.map(p => `- \`${p}\``).join('\n')
-  return `${header}\n\nCurrent motive MAP(s):\n${list}`
+  if (_sortedMotiveMaps.length === 0) return header
+  const shownMaps = _sortedMotiveMaps.slice(0, MOTIVE_MAP_CAP)
+  const hiddenMapCount = _sortedMotiveMaps.length - shownMaps.length
+  const list = shownMaps.map(p => `- \`${p}\``).join('\n')
+  const suffix = hiddenMapCount > 0 ? `\n  (and ${hiddenMapCount} more motive(s) — see \`.groundwork/motives/\` for the full list)` : ''
+  return `${header}\n\nCurrent motive MAP(s) (${_sortedMotiveMaps.length} total, most recent first):\n${list}${suffix}`
 })()
 
 // Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
@@ -402,8 +426,16 @@ try {
 // AC6/AC7: spec skeleton with 700-token cap; dropped first if total >3800 tokens.
 // Caps re-scaled from 3000/3300/600 to 3500/3800/700 (factor ×1.156) after the
 // estimator changed from Math.ceil(chars/4) to Math.ceil(utf8Bytes/3.5).
-// Re-scaled again (H22): ACTIVE RUN slice enumeration bounded at 10 slices;
-// Measured payload (2026-09-04, H22 bounded at 10 slices): base=3306 + skeleton=174 = 3480 tokens → headroom 320.
+// H22: bounded ACTIVE RUN slice enumeration at ACTIVE_RUN_SLICE_CAP=10.
+// H25: bounded motive MAP list at MOTIVE_MAP_CAP=5 (sorted most-recent-first),
+//      wave-width notices at WAVE_NOTICE_CAP=5, ledger.brief at 200 chars.
+//      Re-measured (H25): H22 fixture total=3264 headroom=536 (skeleton injected).
+//      Adversarial (15 motives/waves, 500-char brief): total=3223 headroom=577.
+//      Uncapped adversarial estimate ≈3909 > 3800 → caps genuinely matter.
+//      Remaining unbounded contributors: static reminder block, pacing block,
+//      struggle nudge, CLI tools block — these are structurally fixed-size.
+// Note: TOTAL_TOKEN_ALARM can only fire when the skeleton-drop warning itself
+//       pushes the post-drop total above 4100 (rare; alarm is informational only).
 const TOTAL_TOKEN_CAP = 3800
 const TOTAL_TOKEN_ALARM = 4100
 try {
@@ -414,7 +446,11 @@ try {
     if (baseTokens + skeletonTokens <= TOTAL_TOKEN_CAP) {
       additionalContext += skeleton
     } else {
-      // AC7: drop skeleton before any other block; record a SESSION_START journal event
+      // AC7: payload too large — drop the skeleton and make the drop VISIBLE in the
+      // injection itself so the orchestrator knows spec coverage is missing.
+      // A journal event alone is silent; the operator would never see it.
+      additionalContext += `\n\n## ⚠ Spec Skeleton DROPPED\n\nThe spec skeleton (${skeletonTokens} tokens) was omitted — the base payload (${baseTokens} tokens) already reaches the ${TOTAL_TOKEN_CAP}-token injection cap. Read \`doc/specs/\` directly for requirement coverage. Investigate why the payload is large (many motives? many waves?) and reduce it to restore auto-injection.`
+      // Also record a SESSION_START journal event (best-effort background write).
       try {
         if (sessionId) {
           emitHookEvent({

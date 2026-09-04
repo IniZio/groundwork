@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 34f81818d1da3b06262a42070c1582bb67bb1bf65d5d9fca4dccd4cf68e21d82
+// @bundle-source-hash: 56c39f333d269be62b8ceb20178cbdc78cec4f47eb07a24a3e9b8f98b1cca242
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -7362,7 +7362,7 @@ var require_dist = __commonJS((exports, module) => {
 });
 
 // hooks/session-reminder.mjs
-import { appendFileSync as appendFileSync3, existsSync as existsSync4, readdirSync as readdirSync4, readFileSync as readFileSync7 } from "fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync4, readdirSync as readdirSync4, readFileSync as readFileSync7, statSync as statSync4 } from "fs";
 import path5 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
@@ -11073,8 +11073,11 @@ function activeRunBlock(projectDir, sessionId) {
   const verdict = advisorVerdict(ledger.gate);
   const motiveSlug = typeof ledger.motive === "string" && ledger.motive ? ledger.motive : "<motive-slug>";
   const lines = ["", "## \u26A0 ACTIVE RUN \u2014 RESUME HERE", ""];
-  if (typeof ledger.brief === "string" && ledger.brief)
-    lines.push(`Run: ${ledger.brief}`);
+  const BRIEF_MAX_CHARS = 200;
+  if (typeof ledger.brief === "string" && ledger.brief) {
+    const b = ledger.brief;
+    lines.push(`Run: ${b.length > BRIEF_MAX_CHARS ? b.slice(0, BRIEF_MAX_CHARS) + "\u2026" : b}`);
+  }
   if (typeof ledger.plan_ref === "string" && ledger.plan_ref)
     lines.push(`Plan: ${ledger.plan_ref}`);
   const ledgerRef = ledger.session_id ? `.groundwork/runs/${ledger.session_id}.json` : `.groundwork/run.json`;
@@ -11140,10 +11143,18 @@ function activeRunBlock(projectDir, sessionId) {
         incompleteWaveCount[w] = (incompleteWaveCount[w] ?? 0) + 1;
       }
     }
+    const WAVE_NOTICE_CAP = 5;
+    let waveNoticeCount = 0;
     for (const [wave, total] of Object.entries(totalWaveCount)) {
       if (total === 1 && (incompleteWaveCount[wave] ?? 0) === 1) {
-        lines.push(`NOTICE: wave ${wave} has 1 impl slice \u2014 if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`);
+        if (waveNoticeCount < WAVE_NOTICE_CAP) {
+          lines.push(`NOTICE: wave ${wave} has 1 impl slice \u2014 if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`);
+        }
+        waveNoticeCount++;
       }
+    }
+    if (waveNoticeCount > WAVE_NOTICE_CAP) {
+      lines.push(`  (wave-width notices capped at ${WAVE_NOTICE_CAP} \u2014 ${waveNoticeCount - WAVE_NOTICE_CAP} more wave(s) with a single slice omitted)`);
     }
   } catch {}
   return `
@@ -11253,20 +11264,32 @@ function _findMotiveMaps(projectDir) {
   }
 }
 var _motiveMaps = _findMotiveMaps(_cwdForMap);
+var _sortedMotiveMaps = _motiveMaps.slice().sort((a, b) => {
+  try {
+    return statSync4(b).mtimeMs - statSync4(a).mtimeMs;
+  } catch {
+    return 0;
+  }
+});
+var MOTIVE_MAP_CAP = 5;
 var mapPointerBlock = (() => {
   const header = `
 
 ## Motive MAP \u2014 human read path
 
 Each motive's MAP is at \`.groundwork/motives/<slug>/MAP.md\` \u2014 auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.`;
-  if (_motiveMaps.length === 0)
+  if (_sortedMotiveMaps.length === 0)
     return header;
-  const list = _motiveMaps.map((p) => `- \`${p}\``).join(`
+  const shownMaps = _sortedMotiveMaps.slice(0, MOTIVE_MAP_CAP);
+  const hiddenMapCount = _sortedMotiveMaps.length - shownMaps.length;
+  const list = shownMaps.map((p) => `- \`${p}\``).join(`
 `);
+  const suffix = hiddenMapCount > 0 ? `
+  (and ${hiddenMapCount} more motive(s) \u2014 see \`.groundwork/motives/\` for the full list)` : "";
   return `${header}
 
-Current motive MAP(s):
-${list}`;
+Current motive MAP(s) (${_sortedMotiveMaps.length} total, most recent first):
+${list}${suffix}`;
 })();
 var cliToolsBlock = `
 
@@ -11321,6 +11344,11 @@ try {
     if (baseTokens + skeletonTokens <= TOTAL_TOKEN_CAP) {
       additionalContext += skeleton;
     } else {
+      additionalContext += `
+
+## \u26A0 Spec Skeleton DROPPED
+
+The spec skeleton (${skeletonTokens} tokens) was omitted \u2014 the base payload (${baseTokens} tokens) already reaches the ${TOTAL_TOKEN_CAP}-token injection cap. Read \`doc/specs/\` directly for requirement coverage. Investigate why the payload is large (many motives? many waves?) and reduce it to restore auto-injection.`;
       try {
         if (sessionId) {
           emitHookEvent({

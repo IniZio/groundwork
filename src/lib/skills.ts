@@ -25,10 +25,6 @@ export function setPtyPluginAvailable(value: boolean): void {
 	}
 }
 
-export function getPtyPluginAvailable(): boolean {
-	return ptyPluginAvailable;
-}
-
 export function detectPtyPlugin(plugins: unknown): boolean {
 	if (!Array.isArray(plugins)) return false;
 	for (const entry of plugins) {
@@ -51,7 +47,7 @@ function isOpencodePtyPluginName(name: string): boolean {
 	return base === "opencode-pty" || base.endsWith("opencode-pty");
 }
 
-export function extractAndStripFrontmatter(content: string): {
+function extractAndStripFrontmatter(content: string): {
 	frontmatter: Record<string, any>;
 	content: string;
 } {
@@ -211,7 +207,3 @@ ${bodyContent}
 	return bootstrap;
 }
 
-// Backward-compatible alias for legacy callers
-export function getBootstrapContent(): string | null {
-	return getBootstrapForAgent("orchestrator");
-}

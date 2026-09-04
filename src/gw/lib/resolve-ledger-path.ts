@@ -1,21 +1,9 @@
 /**
- * resolve-ledger-path.ts — canonical ledger path-resolution algorithm.
- *
  * Shared by src/gw/cli/commands/ledger.ts and src/gw/hook/stop-gate.ts.
  * A deliberate mirror also lives in hooks/lib/ledger-io.mjs — that file is
  * intentionally separate (hooks/ cannot import from src/) and must be kept in
  * sync manually. The parity test in test/resolve-ledger-path-parity.test.ts
  * enforces agreement between the two.
- *
- * Algorithm:
- *   - sessionId must match LEDGER_SAFE_ID (/^[A-Za-z0-9_-]{1,128}$/) —
- *     path-traversal guard; invalid/absent → legacy path.
- *   - With a valid sessionId: return `.groundwork/runs/<sessionId>.json`.
- *     BUT for back-compat: if that per-session file does NOT yet exist AND the
- *     legacy `.groundwork/run.json` exists AND (legacy has no session_id OR
- *     legacy.session_id === sessionId), return the legacy path so in-flight
- *     old runs keep working.
- *   - Without a sessionId: return the legacy path `.groundwork/run.json`.
  */
 import path from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'

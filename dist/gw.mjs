@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 70447b5af3b1b94e975768c4953968f08b8f92eea6e02f5ce2251195abccc83f
+// @bundle-source-hash: dcf7f3586794c73e0db3305e6777c7a2cb54809a47d1a391c6ca5c1e816e59bb
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -25228,6 +25228,20 @@ function normaliseSubagentType(raw) {
     return s;
   return s.slice(colon + 1).trim();
 }
+function normaliseAllowlistType(raw) {
+  if (typeof raw !== "string")
+    return "";
+  const s = raw.trim().toLowerCase();
+  if (!s)
+    return "";
+  if (!s.includes(":"))
+    return s;
+  if (s.startsWith("groundwork:")) {
+    const rest = s.slice("groundwork:".length).trim();
+    return rest.includes(":") ? "" : rest;
+  }
+  return "";
+}
 
 // src/gw/hook/nesting-guard.ts
 import path12 from "path";
@@ -25283,7 +25297,8 @@ var DENIED_AT_DEPTH_1, JUNIOR_ALLOWED_SPAWN, run11 = async (rawInput, _env) => {
       return deny("groundwork nesting-guard: only the primary orchestrator may spawn a junior-orchestrator. " + "A subagent (a general-purpose worker or another junior-orchestrator) must not \u2014 " + "implement the slice directly or surface a blocker to the parent orchestrator.");
     }
     if (callerBare === "junior-orchestrator" && callerIsSubagent) {
-      if (JUNIOR_ALLOWED_SPAWN.has(bare))
+      const allowBare = normaliseAllowlistType(ti.subagent_type);
+      if (allowBare && JUNIOR_ALLOWED_SPAWN.has(allowBare))
         return passthrough();
       return deny(`groundwork nesting-guard: a junior-orchestrator may delegate only to: ` + `general-purpose, explore, advisor, designer, test-engineer, qa. It must not spawn "${rawTarget}".`);
     }

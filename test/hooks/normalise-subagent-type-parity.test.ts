@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest'
 import { run as nestingRun } from '../../src/gw/hook/nesting-guard.js'
 import { run as modelRun } from '../../src/gw/hook/agent-model-guard.js'
-import { normaliseSubagentType } from '../../src/gw/hook/normalise-subagent-type.js'
+import { normaliseSubagentType, normaliseAllowlistType } from '../../src/gw/hook/normalise-subagent-type.js'
 
 // Repo root — this file lives at test/hooks/normalise-subagent-type-parity.test.ts
 const REPO = new URL('../..', import.meta.url).pathname
@@ -132,23 +132,113 @@ describe('SEAM: normalise-subagent-type parity — Section 3: behavioural parity
   })
 })
 
-// ── Section 4: junior-orchestrator allowlist widening ─────────────────────────
+// ── Section 4: junior-orchestrator allowlist — asymmetric normalisation ────────
 //
-// Because bare now strips ANY prefix via lastIndexOf, an input like
-// "anything:explore" resolves to bare="explore", which IS in JUNIOR_ALLOWED_SPAWN.
-// Symmetrically, "plugin:junior-orchestrator" resolves to bare="junior-orchestrator",
-// which is NOT in JUNIOR_ALLOWED_SPAWN (and also triggers Rule 1 denial).
-// These tests pin both directions as an explicit, visible decision.
+// POLICY CHANGE (user-approved, H20): allowlist matching is now ASYMMETRIC.
+//
+//   Deny lists (DENIED_AT_DEPTH_1) keep stripping ANY prefix via lastIndexOf —
+//   they over-match (fail closed = wider coverage is correct for denials).
+//
+//   Allow lists (JUNIOR_ALLOWED_SPAWN) now use normaliseAllowlistType, which
+//   accepts only bare names and the `groundwork:` namespace. Any other namespace
+//   returns '' and falls through to deny. Under-matching is the correct
+//   fail-closed posture for allowlists: an unknown namespace must not satisfy
+//   the list by name collision ("evil:explore" → '' → deny, not allowed).
+//
+// INTENTIONAL BEHAVIOUR FLIP: "anything:explore" from a junior-orchestrator
+// WAS: passthrough (ALLOWED) — old symmetric normalisation stripped the prefix
+// WAS: and matched "explore" in JUNIOR_ALLOWED_SPAWN.
+// NOW: denied — unknown namespace does not satisfy the allowlist.
+// This is NOT a test being weakened to accommodate code; it is a deliberate
+// security policy strengthening approved by the user.
 
-describe('SEAM: normalise-subagent-type parity — Section 4: junior-orchestrator allowlist widening', () => {
-  it('nesting-guard ALLOWS anything:explore from a junior-orchestrator caller (prefix-stripped bare "explore" is in JUNIOR_ALLOWED_SPAWN)', async () => {
+describe('SEAM: normalise-subagent-type parity — Section 4: junior-orchestrator allowlist asymmetric normalisation', () => {
+  // ── normaliseAllowlistType unit assertions ────────────────────────────────
+
+  it('normaliseAllowlistType: bare "explore" → "explore" (accepted)', () => {
+    expect(normaliseAllowlistType('explore')).toBe('explore')
+  })
+
+  it('normaliseAllowlistType: "groundwork:explore" → "explore" (known namespace accepted)', () => {
+    expect(normaliseAllowlistType('groundwork:explore')).toBe('explore')
+  })
+
+  it('normaliseAllowlistType: "anything:explore" → "" (unknown namespace rejected)', () => {
+    expect(normaliseAllowlistType('anything:explore')).toBe('')
+  })
+
+  it('normaliseAllowlistType: "evil:explore" → "" (unknown namespace rejected)', () => {
+    expect(normaliseAllowlistType('evil:explore')).toBe('')
+  })
+
+  it('normaliseAllowlistType: "a:b:explore" → "" (multi-colon unknown namespace rejected)', () => {
+    expect(normaliseAllowlistType('a:b:explore')).toBe('')
+  })
+
+  // ── nesting-guard behavioural assertions ──────────────────────────────────
+
+  // INTENTIONAL FLIP (was: toBeUndefined / allowed): unknown namespace now denies.
+  it('nesting-guard DENIES anything:explore from a junior-orchestrator caller (unknown namespace fails closed on allowlist)', async () => {
     const result = await nestingRun(juniorOrchestratorCall('anything:explore'), {})
-    // passthrough() returns empty stdout → decision is undefined (no deny/allow injected)
+    expect(decision(result)).toBe('deny')
+  })
+
+  it('nesting-guard ALLOWS groundwork:explore from a junior-orchestrator caller (known namespace accepted)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('groundwork:explore'), {})
     expect(decision(result)).toBeUndefined()
+  })
+
+  it('nesting-guard ALLOWS bare explore from a junior-orchestrator caller (no namespace accepted)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('explore'), {})
+    expect(decision(result)).toBeUndefined()
+  })
+
+  it('nesting-guard DENIES evil:explore from a junior-orchestrator caller (unknown namespace fails closed on allowlist)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('evil:explore'), {})
+    expect(decision(result)).toBe('deny')
+  })
+
+  it('nesting-guard DENIES a:b:explore from a junior-orchestrator caller (multi-colon unknown namespace fails closed on allowlist)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('a:b:explore'), {})
+    expect(decision(result)).toBe('deny')
   })
 
   it('nesting-guard DENIES plugin:junior-orchestrator from a junior-orchestrator caller (prefix-stripped bare "junior-orchestrator" triggers Rule 1 denial)', async () => {
     const result = await nestingRun(juniorOrchestratorCall('plugin:junior-orchestrator'), {})
+    expect(decision(result)).toBe('deny')
+  })
+
+  // ── Section 4b: multi-colon groundwork: bypass vectors (H31) ─────────────
+  //
+  // BYPASS: normaliseAllowlistType("groundwork:evil:explore") was extracting
+  // "explore" via lastIndexOf(':'), bypassing the namespace guard entirely.
+  // The fix strips the known prefix from the front and rejects any remainder
+  // that still contains a colon.
+
+  it('normaliseAllowlistType: "groundwork:evil:explore" → "" (multi-colon groundwork: prefix rejected)', () => {
+    expect(normaliseAllowlistType('groundwork:evil:explore')).toBe('')
+  })
+
+  it('normaliseAllowlistType: "groundwork:x:general-purpose" → "" (multi-colon groundwork: prefix rejected)', () => {
+    expect(normaliseAllowlistType('groundwork:x:general-purpose')).toBe('')
+  })
+
+  it('normaliseAllowlistType: "GROUNDWORK:EVIL:qa" → "" (case-folded multi-colon groundwork: prefix rejected)', () => {
+    expect(normaliseAllowlistType('GROUNDWORK:EVIL:qa')).toBe('')
+  })
+
+  it('nesting-guard DENIES groundwork:evil:explore from a junior-orchestrator caller (multi-colon groundwork: bypass closed)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('groundwork:evil:explore'), {})
+    expect(decision(result)).toBe('deny')
+  })
+
+  it('nesting-guard DENIES groundwork:x:general-purpose from a junior-orchestrator caller (multi-colon groundwork: bypass closed)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('groundwork:x:general-purpose'), {})
+    expect(decision(result)).toBe('deny')
+  })
+
+  it('nesting-guard DENIES GROUNDWORK:EVIL:qa from a junior-orchestrator caller (case-folded multi-colon groundwork: bypass closed)', async () => {
+    const result = await nestingRun(juniorOrchestratorCall('GROUNDWORK:EVIL:qa'), {})
     expect(decision(result)).toBe('deny')
   })
 })

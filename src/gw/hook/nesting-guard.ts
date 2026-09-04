@@ -4,7 +4,7 @@
  */
 import path from 'node:path'
 import type { HookFn, HookResult } from './types.js'
-import { normaliseSubagentType } from './normalise-subagent-type.js'
+import { normaliseSubagentType, normaliseAllowlistType } from './normalise-subagent-type.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -101,8 +101,13 @@ export const run: HookFn = async (rawInput, _env) => {
 
     // ── Rule 2: junior-orchestrator caller cap ────────────────────────────────
     // A junior-orchestrator may delegate only to the JUNIOR_ALLOWED_SPAWN set.
+    // Uses normaliseAllowlistType (strict: known namespace only) so that an
+    // unknown namespace like "evil:explore" does NOT satisfy the allowlist by
+    // name collision. Allowlists under-match; deny lists over-match — both
+    // fail closed, just in opposite directions.
     if (callerBare === 'junior-orchestrator' && callerIsSubagent) {
-      if (JUNIOR_ALLOWED_SPAWN.has(bare)) return passthrough()
+      const allowBare = normaliseAllowlistType(ti.subagent_type)
+      if (allowBare && JUNIOR_ALLOWED_SPAWN.has(allowBare)) return passthrough()
       return deny(
         `groundwork nesting-guard: a junior-orchestrator may delegate only to: ` +
           `general-purpose, explore, advisor, designer, test-engineer, qa. It must not spawn "${rawTarget}".`,

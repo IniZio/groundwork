@@ -1,8 +1,7 @@
 /**
  * src/gw/hook/index.ts — Registry mapping hook names to their TypeScript implementations.
  *
- * Names match the HOOK_NAME values used in hooks/*.mjs shims and hooks/hooks.json
- * command registrations.
+ * Names match the hook IDs registered in hooks/hooks.json command registrations.
  */
 import type { HookFn } from './types.js'
 import { run as stopGate } from './stop-gate.js'

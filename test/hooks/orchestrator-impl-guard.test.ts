@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "orchestrator-impl-guard.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 type Decision = { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string; additionalContext?: string } };
 
@@ -23,7 +23,7 @@ function makeProject(ledger?: Record<string, unknown>): string {
 }
 
 function runHook(payload: Record<string, unknown>): Decision {
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "orchestrator-impl-guard"], {
 		input: JSON.stringify({ hook_event_name: "PreToolUse", ...payload }),
 		encoding: "utf8",
 	});
@@ -135,7 +135,7 @@ describe("orchestrator-impl-guard — never over-reaches", () => {
 	});
 
 	it("fails open (no output) on malformed stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "{ not json", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "orchestrator-impl-guard"], { input: "{ not json", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 });

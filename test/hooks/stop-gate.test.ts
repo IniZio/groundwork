@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 let projectDir: string;
 
@@ -23,7 +23,7 @@ function runHook(ledger: unknown, sessionId = "sess-1"): { continue?: boolean; d
 		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
 	}
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 
@@ -41,7 +41,7 @@ function runHookWithTranscript(
 	];
 	writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, transcript_path: transcriptPath });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 
@@ -53,7 +53,7 @@ function runHookWithBackgroundTasks(
 ): { continue?: boolean; decision?: string; reason?: string } {
 	writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, background_tasks: backgroundTasks });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 
@@ -127,7 +127,7 @@ describe("stop-gate hook — advisor verdict (object or string)", () => {
 	it("fails open (allows) on a malformed ledger", () => {
 		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), "{ not valid json :::");
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1" });
-		const decision = JSON.parse(execFileSync("node", [HOOK], { input, encoding: "utf8" }));
+		const decision = JSON.parse(execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" }));
 		expect(decision.continue).toBe(true);
 	});
 
@@ -239,7 +239,7 @@ describe("stop-gate hook — yield-awareness (Fix B)", () => {
 		lines.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "S1 complete, still waiting." }] } }));
 		writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1", transcript_path: transcriptPath });
-		return JSON.parse(execFileSync("node", [HOOK], { input, encoding: "utf8" }));
+		return JSON.parse(execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" }));
 	}
 
 	it("allows the stop when background delegations are still in flight (partial completion, no Task this turn)", () => {
@@ -520,7 +520,7 @@ function runHookWithPerSessionLedger(
 	mkdirSync(runsDir, { recursive: true });
 	writeFileSync(path.join(runsDir, `${sessionId}.json`), JSON.stringify(ledger, null, 2));
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 
@@ -563,7 +563,7 @@ describe("stop-gate hook — per-session ledger isolation", () => {
 		);
 		// Session bbb has no ledger — should allow (fail-open)
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-bbb" });
-		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 		const decision = JSON.parse(out);
 		expect(decision.continue).toBe(true);
 	});
@@ -581,7 +581,7 @@ describe("stop-gate hook — per-session ledger isolation", () => {
 			}),
 		);
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-legacy" });
-		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 		const decision = JSON.parse(out);
 		// Should block because the legacy ledger is active and owned by this session
 		expect(decision.decision).toBe("block");
@@ -750,7 +750,7 @@ function runHookWithJournal(
 	);
 
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 
@@ -887,7 +887,7 @@ describe("stop-gate — spec advisory (D-26)", () => {
 			}),
 		);
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-git" });
-		const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 		return JSON.parse(out);
 	}
 

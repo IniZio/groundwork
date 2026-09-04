@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "agent-model-guard.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 type Decision = {
 	hookSpecificOutput?: {
@@ -17,7 +17,7 @@ type Decision = {
 
 /** Run the hook with a given PreToolUse stdin payload; parse stdout (or {} when empty). */
 function runHook(payload: unknown, env?: Record<string, string>): Decision {
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], {
 		input: JSON.stringify(payload),
 		encoding: "utf8",
 		env: { ...process.env, ...env },
@@ -144,12 +144,12 @@ describe("agent-model-guard — never overrides / never over-reaches", () => {
 	});
 
 	it("fails open (no output) on malformed stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "{ not json :::", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], { input: "{ not json :::", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 
 	it("fails open (no output) on empty stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], { input: "", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "nesting-guard.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 type Decision = {
 	hookSpecificOutput?: {
@@ -15,7 +15,7 @@ type Decision = {
 
 /** Run the hook with a given PreToolUse stdin payload; parse stdout (or {} when empty). */
 function runHook(payload: unknown): Decision {
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "nesting-guard"], {
 		input: JSON.stringify(payload),
 		encoding: "utf8",
 	});
@@ -104,12 +104,12 @@ describe("nesting-guard — fail-open on ambiguous caller", () => {
 	});
 
 	it("fails open (no output) on malformed stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "{ not json :::", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "nesting-guard"], { input: "{ not json :::", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 
 	it("fails open (no output) on empty stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "nesting-guard"], { input: "", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 });

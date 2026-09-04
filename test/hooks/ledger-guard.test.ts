@@ -2,14 +2,13 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "ledger-guard.mjs");
-const BASH_HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "ledger-bash-guard.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 type Decision = { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } };
 
 function runHook(toolName: string, filePath: string): Decision {
 	const payload = { hook_event_name: "PreToolUse", tool_name: toolName, tool_input: { file_path: filePath } };
-	const out = execFileSync("node", [HOOK], { input: JSON.stringify(payload), encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "ledger-guard"], { input: JSON.stringify(payload), encoding: "utf8" });
 	return out.trim() ? JSON.parse(out) : {};
 }
 
@@ -22,7 +21,7 @@ function runHookAs(toolName: string, filePath: string, opts: { agentType?: strin
 	};
 	if (opts.agentType) payload.agent_type = opts.agentType;
 	if (opts.transcriptPath) payload.transcript_path = opts.transcriptPath;
-	const out = execFileSync("node", [HOOK], { input: JSON.stringify(payload), encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "ledger-guard"], { input: JSON.stringify(payload), encoding: "utf8" });
 	return out.trim() ? JSON.parse(out) : {};
 }
 
@@ -35,7 +34,7 @@ function runBashHook(command: string, opts: { agentType?: string; transcriptPath
 	};
 	if (opts.agentType) payload.agent_type = opts.agentType;
 	if (opts.transcriptPath) payload.transcript_path = opts.transcriptPath;
-	const out = execFileSync("node", [BASH_HOOK], { input: JSON.stringify(payload), encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "ledger-bash-guard"], { input: JSON.stringify(payload), encoding: "utf8" });
 	return out.trim() ? JSON.parse(out) : {};
 }
 
@@ -97,7 +96,7 @@ describe("ledger-guard — never over-reaches", () => {
 	});
 
 	it("fails open (no output) on malformed stdin", () => {
-		const out = execFileSync("node", [HOOK], { input: "{ not json", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "ledger-guard"], { input: "{ not json", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 });
@@ -239,7 +238,7 @@ describe("ledger-bash-guard — S4-AC3: subagent Bash mutation/exfil is denied",
 	});
 
 	it("fails open (no output) on malformed stdin", () => {
-		const out = execFileSync("node", [BASH_HOOK], { input: "not json", encoding: "utf8" });
+		const out = execFileSync(GW_HOOK, ["hook", "ledger-bash-guard"], { input: "not json", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
 });

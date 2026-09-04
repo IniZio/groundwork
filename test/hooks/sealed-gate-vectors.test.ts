@@ -37,7 +37,7 @@ type Ledger = {
 
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 const LEDGER = path.join(REPO, "hooks", "ledger.mjs");
-const STOP_GATE = path.join(REPO, "hooks", "stop-gate.mjs");
+const STOP_GATE = path.join(REPO, "bin", "gw-hook");
 
 /** A session id that passes the SAFE_ID regex and is unlikely to collide. */
 const TEST_SESSION = "sealed-gate-grill-001";
@@ -118,7 +118,7 @@ function readLedger(): Ledger {
 /** Run the stop-gate hook and return the parsed JSON decision. */
 function runStopGate(sessionId = TEST_SESSION): { continue?: boolean; decision?: string; reason?: string } {
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const result = spawnSync("node", [STOP_GATE], {
+	const result = spawnSync(STOP_GATE, ["hook", "stop-gate"], {
 		input,
 		encoding: "utf8",
 		env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },

@@ -1,5 +1,5 @@
 /**
- * Tests for hooks/piped-exit-code-guard.mjs
+ * Tests for src/gw/hook/piped-exit-code-guard.ts (registered via bin/gw-hook hook piped-exit-code-guard)
  *
  * DENY: commands that read $? after piping through a filter — the filter's
  *       exit status is captured, not the upstream command's.
@@ -12,12 +12,12 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(
+const GW_HOOK = path.resolve(
 	import.meta.dirname,
 	"..",
 	"..",
-	"hooks",
-	"piped-exit-code-guard.mjs",
+	"bin",
+	"gw-hook",
 );
 
 type Decision = {
@@ -33,7 +33,7 @@ function runHook(command: string): Decision {
 		tool_name: "Bash",
 		tool_input: { command },
 	};
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "piped-exit-code-guard"], {
 		input: JSON.stringify(payload),
 		encoding: "utf8",
 	});
@@ -49,14 +49,14 @@ function reason(d: Decision): string {
 }
 
 // ─── MODE BIT CONTRACT ──────────────────────────────────────────────────────
-// The hook is registered in hooks.json by bare path and executed directly by
-// the shell.  Without the exec bit the shell returns 126 (Permission denied)
-// and the hook silently never runs.  This test guards against the bit being
-// stripped by a checkout or a careless chmod.
+// The hook is registered as ${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook piped-exit-code-guard
+// and executed directly by the shell.  Without the exec bit the shell returns
+// 126 (Permission denied) and the hook silently never runs.  This test guards
+// against the bit being stripped by a checkout or a careless chmod.
 
 describe("piped-exit-code-guard — exec bit", () => {
 	it("hook file has exec bit set (mode & 0o111 !== 0)", () => {
-		const mode = statSync(HOOK).mode;
+		const mode = statSync(GW_HOOK).mode;
 		expect(mode & 0o111).not.toBe(0);
 	});
 });
@@ -130,7 +130,7 @@ describe("piped-exit-code-guard — MUST ALLOW", () => {
 			tool_name: "Read",
 			tool_input: { command: "cmd | head; echo $?" },
 		};
-		const out = execFileSync("node", [HOOK], {
+		const out = execFileSync(GW_HOOK, ["hook", "piped-exit-code-guard"], {
 			input: JSON.stringify(payload),
 			encoding: "utf8",
 		});
@@ -144,7 +144,7 @@ describe("piped-exit-code-guard — MUST ALLOW", () => {
 			tool_name: "Bash",
 			tool_input: { command: "" },
 		};
-		const out = execFileSync("node", [HOOK], {
+		const out = execFileSync(GW_HOOK, ["hook", "piped-exit-code-guard"], {
 			input: JSON.stringify(payload),
 			encoding: "utf8",
 		});

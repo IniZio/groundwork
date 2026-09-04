@@ -360,13 +360,13 @@ describe('hook exec-bit and shim-spawn', () => {
 })
 
 // stop-gate-specific test: verify the allow path returns continue:true
-describe('stop-gate.mjs shim-spawn (allow path)', () => {
-  it('hooks/stop-gate.mjs spawns correctly when invoked by path (not node <path>)', () => {
-    const hookPath = join(REPO_ROOT, 'hooks/stop-gate.mjs')
+describe('stop-gate deployed-path spawn (allow path)', () => {
+  it('bin/gw-hook hook stop-gate spawns correctly when invoked by the deployed path', () => {
+    const hookPath = join(REPO_ROOT, 'bin', 'gw-hook')
     const tmpDir = mkdtempSync(join(os.tmpdir(), 'gw-stopgate-spawn-'))
     try {
       const payload = JSON.stringify({ session_id: 'spawn-test-session', hook_event_name: 'Stop' })
-      const result = spawnSync(hookPath, [], {
+      const result = spawnSync(hookPath, ['hook', 'stop-gate'], {
         input: payload,
         encoding: 'utf8',
         env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir },

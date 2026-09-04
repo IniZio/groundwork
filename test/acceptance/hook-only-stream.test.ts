@@ -36,7 +36,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'vitest'
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const LEDGER_CLI = path.join(ROOT, 'hooks', 'ledger.mjs')
-const STOP_GATE = path.join(ROOT, 'hooks', 'stop-gate.mjs')
+const STOP_GATE = path.join(ROOT, 'bin', 'gw-hook')
 const SPEC_GUARD = path.join(ROOT, 'hooks', 'spec-guard.mjs')
 const STRUGGLE_DETECTOR = path.join(ROOT, 'hooks', 'struggle-detector.mjs')
 const JOURNAL_CLI = path.join(ROOT, 'hooks', 'journal.mjs')
@@ -108,8 +108,9 @@ function runHookSync(
   hookPath: string,
   payload: object,
   extraEnv: Record<string, string> = {},
+  hookArgs: string[] = [],
 ): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('node', [hookPath], {
+  const r = spawnSync(hookPath, hookArgs, {
     input: JSON.stringify(payload),
     env: { ...baseEnv(), ...extraEnv },
     encoding: 'utf8',
@@ -205,8 +206,9 @@ function runHookSync2(
   hookPath: string,
   payload: object,
   extraEnv: Record<string, string> = {},
+  hookArgs: string[] = [],
 ): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('node', [hookPath], {
+  const r = spawnSync(hookPath, hookArgs, {
     input: JSON.stringify(payload),
     env: { ...baseEnvNoMotive(), ...extraEnv },
     encoding: 'utf8',
@@ -329,7 +331,7 @@ beforeAll(async () => {
 
   // ── 10. SESSION_END: stop-gate reads ledger (all complete + APPROVE) ──────
   const stopPayload = { session_id: SESSION_ID, cwd: tmpDir }
-  runHookSync(STOP_GATE, stopPayload)
+  runHookSync(STOP_GATE, stopPayload, {}, ['hook', 'stop-gate'])
 
   // ── 11. Collect events ───────────────────────────────────────────────────
   events = readShard()
@@ -367,7 +369,7 @@ beforeAll(async () => {
 
   runLedger2(['complete', 'S1', '--token', WRITE_TOKEN])
   runLedger2(['gate', 'advisor', 'APPROVE', '--token', WRITE_TOKEN])
-  runHookSync2(STOP_GATE, { session_id: SESSION_ID, cwd: tmpDir2 })
+  runHookSync2(STOP_GATE, { session_id: SESSION_ID, cwd: tmpDir2 }, {}, ['hook', 'stop-gate'])
 
   events2 = readShard2()
 

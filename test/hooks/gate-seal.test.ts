@@ -309,7 +309,7 @@ describe('keyPath / ensureKey / readKey (AC3)', () => {
 // S-TOKEN — scoped_tokens seal coverage (security fix)
 // ---------------------------------------------------------------------------
 
-const STOP_GATE_HOOK = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'stop-gate.mjs')
+const STOP_GATE_HOOK = path.resolve(import.meta.dirname, '..', '..', 'bin', 'gw-hook')
 
 describe('scoped_tokens seal coverage (S-TOKEN)', () => {
   let tmpDir: string
@@ -399,7 +399,7 @@ describe('scoped_tokens seal coverage (S-TOKEN)', () => {
     const ledgerPath = path.join(tmpDir, '.groundwork', 'runs', `${sessionId}.json`)
     writeFileSync(ledgerPath, JSON.stringify(tampered, null, 2))
     const input = JSON.stringify({ cwd: tmpDir, session_id: sessionId })
-    const out = execFileSync('node', [STOP_GATE_HOOK], { input, encoding: 'utf8' })
+    const out = execFileSync(STOP_GATE_HOOK, ['hook', 'stop-gate'], { input, encoding: 'utf8' })
     const result = JSON.parse(out)
     // stop-gate returns {decision:"block",...} when it blocks (not {continue:false})
     expect(result.decision).toBe('block')

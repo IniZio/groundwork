@@ -4,6 +4,7 @@
  */
 import path from 'node:path'
 import type { HookFn, HookResult } from './types.js'
+import { normaliseSubagentType } from './normalise-subagent-type.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,17 +48,6 @@ const JUNIOR_ALLOWED_SPAWN = new Set([
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
 /**
- * Normalise a raw subagent_type to a bare name for policy matching.
- * Strips the optional "groundwork:" namespace prefix so that
- * "groundwork:general-purpose" and "general-purpose" are treated identically.
- */
-function normaliseName(raw: unknown): string {
-  if (typeof raw !== 'string') return ''
-  const s = raw.trim().toLowerCase()
-  return s.startsWith('groundwork:') ? s.slice('groundwork:'.length) : s
-}
-
-/**
  * Return true when the PreToolUse input originates from a subagent, not the
  * main orchestrator. Uses the same three-signal heuristic as
  * orchestrator-impl-guard.
@@ -91,12 +81,12 @@ export const run: HookFn = async (rawInput, _env) => {
     }
     const ti = toolInput as Record<string, unknown>
 
-    const bare = normaliseName(ti.subagent_type)
+    const bare = normaliseSubagentType(ti.subagent_type)
     if (!bare) return passthrough()
 
     const rawTarget = typeof ti.subagent_type === 'string' ? ti.subagent_type : bare
     const callerIsSubagent = isSubagentCall(input)
-    const callerBare = normaliseName(input.agent_type)
+    const callerBare = normaliseSubagentType(input.agent_type)
 
     // ── Rule 1: junior-orchestrator spawn gate ────────────────────────────────
     // Only the primary (top-level) orchestrator may spawn a junior-orchestrator.

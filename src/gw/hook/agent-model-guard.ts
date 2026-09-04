@@ -5,6 +5,7 @@
 import { readFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import type { HookFn, HookResult } from './types.js'
+import { normaliseSubagentType } from './normalise-subagent-type.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -75,22 +76,11 @@ function toTierAlias(model: string): string {
 }
 
 /**
- * Normalize a subagent_type to a registry key. Strips a `prefix:` and lowercases.
- */
-function registryKey(subagentType: unknown): string {
-  if (typeof subagentType !== 'string' || !subagentType.trim()) return ''
-  const afterPrefix = subagentType.includes(':')
-    ? subagentType.slice(subagentType.lastIndexOf(':') + 1)
-    : subagentType
-  return afterPrefix.trim().toLowerCase()
-}
-
-/**
  * Resolve the claude-code model for a subagent_type from the registry.
  * Returns null when absent/unknown or maps to "inherit"/empty.
  */
 function resolveModel(registry: Record<string, unknown> | null, subagentType: unknown): string | null {
-  const key = registryKey(subagentType)
+  const key = normaliseSubagentType(subagentType)
   if (!key) return null
   const agents = (registry as Record<string, Record<string, unknown>> | null)?.agents
   const agent = agents?.[key]

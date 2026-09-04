@@ -4,7 +4,7 @@ The **stop gate** is the mechanical enforcement layer that prevents a groundwork
 
 ## What it is
 
-`hooks/stop-gate.mjs` is a Claude Code Stop hook — it fires on every session-end attempt and either allows or blocks the stop. It is the only enforcement point that cannot be bypassed by an LLM rationalization: the hook runs outside the model's context and has final say over whether the session ends.
+`src/gw/hook/stop-gate.ts` (invoked via `bin/gw-hook hook stop-gate`) is a Claude Code Stop hook — it fires on every session-end attempt and either allows or blocks the stop. It is the only enforcement point that cannot be bypassed by an LLM rationalization: the hook runs outside the model's context and has final say over whether the session ends.
 
 ## What it guarantees
 

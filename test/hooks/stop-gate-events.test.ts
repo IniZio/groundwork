@@ -32,7 +32,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 // ---------------------------------------------------------------------------
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
-const HOOK = path.join(ROOT, 'hooks', 'stop-gate.mjs')
+const HOOK = path.join(ROOT, 'bin', 'gw-hook')
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,7 +66,7 @@ function runHook(
   stdinPayload: Record<string, unknown>,
   extraEnv: Record<string, string> = {},
 ): { stdout: string; stderr: string; status: number } {
-  const result = spawnSync('node', [HOOK], {
+  const result = spawnSync(HOOK, ['hook', 'stop-gate'], {
     input: JSON.stringify(stdinPayload),
     encoding: 'utf8',
     env: {
@@ -192,7 +192,7 @@ describe('S3-AC2: non-terminal allow paths emit zero events', () => {
   })
 
   it('unparseable stdin → zero events', () => {
-    const result = spawnSync('node', [HOOK], {
+    const result = spawnSync(HOOK, ['hook', 'stop-gate'], {
       input: 'not-json',
       encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: undefined },

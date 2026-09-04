@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 // Input shape for writing a decision note
-export interface DecisionNoteData {
+interface DecisionNoteData {
   id: string
   decision: string
   rationale: string
@@ -19,18 +19,9 @@ export interface DecisionNoteData {
 }
 
 // Read shape
-export interface DecisionNote {
+interface DecisionNote {
   fm: Record<string, unknown>
   body: string
-}
-
-export function decisionNotePath(
-  repoRoot: string,
-  tracker: string,
-  motive: string,
-  id: string,
-): string {
-  return motiveDecisionPath(repoRoot, tracker, motive, id)
 }
 
 export async function readDecision(opts: {

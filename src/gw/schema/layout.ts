@@ -103,20 +103,6 @@ export function designMocPath(repoRoot: string, conceptSlug: string): string {
   return path.join(repoRoot, 'doc', 'specs', conceptSlug, 'design', '_MOC.md')
 }
 
-/** Design subfolder (concepts/, flows/, components/, recipes/, reference/) */
-export function designSubfolderPath(
-  repoRoot: string,
-  conceptSlug: string,
-  subfolder: 'concepts' | 'flows' | 'components' | 'recipes' | 'reference',
-): string {
-  return path.join(repoRoot, 'doc', 'specs', conceptSlug, 'design', subfolder)
-}
-
-/** Component assets folder: design/components/assets/ */
-export function componentAssetsDir(repoRoot: string, conceptSlug: string): string {
-  return path.join(repoRoot, 'doc', 'specs', conceptSlug, 'design', 'components', 'assets')
-}
-
 /** Spec-level decision file (MADR under concept): decisions/<decisionId>.md */
 export function specDecisionPath(
   repoRoot: string,

@@ -2,7 +2,7 @@
 
 ## stop gate
 
-The mechanical enforcement layer implemented by `hooks/stop-gate.mjs`. Fires on every session-end attempt. Blocks the session from ending while any ledger slice is non-terminal or the advisor gate verdict is not `APPROVE`. Fail-open: errors allow the session to end rather than wedge it. See [[design/concepts/stop-gate]].
+The mechanical enforcement layer implemented by `src/gw/hook/stop-gate.ts` (invoked via `bin/gw-hook hook stop-gate`). Fires on every session-end attempt. Blocks the session from ending while any ledger slice is non-terminal or the advisor gate verdict is not `APPROVE`. Fail-open: errors allow the session to end rather than wedge it. See [[design/concepts/stop-gate]].
 
 ## advisor gate
 

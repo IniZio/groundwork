@@ -30,8 +30,8 @@ If ANY of these signals is present, the caller is treated as a subagent and the 
 
 | Mode | Behavior | Used by |
 |------|----------|---------|
-| **Hard-block** | Exit 0 + `{"decision": "block", "reason": "..."}` — denies the tool call before the model sees it | orchestrator-impl-guard.mjs |
-| **Fail-open** | If detection signal is absent, emit a warning and permit — liveness over strictness | nesting-guard.mjs, deslop-guard.mjs, agent-model-guard.mjs |
+| **Hard-block** | Exit 0 + `{"decision": "block", "reason": "..."}` — denies the tool call before the model sees it | `src/gw/hook/orchestrator-impl-guard.ts` |
+| **Fail-open** | If detection signal is absent, emit a warning and permit — liveness over strictness | `src/gw/hook/nesting-guard.ts`, `hooks/deslop-guard.mjs`, `src/gw/hook/agent-model-guard.ts` |
 
 The orchestrator impl-guard is the only hard-block hook. All others fail-open when their input signal is absent, so misconfiguration degrades to advisory rather than lockout.
 
@@ -39,12 +39,12 @@ The orchestrator impl-guard is the only hard-block hook. All others fail-open wh
 
 `hooks/lib/gate-seal.mjs` implements an HMAC-based seal over the ledger's release state. The seal provides tamper-evidence against CLI misuse and direct file mutation, but not against a process running as the same OS user (which can read the key from disk). See [[../../requirements/seal-r-001-accepted-residual-ace-same-os-user|SEAL-R-001]] for the documented residual.
 
-## Hook files in `hooks/`
+## Hook implementations
 
 | File | Event | Matcher | Mode |
 |------|-------|---------|------|
-| `orchestrator-impl-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Hard-block |
-| `nesting-guard.mjs` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open |
-| `stop-gate.mjs` | Stop | (none) | Hard-block / release |
-| `deslop-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Fail-open |
-| `agent-model-guard.mjs` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open |
+| `src/gw/hook/orchestrator-impl-guard.ts` | PreToolUse | `Edit\|Write\|MultiEdit` | Hard-block |
+| `src/gw/hook/nesting-guard.ts` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open |
+| `src/gw/hook/stop-gate.ts` | Stop | (none) | Hard-block / release |
+| `hooks/deslop-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Fail-open |
+| `src/gw/hook/agent-model-guard.ts` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open |

@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "agent-model-guard.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 type Decision = {
 	hookSpecificOutput?: {
@@ -33,7 +33,7 @@ type Decision = {
 
 /** Run the hook with a given PreToolUse stdin payload; parse stdout (or {} when empty). */
 function runHook(payload: unknown, env?: Record<string, string>): Decision {
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], {
 		input: JSON.stringify(payload),
 		encoding: "utf8",
 		env: { ...process.env, ...env },
@@ -137,7 +137,7 @@ describe("prefix-guard — unrelated subagent_type produces no prefix warning", 
 // ---------------------------------------------------------------------------
 describe("prefix-guard — fails open on bad input", () => {
 	it("(d1) malformed JSON produces no output (passthrough)", () => {
-		const out = execFileSync("node", [HOOK], {
+		const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], {
 			input: "{ not json :::bad",
 			encoding: "utf8",
 		});
@@ -145,7 +145,7 @@ describe("prefix-guard — fails open on bad input", () => {
 	});
 
 	it("(d2) empty stdin produces no output (passthrough)", () => {
-		const out = execFileSync("node", [HOOK], {
+		const out = execFileSync(GW_HOOK, ["hook", "agent-model-guard"], {
 			input: "",
 			encoding: "utf8",
 		});

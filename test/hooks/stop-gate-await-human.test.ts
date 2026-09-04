@@ -29,7 +29,7 @@ import {
   ensureKey,
 } from "../../hooks/lib/gate-seal.mjs";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 const LEDGER_MJS = path.resolve(import.meta.dirname, "..", "..", "hooks", "ledger.mjs");
 
 let projectDir: string;
@@ -63,7 +63,7 @@ function runHook(ledger: unknown, sid = sessionId): { continue?: boolean; decisi
   mkdirSync(runsDir, { recursive: true });
   writeFileSync(path.join(runsDir, `${sid}.json`), JSON.stringify(ledger, null, 2));
   const input = JSON.stringify({ cwd: projectDir, session_id: sid });
-  const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+  const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
   return JSON.parse(out);
 }
 

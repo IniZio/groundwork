@@ -58,8 +58,10 @@ import { join, relative, basename, dirname } from 'node:path'
 /**
  * Estimate token cost of a string.
  * Uses Math.ceil(utf8-byte-length / 3.5) — same ratio as spec.mjs line ~421.
+ * Accepts null/undefined (returns 0) so callers need not guard.
  */
 export function estimateTokens(content) {
+  if (!content) return 0
   return Math.ceil(Buffer.byteLength(content, 'utf8') / 3.5)
 }
 

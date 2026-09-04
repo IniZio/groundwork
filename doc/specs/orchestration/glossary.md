@@ -70,7 +70,7 @@ The run ledger file (`.groundwork/runs/<session_id>.json`). Tracks all slices, t
 
 ## Nesting guard
 
-`hooks/nesting-guard.mjs`. A `PreToolUse` hook that enforces the delegation topology mechanically. Blocks `junior → junior` and `general-purpose → general-purpose` spawns at the hook layer.
+`src/gw/hook/nesting-guard.ts` (invoked via `bin/gw-hook hook nesting-guard`). A `PreToolUse` hook that enforces the delegation topology mechanically. Blocks `junior → junior` and `general-purpose → general-purpose` spawns at the hook layer.
 
 ## Orchestrator
 
@@ -106,7 +106,7 @@ A unit of work registered in the run ledger. Has an `id`, `kind`, `status`, opti
 
 ## Stop-gate
 
-`hooks/stop-gate.mjs`. A `Stop` hook that fires every time a session tries to end. Reads the run ledger and blocks the stop if slices are incomplete or the advisor has not approved. See [[design/concepts/stop-gate]].
+`src/gw/hook/stop-gate.ts` (invoked via `bin/gw-hook hook stop-gate`). A `Stop` hook that fires every time a session tries to end. Reads the run ledger and blocks the stop if slices are incomplete or the advisor has not approved. See [[design/concepts/stop-gate]].
 
 ## Ticket
 

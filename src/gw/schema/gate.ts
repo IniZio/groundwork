@@ -23,5 +23,3 @@ export const GateSchema = z.looseObject({
 })
 
 export type Gate = z.infer<typeof GateSchema>
-export type AdvisorVerdict = z.infer<typeof AdvisorVerdictEnum>
-export type AdvisorVerdictObj = z.infer<typeof AdvisorVerdictObject>

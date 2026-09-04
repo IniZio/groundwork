@@ -14,12 +14,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(
+const GW_HOOK = path.resolve(
 	import.meta.dirname,
 	"..",
 	"..",
-	"hooks",
-	"stop-gate.mjs",
+	"bin",
+	"gw-hook",
 );
 
 let projectDir: string;
@@ -75,7 +75,7 @@ function runHook(
 ): Decision {
 	writeLedger(ledger);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], {
 		input,
 		encoding: "utf8",
 		env: {
@@ -96,7 +96,7 @@ function spawnHook(
 ): { status: number | null; decision: Decision } {
 	writeLedger(ledger);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const result = spawnSync("node", [HOOK], {
+	const result = spawnSync(GW_HOOK, ["hook", "stop-gate"], {
 		input,
 		encoding: "utf8",
 		env: {

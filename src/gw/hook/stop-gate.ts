@@ -35,6 +35,7 @@ import path from 'node:path'
 import type { HookFn, HookResult } from './types.js'
 import { bySession } from '../store/slice/index.js'
 import { readGate } from '../store/gate/index.js'
+import { LEDGER_SAFE_ID, resolveLedgerPath } from '../lib/resolve-ledger-path.js'
 
 // ---------------------------------------------------------------------------
 // HookResult builders — replace process.exit(0) pattern from the .mjs original.
@@ -80,7 +81,7 @@ function resolveMotiveSlug(motiveRef: unknown): string | null {
 // Inlined: gate-seal helpers (from hooks/lib/gate-seal.mjs)
 // ---------------------------------------------------------------------------
 
-const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/
+const SAFE_ID = LEDGER_SAFE_ID
 
 /** Extract advisor verdict from gate.advisor (string or {verdict} object). */
 function extractAdvisorVerdictFromGateObj(gate: unknown): string | null {
@@ -278,34 +279,6 @@ function mutateLedger(
     const next = returned === undefined ? ledger : returned
     if (next != null) atomicWriteJsonSync(ledgerPath, next)
   })
-}
-
-function resolveLedgerPath({
-  projectDir,
-  sessionId,
-}: {
-  projectDir: string
-  sessionId?: string
-}): string {
-  const legacyPath = path.join(projectDir, '.groundwork', 'run.json')
-  if (!sessionId || typeof sessionId !== 'string') return legacyPath
-  if (!SAFE_ID.test(sessionId)) return legacyPath
-
-  const perSessionPath = path.join(projectDir, '.groundwork', 'runs', `${sessionId}.json`)
-  if (existsSync(perSessionPath)) return perSessionPath
-
-  if (existsSync(legacyPath)) {
-    let legacy: Record<string, unknown> | null = null
-    try {
-      legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) as Record<string, unknown>
-    } catch {
-      // ignore
-    }
-    const legacyOwner = legacy?.session_id
-    if (!legacyOwner || legacyOwner === sessionId) return legacyPath
-  }
-
-  return perSessionPath
 }
 
 // ---------------------------------------------------------------------------

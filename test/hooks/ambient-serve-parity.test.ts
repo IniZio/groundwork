@@ -10,7 +10,7 @@
  *
  *   ambient surface: hooks/lib/traceability-ambient.mjs → renderTraceHtml()
  *     emits data-frontier and data-blockers on SVG node elements.
- *   serve surface:   hooks/traceability-serve.mjs → computeWaveBands()
+ *   serve surface:   hooks/lib/traceability-serve.mjs → computeWaveBands()
  *     returns waveBySliceId, frontierIds, blockersBySliceId.
  *
  * Assertions:
@@ -25,7 +25,7 @@
  *   CYCLIC_SLICES   — 2 slices forming a cycle; no-hang + frontier/blocker agreement tested;
  *                     wave AGREES on null after Seam A+B fixes (V7 of spine-beads-hitl-portability)
  *
- * BITE PROOF: perturb computeWaveBands in traceability-serve.mjs so it returns
+ * BITE PROOF: perturb computeWaveBands in hooks/lib/traceability-serve.mjs so it returns
  * wave+99 for topo-derived assignments, run (RED), revert, run (GREEN).
  * Bite-proof outputs are pasted in the PR description / commit message.
  *
@@ -34,7 +34,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { renderTraceHtml } from '../../hooks/lib/traceability-ambient.mjs'
-import { computeWaveBands } from '../../hooks/traceability-serve.mjs'
+import { computeWaveBands } from '../../hooks/lib/traceability-serve.mjs'
 import { buildTraceabilityGraph } from '../../hooks/lib/traceability-join.mjs'
 import { topoLayers, hasCycle } from '../../hooks/lib/dag-utils.mjs'
 

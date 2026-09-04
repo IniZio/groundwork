@@ -34,7 +34,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const JOURNAL_CLI = path.join(ROOT, 'hooks', 'journal.mjs')
-const STOP_GATE = path.join(ROOT, 'hooks', 'stop-gate.mjs')
+const STOP_GATE = path.join(ROOT, 'bin', 'gw-hook')
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,7 +130,7 @@ function writeLedger(projectDir: string, sessionId = 'sess-sg'): void {
 
 function runStopGate(projectDir: string, sessionId = 'sess-sg'): { continue?: boolean; decision?: string; reason?: string } {
   const input = JSON.stringify({ cwd: projectDir, session_id: sessionId })
-  const out = execFileSync('node', [STOP_GATE], {
+  const out = execFileSync(STOP_GATE, ['hook', 'stop-gate'], {
     input,
     encoding: 'utf8',
     env: journalEnv(projectDir, sessionId),

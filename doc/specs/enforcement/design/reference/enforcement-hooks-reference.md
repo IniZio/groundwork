@@ -1,17 +1,17 @@
 # Enforcement Hooks Reference
 
 > **Type:** reference table
-> **Source:** `hooks/README.md`, `hooks/hooks.json`, `hooks/orchestrator-impl-guard.mjs`, `hooks/nesting-guard.mjs`, `hooks/stop-gate.mjs`, `hooks/deslop-guard.mjs`, `hooks/agent-model-guard.mjs`
+> **Source:** `hooks/README.md`, `hooks/hooks.json`, `src/gw/hook/orchestrator-impl-guard.ts`, `src/gw/hook/nesting-guard.ts`, `src/gw/hook/stop-gate.ts`, `hooks/deslop-guard.mjs`, `src/gw/hook/agent-model-guard.ts`
 
 ## All enforcement hooks
 
 | Hook | Event | Matcher | Mode | Gated action | Requirements |
 |------|-------|---------|------|-------------|--------------|
-| `orchestrator-impl-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Advisory (exit 0, no block) | Orchestrator direct edits outside memory/ permit path — emits delegation reminder via `additionalContext`, edit proceeds | [[../../requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits\|ENFORCEMENT-R-001]] |
-| `nesting-guard.mjs` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open | Depth-1 subagents dispatching `general-purpose` or `orchestrator` | (advisory) |
-| `stop-gate.mjs` | Stop | (none) | Hard-block / release | Session end while incomplete slices or absent advisor APPROVE remain | [[../../requirements/pacing-r-005-pacing-exhaustion-stop-gate-release-directive-handoff\|PACING-R-005]] |
+| `orchestrator-impl-guard.ts` | PreToolUse | `Edit\|Write\|MultiEdit` | Advisory (exit 0, no block) | Orchestrator direct edits outside memory/ permit path — emits delegation reminder via `additionalContext`, edit proceeds | [[../../requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits\|ENFORCEMENT-R-001]] |
+| `nesting-guard.ts` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open | Depth-1 subagents dispatching `general-purpose` or `orchestrator` | (advisory) |
+| `stop-gate.ts` | Stop | (none) | Hard-block / release | Session end while incomplete slices or absent advisor APPROVE remain | [[../../requirements/pacing-r-005-pacing-exhaustion-stop-gate-release-directive-handoff\|PACING-R-005]] |
 | `deslop-guard.mjs` | PreToolUse | `Edit\|Write\|MultiEdit` | Fail-open | Quality constraints on written content | (advisory) |
-| `agent-model-guard.mjs` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open | Agent dispatches missing explicit `model:` field | (advisory) |
+| `agent-model-guard.ts` | PreToolUse | `Agent\|Task\|TaskCreate` | Fail-open | Agent dispatches missing explicit `model:` field | (advisory) |
 
 ## Pacing enforcement surface
 
@@ -46,9 +46,9 @@ The pacing module (`hooks/lib/pacing.mjs`) gates `ledger claim` and `ledger set 
 
 | Hook / module | On missing signal | Rationale |
 |---------------|-------------------|-----------|
-| `orchestrator-impl-guard.mjs` | Assumes orchestrator (fail-closed) | Absence of subagent signals = orchestrator |
-| `nesting-guard.mjs` | Warn + permit (fail-open) | Advisory; liveness over strictness |
-| `agent-model-guard.mjs` | Warn + permit (fail-open) | Advisory |
+| `orchestrator-impl-guard.ts` | Assumes orchestrator (fail-closed) | Absence of subagent signals = orchestrator |
+| `nesting-guard.ts` | Warn + permit (fail-open) | Advisory; liveness over strictness |
+| `agent-model-guard.ts` | Warn + permit (fail-open) | Advisory |
 | `deslop-guard.mjs` | Warn + permit (fail-open) | Advisory |
 | Pacing (PACING-R-001) | Pacing disabled when no `pacing` field | Backward compatibility |
 | Pacing (PACING-R-009 / V9) | Fail-closed when `--build-hash` absent | Security: inability to verify = stale |

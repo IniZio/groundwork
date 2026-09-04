@@ -4,9 +4,10 @@
  * Verifies that per-hook capture scripts refuse to run when the target hook is a
  * gw shim (hooks/<name>.mjs contains 'src/gw/cli/main.ts').
  *
- * Because all hooks are now shims (D-10 conversion), running any capture script
- * must exit non-zero and print a REFUSED/shim message — ensuring the frozen
- * parity corpus cannot be accidentally overwritten.
+ * Seven guards were DELETED (not converted) in wave 2 of groundwork-hardening; their
+ * hooks/*.mjs shims no longer exist. Running any capture script against them exits
+ * non-zero via an ENOENT branch — the file is gone, so capture is impossible and
+ * the frozen parity corpus cannot be accidentally overwritten.
  */
 
 import { describe, it, expect } from 'vitest'

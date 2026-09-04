@@ -29,7 +29,7 @@ Enforcement mode where the absence of a required signal causes the check to warn
 A PreToolUse hook response with `{"decision": "block", "reason": "..."}` that denies the tool call before the model sees it. The orchestrator impl-guard uses hard-block; other enforcement hooks are fail-open advisories.
 
 **impl-guard**
-Short for orchestrator-impl-guard. The PreToolUse hook (`hooks/orchestrator-impl-guard.mjs`) that blocks the orchestrator from writing files outside the one permitted memory path shape.
+Short for orchestrator-impl-guard. The PreToolUse hook (`src/gw/hook/orchestrator-impl-guard.ts`, invoked via `bin/gw-hook hook orchestrator-impl-guard`) that blocks the orchestrator from writing files outside the one permitted memory path shape.
 
 **milestone artifact**
 An evidence artifact declared in `pacing.milestone_artifacts`. Has a `path`, `kind` (`screenshot`, `run_output`, `live_url`, or `file`), and optionally a `captured_build_hash`. Validated mechanically by the hook at gate time.
@@ -47,7 +47,7 @@ A wave (or milestone, depending on policy) for which all non-exempt slices have 
 An HMAC over the canonical release state of the run ledger, stored in a per-session key file (`.groundwork/runs/<sessionId>.seal.key`, mode 0600). Provides tamper-evidence against CLI misuse and direct file writes. Does not protect against a process running as the same OS user (see SEAL-R-001).
 
 **stop-gate**
-The Stop hook (`hooks/stop-gate.mjs`) that blocks session end while the active run ledger has incomplete slices or an absent advisor APPROVE. Yield-aware (allows stop when background tasks are in flight or `awaiting_human = true`). Releases with a directive when pacing is exhausted.
+The Stop hook (`src/gw/hook/stop-gate.ts`, invoked via `bin/gw-hook hook stop-gate`) that blocks session end while the active run ledger has incomplete slices or an absent advisor APPROVE. Yield-aware (allows stop when background tasks are in flight or `awaiting_human = true`). Releases with a directive when pacing is exhausted.
 
 **write_token**
 The orchestrator-level credential printed at `ledger init`. Required for `ledger gate advisor APPROVE`, `ledger complete`, `ledger autopilot`, and `ledger await-human`. Never passed to subagents; requiring it on a command structurally excludes subagents from performing that action.

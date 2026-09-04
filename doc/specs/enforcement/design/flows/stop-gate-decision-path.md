@@ -5,9 +5,9 @@
 
 ## Flow description
 
-The `stop-gate.mjs` Stop hook fires on every session-end attempt. It inspects the active run ledger and decides whether to block the session from ending, allow it, or release it with a directive.
+The `stop-gate.ts` Stop hook fires on every session-end attempt. It inspects the active run ledger and decides whether to block the session from ending, allow it, or release it with a directive.
 
-## Decision tree (from `hooks/stop-gate.mjs`)
+## Decision tree (from `src/gw/hook/stop-gate.ts`)
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
     G -- Yes --> RELEASE[ALLOW + emit directive\nnaming MAP.md path\nand incomplete slice ids]
 ```
 
-> **Note:** This diagram is derived from the source logic in `hooks/stop-gate.mjs` and the requirements in PACING-R-005. If the source code is updated, regenerate this diagram from it — do not treat this note as authoritative over the code.
+> **Note:** This diagram is derived from the source logic in `src/gw/hook/stop-gate.ts` and the requirements in PACING-R-005. If the source code is updated, regenerate this diagram from it — do not treat this note as authoritative over the code.
 
 ## Pacing exhaustion release path
 

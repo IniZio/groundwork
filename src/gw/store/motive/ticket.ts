@@ -4,7 +4,7 @@ import path from 'node:path'
 import matter from 'gray-matter'
 import { TicketSchema, ticketPath } from '../../schema/index.js'
 
-export interface TicketNote {
+interface TicketNote {
   fm: Record<string, unknown>
   body: string
 }

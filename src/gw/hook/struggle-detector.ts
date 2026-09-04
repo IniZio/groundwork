@@ -242,7 +242,7 @@ function resolveThreshold(opts?: { threshold?: number }): number {
   return Number.isFinite(n) && n > 0 ? n : 3
 }
 
-export type SignalRecord = { kind: string; fingerprint: string; detail: Record<string, unknown> }
+type SignalRecord = { kind: string; fingerprint: string; detail: Record<string, unknown> }
 
 /**
  * Process one PostToolUse payload object.

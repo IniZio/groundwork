@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: fe6a9a535b4083b92c450b3a3c26b280a5f9e5772ca2f4403703aaf37e867e67
+// @bundle-source-hash: ad914d3bc438ae8ad5ca630a631ba4376bb083d5c59ac163dbdc31da9ad12a41
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -56,21 +56,17 @@ function errEnvelope(command, code, message, exit = 1) {
   return { ok: false, command, error: { code, message }, exit };
 }
 
-// src/gw/cli/commands/ledger.ts
-var exports_ledger = {};
-__export(exports_ledger, {
-  run: () => run,
-  LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
-});
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs";
-import { randomBytes } from "crypto";
+// src/gw/lib/resolve-ledger-path.ts
 import path from "path";
-function isLedgerSubcmd(s) {
-  return LEDGER_SUBCOMMANDS.includes(s);
-}
-function resolveRunPath(projectDir, sessionId) {
+import { existsSync, readFileSync } from "fs";
+function resolveLedgerPath({
+  projectDir,
+  sessionId
+}) {
   const legacyPath = path.join(projectDir, ".groundwork", "run.json");
-  if (!SAFE_ID.test(sessionId))
+  if (!sessionId || typeof sessionId !== "string")
+    return legacyPath;
+  if (!LEDGER_SAFE_ID.test(sessionId))
     return legacyPath;
   const perSessionPath = path.join(projectDir, ".groundwork", "runs", `${sessionId}.json`);
   if (existsSync(perSessionPath))
@@ -86,15 +82,32 @@ function resolveRunPath(projectDir, sessionId) {
   }
   return perSessionPath;
 }
+var LEDGER_SAFE_ID;
+var init_resolve_ledger_path = __esm(() => {
+  LEDGER_SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+});
+
+// src/gw/cli/commands/ledger.ts
+var exports_ledger = {};
+__export(exports_ledger, {
+  run: () => run,
+  LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
+});
+import { readFileSync as readFileSync2, writeFileSync, mkdirSync, renameSync } from "fs";
+import { randomBytes } from "crypto";
+import path2 from "path";
+function isLedgerSubcmd(s) {
+  return LEDGER_SUBCOMMANDS.includes(s);
+}
 function readLedger(runPath) {
   try {
-    return JSON.parse(readFileSync(runPath, "utf8"));
+    return JSON.parse(readFileSync2(runPath, "utf8"));
   } catch {
     return null;
   }
 }
 function atomicWrite(runPath, data) {
-  const dir = path.dirname(runPath);
+  const dir = path2.dirname(runPath);
   mkdirSync(dir, { recursive: true });
   const tmp = `${runPath}.tmp.${randomBytes(4).toString("hex")}`;
   writeFileSync(tmp, JSON.stringify(data, null, 2) + `
@@ -222,7 +235,7 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
   if (!sessionId) {
     return errEnvelope(`ledger ${subcmd}`, "NO_SESSION", "CLAUDE_CODE_SESSION_ID is not set \u2014 cannot resolve the active run store; run inside a Claude Code session or pass --session <id>", 1);
   }
-  const runPath = resolveRunPath(repoRoot, sessionId);
+  const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId });
   try {
     switch (subcmd) {
       case "status": {
@@ -732,8 +745,9 @@ ${done}/${all.length} slices complete
     return errEnvelope(`ledger ${subcmd}`, "INTERNAL_ERROR", err.message ?? String(e), 1);
   }
 }
-var LEDGER_SUBCOMMANDS, SAFE_ID;
+var LEDGER_SUBCOMMANDS;
 var init_ledger = __esm(() => {
+  init_resolve_ledger_path();
   LEDGER_SUBCOMMANDS = [
     "status",
     "add",
@@ -752,7 +766,6 @@ var init_ledger = __esm(() => {
     "scope-token",
     "milestone-signoff"
   ];
-  SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 });
 
 // node_modules/.pnpm/kind-of@6.0.3/node_modules/kind-of/index.js
@@ -4416,10 +4429,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4750,11 +4763,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -5232,16 +5245,16 @@ function flattenError(error, mapper = (issue2) => issue2.message) {
 }
 function formatError(error, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error2, path2 = []) => {
+  const processError = (error2, path3 = []) => {
     for (const issue2 of error2.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path3, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -5280,17 +5293,17 @@ function formatError(error, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error2, path2 = []) => {
+  const processError = (error2, path3 = []) => {
     var _a2;
     for (const issue2 of error2.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path3, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -5329,8 +5342,8 @@ function treeifyError(error, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path2 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path2) {
+  const path3 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path3) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -22081,13 +22094,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path2 = ref.slice(1).split("/").filter(Boolean);
-  if (path2.length === 0) {
+  const path3 = ref.slice(1).split("/").filter(Boolean);
+  if (path3.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path2[0] === defsKey) {
-    const key = path2[1] === undefined ? undefined : decodeJSONPointerSegment(path2[1]);
+  if (path3[0] === defsKey) {
+    const key = path3[1] === undefined ? undefined : decodeJSONPointerSegment(path3[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -23293,35 +23306,35 @@ var init_concept = __esm(() => {
 });
 
 // src/gw/schema/layout.ts
-import path2 from "path";
+import path3 from "path";
 function motiveDir(repoRoot, tracker, slug) {
-  return path2.join(repoRoot, tracker, "motives", slug);
+  return path3.join(repoRoot, tracker, "motives", slug);
 }
 function sliceNotePath(repoRoot, tracker, motive, label, slug) {
   const filename = slug ? `${label}-${slug}.md` : `${label}.md`;
-  return path2.join(repoRoot, tracker, "motives", motive, filename);
+  return path3.join(repoRoot, tracker, "motives", motive, filename);
 }
 function gateNotePath(repoRoot, tracker, motive, sessionId) {
-  return path2.join(repoRoot, tracker, "motives", motive, `gate-${sessionId}.md`);
+  return path3.join(repoRoot, tracker, "motives", motive, `gate-${sessionId}.md`);
 }
 function ticketPath(repoRoot, tracker, motive, filename) {
   const base = filename.endsWith(".md") ? filename : `${filename}.md`;
-  return path2.join(repoRoot, tracker, "motives", motive, "tickets", base);
+  return path3.join(repoRoot, tracker, "motives", motive, "tickets", base);
 }
 function motiveDecisionPath(repoRoot, tracker, motive, decisionId) {
   const base = decisionId.endsWith(".md") ? decisionId : `${decisionId}.md`;
-  return path2.join(repoRoot, tracker, "motives", motive, "decisions", base);
+  return path3.join(repoRoot, tracker, "motives", motive, "decisions", base);
 }
 function conceptIndexPath(repoRoot, conceptSlug) {
-  return path2.join(repoRoot, "doc", "specs", conceptSlug, "index.md");
+  return path3.join(repoRoot, "doc", "specs", conceptSlug, "index.md");
 }
 function requirementPath(repoRoot, conceptSlug, reqId) {
   const base = reqId.endsWith(".md") ? reqId : `${reqId}.md`;
-  return path2.join(repoRoot, "doc", "specs", conceptSlug, "requirements", base);
+  return path3.join(repoRoot, "doc", "specs", conceptSlug, "requirements", base);
 }
 function specDecisionPath(repoRoot, conceptSlug, decisionId) {
   const base = decisionId.endsWith(".md") ? decisionId : `${decisionId}.md`;
-  return path2.join(repoRoot, "doc", "specs", conceptSlug, "decisions", base);
+  return path3.join(repoRoot, "doc", "specs", conceptSlug, "decisions", base);
 }
 var DEFAULT_TRACKER_PATH = ".groundwork";
 var init_layout = () => {};
@@ -23361,7 +23374,7 @@ var init_wikilink = __esm(() => {
 });
 
 // src/gw/fm/set-property.ts
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
 function escapeRegex2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -23444,7 +23457,7 @@ ${key}: ${serializeValue(value)}
 `);
 }
 function setProperty(filePath, key, value) {
-  const src = readFileSync2(filePath, "utf8");
+  const src = readFileSync3(filePath, "utf8");
   const result = setPropertyInContent(src, key, value);
   writeFileSync2(filePath, result, "utf8");
 }
@@ -23459,7 +23472,7 @@ var init_fm = __esm(() => {
 // src/gw/store/motive/decision.ts
 import { readFile, writeFile } from "fs/promises";
 import { mkdirSync as mkdirSync2 } from "fs";
-import path3 from "path";
+import path4 from "path";
 async function writeDecision(opts) {
   const { repoRoot, tracker, motive: motive2, data } = opts;
   const normalizedId = DecisionSchema.parse({ id: data.id }).id;
@@ -23499,7 +23512,7 @@ async function writeDecision(opts) {
   ].join(`
 `);
   const dest = motiveDecisionPath(repoRoot, tracker, motive2, normalizedId);
-  mkdirSync2(path3.dirname(dest), { recursive: true });
+  mkdirSync2(path4.dirname(dest), { recursive: true });
   await writeFile(dest, import_gray_matter.default.stringify(body, fm), "utf8");
 }
 function fromLegacyDecision(event) {
@@ -23530,7 +23543,7 @@ __export(exports_journal, {
   run: () => run2,
   JOURNAL_SUBCOMMANDS: () => JOURNAL_SUBCOMMANDS
 });
-import { existsSync as existsSync2, mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
 import { join } from "path";
 function isJournalSubcmd(s) {
   return JOURNAL_SUBCOMMANDS.includes(s);
@@ -23569,7 +23582,7 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync3(join(journalDir, file2), "utf8");
+      const raw = readFileSync4(join(journalDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["ts"],
@@ -23597,7 +23610,7 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync3(join(decisionsDir, file2), "utf8");
+      const raw = readFileSync4(join(decisionsDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["date"] ?? "",
@@ -23823,15 +23836,15 @@ var exports_cat = {};
 __export(exports_cat, {
   run: () => run3
 });
-import { readFileSync as readFileSync4 } from "fs";
-import path4 from "path";
+import { readFileSync as readFileSync5 } from "fs";
+import path5 from "path";
 async function run3(args, cwd) {
   if (args.length === 0) {
     return errEnvelope("cat", "USAGE_ERROR", "Usage: gw cat <path>", 2);
   }
-  const filePath = path4.resolve(cwd, args[0]);
+  const filePath = path5.resolve(cwd, args[0]);
   try {
-    const content = readFileSync4(filePath, "utf8");
+    const content = readFileSync5(filePath, "utf8");
     return okEnvelope("cat", { path: filePath, content });
   } catch {
     return errEnvelope("cat", "READ_ERROR", `Cannot read file: ${filePath}`, 1);
@@ -23926,16 +23939,16 @@ var exports_get_property = {};
 __export(exports_get_property, {
   run: () => run5
 });
-import { readFileSync as readFileSync5 } from "fs";
-import path5 from "path";
+import { readFileSync as readFileSync6 } from "fs";
+import path6 from "path";
 async function run5(args, cwd) {
   if (args.length < 2) {
     return errEnvelope("get-property", "USAGE_ERROR", "Usage: gw get-property <path> <key>", 2);
   }
-  const filePath = path5.resolve(cwd, args[0]);
+  const filePath = path6.resolve(cwd, args[0]);
   const key = args[1];
   try {
-    const src = readFileSync5(filePath, "utf8");
+    const src = readFileSync6(filePath, "utf8");
     const { data } = import_gray_matter3.default(src);
     const value = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
     return okEnvelope("get-property", { path: filePath, key, value });
@@ -23953,7 +23966,7 @@ var exports_set_property = {};
 __export(exports_set_property, {
   run: () => run6
 });
-import path6 from "path";
+import path7 from "path";
 function coerce(raw, type) {
   switch (type) {
     case "number": {
@@ -23992,7 +24005,7 @@ async function run6(args, cwd) {
   if (remaining.length < 3) {
     return errEnvelope("set-property", "USAGE_ERROR", "Usage: gw set-property <path> <key> <value> [--type string|number|boolean|list]", 2);
   }
-  const filePath = path6.resolve(cwd, remaining[0]);
+  const filePath = path7.resolve(cwd, remaining[0]);
   const key = remaining[1];
   const rawValue = remaining[2];
   let value;
@@ -24017,16 +24030,16 @@ var exports_append = {};
 __export(exports_append, {
   run: () => run7
 });
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync4 } from "fs";
-import path7 from "path";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "fs";
+import path8 from "path";
 async function run7(args, cwd) {
   if (args.length < 2) {
     return errEnvelope("append", "USAGE_ERROR", "Usage: gw append <path> <text>", 2);
   }
-  const filePath = path7.resolve(cwd, args[0]);
+  const filePath = path8.resolve(cwd, args[0]);
   const text = args.slice(1).join(" ");
   try {
-    const existing = readFileSync6(filePath, "utf8");
+    const existing = readFileSync7(filePath, "utf8");
     const separator = existing.endsWith(`
 `) ? "" : `
 `;
@@ -24044,12 +24057,12 @@ var exports_link = {};
 __export(exports_link, {
   run: () => run8
 });
-import { readFileSync as readFileSync7 } from "fs";
-import path8 from "path";
+import { readFileSync as readFileSync8 } from "fs";
+import path9 from "path";
 function appendWikilink(filePath, key, targetPath) {
-  const src = readFileSync7(filePath, "utf8");
+  const src = readFileSync8(filePath, "utf8");
   const { data } = import_gray_matter4.default(src);
-  const link = wikilink(path8.basename(targetPath, ".md"));
+  const link = wikilink(path9.basename(targetPath, ".md"));
   let list;
   const current = data[key];
   if (Array.isArray(current)) {
@@ -24068,9 +24081,9 @@ async function run8(args, cwd) {
   if (args.length < 3) {
     return errEnvelope("link", "USAGE_ERROR", "Usage: gw link <src-path> <type> <dst-path>", 2);
   }
-  const srcPath = path8.resolve(cwd, args[0]);
+  const srcPath = path9.resolve(cwd, args[0]);
   const type = args[1];
-  const dstPath = path8.resolve(cwd, args[2]);
+  const dstPath = path9.resolve(cwd, args[2]);
   try {
     appendWikilink(srcPath, type, dstPath);
   } catch {
@@ -24085,8 +24098,8 @@ async function run8(args, cwd) {
     src: srcPath,
     dst: dstPath,
     type,
-    srcLink: wikilink(path8.basename(dstPath, ".md")),
-    dstLink: wikilink(path8.basename(srcPath, ".md"))
+    srcLink: wikilink(path9.basename(dstPath, ".md")),
+    dstLink: wikilink(path9.basename(srcPath, ".md"))
   });
 }
 var import_gray_matter4;
@@ -24097,7 +24110,7 @@ var init_link = __esm(() => {
 
 // src/gw/store/seal/index.ts
 import { createHmac, timingSafeEqual, randomBytes as randomBytes2 } from "crypto";
-import { readFileSync as readFileSync8, writeFileSync as writeFileSync5, existsSync as existsSync3, chmodSync } from "fs";
+import { readFileSync as readFileSync9, writeFileSync as writeFileSync5, existsSync as existsSync3, chmodSync } from "fs";
 import { join as join2 } from "path";
 function sealPath(notePath) {
   return `${notePath}.seal`;
@@ -24110,7 +24123,7 @@ function readKey(motiveDir2) {
   if (!existsSync3(kp)) {
     throw new Error(`Seal key not found: ${kp}`);
   }
-  return readFileSync8(kp);
+  return readFileSync9(kp);
 }
 function canonicalMachineState(fm, machineKeys) {
   const sorted = [...machineKeys].sort();
@@ -24130,7 +24143,7 @@ function verifySeal(notePath, motiveDir2, fm, machineKeys) {
   if (!existsSync3(sp)) {
     return null;
   }
-  const stored = readFileSync8(sp, "utf8").trim();
+  const stored = readFileSync9(sp, "utf8").trim();
   const key = readKey(motiveDir2);
   const canonical = canonicalMachineState(fm, machineKeys);
   const computed = computeHmac(key, canonical);
@@ -24141,7 +24154,7 @@ function verifySeal(notePath, motiveDir2, fm, machineKeys) {
   return match ? true : false;
 }
 function verifyNote(notePath, motiveDir2, kind) {
-  const content = readFileSync8(notePath, "utf8");
+  const content = readFileSync9(notePath, "utf8");
   const { data } = import_gray_matter5.default(content);
   const machineKeys = kind === "slice" ? SLICE_MACHINE_KEYS : GATE_MACHINE_KEYS;
   return verifySeal(notePath, motiveDir2, data, machineKeys);
@@ -24176,7 +24189,7 @@ var init_seal = __esm(() => {
 });
 
 // src/gw/store/slice/index.ts
-import { readFileSync as readFileSync9, writeFileSync as writeFileSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync2 } from "fs";
+import { readFileSync as readFileSync10, writeFileSync as writeFileSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync2 } from "fs";
 import { join as join3, dirname } from "path";
 function decodeBlockedBy(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
@@ -24192,7 +24205,7 @@ function decodeDecisions(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
 function readSlice(notePath) {
-  const raw = readFileSync9(notePath, "utf8");
+  const raw = readFileSync10(notePath, "utf8");
   const { data } = import_gray_matter6.default(raw);
   if (Array.isArray(data["blocked_by"])) {
     data["blocked_by"] = decodeBlockedBy(data["blocked_by"]);
@@ -24246,16 +24259,16 @@ var init_slice2 = __esm(() => {
 });
 
 // src/gw/store/gate/index.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync5, readFileSync as readFileSync10, writeFileSync as writeFileSync7 } from "fs";
-import path9 from "path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync5, readFileSync as readFileSync11, writeFileSync as writeFileSync7 } from "fs";
+import path10 from "path";
 function readGate(repoRoot, tracker, motive2, sessionId) {
   const notePath = gateNotePath(repoRoot, tracker, motive2, sessionId);
   if (!existsSync4(notePath))
     return null;
-  const raw = readFileSync10(notePath, "utf8");
+  const raw = readFileSync11(notePath, "utf8");
   const { data } = import_gray_matter7.default(raw);
   const parsed = GateSchema.parse(data);
-  const mDir = path9.dirname(notePath);
+  const mDir = path10.dirname(notePath);
   const sealed = verifyNote(notePath, mDir, "gate");
   return { ...parsed, sealed };
 }
@@ -24269,7 +24282,7 @@ var init_gate2 = __esm(() => {
 // src/gw/hook/stop-gate.ts
 import {
   existsSync as existsSync5,
-  readFileSync as readFileSync11,
+  readFileSync as readFileSync12,
   readdirSync as readdirSync3,
   closeSync,
   mkdirSync as mkdirSync6,
@@ -24283,7 +24296,7 @@ import {
 } from "fs";
 import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2, randomUUID } from "crypto";
 import { spawnSync } from "child_process";
-import path10 from "path";
+import path11 from "path";
 function allow(notice = "") {
   const payload = notice ? { continue: true, reason: notice } : { continue: true };
   return { stdout: JSON.stringify(payload) + `
@@ -24374,14 +24387,14 @@ function verifySeal2(ledger, key) {
   }
 }
 function sealKeyPath({ projectDir, sessionId }) {
-  if (sessionId && SAFE_ID2.test(sessionId)) {
-    return path10.join(projectDir, ".groundwork", "runs", `${sessionId}.seal.key`);
+  if (sessionId && SAFE_ID.test(sessionId)) {
+    return path11.join(projectDir, ".groundwork", "runs", `${sessionId}.seal.key`);
   }
-  return path10.join(projectDir, ".groundwork", "runs", "legacy.seal.key");
+  return path11.join(projectDir, ".groundwork", "runs", "legacy.seal.key");
 }
 function readKey2({ projectDir, sessionId }) {
   const kp = sealKeyPath({ projectDir, sessionId });
-  return readFileSync11(kp);
+  return readFileSync12(kp);
 }
 function sleepSync(ms) {
   try {
@@ -24389,9 +24402,9 @@ function sleepSync(ms) {
   } catch {}
 }
 function atomicWriteFileSync(filePath, data) {
-  const dir = path10.dirname(filePath);
+  const dir = path11.dirname(filePath);
   mkdirSync6(dir, { recursive: true });
-  const tmp = path10.join(dir, `.${path10.basename(filePath)}.tmp.${randomUUID()}`);
+  const tmp = path11.join(dir, `.${path11.basename(filePath)}.tmp.${randomUUID()}`);
   const fd = openSync(tmp, "w");
   try {
     writeFileSync8(fd, data);
@@ -24415,7 +24428,7 @@ function atomicWriteJsonSync(filePath, obj) {
 }
 function withLock(targetPath, fn, { retries = 100, delayMs = 20, staleMs = 5000 } = {}) {
   const lockPath = `${targetPath}.lock`;
-  mkdirSync6(path10.dirname(targetPath), { recursive: true });
+  mkdirSync6(path11.dirname(targetPath), { recursive: true });
   let fd = null;
   for (let i = 0;fd === null; i++) {
     try {
@@ -24449,7 +24462,7 @@ function mutateLedger(ledgerPath, fn) {
   withLock(ledgerPath, () => {
     let ledger = null;
     try {
-      ledger = JSON.parse(readFileSync11(ledgerPath, "utf8"));
+      ledger = JSON.parse(readFileSync12(ledgerPath, "utf8"));
     } catch {
       ledger = null;
     }
@@ -24458,29 +24471,6 @@ function mutateLedger(ledgerPath, fn) {
     if (next != null)
       atomicWriteJsonSync(ledgerPath, next);
   });
-}
-function resolveLedgerPath({
-  projectDir,
-  sessionId
-}) {
-  const legacyPath = path10.join(projectDir, ".groundwork", "run.json");
-  if (!sessionId || typeof sessionId !== "string")
-    return legacyPath;
-  if (!SAFE_ID2.test(sessionId))
-    return legacyPath;
-  const perSessionPath = path10.join(projectDir, ".groundwork", "runs", `${sessionId}.json`);
-  if (existsSync5(perSessionPath))
-    return perSessionPath;
-  if (existsSync5(legacyPath)) {
-    let legacy = null;
-    try {
-      legacy = JSON.parse(readFileSync11(legacyPath, "utf8"));
-    } catch {}
-    const legacyOwner = legacy?.session_id;
-    if (!legacyOwner || legacyOwner === sessionId)
-      return legacyPath;
-  }
-  return perSessionPath;
 }
 function getPacing(doc2) {
   return doc2.pacing ?? null;
@@ -24559,10 +24549,10 @@ function isExhausted(doc2) {
 function emitHookEvent(opts) {
   try {
     const { projectDir, sessionId, type, msg, source, data, ledger } = opts;
-    const journalDir = path10.join(projectDir, ".groundwork", "journal");
+    const journalDir = path11.join(projectDir, ".groundwork", "journal");
     mkdirSync6(journalDir, { recursive: true });
     const date5 = new Date().toISOString().slice(0, 10);
-    const shardPath = path10.join(journalDir, `${date5}-${sessionId || "unknown"}.jsonl`);
+    const shardPath = path11.join(journalDir, `${date5}-${sessionId || "unknown"}.jsonl`);
     let motive2;
     let motive_provenance;
     if (process.env.GROUNDWORK_MOTIVE) {
@@ -24574,20 +24564,20 @@ function emitHookEvent(opts) {
         const dir = projectDir;
         l = null;
         try {
-          l = JSON.parse(readFileSync11(path10.join(dir, ".groundwork", "run.json"), "utf8"));
+          l = JSON.parse(readFileSync12(path11.join(dir, ".groundwork", "run.json"), "utf8"));
         } catch {
           l = null;
         }
         if (!l?.active) {
           let files = [];
           try {
-            files = readdirSync3(path10.join(dir, ".groundwork", "runs"));
+            files = readdirSync3(path11.join(dir, ".groundwork", "runs"));
           } catch {}
           for (const f of files) {
             if (!f.endsWith(".json"))
               continue;
             try {
-              const candidate = JSON.parse(readFileSync11(path10.join(dir, ".groundwork", "runs", f), "utf8"));
+              const candidate = JSON.parse(readFileSync12(path11.join(dir, ".groundwork", "runs", f), "utf8"));
               if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
                 l = candidate;
                 break;
@@ -24645,7 +24635,7 @@ function readAllEvents2(journalDir) {
     const events = [];
     for (const f of files) {
       try {
-        const content = readFileSync11(path10.join(journalDir, f), "utf8");
+        const content = readFileSync12(path11.join(journalDir, f), "utf8");
         for (const line of content.split(`
 `)) {
           const trimmed = line.trim();
@@ -24678,8 +24668,8 @@ function filterEvents(events, { motive: motive2 }) {
 }
 function charterOpenItemCount(projectDir, slug) {
   try {
-    const charterPath = path10.join(projectDir, ".groundwork", "motives", slug, "motive.md");
-    const content = readFileSync11(charterPath, "utf8");
+    const charterPath = path11.join(projectDir, ".groundwork", "motives", slug, "motive.md");
+    const content = readFileSync12(charterPath, "utf8");
     const matches = content.match(/^-\s+(TBD|TBR)-\S+:/gim) ?? [];
     return matches.length;
   } catch {
@@ -24690,7 +24680,7 @@ function tbdAdvisory(projectDir, env) {
   if (env.GROUNDWORK_TBD_GATE !== "1")
     return "";
   try {
-    const motivesDir = path10.join(projectDir, ".groundwork", "motives");
+    const motivesDir = path11.join(projectDir, ".groundwork", "motives");
     let slugs;
     try {
       slugs = readdirSync3(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -24714,7 +24704,7 @@ function tbdAdvisory(projectDir, env) {
 }
 function decisionResearchAdvisory(projectDir) {
   try {
-    const journalDir = path10.join(projectDir, ".groundwork", "journal");
+    const journalDir = path11.join(projectDir, ".groundwork", "journal");
     const events = readAllEvents2(journalDir);
     const missing = events.filter((e) => {
       if (e?.type !== "DECISION")
@@ -24736,11 +24726,11 @@ function decisionResearchAdvisory(projectDir) {
 }
 function decisionAlternativesAdvisory(projectDir) {
   try {
-    const journalDir = path10.join(projectDir, ".groundwork", "journal");
+    const journalDir = path11.join(projectDir, ".groundwork", "journal");
     const allEvents = readAllEvents2(journalDir);
     let slugs = null;
     try {
-      const motivesDir = path10.join(projectDir, ".groundwork", "motives");
+      const motivesDir = path11.join(projectDir, ".groundwork", "motives");
       const dirs = readdirSync3(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
       if (dirs.length > 0)
         slugs = dirs;
@@ -24932,7 +24922,7 @@ function detectYield(input2) {
     return null;
   let raw;
   try {
-    raw = readFileSync11(transcriptPath, "utf8");
+    raw = readFileSync12(transcriptPath, "utf8");
   } catch {
     return null;
   }
@@ -24971,7 +24961,7 @@ function pacingGrantSummary(ledger) {
 function pacingExhaustionDirective(ledger, incomplete, projectDir) {
   const sliceIds = incomplete.map((s) => s.id ?? "?").join(", ");
   const motiveSlug = resolveMotiveSlug(ledger.motive_ref) || (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
-  const mapPath = motiveSlug ? path10.join(projectDir, ".groundwork", "motives", motiveSlug, "MAP.md") : null;
+  const mapPath = motiveSlug ? path11.join(projectDir, ".groundwork", "motives", motiveSlug, "MAP.md") : null;
   const lines = [];
   lines.push("\u23F1 GROUNDWORK PACING \u2014 session budget exhausted. This session ends here.");
   lines.push("");
@@ -25029,7 +25019,7 @@ function findNewLayoutLedger(projectDir, sessionId) {
   if (!sessionId)
     return null;
   try {
-    const motivesDir = path10.join(projectDir, NEW_LAYOUT_TRACKER, "motives");
+    const motivesDir = path11.join(projectDir, NEW_LAYOUT_TRACKER, "motives");
     if (!existsSync5(motivesDir))
       return null;
     let slugs;
@@ -25082,10 +25072,10 @@ function findNewLayoutLedger(projectDir, sessionId) {
   }
 }
 function resolveLedgerBin() {
-  const projectRoot = process.env.GW_REPO_ROOT ?? path10.resolve(path10.dirname(new URL(import.meta.url).pathname), "../../..");
-  return path10.join(projectRoot, "bin", "ledger");
+  const projectRoot = process.env.GW_REPO_ROOT ?? path11.resolve(path11.dirname(new URL(import.meta.url).pathname), "../../..");
+  return path11.join(projectRoot, "bin", "ledger");
 }
-var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run9 = async (input2, env) => {
+var SAFE_ID, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run9 = async (input2, env) => {
   try {
     if (isEmbeddedAgent(env))
       return allow();
@@ -25104,7 +25094,7 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
         sessionId: sessionId || undefined
       });
       try {
-        ledger = JSON.parse(readFileSync11(ledgerPath, "utf8"));
+        ledger = JSON.parse(readFileSync12(ledgerPath, "utf8"));
       } catch {
         return allow();
       }
@@ -25161,7 +25151,7 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
         const planRef = ledger.plan_ref;
         const planRefOk = typeof planRef === "string" && planRef.length > 0 && existsSync5(planRef);
         const motiveSlug = resolveMotiveSlug(ledger.motive_ref) ?? (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
-        const motiveOk = motiveSlug !== null && existsSync5(path10.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
+        const motiveOk = motiveSlug !== null && existsSync5(path11.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
         const planSliceComplete = slices.some((s) => (s?.kind === "plan" || s?.kind === "design") && s?.status === "complete");
         if (!planRefOk && !motiveOk && !planSliceComplete) {
           return block("Non-trivial run has no plan artifact (plan_ref missing/absent on disk, motive/motive_ref charter missing, and no plan/design slice complete). Run interview or planner to produce a plan, or set motive/motive_ref to a slug whose charter exists at .groundwork/motives/<slug>/motive.md.");
@@ -25194,7 +25184,8 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
 var init_stop_gate = __esm(() => {
   init_slice2();
   init_gate2();
-  SAFE_ID2 = /^[A-Za-z0-9_-]{1,128}$/;
+  init_resolve_ledger_path();
+  SAFE_ID = LEDGER_SAFE_ID;
 });
 
 // src/gw/hook/session-reminder.ts
@@ -25239,7 +25230,7 @@ function normaliseSubagentType(raw) {
 }
 
 // src/gw/hook/nesting-guard.ts
-import path11 from "path";
+import path12 from "path";
 function passthrough() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -25264,7 +25255,7 @@ function isSubagentCall(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path11.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path12.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -25321,8 +25312,8 @@ var init_nesting_guard = __esm(() => {
 });
 
 // src/gw/hook/agent-model-guard.ts
-import { readFileSync as readFileSync12, appendFileSync } from "fs";
-import path12 from "path";
+import { readFileSync as readFileSync13, appendFileSync } from "fs";
+import path13 from "path";
 function passthrough2() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -25397,20 +25388,20 @@ function resolveModel(registry2, subagentType) {
 function loadRegistry(env) {
   const candidates = [];
   if (env.CLAUDE_PLUGIN_ROOT) {
-    candidates.push(path12.join(env.CLAUDE_PLUGIN_ROOT, "model-registry.json"));
+    candidates.push(path13.join(env.CLAUDE_PLUGIN_ROOT, "model-registry.json"));
   }
-  const binDir = path12.dirname(process.argv[0] ?? "");
-  candidates.push(path12.join(binDir, "..", "model-registry.json"));
-  candidates.push(path12.join(binDir, "model-registry.json"));
+  const binDir = path13.dirname(process.argv[0] ?? "");
+  candidates.push(path13.join(binDir, "..", "model-registry.json"));
+  candidates.push(path13.join(binDir, "model-registry.json"));
   try {
-    const here = path12.dirname(new URL(import.meta.url).pathname);
-    candidates.push(path12.join(here, "..", "..", "..", "model-registry.json"));
-    candidates.push(path12.join(here, "..", "..", "model-registry.json"));
-    candidates.push(path12.join(here, "..", "model-registry.json"));
+    const here = path13.dirname(new URL(import.meta.url).pathname);
+    candidates.push(path13.join(here, "..", "..", "..", "model-registry.json"));
+    candidates.push(path13.join(here, "..", "..", "model-registry.json"));
+    candidates.push(path13.join(here, "..", "model-registry.json"));
   } catch {}
   for (const p of candidates) {
     try {
-      return JSON.parse(readFileSync12(p, "utf8"));
+      return JSON.parse(readFileSync13(p, "utf8"));
     } catch {}
   }
   return null;
@@ -25424,8 +25415,8 @@ function debugLog(input2, env) {
     if (envVal.includes("/")) {
       logPath = envVal;
     } else {
-      const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path12.join(path12.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-      logPath = path12.join(pluginRoot, ".groundwork", "hook-debug.log");
+      const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path13.join(path13.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+      logPath = path13.join(pluginRoot, ".groundwork", "hook-debug.log");
     }
     const line = JSON.stringify({ ts: new Date().toISOString(), ...input2 }) + `
 `;
@@ -25479,7 +25470,7 @@ var init_agent_model_guard = () => {};
 
 // src/gw/hook/orchestrator-impl-guard.ts
 import os from "os";
-import path13 from "path";
+import path14 from "path";
 function passthrough3() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -25506,7 +25497,7 @@ function isSubagentCall2(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path13.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path14.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -25515,14 +25506,14 @@ function isOrchestratorWritablePath(rawPath) {
     return false;
   let resolved;
   try {
-    resolved = path13.resolve(rawPath);
+    resolved = path14.resolve(rawPath);
   } catch {
     return false;
   }
-  const memoryBase = path13.join(os.homedir(), ".claude", "projects");
-  if (resolved.startsWith(memoryBase + path13.sep)) {
+  const memoryBase = path14.join(os.homedir(), ".claude", "projects");
+  if (resolved.startsWith(memoryBase + path14.sep)) {
     const rel = resolved.slice(memoryBase.length + 1);
-    const segments = rel.split(path13.sep);
+    const segments = rel.split(path14.sep);
     if (segments.length >= 3 && segments[1] === "memory")
       return true;
   }
@@ -25531,8 +25522,8 @@ function isOrchestratorWritablePath(rawPath) {
 function isLedgerPath(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path13.normalize(fp);
-  return path13.basename(norm) === "run.json" && path13.basename(path13.dirname(norm)) === ".groundwork";
+  const norm = path14.normalize(fp);
+  return path14.basename(norm) === "run.json" && path14.basename(path14.dirname(norm)) === ".groundwork";
 }
 var GUARDED_CANONICAL, run13 = async (rawInput, _env) => {
   try {
@@ -25548,8 +25539,8 @@ var GUARDED_CANONICAL, run13 = async (rawInput, _env) => {
       return passthrough3();
     if (isOrchestratorWritablePath(filePath))
       return passthrough3();
-    const here = path13.dirname(new URL(import.meta.url).pathname);
-    const LEDGER_BIN = path13.resolve(here, "..", "..", "..", "bin", "ledger");
+    const here = path14.dirname(new URL(import.meta.url).pathname);
+    const LEDGER_BIN = path14.resolve(here, "..", "..", "..", "bin", "ledger");
     return warn(`\u26A0\uFE0F  groundwork: orchestrator ${rawTool} \u2014 HIGHLY ENCOURAGED to delegate this change instead of implementing directly:
 ` + `  task(subagent_type="groundwork:general-purpose", background=true, model="claude-sonnet-4-6", prompt="<file path> + exact change + success criteria")
 ` + `  Then mark it complete: ${LEDGER_BIN} complete <id>
@@ -25563,7 +25554,7 @@ var init_orchestrator_impl_guard = __esm(() => {
 });
 
 // src/gw/hook/ledger-guard.ts
-import path14 from "path";
+import path15 from "path";
 function passthrough4() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -25588,11 +25579,11 @@ function isEmbeddedAgent2(env) {
 function isLedgerPath2(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path14.normalize(fp);
-  if (path14.basename(norm) === "run.json" && path14.basename(path14.dirname(norm)) === ".groundwork")
+  const norm = path15.normalize(fp);
+  if (path15.basename(norm) === "run.json" && path15.basename(path15.dirname(norm)) === ".groundwork")
     return true;
-  if (norm.endsWith(".json") && path14.basename(path14.dirname(norm)) === "runs") {
-    const grandparent = path14.basename(path14.dirname(path14.dirname(norm)));
+  if (norm.endsWith(".json") && path15.basename(path15.dirname(norm)) === "runs") {
+    const grandparent = path15.basename(path15.dirname(path15.dirname(norm)));
     if (grandparent === ".groundwork")
       return true;
   }
@@ -25601,12 +25592,12 @@ function isLedgerPath2(fp) {
 function isKeyPath(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path14.normalize(fp);
+  const norm = path15.normalize(fp);
   if (!norm.endsWith(".seal.key"))
     return false;
-  if (path14.basename(path14.dirname(norm)) !== "runs")
+  if (path15.basename(path15.dirname(norm)) !== "runs")
     return false;
-  const grandparent = path14.basename(path14.dirname(path14.dirname(norm)));
+  const grandparent = path15.basename(path15.dirname(path15.dirname(norm)));
   return grandparent === ".groundwork";
 }
 function isSubagentCall3(input2) {
@@ -25615,7 +25606,7 @@ function isSubagentCall3(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path14.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path15.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -25664,11 +25655,11 @@ var LEDGER_BIN, run14 = async (input2, env) => {
   }
 };
 var init_ledger_guard = __esm(() => {
-  LEDGER_BIN = path14.resolve(process.env.GW_REPO_ROOT ?? path14.resolve(import.meta.dirname, "../../../"), "bin/ledger");
+  LEDGER_BIN = path15.resolve(process.env.GW_REPO_ROOT ?? path15.resolve(import.meta.dirname, "../../../"), "bin/ledger");
 });
 
 // src/gw/hook/ledger-bash-guard.ts
-import path15 from "path";
+import path16 from "path";
 function passthrough5() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -25696,7 +25687,7 @@ function isSubagentCall4(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path15.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path16.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -25809,8 +25800,8 @@ var init_piped_exit_code_guard = __esm(() => {
 });
 
 // src/gw/hook/struggle-detector.ts
-import path16 from "path";
-import { readFileSync as readFileSync13, writeFileSync as writeFileSync9, mkdirSync as mkdirSync7, appendFileSync as appendFileSync2, openSync as openSync2, writeSync as writeSync2, closeSync as closeSync2, readdirSync as readdirSync4 } from "fs";
+import path17 from "path";
+import { readFileSync as readFileSync14, writeFileSync as writeFileSync9, mkdirSync as mkdirSync7, appendFileSync as appendFileSync2, openSync as openSync2, writeSync as writeSync2, closeSync as closeSync2, readdirSync as readdirSync4 } from "fs";
 import { createHash } from "crypto";
 function toSlug(str2) {
   return String(str2).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -25850,8 +25841,8 @@ function commandFingerprint(cmd) {
   return shortHash(normalizeCommand(cmd));
 }
 function appendSignal(projectDir, signalObj) {
-  const filePath = path16.join(projectDir, ".groundwork", "struggle-signals.jsonl");
-  const dir = path16.dirname(filePath);
+  const filePath = path17.join(projectDir, ".groundwork", "struggle-signals.jsonl");
+  const dir = path17.dirname(filePath);
   mkdirSync7(dir, { recursive: true });
   appendFileSync2(filePath, `${JSON.stringify(signalObj)}
 `, "utf8");
@@ -25859,10 +25850,10 @@ function appendSignal(projectDir, signalObj) {
 function resolveShardPath(projectDir, sessionId, date5) {
   const safeId = SAFE_SESSION.test(sessionId ?? "") ? sessionId : "default";
   const d = date5 ?? new Date().toISOString().slice(0, 10);
-  return path16.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
+  return path17.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
 }
 function appendEvent(shardPath, event) {
-  mkdirSync7(path16.dirname(shardPath), { recursive: true });
+  mkdirSync7(path17.dirname(shardPath), { recursive: true });
   const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
   const fd = openSync2(shardPath, "a");
@@ -25882,20 +25873,20 @@ function resolveMotive(opts) {
     const dir = projectDir ?? process.cwd();
     l = null;
     try {
-      l = JSON.parse(readFileSync13(path16.join(dir, ".groundwork", "run.json"), "utf8"));
+      l = JSON.parse(readFileSync14(path17.join(dir, ".groundwork", "run.json"), "utf8"));
     } catch {
       l = null;
     }
     if (!l?.active) {
       let files = [];
       try {
-        files = readdirSync4(path16.join(dir, ".groundwork", "runs"));
+        files = readdirSync4(path17.join(dir, ".groundwork", "runs"));
       } catch {}
       for (const f of files) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const candidate = JSON.parse(readFileSync13(path16.join(dir, ".groundwork", "runs", f), "utf8"));
+          const candidate = JSON.parse(readFileSync14(path17.join(dir, ".groundwork", "runs", f), "utf8"));
           if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
             l = candidate;
             break;
@@ -25935,11 +25926,11 @@ function emitHookEvent2(opts) {
   } catch {}
 }
 function tallyPath(projectDir, sessionId) {
-  return path16.join(projectDir, ".groundwork", "runs", `${sessionId}.detector.json`);
+  return path17.join(projectDir, ".groundwork", "runs", `${sessionId}.detector.json`);
 }
 function readTally(tallyFile) {
   try {
-    const raw = readFileSync13(tallyFile, "utf8");
+    const raw = readFileSync14(tallyFile, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object")
       return parsed;
@@ -25948,7 +25939,7 @@ function readTally(tallyFile) {
 }
 function writeTally(tallyFile, tally) {
   try {
-    mkdirSync7(path16.dirname(tallyFile), { recursive: true });
+    mkdirSync7(path17.dirname(tallyFile), { recursive: true });
     writeFileSync9(tallyFile, JSON.stringify(tally), "utf8");
   } catch {}
 }
@@ -26187,12 +26178,12 @@ var init_hook2 = __esm(() => {
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
 import { existsSync as existsSync7 } from "fs";
-import path17 from "path";
+import path18 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
-  const activeDir = path17.join(repoRoot, legacyTracker, "journal");
-  const archiveDir = path17.join(repoRoot, legacyTracker, "archive", "journal");
+  const activeDir = path18.join(repoRoot, legacyTracker, "journal");
+  const archiveDir = path18.join(repoRoot, legacyTracker, "archive", "journal");
   if (existsSync7(activeDir))
     journalDirs.push(activeDir);
   if (existsSync7(archiveDir))
@@ -26209,7 +26200,7 @@ async function readDecisionEvents(opts) {
     for (const file2 of files.filter((f) => f.endsWith(".jsonl"))) {
       let raw;
       try {
-        raw = await readFile2(path17.join(dir, file2), "utf8");
+        raw = await readFile2(path18.join(dir, file2), "utf8");
       } catch {
         continue;
       }
@@ -26261,13 +26252,13 @@ var init_journal_reader = () => {};
 // src/gw/store/motive/charter.ts
 import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
 import { mkdirSync as mkdirSync8 } from "fs";
-import path18 from "path";
+import path19 from "path";
 function charterPath(repoRoot, tracker, motive2) {
-  return path18.join(repoRoot, tracker, "motives", motive2, "index.md");
+  return path19.join(repoRoot, tracker, "motives", motive2, "index.md");
 }
 async function writeCharter(opts) {
   const filePath = charterPath(opts.repoRoot, opts.tracker, opts.motive);
-  mkdirSync8(path18.dirname(filePath), { recursive: true });
+  mkdirSync8(path19.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter8.default.stringify(opts.body, opts.fm);
   await writeFile2(filePath, output2, "utf8");
 }
@@ -26285,10 +26276,10 @@ var init_charter = __esm(() => {
 // src/gw/store/motive/ticket.ts
 import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
 import { mkdirSync as mkdirSync9 } from "fs";
-import path19 from "path";
+import path20 from "path";
 async function writeTicket(opts) {
   const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
-  mkdirSync9(path19.dirname(filePath), { recursive: true });
+  mkdirSync9(path20.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
   await writeFile3(filePath, output2, "utf8");
 }
@@ -26306,13 +26297,13 @@ var init_ticket2 = __esm(() => {
 // src/gw/store/motive/open-item.ts
 import { readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
 import { mkdirSync as mkdirSync10 } from "fs";
-import path20 from "path";
+import path21 from "path";
 function openItemPath(repoRoot, tracker, motive2, id) {
-  return path20.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
+  return path21.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
 }
 async function writeOpenItem(opts) {
   const dest = openItemPath(opts.repoRoot, opts.tracker, opts.motive, opts.fm.id);
-  mkdirSync10(path20.dirname(dest), { recursive: true });
+  mkdirSync10(path21.dirname(dest), { recursive: true });
   await writeFile4(dest, import_gray_matter10.default.stringify(opts.body, opts.fm), "utf8");
 }
 function normalizeRef(ref) {
@@ -26389,9 +26380,9 @@ var init_motive2 = __esm(() => {
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
 import { existsSync as existsSync8, mkdirSync as mkdirSync11 } from "fs";
-import path21 from "path";
+import path22 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
-  return path21.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
+  return path22.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
 }
 async function writeDecisionDirect(opts) {
   const { repoRoot, tracker, motive: motive2, id, decision: decision3, rationale, alternatives } = opts;
@@ -26427,7 +26418,7 @@ async function writeDecisionDirect(opts) {
 ` + JSON.stringify(opts.legacyExtra, null, 2) + "\n```\n";
   }
   const dest = decisionFilePath(repoRoot, tracker, motive2, id);
-  mkdirSync11(path21.dirname(dest), { recursive: true });
+  mkdirSync11(path22.dirname(dest), { recursive: true });
   await writeFile5(dest, import_gray_matter11.default.stringify(body, fm), "utf8");
 }
 async function migrateMotive(opts) {
@@ -26444,7 +26435,7 @@ async function migrateMotive(opts) {
     lossy: [],
     errors: []
   };
-  const charterFile = path21.join(sourceDir, "motive.md");
+  const charterFile = path22.join(sourceDir, "motive.md");
   let openItems = [];
   try {
     const charterRaw = await readFile6(charterFile, "utf8");
@@ -26466,14 +26457,14 @@ async function migrateMotive(opts) {
     report.charter = "error";
     report.charter_error = String(err);
   }
-  const ticketsDir = path21.join(sourceDir, "tickets");
+  const ticketsDir = path22.join(sourceDir, "tickets");
   if (existsSync8(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
     } catch {}
     for (const filename of ticketFiles) {
-      const raw = await readFile6(path21.join(ticketsDir, filename), "utf8");
+      const raw = await readFile6(path22.join(ticketsDir, filename), "utf8");
       let fm;
       let body;
       try {
@@ -26589,7 +26580,7 @@ var init_runner = __esm(() => {
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
 import { existsSync as existsSync9 } from "fs";
-import path22 from "path";
+import path23 from "path";
 async function migrate(opts) {
   const {
     repoRoot,
@@ -26599,7 +26590,7 @@ async function migrate(opts) {
     dryRun
   } = opts;
   const activeSlugs = [];
-  const activeMotivesDir = path22.join(repoRoot, legacyTracker, "motives");
+  const activeMotivesDir = path23.join(repoRoot, legacyTracker, "motives");
   if (existsSync9(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
@@ -26615,7 +26606,7 @@ async function migrate(opts) {
     } catch {}
   }
   const archivedSlugs = [];
-  const archiveMotivesDir = path22.join(repoRoot, legacyTracker, "archive", "motives");
+  const archiveMotivesDir = path23.join(repoRoot, legacyTracker, "archive", "motives");
   if (existsSync9(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
@@ -26639,7 +26630,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "active",
-      sourceDir: path22.join(repoRoot, legacyTracker, "motives", slug),
+      sourceDir: path23.join(repoRoot, legacyTracker, "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -26650,7 +26641,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "archived",
-      sourceDir: path22.join(repoRoot, legacyTracker, "archive", "motives", slug),
+      sourceDir: path23.join(repoRoot, legacyTracker, "archive", "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],

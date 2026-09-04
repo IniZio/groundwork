@@ -1,7 +1,7 @@
 ---
 tags: [reference, orchestration, ledger, cli]
 realizes: "[[../../requirements/orchestration-r-004-every-decision-event-carries-a-structured-data-id|R-004]]"
-source: hooks/ledger.mjs (HELP constant), hooks/stop-gate.mjs, hooks/session-reminder.mjs
+source: hooks/ledger.mjs (HELP constant), src/gw/hook/stop-gate.ts, hooks/session-reminder.mjs
 ---
 
 # Ledger CLI Reference
@@ -12,7 +12,7 @@ source: hooks/ledger.mjs (HELP constant), hooks/stop-gate.mjs, hooks/session-rem
 
 ## Command reference
 
-_Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logic in `hooks/stop-gate.mjs`._
+_Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logic in `src/gw/hook/stop-gate.ts`._
 
 | Command | Fields written / read | write_token required? | Notes |
 |---------|----------------------|----------------------|-------|
@@ -39,16 +39,16 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 
 | Field | Hook | How used |
 |-------|------|---------|
-| `active` | `stop-gate.mjs` | `false` → allow (abandoned run) |
-| `session_id` | `stop-gate.mjs` | Mismatch → allow (foreign session) |
-| `awaiting_human` | `stop-gate.mjs` | `true` → allow (session correctly paused) |
-| `slices[].status` | `stop-gate.mjs` | Non-terminal statuses counted as incomplete |
-| `gate.advisor` | `stop-gate.mjs` | `APPROVE` (string or object) → gate satisfied |
-| `pacing` | `stop-gate.mjs`, `lib/pacing.mjs` | Exhausted budget → allow with DIRECTIVE |
-| `reinforcements` | `stop-gate.mjs` | Counter ≥ cap (12) → release stuck session |
-| `progressSig` | `stop-gate.mjs` | Hash of enforcement state; reset detection |
+| `active` | `stop-gate.ts` | `false` → allow (abandoned run) |
+| `session_id` | `stop-gate.ts` | Mismatch → allow (foreign session) |
+| `awaiting_human` | `stop-gate.ts` | `true` → allow (session correctly paused) |
+| `slices[].status` | `stop-gate.ts` | Non-terminal statuses counted as incomplete |
+| `gate.advisor` | `stop-gate.ts` | `APPROVE` (string or object) → gate satisfied |
+| `pacing` | `stop-gate.ts`, `lib/pacing.mjs` | Exhausted budget → allow with DIRECTIVE |
+| `reinforcements` | `stop-gate.ts` | Counter ≥ cap (12) → release stuck session |
+| `progressSig` | `stop-gate.ts` | Hash of enforcement state; reset detection |
 | `slices[]` (all) | `session-reminder.mjs` | SessionStart injection — status overlay on MAP |
-| `write_token` | `stop-gate.mjs`, `ledger.mjs` | Required for terminal mutations; never logged |
+| `write_token` | `stop-gate.ts`, `ledger.mjs` | Required for terminal mutations; never logged |
 | `gate.seal` | `lib/gate-seal.mjs` | Cryptographic integrity on release paths |
 
 ---

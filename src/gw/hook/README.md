@@ -6,26 +6,32 @@ TypeScript implementations of every groundwork hook, dispatched through `gw hook
 
 | Hook name | hooks.json command | TypeScript source |
 |---|---|---|
-| `stop-gate` | `hooks/stop-gate.mjs` | `src/gw/hook/stop-gate.ts` |
+| `stop-gate` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook stop-gate` | `src/gw/hook/stop-gate.ts` |
 | `session-reminder` | `hooks/session-start` | `src/gw/hook/session-reminder.ts` |
-| `nesting-guard` | `hooks/nesting-guard.mjs` | `src/gw/hook/nesting-guard.ts` |
-| `agent-model-guard` | `hooks/agent-model-guard.mjs` | `src/gw/hook/agent-model-guard.ts` |
-| `orchestrator-impl-guard` | `hooks/orchestrator-impl-guard.mjs` | `src/gw/hook/orchestrator-impl-guard.ts` |
-| `ledger-guard` | `hooks/ledger-guard.mjs` | `src/gw/hook/ledger-guard.ts` |
-| `ledger-bash-guard` | `hooks/ledger-bash-guard.mjs` | `src/gw/hook/ledger-bash-guard.ts` |
-| `piped-exit-code-guard` | `hooks/piped-exit-code-guard.mjs` | `src/gw/hook/piped-exit-code-guard.ts` |
-| `struggle-detector` | `hooks/struggle-detector.mjs` | `src/gw/hook/struggle-detector.ts` |
+| `nesting-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook nesting-guard` | `src/gw/hook/nesting-guard.ts` |
+| `agent-model-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook agent-model-guard` | `src/gw/hook/agent-model-guard.ts` |
+| `orchestrator-impl-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook orchestrator-impl-guard` | `src/gw/hook/orchestrator-impl-guard.ts` |
+| `ledger-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-guard` | `src/gw/hook/ledger-guard.ts` |
+| `ledger-bash-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-bash-guard` | `src/gw/hook/ledger-bash-guard.ts` |
+| `piped-exit-code-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook piped-exit-code-guard` | `src/gw/hook/piped-exit-code-guard.ts` |
+| `struggle-detector` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook struggle-detector` | `src/gw/hook/struggle-detector.ts` |
 
-## Shim strategy
+## Dispatch strategy
 
-Each `hooks/*.mjs` (and `hooks/session-start`) is a thin Node shim with two execution paths:
+`bin/gw-hook hook <name>` is the registered command for all TypeScript-ported guards. It reads
+stdin, resolves the hook by name from `src/gw/hook/`, and writes stdout/stderr before exiting.
+Two execution paths:
 
 1. **Compiled binary** (`dist/gw`): if `dist/gw` exists, invoke it as `dist/gw hook <name>`. This
    is the production path after `pnpm run build:gw`.
 2. **Bun source fallback**: if `dist/gw` is absent, invoke `bun src/gw/cli/main.ts hook <name>`.
    This is the development path (no build step required, bun must be installed).
 
-Both paths read stdin, dispatch through `HOOKS[name]`, and write stdout/stderr before exiting.
+The legacy `hooks/*.mjs` shims for the seven ported guards (stop-gate, nesting-guard,
+agent-model-guard, orchestrator-impl-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard)
+were deleted in wave 2 of the groundwork-hardening motive. `hooks/session-start` remains as a
+standalone shim. `struggle-detector` is registered via `bin/gw-hook` in hooks.json like all other
+TypeScript-ported guards; `hooks/struggle-detector.mjs` exists on disk but is not the live entrypoint.
 
 ## stop-gate: new-layout vs legacy precedence
 

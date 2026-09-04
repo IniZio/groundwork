@@ -21,9 +21,18 @@ const OUT_DIR = __dirname
 const HOOK_NAME = 'nesting-guard.mjs'
 const HOOK_REL = 'hooks/nesting-guard.mjs'
 
-// Shim guard — refuse if the hook has been converted to a gw shim
+// Shim guard — refuse if the hook has been converted to a gw shim or deleted
 {
-  const hookContent = readFileSync(HOOK_PATH, 'utf8')
+  let hookContent
+  try {
+    hookContent = readFileSync(HOOK_PATH, 'utf8')
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.error('REFUSED: hooks/nesting-guard.mjs has been deleted (converted to gw-hook); corpus is frozen (D-10).')
+      process.exit(1)
+    }
+    throw err
+  }
   if (hookContent.includes('src/gw/cli/main.ts')) {
     console.error('REFUSED: hooks/nesting-guard.mjs is a gw shim — re-running capture would overwrite fixtures with shim output, making parity tautological. The corpus is frozen (D-10).')
     process.exit(1)

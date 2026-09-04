@@ -1,6 +1,6 @@
 ---
 tags: [component, orchestration, gate, stop-gate]
-source: schemas/run-ledger.schema.json, hooks/stop-gate.mjs
+source: schemas/run-ledger.schema.json, src/gw/hook/stop-gate.ts
 ---
 
 # Gate Note
@@ -51,13 +51,13 @@ The `gate` object is **additive** — additional gate names beyond `advisor`, `v
 | `GAPS` | Coverage gaps identified | No |
 | `REPLAN` | Plan must be revised | No |
 
-The stop-gate reads either the legacy string form (`"APPROVE"`) or the object form (`{ "verdict": "APPROVE", ... }`) via the `advisorVerdict()` helper in `stop-gate.mjs`.
+The stop-gate reads either the legacy string form (`"APPROVE"`) or the object form (`{ "verdict": "APPROVE", ... }`) via the `advisorVerdict()` helper in `stop-gate.ts`.
 
 ---
 
 ## Field specs
 
-_Derived from `schemas/run-ledger.schema.json` and the `advisorVerdict()` helper in `stop-gate.mjs`._
+_Derived from `schemas/run-ledger.schema.json` and the `advisorVerdict()` helper in `stop-gate.ts`._
 
 **`gate.advisor` — string form (legacy):**
 

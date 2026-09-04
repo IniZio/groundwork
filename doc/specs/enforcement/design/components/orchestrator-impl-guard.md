@@ -1,12 +1,12 @@
 # Orchestrator Impl-Guard
 
 > **Type:** component
-> **Source:** `hooks/orchestrator-impl-guard.mjs`
+> **Source:** `src/gw/hook/orchestrator-impl-guard.ts` (invoked via `bin/gw-hook hook orchestrator-impl-guard`, registered in `hooks/hooks.json`)
 > **Related requirements:** [[../../requirements/enforcement-r-001-impl-guard-blocks-orchestrator-direct-edits|ENFORCEMENT-R-001]]
 
 ## Purpose
 
-The orchestrator impl-guard (`orchestrator-impl-guard.mjs`) is the primary enforcement point preventing the orchestrator from writing files directly. It runs as a PreToolUse hook on `Edit|Write|MultiEdit`.
+The orchestrator impl-guard (`src/gw/hook/orchestrator-impl-guard.ts`) is the primary enforcement point preventing the orchestrator from writing files directly. It runs as a PreToolUse hook on `Edit|Write|MultiEdit`.
 
 ## Permit path
 

@@ -2,7 +2,7 @@
  * stop-gate-pacing.test.ts — D-29: pacing exhaustion as a stop-gate release path.
  *
  * 8 acceptance criteria from ledger slice `pace-stopgate`:
- *  AC1  hooks/stop-gate.mjs consumes isExhausted from hooks/lib/pacing.mjs (verified
+ *  AC1  src/gw/hook/stop-gate.ts consumes isExhausted from hooks/lib/pacing.mjs (verified
  *       by testing behaviour driven by the pacing field — no re-implementation).
  *  AC2  when isExhausted is true and incomplete slices remain, the stop is ALLOWED.
  *  AC3  the released stop emits a DIRECTIVE naming remaining slice ids, MAP.md path,
@@ -13,7 +13,7 @@
  *       still append on the pacing allow path.
  *  AC6  a ledger with no pacing field is byte-identical to pre-D-29 behaviour.
  *  AC7  new assertions live in this file only.
- *  AC8  this slice owns hooks/stop-gate.mjs and test/hooks/stop-gate-pacing.test.ts.
+ *  AC8  this slice owns src/gw/hook/stop-gate.ts and test/hooks/stop-gate-pacing.test.ts.
  *
  * AC7 and AC8 are structural — satisfied by the existence of this file and the
  * fact that stop-gate.test.ts is NOT modified.
@@ -28,7 +28,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 let projectDir: string;
 
@@ -50,7 +50,7 @@ function runHook(
 		JSON.stringify(ledger, null, 2),
 	);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], { input, encoding: "utf8" });
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
 	return JSON.parse(out);
 }
 

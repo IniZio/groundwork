@@ -1,11 +1,11 @@
 /**
- * AC-4 mechanical test: hooks/stop-gate.mjs blocks session completion unless
+ * AC-4 mechanical test: src/gw/hook/stop-gate.ts blocks session completion unless
  * gate.advisor === 'APPROVE' is recorded in the active run ledger.
  *
  * Criterion (verbatim from motive charter AC-4):
  *   "The session stop hook blocks completion until gate.advisor === 'APPROVE'
  *   is recorded in the active run ledger; the check is mechanical and does not
- *   rely on agent memory or self-report. Enforced by hooks/stop-gate.mjs reading
+ *   rely on agent memory or self-report. Enforced by src/gw/hook/stop-gate.ts reading
  *   ledger.gate via advisorVerdict() (line 317) and blocking unless the result
  *   equals 'APPROVE' (line 616)."
  *
@@ -31,7 +31,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const ROOT = new URL('../../', import.meta.url).pathname
-const STOP_GATE = join(ROOT, 'hooks', 'stop-gate.mjs')
+const STOP_GATE = join(ROOT, 'bin', 'gw-hook')
 
 // ─── Temp project dir (isolated from live session ledger) ───────────────────
 
@@ -102,7 +102,7 @@ type HookOutput = {
  * signal the Claude Code harness uses to refuse session termination.
  */
 function runGate(sessionId: string): { out: HookOutput; exitCode: number } {
-  const r = spawnSync('node', [STOP_GATE], {
+  const r = spawnSync(STOP_GATE, ['hook', 'stop-gate'], {
     input: JSON.stringify({ session_id: sessionId }),
     env: {
       PATH: process.env.PATH ?? '',

@@ -9,7 +9,7 @@ export function charterPath(repoRoot: string, tracker: string, motive: string): 
   return path.join(repoRoot, tracker, 'motives', motive, 'index.md')
 }
 
-export interface CharterNote {
+interface CharterNote {
   fm: Record<string, unknown>
   body: string
 }

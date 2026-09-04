@@ -19,8 +19,8 @@ status: draft
 - [skills/groundwork/](../../skills/groundwork/) — hand-edited skill authority tree
 - [skills/](../../skills/) — generated Codex-facing skill copies (never hand-edit)
 - [.pi/skills/](../../.pi/skills/) — independent Pi overlay (hand-edit; validated by `check:pi`)
-- [hooks/nesting-guard.mjs](../../hooks/nesting-guard.mjs) — PreToolUse spawn-topology enforcer
-- [hooks/agent-model-guard.mjs](../../hooks/agent-model-guard.mjs) — PreToolUse model injector / built-in shadow guard
+- [src/gw/hook/nesting-guard.ts](../../src/gw/hook/nesting-guard.ts) — PreToolUse spawn-topology enforcer (invoked via `bin/gw-hook hook nesting-guard`)
+- [src/gw/hook/agent-model-guard.ts](../../src/gw/hook/agent-model-guard.ts) — PreToolUse model injector / built-in shadow guard (invoked via `bin/gw-hook hook agent-model-guard`)
 
 ## Requirements
 

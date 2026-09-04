@@ -32,7 +32,7 @@
 
 **Test:** would delegating cost more context than doing it? Content already in your window → write it directly. Content requiring a read or search to compose → delegate; that's exploration.
 
-**The path shape `hooks/orchestrator-impl-guard.mjs` actually permits:**
+**The path shape `src/gw/hook/orchestrator-impl-guard.ts` (invoked via `bin/gw-hook hook orchestrator-impl-guard`, registered in `hooks/hooks.json`) actually permits:**
 
 | Permitted | Pattern |
 |---|---|
@@ -295,7 +295,7 @@ Primary orchestrator:
 
 Only the primary orchestrator fans out juniors. A junior fans out `general-purpose` workers — not more juniors.
 
-### Depth constraint (HARD-ENFORCED by hooks/nesting-guard.mjs)
+### Depth constraint (HARD-ENFORCED by src/gw/hook/nesting-guard.ts, invoked via bin/gw-hook hook nesting-guard)
 
 Three rules mechanically enforced:
 

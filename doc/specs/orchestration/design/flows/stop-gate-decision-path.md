@@ -1,17 +1,17 @@
 ---
 tags: [flow, orchestration, stop-gate]
-source: hooks/stop-gate.mjs
+source: src/gw/hook/stop-gate.ts
 ---
 
 # Stop-Gate Decision Path
 
-> **Flow note.** This traces the exact branching logic of `hooks/stop-gate.mjs`. For a conceptual overview, see [[../concepts/stop-gate]]. To close out a run, see [[../recipes/release-stop-gate-after-advisor-approve]].
+> **Flow note.** This traces the exact branching logic of `src/gw/hook/stop-gate.ts`. For a conceptual overview, see [[../concepts/stop-gate]]. To close out a run, see [[../recipes/release-stop-gate-after-advisor-approve]].
 
 ---
 
 ## Decision flowchart
 
-_Derived from `hooks/stop-gate.mjs`. Do not modify this diagram without re-reading that file._
+_Derived from `src/gw/hook/stop-gate.ts`. Do not modify this diagram without re-reading that file._
 
 ```mermaid
 flowchart TD
@@ -69,7 +69,7 @@ flowchart TD
 
 | Step | Actor | Decision / action | Source location |
 |------|-------|-------------------|----------------|
-| 1 | Hook | Read ledger JSON from stdin | `stop-gate.mjs` — top of main |
+| 1 | Hook | Read ledger JSON from stdin | `stop-gate.ts` — top of main |
 | 2 | Hook | Parse failure or null → **ALLOW** | FAIL-OPEN guarantee |
 | 3 | Hook | `active === false` → check seal → **ALLOW** if valid | `verifySeal()` in `lib/gate-seal.mjs` |
 | 4 | Hook | `session_id` mismatch → **ALLOW** | SESSION-SCOPED guarantee |

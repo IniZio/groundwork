@@ -1,7 +1,7 @@
 ---
 tags: [concept, orchestration, delegation]
 realizes: "[[../../requirements/orchestration-r-001-orchestrator-delegates-non-trivial-implementation|R-001]]"
-source: hooks/nesting-guard.mjs, CLAUDE.md
+source: src/gw/hook/nesting-guard.ts, CLAUDE.md
 ---
 
 # Delegation Hierarchy
@@ -29,7 +29,7 @@ flowchart TD
     JO -->|impl sub-slice| GP1[general-purpose\ndepth 2 · sonnet]
     JO -->|read-only| EX2[explore / advisor\nread-only specialists]
 
-    GP1 -. "MUST NOT spawn\nanother general-purpose" .-> BLOCKED([blocked\nnesting-guard.mjs])
+    GP1 -. "MUST NOT spawn\nanother general-purpose" .-> BLOCKED([blocked\nnesting-guard.ts])
     JO -. "MUST NOT spawn\nanother junior-orchestrator" .-> BLOCKED
 
     style BLOCKED fill:#f66,color:#fff
@@ -66,7 +66,7 @@ If any condition fails, dispatch `junior-orchestrator`.
 
 ## Mechanical enforcement
 
-`hooks/nesting-guard.mjs` runs as a `PreToolUse` hook on every `Agent` / `Task` / `TaskCreate` call. It:
+`src/gw/hook/nesting-guard.ts` (invoked via `bin/gw-hook hook nesting-guard`, registered in `hooks/hooks.json`) runs as a `PreToolUse` hook on every `Agent` / `Task` / `TaskCreate` call. It:
 
 - Identifies the caller's agent type from the session context
 - Allows spawns according to the table above

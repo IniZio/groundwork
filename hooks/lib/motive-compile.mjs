@@ -16,7 +16,7 @@
  *     FAILURE        d.fingerprint, d.kind, d.cmd, d.target, d.count, d.attempts,
  *                    d.last_error, d.slice — hooks/struggle-detector.mjs emits
  *                                           { kind, fingerprint, cmd, count }
- *     SESSION_END    d.outcome, d.reason, d.gate — hooks/stop-gate.mjs emits { outcome }
+ *     SESSION_END    d.outcome, d.reason, d.gate — src/gw/hook/stop-gate.ts emits { outcome }
  *     SESSION_START  d.resumed_from      — hook-written; may be absent
  *     AC_COVERAGE    coverage form: d.ac, d.slice — hooks/ledger.mjs emits per (slice, AC) pair
  *                    declaration form: d.ac, d.covering:[] — hooks/migrate.mjs emits for

@@ -22,8 +22,9 @@ export interface ClassifiedDoc {
 
 /**
  * Estimate token count for a string (rough heuristic).
+ * Accepts null/undefined (returns 0).
  */
-export declare function estimateTokens(content: string): number
+export declare function estimateTokens(content: string | null | undefined): number
 
 /** Registered document class definitions. */
 export declare const DOC_CLASSES: DocClass[]

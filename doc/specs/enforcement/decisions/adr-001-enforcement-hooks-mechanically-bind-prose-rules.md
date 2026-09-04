@@ -27,7 +27,7 @@ CLAUDE.md contains prose instructions telling the orchestrator to delegate imple
 
 **Option 3: PreToolUse hooks.** Register enforcement scripts in `.claude/settings.json` under `hooks`. These execute on the Claude Code event bus before the tool call reaches the model. The model cannot suppress or override them.
 
-The orchestrator impl-guard (`orchestrator-impl-guard.mjs`) is hard-closing: it blocks Edit/Write/MultiEdit calls from the orchestrator on paths outside the one permitted shape. Other hooks (nesting-guard, agent-model-guard, deslop-guard) are fail-open advisories that warn but permit when their detection signal is absent.
+The orchestrator impl-guard (`src/gw/hook/orchestrator-impl-guard.ts`, invoked via `bin/gw-hook hook orchestrator-impl-guard`) is hard-closing: it blocks Edit/Write/MultiEdit calls from the orchestrator on paths outside the one permitted shape. Other hooks (nesting-guard, agent-model-guard, deslop-guard) are fail-open advisories that warn but permit when their detection signal is absent.
 
 ## Consequences
 
@@ -43,9 +43,9 @@ The orchestrator impl-guard (`orchestrator-impl-guard.mjs`) is hard-closing: it 
 
 ## Implementation
 
-- `hooks/orchestrator-impl-guard.mjs` — hard-block
-- `hooks/nesting-guard.mjs` — fail-open advisory
-- `hooks/stop-gate.mjs` — Stop hook (hard-block / release)
+- `src/gw/hook/orchestrator-impl-guard.ts` (via `bin/gw-hook hook orchestrator-impl-guard`) — hard-block
+- `src/gw/hook/nesting-guard.ts` (via `bin/gw-hook hook nesting-guard`) — fail-open advisory
+- `src/gw/hook/stop-gate.ts` (via `bin/gw-hook hook stop-gate`) — Stop hook (hard-block / release)
 - `hooks/deslop-guard.mjs` — fail-open advisory
-- `hooks/agent-model-guard.mjs` — fail-open advisory
+- `src/gw/hook/agent-model-guard.ts` (via `bin/gw-hook hook agent-model-guard`) — fail-open advisory
 - Registration: `hooks/hooks.json` → `.claude/settings.json`

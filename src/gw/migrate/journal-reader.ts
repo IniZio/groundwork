@@ -11,7 +11,7 @@ export interface JournalDecisionEvent {
   rfc?: string
 }
 
-export interface ReadDecisionEventsResult {
+interface ReadDecisionEventsResult {
   events: Map<string, JournalDecisionEvent[]>
   skippedEphemeral: number
 }

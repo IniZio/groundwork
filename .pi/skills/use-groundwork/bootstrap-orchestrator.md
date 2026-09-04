@@ -16,7 +16,7 @@ This file is read ONLY by the orchestrator agent at session start. Keep enforcem
 
 ## Stop-Gate / Run Ledger (ENFORCEMENT)
 
-Non-trivial work is tracked in the run ledger — a per-session file at `.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` is honored for in-flight runs). The `Stop` hook (`hooks/stop-gate.mjs`) blocks session end while any slice is not `complete` or `gate.advisor` is not `APPROVE`.
+Non-trivial work is tracked in the run ledger — a per-session file at `.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` is honored for in-flight runs). The `Stop` hook (`src/gw/hook/stop-gate.ts`, invoked via `bin/gw-hook hook stop-gate`) blocks session end while any slice is not `complete` or `gate.advisor` is not `APPROVE`.
 
 **Orchestrator obligations (hook only reads — YOU must write):**
 - Emit the banner first: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json` (or `GROUNDWORK ▸ trivial: single general-purpose, no slicing` for trivial tasks).

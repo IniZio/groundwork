@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 // Plain interface — NOT a Zod schema
-export interface OpenItemFm {
+interface OpenItemFm {
   id: string
   kind: 'TBD' | 'TBR'
   status: 'open' | 'resolved'
@@ -14,7 +14,7 @@ export interface OpenItemFm {
   motive?: string
 }
 
-export interface OpenItemNote {
+interface OpenItemNote {
   fm: OpenItemFm
   body: string
 }

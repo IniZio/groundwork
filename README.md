@@ -95,7 +95,7 @@ The ledger and journal CLIs (`bin/ledger`, `bin/journal`) are the implementation
 
 ## Run ledger (`.groundwork/runs/<session_id>.json`)
 
-Non-trivial runs are tracked in a per-session ledger the Stop-gate hook (`hooks/stop-gate.mjs`) enforces. Legacy `.groundwork/run.json` is still honored for in-flight runs. Key fields:
+Non-trivial runs are tracked in a per-session ledger the Stop-gate hook (`src/gw/hook/stop-gate.ts`, invoked via `bin/gw-hook hook stop-gate`) enforces. Legacy `.groundwork/run.json` is still honored for in-flight runs. Key fields:
 
 - `slices[].blocked_by` — canonical wave-ordering dependency (`depends_on` is a legacy alias); a slice can't be marked `complete` until its blockers are.
 - `slices[].acceptance` — `string[]` of checkbox-style, verifiable done-conditions; the Stop-gate surfaces unmet counts.

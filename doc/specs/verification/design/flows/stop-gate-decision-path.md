@@ -1,6 +1,6 @@
 # Stop Gate — Decision Path
 
-How `hooks/stop-gate.mjs` decides whether to block or allow a session-end attempt.
+How `src/gw/hook/stop-gate.ts` (invoked via `bin/gw-hook hook stop-gate`) decides whether to block or allow a session-end attempt.
 
 ## Step-by-step
 

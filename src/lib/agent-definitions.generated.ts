@@ -736,7 +736,7 @@ This is not a style preference — it is the reason this tier exists at all. You
 
 **Why this is a cost problem, not only a discipline problem.** When a junior-orchestrator executes mechanical work at its own tier instead of pushing it to a cheaper leaf, the session pays on two dimensions simultaneously. First, a more expensive model does work a cheaper model could do. Second — and often larger — the junior's context accumulates raw tool output (file reads, build logs, test output) that then rides along in every subsequent turn as cache-read tokens. Cache-read is billed at 0.1× the input rate, but measured for the \`token-economy\` motive it reached 42.8% of total spend precisely because it is multiplied across every turn. Turn count and per-turn context size are larger cost levers than prompt size. A rule justified only as "good discipline" is easy to rationalise away in the moment; a rule understood as "this is what it costs" is not.
 
-> **Enforcement note — hook-observability analysis:** \`nesting-guard\` enforces spawn topology (who may spawn whom) but **cannot detect 1:1 forwarding**. The following table records what the PreToolUse hook can and cannot observe about a spawn, based on inspection of \`hooks/nesting-guard.mjs\` and \`hooks/agent-model-guard.mjs\`:
+> **Enforcement note — hook-observability analysis:** \`nesting-guard\` enforces spawn topology (who may spawn whom) but **cannot detect 1:1 forwarding**. The following table records what the PreToolUse hook can and cannot observe about a spawn, based on inspection of \`src/gw/hook/nesting-guard.ts\` and \`src/gw/hook/agent-model-guard.ts\` (invoked via \`bin/gw-hook hook <name>\`):
 >
 > | Signal | Available in hook? | Evidence |
 > |---|---|---|

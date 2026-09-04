@@ -4,7 +4,7 @@
  *
  * Pure functions over a ledger doc — no filesystem, no side-effects.
  * Consumers: hooks/ledger.mjs (claim/set enforcement) and
- * hooks/stop-gate.mjs (exhaustion release path).
+ * src/gw/hook/stop-gate.ts (exhaustion release path).
  *
  * Design: D-28 / D-29 in motive groundwork-development.
  *

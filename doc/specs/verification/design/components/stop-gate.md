@@ -1,6 +1,6 @@
 # Stop Gate — Component
 
-Anatomy of `hooks/stop-gate.mjs` as a system component.
+Anatomy of `src/gw/hook/stop-gate.ts` (invoked via `bin/gw-hook hook stop-gate`) as a system component.
 
 ## Inputs
 

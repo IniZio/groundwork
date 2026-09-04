@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(import.meta.dirname, "..", "..", "hooks", "stop-gate.mjs");
+const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
 let projectDir: string;
 
@@ -68,7 +68,7 @@ function runHook(
 	const sessionId = opts.sessionId ?? "sess-tbd";
 	writeLedger(ledger);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync("node", [HOOK], {
+	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], {
 		input,
 		encoding: "utf8",
 		// AC5: pin CLAUDE_PROJECT_DIR to the fixture dir so ambient env never leaks in.

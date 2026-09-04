@@ -11,8 +11,6 @@ export const DesignNoteKind = z.enum([
   'glossary',   // term definitions
 ])
 
-export type DesignNoteKindValue = z.infer<typeof DesignNoteKind>
-
 /** Concept index.md frontmatter */
 export const ConceptIndexSchema = z.looseObject({
   id: z.string(),               // e.g. "C-ORCHESTRATION"
@@ -27,5 +25,3 @@ export const ConceptIndexSchema = z.looseObject({
   tags: z.array(z.string()).optional(),
   aliases: z.array(z.string()).optional(),
 })
-
-export type ConceptIndex = z.infer<typeof ConceptIndexSchema>

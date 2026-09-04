@@ -3,7 +3,7 @@
  *
  * Parity test — V4 of motive spine-beads-hitl-portability.
  *
- * Both the serve surface (hooks/traceability-serve.mjs → GET /graph + HTML)
+ * Both the serve surface (hooks/lib/traceability-serve.mjs → GET /graph + HTML)
  * and the ambient surface (hooks/lib/traceability-ambient.mjs → TRACE.html)
  * render from the SAME model. This test asserts they agree on:
  *
@@ -34,7 +34,7 @@ import { topoLayers, frontier, transitiveBlockers } from '../../hooks/lib/dag-ut
 import {
   computeWaveBands,
   buildHtml,
-} from '../../hooks/traceability-serve.mjs'
+} from '../../hooks/lib/traceability-serve.mjs'
 import { buildTraceabilityGraph } from '../../hooks/lib/traceability-join.mjs'
 import { classifyTraceabilityGraph } from '../../hooks/lib/traceability-classify.mjs'
 
@@ -235,7 +235,7 @@ describe('viz-surface-parity — blocked-chain membership', () => {
 // The test here documents what "RED" looked like before we confirmed GREEN.
 //
 // To reproduce the red run manually:
-//   1. In hooks/traceability-serve.mjs, change waveBySliceId.set(..., explicit)
+//   1. In hooks/lib/traceability-serve.mjs, change waveBySliceId.set(..., explicit)
 //      to always set wave 99 regardless of input.
 //   2. Run: npx vitest run test/hooks/viz-surface-parity.test.ts
 //   3. Confirm the "wave per slice matches topoLayers depth" test FAILS with

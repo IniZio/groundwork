@@ -1,6 +1,6 @@
 ---
 tags: [concept, orchestration, stop-gate]
-source: hooks/stop-gate.mjs
+source: src/gw/hook/stop-gate.ts
 ---
 
 # Stop-Gate
@@ -11,7 +11,7 @@ source: hooks/stop-gate.mjs
 
 ## Overview
 
-The stop-gate is a `Stop` hook (`hooks/stop-gate.mjs`) that fires every time a session tries to end. It reads the active run ledger and decides whether to **allow** the stop or **block** it with a re-injected directive.
+The stop-gate is a `Stop` hook (`src/gw/hook/stop-gate.ts`, invoked via `bin/gw-hook hook stop-gate`) that fires every time a session tries to end. It reads the active run ledger and decides whether to **allow** the stop or **block** it with a re-injected directive.
 
 Its purpose: prevent a session from ending while there are still incomplete vertical slices, or while the advisor has not yet approved. Without it, an orchestrator could stop between waves and leave the run stranded.
 
@@ -30,7 +30,7 @@ It does **not** fire mid-session. It only has power at the moment of stop.
 
 ## The four design guarantees
 
-Derived from the header comment in `hooks/stop-gate.mjs`:
+Derived from the header comment in `src/gw/hook/stop-gate.ts`:
 
 | Guarantee | What it means |
 |-----------|--------------|

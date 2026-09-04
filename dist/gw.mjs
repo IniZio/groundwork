@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 532c05bbea112bf45ebbc68d4d0d8d74ac9201ae5f211e11bc6b0fb8e8877b8a
+// @bundle-source-hash: fe6a9a535b4083b92c450b3a3c26b280a5f9e5772ca2f4403703aaf37e867e67
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -25225,6 +25225,19 @@ var init_session_reminder = __esm(() => {
   BUNDLE = resolve(_repoRoot, "dist/hooks-session-reminder.mjs");
 });
 
+// src/gw/hook/normalise-subagent-type.ts
+function normaliseSubagentType(raw) {
+  if (typeof raw !== "string")
+    return "";
+  const s = raw.trim().toLowerCase();
+  if (!s)
+    return "";
+  const colon = s.lastIndexOf(":");
+  if (colon === -1)
+    return s;
+  return s.slice(colon + 1).trim();
+}
+
 // src/gw/hook/nesting-guard.ts
 import path11 from "path";
 function passthrough() {
@@ -25243,12 +25256,6 @@ function deny(reason) {
     stderr: "",
     exit: 0
   };
-}
-function normaliseName(raw) {
-  if (typeof raw !== "string")
-    return "";
-  const s = raw.trim().toLowerCase();
-  return s.startsWith("groundwork:") ? s.slice("groundwork:".length) : s;
 }
 function isSubagentCall(input2) {
   const agentType = input2.agent_type;
@@ -25273,12 +25280,12 @@ var DENIED_AT_DEPTH_1, JUNIOR_ALLOWED_SPAWN, run11 = async (rawInput, _env) => {
       return passthrough();
     }
     const ti = toolInput;
-    const bare = normaliseName(ti.subagent_type);
+    const bare = normaliseSubagentType(ti.subagent_type);
     if (!bare)
       return passthrough();
     const rawTarget = typeof ti.subagent_type === "string" ? ti.subagent_type : bare;
     const callerIsSubagent = isSubagentCall(input2);
-    const callerBare = normaliseName(input2.agent_type);
+    const callerBare = normaliseSubagentType(input2.agent_type);
     if (bare === "junior-orchestrator") {
       if (!callerIsSubagent)
         return passthrough();
@@ -25376,14 +25383,8 @@ function toTierAlias(model) {
     return "sonnet";
   return model;
 }
-function registryKey(subagentType) {
-  if (typeof subagentType !== "string" || !subagentType.trim())
-    return "";
-  const afterPrefix = subagentType.includes(":") ? subagentType.slice(subagentType.lastIndexOf(":") + 1) : subagentType;
-  return afterPrefix.trim().toLowerCase();
-}
 function resolveModel(registry2, subagentType) {
-  const key = registryKey(subagentType);
+  const key = normaliseSubagentType(subagentType);
   if (!key)
     return null;
   const agents = registry2?.agents;

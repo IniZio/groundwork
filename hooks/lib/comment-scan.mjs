@@ -53,10 +53,8 @@ export function classifyLines(src) {
       continue
     }
 
-    // Block comment open: /* or /**
     if (trimmed.startsWith('/*')) {
       kinds.push('block-comment')
-      // Check whether the comment closes on the same line (after the opener).
       const afterOpen = trimmed.slice(2)
       if (!afterOpen.includes('*/')) inBlock = true
       continue

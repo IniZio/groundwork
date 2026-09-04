@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: c0bb088d30703a697a865eda999f573fc86afd8ad969cc1422581ad11a74d6f0
+// @bundle-source-hash: 968b294fd0fe60daffe77c089dd2afe26f1fbf7c02508c512bef811114785996
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -13799,8 +13799,14 @@ function parseFlags(args) {
   for (let i2 = 0;i2 < args.length; i2++) {
     const a = args[i2];
     if (a.startsWith("--")) {
-      flags[a.slice(2)] = args[i2 + 1];
-      i2++;
+      const key = a.slice(2);
+      const next = args[i2 + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        flags[key] = next;
+        i2++;
+      } else {
+        flags[key] = true;
+      }
     } else {
       positionals.push(a);
     }
@@ -15229,3 +15235,6 @@ function main() {
   }
 }
 main();
+export {
+  parseFlags
+};

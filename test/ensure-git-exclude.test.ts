@@ -10,7 +10,6 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node
 import os from 'node:os'
 import path from 'node:path'
 
-// @ts-expect-error — .mjs, no types
 import { ensureGroundworkExcluded } from '../hooks/lib/ensure-git-exclude.mjs'
 
 // ---------------------------------------------------------------------------

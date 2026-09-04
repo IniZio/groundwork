@@ -84,7 +84,6 @@ async function main() {
   const toolName = normalizeTool(input?.tool_name)
   if (!GUARDED_TOOLS.has(toolName)) return passthrough()
 
-  // Extract the target file path.
   const rawPath = input?.tool_input?.file_path ?? input?.tool_input?.path
   if (typeof rawPath !== 'string' || !rawPath) return passthrough()
 

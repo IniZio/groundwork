@@ -206,6 +206,5 @@ function escapeRegExp(str) {
 }
 
 function sanitizeId(id) {
-  // Keep alphanumerics, hyphens, underscores; replace everything else with '-'
   return String(id).replace(/[^a-zA-Z0-9_-]/g, '-')
 }

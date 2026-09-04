@@ -85,7 +85,6 @@ export function normalizeCommand(cmd) {
   //    first non-assignment word.
   const stripped = cmd.replace(/^(\s*[A-Z_][A-Z0-9_]*=\S*\s+)+/i, '')
 
-  // 2. Tokenise on whitespace.
   const tokens = stripped.trim().split(/\s+/)
 
   // 3. Walk tokens keeping only structural (command + subcommand) ones.

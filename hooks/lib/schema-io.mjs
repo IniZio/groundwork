@@ -116,7 +116,6 @@ function instancePathToField(instancePath, prefix) {
   if (!instancePath || instancePath === '/') {
     return prefix ?? 'schema'
   }
-  // Strip leading slash, split on "/"
   const parts = instancePath.replace(/^\//, '').split('/')
   let result = ''
   for (let i = 0; i < parts.length; i++) {

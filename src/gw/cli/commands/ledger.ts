@@ -10,10 +10,11 @@
  * Auth mirrors enforceWriteTokenAuth() in hooks/ledger.mjs (direct
  * write_token comparison, not HMAC key-file).
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
+import { resolveLedgerPath } from '../../lib/resolve-ledger-path.js'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
@@ -92,34 +93,6 @@ interface LedgerJson {
 // Constants
 // ---------------------------------------------------------------------------
 
-const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/
-
-// ---------------------------------------------------------------------------
-// Path resolution — mirrors resolveLedgerPath in hooks/lib/ledger-io.mjs
-// ---------------------------------------------------------------------------
-
-function resolveRunPath(projectDir: string, sessionId: string): string {
-  const legacyPath = path.join(projectDir, '.groundwork', 'run.json')
-
-  if (!SAFE_ID.test(sessionId)) return legacyPath
-
-  const perSessionPath = path.join(projectDir, '.groundwork', 'runs', `${sessionId}.json`)
-
-  if (existsSync(perSessionPath)) return perSessionPath
-
-  if (existsSync(legacyPath)) {
-    let legacy: LedgerJson | null = null
-    try {
-      legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) as LedgerJson
-    } catch {
-      /* ignore */
-    }
-    const legacyOwner = legacy?.session_id
-    if (!legacyOwner || legacyOwner === sessionId) return legacyPath
-  }
-
-  return perSessionPath
-}
 
 // ---------------------------------------------------------------------------
 // Read / atomic write
@@ -320,7 +293,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       1,
     )
   }
-  const runPath = resolveRunPath(repoRoot, sessionId)
+  const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId })
 
   try {
     switch (subcmd) {

@@ -1,0 +1,21 @@
+{
+  "active": true,
+  "session_id": "test-h22-worst-case",
+  "motive": "test-motive",
+  "brief": "H22 worst-case fixture: bounded at 10 incomplete slices",
+  "write_token": "tok-h22-fixture-test-only",
+  "pacing": null,
+  "slices": [
+    {"id": "H22-S01", "status": "open", "behavior": "Implement the first feature slice which has a description filling eighty", "acceptance": []},
+    {"id": "H22-S02", "status": "open", "behavior": "Implement the second feature slice with a description filling eighty ch", "acceptance": []},
+    {"id": "H22-S03", "status": "open", "behavior": "Implement the third feature slice description which is eighty characters", "acceptance": []},
+    {"id": "H22-S04", "status": "open", "behavior": "Implement the fourth feature slice description exactly eighty characters", "acceptance": []},
+    {"id": "H22-S05", "status": "open", "behavior": "Implement the fifth feature slice description filling up to eighty chars", "acceptance": []},
+    {"id": "H22-S06", "status": "open", "behavior": "Implement the sixth feature slice description filling up to eighty chars", "acceptance": []},
+    {"id": "H22-S07", "status": "open", "behavior": "Implement the seventh feature slice description filling to eighty chars", "acceptance": []},
+    {"id": "H22-S08", "status": "open", "behavior": "Implement the eighth feature slice description filling to eighty chars!", "acceptance": []},
+    {"id": "H22-S09", "status": "open", "behavior": "Implement the ninth feature slice description filling up eighty chars!!!", "acceptance": []},
+    {"id": "H22-S10", "status": "open", "behavior": "Implement the tenth feature slice description filling up eighty chars!!!", "acceptance": []}
+  ],
+  "gate": {}
+}

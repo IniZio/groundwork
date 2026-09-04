@@ -17,6 +17,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
+import { estimateTokens } from './lib/doc-io.mjs'
 import { resolvedUnits, inFlightUnit, isExhausted } from './lib/pacing.mjs'
 
 /** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
@@ -31,18 +32,10 @@ import { specDirPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
 
 // ---------------------------------------------------------------------------
-// Token estimation (rough: 1 token ≈ 4 chars for English/code text)
-// ---------------------------------------------------------------------------
-
-function estimateTokens(text) {
-  return Math.ceil((text || '').length / 4)
-}
-
-// ---------------------------------------------------------------------------
 // Spec skeleton renderer (AC6, AC7)
 // ---------------------------------------------------------------------------
 
-const SPEC_SKELETON_TOKEN_CAP = 600
+const SPEC_SKELETON_TOKEN_CAP = 700
 const SPEC_NODE_DEPTH1_THRESHOLD = 40
 
 /**
@@ -193,9 +186,15 @@ function activeRunBlock(projectDir, sessionId) {
 
   if (incomplete.length) {
     lines.push(`${incomplete.length} slice(s) NOT complete — the Stop-gate stays armed until each is \`complete\` and \`gate.advisor\` is APPROVE:`)
-    for (const s of incomplete) {
+    const ACTIVE_RUN_SLICE_CAP = 10
+    const shownSlices = incomplete.slice(0, ACTIVE_RUN_SLICE_CAP)
+    const hiddenCount = incomplete.length - shownSlices.length
+    for (const s of shownSlices) {
       const acc = Array.isArray(s?.acceptance) && s.acceptance.length ? ` — ${s.acceptance.length} acceptance criteria` : ''
       lines.push(`- ${s?.id ?? '?'} [${s?.status ?? '?'}] ${String(s?.behavior ?? '').slice(0, 80)}${acc}`)
+    }
+    if (hiddenCount > 0) {
+      lines.push(`  (and ${hiddenCount} more incomplete slice(s) — see ledger for full list)`)
     }
     lines.push('')
     lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK ▸ resuming ${incomplete.length} incomplete slice(s) → ${ledgerRef}\``)
@@ -400,9 +399,13 @@ try {
   additionalContext += buildStruggleNudge(projectDir)
 } catch { /* never fail the hook */ }
 
-// AC6/AC7: spec skeleton with 600-token cap; dropped first if total >3000 tokens.
-const TOTAL_TOKEN_CAP = 3000
-const TOTAL_TOKEN_ALARM = 3300
+// AC6/AC7: spec skeleton with 700-token cap; dropped first if total >3800 tokens.
+// Caps re-scaled from 3000/3300/600 to 3500/3800/700 (factor ×1.156) after the
+// estimator changed from Math.ceil(chars/4) to Math.ceil(utf8Bytes/3.5).
+// Re-scaled again (H22): ACTIVE RUN slice enumeration bounded at 10 slices;
+// Measured payload (2026-09-04, H22 bounded at 10 slices): base=3306 + skeleton=174 = 3480 tokens → headroom 320.
+const TOTAL_TOKEN_CAP = 3800
+const TOTAL_TOKEN_ALARM = 4100
 try {
   const skeleton = buildSpecSkeleton(projectDir)
   if (skeleton) {

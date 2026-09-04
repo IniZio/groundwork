@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 968b294fd0fe60daffe77c089dd2afe26f1fbf7c02508c512bef811114785996
+// @bundle-source-hash: 34f81818d1da3b06262a42070c1582bb67bb1bf65d5d9fca4dccd4cf68e21d82
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -7382,6 +7382,13 @@ function isEmbeddedAgent() {
   return ep === "sdk-py" || ep === "sdk-js";
 }
 
+// hooks/lib/doc-io.mjs
+function estimateTokens(content) {
+  if (!content)
+    return 0;
+  return Math.ceil(Buffer.byteLength(content, "utf8") / 3.5);
+}
+
 // hooks/lib/pacing.mjs
 function getPacing(doc) {
   return doc?.pacing ?? null;
@@ -10981,10 +10988,7 @@ var _hooksDir = path5.dirname(fileURLToPath2(import.meta.url));
 var LEDGER_BIN = path5.resolve(_hooksDir, "../bin/ledger");
 var GW_HOOK_BIN = path5.resolve(_hooksDir, "../bin/gw-hook");
 var JOURNAL_BIN = path5.resolve(_hooksDir, "../bin/journal");
-function estimateTokens(text) {
-  return Math.ceil((text || "").length / 4);
-}
-var SPEC_SKELETON_TOKEN_CAP = 600;
+var SPEC_SKELETON_TOKEN_CAP = 700;
 var SPEC_NODE_DEPTH1_THRESHOLD = 40;
 function buildSpecSkeleton(projectDir) {
   try {
@@ -11106,9 +11110,15 @@ function activeRunBlock(projectDir, sessionId) {
   }
   if (incomplete.length) {
     lines.push(`${incomplete.length} slice(s) NOT complete \u2014 the Stop-gate stays armed until each is \`complete\` and \`gate.advisor\` is APPROVE:`);
-    for (const s of incomplete) {
+    const ACTIVE_RUN_SLICE_CAP = 10;
+    const shownSlices = incomplete.slice(0, ACTIVE_RUN_SLICE_CAP);
+    const hiddenCount = incomplete.length - shownSlices.length;
+    for (const s of shownSlices) {
       const acc = Array.isArray(s?.acceptance) && s.acceptance.length ? ` \u2014 ${s.acceptance.length} acceptance criteria` : "";
       lines.push(`- ${s?.id ?? "?"} [${s?.status ?? "?"}] ${String(s?.behavior ?? "").slice(0, 80)}${acc}`);
+    }
+    if (hiddenCount > 0) {
+      lines.push(`  (and ${hiddenCount} more incomplete slice(s) \u2014 see ledger for full list)`);
     }
     lines.push("");
     lines.push(`Re-emit the banner and continue the fan-out: \`GROUNDWORK \u25B8 resuming ${incomplete.length} incomplete slice(s) \u2192 ${ledgerRef}\``);
@@ -11301,8 +11311,8 @@ additionalContext += activeRunBlock(projectDir, sessionId);
 try {
   additionalContext += buildStruggleNudge(projectDir);
 } catch {}
-var TOTAL_TOKEN_CAP = 3000;
-var TOTAL_TOKEN_ALARM = 3300;
+var TOTAL_TOKEN_CAP = 3800;
+var TOTAL_TOKEN_ALARM = 4100;
 try {
   const skeleton = buildSpecSkeleton(projectDir);
   if (skeleton) {

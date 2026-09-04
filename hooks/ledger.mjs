@@ -79,15 +79,25 @@ function die(msg, code = 1) {
   process.exit(code)
 }
 
-/** Pull `--flag value` pairs out of argv; returns { flags, positionals }. */
-function parseFlags(args) {
+/** Pull `--flag value` pairs out of argv; returns { flags, positionals }.
+ * A `--flag` followed by another `--`-prefixed token (or by nothing) is set to
+ * boolean `true`; otherwise the next token is consumed as its value.
+ * Exported for unit testing.
+ */
+export function parseFlags(args) {
   const flags = {}
   const positionals = []
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a.startsWith('--')) {
-      flags[a.slice(2)] = args[i + 1]
-      i++
+      const key = a.slice(2)
+      const next = args[i + 1]
+      if (next !== undefined && !next.startsWith('--')) {
+        flags[key] = next
+        i++
+      } else {
+        flags[key] = true
+      }
     } else {
       positionals.push(a)
     }
@@ -861,9 +871,8 @@ function cmdComplete(args) {
  */
 function cmdAwaitHuman(args) {
   const { flags, positionals } = parseFlags(args ?? [])
-  // Use a positional subcommand "clear" rather than a boolean --flag, because
-  // parseFlags always consumes the next arg as a flag value — --clear --token X
-  // would set flags['clear']='--token' and lose the token entirely.
+  // Use a positional subcommand "clear" rather than a boolean --flag so that
+  // `await-human clear --token X` is unambiguous across all callers.
   const clearing = positionals[0] === 'clear'
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {

@@ -384,7 +384,7 @@ export const run: HookFn = async (input, _env) => {
   // Emit one JSON line per freshly-fired signal so the caller can classify
   // this invocation as SIGNAL vs NO-SIGNAL without reading disk state.
   const stdout = fired
-    .map(s => JSON.stringify({ decision: 'SIGNAL', kind: s.kind, fingerprint: s.fingerprint }))
+    .map(s => JSON.stringify({ signal: 'SIGNAL', kind: s.kind, fingerprint: s.fingerprint }))
     .join('\n')
   return { stdout: stdout ? stdout + '\n' : '', stderr: '', exit: 0 }
 }

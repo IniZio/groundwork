@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: dcf7f3586794c73e0db3305e6777c7a2cb54809a47d1a391c6ca5c1e816e59bb
+// @bundle-source-hash: fe58b274418304404d100a74204466e58e940f8261da679ee97c538ab8305fcf
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -26094,7 +26094,7 @@ var SAFE_SESSION, VALID_TYPES2, run17 = async (input2, _env) => {
   try {
     fired = await processPayload(input2);
   } catch {}
-  const stdout = fired.map((s) => JSON.stringify({ decision: "SIGNAL", kind: s.kind, fingerprint: s.fingerprint })).join(`
+  const stdout = fired.map((s) => JSON.stringify({ signal: "SIGNAL", kind: s.kind, fingerprint: s.fingerprint })).join(`
 `);
   return { stdout: stdout ? stdout + `
 ` : "", stderr: "", exit: 0 };

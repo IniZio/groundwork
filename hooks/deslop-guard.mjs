@@ -6,9 +6,9 @@
  * AI-fingerprint openers ("// Let's …"), narrator/step markers ("// Step 1 …"),
  * commented-out code blocks, and AI emoji in comments. This is a TRIPWIRE, not a
  * linter: pure regex, no AST, no eslint, no formatter dependency. It belongs to
- * the bespoke hooks/*.mjs idiom (ledger-guard, orchestrator-impl-guard,
- * agent-model-guard) — hand-written regex gates, not wrappers around external
- * tools.
+ * the same hand-written regex gate pattern as the sibling guards (nesting-guard,
+ * orchestrator-impl-guard, agent-model-guard — now in src/gw/hook/*.ts, dispatched
+ * via bin/gw-hook), not wrappers around external tools.
  *
  * ADVISORY-ONLY — NEVER blocks an edit. The hook always returns
  * permissionDecision "allow"; slop findings are surfaced only via the

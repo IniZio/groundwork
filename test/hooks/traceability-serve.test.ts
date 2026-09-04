@@ -1,7 +1,7 @@
 /**
  * test/hooks/traceability-serve.test.ts
  *
- * Tests for hooks/traceability-serve.mjs.
+ * Tests for hooks/lib/traceability-serve.mjs.
  *
  * S6 tests (AC-1..AC-3):
  *   1. GET /graph returns the classified graph JSON (nodes + edges with classification).
@@ -32,7 +32,7 @@ import {
   buildClassifiedGraph,
   rejudgeLink,
   computeWaveBands,
-} from '../../hooks/traceability-serve.mjs'
+} from '../../hooks/lib/traceability-serve.mjs'
 
 // ---------------------------------------------------------------------------
 // S6 — Stub adapter (no filesystem; pure in-memory graph)

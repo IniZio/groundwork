@@ -165,9 +165,11 @@ Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | i
 ```bash
 ledger add S1 --desc "add workspace disk min-size" --wave 0 \
   --acceptance "image_sparse rejects small workspace;test covers boundary" \
+  --blocked-by "S0" \
   --ticket T1 --covers-ac "T1-AC1,T1-AC2" --decisions "D-1"
 ```
 
+- `--blocked-by "<dep1>,<dep2>"` — comma-separated slice ids this slice depends on; the frontier withholds this slice until all blockers are complete. A slice in wave N>0 registered with no blockers is a claim that must be justified in the plan (state why it has no upstream dependency).
 - `--ticket <tid>` — links the slice to a ticket document (id or path). Tickets are hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/` following the `NN-type-slug.md` naming convention (e.g. `01-research-auth-flow.md`); they are **never auto-generated per slice** and **never deleted by regeneration**. Scaffold new tickets with `node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>`.
 - `--covers-ac "a,b"` — comma-separated AC labels this slice covers; emits `AC_COVERAGE` events on complete and drives the MAP coverage overlay.
 - `--decisions "D-1,D-2"` — comma-separated journal decision ids this slice implements. Mirrors `--covers-ac`.

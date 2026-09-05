@@ -139,9 +139,11 @@ Add each task from Phase 3 as a ledger slice so the orchestrator can track progr
 
 ```bash
 gw ledger add --motive <slug> <task-id> --desc "<title>" --wave <n> --acceptance "<AC1>;<AC2>" \
+  --blocked-by "<dep-id>,<dep-id>" \
   --ticket <task-id> --covers-ac "<task-id>-AC1,<task-id>-AC2" --decisions "D-1,D-2"
 ```
 
+- `--blocked-by "<dep1>,<dep2>"` lists the slice ids this slice depends on; the frontier withholds this slice until all blockers are complete. A slice in wave N>0 registered with no blockers is a claim that must be justified in the plan (state why it has no upstream dependency).
 - `--ticket <tid>` links the slice to its ticket document under `.groundwork/motives/<slug>/tickets/`. Tickets are hand/agent-authored documents; they are **never auto-generated per slice** and **never deleted by regeneration**. The ticket file is created (if absent) when the planner writes Question and Context — it is not created by the ledger `add` command itself.
 - `--covers-ac "a,b"` records which acceptance criteria from Phase 3 this slice covers. This drives `AC_COVERAGE` events on completion and the coverage overlay in MAP.md.
 - `--decisions "D-1,D-2"` attaches journal decision ids to this slice, declaring which decisions it implements. Mirrors `--covers-ac`.

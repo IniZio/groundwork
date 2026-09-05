@@ -369,7 +369,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           status: (flags['status'] as string | undefined) ?? 'pending',
           kind,
           ...(flags['desc'] && flags['desc'] !== true ? { desc: flags['desc'] as string } : {}),
-          ...(blockedBy ? { blocked_by: blockedBy } : {}),
+          blocked_by: blockedBy ?? [],
           ...(acceptance ? { acceptance } : {}),
           ...(coversAc ? { covers_ac: coversAc } : {}),
           ...(decisions ? { decisions } : {}),

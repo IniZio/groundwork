@@ -358,6 +358,17 @@ function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
         warnings.push(`slice "${sid}": unknown key "${key}" — did you mean "${best}"? (possible typo; field will be ignored)`)
       }
     }
+    // 5a. Wave>0 slice with no real blockers — fires when blocked_by is absent
+    //     OR present but empty ([]).  gw ledger add always writes blocked_by:[]
+    //     so the absent-key path is a subset of the empty-array path; both are
+    //     caught here so validate/warnValidate surface it.
+    if (
+      typeof s.wave === 'number' && s.wave > 0 &&
+      !(Array.isArray(s.blocked_by) && s.blocked_by.length > 0) &&
+      !(Array.isArray(s.depends_on) && s.depends_on.length > 0)
+    ) {
+      warnings.push(`slice "${sid}": wave ${s.wave} has no blockers — treated as a root; pass --blocked-by if it depends on earlier slices`)
+    }
   }
 
   // 5. Wave-order invariant: every blocker must be in a strictly earlier wave.

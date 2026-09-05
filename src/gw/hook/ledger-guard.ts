@@ -100,12 +100,10 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       if (!isSubagentCall(inp)) return passthrough()
       return deny(
         `groundwork: subagent Write to the run ledger is blocked — use the ledger CLI to mutate state:\n` +
-          `  ${LEDGER_BIN} init <file|->           — initialize the ledger from a JSON slice table\n` +
-          `  ${LEDGER_BIN} add <id> [--wave N] …   — add a new slice\n` +
-          `  ${LEDGER_BIN} set <id> [--status …]   — update a slice field\n` +
-          `  ${LEDGER_BIN} complete <id> [<id> …]  — mark slices complete\n` +
-          `  ${LEDGER_BIN} gate advisor APPROVE …  — record the advisor verdict\n` +
-          `  ${LEDGER_BIN} abandon                 — cancel the run`,
+          `  ${LEDGER_BIN} add <id> [--wave N] …                    — add a new slice\n` +
+          `  ${LEDGER_BIN} set <id> --blocked-by <id>[,<id>…]       — repair dependency edges only (no --status or --token)\n` +
+          `  ${LEDGER_BIN} complete <id> [<id>…] --token sct_<hex>  — mark slices complete (scoped token required)\n` +
+          `  init, set --status, gate advisor APPROVE, abandon — orchestrator-only (require the write token)`,
       )
     }
     if (toolNorm !== 'read' && toolNorm !== 'edit' && toolNorm !== 'multiedit') return passthrough()

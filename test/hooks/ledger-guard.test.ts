@@ -404,3 +404,193 @@ describe("ledger-bash-guard — S6: scoped-token narrow allow for `ledger comple
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 });
+
+// ─── S2: narrow allow — subagent ledger set --blocked-by (edge repair only) ──
+describe("ledger-bash-guard — S2: set --blocked-by narrow allow", () => {
+	const SUBAGENT = { agentType: "groundwork:planner" };
+
+	// ── Allow path ───────────────────────────────────────────────────────────
+	it("ALLOWS subagent `bin/ledger set S16 --blocked-by S14,S15`", () => {
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent via gw wrapper form `gw ledger set S16 --blocked-by S14,S15`", () => {
+		// `gw ledger set` — gw is the bin/gw-hook CLI alias; the guard matches the
+		// `ledger` word regardless of the preceding binary name.
+		const d = runBashHook(`gw ledger set S16 --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent via node invocation `node hooks/ledger.mjs set S1 --blocked-by S2`", () => {
+		const d = runBashHook(`node hooks/ledger.mjs set S1 --blocked-by S2`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS orchestrator `ledger set S1 --blocked-by S2` (no agent markers — unchanged)", () => {
+		const d = runBashHook(`bin/ledger set S1 --blocked-by S2`);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	// ── Deny: --status present (terminal transition) ─────────────────────────
+	it("DENIES subagent `ledger set S16 --status complete` (no --blocked-by)", () => {
+		const d = runBashHook(`bin/ledger set S16 --status complete`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger set S16 --blocked-by S14 --status complete` (combination cell)", () => {
+		// --blocked-by alone is allowed; adding --status makes it denied regardless.
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14 --status complete`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Deny: --token present ─────────────────────────────────────────────────
+	it("DENIES subagent `ledger set S16 --blocked-by S14 --token abc`", () => {
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14 --token abc`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Deny: --blocked-by absent ────────────────────────────────────────────
+	it("DENIES subagent `ledger set S16` with no --blocked-by flag (e.g. --wave only)", () => {
+		const d = runBashHook(`bin/ledger set S16 --wave 2`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `ledger set S16` with no flags at all", () => {
+		const d = runBashHook(`bin/ledger set S16`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── Deny: shell chaining ─────────────────────────────────────────────────
+	it("DENIES `ledger set S16 --blocked-by S14 ; echo done`", () => {
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14 ; echo done`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES `ledger set S16 --blocked-by S14 && bin/ledger gate advisor APPROVE`", () => {
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14 && bin/ledger gate advisor APPROVE`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES `ledger set S16 --blocked-by S14 | tee /proj/.groundwork/runs/x.json`", () => {
+		const d = runBashHook(`bin/ledger set S16 --blocked-by S14 | tee /proj/.groundwork/runs/x.json`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	// ── S5: positive allowlist — extra flags beyond --blocked-by are DENIED ───
+	it("DENIES subagent `bin/ledger set S1 --blocked-by S2 --covers-ac AC1`", () => {
+		const d = runBashHook(`bin/ledger set S1 --blocked-by S2 --covers-ac AC1`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `gw ledger set S1 --blocked-by S2 --covers-ac AC1` (gw form)", () => {
+		const d = runBashHook(`gw ledger set S1 --blocked-by S2 --covers-ac AC1`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `bin/ledger set S1 --blocked-by S2 --wave 0`", () => {
+		const d = runBashHook(`bin/ledger set S1 --blocked-by S2 --wave 0`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `bin/ledger set S1 --blocked-by S2 --desc x`", () => {
+		const d = runBashHook(`bin/ledger set S1 --blocked-by S2 --desc x`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("ALLOWS subagent `bin/ledger set S1 --blocked-by S2,S3` (comma-list value, single flag)", () => {
+		const d = runBashHook(`bin/ledger set S1 --blocked-by S2,S3`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	// ── S7: --motive selector alongside --blocked-by ──────────────────────────
+	it("ALLOWS subagent `gw ledger set --motive m S16 --blocked-by S14,S15` (motive before id)", () => {
+		const d = runBashHook(`gw ledger set --motive m S16 --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `gw ledger set S16 --motive m --blocked-by S14,S15` (motive after id)", () => {
+		const d = runBashHook(`gw ledger set S16 --motive m --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `bin/ledger set --motive m S16 --blocked-by S14,S15` (bin/ledger form)", () => {
+		const d = runBashHook(`bin/ledger set --motive m S16 --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `bin/gw-hook ledger set --motive m S16 --blocked-by S14,S15` (gw-hook form)", () => {
+		const d = runBashHook(`bin/gw-hook ledger set --motive m S16 --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `gw ledger set S16 --motive=m --blocked-by S14,S15` (motive= form)", () => {
+		const d = runBashHook(`gw ledger set S16 --motive=m --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("ALLOWS subagent `gw ledger set S16 --blocked-by S14,S15 --motive groundwork-hardening` (motive last)", () => {
+		const d = runBashHook(`gw ledger set S16 --blocked-by S14,S15 --motive groundwork-hardening`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
+
+	it("DENIES subagent `gw ledger set S16 --motive m --blocked-by S14 --wave 2` (extra flag stays denied)", () => {
+		const d = runBashHook(`gw ledger set S16 --motive m --blocked-by S14 --wave 2`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `gw ledger set S16 --motive m --blocked-by S14 --covers-ac AC1` (extra flag stays denied)", () => {
+		const d = runBashHook(`gw ledger set S16 --motive m --blocked-by S14 --covers-ac AC1`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `gw ledger set --motive --blocked-by S14,S15` (motive with no value)", () => {
+		// --motive immediately followed by a flag → treated as no-value → denied
+		const d = runBashHook(`gw ledger set S16 --motive --blocked-by S14,S15`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENIES subagent `gw ledger set --motive= S16 --blocked-by S14` (motive= with empty value)", () => {
+		const d = runBashHook(`gw ledger set S16 --motive= --blocked-by S14`, SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+});
+
+// ─── S2-AC3: deny-message / bash-guard consistency ────────────────────────────
+describe("ledger-guard subagent Write deny-message / ledger-bash-guard consistency", () => {
+	it("every ledger command line advertised in the subagent Write deny reason passes ledger-bash-guard", () => {
+		const SUBAGENT = { agentType: "groundwork:planner" };
+		const d = runHookAs("Write", "/proj/.groundwork/runs/s.json", SUBAGENT);
+		const reason = d.hookSpecificOutput?.permissionDecisionReason ?? "";
+
+		// Extract lines that include an absolute /ledger invocation.
+		const cmdLines = reason.split('\n')
+			.map(l => l.trim())
+			.filter(l => /\/ledger\s+[a-z]/.test(l));
+
+		// Sanity: the message must advertise at least one ledger command.
+		expect(cmdLines.length).toBeGreaterThan(0);
+
+		for (const line of cmdLines) {
+			// Isolate the command portion (before an em-dash separator).
+			const cmdPart = line.split(/\s+—\s+/)[0].trim();
+			// Normalize absolute bin path → relative bin/ledger for the guard call.
+			let cmd = cmdPart.replace(/^.*\/bin\/ledger/, 'bin/ledger');
+			// Strip optional [...] groups.
+			cmd = cmd.replace(/\[.*?\]/g, '');
+			// Fill concrete example values for placeholders.
+			cmd = cmd.replace(/<id>/g, 'S1');
+			cmd = cmd.replace(/sct_<hex>/g, 'sct_f3d143ce086e4336');
+			cmd = cmd.replace(/<id>\[,<id>…\]/g, 'S2,S3');
+			cmd = cmd.replace(/<list>/g, 'S2,S3');
+			cmd = cmd.replace(/…/g, '');
+			cmd = cmd.replace(/\s+/g, ' ').trim();
+
+			const result = runBashHook(cmd, SUBAGENT);
+			expect(
+				result.hookSpecificOutput?.permissionDecision,
+				`advertised command must pass ledger-bash-guard: ${cmd}`,
+			).not.toBe("deny");
+		}
+	});
+});

@@ -73,6 +73,93 @@ function isScopedCompleteOnly(cmd: string): boolean {
 }
 
 /**
+ * Narrow allow: returns true iff the command is ONLY a `ledger set <id> --blocked-by <list>`
+ * invocation — edge repair only, no terminal-transition flags, no chaining.
+ *
+ * Permitted:  ledger set <id> --blocked-by <list>
+ * Denied:     any flag other than --blocked-by or --motive (positive allowlist)
+ *             any short flag (-x) regardless of intent
+ *             --blocked-by with no value (bare `--blocked-by` at end, or `--blocked-by=`)
+ *             --motive with no value (bare `--motive` at end, or `--motive=`)
+ *             any shell chaining or redirection
+ *             missing id or missing --blocked-by
+ *
+ * Defence in depth: --status and --token are also denied explicitly so they are
+ * caught even if the allowlist logic is ever relaxed.
+ *
+ * Combination cell (known-prefix trap): only {--blocked-by, --motive} are allowed; any
+ * other flag is DENIED. The checks run in order: chaining first, defence-in-depth
+ * exclusions, then positive allowlist.
+ *
+ * The <id> positional may appear anywhere after `set` — before or after --motive.
+ */
+function isScopedSetBlockedByOnly(cmd: string): boolean {
+  // Reject any shell chaining or redirection.
+  if (/[;|&\n`<>]|\$\(/.test(cmd)) return false
+  // Require specifically the `set` subcommand.
+  if (!/\bledger(?:\.mjs)?\s+set\b/.test(cmd)) return false
+  // Defence in depth: deny terminal-transition and write-token flags explicitly.
+  if (/--status\b/.test(cmd)) return false
+  if (/--token\b/.test(cmd)) return false
+
+  // Isolate all tokens that follow the `set` keyword.
+  const setMatch = cmd.match(/\bledger(?:\.mjs)?\s+set\s+(.*)$/)
+  if (!setMatch) return false
+  const tokens = setMatch[1].trim().split(/\s+/).filter(Boolean)
+
+  // Find the id: first non-flag token that is not a value of a value-taking flag.
+  // Allowlisted flags that consume the next token as their value: --motive, --blocked-by.
+  const VALUE_FLAGS = new Set(['--motive', '--blocked-by'])
+  let idFound = false
+  let skipNext = false
+  for (const tok of tokens) {
+    if (skipNext) { skipNext = false; continue }
+    if (tok.startsWith('-')) {
+      // Bare form (no `=`) of a known value-taking flag: skip the next token as its value.
+      if (!tok.includes('=') && VALUE_FLAGS.has(tok)) skipNext = true
+      continue
+    }
+    idFound = /^[A-Za-z0-9]\S*$/.test(tok)
+    break
+  }
+  if (!idFound) return false
+
+  // Positive allowlist: every flag token must be --blocked-by or --motive (bare or =form).
+  const flagTokens = tokens.filter(t => t.startsWith('-'))
+
+  // Must have at least --blocked-by present.
+  if (flagTokens.length === 0) return false
+
+  for (const flag of flagTokens) {
+    if (flag === '--blocked-by' || /^--blocked-by=.+$/.test(flag)) continue
+    if (flag === '--motive' || /^--motive=.+$/.test(flag)) continue
+    return false // any other flag (including short flags) → denied
+  }
+
+  // --blocked-by must carry a non-empty value: either embedded (`--blocked-by=val`) or
+  // the next token is non-empty and does not start with `-`.
+  const hasBlockedByEqForm = flagTokens.some(t => /^--blocked-by=.+$/.test(t))
+  if (!hasBlockedByEqForm) {
+    const idx = tokens.indexOf('--blocked-by')
+    if (idx < 0 || idx + 1 >= tokens.length) return false
+    const next = tokens[idx + 1]
+    if (!next || next.startsWith('-')) return false
+  }
+
+  // --motive (if present as bare form) must carry a non-empty value.
+  const hasMotiveEqForm = flagTokens.some(t => /^--motive=.+$/.test(t))
+  const hasBareMotive = flagTokens.includes('--motive')
+  if (hasBareMotive && !hasMotiveEqForm) {
+    const idx = tokens.indexOf('--motive')
+    if (idx < 0 || idx + 1 >= tokens.length) return false
+    const next = tokens[idx + 1]
+    if (!next || next.startsWith('-')) return false
+  }
+
+  return true
+}
+
+/**
  * Mutation verb patterns — only checked when the command also references a ledger/key path.
  * Each entry is [pattern, label] for the deny reason.
  */
@@ -150,6 +237,9 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       // shell operators. All other mutating subcommands remain denied regardless
       // of token shape.
       if (isScopedCompleteOnly(cmd)) return passthrough()
+      // Narrow allow: `ledger set <id> --blocked-by <list>` with no --status or
+      // --token flags and no shell operators. Edge repair only.
+      if (isScopedSetBlockedByOnly(cmd)) return passthrough()
       return deny(
         `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`,
       )

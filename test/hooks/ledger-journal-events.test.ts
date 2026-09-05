@@ -45,7 +45,7 @@ function baseLedger(overrides: Record<string, unknown> = {}) {
     write_token: TEST_TOKEN, // tokened fixture — pass --token test-token-evt on mutations
     slices: [
       { id: 'S1', name: 'tracer', wave: 0, blocked_by: [], status: 'pending', acceptance: ['a'] },
-      { id: 'S2', name: 'feature', wave: 1, blocked_by: [], status: 'pending', acceptance: ['b'] },
+      { id: 'S2', name: 'feature', wave: 1, blocked_by: ['S1'], status: 'pending', acceptance: ['b'] },
     ],
     gate: {},
     ...overrides,

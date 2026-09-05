@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: ae420dd14af2c13b7d8687cf2b5648580070b46ca1cc24baf6b41727f0360fc8
+// @bundle-source-hash: df8ba0523e883bd8951e08f092660fcc1e89e68c53164ecd4e91a0e4b6d04afc
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -14024,6 +14024,9 @@ function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
       if (best !== null) {
         warnings.push(`slice "${sid}": unknown key "${key}" \u2014 did you mean "${best}"? (possible typo; field will be ignored)`);
       }
+    }
+    if (typeof s.wave === "number" && s.wave > 0 && !(Array.isArray(s.blocked_by) && s.blocked_by.length > 0) && !(Array.isArray(s.depends_on) && s.depends_on.length > 0)) {
+      warnings.push(`slice "${sid}": wave ${s.wave} has no blockers \u2014 treated as a root; pass --blocked-by if it depends on earlier slices`);
     }
   }
   const sliceById = new Map(slices.map((s) => [s?.id, s]));

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 49803245ed815643c74a5c56b9b85e0e998ebb666b82da3b31471deafe47afae
+// @bundle-source-hash: 5cb4c85ecd04a41a3163f16f33e0f221faf682c19a6c5ee7a29874fb3acdaa4f
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -338,7 +338,7 @@ ${done}/${all.length} slices complete
           status: flags["status"] ?? "pending",
           kind,
           ...flags["desc"] && flags["desc"] !== true ? { desc: flags["desc"] } : {},
-          ...blockedBy ? { blocked_by: blockedBy } : {},
+          blocked_by: blockedBy ?? [],
           ...acceptance ? { acceptance } : {},
           ...coversAc ? { covers_ac: coversAc } : {},
           ...decisions ? { decisions } : {},
@@ -25749,12 +25749,10 @@ var LEDGER_BIN, run14 = async (input2, env) => {
       if (!isSubagentCall3(inp))
         return passthrough4();
       return deny3(`groundwork: subagent Write to the run ledger is blocked \u2014 use the ledger CLI to mutate state:
-` + `  ${LEDGER_BIN} init <file|->           \u2014 initialize the ledger from a JSON slice table
-` + `  ${LEDGER_BIN} add <id> [--wave N] \u2026   \u2014 add a new slice
-` + `  ${LEDGER_BIN} set <id> [--status \u2026]   \u2014 update a slice field
-` + `  ${LEDGER_BIN} complete <id> [<id> \u2026]  \u2014 mark slices complete
-` + `  ${LEDGER_BIN} gate advisor APPROVE \u2026  \u2014 record the advisor verdict
-` + `  ${LEDGER_BIN} abandon                 \u2014 cancel the run`);
+` + `  ${LEDGER_BIN} add <id> [--wave N] \u2026                    \u2014 add a new slice
+` + `  ${LEDGER_BIN} set <id> --blocked-by <id>[,<id>\u2026]       \u2014 repair dependency edges only (no --status or --token)
+` + `  ${LEDGER_BIN} complete <id> [<id>\u2026] --token sct_<hex>  \u2014 mark slices complete (scoped token required)
+` + `  init, set --status, gate advisor APPROVE, abandon \u2014 orchestrator-only (require the write token)`);
     }
     if (toolNorm !== "read" && toolNorm !== "edit" && toolNorm !== "multiedit")
       return passthrough4();
@@ -25818,6 +25816,68 @@ function isScopedCompleteOnly(cmd) {
     return false;
   return true;
 }
+function isScopedSetBlockedByOnly(cmd) {
+  if (/[;|&\n`<>]|\$\(/.test(cmd))
+    return false;
+  if (!/\bledger(?:\.mjs)?\s+set\b/.test(cmd))
+    return false;
+  if (/--status\b/.test(cmd))
+    return false;
+  if (/--token\b/.test(cmd))
+    return false;
+  const setMatch = cmd.match(/\bledger(?:\.mjs)?\s+set\s+(.*)$/);
+  if (!setMatch)
+    return false;
+  const tokens = setMatch[1].trim().split(/\s+/).filter(Boolean);
+  const VALUE_FLAGS = new Set(["--motive", "--blocked-by"]);
+  let idFound = false;
+  let skipNext = false;
+  for (const tok of tokens) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (tok.startsWith("-")) {
+      if (!tok.includes("=") && VALUE_FLAGS.has(tok))
+        skipNext = true;
+      continue;
+    }
+    idFound = /^[A-Za-z0-9]\S*$/.test(tok);
+    break;
+  }
+  if (!idFound)
+    return false;
+  const flagTokens = tokens.filter((t) => t.startsWith("-"));
+  if (flagTokens.length === 0)
+    return false;
+  for (const flag of flagTokens) {
+    if (flag === "--blocked-by" || /^--blocked-by=.+$/.test(flag))
+      continue;
+    if (flag === "--motive" || /^--motive=.+$/.test(flag))
+      continue;
+    return false;
+  }
+  const hasBlockedByEqForm = flagTokens.some((t) => /^--blocked-by=.+$/.test(t));
+  if (!hasBlockedByEqForm) {
+    const idx = tokens.indexOf("--blocked-by");
+    if (idx < 0 || idx + 1 >= tokens.length)
+      return false;
+    const next = tokens[idx + 1];
+    if (!next || next.startsWith("-"))
+      return false;
+  }
+  const hasMotiveEqForm = flagTokens.some((t) => /^--motive=.+$/.test(t));
+  const hasBareMotive = flagTokens.includes("--motive");
+  if (hasBareMotive && !hasMotiveEqForm) {
+    const idx = tokens.indexOf("--motive");
+    if (idx < 0 || idx + 1 >= tokens.length)
+      return false;
+    const next = tokens[idx + 1];
+    if (!next || next.startsWith("-"))
+      return false;
+  }
+  return true;
+}
 var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_RE, MUTATION_PATTERNS, EXFIL_PATTERNS, run15 = async (input2, env) => {
   try {
     if (isEmbeddedAgent3(env))
@@ -25850,6 +25910,8 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
       return passthrough5();
     if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
       if (isScopedCompleteOnly(cmd))
+        return passthrough5();
+      if (isScopedSetBlockedByOnly(cmd))
         return passthrough5();
       return deny4(`groundwork: subagent Bash blocked \u2014 mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`);
     }

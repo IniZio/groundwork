@@ -64,23 +64,82 @@ function findDirs(dir, pred, out = []) {
   return out
 }
 
+/** Five-field waiver contract (D-18). */
+const WAIVER_REQUIRED = ['dependency', 'failing_criterion', 'scope', 'expiry_condition', 'contract_test']
+
+/** Identity-provider keywords for SC-B2 suppression. */
+const IDP_KEYWORDS = ['authgear', 'keycloak', 'auth0', 'okta', 'oidc']
+
 /**
- * Read waiver JSON files from .groundwork/waivers/ that match criterion.
- * @param {string} repo
- * @param {string} criterion
+ * Read waivers from two sources for a repo:
+ *   1. <repo>/.groundwork/journal/*.jsonl  — events with type:"WAIVER", fields under `data`
+ *   2. <repo>/.groundwork/waivers/*.json   — top-level fields (stacks.md Postmark shape)
+ *
+ * Returns { valid: waiver[], malformed: string[] } where malformed contains
+ * the dependency name (or "(unknown)") of each waiver missing a required field.
  */
-function readWaivers(repo, criterion) {
+function readWaivers(repo) {
+  const valid = []
+  const malformed = []
+
+  function process(fields) {
+    const dep = (fields.dependency ?? '(unknown)')
+    const hasAll = WAIVER_REQUIRED.every(k => {
+      const v = fields[k]
+      return v != null && String(v).trim() !== ''
+    })
+    if (hasAll) valid.push(fields)
+    else malformed.push(dep)
+  }
+
+  // Source 1: journal JSONL events
+  const journalDir = join(repo, '.groundwork', 'journal')
+  let jFiles = []
+  try { jFiles = readdirSync(journalDir).filter(f => f.endsWith('.jsonl')) } catch {}
+  for (const f of jFiles) {
+    const text = readText(join(journalDir, f))
+    if (!text) continue
+    for (const line of text.split('\n')) {
+      const t = line.trim()
+      if (!t) continue
+      try {
+        const event = JSON.parse(t)
+        if (event.type !== 'WAIVER') continue
+        process(event.data ?? {})
+      } catch { /* ignore parse errors */ }
+    }
+  }
+
+  // Source 2: .groundwork/waivers/*.json files (stacks.md Postmark shape: fields at top level)
   const waiverDir = join(repo, '.groundwork', 'waivers')
-  let files = []
-  try { files = readdirSync(waiverDir).filter(f => f.endsWith('.json')) } catch { return [] }
-  const waivers = []
-  for (const f of files) {
+  let wFiles = []
+  try { wFiles = readdirSync(waiverDir).filter(f => f.endsWith('.json')) } catch {}
+  for (const f of wFiles) {
     try {
       const data = JSON.parse(readFileSync(join(waiverDir, f), 'utf8'))
-      if (data.criterion === criterion) waivers.push(data)
-    } catch { /* ignore malformed waiver */ }
+      process(data)
+    } catch { /* ignore parse errors */ }
   }
-  return waivers
+
+  return { valid, malformed }
+}
+
+/**
+ * Returns true if the docker-compose service name matches the waiver dependency
+ * (case-insensitive whole-word match — handles "Postmark transactional-email API" ↔ "postmark").
+ */
+function serviceMatchesWaiver(serviceName, waiverDep) {
+  try {
+    const escaped = serviceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/-/g, '[-]')
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(waiverDep)
+  } catch { return false }
+}
+
+/** Returns true if the waiver covers an identity provider (suppresses SC-B2). */
+function waiverIsIdentityProvider(waiver) {
+  if (waiver.role === 'identity-provider') return true
+  const dep = (waiver.dependency ?? '').toLowerCase()
+  return IDP_KEYWORDS.some(k => dep.includes(k))
 }
 
 // ---------------------------------------------------------------------------
@@ -366,28 +425,33 @@ function checkSCB1() {
 
   const allContent = e2eFiles.map(f => readText(f) ?? '').join('\n')
   const refsCompose = allContent.includes('docker-compose')
-  const referencedServices = serviceNames.filter(s => allContent.includes(s))
 
-  if (refsCompose || referencedServices.length > 0) {
-    const detail = refsCompose ? 'docker-compose file reference' : `service hostnames: ${referencedServices.join(', ')}`
-    return { result: 'PASS', reason: `acceptance tests reference ${detail}` }
-  }
+  const { valid: waivers, malformed } = readWaivers(repoPath)
+  const malformedNote = malformed.length > 0
+    ? `; ignored malformed waiver for ${malformed.join(', ')}`
+    : ''
 
-  // No direct reference — check waivers for remaining unreferenced services
-  const waivers = readWaivers(repoPath, 'SC-B1')
-  const waivedDeps = new Set(waivers.map(w => w.dependency).filter(Boolean))
-  const uncovered = serviceNames.filter(s => !waivedDeps.has(s))
+  // A service is covered when: all tests reference docker-compose directly, OR its
+  // hostname appears in test content, OR a valid waiver matches it.
+  const uncovered = serviceNames.filter(s =>
+    !refsCompose &&
+    !allContent.includes(s) &&
+    !waivers.some(w => serviceMatchesWaiver(s, w.dependency ?? '')))
 
-  if (uncovered.length === 0 && waivedDeps.size > 0) {
-    return {
-      result: 'PASS',
-      reason: `all services covered by waivers (waived: ${[...waivedDeps].join(', ')})`,
-    }
+  if (uncovered.length === 0) {
+    const waivedNames = serviceNames
+      .filter(s => !refsCompose && !allContent.includes(s) &&
+        waivers.some(w => serviceMatchesWaiver(s, w.dependency ?? '')))
+    const detail = refsCompose
+      ? 'docker-compose file reference'
+      : `service hostnames: ${serviceNames.filter(s => allContent.includes(s)).join(', ')}`
+    const waivedNote = waivedNames.length > 0 ? `; waived: ${waivedNames.join(', ')}` : ''
+    return { result: 'PASS', reason: `acceptance tests reference ${detail}${waivedNote}${malformedNote}` }
   }
 
   return {
     result: 'FAIL',
-    reason: 'docker-compose.yml exists but acceptance tests do not reference it or its service hostnames',
+    reason: `docker-compose.yml exists but acceptance tests do not cover all services (uncovered: ${uncovered.join(', ')})${malformedNote}`,
   }
 }
 
@@ -417,6 +481,15 @@ function checkSCB2() {
     if (!content) continue
     for (const p of SYNTHETIC_AUTH_PATTERNS) {
       if (p.test(content)) {
+        // An identity-provider waiver suppresses SC-B2 (IDP stubbed by recorded waiver decision)
+        const { valid: waivers } = readWaivers(repoPath)
+        const idpWaiver = waivers.find(w => waiverIsIdentityProvider(w))
+        if (idpWaiver) {
+          return {
+            result: 'PASS',
+            reason: `synthetic auth suppressed by identity-provider waiver for ${idpWaiver.dependency}`,
+          }
+        }
         return {
           result: 'FAIL',
           reason: `${f} injects a synthetic bearer token (pattern: ${p.source.slice(0, 50)})`,

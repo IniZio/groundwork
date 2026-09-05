@@ -205,6 +205,7 @@ export function compile(events, opts = {}) {
               supersedes: d.supersedes ?? null,
               superseded_by: d.superseded_by ?? null,
               resolves: d.resolves ?? null,
+              kind: typeof d.kind === 'string' ? d.kind : null,
             }
             decisionLogMap.set(d.id, entry)
             decisionLogOrder.push(d.id)
@@ -236,6 +237,7 @@ export function compile(events, opts = {}) {
             if (Array.isArray(d.alternatives)) existing.alternatives = d.alternatives
             if (d.superseded_by != null) existing.superseded_by = d.superseded_by
             if (d.resolves != null) existing.resolves = d.resolves
+            if (typeof d.kind === 'string') existing.kind = d.kind
             // Change B: track same-id merges; revises === id marks the merge intentional
             decisionMergeHits.set(d.id, (decisionMergeHits.get(d.id) ?? 0) + 1)
             if (d.revises === d.id) {
@@ -282,6 +284,7 @@ export function compile(events, opts = {}) {
             rationale_source: d.rationale != null ? 'recorded' : 'absent',
             alternatives: Array.isArray(d.alternatives) ? d.alternatives : [],
             slice: d.slice ?? null,
+            kind: typeof d.kind === 'string' ? d.kind : null,
           })
         }
         break

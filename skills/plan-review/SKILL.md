@@ -43,6 +43,8 @@ Use these labels exactly — they feed Contract A `plan_soundness` and REPLAN pa
 | `unrequested` | Slice does work outside spec **or** inside documented negative scope | **CRITICAL** when negative-scope; **WARN** when merely unstated extra |
 | `untestable` | AC has no observable pass/fail signal (no scenario, no UI/CLI/API assertion, pure intent) | **WARN** (CRITICAL if it is a primary success criterion) |
 | `missing_seam` | Cross-slice shared file/module with no ownership boundary, or an AC that requires a contract neither slice owns | **WARN** (CRITICAL if two impl slices would edit the same file) |
+| `missing-structure-decision` | No accepted journal decision with `data.kind = "structure"` and ≥2 alternatives recorded before slices were cut — the planner did not capture which toolchain enforcer was chosen | **CRITICAL** |
+| `missing-test-strategy-decision` | No accepted journal decision with `data.kind = "test-strategy"` and ≥2 alternatives recorded before slices were cut — the planner did not capture the acceptance layer or dependency-hosting strategy | **CRITICAL** |
 
 ## Process
 
@@ -97,6 +99,8 @@ Minimum checks (do all of them):
 6. **Orphan slices** — impl slice with no AC (`unrequested`)
 7. **Wave / dependency sanity** — slice blocked_by cycles or impl before its plan/design dependency (WARN unless it guarantees a contradicting delivery order → CRITICAL)
 8. **Premise-provenance gate (D-82)** — if the PLAN-READY output or charter notes identify any Wave-1 ("confirmed-live") impl slice whose premise is tagged `unverified-assumption`, flag it CRITICAL (`missing` gap type — the confirming evidence is missing). The slice must be moved to Wave 2+ and a `research`/verify-first slice added in Wave 1. If `research_tickets_cited` in PLAN-READY is non-empty, cross-check that each cited ticket exists under `.groundwork/motives/<slug>/tickets/`; a missing ticket file is a WARN.
+9. **Missing structure decision** — run `bin/journal compile <slug> --json` and check for an accepted decision whose `data.kind` equals `"structure"` with `alternatives` of length ≥2. Absent: the planner did not record which toolchain enforcer was chosen and its considered alternatives before slices were cut (see `groundwork:engineering-judgment`). Flag CRITICAL (`missing-structure-decision`). Correct by re-entering the planner citing `groundwork:engineering-judgment`. Trivial (no-ledger) work is exempt.
+10. **Missing test-strategy decision** — same check for `data.kind = "test-strategy"` with `alternatives` of length ≥2. Absent: the planner did not capture which layer is the acceptance layer, which dependencies are hosted for real, or which are stubbed under a waiver. Flag CRITICAL (`missing-test-strategy-decision`). Correct by re-entering the planner citing `groundwork:engineering-judgment`. Trivial (no-ledger) work is exempt.
 
 ### 4. Output format (mandatory shape)
 

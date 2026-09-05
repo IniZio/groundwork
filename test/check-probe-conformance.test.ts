@@ -249,11 +249,9 @@ describe('SC-B1', () => {
     expect(status).toBe(1)
   })
 
-  test('PASS — docker-compose.yml present and e2e test references a service hostname', () => {
+  test('PASS — docker-compose.yml present and e2e test references all service hostnames', () => {
     writeFixture(tmpDir, 'docker-compose.yml', `
 services:
-  db:
-    image: postgres:16
   authgear:
     image: authgear/authgear-server:latest
 `)
@@ -265,32 +263,92 @@ describe('login', () => { it('redirects', () => {}) })
     expect(lineFor(stdout, 'SC-B1')).toMatch(/^PASS SC-B1/)
   })
 
-  test('PASS (WAIVER) — service not referenced by tests but covered by per-dependency waiver', () => {
-    // Only one service in docker-compose; no e2e test references it.
-    // A waiver exists for that specific dependency → PASS.
+  test('PASS (WAIVER via waivers/*.json) — stacks.md Postmark example suppresses SC-B1', () => {
+    // The exact JSON from skills/groundwork/engineering-judgment/reference/stacks.md.
+    // Service name "postmark" matches dependency "Postmark transactional-email API"
+    // via case-insensitive whole-word containment.
     writeFixture(tmpDir, 'docker-compose.yml', `
 services:
-  stripe-api:
-    image: stripe/stripe-mock:latest
+  postmark:
+    image: axllent/mailpit:latest
 `)
-    writeFixture(tmpDir, 'e2e/payment.e2e.test.ts', `
-// This test does not reference the stripe-api hostname directly
-describe('payment', () => { it('exists', () => {}) })
+    writeFixture(tmpDir, 'e2e/email.e2e.test.ts', `
+// Does not reference the postmark service hostname
+describe('email', () => { it('queues', () => {}) })
 `)
     writeFixture(
       tmpDir,
-      '.groundwork/waivers/stripe.json',
+      '.groundwork/waivers/postmark.json',
       JSON.stringify({
-        dependency: 'stripe-api',
-        criterion: 'SC-B1',
-        scope: 'acceptance tests — Stripe has no self-hostable container',
-        expiry: '2027-01-01',
-        contract_test: 'test/contract/stripe-webhook.test.ts',
+        type: 'WAIVER',
+        dependency: 'Postmark transactional-email API',
+        failing_criterion: 'no official or community container image exists and no vendor-supplied emulator exists',
+        scope: 'acceptance tests that assert an email was dispatched after user registration',
+        expiry_condition: 'Postmark ships a local sandbox image or a first-party fake, or a compatible OSS fake (e.g. mailpit) is confirmed equivalent',
+        contract_test: 'test/contract/postmark-send-email.contract.test.ts',
       }),
     )
     const { stdout } = runChecker(tmpDir)
     expect(lineFor(stdout, 'SC-B1')).toMatch(/^PASS SC-B1/)
-    expect(lineFor(stdout, 'SC-B1')).toContain('stripe-api')
+    expect(lineFor(stdout, 'SC-B1')).toContain('postmark')
+  })
+
+  test('PASS (WAIVER via journal JSONL) — journal shard WAIVER event suppresses SC-B1', () => {
+    writeFixture(tmpDir, 'docker-compose.yml', `
+services:
+  email-service:
+    image: axllent/mailpit:latest
+`)
+    writeFixture(tmpDir, 'e2e/notify.e2e.test.ts', `
+describe('notify', () => { it('sends', () => {}) })
+`)
+    // Journal JSONL event: type:"WAIVER", fields under `data`
+    writeFixture(
+      tmpDir,
+      '.groundwork/journal/waivers.jsonl',
+      JSON.stringify({
+        ts: '2026-09-01T00:00:00.000Z',
+        session: 'test-session',
+        type: 'WAIVER',
+        data: {
+          dependency: 'email-service',
+          failing_criterion: 'no official container image exists',
+          scope: 'acceptance tests for email dispatch',
+          expiry_condition: 'when an official image ships',
+          contract_test: 'test/contract/email-send.contract.test.ts',
+        },
+      }) + '\n',
+    )
+    const { stdout } = runChecker(tmpDir)
+    expect(lineFor(stdout, 'SC-B1')).toMatch(/^PASS SC-B1/)
+    expect(lineFor(stdout, 'SC-B1')).toContain('email-service')
+  })
+
+  test('FAIL — malformed waiver (four fields, missing contract_test) does not suppress, is reported', () => {
+    writeFixture(tmpDir, 'docker-compose.yml', `
+services:
+  sms-service:
+    image: custom/sms:latest
+`)
+    writeFixture(tmpDir, 'e2e/sms.e2e.test.ts', `
+describe('sms', () => { it('sends', () => {}) })
+`)
+    writeFixture(
+      tmpDir,
+      '.groundwork/waivers/sms.json',
+      JSON.stringify({
+        dependency: 'sms-service',
+        failing_criterion: 'no container image',
+        scope: 'tests',
+        expiry_condition: 'when image ships',
+        // contract_test intentionally omitted — malformed
+      }),
+    )
+    const { stdout, status } = runChecker(tmpDir)
+    const line = lineFor(stdout, 'SC-B1')
+    expect(line).toMatch(/^FAIL SC-B1/)
+    expect(line).toContain('ignored malformed waiver for sms-service')
+    expect(status).toBe(1)
   })
 })
 
@@ -331,5 +389,59 @@ describe('auth', () => {
 `)
     const { stdout } = runChecker(tmpDir)
     expect(lineFor(stdout, 'SC-B2')).toMatch(/^PASS SC-B2/)
+  })
+
+  test('PASS — identity-provider waiver suppresses SC-B2 synthetic JWT', () => {
+    writeFixture(tmpDir, 'docker-compose.yml', `
+services:
+  authgear:
+    image: authgear/authgear-server:latest
+`)
+    writeFixture(tmpDir, 'e2e/auth.e2e.test.ts', `
+import jwt from 'jsonwebtoken'
+const token = jwt.sign({ sub: 'u1' }, 'test-secret')
+describe('auth', () => { it('works', () => {}) })
+`)
+    writeFixture(
+      tmpDir,
+      '.groundwork/waivers/authgear.json',
+      JSON.stringify({
+        dependency: 'authgear',
+        failing_criterion: 'authgear container requires complex bootstrap not yet automated',
+        scope: 'acceptance tests using synthetic token until Authgear bootstrap is scripted',
+        expiry_condition: 'Authgear docker-compose bootstrap is scripted end-to-end',
+        contract_test: 'test/contract/authgear-pkce.contract.test.ts',
+      }),
+    )
+    const { stdout } = runChecker(tmpDir)
+    expect(lineFor(stdout, 'SC-B2')).toMatch(/^PASS SC-B2/)
+    expect(lineFor(stdout, 'SC-B2')).toContain('authgear')
+  })
+
+  test('FAIL — non-identity waiver does not suppress SC-B2', () => {
+    writeFixture(tmpDir, 'docker-compose.yml', `
+services:
+  postmark:
+    image: axllent/mailpit:latest
+`)
+    writeFixture(tmpDir, 'e2e/auth.e2e.test.ts', `
+import jwt from 'jsonwebtoken'
+const token = jwt.sign({ sub: 'u1' }, 'test-secret')
+describe('auth', () => { it('works', () => {}) })
+`)
+    writeFixture(
+      tmpDir,
+      '.groundwork/waivers/postmark.json',
+      JSON.stringify({
+        dependency: 'postmark',
+        failing_criterion: 'no container image',
+        scope: 'email tests',
+        expiry_condition: 'when image ships',
+        contract_test: 'test/contract/postmark.ts',
+      }),
+    )
+    const { stdout, status } = runChecker(tmpDir)
+    expect(lineFor(stdout, 'SC-B2')).toMatch(/^FAIL SC-B2/)
+    expect(status).toBe(1)
   })
 })

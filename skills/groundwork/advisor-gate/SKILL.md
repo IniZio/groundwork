@@ -59,6 +59,8 @@ Advisor returns one of:
 
 **Do not skip the completion gate even if you are confident.**
 
+**Criterion: no-acceptance-layer** — see the `no-acceptance-layer` criterion in the advisor's Verification Protocol (Step 2). A missing acceptance layer without a matching WAIVER journal event (`bin/journal compile <slug> --json` or `.groundwork/waivers/*.json`, five fields required: `dependency`, `failing_criterion`, `scope`, `expiry_condition`, `contract_test`) is a CORRECTION, not a GAPS note. Trivial no-ledger tasks are exempt.
+
 ## Risk-Tiered Completion Flow
 
 | Tier | Condition | Flow |

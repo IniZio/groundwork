@@ -199,6 +199,8 @@ Fall back to Grep/Read only when the graph does not cover what you need (newly c
 For plans verify: every assumption stated, every step has clear acceptance criteria, no ambiguity between two implementers, dependencies and rollback paths explicit.
 For code verify: execution paths for off-by-one/null/race conditions, all error cases handled, no unbounded resource consumption, edge cases covered.
 
+**Criterion: no-acceptance-layer** — no test file loads the production entrypoint and exercises it against real hosted dependencies → wiring regressions and issuer-side failures stay green through the unit suite → run \`node scripts/check-probe-conformance.mjs <repo>\` and require PASS on SC-A4, SC-B1, and SC-B2; for repos the checker classifies UNKNOWN, cite an acceptance test file that imports the production entrypoint alongside the compose file it runs against. A missing layer without a matching waiver is a CORRECTION verdict, not a GAPS note. Waivers are read from WAIVER events in \`.groundwork/journal/*.jsonl\` (fallback \`.groundwork/waivers/*.json\`), matched by \`dependency\`; a waiver suppresses SC-B1 for that dependency and suppresses SC-B2 only when the dependency is the identity provider; SC-A4 has no waiver path. A waiver is valid only when all five fields are present: \`dependency\`, \`failing_criterion\`, \`scope\`, \`expiry_condition\`, \`contract_test\`. Trivial no-ledger tasks are exempt from this criterion.
+
 ### Step 3: Gap analysis + self-audit
 For each acceptance criterion: **VERIFIED** (fresh output confirms) / **PARTIAL** (gaps remain) / **MISSING** (claims only).
 
@@ -1140,6 +1142,7 @@ Before interviewing or investigating code, load the full context pack for this m
 2. **Motive charter** — load the existing charter at \`.groundwork/motives/<slug>/motive.md\` if one exists.
 3. **Research tickets** — load all tickets of type \`research\` under \`.groundwork/motives/<slug>/tickets/\`.
 4. **Spec requirements** — load all \`doc/specs/\` requirements referenced from the charter or task brief.
+5. **Engineering-judgment skill** — load \`groundwork:engineering-judgment\`; it defines the structure and test-strategy decisions recorded at the start of Phase 5, Step 2.
 
 **Pipeline handoff:** the planner is the delegated compute target that receives its brief from the interview front door. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
 
@@ -1247,10 +1250,19 @@ node hooks/journal.mjs motive new <slug> --title "<human-readable title>"
 Write the plan summary as a charter Note and record each significant architectural or scope choice as a \`DECISION\` event with \`status: proposed\`:
 
 \`\`\`bash
-node hooks/journal.mjs event add <slug> --type DECISION --title "<choice title>" --body "<rationale>" --status proposed
+bin/journal append --motive <slug> --type DECISION --msg "<choice title>" --data '{"id":"D-N","decision":"<outcome>","rationale":"<rationale>","alternatives":[]}'
 \`\`\`
 
 For open questions that remain unresolved, mark the corresponding DECISION event with \`status: proposed\` and include it in the NEEDS-INPUT payload if blocking.
+
+For any non-trivial feature, the first two DECISION events record the engineering-judgment pair (see \`groundwork:engineering-judgment\`):
+
+- **Structure decision** — toolchain enforcer chosen, alternatives considered, and why. Include \`data.kind: "structure"\` and \`data.alternatives\` (at least two entries).
+- **Test-strategy decision** — acceptance test layer, which dependencies are hosted for real, and which are stubbed under a WAIVER. Include \`data.kind: "test-strategy"\` and \`data.alternatives\` (at least two entries).
+
+Append both before registering any slice. For \`data\` field syntax: \`bin/journal help append\`. Worked examples: \`agents-src/planner/reference/decompose.md\`.
+
+For trivial tasks (no ledger), these two decisions are not required.
 
 ### Step 3 — Register ledger slices
 
@@ -1274,6 +1286,8 @@ node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>
 (Types: \`research\`, \`choose\`, \`model\`, \`build\`, \`grill\`, \`spec\`, \`fix\`, \`chore\`. Filename is auto-named \`NN-type-slug.md\`.) Then fill the Question and Context sections before handing off to implementation (ORCHESTRATION-R-003).
 
 ### Step 4 — Report PLAN-READY
+
+For non-trivial tasks, confirm \`bin/journal compile <slug> --json\` contains two accepted DECISION events: one with \`data.kind: "structure"\` and one with \`data.kind: "test-strategy"\`. If either is absent, record it before proceeding.
 
 \`\`\`
 PLAN-READY
@@ -1317,6 +1331,7 @@ Return this format on successful completion (see Phase 5, Step 4 above).
 - **PLAN-READY with uncovered criteria** — any uncovered criterion is a blocker; convert it to a NEEDS-INPUT question first
 - **Using \`LEARNING\` as a journal event type** — it is not a valid type; use \`DECISION\` or \`MILESTONE\` instead
 - **\`unverified-assumption\` premise on Wave-0** — a premise tagged \`unverified-assumption\` MUST NOT anchor a Wave-0 slice; move the slice to Wave 2+ and add a \`research\`/verify-first slice in Wave 1 first (D-82)
+- **Missing engineering-judgment pair** — for non-trivial tasks, the structure and test-strategy DECISION events (each with \`data.kind\` and \`data.alternatives\` length ≥ 2) are recorded before any slice is registered; absence blocks PLAN-READY
 
 ## Output prose rules
 

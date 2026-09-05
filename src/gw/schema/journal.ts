@@ -4,6 +4,8 @@ export const JournalEventType = z.enum([
   'DECISION',
   'TASK_COMPLETE',
   'AC_COVERAGE',
+  'AC_RETRACTION',
+  'GRAPH_MUTATE',
   'GATE',
   'FAILURE',
   'BASELINE',

@@ -16,7 +16,7 @@
  * Wave 2 obligation: implement fixes, confirm GREEN.
  */
 
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -337,17 +337,14 @@ describe('cross-surface exit-code parity — malformed payloads', () => {
       malformed: {},
       wellFormed: { ac: 'AC1', slice: 'S1' },
     },
-  ] as const
-
-  // Types supported by legacy surface only — gw rejects them (type not in gw VALID_TYPES)
-  // Parity: both exit non-zero for malformed; only legacy exits 0 for well-formed.
-  const LEGACY_ONLY_CASES = [
     {
+      // AC_RETRACTION moved from LEGACY_ONLY — gw now supports this type
       type: 'AC_RETRACTION',
       malformed: { ac: 'AC1' },           // missing slice — validator rejects
       wellFormed: { ac: 'AC1', slice: 'S1', reason: 'obsolete' },
     },
     {
+      // GRAPH_MUTATE moved from LEGACY_ONLY — gw now supports this type
       type: 'GRAPH_MUTATE',
       malformed: { op: 'invalid-op' },    // invalid op — validator rejects
       wellFormed: { op: 'node.assert', node: 'foo', label: 'Foo' },
@@ -392,39 +389,139 @@ describe('cross-surface exit-code parity — malformed payloads', () => {
       })
     })
   }
+})
 
-  for (const { type, malformed, wellFormed } of LEGACY_ONLY_CASES) {
-    describe(`${type} (legacy-only — gw VALID_TYPES excludes this event type)`, () => {
-      test('malformed payload — both surfaces exit non-zero and agree', () => {
-        // gw exits non-zero for unknown type; legacy exits non-zero for validator failure.
-        // Both exit non-zero → codes agree (both 2).
-        const sessionId = `test-parity-${type}`
-        const sharedEnv = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: sessionId }
-        const legacyResult = spawnSync(
-          LEGACY_JOURNAL_BIN,
-          ['append', '--motive', MOTIVE, '--type', type, '--msg', 'test', '--data', JSON.stringify(malformed)],
-          { cwd: REPO_ROOT, encoding: 'utf8', env: { ...sharedEnv, JOURNAL_SESSION_ID: sessionId }, timeout: 20_000 },
-        )
-        const gwResult = spawnSync(
-          'bun',
-          [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', MOTIVE, '--type', type, '--msg', 'test', '--data', JSON.stringify(malformed)],
-          { cwd: REPO_ROOT, encoding: 'utf8', env: sharedEnv, timeout: 30_000 },
-        )
-        expect(legacyResult.status, `legacy ${type} malformed should be non-zero`).not.toBe(0)
-        expect(gwResult.status, `gw ${type} malformed should be non-zero`).not.toBe(0)
-        expect(legacyResult.status, `${type} exit codes must agree`).toBe(gwResult.status)
-      })
+// ---------------------------------------------------------------------------
+// e2e — gw-written AC_RETRACTION is folded by motive-compile
+//
+// bin/journal compile reads JSONL shards; gw writes per-motive md files.
+// The two surfaces use different storage paths so the legacy compile cannot
+// directly read gw-written events.  This test proves fold correctness by:
+//   1. Writing events via gw (proves exit 0 — the type is accepted)
+//   2. Parsing the gw-written md files back into JournalEvent objects
+//   3. Calling compile() from motive-compile.mjs directly with those objects
+//   4. Asserting that the AC_RETRACTION removes S-e2e from ac_coverage
+// This matches the actual data path: gw writes md files; the obsidian-native
+// compile surface (gw journal compile, once it calls motive-compile.mjs) will
+// read the same md files and fold them the same way.
+// ---------------------------------------------------------------------------
 
-      test('well-formed payload — legacy exits 0 (positive control)', () => {
-        // gw does not support this type; only legacy surface is tested here.
-        const sessionId = `test-parity-${type}-ok`
-        const legacyResult = spawnSync(
-          LEGACY_JOURNAL_BIN,
-          ['append', '--motive', MOTIVE, '--type', type, '--msg', 'test', '--data', JSON.stringify(wellFormed)],
-          { cwd: REPO_ROOT, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, JOURNAL_SESSION_ID: sessionId, CLAUDE_CODE_SESSION_ID: sessionId }, timeout: 20_000 },
-        )
-        expect(legacyResult.status, `legacy ${type} well-formed should exit 0`).toBe(0)
-      })
+describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
+  let projectDir: string
+  let scriptDir: string
+  const E2E_MOTIVE = 'e2e-retract-test'
+
+  beforeAll(() => {
+    projectDir = makeProject()
+    scriptDir = mkdtempSync(path.join(tmpdir(), 'gw-e2e-fold-'))
+  })
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true })
+    rmSync(scriptDir, { recursive: true, force: true })
+  })
+
+  // compile() returns { compiler_version, agent, human, provenance, divergence }.
+  // ac_coverage lives at view.agent.ac_coverage and has shape
+  //   { met: Entry[], unmet: Entry[] }
+  // where Entry = { id: string, covering: string[], missing: string[], met: bool, ... }.
+  // The covering array holds bare slice ids (session prefix stripped via toBare).
+
+  test('positive control — AC_COVERAGE alone folds S-e2e into AC-e2e covering', () => {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'e2e-retract' }
+
+    // Write coverage event only — no retraction yet.
+    const coverageResult = spawnSync(
+      'bun',
+      [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', E2E_MOTIVE,
+        '--type', 'AC_COVERAGE', '--msg', 'initial coverage', '--data', '{"ac":"AC-e2e","slice":"S-e2e"}'],
+      { cwd: REPO_ROOT, encoding: 'utf8', env, timeout: 30_000 },
+    )
+    expect(coverageResult.status, 'gw AC_COVERAGE should exit 0').toBe(0)
+
+    // Fold through motive-compile.mjs and assert S-e2e IS present.
+    // This proves the assertion can fail (guard is not vacuous).
+    const jDir = path.join(projectDir, '.groundwork', 'motives', E2E_MOTIVE, 'journal')
+    const scriptPath = path.join(scriptDir, 'verify-coverage.mjs')
+    writeFileSync(scriptPath, [
+      `import { readdirSync, readFileSync } from 'node:fs'`,
+      `import path from 'node:path'`,
+      `import matter from 'gray-matter'`,
+      `import { compile } from '${REPO_ROOT}/hooks/lib/motive-compile.mjs'`,
+      `const jDir = ${JSON.stringify(jDir)}`,
+      `const files = readdirSync(jDir).filter(f => f.endsWith('.md'))`,
+      `const events = files.map(f => {`,
+      `  const { data, content } = matter(readFileSync(path.join(jDir, f), 'utf8'))`,
+      `  return { type: data.type, ts: data.ts, session: data.session || '', motive: ${JSON.stringify(E2E_MOTIVE)}, data: data.data ?? {}, msg: content.trim() }`,
+      `})`,
+      `const view = compile(events, {})`,
+      `const acCov = view.agent.ac_coverage`,
+      `const allEntries = [...(acCov?.met ?? []), ...(acCov?.unmet ?? [])]`,
+      `const entry = allEntries.find(e => e.id === 'AC-e2e')`,
+      `process.stdout.write('ac_coverage:' + JSON.stringify(acCov) + '\\n')`,
+      `if (!entry) { process.stderr.write('FAIL: AC-e2e not found in ac_coverage\\n'); process.exit(1) }`,
+      `if (!entry.covering.includes('S-e2e')) { process.stderr.write('FAIL: S-e2e not in covering; covering=' + JSON.stringify(entry.covering) + '\\n'); process.exit(1) }`,
+    ].join('\n'))
+
+    const verifyResult = spawnSync('bun', [scriptPath], {
+      cwd: REPO_ROOT, encoding: 'utf8', env: process.env, timeout: 30_000,
     })
-  }
+    expect(
+      verifyResult.status,
+      `positive control: S-e2e must appear in AC-e2e covering when no retraction present; stdout=${verifyResult.stdout} stderr=${verifyResult.stderr}`,
+    ).toBe(0)
+  })
+
+  test('AC_RETRACTION via gw — motive-compile fold removes the retracted pair', () => {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'e2e-retract' }
+
+    // Write AC_COVERAGE first so this test is self-sufficient regardless of
+    // execution order. The positive-control test may or may not have run before
+    // this one (shuffle, .only, isolation run); we must not rely on its side-effects.
+    const coverageResult = spawnSync(
+      'bun',
+      [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', E2E_MOTIVE,
+        '--type', 'AC_COVERAGE', '--msg', 'initial coverage', '--data', '{"ac":"AC-e2e","slice":"S-e2e"}'],
+      { cwd: REPO_ROOT, encoding: 'utf8', env, timeout: 30_000 },
+    )
+    expect(coverageResult.status, 'gw AC_COVERAGE (retraction-test setup) should exit 0').toBe(0)
+
+    // Retract via gw.
+    const retractionResult = spawnSync(
+      'bun',
+      [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', E2E_MOTIVE,
+        '--type', 'AC_RETRACTION', '--msg', 'retract coverage', '--data', '{"ac":"AC-e2e","slice":"S-e2e","reason":"mistaken"}'],
+      { cwd: REPO_ROOT, encoding: 'utf8', env, timeout: 30_000 },
+    )
+    expect(retractionResult.status, 'gw AC_RETRACTION should exit 0').toBe(0)
+
+    // Fold all events (coverage + retraction) and assert S-e2e IS absent.
+    const jDir = path.join(projectDir, '.groundwork', 'motives', E2E_MOTIVE, 'journal')
+    const scriptPath = path.join(scriptDir, 'verify-fold.mjs')
+    writeFileSync(scriptPath, [
+      `import { readdirSync, readFileSync } from 'node:fs'`,
+      `import path from 'node:path'`,
+      `import matter from 'gray-matter'`,
+      `import { compile } from '${REPO_ROOT}/hooks/lib/motive-compile.mjs'`,
+      `const jDir = ${JSON.stringify(jDir)}`,
+      `const files = readdirSync(jDir).filter(f => f.endsWith('.md'))`,
+      `const events = files.map(f => {`,
+      `  const { data, content } = matter(readFileSync(path.join(jDir, f), 'utf8'))`,
+      `  return { type: data.type, ts: data.ts, session: data.session || '', motive: ${JSON.stringify(E2E_MOTIVE)}, data: data.data ?? {}, msg: content.trim() }`,
+      `})`,
+      `const view = compile(events, {})`,
+      `const acCov = view.agent.ac_coverage`,
+      `const allEntries = [...(acCov?.met ?? []), ...(acCov?.unmet ?? [])]`,
+      `const entry = allEntries.find(e => e.id === 'AC-e2e')`,
+      `process.stdout.write('ac_coverage:' + JSON.stringify(acCov) + '\\n')`,
+      `if (entry && entry.covering.includes('S-e2e')) { process.stderr.write('FAIL: S-e2e still present in AC-e2e covering after retraction\\n'); process.exit(1) }`,
+    ].join('\n'))
+
+    const verifyResult = spawnSync('bun', [scriptPath], {
+      cwd: REPO_ROOT, encoding: 'utf8', env: process.env, timeout: 30_000,
+    })
+    expect(
+      verifyResult.status,
+      `fold: S-e2e should be absent from AC-e2e after retraction; stdout=${verifyResult.stdout} stderr=${verifyResult.stderr}`,
+    ).toBe(0)
+  })
 })

@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path'
 
 const SAFE_SESSION = /^[a-zA-Z0-9_-]{1,128}$/
 
-function resolveShardPath(projectDir: string, sessionId: string): string {
+export function resolveShardPath(projectDir: string, sessionId: string): string {
   const safeId = SAFE_SESSION.test(sessionId) ? sessionId : 'default'
   const d = new Date().toISOString().slice(0, 10)
   return join(projectDir, '.groundwork', 'journal', `${d}-${safeId}.jsonl`)
@@ -52,6 +52,12 @@ export function emitAcCoverageEvent(opts: {
   sliceId: string
   coversAc: string[]
 }): void {
+  if (!opts.sessionId) {
+    process.stderr.write(
+      'journal-emit: AC_COVERAGE skipped — sessionId is empty; AC coverage declaration is lost\n',
+    )
+    return
+  }
   try {
     const { projectDir, sessionId, motive, sliceId, coversAc } = opts
     const event: Record<string, unknown> = {

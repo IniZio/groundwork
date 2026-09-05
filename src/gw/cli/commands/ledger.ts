@@ -381,7 +381,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             : {}),
         }
         atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
-        if (coversAc && coversAc.length > 0 && sessionId) {
+        if (coversAc && coversAc.length > 0) {
           emitAcCoverageEvent({
             projectDir: repoRoot,
             sessionId,
@@ -439,7 +439,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const newSlices = slices.map(s => (s.id === id ? updated : s))
         atomicWrite(runPath, { ...ledger, slices: newSlices })
-        if (flags['covers-ac'] && flags['covers-ac'] !== true && sessionId) {
+        if (flags['covers-ac'] && flags['covers-ac'] !== true) {
           const setCoversAc = (flags['covers-ac'] as string).split(',').map(s => s.trim())
           if (setCoversAc.length > 0) {
             emitAcCoverageEvent({

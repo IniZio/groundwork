@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: f21a082ded89832cb357a8bf94be78f270a9118d873c5a812e3870010766a576
+// @bundle-source-hash: d0f70431ad7598cd2a9a6c96ec78aa5130f3a1e229c91f02d1887e448b782718
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -107,6 +107,11 @@ function appendLine(shardPath, line) {
   }
 }
 function emitAcCoverageEvent(opts) {
+  if (!opts.sessionId) {
+    process.stderr.write(`journal-emit: AC_COVERAGE skipped \u2014 sessionId is empty; AC coverage declaration is lost
+`);
+    return;
+  }
   try {
     const { projectDir, sessionId, motive, sliceId, coversAc } = opts;
     const event = {
@@ -341,7 +346,7 @@ ${done}/${all.length} slices complete
           ...flags["created-by"] && flags["created-by"] !== true ? { created_by: flags["created-by"] } : {}
         };
         atomicWrite(runPath, { ...ledger, slices: [...slices, slice] });
-        if (coversAc && coversAc.length > 0 && sessionId) {
+        if (coversAc && coversAc.length > 0) {
           emitAcCoverageEvent({
             projectDir: repoRoot,
             sessionId,
@@ -387,7 +392,7 @@ ${done}/${all.length} slices complete
         };
         const newSlices = slices.map((s) => s.id === id ? updated : s);
         atomicWrite(runPath, { ...ledger, slices: newSlices });
-        if (flags["covers-ac"] && flags["covers-ac"] !== true && sessionId) {
+        if (flags["covers-ac"] && flags["covers-ac"] !== true) {
           const setCoversAc = flags["covers-ac"].split(",").map((s) => s.trim());
           if (setCoversAc.length > 0) {
             emitAcCoverageEvent({
@@ -23601,6 +23606,32 @@ var init_decision2 = __esm(() => {
   import_gray_matter = __toESM(require_gray_matter(), 1);
 });
 
+// hooks/lib/journal-payload-validators.mjs
+var APPEND_PAYLOAD_VALIDATORS;
+var init_journal_payload_validators = __esm(() => {
+  APPEND_PAYLOAD_VALIDATORS = new Map([
+    ["DECISION", (d) => {
+      if (!d.id)
+        return "DECISION event requires data.id";
+      if (!d.decision)
+        return "DECISION event requires data.decision";
+      if (!d.rationale)
+        return "DECISION event requires data.rationale";
+      return null;
+    }],
+    ["AC_RETRACTION", (d) => d.ac == null || d.slice == null ? "AC_RETRACTION event requires data.ac and data.slice (payload contract: " + "{ ac, slice, reason }). Coverage is retracted one (ac, slice) pair at a " + "time; a payload without both fields is silently ignored by the coverage " + "fold. Prefer: journal ac-retract --motive <slug> --ac <ac-id> " + "--slice <slice-id> --reason <text>" : null],
+    ["GRAPH_MUTATE", (d) => {
+      const VALID_OPS = new Set(["node.assert", "node.retire", "edge.assert", "edge.retire", "attr.set"]);
+      return !d.op || !VALID_OPS.has(d.op) ? `GRAPH_MUTATE event requires data.op; must be one of: ${[...VALID_OPS].join(", ")}` : null;
+    }],
+    ["AC_COVERAGE", (d) => {
+      const hasSingleAc = d.ac != null;
+      const hasArrayCovers = Array.isArray(d.covers) && d.slice != null;
+      return !hasSingleAc && !hasArrayCovers ? "AC_COVERAGE event payload must match one of: " + "{ ac, slice } (single-AC form), " + "{ slice, covers: [...] } (array-covers form), or " + "{ ac, covering: [] } (declaration form \u2014 slice absent)" : null;
+    }]
+  ]);
+});
+
 // src/gw/cli/commands/journal.ts
 var exports_journal = {};
 __export(exports_journal, {
@@ -23765,25 +23796,30 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
         return errEnvelope("journal append", "INVALID_DATA", "--data must be valid JSON", 2);
       }
     }
-    if (type === "DECISION") {
-      if (!data?.["id"] || !data?.["decision"] || !data?.["rationale"]) {
-        return errEnvelope("journal append", "MISSING_DECISION_FIELDS", "DECISION events require data.id, data.decision, and data.rationale", 2);
+    const payloadValidator = APPEND_PAYLOAD_VALIDATORS.get(type);
+    if (payloadValidator) {
+      const validationError = payloadValidator(data ?? {});
+      if (validationError) {
+        return errEnvelope("journal append", "INVALID_PAYLOAD", validationError, 2);
       }
+    }
+    if (type === "DECISION") {
+      const d = data;
       await writeDecision({
         repoRoot,
         tracker,
         motive: motive3,
         data: {
-          id: data["id"],
-          decision: data["decision"],
-          rationale: data["rationale"],
-          alternatives: Array.isArray(data["alternatives"]) ? data["alternatives"] : [],
+          id: d["id"],
+          decision: d["decision"],
+          rationale: d["rationale"],
+          alternatives: Array.isArray(d["alternatives"]) ? d["alternatives"] : [],
           status: "accepted",
           date: new Date().toISOString().slice(0, 10),
           motive: motive3
         }
       });
-      return okEnvelope("journal append", { content: `journal: wrote DECISION ${data["id"]} to decisions/${data["id"]}.md
+      return okEnvelope("journal append", { content: `journal: wrote DECISION ${d["id"]} to decisions/${d["id"]}.md
 ` });
     }
     const ts = new Date().toISOString();
@@ -23890,6 +23926,7 @@ var init_journal2 = __esm(() => {
   init_journal();
   init_decision2();
   init_layout();
+  init_journal_payload_validators();
   import_gray_matter2 = __toESM(require_gray_matter(), 1);
   JOURNAL_SUBCOMMANDS = ["append", "show", "compile"];
   VALID_TYPES = new Set(JournalEventType.options);

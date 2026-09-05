@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: fe58b274418304404d100a74204466e58e940f8261da679ee97c538ab8305fcf
+// @bundle-source-hash: f21a082ded89832cb357a8bf94be78f270a9118d873c5a812e3870010766a576
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -87,13 +87,55 @@ var init_resolve_ledger_path = __esm(() => {
   LEDGER_SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 });
 
+// src/gw/lib/journal-emit.ts
+import { closeSync, mkdirSync, openSync, writeSync } from "fs";
+import { dirname, join } from "path";
+function resolveShardPath(projectDir, sessionId) {
+  const safeId = SAFE_SESSION.test(sessionId) ? sessionId : "default";
+  const d = new Date().toISOString().slice(0, 10);
+  return join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
+}
+function appendLine(shardPath, line) {
+  mkdirSync(dirname(shardPath), { recursive: true });
+  const buf = Buffer.from(line + `
+`, "utf8");
+  const fd = openSync(shardPath, "a");
+  try {
+    writeSync(fd, buf);
+  } finally {
+    closeSync(fd);
+  }
+}
+function emitAcCoverageEvent(opts) {
+  try {
+    const { projectDir, sessionId, motive, sliceId, coversAc } = opts;
+    const event = {
+      ts: new Date().toISOString(),
+      session: sessionId,
+      motive,
+      type: "AC_COVERAGE",
+      msg: `${sliceId} covers ${coversAc.join(", ")}`,
+      source: "cli:ledger",
+      data: { slice: sliceId, covers: coversAc }
+    };
+    appendLine(resolveShardPath(projectDir, sessionId), JSON.stringify(event));
+  } catch (err) {
+    process.stderr.write(`journal-emit: AC_COVERAGE write failed: ${err?.message ?? String(err)}
+`);
+  }
+}
+var SAFE_SESSION;
+var init_journal_emit = __esm(() => {
+  SAFE_SESSION = /^[a-zA-Z0-9_-]{1,128}$/;
+});
+
 // src/gw/cli/commands/ledger.ts
 var exports_ledger = {};
 __export(exports_ledger, {
   run: () => run,
   LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
 });
-import { readFileSync as readFileSync2, writeFileSync, mkdirSync, renameSync } from "fs";
+import { readFileSync as readFileSync2, writeFileSync, mkdirSync as mkdirSync2, renameSync } from "fs";
 import { randomBytes } from "crypto";
 import path2 from "path";
 function isLedgerSubcmd(s) {
@@ -108,7 +150,7 @@ function readLedger(runPath) {
 }
 function atomicWrite(runPath, data) {
   const dir = path2.dirname(runPath);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync2(dir, { recursive: true });
   const tmp = `${runPath}.tmp.${randomBytes(4).toString("hex")}`;
   writeFileSync(tmp, JSON.stringify(data, null, 2) + `
 `, "utf8");
@@ -299,6 +341,15 @@ ${done}/${all.length} slices complete
           ...flags["created-by"] && flags["created-by"] !== true ? { created_by: flags["created-by"] } : {}
         };
         atomicWrite(runPath, { ...ledger, slices: [...slices, slice] });
+        if (coversAc && coversAc.length > 0 && sessionId) {
+          emitAcCoverageEvent({
+            projectDir: repoRoot,
+            sessionId,
+            motive,
+            sliceId: id,
+            coversAc
+          });
+        }
         return okEnvelope("ledger add", { content: `${id} added
 ` });
       }
@@ -336,6 +387,18 @@ ${done}/${all.length} slices complete
         };
         const newSlices = slices.map((s) => s.id === id ? updated : s);
         atomicWrite(runPath, { ...ledger, slices: newSlices });
+        if (flags["covers-ac"] && flags["covers-ac"] !== true && sessionId) {
+          const setCoversAc = flags["covers-ac"].split(",").map((s) => s.trim());
+          if (setCoversAc.length > 0) {
+            emitAcCoverageEvent({
+              projectDir: repoRoot,
+              sessionId,
+              motive,
+              sliceId: id,
+              coversAc: setCoversAc
+            });
+          }
+        }
         const changed = Object.entries(flags).filter(([k]) => [
           "status",
           "wave",
@@ -748,6 +811,7 @@ ${done}/${all.length} slices complete
 var LEDGER_SUBCOMMANDS;
 var init_ledger = __esm(() => {
   init_resolve_ledger_path();
+  init_journal_emit();
   LEDGER_SUBCOMMANDS = [
     "status",
     "add",
@@ -23471,7 +23535,7 @@ var init_fm = __esm(() => {
 
 // src/gw/store/motive/decision.ts
 import { readFile, writeFile } from "fs/promises";
-import { mkdirSync as mkdirSync2 } from "fs";
+import { mkdirSync as mkdirSync3 } from "fs";
 import path4 from "path";
 async function writeDecision(opts) {
   const { repoRoot, tracker, motive: motive2, data } = opts;
@@ -23512,7 +23576,7 @@ async function writeDecision(opts) {
   ].join(`
 `);
   const dest = motiveDecisionPath(repoRoot, tracker, motive2, normalizedId);
-  mkdirSync2(path4.dirname(dest), { recursive: true });
+  mkdirSync3(path4.dirname(dest), { recursive: true });
   await writeFile(dest, import_gray_matter.default.stringify(body, fm), "utf8");
 }
 function fromLegacyDecision(event) {
@@ -23543,8 +23607,8 @@ __export(exports_journal, {
   run: () => run2,
   JOURNAL_SUBCOMMANDS: () => JOURNAL_SUBCOMMANDS
 });
-import { existsSync as existsSync2, mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
-import { join } from "path";
+import { existsSync as existsSync2, mkdirSync as mkdirSync4, readdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
+import { join as join2 } from "path";
 function isJournalSubcmd(s) {
   return JOURNAL_SUBCOMMANDS.includes(s);
 }
@@ -23570,7 +23634,7 @@ function sanitizeTs(ts) {
   return ts.replace(/:/g, "-").replace(/\./g, "-");
 }
 function readMotiveJournalEvents(repoRoot, tracker, motive2) {
-  const journalDir = join(repoRoot, tracker, "motives", motive2, "journal");
+  const journalDir = join2(repoRoot, tracker, "motives", motive2, "journal");
   if (!existsSync2(journalDir))
     return [];
   const events = [];
@@ -23582,7 +23646,7 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync4(join(journalDir, file2), "utf8");
+      const raw = readFileSync4(join2(journalDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["ts"],
@@ -23598,7 +23662,7 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
-  const decisionsDir = join(repoRoot, tracker, "motives", motive2, "decisions");
+  const decisionsDir = join2(repoRoot, tracker, "motives", motive2, "decisions");
   if (!existsSync2(decisionsDir))
     return [];
   const events = [];
@@ -23610,7 +23674,7 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync4(join(decisionsDir, file2), "utf8");
+      const raw = readFileSync4(join2(decisionsDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["date"] ?? "",
@@ -23626,7 +23690,7 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readAllEvents(repoRoot, tracker, motiveFilter) {
-  const motivesRoot = join(repoRoot, tracker, "motives");
+  const motivesRoot = join2(repoRoot, tracker, "motives");
   let motives;
   if (motiveFilter) {
     motives = [motiveFilter];
@@ -23725,9 +23789,9 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     const ts = new Date().toISOString();
     const sanitizedTs = sanitizeTs(ts);
     const noteFilename = `${sanitizedTs}-${type}.md`;
-    const journalDir = join(repoRoot, tracker, "motives", motive3, "journal");
-    mkdirSync3(journalDir, { recursive: true });
-    const notePath = join(journalDir, noteFilename);
+    const journalDir = join2(repoRoot, tracker, "motives", motive3, "journal");
+    mkdirSync4(journalDir, { recursive: true });
+    const notePath = join2(journalDir, noteFilename);
     const fm = {
       ts,
       session: sessionId,
@@ -23761,13 +23825,13 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     if (events2.length > lastN)
       events2 = events2.slice(events2.length - lastN);
     if (events2.length === 0) {
-      const legacyJournalDir = join(repoRoot, ".groundwork", "journal");
+      const legacyJournalDir = join2(repoRoot, ".groundwork", "journal");
       let legacyShards = [];
       try {
         legacyShards = readdirSync(legacyJournalDir).filter((f) => f.endsWith(".jsonl"));
       } catch {}
       if (legacyShards.length > 0) {
-        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
+        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join2(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
       }
       return okEnvelope("journal show", { content: `no events found
 ` });
@@ -24111,12 +24175,12 @@ var init_link = __esm(() => {
 // src/gw/store/seal/index.ts
 import { createHmac, timingSafeEqual, randomBytes as randomBytes2 } from "crypto";
 import { readFileSync as readFileSync9, writeFileSync as writeFileSync5, existsSync as existsSync3, chmodSync } from "fs";
-import { join as join2 } from "path";
+import { join as join3 } from "path";
 function sealPath(notePath) {
   return `${notePath}.seal`;
 }
 function keyPath(motiveDir2) {
-  return join2(motiveDir2, ".seal.key");
+  return join3(motiveDir2, ".seal.key");
 }
 function readKey(motiveDir2) {
   const kp = keyPath(motiveDir2);
@@ -24189,8 +24253,8 @@ var init_seal = __esm(() => {
 });
 
 // src/gw/store/slice/index.ts
-import { readFileSync as readFileSync10, writeFileSync as writeFileSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync2 } from "fs";
-import { join as join3, dirname } from "path";
+import { readFileSync as readFileSync10, writeFileSync as writeFileSync6, mkdirSync as mkdirSync5, readdirSync as readdirSync2 } from "fs";
+import { join as join4, dirname as dirname2 } from "path";
 function decodeBlockedBy(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
@@ -24221,7 +24285,7 @@ function readSlice(notePath) {
     data["decisions"] = decodeDecisions([data["decisions"]]);
   }
   const parsed = SliceSchema.parse(data);
-  const mDir = dirname(notePath);
+  const mDir = dirname2(notePath);
   const sealed = verifyNote(notePath, mDir, "slice");
   return { ...parsed, sealed };
 }
@@ -24242,7 +24306,7 @@ function listSlices(repoRoot, tracker, motive2) {
     if (entry.startsWith("gate-"))
       continue;
     try {
-      slices.push(readSlice(join3(dir, entry)));
+      slices.push(readSlice(join4(dir, entry)));
     } catch {}
   }
   return slices;
@@ -24259,7 +24323,7 @@ var init_slice2 = __esm(() => {
 });
 
 // src/gw/store/gate/index.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync5, readFileSync as readFileSync11, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, readFileSync as readFileSync11, writeFileSync as writeFileSync7 } from "fs";
 import path10 from "path";
 function readGate(repoRoot, tracker, motive2, sessionId) {
   const notePath = gateNotePath(repoRoot, tracker, motive2, sessionId);
@@ -24284,10 +24348,10 @@ import {
   existsSync as existsSync5,
   readFileSync as readFileSync12,
   readdirSync as readdirSync3,
-  closeSync,
-  mkdirSync as mkdirSync6,
-  openSync,
-  writeSync,
+  closeSync as closeSync2,
+  mkdirSync as mkdirSync7,
+  openSync as openSync2,
+  writeSync as writeSync2,
   fsyncSync,
   renameSync as renameSync2,
   unlinkSync,
@@ -24403,22 +24467,22 @@ function sleepSync(ms) {
 }
 function atomicWriteFileSync(filePath, data) {
   const dir = path11.dirname(filePath);
-  mkdirSync6(dir, { recursive: true });
+  mkdirSync7(dir, { recursive: true });
   const tmp = path11.join(dir, `.${path11.basename(filePath)}.tmp.${randomUUID()}`);
-  const fd = openSync(tmp, "w");
+  const fd = openSync2(tmp, "w");
   try {
     writeFileSync8(fd, data);
     fsyncSync(fd);
   } finally {
-    closeSync(fd);
+    closeSync2(fd);
   }
   renameSync2(tmp, filePath);
   try {
-    const dfd = openSync(dir, "r");
+    const dfd = openSync2(dir, "r");
     try {
       fsyncSync(dfd);
     } finally {
-      closeSync(dfd);
+      closeSync2(dfd);
     }
   } catch {}
 }
@@ -24428,11 +24492,11 @@ function atomicWriteJsonSync(filePath, obj) {
 }
 function withLock(targetPath, fn, { retries = 100, delayMs = 20, staleMs = 5000 } = {}) {
   const lockPath = `${targetPath}.lock`;
-  mkdirSync6(path11.dirname(targetPath), { recursive: true });
+  mkdirSync7(path11.dirname(targetPath), { recursive: true });
   let fd = null;
   for (let i = 0;fd === null; i++) {
     try {
-      fd = openSync(lockPath, "wx");
+      fd = openSync2(lockPath, "wx");
     } catch (e) {
       if (e?.code !== "EEXIST")
         throw e;
@@ -24451,7 +24515,7 @@ function withLock(targetPath, fn, { retries = 100, delayMs = 20, staleMs = 5000 
     return fn();
   } finally {
     try {
-      closeSync(fd);
+      closeSync2(fd);
     } catch {}
     try {
       unlinkSync(lockPath);
@@ -24550,7 +24614,7 @@ function emitHookEvent(opts) {
   try {
     const { projectDir, sessionId, type, msg, source, data, ledger } = opts;
     const journalDir = path11.join(projectDir, ".groundwork", "journal");
-    mkdirSync6(journalDir, { recursive: true });
+    mkdirSync7(journalDir, { recursive: true });
     const date5 = new Date().toISOString().slice(0, 10);
     const shardPath = path11.join(journalDir, `${date5}-${sessionId || "unknown"}.jsonl`);
     let motive2;
@@ -24611,11 +24675,11 @@ function emitHookEvent(opts) {
     }
     const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
-    const fd = openSync(shardPath, "a");
+    const fd = openSync2(shardPath, "a");
     try {
-      writeSync(fd, buf);
+      writeSync2(fd, buf);
     } finally {
-      closeSync(fd);
+      closeSync2(fd);
     }
   } catch (e) {
     try {
@@ -25191,7 +25255,7 @@ var init_stop_gate = __esm(() => {
 // src/gw/hook/session-reminder.ts
 import { existsSync as existsSync6 } from "fs";
 import { spawnSync as spawnSync2 } from "child_process";
-import { resolve, dirname as dirname2 } from "path";
+import { resolve, dirname as dirname3 } from "path";
 import { fileURLToPath } from "url";
 var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run10 = async (input2, _env) => {
   const useBundle = existsSync6(BUNDLE);
@@ -25210,7 +25274,7 @@ var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run10 = async (input2, _env) => {
   };
 };
 var init_session_reminder = __esm(() => {
-  __dir = dirname2(fileURLToPath(import.meta.url));
+  __dir = dirname3(fileURLToPath(import.meta.url));
   _repoRoot = process.env.GW_REPO_ROOT ?? resolve(__dir, "../../../");
   LEGACY_MJS = resolve(_repoRoot, "hooks/session-reminder.mjs");
   BUNDLE = resolve(_repoRoot, "dist/hooks-session-reminder.mjs");
@@ -25816,7 +25880,7 @@ var init_piped_exit_code_guard = __esm(() => {
 
 // src/gw/hook/struggle-detector.ts
 import path17 from "path";
-import { readFileSync as readFileSync14, writeFileSync as writeFileSync9, mkdirSync as mkdirSync7, appendFileSync as appendFileSync2, openSync as openSync2, writeSync as writeSync2, closeSync as closeSync2, readdirSync as readdirSync4 } from "fs";
+import { readFileSync as readFileSync14, writeFileSync as writeFileSync9, mkdirSync as mkdirSync8, appendFileSync as appendFileSync2, openSync as openSync3, writeSync as writeSync3, closeSync as closeSync3, readdirSync as readdirSync4 } from "fs";
 import { createHash } from "crypto";
 function toSlug(str2) {
   return String(str2).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -25858,24 +25922,24 @@ function commandFingerprint(cmd) {
 function appendSignal(projectDir, signalObj) {
   const filePath = path17.join(projectDir, ".groundwork", "struggle-signals.jsonl");
   const dir = path17.dirname(filePath);
-  mkdirSync7(dir, { recursive: true });
+  mkdirSync8(dir, { recursive: true });
   appendFileSync2(filePath, `${JSON.stringify(signalObj)}
 `, "utf8");
 }
-function resolveShardPath(projectDir, sessionId, date5) {
-  const safeId = SAFE_SESSION.test(sessionId ?? "") ? sessionId : "default";
+function resolveShardPath2(projectDir, sessionId, date5) {
+  const safeId = SAFE_SESSION2.test(sessionId ?? "") ? sessionId : "default";
   const d = date5 ?? new Date().toISOString().slice(0, 10);
   return path17.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
 }
 function appendEvent(shardPath, event) {
-  mkdirSync7(path17.dirname(shardPath), { recursive: true });
+  mkdirSync8(path17.dirname(shardPath), { recursive: true });
   const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
-  const fd = openSync2(shardPath, "a");
+  const fd = openSync3(shardPath, "a");
   try {
-    writeSync2(fd, buf);
+    writeSync3(fd, buf);
   } finally {
-    closeSync2(fd);
+    closeSync3(fd);
   }
 }
 function resolveMotive(opts) {
@@ -25936,7 +26000,7 @@ function emitHookEvent2(opts) {
     };
     if (opts.data !== undefined)
       event.data = opts.data;
-    const shardPath = resolveShardPath(opts.projectDir, opts.sessionId ?? "unknown", opts.date);
+    const shardPath = resolveShardPath2(opts.projectDir, opts.sessionId ?? "unknown", opts.date);
     appendEvent(shardPath, event);
   } catch {}
 }
@@ -25954,7 +26018,7 @@ function readTally(tallyFile) {
 }
 function writeTally(tallyFile, tally) {
   try {
-    mkdirSync7(path17.dirname(tallyFile), { recursive: true });
+    mkdirSync8(path17.dirname(tallyFile), { recursive: true });
     writeFileSync9(tallyFile, JSON.stringify(tally), "utf8");
   } catch {}
 }
@@ -26089,7 +26153,7 @@ async function processPayload(input2, opts) {
   writeTally(tFile, tally);
   return fired;
 }
-var SAFE_SESSION, VALID_TYPES2, run17 = async (input2, _env) => {
+var SAFE_SESSION2, VALID_TYPES2, run17 = async (input2, _env) => {
   let fired = [];
   try {
     fired = await processPayload(input2);
@@ -26100,7 +26164,7 @@ var SAFE_SESSION, VALID_TYPES2, run17 = async (input2, _env) => {
 ` : "", stderr: "", exit: 0 };
 };
 var init_struggle_detector = __esm(() => {
-  SAFE_SESSION = /^[a-zA-Z0-9_-]{1,128}$/;
+  SAFE_SESSION2 = /^[a-zA-Z0-9_-]{1,128}$/;
   VALID_TYPES2 = [
     "SIGNAL",
     "FAILURE",
@@ -26266,14 +26330,14 @@ var init_journal_reader = () => {};
 
 // src/gw/store/motive/charter.ts
 import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
-import { mkdirSync as mkdirSync8 } from "fs";
+import { mkdirSync as mkdirSync9 } from "fs";
 import path19 from "path";
 function charterPath(repoRoot, tracker, motive2) {
   return path19.join(repoRoot, tracker, "motives", motive2, "index.md");
 }
 async function writeCharter(opts) {
   const filePath = charterPath(opts.repoRoot, opts.tracker, opts.motive);
-  mkdirSync8(path19.dirname(filePath), { recursive: true });
+  mkdirSync9(path19.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter8.default.stringify(opts.body, opts.fm);
   await writeFile2(filePath, output2, "utf8");
 }
@@ -26290,11 +26354,11 @@ var init_charter = __esm(() => {
 
 // src/gw/store/motive/ticket.ts
 import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
-import { mkdirSync as mkdirSync9 } from "fs";
+import { mkdirSync as mkdirSync10 } from "fs";
 import path20 from "path";
 async function writeTicket(opts) {
   const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
-  mkdirSync9(path20.dirname(filePath), { recursive: true });
+  mkdirSync10(path20.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
   await writeFile3(filePath, output2, "utf8");
 }
@@ -26311,14 +26375,14 @@ var init_ticket2 = __esm(() => {
 
 // src/gw/store/motive/open-item.ts
 import { readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
-import { mkdirSync as mkdirSync10 } from "fs";
+import { mkdirSync as mkdirSync11 } from "fs";
 import path21 from "path";
 function openItemPath(repoRoot, tracker, motive2, id) {
   return path21.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
 }
 async function writeOpenItem(opts) {
   const dest = openItemPath(opts.repoRoot, opts.tracker, opts.motive, opts.fm.id);
-  mkdirSync10(path21.dirname(dest), { recursive: true });
+  mkdirSync11(path21.dirname(dest), { recursive: true });
   await writeFile4(dest, import_gray_matter10.default.stringify(opts.body, opts.fm), "utf8");
 }
 function normalizeRef(ref) {
@@ -26394,7 +26458,7 @@ var init_motive2 = __esm(() => {
 
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
-import { existsSync as existsSync8, mkdirSync as mkdirSync11 } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync12 } from "fs";
 import path22 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
   return path22.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
@@ -26433,7 +26497,7 @@ async function writeDecisionDirect(opts) {
 ` + JSON.stringify(opts.legacyExtra, null, 2) + "\n```\n";
   }
   const dest = decisionFilePath(repoRoot, tracker, motive2, id);
-  mkdirSync11(path22.dirname(dest), { recursive: true });
+  mkdirSync12(path22.dirname(dest), { recursive: true });
   await writeFile5(dest, import_gray_matter11.default.stringify(body, fm), "utf8");
 }
 async function migrateMotive(opts) {

@@ -15,6 +15,7 @@ import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
 import { resolveLedgerPath } from '../../lib/resolve-ledger-path.js'
+import { emitAcCoverageEvent } from '../../lib/journal-emit.js'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
@@ -380,6 +381,15 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             : {}),
         }
         atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
+        if (coversAc && coversAc.length > 0 && sessionId) {
+          emitAcCoverageEvent({
+            projectDir: repoRoot,
+            sessionId,
+            motive,
+            sliceId: id,
+            coversAc,
+          })
+        }
         return okEnvelope('ledger add', { content: `${id} added\n` })
       }
 
@@ -429,6 +439,18 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const newSlices = slices.map(s => (s.id === id ? updated : s))
         atomicWrite(runPath, { ...ledger, slices: newSlices })
+        if (flags['covers-ac'] && flags['covers-ac'] !== true && sessionId) {
+          const setCoversAc = (flags['covers-ac'] as string).split(',').map(s => s.trim())
+          if (setCoversAc.length > 0) {
+            emitAcCoverageEvent({
+              projectDir: repoRoot,
+              sessionId,
+              motive,
+              sliceId: id,
+              coversAc: setCoversAc,
+            })
+          }
+        }
         const changed = Object.entries(flags)
           .filter(([k]) =>
             [

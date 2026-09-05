@@ -102,6 +102,12 @@ export function compile(events, opts = {}) {
   let objectiveSource = 'absent'
   let modelWrittenCount = 0
   let unknownTypeEvents = 0
+  // List of NEVER_COMPRESS events whose payload guard failed (malformed/unusable).
+  // Each entry: { type, shard, ts, reason } — capped at 50 so a burst of bad
+  // events does not grow the provenance object unboundedly.
+  // The count field malformed_never_compress_events mirrors .length for callers
+  // that only need the number.
+  const malformedNeverCompressEventList = []
 
   for (const ev of ordered) {
     const { ord, ts } = ev
@@ -402,6 +408,18 @@ export function compile(events, opts = {}) {
             }
           }
         }
+        // Neither form applied — payload is malformed/unusable. Surface the
+        // discard rather than silently dropping it (NEVER_COMPRESS obligation).
+        if (d.ac == null && !(Array.isArray(d.covers) && sliceCompositeId != null)) {
+          if (malformedNeverCompressEventList.length < 50) {
+            malformedNeverCompressEventList.push({
+              type,
+              shard: ev._order?.shard ?? null,
+              ts,
+              reason: 'missing_ac_and_covers',
+            })
+          }
+        }
         break
       }
 
@@ -412,6 +430,17 @@ export function compile(events, opts = {}) {
         // it targets produces the same result.
         if (d.ac != null && d.slice != null) {
           retractedPairs.add(`${String(d.ac)}::${String(d.slice)}`)
+        } else {
+          // Payload guard failed — event cannot be applied. Surface the discard
+          // rather than silently dropping it (NEVER_COMPRESS obligation).
+          if (malformedNeverCompressEventList.length < 50) {
+            malformedNeverCompressEventList.push({
+              type,
+              shard: ev._order?.shard ?? null,
+              ts,
+              reason: 'missing_ac_or_slice',
+            })
+          }
         }
         break
       }
@@ -818,6 +847,8 @@ export function compile(events, opts = {}) {
     events_folded: ordered.length,
     malformed_lines: opts.malformedLines ?? 0,
     unknown_type_events: unknownTypeEvents,
+    malformed_never_compress_events: malformedNeverCompressEventList.length,
+    malformed_never_compress_event_list: malformedNeverCompressEventList,
   }
 
   if (groundTruth != null) {

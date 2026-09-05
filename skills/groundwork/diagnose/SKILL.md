@@ -1,158 +1,72 @@
 ---
 name: diagnose
-description: Disciplined 6-phase bug diagnosis loop. Build feedback loop, reproduce, hypothesise, instrument, fix with regression test, cleanup with post-mortem. Use for all bugs. Ends with evidence handoff to the orchestrator, who runs the advisor-gate.
+description: Debug a reported failure using the six-phase protocol: loop → reproduce → hypothesise → instrument → fix → post-mortem.
 ---
 
 # Diagnose
 
-## Platform contract
+## Failure modes
 
-The diagnosis loop is shared. Ledger commands, delegation, and completion gates
-depend on the host. In Codex, use only native tools documented in the current
-session; otherwise track diagnosis state in the plan or handoff artifact and
-label delegation, ledger state, and advisor review as advisory.
+**Theory-first.** Reading code to build a hypothesis before a red-capable command exists — this produces anchored, unverifiable guesses. No command, no Phase 2.
 
-## Core Principle
+**Proxy-bug.** Confirming a nearby failure instead of the user's exact symptom. The loop output must contain the user's exact error message or wrong value; a different failure proves nothing.
 
-**A disciplined loop, not guesswork.** The feedback loop IS the skill — everything else is mechanical. Without a fast, deterministic pass/fail signal, no amount of code reading will help.
-
-**Verify the claim before any fix is delegated (triage gate).** Reproduce the reported failure FIRST — run it, observe the actual symptom (Phases 1–2) — before routing a fix to a general-purpose. MUST NOT delegate a fix for a bug you have not reproduced: a fix for an unconfirmed claim is a guess, and guesses ship the wrong change. **If you cannot reproduce it**, do NOT proceed to a fix — stay in triage: sharpen the loop, gather evidence (logs, HAR, a failing input, environment access), or ask the user for the missing piece. "Can't reproduce" is a reason to investigate, not to guess-patch.
-
-This skill **replaces** `implement` for bugs. Bugs go through: `interview` (optional scoping) → `diagnose` → `advisor-gate`.
-
-## When to Use
-
-- Any reported bug or regression
-- Performance degradation
-- "It worked before, now it doesn't"
-- User reports unexpected behavior
-- Test failures that need root cause analysis
+**In-repo perturbation.** Using `git stash` or any in-repo restore to produce the two-run red→green proof — this silently reverts sibling work. Use a scratch copy outside the repo (`cp <file> /tmp/backup`), restore from it, and verify byte-identity before reporting.
 
 ## The 6 Phases
 
-### Phase 1 — Build a Feedback Loop
+### Phase 1 — Build a feedback loop
 
-**"This is the skill. Everything else is mechanical."**
+Construct a fast, deterministic, agent-runnable command that drives the actual bug code path and asserts the user's exact symptom. Run it at least once and record the invocation and output.
 
-**Seed tracking when supported.** Before building the loop, create a tracked diagnosis item through the host's documented ledger interface. If Codex has no such interface, record the item in the plan or handoff artifact; no Stop-gate enforcement should be assumed.
+Loop construction options (priority order): failing test → HTTP script → CLI invocation with snapshot diff → headless browser → replay trace → throwaway harness → fuzz run → bisection harness → differential → HITL script. See [`reference/loop-construction.md`](reference/loop-construction.md) for detail on each.
 
-Construct a fast, deterministic, agent-runnable pass/fail signal. Without one, stop and ask for help.
+Non-deterministic bugs: target a high reproduction rate (≥50% per run) by looping 100× or adding stress; a 1% rate is not debuggable.
 
-**10 ways to build a loop (priority order):**
+When no loop is possible: state why and name what the human observer must look for; remaining phases are observation-based.
 
-1. **Failing test** at whatever seam reaches the bug
-2. **HTTP script** — `curl` / HTTP client against dev server
-3. **CLI invocation** — fixture + diff stdout vs known-good snapshot
-4. **Headless browser** — Playwright/Puppeteer script
-5. **Replay trace** — captured network request, payload, or event log
-6. **Throwaway harness** — minimal subset of the system
-7. **Fuzz/property test** — 1000 random inputs
-8. **Bisection harness** — for `git bisect run`
-9. **Differential** — old version vs new version comparison
-10. **HITL script** — human-in-the-loop bash script (last resort)
+**Completion:** one command, already run, that is red-capable (asserts the exact symptom), deterministic, fast, and agent-runnable.
 
-**Iterate on the loop itself.** Make it faster, sharper, more deterministic. A 2-second deterministic loop is a debugging superpower.
+### Phase 2 — Reproduce + minimise
 
-**Non-deterministic bugs:** Goal is higher reproduction rate (50% is debuggable; 1% is not). Loop 100x, parallelize, add stress.
+Run the loop. Confirm it names the user-described failure — exact error message or wrong output — and reproduces across runs. Remove every input, config, or dependency not needed to trigger it.
 
-**When genuinely impossible to build a loop:** Stop and say so. Ask for: (a) environment access, (b) captured artifact (HAR, log dump, core dump, screen recording), or (c) permission to add temporary production instrumentation.
-
-### Phase 2 — Reproduce
-
-Run the loop. Confirm:
-- Reproduces the **user-described** failure (not a different nearby one)
-- Reproducible across runs
-- Exact symptom captured (error message, wrong output, timing)
-
-If the loop doesn't reproduce: refine the loop or go back to Phase 1.
+**Completion:** loop is red on this exact bug; surface is as small as possible.
 
 ### Phase 3 — Hypothesise
 
-Generate **3-5 ranked hypotheses** before testing any. Single-hypothesis generation causes anchoring.
+Write 3–5 ranked hypotheses before testing any. Each hypothesis names a specific module or line and is falsifiable: "if X is the cause, changing Y makes the bug disappear." Single-hypothesis generation causes anchoring.
 
-Each hypothesis must be **falsifiable**: "If <X> is the cause, then <changing Y> will make the bug disappear / <making Z> will make it worse."
+Test highest-ranked first; if the loop stays red, eliminate and move to the next.
 
-**Show the ranked list to the user before testing.** User often has domain knowledge to re-rank instantly.
-
-**Parallel hypothesis testing:** Launch independent probes in parallel only via the host's documented native delegation surface. In Codex, if no such surface is available, test them sequentially and note the fallback.
-**Only parallelize when hypotheses are independent.** If Hypothesis B depends on Hypothesis A being wrong, test A first.
+**Completion:** one named, falsifiable hypothesis remains.
 
 ### Phase 4 — Instrument
 
-Each probe maps to a specific prediction from a hypothesis. **Change one variable at a time.**
+Map one probe to one prediction from the current hypothesis. Change one variable at a time. Prefer debugger or REPL; fall back to targeted logs tagged `[DEBUG-xxxx]` for easy cleanup sweep; never log everything and grep.
 
-Tool preference (in order):
-1. Debugger / REPL
-2. Targeted logs at hypothesis-distinguishing boundaries
-3. Never "log everything and grep"
+**Completion:** loop output contains evidence that confirms or eliminates the hypothesis.
 
-**Tag every debug log** with unique prefix `[DEBUG-xxxx]` — cleanup is a single grep.
+### Phase 5 — Fix + regression test
 
-**Performance branch:** For performance regressions, logs are usually wrong. Establish baseline measurement first.
+Write the failing test before the fix, at a seam that exercises the real bug pattern at the call site. If no correct seam exists, that is the finding — flag for architecture improvement in the post-mortem.
 
-### Phase 5 — Fix + Regression Test
+**Two-run invariant:** the test file is byte-identical between the red run and the green run (`git diff --exit-code <testfile>` shows no output); the only diff between runs is production source reached through the product's own import path — not a formula re-implemented in the test; the red failure message names the diverging production values.
 
-Write regression test **before the fix** — at a correct seam (exercises the real bug pattern as it occurs at the call site).
+Perturbation procedure: `cp <file> /tmp/backup`; restore from that copy; verify byte-identity (`cmp` produces empty output) before reporting.
 
-If no correct seam exists, that itself is the finding — flag for architecture improvement and note in post-mortem.
+Apply the fix. Re-run the original loop to confirm it goes green.
 
-**Parallel execution:** Write the regression test AND the fix simultaneously:
-```
-# Write the failing test first, then apply the fix in the same task
-# The test and fix touch the same files, so they must be in the same task
-# But you CAN parallelize: fix implementation + feedback loop verification
-```
+**Completion:** loop green; regression test green; `git diff --exit-code <testfile>` empty.
 
-**For orchestrator:** Delegate the fix and verification using the host's documented agent interface. If unavailable in Codex, perform the bounded fix and verification in sequence.
+### Phase 6 — Cleanup + post-mortem
 
-**For general-purpose:** Implement the fix and regression test yourself. Use a native verification delegate only when the host documents one.
+Remove all `[DEBUG-xxxx]` instrumentation and scratch files. Confirm the original reproduction no longer triggers.
 
-**Sequence:**
-1. Minimise reproduction → write failing test → watch it fail using the **two-run invariant**: test file is byte-identical between the red run and the green run (`git diff --exit-code <testfile>` shows no output); the only diff between runs is production source reached through the product's own import path — not a formula re-implemented in the test; the red failure message names the diverging PRODUCTION values. When a perturbation is needed, use a scratch copy outside the repo (`cp <file> /tmp/backup`) and restore from it, never a stash-based restore.
-2. Apply fix → watch test pass
-3. Re-run original feedback loop → confirm fix
+Post-mortem (1–3 sentences): what masked the bug, why existing tests missed it, one preventive measure. If architectural change is needed, note it as a future impl slice.
 
-### Phase 6 — Cleanup + Post-Mortem
+**Completion:** working tree clean; post-mortem written.
 
-**Checklist:**
-- [ ] Original reproduction no longer reproduces
-- [ ] Regression test passes (or absence documented with reason)
-- [ ] All `[DEBUG-xxxx]` instrumentation removed
-- [ ] Throwaway prototypes deleted
-- [ ] Correct hypothesis stated in commit/PR message
+## Completion gate
 
-**Post-mortem question:** What would have prevented this bug?
-
-If answer involves architectural change (no good test seam, tangled callers, hidden coupling), note it for future architecture improvement work.
-
-If the post-mortem surfaced a **reusable lesson** — a recurring gotcha, a class of root cause, or something that would have prevented this bug if it had been written down — invoke `/retrospective` to codify it durably into the Learnings KB rather than letting it evaporate in the transcript.
-
-**Close tracking when supported.** Mark the diagnosis entry complete through the host's documented ledger interface. Otherwise record completion in the plan or handoff artifact. Any fix work should remain a separately identified impl slice.
-
-## Abbreviated Mode
-
-For **trivial bugs** where the cause is obvious (≤1 file, obvious fix):
-
-Skip directly to: **Phase 1 (quick loop) → Phase 2 (reproduce) → Phase 5 (regression test + fix) → Phase 6 (cleanup)**
-
-Skip Phase 3 (hypothesise) and Phase 4 (instrument) — there's only one plausible cause and it's already identified.
-
-## Completion Gate
-
-After Phase 6, return the following evidence to the **orchestrator** — the orchestrator runs the `advisor-gate`, not you:
-- Original bug report
-- Root cause (which hypothesis was correct)
-- Fix summary
-- Regression test location
-- Post-mortem finding
-
-**Do not invoke or simulate the advisor gate yourself.** Report evidence; gating is the orchestrator's job.
-
-## What NOT to Do
-
-- Do NOT skip building a feedback loop — guessing at code is not diagnosis
-- Do NOT test hypotheses one at a time as they're generated — generate all 3-5 first, rank, then test
-- Do NOT write the fix before the regression test
-- Do NOT leave `[DEBUG-xxxx]` instrumentation in the code
-- Do NOT invoke `implement` for bugs — this skill owns the entire bug path
-- Do NOT skip the `advisor-gate` completion gate
+Return to the orchestrator: root cause, fix summary, regression test path, and post-mortem. The orchestrator runs the advisor gate; do not invoke or simulate it.

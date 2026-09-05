@@ -1,169 +1,46 @@
 ---
 name: interview
-description: One-question-at-a-time intent-capture interview; produces a motive charter that feeds the planner.
+description: Capture intent relentlessly, one question at a time; produce a motive charter when the frontier is empty.
 ---
 
 # Interview
 
-## Core Principle
+A model-invoked questioning primitive. Ask one question per message with a recommended answer; run five concurrent activities throughout; stop when the frontier is empty and the user confirms shared understanding. Callers declare the entry condition and what to do with the output.
 
-**Understanding before synthesis.** Relentlessly interview about every aspect of a plan, resolving dependencies between decisions one-by-one. Each question comes with a recommended answer. Codebase exploration replaces questions when possible.
+## Protocol
 
-Interviewing is separate from writing the plan. When the two are conflated, the agent does both poorly — it half-understands and half-specifies. Separation forces genuine Q&A first, then a concise plan grounded in what was actually resolved.
+One question per message. Always attach a recommended answer grounded in codebase knowledge when possible. Wait for the response before asking another.
 
-## When to Use
+When the answer to a question is discoverable by exploring the codebase — read source, check conventions, locate ADRs — do that instead of asking. Facts are yours to find; decisions belong to the user.
 
-- **Before implementing a feature** — full interview, then hand off to planner
-- **Before `diagnose`** for complex bugs — scope before debugging
-- **Standalone for small changes** — interview output serves as the lightweight spec
-- **Anytime understanding is incomplete before action** — when the approach is unclear, user says "help me plan", etc.
-
-**Do NOT use for:**
-- **Trivial tasks** (<1h, fully specified, ≤2 files, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) — default to direct implementation. Load skills only when routing names them; don't force a heavy classification phase before every action.
-
-**Pipeline role:** interview is the human front door of the feature-planning pipeline. After capturing intent one question at a time, hand off to the planner agent for research and decomposition: interview → planner → vertical-slice → plan-review → fan out general-purpose. Interview and planner are complementary stages of the same pipeline, not competing alternatives.
-
-## Two Modes
-
-### Quick Interview (for small changes)
-- **3-4 questions max** — cover only the unclear aspects
-- Focus on: boundaries, edge cases, acceptance criteria
-- Skip: data model, architecture, error handling (unless relevant)
-
-### Full Interview (for features)
-- **8-10 questions** — cover all areas listed below
-- Systematic exploration of the design tree
-- Context updates (CONTEXT.md, ADRs) happen during full interviews
-
-## Rules
-
-1. **Ask EXACTLY one question at a time.** Formulate the question, provide your recommended answer, then STOP and wait for the user's response. MUST NOT ask a second question in the same message. This is the most important rule.
-2. **Provide a recommended answer** for each question — grounded in codebase knowledge when possible.
-3. **If a question can be answered by exploring the codebase, explore the codebase instead** of asking the user.
-4. **Cap at 8-10 questions.** After that, synthesize what you know and propose next steps. User can always request more interviewing.
-5. **Challenge fuzzy language.** When the user uses vague terms, propose precise alternatives.
-6. **Discuss concrete scenarios.** Invent edge cases that force precision about boundaries.
+Challenge fuzzy language and propose canonical terms. Invent concrete edge-case scenarios to test stated boundaries.
 
 ## Five Concurrent Activities
 
-During interviewing, these happen simultaneously:
+Run throughout every session:
 
-1. **Challenge against the glossary** — when user uses a term conflicting with `CONTEXT.md`, call it out immediately.
-2. **Sharpen fuzzy language** — propose precise canonical terms when user uses vague words (e.g., "account" → "Customer" vs "User").
-3. **Discuss concrete scenarios** — invent edge-case scenarios that force precision about boundaries between concepts.
-4. **Cross-reference with code** — check if code agrees with what user states; surface contradictions.
-5. **Update docs inline** — capture resolved terms in `CONTEXT.md` immediately. Record architectural decisions in `docs/adr/` when they qualify.
+1. **Glossary challenge** — when a term conflicts with `CONTEXT.md`, call it out immediately and propose the canonical form.
+2. **Sharpen language** — convert vague quantifiers ("fast", "sometimes", "most") to measurable or enumerable forms.
+3. **Scenarios** — invent concrete edge cases that force precision about concept boundaries.
+4. **Cross-reference code** — for each stated requirement, locate the nearest existing code and surface contradictions or prior art.
+5. **Inline document** — update or create `CONTEXT.md` when the session resolves terminology (pure language definitions only, no implementation details). Record ADRs using the project's existing convention when ALL THREE hold: (a) hard to reverse, (b) surprising without context, (c) result of a genuine trade-off.
 
 ## Workflow
 
-### 0. Detect Project Planning Conventions (do this first)
+**0. Detect conventions** — Before the first question, read the project's planning conventions: existing `CONTEXT.md`, any ADR directory, `CLAUDE.md` for motive/ticket patterns, any project planning skill in `skills/` or `.claude/commands/`.
 
-Before synthesizing a plan, find out how **this project** already plans, and defer to it:
+**1. Question loop** — Ask the frontier one question at a time. The frontier is every open decision whose prerequisites are already settled. A question whose answer depends on an unsettled answer belongs to a later message. Cap at 8–10 questions; synthesize after the cap or when the frontier is empty.
 
-1. **Project planning skills/commands.** Check the available skills and `.claude/commands/` (and `commands/`) for a project-specific planning skill — e.g. a `/plan`, `/spec`, or `/design-doc` command. If one exists, that is the canonical way to write the plan for this repo — use it instead of inventing a format.
-2. **Project planning conventions.** Look for an existing plans directory or convention: `docs/adr/`, `PLANNING.md`, or a `planner` agent's output. Match the existing format, location, and naming.
-3. **Project instructions.** Honor any planning rules in `CLAUDE.md` / `AGENTS.md` (where plans live, whether they are committed, required sections).
+**2. Synthesize** — Summarise what was decided, what was explicitly left open (TBD), and what was ruled out. Confirm with the user that understanding is shared before proceeding.
 
-**Order of preference:** project planning skill → project plans convention → groundwork's default concise plan (below). State which one you're using before writing. Never override a project's own planning workflow with groundwork's default.
+**3. Produce charter** — Write the motive charter with agreed scope, acceptance criteria, and open items, following the convention detected in Step 0. The charter is the output of this primitive; the caller decides what to do with it next.
 
-### 1. Determine Scope
+## Named Failure Modes
 
-Ask: is this a bug, a small change (<1 day), or a feature (≥1 day)?
+**Interview conflated with plan-writing** — synthesising before the frontier is empty produces a half-understood, half-specified charter. Understanding must precede synthesis; the frontier must be empty and confirmed before Step 2 begins.
 
-This determines what follows:
-- **Bug** → hand off to `diagnose` (interview output is the bug scope)
-- **Small change** → proceed to `implement` (interview spec IS the spec)
-- **Feature** → produce the motive charter (Step 4), then `planner` → `vertical-slice` → fan out `general-purpose`
+**Compound question accepting a surface yes** — a question with two sub-questions joined by "and" lets the user answer the surface and leave one sub-question unasked. Ask one thing; split any compound into sequential messages.
 
-### 2. Interview
+## Completion
 
-For each area of uncertainty:
-
-1. **Identify the question** — what decision needs resolving?
-2. **Check codebase** — can this be answered by reading code? If yes, explore and state the finding instead of asking.
-3. **Ask with recommendation** — pose the question, then provide your recommended answer with reasoning.
-4. **Capture the resolution** — update your understanding.
-5. **Update docs inline:**
-   - **CONTEXT.md** — if a new domain term was crystallized, add it now. Pure language definitions only — no implementation details.
-   - **docs/adr/** — only when ALL THREE are true: (a) hard to reverse, (b) surprising without context, (c) result of a real trade-off with genuine alternatives.
-
-Areas to cover (adapt to context — not all apply to every situation):
-
-- **Problem scope** — what exactly is broken / needed?
-- **Boundaries** — what's in scope vs out of scope?
-- **Edge cases** — what happens when...?
-- **Integration points** — what existing systems are affected?
-- **User impact** — who experiences this and how?
-- **Data model** — what entities, relationships, state changes?
-- **Error scenarios** — what can go wrong?
-- **Acceptance criteria** — how do we know it's done?
-
-### 3. Synthesize
-
-After interviewing (or when hitting the 8-10 question cap):
-
-1. **Summarize resolutions** — what was decided, what remains uncertain.
-2. **Propose next steps** — which skill follows (`diagnose`, `implement`, or hand off to `planner` for decomposition into slices).
-3. **Present via `question` tool** — user confirms next steps or requests more interviewing.
-
-### 4. Produce the Motive Charter
-
-After synthesis and user confirmation, write the plan to a durable file. **Use whatever planning convention you detected in Step 0.** Only fall back to the default below when the project has no planning skill or convention of its own.
-
-- **Project planning skill exists** → invoke it; it owns the format and location.
-- **Project plans convention exists** → write the plan there, matching the existing format/naming.
-- **No project convention** → use the **motive pattern**: invoke the `motive` skill to create or update a motive charter at `.groundwork/motives/<slug>/motive.md`. Capture the objective, key decisions (as `DECISION` events in the charter), acceptance criteria, and out-of-scope items. Set `motive_ref: <slug>` in the ledger — the stop-gate accepts a `motive_ref` pointing to an existing charter, satisfying the non-trivial-work gate without a separate plan file.
-
-The charter must stay **concise and durable** — describe behaviors, interfaces, and acceptance criteria, not file paths or line numbers (those go stale). It exists to feed the planner, not to be an exhaustive document.
-
-**Rules:**
-- For features: the motive charter is consumed by the planner, which decomposes it into slices. Set `motive_ref` to the slug so the planner can locate the charter.
-- For small changes: the interview synthesis IS the spec for `implement`; a motive is optional.
-- For bugs: skip this step — bugs go directly to `diagnose`.
-- Respect the project's commit policy — motive charters live in `.groundwork/motives/` (gitignored) and are never staged.
-
-**Ledger is owned downstream.** `vertical-slice` initializes and writes the run ledger; the planner registers impl slices (via `gw ledger add --motive <slug>`). Interview's role ends with the motive charter in place — do not run `bin/ledger init` or add impl slices at interview time.
-
-## Domain Glossary (CONTEXT.md)
-
-Lazy-created at project root when interviewing resolves terminology ambiguity:
-
-**Rules:**
-- **Lazy creation** — only create when there's genuinely useful terminology to capture.
-- **Glossary only** — pure language definitions. No implementation details, no specs, no scratchpad.
-- **Grows only through interviews** — terms are added when sessions resolve ambiguities, not proactively.
-- **Challenge contradictions** — if user or code uses a term differently from the glossary, flag it immediately.
-
-**Format:**
-```markdown
-# Domain Glossary
-
-## <Category>
-
-- **Term** — One-sentence definition.
-- _Avoid_: alternative names that should not be used.
-
-## Relationships
-
-- Term A relates to Term B via...
-```
-
-## Architecture Decision Records
-
-Only create an ADR during interviewing when ALL THREE criteria are met:
-
-1. **Hard to reverse** — changing this decision later would be costly
-2. **Surprising without context** — someone reading the code later would ask "why?"
-3. **Genuine trade-off** — real alternatives existed, not just one obvious choice
-
-**Location:** Use the host project's existing ADR convention (e.g. `docs/adr/`, `adr/`, or a project-specific path detected in Step 0). If the host has no convention, `docs/adr/NNNN-<slug>.md` is a reasonable default — adapt as needed; there is no fixed universal path. Minimalist — 1-3 sentences is fine. Optional sections: Considered Options, Consequences.
-
-## What NOT to Do
-
-- Do NOT write a spec or any artifact during interviewing — understanding only (CONTEXT.md and ADRs are lightweight references, not specs)
-- Do NOT ask more than one question at a time
-- Do NOT skip the recommended answer for any question
-- Do NOT interview indefinitely — respect the question cap
-- Do NOT add implementation details to `CONTEXT.md`
-- Do NOT create `CONTEXT.md` unless interviewing actually resolved terminology ambiguity
-- Do NOT create ADRs for obvious or easily-reversible decisions
+Complete when: frontier is empty, user has confirmed shared understanding, and the charter is written.

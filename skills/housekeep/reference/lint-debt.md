@@ -1,55 +1,64 @@
-# Housekeep — lint-debt mode
+# Lint and type-debt mode
 
-Load this file only when the user selects `lint-debt` mode. The shared posture and completion gate in `SKILL.md` apply.
+Resolves accumulated TypeScript suppressions, `eslint-disable` comments, `any` annotations, and standing lint violations left unfixed in the working tree. Applies the shared 8-step spine from SKILL.md; this file provides the smell catalog, tooling, and passes specific to `lint-debt`.
 
-## When to use this mode
+---
 
-- Accumulated suppression/type-debt from AI-generated patches
-- Pre-merge hygiene before opening a PR
-- Recurring lint noise that nobody addresses
+## Smell catalog
 
-## Smells
+| Smell | SEV | Notes |
+|---|---|---|
+| **`@ts-ignore` suppression** | SEV2 (SEV1 on critical path) | Silences a type error without fixing it; latent defect |
+| **`@ts-expect-error` suppression** | SEV2 (SEV1 on critical path) | Same as `@ts-ignore`; at least self-documenting that an error was expected |
+| **Dead suppression** | SEV4 | `@ts-expect-error` or `eslint-disable` whose target violation no longer exists; removing it is zero-risk |
+| **`eslint-disable` — safety/correctness rule** | SEV2 | Disables a rule that prevents real defects (e.g. `no-eval`, `no-unsafe-*`) |
+| **`eslint-disable` — style rule** | SEV3 | Disables a formatting or naming rule |
+| **Untyped `any` at IO boundary** | SEV2 (SEV1 if security-relevant) | Unvalidated external input typed as `any` at an API, file, or network boundary |
+| **Untyped `any` internal** | SEV3 | `any` annotation or unsafe cast inside non-boundary code |
+| **Accumulated lint error** | SEV2–SEV4 | Violations present in `pnpm run check` output; SEV by rule class |
 
-| Smell | Definition |
-|---|---|
-| **Suppression drift** | `// eslint-disable`, `@ts-ignore`, `# type: ignore`, `//nolint`, `#![allow(...)]` accumulated over time |
-| **Type-safety erosion** | `any`/`unknown` abuse, unchecked `as` casts, `!` non-null assertions hiding real nullability |
-| **Format drift** | Files not following the project formatter (prettier/rustfmt/gofmt/black) |
-| **Dead suppressions** | A disable whose underlying rule no longer fires — the suppression is now redundant |
-| **Suppressed-but-trivially-fixable** | The disable is lazier than the fix would be |
+Severity context bumps (±1 from SKILL.md shared rubric): an `any` on a user-controlled input that reaches a database query is SEV1; a suppression on a type that was already validated upstream is SEV3.
+
+---
+
+## Tooling
+
+```bash
+pnpm run check                          # full TypeScript type check (exits non-zero on errors)
+npx tsc --noEmit                        # same, without pnpm wrapper
+pnpm run lint                           # ESLint violations
+grep -rn '@ts-ignore\|@ts-expect-error\|eslint-disable' src/   # locate all suppressions
+grep -rn ': any\|as any\| any\b' src/   # locate any annotations and casts
+```
+
+For a focused suppression inventory before triaging: pipe the grep output through `wc -l` to size the backlog, then sort by file to cluster related debt.
+
+---
 
 ## Passes
 
-Order safest (zero-risk) to riskier (type rewrites).
+One smell class per pass. Complete each pass before starting the next.
 
-- **Pass 1: Format drift** — run the formatter; zero-risk, no behavior change.
-- **Pass 2: Dead suppressions** — remove disables that no longer fire; verify lint still passes.
-- **Pass 3: Trivially-fixable suppressions** — fix the root cause, remove the disable.
-- **Pass 4: Type-safety erosion** — replace `any`/casts with proper types; one module per diff.
+**Pass 1 — Dead suppressions**
+Run `npx tsc --noEmit` with `@ts-expect-error` directives present. TypeScript itself flags dead `@ts-expect-error` directives (error TS2578: "Unused '@ts-expect-error' directive"). Remove each dead directive. Grep for `eslint-disable` lines and check whether the named rule still triggers on the surrounding code; remove any that don't. Commit after this pass — it is zero-risk and clears noise for later passes.
 
-Re-run lint + typecheck + tests after EACH pass.
+**Pass 2 — Resolve `@ts-ignore` / `@ts-expect-error`**
+For each live suppression, read the surrounding code and reproduce the suppressed error in isolation (`npx tsc --noEmit`). Fix by: (a) correcting the type annotation, (b) adding a type guard, or (c) narrowing the type via a discriminated union. Remove the suppression directive only after the underlying error is gone. If fixing would require a large refactor, triage as Deferred with the underlying error documented.
 
-## Severity mapping
+**Pass 3 — Resolve `eslint-disable`**
+For each active `eslint-disable`, identify the violating line(s). Fix the violation directly. If the rule is wrong for the context (e.g. a deliberate pattern the rule doesn't understand), add a targeted inline disable with a comment explaining why — never a file-level blanket disable.
 
-Default SEV tiers for each lint-debt smell, using the `consequence-if-left × blast-radius` rubric from `SKILL.md`. Context can bump any tier ±1 (e.g. a suppression hiding a security lint → SEV1).
+**Pass 4 — Narrow `any` at IO boundaries**
+Locate `any` usage at network, file, and IPC boundaries. Replace with a validated type: define a Zod schema or equivalent and parse input before it enters typed code. Internal `any` usage found in this pass is Deferred unless it blocks a boundary fix.
 
-| Smell | Default tier | Rationale |
-|---|---|---|
-| **Type-safety erosion** | SEV2 | Latent correctness risk; masks intent without causing immediate failure |
-| **Suppression drift** | SEV2 if masking a correctness/type rule; SEV3 otherwise | Hiding real errors is intent-masking; pure style suppressions are maintainability debt |
-| **Dead suppressions** | SEV3 | Safe to remove; no correctness risk, pure maintainability |
-| **Suppressed-but-trivially-fixable** | SEV3 | Laziness debt; easy fix, low blast-radius |
-| **Format drift** | SEV4 | Cosmetic only; zero behavior impact |
+---
 
-These are defaults — the rubric applies, not a rigid lookup.
+## Quality gate
 
-## Backlog format and triage gate
+After all accepted passes:
 
-Lint-debt mode **reuses** the **shared findings-backlog format** and the **interactive triage gate** defined in `SKILL.md` (see "Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine them here. Collect every smell as a Finding during the scan, assemble the full backlog sorted SEV1 → SEV4, then present it to the user before any edits.
+```bash
+pnpm run check
+```
 
-## Quality gates (lint-debt-specific)
-
-- Lint clean — and ZERO NEW suppressions added by this pass
-- Typecheck clean
-- Tests green
-- The diff must show a NET DECREASE in suppression count — you are removing debt, not moving it elsewhere
+Must exit 0. Net suppressions added must be zero or negative (removing debt, not accumulating it). If `pnpm run lint` is configured, it must also exit 0. A fix that introduces a new suppression to unblock another fix is a Finding, not a resolution.

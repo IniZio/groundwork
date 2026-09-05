@@ -12,7 +12,7 @@ const TEST_CASES: RoutingTestCase[] = [
 		name: "trivial-bug",
 		prompt: 'Fix the typo where it says "backgroud" instead of "background"',
 		expectSkills: [],
-		forbidSkills: ["diagnose", "interview", "vertical-slice"],
+		forbidSkills: ["diagnose", "feature-interview", "interview", "vertical-slice"],
 	},
 	{
 		name: "standard-bug",
@@ -23,7 +23,7 @@ const TEST_CASES: RoutingTestCase[] = [
 	{
 		name: "feature",
 		prompt: "Build a workflow engine with triggers, conditions, and actions.",
-		expectSkills: ["interview", "vertical-slice"],
+		expectSkills: ["feature-interview", "vertical-slice"],
 		forbidSkills: ["diagnose"],
 	},
 ];

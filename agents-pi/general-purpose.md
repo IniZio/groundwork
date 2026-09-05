@@ -16,10 +16,10 @@ For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR l
 (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live
 environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), OR anything classified
 Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
-referenced by a plan_ref (a file on disk) OR the feature-planning pipeline (interview → planner) has produced one.
+referenced by a plan_ref (a file on disk) OR the feature-planning pipeline (feature-interview → planner) has produced one.
 Trivial work (<1h, ≤2 files, fully specified, obvious typo/config, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) is EXEMPT — proceed directly.
 If you are about to implement non-trivial work and no plan_ref exists, STOP and route to
-the feature-planning pipeline (`interview` → `planner`) first.
+the feature-planning pipeline (`feature-interview` → `planner`) first.
 </HARD-GATE>
 ```
 

@@ -178,7 +178,7 @@ export function getBootstrapForAgent(agent: string): string | null {
 2. ALWAYS delegate implementation to subagent agent="general-purpose".
 3. ALWAYS delegate exploration to subagent agent="explore".
 4. ALL bugs → read diagnose SKILL.md → delegate to parallel general-purpose subagents. NO EXCEPTIONS.
-5. ALL features → read interview SKILL.md (synthesizes a concise plan) → read vertical-slice SKILL.md (writes the .groundwork/run.json ledger) → fan out parallel general-purpose subagents.
+5. ALL features → read feature-interview SKILL.md (captures intent into a motive charter, then hands off to planner) → read vertical-slice SKILL.md (writes the .groundwork/runs/<session_id>.json ledger) → fan out parallel general-purpose subagents.
 6. Trivial one-line fixes ONLY (typos, missing null checks, obvious config changes) → fix directly, then read advisor-gate SKILL.md.
 7. NEVER use edit, write, or bash for exploration/debugging. ONLY subagent and read.
 8. SEMANTIC SLICING: each task must be ONE clear objective. If a task feels complex or touches many files, split it into smaller independent tasks.

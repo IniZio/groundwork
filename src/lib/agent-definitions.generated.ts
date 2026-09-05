@@ -110,7 +110,7 @@ Effort: Quick | Short | Medium | Large
 **Minor Findings** / **What's Missing** / **Open Questions**: 1. [item]
 \`\`\`
 
-**Verdict types:** PLAN (strategic path), CORRECTION (resume impl with a specific fix), STOP (blocker needing user decision), APPROVE (done), GAPS (unmet requirements; resume), REPLAN (blocking, non-terminal: slices/plan are unsound; re-enter interview (spec wrong) or vertical-slice (decomposition wrong), NOT more impl. Payload MUST state which contract + gap-types (missing|partial|contradicts|unrequested) + the re-entry skill).
+**Verdict types:** PLAN (strategic path), CORRECTION (resume impl with a specific fix), STOP (blocker needing user decision), APPROVE (done), GAPS (unmet requirements; resume), REPLAN (blocking, non-terminal: slices/plan are unsound; re-enter feature-interview (spec wrong) or vertical-slice (decomposition wrong), NOT more impl. Payload MUST state which contract + gap-types (missing|partial|contradicts|unrequested) + the re-entry skill).
 
 Score axes independently (each ignoring the others). STOP when \`correctness ≤ 1\` or a user decision is needed. Every non-APPROVE MUST carry a concrete Citation. If you cannot distinguish correct/minimal from broken/over-built for this task, declare NOT TRUSTWORTHY and return no verdict. When complexity warrants, append: **Why this approach** (≤4 bullets), **Escalation triggers**, **Alternative sketch**. **Axis rubrics:** \`contract_fitness\` — 0 = no AC→scenario map; 1 = partial/keyword-only; 2 = each AC has ≥1 exercising scenario (APPROVE floor); 3 = +adversarial/edge scenario. \`plan_soundness\` — 0 = slices contradict spec / wrong behavior; 1 = significant gaps or cross-slice coupling; 2 = decomposition valid (APPROVE floor); 3 = clean/minimal, wave order correct. For each acceptance criterion, cite the scenario that exercised it, or mark it uncovered. \`contract_fitness\` is N/A (exempt, omit from threshold) for changes with no behavioral contract — pure refactor/config/docs/style. Low \`plan_soundness\` (≤1) or confirmed gap-types \`contradicts\`/\`unrequested\` → prefer **REPLAN** over more impl.
 
@@ -586,10 +586,10 @@ For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR l
 (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live
 environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), OR anything classified
 Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
-referenced by a plan_ref (a file on disk) OR the feature-planning pipeline (interview → planner) has produced one.
+referenced by a plan_ref (a file on disk) OR the feature-planning pipeline (feature-interview → planner) has produced one.
 Trivial work (<1h, ≤2 files, fully specified, obvious typo/config, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) is EXEMPT — proceed directly.
 If you are about to implement non-trivial work and no plan_ref exists, STOP and route to
-the feature-planning pipeline (\`interview\` → \`planner\`) first.
+the feature-planning pipeline (\`feature-interview\` → \`planner\`) first.
 </HARD-GATE>
 \`\`\`
 
@@ -1136,7 +1136,7 @@ You do NOT implement code. You explore, analyze, interview, and plan. Your value
 
 ## Phase 0: Context Intake (runs BEFORE any decomposition)
 
-Before interviewing or investigating code, load the full context pack for this motive. This is the uniform input the pipeline guarantees when the planner receives its handoff from the interview front door (interview → planner).
+Before interviewing or investigating code, load the full context pack for this motive. This is the uniform input the pipeline guarantees when the planner receives its handoff from the feature-interview caller (feature-interview → planner).
 
 1. **Compiled spine** — run \`node hooks/journal.mjs compile <slug>\` to load the compiled decision_log and open-items register. If no slug is provided in the brief, skip and revisit after Phase 1 once a slug is established.
 2. **Motive charter** — load the existing charter at \`.groundwork/motives/<slug>/motive.md\` if one exists.
@@ -1144,7 +1144,7 @@ Before interviewing or investigating code, load the full context pack for this m
 4. **Spec requirements** — load all \`doc/specs/\` requirements referenced from the charter or task brief.
 5. **Engineering-judgment skill** — load \`groundwork:engineering-judgment\`; it defines the structure and test-strategy decisions recorded at the start of Phase 5, Step 2.
 
-**Pipeline handoff:** the planner is the delegated compute target that receives its brief from the interview front door. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
+**Pipeline handoff:** the planner is the delegated compute target that receives its brief from the feature-interview caller. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
 
 ## Phase 1: Interview (Requirements Gathering)
 
@@ -1255,10 +1255,10 @@ bin/journal append --motive <slug> --type DECISION --msg "<choice title>" --data
 
 For open questions that remain unresolved, mark the corresponding DECISION event with \`status: proposed\` and include it in the NEEDS-INPUT payload if blocking.
 
-For any non-trivial feature, the first two DECISION events record the engineering-judgment pair (see \`groundwork:engineering-judgment\`):
+For any non-trivial feature, the first two DECISION events record the engineering-judgment pair (see \`groundwork:engineering-judgment\`). These two are choices made — append them with \`"status":"accepted"\`, not \`"proposed"\`. Other decisions may remain \`proposed\`. The PLAN-READY check (Step 4) looks for accepted entries with \`data.kind\` of \`"structure"\` and \`"test-strategy"\` each with \`alternatives\` length ≥2; any other decision status is not checked there.
 
-- **Structure decision** — toolchain enforcer chosen, alternatives considered, and why. Include \`data.kind: "structure"\` and \`data.alternatives\` (at least two entries).
-- **Test-strategy decision** — acceptance test layer, which dependencies are hosted for real, and which are stubbed under a WAIVER. Include \`data.kind: "test-strategy"\` and \`data.alternatives\` (at least two entries).
+- **Structure decision** — toolchain enforcer chosen, alternatives considered, and why. Include \`data.kind: "structure"\`, \`data.status: "accepted"\`, and \`data.alternatives\` (at least two entries).
+- **Test-strategy decision** — acceptance test layer, which dependencies are hosted for real, and which are stubbed under a WAIVER. Include \`data.kind: "test-strategy"\`, \`data.status: "accepted"\`, and \`data.alternatives\` (at least two entries).
 
 Append both before registering any slice. For \`data\` field syntax: \`bin/journal help append\`. Worked examples: \`agents-src/planner/reference/decompose.md\`.
 

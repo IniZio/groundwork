@@ -71,10 +71,12 @@ an artifact the user can review and provide to a later session.
 | Skill | Trigger |
 |-------|---------|
 | `use-groundwork` | Every session start — core rules, issue-type routing |
-| `interview` | Plan a feature (captures intent into a motive charter); standalone for small changes |
+| `feature-interview` | Feature intent capture into a motive charter, then hands off to planner |
+| `quick-interview` | Risky small-change intent capture, then hands off to general-purpose |
+| `requirements` | Charter-only intent capture without triggering implementation |
 | `vertical-slice` | Decompose into conflict-free parallel slices; writes the run ledger |
 | `ultrawork` | Max fan-out mode — slice → ledger → dispatch all slices in parallel |
-| `implement` | Orchestrate implementation after a plan/interview |
+| `implement` | Orchestrate implementation after intent capture |
 | `diagnose` | Bugs and regressions |
 | `advisor-gate` | Before declaring done |
 | `prototype` | Design exploration |
@@ -82,10 +84,10 @@ an artifact the user can review and provide to a later session.
 
 ## Rules
 
-1. Issue-type routing: bug → diagnose, small change → interview + implement, feature → interview → vertical-slice (writes the run ledger) → fan out junior-orchestrator (or general-purpose for leaf slices satisfying all four carve-out conditions) → advisor gate
+1. Issue-type routing: bug → diagnose, risky small change → quick-interview + implement, feature → feature-interview → vertical-slice (writes the run ledger) → fan out junior-orchestrator (or general-purpose for leaf slices satisfying all four carve-out conditions) → advisor gate
 2. Advisor gate before declaring done; recorded in the run ledger and enforced by the Stop-gate hook
 3. Intent lives in a motive charter at `.groundwork/motives/<slug>/motive.md` with a compiled Decision Log; charters are runtime state and are not committed
-4. Interview before slicing — understanding before synthesis
+4. Intent capture before slicing — understanding before synthesis (`interview` is the underlying primitive; user-facing callers are `feature-interview`, `quick-interview`, and `requirements`)
 
 ## Motive MAP — human entry point
 

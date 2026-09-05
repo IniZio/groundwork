@@ -39,12 +39,12 @@ digraph flow {
 
   "SmallClear" -> "implement directly";
 
-  "SmallRisky" -> "invoke skill interview (quick)";
-  "invoke skill interview (quick)" -> "implement";
+  "SmallRisky" -> "invoke skill quick-interview";
+  "invoke skill quick-interview" -> "implement";
   "implement" -> "invoke skill advisor-gate";
 
-  "Feature path" -> "feature-planning pipeline (interview -> planner) -> motive_ref";
-  "feature-planning pipeline (interview -> planner) -> motive_ref" -> "invoke skill implement";
+  "Feature path" -> "feature-planning pipeline (feature-interview -> planner) -> motive_ref";
+  "feature-planning pipeline (feature-interview -> planner) -> motive_ref" -> "invoke skill implement";
   "invoke skill implement" -> "invoke skill vertical-slice (writes ledger)";
   "invoke skill vertical-slice (writes ledger)" -> "fan out general-purpose agents";
   "fan out general-purpose agents" -> "invoke skill advisor-gate";
@@ -87,15 +87,15 @@ digraph flow {
 
 **Small change — clear & low-risk** (implement directly): Well-understood, localized changes where the approach and impact are obvious. Examples: add a simple validation rule, update a default config value, extract a helper function, add a missing null check, wire up a new field to an existing form.
 
-**Small change — ambiguous or risky** (interview quick → implement): Changes where requirements, scope, or side-effects are unclear; changes that touch shared code, public APIs, auth, or multiple modules. Examples: modify a shared data model, change an API response shape, alter permission checks, refactor a core utility.
+**Small change — ambiguous or risky** (quick-interview → implement): Changes where requirements, scope, or side-effects are unclear; changes that touch shared code, public APIs, auth, or multiple modules. Examples: modify a shared data model, change an API response shape, alter permission checks, refactor a core utility.
 
-**Escalation:** If during implementation the work grows beyond 1 day or feels uncertain → stop, load `interview` and synthesize a plan.
+**Escalation:** If during implementation the work grows beyond 1 day or feels uncertain → stop, load `feature-interview` and synthesize a plan.
 
 ## Feature Path Detail
 
 - Only use when work is **clearly** multi-day or architectural from the start.
-- **Mandatory skill-tool invocations:** feature-planning pipeline (`interview` → `planner`) → durable `motive_ref` (charter at `.groundwork/motives/<slug>/motive.md` + DECISION events) → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip. `interview` and `planner` are BOTH retained, not competing alternatives — `interview` is the human front door; `planner` is the delegated stage that emits the motive charter.
-- **A non-trivial feature MUST have a `motive_ref` (produced by the `interview` → `planner` pipeline) before `vertical-slice` fans out.** No memory-only plans; no fan-out until the charter exists.
+- **Mandatory skill-tool invocations:** feature-planning pipeline (`feature-interview` → `planner`) → durable `motive_ref` (charter at `.groundwork/motives/<slug>/motive.md` + DECISION events) → `implement` (→ `vertical-slice`) → `advisor-gate`. Never skip. `feature-interview` and `planner` are BOTH retained, not competing alternatives — `feature-interview` is the human front door; `planner` is the delegated stage that emits the motive charter.
+- **A non-trivial feature MUST have a `motive_ref` (produced by the `feature-interview` → `planner` pipeline) before `vertical-slice` fans out.** No memory-only plans; no fan-out until the charter exists.
 - `implement` runs `vertical-slice` first to decompose into conflict-free parallel slices and write the run ledger (recording `motive_ref`).
 - If unsure whether it's ≥1 day → use the **Change** path and escalate if needed.
 - **Trivial / small-clear / docs / obvious-bug fast-paths stay unchanged** — HARD-GATE and `motive_ref` apply to non-trivial work only.

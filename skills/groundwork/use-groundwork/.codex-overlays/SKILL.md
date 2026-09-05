@@ -1,6 +1,6 @@
 ---
 name: use-groundwork
-description: Compact Codex bootstrap for the groundwork workflow suite. Load once at session start and again only after context compaction.
+description: Bootstrap the groundwork workflow suite for Codex. Load once at session start and again only after context compaction.
 ---
 
 <!-- SUBAGENT-STOP: If you are operating in an executor role rather than the lead/orchestrator role, STOP. This skill contains orchestrator-only rules that will confuse an executor. -->

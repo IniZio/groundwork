@@ -1,99 +1,77 @@
 ---
 name: advisor-gate
-description: ORCHESTRATOR-ONLY skill. Executor/subagent agents MUST NOT invoke this. Advisor completion gate: mandatory APPROVE/GAPS/CORRECTION/STOP/REPLAN verdict before the orchestrator declares any task complete, plus decision-gate escalation for hard architectural trade-offs.
+description: Enforce the completion gate for the orchestrator, producing APPROVE/GAPS/CORRECTION/STOP/REPLAN verdicts before any task is declared done (orchestrator-only; subagents do not invoke this).
 disable-model-invocation: true
 ---
 
 # Advisor Gate
 
-## Platform contract
+Gate completion review and hard-decision escalation for the orchestrator. Subagents do not invoke this skill, self-issue verdicts, or bypass the gate.
 
-Advisor review is a workflow checkpoint. Use a documented native advisor or
-subagent interface when the host provides one. In Codex, do not assume an
-advisor agent, `task` tool, ledger CLI, or Stop-gate; perform a clearly labeled
-manual self-review and report it as advisory.
+## Decision escalation
 
-> **ORCHESTRATOR-ONLY.** Executor agents (general-purpose) must never load this skill, invoke the advisor completion gate, or self-issue verdicts. Completion gating is the orchestrator's responsibility.
+Escalate to advisor when any hold: architecture trade-off with high downstream cost; three materially different attempts on the same failure; ambiguous requirements with multiple plausible interpretations; security, data-loss, or destructive-operation risk. Do not escalate for routine edits, refactors, or mechanical changes.
 
-## Purpose
+## Completion gate
 
-Executor-first loop with two gate types:
-1. **Decision gates** — escalate hard decisions mid-task to advisor for strategic insight
-2. **Completion gate** — advisor must APPROVE before any task is declared done
-
-## When to Escalate (Decision Gate)
-
-Escalate when any of these are true:
-- Architecture trade-off with high downstream cost
-- Repeated failure after two materially different attempts
-- Ambiguous requirements with multiple plausible interpretations
-- Security, data-loss, migration, or destructive-operation risk
-- After completing significant implementation (self-review)
-- When the executor has no "one clear path" forward
-
-Do not escalate for routine edits, straightforward refactors, or mechanical changes.
-
-## Completion Gate (MANDATORY)
-
-Before telling the user the task is done, invoke `advisor` with:
+Before declaring done, invoke `advisor` with:
 
 ```
-## Completion Gate Request
 Task: <what was asked>
 What was done: <summary of changes>
-Verification run: <commands run and their output>
+Verification run: <commands and output>
 Requirements from spec/PRD: <list each requirement>
 Each requirement met: <yes/no per item>
-Per-acceptance-criterion verification: for each AC, cite the scenario/test that exercised it (or mark uncovered)
-Plan soundness: are the slices still the right decomposition? State gap-types (missing|partial|contradicts|unrequested) if any.
-Anything uncertain or skipped: <list or "none">
+Per-AC verification: cite the test for each AC, or mark uncovered
+Plan soundness: gap-types (missing|partial|contradicts|unrequested) if any
+Uncertain or skipped: <list or "none">
 Question: Is this complete and correct?
 ```
 
-Advisor returns one of:
-- **APPROVE** — executor may declare done to user
-- **GAPS** — unmet requirements; executor resumes
-- **CORRECTION** — approach is flawed; specific fix needed
-- **STOP** — blocker that needs user decision; surface it
-- **REPLAN** — slices/plan unsound; re-enter interview or vertical-slice (non-terminal; do not resume impl)
+Verdict vocabulary:
+- **APPROVE** — declare done; record `gw ledger gate --motive <slug> advisor APPROVE --token <write_token>`
+- **GAPS** — unmet requirements; resume
+- **CORRECTION** — approach is flawed; apply the fix
+- **STOP** — surface blocker to user; gate stays closed
+- **REPLAN** — re-enter feature-interview or vertical-slice; non-terminal
 
-**Do not skip the completion gate even if you are confident.**
+Do not skip the gate even if confident. Findings below CORRECTION are registered as ledger slices before recording APPROVE.
 
-**Criterion: no-acceptance-layer** — see the `no-acceptance-layer` criterion in the advisor's Verification Protocol (Step 2). A missing acceptance layer without a matching WAIVER journal event (`bin/journal compile <slug> --json` or `.groundwork/waivers/*.json`, five fields required: `dependency`, `failing_criterion`, `scope`, `expiry_condition`, `contract_test`) is a CORRECTION, not a GAPS note. Trivial no-ledger tasks are exempt.
+**Criterion: no-acceptance-layer** — see the `no-acceptance-layer` criterion in the advisor's Verification Protocol (Step 2, `agents-src/advisor.md`). WAIVER events in `.groundwork/journal/*.jsonl` (fallback `.groundwork/waivers/*.json`), matched by `dependency`, suppress SC-B1 for that dependency and SC-B2 only for the identity provider; SC-A4 has no waiver path; five fields required: `dependency`, `failing_criterion`, `scope`, `expiry_condition`, `contract_test`. A missing acceptance layer without a valid waiver is a CORRECTION, not a GAPS note. Trivial no-ledger tasks are exempt.
 
-## Risk-Tiered Completion Flow
+## Risk-tiered gate
 
 | Tier | Condition | Flow |
-|------|-----------|------|
-| **Trivial** | ≤2 files, ≤1 user-facing behavior, <1h, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios) | advisor directly |
-| **Small** | Localized, clear, low blast radius | `advisor` |
-| **Feature / non-trivial** | ≥3 files OR ≥2 behaviors OR shared code OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) | `[qa if interactive UI] → advisor` |
+|---|---|---|
+| Trivial | ≤2 files, ≤1 behavior, <1h, small verification surface | `advisor` |
+| Small | Localized, clear, low blast radius | `advisor` |
+| Feature | ≥3 files or ≥2 behaviors or shared code or large verification surface | `[qa if interactive UI] → advisor` |
 
-## Recording the Verdict in the Run Ledger
+## Evidence rules
 
-If a host-provided run ledger exists, record the gate result through its
-documented interface. In Codex, record the verdict in the plan or handoff
-artifact; it does not mechanically release or block session termination:
+Run the gate suite unfiltered, in the primary working directory, with environment controlled:
 
-```text
-advisor: APPROVE | REVISE | REJECT | REPLAN
-rubric: groundwork-completion-v2
-citation: <verification evidence>
+```
+env -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT CLAUDE_CODE_SESSION_ID=gate npx vitest run
 ```
 
-Verdict mapping for the ledger:
+A filtered run, a piped exit code, or a detached worktree invalidates the verdict.
 
-- **APPROVE** → `verdict: "APPROVE"` — session may end
-- **GAPS / CORRECTION** → `verdict: "REVISE"` with failing axes + citation; gate stays closed
-- **STOP** → `verdict: "REJECT"` with citation; surface blocker to user; gate stays closed. If this is a durable out-of-scope decision, write `.groundwork/out-of-scope/<concept-slug>.md`.
-- **REPLAN** → `verdict: "REPLAN"` (non-terminal; stop-gate routes orchestrator to interview/vertical-slice)
+## Gate failure modes
 
-The advisor is read-only and never edits the ledger — the orchestrator records the verdict after receiving it.
+**Failure: advisor approves on fabricated evidence** — a verdict cites a line or test that does not exist → the gate closes on false evidence → the regression ships. Verify each load-bearing claim against source before recording the gate in the ledger. Full incident: `reference/failure-modes.md`.
 
-## Implementation Notes
+**Failure: gate recorded without orchestrator write token** — a subagent writes `gate.advisor=APPROVE` without the ledger write token → stop-gate cannot verify provenance → session ends on a bypassed gate. The orchestrator records the gate itself and never trusts a gate it did not write.
 
-- Invoke the host's documented advisor/delegation interface when available.
-  Otherwise perform a manual, clearly labeled advisor checkpoint.
-- Track escalation count; avoid uncontrolled loops (max 3 escalations per task before surfacing to user).
-- Fallback only if `advisor` is unavailable: label "simulated advisor checkpoint" and state why.
-- Run the gate deterministically: fixed model at `temperature: 0` with the rubric id recorded in the verdict.
+**Failure: gate run in detached worktree** — a gate agent creates a worktree for attribution, producing phantom suite failures from missing runtime state → verdict contradicts a prior green run → unnecessary diagnose cycle. Brief gate agents against creating worktrees; re-run in the primary directory before acting on a contradicting verdict.
+
+**Failure: filtered run hides cross-file breakage** — a per-slice filtered run reports green while the full suite is red → shared-enforcement changes pass per-slice but fail at session end. Always run unfiltered after any shared-enforcement change.
+
+**Failure: implementer self-report overstates evidence** — correct artifacts paired with fabricated counts or test results → orchestrator gates on inflated numbers → regressions go undetected. Verify counts and test results directly; do not accept self-reported totals without evidence.
+
+Remaining failure modes (incident + correction in `reference/failure-modes.md`):
+per-slice-green-suite-red · pre-existing-failure-claims-need-diff-proof · two-distinct-suite-failure-modes · review-must-attribute-diff-vs-pre-existing · visual-evidence-stale-on-regen · enumerated-search-surfaces-inherit-blind-spots · trace-whole-enforcement-path-before-calling-spec-false
+
+## Completion
+
+Gate is closed when `gw ledger status --motive <slug>` shows `gate.advisor: APPROVE`.

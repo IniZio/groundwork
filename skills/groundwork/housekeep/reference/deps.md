@@ -1,69 +1,65 @@
-# Housekeep — deps mode
+# Dependency hygiene mode
 
-Load this file only when the user selects `deps` mode. The shared posture and completion gate in `SKILL.md` apply.
+Audits the dependency graph for phantom packages, outdated releases, boundary violations, and resolution noise. Applies the shared 8-step spine from SKILL.md; this file provides the smell catalog, tooling, and passes specific to `deps`.
 
-## When to use this mode
+---
 
-- Dependency hygiene after AI-generated changes that added or ignored deps
-- Periodic hygiene sweep of the dependency tree
-- Pre-release dep audit before cutting a version
+## Smell catalog
 
-## Smells
-
-| Smell | Definition |
-|---|---|
-| **Unused dependencies** | Declared but never imported/required anywhere in the source tree |
-| **Outdated dependencies** | Several majors behind current; security-relevant lag |
-| **Vulnerable dependencies** | Known CVEs against declared versions |
-| **Duplicate functionality** | Two deps doing the same job (e.g. two HTTP clients, two date libs) |
-| **Phantom deps** | Imported but not declared — classic Node/monorepo hoisting issue; works by accident |
-
-## Severity mapping
-
-Default SEV tiers for deps smells (rubric: consequence × blast-radius; context can bump ±1 per SKILL.md):
-
-| Smell | Default SEV | Rationale |
+| Smell | SEV | Notes |
 |---|---|---|
-| **Vulnerable dependencies** | SEV1 | Security consequence; potentially wide blast-radius |
-| **Phantom deps** | SEV2 | Works by accident — latent breakage risk on install/upgrade |
-| **Unused dependencies** | SEV3 | Maintainability; safe to delete |
-| **Duplicate functionality** | SEV3 | Maintainability; consolidation is low-risk |
-| **Outdated dependencies** | SEV3 (default) / SEV1 (if carrying a known CVE) | The CVE case is an explicit context bump per the rubric |
+| **Phantom dep** | SEV3 (SEV2 if it inflates bundle) | Package in `package.json` but no import found in source |
+| **Outdated dep — security gap** | SEV2 | Major-version gap that hides a security patch |
+| **Outdated dep — feature only** | SEV3 | Newer non-breaking release available; no known CVE |
+| **Dev dep in prod** | SEV3 | Package in `dependencies` imported only in tests or scripts, never in production source |
+| **Circular dep** | SEV2 (SEV3 if type-only) | Two packages depend on each other at runtime |
+| **Peer dep mismatch** | SEV2 | Declared peer requirement not satisfied by installed version |
+| **Duplicate dep** | SEV3 | Same logical package appears under two names or versions in the resolution graph |
+| **Unused transitive pinning** | SEV3 | `overrides`/`resolutions` entry for a package no longer transitively required |
 
-These are defaults the rubric can adjust. The pass order below (unused → outdated → vulnerable → duplicate) already flows safest-first, which maps roughly SEV3 → SEV3 → SEV1 → SEV3 — the triage gate may reorder when a SEV1 vulnerability warrants immediate attention.
+Severity context bumps (±1 from SKILL.md shared rubric): a phantom dep in a published bundle is blast-radius SEV2; a peer mismatch that causes silent runtime coercion bumps to SEV1.
 
-## Findings backlog and triage gate
+---
 
-Deps mode reuses the **shared findings-backlog format** and the **interactive triage gate** defined in `SKILL.md` (see "Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine the table schema or gate here. Collect every smell as a Finding during the scan; present the severity-sorted backlog to the user before any edits begin.
+## Tooling
+
+```bash
+pnpm outdated                           # lists outdated deps with current/wanted/latest
+pnpm ls --depth 0                       # lists direct deps and their resolved versions
+npx depcheck                            # reports unused deps + missing deps
+pnpm why <package>                      # traces why a dep is installed (transitive chain)
+grep -rn 'import.*from' src/ | grep <package>   # verify actual usage in source
+pnpm ls --depth Infinity 2>/dev/null | grep <package>  # find all resolution graph entries
+```
+
+For security patch detection: `pnpm audit` surfaces CVEs in the installed graph; pair with `pnpm outdated` to identify which outdated packages carry fixes.
+
+---
 
 ## Passes
 
-Mirror the deslop pass structure: one smell-focused pass at a time, verification after each.
+One smell class per pass. Complete each pass before starting the next.
 
-- **Pass 1: Remove unused deps** — delete declarations; confirm nothing imports them.
-- **Pass 2: Pin/upgrade outdated** — one major bump per diff; tests green between bumps.
-- **Pass 3: Patch vulnerabilities** — CVE triage; prefer upgrade over suppress/ignore.
-- **Pass 4: Consolidate duplicate functionality** — pick one dep, migrate call sites, remove the other.
+**Pass 1 — Phantom and unused removal**
+Run `npx depcheck`. For each reported unused package, confirm with `grep -rn` before removing — depcheck misses dynamic requires and some CLI-only packages. Remove confirmed phantoms. Update lockfile with `pnpm install`.
 
-Re-run the FULL test suite after EACH pass. Dep changes have wide blast radius — a passing unit suite is not enough; run integration/e2e where they exist.
+**Pass 2 — Security-patch updates**
+Run `pnpm audit` and `pnpm outdated`. Focus on major-version gaps where a newer major carries a CVE fix. Update one package at a time; run `pnpm run check` after each to surface breaking changes early.
 
-## Tooling hints (examples, not mandates)
+**Pass 3 — Dev/prod boundary correction**
+Cross-reference `dependencies` vs `devDependencies` against actual import paths. Move packages used only in test or build scripts from `dependencies` to `devDependencies`. Run `pnpm install` to re-lock.
 
-Name the common tool per ecosystem; do not mandate a single one.
+**Pass 4 — Duplicates, circulars, and resolution cleanup**
+Use `pnpm why` to trace duplicate entries. Remove stale `overrides`/`resolutions` entries and confirm the package is no longer in the resolution graph. For circulars, document in a Finding and propose a re-architecture path rather than a blind removal.
 
-| Concern | Common tools |
-|---|---|
-| Unused deps | `depcheck` (Node), `pipdeptree` / `pip-reqs` (Python), `cargo-udeps` (Rust), `go mod tidy -v` (Go) |
-| Outdated deps | `npm outdated`, `pip list --outdated`, `cargo outdated`, `go list -m -u all` |
-| Security audit | `npm audit`, `pip-audit`, `cargo audit`, `govulncheck` |
+---
 
-## Quality gates (deps-specific)
+## Quality gate
 
-- Full test suite green (unit + integration + e2e where present)
-- Lockfile committed and consistent with manifests
-- `audit` clean OR every accepted risk annotated with rationale
-- If a gate fails, REVERT the dep change — never force through a dep break
+After all accepted passes:
 
-## Risk note
+```bash
+pnpm install && pnpm run check
+```
 
-Dep changes have the widest blast radius of any housekeep mode. Prefer the smallest safe diff. One major upgrade per verification cycle. If a dep touch fails a gate, backing out is the correct move — not patching forward.
+Both must exit 0. A type error introduced by a dep update is a blocker — revert the specific update and file it as a Deferred Finding with the breakage noted.

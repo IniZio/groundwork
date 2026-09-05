@@ -1,11 +1,9 @@
-# Housekeep — UI/design reviewer checklist
+# UI/Design Defaults Checklist
 
-Load this file only when the deslop target has a rendered UI/CLI surface. The shared posture and completion gate in `SKILL.md` apply.
+Load this checklist only when the target has a rendered UI or CLI surface. Skip it for backend-only cleanups.
 
-Use these as review prompts, not absolute bans. Keep intentional brand, accessibility, product-density, or design-system choices when they have a clear rationale.
-
-- **Shadow restraint:** question box shadows on every surface, logo, background, card, or icon; keep shadows only where they clarify elevation or interaction.
-- **Content hierarchy:** remove repetitive eyebrow/title/description/extra `<p>` stuffing when the title already carries the message; avoid generic emoji badges unless they are part of the product voice.
-- **Palette rationale:** challenge default AI blue/purple palettes, especially Tailwind-like `#3B82F6`, when no brand or system rationale exists.
-- **Layout rhythm:** avoid overly perfect uniform grids when the product context benefits from rhythm, emphasis, asymmetry, carousel/bento treatment, or varied card weights.
-- **Gradient restraint:** tone down extreme gradients unless the brand deliberately owns that visual language.
+1. Replace any unstyled or browser-default color palette with explicit design tokens or a coherent color scheme — no bare `blue`, `gray`, or `red` without a semantic name or variable backing them.
+2. Add missing loading, empty, and error states to every data-dependent surface — a component that silently shows nothing when data is absent or a fetch fails is incomplete.
+3. Remove or replace all placeholder copy: "Lorem ipsum", "TODO", "Test", "Sample", "Untitled", hardcoded dummy names/emails, and any text that was never meant to ship.
+4. Consolidate duplicate layout patterns — if the same card, row, or container structure appears three or more times with only content varying, it belongs in a shared component or template.
+5. Add at minimum keyboard focus styles and ARIA labels for interactive controls (buttons, links, form fields) that are missing them — a control that cannot be reached or identified by assistive technology is a defect, not a preference.

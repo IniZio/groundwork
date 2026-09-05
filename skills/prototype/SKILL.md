@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build throwaway prototypes to flesh out a design before committing. Logic prototypes (interactive TUI) or UI prototypes (variant switcher). Delete when done. Use for spikes and design exploration.
+description: "Build throwaway prototypes to answer a design question, then delete or absorb them. Two branches: LOGIC (interactive TUI) or UI (variant switcher). Never promote to production."
 disable-model-invocation: false
 ---
 
@@ -27,7 +27,7 @@ disable-model-invocation: false
 
 If ambiguous, default based on code context (backend → LOGIC, UI component → UI).
 
-## Universal Rules (both branches)
+## Both Branches
 
 1. **Clearly marked as prototype** — named so any reader sees it's throwaway. Located near where it'll be used.
 2. **One command to run** — whatever the project's existing task runner supports.
@@ -36,41 +36,17 @@ If ambiguous, default based on code context (backend → LOGIC, UI component →
 5. **Surface the state** — print/render full relevant state after every action or variant switch.
 6. **Delete or absorb when done** — never leave prototype code rotting.
 
-## LOGIC Branch
+See [`reference/logic-prototype.md`](reference/logic-prototype.md) for the LOGIC branch step-by-step process and anti-patterns.
+See [`reference/ui-prototype.md`](reference/ui-prototype.md) for the UI branch step-by-step process and anti-patterns.
 
-When exploring state machines, algorithms, business rules, or data flow:
+## Failure Modes
 
-1. **State the question** — one paragraph about what you're trying to learn.
-2. **Isolate logic** in a portable module behind a pure interface (reducer, state machine, pure function set). The TUI is throwaway; the logic module isn't.
-3. **Build lightweight TUI** — clear screen each frame, current state pretty-printed, keyboard shortcuts listed. Read one keystroke, dispatch, re-render, loop.
-4. **Walk through cases** — exercise the state model through normal paths, edge cases, and error states.
+**The prototype that quietly becomes production.** The prototype was "good enough" to ship. Untested, unpolished code runs in production and accumulates debt with each change. Correction: always rewrite when absorbing. Prototype code is a sketch, not a commit.
 
-**Anti-patterns:** no tests, no real DB, no generalization, no blurring logic and TUI.
+**Scope creep kills the question.** The design question is too broad and the prototype runs past an hour. You are building a feature, not answering a question. Correction: bound the question before building. If it cannot be answered in ≤1 hour of prototyping, split the question first.
 
-## UI Branch
-
-When exploring visual design, layout, or interaction patterns:
-
-1. **Default to 3 variants** — structurally different layouts, NOT just color changes. Cap at 5.
-2. **Wire with `?variant=A|B|C`** — switcher component on existing page. Existing data fetching stays.
-3. **Float a variant bar** — left/right arrows cycling variants, hidden in production.
-4. **Capture the answer** — delete losers, fold winner into codebase properly (rewrite, don't promote prototype directly).
-
-**Anti-patterns:** variants differing only in color, sharing too much code between variants, wiring to real mutations, promoting prototype directly.
+**Blurred logic and TUI** (LOGIC branch). Business rules end up inside the TUI loop rather than the isolated module. When the TUI is deleted, the logic goes with it. Correction: isolate logic behind a pure interface first; the TUI only dispatches and renders.
 
 ## Completion
 
-After the design question is answered:
-
-1. **Document the finding** — what did you learn? Which approach won and why?
-2. **Delete prototype code** — or absorb the portable logic module if it's reusable.
-3. **Proceed to next skill** — based on finding: `implement` or report results.
-4. **Advisor gate** — invoke if the finding changes planned direction.
-
-## What NOT to Do
-
-- Do NOT promote prototype code directly to production — always rewrite
-- Do NOT add tests, error handling, or polish to prototypes
-- Do NOT leave prototype code in the codebase after the spike is done
-- Do NOT use real databases or external services — mock everything
-- Do NOT spend more than 1 hour on a prototype — if it's taking longer, the question is too broad
+Observable state: the design question has a written answer (what was learned, which approach won and why); prototype code is deleted or the portable logic module is absorbed into the codebase; if the finding changes planned direction, the advisor gate has been invoked.

@@ -1023,7 +1023,7 @@ function cmdGate(args) {
   if (!which || !verdictRaw) die('usage: ledger gate <advisor|verifier|qa> <verdict> [--token <t>] [--citation .. --rubric ..]', 2)
   if (!['advisor', 'verifier', 'qa'].includes(which)) die(`unknown gate "${which}"`, 2)
   // Advisor verdicts (from agents-src/advisor.md): APPROVE | CORRECTION | STOP | GAPS | REPLAN
-  // (REPLAN is non-terminal — stop-gate routes back to interview/vertical-slice).
+  // (REPLAN is non-terminal — stop-gate routes back to feature-interview/vertical-slice).
   const VALID_ADVISOR_VERDICTS = new Set(['APPROVE', 'CORRECTION', 'STOP', 'GAPS', 'REPLAN'])
   if (which === 'advisor' && !VALID_ADVISOR_VERDICTS.has(verdictRaw)) {
     die(`invalid advisor verdict "${verdictRaw}". Must be: APPROVE | CORRECTION | STOP | GAPS | REPLAN`, 1)

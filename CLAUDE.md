@@ -15,7 +15,7 @@
 1. **Writing or editing code?** → STOP. Delegate to `groundwork:junior-orchestrator` (default) or `groundwork:general-purpose` (leaf only — ALL: single domain, ≤2 files, no internal sequencing, small verification surface). MUST NOT use Edit/Write yourself.
 2. **Searching the codebase for something unknown** (which file handles X? where is Y defined? summarize pattern Z)? → Delegate to `groundwork:explore`. If you already know the file path → use `Read` directly. Explore is for discovery and summarization — NOT for reading a full known file.
 3. **Debugging a bug?** → STOP. Delegate to `groundwork:debugger` (it runs the 6-phase diagnose protocol). MUST NOT load diagnose skill as the routing front-door.
-4. **Building a feature (>1h)?** → STOP. Load `/groundwork:interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out `junior-orchestrator` by default; `general-purpose` only for leaf slices (ALL: single domain, ≤2 files, no internal sequencing, small verification surface). Engage `/groundwork:ultrawork` for max fan-out.
+4. **Building a feature (>1h)?** → STOP. Load `/groundwork:feature-interview` (captures intent into a motive charter) → `groundwork:planner` (decomposition + coverage) → `/groundwork:vertical-slice` (writes the run ledger) → fan out `junior-orchestrator` by default; `general-purpose` only for leaf slices (ALL: single domain, ≤2 files, no internal sequencing, small verification surface). Engage `/groundwork:ultrawork` for max fan-out.
 
 **The ONLY tools you use directly:**
 - `Task(subagent_type=...)` — to delegate ALL work
@@ -59,9 +59,9 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 |---|---|---|
 | "doesn't work", "broken", "error", stack trace | Bug | `groundwork:debugger` (observe→hypothesize→isolate→fix) → `advisor` gate |
 | Obvious typo/config (zero ambiguity, small verification surface) | Trivial bug | `general-purpose` direct → `advisor` gate |
-| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `junior-orchestrator` (default) or `general-purpose` (leaf — only when ALL: single domain, ≤2 files, no internal sequencing, small verification surface) parallel → `advisor` gate |
+| "build X", "implement Y", "plan this", "design this first", complex feature / complex multi-file feature | Feature | `feature-interview` (human front door: one-question-at-a-time intent capture) → `Task(subagent_type="groundwork:planner", model="opus")` (Phase 0 context intake per D-83, then decomposition + coverage; **both retained, not alternatives** — interview feeds planner, planner cannot prompt the user) → `vertical-slice` (writes ledger) → `plan-review` (read-only coverage audit) → 5–20 `junior-orchestrator` (default) or `general-purpose` (leaf — only when ALL: single domain, ≤2 files, no internal sequencing, small verification surface) parallel → `advisor` gate |
 | "add/update/tweak" (small, clear, <1h, localized, small verification surface) | Small change | `general-purpose` direct → `advisor` gate |
-| Ambiguous small change (touches shared code, API, auth) | Risky change | `interview` (quick) → `general-purpose` → `advisor` gate |
+| Ambiguous small change (touches shared code, API, auth) | Risky change | `quick-interview` → `general-purpose` → `advisor` gate |
 | "write tests", "coverage", "TDD", "flaky" | Tests | `test-engineer` |
 | "review", "quality", "SOLID", "check my code" | Code review | `advisor` gate |
 | "auth", "security", "OWASP", "injection" | Security | `advisor` gate |
@@ -77,7 +77,7 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 | "architecture review", "how's the structure", "any concerns", "improve architecture" | Arch review | load `/groundwork:arch-review` |
 | "capture intent", "what do I want to build", durable goal, charter authoring | Motive authoring | load `motive` skill |
 | "resume", "continue from last session", multi-session continuity | Continuity | load `continue` skill + `pause` skill |
-| "capture requirements", "clarify scope", intent capture | Requirements clarification | `interview` |
+| "capture requirements", "clarify scope", intent capture | Requirements clarification | `requirements` |
 | "update spec", "spec upkeep", "spec is stale" | Spec upkeep | load `spec` skill |
 | "retrospect", "reflect on this session", session retrospective | Retrospective | load `/groundwork:retrospective` |
 

@@ -1,22 +1,15 @@
 # Groundwork General-Purpose Rules
 
-These rules apply specifically to the general-purpose agent, in addition to the universal rules.
+## Execution
 
-## Execution-Specific Rules
+Delegate technical uncertainty to the **advisor** — do not resolve internally.
 
-### No Self-Review
-Use the **advisor** agent via `task(subagent_type="groundwork:advisor", ...)` for any technical uncertainty. Do not rely on internal reasoning loops when a decision has ambiguity or impact.
-
-### BDD Over Unit Tests, Validation Over Verification
-For any visible UI change or bug, validate with actual visual inspection before and after — not just code assertions. For non-UI work, prefer integration or end-to-end tests that validate behavior over unit tests that verify implementation.
+Validate UI changes with visual inspection, not only assertions. For non-UI work, prefer integration or end-to-end tests over unit tests.
 
 ## Delegation Scope
 
-- **NEVER use `task` when acting as advisor.** Subagent tasks are for executors only.
+May call `task` for `advisor` (decisions) and `explore` (codebase investigation), plus non-orchestrator specialists for multi-domain sub-problems. Do not spawn tasks when acting as advisor.
 
-The general-purpose agent may call `task` for `advisor` (technical decisions) and `explore` (codebase investigation), plus other non-orchestrator specialists for a genuinely multi-domain sub-problem.
+## Named Failure Modes
 
-Example:
-```
-task(subagent_type="groundwork:advisor", description="Architecture review", prompt="...")
-```
+**`question`-in-subagent deadlock:** Never call the `question` tool — a subagent calling `question` blocks the parent session's background-task completion notifications and deadlocks the session. Return questions in the report instead.

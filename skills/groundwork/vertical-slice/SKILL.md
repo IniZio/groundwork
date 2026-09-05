@@ -1,99 +1,29 @@
 ---
 name: vertical-slice
-description: Decompose any task into conflict-free parallel slices. Writes a run ledger when the host provides one; otherwise produces an advisory slice table.
+description: Decompose a task into conflict-free parallel slices, one file owned by exactly one slice per wave. Writes a run ledger when the host supports one.
 ---
 
 # Vertical-Slice Decomposition
 
-## Platform contract
+A vertical slice is a **thin end-to-end behavior** cutting through all layers (types → logic → surface → test) for ONE user-facing outcome. It is independently testable and independently delegatable.
 
-The slice method is shared across hosts. A run ledger and Stop-gate are runtime
-features, not consequences of loading this skill. In Codex, maintain the slice
-table in the available plan or handoff artifact unless a documented native
-ledger integration is present.
+## When to use
 
-## Core Insight
+Mandatory for any task touching ≥3 files OR ≥2 user-facing behaviors OR a large verification surface (real hardware; multi-service or non-trivial live environment; >5 QA scenarios; ≥2 platforms or clients). Skip only when ALL of: ≤2 files AND ≤1 behavior AND <1h AND small verification surface.
 
-A vertical slice is a **thin end-to-end behavior** that cuts through ALL layers (types → logic → surface → test) for ONE user-facing outcome. It is independently testable and independently delegatable.
+Chain: `feature-interview → planner` produces a `motive_ref`; this skill runs next; `plan-review` audits coverage before fan-out.
 
-## Default Posture
+## Decomposition
 
-Decompose by default. The question is never "should I slice?" but "what is the maximum number of conflict-free slices?". Maximize parallel width within each wave; the only constraints on slicing are real file-ownership conflicts and genuine data dependencies. A blocked_by edge is valid when the blocking slice creates a file, type, or binary artifact that the blocked slice must import or execute against. Sequencing preference, general caution, or a shared-file concern that could instead be resolved by splitting file ownership are NOT valid grounds for an edge.
+1. **List user-facing behaviors** — each observable outcome is one candidate slice.
+2. **Identify the tracer bullet** — the simplest behavior exercising every layer; becomes Wave 0.
+3. **Map file ownership per slice** — one file, one owner per wave. Resolve conflicts by merging slices, serializing into separate waves, or splitting the file.
+4. **Assign waves by dependency** — Wave 0: tracer; Wave N: slices whose blockers are all complete. Make each wave as wide as the DAG permits.
+5. **Write the slice table**: Slice | Behavior | Files Owned | Wave | Depends On.
 
-**Horizontal (wrong) — delays validation, blocks fan-out:**
-```
-Wave 0: all types + all constants
-Wave 1: all functions + services
-Wave 2: all components + UI + tests
-```
+For ledger CLI flag reference and schema: `bin/ledger help`.
 
-**Vertical (correct) — validates immediately, enables full fan-out:**
-```
-Slice 1 (tracer): add item — type → addItem() → ItemInput.vue → e2e test
-Slice 2: complete + delete — toggle(), delete() → ItemRow.vue → e2e tests
-Slice 3: filter + clear — filter state → FilterBar.vue → e2e tests
-```
-
-## When to Use
-
-**This skill is MANDATORY** — not optional — for any task touching ≥3 files OR ≥2 user-facing behaviors OR with a large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients) before delegating to implementation agents.
-
-**Skip ONLY if trivial — ≤2 files AND ≤1 user-facing behavior AND <1h AND the verification surface is small (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios). If any of ≥3 files, ≥2 user-facing behaviors, or a large verification surface applies, slicing is mandatory.**
-
-**Chain position:** The feature-planning pipeline (`interview` → `planner`) MUST have produced a planning artifact (`motive_ref`) before this skill runs on non-trivial work. After this skill, `plan-review` validates coverage before fan-out, then `implement` or `ultrawork` executes the slices.
-
-## Decomposition Process
-
-### 1. List user-facing behaviors from the spec
-
-Each behavior the user can observe = one candidate slice. Write them out before grouping.
-
-### 2. Identify the tracer bullet
-
-The first slice must prove the full end-to-end path: data model → business logic → surface → test. It should be the simplest behavior that exercises every layer.
-
-### 3. Map file ownership per slice
-
-For each slice, list the files it will create or modify. A file owned by two slices in the same wave = conflict. Resolve by:
-- Merging the slices into one
-- Serializing them (put one in Wave 0, one in Wave 1)
-- Splitting the file so each slice owns a non-overlapping section
-
-**Worktree conflict-fallback (optional).** When two slices genuinely overlap on file ownership and serializing them into separate waves would sacrifice real parallel width, the orchestrator MAY instead run them in parallel, each in its own Claude-Code-managed git worktree, via `Task(subagent_type=..., isolation:"worktree", ...)`. CC provisions a fresh worktree + branch per isolated task and auto-cleans it if unchanged. After the wave, the orchestrator reconciles:
-- **Precondition:** the working tree MUST be clean before dispatching worktree-isolated tasks (a dirty tree aborts worktree creation).
-- **Reconcile:** serialized merge — merge the highest-collision branch first, then the rest, resolving conflicts incrementally; OR apply each task's patch in sequence. There is NO auto-merge; reconciliation is the orchestrator's responsibility.
-- **node_modules:** symlink the shared install into each worktree rather than reinstalling (the in-repo `pi-subagents` worktree implementation is the reference pattern).
-- **Cleanup:** `git worktree remove --force` each, then `git worktree prune`.
-
-This is a FALLBACK ONLY — it is never the default. The default remains disjoint file ownership per wave. Do NOT reach for worktrees when slices already have non-overlapping ownership. Manual `git worktree add` inside a subagent stays prohibited; only the orchestrator's CC-managed `isolation:"worktree"` dispatch is sanctioned.
-
-### 4. Assign waves by dependency
-
-```
-Wave 0: tracer bullet (1-2 slices)
-Wave 1: slices that only depend on tracer output
-Wave 2: slices that depend on Wave 1 output
-```
-
-This template shows the minimum structure, not a target shape. In practice Wave 1 may hold 10 independent slices that all depend only on the Wave 0 tracer. Use as few waves as the dependency DAG requires and make each wave as wide as the DAG permits.
-
-Slices in the same wave MUST have non-overlapping file ownership.
-
-### 5. Write the slice table
-
-```
-Slice N: <behavior name>
-  Files:      <files owned — created or modified>
-  Test:       <e2e or integration test validating the behavior>
-  Depends on: <slice IDs, or "none">
-  Wave:       <0 / 1 / 2 ...>
-```
-
-## Fan-Out Targets
-
-Fan-out targets (from your agent definition's Fan-out Protocol section): junior-orchestrator 5–20 (DEFAULT — one per slice), general-purpose 5–20 (leaf carve-out only: single domain, ≤2 files, no sub-domains, small verification surface — ALL four must hold), explore 3–7, designer 2–5, advisor 1–2 per wave. These are ceilings, not quotas. **Single-slice waves on non-trivial work are a failure — decompose harder.**
-
-## Conflict-Free Rules
+## Conflict-free rules
 
 <!-- VERTICAL-SLICE-GATE:BEGIN -->
 A vertical slice is a thin end-to-end behavior cutting through all layers (types → logic → surface → test) for ONE outcome. Each file is owned by exactly ONE slice per wave — no shared ownership across siblings.
@@ -106,83 +36,29 @@ Shared types needed by multiple slices MUST be defined in the tracer-bullet (fir
 Single-slice waves on non-trivial work are a failure mode — they mean the domain was not decomposed. If you find yourself authoring only one slice, reconsider whether genuine parallelism exists before proceeding.
 <!-- VERTICAL-SLICE-GATE:END -->
 
-## Output Format
+## Ledger write contract
 
-Hand the orchestrator this table plus wave assignments:
+Each slice carries: `id`, `behavior`, `files`, `wave`, `blocked_by`, `acceptance`, `status`, `kind` (`plan|diagnose|design|impl`, default `impl`), `ticket`, `covers_ac`, `decisions`. Write the ledger once with all slices `pending`; mutate only via the ledger CLI after that.
 
-```markdown
-## Slice Plan
+`blocked_by` is valid when the blocking slice creates a file, type, or artifact the blocked slice must import or execute against. Sequencing preference or a shared-file concern resolvable by splitting ownership is not a valid edge.
 
-| Slice | Behavior | Files Owned | Wave | Depends On |
-|-------|----------|-------------|------|------------|
-| S1 (tracer) | Add workspace disk min-size | image_sparse.go, image_sparse_test.go | 0 | — |
-| S2 | Guest agent disk handlers | server.go, disk.go | 0 | — |
-| S3 | Data disk monitor | driver_data_disk_monitor.go, manager.go | 1 | S1 |
-| S4 | E2e harness + tests | suite.go, harness.go, disk_grow_test.go | 1 | S2 |
+`tickets/` is never deleted by tooling. `open-items/` is swept on regeneration — do not place durable work objects there.
 
-Wave 0: S1 + S2 (parallel, no file conflicts)
-Wave 1: S3 + S4 (parallel, no file conflicts)
-```
+## Worktree conflict-fallback
 
-## The Ledger (when supported)
-
-When supported by the host, the run ledger is written per-session at
-`.groundwork/runs/<session_id>.json` (legacy `.groundwork/run.json` may be
-honored for in-flight runs). Use only the host's documented ledger interface
-for mutations. In Codex, do not assume a ledger CLI, plugin-root variable, or
-mechanical Stop-gate; use the schema below as an advisory record.
-
-```json
-{
-  "version": 1,
-  "active": true,
-  "session_id": "<from the SessionStart 'Session identity' block>",
-  "brief": "<one-line description of the task>",
-  "motive_ref": "<motive slug if a motive charter exists, else null>",
-  "reinforcements": 0,
-  "slices": [
-    { "id": "S1", "behavior": "add workspace disk min-size",
-      "files": ["image_sparse.go", "image_sparse_test.go"],
-      "wave": 0, "blocked_by": [], "depends_on": [],
-      "acceptance": [
-        "image_sparse rejects a workspace smaller than the min size",
-        "image_sparse_test covers the min-size boundary"
-      ],
-      "status": "pending",
-      "kind": "impl",
-      "ticket": "T1",
-      "covers_ac": ["T1-AC1", "T1-AC2"],
-      "decisions": ["D-1"] }
-  ],
-  "gate": { "advisor": "pending" }
-}
-```
-
-Slice `kind` is optional (default `impl`); values: `plan | diagnose | design | impl`. Use non-`impl` kinds to track planning, diagnosis, or design phases as first-class ledger items. Gating is status-keyed — `kind` is metadata only and does not affect stop-gate logic.
-
-**Ticket linking:** Each slice MAY reference a ticket and the acceptance criteria it covers. Pass these when registering a slice:
-
-```bash
-ledger add S1 --desc "add workspace disk min-size" --wave 0 \
-  --acceptance "image_sparse rejects small workspace;test covers boundary" \
-  --blocked-by "S0" \
-  --ticket T1 --covers-ac "T1-AC1,T1-AC2" --decisions "D-1"
-```
-
-- `--blocked-by "<dep1>,<dep2>"` — comma-separated slice ids this slice depends on; the frontier withholds this slice until all blockers are complete. A slice in wave N>0 registered with no blockers is a claim that must be justified in the plan (state why it has no upstream dependency).
-- `--ticket <tid>` — links the slice to a ticket document (id or path). Tickets are hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/` following the `NN-type-slug.md` naming convention (e.g. `01-research-auth-flow.md`); they are **never auto-generated per slice** and **never deleted by regeneration**. Scaffold new tickets with `node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>`.
-- `--covers-ac "a,b"` — comma-separated AC labels this slice covers; emits `AC_COVERAGE` events on complete and drives the MAP coverage overlay.
-- `--decisions "D-1,D-2"` — comma-separated journal decision ids this slice implements. Mirrors `--covers-ac`.
-
-**tickets/ vs open-items/ ownership:**
-
-| Directory | Owner | Swept? |
-|---|---|---|
-| `tickets/` | Human or agent (hand-authored) | No — never deleted by tooling |
-| `open-items/` | Generated drill-down views | Yes — tooling regenerates this directory; anything placed here is overwritten |
-
-Write this file once with the Write tool (all slices `pending`). After that, use ONLY the `ledger` CLI — MUST NOT Read/Edit the file by hand.
+When two slices genuinely overlap on file ownership and serializing would sacrifice real parallel width, the orchestrator may dispatch each via `Task(..., isolation:"worktree")`. Precondition: clean working tree before dispatch. Reconcile after the wave by merging highest-collision branch first, then `git worktree remove --force` and `git worktree prune`. This is a fallback — disjoint file ownership per wave remains the default.
 
 ## Rejection KB
 
-When a concept is rejected as out of scope, record it in `.groundwork/out-of-scope/<concept-slug>.md`. See `reference/rejection-kb.md` for the template and full rules.
+Record rejected-scope concepts in `.groundwork/out-of-scope/<concept-slug>.md`. See `reference/rejection-kb.md` for the template and format.
+
+## Failure modes
+
+Six named failure modes from observed incidents. Full causal chain and correction in `reference/failure-modes.md`.
+
+- **fence-slices-by-file-not-ac**: AC-fenced slices on a shared decision tree break the views nobody was assigned.
+- **ledger-cannot-see-missing-slices**: the ledger verifies only registered slices; a forgotten obligation reads as N/N complete.
+- **green-slices-broken-seam**: a two-surface contract drifts while both sides stay green; slice-local tests cannot see the seam.
+- **pipeline-stage-insertion-moves-wiring**: inserting a pipeline stage is not a phrasing edit; downstream handoff and resource ownership must move too.
+- **redgreen-perturbation-destroys-sibling-work**: perturbing real files for a red→green proof silently destroys uncommitted sibling work on that file.
+- **agent-git-stash-destroys-run**: prose banning `git stash` in briefs does not prevent it; commit every verified wave.

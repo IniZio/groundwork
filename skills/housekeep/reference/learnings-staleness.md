@@ -1,80 +1,64 @@
 # Housekeep — learnings-staleness mode
 
-Load this file only when the user selects `learnings-staleness` mode. The shared posture and completion gate in `SKILL.md` apply.
+Load this file only when the user selects `learnings-staleness` mode. The shared spine, finding format, severity rubric, triage gate, and completion gate in `SKILL.md` apply.
 
-## When to use this mode
+Learnings-staleness revalidates each promoted learning against current source to find entries whose premises no longer hold — the feature was deleted, the pattern was changed, or the incident was permanently fixed.
 
-- After a significant refactor or dependency upgrade that may invalidate promoted learnings
-- Periodic hygiene sweep to keep the learnings store trustworthy
-- Before onboarding new contributors who will rely on promoted learnings
-- When a promoted learning's `promoted_to` target has changed or been removed
+## Triggers
 
-## How the scan works
+`housekeep learnings`, `stale learnings`, `revalidate learnings`
 
-Use `listLearnings(projectDir)` from `hooks/lib/learnings-io.mjs` to enumerate all entries under `.groundwork/learnings/*.md`. For each entry:
+## What learnings are
 
-1. Call `readLearning(projectDir, slug)` to get `{frontmatter, body}`.
-2. **Filter to PROMOTED entries only** — check `frontmatter.status === 'promoted'` (or equivalent promoted-status field). Skip entries that are in LEARNING or other non-promoted states; they are not yet authoritative and do not need revalidation.
-3. Locate the `## Conditions that would invalidate this` section in `body`. Extract each listed condition as a discrete invalidation clause.
-4. Evaluate each clause against current repo state (file existence, symbol presence, flag values, config keys, etc.) using `ctx_batch_execute` — never sequential greps.
-5. Record a Finding for each smell detected (see catalog below). Do not fix in place; assemble the full backlog first.
-
-**Location field for each Finding:** the learning file path (`.groundwork/learnings/<slug>.md`) plus, where applicable, the `promoted_to` target path (e.g. `skills/groundwork/…/SKILL.md`).
+Promoted learnings are captured rules from past incidents and sessions. They live in the project memory index (`~/.claude/projects/<project>/memory/MEMORY.md`) as one-line entries, each pointing to a sidecar `.md` file in the same directory. The sidecar contains the full incident record, root cause, and the rule that was extracted.
 
 ## Smell catalog
 
-| Smell | Definition |
-|---|---|
-| **Invalidation condition met** | A stated condition (e.g. "if X is removed", "if config Y changes") is now true in the repo |
-| **Referenced file/symbol gone** | The learning or its `promoted_to` doc references a file, export, flag, or config key that no longer exists |
-| **Promoted target missing** | The `promoted_to` frontmatter field points to a path that does not exist — the learning's destination has been deleted or moved |
-| **Recurrence stale** | The learning claims to track a recurring pattern (e.g. "check this after every release"), but the recurrence event has happened with no re-trigger logged |
-| **Invalidation section absent** | A promoted entry has no `## Conditions that would invalidate this` section — it cannot be revalidated and is effectively opaque debt |
-
-## Severity mapping
-
-Default SEV tiers (rubric can bump ±1; see SKILL.md "Severity model"):
-
-| Smell | Default tier | Rationale |
+| Smell | Definition | Default SEV |
 |---|---|---|
-| **Invalidation condition met** | SEV2 | The learning is now actively misleading — intent-masking risk for anyone relying on it |
-| **Referenced file/symbol gone** | SEV2 | The learning references dead artifacts; acting on it will lead readers astray |
-| **Promoted target missing** | SEV2 | The promoted knowledge has no live home; the promotion is effectively broken |
-| **Recurrence stale** | SEV3 | Maintainability — the learning may still be valid but is no longer self-monitoring |
-| **Invalidation section absent** | SEV3 | Maintainability — the learning cannot be revalidated; blocks future hygiene sweeps |
+| **Contradicted learning** | The learning says "X happens if you do Y" but current source shows Y no longer does X | SEV2 — the rule is now wrong guidance |
+| **Deleted-feature learning** | The learning is about a feature, file, or pattern that no longer exists in source | SEV3 — the rule is now vacuous |
+| **Resolved-incident learning** | The learning documents a workaround for an incident that has been permanently fixed | SEV3 — the workaround may now be counterproductive |
+| **Superseded learning** | A newer learning in the same memory file contradicts this entry, making it stale | SEV3 |
+| **Orphaned sidecar** | The MEMORY.md index references a sidecar file that does not exist on disk | SEV2 — causes recall failures |
 
-Context bumps apply: a stale learning on a security boundary or a critical architectural invariant bumps to SEV1; a learning in an archived or rarely-used module may drop one tier.
+Context bumps apply: a contradicted learning on a security or correctness boundary → SEV1; a vacuous learning about a long-retired experiment → SEV4.
 
-## Findings backlog and triage gate
+## Scan procedure
 
-Learnings-staleness mode **reuses** the shared findings-backlog table schema and interactive triage gate defined in `SKILL.md` ("Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine them here. Collect every smell as a Finding (id, severity, category, location, finding, suggested action, effort) before presenting the backlog to the user.
+The scan is different from a code scan — it works against a memory index, not directly against source files.
 
-**Suggested actions** for each smell:
+1. Read `~/.claude/projects/<project>/memory/MEMORY.md` to enumerate all learning entries and their sidecar file paths.
+2. For each entry:
+   a. Confirm the sidecar file exists on disk. Missing → Orphaned sidecar finding.
+   b. Read the sidecar and extract the central claim (the rule the learning encodes).
+   c. Grep current source to verify whether the claim still holds.
+   d. Check whether a newer entry in MEMORY.md contradicts this one.
+3. Flag any entry where:
+   - The referenced file or symbol no longer exists in source
+   - The described behavior has changed
+   - A newer entry in the memory file contradicts it
 
-| Smell | Suggested action |
-|---|---|
-| Invalidation condition met | Demote to LEARNING (re-open for re-evaluation) or delete if the knowledge is fully superseded |
-| Referenced file/symbol gone | Update the reference if the artifact was renamed; delete or demote if the knowledge no longer applies |
-| Promoted target missing | Re-promote to the correct target path, or demote to LEARNING until a valid target is identified |
-| Recurrence stale | Re-trigger the recurrence check and update the learning, or downgrade to LEARNING |
-| Invalidation section absent | Add a `## Conditions that would invalidate this` section, or demote to LEARNING until one is written |
+Batch all grep checks with `ctx_batch_execute` — never sequential greps.
 
 ## Passes
 
-- **Pass 1: Promoted-target check** — verify `promoted_to` paths exist; record missing-target findings.
-- **Pass 2: Referenced-artifact check** — for each promoted entry, verify all referenced files, symbols, flags, and config keys exist in the current repo.
-- **Pass 3: Invalidation-condition evaluation** — parse each `## Conditions that would invalidate this` section and evaluate each clause against repo state.
-- **Pass 4: Recurrence and section-absent sweep** — flag entries with missing invalidation sections and stale recurrence markers.
+- **Pass 1 — Orphaned sidecars:** for each MEMORY.md entry, confirm the sidecar file exists. Record any missing sidecar as a finding.
+- **Pass 2 — Contradicted and superseded learnings:** grep-verify each learning's central claim against current source. Flag entries where the claim no longer holds, and flag pairs where a newer entry contradicts an older one.
+- **Pass 3 — Deleted-feature and resolved-incident learnings:** identify learnings about features or patterns removed from source, and learnings about workarounds for incidents that appear to be permanently fixed. Propose archive or deletion for each, subject to user triage.
 
-Re-run `listLearnings` after Pass 1 to confirm no entries were altered mid-scan.
+## Triage note
 
-## Quality gates (learnings-staleness-specific)
+Learnings represent hard-won incident knowledge. The triage gate is especially important here — never delete a learning without user confirmation. When a learning's status is ambiguous (feature removed but the pattern might return, incident fixed but the fix could regress), Defer is the safe default. Deletion is appropriate only when the learning's premise no longer exists in any form.
 
-- No promoted learning references a file, symbol, or config key that does not exist in the repo
-- No promoted learning has a `promoted_to` path that is absent from the filesystem
-- Every promoted learning has a `## Conditions that would invalidate this` section (or is demoted by this pass)
-- If a gate fails, demote or delete the offending entry — never leave a known-stale promoted learning behind
+## Quality gates
+
+- Every MEMORY.md entry has a sidecar file that exists on disk
+- No sidecar file exists on disk without a corresponding MEMORY.md entry
+- No promoted learning's central claim is directly contradicted by current source
+
+If a gate fails, triage the offending entry with the user before taking action — do not delete or modify a learning unilaterally.
 
 ## Posture note
 
-This mode is DEMOTION-favoring over deletion. Prefer demoting a promoted learning to LEARNING status (preserving the knowledge for re-evaluation) over outright deletion, unless the underlying knowledge is confirmed fully superseded. Deletion is appropriate when the learning's premise no longer exists in any form. Do not write new learnings or revise learning content during this pass — flag, triage, and demote/delete only.
+This mode is archive-favoring over deletion. Prefer proposing an archive (move to a dated archive section in MEMORY.md, keep the sidecar) over outright deletion, unless the learning's premise is confirmed fully absent from the codebase. Do not write new learnings or revise learning content during this pass — identify, triage, and clean only.

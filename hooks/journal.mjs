@@ -110,6 +110,7 @@ const HELP = {
       '  data.rationale    reasoning behind the decision (required — exit 2 if absent)',
       '  data.alternatives array of alternatives considered; defaults to [] when absent',
       '  data.kind         optional; "structure" or "test-strategy" for the engineering-judgment pair',
+      '  data.status       optional; proposed (default) | accepted | rejected | superseded',
       '  data.revises      optional; set to this decision\'s own id (e.g. "D-42") to mark',
       '                    this as an intentional same-id refinement of an earlier event,',
       '                    suppressing the id-collision warning',

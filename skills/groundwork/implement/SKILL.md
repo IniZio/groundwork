@@ -1,142 +1,57 @@
 ---
 name: implement
-description: Implementation orchestration skill. Decompose into vertical slices and fan out to junior-orchestrators by default; general-purpose is a leaf carve-out only. Validate behavior (not code structure). MANDATORY after a plan or interview. Use vertical-slice skill for conflict-free slice planning and the run ledger (.groundwork/runs/<session_id>.json).
+description: Decompose a motive into vertical slices, fan out parallel agent waves, and gate completion with behavioral evidence. Use after a plan is approved or after `quick-interview` for a small change.
 ---
 
 # Implement
 
-## Platform contract
+**Trigger:** motive classified Feature or SmallRisky with an approved plan, or after `quick-interview` for small changes. Skip for trivial tasks (≤2 files, <1h, small verification surface) — delegate directly to `general-purpose`.
 
-The decomposition and validation method is shared. Delegation, plans, and
-ledger enforcement are host-specific: use the host's documented native
-interfaces when present. In Codex, do not assume a `task`, `question`, or
-todo-writing tool; use available plan/delegation surfaces, or perform the work
-sequentially and label fan-out and ledger state as advisory.
+## Failure Modes
 
-## Core Principle
+**Structural validation.** A test that asserts file content or import structure — rather than the observable behavior it should enforce — passes even when behavior is broken. Tests confirm *what the system does* from the user's perspective. Never: unit tests that mock internals to verify code structure. Always: integration or e2e tests that exercise real behavior paths.
 
-**Decompose first, fan out maximally, validate behavior.**
+**1:1 forwarding.** A `junior-orchestrator` that relays its brief unchanged to a single child adds latency with no decomposition benefit. Genuine orchestration means multiple children with distinct, non-overlapping scopes.
 
-Slice the work into independent end-to-end behaviors before launching agents. Fan out all independent slices simultaneously — 5–20 parallel agents per wave is the target (junior-orchestrators by default; general-purpose only for leaf carve-outs). Validate what the system *does* from the user's perspective, not how the code is structured.
+**Uncommitted-wave accumulation.** A later wave's `git stash` silently reverts prior uncommitted slices. Commit each verified wave before fanning out the next.
 
-```
-<HARD-GATE>
-For NON-TRIVIAL work (≥1 day estimated, OR ≥3 files, OR ≥2 behaviors, OR large verification surface (requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients), OR anything classified
-Feature/SmallRisky), do NOT begin creative implementation until a user-approved plan/spec is
-grounded in a motive charter (motive_ref) produced by the feature-planning pipeline (interview → planner).
-Trivial work (<1h, ≤2 files, fully specified, obvious typo/config, AND small verification surface (no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios)) is EXEMPT — proceed directly.
-If you are about to implement non-trivial work and no motive_ref exists, STOP and route to
-the feature-planning pipeline (`interview` → `planner`) first.
-</HARD-GATE>
-```
+**Platform mismatch.** Prose that imitates a host-specific task API — writing `Task(...)` calls in a skill body — invents syntax that may not exist in every host. Use the host's documented native delegation interface; when none is available, execute slices in dependency order.
 
+## Modes
 
-## When to Use
+**Feature mode** (plan exists): a non-trivial feature must have an approved plan (`motive_ref`) before fanning out — route to `feature-interview` → `planner` first if missing. Then run `vertical-slice` → conflict-free slice table → execute waves.
 
-**MANDATORY** in these cases:
-- After a plan is approved — before any implementation begins
-- After `interview` for small changes — interview spec is the spec
-- Any feature that changes observable behavior
-- Any task touching ≥3 files or ≥2 behaviors or with a large verification surface
+**Small-change mode** (after `quick-interview`, no plan): decompose into ≥3 slices. If you can't reach 3 slices, the change is trivial — skip this skill.
 
-**Do NOT use for:**
-- **Bugs** — use `diagnose` instead. It owns the fix and regression test.
-- **Trivial changes** (<1h, fully specified, ≤2 files, small verification surface) — delegate directly to general-purpose, then `advisor-gate`.
+## Orchestration Flow
 
-## Two Modes
+### 1. Banner
+Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json`.
 
-### Feature Mode (a plan exists)
-A plan is whatever concrete spec the work is grounded in: an `interview` synthesis, a
-`planner` output, or the project's own planning artifact (see
-`interview` for detecting project-level plan conventions). **A non-trivial feature MUST have a planning artifact (`motive_ref`) before `vertical-slice` fans out** — if missing, STOP and route to the feature-planning pipeline (`interview` → `planner`) first (HARD-GATE). Decompose its acceptance
-criteria into vertical slices — each criterion → one slice. Record the motive slug as
-`motive_ref` in the ledger.
+### 2. Decompose
+Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching agents. Slice the work into independent end-to-end behaviors before launching agents. Minimum: ≥5 slices for a Feature, ≥3 for a small change. Link each slice to its ticket and acceptance criteria. See `vertical-slice` for ticket naming, `--ticket`, `--covers-ac`, and `--decisions` linkage.
 
-### Small-Change Mode (after `interview`, no separate plan)
-Lightweight decomposition into 3–5 vertical slices. The interview spec is the spec.
+### 3. Fan out
+Fan out all independent slices simultaneously — 5–20 parallel agents per wave is the target (junior-orchestrators by default; general-purpose only for leaf carve-outs). Single-slice wave = code smell — decompose harder or merge with adjacent wave. For small changes: 3–5 agents per wave.
 
-**Decision rule:** a plan/spec exists → Feature Mode. Otherwise → Small-Change Mode.
+### 4. Agent selection
+Dispatch `junior-orchestrator` by **default** to own a domain end-to-end. The carve-out to `general-purpose` (leaf implementer, cannot spawn further general-purpose workers) applies ONLY when ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface. If ANY clause fails → `junior-orchestrator`.
 
-## Step 0: Banner
-
-Emit the compliance banner as your first line: `GROUNDWORK ▸ ultrawork: <N> slices across <M> waves → .groundwork/runs/<session_id>.json`. This is the observable signal the workflow is engaged.
-
-## Step 1: Decompose with `vertical-slice`
-
-Run `vertical-slice` to produce a conflict-free slice table with wave assignments before launching agents. `vertical-slice` may also write a run ledger when the host provides that interface. In Codex, the ledger and advisor state are advisory unless a native host integration explicitly enforces them.
-
-When registering slices, link each slice to its ticket and acceptance criteria using `--ticket <id>` and `--covers-ac "<AC1>,<AC2>"`. Use `--decisions "D-1,D-2"` to attach journal decision ids (mirrors `--covers-ac`). Tickets are durable hand/agent-authored documents under `.groundwork/motives/<slug>/tickets/` following the `NN-type-slug.md` naming convention (types: `research`, `choose`, `model`, `build`, `grill`, `spec`, `fix`, `chore`) — they are never auto-generated per slice and are never deleted by regeneration. Scaffold new tickets with `node hooks/motive-ticket.mjs create --type <T> --slug <S> --motive <id>`.
-
-**Minimum decomposition:**
-- Feature: ≥5 slices (target 5–20 per wave)
-- Small change: ≥3 slices
-- If you can't reach 3 slices, the change is trivial — skip this skill
-
-Each slice is a thin end-to-end tracer through ALL layers for ONE user-facing behavior:
-
-```
-Wave 0: tracer bullet — proves full path (data model → logic → surface → test)
-Wave 1+: remaining independent slices, all launched in parallel
-```
-
-Present the slice plan in the normal assistant response or the host's documented input interface before executing when user confirmation is needed.
-
-## Step 2: Pin Session Goal
-
-Keep the feature goal visible in the host's plan mechanism when one exists. After each wave, verify remaining work still serves this goal.
-
-## Step 3: Capture Before State
-
-- **UI work:** screenshot + accessibility snapshot before any change → `before-<description>.png`
-- **Non-UI work:** run existing integration/e2e tests; note what passes/fails
-- **Skip if:** purely additive non-UI change with no existing tests — document why
-
-## Step 4: Execute Waves
-
-**Fan out ALL slices in a wave simultaneously in ONE message:**
-
-Use one native delegation call per independent slice when the host documents
-parallel calls. Otherwise run the slices in dependency order; do not imitate a
-host-specific task API in prose or tooling.
-
+### 5. Self-contained prompts
 Each agent prompt must be **fully self-contained**: file paths, requirements, acceptance criteria, context. Agents have no shared state.
 
-Wait for wave completion before launching the next wave. Update the host's plan and ledger interfaces when available. In Codex, record incomplete slices in the plan or handoff artifact and do not claim that a Stop-gate will block session termination.
+### 6. Wave gate
+Wait for wave completion before launching the next wave. Mark each verified slice complete in the ledger. Commit the verified wave before proceeding.
 
-**Fan-out targets:**
-- Feature: 5–20 parallel slices per wave
-- Small change: 3-5 parallel slices
-- Single-slice wave = code smell — decompose harder or merge with adjacent wave
-- Dispatch `junior-orchestrator` by **default** to own a domain end-to-end. The carve-out to `general-purpose` (leaf implementer, cannot spawn further general-purpose workers) applies ONLY when ALL of the following hold: single domain with no sub-domains, ≤2 files, no internal sequencing, small verification surface. If ANY clause fails → `junior-orchestrator`.
-- **Worktree conflict-fallback:** when slices share files and would otherwise be serialized, use the worktree isolation mechanism documented in `vertical-slice` to preserve parallel width; reconcile serially after the wave lands.
+### 7. Worktree conflict-fallback
+When slices share files and would otherwise be serialized, use the worktree isolation mechanism documented in `vertical-slice` to preserve parallel width; reconcile serially after the wave lands.
 
-## Step 5: Capture After State
+## Validate Behavior
 
-Same tools as Step 3. Label: `after-<description>.png` or after-state test results.
+Exercise each behavior end-to-end after each wave: run tests, invoke the CLI, observe the UI. Validate what the system *does* from the user's perspective, not how the code is structured. Do not read test files to verify correctness — run them.
 
-## Step 6: Validate Behavior
+**BDD contract:** given the acceptance criterion in the ticket, when the behavior is exercised from outside the implementation boundary, then the observable output matches the specification. A test that passes against a stub of the system under test proves nothing about the real system.
 
-- **UI:** side-by-side comparison — does visual output match the requirement? Any unexpected regressions?
-- **Non-UI:** do integration/e2e tests pass? Does observed behavior match acceptance criteria?
-- **Both:** unexpected changes → stop, diagnose, fix, re-validate
+## Completion
 
-**Validation is behavioral:**
-- Tests confirm *what the system does* from the user's perspective
-- Never: unit tests that mock internals to verify code structure
-- Always: integration or e2e tests that exercise real behavior paths
-
-## Step 7: Capture Learnings
-
-Flag non-obvious gotchas in your evidence report to the orchestrator so they are not lost:
-- Surprising framework behavior
-- Non-obvious configuration requirements
-- Integration pitfalls discovered during implementation
-- Test setup complexity
-
-Only genuinely surprising things — not routine findings. The orchestrator captures durable learnings via `/retrospective` (Phase 4 — Learnings KB in the memory store). Do not write to `docs/learnings.md` — that path no longer exists.
-
-## Step 8: Report Evidence to Orchestrator
-
-Return to the **orchestrator**: before state, after state, what changed, which acceptance criteria are met. The orchestrator invokes `advisor-gate` — do not invoke it yourself or simulate its verdict.
-
-**Do not declare done to the user.** Evidence reporting is your final step; gating belongs to the orchestrator.
+Observable: all ledger slices `complete`, no slice `in_progress`, advisor gate `APPROVE`, each wave committed to git.

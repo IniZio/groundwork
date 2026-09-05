@@ -46,7 +46,7 @@ The planner must never accept an untestable criterion whose linked requirement l
 
 ## § Engineering Decisions (record before first slice)
 
-Before registering any ledger slice, append two DECISION events — one with `data.kind: "structure"` and one with `data.kind: "test-strategy"`. Each requires `data.alternatives` of length ≥ 2. For trivial tasks (no ledger), these decisions are not required.
+Before registering any ledger slice, append two DECISION events — one with `data.kind: "structure"` and one with `data.kind: "test-strategy"`. Both are choices made, not proposals: append each with `"status": "accepted"`. Each requires `data.alternatives` of length ≥ 2. Other DECISION events may use `"status": "proposed"` (the default). For trivial tasks (no ledger), these decisions are not required.
 
 The observable exit check for PLAN-READY: `bin/journal compile <slug> --json` contains two accepted DECISION events with `data.kind` of `"structure"` and `"test-strategy"`.
 

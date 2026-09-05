@@ -20,23 +20,23 @@ const REPO_ROOT = path.dirname(SCRIPT_DIR);
 const IMPERATIVE_VERBS = [
   'Add', 'Allow', 'Analyze', 'Apply', 'Assert', 'Audit', 'Author',
   'Block', 'Bootstrap', 'Build', 'Bundle',
-  'Cache', 'Capture', 'Check', 'Classify', 'Clear', 'Collect', 'Combine',
+  'Cache', 'Capture', 'Check', 'Choose', 'Classify', 'Clear', 'Collect', 'Combine',
   'Compare', 'Compile', 'Configure', 'Convert', 'Create',
-  'Debug', 'Decompose', 'Delete', 'Delegate', 'Deploy', 'Describe', 'Detect',
-  'Disable', 'Dispatch', 'Document',
-  'Enable', 'Enforce', 'Ensure', 'Execute', 'Extend', 'Extract',
+  'Debug', 'Decide', 'Decompose', 'Delete', 'Delegate', 'Deploy', 'Describe', 'Detect',
+  'Diagnose', 'Disable', 'Dispatch', 'Document',
+  'Enable', 'Enforce', 'Engage', 'Ensure', 'Execute', 'Extend', 'Extract',
   'Fetch', 'Filter', 'Find', 'Flag', 'Format',
-  'Generate', 'Gather',
-  'Identify', 'Initialize', 'Install', 'Instrument',
+  'Gate', 'Generate', 'Gather',
+  'Identify', 'Initialize', 'Install', 'Instrument', 'Interview',
   'Join',
   'Load', 'Locate', 'Log',
   'Manage', 'Map', 'Mark', 'Measure', 'Merge', 'Monitor',
   'Observe', 'Output', 'Override',
-  'Parse', 'Pause', 'Plan', 'Poll', 'Print', 'Probe', 'Profile', 'Publish',
+  'Parse', 'Pause', 'Plan', 'Poll', 'Print', 'Probe', 'Profile', 'Prove', 'Publish',
   'Record', 'Redirect', 'Register', 'Remove', 'Report', 'Reset', 'Restart',
-  'Restrict', 'Resume', 'Return', 'Review', 'Route', 'Run',
+  'Restrict', 'Resume', 'Return', 'Review', 'Rewrite', 'Route', 'Run',
   'Scaffold', 'Schedule', 'Scan', 'Search', 'Send', 'Set', 'Show', 'Signal',
-  'Sort', 'Split', 'Start', 'Stop', 'Subscribe',
+  'Slice', 'Sort', 'Split', 'Start', 'Stop', 'Subscribe',
   'Tag', 'Test', 'Track', 'Transform', 'Trace',
   'Update', 'Use',
   'Validate', 'Verify',
@@ -236,9 +236,109 @@ function detectHooksBaseline(baselineFile) {
   };
 }
 
-function detectAuditCompleteness(skill, auditFile, skillsDir) {
+const VALID_AUDIT_CLASSES = new Set([
+  'no-op', 'moved-to-pointer', 'already-hook-enforced', 'dropped-with-reason',
+]);
+const BAD_REASON_RE = /^(Section not matched|unknown|TODO|TBD|n\/a)/i;
+
+function isSeparatorRow(line) {
+  return /^\|[\s\-:|]+\|/.test(line);
+}
+
+function parseCells(rawLine) {
+  // Scan char-by-char: replace \| (escaped pipes) and | inside backtick spans
+  // with \x00 so they don't act as cell separators when splitting on |.
+  let inBacktick = false;
+  let out = '';
+  for (let k = 0; k < rawLine.length; k++) {
+    const ch = rawLine[k];
+    if (ch === '`') {
+      inBacktick = !inBacktick;
+      out += ch;
+    } else if (ch === '\\' && rawLine[k + 1] === '|') {
+      out += '\x00'; // escaped pipe → literal
+      k++;
+    } else if (ch === '|' && inBacktick) {
+      out += '\x00'; // pipe inside backtick span → literal
+    } else {
+      out += ch;
+    }
+  }
+  return out.split('|').slice(1, -1).map(c => c.replace(/\x00/g, '|').trim());
+}
+
+function detectColumns(headerCells) {
+  // Locate classification and destination/reason columns by header name.
+  // Falls back to col 1 / col 2 when no match is found.
+  const lower = headerCells.map(c => c.toLowerCase());
+  const clsCol = lower.findIndex(c => c === 'classification');
+  const reasonCol = lower.findIndex(c => /destination|reason/.test(c));
+  return {
+    clsCol: clsCol >= 0 ? clsCol : 1,
+    reasonCol: reasonCol >= 0 ? reasonCol : 2,
+  };
+}
+
+function validateAuditRows(auditRaw) {
+  const lines = auditRaw.split('\n');
+  const failures = [];
+
+  // Column indices, reset per table when a header row is found
+  let clsCol = 1;
+  let reasonCol = 2;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.startsWith('|')) continue;
+
+    // Skip separator rows (|---|---|---|)
+    if (isSeparatorRow(line)) continue;
+
+    // Header row: immediately followed (ignoring blank lines) by a separator.
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    if (j < lines.length && isSeparatorRow(lines[j])) {
+      // Detect column positions from this header
+      ({ clsCol, reasonCol } = detectColumns(parseCells(line)));
+      continue;
+    }
+
+    // Data row: need cells up to and including both target columns.
+    const cells = parseCells(line);
+    const minCols = Math.max(clsCol, reasonCol) + 1;
+    if (cells.length < minCols) continue;
+
+    const cls = cells[clsCol] ?? '';
+    const reason = cells[reasonCol] ?? '';
+
+    if (!VALID_AUDIT_CLASSES.has(cls)) {
+      failures.push(`row ${i + 1}: invalid classification "${cls}"`);
+      continue;
+    }
+    if (reason.length < 15) {
+      failures.push(`row ${i + 1}: reason/destination too short (${reason.length} chars, need ≥15)`);
+      continue;
+    }
+    if (BAD_REASON_RE.test(reason)) {
+      failures.push(`row ${i + 1}: invalid reason "${reason.substring(0, 50)}"`);
+    }
+  }
+  return failures;
+}
+
+function detectAuditCompleteness(skillOrPath, auditFile, skillsDir) {
   const gitRoot = findGitRoot(skillsDir) ?? REPO_ROOT;
-  const relPath = path.relative(gitRoot, path.join(skillsDir, skill, 'SKILL.md'));
+
+  // If the first arg contains '/' or ends with '.md', treat as a repo-relative path directly.
+  // Otherwise treat as a skill directory name under skillsDir.
+  let relPath, wcPath;
+  if (skillOrPath.includes('/') || skillOrPath.endsWith('.md')) {
+    relPath = skillOrPath;           // already repo-relative
+    wcPath = path.join(gitRoot, skillOrPath);
+  } else {
+    wcPath = path.join(skillsDir, skillOrPath, 'SKILL.md');
+    relPath = path.relative(gitRoot, wcPath);
+  }
 
   const r = spawnSync('git', ['show', `HEAD:${relPath}`], { encoding: 'utf8', cwd: gitRoot });
   if ((r.status ?? 1) !== 0) {
@@ -246,7 +346,6 @@ function detectAuditCompleteness(skill, auditFile, skillsDir) {
   }
   const headContent = r.stdout;
 
-  const wcPath = path.join(skillsDir, skill, 'SKILL.md');
   if (!existsSync(wcPath)) {
     return { pass: false, lines: [`FAIL audit-completeness working copy not found: ${wcPath}`] };
   }
@@ -255,16 +354,27 @@ function detectAuditCompleteness(skill, auditFile, skillsDir) {
   }
 
   const wcContent = readFileSync(wcPath, 'utf8');
-  const auditNorm = normalizeWS(readFileSync(auditFile, 'utf8'));
+  // Read audit file raw — do NOT apply stripMarkdownBoilerplate (table rows must survive).
+  // Unescape \| → | so pipe characters inside table cells match the sentence text.
+  const auditRaw = readFileSync(auditFile, 'utf8');
+  const auditUnescaped = auditRaw.replace(/\\\|/g, '|');
+  const auditNorm = normalizeWS(auditUnescaped);
 
   const headSentences = splitSentences(headContent);
   const wcSentences = new Set(splitSentences(wcContent));
-
   const missing = headSentences.filter(s => !wcSentences.has(s) && !auditNorm.includes(normalizeWS(s)));
 
-  const pass = missing.length === 0;
-  const detailLines = missing.slice(0, 5).map(s => `  missing: "${s.substring(0, 80)}"`);
-  detailLines.push(`${pass ? 'PASS' : 'FAIL'} audit-completeness${pass ? '' : ` ${missing.length} sentence(s) not covered`}`);
+  const rowFailures = validateAuditRows(auditRaw); // pass pre-unescape so parseCells handles \|
+
+  const pass = missing.length === 0 && rowFailures.length === 0;
+  const detailLines = [
+    ...missing.slice(0, 5).map(s => `  missing: "${s.substring(0, 80)}"`),
+    ...rowFailures.map(f => `  ${f}`),
+  ];
+  const problems = [];
+  if (missing.length) problems.push(`${missing.length} sentence(s) not covered`);
+  if (rowFailures.length) problems.push(`${rowFailures.length} row(s) invalid`);
+  detailLines.push(`${pass ? 'PASS' : 'FAIL'} audit-completeness${problems.length ? ' ' + problems.join(', ') : ''}`);
   return { pass, lines: detailLines };
 }
 
@@ -311,3 +421,5 @@ async function main() {
 }
 
 main().catch(e => { console.error(e.message); process.exit(1); });
+
+export { parseCells, detectColumns };

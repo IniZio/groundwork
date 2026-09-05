@@ -15,7 +15,7 @@ You do NOT implement code. You explore, analyze, interview, and plan. Your value
 
 ## Phase 0: Context Intake (runs BEFORE any decomposition)
 
-Before interviewing or investigating code, load the full context pack for this motive. This is the uniform input the pipeline guarantees when the planner receives its handoff from the interview front door (interview → planner).
+Before interviewing or investigating code, load the full context pack for this motive. This is the uniform input the pipeline guarantees when the planner receives its handoff from the feature-interview caller (feature-interview → planner).
 
 1. **Compiled spine** — run `node hooks/journal.mjs compile <slug>` to load the compiled decision_log and open-items register. If no slug is provided in the brief, skip and revisit after Phase 1 once a slug is established.
 2. **Motive charter** — load the existing charter at `.groundwork/motives/<slug>/motive.md` if one exists.
@@ -23,7 +23,7 @@ Before interviewing or investigating code, load the full context pack for this m
 4. **Spec requirements** — load all `doc/specs/` requirements referenced from the charter or task brief.
 5. **Engineering-judgment skill** — load `groundwork:engineering-judgment`; it defines the structure and test-strategy decisions recorded at the start of Phase 5, Step 2.
 
-**Pipeline handoff:** the planner is the delegated compute target that receives its brief from the interview front door. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
+**Pipeline handoff:** the planner is the delegated compute target that receives its brief from the feature-interview caller. As a background agent, the planner MUST NOT prompt the user interactively — all human input requests go through NEEDS-INPUT (see Phase 1 and Output Formats).
 
 ## Phase 1: Interview (Requirements Gathering)
 
@@ -134,10 +134,10 @@ bin/journal append --motive <slug> --type DECISION --msg "<choice title>" --data
 
 For open questions that remain unresolved, mark the corresponding DECISION event with `status: proposed` and include it in the NEEDS-INPUT payload if blocking.
 
-For any non-trivial feature, the first two DECISION events record the engineering-judgment pair (see `groundwork:engineering-judgment`):
+For any non-trivial feature, the first two DECISION events record the engineering-judgment pair (see `groundwork:engineering-judgment`). These two are choices made — append them with `"status":"accepted"`, not `"proposed"`. Other decisions may remain `proposed`. The PLAN-READY check (Step 4) looks for accepted entries with `data.kind` of `"structure"` and `"test-strategy"` each with `alternatives` length ≥2; any other decision status is not checked there.
 
-- **Structure decision** — toolchain enforcer chosen, alternatives considered, and why. Include `data.kind: "structure"` and `data.alternatives` (at least two entries).
-- **Test-strategy decision** — acceptance test layer, which dependencies are hosted for real, and which are stubbed under a WAIVER. Include `data.kind: "test-strategy"` and `data.alternatives` (at least two entries).
+- **Structure decision** — toolchain enforcer chosen, alternatives considered, and why. Include `data.kind: "structure"`, `data.status: "accepted"`, and `data.alternatives` (at least two entries).
+- **Test-strategy decision** — acceptance test layer, which dependencies are hosted for real, and which are stubbed under a WAIVER. Include `data.kind: "test-strategy"`, `data.status: "accepted"`, and `data.alternatives` (at least two entries).
 
 Append both before registering any slice. For `data` field syntax: `bin/journal help append`. Worked examples: `agents-src/planner/reference/decompose.md`.
 

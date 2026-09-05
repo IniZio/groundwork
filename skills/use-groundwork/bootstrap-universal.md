@@ -34,9 +34,11 @@ You may write directly ONLY for content you already hold verbatim this turn, and
 
 | Skill | Invoke when... |
 |-------|----------------|
-| `interview` | **Plan a feature** (synthesizes a concise plan). Before `diagnose` for complex bugs. Standalone for small changes. Anytime understanding is incomplete before action. |
+| `feature-interview` | **Plan a feature** — human front door; synthesizes a concise plan and feeds the planner. |
+| `quick-interview` | **Risky small change** — ambiguous scope or touches shared code; quick intent capture before implementation. |
+| `requirements` | **Scope/charter capture only** — no implementation planned yet. |
 | `diagnose` | **Any bug or regression.** Something broken that needs root cause analysis. Replaces the feature/`implement` path for bugs. |
-| `implement` | **After a plan (features) or interview (small changes).** NOT for bugs. Runs `vertical-slice` first, then executes the slices. |
+| `implement` | **After a plan (features) or `quick-interview` (small changes).** NOT for bugs. Runs `vertical-slice` first, then executes the slices. |
 | `vertical-slice` | **Before executing slices.** Decomposes the task into conflict-free slices with wave assignments and writes the run ledger. |
 | `ultrawork` | **Max fan-out mode.** Slice → write ledger → execute every independent slice. |
 | `prototype` | **Design exploration.** Spike on uncertain approaches, test state models, explore UI layouts. Throwaway. |
@@ -60,7 +62,7 @@ Capture non-obvious gotchas discovered during any work session. Lazy-created at 
 
 ### Domain Glossary (CONTEXT.md)
 
-See the `interview` skill for CONTEXT.md format and rules. Created and maintained during interview sessions.
+See the `feature-interview` skill for CONTEXT.md format and rules. Created and maintained during interview sessions.
 
 ## What NOT to Do
 

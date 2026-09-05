@@ -1,56 +1,65 @@
 # Housekeep — docs-staleness mode
 
-Load this file only when the user selects `docs-staleness` mode. The shared posture and completion gate in `SKILL.md` apply.
+Load this file only when the user selects `docs-staleness` mode. The shared spine, finding format, severity rubric, triage gate, and completion gate in `SKILL.md` apply.
 
-## When to use this mode
+Docs-staleness removes references to code that no longer exists, updates examples against the current API, and deletes documentation for features that were deleted.
 
-- Doc/comment rot after a refactor
-- Pre-release doc sweep before cutting a version
-- README or inline-comment drift from the current code
+## Triggers
 
-## Smells
+`housekeep docs`, `stale docs`, `dead comments`
 
-| Smell | Definition |
-|---|---|
-| **Outdated comments** | Comments describing code that no longer exists or behaves differently |
-| **Broken doc links** | Relative links pointing to moved or deleted files |
-| **Stale TODOs/FIXMEs** | References resolved issues, ancient dates, or context nobody remembers |
-| **Dead doc references** | Docs referencing removed features, configs, or symbols |
-| **Orphaned docs** | Doc files for features that were removed from the codebase |
+## Smell catalog
 
-## Severity mapping
-
-Default tiers for each smell (rubric can bump ±1; see SKILL.md "Severity model"):
-
-| Smell | Default tier | Rationale |
+| Smell | Definition | Default SEV |
 |---|---|---|
-| **Outdated comments** (actively contradict code) | SEV2 | Intent-masking — misleads the next reader into a wrong change |
-| **Dead doc references** (removed features/configs/symbols) | SEV3 | Maintainability — confusing but won't cause a wrong edit |
-| **Broken doc links** | SEV3 | Maintainability — dead navigation, not actively harmful |
-| **Orphaned docs** (for removed features) | SEV3 | Maintainability — safe to delete; no live code depends on them |
-| **Stale TODOs/FIXMEs** | SEV4 | Cosmetic/noise — bump to SEV2 if the TODO flags a known correctness or security gap |
+| **Dead API reference** | Doc page, README, or inline comment refers to a function, type, or config key that no longer exists in source | SEV2; bump SEV1 for user-facing onboarding doc that causes setup failures |
+| **Wrong file path** | Doc references a file or directory that has moved or been deleted | SEV2 for setup/onboarding context; SEV3 otherwise |
+| **Stale example** | Code example in a README or doc comment uses a deleted import, an old API shape, or a deprecated pattern | SEV2 |
+| **Deleted-feature doc** | An entire section describing a feature that was removed | SEV3; bump SEV2 if it actively misleads a reader |
+| **Contradicted claim** | Doc says X but the code does Y | SEV2 |
+| **Dead external link** | A hyperlink to a resource that returns 404 or has moved | SEV4 |
+| **Stale CHANGELOG entry** | CHANGELOG references a migration or behavior that has since changed again | SEV4 |
 
-These are defaults; context bumps apply (e.g. a misleading comment on a security boundary → SEV1; an orphaned doc in an archived module → SEV4).
+Context bumps apply per the shared severity rubric (consequence × blast-radius): a misleading comment on a security boundary → SEV1; a dead link in an archived module → SEV4.
 
-## Findings backlog and triage gate
+## Tooling
 
-Docs-staleness mode **reuses** the shared findings-backlog table schema and interactive triage gate defined in SKILL.md ("Shared findings backlog format" and "Step 4 — Triage gate"). Do not redefine them here. Collect every smell as a Finding (id, severity, category, location, finding, suggested action, effort) before presenting the backlog to the user.
+Verify a referenced symbol still exists:
+```
+grep -rn '<function-or-type-name>' src/
+```
+
+Verify a referenced file path:
+```
+find . -name '<filename>' -not -path '*/node_modules/*'
+```
+
+Trace renames and deletions:
+```
+git log --follow -- <path>
+```
+
+Spot-check an external link (use sparingly — do not curl every link):
+```
+curl -s -o /dev/null -w "%{http_code}" <url>
+```
 
 ## Passes
 
-- **Pass 1: Stale TODOs/FIXMEs** — resolve, delete, or re-date; never leave a vague TODO behind.
-- **Pass 2: Broken links** — fix or remove; prefer removing a dead link over leaving it.
-- **Pass 3: Outdated comments** — delete or rewrite to match current code.
-- **Pass 4: Orphaned/dead docs** — delete docs for removed features.
+- **Pass 1 — Dead API references:** grep each referenced symbol against source. Delete or update the doc.
+- **Pass 2 — Wrong paths:** find each referenced path. Update or remove the reference.
+- **Pass 3 — Stale examples:** read each code example against current imports and API shapes. Fix or delete.
+- **Pass 4 — Deleted-feature sections and contradicted claims:** delete sections for removed features; update contradicted claims.
 
-Re-run any doc-build or linkcheck after EACH pass.
+Re-read or re-run any relevant doc-build or linkcheck after each pass.
 
-## Quality gates (docs-staleness-specific)
+## Quality gates
 
-- linkcheck / markdownlint clean (where the project runs them)
-- No comment contradicts the current code
-- If a gate fails, fix or DELETE the offending doc — never leave a known-broken doc behind
+- No doc references a symbol, type, or config key that does not exist in current source
+- No code example imports from a path that does not exist
+- No doc section describes a feature that has been removed from the codebase
+- If a gate fails, fix or delete the offending doc — never leave a known-broken reference behind
 
 ## Posture note
 
-This mode is DELETION-favoring. Do not write NEW docs during a docs-staleness pass — that is a different task. Delete or update, only. If a doc deserves rewriting from scratch, route that as a separate writing task after this sweep closes.
+This mode is deletion-favoring. Do not write new docs during a docs-staleness pass — that is a separate task. Delete or update only. If a doc deserves rewriting from scratch, route that as a separate writing task after this sweep closes.

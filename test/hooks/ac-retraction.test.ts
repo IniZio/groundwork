@@ -18,7 +18,7 @@
 // @ts-nocheck
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, existsSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -550,5 +550,88 @@ describe('R-AC6: CLI ac-retract records AC_RETRACTION event', () => {
     const env = makeJournalEnv(dir)
     const r = runJournal(['ac-retract', '--motive', MOTIVE, '--ac', 'AC-1'], env)
     expect(r.status).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// R-AC7 — `journal append --type AC_RETRACTION` enforces the payload contract
+// ---------------------------------------------------------------------------
+//
+// Bug: `append` validated --type against VALID_TYPES but validated the payload
+// schema only for DECISION.  An AC_RETRACTION appended through the generic
+// `append` surface with a non-contract payload (e.g. `{ac_ids:[...]}`) was
+// written to the shard and reported as success, then silently discarded by the
+// fold guard `if (d.ac != null && d.slice != null)` (motive-compile.mjs:413).
+// The prose record said "retracted"; ac_coverage still reported met:true.
+// The documented contract is `{ ac, slice, reason }` (journal-io.mjs:97-106).
+
+describe('R-AC7: append enforces the AC_RETRACTION payload contract', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = tmp()
+    writeCharter(dir, MOTIVE, ['AC-7', 'AC-8'])
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('rejects an AC_RETRACTION whose payload omits data.ac / data.slice', () => {
+    const env = makeJournalEnv(dir)
+    const r = runJournal([
+      'append', '--motive', MOTIVE, '--type', 'AC_RETRACTION',
+      '--msg', 'retract AC-7 and AC-8',
+      '--data', JSON.stringify({ ac_ids: ['AC-7', 'AC-8'], reason: 'slices retired' }),
+    ], env)
+
+    // A silent no-op is the bug: exit 0 + "appended AC_RETRACTION" while the
+    // fold discards the event.  The contract must be enforced at the gate.
+    expect(
+      r.status,
+      `expected exit 2, got ${r.status}; stdout=${JSON.stringify(r.stdout)}`,
+    ).toBe(2)
+    expect(r.stderr).toContain('AC_RETRACTION')
+    expect(r.stderr).toMatch(/data\.ac/)
+    expect(r.stderr).toMatch(/data\.slice/)
+
+    // Nothing may reach the shard — a rejected retraction must leave no trace.
+    const journalDir = join(dir, '.groundwork', 'journal')
+    const shards = existsSync(journalDir)
+      ? readdirSync(journalDir).filter((f: string) => f.endsWith('.jsonl'))
+      : []
+    const written = shards.flatMap((f: string) =>
+      readFileSync(join(journalDir, f), 'utf8')
+        .split('\n').filter((l: string) => l.trim()).map((l: string) => JSON.parse(l)))
+    expect(written.filter((e: any) => e.type === 'AC_RETRACTION')).toHaveLength(0)
+  })
+
+  // Positive control — guards against the fix degenerating into "reject all
+  // AC_RETRACTION appends".  A contract-shaped payload must still be accepted
+  // AND must still move the AC out of the `met` bucket end-to-end.
+  it('accepts a contract-shaped payload and the fold moves the AC to unmet', () => {
+    const env = makeJournalEnv(dir)
+    const r = runJournal([
+      'append', '--motive', MOTIVE, '--type', 'AC_RETRACTION',
+      '--msg', 'retract AC-7 from S1',
+      '--data', JSON.stringify({ ac: 'AC-7', slice: 'S1', reason: 'slice retired' }),
+    ], env)
+    expect(r.status, r.stderr).toBe(0)
+
+    const events = [
+      acCovEvent('AC-7', 'S1'),
+      acCovEvent('AC-8', 'S2'),
+      tcEvent('S1'),
+      tcEvent('S2', TS2),
+      { type: 'AC_RETRACTION', ts: TS3, motive: MOTIVE, source: 'cli:journal',
+        data: { ac: 'AC-7', slice: 'S1', reason: 'slice retired' } },
+    ]
+    const view = compile(events, {})
+    const metIds = view.agent.ac_coverage.met.map((a: any) => a.id)
+    const unmetIds = view.agent.ac_coverage.unmet.map((a: any) => a.id)
+    expect(metIds).not.toContain('AC-7')
+    expect(unmetIds).toContain('AC-7')
+    // No over-correction: the unretracted claim survives.
+    expect(metIds).toContain('AC-8')
   })
 })

@@ -623,6 +623,25 @@ function cmdAppend(args) {
     data = d
   }
 
+  // AC_RETRACTION schema validation.
+  // The documented payload contract is { ac, slice, reason } (journal-io.mjs).
+  // Both coverage folds key retraction on the (ac, slice) pair, so a payload
+  // missing either field is discarded silently — the append reports success
+  // while ac_coverage still reports the AC as met.  Fail at the gate instead.
+  if (type === 'AC_RETRACTION') {
+    const d = data ?? {}
+    if (d.ac == null || d.slice == null) {
+      die(
+        'AC_RETRACTION event requires data.ac and data.slice (payload contract: ' +
+        '{ ac, slice, reason }). Coverage is retracted one (ac, slice) pair at a ' +
+        'time; a payload without both fields is silently ignored by the coverage ' +
+        'fold. Prefer: journal ac-retract --motive <slug> --ac <ac-id> ' +
+        '--slice <slice-id> --reason <text>',
+        2,
+      )
+    }
+  }
+
   const { projectDir, sessionId } = resolveContext()
 
   // DECISION id-collision warning (motive-scoped — ids are NOT unique across motives)

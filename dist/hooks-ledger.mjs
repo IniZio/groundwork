@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: c33ddd467a9ad928b31a2745a2227b5c6fdd92eaff3ad5f0b6b56f79e6b035d0
+// @bundle-source-hash: ae420dd14af2c13b7d8687cf2b5648580070b46ca1cc24baf6b41727f0360fc8
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -11990,7 +11990,8 @@ function _generate(projectDir, motive) {
     next_actions: Array.isArray(lastPauseEvent.data?.next_actions) ? lastPauseEvent.data.next_actions : []
   } : null;
   const journalAcCoverage = _buildJournalAcCoverage(allEvents);
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, lastPause });
+  const acRetractions = _buildAcRetractions(allEvents);
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, acRetractions, lastPause });
   writeFileSync4(join2(motiveDir, "MAP.md"), md, "utf8");
 }
 function _readMotiveLedgerDoc(projectDir, motive) {
@@ -12377,7 +12378,27 @@ function _buildJournalAcCoverage(events) {
   }
   return result;
 }
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, lastPause = null }) {
+function _buildAcRetractions(events) {
+  const retractions = new Map;
+  for (const ev of events) {
+    if (ev.type !== "AC_RETRACTION")
+      continue;
+    const d = ev.data ?? {};
+    const acId = d.ac != null ? String(d.ac) : null;
+    const sliceId = d.slice != null ? String(d.slice) : null;
+    if (acId == null || sliceId == null)
+      continue;
+    if (!retractions.has(acId))
+      retractions.set(acId, new Set);
+    retractions.get(acId).add(sliceId);
+  }
+  return retractions;
+}
+function _extractBareSliceId(id) {
+  const sep = id.indexOf("::");
+  return sep === -1 ? id : id.slice(sep + 2);
+}
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, acRetractions = null, lastPause = null }) {
   const parts = [];
   parts.push(`# MAP: ${motive}`);
   parts.push("");
@@ -12589,7 +12610,9 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     const orderedAcIds = [...charterAcIds, ...undeclaredAcIds];
     for (const key of orderedAcIds) {
       const ledgerCovering = acSlicesMap.get(key) ?? [];
-      const covering = ledgerCovering.length > 0 ? ledgerCovering : journalAcCoverage?.get(key) ?? [];
+      const retractedBareIds = acRetractions?.get(key);
+      const ledgerCoveringFiltered = retractedBareIds && retractedBareIds.size > 0 ? ledgerCovering.filter((s) => !retractedBareIds.has(_extractBareSliceId(s.id))) : ledgerCovering;
+      const covering = ledgerCoveringFiltered.length > 0 ? ledgerCoveringFiltered : journalAcCoverage?.get(key) ?? [];
       const rawStmt = acStatementMap.get(key) ?? "";
       const stmt = rawStmt.length > 120 ? rawStmt.slice(0, 117) + "\u2026" : rawStmt;
       const stmtSuffix = stmt ? ` \u2014 ${stmt}` : charterAcKeys.has(key) ? "" : " \u2014 _(not declared in charter)_";

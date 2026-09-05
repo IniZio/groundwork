@@ -109,7 +109,8 @@ function _generate(projectDir, motive) {
     : null
 
   const journalAcCoverage = _buildJournalAcCoverage(allEvents)
-  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, lastPause })
+  const acRetractions = _buildAcRetractions(allEvents)
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, acRetractions, lastPause })
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
@@ -684,11 +685,52 @@ function _buildJournalAcCoverage(events) {
   return result
 }
 
+/**
+ * Build the set of retracted (ac, bareSliceId) pairs from AC_RETRACTION journal events.
+ *
+ * Returns Map<acId, Set<bareSliceId>>.
+ *
+ * Used to filter ledger-declared covering slices whose composite ids
+ * (<uuid>::<SLICE-ID>) normalize to a retracted bare slice id.
+ *
+ * Same-bare-id collision semantics: a bare retraction applies to ALL sessions'
+ * composite entries sharing that bare id.  Retractions are logical (by work-item
+ * name), not session-scoped, so suppressing all sessions is intentional and
+ * conservative.
+ */
+function _buildAcRetractions(events) {
+  const retractions = new Map() // Map<acId, Set<bareSliceId>>
+  for (const ev of events) {
+    if (ev.type !== 'AC_RETRACTION') continue
+    const d = ev.data ?? {}
+    const acId = d.ac != null ? String(d.ac) : null
+    const sliceId = d.slice != null ? String(d.slice) : null
+    if (acId == null || sliceId == null) continue
+    if (!retractions.has(acId)) retractions.set(acId, new Set())
+    retractions.get(acId).add(sliceId)
+  }
+  return retractions
+}
+
+/**
+ * Extract the bare slice id from a potentially composite id.
+ *
+ * Composite form: <uuid>::<SLICE-ID>  →  <SLICE-ID>
+ * Bare form:      <SLICE-ID>          →  <SLICE-ID>
+ *
+ * Uses indexOf('::') + 2 so the result is everything after the FIRST '::',
+ * preserving any '::' that may appear inside the bare id itself.
+ */
+function _extractBareSliceId(id) {
+  const sep = id.indexOf('::')
+  return sep === -1 ? id : id.slice(sep + 2)
+}
+
 // ---------------------------------------------------------------------------
 // Renderer
 // ---------------------------------------------------------------------------
 
-function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, lastPause = null }) {
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, acRetractions = null, lastPause = null }) {
   const parts = []
 
   parts.push(`# MAP: ${motive}`)
@@ -973,10 +1015,20 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
 
     for (const key of orderedAcIds) {
       const ledgerCovering = acSlicesMap.get(key) ?? []
-      // Fallback: when the ledger has no covering slices (e.g. pruned by pruneStaleSessionLedgers),
-      // use journal-derived coverage from AC_COVERAGE + TASK_COMPLETE events.  The journal is the
-      // durable record (AC_COVERAGE is in NEVER_COMPRESS) and must win when ledger data is absent.
-      const covering = ledgerCovering.length > 0 ? ledgerCovering : (journalAcCoverage?.get(key) ?? [])
+      // Apply journal AC_RETRACTION events to filter ledger-declared covering slices.
+      // Composite ids (<uuid>::<SLICE-ID>) are normalized to bare ids before comparison
+      // so a retraction carrying a bare slice id correctly suppresses all sessions'
+      // composite entries sharing that bare id.
+      const retractedBareIds = acRetractions?.get(key)
+      const ledgerCoveringFiltered = retractedBareIds && retractedBareIds.size > 0
+        ? ledgerCovering.filter((s) => !retractedBareIds.has(_extractBareSliceId(s.id)))
+        : ledgerCovering
+      // Fallback: when the ledger has no un-retracted covering slices (e.g. pruned by
+      // pruneStaleSessionLedgers, or all were retracted), use journal-derived coverage
+      // from AC_COVERAGE + TASK_COMPLETE events (already retraction-aware).  The journal
+      // is the durable record (AC_COVERAGE is in NEVER_COMPRESS) and must win when
+      // ledger data is absent or fully retracted.
+      const covering = ledgerCoveringFiltered.length > 0 ? ledgerCoveringFiltered : (journalAcCoverage?.get(key) ?? [])
       const rawStmt = acStatementMap.get(key) ?? ''
       const stmt = rawStmt.length > 120 ? rawStmt.slice(0, 117) + '…' : rawStmt
       const stmtSuffix = stmt

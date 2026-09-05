@@ -10,6 +10,7 @@ import { JournalEventType } from '../../schema/journal.js'
 import { type GwEnvelope, errEnvelope, okEnvelope } from '../envelope.js'
 import { writeDecision } from '../../store/motive/decision.js'
 import { DEFAULT_TRACKER_PATH } from '../../schema/layout.js'
+import { APPEND_PAYLOAD_VALIDATORS } from '../../../../hooks/lib/journal-payload-validators.mjs'
 
 export const JOURNAL_SUBCOMMANDS = ['append', 'show', 'compile'] as const
 
@@ -178,30 +179,32 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       }
     }
 
-    if (type === 'DECISION') {
-      if (!data?.['id'] || !data?.['decision'] || !data?.['rationale']) {
-        return errEnvelope(
-          'journal append',
-          'MISSING_DECISION_FIELDS',
-          'DECISION events require data.id, data.decision, and data.rationale',
-          2,
-        )
+    // Payload validation — table-driven; identical contract to hooks/journal.mjs
+    const payloadValidator = APPEND_PAYLOAD_VALIDATORS.get(type)
+    if (payloadValidator) {
+      const validationError = payloadValidator((data ?? {}) as Record<string, unknown>)
+      if (validationError) {
+        return errEnvelope('journal append', 'INVALID_PAYLOAD', validationError, 2)
       }
+    }
+
+    if (type === 'DECISION') {
+      const d = data as Record<string, unknown>
       await writeDecision({
         repoRoot,
         tracker,
         motive: motive as string,
         data: {
-          id: data['id'] as string,
-          decision: data['decision'] as string,
-          rationale: data['rationale'] as string,
-          alternatives: Array.isArray(data['alternatives']) ? (data['alternatives'] as string[]) : [],
+          id: d['id'] as string,
+          decision: d['decision'] as string,
+          rationale: d['rationale'] as string,
+          alternatives: Array.isArray(d['alternatives']) ? (d['alternatives'] as string[]) : [],
           status: 'accepted',
           date: new Date().toISOString().slice(0, 10),
           motive: motive as string,
         },
       })
-      return okEnvelope('journal append', { content: `journal: wrote DECISION ${data['id']} to decisions/${data['id']}.md\n` })
+      return okEnvelope('journal append', { content: `journal: wrote DECISION ${d['id']} to decisions/${d['id']}.md\n` })
     }
 
     const ts = new Date().toISOString()

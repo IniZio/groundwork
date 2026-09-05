@@ -33,6 +33,7 @@ import {
   readAllEvents,
   filterEvents,
 } from './lib/journal-io.mjs'
+import { APPEND_PAYLOAD_VALIDATORS } from './lib/journal-payload-validators.mjs'
 import { readOrderedEvents } from './lib/journal-order.mjs'
 import { compile, COMPILER_VERSION } from './lib/motive-compile.mjs'
 import { collectGroundTruth } from './lib/motive-ground-truth.mjs'
@@ -196,6 +197,20 @@ const HELP = {
       'Scans .groundwork/motives/<slug>/tickets/*.md and deletes any file whose',
       'last non-empty line is the autogen footer. Hand-authored files are never',
       'touched. Prints each deleted path. Exits 0 even when nothing is deleted.',
+    ],
+  },
+  'ac-retract': {
+    summary: 'record an append-only retraction of a mistaken AC_COVERAGE claim',
+    usage: 'journal ac-retract --motive <slug> --ac <ac-id> --slice <slice-id> --reason <text>',
+    flags: [
+      '--motive <slug>     motive identifier (required)',
+      '--ac <ac-id>        acceptance criterion id to retract (required)',
+      '--slice <slice-id>  slice id whose coverage claim is retracted (required)',
+      '--reason <text>     reason for the retraction (required)',
+      '',
+      'Appends an AC_RETRACTION event. No existing event is modified.',
+      'The coverage fold honours AC_RETRACTION in an order-independent post-loop',
+      'pass, so the retraction is effective regardless of event ordering.',
     ],
   },
 }
@@ -589,6 +604,7 @@ function cmdBaseline(args) {
 // append
 // ---------------------------------------------------------------------------
 
+
 function cmdAppend(args) {
   const { flags } = parseFlags(args)
   const { type, msg } = flags
@@ -613,32 +629,18 @@ function cmdAppend(args) {
     }
   }
 
-  // DECISION schema validation (D-11 revised by T6 + D-36)
-  if (type === 'DECISION') {
-    const d = data ?? {}
-    if (!d.id) die('DECISION event requires data.id', 2)
-    if (!d.decision) die('DECISION event requires data.decision', 2)
-    if (!d.rationale) die('DECISION event requires data.rationale', 2)
-    if (!Array.isArray(d.alternatives)) d.alternatives = []
-    data = d
-  }
-
-  // AC_RETRACTION schema validation.
-  // The documented payload contract is { ac, slice, reason } (journal-io.mjs).
-  // Both coverage folds key retraction on the (ac, slice) pair, so a payload
-  // missing either field is discarded silently — the append reports success
-  // while ac_coverage still reports the AC as met.  Fail at the gate instead.
-  if (type === 'AC_RETRACTION') {
-    const d = data ?? {}
-    if (d.ac == null || d.slice == null) {
-      die(
-        'AC_RETRACTION event requires data.ac and data.slice (payload contract: ' +
-        '{ ac, slice, reason }). Coverage is retracted one (ac, slice) pair at a ' +
-        'time; a payload without both fields is silently ignored by the coverage ' +
-        'fold. Prefer: journal ac-retract --motive <slug> --ac <ac-id> ' +
-        '--slice <slice-id> --reason <text>',
-        2,
-      )
+  // Payload validation — table-driven; add entries to APPEND_PAYLOAD_VALIDATORS, not here.
+  {
+    const validator = APPEND_PAYLOAD_VALIDATORS.get(type)
+    if (validator) {
+      const d = data ?? {}
+      const err = validator(d)
+      if (err) die(err, 2)
+      // DECISION-only normalization: default alternatives to empty array before writing.
+      if (type === 'DECISION') {
+        if (!Array.isArray(d.alternatives)) d.alternatives = []
+        data = d
+      }
     }
   }
 

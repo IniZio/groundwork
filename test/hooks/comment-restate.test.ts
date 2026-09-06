@@ -34,7 +34,6 @@ describe('findRestatingComments', () => {
 	})
 
 	it('does NOT flag // returns the count (multi-word — wrong function)', () => {
-		// IDENT_COMMENT_RE requires a single bare identifier; spaces disqualify it.
 		const lines = ['// returns the count', 'function returnsTheCount() {}']
 		const findings = findRestatingComments(lines)
 		expect(findings).toHaveLength(0)
@@ -52,7 +51,6 @@ describe('findMultiWordRestatingComments', () => {
 	})
 
 	it('does NOT flag // fetch the user with roles above function fetchUser()', () => {
-		// contentWords: ["fetch", "user", "roles"] — "roles" absent from identTokens → skips
 		const lines = ['// fetch the user with roles', 'function fetchUser() {}']
 		const findings = findMultiWordRestatingComments(lines)
 		expect(findings).toHaveLength(0)
@@ -75,7 +73,6 @@ describe('findProseParaphraseComments', () => {
 	})
 
 	it('flags // increment counter above increment_counter() (AC2)', () => {
-		// codeIdentTokens from "increment_counter" → ["increment", "counter"] — both present
 		const lines = ['// increment counter', 'increment_counter()']
 		const findings = findProseParaphraseComments(lines)
 		expect(findings).toHaveLength(1)
@@ -84,7 +81,6 @@ describe('findProseParaphraseComments', () => {
 
 	it('does NOT flag SQL comment starting with uppercase ON (AC3)', () => {
 		// IMPERATIVE_COMMENT_RE requires first captured char to be [a-z].
-		// "ON CONFLICT DO NOTHING..." starts with uppercase 'O' — no match.
 		const lines = [
 			'// ON CONFLICT DO NOTHING does not RETURN the existing row, so select after',
 			'insertRow(table, data)',

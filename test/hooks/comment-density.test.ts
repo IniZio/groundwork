@@ -17,8 +17,6 @@ function readFixture(dir: string, name: string): string {
   return readFileSync(join(dir, name), 'utf8');
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 describe('constants', () => {
   it('FILE_CAP is 5', () => expect(FILE_CAP).toBe(5));
   it('AGGREGATE_CAP is 2', () => expect(AGGREGATE_CAP).toBe(2));
@@ -28,8 +26,6 @@ describe('constants', () => {
     }
   });
 });
-
-// ─── D-8 Exclusions ──────────────────────────────────────────────────────────
 
 describe('isExcluded – D-8 patterns', () => {
   it('*.pb.go excluded (generated)', () => {
@@ -79,9 +75,13 @@ describe('isExcluded – D-8 patterns', () => {
     const gitattributesText = 'other.ts linguist-generated=true\n';
     expect(isExcluded('generated.ts', { gitattributesText })).toBe(false);
   });
+  it('test/fixtures/ path excluded (D-18 fixture corpus)', () => {
+    expect(isExcluded('test/fixtures/comment-density/corpus/sample.ts')).toBe(true);
+  });
+  it('__fixtures__ path excluded (D-18 fixture corpus)', () => {
+    expect(isExcluded('src/__fixtures__/helpers.ts')).toBe(true);
+  });
 });
-
-// ─── analyzeFile: excluded files yield excluded:true ─────────────────────────
 
 describe('analyzeFile – excluded files', () => {
   it('*.d.ts yields excluded:true and zero commentLines', () => {
@@ -108,17 +108,20 @@ describe('analyzeFile – excluded files', () => {
     const result = analyzeFile('foo.test.ts', content);
     expect(result.excluded).toBe(false);
   });
+  it('test/fixtures/ path yields excluded:true (D-18)', () => {
+    const result = analyzeFile('test/fixtures/comment-density/corpus/sample.ts', 'export const fixture = true;\n');
+    expect(result.excluded).toBe(true);
+  });
+  it('node_modules fixture (staged) yields excluded:true', () => {
+    const nmPath = join(EXCLUSIONS, 'node_modules/foo/index.js');
+    const content = readFileSync(nmPath, 'utf8');
+    const result = analyzeFile(nmPath, content);
+    expect(result.excluded).toBe(true);
+    expect(result.excludedReason).toBe('node_modules');
+  });
 });
 
-// ─── Nine language fixtures with hand-counted expected values ─────────────────
-//
-// D-2 semantics: ALL comment lines count (doc comments, shebangs, @ts- directives).
-// Inline trailing // and # count. Python triple-quoted docstrings count.
-// Divergence from pilot: shebang counts, @ts- counts, inline comments tracked.
-
 describe('analyzeFile – nine language fixtures', () => {
-  // TS: sample.ts (17 lines)
-  // Comment lines: 1(//),2(/*),3(block),4(inline//),7(inline//),9(inline//),10(/**),11,12,13 = 10
   it('TypeScript (sample.ts): 10/17 = 58.82 per 100', () => {
     const content = readFixture(CORPUS, 'sample.ts');
     const r = analyzeFile('sample.ts', content);
@@ -131,8 +134,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(58.82, 1);
   });
 
-  // TSX: tricky_tsx.tsx (14 lines)
-  // Comment lines: 2(//),6({/*...*/}),8({/*...*/}),12(//) = 4
   it('TSX (tricky_tsx.tsx): 4/14 = 28.57 per 100', () => {
     const content = readFixture(CORPUS, 'tricky_tsx.tsx');
     const r = analyzeFile('tricky_tsx.tsx', content);
@@ -144,8 +145,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(28.57, 1);
   });
 
-  // JS: sample.js (9 lines)
-  // Comment lines: 1(//),3(/* */),5(//),8(inline //) = 4
   it('JavaScript (sample.js): 4/9 = 44.44 per 100', () => {
     const content = readFixture(CORPUS, 'sample.js');
     const r = analyzeFile('sample.js', content);
@@ -155,8 +154,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(44.44, 1);
   });
 
-  // Go: sample.go (16 lines)
-  // Comment lines: 5(//),6(//),8(//),10(//),14(/* */) = 5
   it('Go (sample.go): 5/16 = 31.25 per 100', () => {
     const content = readFixture(CORPUS, 'sample.go');
     const r = analyzeFile('sample.go', content);
@@ -166,8 +163,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(31.25, 1);
   });
 
-  // Rust: sample.rs (13 lines)
-  // Comment lines: 1(//),2(///),3(//!),5(/* */),6(/** */),9(//),11(inline//) = 7
   it('Rust (sample.rs): 7/13 = 53.85 per 100 — including //! and /// (accuracy gap fix)', () => {
     const content = readFixture(CORPUS, 'sample.rs');
     const r = analyzeFile('sample.rs', content);
@@ -178,8 +173,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(53.85, 1);
   });
 
-  // Python: sample.py (15 lines)
-  // Comment lines: 1(#!),2(#),5(""" open),6,7,8,9,10(""" close),11(#),14(inline #) = 10
   it('Python (sample.py): 10/15 = 66.67 per 100 — docstrings counted (accuracy gap fix)', () => {
     const content = readFixture(CORPUS, 'sample.py');
     const r = analyzeFile('sample.py', content);
@@ -191,8 +184,6 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(66.67, 1);
   });
 
-  // Ruby: sample.rb (11 lines)
-  // Comment lines: 1(#!),2(#),4(#),6(#),7(inline #) = 5
   it('Ruby (sample.rb): 5/11 = 45.45 per 100', () => {
     const content = readFixture(CORPUS, 'sample.rb');
     const r = analyzeFile('sample.rb', content);
@@ -203,21 +194,17 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.commentsPer100).toBeCloseTo(45.45, 1);
   });
 
-  // Shell: sample.sh (12 lines)
-  // Comment lines: 1(#!),2(#),4(#),6(#),7(inline #) = 5
   it('Shell (sample.sh): 5/12 = 41.67 per 100', () => {
     const content = readFixture(CORPUS, 'sample.sh');
     const r = analyzeFile('sample.sh', content);
     expect(r.excluded).toBe(false);
     expect(r.totalLines).toBe(12);
     expect(r.commentLines).toBe(5);
-    expect(r.lines).toContain(1);  // shebang counts
-    expect(r.lines).toContain(7);  // inline # comment
+    expect(r.lines).toContain(1);
+    expect(r.lines).toContain(7);
     expect(r.commentsPer100).toBeCloseTo(41.67, 1);
   });
 
-  // Java: Sample.java (18 lines)
-  // Comment lines: 1(//),4(/**),5,6,7,10(/* */),13(//),15(inline //) = 8
   it('Java (Sample.java): 8/18 = 44.44 per 100', () => {
     const content = readFixture(CORPUS, 'Sample.java');
     const r = analyzeFile('Sample.java', content);
@@ -225,22 +212,19 @@ describe('analyzeFile – nine language fixtures', () => {
     expect(r.totalLines).toBe(18);
     expect(r.commentLines).toBe(8);
     expect(r.lines).toContain(4);   // /** Javadoc
-    expect(r.lines).toContain(15);  // inline comment
+    expect(r.lines).toContain(15);
     expect(r.commentsPer100).toBeCloseTo(44.44, 1);
   });
 });
-
-// ─── Tricky cases ─────────────────────────────────────────────────────────────
 
 describe('analyzeFile – tricky cases', () => {
   it('// inside a string is NOT a comment (tricky_ts_string.ts)', () => {
     const content = readFixture(CORPUS, 'tricky_ts_string.ts');
     const r = analyzeFile('tricky_ts_string.ts', content);
-    // Only line 7 "// but this IS" should be a comment
     expect(r.lines).toContain(7);
     expect(r.lines).not.toContain(1);  // "// not a comment"
     expect(r.lines).not.toContain(2);  // '// also not'
-    expect(r.lines).not.toContain(3);  // template literal
+    expect(r.lines).not.toContain(3);
   });
 
   it('JSX {/* */} counted in tsx', () => {
@@ -254,7 +238,7 @@ describe('analyzeFile – tricky cases', () => {
     const content = readFixture(CORPUS, 'tricky_py_docstring.py');
     const r = analyzeFile('tricky_py_docstring.py', content);
     expect(r.lines).toContain(2);   // """Single line docstring"""
-    expect(r.lines).toContain(11);  // # real comment
+    expect(r.lines).toContain(11);
     expect(r.lines).not.toContain(10);  // x = "# not a comment"
   });
 
@@ -263,7 +247,7 @@ describe('analyzeFile – tricky cases', () => {
     const r = analyzeFile('tricky_rs_doc.rs', content);
     expect(r.lines).toContain(1);   // ///
     expect(r.lines).toContain(9);   // //!
-    expect(r.lines).toContain(11);  // // regular
+    expect(r.lines).toContain(11);
   });
 
   it('empty file: 0 comments, 0 or 1 total lines, 0 per 100', () => {
@@ -275,50 +259,40 @@ describe('analyzeFile – tricky cases', () => {
   });
 });
 
-// ─── analyzeFiles aggregate ────────────────────────────────────────────────────
-
 describe('analyzeFiles', () => {
   it('aggregatePer100 is sum of comments / sum of total lines * 100 for non-excluded', () => {
-    // No trailing newline → exact 2-line files
     const entries = [
-      { path: 'a.ts', content: '// comment\nconst x = 1;' },  // 1/2 = 50 per 100
-      { path: 'b.ts', content: 'const y = 2;\nconst z = 3;' }, // 0/2 = 0 per 100
+      { path: 'a.ts', content: '// comment\nconst x = 1;' },
+      { path: 'b.ts', content: 'const y = 2;\nconst z = 3;' },
     ];
     const result = analyzeFiles(entries);
-    // aggregate: 1 comment / 4 total = 25 per 100
     expect(result.files).toHaveLength(2);
     expect(result.aggregatePer100).toBeCloseTo(25, 1);
   });
 
   it('excluded files contribute 0 to aggregate denominator', () => {
-    // No trailing newline → exact 2-line files
     const entries = [
-      { path: 'a.ts', content: '// comment\nconst x = 1;' },  // 1/2
-      { path: 'types.d.ts', content: '// auto-generated\nexport type Foo = string;' }, // excluded
+      { path: 'a.ts', content: '// comment\nconst x = 1;' },
+      { path: 'types.d.ts', content: '// auto-generated\nexport type Foo = string;' },
     ];
     const result = analyzeFiles(entries);
     const nonExcluded = result.files.filter(f => !f.excluded);
     expect(nonExcluded).toHaveLength(1);
-    // aggregate only counts the non-excluded: 1/2 = 50
     expect(result.aggregatePer100).toBeCloseTo(50, 1);
   });
 
   it('SHA-1 cache: same content twice returns same result (fromCache on second call)', () => {
     const content = '// comment\nconst x = 1;\n';
     const r1 = analyzeFile('cached.ts', content);
-    const r2 = analyzeFile('cached2.ts', content); // different path, same content
+    const r2 = analyzeFile('cached2.ts', content);
     expect(r1.commentLines).toBe(r2.commentLines);
     expect(r2.fromCache).toBe(true);
   });
 });
 
-// ─── Unknown language ──────────────────────────────────────────────────────────
-
 describe('analyzeFile – unknown extension', () => {
   it('unknown extension: returns result with excluded:false and 0 commentLines (no parser)', () => {
     const result = analyzeFile('Makefile', '# target\nall: foo\n');
-    // Makefile has no entry in LANGUAGE_TABLE — engine may return 0 or parse as unknown
-    // Key requirement: does NOT throw, returns a valid FileResult
     expect(result).toHaveProperty('totalLines');
     expect(result).toHaveProperty('commentLines');
     expect(result).toHaveProperty('commentsPer100');

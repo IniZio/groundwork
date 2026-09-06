@@ -13,18 +13,10 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 
-// ---------------------------------------------------------------------------
-// Paths
-// ---------------------------------------------------------------------------
-
 const __filename = fileURLToPath(import.meta.url)
 const __dir = dirname(__filename)
 const REPO_ROOT = join(__dir, '../..')
 const GW_HOOK_SHIM = join(REPO_ROOT, 'bin', 'gw-hook')
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeTmpDir(): string {
   return mkdtempSync(join(os.tmpdir(), 'cd-test-'))
@@ -44,11 +36,6 @@ function gitInit(cwd: string): void {
   spawnSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd, env: GIT_ENV })
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-/** Over-cap .ts file: 7 comment lines / 10 total = 70/100 */
 const OVER_CAP_CONTENT = `// line 1
 // line 2
 // line 3
@@ -61,7 +48,6 @@ const y = 2
 const z = 3
 `
 
-/** Restating comment under density cap: 1 comment / 25 total lines = 4/100 < 5/100 cap */
 const RESTATING_UNDER_CAP_CONTENT = `// myFunc
 function myFunc() {
   const a = 1
@@ -88,14 +74,9 @@ function myFunc() {
 }
 `
 
-/** Clean file: no comments, density = 0/100 */
 const CLEAN_CONTENT = `const a = 1
 const b = 2
 `
-
-// ---------------------------------------------------------------------------
-// describe: gw comment-density report
-// ---------------------------------------------------------------------------
 
 describe('gw comment-density report', () => {
   let tmpDir: string
@@ -210,10 +191,6 @@ describe('gw comment-density report', () => {
     expect(envelope.data.files.length).toBe(0)
   })
 })
-
-// ---------------------------------------------------------------------------
-// describe: gw comment-density remediate-plan
-// ---------------------------------------------------------------------------
 
 describe('gw comment-density remediate-plan', () => {
   let tmpDir: string

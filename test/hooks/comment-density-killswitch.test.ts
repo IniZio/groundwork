@@ -1,15 +1,9 @@
 /**
  * test/hooks/comment-density-killswitch.test.ts
- *
- * Kill-switch parity: GROUNDWORK_COMMENT_DENSITY=0 silences all three
- * comment-density feature layers; each layer is active when the var is unset.
- *
- * Layer 1 (injection): hook emits rule text in hookSpecificOutput.additionalContext
- *   for subagent payloads (agent_type present), even for a clean file.
- * Layer 2 (advisory): hook emits over-cap / restating finding in additionalContext
- *   for files that exceed 5/100 or carry restating comments.
- * Layer 3 (gate data): `gw comment-density report --json` lists flagged files
- *   and yields files:[] when the kill switch is set.
+ * Kill-switch parity: GROUNDWORK_COMMENT_DENSITY=0 silences all layers; active when unset.
+ * Layer 1: injection (rule text in additionalContext for subagent payloads)
+ * Layer 2: advisory (over-cap / restating findings in additionalContext)
+ * Layer 3: gate data (gw comment-density report --json lists flagged files)
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -24,26 +18,16 @@ const __dir = dirname(__filename)
 const REPO_ROOT = join(__dir, '../..')
 const GW_HOOK_SHIM = join(REPO_ROOT, 'bin', 'gw-hook')
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Positive-control env: GROUNDWORK_COMMENT_DENSITY removed so the feature is active.
- * Spreads process.env so the binary resolves, then deletes the kill-switch key.
- */
 function hookEnvActive(): NodeJS.ProcessEnv {
   const e: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CODE_SESSION_ID: 'test' }
   delete e['GROUNDWORK_COMMENT_DENSITY']
   return e
 }
 
-/** Kill-switch env: GROUNDWORK_COMMENT_DENSITY=0 so the feature is silenced. */
 function hookEnvOff(): NodeJS.ProcessEnv {
   return { ...process.env, CLAUDE_CODE_SESSION_ID: 'test', GROUNDWORK_COMMENT_DENSITY: '0' }
 }
 
-/** Base env for CLI invocations (git-aware) with kill switch removed (feature active). */
 const GIT_ENV_BASE: NodeJS.ProcessEnv = (() => {
   const e: NodeJS.ProcessEnv = {
     ...process.env,
@@ -57,7 +41,6 @@ const GIT_ENV_BASE: NodeJS.ProcessEnv = (() => {
   return e
 })()
 
-/** Kill-switch env for CLI invocations. */
 const GIT_ENV_OFF: NodeJS.ProcessEnv = {
   ...process.env,
   CLAUDE_CODE_SESSION_ID: 'test-session',
@@ -90,11 +73,6 @@ function gitInit(cwd: string): void {
   spawnSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd, env: GIT_ENV_BASE })
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-// 10 lines, 4 comment lines → 40/100 > cap of 5/100 (over-cap)
 const OVER_CAP_CONTENT = [
   'const a = 1',
   'const b = 2',
@@ -108,7 +86,6 @@ const OVER_CAP_CONTENT = [
   '// comment four',
 ].join('\n')
 
-// 10 lines, 1 comment → 10/100 > cap; comment restates the next line (counter++)
 const RESTATING_CONTENT = [
   'let counter = 0',
   'const a = 1',
@@ -122,14 +99,9 @@ const RESTATING_CONTENT = [
   'counter++',
 ].join('\n')
 
-// Clean: no comments at all
 const CLEAN_CONTENT = ['const a = 1', 'const b = 2', 'const c = 3', 'const d = 4'].join('\n')
 
-// ---------------------------------------------------------------------------
-// Layer 1 — injection (rule text emitted for subagent payloads)
-// ---------------------------------------------------------------------------
-
-describe('Layer 1 — injection', () => {
+describe('Layer 1 — injection (rule text emitted for subagent payloads)', () => {
   it('positive control: subagent payload (agent_type) → rule text in additionalContext', () => {
     const payload = JSON.stringify({
       tool_name: 'Write',
@@ -143,7 +115,6 @@ describe('Layer 1 — injection', () => {
     const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
     const hso = parsed['hookSpecificOutput'] as Record<string, unknown>
     const ctx = hso['additionalContext'] as string
-    // Rule injection must name the cap
     expect(ctx).toContain('≤5')
   })
 
@@ -159,11 +130,7 @@ describe('Layer 1 — injection', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Layer 2 — advisory (over-cap and restating findings)
-// ---------------------------------------------------------------------------
-
-describe('Layer 2 — advisory', () => {
+describe('Layer 2 — advisory (over-cap and restating findings)', () => {
   it('positive control (over-cap): Write exceeds 5/100 → over-cap in additionalContext', () => {
     const payload = JSON.stringify({
       tool_name: 'Write',
@@ -193,7 +160,6 @@ describe('Layer 2 — advisory', () => {
     const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
     const hso = parsed['hookSpecificOutput'] as Record<string, unknown>
     const ctx = hso['additionalContext'] as string
-    // At least one of over-cap or restating must fire (restating + density > cap both apply here)
     expect(ctx.includes('over-cap') || ctx.includes('restat')).toBe(true)
   })
 
@@ -208,11 +174,7 @@ describe('Layer 2 — advisory', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Layer 3 — gate data (`gw comment-density report --json`)
-// ---------------------------------------------------------------------------
-
-describe('Layer 3 — gate data', () => {
+describe('Layer 3 — gate data (`gw comment-density report --json`)', () => {
   let tmpDir: string
 
   afterEach(() => {
@@ -241,11 +203,9 @@ describe('Layer 3 — gate data', () => {
     expect(Array.isArray(files)).toBe(true)
     expect(files.length).toBeGreaterThanOrEqual(1)
 
-    // Must name the fixture file and the over-cap kind
     const raw = JSON.stringify(files)
     expect(raw).toContain('over-cap.ts')
     expect(raw).toContain('over-cap')
-    // Cap value must appear (5)
     const manifest = envelope.data as { cap?: { file?: number } }
     expect(manifest.cap?.file).toBe(5)
   })

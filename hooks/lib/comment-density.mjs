@@ -57,6 +57,8 @@ function _excludeReason(filePath, opts = {}) {
   if (filePath.includes('/build/')        || filePath.startsWith('build/'))        return 'build';
   if (filePath.includes('/vendor/')       || filePath.startsWith('vendor/'))       return 'vendor';
   if (filePath.includes('/migrations/')   || filePath.startsWith('migrations/'))   return 'migrations';
+  if (filePath.includes('/test/fixtures/') || filePath.startsWith('test/fixtures/')) return 'fixture-corpus';
+  if (filePath.includes('/__fixtures__/')  || filePath.startsWith('__fixtures__/'))  return 'fixture-corpus';
 
   const base = basename(filePath);
   if (base.endsWith('.pb.go'))             return 'generated';

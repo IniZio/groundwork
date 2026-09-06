@@ -282,7 +282,7 @@ describe('AC2 — two-surface parity: gate advisor APPROVE', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
     const { token } = initGw(gwDir)
     runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
-    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], {}, gwDir)
+    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], { GROUNDWORK_COMMENT_DENSITY: '0' }, gwDir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
   })

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 9980c6305256cb0efc5b13b3c72a51cf17a1b317d1a60f823460942fc444cf9f
+// @bundle-source-hash: 29d4cb17989de68d010592b589ea186e8f0358f88b3a4fe8a1797001e60b944a
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -94,6 +94,10 @@ function _excludeReason(filePath, opts = {}) {
     return "vendor";
   if (filePath.includes("/migrations/") || filePath.startsWith("migrations/"))
     return "migrations";
+  if (filePath.includes("/test/fixtures/") || filePath.startsWith("test/fixtures/"))
+    return "fixture-corpus";
+  if (filePath.includes("/__fixtures__/") || filePath.startsWith("__fixtures__/"))
+    return "fixture-corpus";
   const base = basename(filePath);
   if (base.endsWith(".pb.go"))
     return "generated";
@@ -940,6 +944,7 @@ __export(exports_ledger, {
   LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
 });
 import { readFileSync as readFileSync3, writeFileSync, mkdirSync as mkdirSync2, renameSync } from "fs";
+import { spawnSync as spawnSync2 } from "child_process";
 import { randomBytes } from "crypto";
 import path2 from "path";
 function isLedgerSubcmd(s) {
@@ -1158,9 +1163,22 @@ ${done}/${all.length} slices complete
 ` });
       }
       case "set": {
+        const baseCommitFlag = flags["base-commit"];
+        if (baseCommitFlag && !positionals[0]) {
+          const ledger2 = readLedger(runPath);
+          if (!ledger2)
+            return errEnvelope("ledger set", "NOT_FOUND", `no ledger at ${runPath}`, 1);
+          const check = spawnSync2("git", ["cat-file", "-e", `${baseCommitFlag}^{commit}`], { cwd });
+          if (check.status !== 0) {
+            return errEnvelope("ledger set", "INVALID_SHA", `not a valid commit: ${baseCommitFlag}`, 1);
+          }
+          atomicWrite(runPath, { ...ledger2, base_commit: baseCommitFlag });
+          return okEnvelope("ledger set", { content: `base_commit set to ${baseCommitFlag}
+` });
+        }
         const id = positionals[0];
         if (!id)
-          return errEnvelope("ledger set", "USAGE_ERROR", "set requires <id>", 2);
+          return errEnvelope("ledger set", "USAGE_ERROR", "set requires <id> or --base-commit <sha>", 2);
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger set", "NOT_FOUND", `no ledger at ${runPath}`, 1);
@@ -1385,6 +1403,9 @@ ${done}/${all.length} slices complete
         const citation = flags["citation"];
         const rubric = flags["rubric"];
         if (verdict === "APPROVE" && process.env["GROUNDWORK_COMMENT_DENSITY"] !== "0") {
+          if (!ledger.base_commit) {
+            return errEnvelope("ledger gate", "DENSITY_NO_BASE_COMMIT", `DENSITY_NO_BASE_COMMIT: ledger has no base_commit; run: gw ledger set --motive ${motive} --base-commit <sha>`, 1);
+          }
           const touched = touchedFilesSince(ledger, cwd);
           if (touched.length > 0) {
             const manifest = await buildManifest(touched, cwd);
@@ -25222,7 +25243,7 @@ import {
   statSync
 } from "fs";
 import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2, randomUUID } from "crypto";
-import { spawnSync as spawnSync2 } from "child_process";
+import { spawnSync as spawnSync3 } from "child_process";
 import path11 from "path";
 function allow(notice = "") {
   const payload = notice ? { continue: true, reason: notice } : { continue: true };
@@ -25732,7 +25753,7 @@ function decisionAlternativesAdvisory(projectDir) {
 }
 function specAdvisory(projectDir) {
   try {
-    const raw = spawnSync2("git", ["status", "--porcelain", "--untracked-files=all"], {
+    const raw = spawnSync3("git", ["status", "--porcelain", "--untracked-files=all"], {
       cwd: projectDir,
       encoding: "utf8",
       timeout: 5000
@@ -26117,14 +26138,14 @@ var init_stop_gate = __esm(() => {
 
 // src/gw/hook/session-reminder.ts
 import { existsSync as existsSync7 } from "fs";
-import { spawnSync as spawnSync3 } from "child_process";
+import { spawnSync as spawnSync4 } from "child_process";
 import { resolve, dirname as dirname3 } from "path";
 import { fileURLToPath } from "url";
 var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run11 = async (input2, _env) => {
   const useBundle = existsSync7(BUNDLE);
   const runtime = useBundle ? "bun" : "node";
   const script = useBundle ? BUNDLE : LEGACY_MJS;
-  const result = spawnSync3(runtime, [script], {
+  const result = spawnSync4(runtime, [script], {
     input: JSON.stringify(input2),
     encoding: "utf8",
     timeout: 30000,

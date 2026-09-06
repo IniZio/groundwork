@@ -3,14 +3,8 @@ import { LEDGER_SUBCOMMANDS } from './commands/ledger.js'
 import { JOURNAL_SUBCOMMANDS } from './commands/journal.js'
 import { COMMENT_DENSITY_SUBCOMMANDS } from './commands/comment-density.js'
 
-/**
- * Routing convention:
- *   gw ledger <subcmd>   — namespaced, mirrors bin/ledger vocabulary
- *   gw journal <subcmd>  — namespaced, mirrors bin/journal vocabulary
- * All other commands are flat (gw cat, gw locate, …).
- */
+// Routing: gw ledger/journal <subcmd> namespaced; other commands flat.
 
-// Command metadata for --help display
 export const COMMANDS: Record<string, { summary: string }> = {
   cat: { summary: "Print a file's content" },
   locate: { summary: 'Resolve a groundwork ID to an on-disk path' },

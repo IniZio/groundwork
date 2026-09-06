@@ -28,7 +28,6 @@ export function gitFiles(cwd: string): string[] {
   return [...new Set(lines)]
 }
 
-/** Read the current session's ledger (best-effort) to obtain base_commit. */
 function readSessionLedger(cwd: string): { base_commit?: string } | null {
   const sessionId = process.env['CLAUDE_CODE_SESSION_ID']
   const projectDir = process.env['CLAUDE_PROJECT_DIR'] || cwd
@@ -44,7 +43,6 @@ function readSessionLedger(cwd: string): { base_commit?: string } | null {
 /**
  * Files touched since ledger.base_commit (commits after that sha) UNION the
  * current working-tree set (diff vs HEAD + untracked).
- * Falls back to working-tree only when base_commit is absent.
  * Files that no longer exist on disk are filtered out.
  */
 export function touchedFilesSince(ledger: { base_commit?: unknown } | null, cwd: string): string[] {

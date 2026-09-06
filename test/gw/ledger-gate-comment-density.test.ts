@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const REPO_ROOT = '/home/newman/.local/share/groundwork'
-const CLI_PATH = path.join(REPO_ROOT, 'src/gw/cli/main.ts')
+const SHIM_PATH = path.join(REPO_ROOT, 'bin/gw-hook')
 const WRITE_TOKEN = 'testtoken-density-gate'
 const MOTIVE = 'test-density'
 
@@ -38,8 +38,8 @@ function runGate(
   extraEnv: Record<string, string> = {},
 ) {
   return spawnSync(
-    'bun',
-    [CLI_PATH, '--json', 'ledger', 'gate', '--motive', MOTIVE, 'advisor', verdict, '--token', WRITE_TOKEN],
+    SHIM_PATH,
+    ['--json', 'ledger', 'gate', '--motive', MOTIVE, 'advisor', verdict, '--token', WRITE_TOKEN],
     {
       cwd: repoDir,
       encoding: 'utf8',
@@ -48,6 +48,26 @@ function runGate(
         CLAUDE_CODE_SESSION_ID: sessionId,
         CLAUDE_PROJECT_DIR: repoDir,
         ...extraEnv,
+      },
+    },
+  )
+}
+
+function runSet(
+  args: string[],
+  sessionId: string,
+  repoDir: string,
+) {
+  return spawnSync(
+    SHIM_PATH,
+    ['--json', 'ledger', 'set', '--motive', MOTIVE, ...args],
+    {
+      cwd: repoDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CLAUDE_CODE_SESSION_ID: sessionId,
+        CLAUDE_PROJECT_DIR: repoDir,
       },
     },
   )
@@ -138,8 +158,9 @@ afterEach(() => {
 
 describe('ledger gate comment-density AC3', () => {
   it('APPROVE is refused when touched file exceeds density cap and no cleanup slice exists', () => {
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim()
     writeFileSync(path.join(repoDir, 'over-cap.ts'), OVER_CAP_CONTENT)
-    writeLedger(repoDir, sessionId) // no cleanup slice
+    writeLedgerWithBaseCommit(repoDir, sessionId, base)
     const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).not.toBe(0)
     const out = r.stdout + r.stderr
@@ -151,8 +172,9 @@ describe('ledger gate comment-density AC3', () => {
   })
 
   it('APPROVE records when a matching cleanup slice is registered', () => {
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim()
     writeFileSync(path.join(repoDir, 'over-cap.ts'), OVER_CAP_CONTENT)
-    writeLedger(repoDir, sessionId, [cleanupSlice])
+    writeLedgerWithBaseCommit(repoDir, sessionId, base, [cleanupSlice])
     const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).toBe(0)
     const ledger = JSON.parse(
@@ -163,15 +185,36 @@ describe('ledger gate comment-density AC3', () => {
     expect(verdict).toBe('APPROVE')
   })
 
-  it('APPROVE records when no files are touched', () => {
+  it('APPROVE is refused when ledger has no base_commit (DENSITY_NO_BASE_COMMIT)', () => {
     writeLedger(repoDir, sessionId)
     const r = runGate('APPROVE', sessionId, repoDir)
+    expect(r.status).not.toBe(0)
+    const out = r.stdout + r.stderr
+    expect(out).toContain('DENSITY_NO_BASE_COMMIT')
+    const ledger = JSON.parse(
+      readFileSync(path.join(repoDir, '.groundwork', 'runs', `${sessionId}.json`), 'utf8'),
+    )
+    expect(ledger.gate?.advisor).toBeUndefined()
+  })
+
+  it('APPROVE passes after set --base-commit on clean tree with no flagged files', () => {
+    writeLedger(repoDir, sessionId)
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim()
+    const setR = runSet(['--base-commit', base], sessionId, repoDir)
+    expect(setR.status).toBe(0)
+    const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).toBe(0)
+    const ledger = JSON.parse(
+      readFileSync(path.join(repoDir, '.groundwork', 'runs', `${sessionId}.json`), 'utf8'),
+    )
+    const advisorVal = ledger.gate?.advisor
+    const verdict = typeof advisorVal === 'string' ? advisorVal : advisorVal?.verdict
+    expect(verdict).toBe('APPROVE')
   })
 
   it('APPROVE records when GROUNDWORK_COMMENT_DENSITY=0 (kill switch)', () => {
     writeFileSync(path.join(repoDir, 'over-cap.ts'), OVER_CAP_CONTENT)
-    writeLedger(repoDir, sessionId) // no cleanup slice
+    writeLedger(repoDir, sessionId)
     const r = runGate('APPROVE', sessionId, repoDir, { GROUNDWORK_COMMENT_DENSITY: '0' })
     expect(r.status).toBe(0)
   })
@@ -186,18 +229,10 @@ describe('ledger gate comment-density AC3', () => {
 
 describe('ledger gate comment-density C9: base_commit mechanism', () => {
   it('APPROVE is refused when over-cap file is committed AFTER base_commit, tree clean', () => {
-    // Capture HEAD before the over-cap file is committed — this is the base_commit
     const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' })
     const baseCommit = baseResult.stdout.trim()
-
-    // Write ledger with base_commit recorded at this point
     writeLedgerWithBaseCommit(repoDir, sessionId, baseCommit)
-
-    // Commit the over-cap file AFTER ledger creation (tree will be clean after commit)
     gitCommitFile(repoDir, 'over-cap.ts', OVER_CAP_CONTENT, 'add over-cap')
-
-    // Tree is clean — gitFiles alone would return empty, making the check vacuous.
-    // touchedFilesSince must detect the file via base_commit diff and refuse.
     const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).not.toBe(0)
     const out = r.stdout + r.stderr
@@ -221,17 +256,10 @@ describe('ledger gate comment-density C9: base_commit mechanism', () => {
   })
 
   it('file committed BEFORE base_commit is not considered at gate', () => {
-    // Commit the over-cap file BEFORE recording base_commit
     gitCommitFile(repoDir, 'pre-ledger.ts', OVER_CAP_CONTENT, 'pre-ledger file')
-
-    // Record HEAD now — this becomes the base_commit (the over-cap file is already in history)
     const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' })
     const baseCommit = baseResult.stdout.trim()
-
-    // Write ledger with base_commit AFTER the over-cap file was committed
     writeLedgerWithBaseCommit(repoDir, sessionId, baseCommit)
-
-    // Tree is clean; pre-ledger.ts committed before base_commit → not in touched set
     const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).toBe(0)
   })

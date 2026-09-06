@@ -30,11 +30,6 @@ function runHook(
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '', status: result.status }
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-// 20-line TS file with 2 comment lines → (2/20)*100 = 10.0 > 5 (over-cap)
 const OVER_CAP_CONTENT = [
   'const a = 1',
   'const b = 2',
@@ -58,8 +53,6 @@ const OVER_CAP_CONTENT = [
   '// second comment',
 ].join('\n')
 
-// 20-line TS file, 1 comment line → (1/20)*100 = 5.0, NOT > 5 (at cap, not over).
-// The one comment is a restating comment: `// foo` directly above `function foo()`.
 const RESTATING_CONTENT = [
   'const a = 1',
   'const b = 2',
@@ -83,7 +76,6 @@ const RESTATING_CONTENT = [
   'function foo() {}',
 ].join('\n')
 
-// 20-line TS file, no comments → clean passthrough
 const CLEAN_CONTENT = [
   'const a = 1',
   'const b = 2',
@@ -106,10 +98,6 @@ const CLEAN_CONTENT = [
   'const s = 19',
   'const t = 20',
 ].join('\n')
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('comment-density-guard hook', () => {
   it('TC1: malformed stdin → empty stdout, exit 0', () => {
@@ -142,9 +130,7 @@ describe('comment-density-guard hook', () => {
     expect(parsed).toHaveProperty('hookSpecificOutput')
     const hso = parsed.hookSpecificOutput as Record<string, unknown>
     expect(hso).toHaveProperty('additionalContext')
-    // Rule text must be present
     expect(hso.additionalContext as string).toContain('≤5')
-    // Advisory — no permissionDecision anywhere in the output object
     expect(parsed).not.toHaveProperty('permissionDecision')
     expect(hso).not.toHaveProperty('permissionDecision')
   })
@@ -169,9 +155,6 @@ describe('comment-density-guard hook', () => {
   })
 
   it('TC5: Edit pushing file over cap → over-cap in additionalContext', () => {
-    // The hook reads the existing file from disk for Edit, applies the patch, then analyzes.
-    // Start with CLEAN_CONTENT (20 lines, 0 comments); edit replaces last 2 lines with
-    // 2 comment lines + those 2 original lines → 22 lines, 2 comments = 9.09/100 > 5.
     const tmpDir = mkdtempSync(join(os.tmpdir(), 'gw-cdg-edit-'))
     try {
       const filePath = join(tmpDir, 'subject.ts')
@@ -201,8 +184,6 @@ describe('comment-density-guard hook', () => {
   })
 
   it('TC6: Write with restating comment, density at cap (not over) → restating in additionalContext', () => {
-    // RESTATING_CONTENT: 20 lines, 1 comment → 5.0/100 which is NOT > 5.
-    // Only the restating violation fires (// foo above function foo()).
     const payload = JSON.stringify({
       tool_name: 'Write',
       tool_input: { file_path: '/tmp/gw-cdg-restating.ts', content: RESTATING_CONTENT },

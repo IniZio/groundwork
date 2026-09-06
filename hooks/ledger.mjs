@@ -1,36 +1,7 @@
 #!/usr/bin/env node
-/**
- * Groundwork ledger CLI — the orchestrator's context-cheap interface to
- * `.groundwork/run.json`.
- *
- * WHY THIS EXISTS: the orchestrator runs on opus. Mutating the ledger by
- * Read+Edit pushed the entire ~5 KB file into context on every slice flip and
- * gate update — 15-40K opus tokens of pure bookkeeping per run — and broke
- * whenever the stop-gate hook rewrote the file behind the orchestrator's back
- * (stale Edit match). This CLI moves the read-modify-write inside one locked,
- * atomic process: the orchestrator issues a one-line command and gets a one-line
- * confirmation, never holding the ledger in context.
- *
- * Usage (invoke via Bash; path auto-resolves to $CLAUDE_PROJECT_DIR/.groundwork/run.json):
- *   ledger.mjs help                             global usage (also: -h, --help, or bare invocation)
- *   ledger.mjs <cmd> --help                     per-command usage
- *   ledger.mjs status                           compact one-line-per-slice view
- *   ledger.mjs complete S3 [S4 ...]             mark slice(s) complete
- *   ledger.mjs gate advisor APPROVE [--citation "x" --rubric "y" \
- *               --axes-correctness 3 --axes-completeness 3 --axes-over_engineering 0 \
- *               --axes-contract-fitness 2 --axes-plan-soundness 2]
- *               // advisor verdicts: APPROVE | CORRECTION | STOP | GAPS | REPLAN (bare string or {verdict})
- *   ledger.mjs abandon                          set active:false (releases the gate)
- *   ledger.mjs init <file|->                    write the initial ledger atomically
- *   ledger.mjs add <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"] [--status pending]
- *   ledger.mjs rm <id> [<id> …]                 remove slice(s)
- *   ledger.mjs set <id> [--status …] [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]
- *   ledger.mjs claim <id> [<id> …] [--json] [--strict]  claim slice(s) for the current session (no --token)
- *   ledger.mjs show <id>                        print all fields of one slice
- *
- * All writes are atomic and lock-serialized with the stop-gate hook (lib/ledger-io.mjs).
- * Exit 0 on success, 2 on usage error, 1 on operational failure.
- */
+// Atomic ledger CLI for the orchestrator (moves read-modify-write into locked process).
+// All writes atomic + lock-serialized with stop-gate hook.
+// Exit: 0=success, 2=usage error, 1=operational failure.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -46,25 +17,15 @@ import { regenerateMotiveTraceHtml } from './lib/traceability-ambient.mjs'
 import { assembleGraphFold, validateFoldRefs } from './lib/motive-dag.mjs'
 import { frontier as dagFrontier } from './lib/dag-utils.mjs'
 
-/**
- * Resolve the effective session id from --session flag or CLAUDE_CODE_SESSION_ID env.
- * Returns undefined if neither is set.
- */
 function resolveSessionId(flags) {
   return flags?.session || process.env.CLAUDE_CODE_SESSION_ID || undefined
 }
 
-/** Module-level resolved ledger path — set once in main() before dispatch. */
 let _ledgerPath = null
 function ledgerPath() {
   return _ledgerPath
 }
 
-/**
- * Best-effort MAP.md refresh after a ledger mutation.
- * Reads the current ledger to find the motive, then regenerates.
- * Never throws; silently skips when no motive is stamped.
- */
 function _tryRefreshMap(projectDir) {
   try {
     const ledger = readLedger(ledgerPath())
@@ -111,7 +72,6 @@ const VALID_STATUSES = new Set(['pending', 'in_progress', 'complete', 'skipped']
 const VALID_KINDS = new Set(['plan', 'diagnose', 'design', 'impl', 'fog'])
 const KIND_LABEL = { plan: '📋 plan', diagnose: '🔍 diagnose', design: '🎨 design', impl: '⚙ impl', fog: '🌫 fog' }
 
-/** Validate a kind string, die(exit 2) if invalid. */
 function assertKind(val) {
   if (!VALID_KINDS.has(val)) die(`invalid kind "${val}". Must be: plan | diagnose | design | impl | fog`, 2)
 }
@@ -123,12 +83,10 @@ function advisorVerdict(gate) {
   return 'pending'
 }
 
-/** Validate a status string, die(exit 2) if invalid. */
 function assertStatus(val) {
   if (!VALID_STATUSES.has(val)) die(`invalid status "${val}". Must be: pending | in_progress | complete | skipped`, 2)
 }
 
-/** Validate a ticket id, die(exit 2) if it looks like a path or has a .md suffix. */
 const VALID_TICKET_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 function assertTicket(val) {
   if (!VALID_TICKET_RE.test(val)) {
@@ -136,17 +94,6 @@ function assertTicket(val) {
   }
 }
 
-/**
- * Load the canonical fold for a motive from its journal events.
- *
- * Graceful-degradation rule (R-008): returns null when motiveId is falsy,
- * the journal directory does not exist, no events are found for the motive,
- * or fold assembly fails for any reason. Callers skip validation on null.
- *
- * @param {string} projectDir
- * @param {string|undefined} motiveId
- * @returns {object|null}
- */
 function _loadMotiveFold(projectDir, motiveId) {
   if (!motiveId) return null
   const journalDir = path.join(projectDir, '.groundwork', 'journal')
@@ -161,23 +108,6 @@ function _loadMotiveFold(projectDir, motiveId) {
   }
 }
 
-/**
- * Load the declared acceptance-criterion ids from the motive's charter (motive.md).
- *
- * Parses the "## Acceptance criteria" section and extracts the id from each
- * list item of the form "- <id>: description". Returns a Set of raw id strings
- * (e.g. {'AC-1', 'AC-2', 'T1-AC1'}).
- *
- * This is the authoritative source for `covers_ac` validation: a charter AC is
- * valid to reference even before any AC_COVERAGE event has been emitted for it.
- *
- * Graceful-degradation: returns an empty Set when motiveId is falsy, the
- * motive.md file does not exist, or parsing fails for any reason.
- *
- * @param {string} projectDir
- * @param {string|undefined} motiveId
- * @returns {Set<string>}
- */
 function _loadCharterAcIds(projectDir, motiveId) {
   if (!motiveId || !projectDir) return new Set()
   const motivePath = path.join(projectDir, '.groundwork', 'motives', motiveId, 'motive.md')
@@ -201,17 +131,6 @@ function _loadCharterAcIds(projectDir, motiveId) {
   }
 }
 
-/**
- * Validate slice ref ids against the canonical fold (MOTIVE-DAG-R-008).
- * Writes a named diagnostic to stderr and exits nonzero for dangling refs.
- * No-op when fold is null (graceful degradation: no motive / no journal / no events).
- *
- * @param {object|null} fold      — canonical fold from _loadMotiveFold, or null
- * @param {string[]} rawIds       — raw values from the ledger field (e.g. ['D-1', 'AC-1'])
- * @param {string} fieldName      — 'covers_ac' or 'decisions'
- * @param {string} nodeType       — 'ac' or 'decision' (passed to validateFoldRefs)
- * @param {string} idPrefix       — 'ac:' or 'decision:' (prepended for fold lookup)
- */
 function _assertFoldRefs(fold, rawIds, fieldName, nodeType, idPrefix) {
   if (!fold || !rawIds || rawIds.length === 0) return
   const prefixedIds = rawIds.map((id) => `${idPrefix}${id}`)
@@ -226,7 +145,6 @@ function _assertFoldRefs(fold, rawIds, fieldName, nodeType, idPrefix) {
   process.exit(1)
 }
 
-/** Validate decision ids (shape-only). Ids not matching /^D-\d+$/ warn to stderr; exits 0. */
 const VALID_DECISION_RE = /^D-\d+$/
 function warnDecisions(ids) {
   for (const id of ids) {
@@ -236,15 +154,6 @@ function warnDecisions(ids) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// LEDGER VALIDATION — schema + custom structural invariants
-// ---------------------------------------------------------------------------
-
-/**
- * Known slice keys. Keys not in this set that resemble a known key (edit
- * distance ≤ 2) are flagged as near-miss warnings so typos like `blocked_bY`
- * are surfaced rather than silently ignored.
- */
 const KNOWN_SLICE_KEYS = new Set([
   'id', 'status', 'wave', 'kind', 'desc',
   'blocked_by', 'depends_on', // depends_on = legacy alias for blocked_by
@@ -252,11 +161,10 @@ const KNOWN_SLICE_KEYS = new Set([
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
   'created_by',               // S4: agent/scope identifier that created this slice (free-form string)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
-  'ticket',                   // ticket document id/path this slice is scoped to
-  'decisions',                // decision ids constraining this slice: string | string[]
+  'ticket',
+  'decisions',
 ])
 
-/** Simple Levenshtein distance, capped at 3 for performance. */
 function levenshtein(a, b) {
   if (Math.abs(a.length - b.length) > 3) return 4
   const m = a.length, n = b.length
@@ -269,17 +177,6 @@ function levenshtein(a, b) {
   return dp[m][n]
 }
 
-/**
- * Validate a parsed ledger document.
- *
- * Returns { errors, warnings }:
- *   errors   — hard invariants: blocked_by/depends_on referential integrity,
- *              acceptance non-empty-string elements. These fail writes.
- *   warnings — schema violations (structural issues, missing required fields) and
- *              near-miss unknown slice keys. Always surfaced to stderr, never block.
- *              NOTE: advisor verdict enum is enforced inline in cmdGate, not here,
- *              so that the error message is specific and other schema issues stay soft.
- */
 function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
   const errors = []
   const warnings = []
@@ -289,11 +186,6 @@ function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
     return { errors, warnings }
   }
 
-  // 1. JSON Schema validation.
-  //    On the READ path (strictSchema=false): soft — structural issues surface as warnings
-  //    so a corrupt pre-existing ledger doesn't brick a running session.
-  //    On the WRITE path (strictSchema=true): hard — never commit new corruption to disk.
-  //    advisor verdict enum is enforced inline in cmdGate with a targeted check.
   try {
     const validate = loadSchema('run-ledger')
     if (!validate(ledger) && validate.errors) {
@@ -412,23 +304,12 @@ function validateLedgerDoc(ledger, { strictSchema = false } = {}) {
   return { errors, warnings }
 }
 
-/**
- * Emit validation issues to stderr as warnings (never throws).
- * Used by read-only commands so corrupt-but-parseable ledgers don't brick a session.
- */
 function warnValidate(ledger) {
   const { errors, warnings } = validateLedgerDoc(ledger)
   for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
   for (const e of errors) process.stderr.write(`ledger warn: ${e}\n`)
 }
 
-/**
- * Validate ledger; throw on hard errors. Warnings always go to stderr.
- * Used before writes so new corruption is never committed to disk.
- * Schema violations are soft here (warnings) so that existing ledgers with minor
- * structural quirks remain mutable (complete, gate, set). Use checkLedgerStrict
- * for new ledger creation (cmdInit) where there is no excuse for writing corruption.
- */
 function checkLedger(ledger) {
   const { errors, warnings } = validateLedgerDoc(ledger)
   for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
@@ -439,13 +320,6 @@ function checkLedger(ledger) {
   }
 }
 
-/**
- * Strict variant of checkLedger for cmdInit (new ledger creation).
- * Schema violations are hard errors here because "never write new corruption"
- * is a stronger rule than "tolerate corruption already on disk".
- * Duplicate slice ids are also caught here since a dup at init-time can never
- * be drained by the stop-gate.
- */
 function checkLedgerStrict(ledger) {
   const { errors, warnings } = validateLedgerDoc(ledger, { strictSchema: true })
   for (const w of warnings) process.stderr.write(`ledger warn: ${w}\n`)
@@ -456,11 +330,6 @@ function checkLedgerStrict(ledger) {
   }
 }
 
-/**
- * Like mutateLedger but validates the resulting state before committing.
- * If validation finds hard errors the write is aborted and an error is thrown
- * (which the main() catch converts to exit 1).
- */
 function mutateLedgerChecked(lPath, fn) {
   return mutateLedger(lPath, (l) => {
     const result = fn(l)
@@ -470,13 +339,6 @@ function mutateLedgerChecked(lPath, fn) {
   })
 }
 
-/**
- * Re-seal the ledger if it is in the sealed regime (gate.seal present OR key file on disk).
- * No-op for legacy in-flight ledgers (no gate.seal AND no key file — pre-fix runs).
- * Must be called INSIDE a mutateLedgerChecked callback so the updated seal is written atomically.
- * @param {object} ledger  — the ledger object being mutated in place
- * @param {string} projectDir — resolved project directory
- */
 function reSeal(ledger, projectDir) {
   const sid = ledger?.session_id
   const kp = keyPath({ projectDir, sessionId: sid })
@@ -487,19 +349,7 @@ function reSeal(ledger, projectDir) {
   ledger.gate.seal = computeSeal(canonicalReleaseState(ledger), key)
 }
 
-/**
- * Enforce write-token authority for gate/complete/abandon/set-terminal. FAIL-CLOSED.
- * Cases:
- *   token_free === true AND no write_token → legacy opt-out ledger; bypass (backward compat)
- *   write_token present  → caller must supply the matching --token
- *   neither present      → ledger is misconfigured; reject (the fail-open window has closed)
- * NOTE: new ledgers can no longer be initialized with token_free via --no-token (D-6),
- *       but existing ledgers carrying token_free:true are still honoured for backward compat.
- * (caller is always inside mutateLedger which has a finally-cleanup for the lockfile;
- * we must throw rather than call die/process.exit to avoid bypassing that cleanup).
- */
 function assertWriteToken(ledger, passedToken) {
-  // token_free bypass REMOVED (D-6, D-9): every ledger must have a write_token; fail closed.
   const stored = ledger?.write_token
   if (!stored) {
     const e = new Error(
@@ -519,20 +369,6 @@ function assertWriteToken(ledger, passedToken) {
   }
 }
 
-/**
- * Token check for `complete` — the ONLY command that accepts scoped tokens.
- * Explicit allowlist: every other command calls `assertWriteToken` directly,
- * so any new command defaults to full-token-required unless deliberately added here.
- *
- * Accepts either:
- *   (a) the orchestrator write_token  → full authority over all slices
- *   (b) a scoped token in ledger.scoped_tokens  → only slices whose
- *       `created_by` matches the token's scope
- *
- * Returns the scope string when a scoped token was used, or null for full authority.
- * Throws (fail-closed) on any authorization failure — absent, empty, mismatched, or
- * a scoped token that doesn't own all requested slices.
- */
 function assertScopedOrWriteToken(ledger, passedToken, sliceIds) {
   const stored = ledger?.write_token
   if (!stored) {
@@ -543,12 +379,8 @@ function assertScopedOrWriteToken(ledger, passedToken, sliceIds) {
     e.exitCode = 1
     throw e
   }
-  // (a) Orchestrator full authority — write_token matches
   if (passedToken && passedToken === stored) return null
 
-  // (b) Scoped token authority — explicit allowlist for `complete` only.
-  // A scoped token must be found in ledger.scoped_tokens AND every target slice
-  // must carry a matching created_by.  If either check fails → reject.
   const scopedTokens = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
   const entry = passedToken
     ? scopedTokens.find((st) => st?.token && st.token === passedToken)
@@ -562,7 +394,6 @@ function assertScopedOrWriteToken(ledger, passedToken, sliceIds) {
     e.exitCode = 1
     throw e
   }
-  // Scoped token verified — check ownership of every requested slice.
   const scope = entry.scope
   const slices = Array.isArray(ledger.slices) ? ledger.slices : []
   const byId = new Map(slices.map((s) => [s?.id, s]))
@@ -588,11 +419,6 @@ function assertScopedOrWriteToken(ledger, passedToken, sliceIds) {
   return scope
 }
 
-// ---------------------------------------------------------------------------
-// HELP
-// ---------------------------------------------------------------------------
-
-/** Single source-of-truth for command usage strings. */
 const HELP = {
   status: {
     summary: 'compact one-line-per-slice view of the current run',
@@ -746,7 +572,6 @@ const HELP = {
 }
 
 function cmdHelp(args) {
-  // `ledger help <cmd>` or `ledger <cmd> --help`
   if (args.length) {
     const cmd = args[0]
     const h = HELP[cmd]
@@ -775,10 +600,6 @@ function cmdHelp(args) {
     ].join('\n') + '\n',
   )
 }
-
-// ---------------------------------------------------------------------------
-// EXISTING COMMANDS
-// ---------------------------------------------------------------------------
 
 function cmdStatus() {
   const l = readLedger(ledgerPath())
@@ -812,9 +633,6 @@ function cmdComplete(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    // S5: accept orchestrator write_token (full authority) OR a valid scoped token
-    // (restricted to slices owned by the token's scope).  All other commands
-    // retain assertWriteToken — this explicit allowlist is the security boundary.
     assertScopedOrWriteToken(l, flags.token, ids)
     capturedLedger = l
     const slices = Array.isArray(l.slices) ? l.slices : []
@@ -833,10 +651,8 @@ function cmdComplete(args) {
     }
     total = slices.length
     done = slices.filter((s) => s?.status === 'complete').length
-    reSeal(l, projectDir)  // S2-AC5: re-seal after mutation (no-op for legacy runs)
+    reSeal(l, projectDir)
   })
-  // Emit one TASK_COMPLETE per found-and-marked id; must precede die() so partial
-  // successes (e.g. "ledger complete S1 BOGUS") are still recorded (AC8).
   if (capturedLedger) {
     const sliceMap = new Map((capturedLedger.slices ?? []).map((s) => [s?.id, s]))
     for (const id of ids.filter((id) => !missing.includes(id))) {
@@ -869,22 +685,8 @@ function cmdComplete(args) {
   process.stdout.write(`${ids.join(', ')} ✓ (${done}/${total} complete)\n`)
 }
 
-/**
- * S5: Set or clear the awaiting-human hold on the ledger.
- *
- * While the hold is active (awaiting_human:true, valid seal), the stop-gate will
- * NOT block and will NOT increment the reinforcements counter.  The hold defers
- * nagging; it does NOT bypass the completion gate — releasing it resumes normal
- * enforcement (all slices complete + advisor APPROVE still required).
- *
- * The hold requires the orchestrator write_token (same as complete/gate/abandon).
- * Any direct file write adding awaiting_human:true changes the canonical release
- * state without updating the HMAC → seal fails → stop-gate blocks (fail-closed).
- */
 function cmdAwaitHuman(args) {
   const { flags, positionals } = parseFlags(args ?? [])
-  // Use a positional subcommand "clear" rather than a boolean --flag so that
-  // `await-human clear --token X` is unambiguous across all callers.
   const clearing = positionals[0] === 'clear'
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
@@ -904,21 +706,6 @@ function cmdAwaitHuman(args) {
   }
 }
 
-/**
- * S7: Record a human milestone sign-off on the ledger.
- *
- * SECURITY — write_token required (same authority as complete/gate/abandon).
- * A subagent cannot present the write_token (CLAUDE.md: "MUST NOT pass it to
- * subagents"), so requiring it here structurally prevents self-signing.
- *
- * For verdict=APPROVE with --build-hash supplied, each declared artifact whose
- * captured_build_hash differs from the supplied current hash is rejected as stale;
- * the command exits 1 and does NOT write the sign-off.
- *
- * The written milestone_signoff is included in canonicalReleaseState (gate-seal.mjs),
- * so any direct file write that injects an APPROVE verdict without going through this
- * command changes the seal → stop-gate blocks (fail-closed).
- */
 function cmdMilestoneSignoff(args) {
   const { flags } = parseFlags(args ?? [])
 
@@ -946,9 +733,7 @@ function cmdMilestoneSignoff(args) {
       throw e
     }
 
-    // Artifact freshness gate: reject stale artifacts before writing APPROVE.
     if (verdict === 'APPROVE') {
-      // Hash-based staleness (pure, via pacing.mjs — same mechanism as traceability-classify.mjs).
       const hashCheck = checkMilestoneArtifacts(l, currentBuildHash)
       if (!hashCheck.satisfied) {
         const e = new Error(
@@ -959,8 +744,6 @@ function cmdMilestoneSignoff(args) {
         e.exitCode = 1
         throw e
       }
-
-      // File-existence gate: each declared artifact path must exist on disk.
       const artifacts = Array.isArray(l.pacing.milestone_artifacts) ? l.pacing.milestone_artifacts : []
       for (const artifact of artifacts) {
         if (artifact.kind !== 'live_url' && artifact.path && !existsSync(artifact.path)) {
@@ -990,12 +773,6 @@ function cmdMilestoneSignoff(args) {
   process.stdout.write(`milestone-signoff: ${verdict} by ${verifiedBy}\n`)
 }
 
-/**
- * S5: Issue a scoped token bound to <scope>.  Only slices whose `created_by`
- * matches this scope can be completed using the returned token.  Issuance
- * requires the orchestrator write_token — scoped tokens cannot bootstrap
- * themselves and cannot escalate to full authority.
- */
 function cmdScopeToken(args) {
   const { flags, positionals } = parseFlags(args)
   const scope = positionals[0]
@@ -1023,8 +800,6 @@ function cmdGate(args) {
   const [which, verdictRaw] = positionals
   if (!which || !verdictRaw) die('usage: ledger gate <advisor|verifier|qa> <verdict> [--token <t>] [--citation .. --rubric ..]', 2)
   if (!['advisor', 'verifier', 'qa'].includes(which)) die(`unknown gate "${which}"`, 2)
-  // Advisor verdicts (from agents-src/advisor.md): APPROVE | CORRECTION | STOP | GAPS | REPLAN
-  // (REPLAN is non-terminal — stop-gate routes back to feature-interview/vertical-slice).
   const VALID_ADVISOR_VERDICTS = new Set(['APPROVE', 'CORRECTION', 'STOP', 'GAPS', 'REPLAN'])
   if (which === 'advisor' && !VALID_ADVISOR_VERDICTS.has(verdictRaw)) {
     die(`invalid advisor verdict "${verdictRaw}". Must be: APPROVE | CORRECTION | STOP | GAPS | REPLAN`, 1)
@@ -1074,7 +849,6 @@ function cmdGate(args) {
   process.stdout.write(`${which}: ${hasObj ? value.verdict : value}\n`)
 }
 
-/** Write .groundwork/gates/<run-id>.md with a machine-parseable header + human body. */
 function writeGateArtifact({ runId, which, verdictRaw, value, hasObj }) {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   const gatesDir = path.join(base, '.groundwork', 'gates')
@@ -1116,12 +890,10 @@ function cmdAbandon(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to abandon')
-    // S2-AC3: abandon requires token (vector 4) — including cross-session abandon (--session
-    // flag). The caller must supply the target session's write_token via --token.
     assertWriteToken(l, flags.token)
     capturedLedger = l
     l.active = false
-    reSeal(l, projectDir)  // S2-AC3: re-seal with active:false so stop-gate accepts abandon
+    reSeal(l, projectDir)
   })
   if (capturedLedger) {
     emitHookEvent({
@@ -1139,9 +911,6 @@ function cmdAbandon(args) {
 }
 
 function cmdInit(args) {
-  // Support both legacy single-positional form and new flag-based form.
-  // When args is a string (old call site), wrap it; this path should not occur
-  // after the main() update below but kept defensively.
   const argv = Array.isArray(args) ? args : (args ? [args] : [])
   const { flags, positionals } = parseFlags(argv)
   const src = positionals[0]
@@ -1164,9 +933,6 @@ function cmdInit(args) {
     }
   }
 
-  // S2-AC2 (vectors 1 & 2): refuse to overwrite an active tokened run without --token.
-  // This prevents a subagent from re-initializing the orchestrator's live run and
-  // either hijacking its seal or minting a new token it controls.
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   try {
     const existing = readLedger(ledgerPath())
@@ -1179,54 +945,29 @@ function cmdInit(args) {
         )
       }
     }
-  } catch { /* no existing ledger or unreadable — fresh init, proceed */ }
+  } catch { }
 
-  // Generate and embed the write-token for gate/complete/abandon authority (D-6).
-  // The --no-token escape hatch has been retired; every new run gets a token.
   const writeToken = randomBytes(8).toString('hex')
   obj.write_token = writeToken
-  delete obj.token_free  // retire any stale token_free from input
+  delete obj.token_free
 
-  // Stamp schema_version to mark this ledger as sealed-regime (S2-AC1).
   obj.schema_version = SCHEMA_VERSION
 
-  // Record the HEAD sha at init time so the comment-density gate can find
-  // files committed after this run started (C9: base_commit mechanism).
   try {
     const bcr = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectDir, encoding: 'utf8' })
     if (bcr.status === 0) obj.base_commit = bcr.stdout.trim()
-  } catch { /* git not available — omit base_commit */ }
+  } catch { }
 
-  // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
   if (!('active' in obj)) obj.active = true
-  // Stamp session_id: always overwrite with the current session so that ledgers
-  // seeded from a prior session's JSON carry the correct (new) session id.
-  // The file path already encodes the new session id; the body must match.
   const sessionId = resolveSessionId(null)
   obj.session_id = sessionId ?? randomBytes(16).toString('hex')
-  // Stamp motive: --motive flag overrides JSON input; JSON input is preserved as-is.
   if (flags.motive != null) obj.motive = flags.motive
-  // Stamp pacing defaults on new runs (D-28): only when the input has no pacing field.
-  // Existing ledgers that already carry a pacing field are preserved as-is.
   if (!('pacing' in obj)) {
     obj.pacing = { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] }
   }
-  // Record pacing offset: the number of already-resolved units carried in from
-  // the seed JSON.  The pacing engine subtracts this so that prior-session
-  // completions don't count against this session's budget (F14 fix).
-  // We compute it AFTER the pacing field is guaranteed present but BEFORE
-  // validation so the schema can enforce the field type.
   obj.pacing.offset = resolvedUnits(obj)
-  // Validate before writing — strict: schema violations are hard errors at init
-  // time because there is no excuse for persisting corruption in a fresh ledger.
   checkLedgerStrict(obj)
-  // Best-effort prune stale per-session ledgers FIRST.
-  // Order matters: prune co-deletes each stale ledger's `.seal.key` sibling, and
-  // a prior run for THIS session id (abandoned → active:false) shares that exact
-  // key path.  Minting before pruning let the prune delete the key it had just
-  // created, leaving a ledger no token-authenticated write could reseal.
-  try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
-  // Mint the seal key and compute the initial seal (S2-AC1).
+  try { pruneStaleSessionLedgers(projectDir) } catch { }
   const key = ensureKey({ projectDir, sessionId: obj.session_id })
   obj.gate = obj.gate ?? {}
   obj.gate.seal = computeSeal(canonicalReleaseState(obj), key)
@@ -1237,10 +978,6 @@ function cmdInit(args) {
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
   process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`)
 }
-
-// ---------------------------------------------------------------------------
-// SLICE CRUD
-// ---------------------------------------------------------------------------
 
 function cmdAdd(args) {
   const { flags, positionals } = parseFlags(args)
@@ -1256,10 +993,6 @@ function cmdAdd(args) {
   const coversAcRaw = flags['covers-ac'] != null ? flags['covers-ac'].split(',').map((s) => s.trim()).filter(Boolean) : null
   const decisionsRaw = flags['decisions'] != null ? flags['decisions'].split(',').map((s) => s.trim()).filter(Boolean) : null
 
-  // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
-  // covers_ac: valid if declared in the motive's charter AC list OR present as a fold AC node.
-  // decisions: valid only if present as a fold decision node.
-  // Graceful degradation: skips validation when no motive, no journal, or no motive events.
   if (coversAcRaw != null || decisionsRaw != null) {
     const addProjectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
     const existingLedger = readLedger(ledgerPath())
@@ -1273,18 +1006,14 @@ function cmdAdd(args) {
   }
 
   mutateLedgerChecked(ledgerPath(), (l) => {
-    // Create a minimal ledger skeleton if none exists yet
     const ledger = l ?? { active: true, brief: '', slices: [], gate: {} }
     ledger.slices = Array.isArray(ledger.slices) ? ledger.slices : []
     if (ledger.slices.some((s) => s?.id === id)) {
-      // signal dup — throw so we can die(exit 2) after; we catch specially below
       const e = new Error(`slice "${id}" already exists`)
       e.exitCode = 2
       throw e
     }
     const item = { id, wave, status, desc, blocked_by }
-    // Only set acceptance when explicitly provided (omitting [] keeps the key
-    // absent, which is valid; present+empty is now a validation error).
     if (acceptance.length > 0) item.acceptance = acceptance
     if (flags.kind != null) item.kind = flags.kind
     if (flags.ticket != null) { assertTicket(flags.ticket); item.ticket = flags.ticket }
@@ -1311,7 +1040,6 @@ function cmdRm(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    // Vector 6: rm changes the canonical release state (slice set) — requires write token.
     assertWriteToken(l, flags.token)
     const slices = Array.isArray(l.slices) ? l.slices : []
     const existingIds = new Set(slices.map((s) => s?.id))
@@ -1319,7 +1047,6 @@ function cmdRm(args) {
       if (!existingIds.has(id)) missing.push(id)
     }
     if (missing.length) {
-      // abort: throw so no write happens, then die exit 2
       const e = new Error(`unknown slice id(s): ${missing.join(', ')}`)
       e.exitCode = 2
       throw e
@@ -1327,7 +1054,7 @@ function cmdRm(args) {
     const removeSet = new Set(ids)
     l.slices = slices.filter((s) => !removeSet.has(s?.id))
     remaining = l.slices.length
-    reSeal(l, projectDir)  // Vector 6: re-seal after rm (slice removal changes release predicate)
+    reSeal(l, projectDir)
   })
   _tryRefreshMap(projectDir)
   process.stdout.write(`removed: ${ids.join(', ')} (${remaining} slice${remaining === 1 ? '' : 's'} remain)\n`)
@@ -1345,10 +1072,6 @@ function cmdSet(args) {
   const TERMINAL_STATUSES = new Set(['complete', 'skipped'])
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 
-  // R-008: validate covers_ac and decisions against the canonical fold when motive is present.
-  // covers_ac: valid if declared in the motive's charter AC list OR present as a fold AC node.
-  // decisions: valid only if present as a fold decision node.
-  // Graceful degradation: skips validation when no motive, no journal, or no motive events.
   if (flags['covers-ac'] != null || flags['decisions'] != null) {
     const setLedger = readLedger(ledgerPath())
     const fold = _loadMotiveFold(projectDir, setLedger?.motive)
@@ -1379,8 +1102,6 @@ function cmdSet(args) {
       assertWriteToken(l, flags.token)
     }
     if (flags.status != null) {
-      // Pacing enforcement (D-28): block in_progress transitions when budget is exhausted.
-      // --build-hash enables milestone artifact-freshness check (pure — no I/O in checkPace).
       if (flags.status === 'in_progress') {
         const pace = checkPace(l, id, flags['build-hash'] ?? null)
         if (!pace.allowed) {
@@ -1426,7 +1147,7 @@ function cmdSet(args) {
       warnDecisions(s.decisions)
       updated.push(`decisions=[${s.decisions.join(',')}]`)
     }
-    reSeal(l, projectDir)  // S2-AC4: re-seal after any set (no-op for legacy runs)
+    reSeal(l, projectDir)
   })
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -1479,12 +1200,7 @@ function cmdShow(id) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// CLAIM — concurrent-session slice ownership
-// ---------------------------------------------------------------------------
-
 function cmdClaim(args) {
-  // Extract boolean flags before parseFlags (which treats every --flag as having a value)
   const jsonMode = args.includes('--json')
   const strictMode = args.includes('--strict')
   const filteredArgs = args.filter((a) => a !== '--json' && a !== '--strict')
@@ -1494,7 +1210,7 @@ function cmdClaim(args) {
   const currentSession = resolveSessionId(flags)
   if (!currentSession) die('claim requires a session id — set CLAUDE_CODE_SESSION_ID or pass --session <id>', 1)
 
-  const refused = /** @type {{id: string, claimed_by: string}[]} */ ([])
+  const refused = []
   const claimed = []
 
   mutateLedgerChecked(ledgerPath(), (l) => {
@@ -1507,10 +1223,7 @@ function cmdClaim(args) {
       e.exitCode = 2
       throw e
     }
-    // Pacing enforcement (D-28): block claim when budget is exhausted.
-    // --build-hash enables milestone artifact-freshness check at claim time (pure).
     const claimBuildHash = flags['build-hash'] ?? null
-    // Check each slice; first blocked result aborts the whole operation.
     for (const id of ids) {
       const pace = checkPace(l, id, claimBuildHash)
       if (!pace.allowed) {
@@ -1524,13 +1237,10 @@ function cmdClaim(args) {
       const s = byId.get(id)
       const existingOwner = s.claimed_by
       if (!existingOwner || existingOwner === currentSession) {
-        // Unclaimed, or same session reclaiming (idempotent) — set/refresh
         s.claimed_by = currentSession
         s.claimed_at = now
         claimed.push(id)
       } else {
-        // Different session holds the claim.
-        // Allow reclaim only if the ledger is inactive (stale run).
         if (l.active === false) {
           s.claimed_by = currentSession
           s.claimed_at = now
@@ -1548,7 +1258,6 @@ function cmdClaim(args) {
     process.stdout.write(JSON.stringify({ claimed, refused, ok }) + '\n')
     if (strictMode && !ok) process.exit(1)
   } else {
-    // Default text output — byte-identical to previous behaviour
     for (const r of refused) {
       process.stderr.write(`ledger: ${r.id} already claimed by ${r.claimed_by} — skipping\n`)
     }
@@ -1573,10 +1282,8 @@ function cmdView() {
   lines.push(`**Brief:** ${l.brief ?? '(no brief)'}`)
   lines.push(`**Active:** ${l.active === false ? 'no (abandoned)' : 'yes'}`)
   lines.push(`**Session:** ${l.session_id ?? '(none)'}`)
-  // NOTE: write_token is intentionally omitted here
   lines.push(``)
 
-  // Group slices by wave
   const byWave = new Map()
   for (const s of slices) {
     const w = s?.wave ?? 0
@@ -1606,7 +1313,6 @@ function cmdView() {
     lines.push(``)
   }
 
-  // Gate section
   const gate = l.gate ?? {}
   lines.push(`## Gate`)
   lines.push(``)
@@ -1633,10 +1339,6 @@ function cmdView() {
   process.stdout.write(lines.join('\n') + '\n')
 }
 
-// ---------------------------------------------------------------------------
-// FRONTIER — slices a session can start right now
-// ---------------------------------------------------------------------------
-
 function cmdFog(args) {
   const { flags, positionals } = parseFlags(args)
   const id = positionals[0]
@@ -1655,7 +1357,6 @@ function cmdFog(args) {
       kind: 'fog',
       desc: flags.desc,
       question: flags.question,
-      // acceptance intentionally omitted: fog slices have no acceptance criteria
     }
     slices.push(item)
     l.slices = slices
@@ -1674,9 +1375,7 @@ function cmdFrontier(args) {
 
   const slices = Array.isArray(l.slices) ? l.slices : []
 
-  // Delegate pure predicate to dagFrontier; add session-specific claimed_by filter here.
   const frontier = dagFrontier(slices).filter((s) => {
-    // Unclaimed, or claimed by the current session
     return !s.claimed_by || s.claimed_by === currentSession
   })
 
@@ -1692,10 +1391,6 @@ function cmdFrontier(args) {
     process.stdout.write(`${s.id}  ${wave}${claim}${desc}\n`)
   }
 }
-
-// ---------------------------------------------------------------------------
-// AUTOPILOT — extend pacing budget by N units (D-28)
-// ---------------------------------------------------------------------------
 
 function cmdAutopilot(args) {
   const { flags } = parseFlags(args)
@@ -1722,7 +1417,7 @@ function cmdAutopilot(args) {
       granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
       reason,
     }
-    reSeal(l, projectDir)  // S2-AC5: re-seal after autopilot grant (no-op for legacy runs)
+    reSeal(l, projectDir)
   })
   if (capturedLedger) {
     emitHookEvent({
@@ -1737,23 +1432,16 @@ function cmdAutopilot(args) {
   process.stdout.write(`autopilot granted: +${range} unit${range === 1 ? '' : 's'}${reason ? ` (${reason})` : ''}\n`)
 }
 
-// ---------------------------------------------------------------------------
-// MAIN
-// ---------------------------------------------------------------------------
-
 function main() {
   const argv = process.argv.slice(2)
   const [cmd, ...rest] = argv
 
-  // no-args and explicit help flags → global help, exit 0
   if (!cmd || cmd === '-h' || cmd === '--help') { cmdHelp([]); return }
   if (cmd === 'help') { cmdHelp(rest); return }
 
-  // per-command --help
   const { flags } = parseFlags(rest)
   if ('help' in flags) { cmdHelp([cmd]); return }
 
-  // Resolve the ledger path once (honors --session flag and CLAUDE_CODE_SESSION_ID env)
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   const sessionId = resolveSessionId(flags)
   _ledgerPath = resolveLedgerPath({ projectDir: base, sessionId })

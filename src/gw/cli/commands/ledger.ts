@@ -1,16 +1,5 @@
-/**
- * ledger.ts — `gw ledger <subcommand>` — legacy JSON run store.
- *
- * Retargeted (T16) from the obsidian-native .groundwork/next/ store to the
- * legacy .groundwork/runs/<session_id>.json store — the same file and format
- * that hooks/ledger.mjs and bin/ledger read and write.  The two CLIs now
- * operate on the same run for the same session id.
- *
- * Path resolution mirrors resolveLedgerPath() in hooks/lib/ledger-io.mjs.
- * Auth mirrors enforceWriteTokenAuth() in hooks/ledger.mjs (direct
- * write_token comparison, not HMAC key-file).
- */
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
@@ -397,8 +386,19 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
 
       // -----------------------------------------------------------------------
       case 'set': {
+        const baseCommitFlag = flags['base-commit'] as string | undefined
+        if (baseCommitFlag && !positionals[0]) {
+          const ledger = readLedger(runPath)
+          if (!ledger) return errEnvelope('ledger set', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+          const check = spawnSync('git', ['cat-file', '-e', `${baseCommitFlag}^{commit}`], { cwd })
+          if (check.status !== 0) {
+            return errEnvelope('ledger set', 'INVALID_SHA', `not a valid commit: ${baseCommitFlag}`, 1)
+          }
+          atomicWrite(runPath, { ...ledger, base_commit: baseCommitFlag })
+          return okEnvelope('ledger set', { content: `base_commit set to ${baseCommitFlag}\n` })
+        }
         const id = positionals[0]
-        if (!id) return errEnvelope('ledger set', 'USAGE_ERROR', 'set requires <id>', 2)
+        if (!id) return errEnvelope('ledger set', 'USAGE_ERROR', 'set requires <id> or --base-commit <sha>', 2)
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger set', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         const slices = ledger.slices ?? []
@@ -666,9 +666,15 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const citation = flags['citation'] as string | undefined
         const rubric = flags['rubric'] as string | undefined
-        // AC3: block APPROVE while any touched file has no registered cleanup slice
         if (verdict === 'APPROVE' && process.env['GROUNDWORK_COMMENT_DENSITY'] !== '0') {
-          // touched = commits since ledger base_commit (if set) + working-tree diff
+          if (!ledger.base_commit) {
+            return errEnvelope(
+              'ledger gate',
+              'DENSITY_NO_BASE_COMMIT',
+              `DENSITY_NO_BASE_COMMIT: ledger has no base_commit; run: gw ledger set --motive ${motive} --base-commit <sha>`,
+              1,
+            )
+          }
           const touched = touchedFilesSince(ledger, cwd)
           if (touched.length > 0) {
             const manifest: Manifest = await buildManifest(touched, cwd)
@@ -676,7 +682,6 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
               const slices = ledger.slices ?? []
               const uncovered = manifest.files.filter(f => {
                 const rel = path.relative(cwd, f.path)
-                // A cleanup slice matches when desc contains the repo-relative path AND the word "cleanup"
                 return !slices.some(
                   s => typeof s.desc === 'string' && s.desc.includes(rel) && s.desc.includes('cleanup'),
                 )

@@ -112,6 +112,16 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook commit-message-guard",
+            "async": false
+          }
+        ]
+      },
+      {
         "matcher": "Read|Bash|Grep",
         "hooks": [
           {

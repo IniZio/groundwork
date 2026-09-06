@@ -56,7 +56,7 @@ describe('comment-density parity: syntax-table vs tree-sitter oracle', () => {
     for (const row of PARITY_TABLE) {
       it(`${row.file}: ${row.commentLines}/${row.totalLines} comment lines`, () => {
         const content = readCorpus(row.file);
-        const r = analyzeFile(row.file, content);
+        const r = analyzeFile(`virtual/${row.file}`, content);
 
         expect(r.excluded, `${row.file} should not be excluded`).toBe(false);
 

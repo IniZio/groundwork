@@ -32,10 +32,22 @@ const ALLOW_LINE = [
 const LICENSE_LINE = /\b(Copyright|Licensed|MIT|Apache|BSD|ISC|GPL|MPL)\b/i
 
 const SLOP = [
-  { label: 'AI-opener', re: /^\s*\/\/\s*(let's|let us|now we|here we|next we|first,?\s+let's|now i|i'll|i will)\b/i },
-  { label: 'step/phase marker', re: /^\s*\/\/\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i },
-  { label: 'hedging filler', re: /^\s*\/\/\s*(note:\s|disclaimer:\s|just\s+|simply\s+)/i },
-  { label: 'emoji', re: /^\s*\/\/.*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/u },
+  {
+    label: 'AI-fingerprint opener ("Let\'s/Let us/Now we/Here we/Next we/Now I/I\'ll")',
+    re: /^\s*\/\/\s*(let's|let us|now we|here we|next we|first,?\s+let's|now i|i'll|i will)\b/i,
+  },
+  {
+    label: 'narrator/step marker ("Step N", "Phase N", "Firstly/Secondly/Finally")',
+    re: /^\s*\/\/\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i,
+  },
+  {
+    label: 'apologetic/hedging filler ("Note: ", "Disclaimer: ", "Just ", "Simply ")',
+    re: /^\s*\/\/\s*(note:\s|disclaimer:\s|just\s+|simply\s+)/i,
+  },
+  {
+    label: 'AI emoji in a comment',
+    re: /^\s*\/\/.*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/u,
+  },
 ]
 
 const ALLOW_BLOCK_BODY = [
@@ -45,10 +57,23 @@ const ALLOW_BLOCK_BODY = [
 ]
 
 const SLOP_BLOCK = [
-  { label: 'AI-opener in block comment', re: /^\s*\*\s*(let's|let us|now we|here we|next we|first,?\s+let's|now i|i'll|i will)\b/i },
-  { label: 'step marker in block comment', re: /^\s*\*\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i },
-  { label: 'hedging filler in block comment', re: /^\s*\*\s*(just\s+|simply\s+)/i },
-  { label: 'emoji in block comment', re: /^\s*\*.*[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2728}\u{2705}\u{274C}\u{26A1}\u{2B50}\u{2757}]/u },
+  {
+    label: 'AI-fingerprint opener in block comment ("Let\'s/Let us/Now we/Here we/Next we/Now I/I\'ll")',
+    re: /^\s*\*\s*(let's|let us|now we|here we|next we|first,?\s+let's|now i|i'll|i will)\b/i,
+  },
+  {
+    label: 'narrator/step marker in block comment ("Step N", "Phase N", "Firstly/Secondly/Finally")',
+    re: /^\s*\*\s*(step\s+\d+|phase\s+\d+|firstly,?|secondly,?|finally,?|step\s+\d+:)\b/i,
+  },
+  {
+    label: 'apologetic/hedging filler in block comment ("Just ", "Simply ")',
+    // note:/disclaimer: omitted here — false-positive flood on block-body annotations; still caught by SLOP in single-line // comments.
+    re: /^\s*\*\s*(just\s+|simply\s+)/i,
+  },
+  {
+    label: 'AI emoji in block comment',
+    re: /^\s*\*.*[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2728}\u{2705}\u{274C}\u{26A1}\u{2B50}\u{2757}]/u,
+  },
 ]
 
 // Detect 3+ code-like commented lines (identifier/symbol start).

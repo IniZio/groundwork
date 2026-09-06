@@ -23,11 +23,9 @@ beforeAll(() => {
   try {
     liveNextMtimeBefore = fs.statSync(LIVE_NEXT_DIR).mtimeMs
   } catch {
-    liveNextMtimeBefore = null // dir doesn't exist yet — fine
+    liveNextMtimeBefore = null
   }
 })
-
-// ---- helpers ----
 
 function runGw(args: string[], env?: Record<string, string>, cwd?: string) {
   const result = spawnSync('bun', [CLI_PATH, '--json', ...args], {
@@ -57,7 +55,6 @@ function makeTmpDir() {
 const cleanups: string[] = []
 afterEach(() => { for (const d of cleanups.splice(0)) { try { fs.rmSync(d, { recursive: true, force: true }) } catch { /* ignore */ } } })
 
-// Initialize legacy ledger in dir, return write_token
 function initLegacy(dir: string, motive = 'tm'): { token: string } {
   fs.mkdirSync(path.join(dir, '.groundwork'), { recursive: true })
   const initDoc = JSON.stringify({ motive, session_id: 'test-sess', slices: [] })
@@ -70,7 +67,6 @@ function initLegacy(dir: string, motive = 'tm'): { token: string } {
 }
 
 // Get gw write token from the legacy JSON run store (T16: gw ledger retargeted to JSON).
-// Scans .groundwork/runs/ and falls back to run.json.
 function gwToken(dir: string, _motive = 'tm'): string {
   const runsDir = path.join(dir, '.groundwork', 'runs')
   if (fs.existsSync(runsDir)) {
@@ -107,9 +103,6 @@ function initGw(dir: string, motive = 'tm'): { token: string } {
   return { token }
 }
 
-// ============================================================
-// AC1: no NOT_IMPLEMENTED for any ledger/journal subcommand
-// ============================================================
 describe('AC1 — no NOT_IMPLEMENTED in ledger/journal router', () => {
   const LEDGER_SUBCMDS = [
     'status', 'add', 'set', 'complete', 'rm', 'show', 'view', 'gate',
@@ -137,11 +130,8 @@ describe('AC1 — no NOT_IMPLEMENTED in ledger/journal router', () => {
   })
 })
 
-// ============================================================
-// AC2: two-surface parity table
 // Each scenario runs on BOTH legacy (bin/ledger) and new (gw ledger).
 // Uses separate tmpdirs per surface to avoid cross-contamination.
-// ============================================================
 describe('AC2 — two-surface parity: status after add', () => {
   it('legacy: status exits 0 after add', () => {
     const legDir = makeTmpDir(); cleanups.push(legDir)
@@ -212,7 +202,7 @@ describe('AC2 — two-surface parity: complete with unmet blocked_by', () => {
     runLegacy(['add', 'S1'], { CLAUDE_PROJECT_DIR: legDir })
     runLegacy(['add', 'S2', '--blocked-by', 'S1'], { CLAUDE_PROJECT_DIR: legDir })
     const r = runLegacy(['complete', 'S2', '--token', token], { CLAUDE_PROJECT_DIR: legDir })
-    expect(r.status).toBe(0) // legacy: no blocked_by enforcement
+    expect(r.status).toBe(0)
   })
   it('new: complete S2 blocked by pending S1 → exit 1', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
@@ -330,9 +320,6 @@ describe('AC2 — two-surface parity: journal append + show', () => {
   })
 })
 
-// ============================================================
-// AC3: write without authority rejected — both surfaces
-// ============================================================
 describe('AC3 — write without authority: both surfaces reject', () => {
   it('legacy: complete without token → exit 1', () => {
     const legDir = makeTmpDir(); cleanups.push(legDir)
@@ -368,9 +355,7 @@ describe('AC3 — write without authority: both surfaces reject', () => {
   })
 })
 
-// ============================================================
 // Isolation guard: live .groundwork/next/ must be untouched
-// ============================================================
 describe('isolation guard — live store must be unmodified', () => {
   it('no test-artifact files written under live .groundwork/next/', () => {
     // Test-only motive slug 'tm' must not appear in the live store
@@ -380,10 +365,8 @@ describe('isolation guard — live store must be unmodified', () => {
 
   it('live .groundwork/next/ mtime unchanged since suite start', () => {
     if (liveNextMtimeBefore === null) {
-      // Dir didn't exist before — assert it still doesn't (or was created by a non-test actor)
       const exists = fs.existsSync(LIVE_NEXT_DIR)
       if (exists) {
-        // If it was created during the test run, check no 'tm' motive inside it
         const liveTm = path.join(LIVE_NEXT_DIR, 'motives', 'tm')
         expect(fs.existsSync(liveTm), `test pollution: ${liveTm} created during test run`).toBe(false)
       }
@@ -393,15 +376,13 @@ describe('isolation guard — live store must be unmodified', () => {
     try {
       currentMtime = fs.statSync(LIVE_NEXT_DIR).mtimeMs
     } catch {
-      return // dir removed — also fine
+      return
     }
     expect(currentMtime).toBe(liveNextMtimeBefore)
   })
 })
 
-// ============================================================
 // GW-CLI-R-004: session-id resolution — loud failure when absent
-// ============================================================
 // @verifies GW-CLI-R-004
 describe('GW-CLI-R-004 — session-id resolution', () => {
   it('exits non-zero and names CLAUDE_CODE_SESSION_ID on stderr when session env is absent', () => {
@@ -443,10 +424,6 @@ describe('GW-CLI-R-004 — session-id resolution', () => {
     const token = randomBytes(8).toString('hex')
     const gwDir = path.join(dir, '.groundwork')
     fs.mkdirSync(gwDir, { recursive: true })
-    // Give run.json a different session_id — this is the case that distinguishes
-    // the SAFE_ID guard from the legacyOwner fallback: without the guard the
-    // legacyOwner check would skip run.json (owner != badId) and try a non-existent
-    // perSessionPath, yielding a non-zero exit.
     fs.writeFileSync(
       path.join(gwDir, 'run.json'),
       JSON.stringify({

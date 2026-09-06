@@ -121,6 +121,42 @@ describe('analyzeFile – excluded files', () => {
   });
 });
 
+describe('analyzeFile – D-18 fixture-corpus exclusion (C13)', () => {
+  // analyzeFile caches by content hash only (path not in key), so each call
+  // needs unique content to avoid returning a cached result from a prior path.
+  // Tag is appended as a comment — 6 comment lines out of 8 total ≈ 75/100 > FILE_CAP (5).
+  const overCap = (tag: string) =>
+    `// c1\n// c2\n// c3\n// c4\n// c5\n// c6\nexport const x = 1; // ${tag}\n`;
+
+  it('positive control: src/foo.ts is NOT excluded and is over cap', () => {
+    const r = analyzeFile('src/foo.ts', overCap('pos'));
+    expect(r.excluded).toBe(false);
+    expect(r.commentsPer100).toBeGreaterThan(FILE_CAP);
+  });
+
+  it('test/fixtures/x/foo.ts → excluded:true, excludedReason:fixture-corpus', () => {
+    const r = analyzeFile('test/fixtures/x/foo.ts', overCap('tf'));
+    expect(r.excluded).toBe(true);
+    expect(r.excludedReason).toBe('fixture-corpus');
+  });
+
+  it('pkg/__fixtures__/foo.ts → excluded:true, excludedReason:fixture-corpus', () => {
+    const r = analyzeFile('pkg/__fixtures__/foo.ts', overCap('pf'));
+    expect(r.excluded).toBe(true);
+    expect(r.excludedReason).toBe('fixture-corpus');
+  });
+
+  it('near-miss test/fixturesx/foo.ts is NOT excluded (guards against widening)', () => {
+    const r = analyzeFile('test/fixturesx/foo.ts', overCap('nm1'));
+    expect(r.excluded).toBe(false);
+  });
+
+  it('near-miss src/fixtures/foo.ts is NOT excluded (guards against widening)', () => {
+    const r = analyzeFile('src/fixtures/foo.ts', overCap('nm2'));
+    expect(r.excluded).toBe(false);
+  });
+});
+
 describe('analyzeFile – nine language fixtures', () => {
   it('TypeScript (sample.ts): 10/17 = 58.82 per 100', () => {
     const content = readFixture(CORPUS, 'sample.ts');

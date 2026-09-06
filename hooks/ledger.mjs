@@ -161,8 +161,8 @@ const KNOWN_SLICE_KEYS = new Set([
   'claimed_by', 'claimed_at', // concurrent-session claiming (S5)
   'created_by',               // S4: agent/scope identifier that created this slice (free-form string)
   'covers_ac',                // AC coverage: string | string[] — which AC<n> labels this slice covers
-  'ticket',
-  'decisions',
+  'ticket',                   // ticket document id/path this slice is scoped to
+  'decisions',                // decision ids constraining this slice: string | string[]
 ])
 
 function levenshtein(a, b) {
@@ -651,7 +651,7 @@ function cmdComplete(args) {
     }
     total = slices.length
     done = slices.filter((s) => s?.status === 'complete').length
-    reSeal(l, projectDir)
+    reSeal(l, projectDir)  // S2-AC5: re-seal after mutation (no-op for legacy runs)
   })
   if (capturedLedger) {
     const sliceMap = new Map((capturedLedger.slices ?? []).map((s) => [s?.id, s]))
@@ -893,7 +893,7 @@ function cmdAbandon(args) {
     assertWriteToken(l, flags.token)
     capturedLedger = l
     l.active = false
-    reSeal(l, projectDir)
+    reSeal(l, projectDir)  // S2-AC3: re-seal with active:false so stop-gate accepts abandon
   })
   if (capturedLedger) {
     emitHookEvent({
@@ -945,18 +945,18 @@ function cmdInit(args) {
         )
       }
     }
-  } catch { }
+  } catch { /* no existing ledger or unreadable — fresh init, proceed */ }
 
   const writeToken = randomBytes(8).toString('hex')
   obj.write_token = writeToken
-  delete obj.token_free
+  delete obj.token_free  // retire any stale token_free from input
 
   obj.schema_version = SCHEMA_VERSION
 
   try {
     const bcr = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectDir, encoding: 'utf8' })
     if (bcr.status === 0) obj.base_commit = bcr.stdout.trim()
-  } catch { }
+  } catch { /* git not available — omit base_commit */ }
 
   if (!('active' in obj)) obj.active = true
   const sessionId = resolveSessionId(null)
@@ -967,7 +967,7 @@ function cmdInit(args) {
   }
   obj.pacing.offset = resolvedUnits(obj)
   checkLedgerStrict(obj)
-  try { pruneStaleSessionLedgers(projectDir) } catch { }
+  try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   const key = ensureKey({ projectDir, sessionId: obj.session_id })
   obj.gate = obj.gate ?? {}
   obj.gate.seal = computeSeal(canonicalReleaseState(obj), key)
@@ -1054,7 +1054,7 @@ function cmdRm(args) {
     const removeSet = new Set(ids)
     l.slices = slices.filter((s) => !removeSet.has(s?.id))
     remaining = l.slices.length
-    reSeal(l, projectDir)
+    reSeal(l, projectDir)  // Vector 6: re-seal after rm (slice removal changes release predicate)
   })
   _tryRefreshMap(projectDir)
   process.stdout.write(`removed: ${ids.join(', ')} (${remaining} slice${remaining === 1 ? '' : 's'} remain)\n`)
@@ -1147,7 +1147,7 @@ function cmdSet(args) {
       warnDecisions(s.decisions)
       updated.push(`decisions=[${s.decisions.join(',')}]`)
     }
-    reSeal(l, projectDir)
+    reSeal(l, projectDir)  // S2-AC4: re-seal after any set (no-op for legacy runs)
   })
   _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
@@ -1210,7 +1210,7 @@ function cmdClaim(args) {
   const currentSession = resolveSessionId(flags)
   if (!currentSession) die('claim requires a session id — set CLAUDE_CODE_SESSION_ID or pass --session <id>', 1)
 
-  const refused = []
+  const refused = /** @type {{id: string, claimed_by: string}[]} */ ([])
   const claimed = []
 
   mutateLedgerChecked(ledgerPath(), (l) => {
@@ -1417,7 +1417,7 @@ function cmdAutopilot(args) {
       granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
       reason,
     }
-    reSeal(l, projectDir)
+    reSeal(l, projectDir)  // S2-AC5: re-seal after autopilot grant (no-op for legacy runs)
   })
   if (capturedLedger) {
     emitHookEvent({

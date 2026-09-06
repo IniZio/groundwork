@@ -110,9 +110,19 @@ The advisor gate scores correctness / completeness / over-engineering as indepen
 ## Dev
 
 ```bash
-pnpm install
+pnpm install     # also runs `prepare`, which sets git core.hooksPath → hooks/
 pnpm test        # run tests
 pnpm run check   # typecheck
+```
+
+### Git hook enforcement
+
+Commit-message linting (`hooks/commit-msg`) and other git hooks are active only when `core.hooksPath` is set. `pnpm install` runs `scripts/setup-hooks.mjs` via the `prepare` lifecycle script, which sets this automatically.
+
+If you skip `pnpm install` or need to wire the hooks manually:
+
+```bash
+git config --local core.hooksPath "$(pwd)/hooks"
 ```
 
 ## Agents (Pi)

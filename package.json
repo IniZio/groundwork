@@ -21,7 +21,8 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "build:hooks-bundle": "node scripts/build-hooks-bundle.mjs",
     "check:hooks-bundle": "node scripts/check-hooks-bundle.mjs",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "prepare": "node scripts/setup-hooks.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-ai": ">=0.75.0",

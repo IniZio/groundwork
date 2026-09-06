@@ -1,9 +1,9 @@
 type(scope): subject
 
 # Types:    feat | fix | docs | style | refactor | perf | test | build | ci | chore | revert
-# scope:    optional — alphanumeric, dots, hyphens, commas (e.g. hooks,lib or gw)
-# subject:  72 chars max, imperative mood
+# scope:    optional — alphanumeric, dots, hyphens, commas, underscores (e.g. hooks,lib or gw)
+# subject:  72 chars max (after "type(scope): " prefix), imperative mood
 #
-# Body (optional): up to 3 lines stating WHY — no bullets, no process vocabulary
+# No body — subject line only.
 #
 # Attribution trailers (Claude-Session:, Co-Authored-By: Claude) are stripped automatically.

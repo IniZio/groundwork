@@ -2,6 +2,7 @@ import { type GwEnvelope, errEnvelope } from './envelope.js'
 import { LEDGER_SUBCOMMANDS } from './commands/ledger.js'
 import { JOURNAL_SUBCOMMANDS } from './commands/journal.js'
 import { COMMENT_DENSITY_SUBCOMMANDS } from './commands/comment-density.js'
+import { COMMIT_LINT_SUBCOMMANDS } from './commands/commit-lint.js'
 
 // Routing: gw ledger/journal <subcmd> namespaced; other commands flat.
 
@@ -17,6 +18,7 @@ export const COMMANDS: Record<string, { summary: string }> = {
   ledger: { summary: 'Ledger subcommands (see below)' },
   journal: { summary: 'Journal subcommands (see below)' },
   'comment-density': { summary: 'Comment-density report and remediation plan' },
+  'commit-lint': { summary: 'Commit-message lint report and remediation plan' },
 }
 
 export function helpText(): string {
@@ -33,6 +35,9 @@ export function helpText(): string {
   lines.push('')
   lines.push('Comment-density subcommands (via gw comment-density <subcmd>):')
   lines.push(`  ${COMMENT_DENSITY_SUBCOMMANDS.join(', ')}`)
+  lines.push('')
+  lines.push('Commit-lint subcommands (via gw commit-lint <subcmd>):')
+  lines.push(`  ${COMMIT_LINT_SUBCOMMANDS.join(', ')}`)
   lines.push('')
   lines.push('Flags:')
   lines.push('  --json     Emit machine-parseable JSON envelope on stdout')
@@ -55,6 +60,7 @@ const loaders: Record<string, () => Promise<{ run: CommandRunner }>> = {
   ledger: () => import('./commands/ledger.js'),
   journal: () => import('./commands/journal.js'),
   'comment-density': () => import('./commands/comment-density.js'),
+  'commit-lint': () => import('./commands/commit-lint.js'),
 }
 
 export async function dispatch(command: string, args: string[], cwd: string): Promise<GwEnvelope> {

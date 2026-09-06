@@ -19,7 +19,7 @@ function parseFlags(args: string[]): { flags: Record<string, string | true>; pos
   return { flags, positionals }
 }
 
-function gitFiles(cwd: string): string[] {
+export function gitFiles(cwd: string): string[] {
   const tracked = spawnSync('git', ['diff', '--name-only', 'HEAD'], { cwd, encoding: 'utf8' })
   const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd, encoding: 'utf8' })
   const lines: string[] = []
@@ -28,7 +28,51 @@ function gitFiles(cwd: string): string[] {
   return [...new Set(lines)]
 }
 
-interface ManifestFile {
+/** Read the current session's ledger (best-effort) to obtain base_commit. */
+function readSessionLedger(cwd: string): { base_commit?: string } | null {
+  const sessionId = process.env['CLAUDE_CODE_SESSION_ID']
+  const projectDir = process.env['CLAUDE_PROJECT_DIR'] || cwd
+  if (!sessionId) return null
+  try {
+    const p = join(projectDir, '.groundwork', 'runs', `${sessionId}.json`)
+    return JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Files touched since ledger.base_commit (commits after that sha) UNION the
+ * current working-tree set (diff vs HEAD + untracked).
+ * Falls back to working-tree only when base_commit is absent.
+ * Files that no longer exist on disk are filtered out.
+ */
+export function touchedFilesSince(ledger: { base_commit?: unknown } | null, cwd: string): string[] {
+  const baseCommit = typeof ledger?.base_commit === 'string' ? ledger.base_commit : null
+  const set = new Set<string>()
+
+  if (baseCommit) {
+    const r = spawnSync(
+      'git',
+      ['diff', '--name-only', '--diff-filter=ACMR', `${baseCommit}..HEAD`],
+      { cwd, encoding: 'utf8' },
+    )
+    if (r.status === 0) {
+      for (const f of r.stdout.split('\n').filter(Boolean)) {
+        if (existsSync(join(cwd, f))) set.add(f)
+      }
+    }
+  }
+
+  // Always union working-tree changes (dirty-tree support; also serves as fallback)
+  for (const f of gitFiles(cwd)) {
+    if (existsSync(join(cwd, f))) set.add(f)
+  }
+
+  return [...set]
+}
+
+export interface ManifestFile {
   path: string
   totalLines: number
   commentLines: number
@@ -36,30 +80,21 @@ interface ManifestFile {
   reasons: Array<{ kind: 'over-cap' | 'restating'; lines: number[]; detail: string }>
 }
 
-interface Manifest {
+export interface Manifest {
   cap: { file: number; aggregate: number }
   aggregatePer100: number
   files: ManifestFile[]
 }
 
-async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
-  if (process.env['GROUNDWORK_COMMENT_DENSITY'] === '0') {
-    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] }
-    return okEnvelope('comment-density report', empty)
-  }
-
-  const { flags } = parseFlags(args)
-  const { isExcluded, analyzeFile, analyzeFiles, FILE_CAP, AGGREGATE_CAP } = await import(
+/**
+ * Build a comment-density manifest for the given repo-relative paths.
+ * Does NOT check the kill switch — caller is responsible.
+ */
+export async function buildManifest(relPaths: string[], cwd: string): Promise<Manifest> {
+  const { isExcluded, analyzeFiles, FILE_CAP, AGGREGATE_CAP } = await import(
     '../../../../hooks/lib/comment-density.mjs'
   )
   const { findAllRestatingComments } = await import('../../../../hooks/lib/comment-restate.mjs')
-
-  let relPaths: string[]
-  if (flags['files'] && typeof flags['files'] === 'string') {
-    relPaths = flags['files'].split(',').filter(Boolean)
-  } else {
-    relPaths = gitFiles(cwd)
-  }
 
   const entries: Array<{ path: string; content: string }> = []
   const relToAbs: Map<string, string> = new Map()
@@ -108,11 +143,19 @@ async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
     })
   }
 
-  const manifest: Manifest = {
-    cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP },
-    aggregatePer100,
-    files: flaggedFiles,
+  return { cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP }, aggregatePer100, files: flaggedFiles }
+}
+
+async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
+  if (process.env['GROUNDWORK_COMMENT_DENSITY'] === '0') {
+    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] }
+    return okEnvelope('comment-density report', empty)
   }
+  const { flags } = parseFlags(args)
+  const relPaths = flags['files'] && typeof flags['files'] === 'string'
+    ? flags['files'].split(',').filter(Boolean)
+    : touchedFilesSince(readSessionLedger(cwd), cwd)
+  const manifest = await buildManifest(relPaths, cwd)
   return okEnvelope('comment-density report', manifest)
 }
 

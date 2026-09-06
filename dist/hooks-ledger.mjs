@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 9ee37ae4cfaafede0cc6c7c9baf042b42f745b8524cb7d993bfb7f38f0851aa1
+// @bundle-source-hash: cd8046b51c1bf6db6e54d9db874c342d262134567ae5698ee0873f141c5db2a5
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10493,6 +10493,7 @@ var init_traceability_adapter = __esm(() => {
 import { existsSync as existsSync8, mkdirSync as mkdirSync5, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "fs";
 import path7 from "path";
 import { randomBytes as randomBytes2 } from "crypto";
+import { spawnSync } from "child_process";
 
 // hooks/lib/ledger-io.mjs
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
@@ -14695,6 +14696,11 @@ function cmdInit(args) {
   obj.write_token = writeToken;
   delete obj.token_free;
   obj.schema_version = SCHEMA_VERSION;
+  try {
+    const bcr = spawnSync("git", ["rev-parse", "HEAD"], { cwd: projectDir, encoding: "utf8" });
+    if (bcr.status === 0)
+      obj.base_commit = bcr.stdout.trim();
+  } catch {}
   if (!("active" in obj))
     obj.active = true;
   const sessionId = resolveSessionId(null);

@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey, keyPath } from './lib/gate-seal.mjs'
 import { checkPace, resolvedUnits, checkMilestoneArtifacts } from './lib/pacing.mjs'
@@ -1188,6 +1189,13 @@ function cmdInit(args) {
 
   // Stamp schema_version to mark this ledger as sealed-regime (S2-AC1).
   obj.schema_version = SCHEMA_VERSION
+
+  // Record the HEAD sha at init time so the comment-density gate can find
+  // files committed after this run started (C9: base_commit mechanism).
+  try {
+    const bcr = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectDir, encoding: 'utf8' })
+    if (bcr.status === 0) obj.base_commit = bcr.stdout.trim()
+  } catch { /* git not available — omit base_commit */ }
 
   // Ensure required field `active` is present (schema requires it; cmdInit always starts active).
   if (!('active' in obj)) obj.active = true

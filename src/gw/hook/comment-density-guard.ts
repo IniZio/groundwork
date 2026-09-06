@@ -15,8 +15,6 @@ import {
 } from '../../../hooks/lib/comment-density.mjs'
 import { findAllRestatingComments } from '../../../hooks/lib/comment-restate.mjs'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function passthrough(): HookResult {
   return { stdout: '', stderr: '', exit: 0 }
 }
@@ -32,14 +30,10 @@ function warn(reason: string): HookResult {
   }
 }
 
-// ── Policy constants ──────────────────────────────────────────────────────────
-
 const GUARDED_TOOLS = new Set(['edit', 'write', 'multiedit'])
 
 const RULE_TEXT =
   'Comments per 100 lines must stay ≤5 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.'
-
-// ── Pure helpers ──────────────────────────────────────────────────────────────
 
 function normalizeToolName(raw: unknown): string {
   if (typeof raw !== 'string') return ''
@@ -72,40 +66,31 @@ function applyEdit(content: string, edit: EditEntry): string {
   return content.slice(0, idx) + new_string + content.slice(idx + old_string.length)
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
 export const run: HookFn = async (rawInput, env) => {
   try {
-    // 1. Kill switch
     if (env.GROUNDWORK_COMMENT_DENSITY === '0') return passthrough()
 
-    // 2. Parse rawInput
     if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
       return passthrough()
     }
     const input = rawInput as Record<string, unknown>
 
-    // 3. Normalize tool name
     const tool = normalizeToolName(input.tool_name)
     if (!GUARDED_TOOLS.has(tool)) return passthrough()
 
-    // 4. Extract file_path
     const toolInput = (input.tool_input && typeof input.tool_input === 'object' && !Array.isArray(input.tool_input))
       ? (input.tool_input as Record<string, unknown>)
       : {}
     const filePath = typeof toolInput.file_path === 'string' ? toolInput.file_path : ''
     if (!filePath) return passthrough()
 
-    // 5. Detect subagent
     const subagent = isSubagentCall(input)
 
-    // 6. Check isExcluded
     if (isExcluded(filePath)) {
       if (subagent) return warn(RULE_TEXT)
       return passthrough()
     }
 
-    // 7. Compute resulting file content
     let content: string
     try {
       if (tool === 'write') {
@@ -123,7 +108,6 @@ export const run: HookFn = async (rawInput, env) => {
           replace_all: toolInput.replace_all === true,
         })
       } else {
-        // multiedit
         const edits = toolInput.edits
         if (!Array.isArray(edits)) return passthrough()
         const existing = readFileSync(filePath, 'utf-8')
@@ -145,11 +129,9 @@ export const run: HookFn = async (rawInput, env) => {
       return passthrough()
     }
 
-    // 8. Analyze
     const fileResult = analyzeFile(filePath, content)
     const restating = findAllRestatingComments(content)
 
-    // 9. Build violations
     const violations: string[] = []
     if (fileResult.commentsPer100 > FILE_CAP) {
       violations.push(
@@ -160,10 +142,8 @@ export const run: HookFn = async (rawInput, env) => {
       violations.push(`${filePath} line ${r.line + 1}: restating: "${r.comment}"`)
     }
 
-    // 10. No violations and not subagent → passthrough
     if (violations.length === 0 && !subagent) return passthrough()
 
-    // 11. Build advisory message
     const parts: string[] = []
     if (violations.length > 0) {
       parts.push('⚠️  groundwork comment-density-guard:\n' + violations.join('\n'))

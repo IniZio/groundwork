@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
+import { buildManifest, touchedFilesSince, type Manifest } from './comment-density.js'
 import { resolveLedgerPath } from '../../lib/resolve-ledger-path.js'
 import { emitAcCoverageEvent } from '../../lib/journal-emit.js'
 
@@ -82,6 +83,7 @@ interface LedgerJson {
   session_id?: string
   motive?: string
   write_token?: string
+  base_commit?: string
   schema_version?: number
   slices?: SliceJson[]
   gate?: GateJson
@@ -664,6 +666,36 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const citation = flags['citation'] as string | undefined
         const rubric = flags['rubric'] as string | undefined
+        // AC3: block APPROVE while any touched file has no registered cleanup slice
+        if (verdict === 'APPROVE' && process.env['GROUNDWORK_COMMENT_DENSITY'] !== '0') {
+          // touched = commits since ledger base_commit (if set) + working-tree diff
+          const touched = touchedFilesSince(ledger, cwd)
+          if (touched.length > 0) {
+            const manifest: Manifest = await buildManifest(touched, cwd)
+            if (manifest.files.length > 0) {
+              const slices = ledger.slices ?? []
+              const uncovered = manifest.files.filter(f => {
+                const rel = path.relative(cwd, f.path)
+                // A cleanup slice matches when desc contains the repo-relative path AND the word "cleanup"
+                return !slices.some(
+                  s => typeof s.desc === 'string' && s.desc.includes(rel) && s.desc.includes('cleanup'),
+                )
+              })
+              if (uncovered.length > 0) {
+                const fileLines = uncovered
+                  .map(f => `  ${path.relative(cwd, f.path)}  (${f.commentsPer100.toFixed(1)}/100, cap: ${manifest.cap.file})`)
+                  .join('\n')
+                const relPaths = uncovered.map(f => path.relative(cwd, f.path)).join(',')
+                const msg =
+                  `APPROVE blocked — ${uncovered.length} touched file(s) exceed comment-density cap with no cleanup slice:\n` +
+                  `${fileLines}\n\n` +
+                  `Register cleanup slices with:\n` +
+                  `  gw comment-density report --files ${relPaths} | gw comment-density remediate-plan --motive ${motive} --wave 1`
+                return errEnvelope('ledger gate', 'DENSITY_UNCOVERED', msg, 1)
+              }
+            }
+          }
+        }
         const advisorField =
           citation || rubric
             ? { verdict, ...(rubric ? { rubric } : {}), ...(citation ? { citation } : {}) }

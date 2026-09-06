@@ -146,6 +146,10 @@
       "type": "string",
       "description": "Motive id (slug) this run is linked to. Written by `ledger init --motive <id>`."
     },
+    "base_commit": {
+      "type": "string",
+      "description": "Git HEAD sha captured at init time. Written by cmdInit when the project dir is a git repository, and settable later via `gw ledger set --base-commit <sha>`. The comment-density gate scans base_commit..HEAD, so an APPROVE gate cannot run without it."
+    },
     "motive_ref": {
       "type": "string",
       "description": "Motive slug passed via init input JSON. Read by stop-gate to satisfy the plan-artifact requirement (alternative to motive)."

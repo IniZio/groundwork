@@ -10,10 +10,8 @@
  *   DIVERGENCE — engine over-counts; reason stated; engine value is pinned.
  *   coincidental agreement rows have no special annotation.
  *
- * Known divergences (follow-up slice candidates):
- *   1. tricky_ts_string.ts   line 5: inside multi-line backtick body; engine pins 2.
- *   2. tricky_py_string_hash.py lines 3-4: string literal z="""…"""; engine pins 3.
- *   3. tricky_rb_heredoc.rb  line 3: inside <<~HEREDOC; engine pins 3.
+ * All previously known divergences resolved (S11):
+ *   tricky_ts_string.ts, tricky_py_string_hash.py, tricky_rb_heredoc.rb now agree with oracle.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -69,18 +67,10 @@ const PARITY_TABLE: ParityRow[] = [
     lines: [1, 2, 3, 4, 7, 9, 10, 11, 12, 13],
   },
   {
-    // DIVERGENCE — engine: 2 (lines 5,7); oracle: 1 (line 7 only).
-    // Line 5 `line // still not` is inside the BODY of a multi-line template
-    // literal (`const d = \`multi\nline // still not\ntemplate\``).
-    // engine's hasInlineComment inspects each line in isolation and cannot
-    // track cross-line template-literal state → false positive on line 5.
-    // oracle [7]; engine pinned at [5,7].
-    file: 'tricky_ts_string.ts', totalLines: 9, commentLines: 2,
-    lines: [5, 7],
-    oracleCommentLines: 1,
-    divergenceReason:
-      'line 5 is inside a multi-line template-literal body; ' +
-      'engine hasInlineComment is line-local and has no cross-line template state',
+    // line 7 is the only comment; lines 4-6 are a multi-line template literal body.
+    // engine now tracks cross-line template-literal state (S11 fix); oracle agrees.
+    file: 'tricky_ts_string.ts', totalLines: 9, commentLines: 1,
+    lines: [7],
   },
   {
     // line 1 = real comment; line 6 = // inside ${} expr interpolation → real JS comment;
@@ -167,19 +157,12 @@ const PARITY_TABLE: ParityRow[] = [
     lines: [2, 6, 7, 8, 9, 11],
   },
   {
-    // DIVERGENCE — engine: 3 (lines 3,4,6); oracle: 1 (line 6 only).
-    // `z = """# still not\n# multiline string"""` is an ASSIGNMENT of a string
-    // literal, NOT a docstring. classifyPython enters docstring mode on any `"""`
-    // opener, regardless of whether the expression is in docstring position
-    // (first statement of function/class/module). Lines 3-4 are counted as
-    // docstring by the engine but are plain string content by tree-sitter.
-    // oracle [6]; engine pinned at [3,4,6].
-    file: 'tricky_py_string_hash.py', totalLines: 8, commentLines: 3,
-    lines: [3, 4, 6],
-    oracleCommentLines: 1,
-    divergenceReason:
-      'lines 3-4 are body of a string ASSIGNMENT z="""…""", not a docstring; ' +
-      'classifyPython cannot distinguish docstring position from arbitrary string literals',
+    // line 6 is the only comment; lines 3-4 are body of `z = """…"""` which
+    // is a string assignment, not a docstring. engine now checks docstring
+    // position (first stmt after def/class/top-of-file) before entering triple-
+    // quote mode (S11 fix); oracle agrees.
+    file: 'tricky_py_string_hash.py', totalLines: 8, commentLines: 1,
+    lines: [6],
   },
 
   // ── Ruby (.rb) ──────────────────────────────────────────────────────────
@@ -188,16 +171,10 @@ const PARITY_TABLE: ParityRow[] = [
     file: 'sample.rb', totalLines: 11, commentLines: 5, lines: [1, 2, 4, 6, 7],
   },
   {
-    // DIVERGENCE — engine: 3 (lines 1,3,13); oracle: 2 (lines 1,13).
-    // Line 3 `  # this is inside a heredoc, not a comment` is inside the
-    // `<<~HEREDOC … HEREDOC` block. classifyRuby has no heredoc-boundary
-    // tracking; it sees `#` at the start of the trimmed line and counts it.
-    // oracle [1,13]; engine pinned at [1,3,13].
-    file: 'tricky_rb_heredoc.rb', totalLines: 15, commentLines: 3,
-    lines: [1, 3, 13],
-    oracleCommentLines: 2,
-    divergenceReason:
-      'line 3 is inside <<~HEREDOC body; classifyRuby has no heredoc-boundary state',
+    // lines 1 and 13 are real # comments; line 3 is inside <<~HEREDOC body.
+    // engine now tracks heredoc terminators (S11 fix); oracle agrees.
+    file: 'tricky_rb_heredoc.rb', totalLines: 15, commentLines: 2,
+    lines: [1, 13],
   },
 
   // ── Shell (.sh) ─────────────────────────────────────────────────────────
@@ -253,21 +230,18 @@ describe('comment-density parity: syntax-table vs tree-sitter oracle', () => {
     }
   });
 
-  describe('divergence inventory — 3 known engine over-counts vs oracle', () => {
+  describe('divergence inventory — engine over-counts vs oracle', () => {
     const divergenceRows = PARITY_TABLE.filter(r => r.oracleCommentLines !== undefined);
 
-    it('exactly 3 divergence rows are documented', () => {
-      expect(divergenceRows).toHaveLength(3);
+    it('no divergence rows remain (all three S11 bugs fixed)', () => {
+      expect(divergenceRows).toHaveLength(0);
     });
 
     for (const row of divergenceRows) {
       it(`${row.file}: engine=${row.commentLines} vs oracle=${row.oracleCommentLines} — ${row.divergenceReason!.slice(0, 70)}…`, () => {
-        // Re-run engine to confirm the pinned divergence is still current.
-        // If this assertion fails, the engine was fixed; promote oracle value to engine value.
         const content = readCorpus(row.file);
         const r = analyzeFile(row.file, content);
         expect(r.commentLines).toBe(row.commentLines);
-        // engine must NOT equal oracle (if it does, the divergence was silently fixed)
         expect(r.commentLines).not.toBe(row.oracleCommentLines);
       });
     }

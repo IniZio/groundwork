@@ -193,6 +193,54 @@ function hasInlineComment(line, marker) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Advances cross-line template-literal state for C-family languages.
+ * Tracks backtick open/close and ${…} interpolation depth so classifyCFamily
+ * can skip comment detection inside multi-line template literal bodies.
+ * Stops scanning at `//` — rest of line is a comment, no further state changes.
+ *
+ * @param {string}  line
+ * @param {boolean} inTemplateLit  true = currently inside a template literal body
+ * @param {number}  templateDepth  ${…} nesting depth (0 = body, >0 = interpolation)
+ * @returns {{ inTemplateLit: boolean, templateDepth: number }}
+ */
+function _advanceTemplateState(line, inTemplateLit, templateDepth) {
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const prev = i > 0 ? line[i - 1] : '';
+
+    if (prev === '\\' && (inSingle || inDouble || (inTemplateLit && templateDepth === 0))) continue;
+
+    if (inSingle) { if (ch === "'") inSingle = false; continue; }
+    if (inDouble) { if (ch === '"') inDouble = false; continue; }
+
+    if (inTemplateLit && templateDepth === 0) {
+      // Inside template literal body
+      if (ch === '`') { inTemplateLit = false; continue; }
+      if (ch === '$' && line[i + 1] === '{') { templateDepth++; i++; continue; }
+      continue;
+    }
+
+    // Regular code or inside ${…} interpolation
+    if (ch === "'") { inSingle = true; continue; }
+    if (ch === '"') { inDouble = true; continue; }
+    if (ch === '`') { inTemplateLit = true; continue; }
+
+    if (inTemplateLit && templateDepth > 0) {
+      if (ch === '}') { templateDepth = Math.max(0, templateDepth - 1); continue; }
+      if (ch === '{') { templateDepth++; continue; }
+    }
+
+    // Rest of line is a comment — no template state can change after //
+    if (ch === '/' && i + 1 < line.length && line[i + 1] === '/') break;
+  }
+
+  return { inTemplateLit, templateDepth };
+}
+
+/**
  * Classify lines for C-family languages (TS, JS, Go, Rust, Java, etc.)
  * Returns array of booleans (true = comment line), 0-based.
  *
@@ -203,6 +251,8 @@ function hasInlineComment(line, marker) {
 function classifyCFamily(lines, jsxBlock) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
+  let inTemplateLit = false; // true when inside a multi-line template literal body
+  let templateDepth = 0;     // ${…} nesting depth within a template literal
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
@@ -210,6 +260,13 @@ function classifyCFamily(lines, jsxBlock) {
     if (inBlock) {
       result[i] = true;
       if (trimmed.includes('*/')) inBlock = false;
+      continue;
+    }
+
+    // Inside a template literal body (not a ${} interpolation): this line is
+    // string content, not a comment. Update cross-line state and move on.
+    if (inTemplateLit && templateDepth === 0) {
+      ({ inTemplateLit, templateDepth } = _advanceTemplateState(lines[i], inTemplateLit, templateDepth));
       continue;
     }
 
@@ -237,8 +294,10 @@ function classifyCFamily(lines, jsxBlock) {
     // Inline trailing //
     if (hasInlineComment(lines[i], '//')) {
       result[i] = true;
-      continue;
     }
+
+    // Update template literal state for the next line
+    ({ inTemplateLit, templateDepth } = _advanceTemplateState(lines[i], inTemplateLit, templateDepth));
   }
 
   return result;
@@ -251,17 +310,29 @@ function classifyCFamily(lines, jsxBlock) {
  */
 function classifyPython(lines) {
   const result = new Array(lines.length).fill(false);
-  let inTriple = false;
-  let tripleChar = ''; // '"' or "'"
+  let inDocstring = false;  // inside a triple-quoted docstring (counts as comment, D-2)
+  let inStringLit = false;  // inside a triple-quoted string literal (not a docstring)
+  let tripleChar = '';      // '"' or "'"
+
+  // A triple-quote is a docstring only when it is the first non-blank,
+  // non-comment statement of a module/function/class body (D-2).
+  // True at top-of-file; reset to true after each def/class line.
+  let afterDefOrClass = true;
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
 
-    if (inTriple) {
+    if (inDocstring) {
       result[i] = true;
-      // Detect close: look for the triple-quote that opened
       const closeMarker = tripleChar.repeat(3);
-      if (trimmed.includes(closeMarker)) inTriple = false;
+      if (trimmed.includes(closeMarker)) { inDocstring = false; afterDefOrClass = false; }
+      continue;
+    }
+
+    if (inStringLit) {
+      // Inside a non-docstring triple-quoted string — not a comment.
+      const closeMarker = tripleChar.repeat(3);
+      if (trimmed.includes(closeMarker)) { inStringLit = false; afterDefOrClass = false; }
       continue;
     }
 
@@ -274,27 +345,48 @@ function classifyPython(lines) {
     else if (sqIdx !== -1) { tripleIdx = sqIdx; tChar = "'"; }
 
     if (tripleIdx !== -1) {
-      result[i] = true;
       const closeMarker = tChar.repeat(3);
       const afterOpen = trimmed.slice(tripleIdx + 3);
-      if (!afterOpen.includes(closeMarker)) {
-        inTriple = true;
-        tripleChar = tChar;
+      const closesOnSameLine = afterOpen.includes(closeMarker);
+
+      if (afterDefOrClass) {
+        // Docstring position: count as comment (D-2).
+        result[i] = true;
+        if (!closesOnSameLine) {
+          inDocstring = true;
+          tripleChar = tChar;
+        } else {
+          afterDefOrClass = false; // single-line docstring consumed
+        }
+      } else {
+        // String literal position: not a docstring, not a comment.
+        if (!closesOnSameLine) {
+          inStringLit = true;
+          tripleChar = tChar;
+        }
+        afterDefOrClass = false;
       }
-      // single-line docstring: open and close on same line → stay false
       continue;
     }
 
-    // Line comment
+    // Line comment (# including shebang)
     if (trimmed.startsWith('#')) {
       result[i] = true;
+      // Comment lines do not reset the docstring-position flag.
       continue;
     }
 
-    // Inline #
+    // Inline trailing #
     if (hasInlineComment(lines[i], '#')) {
       result[i] = true;
     }
+
+    // Update docstring-position flag: a def/class line enables a docstring
+    // on the very next non-blank, non-comment line; any other code disables it.
+    if (trimmed !== '') {
+      afterDefOrClass = /^(?:async\s+)?def\s+\w|^class\s+\w/.test(trimmed);
+    }
+    // Blank lines leave afterDefOrClass unchanged.
   }
 
   return result;
@@ -308,15 +400,31 @@ function classifyPython(lines) {
 function classifyRuby(lines) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
+  let inHeredoc = false;
+  let heredocTerminator = '';
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
+
+    // Inside a heredoc body: not a comment. Skip until the terminator line.
+    if (inHeredoc) {
+      if (trimmed === heredocTerminator) inHeredoc = false;
+      continue;
+    }
 
     if (trimmed === '=begin') { inBlock = true; result[i] = true; continue; }
     if (inBlock) {
       result[i] = true;
       if (trimmed === '=end') inBlock = false;
       continue;
+    }
+
+    // Detect heredoc opener: <<~IDENT, <<-IDENT, or <<IDENT
+    const heredocMatch = lines[i].match(/<<[~-]?(\w+)/);
+    if (heredocMatch) {
+      heredocTerminator = heredocMatch[1];
+      inHeredoc = true;
+      // The opening line itself is regular code; fall through to # check below.
     }
 
     if (trimmed.startsWith('#')) { result[i] = true; continue; }

@@ -24033,15 +24033,78 @@ function hasInlineComment(line, marker) {
   }
   return false;
 }
+function _advanceTemplateState(line, inTemplateLit, templateDepth) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0;i < line.length; i++) {
+    const ch = line[i];
+    const prev = i > 0 ? line[i - 1] : "";
+    if (prev === "\\" && (inSingle || inDouble || inTemplateLit && templateDepth === 0))
+      continue;
+    if (inSingle) {
+      if (ch === "'")
+        inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"')
+        inDouble = false;
+      continue;
+    }
+    if (inTemplateLit && templateDepth === 0) {
+      if (ch === "`") {
+        inTemplateLit = false;
+        continue;
+      }
+      if (ch === "$" && line[i + 1] === "{") {
+        templateDepth++;
+        i++;
+        continue;
+      }
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplateLit = true;
+      continue;
+    }
+    if (inTemplateLit && templateDepth > 0) {
+      if (ch === "}") {
+        templateDepth = Math.max(0, templateDepth - 1);
+        continue;
+      }
+      if (ch === "{") {
+        templateDepth++;
+        continue;
+      }
+    }
+    if (ch === "/" && i + 1 < line.length && line[i + 1] === "/")
+      break;
+  }
+  return { inTemplateLit, templateDepth };
+}
 function classifyCFamily(lines, jsxBlock) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
+  let inTemplateLit = false;
+  let templateDepth = 0;
   for (let i = 0;i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (inBlock) {
       result[i] = true;
       if (trimmed.includes("*/"))
         inBlock = false;
+      continue;
+    }
+    if (inTemplateLit && templateDepth === 0) {
+      ({ inTemplateLit, templateDepth } = _advanceTemplateState(lines[i], inTemplateLit, templateDepth));
       continue;
     }
     if (trimmed.startsWith("/*") || trimmed.startsWith("/**")) {
@@ -24063,22 +24126,34 @@ function classifyCFamily(lines, jsxBlock) {
     }
     if (hasInlineComment(lines[i], "//")) {
       result[i] = true;
-      continue;
     }
+    ({ inTemplateLit, templateDepth } = _advanceTemplateState(lines[i], inTemplateLit, templateDepth));
   }
   return result;
 }
 function classifyPython(lines) {
   const result = new Array(lines.length).fill(false);
-  let inTriple = false;
+  let inDocstring = false;
+  let inStringLit = false;
   let tripleChar = "";
+  let afterDefOrClass = true;
   for (let i = 0;i < lines.length; i++) {
     const trimmed = lines[i].trim();
-    if (inTriple) {
+    if (inDocstring) {
       result[i] = true;
       const closeMarker = tripleChar.repeat(3);
-      if (trimmed.includes(closeMarker))
-        inTriple = false;
+      if (trimmed.includes(closeMarker)) {
+        inDocstring = false;
+        afterDefOrClass = false;
+      }
+      continue;
+    }
+    if (inStringLit) {
+      const closeMarker = tripleChar.repeat(3);
+      if (trimmed.includes(closeMarker)) {
+        inStringLit = false;
+        afterDefOrClass = false;
+      }
       continue;
     }
     const dqIdx = trimmed.indexOf('"""');
@@ -24093,12 +24168,23 @@ function classifyPython(lines) {
       tChar = "'";
     }
     if (tripleIdx !== -1) {
-      result[i] = true;
       const closeMarker = tChar.repeat(3);
       const afterOpen = trimmed.slice(tripleIdx + 3);
-      if (!afterOpen.includes(closeMarker)) {
-        inTriple = true;
-        tripleChar = tChar;
+      const closesOnSameLine = afterOpen.includes(closeMarker);
+      if (afterDefOrClass) {
+        result[i] = true;
+        if (!closesOnSameLine) {
+          inDocstring = true;
+          tripleChar = tChar;
+        } else {
+          afterDefOrClass = false;
+        }
+      } else {
+        if (!closesOnSameLine) {
+          inStringLit = true;
+          tripleChar = tChar;
+        }
+        afterDefOrClass = false;
       }
       continue;
     }
@@ -24109,14 +24195,24 @@ function classifyPython(lines) {
     if (hasInlineComment(lines[i], "#")) {
       result[i] = true;
     }
+    if (trimmed !== "") {
+      afterDefOrClass = /^(?:async\s+)?def\s+\w|^class\s+\w/.test(trimmed);
+    }
   }
   return result;
 }
 function classifyRuby(lines) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
+  let inHeredoc = false;
+  let heredocTerminator = "";
   for (let i = 0;i < lines.length; i++) {
     const trimmed = lines[i].trim();
+    if (inHeredoc) {
+      if (trimmed === heredocTerminator)
+        inHeredoc = false;
+      continue;
+    }
     if (trimmed === "=begin") {
       inBlock = true;
       result[i] = true;
@@ -24127,6 +24223,11 @@ function classifyRuby(lines) {
       if (trimmed === "=end")
         inBlock = false;
       continue;
+    }
+    const heredocMatch = lines[i].match(/<<[~-]?(\w+)/);
+    if (heredocMatch) {
+      heredocTerminator = heredocMatch[1];
+      inHeredoc = true;
     }
     if (trimmed.startsWith("#")) {
       result[i] = true;

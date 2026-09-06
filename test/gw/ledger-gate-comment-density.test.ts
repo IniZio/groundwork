@@ -213,8 +213,9 @@ describe('ledger gate comment-density AC3', () => {
   })
 
   it('APPROVE records when GROUNDWORK_COMMENT_DENSITY=0 (kill switch)', () => {
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim()
     writeFileSync(path.join(repoDir, 'over-cap.ts'), OVER_CAP_CONTENT)
-    writeLedger(repoDir, sessionId)
+    writeLedgerWithBaseCommit(repoDir, sessionId, base)
     const r = runGate('APPROVE', sessionId, repoDir, { GROUNDWORK_COMMENT_DENSITY: '0' })
     expect(r.status).toBe(0)
   })
@@ -232,7 +233,7 @@ describe('ledger gate comment-density C9: base_commit mechanism', () => {
     const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' })
     const baseCommit = baseResult.stdout.trim()
     writeLedgerWithBaseCommit(repoDir, sessionId, baseCommit)
-    gitCommitFile(repoDir, 'over-cap.ts', OVER_CAP_CONTENT, 'add over-cap')
+    gitCommitFile(repoDir, 'over-cap.ts', OVER_CAP_CONTENT, 'chore: add over-cap')
     const r = runGate('APPROVE', sessionId, repoDir)
     expect(r.status).not.toBe(0)
     const out = r.stdout + r.stderr
@@ -242,7 +243,7 @@ describe('ledger gate comment-density C9: base_commit mechanism', () => {
   it('APPROVE passes when cleanup slice is registered for the post-base_commit file', () => {
     const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' })
     const baseCommit = baseResult.stdout.trim()
-    gitCommitFile(repoDir, 'over-cap.ts', OVER_CAP_CONTENT, 'add over-cap')
+    gitCommitFile(repoDir, 'over-cap.ts', OVER_CAP_CONTENT, 'chore: add over-cap')
     writeLedgerWithBaseCommit(repoDir, sessionId, baseCommit, [cleanupSlice])
 
     const r = runGate('APPROVE', sessionId, repoDir)

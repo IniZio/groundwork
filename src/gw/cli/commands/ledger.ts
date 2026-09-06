@@ -701,6 +701,53 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             }
           }
         }
+        if (verdict === 'APPROVE' && process.env['GROUNDWORK_COMMIT_LINT'] !== '0') {
+          if (!ledger.base_commit) {
+            return errEnvelope(
+              'ledger gate',
+              'COMMIT_LINT_NO_BASE_COMMIT',
+              `COMMIT_LINT_NO_BASE_COMMIT: ledger has no base_commit; run: gw ledger set --motive ${motive} --base-commit <sha>`,
+              1,
+            )
+          }
+          const clRange = `${ledger.base_commit}..HEAD`
+          const logResult = spawnSync(
+            'git',
+            ['log', '--reverse', '--pretty=format:%H %s', clRange],
+            { cwd, encoding: 'utf8' },
+          )
+          if (logResult.status === 0 && logResult.stdout.trim()) {
+            const { lintMessage } = (await import(
+              '../../../../hooks/lib/commit-convention.mjs'
+            )) as unknown as {
+              lintMessage: (text: string) => { violations: Array<{ line: number; reason: string }> }
+            }
+            const violating: Array<{ shortSha: string; subject: string }> = []
+            for (const rawLine of logResult.stdout.split('\n').filter(Boolean)) {
+              const [sha, ...rest] = rawLine.split(' ')
+              if (!sha) continue
+              const subject = rest.join(' ')
+              const shortSha = sha.slice(0, 7)
+              const msgResult = spawnSync('git', ['log', '-1', '--format=%B', sha], {
+                cwd,
+                encoding: 'utf8',
+              })
+              const message = msgResult.stdout ?? ''
+              if (lintMessage(message).violations.length > 0) {
+                violating.push({ shortSha, subject })
+              }
+            }
+            if (violating.length > 0) {
+              const commitLines = violating.map(c => `  ${c.shortSha} ${c.subject}`).join('\n')
+              const msg =
+                `APPROVE blocked — ${violating.length} commit(s) violate the commit-message convention:\n` +
+                `${commitLines}\n\n` +
+                `Review and fix with:\n` +
+                `  gw commit-lint remediate-plan --motive ${motive}`
+              return errEnvelope('ledger gate', 'COMMIT_LINT_BLOCKED', msg, 1)
+            }
+          }
+        }
         const advisorField =
           citation || rubric
             ? { verdict, ...(rubric ? { rubric } : {}), ...(citation ? { citation } : {}) }

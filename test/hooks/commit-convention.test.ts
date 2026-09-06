@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   COMMIT_TYPES,
   SCOPE_PATTERN,
@@ -8,6 +10,8 @@ import {
   BODY_MAX_LINES,
   lintMessage,
 } from '../../hooks/lib/commit-convention.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('constants', () => {
   it('COMMIT_TYPES includes expected types', () => {
@@ -170,25 +174,59 @@ describe('subject format violations', () => {
 
 describe('AC-2 source-of-truth', () => {
   it('COMMIT_TYPES list appears in exactly one source file (AC-2)', () => {
-    const result = execSync(
-      'grep -rl "feat.*fix.*docs.*style.*refactor" /home/newman/.local/share/groundwork --include="*.mjs" --include="*.ts" --include="*.sh" --exclude="*.test.ts" --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=".groundwork" 2>/dev/null || true',
+    // Co-occurrence of four marker terms across tracked files: order-insensitive and
+    // line-wrapping-insensitive — not evadable by reordering or reformatting the list.
+    const allMatches = execSync(
+      `cd ${repoRoot} && git ls-files | xargs grep -l 'refactor' | xargs grep -l 'revert' | xargs grep -l 'chore' | xargs grep -l 'perf' 2>/dev/null || true`,
       { encoding: 'utf8' }
     ).trim().split('\n').filter(Boolean);
-    expect(result).toHaveLength(1);
-    expect(result[0]).toContain('commit-convention');
+
+    const permitted = new Set([
+      '.gitmessage',                                                                    // mirror — AC-11 drift check guards it
+      'doc/specs/enforcement/requirements/enforcement-r-018-commit-message-gate.md',   // mirror — AC-2 spec-mirror drift check guards it
+      'dist/gw.mjs',                                                                   // generated — check:bundle hash guards it
+      'test/fixtures/parity-corpus/commit-message-guard/deny-invalid-commit-type.json', // fixture — test vector, not a source
+      'test/hooks/commit-convention.test.ts',                                           // this guard itself
+    ]);
+
+    expect(allMatches.length, 'co-occurrence grep returned no results — positive control failed').toBeGreaterThan(0);
+    const sources = allMatches.filter(f => !permitted.has(f));
+    expect(sources, `unexpected file(s) with all four marker terms: ${sources.join(', ')}`).toHaveLength(1);
+    expect(sources[0]).toContain('commit-convention');
+  });
+});
+
+describe('AC-2 spec-mirror drift check', () => {
+  it('spec requirement doc contains all COMMIT_TYPES (AC-2 drift check)', () => {
+    const content = readFileSync(
+      `${repoRoot}/doc/specs/enforcement/requirements/enforcement-r-018-commit-message-gate.md`,
+      'utf8'
+    );
+    for (const type of COMMIT_TYPES) {
+      expect(content, `spec doc missing type: ${type}`).toContain(`\`${type}\``);
+    }
   });
 });
 
 describe('AC-11 gitmessage drift check', () => {
   it('gitmessage contains all COMMIT_TYPES (AC-11 drift check)', () => {
-    const content = readFileSync('/home/newman/.local/share/groundwork/.gitmessage', 'utf8');
-    for (const type of COMMIT_TYPES) {
-      expect(content).toContain(type);
-    }
+    const content = readFileSync(`${repoRoot}/.gitmessage`, 'utf8');
+    // Derived from module — bare toContain(type) matches 'fix' in 'prefix'; adding a type without updating .gitmessage goes RED.
+    const typeListLine = COMMIT_TYPES.join(' | ');
+    expect(content, 'gitmessage type list not found or drifted').toContain(typeListLine);
   });
 
   it('gitmessage reflects SUBJECT_CAP (AC-11 drift check)', () => {
-    const content = readFileSync('/home/newman/.local/share/groundwork/.gitmessage', 'utf8');
+    const content = readFileSync(`${repoRoot}/.gitmessage`, 'utf8');
     expect(content).toContain(String(SUBJECT_CAP));
+  });
+
+  it('gitmessage reflects BODY_MAX_LINES policy (AC-11 drift check)', () => {
+    const content = readFileSync(`${repoRoot}/.gitmessage`, 'utf8');
+    if (BODY_MAX_LINES === 0) {
+      expect(content, `BODY_MAX_LINES is 0 but .gitmessage advertises optional body`).toContain('No body');
+    } else {
+      expect(content).toContain(String(BODY_MAX_LINES));
+    }
   });
 });

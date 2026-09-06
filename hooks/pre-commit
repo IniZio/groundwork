@@ -1,0 +1,6 @@
+#!/bin/sh
+EXTERNAL_HOOK="/home/newman/.claude/plugins/groundwork/.git/hooks/pre-commit"
+if [ -x "$EXTERNAL_HOOK" ]; then
+  exec "$EXTERNAL_HOOK" "$@"
+fi
+exit 0

@@ -9,7 +9,7 @@ export const SCOPE_PATTERN = /^[a-zA-Z0-9._,\-]+$/
 
 export const SUBJECT_CAP = 72
 
-export const BODY_MAX_LINES = 3
+export const BODY_MAX_LINES = 0
 
 export const ATTRIBUTION_TRAILER_PATTERNS = [
   /^Co-Authored-By:.*(?:Claude|Anthropic|claude\.ai|anthropic\.com).*$/im,

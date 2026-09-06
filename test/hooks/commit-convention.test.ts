@@ -31,8 +31,8 @@ describe('constants', () => {
     expect(SUBJECT_CAP).toBe(72);
   });
 
-  it('BODY_MAX_LINES is 3', () => {
-    expect(BODY_MAX_LINES).toBe(3);
+  it('BODY_MAX_LINES is 0', () => {
+    expect(BODY_MAX_LINES).toBe(0);
   });
 });
 
@@ -61,8 +61,6 @@ describe('attribution trailer stripping', () => {
   it('valid subject + attribution trailer: stripped has no trailer, no violations', () => {
     const msg = [
       'feat(hooks): add commit-message lint module',
-      '',
-      'Implements basic linting logic.',
       '',
       'Claude-Session: https://claude.ai/code/session_abc123',
     ].join('\n');

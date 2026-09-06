@@ -1,6 +1,7 @@
 import { type GwEnvelope, errEnvelope } from './envelope.js'
 import { LEDGER_SUBCOMMANDS } from './commands/ledger.js'
 import { JOURNAL_SUBCOMMANDS } from './commands/journal.js'
+import { COMMENT_DENSITY_SUBCOMMANDS } from './commands/comment-density.js'
 
 /**
  * Routing convention:
@@ -21,6 +22,7 @@ export const COMMANDS: Record<string, { summary: string }> = {
   migrate: { summary: '(future) Migrate groundwork artefacts' },
   ledger: { summary: 'Ledger subcommands (see below)' },
   journal: { summary: 'Journal subcommands (see below)' },
+  'comment-density': { summary: 'Comment-density report and remediation plan' },
 }
 
 export function helpText(): string {
@@ -34,6 +36,9 @@ export function helpText(): string {
   lines.push('')
   lines.push('Journal subcommands (via gw journal <subcmd>):')
   lines.push(`  ${JOURNAL_SUBCOMMANDS.join(', ')}`)
+  lines.push('')
+  lines.push('Comment-density subcommands (via gw comment-density <subcmd>):')
+  lines.push(`  ${COMMENT_DENSITY_SUBCOMMANDS.join(', ')}`)
   lines.push('')
   lines.push('Flags:')
   lines.push('  --json     Emit machine-parseable JSON envelope on stdout')
@@ -55,6 +60,7 @@ const loaders: Record<string, () => Promise<{ run: CommandRunner }>> = {
   migrate: () => import('./commands/migrate.js'),
   ledger: () => import('./commands/ledger.js'),
   journal: () => import('./commands/journal.js'),
+  'comment-density': () => import('./commands/comment-density.js'),
 }
 
 export async function dispatch(command: string, args: string[], cwd: string): Promise<GwEnvelope> {

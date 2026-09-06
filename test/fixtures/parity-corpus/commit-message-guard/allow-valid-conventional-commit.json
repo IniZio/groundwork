@@ -1,0 +1,19 @@
+{
+  "hook": "commit-message-guard",
+  "hook_path": "bin/gw-hook hook commit-message-guard",
+  "event_type": "PreToolUse",
+  "scenario_name": "allow_valid_conventional_commit",
+  "description": "Valid conventional commit (feat:) — hook passes silently with empty stdout",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"feat: add initial implementation\""
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

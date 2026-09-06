@@ -66,25 +66,6 @@ function initLegacy(dir: string, motive = 'tm'): { token: string } {
   return { token: m ? m[1] : '' }
 }
 
-// Get gw write token from the legacy JSON run store (T16: gw ledger retargeted to JSON).
-function gwToken(dir: string, _motive = 'tm'): string {
-  const runsDir = path.join(dir, '.groundwork', 'runs')
-  if (fs.existsSync(runsDir)) {
-    for (const f of fs.readdirSync(runsDir)) {
-      if (!f.endsWith('.json')) continue
-      try {
-        const j = JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8')) as { write_token?: string }
-        if (j.write_token) return j.write_token
-      } catch { /* ignore */ }
-    }
-  }
-  const legacy = path.join(dir, '.groundwork', 'run.json')
-  if (fs.existsSync(legacy)) {
-    try { return (JSON.parse(fs.readFileSync(legacy, 'utf8')) as { write_token?: string }).write_token ?? '' } catch { return '' }
-  }
-  return ''
-}
-
 // Create a minimal JSON ledger for gw ledger tests (no bin/ledger dependency).
 // Uses the ambient CLAUDE_CODE_SESSION_ID so gw ledger resolves the same file.
 function initGw(dir: string, motive = 'tm'): { token: string } {
@@ -272,7 +253,7 @@ describe('AC2 — two-surface parity: gate advisor APPROVE', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
     const { token } = initGw(gwDir)
     runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
-    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], { GROUNDWORK_COMMENT_DENSITY: '0' }, gwDir)
+    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' }, gwDir)
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
   })

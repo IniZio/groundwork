@@ -1,0 +1,19 @@
+{
+  "hook": "commit-message-guard",
+  "hook_path": "bin/gw-hook hook commit-message-guard",
+  "event_type": "PreToolUse",
+  "scenario_name": "deny_invalid_commit_type",
+  "description": "Commit with unrecognized type — hook emits deny with lint violation reason",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"notatype: this should always be rejected\""
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Commit message lint violations:\\n  line 1: subject must match type(scope)!: description — allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "DENY"
+}

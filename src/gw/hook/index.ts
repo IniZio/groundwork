@@ -13,6 +13,7 @@ import { run as ledgerGuard } from './ledger-guard.js'
 import { run as ledgerBashGuard } from './ledger-bash-guard.js'
 import { run as pipedExitCodeGuard } from './piped-exit-code-guard.js'
 import { run as struggleDetector } from './struggle-detector.js'
+import { run as commentDensityGuard } from './comment-density-guard.js'
 
 export const HOOKS: Record<string, HookFn> = {
   'stop-gate': stopGate,
@@ -24,4 +25,5 @@ export const HOOKS: Record<string, HookFn> = {
   'ledger-bash-guard': ledgerBashGuard,
   'piped-exit-code-guard': pipedExitCodeGuard,
   'struggle-detector': struggleDetector,
+  'comment-density-guard': commentDensityGuard,
 }

@@ -102,6 +102,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook comment-density-guard",
+            "async": false
+          }
+        ]
+      },
+      {
         "matcher": "Read|Bash|Grep",
         "hooks": [
           {

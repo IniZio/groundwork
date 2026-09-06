@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 5cb4c85ecd04a41a3163f16f33e0f221faf682c19a6c5ee7a29874fb3acdaa4f
+// @bundle-source-hash: acc8c788861641df32d518f4287fe2efde84eb19c11e93d8036591bfb2f6767f
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -26295,6 +26295,581 @@ var init_struggle_detector = __esm(() => {
   ];
 });
 
+// hooks/lib/comment-density.mjs
+import { createHash as createHash2 } from "crypto";
+import { basename, extname } from "path";
+function sha1(content) {
+  return createHash2("sha1").update(content).digest("hex");
+}
+function matchGitattributesPattern(filePath, pattern) {
+  const base = basename(filePath);
+  const toRegex = (p) => {
+    const escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp(`^${escaped}$`);
+  };
+  const re = toRegex(pattern);
+  return re.test(filePath) || re.test(base);
+}
+function isExcluded(filePath, opts = {}) {
+  return !!_excludeReason(filePath, opts);
+}
+function _excludeReason(filePath, opts = {}) {
+  if (filePath.includes("/node_modules/") || filePath.startsWith("node_modules/"))
+    return "node_modules";
+  if (filePath.includes("/dist/") || filePath.startsWith("dist/"))
+    return "dist";
+  if (filePath.includes("/build/") || filePath.startsWith("build/"))
+    return "build";
+  if (filePath.includes("/vendor/") || filePath.startsWith("vendor/"))
+    return "vendor";
+  if (filePath.includes("/migrations/") || filePath.startsWith("migrations/"))
+    return "migrations";
+  const base = basename(filePath);
+  if (base.endsWith(".pb.go"))
+    return "generated";
+  if (base.endsWith(".gen.ts"))
+    return "generated";
+  if (base.endsWith(".d.ts") && !base.endsWith(".d.mts"))
+    return "generated";
+  const ext = extname(filePath);
+  if (DATA_EXTS.has(ext))
+    return "data-file";
+  if (LOCKFILES.has(base))
+    return "lockfile";
+  if (opts.gitattributesText) {
+    for (const raw of opts.gitattributesText.split(`
+`)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#"))
+        continue;
+      const [pattern, ...attrs] = line.split(/\s+/);
+      if (!pattern)
+        continue;
+      const attrStr = attrs.join(" ");
+      const isLinguistGenerated = attrStr.includes("linguist-generated=true") || /(?:^|\s)linguist-generated(?:\s|$)/.test(attrStr);
+      if (isLinguistGenerated && matchGitattributesPattern(filePath, pattern)) {
+        return "linguist-generated";
+      }
+    }
+  }
+  return null;
+}
+function hasInlineComment(line, marker) {
+  const m0 = marker[0];
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  for (let i = 0;i < line.length; i++) {
+    const ch = line[i];
+    const prev = i > 0 ? line[i - 1] : "";
+    if (prev === "\\" && (inSingle || inDouble || inTemplate))
+      continue;
+    if (!inDouble && !inTemplate && ch === "'") {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (!inSingle && !inTemplate && ch === '"') {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (!inSingle && !inDouble && ch === "`") {
+      inTemplate = !inTemplate;
+      continue;
+    }
+    if (inSingle || inDouble || inTemplate)
+      continue;
+    if (marker === "//" && ch === "/" && line[i + 1] === "/")
+      return true;
+    if (marker === "#" && ch === "#")
+      return true;
+  }
+  return false;
+}
+function classifyCFamily(lines, jsxBlock) {
+  const result = new Array(lines.length).fill(false);
+  let inBlock = false;
+  for (let i = 0;i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (inBlock) {
+      result[i] = true;
+      if (trimmed.includes("*/"))
+        inBlock = false;
+      continue;
+    }
+    if (trimmed.startsWith("/*") || trimmed.startsWith("/**")) {
+      result[i] = true;
+      const afterOpen = trimmed.slice(2);
+      if (!afterOpen.includes("*/"))
+        inBlock = true;
+      continue;
+    }
+    if (jsxBlock && trimmed.startsWith("{/*")) {
+      result[i] = true;
+      if (!trimmed.slice(3).includes("*/"))
+        inBlock = true;
+      continue;
+    }
+    if (trimmed.startsWith("//")) {
+      result[i] = true;
+      continue;
+    }
+    if (hasInlineComment(lines[i], "//")) {
+      result[i] = true;
+      continue;
+    }
+  }
+  return result;
+}
+function classifyPython(lines) {
+  const result = new Array(lines.length).fill(false);
+  let inTriple = false;
+  let tripleChar = "";
+  for (let i = 0;i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (inTriple) {
+      result[i] = true;
+      const closeMarker = tripleChar.repeat(3);
+      if (trimmed.includes(closeMarker))
+        inTriple = false;
+      continue;
+    }
+    const dqIdx = trimmed.indexOf('"""');
+    const sqIdx = trimmed.indexOf("'''");
+    let tripleIdx = -1;
+    let tChar = "";
+    if (dqIdx !== -1 && (sqIdx === -1 || dqIdx <= sqIdx)) {
+      tripleIdx = dqIdx;
+      tChar = '"';
+    } else if (sqIdx !== -1) {
+      tripleIdx = sqIdx;
+      tChar = "'";
+    }
+    if (tripleIdx !== -1) {
+      result[i] = true;
+      const closeMarker = tChar.repeat(3);
+      const afterOpen = trimmed.slice(tripleIdx + 3);
+      if (!afterOpen.includes(closeMarker)) {
+        inTriple = true;
+        tripleChar = tChar;
+      }
+      continue;
+    }
+    if (trimmed.startsWith("#")) {
+      result[i] = true;
+      continue;
+    }
+    if (hasInlineComment(lines[i], "#")) {
+      result[i] = true;
+    }
+  }
+  return result;
+}
+function classifyRuby(lines) {
+  const result = new Array(lines.length).fill(false);
+  let inBlock = false;
+  for (let i = 0;i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "=begin") {
+      inBlock = true;
+      result[i] = true;
+      continue;
+    }
+    if (inBlock) {
+      result[i] = true;
+      if (trimmed === "=end")
+        inBlock = false;
+      continue;
+    }
+    if (trimmed.startsWith("#")) {
+      result[i] = true;
+      continue;
+    }
+    if (hasInlineComment(lines[i], "#")) {
+      result[i] = true;
+    }
+  }
+  return result;
+}
+function classifyShell(lines) {
+  const result = new Array(lines.length).fill(false);
+  for (let i = 0;i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("#")) {
+      result[i] = true;
+      continue;
+    }
+    if (hasInlineComment(lines[i], "#")) {
+      result[i] = true;
+    }
+  }
+  return result;
+}
+function analyzeFile(filePath, content, opts = {}) {
+  const hash2 = sha1(content);
+  if (_cache.has(hash2)) {
+    return { ..._cache.get(hash2), fromCache: true };
+  }
+  const reason = _excludeReason(filePath, opts);
+  if (reason) {
+    const result2 = {
+      path: filePath,
+      totalLines: 0,
+      commentLines: 0,
+      commentsPer100: 0,
+      lines: [],
+      excluded: true,
+      excludedReason: reason
+    };
+    _cache.set(hash2, result2);
+    return result2;
+  }
+  const ext = extname(filePath);
+  const lang = LANGUAGE_TABLE[ext];
+  const rawLines = content.split(`
+`);
+  const total = rawLines.length;
+  let flags;
+  if (!lang) {
+    flags = new Array(total).fill(false);
+  } else if (lang.tripleQuote) {
+    flags = classifyPython(rawLines);
+  } else if (lang.rubyBlock) {
+    flags = classifyRuby(rawLines);
+  } else if (lang.lineComment === "#") {
+    flags = classifyShell(rawLines);
+  } else {
+    flags = classifyCFamily(rawLines, !!lang.jsxBlock);
+  }
+  const commentLineNums = [];
+  for (let i = 0;i < flags.length; i++) {
+    if (flags[i])
+      commentLineNums.push(i + 1);
+  }
+  const commentCount = commentLineNums.length;
+  const per100 = total === 0 ? 0 : commentCount / total * 100;
+  const result = {
+    path: filePath,
+    totalLines: total,
+    commentLines: commentCount,
+    commentsPer100: per100,
+    lines: commentLineNums,
+    excluded: false
+  };
+  _cache.set(hash2, result);
+  return result;
+}
+var FILE_CAP = 5, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS;
+var init_comment_density = __esm(() => {
+  LANGUAGE_TABLE = {
+    ".ts": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: true },
+    ".tsx": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: true },
+    ".js": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: false },
+    ".mjs": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: false },
+    ".go": { lineComment: "//", blockOpen: "/*", blockClose: "*/" },
+    ".rs": { lineComment: "//", blockOpen: "/*", blockClose: "*/" },
+    ".java": { lineComment: "//", blockOpen: "/*", blockClose: "*/" },
+    ".py": { lineComment: "#", tripleQuote: true },
+    ".rb": { lineComment: "#", rubyBlock: true },
+    ".sh": { lineComment: "#" },
+    ".bash": { lineComment: "#" }
+  };
+  _cache = new Map;
+  LOCKFILES = new Set([
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "pnpm-lock.yml",
+    "Cargo.lock",
+    "go.sum",
+    "Gemfile.lock",
+    "composer.lock"
+  ]);
+  DATA_EXTS = new Set([".json", ".yaml", ".yml", ".toml"]);
+});
+
+// hooks/lib/comment-restate.mjs
+function findRestatingComments(lines) {
+  const findings = [];
+  for (let i = 0;i < lines.length - 1; i++) {
+    const cm = IDENT_COMMENT_RE.exec(lines[i]);
+    if (!cm)
+      continue;
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "")
+      j++;
+    if (j >= lines.length)
+      break;
+    const decl = DECL_RE.exec(lines[j]);
+    if (decl && decl[4] === cm[1]) {
+      findings.push({ line: i, name: cm[1] });
+    }
+  }
+  return findings;
+}
+function splitIdentifier(name) {
+  return name.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/\s+/).filter(Boolean);
+}
+function findProseParaphraseComments(lines) {
+  const findings = [];
+  for (let i = 0;i < lines.length - 1; i++) {
+    const cm = IMPERATIVE_COMMENT_RE.exec(lines[i]);
+    if (!cm)
+      continue;
+    const commentText = cm[1].trim();
+    const words = commentText.split(/\s+/);
+    if (words.length < 2 || words.length > 8)
+      continue;
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "")
+      j++;
+    if (j >= lines.length)
+      break;
+    const codeLine = lines[j];
+    if (DECL_RE.test(codeLine))
+      continue;
+    if (!CODE_LINE_RE.test(codeLine))
+      continue;
+    const codeLineLower = codeLine.toLowerCase();
+    const contentWords = words.map((w) => w.toLowerCase()).filter((w) => !STOP_WORDS.has(w) && COMMENT_WORD_RE.test(w));
+    if (contentWords.length < 2)
+      continue;
+    const codeIdentTokens = new Set((codeLineLower.match(/[a-z_$][a-z0-9_$]*/g) ?? []).flatMap((tok) => splitIdentifier(tok)));
+    const allInCode = contentWords.every((w) => {
+      const wre = new RegExp(`\\b${w}\\b`);
+      return wre.test(codeLineLower) || codeIdentTokens.has(w);
+    });
+    if (allInCode) {
+      findings.push({ line: i, comment: commentText, codeLine: codeLine.trim() });
+    }
+  }
+  return findings;
+}
+function findAllRestatingComments(source, opts = {}) {
+  const { overlapShare = 0.6 } = opts;
+  if (typeof source !== "string" || !source)
+    return [];
+  const lines = source.split(/\r?\n/);
+  const out = [];
+  for (const r of findRestatingComments(lines)) {
+    out.push({
+      line: r.line,
+      comment: `// ${r.name}`,
+      code: lines[r.line + 1]?.trim() ?? "",
+      reason: `restating comment "// ${r.name}" merely restates the identifier declared below`
+    });
+  }
+  {
+    const MULTI_COMMENT_RE = /^\s*\/\/\s+([a-z][a-zA-Z0-9 ]{0,80})\s*$/;
+    for (let i = 0;i < lines.length - 1; i++) {
+      const cm = MULTI_COMMENT_RE.exec(lines[i]);
+      if (!cm)
+        continue;
+      const commentText = cm[1].trim();
+      const contentWords = commentText.split(/\s+/).map((w) => w.toLowerCase()).filter((w) => !STOP_WORDS.has(w) && /^[a-z][a-z0-9]*$/.test(w));
+      if (contentWords.length < 2)
+        continue;
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === "")
+        j++;
+      if (j >= lines.length)
+        break;
+      const decl = DECL_RE.exec(lines[j]);
+      if (!decl)
+        continue;
+      const identName = decl[4];
+      const identTokens = new Set(splitIdentifier(identName));
+      const matched = contentWords.filter((w) => identTokens.has(w));
+      if (matched.length / contentWords.length >= overlapShare) {
+        out.push({
+          line: i,
+          comment: `// ${commentText}`,
+          code: lines[j].trim(),
+          reason: `multi-word restating comment "// ${commentText}" above ${identName} \u2014 content words overlap identifier tokens`
+        });
+      }
+    }
+  }
+  for (const r of findProseParaphraseComments(lines)) {
+    out.push({
+      line: r.line,
+      comment: `// ${r.comment}`,
+      code: r.codeLine,
+      reason: `prose-paraphrase comment "// ${r.comment}" narrates the line below without adding info`
+    });
+  }
+  return out;
+}
+var DECL_RE, IDENT_COMMENT_RE, STOP_WORDS, IMPERATIVE_COMMENT_RE, CODE_LINE_RE, COMMENT_WORD_RE;
+var init_comment_restate = __esm(() => {
+  DECL_RE = /^\s*(export\s+)?(async\s+)?(function|const|let|var|class)\s+([A-Za-z_$][\w$]*)/;
+  IDENT_COMMENT_RE = /^\s*\/\/\s*([A-Za-z_$][\w$]*)\s*$/;
+  STOP_WORDS = new Set([
+    "a",
+    "an",
+    "the",
+    "to",
+    "from",
+    "for",
+    "of",
+    "in",
+    "on",
+    "at",
+    "by",
+    "and",
+    "or",
+    "with",
+    "that",
+    "this",
+    "it",
+    "is",
+    "are",
+    "be",
+    "as",
+    "its",
+    "into",
+    "up"
+  ]);
+  IMPERATIVE_COMMENT_RE = /^\s*\/\/\s+([a-z][a-zA-Z0-9 ]{0,60})\s*$/;
+  CODE_LINE_RE = /^\s*(?!\/\/)[\w$.({\['"!`]/;
+  COMMENT_WORD_RE = /^[a-z][a-z0-9]*$/i;
+});
+
+// src/gw/hook/comment-density-guard.ts
+import { readFileSync as readFileSync15 } from "fs";
+import path18 from "path";
+function passthrough7() {
+  return { stdout: "", stderr: "", exit: 0 };
+}
+function warn2(reason) {
+  return {
+    stdout: JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: reason }
+    }) + `
+`,
+    stderr: "",
+    exit: 0
+  };
+}
+function normalizeToolName2(raw) {
+  if (typeof raw !== "string")
+    return "";
+  const lower = raw.toLowerCase();
+  return lower.startsWith("fast_") ? lower.slice(5) : lower;
+}
+function isSubagentCall5(input2) {
+  const agentType = input2.agent_type;
+  if (typeof agentType === "string" && agentType.trim())
+    return true;
+  if (input2.agent_id)
+    return true;
+  const tp = input2.transcript_path;
+  if (typeof tp === "string" && path18.basename(tp).startsWith("agent-"))
+    return true;
+  return false;
+}
+function applyEdit(content, edit) {
+  const { old_string, new_string, replace_all } = edit;
+  if (replace_all) {
+    return content.split(old_string).join(new_string);
+  }
+  const idx = content.indexOf(old_string);
+  if (idx === -1)
+    return content;
+  return content.slice(0, idx) + new_string + content.slice(idx + old_string.length);
+}
+var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.", run18 = async (rawInput, env) => {
+  try {
+    if (env.GROUNDWORK_COMMENT_DENSITY === "0")
+      return passthrough7();
+    if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
+      return passthrough7();
+    }
+    const input2 = rawInput;
+    const tool = normalizeToolName2(input2.tool_name);
+    if (!GUARDED_TOOLS.has(tool))
+      return passthrough7();
+    const toolInput = input2.tool_input && typeof input2.tool_input === "object" && !Array.isArray(input2.tool_input) ? input2.tool_input : {};
+    const filePath = typeof toolInput.file_path === "string" ? toolInput.file_path : "";
+    if (!filePath)
+      return passthrough7();
+    const subagent = isSubagentCall5(input2);
+    if (isExcluded(filePath)) {
+      if (subagent)
+        return warn2(RULE_TEXT);
+      return passthrough7();
+    }
+    let content;
+    try {
+      if (tool === "write") {
+        const c = toolInput.content;
+        if (typeof c !== "string")
+          return passthrough7();
+        content = c;
+      } else if (tool === "edit") {
+        const oldStr = toolInput.old_string;
+        const newStr = toolInput.new_string;
+        if (typeof oldStr !== "string" || typeof newStr !== "string")
+          return passthrough7();
+        const existing = readFileSync15(filePath, "utf-8");
+        content = applyEdit(existing, {
+          old_string: oldStr,
+          new_string: newStr,
+          replace_all: toolInput.replace_all === true
+        });
+      } else {
+        const edits = toolInput.edits;
+        if (!Array.isArray(edits))
+          return passthrough7();
+        const existing = readFileSync15(filePath, "utf-8");
+        content = existing;
+        for (const e of edits) {
+          if (!e || typeof e !== "object")
+            return passthrough7();
+          const ed = e;
+          if (typeof ed.old_string !== "string" || typeof ed.new_string !== "string") {
+            return passthrough7();
+          }
+          content = applyEdit(content, {
+            old_string: ed.old_string,
+            new_string: ed.new_string,
+            replace_all: ed.replace_all === true
+          });
+        }
+      }
+    } catch {
+      return passthrough7();
+    }
+    const fileResult = analyzeFile(filePath, content);
+    const restating = findAllRestatingComments(content);
+    const violations = [];
+    if (fileResult.commentsPer100 > FILE_CAP) {
+      violations.push(`${filePath} lines [${fileResult.lines.join(",")}]: over-cap ${fileResult.commentsPer100.toFixed(1)}/100 > ${FILE_CAP}/100`);
+    }
+    for (const r of restating) {
+      violations.push(`${filePath} line ${r.line + 1}: restating: "${r.comment}"`);
+    }
+    if (violations.length === 0 && !subagent)
+      return passthrough7();
+    const parts = [];
+    if (violations.length > 0) {
+      parts.push(`\u26A0\uFE0F  groundwork comment-density-guard:
+` + violations.join(`
+`));
+    }
+    parts.push(RULE_TEXT);
+    return warn2(parts.join(`
+
+`));
+  } catch {
+    return passthrough7();
+  }
+};
+var init_comment_density_guard = __esm(() => {
+  init_comment_density();
+  init_comment_restate();
+  GUARDED_TOOLS = new Set(["edit", "write", "multiedit"]);
+});
+
 // src/gw/hook/index.ts
 var HOOKS;
 var init_hook = __esm(() => {
@@ -26307,6 +26882,7 @@ var init_hook = __esm(() => {
   init_ledger_bash_guard();
   init_piped_exit_code_guard();
   init_struggle_detector();
+  init_comment_density_guard();
   HOOKS = {
     "stop-gate": run9,
     "session-reminder": run10,
@@ -26316,17 +26892,18 @@ var init_hook = __esm(() => {
     "ledger-guard": run14,
     "ledger-bash-guard": run15,
     "piped-exit-code-guard": run16,
-    "struggle-detector": run17
+    "struggle-detector": run17,
+    "comment-density-guard": run18
   };
 });
 
 // src/gw/cli/commands/hook.ts
 var exports_hook = {};
 __export(exports_hook, {
-  run: () => run18
+  run: () => run19
 });
 import process3 from "process";
-async function run18(args, _cwd) {
+async function run19(args, _cwd) {
   const name = args[0] ?? "";
   const hookFn = HOOKS[name];
   if (!hookFn) {
@@ -26358,12 +26935,12 @@ var init_hook2 = __esm(() => {
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
 import { existsSync as existsSync7 } from "fs";
-import path18 from "path";
+import path19 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
-  const activeDir = path18.join(repoRoot, legacyTracker, "journal");
-  const archiveDir = path18.join(repoRoot, legacyTracker, "archive", "journal");
+  const activeDir = path19.join(repoRoot, legacyTracker, "journal");
+  const archiveDir = path19.join(repoRoot, legacyTracker, "archive", "journal");
   if (existsSync7(activeDir))
     journalDirs.push(activeDir);
   if (existsSync7(archiveDir))
@@ -26380,7 +26957,7 @@ async function readDecisionEvents(opts) {
     for (const file2 of files.filter((f) => f.endsWith(".jsonl"))) {
       let raw;
       try {
-        raw = await readFile2(path18.join(dir, file2), "utf8");
+        raw = await readFile2(path19.join(dir, file2), "utf8");
       } catch {
         continue;
       }
@@ -26432,13 +27009,13 @@ var init_journal_reader = () => {};
 // src/gw/store/motive/charter.ts
 import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
 import { mkdirSync as mkdirSync9 } from "fs";
-import path19 from "path";
+import path20 from "path";
 function charterPath(repoRoot, tracker, motive2) {
-  return path19.join(repoRoot, tracker, "motives", motive2, "index.md");
+  return path20.join(repoRoot, tracker, "motives", motive2, "index.md");
 }
 async function writeCharter(opts) {
   const filePath = charterPath(opts.repoRoot, opts.tracker, opts.motive);
-  mkdirSync9(path19.dirname(filePath), { recursive: true });
+  mkdirSync9(path20.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter8.default.stringify(opts.body, opts.fm);
   await writeFile2(filePath, output2, "utf8");
 }
@@ -26456,10 +27033,10 @@ var init_charter = __esm(() => {
 // src/gw/store/motive/ticket.ts
 import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
 import { mkdirSync as mkdirSync10 } from "fs";
-import path20 from "path";
+import path21 from "path";
 async function writeTicket(opts) {
   const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
-  mkdirSync10(path20.dirname(filePath), { recursive: true });
+  mkdirSync10(path21.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
   await writeFile3(filePath, output2, "utf8");
 }
@@ -26477,13 +27054,13 @@ var init_ticket2 = __esm(() => {
 // src/gw/store/motive/open-item.ts
 import { readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
 import { mkdirSync as mkdirSync11 } from "fs";
-import path21 from "path";
+import path22 from "path";
 function openItemPath(repoRoot, tracker, motive2, id) {
-  return path21.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
+  return path22.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
 }
 async function writeOpenItem(opts) {
   const dest = openItemPath(opts.repoRoot, opts.tracker, opts.motive, opts.fm.id);
-  mkdirSync11(path21.dirname(dest), { recursive: true });
+  mkdirSync11(path22.dirname(dest), { recursive: true });
   await writeFile4(dest, import_gray_matter10.default.stringify(opts.body, opts.fm), "utf8");
 }
 function normalizeRef(ref) {
@@ -26560,9 +27137,9 @@ var init_motive2 = __esm(() => {
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
 import { existsSync as existsSync8, mkdirSync as mkdirSync12 } from "fs";
-import path22 from "path";
+import path23 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
-  return path22.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
+  return path23.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
 }
 async function writeDecisionDirect(opts) {
   const { repoRoot, tracker, motive: motive2, id, decision: decision3, rationale, alternatives } = opts;
@@ -26598,7 +27175,7 @@ async function writeDecisionDirect(opts) {
 ` + JSON.stringify(opts.legacyExtra, null, 2) + "\n```\n";
   }
   const dest = decisionFilePath(repoRoot, tracker, motive2, id);
-  mkdirSync12(path22.dirname(dest), { recursive: true });
+  mkdirSync12(path23.dirname(dest), { recursive: true });
   await writeFile5(dest, import_gray_matter11.default.stringify(body, fm), "utf8");
 }
 async function migrateMotive(opts) {
@@ -26615,7 +27192,7 @@ async function migrateMotive(opts) {
     lossy: [],
     errors: []
   };
-  const charterFile = path22.join(sourceDir, "motive.md");
+  const charterFile = path23.join(sourceDir, "motive.md");
   let openItems = [];
   try {
     const charterRaw = await readFile6(charterFile, "utf8");
@@ -26637,14 +27214,14 @@ async function migrateMotive(opts) {
     report.charter = "error";
     report.charter_error = String(err);
   }
-  const ticketsDir = path22.join(sourceDir, "tickets");
+  const ticketsDir = path23.join(sourceDir, "tickets");
   if (existsSync8(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
     } catch {}
     for (const filename of ticketFiles) {
-      const raw = await readFile6(path22.join(ticketsDir, filename), "utf8");
+      const raw = await readFile6(path23.join(ticketsDir, filename), "utf8");
       let fm;
       let body;
       try {
@@ -26760,7 +27337,7 @@ var init_runner = __esm(() => {
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
 import { existsSync as existsSync9 } from "fs";
-import path23 from "path";
+import path24 from "path";
 async function migrate(opts) {
   const {
     repoRoot,
@@ -26770,7 +27347,7 @@ async function migrate(opts) {
     dryRun
   } = opts;
   const activeSlugs = [];
-  const activeMotivesDir = path23.join(repoRoot, legacyTracker, "motives");
+  const activeMotivesDir = path24.join(repoRoot, legacyTracker, "motives");
   if (existsSync9(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
@@ -26786,7 +27363,7 @@ async function migrate(opts) {
     } catch {}
   }
   const archivedSlugs = [];
-  const archiveMotivesDir = path23.join(repoRoot, legacyTracker, "archive", "motives");
+  const archiveMotivesDir = path24.join(repoRoot, legacyTracker, "archive", "motives");
   if (existsSync9(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
@@ -26810,7 +27387,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "active",
-      sourceDir: path23.join(repoRoot, legacyTracker, "motives", slug),
+      sourceDir: path24.join(repoRoot, legacyTracker, "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -26821,7 +27398,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "archived",
-      sourceDir: path23.join(repoRoot, legacyTracker, "archive", "motives", slug),
+      sourceDir: path24.join(repoRoot, legacyTracker, "archive", "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -26848,9 +27425,9 @@ var init_migrate = __esm(() => {
 // src/gw/cli/commands/migrate.ts
 var exports_migrate = {};
 __export(exports_migrate, {
-  run: () => run19
+  run: () => run20
 });
-async function run19(args, cwd) {
+async function run20(args, cwd) {
   let dryRun = false;
   let motiveFilter;
   let legacyTracker;

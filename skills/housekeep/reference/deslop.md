@@ -22,7 +22,7 @@ Run `pnpm run check:comments` first — it pre-ranks the surface by comment dens
 - If tests cannot come first, record the verification plan explicitly before touching code.
 
 **Step 2 — Scan & inventory**
-Sweep the scoped surface. Collect EVERY smell instance as a Finding — do not fix in place. Use the seven deslop categories above to recognize smells.
+Run `gw comment-density report` and `gw commit-lint report` before the manual sweep — they surface density violations and commit-convention failures as pre-ranked input to the backlog. (`GROUNDWORK_COMMENT_DENSITY=0` and `GROUNDWORK_COMMIT_LINT=0` disable the respective checks.) Sweep the scoped surface. Collect EVERY smell instance as a Finding — do not fix in place. Use the seven deslop categories above to recognize smells.
 
 **Step 3 — Classify & score by severity**
 Map each Finding to its smell category, then apply the severity rubric (consequence × blast-radius; context bumps ±1). Assemble the full backlog table sorted SEV1 → SEV4. Do not begin edits yet.
@@ -51,7 +51,7 @@ Bound the plan to accepted Findings only. Order the work from safest deletion to
 **Step 7 — Run quality gates**
 - Keep regression tests green.
 - Run the relevant lint, typecheck, and unit/integration tests for the touched area.
-- Run existing static or security checks when available. For a deslop run: `pnpm run check:comments --strict` MUST pass (exits 0) after comment cleanup — if it fails, either reduce comments further or add `// check-comments-exempt` to a file whose high density is intentional (complex hook library, etc.). Then run typecheck, lint, and security scanners as applicable.
+- Run existing static or security checks when available. For a deslop run: `pnpm run check:comments --strict` MUST pass (exits 0) after comment cleanup — if it fails, either reduce comments further or add `// check-comments-exempt` to a file whose high density is intentional (complex hook library, etc.). Run `gw commit-lint report` over the run's commit range — it must return clean before the advisor gate. Then run typecheck, lint, and security scanners as applicable.
 - If a gate fails, fix the issue or back out the risky cleanup. Never force a cleanup through a failing gate.
 
 **Step 8 — Close with the structured report**
@@ -83,6 +83,8 @@ Use this template exactly. Present it as the final deliverable.
 - Lint: PASS / FAIL
 - Typecheck: PASS / FAIL
 - `check:comments --strict`: PASS / FAIL
+- `gw comment-density report`: PASS / FAIL
+- `gw commit-lint report`: PASS / FAIL
 - Other: <gate name>: PASS / FAIL
 
 **Comment Reduction (Pass 4):**

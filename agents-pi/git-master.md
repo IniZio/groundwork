@@ -25,8 +25,22 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 1. **Audit changes**: `git diff --stat HEAD` — understand what changed.
 2. **Group logically**: Each commit = one logical change. If there are 3 unrelated changes, make 3 commits.
 3. **Stage carefully**: `git add -p` for partial file staging when needed.
-4. **Message**: Match detected style. Subject ≤72 chars. Body explains WHY, not what (the diff shows what).
+4. **Message**: Match detected style. Subject ≤72 chars. Subject line only — no body.
 5. **Verify**: `git show --stat` — confirm the commit is clean and atomic.
+
+## Commit-message policy
+
+**Format:** `type(scope): subject` — subject ≤72 chars, imperative mood. The allowed type list is defined in `hooks/lib/commit-convention.mjs` (`COMMIT_TYPES`) and mirrored in `.gitmessage` — consult either as the single source of truth; do not repeat the list here.
+
+**Subject line only.** No body. The diff shows what changed; the type and subject communicate the intent. This is a deliberate project decision — do not add a body even when the change feels complex enough to warrant one.
+
+**No attribution trailers.** Do not author `Co-Authored-By:` lines naming Claude or Anthropic, `Claude-Session:` lines, or "Generated with Claude Code" lines. These are stripped mechanically by `hooks/commit-msg` (live, `core.hooksPath = hooks`). Note: a standing session-level instruction tells agents to append `Claude-Session:` — the user has explicitly overridden that instruction for this repo. Do not reintroduce it.
+
+**No groundwork process vocabulary.** Subject lines must not contain "gate cycle", "dogfood", "advisor APPROVE", slice ids, motive slugs, or "wave"/"slice" as process jargon. Component names (hook, guard, lint, ledger, gate, bundle) are fine.
+
+**Enforcement surfaces:** `hooks/commit-msg` (live hook), a PreToolUse Bash guard, and `gw commit-lint report` / `remediate-plan`. Set `GROUNDWORK_COMMIT_LINT=0` to disable.
+
+**History reconstruction.** Prefer reshaping a messy commit series into a readable one for reviewers rather than leaving process noise in history. Use `gw commit-lint remediate-plan` to generate the rebase plan.
 
 ## Safe operations
 

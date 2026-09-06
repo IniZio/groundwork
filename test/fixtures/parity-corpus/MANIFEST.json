@@ -2,6 +2,9 @@
   "version": 1,
   "generated": "2026-08-29",
   "fixtures": {
+    "comment-density-guard/clean_write_passthrough.json": "ded9e24e5fb30d6983dbff427e4a21106db6c0fe88b6a2dd119cf12895f32ba9",
+    "comment-density-guard/over_cap_write_warns.json": "49010863611bc058fba10f59770edd171410ac109049f7aa4440b9d29db4c6af",
+    "comment-density-guard/subagent_rule_injection.json": "292d732542c9761fa807cf11d4604701072392264c35ceec6f81c7bffe46866b",
     "agent-model-guard/model_absent_advisor.json": "fa622d8557f15642dd7e2b6e0bc2f5d752b2cc2bc3f4ba160d5872d82b232eae",
     "agent-model-guard/model_absent_explore.json": "bf446c9cc3c6eaa29e5c80add9010ee648f846d6d2f46a1a93d4f51109e8786b",
     "agent-model-guard/model_absent_known_agent.json": "98d57239d4d0b8170705eede2d43182ee4f470d689afb2f1d09aaf4873f3b021",

@@ -1,0 +1,20 @@
+{
+  "hook": "comment-density-guard",
+  "hook_path": "bin/gw-hook hook comment-density-guard",
+  "event_type": "PreToolUse",
+  "scenario_name": "clean_write_passthrough",
+  "description": "Write tool with comment-free content — no cap violation, no subagent signal; passthrough with empty stdout",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/tmp/test.ts",
+      "content": "export function add(a: number, b: number): number {\n  return a + b;\n}\n"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

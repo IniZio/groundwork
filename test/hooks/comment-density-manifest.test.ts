@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -61,10 +61,30 @@ const y = 2
 const z = 3
 `
 
-/** Restating comment: immediately above the symbol it names */
-const RESTATING_CONTENT = `// myFunc
+/** Restating comment under density cap: 1 comment / 25 total lines = 4/100 < 5/100 cap */
+const RESTATING_UNDER_CAP_CONTENT = `// myFunc
 function myFunc() {
-  return 1
+  const a = 1
+  const b = 2
+  const c = 3
+  const d = 4
+  const e = 5
+  const f = 6
+  const g = 7
+  const h = 8
+  const i = 9
+  const j = 10
+  const k = 11
+  const l = 12
+  const m = 13
+  const n = 14
+  const o = 15
+  const p = 16
+  const q = 17
+  const r = 18
+  const s = 19
+  const t = 20
+  return a
 }
 `
 
@@ -118,6 +138,38 @@ describe('gw comment-density report', () => {
     expect(overCapReason).toBeDefined()
     expect(Array.isArray(overCapReason.lines)).toBe(true)
     expect(overCapReason.lines.every((n: number) => n >= 1)).toBe(true)
+  })
+
+  it('AC5: restating comment below density cap → manifest lists file with reason kind "restating"', () => {
+    tmpDir = makeTmpDir()
+    gitInit(tmpDir)
+    writeFileSync(join(tmpDir, 'restating.ts'), RESTATING_UNDER_CAP_CONTENT)
+
+    const result = spawnSync(
+      GW_HOOK_SHIM,
+      ['comment-density', 'report', '--json', '--files', 'restating.ts'],
+      {
+        cwd: tmpDir,
+        env: GIT_ENV,
+        encoding: 'utf8',
+      },
+    )
+
+    expect(result.status).not.toBe(126)
+    expect(result.status).not.toBe(127)
+
+    const envelope = JSON.parse(result.stdout)
+    expect(envelope.ok).toBe(true)
+
+    const manifest = envelope.data
+    const entry = manifest.files.find((f: { path: string }) => f.path.endsWith('restating.ts'))
+    expect(entry).toBeDefined()
+
+    const restatingReason = entry.reasons.find((r: { kind: string }) => r.kind === 'restating')
+    expect(restatingReason).toBeDefined()
+    expect(Array.isArray(restatingReason.lines)).toBe(true)
+    expect(restatingReason.lines).toContain(1) // comment is on line 1 (1-based)
+    expect(restatingReason.detail).toContain('// myFunc') // detail quotes the comment
   })
 
   it('AC3: clean file (density at cap) → files: []', () => {

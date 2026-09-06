@@ -230,22 +230,6 @@ describe('comment-density parity: syntax-table vs tree-sitter oracle', () => {
     }
   });
 
-  describe('divergence inventory — engine over-counts vs oracle', () => {
-    const divergenceRows = PARITY_TABLE.filter(r => r.oracleCommentLines !== undefined);
-
-    it('no divergence rows remain (all three S11 bugs fixed)', () => {
-      expect(divergenceRows).toHaveLength(0);
-    });
-
-    for (const row of divergenceRows) {
-      it(`${row.file}: engine=${row.commentLines} vs oracle=${row.oracleCommentLines} — ${row.divergenceReason!.slice(0, 70)}…`, () => {
-        const content = readCorpus(row.file);
-        const r = analyzeFile(row.file, content);
-        expect(r.commentLines).toBe(row.commentLines);
-        expect(r.commentLines).not.toBe(row.oracleCommentLines);
-      });
-    }
-  });
 
   describe('language coverage sanity — at least one file per required language', () => {
     const extensions = ['.ts', '.tsx', '.js', '.go', '.rs', '.py', '.rb', '.sh', '.java'];

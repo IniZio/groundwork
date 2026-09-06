@@ -1,0 +1,22 @@
+{
+  "hook": "comment-density-guard",
+  "hook_path": "bin/gw-hook hook comment-density-guard",
+  "event_type": "PreToolUse",
+  "scenario_name": "subagent_rule_injection",
+  "description": "Write from a subagent (agent_id present) with clean content — always emits RULE_TEXT advisory regardless of density",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/tmp/clean.ts",
+      "content": "const x = 1;\n"
+    },
+    "agent_type": "groundwork:general-purpose",
+    "agent_id": "abc123"
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Comments per 100 lines must stay ≤5 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

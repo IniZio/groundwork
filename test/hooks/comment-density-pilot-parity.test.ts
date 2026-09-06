@@ -27,7 +27,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
-import { join, relative } from 'path';
+import { join } from 'path';
 import { spawnSync } from 'child_process';
 import { analyzeFile } from '../../hooks/lib/comment-density.mjs';
 

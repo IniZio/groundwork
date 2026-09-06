@@ -24003,7 +24003,6 @@ function _excludeReason(filePath, opts = {}) {
   return null;
 }
 function hasInlineComment(line, marker) {
-  const m0 = marker[0];
   let inSingle = false;
   let inDouble = false;
   let inTemplate = false;

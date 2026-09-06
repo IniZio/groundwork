@@ -1,6 +1,11 @@
 #!/bin/sh
-EXTERNAL_HOOK="/home/newman/.claude/plugins/groundwork/.git/hooks/pre-commit"
+# _GW_TEST_DEFAULT_ROOT lets tests redirect the default-path branch hermetically without requiring a real installation
+_root="${GROUNDWORK_PLUGIN_ROOT:-${_GW_TEST_DEFAULT_ROOT:-/home/newman/.claude/plugins/groundwork}}"
+EXTERNAL_HOOK="${_root}/.git/hooks/pre-commit"
 if [ -x "$EXTERNAL_HOOK" ]; then
   exec "$EXTERNAL_HOOK" "$@"
+fi
+if [ -n "${GROUNDWORK_PLUGIN_ROOT}" ]; then
+  echo "pre-commit: delegate target not found: $EXTERNAL_HOOK — graph indexing is not running" >&2
 fi
 exit 0

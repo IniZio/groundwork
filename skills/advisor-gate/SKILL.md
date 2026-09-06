@@ -39,6 +39,8 @@ Do not skip the gate even if confident. Findings below CORRECTION are registered
 
 **Criterion: no-acceptance-layer** — see the `no-acceptance-layer` criterion in the advisor's Verification Protocol (Step 2, `agents-src/advisor.md`). WAIVER events in `.groundwork/journal/*.jsonl` (fallback `.groundwork/waivers/*.json`), matched by `dependency`, suppress SC-B1 for that dependency and SC-B2 only for the identity provider; SC-A4 has no waiver path; five fields required: `dependency`, `failing_criterion`, `scope`, `expiry_condition`, `contract_test`. A missing acceptance layer without a valid waiver is a CORRECTION, not a GAPS note. Trivial no-ledger tasks are exempt.
 
+**Criterion: comment-density** — see the `comment-density` criterion in the advisor's Verification Protocol (Step 2, `agents-src/advisor.md`). APPROVE is blocked while any flagged file has no registered cleanup slice; run `bin/gw-hook comment-density report --json` over touched files, then `bin/gw-hook comment-density remediate-plan --motive <slug>` and dispatch one haiku cleanup slice per flagged file in one wave.
+
 ## Risk-tiered gate
 
 | Tier | Condition | Flow |

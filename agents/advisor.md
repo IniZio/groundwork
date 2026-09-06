@@ -164,6 +164,8 @@ For code verify: execution paths for off-by-one/null/race conditions, all error 
 
 **Criterion: no-acceptance-layer** — no test file loads the production entrypoint and exercises it against real hosted dependencies → wiring regressions and issuer-side failures stay green through the unit suite → run `node scripts/check-probe-conformance.mjs <repo>` and require PASS on SC-A4, SC-B1, and SC-B2; for repos the checker classifies UNKNOWN, cite an acceptance test file that imports the production entrypoint alongside the compose file it runs against. A missing layer without a matching waiver is a CORRECTION verdict, not a GAPS note. Waivers are read from WAIVER events in `.groundwork/journal/*.jsonl` (fallback `.groundwork/waivers/*.json`), matched by `dependency`; a waiver suppresses SC-B1 for that dependency and suppresses SC-B2 only when the dependency is the identity provider; SC-A4 has no waiver path. A waiver is valid only when all five fields are present: `dependency`, `failing_criterion`, `scope`, `expiry_condition`, `contract_test`. Trivial no-ledger tasks are exempt from this criterion.
 
+**Criterion: comment-density** — run `bin/gw-hook comment-density report --json` over the session's touched files and list every file reported in `data.files` (each is over-cap or carries flagged comments). APPROVE is blocked while any flagged file has no registered cleanup slice in the active ledger. To clear: run `bin/gw-hook comment-density remediate-plan --motive <slug>` and dispatch one haiku cleanup slice per flagged file, all in one wave.
+
 ### Step 3: Gap analysis + self-audit
 For each acceptance criterion: **VERIFIED** (fresh output confirms) / **PARTIAL** (gaps remain) / **MISSING** (claims only).
 

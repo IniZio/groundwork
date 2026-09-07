@@ -717,11 +717,16 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             { cwd, encoding: 'utf8' },
           )
           if (logResult.status === 0 && logResult.stdout.trim()) {
-            const { lintMessage } = (await import(
+            const { lintMessage, resolveRepoRoot } = (await import(
               '../../../../hooks/lib/commit-convention.mjs'
             )) as unknown as {
-              lintMessage: (text: string) => { violations: Array<{ line: number; reason: string }> }
+              lintMessage: (
+                text: string,
+                opts?: { repoRoot?: string | null },
+              ) => { violations: Array<{ line: number; reason: string }> }
+              resolveRepoRoot: (cwd?: string) => string | null
             }
+            const clRepoRoot = resolveRepoRoot(cwd)
             const violating: Array<{ shortSha: string; subject: string }> = []
             for (const rawLine of logResult.stdout.split('\n').filter(Boolean)) {
               const [sha, ...rest] = rawLine.split(' ')
@@ -733,7 +738,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
                 encoding: 'utf8',
               })
               const message = msgResult.stdout ?? ''
-              if (lintMessage(message).violations.length > 0) {
+              if (lintMessage(message, { repoRoot: clRepoRoot }).violations.length > 0) {
                 violating.push({ shortSha, subject })
               }
             }

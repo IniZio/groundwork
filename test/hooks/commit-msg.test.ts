@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { conformingHistory, seedHistory } from './host-convention-harness.js'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const HOOKS_DIR = join(REPO_ROOT, 'hooks')
@@ -37,10 +38,12 @@ beforeAll(() => {
   execSync('git config user.name "Test Runner"', { cwd: tempDir })
   // Point hooksPath at the real repo's tracked hooks/ directory.
   execSync(`git config core.hooksPath "${HOOKS_DIR}"`, { cwd: tempDir })
-  // Create an initial commit bypassing the hook so tests start on a non-empty repo.
+  // Initial commit bypasses the hook; the seeded history then earns the repo
+  // groundwork's convention, which is the premise every case below asserts against.
   writeFileSync(join(tempDir, 'README.md'), 'init')
   execSync('git add README.md', { cwd: tempDir })
   execSync('git commit --no-verify -m "init"', { cwd: tempDir })
+  seedHistory(tempDir, conformingHistory(30))
 })
 
 afterAll(() => {

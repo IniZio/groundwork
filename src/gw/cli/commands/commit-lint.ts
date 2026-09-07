@@ -69,7 +69,11 @@ async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
     return errEnvelope('commit-lint report', 'GIT_ERROR', logResult.stderr || 'git log failed', 1)
   }
 
-  const { lintMessage } = await import('../../../../hooks/lib/commit-convention.mjs') as unknown as { lintMessage: (text: string) => { violations: Array<{ line: number; reason: string }> } }
+  const { lintMessage, resolveRepoRoot } = await import('../../../../hooks/lib/commit-convention.mjs') as unknown as {
+    lintMessage: (text: string, opts?: { repoRoot?: string | null }) => { violations: Array<{ line: number; reason: string }> }
+    resolveRepoRoot: (cwd?: string) => string | null
+  }
+  const repoRoot = resolveRepoRoot(cwd)
 
   const violating: CommitViolation[] = []
   for (const rawLine of logResult.stdout.split('\n').filter(Boolean)) {
@@ -79,7 +83,7 @@ async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
     const shortSha = sha.slice(0, 7)
     const msgResult = spawnSync('git', ['log', '-1', '--format=%B', sha], { cwd, encoding: 'utf8' })
     const message = msgResult.stdout ?? ''
-    const violations = lintMessage(message).violations
+    const violations = lintMessage(message, { repoRoot }).violations
     if (violations.length > 0) {
       violating.push({ sha, shortSha, subject, violations })
     }
@@ -109,7 +113,11 @@ async function runRemediatePlan(args: string[], cwd: string): Promise<GwEnvelope
     return errEnvelope('commit-lint remediate-plan', 'GIT_ERROR', logResult.stderr || 'git log failed', 1)
   }
 
-  const { lintMessage } = await import('../../../../hooks/lib/commit-convention.mjs') as unknown as { lintMessage: (text: string) => { violations: Array<{ line: number; reason: string }> } }
+  const { lintMessage, resolveRepoRoot } = await import('../../../../hooks/lib/commit-convention.mjs') as unknown as {
+    lintMessage: (text: string, opts?: { repoRoot?: string | null }) => { violations: Array<{ line: number; reason: string }> }
+    resolveRepoRoot: (cwd?: string) => string | null
+  }
+  const repoRoot = resolveRepoRoot(cwd)
 
   const SQUASH_RE = /^(fixup!|squash!|wip\b|fix typo|address review|typo|oops|cleanup|nit\b)/i
 
@@ -129,7 +137,7 @@ async function runRemediatePlan(args: string[], cwd: string): Promise<GwEnvelope
     const shortSha = sha.slice(0, 7)
     const msgResult = spawnSync('git', ['log', '-1', '--format=%B', sha], { cwd, encoding: 'utf8' })
     const message = msgResult.stdout ?? ''
-    const violations = lintMessage(message).violations
+    const violations = lintMessage(message, { repoRoot }).violations
 
     if (SQUASH_RE.test(subject)) {
       lines.push(`squash ${shortSha} ${subject}`)

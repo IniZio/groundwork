@@ -7,6 +7,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import {
+  makeHostRepo,
+  installedHookVerdict,
+  commitLintVerdict as hostCommitLintVerdict,
+  guardVerdict as hostGuardVerdict,
+  conformingHistory,
+  conformingHistoryWithBodies,
+  nonConformingHistory,
+  seedHistory,
+} from './host-convention-harness.js'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const HOOKS_DIR = join(REPO_ROOT, 'hooks')
@@ -97,6 +107,7 @@ function commitLintVerdict(message: string, extraEnv: Record<string, string> = {
     env: { ...process.env, CLAUDE_PROJECT_DIR: cliRepo, CLAUDE_PLUGIN_ROOT: '', ...extraEnv },
     timeout: 10_000,
   })
+  execSync(`git reset --hard -q ${baseSha}`, { cwd: cliRepo })
   const out = (result.stdout ?? '').trim()
   if (!out) return 'accept'
   try {
@@ -116,6 +127,7 @@ beforeAll(() => {
   writeFileSync(join(hookRepo, 'README.md'), 'init')
   execSync('git add README.md', { cwd: hookRepo })
   execSync('git commit --no-verify -m "init"', { cwd: hookRepo })
+  seedHistory(hookRepo, conformingHistory(30))
 
   cliRepo = mkdtempSync(join(tmpdir(), 'gw-parity-cli-'))
   execSync('git init', { cwd: cliRepo })
@@ -124,6 +136,7 @@ beforeAll(() => {
   writeFileSync(join(cliRepo, 'README.md'), 'init')
   execSync('git add README.md', { cwd: cliRepo })
   execSync('git commit --no-verify -m "init"', { cwd: cliRepo })
+  seedHistory(cliRepo, conformingHistory(30))
 })
 
 afterAll(() => {
@@ -161,6 +174,120 @@ describe('positive control: each surface independently rejects invalid type', ()
   it('commit-lint reports violation (surface 3 is live)', () => {
     expect(commitLintVerdict(CONTROL)).toBe('reject')
   })
+})
+
+// The temp repos above carry no .gitmessage; their seeded history conforms to
+// groundwork's convention, which is why the CORPUS verdicts hold there. The two blocks
+// below repeat the parity claim in the other two contexts a host repo can be in.
+describe('three-enforcer parity in a host repo with its own .gitmessage', () => {
+  let hostRepo: string
+
+  const HOST_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
+    { id: 'host-scope-accepted', message: 'web: Ignore CancelledError and offline fetch noise in GlitchTip', verdict: 'accept' },
+    { id: 'host-scope-db-accepted', message: 'db: Restore slim MATH tc modules fixture', verdict: 'accept' },
+    { id: 'groundwork-type-rejected', message: 'feat(web): something', verdict: 'reject' },
+    { id: 'groundwork-bare-type-rejected', message: 'chore: update dependencies', verdict: 'reject' },
+    { id: 'process-vocab-rejected', message: 'web: fix the second gate cycle thing', verdict: 'reject' },
+  ]
+
+  beforeAll(() => {
+    hostRepo = makeHostRepo({
+      gitmessage: 'hanlun-lms.gitmessage',
+      subjects: 'hanlun-lms.subjects.txt',
+    })
+  }, 180_000)
+
+  afterAll(() => {
+    if (hostRepo) rmSync(hostRepo, { recursive: true, force: true })
+  })
+
+  for (const entry of HOST_CORPUS) {
+    it(`[${entry.id}]`, () => {
+      const hookV = installedHookVerdict(hostRepo, entry.message)
+      const guardV = hostGuardVerdict(hostRepo, entry.message)
+      const cliV = hostCommitLintVerdict(hostRepo, entry.message)
+
+      expect(hookV, `installed commit-msg [${entry.id}]`).toBe(entry.verdict)
+      expect(guardV, `guard vs installed commit-msg [${entry.id}]`).toBe(hookV)
+      expect(cliV, `commit-lint vs installed commit-msg [${entry.id}]`).toBe(hookV)
+    }, 30_000)
+  }
+})
+
+describe('three-enforcer parity in a no-.gitmessage repo whose history refutes the convention', () => {
+  let refutingRepo: string
+
+  const REFUTING_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
+    { id: 'own-style-accepted', message: 'web: Ignore CancelledError noise', verdict: 'accept' },
+    { id: 'shapeless-accepted', message: 'Just some words with no shape at all', verdict: 'accept' },
+    { id: 'over-length-accepted', message: 'feat: ' + 'x'.repeat(73), verdict: 'accept' },
+    { id: 'body-accepted', message: 'infra: add feature\n\nThis is a body line', verdict: 'accept' },
+    { id: 'process-vocab-rejected', message: 'web: resolve the gate cycle regression', verdict: 'reject' },
+    { id: 'slice-id-rejected', message: 'web: implement T39 completion', verdict: 'reject' },
+  ]
+
+  beforeAll(() => {
+    refutingRepo = makeHostRepo({
+      gitmessage: null,
+      seedSubject: 'repo: initial import',
+      subjectList: nonConformingHistory(30),
+    })
+  }, 180_000)
+
+  afterAll(() => {
+    if (refutingRepo) rmSync(refutingRepo, { recursive: true, force: true })
+  })
+
+  for (const entry of REFUTING_CORPUS) {
+    it(`[${entry.id}]`, () => {
+      const hookV = installedHookVerdict(refutingRepo, entry.message)
+      const guardV = hostGuardVerdict(refutingRepo, entry.message)
+      const cliV = hostCommitLintVerdict(refutingRepo, entry.message)
+
+      expect(hookV, `installed commit-msg [${entry.id}]`).toBe(entry.verdict)
+      expect(guardV, `guard vs installed commit-msg [${entry.id}]`).toBe(hookV)
+      expect(cliV, `commit-lint vs installed commit-msg [${entry.id}]`).toBe(hookV)
+    }, 30_000)
+  }
+})
+
+// T43: per-rule validation splits this repo's verdicts — subject rules kept, body rule
+// dropped. All three surfaces must split them the same way.
+describe('three-enforcer parity where only the body rule was dropped', () => {
+  let bodiesRepo: string
+
+  const BODIES_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
+    { id: 'conforming-with-body-accepted', message: 'feat: add feature\n\nThis is a body line', verdict: 'accept' },
+    { id: 'malformed-subject-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
+    { id: 'invalid-type-rejected', message: 'notatype: this should always be rejected', verdict: 'reject' },
+    { id: 'over-length-rejected', message: 'feat: ' + 'x'.repeat(73), verdict: 'reject' },
+    { id: 'bullet-body-accepted', message: 'chore: tidy imports\n\n- one\n- two', verdict: 'accept' },
+    { id: 'process-vocab-in-body-rejected', message: 'feat: add feature\n\nThis closes the second gate cycle.', verdict: 'reject' },
+  ]
+
+  beforeAll(() => {
+    bodiesRepo = makeHostRepo({
+      gitmessage: null,
+      seedSubject: 'chore: initial import',
+      subjectList: conformingHistoryWithBodies(30),
+    })
+  }, 240_000)
+
+  afterAll(() => {
+    if (bodiesRepo) rmSync(bodiesRepo, { recursive: true, force: true })
+  })
+
+  for (const entry of BODIES_CORPUS) {
+    it(`[${entry.id}]`, () => {
+      const hookV = installedHookVerdict(bodiesRepo, entry.message)
+      const guardV = hostGuardVerdict(bodiesRepo, entry.message)
+      const cliV = hostCommitLintVerdict(bodiesRepo, entry.message)
+
+      expect(hookV, `installed commit-msg [${entry.id}]`).toBe(entry.verdict)
+      expect(guardV, `guard vs installed commit-msg [${entry.id}]`).toBe(hookV)
+      expect(cliV, `commit-lint vs installed commit-msg [${entry.id}]`).toBe(hookV)
+    }, 30_000)
+  }
 })
 
 describe('attribution-trailer strip (commit-msg mutates; guard and CLI do not)', () => {

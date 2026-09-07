@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { installHook, uninstallHook, getHookStatus } from '#src/gw/hooks/installer.js'
+import { conformingHistory, seedHistory } from '../hooks/host-convention-harness.js'
 
 function makeRepo(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(path.join(tmpdir(), 'hooks-test-'))
@@ -12,6 +13,7 @@ function makeRepo(): { dir: string; cleanup: () => void } {
   execSync('git config user.name "Test"', { cwd: dir, stdio: 'pipe' })
   execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'pipe' })
   execSync('git commit --allow-empty -m "chore: initial"', { cwd: dir, stdio: 'pipe' })
+  seedHistory(dir, conformingHistory(30))
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
 }
 

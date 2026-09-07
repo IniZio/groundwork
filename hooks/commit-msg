@@ -4,7 +4,8 @@ if [ "${GROUNDWORK_COMMIT_LINT:-}" = "0" ]; then exit 0; fi
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMMENT_CHAR="$(git config --get core.commentChar 2>/dev/null || echo '#')"
 CLEANUP_MODE="$(git config --get commit.cleanup 2>/dev/null || echo 'default')"
-COMMIT_MSG_FILE="$1" HOOK_DIR="$HOOK_DIR" COMMENT_CHAR="$COMMENT_CHAR" CLEANUP_MODE="$CLEANUP_MODE" exec node --input-type=module <<'EOF'
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
+COMMIT_MSG_FILE="$1" HOOK_DIR="$HOOK_DIR" COMMENT_CHAR="$COMMENT_CHAR" CLEANUP_MODE="$CLEANUP_MODE" REPO_ROOT="$REPO_ROOT" exec node --input-type=module <<'EOF'
 import { readFileSync, writeFileSync } from 'node:fs'
 const { lintMessage } = await import(`file://${process.env.HOOK_DIR}/lib/commit-convention.mjs`)
 
@@ -29,7 +30,7 @@ if (cleanupMode === 'scissors') {
 cleaned = cleaned.replace(new RegExp('^' + escapedChar + '.*$', 'gm'), '')
 cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
 
-const { stripped, violations } = lintMessage(cleaned)
+const { stripped, violations } = lintMessage(cleaned, { repoRoot: process.env.REPO_ROOT || null })
 
 writeFileSync(msgFile, stripped.trimEnd() + '\n')
 

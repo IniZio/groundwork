@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { run } from '#src/gw/cli/commands/commit-lint.js'
+import { conformingHistory, seedHistory } from '../hooks/host-convention-harness.js'
 
 function makeRepo(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(path.join(tmpdir(), 'commit-lint-test-'))
@@ -12,6 +13,7 @@ function makeRepo(): { dir: string; cleanup: () => void } {
   execSync('git config user.name "Test"', { cwd: dir, stdio: 'pipe' })
   execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'pipe' })
   execSync('git commit --allow-empty -m "chore: initial"', { cwd: dir, stdio: 'pipe' })
+  seedHistory(dir, conformingHistory(30))
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
 }
 

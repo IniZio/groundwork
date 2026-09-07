@@ -1,12 +1,7 @@
 import type { HookFn, HookResult } from './types.js'
-import {
-  lintMessage,
-  resolveRepoRoot,
-  hasOwnCommitTemplate,
-} from '../../../hooks/lib/commit-convention.mjs'
+import { lintMessage, resolveRepoRoot } from '../../../hooks/lib/commit-convention.mjs'
 import { readFileSync, statSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 
 function passthrough(): HookResult {
   return { stdout: '', stderr: '', exit: 0 }
@@ -27,21 +22,10 @@ function deny(reason: string): HookResult {
   }
 }
 
-/**
- * True when the commit targets a repository that is not groundwork itself and
- * that ships its own .gitmessage. Fail-closed: any unresolved root keeps
- * groundwork's convention in force.
- */
-function usesHostConvention(cwd: string): boolean {
-  const groundworkRoot = resolveRepoRoot(dirname(fileURLToPath(import.meta.url)))
-  if (groundworkRoot === null) return false
-  const repoRoot = resolveRepoRoot(cwd)
-  if (repoRoot === null || repoRoot === groundworkRoot) return false
-  return hasOwnCommitTemplate(repoRoot)
-}
-
+// The repo root is the sole input that selects groundwork's hardcoded convention or the
+// host's derived one; the installed commit-msg hook resolves the same root the same way.
 function lintAndDecide(message: string, cwd: string): HookResult {
-  const result = lintMessage(message, { hostConvention: usesHostConvention(cwd) })
+  const result = lintMessage(message, { repoRoot: resolveRepoRoot(cwd) })
   if (result.violations.length === 0) return passthrough()
   const lines = [...result.violations]
     .sort((a, b) => a.line - b.line)

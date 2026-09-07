@@ -22,5 +22,16 @@ export interface CommitMsgHookOptions {
 /**
  * Render the portable commit-msg hook for installation into a host repo's
  * .git/hooks/commit-msg. The caller must set mode 0o755 on the written file.
+ *
+ * Usage:
+ *   const content = renderCommitMsgHook({ hooksLibPath: getHooksLibPath(), version: '3.1.0' })
+ *   fs.writeFileSync(hookPath, content, { mode: 0o755 })
+ *
+ * The generated script embeds hooksLibPath at generation time, passes through on
+ * GROUNDWORK_COMMIT_LINT=0, and FAILS SAFE (stderr warning + exit 0) when groundwork
+ * is missing or unloadable. It resolves the committing repository root via
+ * `git rev-parse --show-toplevel` and hands it to lintMessage as `repoRoot`, which is
+ * what selects the host repository's derived convention over groundwork's hardcoded
+ * one — the same single input the PreToolUse guard uses, so the two cannot diverge.
  */
 export declare function renderCommitMsgHook(opts: CommitMsgHookOptions): string

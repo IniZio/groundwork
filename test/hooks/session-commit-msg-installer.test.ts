@@ -12,6 +12,7 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { conformingHistory, seedHistory } from './host-convention-harness.js'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const GW_HOOK = join(REPO_ROOT, 'bin', 'gw-hook')
@@ -30,6 +31,7 @@ function makeTempRepo(opts?: { coreHooksPath?: string }): string {
   writeFileSync(join(dir, 'README.md'), 'init')
   execSync('git add README.md', { cwd: dir })
   execSync('git commit --no-verify -m "chore: init"', { cwd: dir })
+  seedHistory(dir, conformingHistory(30))
   return dir
 }
 

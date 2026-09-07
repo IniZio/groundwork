@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { conformingHistory, seedHistory } from '../hooks/host-convention-harness.js'
 
 const REPO_ROOT = '/home/newman/.local/share/groundwork'
 const SHIM_PATH = path.join(REPO_ROOT, 'bin/gw-hook')
@@ -91,6 +92,7 @@ beforeEach(() => {
     encoding: 'utf8',
     env: { ...process.env, ...GIT_ENV },
   })
+  seedHistory(repoDir, conformingHistory(30), GIT_ENV)
 })
 
 afterEach(() => {

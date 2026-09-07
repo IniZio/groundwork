@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { conformingHistory, seedHistory } from './host-convention-harness.js'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const HOOK_SHIM = join(REPO_ROOT, 'bin', 'gw-hook')
@@ -30,7 +31,7 @@ function guardVerdict(command: string, cwd: string): 'accept' | 'reject' {
   }
 }
 
-function initRepo(prefix: string, withGitmessage: boolean): string {
+function initRepo(prefix: string, withGitmessage: boolean, history: string[] = []): string {
   const dir = mkdtempSync(join(tmpdir(), prefix))
   execSync('git init', { cwd: dir })
   execSync('git config user.email "host@test.example"', { cwd: dir })
@@ -44,6 +45,7 @@ function initRepo(prefix: string, withGitmessage: boolean): string {
   }
   execSync('git add -A', { cwd: dir })
   execSync('git commit --no-verify -m "init"', { cwd: dir })
+  seedHistory(dir, history)
   return dir
 }
 
@@ -52,7 +54,9 @@ let plainRepo: string
 
 beforeAll(() => {
   hostRepo = initRepo('gw-hostconv-with-', true)
-  plainRepo = initRepo('gw-hostconv-without-', false)
+  // Case 3 asserts groundwork's convention IS enforced here, which it only is once the
+  // repo's own history has confirmed the convention fits it.
+  plainRepo = initRepo('gw-hostconv-without-', false, conformingHistory(30))
 })
 
 afterAll(() => {

@@ -172,16 +172,58 @@ describe('attribution-trailer strip (commit-msg mutates; guard and CLI do not)',
     expect(log).not.toContain('Claude-Session')
   })
 
-  // Guard passes through -F / editor-form commits — it cannot read the file.
-  // This is the only legitimate asymmetry; excluded from verdict parity above.
-  it('guard passes through -F file-form commits unconditionally', () => {
-    const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -F /tmp/bad-msg.txt' } })
-    const result = spawnSync(HOOK_SHIM, ['hook', 'commit-message-guard'], {
-      input: stdin, encoding: 'utf-8',
-      env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'parity-test' },
-      timeout: 10_000,
+  // Guard reads -F <path> when reachable; passthrough only when unreachable
+  // (missing/unreadable file, editor-driven commit, bare --amend).
+  describe('-F file commits: guard reads when reachable, passes through when not', () => {
+    let fTmpDir: string
+
+    beforeAll(() => {
+      fTmpDir = mkdtempSync(join(tmpdir(), 'gw-parity-ffile-'))
     })
-    expect((result.stdout ?? '').trim()).toBe('')
+
+    afterAll(() => {
+      rmSync(fTmpDir, { recursive: true, force: true })
+    })
+
+    it('-F file with violating message → guard denies, naming offending lines', () => {
+      const msgPath = join(fTmpDir, 'bad-commit.txt')
+      writeFileSync(msgPath, 'notatype: this message violates convention')
+      const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: `git commit -F ${msgPath}` } })
+      const result = spawnSync(HOOK_SHIM, ['hook', 'commit-message-guard'], {
+        input: stdin, encoding: 'utf-8',
+        env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'parity-test' },
+        timeout: 10_000,
+      })
+      const out = (result.stdout ?? '').trim()
+      expect(out, 'guard must produce output (deny JSON)').not.toBe('')
+      const parsed = JSON.parse(out) as { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } }
+      expect(parsed.hookSpecificOutput?.permissionDecision, 'permissionDecision must be deny').toBe('deny')
+      expect(parsed.hookSpecificOutput?.permissionDecisionReason, 'reason must name a line').toMatch(/line \d+/)
+    })
+
+    it('-F file with conforming message → guard allows', () => {
+      const msgPath = join(fTmpDir, 'good-commit.txt')
+      writeFileSync(msgPath, 'feat: add new capability')
+      const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: `git commit -F ${msgPath}` } })
+      const result = spawnSync(HOOK_SHIM, ['hook', 'commit-message-guard'], {
+        input: stdin, encoding: 'utf-8',
+        env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'parity-test' },
+        timeout: 10_000,
+      })
+      expect((result.stdout ?? '').trim()).toBe('')
+    })
+
+    it('-F path that does not exist → guard passes through', () => {
+      // missingPath is inside fTmpDir (which exists) but was never written — deterministically absent
+      const missingPath = join(fTmpDir, 'does-not-exist.txt')
+      const stdin = JSON.stringify({ tool_name: 'Bash', tool_input: { command: `git commit -F ${missingPath}` } })
+      const result = spawnSync(HOOK_SHIM, ['hook', 'commit-message-guard'], {
+        input: stdin, encoding: 'utf-8',
+        env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'parity-test' },
+        timeout: 10_000,
+      })
+      expect((result.stdout ?? '').trim()).toBe('')
+    })
   })
 
   it('guard passes through editor-driven commits with no -m flag', () => {

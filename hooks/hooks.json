@@ -142,6 +142,16 @@
             "async": false
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook session-commit-msg-installer",
+            "async": false
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

@@ -1,0 +1,14 @@
+{
+  "hook": "session-commit-msg-installer",
+  "hook_path": "bin/gw-hook hook session-commit-msg-installer",
+  "event_type": "SessionStart",
+  "scenario_name": "silent_when_kill_switch_set",
+  "description": "GROUNDWORK_COMMIT_MSG_HOOK=0 — hook returns empty stdout without installing anything",
+  "env": { "GROUNDWORK_COMMIT_MSG_HOOK": "0" },
+  "disk_state_setup": [],
+  "stdin_payload": { "hook_event_name": "SessionStart" },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

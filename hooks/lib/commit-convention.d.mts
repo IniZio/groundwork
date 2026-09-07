@@ -12,7 +12,11 @@ export interface ProcessVocabEntry {
 }
 export declare const PROCESS_VOCAB_DENYLIST: ProcessVocabEntry[]
 
-export declare function getMotiveSlugs(): string[]
+export declare function resolveRepoRoot(cwd?: string): string | null
+
+export declare function hasOwnCommitTemplate(repoRoot: string | null | undefined): boolean
+
+export declare function getMotiveSlugs(repoRoot?: string): string[]
 
 export interface LintViolation {
   line: number
@@ -26,5 +30,5 @@ export interface LintResult {
 
 export declare function lintMessage(
   text: string,
-  opts?: { motiveSlugs?: string[] },
+  opts?: { motiveSlugs?: string[]; hostConvention?: boolean },
 ): LintResult

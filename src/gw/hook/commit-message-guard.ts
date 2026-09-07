@@ -1,5 +1,12 @@
 import type { HookFn, HookResult } from './types.js'
-import { lintMessage } from '../../../hooks/lib/commit-convention.mjs'
+import {
+  lintMessage,
+  resolveRepoRoot,
+  hasOwnCommitTemplate,
+} from '../../../hooks/lib/commit-convention.mjs'
+import { readFileSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 function passthrough(): HookResult {
   return { stdout: '', stderr: '', exit: 0 }
@@ -18,6 +25,28 @@ function deny(reason: string): HookResult {
     stderr: '',
     exit: 0,
   }
+}
+
+/**
+ * True when the commit targets a repository that is not groundwork itself and
+ * that ships its own .gitmessage. Fail-closed: any unresolved root keeps
+ * groundwork's convention in force.
+ */
+function usesHostConvention(cwd: string): boolean {
+  const groundworkRoot = resolveRepoRoot(dirname(fileURLToPath(import.meta.url)))
+  if (groundworkRoot === null) return false
+  const repoRoot = resolveRepoRoot(cwd)
+  if (repoRoot === null || repoRoot === groundworkRoot) return false
+  return hasOwnCommitTemplate(repoRoot)
+}
+
+function lintAndDecide(message: string, cwd: string): HookResult {
+  const result = lintMessage(message, { hostConvention: usesHostConvention(cwd) })
+  if (result.violations.length === 0) return passthrough()
+  const lines = [...result.violations]
+    .sort((a, b) => a.line - b.line)
+    .map((v) => `  line ${v.line}: ${v.reason}`)
+  return deny(`Commit message lint violations:\n${lines.join('\n')}`)
 }
 
 function extractInlineMessage(cmd: string): string | null {
@@ -39,6 +68,36 @@ function extractInlineMessage(cmd: string): string | null {
   return messages.join('\n\n')
 }
 
+function extractFilePath(cmd: string): string | null {
+  let m: RegExpExecArray | null
+
+  m = /--file=(['"])(.*?)\1/.exec(cmd)
+  if (m) return m[2] === '-' ? null : m[2]
+
+  m = /--file=([^\s'"]+)/.exec(cmd)
+  if (m) return m[1] === '-' ? null : m[1]
+
+  m = /--file\s+(['"])(.*?)\1/.exec(cmd)
+  if (m) return m[2] === '-' ? null : m[2]
+
+  m = /--file\s+([^\s'"]+)/.exec(cmd)
+  if (m) return m[1] === '-' ? null : m[1]
+
+  m = /(?:^|\s)-F=(['"])(.*?)\1/.exec(cmd)
+  if (m) return m[2] === '-' ? null : m[2]
+
+  m = /(?:^|\s)-F=([^\s'"]+)/.exec(cmd)
+  if (m) return m[1] === '-' ? null : m[1]
+
+  m = /(?:^|\s)-F\s+(['"])(.*?)\1/.exec(cmd)
+  if (m) return m[2] === '-' ? null : m[2]
+
+  m = /(?:^|\s)-F\s+([^\s'"]+)/.exec(cmd)
+  if (m) return m[1] === '-' ? null : m[1]
+
+  return null
+}
+
 export const run: HookFn = async (rawInput, env) => {
   try {
     if (env.GROUNDWORK_COMMIT_LINT === '0') return passthrough()
@@ -55,18 +114,30 @@ export const run: HookFn = async (rawInput, env) => {
     if (typeof command !== 'string') return passthrough()
 
     if (!/\bgit\s+commit\b/.test(command)) return passthrough()
-    if (/\s-F[\s=]|\s--file[\s=]/.test(command) || / -F$/.test(command)) return passthrough()
 
-    const message = extractInlineMessage(command)
-    if (message === null) return passthrough()
+    const cmdCwd =
+      typeof (toolInput as Record<string, unknown>)['cwd'] === 'string'
+        ? ((toolInput as Record<string, unknown>)['cwd'] as string)
+        : process.cwd()
 
-    const result = lintMessage(message)
-    if (result.violations.length === 0) return passthrough()
+    const inlineMsg = extractInlineMessage(command)
+    if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd)
 
-    const lines = [...result.violations]
-      .sort((a, b) => a.line - b.line)
-      .map((v) => `  line ${v.line}: ${v.reason}`)
-    return deny(`Commit message lint violations:\n${lines.join('\n')}`)
+    const rawPath = extractFilePath(command)
+    if (rawPath !== null) {
+      const filePath = resolve(cmdCwd, rawPath)
+      let fileMsg: string
+      try {
+        const st = statSync(filePath)
+        if (!st.isFile()) return passthrough()
+        fileMsg = readFileSync(filePath, 'utf-8')
+      } catch {
+        return passthrough()
+      }
+      return lintAndDecide(fileMsg, cmdCwd)
+    }
+
+    return passthrough()
   } catch {
     return passthrough()
   }

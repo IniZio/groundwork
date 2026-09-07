@@ -1,14 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { readFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   COMMIT_TYPES,
   SCOPE_PATTERN,
   SUBJECT_CAP,
   BODY_MAX_LINES,
   lintMessage,
+  getMotiveSlugs,
 } from '../../hooks/lib/commit-convention.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -227,5 +229,61 @@ describe('AC-11 gitmessage drift check', () => {
     } else {
       expect(content).toContain(String(BODY_MAX_LINES));
     }
+  });
+});
+
+describe('getMotiveSlugs — repo-local scoping (T30)', () => {
+  let tempNoGw: string;
+  let tempWithSlug: string;
+  const TEST_SLUG = 'my-project-feature';
+
+  beforeAll(() => {
+    tempNoGw = mkdtempSync(join(tmpdir(), 'gw-slugtest-nogw-'));
+    tempWithSlug = mkdtempSync(join(tmpdir(), 'gw-slugtest-withslug-'));
+    mkdirSync(join(tempWithSlug, '.groundwork', 'motives', TEST_SLUG), { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(tempNoGw, { recursive: true, force: true });
+    rmSync(tempWithSlug, { recursive: true, force: true });
+  });
+
+  it('case 1: temp repo with no .groundwork/ → comment-density-gate message is ACCEPTED', () => {
+    const slugs = getMotiveSlugs(tempNoGw);
+    expect(slugs, 'slugs for repo with no .groundwork/ must be empty').toHaveLength(0);
+    const { violations } = lintMessage('fix: update comment-density-gate config', { motiveSlugs: slugs });
+    expect(violations.filter(v => v.reason.includes('motive slug'))).toHaveLength(0);
+  });
+
+  it('case 2: groundwork own repo → comment-density-gate message is REJECTED', () => {
+    const slugs = getMotiveSlugs(repoRoot);
+    expect(slugs).toContain('comment-density-gate');
+    const { violations } = lintMessage('fix: update comment-density-gate config', { motiveSlugs: slugs });
+    expect(violations.some(v => v.reason.includes('comment-density-gate'))).toBe(true);
+  });
+
+  it('case 3: temp repo with own motive slug → that slug is REJECTED', () => {
+    const slugs = getMotiveSlugs(tempWithSlug);
+    expect(slugs).toContain(TEST_SLUG);
+    const { violations } = lintMessage(`fix: add ${TEST_SLUG} support`, { motiveSlugs: slugs });
+    expect(violations.some(v => v.reason.includes(TEST_SLUG))).toBe(true);
+  });
+
+  it('case 4a: "gate cycle" rejected even in repo with no .groundwork/', () => {
+    const slugs = getMotiveSlugs(tempNoGw);
+    const { violations } = lintMessage('chore: third gate cycle cleanup', { motiveSlugs: slugs });
+    expect(violations.some(v => v.reason.includes('gate cycle'))).toBe(true);
+  });
+
+  it('case 4b: T4 slice id rejected even in repo with no .groundwork/', () => {
+    const slugs = getMotiveSlugs(tempNoGw);
+    const { violations } = lintMessage('chore: fix T4 issue', { motiveSlugs: slugs });
+    expect(violations.some(v => v.reason.includes('slice id'))).toBe(true);
+  });
+
+  it('case 4c: D-7 decision id rejected even in repo with no .groundwork/', () => {
+    const slugs = getMotiveSlugs(tempNoGw);
+    const { violations } = lintMessage('chore: implements D-7 requirement', { motiveSlugs: slugs });
+    expect(violations.some(v => v.reason.includes('decision id'))).toBe(true);
   });
 });

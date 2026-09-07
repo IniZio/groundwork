@@ -14,10 +14,9 @@ import {
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('constants', () => {
-  it('COMMIT_TYPES includes expected types', () => {
-    for (const t of ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert']) {
-      expect(COMMIT_TYPES).toContain(t);
-    }
+  it('COMMIT_TYPES is exactly the expected set — adding or removing any type turns this red', () => {
+    const expected = ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert'];
+    expect([...COMMIT_TYPES].sort()).toEqual([...expected].sort());
   });
 
   it('SCOPE_PATTERN accepts alphanumeric, dots, commas, hyphens, underscores', () => {

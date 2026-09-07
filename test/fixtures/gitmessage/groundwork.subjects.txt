@@ -1,0 +1,30 @@
+test(commit-msg): add -F file linting tests
+build: regenerate bundles for portable enforcement hooks
+docs(spec): portable commit-msg hook installation and enforcement
+test(hooks): correct commit-enforcer parity fixtures
+feat(hooks): add portable pre-commit delegate
+feat(hooks): auto-install commit-msg hook on session start
+feat(gw): add hooks installer and gw hooks CLI
+feat(hooks): add portable template resolver and commit-msg hook template
+fix(commit-msg): honor host template convention in .gitmessage repos
+test(hooks): fix assertions that could not fail
+docs(prove-the-check-can-fail): record four new failure modes
+fix(comment-density): scan named file arguments in report
+test(commit-lint): add fixtures and update hook count
+docs(specs): add requirement for commit-convention enforcement
+docs(git-master): enforce subject-only messages from the shared module
+feat(deslop): add comment and commit audits to cleanup routine
+test(commit-convention): add drift and duplicate checks without fixed paths
+docs(template): clarify enforcement policy and scope syntax
+fix(pre-commit): warn on a missing delegate and allow a path override
+feat(setup): add setup-hooks installation step with nesting guard
+test(commit-lint): add parity test for hook and audit
+feat(ledger): refuse approval for invalid messages and unevaluable ranges
+feat(cli): add commit-lint command for auditing commits
+feat(hooks): add commit-message PreToolUse guard
+feat(commit-msg): validate messages, strip trailers, handle comment blocks
+feat(commit-convention): add shared commit-convention module
+fix(ledger): permit base_commit field in run-ledger schema
+fix(comment-density): restore rationale and exclude fixtures from scan
+chore(release): bump plugin version to 3.1.0
+fix(comment-density): exclude fixture corpora and require a base commit

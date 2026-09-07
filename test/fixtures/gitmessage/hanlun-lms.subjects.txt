@@ -1,0 +1,30 @@
+infra: Fix authgear admin api key for Dev admin portal
+ infra: Include git and gh in nexus sandbox
+infra: Track .nexus/Containerfile for nexus3 sandbox docker builds
+db: Restore slim MATH tc modules.zip fixture
+db: Schema-qualify the description backfill statements
+infra: Fix admin api key for staging teacher-student authgear
+db: Regenerate csvs
+backend: Fix initial_password migration missing schema
+web: Fix curriculum module not found
+infra: Add missing student/teacher portal base urls (#685)
+[HAN-625] student: Invalidate curriculum list on quiz submit to auto-unlock modules (#679)
+agent: Rework create-pr PR format + gh-assets artifacts
+web: Resolve lint error
+teacher: Add skeleton loading state to teaching overview student table
+student: Add Prefill incorrect answers button to dev floating window
+backend: Remove ORM-level status resets in delete-curriculum-sessions debug function
+[HAN-623] teacher, backend: Set quiz passing rate for student (#650)
+[HAN-577 HAN-636] teacher: Render in-module navigation (#647)
+[HAN-634] admin: Support creating paper types (#645)
+[HAN-577] backend, teacher: Implement students details page w/ individual learning path (#640)
+infra: Raise Helm timeout for production rollouts (#641)
+[HAN-534] Loading state ux enhancement for slow network (#595)
+[HAN-627] Fix student detail header flicker on scroll (#628)
+[HAN-436] [HAN-493] student: Apply responsive to unit content in iframe (#637)
+student: Gate /curriculums with auth
+student: Add lesson quiz badge tokens and align result header layout
+student: Fix dashboard filter bar position
+backend: Use self-graded-at for submitted atg
+student: Widen hour layout
+infra: Limit staging db connections

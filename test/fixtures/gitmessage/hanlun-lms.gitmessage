@@ -1,0 +1,24 @@
+# <scope>: <subject>
+# │       │
+# │       └─⫸ Summary in present tense. No period. (e.g. "fix login button")
+# │            DO NOT use conventional-commit prefixes (feat:, fix:, chore:).
+# │            Linear ticket numbers belong in PR merge commits, not here.
+# │
+# └─⫸ CHOOSE ONE SCOPE:
+#     web     - Code that involves both Student/Teacher Application
+#     student - Code that involves Student Application only
+#     teacher - Code that involves Teacher Application only
+#     backend - Code that involves backend application
+#     api     - API routes, endpoints, request handling
+#     admin   - SQLAdmin dashboard (Staff)
+#     worker  - Celery tasks, background jobs
+#     db      - Migrations, seeds, SQL schemas
+#     infra   - Docker, Otel, CI/CD, Cloud config
+#     repo    - Root config, README, editor settings
+#     deps    - Dependency updates (package.json, pyproject.toml)
+#     agent   - AI agent config (AGENTS.md, llms.txt, .agents/ skills)
+#
+# ---------------------[ BODY ]---------------------
+# (Optional) Motivation for the change.
+# Explain *why* you made this change, not *how*.
+# Wrap lines at 72 characters.

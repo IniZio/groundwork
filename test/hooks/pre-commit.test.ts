@@ -90,6 +90,8 @@ describe('pre-commit hook', () => {
       const [name, path] = nextFile()
       writeFileSync(path, String(fileCounter))
       execSync(`git add ${name}`, { cwd: tempRepo })
+      // _GW_TEST_DEFAULT_ROOT is a test-only seam: it overrides the hook's derived default plugin root so the
+      // default-path branch can be exercised hermetically without depending on a real installation.
       const { GROUNDWORK_PLUGIN_ROOT: _omit, ...rest } = process.env
       const result = spawnSync('git', ['commit', '-m', 'feat: test pre-commit hook'], {
         cwd: tempRepo,
@@ -115,5 +117,52 @@ describe('pre-commit hook', () => {
     })
     expect(result.status).toBe(0)
     expect(result.stderr).not.toContain('graph indexing is not running')
+  })
+
+  it('derived default from HOME: delegate at $HOME/.claude/plugins/groundwork found and invoked (sentinel proves invocation)', () => {
+    // Proves the hook derives the path from $HOME rather than a hardcoded literal.
+    // With the old hardcoded path the fake-HOME delegate is never reached → RED.
+    // With the new HOME-derived path the fake-HOME delegate fires → GREEN.
+    const fakeHome = mkdtempSync(join(tmpdir(), 'gw-pc-home-'))
+    try {
+      const fakeRoot = join(fakeHome, '.claude', 'plugins', 'groundwork')
+      makeFakeDelegate(fakeRoot, 0, 'HOME_DERIVED_DELEGATE_SENTINEL')
+      const [name, path] = nextFile()
+      writeFileSync(path, String(fileCounter))
+      execSync(`git add ${name}`, { cwd: tempRepo })
+      // Strip GROUNDWORK_PLUGIN_ROOT and _GW_TEST_DEFAULT_ROOT so the real default branch runs
+      const { GROUNDWORK_PLUGIN_ROOT: _omit, _GW_TEST_DEFAULT_ROOT: _omit2, ...rest } = process.env
+      const result = spawnSync('git', ['commit', '-m', 'feat: test pre-commit hook'], {
+        cwd: tempRepo,
+        env: { ...rest, GROUNDWORK_COMMIT_LINT: '0', HOME: fakeHome },
+        encoding: 'utf8',
+      })
+      expect(result.status).toBe(0)
+      expect(result.stderr).toContain('HOME_DERIVED_DELEGATE_SENTINEL')
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true })
+    }
+  })
+
+  it('no user-specific literal required: fresh HOME with no /home/newman reference → delegate invoked', () => {
+    // Proves portability: any user's HOME works, no machine-specific path is embedded.
+    const fakeHome = mkdtempSync(join(tmpdir(), 'gw-pc-portable-'))
+    try {
+      const fakeRoot = join(fakeHome, '.claude', 'plugins', 'groundwork')
+      makeFakeDelegate(fakeRoot, 0, 'PORTABLE_NO_LITERAL_SENTINEL')
+      const [name, path] = nextFile()
+      writeFileSync(path, String(fileCounter))
+      execSync(`git add ${name}`, { cwd: tempRepo })
+      const { GROUNDWORK_PLUGIN_ROOT: _omit, _GW_TEST_DEFAULT_ROOT: _omit2, ...rest } = process.env
+      const result = spawnSync('git', ['commit', '-m', 'feat: test pre-commit hook'], {
+        cwd: tempRepo,
+        env: { ...rest, GROUNDWORK_COMMIT_LINT: '0', HOME: fakeHome },
+        encoding: 'utf8',
+      })
+      expect(result.status).toBe(0)
+      expect(result.stderr).toContain('PORTABLE_NO_LITERAL_SENTINEL')
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true })
+    }
   })
 })

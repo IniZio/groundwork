@@ -35,9 +35,7 @@ For the reach-proof branch (when propagation from change to observation point is
 
 **Failure: Guard detects but result discarded before output** — a correct detection swallowed before printing produces a guard that is always silent on failure. A lint pass computed a violation count then discarded it before the exit-code path; tests stayed green. Assert the printed line and exit code, not the internal predicate.
 
-**Failure: Red→green proves sensitivity, not seam coverage** — stashing the fix and re-running proves the test bites but not that it exercises both surfaces of the seam it was meant to cover. A stash-based bite proof is necessary but not sufficient; read the test to confirm both surfaces run.
-
-**Failure: Freshness check proves consistency, not correctness** — comparing generated output against a fresh re-run of the same generator agrees even when both are wrong, leaving the content contract unverified. Pin the contract against an independent source, not a re-run of the same generator.
+**Failure: Check never observed its subject** — three instances share one shape: the check discards its scope argument; the fixture omits what production guarantees; the assertion accepts both the working and broken path equally. Full causal chains in [`reference/failure-modes.md`](reference/failure-modes.md).
 
 ## Remaining Modes
 
@@ -55,6 +53,9 @@ Full causal chains and corrections for the following modes are in [`reference/fa
 - Parity test blinded by narrowed input
 - Auditor shares the defect class
 - Guard blind to its own failure case
+- Red→green proves sensitivity, not seam coverage
+- Freshness check proves consistency, not correctness
+- Derived iteration is not a derived assertion
 
 ## Completion
 

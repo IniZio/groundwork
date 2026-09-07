@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 884f34074a644f6be8c79e836f95b9d7855882f99c5bd0c0c134b8e085ba4db6
+// @bundle-source-hash: c0b1b9832b42e8321796a1ca34512eb5ee6aab5a2fb53c99b1457205b8c3b848
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -794,8 +794,8 @@ async function runReport(args, cwd) {
     const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] };
     return okEnvelope("comment-density report", empty);
   }
-  const { flags } = parseFlags(args);
-  const relPaths = flags["files"] && typeof flags["files"] === "string" ? flags["files"].split(",").filter(Boolean) : touchedFilesSince(readSessionLedger(cwd), cwd);
+  const { flags, positionals } = parseFlags(args);
+  const relPaths = flags["files"] && typeof flags["files"] === "string" ? flags["files"].split(",").filter(Boolean) : positionals.length > 0 ? positionals : touchedFilesSince(readSessionLedger(cwd), cwd);
   const manifest = await buildManifest(relPaths, cwd);
   return okEnvelope("comment-density report", manifest);
 }

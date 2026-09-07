@@ -149,9 +149,11 @@ async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
     const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] }
     return okEnvelope('comment-density report', empty)
   }
-  const { flags } = parseFlags(args)
+  const { flags, positionals } = parseFlags(args)
   const relPaths = flags['files'] && typeof flags['files'] === 'string'
     ? flags['files'].split(',').filter(Boolean)
+    : positionals.length > 0
+    ? positionals
     : touchedFilesSince(readSessionLedger(cwd), cwd)
   const manifest = await buildManifest(relPaths, cwd)
   return okEnvelope('comment-density report', manifest)

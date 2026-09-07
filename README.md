@@ -119,7 +119,12 @@ pnpm run check   # typecheck
 
 **Groundwork repo (this repo):** commit-message linting is active via `core.hooksPath = hooks`, set by `pnpm install` → `scripts/setup-hooks.mjs`. To wire manually: `git config --local core.hooksPath "$(pwd)/hooks"`.
 
-**Any host repo you work in:** on each SessionStart, groundwork auto-installs a `commit-msg` hook into `.git/hooks/commit-msg` of the project you're working on. The hook enforces the same conventional-commit format and strips Claude attribution trailers. It never overwrites an existing foreign `commit-msg` hook (detected by the absence of a groundwork version header). To check state: `gw hooks status`. To remove: `gw hooks uninstall`. To suppress auto-install entirely: set `GROUNDWORK_COMMIT_MSG_HOOK=0` in your environment.
+**Any host repo you work in:** on each SessionStart, groundwork auto-installs a `commit-msg` hook into `.git/hooks/commit-msg` of the project you're working on. What the hook enforces depends on the repo:
+
+- **Repo has a `.gitmessage` that groundwork can parse confidently** — groundwork derives THAT project's commit convention from the template's first non-blank line (the specimen) and any type or scope enumeration it contains, then self-validates the derived rules against the repo's 30 most recent commits. If at least 10 usable commits are available and 85% or more pass the derived rules, those rules are enforced for that repo. The deriver recognises two structural shapes (`type(scope): subject` and `scope: subject`) and two enumeration forms (pipe-separated values and dash-list rows); it reads no template prose and falls back to universal-only if the template does not present one of these shapes or the pass rate falls below threshold.
+- **Repo has no `.gitmessage`, or the template cannot be confidently parsed** — universal-only rules apply: Claude attribution trailers (`Co-Authored-By:` naming Claude or Anthropic, `Claude-Session:` lines, `Generated with Claude Code` lines) are stripped silently; groundwork process vocabulary (`gate cycle`, slice ids, motive slugs, decision ids) is rejected. No format, length, or body rule is imposed on your commits.
+
+The hook never overwrites a `commit-msg` file it did not write (detected by a groundwork version header in the file); skips repos where `core.hooksPath` is already set; and fails safe — warns and exits 0 — if groundwork is later moved or uninstalled. Manual control: `gw hooks status`, `gw hooks install`, `gw hooks uninstall`. Kill-switches: `GROUNDWORK_COMMIT_MSG_HOOK=0` suppresses auto-install and disables the installed hook at commit time; `GROUNDWORK_COMMIT_LINT=0` disables all commit linting across all surfaces.
 
 ## Agents (Pi)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 450905f38108290be4d02d82e5fc9355baef7e4e66a881dba834f7424dddb905
+// @bundle-source-hash: ba6a1e647ff6f81b8e0f37e7f8463d25d7c1d105b62ac6f395c9d24accb5a105
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -937,26 +937,394 @@ var init_journal_emit = __esm(() => {
   SAFE_SESSION = /^[a-zA-Z0-9_-]{1,128}$/;
 });
 
+// hooks/lib/derive-convention.mjs
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "fs";
+import { execFileSync } from "child_process";
+import { join as join3 } from "path";
+function enforcedGroups(rules) {
+  return Array.isArray(rules?.enforce) ? rules.enforce : RULE_GROUPS;
+}
+function stripCommentMarker(line) {
+  return line.replace(/^\s*#\s?/, "");
+}
+function findSpecimenLine(lines) {
+  for (const raw of lines) {
+    const line = stripCommentMarker(raw).trim();
+    if (line !== "")
+      return line;
+  }
+  return null;
+}
+function parsePipeEnum(lines) {
+  for (const raw of lines) {
+    const line = stripCommentMarker(raw).trim();
+    const m = PIPE_ENUM.exec(line);
+    if (!m)
+      continue;
+    const values = m[2].split("|").map((v) => v.trim()).filter(Boolean);
+    if (values.length >= 2)
+      return { field: m[1].toLowerCase().replace(/s$/, ""), values };
+  }
+  return null;
+}
+function labelFieldAbove(lines, startIndex) {
+  for (let i = startIndex - 1;i >= 0 && i >= startIndex - 3; i -= 1) {
+    const prev = stripCommentMarker(lines[i]).toLowerCase();
+    if (prev.trim() === "")
+      continue;
+    if (/\bscopes?\b/.test(prev))
+      return "scope";
+    if (/\btypes?\b/.test(prev))
+      return "type";
+    return null;
+  }
+  return null;
+}
+function parseDashEnum(lines) {
+  let best = null;
+  let run2 = [];
+  let runStart = -1;
+  const flush = () => {
+    if (run2.length >= MIN_ENUM_ROWS && (best === null || run2.length > best.values.length)) {
+      best = { values: run2.slice(), startIndex: runStart };
+    }
+    run2 = [];
+    runStart = -1;
+  };
+  lines.forEach((raw, idx) => {
+    const line = stripCommentMarker(raw);
+    const m = DASH_ENUM_ROW.exec(line);
+    if (m) {
+      if (run2.length === 0)
+        runStart = idx;
+      run2.push(m[1]);
+    } else if (line.trim() !== "") {
+      flush();
+    }
+  });
+  flush();
+  if (best === null)
+    return null;
+  return { field: labelFieldAbove(lines, best.startIndex), values: best.values };
+}
+function detectBodySection(lines) {
+  return lines.some((raw) => BODY_SECTION_HEADING.test(stripCommentMarker(raw).trim()));
+}
+function parseTemplate(text, templatePath) {
+  if (typeof text !== "string" || text.trim() === "")
+    return null;
+  const lines = text.split(/\r?\n/);
+  const specimen = findSpecimenLine(lines);
+  if (specimen === null)
+    return null;
+  let shape = null;
+  if (SHAPE_TYPE_SCOPE.test(specimen))
+    shape = "type-scope";
+  else if (SHAPE_SCOPE_ONLY.test(specimen))
+    shape = "scope-only";
+  if (shape === null)
+    return null;
+  const boundField = shape === "type-scope" ? "type" : "scope";
+  const enumeration = parsePipeEnum(lines) ?? parseDashEnum(lines);
+  let types = null;
+  let scopes = null;
+  if (enumeration && (enumeration.field === null || enumeration.field === boundField)) {
+    const values = enumeration.values.filter((v) => BARE_TOKEN.test(v));
+    if (values.length >= 2) {
+      if (boundField === "type")
+        types = values;
+      else
+        scopes = values;
+    }
+  }
+  return {
+    shape,
+    types,
+    scopes,
+    bodyPermitted: true,
+    bodySectionDeclared: detectBodySection(lines),
+    templatePath: templatePath ?? null
+  };
+}
+function normalizeSubject(subject) {
+  let out = String(subject ?? "");
+  for (const stripper of SUBJECT_PREFIX_STRIPPERS)
+    out = out.replace(stripper, "");
+  return out.trim();
+}
+function checkSubject(subject, rules) {
+  const groups = enforcedGroups(rules);
+  const shapeOn = groups.includes("subjectShape");
+  const capOn = groups.includes("subjectCap");
+  const pass = { ok: true, reason: null };
+  const normalized = normalizeSubject(subject);
+  if (normalized === "")
+    return shapeOn ? { ok: false, reason: "empty subject" } : pass;
+  const m = /^([^:()]+?)(?:\(([^)]*)\))?(!?)\s*:\s+(\S.*)$/.exec(normalized);
+  if (m === null) {
+    if (!shapeOn)
+      return pass;
+    return { ok: false, reason: `subject does not match "${describeShape(rules)}"` };
+  }
+  const [, head, paren, bang, rest] = m;
+  if (shapeOn && bang === "!" && rules.breakingMarker !== true) {
+    return { ok: false, reason: `subject does not match "${describeShape(rules)}"` };
+  }
+  if (shapeOn && rest.trim() === "")
+    return { ok: false, reason: "subject text is empty" };
+  if (capOn && typeof rules.subjectCap === "number" && rest.length > rules.subjectCap) {
+    return { ok: false, reason: `subject text is ${rest.length} characters; limit is ${rules.subjectCap}` };
+  }
+  if (!shapeOn)
+    return pass;
+  const splitList = (v) => v.split(/[,+]/).map((s) => s.trim()).filter(Boolean);
+  if (rules.shape === "type-scope") {
+    const type = head.trim();
+    if (!BARE_TOKEN.test(type))
+      return { ok: false, reason: `"${type}" is not a valid type token` };
+    if (rules.types && !rules.types.includes(type)) {
+      return { ok: false, reason: `type "${type}" is not one of: ${rules.types.join(", ")}` };
+    }
+    if (paren !== undefined) {
+      const scopes = splitList(paren);
+      if (rules.scopePattern && scopes.length === 0) {
+        return { ok: false, reason: "empty scope in parentheses" };
+      }
+      for (const scope of scopes) {
+        if (rules.scopePattern && !rules.scopePattern.test(scope)) {
+          return { ok: false, reason: `"${scope}" is not a valid scope token` };
+        }
+        if (rules.scopes && !rules.scopes.includes(scope)) {
+          return { ok: false, reason: `scope "${scope}" is not one of: ${rules.scopes.join(", ")}` };
+        }
+      }
+    }
+    return { ok: true, reason: null };
+  }
+  const declared = splitList(head);
+  if (declared.length === 0)
+    return { ok: false, reason: "missing scope" };
+  for (const scope of declared) {
+    if (!BARE_TOKEN.test(scope))
+      return { ok: false, reason: `"${scope}" is not a valid scope token` };
+    if (rules.scopes && !rules.scopes.includes(scope)) {
+      return { ok: false, reason: `scope "${scope}" is not one of: ${rules.scopes.join(", ")}` };
+    }
+  }
+  return { ok: true, reason: null };
+}
+function checkMessage(message, rules) {
+  const groups = enforcedGroups(rules);
+  const violations = [];
+  const lines = String(message ?? "").split(`
+`);
+  const verdict = checkSubject(lines[0] ?? "", rules);
+  if (!verdict.ok)
+    violations.push({ line: 1, group: "subject", reason: verdict.reason });
+  if (!groups.includes("body") || rules.bodyPermitted === true)
+    return { violations };
+  const maxBodyLines = typeof rules.bodyMaxLines === "number" ? rules.bodyMaxLines : 0;
+  if (lines.length > 1 && lines[1] !== "") {
+    violations.push({
+      line: 2,
+      group: "body",
+      reason: "line 2 must be blank (the separator between subject and body)"
+    });
+  }
+  if (lines.length > 2) {
+    const bodyLines = lines.slice(2);
+    const nonBlankBody = bodyLines.filter((l) => l.trim() !== "");
+    if (nonBlankBody.length > maxBodyLines) {
+      violations.push({
+        line: 3,
+        group: "body",
+        reason: `body has ${nonBlankBody.length} non-blank lines; limit is ${maxBodyLines}`
+      });
+    }
+    bodyLines.forEach((bodyLine, idx) => {
+      if (/^\s*[-*\u2022]\s/.test(bodyLine)) {
+        violations.push({
+          line: 3 + idx,
+          group: "body",
+          reason: "body lines must not use bullet markers (-, *, \u2022); write plain prose"
+        });
+      }
+    });
+  }
+  return { violations };
+}
+function describeShape(rules) {
+  return rules.shape === "type-scope" ? "type(scope): subject" : "scope: subject";
+}
+function describeRules(rules) {
+  const parts = [`subject must look like "${describeShape(rules)}"`];
+  if (rules.types)
+    parts.push(`type is one of: ${rules.types.join(", ")}`);
+  if (rules.scopes)
+    parts.push(`scope is one of: ${rules.scopes.join(", ")}`);
+  parts.push("a body is permitted");
+  return parts.join("; ");
+}
+function usableSubjects(subjects) {
+  return subjects.map((s) => String(s ?? "").trim()).filter((s) => s !== "").filter((s) => !/^Revert\s+"/i.test(s)).filter((s) => !/^Merge\s+(branch|pull request|remote-tracking)\b/i.test(s));
+}
+function validateRules(rules, subjects, minPassRate = MIN_PASS_RATE) {
+  const sample = usableSubjects(subjects);
+  const failures = [];
+  let passed = 0;
+  for (const subject of sample) {
+    if (checkSubject(subject, rules).ok)
+      passed += 1;
+    else if (failures.length < MAX_REPORTED_FAILURES)
+      failures.push(subject);
+  }
+  const passRate = sample.length === 0 ? 0 : passed / sample.length;
+  return {
+    sampled: sample.length,
+    passed,
+    passRate,
+    threshold: minPassRate,
+    enoughHistory: sample.length >= MIN_SAMPLE_SIZE,
+    ok: sample.length >= MIN_SAMPLE_SIZE && passRate >= minPassRate,
+    failures
+  };
+}
+function usableMessages(messages) {
+  return messages.map((m) => String(m ?? "")).filter((m) => m.trim() !== "").filter((m) => usableSubjects([m.split(`
+`)[0] ?? ""]).length === 1);
+}
+function validateRulesPerGroup(rules, messages, minPassRate = MIN_PASS_RATE) {
+  const sample = usableMessages(messages);
+  const enoughHistory = sample.length >= MIN_SAMPLE_SIZE;
+  const groups = {};
+  for (const group of RULE_GROUPS) {
+    const scoped = { ...rules, enforce: [group] };
+    const failures = [];
+    let passed = 0;
+    for (const message of sample) {
+      if (checkMessage(message, scoped).violations.length === 0)
+        passed += 1;
+      else if (failures.length < MAX_REPORTED_FAILURES)
+        failures.push(message.split(`
+`)[0] ?? "");
+    }
+    const passRate = sample.length === 0 ? 0 : passed / sample.length;
+    groups[group] = {
+      sampled: sample.length,
+      passed,
+      passRate,
+      threshold: minPassRate,
+      enoughHistory,
+      ok: enoughHistory && passRate >= minPassRate,
+      failures
+    };
+  }
+  return { sampled: sample.length, enoughHistory, groups };
+}
+function readRecentMessages(repoRoot, limit = SAMPLE_SIZE) {
+  try {
+    const out = execFileSync("git", ["log", "--first-parent", "--no-merges", `-${limit}`, "--pretty=format:%B%x00"], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return out.split("\x00").map((record) => record.replace(/^\n+/, "").replace(/\s+$/, "")).filter((record) => record !== "");
+  } catch {
+    return null;
+  }
+}
+function readRecentSubjects(repoRoot, limit = SAMPLE_SIZE) {
+  try {
+    const out = execFileSync("git", ["log", "--first-parent", "--no-merges", `-${limit}`, "--pretty=format:%s"], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return out.split(`
+`).filter((line) => line.trim() !== "");
+  } catch {
+    return null;
+  }
+}
+function fallback(reason, validation = null) {
+  return { confident: false, rules: null, reason, validation };
+}
+function deriveConvention(repoRoot, opts = {}) {
+  const minPassRate = opts.minPassRate ?? MIN_PASS_RATE;
+  const templatePath = opts.templatePath ?? (repoRoot ? join3(repoRoot, ".gitmessage") : null);
+  let text = opts.templateText;
+  if (text === undefined) {
+    if (templatePath === null || !existsSync3(templatePath)) {
+      return fallback("no .gitmessage template found");
+    }
+    try {
+      text = readFileSync3(templatePath, "utf8");
+    } catch {
+      return fallback(".gitmessage could not be read");
+    }
+  }
+  const rules = parseTemplate(text, templatePath);
+  if (rules === null) {
+    return fallback(".gitmessage does not present a recognised subject shape");
+  }
+  const subjects = opts.subjects ?? readRecentSubjects(repoRoot, opts.sampleSize ?? SAMPLE_SIZE);
+  if (subjects === null) {
+    return fallback("commit history could not be read, so the derivation cannot be validated");
+  }
+  const validation = validateRules(rules, subjects, minPassRate);
+  if (!validation.enoughHistory) {
+    return fallback(`only ${validation.sampled} usable commits sampled; ${MIN_SAMPLE_SIZE} are needed to validate a derivation`, validation);
+  }
+  if (!validation.ok) {
+    return fallback(`derived rules match only ${(validation.passRate * 100).toFixed(1)}% of this repository's own recent commits (threshold ${(minPassRate * 100).toFixed(0)}%)`, validation);
+  }
+  return {
+    confident: true,
+    rules,
+    reason: `derived from ${templatePath ?? ".gitmessage"} and confirmed against ${validation.passed}/${validation.sampled} recent commits`,
+    validation
+  };
+}
+var SAMPLE_SIZE = 30, MIN_SAMPLE_SIZE = 10, MIN_PASS_RATE = 0.85, MAX_REPORTED_FAILURES = 5, RULE_GROUPS, SUBJECT_PREFIX_STRIPPERS, SHAPE_TYPE_SCOPE, SHAPE_SCOPE_ONLY, BARE_TOKEN, PIPE_ENUM, DASH_ENUM_ROW, MIN_ENUM_ROWS = 3, BODY_SECTION_HEADING;
+var init_derive_convention = __esm(() => {
+  RULE_GROUPS = ["subjectShape", "subjectCap", "body"];
+  SUBJECT_PREFIX_STRIPPERS = [
+    /^\s+/,
+    /^(?:[[(](?:[A-Z][A-Z0-9]{1,9}-\d+[\s,]*)+[\])]\s*)+/
+  ];
+  SHAPE_TYPE_SCOPE = /^<?types?>?\s*\(\s*<?scopes?>?\s*\)\s*:\s+\S.*$/i;
+  SHAPE_SCOPE_ONLY = /^<?scopes?>?\s*:\s+\S.*$/i;
+  BARE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+  PIPE_ENUM = /^(types?|scopes?)\s*:\s*([A-Za-z0-9._-]+(?:\s*\|\s*[A-Za-z0-9._-]+)+)\s*$/i;
+  DASH_ENUM_ROW = /^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,23})\s+[-\u2013\u2014]\s+\S.*$/;
+  BODY_SECTION_HEADING = /^[-=\s]*\[?\s*body\s*\]?[-=\s]*$/i;
+});
+
 // hooks/lib/commit-convention.mjs
 var exports_commit_convention = {};
 __export(exports_commit_convention, {
+  stripAttribution: () => stripAttribution,
   resolveRepoRoot: () => resolveRepoRoot,
+  resolveHostRules: () => resolveHostRules,
   lintMessage: () => lintMessage,
+  isGroundworkOwnRepo: () => isGroundworkOwnRepo,
   hasOwnCommitTemplate: () => hasOwnCommitTemplate,
   getMotiveSlugs: () => getMotiveSlugs,
+  clearHostRulesCache: () => clearHostRulesCache,
   SUBJECT_CAP: () => SUBJECT_CAP,
   SCOPE_PATTERN: () => SCOPE_PATTERN,
   PROCESS_VOCAB_DENYLIST: () => PROCESS_VOCAB_DENYLIST,
+  GROUNDWORK_RULES: () => GROUNDWORK_RULES,
   COMMIT_TYPES: () => COMMIT_TYPES,
   BODY_MAX_LINES: () => BODY_MAX_LINES,
   ATTRIBUTION_TRAILER_PATTERNS: () => ATTRIBUTION_TRAILER_PATTERNS
 });
-import { readdirSync, existsSync as existsSync3 } from "fs";
-import { execFileSync } from "child_process";
-import { join as join3 } from "path";
+import { readdirSync, existsSync as existsSync4 } from "fs";
+import { execFileSync as execFileSync2 } from "child_process";
+import { dirname as dirname2, join as join4 } from "path";
+import { fileURLToPath } from "url";
+function stripAttribution(text) {
+  let stripped = String(text ?? "");
+  for (const pattern of ATTRIBUTION_TRAILER_PATTERNS) {
+    stripped = stripped.replace(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"), "");
+  }
+  return stripped.replace(/\n+$/, "").trimEnd();
+}
 function resolveRepoRoot(cwd) {
   try {
-    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    return execFileSync2("git", ["rev-parse", "--show-toplevel"], {
       cwd: cwd ?? process.cwd(),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -968,69 +1336,105 @@ function resolveRepoRoot(cwd) {
 function hasOwnCommitTemplate(repoRoot) {
   if (typeof repoRoot !== "string" || repoRoot === "")
     return false;
-  return existsSync3(join3(repoRoot, ".gitmessage"));
+  return existsSync4(join4(repoRoot, ".gitmessage"));
+}
+function isGroundworkOwnRepo(repoRoot) {
+  if (typeof repoRoot !== "string" || repoRoot === "")
+    return false;
+  if (MODULE_DIR === join4(repoRoot, "hooks", "lib"))
+    return true;
+  return resolveRepoRoot(MODULE_DIR) === repoRoot;
+}
+function validateGroundworkConvention(repoRoot) {
+  const messages = readRecentMessages(repoRoot, SAMPLE_SIZE);
+  if (messages === null) {
+    return {
+      applies: true,
+      rules: null,
+      reason: "commit history could not be read, so groundwork's convention cannot be validated here"
+    };
+  }
+  const perGroup = validateRulesPerGroup(GROUNDWORK_RULES, messages.map(stripAttribution));
+  if (!perGroup.enoughHistory) {
+    return {
+      applies: true,
+      rules: null,
+      reason: `only ${perGroup.sampled} usable commits sampled; ${MIN_SAMPLE_SIZE} are needed to validate a convention`,
+      perGroup
+    };
+  }
+  const shape = perGroup.groups.subjectShape;
+  if (!shape.ok) {
+    return {
+      applies: true,
+      rules: null,
+      reason: `groundwork's subject convention matches only ${(shape.passRate * 100).toFixed(1)}% of this repository's own recent commits (threshold ${(MIN_PASS_RATE * 100).toFixed(0)}%)`,
+      perGroup
+    };
+  }
+  const enforce = RULE_GROUPS.filter((g) => perGroup.groups[g].ok);
+  const dropped = RULE_GROUPS.filter((g) => !perGroup.groups[g].ok);
+  const enforced = enforce.map((g) => GROUP_LABELS[g]).join(", ");
+  const droppedText = dropped.map((g) => `${GROUP_LABELS[g]} (${perGroup.groups[g].passed}/${perGroup.groups[g].sampled})`).join(", ");
+  return {
+    applies: false,
+    rules: { ...GROUNDWORK_RULES, enforce },
+    reason: dropped.length === 0 ? `groundwork's convention confirmed against ${shape.passed}/${shape.sampled} recent commits` : `groundwork's convention confirmed for ${enforced} against ${shape.sampled} recent commits; not enforced here: ${droppedText}`,
+    perGroup
+  };
+}
+function resolveHostRules(repoRoot) {
+  if (typeof repoRoot !== "string" || repoRoot === "") {
+    return { applies: false, rules: null, reason: "repository root could not be resolved" };
+  }
+  if (hostRulesCache.has(repoRoot))
+    return hostRulesCache.get(repoRoot);
+  let result;
+  if (isGroundworkOwnRepo(repoRoot)) {
+    result = { applies: false, rules: null, reason: "groundwork's own repository" };
+  } else if (!hasOwnCommitTemplate(repoRoot)) {
+    result = validateGroundworkConvention(repoRoot);
+  } else {
+    const derived = deriveConvention(repoRoot);
+    result = { applies: true, rules: derived.rules, reason: derived.reason };
+  }
+  hostRulesCache.set(repoRoot, result);
+  return result;
+}
+function clearHostRulesCache() {
+  hostRulesCache.clear();
 }
 function getMotiveSlugs(repoRoot) {
   try {
     const root = repoRoot ?? resolveRepoRoot();
-    return readdirSync(join3(root, ".groundwork", "motives"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    return readdirSync(join4(root, ".groundwork", "motives"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   } catch {
     return [];
   }
 }
 function lintMessage(text, opts) {
-  let stripped = text;
-  for (const pattern of ATTRIBUTION_TRAILER_PATTERNS) {
-    stripped = stripped.replace(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"), "");
-  }
-  stripped = stripped.replace(/\n+$/, "").trimEnd();
+  const stripped = stripAttribution(text);
   const violations = [];
   const lines = stripped.split(`
 `);
   const subject = lines[0] ?? "";
   const isAutoGenerated = /^\(fixup|squash\)! /i.test(subject);
-  const hostConvention = opts?.hostConvention === true;
-  if (!isAutoGenerated && !hostConvention) {
-    const typesJoined = COMMIT_TYPES.join("|");
-    const subjectRe = new RegExp(`^(${typesJoined})(\\([a-zA-Z0-9._,\\-]+\\))?!?: .+$`);
-    if (!subjectRe.test(subject)) {
-      violations.push({
-        line: 1,
-        reason: `subject must match type(scope)!: description \u2014 allowed types: ${COMMIT_TYPES.join(", ")}`
-      });
-    } else {
-      const afterColon = subject.replace(/^(?:[a-zA-Z]+)(?:\([^)]+\))?!?: /, "");
-      if (afterColon.length > SUBJECT_CAP) {
-        violations.push({
-          line: 1,
-          reason: `subject text is ${afterColon.length} characters; limit is ${SUBJECT_CAP}`
-        });
+  const host = opts?.repoRoot ? resolveHostRules(opts.repoRoot) : { applies: false, rules: null };
+  const hostConvention = host.applies;
+  const effectiveRules = hostConvention ? host.rules : host.rules ?? GROUNDWORK_RULES;
+  if (effectiveRules) {
+    for (const v of checkMessage(stripped, effectiveRules).violations) {
+      if (v.group !== "subject") {
+        violations.push({ line: v.line, reason: v.reason });
+        continue;
       }
-    }
-  }
-  if (!hostConvention && lines.length > 1 && lines[1] !== "") {
-    violations.push({
-      line: 2,
-      reason: "line 2 must be blank (the separator between subject and body)"
-    });
-  }
-  if (!hostConvention && lines.length > 2) {
-    const bodyLines = lines.slice(2);
-    const nonBlankBody = bodyLines.filter((l) => l.trim() !== "");
-    if (nonBlankBody.length > BODY_MAX_LINES) {
+      if (isAutoGenerated)
+        continue;
       violations.push({
-        line: 3,
-        reason: `body has ${nonBlankBody.length} non-blank lines; limit is ${BODY_MAX_LINES}`
+        line: v.line,
+        reason: hostConvention ? `${v.reason} \u2014 this repository's convention: ${describeRules(effectiveRules)}` : `${v.reason} \u2014 subject must match type(scope)!: description, allowed types: ${COMMIT_TYPES.join(", ")}`
       });
     }
-    bodyLines.forEach((bodyLine, idx) => {
-      if (/^\s*[-*\u2022]\s/.test(bodyLine)) {
-        violations.push({
-          line: 3 + idx,
-          reason: "body lines must not use bullet markers (-, *, \u2022); write plain prose"
-        });
-      }
-    });
   }
   lines.forEach((line, idx) => {
     for (const { pattern, label } of PROCESS_VOCAB_DENYLIST) {
@@ -1039,7 +1443,7 @@ function lintMessage(text, opts) {
       }
     }
   });
-  const slugs = opts?.motiveSlugs ?? getMotiveSlugs();
+  const slugs = opts?.motiveSlugs ?? getMotiveSlugs(opts?.repoRoot);
   if (slugs.length > 0) {
     lines.forEach((line, idx) => {
       for (const slug of slugs) {
@@ -1055,8 +1459,9 @@ function lintMessage(text, opts) {
   }
   return { stripped, violations };
 }
-var COMMIT_TYPES, SCOPE_PATTERN, SUBJECT_CAP = 72, BODY_MAX_LINES = 0, ATTRIBUTION_TRAILER_PATTERNS, PROCESS_VOCAB_DENYLIST;
+var COMMIT_TYPES, SCOPE_PATTERN, SUBJECT_CAP = 72, BODY_MAX_LINES = 0, ATTRIBUTION_TRAILER_PATTERNS, PROCESS_VOCAB_DENYLIST, GROUNDWORK_RULES, GROUP_LABELS, MODULE_DIR, hostRulesCache;
 var init_commit_convention = __esm(() => {
+  init_derive_convention();
   COMMIT_TYPES = [
     "feat",
     "fix",
@@ -1083,6 +1488,25 @@ var init_commit_convention = __esm(() => {
     { pattern: /\bT\d+\b/, label: "process vocabulary: slice id (e.g. T4)" },
     { pattern: /\bD-\d+\b/, label: "process vocabulary: decision id (e.g. D-7)" }
   ];
+  GROUNDWORK_RULES = {
+    shape: "type-scope",
+    types: COMMIT_TYPES,
+    scopes: null,
+    bodyPermitted: false,
+    bodyMaxLines: BODY_MAX_LINES,
+    bodySectionDeclared: false,
+    templatePath: null,
+    breakingMarker: true,
+    scopePattern: SCOPE_PATTERN,
+    subjectCap: SUBJECT_CAP
+  };
+  GROUP_LABELS = {
+    subjectShape: "subject shape",
+    subjectCap: "subject length",
+    body: "body policy"
+  };
+  MODULE_DIR = dirname2(fileURLToPath(import.meta.url));
+  hostRulesCache = new Map;
 });
 
 // src/gw/cli/commands/ledger.ts
@@ -1091,7 +1515,7 @@ __export(exports_ledger, {
   run: () => run2,
   LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
 });
-import { readFileSync as readFileSync3, writeFileSync, mkdirSync as mkdirSync2, renameSync } from "fs";
+import { readFileSync as readFileSync4, writeFileSync, mkdirSync as mkdirSync2, renameSync } from "fs";
 import { spawnSync as spawnSync2 } from "child_process";
 import { randomBytes } from "crypto";
 import path2 from "path";
@@ -1100,7 +1524,7 @@ function isLedgerSubcmd(s) {
 }
 function readLedger(runPath) {
   try {
-    return JSON.parse(readFileSync3(runPath, "utf8"));
+    return JSON.parse(readFileSync4(runPath, "utf8"));
   } catch {
     return null;
   }
@@ -1584,7 +2008,8 @@ ${done}/${all.length} slices complete
           const clRange = `${ledger.base_commit}..HEAD`;
           const logResult = spawnSync2("git", ["log", "--reverse", "--pretty=format:%H %s", clRange], { cwd, encoding: "utf8" });
           if (logResult.status === 0 && logResult.stdout.trim()) {
-            const { lintMessage: lintMessage2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+            const { lintMessage: lintMessage2, resolveRepoRoot: resolveRepoRoot2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+            const clRepoRoot = resolveRepoRoot2(cwd);
             const violating = [];
             for (const rawLine of logResult.stdout.split(`
 `).filter(Boolean)) {
@@ -1598,7 +2023,7 @@ ${done}/${all.length} slices complete
                 encoding: "utf8"
               });
               const message = msgResult.stdout ?? "";
-              if (lintMessage2(message).violations.length > 0) {
+              if (lintMessage2(message, { repoRoot: clRepoRoot }).violations.length > 0) {
                 violating.push({ shortSha, subject });
               }
             }
@@ -24475,7 +24900,7 @@ var init_wikilink = __esm(() => {
 });
 
 // src/gw/fm/set-property.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "fs";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "fs";
 function escapeRegex2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -24558,7 +24983,7 @@ ${key}: ${serializeValue(value)}
 `);
 }
 function setProperty(filePath, key, value) {
-  const src = readFileSync4(filePath, "utf8");
+  const src = readFileSync5(filePath, "utf8");
   const result = setPropertyInContent(src, key, value);
   writeFileSync2(filePath, result, "utf8");
 }
@@ -24670,8 +25095,8 @@ __export(exports_journal, {
   run: () => run3,
   JOURNAL_SUBCOMMANDS: () => JOURNAL_SUBCOMMANDS
 });
-import { existsSync as existsSync4, mkdirSync as mkdirSync4, readdirSync as readdirSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, readdirSync as readdirSync2, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "fs";
+import { join as join5 } from "path";
 function isJournalSubcmd(s) {
   return JOURNAL_SUBCOMMANDS.includes(s);
 }
@@ -24697,8 +25122,8 @@ function sanitizeTs(ts) {
   return ts.replace(/:/g, "-").replace(/\./g, "-");
 }
 function readMotiveJournalEvents(repoRoot, tracker, motive2) {
-  const journalDir = join4(repoRoot, tracker, "motives", motive2, "journal");
-  if (!existsSync4(journalDir))
+  const journalDir = join5(repoRoot, tracker, "motives", motive2, "journal");
+  if (!existsSync5(journalDir))
     return [];
   const events = [];
   let files;
@@ -24709,7 +25134,7 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync5(join4(journalDir, file2), "utf8");
+      const raw = readFileSync6(join5(journalDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["ts"],
@@ -24725,8 +25150,8 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
-  const decisionsDir = join4(repoRoot, tracker, "motives", motive2, "decisions");
-  if (!existsSync4(decisionsDir))
+  const decisionsDir = join5(repoRoot, tracker, "motives", motive2, "decisions");
+  if (!existsSync5(decisionsDir))
     return [];
   const events = [];
   let files;
@@ -24737,7 +25162,7 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync5(join4(decisionsDir, file2), "utf8");
+      const raw = readFileSync6(join5(decisionsDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["date"] ?? "",
@@ -24753,12 +25178,12 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readAllEvents(repoRoot, tracker, motiveFilter) {
-  const motivesRoot = join4(repoRoot, tracker, "motives");
+  const motivesRoot = join5(repoRoot, tracker, "motives");
   let motives;
   if (motiveFilter) {
     motives = [motiveFilter];
   } else {
-    if (!existsSync4(motivesRoot))
+    if (!existsSync5(motivesRoot))
       return [];
     try {
       motives = readdirSync2(motivesRoot);
@@ -24857,9 +25282,9 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     const ts = new Date().toISOString();
     const sanitizedTs = sanitizeTs(ts);
     const noteFilename = `${sanitizedTs}-${type}.md`;
-    const journalDir = join4(repoRoot, tracker, "motives", motive3, "journal");
+    const journalDir = join5(repoRoot, tracker, "motives", motive3, "journal");
     mkdirSync4(journalDir, { recursive: true });
-    const notePath = join4(journalDir, noteFilename);
+    const notePath = join5(journalDir, noteFilename);
     const fm = {
       ts,
       session: sessionId,
@@ -24893,13 +25318,13 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     if (events2.length > lastN)
       events2 = events2.slice(events2.length - lastN);
     if (events2.length === 0) {
-      const legacyJournalDir = join4(repoRoot, ".groundwork", "journal");
+      const legacyJournalDir = join5(repoRoot, ".groundwork", "journal");
       let legacyShards = [];
       try {
         legacyShards = readdirSync2(legacyJournalDir).filter((f) => f.endsWith(".jsonl"));
       } catch {}
       if (legacyShards.length > 0) {
-        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join4(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
+        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join5(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
       }
       return okEnvelope("journal show", { content: `no events found
 ` });
@@ -24970,8 +25395,8 @@ __export(exports_commit_lint, {
   run: () => run4,
   COMMIT_LINT_SUBCOMMANDS: () => COMMIT_LINT_SUBCOMMANDS
 });
-import { readFileSync as readFileSync6 } from "fs";
-import { join as join5 } from "path";
+import { readFileSync as readFileSync7 } from "fs";
+import { join as join6 } from "path";
 import { spawnSync as spawnSync3 } from "child_process";
 function parseFlags4(args) {
   const flags = {};
@@ -24997,8 +25422,8 @@ function readSessionLedger2(cwd) {
   if (!sessionId)
     return null;
   try {
-    const p = join5(projectDir, ".groundwork", "runs", `${sessionId}.json`);
-    return JSON.parse(readFileSync6(p, "utf8"));
+    const p = join6(projectDir, ".groundwork", "runs", `${sessionId}.json`);
+    return JSON.parse(readFileSync7(p, "utf8"));
   } catch {
     return null;
   }
@@ -25027,7 +25452,8 @@ async function runReport2(args, cwd) {
   if (logResult.status !== 0) {
     return errEnvelope("commit-lint report", "GIT_ERROR", logResult.stderr || "git log failed", 1);
   }
-  const { lintMessage: lintMessage2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+  const { lintMessage: lintMessage2, resolveRepoRoot: resolveRepoRoot2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+  const repoRoot = resolveRepoRoot2(cwd);
   const violating = [];
   for (const rawLine of logResult.stdout.split(`
 `).filter(Boolean)) {
@@ -25038,7 +25464,7 @@ async function runReport2(args, cwd) {
     const shortSha = sha.slice(0, 7);
     const msgResult = spawnSync3("git", ["log", "-1", "--format=%B", sha], { cwd, encoding: "utf8" });
     const message = msgResult.stdout ?? "";
-    const violations = lintMessage2(message).violations;
+    const violations = lintMessage2(message, { repoRoot }).violations;
     if (violations.length > 0) {
       violating.push({ sha, shortSha, subject, violations });
     }
@@ -25063,7 +25489,8 @@ async function runRemediatePlan2(args, cwd) {
   if (logResult.status !== 0) {
     return errEnvelope("commit-lint remediate-plan", "GIT_ERROR", logResult.stderr || "git log failed", 1);
   }
-  const { lintMessage: lintMessage2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+  const { lintMessage: lintMessage2, resolveRepoRoot: resolveRepoRoot2 } = await Promise.resolve().then(() => (init_commit_convention(), exports_commit_convention));
+  const repoRoot = resolveRepoRoot2(cwd);
   const SQUASH_RE = /^(fixup!|squash!|wip\b|fix typo|address review|typo|oops|cleanup|nit\b)/i;
   const lines = [];
   lines.push(`# Interactive rebase plan for: ${range}`);
@@ -25082,7 +25509,7 @@ async function runRemediatePlan2(args, cwd) {
     const shortSha = sha.slice(0, 7);
     const msgResult = spawnSync3("git", ["log", "-1", "--format=%B", sha], { cwd, encoding: "utf8" });
     const message = msgResult.stdout ?? "";
-    const violations = lintMessage2(message).violations;
+    const violations = lintMessage2(message, { repoRoot }).violations;
     if (SQUASH_RE.test(subject)) {
       lines.push(`squash ${shortSha} ${subject}`);
     } else if (violations.length > 0) {
@@ -25166,7 +25593,8 @@ function renderCommitMsgHook({ hooksLibPath, version: version2 }) {
     "cleaned = cleaned.replace(new RegExp('^' + escapedChar + '.*$', 'gm'), '')",
     "cleaned = cleaned.replace(/\\n{3,}/g, '\\n\\n')",
     "",
-    "const { stripped, violations } = lintMessage(cleaned)",
+    "const repoRoot = process.env.REPO_ROOT || null",
+    "const { stripped, violations } = lintMessage(cleaned, { repoRoot })",
     "",
     "writeFileSync(msgFile, stripped.trimEnd() + '\\n')",
     "",
@@ -25186,7 +25614,8 @@ function renderCommitMsgHook({ hooksLibPath, version: version2 }) {
     'GROUNDWORK_HOOKS_LIB="' + hooksLibPath + '"',
     `COMMENT_CHAR="$(git config --get core.commentChar 2>/dev/null || echo '#')"`,
     `CLEANUP_MODE="$(git config --get commit.cleanup 2>/dev/null || echo 'default')"`,
-    `COMMIT_MSG_FILE="$1" GROUNDWORK_HOOKS_LIB="$GROUNDWORK_HOOKS_LIB" COMMENT_CHAR="$COMMENT_CHAR" CLEANUP_MODE="$CLEANUP_MODE" exec node --input-type=module <<'EOF'`,
+    `REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"`,
+    `COMMIT_MSG_FILE="$1" GROUNDWORK_HOOKS_LIB="$GROUNDWORK_HOOKS_LIB" COMMENT_CHAR="$COMMENT_CHAR" CLEANUP_MODE="$CLEANUP_MODE" REPO_ROOT="$REPO_ROOT" exec node --input-type=module <<'EOF'`,
     ...nodeLines,
     "EOF",
     ""
@@ -25197,9 +25626,9 @@ function renderCommitMsgHook({ hooksLibPath, version: version2 }) {
 var HOOK_MARKER = "GROUNDWORK-COMMIT-MSG";
 
 // src/gw/hooks/installer.ts
-import { fileURLToPath } from "url";
-import { dirname as dirname2, resolve, join as join6 } from "path";
-import { readFileSync as readFileSync7, existsSync as existsSync5, mkdirSync as mkdirSync5, writeFileSync as writeFileSync4, rmSync, chmodSync } from "fs";
+import { fileURLToPath as fileURLToPath2 } from "url";
+import { dirname as dirname3, resolve, join as join7 } from "path";
+import { readFileSync as readFileSync8, existsSync as existsSync6, mkdirSync as mkdirSync5, writeFileSync as writeFileSync4, rmSync, chmodSync } from "fs";
 import { spawnSync as spawnSync4 } from "child_process";
 function _findGroundworkRoot() {
   const candidates = [
@@ -25208,11 +25637,11 @@ function _findGroundworkRoot() {
   ];
   for (const root of candidates) {
     try {
-      const version2 = JSON.parse(readFileSync7(join6(root, "package.json"), "utf8")).version;
-      return { version: version2, hooksLibPath: join6(root, "hooks", "lib") };
+      const version2 = JSON.parse(readFileSync8(join7(root, "package.json"), "utf8")).version;
+      return { version: version2, hooksLibPath: join7(root, "hooks", "lib") };
     } catch {}
   }
-  return { version: "0.0.0", hooksLibPath: join6(_dir, "..", "..", "..", "hooks", "lib") };
+  return { version: "0.0.0", hooksLibPath: join7(_dir, "..", "..", "..", "hooks", "lib") };
 }
 function extractVersion(content) {
   const prefix = "# GROUNDWORK-COMMIT-MSG v";
@@ -25230,8 +25659,8 @@ function resolveLayout(cwd) {
   const repoRoot = toplevel.stdout.trim();
   const commonDirResult = spawnSync4("git", ["rev-parse", "--git-common-dir"], { cwd: repoRoot, encoding: "utf8" });
   const commonGitDir = commonDirResult.status === 0 ? commonDirResult.stdout.trim() : ".git";
-  const hooksDir = join6(resolve(repoRoot, commonGitDir), "hooks");
-  return { repoRoot, hookPath: join6(hooksDir, "commit-msg"), hooksDir };
+  const hooksDir = join7(resolve(repoRoot, commonGitDir), "hooks");
+  return { repoRoot, hookPath: join7(hooksDir, "commit-msg"), hooksDir };
 }
 async function installHook(opts) {
   const cwd = opts?.cwd ?? process.cwd();
@@ -25242,8 +25671,8 @@ async function installHook(opts) {
     const { repoRoot, hookPath, hooksDir } = layout2;
     mkdirSync5(hooksDir, { recursive: true });
     const content = renderCommitMsgHook2({ hooksLibPath: HOOKS_LIB_PATH, version: CURRENT_VERSION });
-    if (existsSync5(hookPath)) {
-      const existing = readFileSync7(hookPath, "utf8");
+    if (existsSync6(hookPath)) {
+      const existing = readFileSync8(hookPath, "utf8");
       if (!isGroundworkHook2(existing))
         return { status: "skipped-foreign", repoRoot, hookPath };
       const fromVersion = extractVersion(existing);
@@ -25267,9 +25696,9 @@ async function uninstallHook(opts) {
     if (!layout2)
       return { status: "not-a-git-repo", cwd };
     const { repoRoot, hookPath } = layout2;
-    if (!existsSync5(hookPath))
+    if (!existsSync6(hookPath))
       return { status: "not-installed", repoRoot };
-    const content = readFileSync7(hookPath, "utf8");
+    const content = readFileSync8(hookPath, "utf8");
     if (!isGroundworkHook2(content))
       return { status: "skipped-foreign", repoRoot, hookPath };
     rmSync(hookPath);
@@ -25285,9 +25714,9 @@ async function getHookStatus(opts) {
     if (!layout2)
       return { status: "not-a-git-repo", cwd };
     const { repoRoot, hookPath } = layout2;
-    if (!existsSync5(hookPath))
+    if (!existsSync6(hookPath))
       return { status: "none", repoRoot };
-    const content = readFileSync7(hookPath, "utf8");
+    const content = readFileSync8(hookPath, "utf8");
     if (isGroundworkHook2(content))
       return { status: "ours", repoRoot, version: extractVersion(content) ?? "" };
     return { status: "foreign", repoRoot, hookPath };
@@ -25297,7 +25726,7 @@ async function getHookStatus(opts) {
 }
 var _dir, CURRENT_VERSION, HOOKS_LIB_PATH, renderCommitMsgHook2, isGroundworkHook2;
 var init_installer = __esm(async () => {
-  _dir = dirname2(fileURLToPath(import.meta.url));
+  _dir = dirname3(fileURLToPath2(import.meta.url));
   ({ version: CURRENT_VERSION, hooksLibPath: HOOKS_LIB_PATH } = _findGroundworkRoot());
   ({ renderCommitMsgHook: renderCommitMsgHook2, isGroundworkHook: isGroundworkHook2 } = await Promise.resolve().then(() => exports_commit_msg_template));
 });
@@ -25413,7 +25842,7 @@ var exports_cat = {};
 __export(exports_cat, {
   run: () => run6
 });
-import { readFileSync as readFileSync8 } from "fs";
+import { readFileSync as readFileSync9 } from "fs";
 import path5 from "path";
 async function run6(args, cwd) {
   if (args.length === 0) {
@@ -25421,7 +25850,7 @@ async function run6(args, cwd) {
   }
   const filePath = path5.resolve(cwd, args[0]);
   try {
-    const content = readFileSync8(filePath, "utf8");
+    const content = readFileSync9(filePath, "utf8");
     return okEnvelope("cat", { path: filePath, content });
   } catch {
     return errEnvelope("cat", "READ_ERROR", `Cannot read file: ${filePath}`, 1);
@@ -25516,7 +25945,7 @@ var exports_get_property = {};
 __export(exports_get_property, {
   run: () => run8
 });
-import { readFileSync as readFileSync9 } from "fs";
+import { readFileSync as readFileSync10 } from "fs";
 import path6 from "path";
 async function run8(args, cwd) {
   if (args.length < 2) {
@@ -25525,7 +25954,7 @@ async function run8(args, cwd) {
   const filePath = path6.resolve(cwd, args[0]);
   const key = args[1];
   try {
-    const src = readFileSync9(filePath, "utf8");
+    const src = readFileSync10(filePath, "utf8");
     const { data } = import_gray_matter3.default(src);
     const value = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
     return okEnvelope("get-property", { path: filePath, key, value });
@@ -25607,7 +26036,7 @@ var exports_append = {};
 __export(exports_append, {
   run: () => run10
 });
-import { readFileSync as readFileSync10, writeFileSync as writeFileSync5 } from "fs";
+import { readFileSync as readFileSync11, writeFileSync as writeFileSync5 } from "fs";
 import path8 from "path";
 async function run10(args, cwd) {
   if (args.length < 2) {
@@ -25616,7 +26045,7 @@ async function run10(args, cwd) {
   const filePath = path8.resolve(cwd, args[0]);
   const text = args.slice(1).join(" ");
   try {
-    const existing = readFileSync10(filePath, "utf8");
+    const existing = readFileSync11(filePath, "utf8");
     const separator = existing.endsWith(`
 `) ? "" : `
 `;
@@ -25634,10 +26063,10 @@ var exports_link = {};
 __export(exports_link, {
   run: () => run11
 });
-import { readFileSync as readFileSync11 } from "fs";
+import { readFileSync as readFileSync12 } from "fs";
 import path9 from "path";
 function appendWikilink(filePath, key, targetPath) {
-  const src = readFileSync11(filePath, "utf8");
+  const src = readFileSync12(filePath, "utf8");
   const { data } = import_gray_matter4.default(src);
   const link = wikilink(path9.basename(targetPath, ".md"));
   let list;
@@ -25687,20 +26116,20 @@ var init_link = __esm(() => {
 
 // src/gw/store/seal/index.ts
 import { createHmac, timingSafeEqual, randomBytes as randomBytes2 } from "crypto";
-import { readFileSync as readFileSync12, writeFileSync as writeFileSync6, existsSync as existsSync6, chmodSync as chmodSync2 } from "fs";
-import { join as join7 } from "path";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync6, existsSync as existsSync7, chmodSync as chmodSync2 } from "fs";
+import { join as join8 } from "path";
 function sealPath(notePath) {
   return `${notePath}.seal`;
 }
 function keyPath(motiveDir2) {
-  return join7(motiveDir2, ".seal.key");
+  return join8(motiveDir2, ".seal.key");
 }
 function readKey(motiveDir2) {
   const kp = keyPath(motiveDir2);
-  if (!existsSync6(kp)) {
+  if (!existsSync7(kp)) {
     throw new Error(`Seal key not found: ${kp}`);
   }
-  return readFileSync12(kp);
+  return readFileSync13(kp);
 }
 function canonicalMachineState(fm, machineKeys) {
   const sorted = [...machineKeys].sort();
@@ -25717,10 +26146,10 @@ function computeHmac(key, canonical) {
 }
 function verifySeal(notePath, motiveDir2, fm, machineKeys) {
   const sp = sealPath(notePath);
-  if (!existsSync6(sp)) {
+  if (!existsSync7(sp)) {
     return null;
   }
-  const stored = readFileSync12(sp, "utf8").trim();
+  const stored = readFileSync13(sp, "utf8").trim();
   const key = readKey(motiveDir2);
   const canonical = canonicalMachineState(fm, machineKeys);
   const computed = computeHmac(key, canonical);
@@ -25731,7 +26160,7 @@ function verifySeal(notePath, motiveDir2, fm, machineKeys) {
   return match ? true : false;
 }
 function verifyNote(notePath, motiveDir2, kind) {
-  const content = readFileSync12(notePath, "utf8");
+  const content = readFileSync13(notePath, "utf8");
   const { data } = import_gray_matter5.default(content);
   const machineKeys = kind === "slice" ? SLICE_MACHINE_KEYS : GATE_MACHINE_KEYS;
   return verifySeal(notePath, motiveDir2, data, machineKeys);
@@ -25766,8 +26195,8 @@ var init_seal = __esm(() => {
 });
 
 // src/gw/store/slice/index.ts
-import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, mkdirSync as mkdirSync6, readdirSync as readdirSync3 } from "fs";
-import { join as join8, dirname as dirname3 } from "path";
+import { readFileSync as readFileSync14, writeFileSync as writeFileSync7, mkdirSync as mkdirSync6, readdirSync as readdirSync3 } from "fs";
+import { join as join9, dirname as dirname4 } from "path";
 function decodeBlockedBy(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
@@ -25782,7 +26211,7 @@ function decodeDecisions(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
 function readSlice(notePath) {
-  const raw = readFileSync13(notePath, "utf8");
+  const raw = readFileSync14(notePath, "utf8");
   const { data } = import_gray_matter6.default(raw);
   if (Array.isArray(data["blocked_by"])) {
     data["blocked_by"] = decodeBlockedBy(data["blocked_by"]);
@@ -25798,7 +26227,7 @@ function readSlice(notePath) {
     data["decisions"] = decodeDecisions([data["decisions"]]);
   }
   const parsed = SliceSchema.parse(data);
-  const mDir = dirname3(notePath);
+  const mDir = dirname4(notePath);
   const sealed = verifyNote(notePath, mDir, "slice");
   return { ...parsed, sealed };
 }
@@ -25819,7 +26248,7 @@ function listSlices(repoRoot, tracker, motive2) {
     if (entry.startsWith("gate-"))
       continue;
     try {
-      slices.push(readSlice(join8(dir, entry)));
+      slices.push(readSlice(join9(dir, entry)));
     } catch {}
   }
   return slices;
@@ -25836,13 +26265,13 @@ var init_slice2 = __esm(() => {
 });
 
 // src/gw/store/gate/index.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync14, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync15, writeFileSync as writeFileSync8 } from "fs";
 import path10 from "path";
 function readGate(repoRoot, tracker, motive2, sessionId) {
   const notePath = gateNotePath(repoRoot, tracker, motive2, sessionId);
-  if (!existsSync7(notePath))
+  if (!existsSync8(notePath))
     return null;
-  const raw = readFileSync14(notePath, "utf8");
+  const raw = readFileSync15(notePath, "utf8");
   const { data } = import_gray_matter7.default(raw);
   const parsed = GateSchema.parse(data);
   const mDir = path10.dirname(notePath);
@@ -25858,8 +26287,8 @@ var init_gate2 = __esm(() => {
 
 // src/gw/hook/stop-gate.ts
 import {
-  existsSync as existsSync8,
-  readFileSync as readFileSync15,
+  existsSync as existsSync9,
+  readFileSync as readFileSync16,
   readdirSync as readdirSync4,
   closeSync as closeSync2,
   mkdirSync as mkdirSync8,
@@ -25971,7 +26400,7 @@ function sealKeyPath({ projectDir, sessionId }) {
 }
 function readKey2({ projectDir, sessionId }) {
   const kp = sealKeyPath({ projectDir, sessionId });
-  return readFileSync15(kp);
+  return readFileSync16(kp);
 }
 function sleepSync(ms) {
   try {
@@ -26039,7 +26468,7 @@ function mutateLedger(ledgerPath, fn) {
   withLock(ledgerPath, () => {
     let ledger = null;
     try {
-      ledger = JSON.parse(readFileSync15(ledgerPath, "utf8"));
+      ledger = JSON.parse(readFileSync16(ledgerPath, "utf8"));
     } catch {
       ledger = null;
     }
@@ -26141,7 +26570,7 @@ function emitHookEvent(opts) {
         const dir = projectDir;
         l = null;
         try {
-          l = JSON.parse(readFileSync15(path11.join(dir, ".groundwork", "run.json"), "utf8"));
+          l = JSON.parse(readFileSync16(path11.join(dir, ".groundwork", "run.json"), "utf8"));
         } catch {
           l = null;
         }
@@ -26154,7 +26583,7 @@ function emitHookEvent(opts) {
             if (!f.endsWith(".json"))
               continue;
             try {
-              const candidate = JSON.parse(readFileSync15(path11.join(dir, ".groundwork", "runs", f), "utf8"));
+              const candidate = JSON.parse(readFileSync16(path11.join(dir, ".groundwork", "runs", f), "utf8"));
               if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
                 l = candidate;
                 break;
@@ -26212,7 +26641,7 @@ function readAllEvents2(journalDir) {
     const events = [];
     for (const f of files) {
       try {
-        const content = readFileSync15(path11.join(journalDir, f), "utf8");
+        const content = readFileSync16(path11.join(journalDir, f), "utf8");
         for (const line of content.split(`
 `)) {
           const trimmed = line.trim();
@@ -26246,7 +26675,7 @@ function filterEvents(events, { motive: motive2 }) {
 function charterOpenItemCount(projectDir, slug) {
   try {
     const charterPath = path11.join(projectDir, ".groundwork", "motives", slug, "motive.md");
-    const content = readFileSync15(charterPath, "utf8");
+    const content = readFileSync16(charterPath, "utf8");
     const matches = content.match(/^-\s+(TBD|TBR)-\S+:/gim) ?? [];
     return matches.length;
   } catch {
@@ -26499,7 +26928,7 @@ function detectYield(input2) {
     return null;
   let raw;
   try {
-    raw = readFileSync15(transcriptPath, "utf8");
+    raw = readFileSync16(transcriptPath, "utf8");
   } catch {
     return null;
   }
@@ -26597,7 +27026,7 @@ function findNewLayoutLedger(projectDir, sessionId) {
     return null;
   try {
     const motivesDir = path11.join(projectDir, NEW_LAYOUT_TRACKER, "motives");
-    if (!existsSync8(motivesDir))
+    if (!existsSync9(motivesDir))
       return null;
     let slugs;
     try {
@@ -26671,7 +27100,7 @@ var SAFE_ID, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", ru
         sessionId: sessionId || undefined
       });
       try {
-        ledger = JSON.parse(readFileSync15(ledgerPath, "utf8"));
+        ledger = JSON.parse(readFileSync16(ledgerPath, "utf8"));
       } catch {
         return allow();
       }
@@ -26726,9 +27155,9 @@ var SAFE_ID, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", ru
       const trivialEscape = slices.length <= 2 && !slices.some((s) => s?.kind === "impl") || /trivial|single-line|config|typo/i.test(brief);
       if (!trivialEscape) {
         const planRef = ledger.plan_ref;
-        const planRefOk = typeof planRef === "string" && planRef.length > 0 && existsSync8(planRef);
+        const planRefOk = typeof planRef === "string" && planRef.length > 0 && existsSync9(planRef);
         const motiveSlug = resolveMotiveSlug(ledger.motive_ref) ?? (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
-        const motiveOk = motiveSlug !== null && existsSync8(path11.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
+        const motiveOk = motiveSlug !== null && existsSync9(path11.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
         const planSliceComplete = slices.some((s) => (s?.kind === "plan" || s?.kind === "design") && s?.status === "complete");
         if (!planRefOk && !motiveOk && !planSliceComplete) {
           return block("Non-trivial run has no plan artifact (plan_ref missing/absent on disk, motive/motive_ref charter missing, and no plan/design slice complete). Run interview or planner to produce a plan, or set motive/motive_ref to a slug whose charter exists at .groundwork/motives/<slug>/motive.md.");
@@ -26766,12 +27195,12 @@ var init_stop_gate = __esm(() => {
 });
 
 // src/gw/hook/session-reminder.ts
-import { existsSync as existsSync9 } from "fs";
+import { existsSync as existsSync10 } from "fs";
 import { spawnSync as spawnSync6 } from "child_process";
-import { resolve as resolve2, dirname as dirname4 } from "path";
-import { fileURLToPath as fileURLToPath2 } from "url";
+import { resolve as resolve2, dirname as dirname5 } from "path";
+import { fileURLToPath as fileURLToPath3 } from "url";
 var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run13 = async (input2, _env) => {
-  const useBundle = existsSync9(BUNDLE);
+  const useBundle = existsSync10(BUNDLE);
   const runtime = useBundle ? "bun" : "node";
   const script = useBundle ? BUNDLE : LEGACY_MJS;
   const result = spawnSync6(runtime, [script], {
@@ -26787,7 +27216,7 @@ var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run13 = async (input2, _env) => {
   };
 };
 var init_session_reminder = __esm(() => {
-  __dir = dirname4(fileURLToPath2(import.meta.url));
+  __dir = dirname5(fileURLToPath3(import.meta.url));
   _repoRoot = process.env.GW_REPO_ROOT ?? resolve2(__dir, "../../../");
   LEGACY_MJS = resolve2(_repoRoot, "hooks/session-reminder.mjs");
   BUNDLE = resolve2(_repoRoot, "dist/hooks-session-reminder.mjs");
@@ -26904,7 +27333,7 @@ var init_nesting_guard = __esm(() => {
 });
 
 // src/gw/hook/agent-model-guard.ts
-import { readFileSync as readFileSync16, appendFileSync } from "fs";
+import { readFileSync as readFileSync17, appendFileSync } from "fs";
 import path13 from "path";
 function passthrough2() {
   return { stdout: "", stderr: "", exit: 0 };
@@ -26993,7 +27422,7 @@ function loadRegistry(env) {
   } catch {}
   for (const p of candidates) {
     try {
-      return JSON.parse(readFileSync16(p, "utf8"));
+      return JSON.parse(readFileSync17(p, "utf8"));
     } catch {}
   }
   return null;
@@ -27455,7 +27884,7 @@ var init_piped_exit_code_guard = __esm(() => {
 
 // src/gw/hook/struggle-detector.ts
 import path17 from "path";
-import { readFileSync as readFileSync17, writeFileSync as writeFileSync10, mkdirSync as mkdirSync9, appendFileSync as appendFileSync2, openSync as openSync3, writeSync as writeSync3, closeSync as closeSync3, readdirSync as readdirSync5 } from "fs";
+import { readFileSync as readFileSync18, writeFileSync as writeFileSync10, mkdirSync as mkdirSync9, appendFileSync as appendFileSync2, openSync as openSync3, writeSync as writeSync3, closeSync as closeSync3, readdirSync as readdirSync5 } from "fs";
 import { createHash as createHash2 } from "crypto";
 function toSlug(str2) {
   return String(str2).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -27527,7 +27956,7 @@ function resolveMotive(opts) {
     const dir = projectDir ?? process.cwd();
     l = null;
     try {
-      l = JSON.parse(readFileSync17(path17.join(dir, ".groundwork", "run.json"), "utf8"));
+      l = JSON.parse(readFileSync18(path17.join(dir, ".groundwork", "run.json"), "utf8"));
     } catch {
       l = null;
     }
@@ -27540,7 +27969,7 @@ function resolveMotive(opts) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const candidate = JSON.parse(readFileSync17(path17.join(dir, ".groundwork", "runs", f), "utf8"));
+          const candidate = JSON.parse(readFileSync18(path17.join(dir, ".groundwork", "runs", f), "utf8"));
           if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
             l = candidate;
             break;
@@ -27584,7 +28013,7 @@ function tallyPath(projectDir, sessionId) {
 }
 function readTally(tallyFile) {
   try {
-    const raw = readFileSync17(tallyFile, "utf8");
+    const raw = readFileSync18(tallyFile, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object")
       return parsed;
@@ -27770,7 +28199,7 @@ var init_struggle_detector = __esm(() => {
 });
 
 // src/gw/hook/comment-density-guard.ts
-import { readFileSync as readFileSync18 } from "fs";
+import { readFileSync as readFileSync19 } from "fs";
 import path18 from "path";
 function passthrough7() {
   return { stdout: "", stderr: "", exit: 0 };
@@ -27845,7 +28274,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in ever
         const newStr = toolInput.new_string;
         if (typeof oldStr !== "string" || typeof newStr !== "string")
           return passthrough7();
-        const existing = readFileSync18(filePath, "utf-8");
+        const existing = readFileSync19(filePath, "utf-8");
         content = applyEdit(existing, {
           old_string: oldStr,
           new_string: newStr,
@@ -27855,7 +28284,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in ever
         const edits = toolInput.edits;
         if (!Array.isArray(edits))
           return passthrough7();
-        const existing = readFileSync18(filePath, "utf-8");
+        const existing = readFileSync19(filePath, "utf-8");
         content = existing;
         for (const e of edits) {
           if (!e || typeof e !== "object")
@@ -27906,9 +28335,8 @@ var init_comment_density_guard = __esm(() => {
 });
 
 // src/gw/hook/commit-message-guard.ts
-import { readFileSync as readFileSync19, statSync as statSync2 } from "fs";
-import { dirname as dirname5, resolve as resolve3 } from "path";
-import { fileURLToPath as fileURLToPath3 } from "url";
+import { readFileSync as readFileSync20, statSync as statSync2 } from "fs";
+import { resolve as resolve3 } from "path";
 function passthrough8() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27926,17 +28354,8 @@ function deny6(reason) {
     exit: 0
   };
 }
-function usesHostConvention(cwd) {
-  const groundworkRoot = resolveRepoRoot(dirname5(fileURLToPath3(import.meta.url)));
-  if (groundworkRoot === null)
-    return false;
-  const repoRoot = resolveRepoRoot(cwd);
-  if (repoRoot === null || repoRoot === groundworkRoot)
-    return false;
-  return hasOwnCommitTemplate(repoRoot);
-}
 function lintAndDecide(message, cwd) {
-  const result = lintMessage(message, { hostConvention: usesHostConvention(cwd) });
+  const result = lintMessage(message, { repoRoot: resolveRepoRoot(cwd) });
   if (result.violations.length === 0)
     return passthrough8();
   const lines = [...result.violations].sort((a, b) => a.line - b.line).map((v) => `  line ${v.line}: ${v.reason}`);
@@ -28021,7 +28440,7 @@ var run22 = async (rawInput, env) => {
         const st = statSync2(filePath);
         if (!st.isFile())
           return passthrough8();
-        fileMsg = readFileSync19(filePath, "utf-8");
+        fileMsg = readFileSync20(filePath, "utf-8");
       } catch {
         return passthrough8();
       }
@@ -28152,16 +28571,16 @@ var init_hook2 = __esm(async () => {
 
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
-import { existsSync as existsSync10 } from "fs";
+import { existsSync as existsSync11 } from "fs";
 import path19 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
   const activeDir = path19.join(repoRoot, legacyTracker, "journal");
   const archiveDir = path19.join(repoRoot, legacyTracker, "archive", "journal");
-  if (existsSync10(activeDir))
+  if (existsSync11(activeDir))
     journalDirs.push(activeDir);
-  if (existsSync10(archiveDir))
+  if (existsSync11(archiveDir))
     journalDirs.push(archiveDir);
   const allEvents = [];
   let skippedEphemeral = 0;
@@ -28354,7 +28773,7 @@ var init_motive2 = __esm(() => {
 
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
-import { existsSync as existsSync11, mkdirSync as mkdirSync13 } from "fs";
+import { existsSync as existsSync12, mkdirSync as mkdirSync13 } from "fs";
 import path23 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
   return path23.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
@@ -28433,7 +28852,7 @@ async function migrateMotive(opts) {
     report.charter_error = String(err);
   }
   const ticketsDir = path23.join(sourceDir, "tickets");
-  if (existsSync11(ticketsDir)) {
+  if (existsSync12(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
@@ -28554,7 +28973,7 @@ var init_runner = __esm(() => {
 
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
-import { existsSync as existsSync12 } from "fs";
+import { existsSync as existsSync13 } from "fs";
 import path24 from "path";
 async function migrate(opts) {
   const {
@@ -28566,7 +28985,7 @@ async function migrate(opts) {
   } = opts;
   const activeSlugs = [];
   const activeMotivesDir = path24.join(repoRoot, legacyTracker, "motives");
-  if (existsSync12(activeMotivesDir)) {
+  if (existsSync13(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -28582,7 +29001,7 @@ async function migrate(opts) {
   }
   const archivedSlugs = [];
   const archiveMotivesDir = path24.join(repoRoot, legacyTracker, "archive", "motives");
-  if (existsSync12(archiveMotivesDir)) {
+  if (existsSync13(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
       for (const entry of entries) {

@@ -38,7 +38,19 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 
 **No groundwork process vocabulary.** Subject lines must not contain "gate cycle", "dogfood", "advisor APPROVE", slice ids, motive slugs, or "wave"/"slice" as process jargon. Component names (hook, guard, lint, ledger, gate, bundle) are fine.
 
-**Enforcement surfaces (any repo):** The `commit-message-guard` PreToolUse Bash hook (`src/gw/hook/commit-message-guard.ts`) denies `git commit -m` and `git commit -F <file>` calls that would produce a non-conforming message; genuinely unreachable forms (missing/unreadable `-F` path, editor-mode, bare `--amend`) pass through. A `commit-msg` git hook (`hooks/lib/commit-msg-template.mjs`) is auto-installed into `.git/hooks/commit-msg` of the host project on SessionStart and covers editor commits, `--amend`, and rebase squash paths. The `gw commit-lint report` / `remediate-plan` CLI covers the commit range. `gw hooks status` reports the hook's install state in the current repo. Kill-switches: `GROUNDWORK_COMMIT_MSG_HOOK=0` suppresses auto-install and the installed hook; `GROUNDWORK_COMMIT_LINT=0` disables all three surfaces.
+**Enforcement surfaces — convention scope varies by repo:**
+
+In a **host repo** (any repo other than groundwork itself), the enforced convention is derived from that repo's `.gitmessage`. If the template presents a recognisable specimen line and enough history validates the derived rules (≥10 commits, ≥85% pass rate), format and enumeration rules come from the template, not from groundwork. If no `.gitmessage` exists or derivation confidence is below threshold, only universal rules apply: attribution trailers stripped, process vocabulary rejected — no format, length, or body rule imposed.
+
+In **groundwork's own repo**, the full hardcoded policy above applies.
+
+Three surfaces share the derived (or universal) rules:
+
+1. `commit-message-guard` PreToolUse Bash hook (`src/gw/hook/commit-message-guard.ts`) — denies `git commit -m` and `git commit -F <file>` calls that would produce a non-conforming message; genuinely unreachable forms (missing/unreadable `-F` path, editor-mode, bare `--amend`) pass through.
+2. Auto-installed `commit-msg` git hook (`hooks/lib/commit-msg-template.mjs`) — written to `.git/hooks/commit-msg` of the host project on SessionStart; covers editor commits, `--amend`, and rebase squash paths.
+3. `gw commit-lint report` / `remediate-plan` CLI — covers the commit range.
+
+`gw hooks status` reports the hook's install state in the current repo. Kill-switches: `GROUNDWORK_COMMIT_MSG_HOOK=0` suppresses auto-install and the installed hook; `GROUNDWORK_COMMIT_LINT=0` disables all three surfaces.
 
 **History reconstruction.** Prefer reshaping a messy commit series into a readable one for reviewers rather than leaving process noise in history. Use `gw commit-lint remediate-plan` to generate the rebase plan.
 

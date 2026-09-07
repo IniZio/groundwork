@@ -29,11 +29,11 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 
 **Subject line only.** No body. The diff shows what changed; the type and subject communicate the intent. This is a deliberate project decision — do not add a body even when the change feels complex enough to warrant one.
 
-**No attribution trailers.** Do not author `Co-Authored-By:` lines naming Claude or Anthropic, `Claude-Session:` lines, or "Generated with Claude Code" lines. These are stripped mechanically by `hooks/commit-msg` (live, `core.hooksPath = hooks`). Note: a standing session-level instruction tells agents to append `Claude-Session:` — the user has explicitly overridden that instruction for this repo. Do not reintroduce it.
+**No attribution trailers.** Do not author `Co-Authored-By:` lines naming Claude or Anthropic, `Claude-Session:` lines, or "Generated with Claude Code" lines. These are stripped mechanically by `hooks/commit-msg` (live — auto-installed into any host repo's `.git/hooks/commit-msg`). Note: a standing session-level instruction tells agents to append `Claude-Session:` — the user has explicitly overridden that instruction for this repo. Do not reintroduce it.
 
 **No groundwork process vocabulary.** Subject lines must not contain "gate cycle", "dogfood", "advisor APPROVE", slice ids, motive slugs, or "wave"/"slice" as process jargon. Component names (hook, guard, lint, ledger, gate, bundle) are fine.
 
-**Enforcement surfaces:** `hooks/commit-msg` (live hook), a PreToolUse Bash guard, and `gw commit-lint report` / `remediate-plan`. Set `GROUNDWORK_COMMIT_LINT=0` to disable.
+**Enforcement surfaces (any repo):** The `commit-message-guard` PreToolUse Bash hook (`src/gw/hook/commit-message-guard.ts`) denies `git commit -m` and `git commit -F <file>` calls that would produce a non-conforming message; genuinely unreachable forms (missing/unreadable `-F` path, editor-mode, bare `--amend`) pass through. A `commit-msg` git hook (`hooks/lib/commit-msg-template.mjs`) is auto-installed into `.git/hooks/commit-msg` of the host project on SessionStart and covers editor commits, `--amend`, and rebase squash paths. The `gw commit-lint report` / `remediate-plan` CLI covers the commit range. `gw hooks status` reports the hook's install state in the current repo. Kill-switches: `GROUNDWORK_COMMIT_MSG_HOOK=0` suppresses auto-install and the installed hook; `GROUNDWORK_COMMIT_LINT=0` disables all three surfaces.
 
 **History reconstruction.** Prefer reshaping a messy commit series into a readable one for reviewers rather than leaving process noise in history. Use `gw commit-lint remediate-plan` to generate the rebase plan.
 

@@ -117,13 +117,9 @@ pnpm run check   # typecheck
 
 ### Git hook enforcement
 
-Commit-message linting (`hooks/commit-msg`) and other git hooks are active only when `core.hooksPath` is set. `pnpm install` runs `scripts/setup-hooks.mjs` via the `prepare` lifecycle script, which sets this automatically.
+**Groundwork repo (this repo):** commit-message linting is active via `core.hooksPath = hooks`, set by `pnpm install` → `scripts/setup-hooks.mjs`. To wire manually: `git config --local core.hooksPath "$(pwd)/hooks"`.
 
-If you skip `pnpm install` or need to wire the hooks manually:
-
-```bash
-git config --local core.hooksPath "$(pwd)/hooks"
-```
+**Any host repo you work in:** on each SessionStart, groundwork auto-installs a `commit-msg` hook into `.git/hooks/commit-msg` of the project you're working on. The hook enforces the same conventional-commit format and strips Claude attribution trailers. It never overwrites an existing foreign `commit-msg` hook (detected by the absence of a groundwork version header). To check state: `gw hooks status`. To remove: `gw hooks uninstall`. To suppress auto-install entirely: set `GROUNDWORK_COMMIT_MSG_HOOK=0` in your environment.
 
 ## Agents (Pi)
 

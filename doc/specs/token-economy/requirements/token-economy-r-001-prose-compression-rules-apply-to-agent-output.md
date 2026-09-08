@@ -14,5 +14,5 @@ Agent output prose **shall** apply the following compression rules sourced from 
 
 - **Why** — These rules target the highest-frequency token sources (articles, filler, narration) that add no information to the receiving agent's reasoning. Removing them reduces input-token cost without changing any claim.
 - **Fit criterion** — A diff of any agent output prose shows no articles, no filler words from the enumerated set, no tool-call narration, no opening preamble, and no decorative tables or standalone emoji.
-- **Verification**: unverified — enforced by parity test asserting guard-rail text is present in every regenerated agent definition; a mirror tree cannot drift silently.
+- **Verification**: unverified — actual rule application by agents at runtime is discipline-only; no mechanical check can intercept every agent response. A related parity test (`test/hooks/prose-rules-parity.test.ts`) does assert that the output-prose ruleset text (specifically the phrase "Negation and scope words are inviolable") is present in every generated agent definition under `agents/` and `agents-pi/`, catching silent drift between authority sources and mirror trees. That test does not carry a `@verifies TOKEN-ECONOMY-R-001` annotation and does not verify the fit criterion (agent output free of articles, filler, and narration).
 - **Criticality**: must

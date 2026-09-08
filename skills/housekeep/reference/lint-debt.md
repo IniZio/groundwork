@@ -33,6 +33,8 @@ grep -rn ': any\|as any\| any\b' src/   # locate any annotations and casts
 
 For a focused suppression inventory before triaging: pipe the grep output through `wc -l` to size the backlog, then sort by file to cluster related debt.
 
+`check:comments` and `check:comments:strict` enumerate files via `git ls-files` (`scripts/check-comments.mjs:55`), so an untracked file is invisible to them: a newly authored file passes `pnpm run check` until the moment it is committed, then turns the check red. Before reporting a new file as clean, `git add -N` it (or commit it) and re-run — otherwise the green result is about a file set that does not include it. The two comment checks also apply different rules: `check:comments` uses a 45% ratio / 20% block-share threshold, while `gw comment-density` caps effective comments at 5 per 100 lines with typed annotations, section dividers and URL lines exempt. A file can pass one and fail the other; both must be green.
+
 ---
 
 ## Passes

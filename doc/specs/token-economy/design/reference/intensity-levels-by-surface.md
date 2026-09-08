@@ -31,7 +31,7 @@ Quick-lookup table for every groundwork surface and its compression assignment.
 |---|---|
 | Negation words | Remove `not`, `never`, `no`, `only`, `except` |
 | Modality | Upgrade `may`/`could`/`might`/`sometimes`/`appears to` → `will`/`does`/`always`/`is` |
-| Invented abbreviations | Introduce `cfg`, `fn`, `req`, `impl` (as abbreviation) |
+| Invented abbreviations | Introduce `cfg`, `fn`, `req` as abbreviations; or expand domain vocabulary `AC`, `TBD`, `TBR`, `impl` to full English form |
 | Domain vocabulary | Expand `AC`/`TBD`/`TBR` or contract them further |
 
 ## Globally forbidden

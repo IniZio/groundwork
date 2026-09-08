@@ -40,7 +40,7 @@ For each evidence surface:
 Scan the diff for:
 - Removed `not`, `never`, `no`, `only`, `except` — flag each (R-004)
 - Modal hedge (`may`, `could`, `sometimes`, `might`, `appears to`, `is likely to`) replaced by a stronger form (`will`, `does`, `always`, `is`) — flag each (R-005)
-- Introduced ad-hoc abbreviations (`cfg`, `fn`, `req`, `impl`) — flag each (R-006)
+- Introduced ad-hoc abbreviations (`cfg`, `fn`, `req`) — flag each (R-006); or expanded domain vocabulary (`AC`, `TBD`, `TBR`, `impl`) to full English form — flag each (R-006)
 - `AC`, `TBD`, `TBR` expanded to full forms — flag each (R-006)
 
 ### 4. Check intensity-level compliance

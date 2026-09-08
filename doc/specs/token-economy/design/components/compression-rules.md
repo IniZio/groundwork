@@ -36,7 +36,7 @@ The complete rule set for groundwork prose compression. Rules are grouped by cat
 |---|---|
 | Negation words preserved | Never remove `not`, `never`, `no`, `only`, `except` (R-004) |
 | Modality preserved | Never upgrade `may`/`could`/`might`/`sometimes`/`appears to` → `will`/`does`/`always`/`is` (R-005) |
-| No invented abbreviations | Never introduce `cfg`, `fn`, `req`, `impl` as abbreviations (R-006) |
+| No invented abbreviations | Never introduce `cfg`, `fn`, `req` as abbreviations (R-006); never expand domain vocabulary `AC`, `TBD`, `TBR`, `impl` to their full English forms (R-006) |
 | Domain vocabulary unchanged | `AC`, `TBD`, `TBR` left as-is — neither expanded nor contracted (R-006) |
 
 ## Forbidden

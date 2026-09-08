@@ -178,7 +178,7 @@ describe('AC-2 source-of-truth', () => {
     // Co-occurrence of four marker terms across tracked files: order-insensitive and
     // line-wrapping-insensitive — not evadable by reordering or reformatting the list.
     const allMatches = execSync(
-      `cd ${repoRoot} && git ls-files | xargs grep -l 'refactor' | xargs grep -l 'revert' | xargs grep -l 'chore' | xargs grep -l 'perf' 2>/dev/null || true`,
+      `cd ${repoRoot} && { git ls-files; git ls-files --others --exclude-standard; } | sort -u | xargs grep -l 'refactor' | xargs grep -l 'revert' | xargs grep -l 'chore' | xargs grep -l 'perf' 2>/dev/null || true`,
       { encoding: 'utf8' }
     ).trim().split('\n').filter(Boolean);
 
@@ -188,6 +188,7 @@ describe('AC-2 source-of-truth', () => {
       'dist/gw.mjs',                                                                   // generated — check:bundle hash guards it
       'test/fixtures/parity-corpus/commit-message-guard/deny-invalid-commit-type.json', // fixture — test vector, not a source
       'test/fixtures/gitmessage/groundwork.gitmessage',                                 // fixture — literal .gitmessage template data under test; cannot import, not a second source of truth
+      'test/fixtures/gitmessage/type-scope-silent-body.gitmessage',                    // fixture — literal .gitmessage template data under test; cannot import, not a second source of truth
       'test/hooks/commit-convention.test.ts',                                           // this guard itself
     ]);
 

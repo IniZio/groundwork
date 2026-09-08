@@ -1,0 +1,5 @@
+# <type>(<scope>): <subject>
+#
+# Types: feat | fix | docs | refactor | test | chore | build | ci | perf | style | revert
+#
+# Keep the subject short and in present tense. No trailing period.

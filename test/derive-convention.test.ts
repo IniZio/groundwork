@@ -271,6 +271,33 @@ describe('BITE PROOF — the derived rules discriminate', () => {
   })
 })
 
+describe('parseTemplate — bodySectionDeclared', () => {
+  it('is true when the template has an explicit [ BODY ] section heading', () => {
+    const rules = parseTemplate(template('hanlun-lms'), join(FIXTURES, 'hanlun-lms.gitmessage'))
+    expect(rules?.bodySectionDeclared).toBe(true)
+  })
+
+  it('is false when the template has no body section heading', () => {
+    const rules = parseTemplate(template('type-scope-silent-body'), join(FIXTURES, 'type-scope-silent-body.gitmessage'))
+    expect(rules?.bodySectionDeclared).toBe(false)
+  })
+
+  it('a body-silent template still sets bodyPermitted true (parseTemplate never forbids bodies)', () => {
+    const rules = parseTemplate(template('type-scope-silent-body'), join(FIXTURES, 'type-scope-silent-body.gitmessage'))
+    expect(rules?.bodyPermitted).toBe(true)
+  })
+
+  it('is true when the template invites a body in prose ("Optional body if needed")', () => {
+    const rules = parseTemplate(template('prose-body-invitation'), join(FIXTURES, 'prose-body-invitation.gitmessage'))
+    expect(rules?.bodySectionDeclared).toBe(true)
+  })
+
+  it('is false when the template explicitly prohibits a body ("No body — subject line only")', () => {
+    const rules = parseTemplate(template('prose-body-prohibition'), join(FIXTURES, 'prose-body-prohibition.gitmessage'))
+    expect(rules?.bodySectionDeclared).toBe(false)
+  })
+})
+
 describe('history that cannot be read never yields rules', () => {
   it('readRecentSubjects returns null outside a repository', () => {
     expect(readRecentSubjects('/definitely/not/a/repo')).toBeNull()

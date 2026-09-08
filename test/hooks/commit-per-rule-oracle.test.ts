@@ -48,6 +48,8 @@ let bodiesRepo: string
 let bodylessRepo: string
 let refutingRepo: string
 let derivableRepo: string
+let templateSilentBodylessRepo: string
+let templateSilentBodiesRepo: string
 
 beforeAll(() => {
   bodiesRepo = makeHostRepo({
@@ -66,10 +68,18 @@ beforeAll(() => {
     gitmessage: 'hanlun-lms.gitmessage', seedSubject: 'web: initial import',
     subjectList: hanlunSubjectsWithBodies(), installHook: false,
   })
+  templateSilentBodylessRepo = makeHostRepo({
+    gitmessage: 'type-scope-silent-body.gitmessage', seedSubject: 'chore: initial import',
+    subjectList: conformingHistory(30), installHook: false,
+  })
+  templateSilentBodiesRepo = makeHostRepo({
+    gitmessage: 'type-scope-silent-body.gitmessage', seedSubject: 'chore: initial import',
+    subjectList: conformingHistoryWithBodies(30), installHook: false,
+  })
 }, 300_000)
 
 afterAll(() => {
-  for (const r of [bodiesRepo, bodylessRepo, refutingRepo, derivableRepo]) {
+  for (const r of [bodiesRepo, bodylessRepo, refutingRepo, derivableRepo, templateSilentBodylessRepo, templateSilentBodiesRepo]) {
     if (r) rmSync(r, { recursive: true, force: true })
   }
 })
@@ -172,12 +182,13 @@ describe('CASE 3 — subjects do not conform: universal-only', () => {
   })
 })
 
-describe('CASE 4 — derivable .gitmessage: per-rule validation is a no-op', () => {
-  it('derives rules with no enforce restriction and a permitted body', () => {
+describe('CASE 4 — template declares body section: body rule excluded regardless of history', () => {
+  it('derives rules with body excluded from enforce and a permitted body', () => {
     const host = resolveHostRules(derivableRepo)
     expect(host.applies).toBe(true)
     expect(host.rules?.bodyPermitted).toBe(true)
-    expect(host.rules?.enforce).toBeUndefined()
+    expect(host.rules?.enforce).toContain('subjectShape')
+    expect(host.rules?.enforce).not.toContain('body')
     expect(host.rules?.shape).toBe('scope-only')
   })
 
@@ -204,6 +215,52 @@ describe('CASE 5 — groundwork own repo: unmeasured, everything enforced', () =
   it('still rejects a body and an over-length subject', () => {
     expect(lintMessage('feat: add feature\n\nbody', opts(REPO_ROOT)).violations.length).toBeGreaterThan(0)
     expect(lintMessage(`feat: ${'x'.repeat(73)}`, opts(REPO_ROOT)).violations.length).toBeGreaterThan(0)
+  })
+})
+
+describe('CASE 6 — template silent on body + subject-only history: body enforced', () => {
+  it('enforce includes the body group', () => {
+    const host = resolveHostRules(templateSilentBodylessRepo)
+    expect(host.applies).toBe(true)
+    expect(host.rules?.enforce).toContain('body')
+    expect(host.rules?.bodyPermitted).toBe(false)
+  })
+
+  it('rejects a bodied commit', () => {
+    const v = lintMessage('feat: add something\n\nA body line', opts(templateSilentBodylessRepo)).violations
+    expect(v.some((x) => /body has 1 non-blank lines/.test(x.reason))).toBe(true)
+  })
+
+  it('accepts a subject-only commit', () => {
+    expect(lintMessage('feat: add something', opts(templateSilentBodylessRepo)).violations).toEqual([])
+  })
+})
+
+describe('CASE 7 — template silent on body + body-writing history: body not enforced', () => {
+  it('enforce excludes the body group', () => {
+    const host = resolveHostRules(templateSilentBodiesRepo)
+    expect(host.applies).toBe(true)
+    expect(host.rules?.enforce).not.toContain('body')
+    expect(host.rules?.bodyPermitted).toBe(true)
+  })
+
+  it('accepts a bodied commit', () => {
+    const v = lintMessage('feat: add something\n\nA body line', opts(templateSilentBodiesRepo)).violations
+    expect(v.filter((x) => x.reason.includes('body'))).toEqual([])
+  })
+})
+
+describe('BITE PROOF — template body enforcement distinguishes the two states', () => {
+  const MSG_WITH_BODY = 'feat: add something\n\nA body explanation here'
+  const rulesNoBody = { ...GROUNDWORK_RULES, bodyPermitted: true, enforce: ['subjectShape', 'subjectCap'] as RuleGroup[] }
+  const rulesWithBody = { ...GROUNDWORK_RULES, bodyPermitted: false, enforce: RULE_GROUPS }
+
+  it('rules with body enforced reject the bodied commit', () => {
+    expect(checkMessage(MSG_WITH_BODY, rulesWithBody).violations.some((v) => v.group === 'body')).toBe(true)
+  })
+
+  it('rules without body enforced accept the bodied commit', () => {
+    expect(checkMessage(MSG_WITH_BODY, rulesNoBody).violations.filter((v) => v.group === 'body')).toEqual([])
   })
 })
 

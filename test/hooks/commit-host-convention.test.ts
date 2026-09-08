@@ -83,12 +83,26 @@ const NO_TEMPLATE_THIN_CASES: Case[] = [
   { id: 'thin-history-process-vocab-rejected', message: 'web: resolve gate cycle regression', verdict: 'reject' },
 ]
 
+const TEMPLATE_SILENT_BODYLESS_CASES: Case[] = [
+  { id: 'bodied-commit-rejected', message: 'feat: add feature\n\nThis body explains the change', verdict: 'reject' },
+  { id: 'subject-only-accepted', message: 'feat: add feature', verdict: 'accept' },
+  { id: 'process-vocab-still-rejected', message: 'feat: fix the second gate cycle thing', verdict: 'reject' },
+]
+
+const TEMPLATE_SILENT_BODIES_CASES: Case[] = [
+  { id: 'bodied-commit-accepted', message: 'feat: add feature\n\nThis body explains the change', verdict: 'accept' },
+  { id: 'subject-only-accepted', message: 'feat: add feature', verdict: 'accept' },
+  { id: 'process-vocab-still-rejected', message: 'feat: fix the second gate cycle thing', verdict: 'reject' },
+]
+
 let derivableRepo: string
 let degenerateRepo: string
 let noTemplateConformingRepo: string
 let noTemplateNonConformingRepo: string
 let noTemplateThinRepo: string
 let noTemplateBodiesRepo: string
+let templateSilentBodylessRepo: string
+let templateSilentBodiesRepo: string
 
 beforeAll(() => {
   derivableRepo = makeHostRepo({
@@ -119,6 +133,16 @@ beforeAll(() => {
     seedSubject: 'chore: initial import',
     subjectList: conformingHistoryWithBodies(30),
   })
+  templateSilentBodylessRepo = makeHostRepo({
+    gitmessage: 'type-scope-silent-body.gitmessage',
+    seedSubject: 'chore: initial import',
+    subjectList: conformingHistory(30),
+  })
+  templateSilentBodiesRepo = makeHostRepo({
+    gitmessage: 'type-scope-silent-body.gitmessage',
+    seedSubject: 'chore: initial import',
+    subjectList: conformingHistoryWithBodies(30),
+  })
 }, 240_000)
 
 afterAll(() => {
@@ -129,6 +153,8 @@ afterAll(() => {
     noTemplateNonConformingRepo,
     noTemplateThinRepo,
     noTemplateBodiesRepo,
+    templateSilentBodylessRepo,
+    templateSilentBodiesRepo,
   ]) {
     if (r) rmSync(r, { recursive: true, force: true })
   }
@@ -175,6 +201,18 @@ describe('no .gitmessage, history does not conform → universal rules only', ()
 describe('no .gitmessage, history below the minimum sample → universal rules only', () => {
   for (const c of NO_TEMPLATE_THIN_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(noTemplateThinRepo, c), 30_000)
+  }
+})
+
+describe('.gitmessage silent on body + subject-only history: body enforced', () => {
+  for (const c of TEMPLATE_SILENT_BODYLESS_CASES) {
+    it(`[${c.id}] ${c.verdict}`, () => assertParity(templateSilentBodylessRepo, c), 30_000)
+  }
+})
+
+describe('.gitmessage silent on body + body-writing history: body not enforced', () => {
+  for (const c of TEMPLATE_SILENT_BODIES_CASES) {
+    it(`[${c.id}] ${c.verdict}`, () => assertParity(templateSilentBodiesRepo, c), 30_000)
   }
 })
 

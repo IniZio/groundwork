@@ -46,6 +46,10 @@ const MIN_ENUM_ROWS = 3
 
 const BODY_SECTION_HEADING = /^[-=\s]*\[?\s*body\s*\]?[-=\s]*$/i
 
+const BODY_PROHIBITION = /\bno\s+body\b|\bwithout\s+body\b|\bomit\s+body\b|\bskip\s+body\b/i
+
+const BODY_PROSE_MENTION = /\bbody\b/i
+
 function stripCommentMarker(line) {
   return line.replace(/^\s*#\s?/, '')
 }
@@ -110,7 +114,11 @@ function parseDashEnum(lines) {
 }
 
 function detectBodySection(lines) {
-  return lines.some((raw) => BODY_SECTION_HEADING.test(stripCommentMarker(raw).trim()))
+  return lines.some((raw) => {
+    const line = stripCommentMarker(raw).trim()
+    if (BODY_SECTION_HEADING.test(line)) return true
+    return BODY_PROSE_MENTION.test(line) && !BODY_PROHIBITION.test(line)
+  })
 }
 
 export function parseTemplate(text, templatePath) {

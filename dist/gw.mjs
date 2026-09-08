@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 03e39bb2137d942d8308d151e958da690ccb16510cb2477e853f770e6f50cbc1
+// @bundle-source-hash: 42a7ca462f02ab9d57461c219e2f28a06e0f74811f89663dc9868e54eaa577e2
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1008,7 +1008,12 @@ function parseDashEnum(lines) {
   return { field: labelFieldAbove(lines, best.startIndex), values: best.values };
 }
 function detectBodySection(lines) {
-  return lines.some((raw) => BODY_SECTION_HEADING.test(stripCommentMarker(raw).trim()));
+  return lines.some((raw) => {
+    const line = stripCommentMarker(raw).trim();
+    if (BODY_SECTION_HEADING.test(line))
+      return true;
+    return BODY_PROSE_MENTION.test(line) && !BODY_PROHIBITION.test(line);
+  });
 }
 function parseTemplate(text, templatePath) {
   if (typeof text !== "string" || text.trim() === "")
@@ -1277,7 +1282,7 @@ function deriveConvention(repoRoot, opts = {}) {
     validation
   };
 }
-var SAMPLE_SIZE = 30, MIN_SAMPLE_SIZE = 10, MIN_PASS_RATE = 0.85, MAX_REPORTED_FAILURES = 5, RULE_GROUPS, SUBJECT_PREFIX_STRIPPERS, SHAPE_TYPE_SCOPE, SHAPE_SCOPE_ONLY, BARE_TOKEN, PIPE_ENUM, DASH_ENUM_ROW, MIN_ENUM_ROWS = 3, BODY_SECTION_HEADING;
+var SAMPLE_SIZE = 30, MIN_SAMPLE_SIZE = 10, MIN_PASS_RATE = 0.85, MAX_REPORTED_FAILURES = 5, RULE_GROUPS, SUBJECT_PREFIX_STRIPPERS, SHAPE_TYPE_SCOPE, SHAPE_SCOPE_ONLY, BARE_TOKEN, PIPE_ENUM, DASH_ENUM_ROW, MIN_ENUM_ROWS = 3, BODY_SECTION_HEADING, BODY_PROHIBITION, BODY_PROSE_MENTION;
 var init_derive_convention = __esm(() => {
   RULE_GROUPS = ["subjectShape", "subjectCap", "body"];
   SUBJECT_PREFIX_STRIPPERS = [
@@ -1290,6 +1295,8 @@ var init_derive_convention = __esm(() => {
   PIPE_ENUM = /^(types?|scopes?)\s*:\s*([A-Za-z0-9._-]+(?:\s*\|\s*[A-Za-z0-9._-]+)+)\s*$/i;
   DASH_ENUM_ROW = /^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,23})\s+[-\u2013\u2014]\s+\S.*$/;
   BODY_SECTION_HEADING = /^[-=\s]*\[?\s*body\s*\]?[-=\s]*$/i;
+  BODY_PROHIBITION = /\bno\s+body\b|\bwithout\s+body\b|\bomit\s+body\b|\bskip\s+body\b/i;
+  BODY_PROSE_MENTION = /\bbody\b/i;
 });
 
 // hooks/lib/commit-convention.mjs
@@ -1383,6 +1390,29 @@ function validateGroundworkConvention(repoRoot) {
     perGroup
   };
 }
+function validateTemplateConvention(repoRoot) {
+  const derived = deriveConvention(repoRoot);
+  if (!derived.confident || derived.rules === null) {
+    return { applies: true, rules: null, reason: derived.reason };
+  }
+  const messages = readRecentMessages(repoRoot, SAMPLE_SIZE);
+  if (messages === null || messages.length < MIN_SAMPLE_SIZE) {
+    return { applies: true, rules: derived.rules, reason: derived.reason };
+  }
+  const bodyDeclared = derived.rules.bodySectionDeclared;
+  const perGroup = validateRulesPerGroup({ ...derived.rules, bodyPermitted: false }, messages);
+  const enforce = RULE_GROUPS.filter((g) => {
+    if (g === "body")
+      return !bodyDeclared && perGroup.groups[g].ok;
+    return perGroup.groups[g].ok;
+  });
+  const bodyEnforced = enforce.includes("body");
+  const rules = { ...derived.rules, bodyPermitted: !bodyEnforced, enforce };
+  const dropped = RULE_GROUPS.filter((g) => !enforce.includes(g));
+  const bodyNote = bodyDeclared ? " (template declares a body section \u2014 body rule not applied)" : "";
+  const droppedText = dropped.length > 0 ? `; not enforcing: ${dropped.map((g) => GROUP_LABELS[g]).join(", ")}` : "";
+  return { applies: true, rules, reason: `${derived.reason}${bodyNote}${droppedText}` };
+}
 function resolveHostRules(repoRoot) {
   if (typeof repoRoot !== "string" || repoRoot === "") {
     return { applies: false, rules: null, reason: "repository root could not be resolved" };
@@ -1395,8 +1425,7 @@ function resolveHostRules(repoRoot) {
   } else if (!hasOwnCommitTemplate(repoRoot)) {
     result = validateGroundworkConvention(repoRoot);
   } else {
-    const derived = deriveConvention(repoRoot);
-    result = { applies: true, rules: derived.rules, reason: derived.reason };
+    result = validateTemplateConvention(repoRoot);
   }
   hostRulesCache.set(repoRoot, result);
   return result;

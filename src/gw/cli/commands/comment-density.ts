@@ -75,6 +75,8 @@ export interface ManifestFile {
   totalLines: number
   commentLines: number
   commentsPer100: number
+  effectiveCommentLines: number
+  effectiveCommentsPer100: number
   reasons: Array<{ kind: 'over-cap' | 'restating'; lines: number[]; detail: string }>
 }
 
@@ -115,12 +117,16 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
     const content = entries.find(e => e.path === fr.path)?.content ?? ''
     const restating = findAllRestatingComments(content)
 
+    const effPer100: number = (fr.effectiveCommentsPer100 as number | undefined) ?? fr.commentsPer100
+    const effLines: number[] = (fr.effectiveLines as number[] | undefined) ?? fr.lines
+    const effCount: number = (fr.effectiveCommentLines as number | undefined) ?? fr.commentLines
+
     const reasons: ManifestFile['reasons'] = []
-    if (fr.totalLines >= SMALL_FILE_MIN_LINES && fr.commentsPer100 > FILE_CAP) {
+    if (fr.totalLines >= SMALL_FILE_MIN_LINES && effPer100 > FILE_CAP) {
       reasons.push({
         kind: 'over-cap',
-        lines: fr.lines,
-        detail: `${fr.commentsPer100.toFixed(1)}/100 exceeds cap of ${FILE_CAP}/100`,
+        lines: effLines,
+        detail: `${effPer100.toFixed(1)}/100 exceeds cap of ${FILE_CAP}/100`,
       })
     }
     if (restating.length > 0) {
@@ -137,6 +143,8 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
       totalLines: fr.totalLines,
       commentLines: fr.commentLines,
       commentsPer100: fr.commentsPer100,
+      effectiveCommentLines: effCount,
+      effectiveCommentsPer100: effPer100,
       reasons,
     })
   }

@@ -34,7 +34,7 @@ function warn(reason: string): HookResult {
 const GUARDED_TOOLS = new Set(['edit', 'write', 'multiedit'])
 
 const RULE_TEXT =
-  'Comments per 100 lines must stay ≤5 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.'
+  'Comments per 100 lines must stay ≤5 (effective) in every file you touch. JSDoc blocks, inline comments, section dividers, @-tagged lines, and URL-only lines are exempt from the count; plain // narration lines are not. Do not add comments that restate the adjacent code. This rule applies to every Edit, Write, and MultiEdit call.'
 
 function normalizeToolName(raw: unknown): string {
   if (typeof raw !== 'string') return ''
@@ -133,10 +133,12 @@ export const run: HookFn = async (rawInput, env) => {
     const fileResult = analyzeFile(filePath, content)
     const restating = findAllRestatingComments(content)
 
+    const effPer100 = fileResult.effectiveCommentsPer100 ?? fileResult.commentsPer100
+    const effLines = fileResult.effectiveLines ?? fileResult.lines
     const violations: string[] = []
-    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && fileResult.commentsPer100 > FILE_CAP) {
+    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && effPer100 > FILE_CAP) {
       violations.push(
-        `${filePath} lines [${fileResult.lines.join(',')}]: over-cap ${fileResult.commentsPer100.toFixed(1)}/100 > ${FILE_CAP}/100`,
+        `${filePath} lines [${effLines.join(',')}]: over-cap ${effPer100.toFixed(1)}/100 > ${FILE_CAP}/100`,
       )
     }
     for (const r of restating) {

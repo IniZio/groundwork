@@ -49,6 +49,16 @@ export interface FileResult {
   commentsPer100: number
   /** 1-based line numbers of every comment line. */
   lines: number[]
+  /**
+   * Comment lines after exempting JSDoc blocks, inline comments, section
+   * dividers, annotation tags (// @word), and URL-only lines. Used for
+   * density cap enforcement; commentLines is preserved for diagnostics.
+   */
+  effectiveCommentLines: number
+  /** effectiveCommentLines / totalLines * 100; 0 when totalLines is 0. */
+  effectiveCommentsPer100: number
+  /** 1-based line numbers of effective (non-exempt) comment lines. */
+  effectiveLines: number[]
   /** True when the file was excluded by D-8 rules or linguist-generated. */
   excluded: boolean
   /** Human-readable exclusion reason (present when excluded is true). */

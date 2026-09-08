@@ -151,6 +151,85 @@ function _advanceTemplateState(line, inTemplateLit, templateDepth) {
   return { inTemplateLit, templateDepth };
 }
 
+/**
+ * Patterns for exempt comment lines (annotation / provenance).
+ * These lines are excluded from effectiveCommentLines but still counted in commentLines.
+ *
+ * Exempt categories:
+ *   - Lines within /** JSDoc doc-comment blocks (type documentation, not narration)
+ *   - Inline comment lines: code appears before // (provenance annotation on code)
+ *   - Section-divider comments: // followed by ≥2 box-drawing or ≥4 ASCII art chars
+ *   - Annotation-tagged: // @word (e.g. // @verifies, // @ts-ignore)
+ *   - URL-only line: // https://...
+ */
+// @check-comments-exempt-patterns
+const _SECTION_DIV_RE = /^\s*\/\/[ \t]*([─-╿]{2,}|[-=]{4,})/u;
+const _ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
+const _URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
+
+/**
+ * Given the raw lines and their comment flags from classify*, returns a same-
+ * length boolean array where true means the comment line is EXEMPT from the
+ * effective density count.
+ */
+function computeExemptFlags(rawLines, flags) {
+  const exempt = new Array(rawLines.length).fill(false);
+  let inJSDoc = false;
+  let inBlock = false;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const trimmed = rawLines[i].trim();
+
+    if (inJSDoc) {
+      if (flags[i]) exempt[i] = true;
+      if (trimmed.includes('*/')) inJSDoc = false;
+      continue;
+    }
+
+    if (inBlock) {
+      if (trimmed.includes('*/')) inBlock = false;
+      continue;
+    }
+
+    if (!flags[i]) continue; // not a comment line
+
+    // JSDoc block start /** (multi-line or single-line)
+    if (trimmed.startsWith('/**')) {
+      exempt[i] = true;
+      const afterOpen = trimmed.slice(3);
+      if (!afterOpen.includes('*/')) inJSDoc = true;
+      continue;
+    }
+
+    // Regular block /* (not /**) — NOT exempt
+    if (trimmed.startsWith('/*')) {
+      const afterOpen = trimmed.slice(2);
+      if (!afterOpen.includes('*/')) inBlock = true;
+      continue;
+    }
+
+    // JSX block {/* — NOT exempt
+    if (trimmed.startsWith('{/*')) {
+      if (!trimmed.slice(3).includes('*/')) inBlock = true;
+      continue;
+    }
+
+    // Pure line comment starting with //
+    if (trimmed.startsWith('//')) {
+      const raw = rawLines[i];
+      if (_SECTION_DIV_RE.test(raw)) { exempt[i] = true; continue; }
+      if (_ANNOT_TAG_RE.test(raw))   { exempt[i] = true; continue; }
+      if (_URL_LINE_RE.test(raw))    { exempt[i] = true; continue; }
+      continue; // regular narration — not exempt
+    }
+
+    // Inline comment: code appears before // on this line — exempt as provenance
+    exempt[i] = true;
+  }
+
+  return exempt;
+}
+
 function classifyCFamily(lines, jsxBlock) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
@@ -368,12 +447,20 @@ export function analyzeFile(filePath, content, opts = {}) {
   const commentCount = commentLineNums.length;
   const per100 = total === 0 ? 0 : (commentCount / total) * 100;
 
+  const exemptFlags = computeExemptFlags(rawLines, flags);
+  const effectiveLineNums = commentLineNums.filter(n => !exemptFlags[n - 1]);
+  const effectiveCount = effectiveLineNums.length;
+  const effectivePer100 = total === 0 ? 0 : (effectiveCount / total) * 100;
+
   const result = {
     path: filePath,
     totalLines: total,
     commentLines: commentCount,
     commentsPer100: per100,
     lines: commentLineNums,
+    effectiveCommentLines: effectiveCount,
+    effectiveCommentsPer100: effectivePer100,
+    effectiveLines: effectiveLineNums,
     excluded: false,
   };
 

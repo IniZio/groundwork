@@ -39,15 +39,11 @@ function fired(result: ReturnType<typeof runHook>): boolean {
   return typeof result.hookSpecificOutput?.permissionDecisionReason === "string";
 }
 
-// ── Group C — constant contract ──────────────────────────────────────────────
-
 describe("MATCH_THRESHOLD constant", () => {
   it("is 0.4 in prose-helpers.mjs", () => {
     expect(MATCH_THRESHOLD).toBe(0.4);
   });
 });
-
-// ── Group A — isProse parity: both guards agree on prose vs non-prose ─────────
 
 describe("isProse parity", () => {
   it("negation guard: .ts file removing 'not' from inline text → passthrough", () => {
@@ -71,8 +67,6 @@ describe("isProse parity", () => {
   });
 });
 
-// ── Group B — threshold parity: wholesale rewrite stays silent in both guards ─
-
 describe("wholesale-deletion passthrough (below MATCH_THRESHOLD)", () => {
   const old = "You MUST NOT delegate wholesale. The model may also skip.";
   const novel = "Completely unrelated sentence about bananas.";
@@ -86,9 +80,23 @@ describe("wholesale-deletion passthrough (below MATCH_THRESHOLD)", () => {
     const r = runHook(MODALITY_HOOK, editPayload(PROSE_PATH, old, novel));
     expect(fired(r)).toBe(false);
   });
-});
 
-// ── Group D — sentence-aligned detection fires through each guard's entry point
+  it("negation guard: near-miss rewrite (Jaccard=0.20) → passthrough at threshold 0.4", () => {
+    // {you,must,not,implement,features,directly}→{you,should,implement,clean,solutions,here}: intersect=2 union=10 J=0.20
+    const nearOld = "You MUST NOT implement features directly.";
+    const nearNew = "You should implement clean solutions here.";
+    const r = runHook(NEGATION_HOOK, editPayload(PROSE_PATH, nearOld, nearNew));
+    expect(fired(r)).toBe(false);
+  });
+
+  it("modality guard: near-miss rewrite (Jaccard≈0.33) → passthrough at threshold 0.4", () => {
+    // {the,orchestrator,may,delegate,tasks,broadly}→{the,orchestrator,will,send,work,broadly}: intersect=3 union=9 J≈0.33
+    const nearOld = "The orchestrator may delegate tasks broadly.";
+    const nearNew = "The orchestrator will send work broadly.";
+    const r = runHook(MODALITY_HOOK, editPayload(PROSE_PATH, nearOld, nearNew));
+    expect(fired(r)).toBe(false);
+  });
+});
 
 describe("sentence-aligned detection (high vocabulary overlap)", () => {
   it("negation guard: in-place negation removal fires (EV2)", () => {
@@ -101,6 +109,24 @@ describe("sentence-aligned detection (high vocabulary overlap)", () => {
   it("modality guard: in-place hedge upgrade fires (EV1)", () => {
     const old = "The orchestrator may delegate. A junior may spawn workers.";
     const nw = "The orchestrator will delegate. A junior may spawn workers.";
+    const r = runHook(MODALITY_HOOK, editPayload(PROSE_PATH, old, nw));
+    expect(fired(r)).toBe(true);
+  });
+});
+
+describe("near-threshold detection (Jaccard strictly in (0.4, 0.5))", () => {
+  it("negation guard: negation removed at Jaccard≈0.43 → fires (0.4 threshold load-bearing)", () => {
+    // {agents,must,not,skip,this}→{agents,must,always,skip,here}: intersect=3 union=7 J=3/7≈0.429
+    const old = "Agents MUST NOT skip this.";
+    const nw = "Agents MUST always skip here.";
+    const r = runHook(NEGATION_HOOK, editPayload(PROSE_PATH, old, nw));
+    expect(fired(r)).toBe(true);
+  });
+
+  it("modality guard: hedge upgraded at Jaccard≈0.43 → fires (0.4 threshold load-bearing)", () => {
+    // {the,model,may,skip,this}→{the,model,will,skip,here}: intersect=3 union=7 J=3/7≈0.429
+    const old = "The model may skip this.";
+    const nw = "The model will skip here.";
     const r = runHook(MODALITY_HOOK, editPayload(PROSE_PATH, old, nw));
     expect(fired(r)).toBe(true);
   });

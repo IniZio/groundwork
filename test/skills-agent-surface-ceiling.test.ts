@@ -1,28 +1,9 @@
 /**
  * T34 (token-economy / lever-3 / AC-8): Skills+agent description surface ceiling.
- *
- * Baseline measured 2026-09-08 via tiktoken cl100k_base across:
- *   - skills/groundwork/** (24 skills, excl. .codex-overlays): 805 tokens
- *   - agents-src/*.md (12 agents):                             511 tokens
- *   - Combined tiktoken total:                                1316 tokens
- *   - estimateTokens (ceil(utf8bytes/3.5)) at same snapshot:  1810
- *
- * Ceiling is 1810 — the current estimateTokens value — following T28's design
- * exactly: the ceiling IS the snapshot value, with zero added slack. The 1.19
- * figure in T28's docblock is the estimator-vs-tiktoken conversion ratio
- * (11192 / 9383) recorded for provenance; it is NOT a growth allowance.
- *
- * Full surface breakdown (tiktoken cl100k_base, 2026-09-08):
- *   skills+agents (groundwork-controlled): 1316 tok  (26.5%)
- *   MCP tool names (162 tools):            1880 tok  (37.8%) — not owned here
- *   MCP server instructions:               1004 tok  (20.2%) — not owned here
- *   Other plugin skills (23):               766 tok  (15.4%) — not owned here
- *   Total measured surface:               ~4972 tok
- *
- * Honest reduction verdict: ZERO tokens removed. Every description is at
- * minimum viable size — "Triggers on:" suffixes carry routing keywords and
- * agent descriptions carry behavioral constraints. D-14 estimated ~750-950
- * reducible tokens; the actual reducible amount is 0 (honest negative).
+ * Baseline 2026-09-08: tiktoken cl100k_base 1316 tokens; estimateTokens 1810.
+ * Ceiling is 1810 (snapshot value, zero slack — T28's design: no growth headroom).
+ * The 1.19 figure in T28's docblock is the estimator-vs-tiktoken conversion ratio
+ * (11192/9383), NOT a growth allowance. Full breakdown: token-economy-r-011.
  *
  * @verifies token-economy-r-011
  */

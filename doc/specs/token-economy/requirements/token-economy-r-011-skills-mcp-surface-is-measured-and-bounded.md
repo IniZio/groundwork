@@ -28,7 +28,7 @@ The groundwork-controlled portion **shall** remain below a token-estimated ceili
   | **Total measured surface** | **~4972** | mixed |
 
 - **D-14 claim check** — D-14 estimated the reducible in-repo prefix mass at ~750–950 tokens. The measured groundwork-controlled total is 1316 tokens; the reducible amount is **0**. Every description is at minimum viable size: "Triggers on:" suffixes carry routing keywords the model matches when loading a skill, and agent descriptions carry behavioral constraints. D-14's ~750–950 estimate is superseded by this measurement; the correct figure is 1316 total, 0 reducible.
-- **Fit criterion** — `test/skills-agent-surface-ceiling.test.ts` reads all `skills/groundwork/**/SKILL.md` files (excluding `.codex-overlays/`) and all `agents-src/*.md` files, builds a `"- name: description\n"` listing, and asserts `estimateTokens(listing) <= 2154`. The ceiling 2154 = ceil(1810 × 1.19), where 1810 is `estimateTokens` at the T34 snapshot (tiktoken ratio 1.37× for this corpus) and 1.19× is the standard headroom from T28. The test also asserts the skill glob returns ≥20 files and the agent glob returns ≥10 files as tamper guards.
+- **Fit criterion** — `test/skills-agent-surface-ceiling.test.ts` reads all `skills/groundwork/**/SKILL.md` files (excluding `.codex-overlays/`) and all `agents-src/*.md` files, builds a `"- name: description\n"` listing, and asserts `estimateTokens(listing) <= 1810`. The ceiling 1810 is the `estimateTokens` snapshot value at 2026-09-08 with zero added slack, following T28's design. The test also asserts the skill glob returns ≥20 files and the agent glob returns ≥10 files as tamper guards.
 - **Verification**: automated — `@verifies test/skills-agent-surface-ceiling.test.ts`.
 - **Criticality**: must
 

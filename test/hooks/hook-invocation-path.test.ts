@@ -145,6 +145,8 @@ describe('gw-hook literal command spawn — exit ≠ 126, ≠ 127', () => {
           encoding: 'utf8',
           env: {
             ...process.env,
+            // Explicitly override ambient CLAUDE_PROJECT_DIR — prevents vacuous
+            // assertions that pass only because the real project tree is present.
             CLAUDE_PROJECT_DIR: tmpDir,
             CLAUDE_SESSION_ID: 'invocation-path-test',
           },
@@ -172,6 +174,8 @@ describe('gw-hook literal command spawn — exit ≠ 126, ≠ 127', () => {
   }
 })
 
+// Regression guard: session-start exited 1 when a stale dist/gw changed the invocation path.
+// Bare-path hooks aren't reached by the ≠126/≠127 guards above — this block fills that gap.
 describe('bare-path SessionStart registrations — exit 0 and real hook output', () => {
   const sessionStartRegs = BARE_PATH_REGISTRATIONS.filter(
     (r) => r.eventType === 'SessionStart',

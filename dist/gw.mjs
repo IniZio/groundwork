@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: bce467236124c51ddf978b012c2b57752658281711c5453b3ef77b099abe4e2a
+// @bundle-source-hash: 8b53091151d5d818606722974190092127e579e44ff8ab495982d2d335611f20
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -216,6 +216,64 @@ function _advanceTemplateState(line, inTemplateLit, templateDepth) {
   }
   return { inTemplateLit, templateDepth };
 }
+function computeExemptFlags(rawLines, flags) {
+  const exempt = new Array(rawLines.length).fill(false);
+  let inJSDoc = false;
+  let inBlock = false;
+  for (let i = 0;i < rawLines.length; i++) {
+    const trimmed = rawLines[i].trim();
+    if (inJSDoc) {
+      if (flags[i])
+        exempt[i] = true;
+      if (trimmed.includes("*/"))
+        inJSDoc = false;
+      continue;
+    }
+    if (inBlock) {
+      if (trimmed.includes("*/"))
+        inBlock = false;
+      continue;
+    }
+    if (!flags[i])
+      continue;
+    if (trimmed.startsWith("/**")) {
+      exempt[i] = true;
+      const afterOpen = trimmed.slice(3);
+      if (!afterOpen.includes("*/"))
+        inJSDoc = true;
+      continue;
+    }
+    if (trimmed.startsWith("/*")) {
+      const afterOpen = trimmed.slice(2);
+      if (!afterOpen.includes("*/"))
+        inBlock = true;
+      continue;
+    }
+    if (trimmed.startsWith("{/*")) {
+      if (!trimmed.slice(3).includes("*/"))
+        inBlock = true;
+      continue;
+    }
+    if (trimmed.startsWith("//")) {
+      const raw = rawLines[i];
+      if (_SECTION_DIV_RE.test(raw)) {
+        exempt[i] = true;
+        continue;
+      }
+      if (_ANNOT_TAG_RE.test(raw)) {
+        exempt[i] = true;
+        continue;
+      }
+      if (_URL_LINE_RE.test(raw)) {
+        exempt[i] = true;
+        continue;
+      }
+      continue;
+    }
+    exempt[i] = true;
+  }
+  return exempt;
+}
 function classifyCFamily(lines, jsxBlock) {
   const result = new Array(lines.length).fill(false);
   let inBlock = false;
@@ -422,12 +480,19 @@ function analyzeFile(filePath, content, opts = {}) {
   }
   const commentCount = commentLineNums.length;
   const per100 = total === 0 ? 0 : commentCount / total * 100;
+  const exemptFlags = computeExemptFlags(rawLines, flags);
+  const effectiveLineNums = commentLineNums.filter((n) => !exemptFlags[n - 1]);
+  const effectiveCount = effectiveLineNums.length;
+  const effectivePer100 = total === 0 ? 0 : effectiveCount / total * 100;
   const result = {
     path: filePath,
     totalLines: total,
     commentLines: commentCount,
     commentsPer100: per100,
     lines: commentLineNums,
+    effectiveCommentLines: effectiveCount,
+    effectiveCommentsPer100: effectivePer100,
+    effectiveLines: effectiveLineNums,
     excluded: false
   };
   _cache.set(hash, result);
@@ -446,7 +511,7 @@ function analyzeFiles(entries, opts = {}) {
   const aggregatePer100 = totalLines === 0 ? 0 : totalComment / totalLines * 100;
   return { files, aggregatePer100 };
 }
-var FILE_CAP = 5, AGGREGATE_CAP = 2, SMALL_FILE_MIN_LINES = 40, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS;
+var FILE_CAP = 5, AGGREGATE_CAP = 2, SMALL_FILE_MIN_LINES = 40, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS, _SECTION_DIV_RE, _ANNOT_TAG_RE, _URL_LINE_RE;
 var init_comment_density = __esm(() => {
   LANGUAGE_TABLE = {
     ".ts": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: true },
@@ -473,6 +538,9 @@ var init_comment_density = __esm(() => {
     "composer.lock"
   ]);
   DATA_EXTS = new Set([".json", ".yaml", ".yml", ".toml"]);
+  _SECTION_DIV_RE = /^\s*\/\/[ \t]*([\u2500-\u257F]{2,}|[-=]{4,})/u;
+  _ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
+  _URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
 });
 
 // hooks/lib/comment-restate.mjs
@@ -763,12 +831,15 @@ async function buildManifest(relPaths, cwd) {
       continue;
     const content = entries.find((e) => e.path === fr.path)?.content ?? "";
     const restating = findAllRestatingComments2(content);
+    const effPer100 = fr.effectiveCommentsPer100 ?? fr.commentsPer100;
+    const effLines = fr.effectiveLines ?? fr.lines;
+    const effCount = fr.effectiveCommentLines ?? fr.commentLines;
     const reasons = [];
-    if (fr.totalLines >= SMALL_FILE_MIN_LINES2 && fr.commentsPer100 > FILE_CAP2) {
+    if (fr.totalLines >= SMALL_FILE_MIN_LINES2 && effPer100 > FILE_CAP2) {
       reasons.push({
         kind: "over-cap",
-        lines: fr.lines,
-        detail: `${fr.commentsPer100.toFixed(1)}/100 exceeds cap of ${FILE_CAP2}/100`
+        lines: effLines,
+        detail: `${effPer100.toFixed(1)}/100 exceeds cap of ${FILE_CAP2}/100`
       });
     }
     if (restating.length > 0) {
@@ -785,6 +856,8 @@ async function buildManifest(relPaths, cwd) {
       totalLines: fr.totalLines,
       commentLines: fr.commentLines,
       commentsPer100: fr.commentsPer100,
+      effectiveCommentLines: effCount,
+      effectiveCommentsPer100: effPer100,
       reasons
     });
   }
@@ -28276,7 +28349,7 @@ function applyEdit(content, edit) {
     return content;
   return content.slice(0, idx) + new_string + content.slice(idx + old_string.length);
 }
-var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.", run21 = async (rawInput, env) => {
+var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effective) in every file you touch. JSDoc blocks, inline comments, section dividers, @-tagged lines, and URL-only lines are exempt from the count; plain // narration lines are not. Do not add comments that restate the adjacent code. This rule applies to every Edit, Write, and MultiEdit call.", run21 = async (rawInput, env) => {
   try {
     if (env.GROUNDWORK_COMMENT_DENSITY === "0")
       return passthrough7();
@@ -28340,9 +28413,11 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in ever
     }
     const fileResult = analyzeFile(filePath, content);
     const restating = findAllRestatingComments(content);
+    const effPer100 = fileResult.effectiveCommentsPer100 ?? fileResult.commentsPer100;
+    const effLines = fileResult.effectiveLines ?? fileResult.lines;
     const violations = [];
-    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && fileResult.commentsPer100 > FILE_CAP) {
-      violations.push(`${filePath} lines [${fileResult.lines.join(",")}]: over-cap ${fileResult.commentsPer100.toFixed(1)}/100 > ${FILE_CAP}/100`);
+    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && effPer100 > FILE_CAP) {
+      violations.push(`${filePath} lines [${effLines.join(",")}]: over-cap ${effPer100.toFixed(1)}/100 > ${FILE_CAP}/100`);
     }
     for (const r of restating) {
       violations.push(`${filePath} line ${r.line + 1}: restating: "${r.comment}"`);

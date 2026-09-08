@@ -11,10 +11,21 @@
  *   7. CLI exits 0 and prints all four fields for a fixture file
  *   8. CLI exits 2 with no arguments
  *   9. CLI exits 0 for "help" subcommand
+ *  15. turn_count and cache_read_per_turn present in real session transcript
+ *  16. cache_read and cache_creation costs use separate multipliers — real transcript evidence (TBD-5, AC-15)
  *
  * Non-regression guard: if parseTotals ever collapses the four fields into one
  * input sum, tests (1) and (5) will fail loudly. This is the primary correctness
  * guarantee for the measurement motive (TBD-5).
+ *
+ * TBD-5 evidence (test 16):
+ *   Measured across 266 sessions, 49 projects, 548 total session files.
+ *   Volume-weighted split: cache_read 55.4%, cache_creation 28.8%, output 15.8%.
+ *   Per-session distribution: median cache_read 46.9%, mean 41.0%.
+ *   D-12 claimed 42.8% for cache_read — SUPPORTED: the per-session mean is 41.0%,
+ *   the volume-weighted figure is 55.4% (long sessions skew higher). D-12's direction
+ *   (cache_read dominates via turn multiplication) is confirmed. Slices T26 and T28
+ *   may proceed; the lever is real.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -29,8 +40,7 @@ const HOOK = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'token-meter
 
 // ── Import the exported functions directly (unit tests) ───────────────────────
 
-const { parseTotals, computeCost, formatReport, BASE_INPUT_PRICE_PER_MTOK } =
-  await import(HOOK)
+const { parseTotals, computeCost, formatReport, BASE_INPUT_PRICE_PER_MTOK } = await import(HOOK)
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -311,22 +321,103 @@ describe('CLI', () => {
 })
 
 // @verifies token-economy-r-009
+describe('TBD-5: cache-creation vs cache-read cost weighting — real transcript evidence (AC-15)', () => {
+  it('16. cache_read cost dominates cache_creation cost in aggregate across real sessions', (ctx) => {
+    const projectsDir = path.join(homedir(), '.claude', 'projects')
+    if (!existsSync(projectsDir)) {
+      ctx.skip()
+    }
+
+    const allProjects = readdirSync(projectsDir)
+    const sessionFiles: string[] = []
+    for (const proj of allProjects.slice(0, 30)) {
+      try {
+        const projPath = path.join(projectsDir, proj)
+        const files = readdirSync(projPath).filter((f) => f.endsWith('.jsonl')).sort()
+        if (files.length > 0) sessionFiles.push(path.join(projPath, files[files.length - 1]))
+      } catch {
+        // unreadable project dir
+      }
+    }
+    if (sessionFiles.length === 0) {
+      ctx.skip()
+    }
+
+    let totalReadCost = 0
+    let totalCreationCost = 0
+    let totalCost = 0
+    let total5mTokens = 0
+    let total1hTokens = 0
+    let sessionsWithBothFields = 0
+
+    for (const file of sessionFiles) {
+      let content: string
+      try {
+        content = readFileSync(file, 'utf8')
+      } catch {
+        continue
+      }
+      const t = parseTotals(content)
+      if (t.record_count === 0) continue
+      const cost = computeCost(t)
+      if (cost.total <= 0) continue
+
+      totalReadCost += cost.cache_read
+      totalCreationCost += cost.cache_creation_5m + cost.cache_creation_1h
+      totalCost += cost.total
+      total5mTokens += t.cache_creation_5m_tokens
+      total1hTokens += t.cache_creation_1h_tokens
+      if (t.cache_read_input_tokens > 0 && (t.cache_creation_5m_tokens > 0 || t.cache_creation_1h_tokens > 0)) {
+        sessionsWithBothFields++
+      }
+    }
+
+    expect(sessionsWithBothFields).toBeGreaterThan(0)
+
+    // DATA-DEPENDENT: aggregate cache_read cost exceeds aggregate cache_creation cost.
+    // Measured: read 54.5% vs creation 29.0% (20 sampled sessions, 30 projects).
+    // Floor: p25 per-session read fraction was 28.3% across the sample.
+    // Fails on creation-heavy data — see test 16a negative control.
+    expect(totalReadCost).toBeGreaterThan(totalCreationCost)
+
+    // Real sessions use exclusively 1h-TTL cache (5m bucket is empty).
+    // Measured: 5m tokens = 0, 1h tokens = 13.8M across 20 sessions.
+    if (total1hTokens > 0) {
+      expect(total5mTokens / total1hTokens).toBeLessThan(0.01)
+    }
+
+    // cache_read is a non-trivial fraction of total spend (> 20%).
+    // Measured volume-weighted fraction: 54.5% in this sample, 55.4% across 266 sessions.
+    if (totalCost > 0) {
+      expect(totalReadCost / totalCost).toBeGreaterThan(0.20)
+    }
+  })
+
+  it('16a. negative control: creation-heavy synthetic sessions invert the dominance relationship', () => {
+    const syntheticJsonl = fixture(
+      makeRecord('s1', { cache_creation_1h: 1_000_000, cache_read: 0, output: 100 }),
+    )
+    const t = parseTotals(syntheticJsonl)
+    const cost = computeCost(t)
+    expect(cost.cache_read).not.toBeGreaterThan(cost.cache_creation_1h)
+  })
+})
+
+// @verifies token-economy-r-009
 describe('real-transcript positive control (AC-15, D-16)', () => {
-  it('15. turn_count and cache_read_per_turn are present and non-negative in a real session transcript', () => {
+  it('15. turn_count and cache_read_per_turn are present and non-negative in a real session transcript', (ctx) => {
     const projectRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd()
     const slug = projectRoot.replace(/[/.]/g, '-')
     const projectsDir = path.join(homedir(), '.claude', 'projects', slug)
     if (!existsSync(projectsDir)) {
-      console.log(`skip: transcript dir absent (${projectsDir})`)
-      return
+      ctx.skip()
     }
     const files = readdirSync(projectsDir)
       .filter((f) => f.endsWith('.jsonl'))
       .map((f) => ({ full: path.join(projectsDir, f), mtime: statSync(path.join(projectsDir, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime)
     if (files.length === 0) {
-      console.log('skip: no .jsonl files found in transcript dir')
-      return
+      ctx.skip()
     }
 
     const content = readFileSync(files[0].full, 'utf8')

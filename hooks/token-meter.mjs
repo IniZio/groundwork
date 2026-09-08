@@ -60,10 +60,10 @@ export const PRICE_OUTPUT_PER_MTOK            = BASE_INPUT_PRICE_PER_MTOK * 5   
  * Deduplicates by record `uuid`; skips non-assistant records and records
  * without a `message.usage` block.
  *
- * TBD-5 settlement (D-31): cache-creation tokens are paid once per session;
- * cache-read tokens are paid every API call. The harness does not amortize —
- * it reports both as raw observed values. `turn_count` (unique requestIds) and
- * `cache_read_per_turn` are the projection handles for per-turn savings analysis.
+ * `turn_count` counts unique `requestId` values among billing-bearing assistant
+ * records; `cache_read_per_turn` is `cache_read_input_tokens / turn_count`.
+ * Both are projection handles for per-turn savings analysis. TBD-5 (the
+ * creation-vs-read cost weighting question) remains open — tracked as T32.
  *
  * @param {string} jsonl  raw JSONL content
  * @returns {UsageTotals}

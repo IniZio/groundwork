@@ -35,7 +35,7 @@ For the reach-proof branch (when propagation from change to observation point is
 
 **Failure: Guard detects but result discarded before output** — a correct detection swallowed before printing produces a guard that is always silent on failure. A lint pass computed a violation count then discarded it before the exit-code path; tests stayed green. Assert the printed line and exit code, not the internal predicate.
 
-**Failure: Check never observed its subject** — three instances share one shape: the check discards its scope argument; the fixture omits what production guarantees; the assertion accepts both the working and broken path equally. Full causal chains in [`reference/failure-modes.md`](reference/failure-modes.md).
+**Failure: Check never observed its subject** — five instances share one shape: the check discards its scope argument; the file-list source silently narrows scope (`git ls-files` cannot see an untracked file); the fixture omits what production guarantees; the assertion accepts both the working and broken path equally; the comparison reads a projection of the payload, not the payload. Ask of every clean result: did the subject reach the check, and could the check have reported it dirty? Full causal chains in [`reference/failure-modes.md`](reference/failure-modes.md).
 
 ## Remaining Modes
 
@@ -56,6 +56,8 @@ Full causal chains and corrections for the following modes are in [`reference/fa
 - Red→green proves sensitivity, not seam coverage
 - Freshness check proves consistency, not correctness
 - Derived iteration is not a derived assertion
+- Assertion invariant to its input — algebraic cancellation, fixture off the boundary, slack in a ratchet, comparator admits the defect's value, body never ran
+- Two binaries share a command name, only one can see the data
 
 ## Completion
 

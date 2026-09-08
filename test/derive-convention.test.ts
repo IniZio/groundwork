@@ -296,6 +296,21 @@ describe('parseTemplate — bodySectionDeclared', () => {
     const rules = parseTemplate(template('prose-body-prohibition'), join(FIXTURES, 'prose-body-prohibition.gitmessage'))
     expect(rules?.bodySectionDeclared).toBe(false)
   })
+
+  it('is false when the template says "do not add a body" (widened prohibition)', () => {
+    const rules = parseTemplate('# type(scope): subject\n# do not add a body\n', 'fake.gitmessage')
+    expect(rules?.bodySectionDeclared).toBe(false)
+  })
+
+  it('is false when the template says "without a body" (article-tolerant prohibition)', () => {
+    const rules = parseTemplate('# type(scope): subject\n# Commit without a body\n', 'fake.gitmessage')
+    expect(rules?.bodySectionDeclared).toBe(false)
+  })
+
+  it('is true when a line matches both prohibition and invitation cue (fail open)', () => {
+    const rules = parseTemplate('# type(scope): subject\n# Optional body if needed — no body required for trivial fixes\n', 'fake.gitmessage')
+    expect(rules?.bodySectionDeclared).toBe(true)
+  })
 })
 
 describe('history that cannot be read never yields rules', () => {

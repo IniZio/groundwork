@@ -46,7 +46,13 @@ const MIN_ENUM_ROWS = 3
 
 const BODY_SECTION_HEADING = /^[-=\s]*\[?\s*body\s*\]?[-=\s]*$/i
 
-const BODY_PROHIBITION = /\bno\s+body\b|\bwithout\s+body\b|\bomit\s+body\b|\bskip\s+body\b/i
+// Prohibition list: when a matching line also fires BODY_INVITATION_CUE, the
+// invitation wins (fail open — a missed declaration is more severe than a missed prohibition).
+const BODY_PROHIBITION =
+  /\bno\s+body\b|\bwithout\s+(?:a\s+|the\s+)?body\b|\bomit\s+(?:the\s+|a\s+)?body\b|\bskip\s+(?:the\s+|a\s+)?body\b|\bleave\s+(?:it\s+)?blank\b|\bsubject\s+(?:line\s+)?only\b|\bno\s+prose\b|\bdo\s+not\s+(?:add|include|write)\s+(?:a\s+)?body\b|\bdon'?t\s+(?:add|include|write)\s+(?:a\s+)?body\b/i
+
+const BODY_INVITATION_CUE =
+  /\boptional\b|\bif\s+(?:needed|desired|necessary|applicable)\b|\bwhen\s+(?:needed|applicable)\b|\bmay\s+(?:add|include)\b|\bfeel\s+free\b/i
 
 const BODY_PROSE_MENTION = /\bbody\b/i
 
@@ -117,7 +123,9 @@ function detectBodySection(lines) {
   return lines.some((raw) => {
     const line = stripCommentMarker(raw).trim()
     if (BODY_SECTION_HEADING.test(line)) return true
-    return BODY_PROSE_MENTION.test(line) && !BODY_PROHIBITION.test(line)
+    if (!BODY_PROSE_MENTION.test(line)) return false
+    if (BODY_PROHIBITION.test(line)) return BODY_INVITATION_CUE.test(line)
+    return true
   })
 }
 

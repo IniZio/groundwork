@@ -737,7 +737,7 @@ function touchedFilesSince(ledger, cwd) {
   return [...set];
 }
 async function buildManifest(relPaths, cwd) {
-  const { isExcluded: isExcluded2, analyzeFiles: analyzeFiles2, FILE_CAP: FILE_CAP2, AGGREGATE_CAP: AGGREGATE_CAP2 } = await Promise.resolve().then(() => (init_comment_density(), exports_comment_density));
+  const { isExcluded: isExcluded2, analyzeFiles: analyzeFiles2, FILE_CAP: FILE_CAP2, AGGREGATE_CAP: AGGREGATE_CAP2, SMALL_FILE_MIN_LINES: SMALL_FILE_MIN_LINES2 } = await Promise.resolve().then(() => (init_comment_density(), exports_comment_density));
   const { findAllRestatingComments: findAllRestatingComments2 } = await Promise.resolve().then(() => (init_comment_restate(), exports_comment_restate));
   const entries = [];
   const relToAbs = new Map;
@@ -764,7 +764,7 @@ async function buildManifest(relPaths, cwd) {
     const content = entries.find((e) => e.path === fr.path)?.content ?? "";
     const restating = findAllRestatingComments2(content);
     const reasons = [];
-    if (fr.commentsPer100 > FILE_CAP2) {
+    if (fr.totalLines >= SMALL_FILE_MIN_LINES2 && fr.commentsPer100 > FILE_CAP2) {
       reasons.push({
         kind: "over-cap",
         lines: fr.lines,
@@ -28341,7 +28341,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 in ever
     const fileResult = analyzeFile(filePath, content);
     const restating = findAllRestatingComments(content);
     const violations = [];
-    if (fileResult.commentsPer100 > FILE_CAP) {
+    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && fileResult.commentsPer100 > FILE_CAP) {
       violations.push(`${filePath} lines [${fileResult.lines.join(",")}]: over-cap ${fileResult.commentsPer100.toFixed(1)}/100 > ${FILE_CAP}/100`);
     }
     for (const r of restating) {

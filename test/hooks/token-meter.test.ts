@@ -18,8 +18,8 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -44,6 +44,7 @@ function makeRecord(
     cache_read?: number
     output?: number
     type?: string
+    requestId?: string
     omitUsage?: boolean
   } = {},
 ): string {
@@ -55,7 +56,6 @@ function makeRecord(
           (opts.cache_creation_5m ?? 0) + (opts.cache_creation_1h ?? 0) + (opts.cache_creation ?? 0),
         cache_read_input_tokens: opts.cache_read ?? 0,
         output_tokens: opts.output ?? 0,
-        // Include breakdown when caller specifies 5m/1h separately
         ...(opts.cache_creation_5m !== undefined || opts.cache_creation_1h !== undefined
           ? {
               cache_creation: {
@@ -66,20 +66,18 @@ function makeRecord(
           : {}),
       }
 
-  const record = {
+  const record: Record<string, unknown> = {
     type: opts.type ?? 'assistant',
     uuid,
     message: usage ? { usage } : {},
   }
+  if (opts.requestId !== undefined) record.requestId = opts.requestId
   return JSON.stringify(record)
 }
 
-/** Build a fixture JSONL string from an array of record lines. */
 function fixture(...lines: string[]): string {
   return lines.join('\n') + '\n'
 }
-
-// ── Unit tests ────────────────────────────────────────────────────────────────
 
 describe('parseTotals', () => {
   it('1. extracts all four fields into separate buckets', () => {
@@ -97,25 +95,24 @@ describe('parseTotals', () => {
     expect(t.input_tokens).toBe(1000)
     expect(t.cache_creation_5m_tokens).toBe(2000)
     expect(t.cache_creation_1h_tokens).toBe(3000)
-    expect(t.cache_creation_input_tokens).toBe(5000) // 2000 + 3000
+    expect(t.cache_creation_input_tokens).toBe(5000)
     expect(t.cache_read_input_tokens).toBe(4000)
     expect(t.output_tokens).toBe(500)
     expect(t.record_count).toBe(1)
   })
 
   it('2. deduplicates records by uuid — no double-counting', () => {
-    // Same uuid appears twice (simulates sidechain duplicate)
     const jsonl = fixture(
       makeRecord('dup-1', { input: 100, cache_read: 200, output: 50 }),
-      makeRecord('dup-1', { input: 100, cache_read: 200, output: 50 }), // duplicate
+      makeRecord('dup-1', { input: 100, cache_read: 200, output: 50 }),
       makeRecord('uniq', { input: 10, output: 5 }),
     )
     const t = parseTotals(jsonl)
 
-    expect(t.record_count).toBe(2) // dup-1 counted once, uniq once
-    expect(t.input_tokens).toBe(110) // 100 + 10
+    expect(t.record_count).toBe(2)
+    expect(t.input_tokens).toBe(110)
     expect(t.cache_read_input_tokens).toBe(200)
-    expect(t.output_tokens).toBe(55) // 50 + 5
+    expect(t.output_tokens).toBe(55)
   })
 
   it('3. skips non-assistant records (user, system, tool)', () => {
@@ -132,10 +129,7 @@ describe('parseTotals', () => {
   })
 
   it('4. falls back to 5m bucket when cache_creation breakdown is absent', () => {
-    // makeRecord with `cache_creation` (no breakdown) — no 5m/1h split
-    const jsonl = fixture(
-      makeRecord('r1', { cache_creation: 8000 }),
-    )
+    const jsonl = fixture(makeRecord('r1', { cache_creation: 8000 }))
     const t = parseTotals(jsonl)
 
     expect(t.cache_creation_5m_tokens).toBe(8000)
@@ -156,11 +150,60 @@ describe('parseTotals', () => {
     expect(t.output_tokens).toBe(300)
     expect(t.record_count).toBe(2)
   })
+
+  it('10. turn_count present as own field (positive-control: field must exist before asserting properties)', () => {
+    const jsonl = fixture(makeRecord('r1', { input: 10, cache_read: 500, output: 5 }))
+    const t = parseTotals(jsonl)
+
+    expect('turn_count' in t).toBe(true)
+    expect('cache_read_per_turn' in t).toBe(true)
+  })
+
+  it('11. turn_count falls back to record_count when no requestId present', () => {
+    const jsonl = fixture(
+      makeRecord('r1', { cache_read: 300 }),
+      makeRecord('r2', { cache_read: 700 }),
+    )
+    const t = parseTotals(jsonl)
+
+    expect(t.record_count).toBe(2)
+    expect(t.turn_count).toBe(2)
+  })
+
+  it('12. turn_count groups by requestId — multiple records sharing one requestId = one turn', () => {
+    const jsonl = fixture(
+      makeRecord('uuid-a1', { input: 100, cache_read: 2000, output: 50, requestId: 'req-X' }),
+      makeRecord('uuid-a2', { input: 100, cache_read: 2000, output: 50, requestId: 'req-X' }),
+      makeRecord('uuid-b1', { input: 50,  cache_read: 1000, output: 25, requestId: 'req-Y' }),
+    )
+    const t = parseTotals(jsonl)
+
+    expect(t.record_count).toBe(3)
+    expect(t.turn_count).toBe(2)
+  })
+
+  it('13. cache_read_per_turn = cache_read_input_tokens / turn_count', () => {
+    const jsonl = fixture(
+      makeRecord('uuid-a1', { cache_read: 3000, requestId: 'req-A' }),
+      makeRecord('uuid-a2', { cache_read: 3000, requestId: 'req-A' }),
+      makeRecord('uuid-b1', { cache_read: 6000, requestId: 'req-B' }),
+    )
+    const t = parseTotals(jsonl)
+
+    expect(t.turn_count).toBe(2)
+    expect(t.cache_read_input_tokens).toBe(12000)
+    expect(t.cache_read_per_turn).toBeCloseTo(12000 / 2)
+  })
+
+  it('14. cache_read_per_turn is 0 when turn_count is 0 (empty input)', () => {
+    const t = parseTotals('')
+    expect(t.turn_count).toBe(0)
+    expect(t.cache_read_per_turn).toBe(0)
+  })
 })
 
 describe('computeCost', () => {
   it('5. applies per-field multipliers independently — not a collapsed input sum', () => {
-    // 1 MTok each of every field → should yield distinct per-field costs
     const totals = {
       input_tokens: 1_000_000,
       cache_creation_5m_tokens: 1_000_000,
@@ -169,18 +212,18 @@ describe('computeCost', () => {
       cache_read_input_tokens: 1_000_000,
       output_tokens: 1_000_000,
       record_count: 1,
+      turn_count: 1,
+      cache_read_per_turn: 1_000_000,
     }
     const cost = computeCost(totals)
     const base = BASE_INPUT_PRICE_PER_MTOK
 
-    // Each field must have a DIFFERENT cost — collapse would make them equal.
-    expect(cost.input).toBeCloseTo(base * 1)         // 1.0× input
-    expect(cost.cache_creation_5m).toBeCloseTo(base * 1.25)   // 1.25×
+    expect(cost.input).toBeCloseTo(base * 1)
+    expect(cost.cache_creation_5m).toBeCloseTo(base * 1.25)
     expect(cost.cache_creation_1h).toBeCloseTo(base * 2.00)   // 2.00× base input (verified: docs.anthropic.com/en/docs/build-with-claude/prompt-caching#pricing)
-    expect(cost.cache_read).toBeCloseTo(base * 0.10)  // 0.10×
-    expect(cost.output).toBeCloseTo(base * 5)         // 5.0×
+    expect(cost.cache_read).toBeCloseTo(base * 0.10)
+    expect(cost.output).toBeCloseTo(base * 5)
 
-    // Total is the sum of all five
     const expectedTotal =
       cost.input + cost.cache_creation_5m + cost.cache_creation_1h + cost.cache_read + cost.output
     expect(cost.total).toBeCloseTo(expectedTotal)
@@ -188,37 +231,37 @@ describe('computeCost', () => {
 })
 
 describe('formatReport', () => {
-  it('6. includes all four billing fields as separate lines', () => {
+  it('6. includes all four billing fields plus turn metrics as separate lines', () => {
     const totals = {
       input_tokens: 100,
       cache_creation_5m_tokens: 200,
       cache_creation_1h_tokens: 300,
       cache_creation_input_tokens: 500,
-      cache_read_input_tokens: 400,
+      cache_read_input_tokens: 4000,
       output_tokens: 50,
-      record_count: 1,
+      record_count: 2,
+      turn_count: 1,
+      cache_read_per_turn: 4000,
     }
     const report = formatReport('test-fixture', totals)
 
-    // Each of the four billing fields must appear on its own line.
     expect(report).toMatch(/input_tokens\s*:\s*100/)
     expect(report).toMatch(/cache_creation.*5.min TTL.*:\s*200/)
     expect(report).toMatch(/cache_creation.*1.hr TTL.*:\s*300/)
-    expect(report).toMatch(/cache_read_input_tokens\s*:\s*400/)
+    expect(report).toMatch(/cache_read_input_tokens\s*:\s*4,000/)
     expect(report).toMatch(/output_tokens\s*:\s*50/)
-    // Cost-weighted total line must exist
     expect(report).toMatch(/Cost-weighted total/)
+    expect(report).toMatch(/Turns\s*:/)
+    expect(report).toMatch(/cache_read_per_turn/)
   })
 })
-
-// ── CLI integration tests (subprocess) ───────────────────────────────────────
 
 describe('CLI', () => {
   let tmpDir: string
   let fixturePath: string
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), 'gw-token-meter-'))
+    tmpDir = mkdtempSync(path.join('/tmp', 'gw-token-meter-'))
     fixturePath = path.join(tmpDir, 'session.jsonl')
   })
 
@@ -237,17 +280,17 @@ describe('CLI', () => {
 
     const out = execFileSync('node', [HOOK, fixturePath], { encoding: 'utf8' })
 
-    // Separate fields must be present in output.
     expect(out).toMatch(/input_tokens/)
     expect(out).toMatch(/cache_creation.*5.min TTL/)
     expect(out).toMatch(/cache_creation.*1.hr TTL/)
     expect(out).toMatch(/cache_read_input_tokens/)
     expect(out).toMatch(/output_tokens/)
     expect(out).toMatch(/Cost-weighted total/)
-    // Actual numbers must match fixture values
-    expect(out).toMatch(/input_tokens\s*:\s*80/) // 50 + 30
+    expect(out).toMatch(/input_tokens\s*:\s*80/)
     expect(out).toMatch(/cache_creation.*1.hr TTL.*:\s*1,000/)
     expect(out).toMatch(/cache_creation.*5.min TTL.*:\s*500/)
+    expect(out).toMatch(/Turns\s*:/)
+    expect(out).toMatch(/cache_read_per_turn/)
   })
 
   it('8. exits 2 with no arguments', () => {
@@ -264,5 +307,36 @@ describe('CLI', () => {
     const out = execFileSync('node', [HOOK, 'help'], { encoding: 'utf8' })
     expect(out).toMatch(/token-meter/)
     expect(out).toMatch(/session\.jsonl/)
+  })
+})
+
+// @verifies token-economy-r-009
+describe('real-transcript positive control (AC-15, D-16)', () => {
+  it('15. turn_count and cache_read_per_turn are present and non-negative in a real session transcript', () => {
+    const projectRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd()
+    const slug = projectRoot.replace(/[/.]/g, '-')
+    const projectsDir = path.join(homedir(), '.claude', 'projects', slug)
+    if (!existsSync(projectsDir)) {
+      console.log(`skip: transcript dir absent (${projectsDir})`)
+      return
+    }
+    const files = readdirSync(projectsDir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => ({ full: path.join(projectsDir, f), mtime: statSync(path.join(projectsDir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+    if (files.length === 0) {
+      console.log('skip: no .jsonl files found in transcript dir')
+      return
+    }
+
+    const content = readFileSync(files[0].full, 'utf8')
+    const t = parseTotals(content)
+
+    expect(typeof t.turn_count).toBe('number')
+    expect(typeof t.cache_read_per_turn).toBe('number')
+    expect(t.turn_count).toBeGreaterThan(0)
+    expect(t.cache_read_per_turn).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(t.cache_read_per_turn)).toBe(true)
+    expect(t.turn_count).toBeLessThan(t.record_count)
   })
 })

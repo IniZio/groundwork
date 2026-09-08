@@ -50,7 +50,9 @@ export const PRICE_OUTPUT_PER_MTOK            = BASE_INPUT_PRICE_PER_MTOK * 5   
  * @property {number} cache_creation_input_tokens total (5m + 1h, or raw if breakdown absent)
  * @property {number} cache_read_input_tokens
  * @property {number} output_tokens
- * @property {number} record_count   number of unique assistant usage records
+ * @property {number} record_count        number of unique assistant usage records (deduped by uuid)
+ * @property {number} turn_count          number of unique API calls (deduped by requestId; falls back to record_count)
+ * @property {number} cache_read_per_turn cache_read_input_tokens / turn_count (0 when turn_count=0)
  */
 
 /**
@@ -58,11 +60,17 @@ export const PRICE_OUTPUT_PER_MTOK            = BASE_INPUT_PRICE_PER_MTOK * 5   
  * Deduplicates by record `uuid`; skips non-assistant records and records
  * without a `message.usage` block.
  *
+ * TBD-5 settlement (D-31): cache-creation tokens are paid once per session;
+ * cache-read tokens are paid every API call. The harness does not amortize —
+ * it reports both as raw observed values. `turn_count` (unique requestIds) and
+ * `cache_read_per_turn` are the projection handles for per-turn savings analysis.
+ *
  * @param {string} jsonl  raw JSONL content
  * @returns {UsageTotals}
  */
 export function parseTotals(jsonl) {
   const seen = new Set()
+  const requestIds = new Set()
   const totals = {
     input_tokens: 0,
     cache_creation_5m_tokens: 0,
@@ -97,6 +105,12 @@ export function parseTotals(jsonl) {
       seen.add(key)
     }
 
+    // Track unique requestIds separately for turn_count.
+    // One API response can produce multiple JSONL records (one per content block,
+    // each with a distinct uuid but the same requestId). Grouping by requestId
+    // gives the true API-call count; grouping by uuid overcounts.
+    if (record.requestId !== undefined) requestIds.add(record.requestId)
+
     totals.input_tokens             += usage.input_tokens             ?? 0
     totals.cache_read_input_tokens  += usage.cache_read_input_tokens  ?? 0
     totals.output_tokens            += usage.output_tokens            ?? 0
@@ -120,7 +134,9 @@ export function parseTotals(jsonl) {
     totals.record_count += 1
   }
 
-  return totals
+  const turn_count = requestIds.size > 0 ? requestIds.size : totals.record_count
+  const cache_read_per_turn = turn_count > 0 ? totals.cache_read_input_tokens / turn_count : 0
+  return { ...totals, turn_count, cache_read_per_turn }
 }
 
 /**
@@ -158,6 +174,7 @@ export function formatReport(source, totals) {
     `── token-meter ─────────────────────────────────────────────────────────────`,
     `Source : ${source}`,
     `Records: ${fmt(totals.record_count)} assistant message(s) (deduplicated)`,
+    `Turns  : ${fmt(totals.turn_count)} unique API call(s) (by requestId)`,
     ``,
     `Token breakdown`,
     `  input_tokens              : ${fmt(totals.input_tokens).padStart(12)}   ${usd(cost.input)}`,
@@ -165,6 +182,9 @@ export function formatReport(source, totals) {
     `  cache_creation (1-hr TTL) : ${fmt(totals.cache_creation_1h_tokens).padStart(12)}   ${usd(cost.cache_creation_1h)}`,
     `  cache_read_input_tokens   : ${fmt(totals.cache_read_input_tokens).padStart(12)}   ${usd(cost.cache_read)}`,
     `  output_tokens             : ${fmt(totals.output_tokens).padStart(12)}   ${usd(cost.output)}`,
+    ``,
+    `Per-turn metrics`,
+    `  cache_read_per_turn       : ${fmt(Math.round(totals.cache_read_per_turn)).padStart(12)} tokens/turn`,
     ``,
     `Cost-weighted total (USD)   : ${usd(cost.total)}`,
     `  (Sonnet 4.x: input $${p(PRICE_INPUT_PER_MTOK)}/MTok, cache-write-5m $${p(PRICE_CACHE_CREATION_5M_PER_MTOK)}/MTok,`,

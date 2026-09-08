@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 42a7ca462f02ab9d57461c219e2f28a06e0f74811f89663dc9868e54eaa577e2
+// @bundle-source-hash: 9ecfa55d604ff90cfac2ad881106edbef18b217fe3c6bc2b61405c0c6584bb97
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1012,7 +1012,11 @@ function detectBodySection(lines) {
     const line = stripCommentMarker(raw).trim();
     if (BODY_SECTION_HEADING.test(line))
       return true;
-    return BODY_PROSE_MENTION.test(line) && !BODY_PROHIBITION.test(line);
+    if (!BODY_PROSE_MENTION.test(line))
+      return false;
+    if (BODY_PROHIBITION.test(line))
+      return BODY_INVITATION_CUE.test(line);
+    return true;
   });
 }
 function parseTemplate(text, templatePath) {
@@ -1282,7 +1286,7 @@ function deriveConvention(repoRoot, opts = {}) {
     validation
   };
 }
-var SAMPLE_SIZE = 30, MIN_SAMPLE_SIZE = 10, MIN_PASS_RATE = 0.85, MAX_REPORTED_FAILURES = 5, RULE_GROUPS, SUBJECT_PREFIX_STRIPPERS, SHAPE_TYPE_SCOPE, SHAPE_SCOPE_ONLY, BARE_TOKEN, PIPE_ENUM, DASH_ENUM_ROW, MIN_ENUM_ROWS = 3, BODY_SECTION_HEADING, BODY_PROHIBITION, BODY_PROSE_MENTION;
+var SAMPLE_SIZE = 30, MIN_SAMPLE_SIZE = 10, MIN_PASS_RATE = 0.85, MAX_REPORTED_FAILURES = 5, RULE_GROUPS, SUBJECT_PREFIX_STRIPPERS, SHAPE_TYPE_SCOPE, SHAPE_SCOPE_ONLY, BARE_TOKEN, PIPE_ENUM, DASH_ENUM_ROW, MIN_ENUM_ROWS = 3, BODY_SECTION_HEADING, BODY_PROHIBITION, BODY_INVITATION_CUE, BODY_PROSE_MENTION;
 var init_derive_convention = __esm(() => {
   RULE_GROUPS = ["subjectShape", "subjectCap", "body"];
   SUBJECT_PREFIX_STRIPPERS = [
@@ -1295,7 +1299,8 @@ var init_derive_convention = __esm(() => {
   PIPE_ENUM = /^(types?|scopes?)\s*:\s*([A-Za-z0-9._-]+(?:\s*\|\s*[A-Za-z0-9._-]+)+)\s*$/i;
   DASH_ENUM_ROW = /^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,23})\s+[-\u2013\u2014]\s+\S.*$/;
   BODY_SECTION_HEADING = /^[-=\s]*\[?\s*body\s*\]?[-=\s]*$/i;
-  BODY_PROHIBITION = /\bno\s+body\b|\bwithout\s+body\b|\bomit\s+body\b|\bskip\s+body\b/i;
+  BODY_PROHIBITION = /\bno\s+body\b|\bwithout\s+(?:a\s+|the\s+)?body\b|\bomit\s+(?:the\s+|a\s+)?body\b|\bskip\s+(?:the\s+|a\s+)?body\b|\bleave\s+(?:it\s+)?blank\b|\bsubject\s+(?:line\s+)?only\b|\bno\s+prose\b|\bdo\s+not\s+(?:add|include|write)\s+(?:a\s+)?body\b|\bdon'?t\s+(?:add|include|write)\s+(?:a\s+)?body\b/i;
+  BODY_INVITATION_CUE = /\boptional\b|\bif\s+(?:needed|desired|necessary|applicable)\b|\bwhen\s+(?:needed|applicable)\b|\bmay\s+(?:add|include)\b|\bfeel\s+free\b/i;
   BODY_PROSE_MENTION = /\bbody\b/i;
 });
 

@@ -187,6 +187,7 @@ describe('AC-2 source-of-truth', () => {
       'doc/specs/enforcement/requirements/enforcement-r-018-commit-message-gate.md',   // mirror — AC-2 spec-mirror drift check guards it
       'dist/gw.mjs',                                                                   // generated — check:bundle hash guards it
       'test/fixtures/parity-corpus/commit-message-guard/deny-invalid-commit-type.json', // fixture — test vector, not a source
+      'test/fixtures/gitmessage/groundwork.gitmessage',                                 // fixture — literal .gitmessage template data under test; cannot import, not a second source of truth
       'test/hooks/commit-convention.test.ts',                                           // this guard itself
     ]);
 

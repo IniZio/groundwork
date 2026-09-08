@@ -15,6 +15,7 @@ import {
   validateRules,
 } from '../hooks/lib/derive-convention.mjs'
 import type { ConventionRules } from '../hooks/lib/derive-convention.mjs'
+import { COMMIT_TYPES } from '../hooks/lib/commit-convention.mjs'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gitmessage')
 
@@ -28,9 +29,12 @@ function subjects(name: string): string[] {
     .filter((line) => line.trim() !== '')
 }
 
+const GW_LIVE_REPO_HANLUN_LMS = process.env.GW_LIVE_REPO_HANLUN_LMS ?? ''
+const GW_LIVE_REPO_NEXUS_MAIN = process.env.GW_LIVE_REPO_NEXUS_MAIN ?? ''
+
 const REPOS: Record<string, string> = {
-  'hanlun-lms': '/home/newman/magic/hanlun-lms',
-  'nexus-main': '/home/newman/magic/nexus-main',
+  'hanlun-lms': GW_LIVE_REPO_HANLUN_LMS,
+  'nexus-main': GW_LIVE_REPO_NEXUS_MAIN,
   groundwork: join(dirname(fileURLToPath(import.meta.url)), '..'),
 }
 
@@ -63,10 +67,7 @@ describe('deriveConvention — real templates, validated against real history', 
     const result = derive('groundwork')
     expect(result.confident).toBe(true)
     expect(result.rules?.shape).toBe('type-scope')
-    expect(result.rules?.types).toEqual([
-      'feat', 'fix', 'docs', 'style', 'refactor',
-      'perf', 'test', 'build', 'ci', 'chore', 'revert',
-    ])
+    expect(result.rules?.types).toEqual(COMMIT_TYPES)
     expect(result.rules?.scopes).toBeNull()
     expect(result.validation?.passed).toBe(30)
     expect(result.validation!.passRate).toBeGreaterThanOrEqual(MIN_PASS_RATE)
@@ -84,8 +85,15 @@ describe('deriveConvention — real templates, validated against real history', 
 })
 
 describe('deriveConvention — live repositories on disk', () => {
+  const skipped = Object.entries(REPOS).filter(([, root]) => !root || !existsSync(join(root, '.git')))
+  if (skipped.length > 0) {
+    process.stderr.write(
+      `\n[derive-convention] live-repo tests SKIPPED for: ${skipped.map(([n]) => n).join(', ')}` +
+        ` — set GW_LIVE_REPO_HANLUN_LMS / GW_LIVE_REPO_NEXUS_MAIN to enable\n`,
+    )
+  }
   for (const [name, root] of Object.entries(REPOS)) {
-    it.skipIf(!existsSync(join(root, '.git')))(
+    it.skipIf(!root || !existsSync(join(root, '.git')))(
       `derives and self-validates ${name} from its own checkout`,
       () => {
         const result = deriveConvention(root)

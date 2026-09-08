@@ -6,6 +6,9 @@ export declare const FILE_CAP: number
 /** Aggregate cap: 2 comment lines per 100 total lines. */
 export declare const AGGREGATE_CAP: number
 
+/** Minimum total lines before the per-file ratio cap applies. */
+export declare const SMALL_FILE_MIN_LINES: number
+
 /** Language comment-syntax configuration. */
 export interface LangConfig {
   /** Single-line comment prefix, e.g. '//' or '#'. */

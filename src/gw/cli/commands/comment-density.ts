@@ -89,7 +89,7 @@ export interface Manifest {
  * Does NOT check the kill switch — caller is responsible.
  */
 export async function buildManifest(relPaths: string[], cwd: string): Promise<Manifest> {
-  const { isExcluded, analyzeFiles, FILE_CAP, AGGREGATE_CAP } = await import(
+  const { isExcluded, analyzeFiles, FILE_CAP, AGGREGATE_CAP, SMALL_FILE_MIN_LINES } = await import(
     '../../../../hooks/lib/comment-density.mjs'
   )
   const { findAllRestatingComments } = await import('../../../../hooks/lib/comment-restate.mjs')
@@ -116,7 +116,7 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
     const restating = findAllRestatingComments(content)
 
     const reasons: ManifestFile['reasons'] = []
-    if (fr.commentsPer100 > FILE_CAP) {
+    if (fr.totalLines >= SMALL_FILE_MIN_LINES && fr.commentsPer100 > FILE_CAP) {
       reasons.push({
         kind: 'over-cap',
         lines: fr.lines,

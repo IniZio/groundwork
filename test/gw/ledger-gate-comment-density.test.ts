@@ -10,18 +10,17 @@ const SHIM_PATH = path.join(REPO_ROOT, 'bin/gw-hook')
 const WRITE_TOKEN = 'testtoken-density-gate'
 const MOTIVE = 'test-density'
 
-const OVER_CAP_CONTENT = `// This is a redundant comment
-// Another redundant comment
-// Yet another comment
-// More redundant comments
-// Still more comments
-// Too many comments here
-// This one too
-const x = 1
-const y = 2
-const z = x + y
-export const result = z
-`
+const OVER_CAP_CONTENT = [
+  'const v1 = 1', 'const v2 = 2', 'const v3 = 3', 'const v4 = 4', 'const v5 = 5',
+  'const v6 = 6', 'const v7 = 7', 'const v8 = 8', 'const v9 = 9', 'const v10 = 10',
+  'const v11 = 11', 'const v12 = 12', 'const v13 = 13', 'const v14 = 14', 'const v15 = 15',
+  'const v16 = 16', 'const v17 = 17', 'const v18 = 18', 'const v19 = 19', 'const v20 = 20',
+  'const v21 = 21', 'const v22 = 22', 'const v23 = 23', 'const v24 = 24', 'const v25 = 25',
+  'const v26 = 26', 'const v27 = 27', 'const v28 = 28', 'const v29 = 29', 'const v30 = 30',
+  'const v31 = 31', 'const v32 = 32', 'const v33 = 33', 'const v34 = 34', 'const v35 = 35',
+  'const v36 = 36', 'const v37 = 37',
+  '// first comment', '// second comment', '// third comment',
+].join('\n')
 
 const cleanupSlice = {
   id: 'CD-001',

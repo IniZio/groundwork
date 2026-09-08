@@ -74,29 +74,30 @@ function gitInit(cwd: string): void {
 }
 
 const OVER_CAP_CONTENT = [
-  'const a = 1',
-  'const b = 2',
-  'const c = 3',
-  'const d = 4',
-  'const e = 5',
-  'const f = 6',
-  '// comment one',
-  '// comment two',
-  '// comment three',
-  '// comment four',
+  'const v1 = 1', 'const v2 = 2', 'const v3 = 3', 'const v4 = 4', 'const v5 = 5',
+  'const v6 = 6', 'const v7 = 7', 'const v8 = 8', 'const v9 = 9', 'const v10 = 10',
+  'const v11 = 11', 'const v12 = 12', 'const v13 = 13', 'const v14 = 14', 'const v15 = 15',
+  'const v16 = 16', 'const v17 = 17', 'const v18 = 18', 'const v19 = 19', 'const v20 = 20',
+  'const v21 = 21', 'const v22 = 22', 'const v23 = 23', 'const v24 = 24', 'const v25 = 25',
+  'const v26 = 26', 'const v27 = 27', 'const v28 = 28', 'const v29 = 29', 'const v30 = 30',
+  'const v31 = 31', 'const v32 = 32', 'const v33 = 33', 'const v34 = 34', 'const v35 = 35',
+  'const v36 = 36', 'const v37 = 37',
+  '// comment one', '// comment two', '// comment three',
 ].join('\n')
 
 const RESTATING_CONTENT = [
   'let counter = 0',
-  'const a = 1',
-  'const b = 2',
-  'const c = 3',
-  'const d = 4',
-  'const e = 5',
-  'const f = 6',
-  'const g = 7',
+  'const v1 = 1', 'const v2 = 2', 'const v3 = 3', 'const v4 = 4', 'const v5 = 5',
+  'const v6 = 6', 'const v7 = 7', 'const v8 = 8', 'const v9 = 9', 'const v10 = 10',
+  'const v11 = 11', 'const v12 = 12', 'const v13 = 13', 'const v14 = 14', 'const v15 = 15',
+  'const v16 = 16', 'const v17 = 17', 'const v18 = 18', 'const v19 = 19', 'const v20 = 20',
+  'const v21 = 21', 'const v22 = 22', 'const v23 = 23', 'const v24 = 24', 'const v25 = 25',
+  'const v26 = 26', 'const v27 = 27', 'const v28 = 28', 'const v29 = 29', 'const v30 = 30',
+  'const v31 = 31', 'const v32 = 32', 'const v33 = 33', 'const v34 = 34', 'const v35 = 35',
   '// increment counter',
   'counter++',
+  '// extra comment a',
+  '// extra comment b',
 ].join('\n')
 
 const CLEAN_CONTENT = ['const a = 1', 'const b = 2', 'const c = 3', 'const d = 4'].join('\n')

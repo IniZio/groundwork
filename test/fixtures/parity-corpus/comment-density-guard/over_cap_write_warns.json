@@ -3,17 +3,17 @@
   "hook_path": "bin/gw-hook hook comment-density-guard",
   "event_type": "PreToolUse",
   "scenario_name": "over_cap_write_warns",
-  "description": "Write tool with 6 comment lines in 11 total lines (54.5/100 > 5/100 cap) — emits additionalContext warning",
+  "description": "Write tool with 6 comment lines in 43 total lines (14.0/100 > 5/100 cap) — emits additionalContext warning",
   "env": {},
   "disk_state_setup": [],
   "stdin_payload": {
     "tool_name": "Write",
     "tool_input": {
       "file_path": "/tmp/overcap.ts",
-      "content": "// comment one\n// comment two\n// comment three\n// comment four\n// comment five\n// comment six\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\n"
+      "content": "// comment one\n// comment two\n// comment three\n// comment four\n// comment five\n// comment six\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\nconst g = 7;\nconst h = 8;\nconst i = 9;\nconst j = 10;\nconst k = 11;\nconst l = 12;\nconst m = 13;\nconst n = 14;\nconst o = 15;\nconst p = 16;\nconst q = 17;\nconst r = 18;\nconst s = 19;\nconst t = 20;\nconst u = 21;\nconst v = 22;\nconst w = 23;\nconst x = 24;\nconst y = 25;\nconst z = 26;\nconst aa = 27;\nconst bb = 28;\nconst cc = 29;\nconst dd = 30;\nconst ee = 31;\nconst ff = 32;\nconst gg = 33;\nconst hh = 34;\nconst ii = 35;\nconst jj = 36;\n"
     }
   },
-  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"⚠️  groundwork comment-density-guard:\\n/tmp/overcap.ts lines [1,2,3,4,5,6]: over-cap 54.5/100 > 5/100\\n\\nComments per 100 lines must stay ≤5 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.\"}}\n",
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"⚠️  groundwork comment-density-guard:\\n/tmp/overcap.ts lines [1,2,3,4,5,6]: over-cap 14.0/100 > 5/100\\n\\nComments per 100 lines must stay ≤5 in every file you touch; all comment lines count including doc comments. Do not add comments that restate the adjacent code. Touching a legacy file means bringing the whole file under the cap. This rule applies to every Edit, Write, and MultiEdit call.\"}}\n",
   "stderr": "",
   "exit_code": 0,
   "decision": "WARN"

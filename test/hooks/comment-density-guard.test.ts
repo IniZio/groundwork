@@ -31,26 +31,15 @@ function runHook(
 }
 
 const OVER_CAP_CONTENT = [
-  'const a = 1',
-  'const b = 2',
-  'const c = 3',
-  'const d = 4',
-  'const e = 5',
-  'const f = 6',
-  'const g = 7',
-  'const h = 8',
-  'const i = 9',
-  'const j = 10',
-  'const k = 11',
-  'const l = 12',
-  'const m = 13',
-  'const n = 14',
-  'const o = 15',
-  'const p = 16',
-  'const q = 17',
-  'const r = 18',
-  '// first comment',
-  '// second comment',
+  'const v1 = 1', 'const v2 = 2', 'const v3 = 3', 'const v4 = 4', 'const v5 = 5',
+  'const v6 = 6', 'const v7 = 7', 'const v8 = 8', 'const v9 = 9', 'const v10 = 10',
+  'const v11 = 11', 'const v12 = 12', 'const v13 = 13', 'const v14 = 14', 'const v15 = 15',
+  'const v16 = 16', 'const v17 = 17', 'const v18 = 18', 'const v19 = 19', 'const v20 = 20',
+  'const v21 = 21', 'const v22 = 22', 'const v23 = 23', 'const v24 = 24', 'const v25 = 25',
+  'const v26 = 26', 'const v27 = 27', 'const v28 = 28', 'const v29 = 29', 'const v30 = 30',
+  'const v31 = 31', 'const v32 = 32', 'const v33 = 33', 'const v34 = 34', 'const v35 = 35',
+  'const v36 = 36', 'const v37 = 37',
+  '// first comment', '// second comment', '// third comment',
 ].join('\n')
 
 const RESTATING_CONTENT = [
@@ -77,26 +66,14 @@ const RESTATING_CONTENT = [
 ].join('\n')
 
 const CLEAN_CONTENT = [
-  'const a = 1',
-  'const b = 2',
-  'const c = 3',
-  'const d = 4',
-  'const e = 5',
-  'const f = 6',
-  'const g = 7',
-  'const h = 8',
-  'const i = 9',
-  'const j = 10',
-  'const k = 11',
-  'const l = 12',
-  'const m = 13',
-  'const n = 14',
-  'const o = 15',
-  'const p = 16',
-  'const q = 17',
-  'const r = 18',
-  'const s = 19',
-  'const t = 20',
+  'const v1 = 1', 'const v2 = 2', 'const v3 = 3', 'const v4 = 4', 'const v5 = 5',
+  'const v6 = 6', 'const v7 = 7', 'const v8 = 8', 'const v9 = 9', 'const v10 = 10',
+  'const v11 = 11', 'const v12 = 12', 'const v13 = 13', 'const v14 = 14', 'const v15 = 15',
+  'const v16 = 16', 'const v17 = 17', 'const v18 = 18', 'const v19 = 19', 'const v20 = 20',
+  'const v21 = 21', 'const v22 = 22', 'const v23 = 23', 'const v24 = 24', 'const v25 = 25',
+  'const v26 = 26', 'const v27 = 27', 'const v28 = 28', 'const v29 = 29', 'const v30 = 30',
+  'const v31 = 31', 'const v32 = 32', 'const v33 = 33', 'const v34 = 34', 'const v35 = 35',
+  'const v36 = 36', 'const v37 = 37', 'const v38 = 38', 'const v39 = 39', 'const v40 = 40',
 ].join('\n')
 
 describe('comment-density-guard hook', () => {
@@ -164,8 +141,8 @@ describe('comment-density-guard hook', () => {
         tool_name: 'Edit',
         tool_input: {
           file_path: filePath,
-          old_string: 'const s = 19\nconst t = 20',
-          new_string: '// comment one\n// comment two\nconst s = 19\nconst t = 20',
+          old_string: 'const v39 = 39\nconst v40 = 40',
+          new_string: '// comment one\n// comment two\n// comment three\nconst v39 = 39\nconst v40 = 40',
         },
       })
       const { stdout, status } = runHook(payload)

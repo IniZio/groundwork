@@ -12,6 +12,7 @@ import {
   analyzeFile,
   isExcluded,
   FILE_CAP,
+  SMALL_FILE_MIN_LINES,
 } from '../../../hooks/lib/comment-density.mjs'
 import { findAllRestatingComments } from '../../../hooks/lib/comment-restate.mjs'
 
@@ -133,7 +134,7 @@ export const run: HookFn = async (rawInput, env) => {
     const restating = findAllRestatingComments(content)
 
     const violations: string[] = []
-    if (fileResult.commentsPer100 > FILE_CAP) {
+    if (fileResult.totalLines >= SMALL_FILE_MIN_LINES && fileResult.commentsPer100 > FILE_CAP) {
       violations.push(
         `${filePath} lines [${fileResult.lines.join(',')}]: over-cap ${fileResult.commentsPer100.toFixed(1)}/100 > ${FILE_CAP}/100`,
       )

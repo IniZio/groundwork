@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 9ecfa55d604ff90cfac2ad881106edbef18b217fe3c6bc2b61405c0c6584bb97
+// @bundle-source-hash: bce467236124c51ddf978b012c2b57752658281711c5453b3ef77b099abe4e2a
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -62,6 +62,7 @@ __export(exports_comment_density, {
   isExcluded: () => isExcluded,
   analyzeFiles: () => analyzeFiles,
   analyzeFile: () => analyzeFile,
+  SMALL_FILE_MIN_LINES: () => SMALL_FILE_MIN_LINES,
   LANGUAGE_TABLE: () => LANGUAGE_TABLE,
   FILE_CAP: () => FILE_CAP,
   AGGREGATE_CAP: () => AGGREGATE_CAP
@@ -445,7 +446,7 @@ function analyzeFiles(entries, opts = {}) {
   const aggregatePer100 = totalLines === 0 ? 0 : totalComment / totalLines * 100;
   return { files, aggregatePer100 };
 }
-var FILE_CAP = 5, AGGREGATE_CAP = 2, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS;
+var FILE_CAP = 5, AGGREGATE_CAP = 2, SMALL_FILE_MIN_LINES = 40, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS;
 var init_comment_density = __esm(() => {
   LANGUAGE_TABLE = {
     ".ts": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: true },

@@ -2,20 +2,20 @@
 id: enforcement-r-017
 type: requirement
 concept: C-ENFORCEMENT
-title: gw-hook shim selects bun as primary runtime; node fallback fails for gw source
+title: gw-hook shim requires bun, resolves it beyond PATH, and reports its absence legibly
 status: implemented
-verification: unverified
+verification: verified
 criticality: must
 design: "[[design/concepts/hook-architecture]]"
 ---
 
-## ENFORCEMENT-R-017 — gw-hook shim selects bun as primary runtime; node fallback fails for gw source {#enforcement-r-017}
+## ENFORCEMENT-R-017 — gw-hook shim requires bun, resolves it beyond PATH, and reports its absence legibly {#enforcement-r-017}
 
-If `bun` is available on PATH, the `bin/gw-hook` shim **shall** exec into `bun run src/gw/cli/main.ts` without invoking node; if `bun` is not available and `node` is available, the shim **shall** attempt `node --experimental-strip-types src/gw/cli/main.ts`, which **shall** fail with a non-zero exit code and a diagnostic on stderr identifying the missing module (`ERR_MODULE_NOT_FOUND`), because the gw source uses `.js` extension specifiers that node cannot remap to `.ts` at runtime; if neither runtime is available, the shim **shall** exit non-zero with a message instructing the operator to install bun or Node.js 22+.
+The `bin/gw-hook` shim **shall** resolve a bun executable in this order: `$GW_BUN` when set and executable, then `bun` on PATH, then the well-known locations `~/.bun/bin/bun`, `~/.local/share/mise/shims/bun`, `~/.local/share/mise/installs/bun/latest/bin/bun`, `~/.local/bin/bun`, `/usr/local/bin/bun`, `/opt/homebrew/bin/bun`. Having resolved one, the shim **shall** exec that bun against `dist/gw.mjs` when the bundle is present and against `src/gw/cli/main.ts` otherwise. If no bun is resolved, the shim **shall not** invoke node; it **shall** exit non-zero, emit nothing on stdout, and emit a stderr diagnostic that names bun, lists the searched locations, states the `$GW_BUN` override, and states that node cannot substitute.
 
-Note: the `node --experimental-strip-types` fallback is structurally broken for the gw source and is documented as a known limitation. The 8 hooks that route through `bin/gw-hook` (agent-model-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, orchestrator-impl-guard, struggle-detector, stop-gate) are therefore bun-dependent in practice. Operators **shall** ensure bun is installed before deploying the plugin.
+Note: node is not a usable runtime for the gw source. `node --experimental-strip-types` does not remap the NodeNext `.js` import specifiers in `src/gw/**` to `.ts`, and `dist/gw.mjs` is a `--target=bun` bundle that node cannot execute. A node route would therefore always crash; it previously surfaced as a raw `ERR_MODULE_NOT_FOUND` resolver stack naming `src/gw/cli/router.js`, which named neither bun nor the operator's actual problem. The 8 hooks that route through `bin/gw-hook` (agent-model-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, orchestrator-impl-guard, struggle-detector, stop-gate) are bun-dependent. Operators **shall** ensure bun is installed before deploying the plugin.
 
-- **Why** — If bun is absent, all 8 gw-hook PreToolUse and Stop hooks fail at startup with a non-zero exit. The Claude Code harness may treat a non-zero hook exit as a block (Stop hooks) or as an unhandled error (PreToolUse), which disrupts every session. The failure mode is loud (non-zero + stderr diagnostic), not silent, so operators can identify and fix it. Documenting this as a requirement makes the bun dependency explicit rather than implicit in the shim's runtime selection logic.
-- **Fit criterion** — With bun available on PATH, `echo '{}' | bin/gw-hook hook nesting-guard` exits 0 and produces empty stdout (passthrough for unrecognized input). With bun absent (e.g. `PATH=/usr/bin:/bin bin/gw-hook hook nesting-guard`), the command exits non-zero; the node fallback either exits with `ERR_MODULE_NOT_FOUND` on stderr or the shim's "no usable runtime" message appears on stderr.
-- **Verification**: unverified — run `which bun` to confirm bun is installed, then verify `bin/gw-hook hook nesting-guard` exits 0 on a passthrough payload. Simulate bun-absent by temporarily prepending a PATH that excludes bun and observe the non-zero exit.
+- **Why** — Resolution beyond PATH matters because a launcher that inherits a non-login PATH (a terminal-multiplexer pane, a GUI-spawned editor) can miss a bun that a login shell resolves through a version manager, disabling all 8 hooks on a machine where bun is installed. Legibility matters because the previous node fallback reported Node's module resolver internals rather than the missing runtime, so the operator had no path from the message to the fix.
+- **Fit criterion** — With bun reachable, `echo '{}' | bin/gw-hook hook nesting-guard` exits 0 and produces empty stdout. With bun absent from PATH but present at `$HOME/.bun/bin/bun`, the same command still exits 0. With bun unreachable everywhere, the command exits non-zero, stdout is empty, and stderr contains the word `bun` and no `ERR_MODULE_NOT_FOUND` or `internal/modules/esm/resolve` text.
+- **Verification**: verified by `test/hooks/gw-hook-runtime-selection.test.ts` — spawns `bin/gw-hook` with a PATH containing node but no bun and a scratch `$HOME`, asserting the legible-diagnostic criterion; then repeats with a bun symlink under `$HOME/.bun/bin` asserting exit 0.
 - **Criticality**: must

@@ -12,14 +12,15 @@
 #
 # Prefers dist/gw.mjs (committed JS bundle, all deps inlined) when present — no
 # node_modules needed. Falls back to src/gw/cli/main.ts for local dev (where
-# node_modules IS present). dist/gw.mjs runs only with bun (--target=bun bundle);
-# the node fallback uses the TS source directly.
+# node_modules IS present). Both targets require bun: node cannot remap the
+# NodeNext .js import specifiers and dist/gw.mjs is a --target=bun bundle.
 #
-# Runtime selection (deterministic order):
-#   1. bun   — TS-native, fastest cold start
-#   2. node --experimental-strip-types — Node 22+, strips types without checking
+# Runtime resolution (bun-only, deterministic order):
+#   $GW_BUN (if set and executable) → bun on PATH → well-known locations:
+#   ~/.bun/bin, mise shims, mise installs, ~/.local/bin, /usr/local/bin,
+#   /opt/homebrew/bin. Exits 1 with a stderr diagnostic when bun is not found.
 #
-# TYPE SAFETY NOTE: both runtimes strip types WITHOUT type-checking them.
+# TYPE SAFETY NOTE: bun strips types WITHOUT type-checking them.
 # Run `pnpm run check` to catch type errors. Do NOT add a tsc call here —
 # it would add seconds to every hook invocation.
 #
@@ -41,19 +42,49 @@ _DIR=$(dirname "$_REAL")
 _MAIN="$_DIR/../src/gw/cli/main.ts"
 _BUNDLE="$_DIR/../dist/gw.mjs"
 
-if command -v bun >/dev/null 2>&1; then
+# Resolve bun: PATH first, then well-known install locations. A launcher that
+# inherits a non-login PATH (a terminal-multiplexer pane, a GUI-spawned editor)
+# can miss a perfectly good bun that a login shell would have found.
+_BUN=""
+if [ -n "$GW_BUN" ] && [ -x "$GW_BUN" ]; then
+  _BUN="$GW_BUN"
+elif command -v bun >/dev/null 2>&1; then
+  _BUN=$(command -v bun)
+else
+  for _cand in \
+    "$HOME/.bun/bin/bun" \
+    "$HOME/.local/share/mise/shims/bun" \
+    "$HOME/.local/share/mise/installs/bun/latest/bin/bun" \
+    "$HOME/.local/bin/bun" \
+    "/usr/local/bin/bun" \
+    "/opt/homebrew/bin/bun"; do
+    if [ -x "$_cand" ]; then
+      _BUN="$_cand"
+      break
+    fi
+  done
+fi
+
+if [ -n "$_BUN" ]; then
   if [ -f "$_BUNDLE" ]; then
     # GW_REPO_ROOT tells the bundle where the repo root is — import.meta.url
     # resolves to dist/gw.mjs inside a bundle, not the original source file,
     # so ../../../ navigation would land outside the repo. Source files that
     # need the repo root check GW_REPO_ROOT first.
-    GW_REPO_ROOT="$_DIR/.." exec bun run "$_BUNDLE" "$@"
+    GW_REPO_ROOT="$_DIR/.." exec "$_BUN" run "$_BUNDLE" "$@"
   else
-    exec bun run "$_MAIN" "$@"
+    exec "$_BUN" run "$_MAIN" "$@"
   fi
-elif command -v node >/dev/null 2>&1; then
-  exec node --experimental-strip-types "$_MAIN" "$@"
-else
-  echo "gw-hook: no usable runtime found. Install bun (https://bun.sh) or Node.js 22+ (supports --experimental-strip-types)." >&2
-  exit 1
 fi
+
+# No bun. Do NOT fall through to node: `node --experimental-strip-types` cannot
+# remap the NodeNext ".js" import specifiers in src/gw/** to ".ts", and
+# dist/gw.mjs is a --target=bun bundle. Both routes crash — the node one with a
+# raw ESM resolver stack that names router.js and never mentions bun. Report the
+# real cause instead.
+echo "gw-hook: bun not found — the groundwork gw hooks require bun." >&2
+echo "gw-hook: searched PATH, \$GW_BUN, ~/.bun/bin, ~/.local/share/mise/shims," >&2
+echo "gw-hook: ~/.local/share/mise/installs/bun/latest/bin, ~/.local/bin, /usr/local/bin, /opt/homebrew/bin." >&2
+echo "gw-hook: install bun (https://bun.sh), add its directory to PATH, or set GW_BUN=/absolute/path/to/bun." >&2
+echo "gw-hook: node cannot substitute — src/gw/** uses NodeNext '.js' specifiers that type-stripping does not remap to '.ts'." >&2
+exit 1

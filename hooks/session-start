@@ -5,8 +5,8 @@
 # shim never depends on dist/gw. dist/gw may be absent on a fresh install, or
 # may have stale path resolution after a rebuild — both break the hook silently.
 #
-# bin/gw-hook handles runtime selection (bun → node --experimental-strip-types)
-# and fails loudly if neither is available. stdin/stdout/stderr/exit code all
+# bin/gw-hook handles runtime selection (bun-only; exits 1 loudly if bun is not found)
+# and passes through stdin/stdout/stderr/exit code all
 # pass through via exec — no wrapping, no buffering, no stray bytes.
 
 _SELF="${BASH_SOURCE[0]}"

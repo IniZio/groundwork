@@ -54,7 +54,7 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 | [[requirements/enforcement-r-014-spec-guard-warn-on-no-ledger\|ENFORCEMENT-R-014]] | Spec-guard warns and permits spec writes when no active ledger exists | implemented |
 | [[requirements/enforcement-r-015-keyword-router-hint-injection\|ENFORCEMENT-R-015]] | Keyword-router injects deterministic routing hints for user prompts | implemented |
 | [[requirements/enforcement-r-016-session-reminder-context-injection\|ENFORCEMENT-R-016]] | Session-reminder injects ledger state and orchestrator rules at session start | implemented |
-| [[requirements/enforcement-r-017-gw-hook-shim-requires-bun\|ENFORCEMENT-R-017]] | gw-hook shim selects bun as primary runtime; node fallback fails for gw source | implemented |
+| [[requirements/enforcement-r-017-gw-hook-shim-requires-bun\|ENFORCEMENT-R-017]] | gw-hook shim requires bun, resolves it beyond PATH, and reports its absence legibly | implemented |
 | [[requirements/pacing-r-001-wave-default-pace-policy\|PACING-R-001]] | Wave-default pace policy initialised at ledger init | implemented |
 | [[requirements/pacing-r-002-start-time-hard-block-with-exact-reason-messaging\|PACING-R-002]] | Start-time hard block with exact-reason messaging | implemented |
 | [[requirements/pacing-r-003-ledger-complete-never-blocked-by-pacing\|PACING-R-003]] | `ledger complete` is never blocked by pacing | implemented |

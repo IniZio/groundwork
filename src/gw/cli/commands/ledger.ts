@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
@@ -6,6 +6,12 @@ import { type GwEnvelope, okEnvelope, errEnvelope } from '../envelope.js'
 import { buildManifest, touchedFilesSince, type Manifest } from './comment-density.js'
 import { resolveLedgerPath } from '../../lib/resolve-ledger-path.js'
 import { emitAcCoverageEvent } from '../../lib/journal-emit.js'
+import {
+  canonicalReleaseState,
+  computeSeal,
+  keyPath,
+  readKey,
+} from '../../../../hooks/lib/gate-seal.mjs'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
@@ -61,7 +67,6 @@ interface SliceJson {
 
 interface GateJson {
   advisor?: string | { verdict: string; rubric?: string; citation?: string }
-  awaiting_human?: { reason: string; set_at: string } | null
   autopilot?: Array<{ units: number; reason: string; ts: string }>
   verifier?: string
   [key: string]: unknown
@@ -76,6 +81,7 @@ interface LedgerJson {
   schema_version?: number
   slices?: SliceJson[]
   gate?: GateJson
+  awaiting_human?: boolean
   pacing?: Record<string, unknown>
   scoped_tokens?: Array<{ token: string; scope: string }>
   [key: string]: unknown
@@ -104,6 +110,23 @@ function atomicWrite(runPath: string, data: LedgerJson): void {
   const tmp = `${runPath}.tmp.${randomBytes(4).toString('hex')}`
   writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', 'utf8')
   renameSync(tmp, runPath)
+}
+
+/**
+ * Recompute gate.seal over the mutated ledger, mirroring reSeal in hooks/ledger.mjs.
+ *
+ * awaiting_human is part of the sealed canonical state, so a ledger mutated without
+ * re-sealing carries a seal that no longer matches — and the stop-gate is fail-closed
+ * on a mismatched seal, so it would block the very hold that was just set.
+ * Legacy in-flight ledgers (unsealed, no key on disk) are left untouched.
+ */
+function reSeal(ledger: LedgerJson, projectDir: string): LedgerJson {
+  const sessionId = typeof ledger.session_id === 'string' ? ledger.session_id : undefined
+  const isSealed = (ledger.gate as GateJson | undefined)?.seal != null
+  if (!isSealed && !existsSync(keyPath({ projectDir, sessionId }))) return ledger
+  const key = readKey({ projectDir, sessionId })
+  const seal = computeSeal(canonicalReleaseState(ledger), key)
+  return { ...ledger, gate: { ...(ledger.gate ?? {}), seal } }
 }
 
 /** Strip the legacy gate seal when rebuilding a gate object (seal is stale after mutation). */
@@ -893,22 +916,16 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         } catch (e) {
           return authErr('ledger await-human', e)
         }
-        const clearing = positionals[0] === 'clear'
-        const base = gateWithoutSeal(ledger.gate ?? {})
+        // The hold lives at the TOP LEVEL of the ledger as a boolean — that is the
+        // key the stop-gate hook reads (src/gw/hook/stop-gate.ts) and the key the
+        // schema declares. Writing it under `gate` produces a hold no reader sees.
+        const clearing = positionals[0] === 'clear' || flags['clear'] === true
+        const { awaiting_human: _prev, ...rest } = ledger
         if (clearing) {
-          atomicWrite(runPath, { ...ledger, gate: { ...base, awaiting_human: null } })
+          atomicWrite(runPath, reSeal(rest, repoRoot))
           return okEnvelope('ledger await-human', { content: 'awaiting-human hold cleared\n' })
         } else {
-          atomicWrite(runPath, {
-            ...ledger,
-            gate: {
-              ...base,
-              awaiting_human: {
-                reason: 'set via gw ledger await-human',
-                set_at: new Date().toISOString(),
-              },
-            },
-          })
+          atomicWrite(runPath, reSeal({ ...rest, awaiting_human: true }, repoRoot))
           return okEnvelope('ledger await-human', { content: 'awaiting-human hold set\n' })
         }
       }

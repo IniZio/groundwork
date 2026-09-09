@@ -44,7 +44,7 @@ Completion: `advisor-gate` returns APPROVE.
 
 ## Phase 3 — Grilling loop
 
-Walk through constraints, dependencies, and the shape of a deepened module. Challenge shallow reasoning: "if we deleted this module, where does the complexity go?"
+Walk through constraints, dependencies, and the shape of a deepened module. Apply the _deletion test_ to challenge shallow reasoning: "if we deleted this module, where does the complexity go?"
 
 As decisions crystallize:
 

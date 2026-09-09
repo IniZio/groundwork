@@ -49,7 +49,7 @@ Map one probe to one prediction from the current hypothesis. Change one variable
 
 ### Phase 5 — Fix + regression test
 
-Write the failing test before the fix, at a seam that exercises the real bug pattern at the call site. If no correct seam exists, that is the finding — flag for architecture improvement in the post-mortem.
+Write the failing test before the fix, at a seam (_seam_: module boundary where responsibilities end and callers' begin; see `engineering-judgment`) that exercises the real bug pattern at the call site. If no correct seam exists, that is the finding — flag for architecture improvement in the post-mortem.
 
 **Two-run invariant:** the test file is byte-identical between the red run and the green run (`git diff --exit-code <testfile>` shows no output); the only diff between runs is production source reached through the product's own import path — not a formula re-implemented in the test; the red failure message names the diverging production values.
 

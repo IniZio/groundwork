@@ -21,7 +21,7 @@ Two failure classes account for most agentic rework: structure held by conventio
 
 When reviewing or proposing structure, use these terms — each carries a verdict, not just a label.
 
-**Depth** (Ousterhout, *A Philosophy of Software Design*; vocabulary ported from Pocock, *codebase-design*): behaviour per unit of interface. A module is **deep** when large behaviour sits behind a small interface; **shallow** when a caller must learn as much about the module's internals as they gain in capability from using it. The cross-concern handler failure above produces a shallow module: a caller of `router.ts` cannot add an auth rule without reasoning across session, rendering, and audit — every concern leaks into every path. Reject a proposed abstraction layer that is itself shallow — it is a pass-through, not an abstraction.
+**Module depth** (Ousterhout, *A Philosophy of Software Design*; vocabulary ported from Pocock, *codebase-design*): behaviour per unit of interface. A module is **deep** when large behaviour sits behind a small interface; **shallow** when a caller must learn as much about the module's internals as they gain in capability from using it. The cross-concern handler failure above produces a shallow module: a caller of `router.ts` cannot add an auth rule without reasoning across session, rendering, and audit — every concern leaks into every path. Reject a proposed abstraction layer that is itself shallow — it is a pass-through, not an abstraction.
 
 _Deletion test_: imagine deleting the module. Complexity vanishes → it was a pass-through. Complexity scatters back across every caller → it was earning its keep. Apply this before building an abstraction to confirm it has real depth.
 

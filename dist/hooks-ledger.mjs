@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: e107740c06ded7beef5f5f26ca42a3d1ff24fe612d4616f6951f4c8ca0a8f2ed
+// @bundle-source-hash: 1457cd6342394390a13b5b36ee2d532bf7d2f285e8eecdcceb360d33c3972340
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -12689,7 +12689,15 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       parts.push("**Next actions:**");
       parts.push("");
       for (const na of lastPause.next_actions) {
-        parts.push(`- **${na.action}:** ${na.detail ?? ""}`);
+        if (typeof na === "string") {
+          parts.push(`- ${na}`);
+        } else if (na != null && typeof na === "object") {
+          if (na.slice != null) {
+            parts.push(`- **${na.slice}** (w${na.wave}): ${na.desc ?? ""}`);
+          } else {
+            parts.push(`- **${na.action ?? ""}:** ${na.detail ?? ""}`);
+          }
+        }
       }
     }
     parts.push("");

@@ -15,6 +15,8 @@ Skip only when an injection-and-revert cycle was completed this session for this
 
 ## Procedure
 
+**0. Confirm the invocation path is registered.** Open the manifest or registration file and read the entry for this check out of it; reading code, tracing imports, or asserting that the path is registered does not discharge this step. Where the entry names a shim or bare path, resolve the indirection to the handler actually under test — a manifest entry that does not dispatch to that handler is not a valid registration. A check exercised only via a direct path (e.g. `node <path>`, a bare test import) proves sensitivity on a path the product never takes.
+
 **1. Record the baseline.** Run the check; record the exact result (count, status, output string).
 
 **2. Inject a real violation.** Introduce a known defect inside each element of the claimed scope — one at a time. Enumerate scope from the check's own configuration (the regex, the glob, the ignore list), not from documentation. Where they disagree, the configuration is the real scope.
@@ -47,13 +49,13 @@ Full causal chains and corrections for the following modes are in [`reference/fa
 - AC verified against wrong source yields wrong-but-green fix
 - Mutation report with numbering gap hides the survivor
 - Pipe to tail hides exit code
-- Tests bypass deployed invocation path
+- **Tests bypass deployed invocation path** — the test calls `node <path>` directly; the product's registered entry (exec bit, shim, manifest) goes unexercised and stays green on regression
 - Red→green perturbation destroys sibling work
 - Git-stash baseline blind to untracked files
 - Parity test blinded by narrowed input
 - Auditor shares the defect class
 - Guard blind to its own failure case
-- Red→green proves sensitivity, not seam coverage
+- **Red→green proves sensitivity, not seam coverage** — a stash-based bite proof confirms the test bites but not that it runs both surfaces; a stub or offline variant satisfies the proof while the real seam is unexercised
 - Freshness check proves consistency, not correctness
 - Derived iteration is not a derived assertion
 - Assertion invariant to its input — algebraic cancellation, fixture off the boundary, slack in a ratchet, comparator admits the defect's value, body never ran
@@ -61,4 +63,4 @@ Full causal chains and corrections for the following modes are in [`reference/fa
 
 ## Completion
 
-Proving is complete when the check has been observed to fail for the right reason and the check returns the exact baseline value after revert.
+Proving is complete when (1) the check has been observed to fail for the right reason, (2) the check returns the exact baseline value after revert, and (3) the manifest path for this check is recorded (quoted from the file) and any shim or bare-path indirection has been traced to the handler under test. A check satisfying (1) and (2) but not (3) has proven sensitivity only; it is not proven.

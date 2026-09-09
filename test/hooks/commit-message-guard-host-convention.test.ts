@@ -81,12 +81,12 @@ describe('commit-message-guard — host repo with its own .gitmessage', () => {
     expect(verdict).toBe('reject')
   })
 
-  it('case 5: multi-line prose body is ALLOWED in a repo with .gitmessage', () => {
+  it('case 5: multi-line prose body is DENIED in a repo with .gitmessage', () => {
     const verdict = guardVerdict(
       'git commit -m "web: Ignore CancelledError" -m "This explains why the change was made and\nwraps at seventy-two characters as the template asks."',
       hostRepo,
     )
-    expect(verdict).toBe('accept')
+    expect(verdict).toBe('reject')
   })
 
   it('case 3: non-conventional subject in a repo WITHOUT .gitmessage is still DENIED', () => {

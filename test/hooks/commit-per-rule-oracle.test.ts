@@ -139,15 +139,20 @@ describe('validateRulesPerGroup scores every rule separately', () => {
   })
 })
 
-describe('CASE 1 — subjects conform, bodies present', () => {
-  it('resolves to subject rules only', () => {
+// Cases 1-4, 6 and 7 previously recorded the per-group derivation oracle deciding which
+// rules survived. Rules are now concatenated instead of derived, so what each case asserts
+// is which SOURCE supplies the rule — never whether history switched one off.
+describe('CASE 1 — no .gitmessage, history full of bodies', () => {
+  it("applies groundwork's own convention rather than measuring the history", () => {
     const host = resolveHostRules(bodiesRepo)
-    expect(host.rules?.enforce).toEqual(SUBJECT_RULES)
-    expect(host.reason).toContain('body policy')
+    expect(host.applies).toBe(false)
+    expect(host.rules).toBeNull()
+    expect(host.reason).toContain('no .gitmessage')
   })
 
-  it('ACCEPTS a conforming subject that carries a body', () => {
-    expect(lintMessage('feat: add feature\n\nThis is a body line', opts(bodiesRepo)).violations).toEqual([])
+  it('REJECTS a body even though every recent commit carries one', () => {
+    const v = lintMessage('feat: add feature\n\nThis is a body line', opts(bodiesRepo)).violations
+    expect(v.some((x) => /body has 1 non-blank lines/.test(x.reason))).toBe(true)
   })
 
   it('REJECTS a malformed subject in the same repository', () => {
@@ -162,9 +167,10 @@ describe('CASE 1 — subjects conform, bodies present', () => {
   })
 })
 
-describe('CASE 2 — subjects conform, no bodies: full enforcement', () => {
-  it('enforces every rule group', () => {
-    expect(resolveHostRules(bodylessRepo).rules?.enforce).toEqual(RULE_GROUPS)
+describe('CASE 2 — no .gitmessage, no bodies: full enforcement', () => {
+  it("applies groundwork's convention", () => {
+    expect(resolveHostRules(bodylessRepo).rules).toBeNull()
+    expect(resolveHostRules(bodylessRepo).applies).toBe(false)
   })
 
   it('rejects a body', () => {
@@ -173,34 +179,31 @@ describe('CASE 2 — subjects conform, no bodies: full enforcement', () => {
   })
 })
 
-describe('CASE 3 — subjects do not conform: universal-only', () => {
-  it('yields no rules at all', () => {
+describe('CASE 3 — no .gitmessage, history refutes the convention', () => {
+  it('history cannot disarm the convention: the rules still apply', () => {
     const host = resolveHostRules(refutingRepo)
-    expect(host.applies).toBe(true)
+    expect(host.applies).toBe(false)
     expect(host.rules).toBeNull()
-    expect(lintMessage('web: anything\n\nwith a body', opts(refutingRepo)).violations).toEqual([])
+    expect(lintMessage('web: anything\n\nwith a body', opts(refutingRepo)).violations.length).toBeGreaterThan(0)
   })
 })
 
-describe('CASE 4 — template declares body section: body rule excluded regardless of history', () => {
-  it('derives rules with body excluded from enforce and a permitted body', () => {
+describe('CASE 4 — repo with a .gitmessage: universal rules on top of the project template', () => {
+  it('enforces the body rule and imposes no subject grammar', () => {
     const host = resolveHostRules(derivableRepo)
     expect(host.applies).toBe(true)
-    expect(host.rules?.bodyPermitted).toBe(true)
-    expect(host.rules?.enforce).toContain('subjectShape')
-    expect(host.rules?.enforce).not.toContain('body')
-    expect(host.rules?.shape).toBe('scope-only')
+    expect(host.rules?.bodyPermitted).toBe(false)
+    expect(host.rules?.enforce).toEqual(['body'])
+    expect(host.template?.text).toBeTypeOf('string')
   })
 
-  it('a bullet-laden body cannot produce a body violation', () => {
-    const host = resolveHostRules(derivableRepo)
-    expect(checkMessage('web: something\n\n- a bullet body', host.rules!).violations
-      .filter((v) => v.group === 'body')).toEqual([])
-    expect(lintMessage('web: something\n\n- a bullet body', opts(derivableRepo)).violations).toEqual([])
+  it('a bullet-laden body IS a violation, whatever the template declares', () => {
+    const v = lintMessage('web: something\n\n- a bullet body', opts(derivableRepo)).violations
+    expect(v.some((x) => /body has 1 non-blank lines/.test(x.reason))).toBe(true)
   })
 
-  it('its subject rules still discriminate', () => {
-    expect(lintMessage('feat(web): something', opts(derivableRepo)).violations.length).toBeGreaterThan(0)
+  it("does not impose groundwork's subject grammar on the project", () => {
+    expect(lintMessage('feat(web): something', opts(derivableRepo)).violations).toEqual([])
   })
 })
 
@@ -236,17 +239,17 @@ describe('CASE 6 — template silent on body + subject-only history: body enforc
   })
 })
 
-describe('CASE 7 — template silent on body + body-writing history: body not enforced', () => {
-  it('enforce excludes the body group', () => {
+describe('CASE 7 — same template, body-writing history: the rule is UNCHANGED', () => {
+  it('history cannot switch the body group off', () => {
     const host = resolveHostRules(templateSilentBodiesRepo)
     expect(host.applies).toBe(true)
-    expect(host.rules?.enforce).not.toContain('body')
-    expect(host.rules?.bodyPermitted).toBe(true)
+    expect(host.rules?.enforce).toContain('body')
+    expect(host.rules?.bodyPermitted).toBe(false)
   })
 
-  it('accepts a bodied commit', () => {
+  it('rejects a bodied commit exactly as CASE 6 does', () => {
     const v = lintMessage('feat: add something\n\nA body line', opts(templateSilentBodiesRepo)).violations
-    expect(v.filter((x) => x.reason.includes('body'))).toEqual([])
+    expect(v.some((x) => /body has 1 non-blank lines/.test(x.reason))).toBe(true)
   })
 })
 

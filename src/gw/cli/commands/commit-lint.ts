@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { type GwEnvelope, errEnvelope, okEnvelope } from '../envelope.js'
 
-export const COMMIT_LINT_SUBCOMMANDS = ['report', 'remediate-plan'] as const
+export const COMMIT_LINT_SUBCOMMANDS = ['report', 'remediate-plan', 'convention'] as const
 
 export interface CommitViolation {
   sha: string
@@ -158,10 +158,19 @@ async function runRemediatePlan(args: string[], cwd: string): Promise<GwEnvelope
   return okEnvelope('commit-lint remediate-plan', { content: lines.join('\n') })
 }
 
+// The active ruleset is reported, never inferred, so an agent can read which rules apply
+// before writing a commit instead of assuming a documented rule is in force.
+async function runConvention(cwd: string): Promise<GwEnvelope> {
+  const { activeConvention, resolveRepoRoot } = await import('../../../../hooks/lib/commit-convention.mjs')
+  const repoRoot = resolveRepoRoot(cwd)
+  return okEnvelope('commit-lint convention', activeConvention(repoRoot))
+}
+
 export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   const [subcmd, ...rest] = args
   if (subcmd === 'report') return runReport(rest, cwd)
   if (subcmd === 'remediate-plan') return runRemediatePlan(rest, cwd)
+  if (subcmd === 'convention') return runConvention(cwd)
   return errEnvelope(
     'commit-lint',
     'UNKNOWN_SUBCOMMAND',

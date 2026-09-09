@@ -185,8 +185,9 @@ describe('three-enforcer parity in a host repo with its own .gitmessage', () => 
   const HOST_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
     { id: 'host-scope-accepted', message: 'web: Ignore CancelledError and offline fetch noise in GlitchTip', verdict: 'accept' },
     { id: 'host-scope-db-accepted', message: 'db: Restore slim MATH tc modules fixture', verdict: 'accept' },
-    { id: 'groundwork-type-rejected', message: 'feat(web): something', verdict: 'reject' },
-    { id: 'groundwork-bare-type-rejected', message: 'chore: update dependencies', verdict: 'reject' },
+    { id: 'groundwork-type-accepted', message: 'feat(web): something', verdict: 'accept' },
+    { id: 'groundwork-bare-type-accepted', message: 'chore: update dependencies', verdict: 'accept' },
+    { id: 'body-rejected', message: 'web: add a thing\n\nThis is a body line', verdict: 'reject' },
     { id: 'process-vocab-rejected', message: 'web: fix the second gate cycle thing', verdict: 'reject' },
   ]
 
@@ -214,14 +215,14 @@ describe('three-enforcer parity in a host repo with its own .gitmessage', () => 
   }
 })
 
-describe('three-enforcer parity in a no-.gitmessage repo whose history refutes the convention', () => {
+describe('three-enforcer parity in a no-.gitmessage repo: history cannot disarm the convention', () => {
   let refutingRepo: string
 
   const REFUTING_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
-    { id: 'own-style-accepted', message: 'web: Ignore CancelledError noise', verdict: 'accept' },
-    { id: 'shapeless-accepted', message: 'Just some words with no shape at all', verdict: 'accept' },
-    { id: 'over-length-accepted', message: 'feat: ' + 'x'.repeat(73), verdict: 'accept' },
-    { id: 'body-accepted', message: 'infra: add feature\n\nThis is a body line', verdict: 'accept' },
+    { id: 'own-style-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
+    { id: 'shapeless-rejected', message: 'Just some words with no shape at all', verdict: 'reject' },
+    { id: 'over-length-rejected', message: 'feat: ' + 'x'.repeat(73), verdict: 'reject' },
+    { id: 'body-rejected', message: 'infra: add feature\n\nThis is a body line', verdict: 'reject' },
     { id: 'process-vocab-rejected', message: 'web: resolve the gate cycle regression', verdict: 'reject' },
     { id: 'slice-id-rejected', message: 'web: implement T39 completion', verdict: 'reject' },
   ]
@@ -251,17 +252,17 @@ describe('three-enforcer parity in a no-.gitmessage repo whose history refutes t
   }
 })
 
-// T43: per-rule validation splits this repo's verdicts — subject rules kept, body rule
-// dropped. All three surfaces must split them the same way.
-describe('three-enforcer parity where only the body rule was dropped', () => {
+// A body-writing history no longer buys a body exemption. All three surfaces must agree
+// on that, so none of them can be the one that quietly still permits a body.
+describe('three-enforcer parity where history writes bodies but the rule stands', () => {
   let bodiesRepo: string
 
   const BODIES_CORPUS: Array<{ id: string; message: string; verdict: 'accept' | 'reject' }> = [
-    { id: 'conforming-with-body-accepted', message: 'feat: add feature\n\nThis is a body line', verdict: 'accept' },
+    { id: 'conforming-with-body-rejected', message: 'feat: add feature\n\nThis is a body line', verdict: 'reject' },
     { id: 'malformed-subject-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
     { id: 'invalid-type-rejected', message: 'notatype: this should always be rejected', verdict: 'reject' },
     { id: 'over-length-rejected', message: 'feat: ' + 'x'.repeat(73), verdict: 'reject' },
-    { id: 'bullet-body-accepted', message: 'chore: tidy imports\n\n- one\n- two', verdict: 'accept' },
+    { id: 'bullet-body-rejected', message: 'chore: tidy imports\n\n- one\n- two', verdict: 'reject' },
     { id: 'process-vocab-in-body-rejected', message: 'feat: add feature\n\nThis closes the second gate cycle.', verdict: 'reject' },
   ]
 

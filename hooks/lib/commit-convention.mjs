@@ -1,17 +1,11 @@
-import { readdirSync, existsSync } from 'fs'
+import { readdirSync, existsSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import {
-  MIN_PASS_RATE,
-  MIN_SAMPLE_SIZE,
   RULE_GROUPS,
-  SAMPLE_SIZE,
   checkMessage,
-  deriveConvention,
   describeRules,
-  readRecentMessages,
-  validateRulesPerGroup,
 } from './derive-convention.mjs'
 
 export const COMMIT_TYPES = [
@@ -39,6 +33,29 @@ export const PROCESS_VOCAB_DENYLIST = [
   { pattern: /\bD-\d+\b/,        label: 'process vocabulary: decision id (e.g. D-7)' },
 ]
 
+// The rules groundwork imposes on EVERY repository. They are stated, never inferred, so
+// they have no inactive state: nothing a host template says can switch one of them off.
+// Subject grammar is deliberately absent — that is the project template's business.
+export const UNIVERSAL_RULE_STATEMENTS = [
+  'Attribution trailers (Co-Authored-By: Claude, Claude-Session:, "Generated with Claude Code") are stripped automatically.',
+  'No groundwork process vocabulary: gate cycle, dogfood cleanup, advisor APPROVE, slice ids (T4), decision ids (D-7), motive slugs.',
+  'No commit body — subject line only. The diff shows what changed; the subject communicates intent.',
+]
+
+export const UNIVERSAL_RULES = {
+  shape: 'type-scope',
+  types: null,
+  scopes: null,
+  bodyPermitted: false,
+  bodyMaxLines: 0,
+  bodySectionDeclared: false,
+  templatePath: null,
+  breakingMarker: true,
+  scopePattern: null,
+  subjectCap: null,
+  enforce: ['body'],
+}
+
 export const GROUNDWORK_RULES = {
   shape: 'type-scope',
   types: COMMIT_TYPES,
@@ -50,12 +67,6 @@ export const GROUNDWORK_RULES = {
   breakingMarker: true,
   scopePattern: SCOPE_PATTERN,
   subjectCap: SUBJECT_CAP,
-}
-
-const GROUP_LABELS = {
-  subjectShape: 'subject shape',
-  subjectCap: 'subject length',
-  body: 'body policy',
 }
 
 export function stripAttribution(text) {
@@ -96,94 +107,48 @@ export function isGroundworkOwnRepo(repoRoot) {
 
 const hostRulesCache = new Map()
 
-function validateGroundworkConvention(repoRoot) {
-  const messages = readRecentMessages(repoRoot, SAMPLE_SIZE)
-  if (messages === null) {
-    return {
-      applies: true,
-      rules: null,
-      reason: "commit history could not be read, so groundwork's convention cannot be validated here",
-    }
+export function readCommitTemplate(repoRoot) {
+  if (typeof repoRoot !== 'string' || repoRoot === '') return null
+  const path = join(repoRoot, '.gitmessage')
+  if (!existsSync(path)) return null
+  try {
+    return { path, text: readFileSync(path, 'utf8') }
+  } catch {
+    return { path, text: null }
   }
-  const perGroup = validateRulesPerGroup(GROUNDWORK_RULES, messages.map(stripAttribution))
-  if (!perGroup.enoughHistory) {
-    return {
-      applies: true,
-      rules: null,
-      reason: `only ${perGroup.sampled} usable commits sampled; ${MIN_SAMPLE_SIZE} are needed to validate a convention`,
-      perGroup,
-    }
-  }
-  const shape = perGroup.groups.subjectShape
-  // Subject shape is load-bearing: without it the length and body measurements score
-  // messages the convention does not even claim to describe, so nothing is enforced.
-  if (!shape.ok) {
-    return {
-      applies: true,
-      rules: null,
-      reason: `groundwork's subject convention matches only ${(shape.passRate * 100).toFixed(1)}% of this repository's own recent commits (threshold ${(MIN_PASS_RATE * 100).toFixed(0)}%)`,
-      perGroup,
-    }
-  }
-  const enforce = RULE_GROUPS.filter((g) => perGroup.groups[g].ok)
-  const dropped = RULE_GROUPS.filter((g) => !perGroup.groups[g].ok)
-  const enforced = enforce.map((g) => GROUP_LABELS[g]).join(', ')
-  const droppedText = dropped
-    .map((g) => `${GROUP_LABELS[g]} (${perGroup.groups[g].passed}/${perGroup.groups[g].sampled})`)
-    .join(', ')
+}
+
+// The whole active ruleset, assembled rather than inferred: the project's own template
+// text plus groundwork's universal rules. Every field is present in every repository, so
+// a caller can always read WHICH rules apply instead of guessing whether any did.
+export function activeConvention(repoRoot) {
+  const host = resolveHostRules(repoRoot)
+  const own = isGroundworkOwnRepo(repoRoot)
+  const template = readCommitTemplate(repoRoot)
+  const rules = host.applies ? host.rules : (host.rules ?? GROUNDWORK_RULES)
   return {
-    applies: false,
-    rules: { ...GROUNDWORK_RULES, enforce },
-    reason: dropped.length === 0
-      ? `groundwork's convention confirmed against ${shape.passed}/${shape.sampled} recent commits`
-      : `groundwork's convention confirmed for ${enforced} against ${shape.sampled} recent commits; not enforced here: ${droppedText}`,
-    perGroup,
+    repoRoot: repoRoot ?? null,
+    scope: own ? 'groundwork-own-repo' : 'host-repo',
+    source: own
+      ? "groundwork's own hardcoded convention (its .gitmessage mirrors it)"
+      : template === null
+        ? 'groundwork convention (no project .gitmessage to concatenate)'
+        : 'project .gitmessage + groundwork universal rules',
+    projectTemplate: template === null
+      ? { path: null, text: null, note: 'no .gitmessage in this repository' }
+      : template,
+    universalRules: UNIVERSAL_RULE_STATEMENTS,
+    bodyPermitted: rules?.bodyPermitted === true,
+    enforcedGroups: Array.isArray(rules?.enforce) ? rules.enforce : RULE_GROUPS,
+    reason: host.reason,
   }
 }
 
-function validateTemplateConvention(repoRoot) {
-  const derived = deriveConvention(repoRoot)
-  if (!derived.confident || derived.rules === null) {
-    return { applies: true, rules: null, reason: derived.reason }
-  }
-
-  const messages = readRecentMessages(repoRoot, SAMPLE_SIZE)
-  if (messages === null || messages.length < MIN_SAMPLE_SIZE) {
-    return { applies: true, rules: derived.rules, reason: derived.reason }
-  }
-
-  // Body group precedence: a template that explicitly declares a body section outranks
-  // history — the repo stated its intent, so the empty-body rule is never applied.
-  // A silent template defers to the per-group oracle; history decides.
-  const bodyDeclared = derived.rules.bodySectionDeclared
-  const perGroup = validateRulesPerGroup(
-    { ...derived.rules, bodyPermitted: false },
-    messages,
-  )
-
-  const enforce = RULE_GROUPS.filter((g) => {
-    if (g === 'body') return !bodyDeclared && perGroup.groups[g].ok
-    return perGroup.groups[g].ok
-  })
-
-  const bodyEnforced = enforce.includes('body')
-  const rules = { ...derived.rules, bodyPermitted: !bodyEnforced, enforce }
-
-  const dropped = RULE_GROUPS.filter((g) => !enforce.includes(g))
-  const bodyNote = bodyDeclared ? ' (template declares a body section — body rule not applied)' : ''
-  const droppedText = dropped.length > 0
-    ? `; not enforcing: ${dropped.map((g) => GROUP_LABELS[g]).join(', ')}`
-    : ''
-
-  return { applies: true, rules, reason: `${derived.reason}${bodyNote}${droppedText}` }
-}
-
-// Groundwork's own repository is excluded on purpose: its hardcoded rules are the source
-// of truth that .gitmessage and the spec are checked against, so deriving them back out
-// would let the two drift apart unnoticed. Every OTHER repository, template or not, must
-// earn each rule imposed on it. applies:false means groundwork's convention (rules:null
-// for its own repo, or a per-rule-validated subset elsewhere); applies:true with
-// rules:null means universal-only — process vocabulary and motive slugs, nothing else.
+// Rules are CONCATENATED, never derived. A host repository's .gitmessage supplies its own
+// project convention as text an agent reads; groundwork's universal rules apply on top and
+// are machine-enforced. Neither source can silently switch the other off, so there is no
+// inactive state for a caller to mistake for permission. Subject grammar is never imposed
+// on a host repo: groundwork does not guess a project's format from its template.
 export function resolveHostRules(repoRoot) {
   if (typeof repoRoot !== 'string' || repoRoot === '') {
     return { applies: false, rules: null, reason: 'repository root could not be resolved' }
@@ -191,12 +156,23 @@ export function resolveHostRules(repoRoot) {
   if (hostRulesCache.has(repoRoot)) return hostRulesCache.get(repoRoot)
 
   let result
+  const template = isGroundworkOwnRepo(repoRoot) ? null : readCommitTemplate(repoRoot)
   if (isGroundworkOwnRepo(repoRoot)) {
-    result = { applies: false, rules: null, reason: "groundwork's own repository" }
-  } else if (!hasOwnCommitTemplate(repoRoot)) {
-    result = validateGroundworkConvention(repoRoot)
+    result = { applies: false, rules: null, reason: "groundwork's own repository", template: null }
+  } else if (template === null) {
+    result = {
+      applies: false,
+      rules: null,
+      reason: "no .gitmessage in this repository — groundwork's own convention applies in full",
+      template: null,
+    }
   } else {
-    result = validateTemplateConvention(repoRoot)
+    result = {
+      applies: true,
+      rules: UNIVERSAL_RULES,
+      reason: `project convention in ${template.path} plus groundwork universal rules`,
+      template,
+    }
   }
   hostRulesCache.set(repoRoot, result)
   return result

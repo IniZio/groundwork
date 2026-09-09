@@ -20,23 +20,26 @@ interface Case {
   verdict: Verdict
 }
 
-const DERIVABLE_CASES: Case[] = [
+// A repo that ships a .gitmessage states its own subject grammar there, so groundwork
+// imposes none — it contributes only its universal rules, the body rule among them.
+const TEMPLATE_REPO_CASES: Case[] = [
   { id: 'host-convention-accepted', message: 'web: Ignore CancelledError and offline fetch noise in GlitchTip', verdict: 'accept' },
   { id: 'host-scope-infra-accepted', message: 'infra: Track Containerfile for sandbox docker builds', verdict: 'accept' },
-  { id: 'groundwork-convention-rejected', message: 'feat(web): something', verdict: 'reject' },
-  { id: 'groundwork-bare-type-rejected', message: 'fix: correct token expiry check', verdict: 'reject' },
-  { id: 'groundwork-chore-rejected', message: 'chore: update dependencies', verdict: 'reject' },
+  { id: 'groundwork-shaped-subject-accepted', message: 'feat(web): something', verdict: 'accept' },
+  { id: 'bare-type-accepted', message: 'fix: correct token expiry check', verdict: 'accept' },
+  { id: 'unlisted-scope-accepted', message: 'nosuchscope: do a thing', verdict: 'accept' },
+  { id: 'long-subject-accepted', message: 'web: ' + 'x'.repeat(120), verdict: 'accept' },
+  { id: 'body-rejected', message: 'web: add a thing\n\nThis body explains the change', verdict: 'reject' },
   { id: 'process-vocab-gate-cycle-rejected', message: 'web: fix the second gate cycle thing', verdict: 'reject' },
   { id: 'process-vocab-slice-id-rejected', message: 'web: implement T39 completion', verdict: 'reject' },
   { id: 'process-vocab-decision-id-rejected', message: 'db: address D-7 feedback', verdict: 'reject' },
-  { id: 'unknown-scope-rejected', message: 'nosuchscope: do a thing', verdict: 'reject' },
-  { id: 'long-subject-accepted', message: 'web: ' + 'x'.repeat(120), verdict: 'accept' },
 ]
 
 const DEGENERATE_CASES: Case[] = [
   { id: 'nonconforming-subject-accepted', message: 'Just some words with no shape at all', verdict: 'accept' },
   { id: 'host-shaped-subject-accepted', message: 'anything: at all goes here', verdict: 'accept' },
   { id: 'groundwork-shaped-subject-accepted', message: 'feat(web): also fine here', verdict: 'accept' },
+  { id: 'body-rejected', message: 'anything: at all\n\nwith a body', verdict: 'reject' },
   { id: 'process-vocab-gate-cycle-rejected', message: 'Resolve the second gate cycle regression', verdict: 'reject' },
   { id: 'process-vocab-slice-id-rejected', message: 'Finish T39 wiring', verdict: 'reject' },
 ]
@@ -51,35 +54,36 @@ const NO_TEMPLATE_CONFORMING_CASES: Case[] = [
   { id: 'process-vocab-rejected', message: 'fix: resolve gate cycle regression', verdict: 'reject' },
 ]
 
-// T43: subjects conform but every commit carries a body, so only the body rule is dropped.
-// The first two cases are the load-bearing pair — dropping it must not drop subject rules.
+// With no template to concatenate, groundwork's own convention applies in full. History is
+// no longer consulted, so a body-writing past cannot license a body here.
 const NO_TEMPLATE_BODIES_CASES: Case[] = [
-  { id: 'conforming-subject-with-body-accepted', message: 'feat: add feature\n\nThis is a body line', verdict: 'accept' },
+  { id: 'conforming-subject-with-body-rejected', message: 'feat: add feature\n\nThis is a body line', verdict: 'reject' },
   { id: 'malformed-subject-still-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
   { id: 'unknown-type-still-rejected', message: 'notatype: this should always be rejected', verdict: 'reject' },
   { id: 'over-length-still-rejected', message: 'feat: ' + 'x'.repeat(73), verdict: 'reject' },
-  { id: 'scoped-subject-with-body-accepted', message: 'fix(auth): correct token expiry\n\nThe old check compared seconds to milliseconds.', verdict: 'accept' },
-  { id: 'bullet-body-accepted', message: 'chore: tidy imports\n\n- one\n- two', verdict: 'accept' },
+  { id: 'scoped-subject-with-body-rejected', message: 'fix(auth): correct token expiry\n\nThe old check compared seconds to milliseconds.', verdict: 'reject' },
+  { id: 'bullet-body-rejected', message: 'chore: tidy imports\n\n- one\n- two', verdict: 'reject' },
   { id: 'subject-only-still-accepted', message: 'docs: describe the retry policy', verdict: 'accept' },
   { id: 'process-vocab-in-body-still-rejected', message: 'feat: add feature\n\nThis closes the second gate cycle.', verdict: 'reject' },
   { id: 'process-vocab-in-subject-still-rejected', message: 'feat: implement T39 completion', verdict: 'reject' },
 ]
 
-// Same shape of repo, but its history refutes groundwork's convention. Enforcing it here
-// would deny every commit the project has ever written, so only universal rules apply.
+// A history that refutes the convention no longer disarms it: with no .gitmessage the repo
+// has stated no convention of its own, so groundwork's stands.
 const NO_TEMPLATE_NONCONFORMING_CASES: Case[] = [
-  { id: 'own-style-subject-accepted', message: 'web: Ignore CancelledError noise', verdict: 'accept' },
-  { id: 'shapeless-subject-accepted', message: 'Just some words with no shape at all', verdict: 'accept' },
-  { id: 'over-length-accepted', message: 'feat: ' + 'x'.repeat(73), verdict: 'accept' },
-  { id: 'body-accepted', message: 'infra: add feature\n\nThis is a body line', verdict: 'accept' },
+  { id: 'own-style-subject-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
+  { id: 'shapeless-subject-rejected', message: 'Just some words with no shape at all', verdict: 'reject' },
+  { id: 'over-length-rejected', message: 'feat: ' + 'x'.repeat(73), verdict: 'reject' },
+  { id: 'body-rejected', message: 'infra: add feature\n\nThis is a body line', verdict: 'reject' },
   { id: 'process-vocab-still-rejected', message: 'web: resolve gate cycle regression', verdict: 'reject' },
   { id: 'slice-id-still-rejected', message: 'web: implement T39 completion', verdict: 'reject' },
 ]
 
-// Too little history to measure anything: the guard has no evidence, so it narrows.
+// Thin history is no longer a special case: nothing is measured, so nothing changes.
 const NO_TEMPLATE_THIN_CASES: Case[] = [
-  { id: 'thin-history-host-style-accepted', message: 'web: Ignore CancelledError noise', verdict: 'accept' },
-  { id: 'thin-history-shapeless-accepted', message: 'Just some words with no shape', verdict: 'accept' },
+  { id: 'thin-history-host-style-rejected', message: 'web: Ignore CancelledError noise', verdict: 'reject' },
+  { id: 'thin-history-shapeless-rejected', message: 'Just some words with no shape', verdict: 'reject' },
+  { id: 'thin-history-conforming-accepted', message: 'docs: describe the retry policy', verdict: 'accept' },
   { id: 'thin-history-process-vocab-rejected', message: 'web: resolve gate cycle regression', verdict: 'reject' },
 ]
 
@@ -90,7 +94,7 @@ const TEMPLATE_SILENT_BODYLESS_CASES: Case[] = [
 ]
 
 const TEMPLATE_SILENT_BODIES_CASES: Case[] = [
-  { id: 'bodied-commit-accepted', message: 'feat: add feature\n\nThis body explains the change', verdict: 'accept' },
+  { id: 'bodied-commit-rejected', message: 'feat: add feature\n\nThis body explains the change', verdict: 'reject' },
   { id: 'subject-only-accepted', message: 'feat: add feature', verdict: 'accept' },
   { id: 'process-vocab-still-rejected', message: 'feat: fix the second gate cycle thing', verdict: 'reject' },
 ]
@@ -168,13 +172,13 @@ function assertParity(repo: string, c: Case) {
   expect(guard, `guard [${c.id}]`).toBe(c.verdict)
 }
 
-describe('host repo with a derivable convention (hanlun-lms fixture)', () => {
-  for (const c of DERIVABLE_CASES) {
+describe('host repo with its own .gitmessage (hanlun-lms fixture)', () => {
+  for (const c of TEMPLATE_REPO_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(derivableRepo, c), 30_000)
   }
 })
 
-describe('host repo whose template is not derivable (universal rules only)', () => {
+describe('host repo with a prose-first .gitmessage (universal rules only)', () => {
   for (const c of DEGENERATE_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(degenerateRepo, c), 30_000)
   }
@@ -186,19 +190,19 @@ describe('no .gitmessage, history conforms → groundwork convention enforced', 
   }
 })
 
-describe('no .gitmessage, subjects conform but commits carry bodies → subject rules only', () => {
+describe('no .gitmessage, commits carry bodies → convention still applies in full', () => {
   for (const c of NO_TEMPLATE_BODIES_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(noTemplateBodiesRepo, c), 30_000)
   }
 })
 
-describe('no .gitmessage, history does not conform → universal rules only', () => {
+describe('no .gitmessage, history does not conform → convention still applies', () => {
   for (const c of NO_TEMPLATE_NONCONFORMING_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(noTemplateNonConformingRepo, c), 30_000)
   }
 })
 
-describe('no .gitmessage, history below the minimum sample → universal rules only', () => {
+describe('no .gitmessage, thin history → convention still applies', () => {
   for (const c of NO_TEMPLATE_THIN_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(noTemplateThinRepo, c), 30_000)
   }
@@ -210,7 +214,7 @@ describe('.gitmessage silent on body + subject-only history: body enforced', () 
   }
 })
 
-describe('.gitmessage silent on body + body-writing history: body not enforced', () => {
+describe('.gitmessage silent on body + body-writing history: body still enforced', () => {
   for (const c of TEMPLATE_SILENT_BODIES_CASES) {
     it(`[${c.id}] ${c.verdict}`, () => assertParity(templateSilentBodiesRepo, c), 30_000)
   }

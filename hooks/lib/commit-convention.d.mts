@@ -4,6 +4,30 @@ import type { ConventionRules, PerGroupReport, ValidationReport } from './derive
 
 export declare const GROUNDWORK_RULES: ConventionRules
 
+export declare const UNIVERSAL_RULES: ConventionRules
+export declare const UNIVERSAL_RULE_STATEMENTS: string[]
+
+export interface CommitTemplate {
+  path: string
+  text: string | null
+  note?: string
+}
+
+export declare function readCommitTemplate(repoRoot: string | null | undefined): CommitTemplate | null
+
+export interface ActiveConvention {
+  repoRoot: string | null
+  scope: 'groundwork-own-repo' | 'host-repo'
+  source: string
+  projectTemplate: { path: string | null; text: string | null; note?: string }
+  universalRules: string[]
+  bodyPermitted: boolean
+  enforcedGroups: string[]
+  reason: string
+}
+
+export declare function activeConvention(repoRoot: string | null | undefined): ActiveConvention
+
 export declare const COMMIT_TYPES: string[]
 export declare const SCOPE_PATTERN: RegExp
 export declare const SUBJECT_CAP: number
@@ -28,6 +52,7 @@ export interface HostRules {
   reason: string
   validation?: ValidationReport
   perGroup?: PerGroupReport
+  template?: CommitTemplate | null
 }
 
 export declare function stripAttribution(text: string): string

@@ -14,7 +14,7 @@ Use these terms exactly in all findings and reports:
 - **Module** — anything with an interface and an implementation (function, class, package, file)
 - **Deep module** — high leverage: significant behaviour behind a small interface
 - **Shallow module** — low leverage: interface nearly as complex as the implementation
-- **Seam** — where an interface lives; where behaviour can be altered without editing in place
+- **Seam** — see `engineering-judgment` skill for the authoritative definition and heuristics
 - **Locality** — change, bugs, and knowledge concentrated in one place
 - **Deletion test** — delete the module mentally: does complexity vanish (pass-through) or reappear across N callers (earning its keep)?
 

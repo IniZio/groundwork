@@ -17,9 +17,6 @@ import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
 import { resolvedUnits, inFlightUnit, isExhausted } from './pacing.mjs'
 import { frontier as dagFrontier } from './dag-utils.mjs'
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 /**
  * Regenerate MAP.md for a given motive.
@@ -41,9 +38,6 @@ export function regenerateMotiveMap(projectDir, motive) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Core generation
-// ---------------------------------------------------------------------------
 
 function _generate(projectDir, motive) {
   const motiveDir = join(projectDir, '.groundwork', 'motives', motive)
@@ -52,25 +46,20 @@ function _generate(projectDir, motive) {
   const charter            = readCharter({ projectDir, motive })
   const ledgerDoc          = _readMotiveLedgerDoc(projectDir, motive)
   const slices             = Array.isArray(ledgerDoc?.slices) ? ledgerDoc.slices.filter(Boolean) : []
-  // AC renderer uses a separate union of ALL sessions' slices so that slice ids
-  // reused across sessions (D-12) are tracked per-session, not collapsed.
-  const acSlices           = _readAllMotiveSlicesForAC(projectDir, motive)
+  const acSlices           = _readAllMotiveSlicesForAC(projectDir, motive) // AC renderer uses a separate union of ALL sessions' slices so that slice ids reused across sessions (D-12) are tracked per-session, not collapsed.
   const USE_LEGACY_DECISIONS = process.env.GROUNDWORK_MAP_LEGACY_DECISIONS === '1'
   const journalDecisions   = USE_LEGACY_DECISIONS
     ? _readDecisions(projectDir, motive)
     : _readDecisionsFromFold(projectDir, motive)
-  // Fall back to decisions embedded in the charter file (# Decisions section) when the
-  // journal has no DECISION events — this covers host projects that never emitted them.
-  const decisions          = journalDecisions.length > 0
+  // Fall back to charter.decisions when the journal has no DECISION events.
+  const decisions          = journalDecisions.length > 0  // this covers host projects that never emitted them
     ? journalDecisions
     : (charter?.decisions ?? []).map((d) => ({ msg: `${d.id}: ${d.text}` }))
   const outOfScope         = _readOutOfScope(projectDir)
   const rejectionDecisions = _readRejectionDecisions(projectDir, motive)
   const allEvents          = _readAllMotiveEvents(projectDir, motive)
 
-  // Enrich open_items with resolved_by from accepted DECISION events in the journal.
-  // motive-compile does this in its pipeline; here we replicate the same logic so
-  // the lightweight MAP renderer can filter resolved items without the compile step.
+  // Replicate motive-compile's open_items DECISION-resolved enrichment so MAP renderer can filter.
   if (charter?.open_items?.length) {
     const resolvedByDecisions = new Map()
     for (const ev of allEvents) {
@@ -88,8 +77,7 @@ function _generate(projectDir, motive) {
     }
   }
 
-  // Generate per-ticket drill-down files (errors swallowed inside)
-  regenerateMotiveTickets(motiveDir, {
+  regenerateMotiveTickets(motiveDir, { // errors swallowed inside
     slices,
     openItems: charter?.open_items ?? [],
     events: allEvents,
@@ -114,9 +102,6 @@ function _generate(projectDir, motive) {
   writeFileSync(join(motiveDir, 'MAP.md'), md, 'utf8')
 }
 
-// ---------------------------------------------------------------------------
-// Data readers
-// ---------------------------------------------------------------------------
 
 /**
  * Return the whole chosen ledger document for this motive (not just slices).
@@ -126,7 +111,6 @@ function _generate(projectDir, motive) {
 function _readMotiveLedgerDoc(projectDir, motive) {
   const candidates = []
 
-  // Scan per-session ledgers in .groundwork/runs/
   const runsDir = join(projectDir, '.groundwork', 'runs')
   if (existsSync(runsDir)) {
     for (const f of readdirSync(runsDir)) {
@@ -138,7 +122,6 @@ function _readMotiveLedgerDoc(projectDir, motive) {
     }
   }
 
-  // Legacy single-run ledger
   const legacyPath = join(projectDir, '.groundwork', 'run.json')
   if (existsSync(legacyPath)) {
     try {
@@ -182,7 +165,6 @@ function _readAllMotiveSlicesForAC(projectDir, motive) {
     }
   }
 
-  // Legacy single-run ledger
   const legacyPath = join(projectDir, '.groundwork', 'run.json')
   if (existsSync(legacyPath)) {
     try {
@@ -213,8 +195,7 @@ function _readAllMotiveSlicesForAC(projectDir, motive) {
  * Each stem is the filename without the .md extension (e.g. "t1", "t2").
  * Returns [] when the directory does not exist or is empty.
  */
-// D-74 ticket type vocabulary (in render order); unknown types fall to 'other'.
-const TICKET_TYPE_ORDER = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore']
+const TICKET_TYPE_ORDER = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore'] // D-74 ticket type vocabulary (in render order); unknown types fall to 'other'.
 
 function _readTicketFiles(motiveDir) {
   const ticketsDir = join(motiveDir, 'tickets')
@@ -238,12 +219,9 @@ function _readTicketFiles(motiveDir) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fold-based decision reader (AC-3: canonical fold path)
-// ---------------------------------------------------------------------------
 
 /**
- * Read decisions for MAP rendering via the canonical fold.
+ * Read decisions for MAP rendering via the canonical fold. (AC-3: canonical fold path)
  *
  * Builds a msgMap keyed by event.ord → event.msg so that legacy decisions
  * (no data.title / data.decision) can be recovered from the event stream.
@@ -262,28 +240,21 @@ function _readDecisionsFromFold(projectDir, motive) {
     // Build msgMap: first-event-ord → newest-event-msg per decision.
     // Keyed by the first event's ord (= node.attrs._ord, stamped first-event-wins by the fold)
     // so lookups via attrs._ord work without rebuilding the nodeId formula.
-    // For multi-event same-id decisions, newest-wins for msg so the surviving MAP line
-    // shows the most recent revision rather than the stale original text.
-    const msgMap = new Map()         // first-event-ord → newest msg
+    const msgMap = new Map()         // first-event-ord → newest msg; newest-wins for multi-event same-id decisions
     const idsFirstOrd = new Map()    // data.id → first event's ord (for grouping)
     for (const ev of orderedEvents) {
       if (ev.type !== 'DECISION') continue
       const decId = ev.data?.id ?? null
       if (decId) {
-        // Structured decision: group by id, track first ord, always update msg (newest wins)
-        if (!idsFirstOrd.has(decId)) idsFirstOrd.set(decId, ev.ord)
+        if (!idsFirstOrd.has(decId)) idsFirstOrd.set(decId, ev.ord) // Structured decision: group by id, track first ord, always update msg (newest wins)
         msgMap.set(idsFirstOrd.get(decId), ev.msg ?? null)
       } else {
-        // Legacy (id-less) decision: each event has a unique _legacy_ord node; set once
-        if (!msgMap.has(ev.ord)) msgMap.set(ev.ord, ev.msg ?? null)
+        if (!msgMap.has(ev.ord)) msgMap.set(ev.ord, ev.msg ?? null) // Legacy (id-less) decision: each event has a unique _legacy_ord node; set once
       }
     }
     const fold = assembleGraphFold(orderedEvents)
-    // Use fold.nodes directly (fold already id-deduped via nodesMap) rather than
-    // readOrderedDecisionsFromFold — the latter's internal dedup uses attrs.title/decision
-    // for text comparison, which is null for msg-only events → collapses distinct decisions.
-    // Instead we recover msg via msgMap and apply _dedupeDecisions (which uses recovered msg).
-    const decisionNodes = fold.nodes
+    // Use fold.nodes: readOrderedDecisionsFromFold dedupes by attrs.title/decision, null for msg-only events → collapses distinct decisions.
+    const decisionNodes = fold.nodes  // fold already id-deduped via nodesMap; recover msg via msgMap and apply _dedupeDecisions
       .filter((n) => n.type === 'decision')
       .sort((a, b) => ((b.attrs._ord ?? 0) - (a.attrs._ord ?? 0)))
     const decisionLikes = decisionNodes.map((node) => _foldNodeToDecisionLike(node, msgMap))
@@ -316,9 +287,6 @@ function _foldNodeToDecisionLike(node, msgMap) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Legacy decision reader (retained behind GROUNDWORK_MAP_LEGACY_DECISIONS=1)
-// ---------------------------------------------------------------------------
 
 function _readDecisions(projectDir, motive) {
   const journalDir = join(projectDir, '.groundwork', 'journal')
@@ -353,8 +321,6 @@ function _dedupeDecisions(decisions) {
   // ── Step 1: honour supersession by structured data.id ────────────────────
   const knownIds = new Set(decisions.map((d) => d.data?.id).filter(Boolean))
   const supersededIds = new Set()
-  // Descriptive retires values — refs whose text doesn't match any known structured id.
-  // These need token-overlap matching instead of exact-text matching.
   const descriptiveRetires = []
   for (const d of decisions) {
     const s = d.data?.supersedes
@@ -362,28 +328,21 @@ function _dedupeDecisions(decisions) {
       if (Array.isArray(s)) s.forEach((id) => supersededIds.add(id))
       else supersededIds.add(s)
     }
-    // data.retires is the authoring vocabulary for retraction (D-36); honour it here
-    // so that a retiring decision causes its target to be excluded from the MAP.
+    // data.retires (D-36): retiring decision excludes its target from the MAP.
     const r = d.data?.retires
     if (r != null) {
       const refs = Array.isArray(r) ? r : [r]
       for (const ref of refs) {
         supersededIds.add(ref)
-        // If this ref is not a known structured id, it's a descriptive reference.
-        // Exact-text matching will fail; use token-overlap as a fallback.
-        if (!knownIds.has(ref)) descriptiveRetires.push(ref)
+        if (!knownIds.has(ref)) descriptiveRetires.push(ref)  // unstructured ref: needs token-overlap fallback
       }
     }
   }
-  // normalise: used both for filtering and for step-2 dedup
   const normText = (d) =>
     (d.msg ?? JSON.stringify(d.data ?? '')).toLowerCase().replace(/\s+/g, ' ').trim()
   const normSupersededTexts = new Set([...supersededIds].map((s) => s.toLowerCase().replace(/\s+/g, ' ').trim()))
 
-  // Token-overlap matcher for descriptive retires references.
-  // Splits text on non-alphanumeric boundaries, keeps tokens ≥ 4 chars.
-  // A decision is matched when ≥ 60% of the retires tokens appear in its text,
-  // with a hard floor of 2 tokens (guards against single-word over-matching).
+  // Token-overlap matcher: tokens ≥ 4 chars; match when ≥ 60% overlap (floor: 2 tokens — guards against single-word over-matching).
   const _sigTokens = (text) => text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4)
   const _tokenOverlapMatches = (retiresRef, decisionNorm) => {
     const refTokens = _sigTokens(retiresRef)
@@ -397,10 +356,8 @@ function _dedupeDecisions(decisions) {
     ? decisions
     : decisions.filter((d) => {
         const id = d.data?.id
-        // Match by structured id first
         if (id != null && supersededIds.has(id)) return false
         const dNorm = normText(d)
-        // Match by normalised message text (covers legacy id-less decisions retired by text ref)
         if (normSupersededTexts.has(dNorm)) return false
         // Token-overlap match for descriptive retires references.
         // Only applied to id-less (legacy) decisions — structured ones (with data.id) are
@@ -431,14 +388,9 @@ function _dedupeDecisions(decisions) {
   }
 
   // ── Step 3: exclude janitorial retraction events ──────────────────────────
-  // A janitorial retraction is a DECISION event whose sole purpose is to suppress
-  // a legacy id-less entry: it carries data.retires AND its decision body starts
-  // with "Retract".  Such events still contribute to supersededIds above (so their
-  // targets stay suppressed), but they must NOT appear in the MAP ## Decisions
-  // section — they are agent bookkeeping, not human-readable decisions (P-E).
-  // Substantive decisions that also carry data.retires (e.g. D-32, which retires
-  // a prior approach while introducing a new one) have a non-"Retract" decision
-  // body and are therefore kept.
+  // Exclude janitorial retractions (data.retires + "Retract" body): agent bookkeeping, not MAP content (P-E).
+  // They still contribute to supersededIds above (targets stay suppressed) — only hidden from the display list.
+  // Substantive decisions carrying data.retires (e.g. D-32) have a non-"Retract" body and are kept.
   const isJanitorialRetraction = (d) =>
     d.data?.retires != null &&
     (d.data?.decision ?? '').trimStart().toLowerCase().startsWith('retract')
@@ -487,10 +439,7 @@ function _readRejectionDecisions(projectDir, motive) {
     const all            = readAllEvents(journalDir)
     const { shown = [] } = filterEvents(all, { motive, type: 'DECISION' })
 
-    // Build the set of texts retired by data.retires fields, so that an event
-    // whose msg was retired by a later retraction is excluded from ## Out of scope.
-    // Uses the same normalisation as _dedupeDecisions step 1.
-    const retiredTexts = new Set()
+    const retiredTexts = new Set() // Build the set of texts retired by data.retires fields, so that an event whose msg was retired by a later retraction is excluded from ## Out of scope. Uses the same normalisation as _dedupeDecisions step 1.
     for (const ev of shown) {
       const r = ev.data?.retires
       if (r != null) {
@@ -499,10 +448,8 @@ function _readRejectionDecisions(projectDir, motive) {
       }
     }
 
-    // Collect rejection events
     const rejections = []
     for (const ev of shown) {
-      // Skip events whose text was retired by a data.retires reference
       const normMsg = (ev.msg ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
       if (retiredTexts.has(normMsg)) continue
 
@@ -520,16 +467,12 @@ function _readRejectionDecisions(projectDir, motive) {
       rejections.push(ev)
     }
 
-    // Extract first sentence for comparison: text before the first ". " (or whole msg)
     const firstSentence = (ev) => {
       const msg = (ev.msg ?? '').replace(/\s+/g, ' ').trim()
       const cut = msg.indexOf('. ')
       return (cut >= 0 ? msg.slice(0, cut) : msg).toLowerCase()
-    }
+    }  // First-sentence strict-prefix dedup: if A's first sentence is a strict prefix of B's, A is the summary form and B is the full prose; mark A as merged-into-B
 
-    // First-sentence strict-prefix dedup:
-    //   For each pair, if A's first sentence is a strict prefix of B's first sentence,
-    //   A is the summary form and B is the full prose.  Mark A as merged-into-B.
     const mergedInto = new Map()  // index → index of the richer entry
     const absorbedIds = new Map() // index-of-kept → Set of ids from absorbed entries
 
@@ -540,7 +483,6 @@ function _readRejectionDecisions(projectDir, motive) {
         if (i === j || mergedInto.has(j)) continue
         const fsJ = firstSentence(rejections[j])
         if (fsJ === fsI) continue  // exact — handled by seenLabels below
-        // Determine which is the prefix (shorter first sentence = summary form)
         if (fsI.startsWith(fsJ + ' ') || fsI === fsJ) {
           // fsJ is prefix of fsI → rejections[i] is the longer (full prose), j is summary
           mergedInto.set(j, i)
@@ -562,7 +504,6 @@ function _readRejectionDecisions(projectDir, motive) {
       }
     }
 
-    // Build labels for surviving (non-merged) events
     const seenLabels = new Set()
     const results = []
     for (let i = 0; i < rejections.length; i++) {
@@ -573,7 +514,6 @@ function _readRejectionDecisions(projectDir, motive) {
         ? `[${data.id}] ${data.title ?? ev.msg}`
         : (data.title ?? ev.msg)
 
-      // Append ids absorbed from shorter summary-form entries (P-E: keep prose, surface id)
       const extra = absorbedIds.get(i)
       if (extra?.size) {
         label += ` (${[...extra].join(', ')})`
@@ -604,9 +544,6 @@ function _readAllMotiveEvents(projectDir, motive) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Journal-derived AC coverage (fallback when ledger is absent)
-// ---------------------------------------------------------------------------
 
 /**
  * Build AC coverage from journal AC_COVERAGE and TASK_COMPLETE events.
@@ -624,8 +561,7 @@ function _readAllMotiveEvents(projectDir, motive) {
  *   Array-covers form: { slice, covers: ['AC-1'] } — one slice covers many ACs
  *   Declaration form:  { ac, covering: [] }        — AC known but no covering slice
  */
-function _buildJournalAcCoverage(events) {
-  // Collect completed slice bare ids from TASK_COMPLETE events.
+function _buildJournalAcCoverage(events) { // Journal-derived AC coverage (fallback when ledger is absent)
   const completedSlices = new Set()
   for (const ev of events) {
     if (ev.type === 'TASK_COMPLETE' && ev.data?.slice != null) {
@@ -633,14 +569,12 @@ function _buildJournalAcCoverage(events) {
     }
   }
 
-  // Map<acId, Map<sliceId, {id, status}>> — deduped by sliceId per AC.
   const acMap = new Map()
 
   for (const ev of events) {
     if (ev.type !== 'AC_COVERAGE') continue
     const d = ev.data ?? {}
 
-    // Collect acIds and sliceId from this event
     const acIds = []
     if (d.ac != null) acIds.push(String(d.ac))
     if (Array.isArray(d.covers)) {
@@ -649,7 +583,6 @@ function _buildJournalAcCoverage(events) {
 
     const sliceId = d.slice != null ? String(d.slice) : null
 
-    // Declaration form (no slice): register AC so it appears even with zero coverage
     if (sliceId == null) {
       for (const acId of acIds) {
         if (!acMap.has(acId)) acMap.set(acId, new Map())
@@ -664,9 +597,7 @@ function _buildJournalAcCoverage(events) {
     }
   }
 
-  // Post-loop: apply AC_RETRACTION events.  Collected after the full event
-  // scan so the result is order-independent — a retraction before or after
-  // the original claim produces the same outcome.
+  // Post-loop: apply AC_RETRACTION events; order-independent (retraction before or after claim is identical).
   for (const ev of events) {
     if (ev.type !== 'AC_RETRACTION') continue
     const d = ev.data ?? {}
@@ -677,7 +608,6 @@ function _buildJournalAcCoverage(events) {
     if (slicesMap) slicesMap.delete(sliceId)
   }
 
-  // Flatten to Map<acId, [{id, status}]>
   const result = new Map()
   for (const [acId, slicesMap] of acMap) {
     result.set(acId, [...slicesMap.values()])
@@ -726,9 +656,6 @@ function _extractBareSliceId(id) {
   return sep === -1 ? id : id.slice(sep + 2)
 }
 
-// ---------------------------------------------------------------------------
-// Renderer
-// ---------------------------------------------------------------------------
 
 function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, acRetractions = null, lastPause = null }) {
   const parts = []
@@ -748,7 +675,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   parts.push('')
 
   // ── Build decision→slices index (for edge rendering) ─────────────────────
-  // Maps decision id (e.g. "D-40") → [{id, status}] for slices that declare it.
   const _decisionSlicesMap = new Map()
   for (const s of slices) {
     const decIds = s.decisions == null
@@ -769,7 +695,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     for (const d of decisions) {
       const ts  = (d.ts ?? '').slice(0, 10)
       const msg = d.msg ?? JSON.stringify(d.data ?? '')
-      // Append slice edge suffix only for structured decisions with a data.id
       let edgeSuffix = ''
       const did = d.data?.id
       if (did != null) {
@@ -798,7 +723,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   })
   const frontierList = dagFrontier(slices).filter((s) => !s.claimed_by)
 
-  // Helper: render optional _(decisions: ...)_ suffix for a slice
   const _decSuffix = (s) => {
     const decIds = s.decisions == null
       ? []
@@ -850,10 +774,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   }
 
   // ── Tickets ───────────────────────────────────────────────────────────────
-  // Only rendered when hand-authored ticket documents exist in tickets/.
-  // When the corpus is empty the section is omitted entirely (pure slice view preserved).
   if (ticketFiles.length > 0) {
-    // Build lookup: sanitized ticket stem → slice
     const sliceByTicketStem = new Map()
     for (const s of slices) {
       if (s.ticket) {
@@ -864,7 +785,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
 
     const ticketStemSet = new Set(ticketFiles.map((t) => t.stem))
 
-    // Slices that have no ticket file (either no ticket field, or file not found)
     const unlinkedSlices = slices.filter((s) => {
       if (!s.ticket) return true
       const safe = sanitizeId(String(s.ticket))
@@ -874,8 +794,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     parts.push('## Tickets')
     parts.push('')
 
-    // Group tickets by D-74 type; unknown types → 'other' bucket at end.
-    const byType = new Map()
+    const byType = new Map() // Group tickets by D-74 type; unknown types → 'other' bucket at end.
     for (const { stem, type } of ticketFiles) {
       const key = TICKET_TYPE_ORDER.includes(type) ? type : 'other'
       if (!byType.has(key)) byType.set(key, [])
@@ -930,7 +849,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   parts.push('## Out of scope')
   parts.push('')
   const charterOos = charter?.out_of_scope?.trim()
-  // Ignore the boilerplate comment stub that the template inserts
   const hasCharterOos =
     charterOos &&
     !charterOos.startsWith('<!--') &&
@@ -940,7 +858,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     parts.push('')
   }
 
-  // Merge dir entries and rejection decisions, deduplicated (case-insensitive)
   const seenOos = new Set()
   const allOos  = []
   for (const entry of [...outOfScope, ...rejectionDecisions]) {
@@ -964,7 +881,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     // Falls back to the single-session slices when acSlices is unavailable.
     const acSourceSlices = acSlices ?? slices
 
-    // Build map: AC id → covering slices [{id, status}]
     // Seed charter ACs first so they appear even when no slice covers them.
     const acSlicesMap = new Map()
     const charterAcKeys = new Set()
@@ -999,7 +915,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       }
     }
 
-    // Statement lookup from charter
     const acStatementMap = new Map()
     for (const ac of acList) {
       if (ac?.id != null && ac.statement) acStatementMap.set(String(ac.id), ac.statement)
@@ -1015,11 +930,9 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
 
     for (const key of orderedAcIds) {
       const ledgerCovering = acSlicesMap.get(key) ?? []
-      // Apply journal AC_RETRACTION events to filter ledger-declared covering slices.
-      // Composite ids (<uuid>::<SLICE-ID>) are normalized to bare ids before comparison
-      // so a retraction carrying a bare slice id correctly suppresses all sessions'
-      // composite entries sharing that bare id.
-      const retractedBareIds = acRetractions?.get(key)
+      // Apply AC_RETRACTION events: composite ids normalized to bare ids so a bare-id
+      // retraction suppresses all sessions' composite entries sharing that bare id.
+      const retractedBareIds = acRetractions?.get(key)  // composite form: <uuid>::<SLICE-ID> → bare id
       const ledgerCoveringFiltered = retractedBareIds && retractedBareIds.size > 0
         ? ledgerCovering.filter((s) => !retractedBareIds.has(_extractBareSliceId(s.id)))
         : ledgerCovering
@@ -1122,13 +1035,20 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
       parts.push('**Next actions:**')
       parts.push('')
       for (const na of lastPause.next_actions) {
-        parts.push(`- **${na.action}:** ${na.detail ?? ''}`)
+        if (typeof na === 'string') {
+          parts.push(`- ${na}`)
+        } else if (na != null && typeof na === 'object') {
+          if (na.slice != null) {
+            parts.push(`- **${na.slice}** (w${na.wave}): ${na.desc ?? ''}`)
+          } else {
+            parts.push(`- **${na.action ?? ''}:** ${na.detail ?? ''}`)
+          }
+        }
       }
     }
     parts.push('')
   }
 
-  // Footer
   parts.push('---')
   parts.push(
     '_Auto-generated — refreshed automatically by ledger/journal CLIs. Do not edit by hand._',
@@ -1137,8 +1057,6 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   return parts.join('\n') + '\n'
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
 // ---------------------------------------------------------------------------
 
 function _statusBadge(status) {

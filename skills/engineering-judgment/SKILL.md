@@ -17,6 +17,20 @@ Two failure classes account for most agentic rework: structure held by conventio
 
 **Failure: horizontal test slicing** — all test effort goes to unit tests → acceptance and integration layers are never written → the shape of each unit is verified but the assembled product is not. In nexus3, early tests used stubbed listeners; the user added `//go:build integration` tests booting real VMs before cross-boundary behaviour was confirmed. Plan the test pyramid from the acceptance layer down; unit tests fill gaps the acceptance layer cannot reach cheaply.
 
+## Module design language
+
+When reviewing or proposing structure, use these terms — each carries a verdict, not just a label.
+
+**Depth** (Ousterhout, *A Philosophy of Software Design*; vocabulary ported from Pocock, *codebase-design*): behaviour per unit of interface. A module is **deep** when large behaviour sits behind a small interface; **shallow** when a caller must learn as much about the module's internals as they gain in capability from using it. The cross-concern handler failure above produces a shallow module: a caller of `router.ts` cannot add an auth rule without reasoning across session, rendering, and audit — every concern leaks into every path. Reject a proposed abstraction layer that is itself shallow — it is a pass-through, not an abstraction.
+
+_Deletion test_: imagine deleting the module. Complexity vanishes → it was a pass-through. Complexity scatters back across every caller → it was earning its keep. Apply this before building an abstraction to confirm it has real depth.
+
+**Interface**: what a caller must account for to use a module correctly — not just the type signature but also runtime constraints the type cannot enforce: ordering dependencies, required collaborators, and failure modes the compiler does not see. The optional-wiring failure above is interface underspecification: `auditRecord` was a required collaborator the interface did not require. Reject a design whose interface omits constraints callers will discover at runtime.
+
+**Seam** (Feathers, *Working Effectively with Legacy Code*): the cut point where a module's responsibilities end and callers' begin — the surface acceptance tests should cross. The stub-built app failure above is a seam placement failure: the test assembled its own app instance instead of crossing the production seam, so wiring regressions never reached it. Reject a test that reconstructs the module differently than production callers do — it is not testing the module that ships.
+
+_Adapter count heuristic_: one concrete adapter at a seam means the variation is hypothetical. Two adapters means it is real. Reject a seam introduction until a second adapter exists or is concretely planned; a seam with one adapter is premature structure.
+
 ## Decisions the planner records
 
 Before cutting any slice, record two journal decisions:

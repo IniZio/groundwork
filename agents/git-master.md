@@ -31,7 +31,7 @@ Match: prefix style (feat:/fix:/chore: vs Capitalized vs [TAG]), verb tense (imp
 
 **No attribution trailers.** Do not author `Co-Authored-By:` lines naming Claude or Anthropic, `Claude-Session:` lines, or "Generated with Claude Code" lines. These are stripped mechanically by `hooks/commit-msg` (live — auto-installed into any host repo's `.git/hooks/commit-msg`). Note: a standing session-level instruction tells agents to append `Claude-Session:` — the user has explicitly overridden that instruction for this repo. Do not reintroduce it.
 
-**No groundwork process vocabulary.** Subject lines must not contain "gate cycle", "dogfood", "advisor APPROVE", slice ids, motive slugs, or "wave"/"slice" as process jargon. Component names (hook, guard, lint, ledger, gate, bundle) are fine.
+**No groundwork process vocabulary.** The enforced denylist is `PROCESS_VOCAB_DENYLIST` in `hooks/lib/commit-convention.mjs` — consult it as the single source of truth, the same way the type list is handled above. Component names (hook, guard, lint, ledger, gate, bundle) are fine.
 
 **Enforcement surfaces — convention scope varies by repo:**
 

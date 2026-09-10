@@ -42,7 +42,7 @@ For tier-2 findings (not CORRECTION): register them as new ledger slices before 
 ### 4. Record the APPROVE verdict
 
 ```bash
-gw ledger gate --motive <slug> advisor APPROVE --token <write_token>
+gw ledger gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>
 ```
 
 This writes `gate.advisor = "APPROVE"` into the run ledger.

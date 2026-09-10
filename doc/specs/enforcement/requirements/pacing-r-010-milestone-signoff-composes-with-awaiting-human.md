@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: Milestone sign-off composes with awaiting_human; the two mechanisms must not conflict
 status: open
-verification: unverified
+verification: verified
 criticality: must
 design: "[[design/flows/stop-gate-decision-path]]"
 ---
@@ -15,5 +15,5 @@ When `pacing.policy = "milestone"` and the gate is waiting for human sign-off, t
 
 - **Why** — Without `awaiting_human` composition, the stop-gate would nag continuously while a milestone is awaiting human review — the nag is correct (work is incomplete) but disruptive during a legitimate wait. The `awaiting_human` field was introduced exactly for this pattern (token-gated hold that pauses enforcement without bypassing it). Milestone pacing is the most natural consumer. The two-event separation preserves the audit trail: the ledger records both when the hold was set and when the sign-off arrived, providing a complete timeline.
 - **Fit criterion** — With `pacing.policy = "milestone"` and `milestone_signoff` absent, setting `awaiting_human = true` causes the stop-gate to suppress the block nag. The milestone gate itself still holds (no new units may be claimed). Clearing `awaiting_human` restores normal stop-gate behavior. Receiving `milestone_signoff.verdict = "APPROVE"` releases the milestone gate independently of the `awaiting_human` state.
-- **Verification**: unverified — S7 test suite covers the interaction between `awaiting_human` and the milestone gate.
+- **Verification**: verified — `test/hooks/pacing-milestone.test.ts` (`// @verifies PACING-R-010`, line 17; dedicated `describe` block at line 339 exercises `awaiting_human` suppression with milestone policy and independence of sign-off) and `test/hooks/stop-gate-await-human.test.ts` (line 17) both carry the marker and assert the composition behaviour.
 - **Criticality**: must

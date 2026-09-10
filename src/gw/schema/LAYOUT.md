@@ -107,7 +107,7 @@ Frontmatter = `JournalEventSchema` fields (`ts`, `session`, `type`, `source`, `d
 
 `await-human` hold and `autopilot` grants are session state. They live as properties on the session's gate note (`gate-<sessionId>.md`) written via `writeGate`:
 
-- `awaiting_human: { reason: string; set_at: string } | null` — present when hold is active, absent or null when cleared.
+- `awaiting_human: true` — top-level boolean on the ledger; present and `true` when hold is active, absent when cleared. (The stop-gate reads `ledger.awaiting_human === true`; the schema declares it `type: boolean`; gate-seal folds the raw top-level value into the canonical HMAC state. An object shape here would write dead state — the stop-gate would never see it.)
 - `autopilot: Array<{ units: number; reason: string; ts: string }>` — append-only log of grants.
 
 Gate notes are sealed (token-gated); setting these fields without the correct token changes the canonical machine state and invalidates the seal (fail-closed).

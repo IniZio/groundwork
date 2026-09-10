@@ -80,10 +80,17 @@ export interface ManifestFile {
   reasons: Array<{ kind: 'over-cap' | 'restating'; lines: number[]; detail: string }>
 }
 
+export interface ScannedFile {
+  path: string
+  effectiveCommentsPer100: number
+}
+
 export interface Manifest {
   cap: { file: number; aggregate: number }
   aggregatePer100: number
   files: ManifestFile[]
+  /** All scanned files with their per-file density, including unflagged ones. */
+  scannedFiles: ScannedFile[]
 }
 
 /**
@@ -112,6 +119,7 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
   const { files: fileResults, aggregatePer100 } = analyzeFiles(entries)
 
   const flaggedFiles: ManifestFile[] = []
+  const scannedFiles: ScannedFile[] = []
   for (const fr of fileResults) {
     if (fr.excluded) continue
     const content = entries.find(e => e.path === fr.path)?.content ?? ''
@@ -120,6 +128,8 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
     const effPer100: number = (fr.effectiveCommentsPer100 as number | undefined) ?? fr.commentsPer100
     const effLines: number[] = (fr.effectiveLines as number[] | undefined) ?? fr.lines
     const effCount: number = (fr.effectiveCommentLines as number | undefined) ?? fr.commentLines
+
+    scannedFiles.push({ path: fr.path, effectiveCommentsPer100: effPer100 })
 
     const reasons: ManifestFile['reasons'] = []
     if (fr.totalLines >= SMALL_FILE_MIN_LINES && effPer100 > FILE_CAP) {
@@ -149,17 +159,18 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
     })
   }
 
-  return { cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP }, aggregatePer100, files: flaggedFiles }
+  return { cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP }, aggregatePer100, files: flaggedFiles, scannedFiles }
 }
 
 async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
   if (process.env['GROUNDWORK_COMMENT_DENSITY'] === '0') {
-    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] }
+    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [], scannedFiles: [] }
     return okEnvelope('comment-density report', empty)
   }
   const { flags, positionals } = parseFlags(args)
-  const relPaths = flags['files'] && typeof flags['files'] === 'string'
-    ? flags['files'].split(',').filter(Boolean)
+  const fileFlag = flags['files'] ?? flags['file']
+  const relPaths = fileFlag && typeof fileFlag === 'string'
+    ? fileFlag.split(',').filter(Boolean)
     : positionals.length > 0
     ? positionals
     : touchedFilesSince(readSessionLedger(cwd), cwd)
@@ -215,9 +226,22 @@ async function runRemediatePlan(args: string[], cwd: string): Promise<GwEnvelope
     )
 
     briefLines.push(
-      `# FILE: ${f.path} | LINES: ${allLines.join(',')} | REASON: ${reasonKinds}` +
-      ` | CAP: 5/100 | INSTRUCTION: reduce comment density to ≤5/100 and remove restating comments;` +
-      ` touch ONLY this file; run existing tests to verify green`
+      `# FILE: ${f.path} | LINES: ${allLines.join(',')} | REASON: ${reasonKinds}\n` +
+      `# EXEMPT CHANNELS (zero-cost — not counted toward density):\n` +
+      `#   1. JSDoc body lines (/** … */ blocks)\n` +
+      `#   2. Trailing inline comments where code precedes // on the same line\n` +
+      `#   3. // ── section dividers (// followed by ≥2 box-drawing chars or ≥4 dashes/equals)\n` +
+      `# PROTECTED CONTENT (MUST NOT delete — MOVE into an exempt channel instead):\n` +
+      `#   - why-clauses and design rationale\n` +
+      `#   - untested invariants\n` +
+      `#   - cross-function coupling anchors\n` +
+      `#   - id references: D-nn, AC-n, PACING-R-nnn\n` +
+      `#   - format literals such as <uuid>::<SLICE-ID>\n` +
+      `# INSTRUCTION: Reduce effective comment density to ≤5/100 by deleting genuine narration.\n` +
+      `#   For protected content, MOVE it into a JSDoc block or trailing-inline form — do not delete it.\n` +
+      `#   Touch ONLY this file. Run existing tests to verify green.\n` +
+      `# REQUIRED OUTPUT: For each touched line report KEPT or DELETED;\n` +
+      `#   if KEPT, name the exempt channel used (JSDoc / trailing-inline / section-divider).`
     )
   }
 

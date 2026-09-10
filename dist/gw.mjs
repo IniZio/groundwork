@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 7ed7e056cd95ffb4e4f24daaf5b90d4c39c53c9f86162c859e4d6ecbaa788c33
+// @bundle-source-hash: c74cfaee228867af577bac2bfd1eee1efc7c5346d1959ea98526ff8116e1c379
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -826,6 +826,7 @@ async function buildManifest(relPaths, cwd) {
   }
   const { files: fileResults, aggregatePer100 } = analyzeFiles2(entries);
   const flaggedFiles = [];
+  const scannedFiles = [];
   for (const fr of fileResults) {
     if (fr.excluded)
       continue;
@@ -834,6 +835,7 @@ async function buildManifest(relPaths, cwd) {
     const effPer100 = fr.effectiveCommentsPer100 ?? fr.commentsPer100;
     const effLines = fr.effectiveLines ?? fr.lines;
     const effCount = fr.effectiveCommentLines ?? fr.commentLines;
+    scannedFiles.push({ path: fr.path, effectiveCommentsPer100: effPer100 });
     const reasons = [];
     if (fr.totalLines >= SMALL_FILE_MIN_LINES2 && effPer100 > FILE_CAP2) {
       reasons.push({
@@ -861,15 +863,16 @@ async function buildManifest(relPaths, cwd) {
       reasons
     });
   }
-  return { cap: { file: FILE_CAP2, aggregate: AGGREGATE_CAP2 }, aggregatePer100, files: flaggedFiles };
+  return { cap: { file: FILE_CAP2, aggregate: AGGREGATE_CAP2 }, aggregatePer100, files: flaggedFiles, scannedFiles };
 }
 async function runReport(args, cwd) {
   if (process.env["GROUNDWORK_COMMENT_DENSITY"] === "0") {
-    const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [] };
+    const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [], scannedFiles: [] };
     return okEnvelope("comment-density report", empty);
   }
   const { flags, positionals } = parseFlags(args);
-  const relPaths = flags["files"] && typeof flags["files"] === "string" ? flags["files"].split(",").filter(Boolean) : positionals.length > 0 ? positionals : touchedFilesSince(readSessionLedger(cwd), cwd);
+  const fileFlag = flags["files"] ?? flags["file"];
+  const relPaths = fileFlag && typeof fileFlag === "string" ? fileFlag.split(",").filter(Boolean) : positionals.length > 0 ? positionals : touchedFilesSince(readSessionLedger(cwd), cwd);
   const manifest = await buildManifest(relPaths, cwd);
   return okEnvelope("comment-density report", manifest);
 }
@@ -913,7 +916,22 @@ async function runRemediatePlan(args, cwd) {
     const allLines = f.reasons.flatMap((r) => r.lines).sort((a, b) => a - b);
     const acceptance = `${f.path} \u22645/100;no restating comments;existing tests green`;
     lines.push(`gw ledger add --motive ${motive} CD-${n} --wave ${wave} --kind impl --desc "haiku cleanup: ${relPath} \u2014 ${reasonKinds} \u2014 model=haiku"` + ` --acceptance "${acceptance}" --covers-ac AC10 --decisions D-9`);
-    briefLines.push(`# FILE: ${f.path} | LINES: ${allLines.join(",")} | REASON: ${reasonKinds}` + ` | CAP: 5/100 | INSTRUCTION: reduce comment density to \u22645/100 and remove restating comments;` + ` touch ONLY this file; run existing tests to verify green`);
+    briefLines.push(`# FILE: ${f.path} | LINES: ${allLines.join(",")} | REASON: ${reasonKinds}
+` + `# EXEMPT CHANNELS (zero-cost \u2014 not counted toward density):
+` + `#   1. JSDoc body lines (/** \u2026 */ blocks)
+` + `#   2. Trailing inline comments where code precedes // on the same line
+` + `#   3. // \u2500\u2500 section dividers (// followed by \u22652 box-drawing chars or \u22654 dashes/equals)
+` + `# PROTECTED CONTENT (MUST NOT delete \u2014 MOVE into an exempt channel instead):
+` + `#   - why-clauses and design rationale
+#   - untested invariants
+#   - cross-function coupling anchors
+#   - id references: D-nn, AC-n, PACING-R-nnn
+#   - format literals such as <uuid>::<SLICE-ID>
+` + `# INSTRUCTION: Reduce effective comment density to \u22645/100 by deleting genuine narration.
+` + `#   For protected content, MOVE it into a JSDoc block or trailing-inline form \u2014 do not delete it.
+` + `#   Touch ONLY this file. Run existing tests to verify green.
+# REQUIRED OUTPUT: For each touched line report KEPT or DELETED;
+#   if KEPT, name the exempt channel used (JSDoc / trailing-inline / section-divider).`);
   }
   lines.push("");
   lines.push(...briefLines);
@@ -1485,13 +1503,19 @@ function parseFlags2(args) {
   while (i < args.length) {
     const a = args[i];
     if (a.startsWith("--")) {
-      const key = a.slice(2);
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        flags[key] = args[i + 1];
-        i += 2;
-      } else {
-        flags[key] = true;
+      const eqIdx = a.indexOf("=");
+      if (eqIdx !== -1) {
+        flags[a.slice(2, eqIdx)] = a.slice(eqIdx + 1);
         i++;
+      } else {
+        const key = a.slice(2);
+        if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+          flags[key] = args[i + 1];
+          i += 2;
+        } else {
+          flags[key] = true;
+          i++;
+        }
       }
     } else {
       positionals.push(a);
@@ -1642,6 +1666,11 @@ ${done}/${all.length} slices complete
         }
         const wave = flags["wave"] ? parseInt(flags["wave"], 10) : 0;
         const kind = flags["kind"] ?? "impl";
+        for (const f of ["blocked-by", "acceptance", "covers-ac", "decisions"]) {
+          if (flags[f] === true) {
+            return errEnvelope("ledger add", "USAGE_ERROR", `--${f} requires a value; if the value starts with "--", use --${f}=<value>`, 2);
+          }
+        }
         const blockedBy = flags["blocked-by"] ? flags["blocked-by"].split(",").map((s) => s.trim()) : undefined;
         const acceptance = flags["acceptance"] ? flags["acceptance"].split(";").map((s) => s.trim()) : undefined;
         const coversAc = flags["covers-ac"] ? flags["covers-ac"].split(",").map((s) => s.trim()) : undefined;
@@ -1659,7 +1688,7 @@ ${done}/${all.length} slices complete
           ...flags["ticket"] && flags["ticket"] !== true ? { ticket: flags["ticket"] } : {},
           ...flags["created-by"] && flags["created-by"] !== true ? { created_by: flags["created-by"] } : {}
         };
-        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] });
+        atomicWrite(runPath, reSeal({ ...ledger, slices: [...slices, slice] }, repoRoot));
         if (coversAc && coversAc.length > 0) {
           emitAcCoverageEvent({
             projectDir: repoRoot,
@@ -1696,6 +1725,11 @@ ${done}/${all.length} slices complete
         const existing = slices.find((s) => s.id === id);
         if (!existing)
           return errEnvelope("ledger set", "NOT_FOUND", `slice ${id} not found`, 1);
+        for (const f of ["blocked-by", "acceptance", "covers-ac", "decisions"]) {
+          if (flags[f] === true) {
+            return errEnvelope("ledger set", "USAGE_ERROR", `--${f} requires a value; if the value starts with "--", use --${f}=<value>`, 2);
+          }
+        }
         const newStatus = flags["status"];
         const terminal = newStatus === "complete" || newStatus === "skipped";
         if (terminal) {
@@ -1718,7 +1752,7 @@ ${done}/${all.length} slices complete
           ...flags["claimed-by"] && flags["claimed-by"] !== true ? { claimed_by: flags["claimed-by"] } : {}
         };
         const newSlices = slices.map((s) => s.id === id ? updated : s);
-        atomicWrite(runPath, { ...ledger, slices: newSlices });
+        atomicWrite(runPath, reSeal({ ...ledger, slices: newSlices }, repoRoot));
         if (flags["covers-ac"] && flags["covers-ac"] !== true) {
           const setCoversAc = flags["covers-ac"].split(",").map((s) => s.trim());
           if (setCoversAc.length > 0) {
@@ -1783,7 +1817,7 @@ ${done}/${all.length} slices complete
           updatedSlices = updatedSlices.map((s) => s.id === id ? { ...s, status: "complete", completed_at: now, session_id: sessionId } : s);
           terminalSet.add(id);
         }
-        atomicWrite(runPath, { ...ledger, slices: updatedSlices });
+        atomicWrite(runPath, reSeal({ ...ledger, slices: updatedSlices }, repoRoot));
         const done = updatedSlices.filter((s) => s.status === "complete").length;
         return okEnvelope("ledger complete", {
           content: `${done}/${updatedSlices.length} slices complete
@@ -1806,7 +1840,7 @@ ${done}/${all.length} slices complete
           removed.push(id);
         }
         const rmSet = new Set(removed);
-        atomicWrite(runPath, { ...ledger, slices: slices.filter((s) => !rmSet.has(s.id)) });
+        atomicWrite(runPath, reSeal({ ...ledger, slices: slices.filter((s) => !rmSet.has(s.id)) }, repoRoot));
         return okEnvelope("ledger rm", { content: `removed: ${removed.join(", ")}
 ` });
       }
@@ -1912,6 +1946,31 @@ ${done}/${all.length} slices complete
         }
         const citation = flags["citation"];
         const rubric = flags["rubric"];
+        if (verdict === "APPROVE") {
+          const rawCitation = flags["citation"];
+          if (!rawCitation || rawCitation === true || !rawCitation.trim()) {
+            return errEnvelope("ledger gate", "GATE_CITATION_REQUIRED", "APPROVE requires --citation naming a file:line reference (e.g., src/foo.ts:42).", 1);
+          }
+          const citText = rawCitation.trim();
+          const refPattern = /([^\s;,("']+):(\d+)/g;
+          let refMatch;
+          let citResolved = false;
+          while (!citResolved && (refMatch = refPattern.exec(citText)) !== null) {
+            const filePart = refMatch[1];
+            const lineNum = parseInt(refMatch[2], 10);
+            const absFile = path3.isAbsolute(filePart) ? filePart : path3.resolve(cwd, filePart);
+            if (existsSync5(absFile)) {
+              try {
+                if (lineNum <= readFileSync5(absFile, "utf8").split(`
+`).length)
+                  citResolved = true;
+              } catch {}
+            }
+          }
+          if (!citResolved) {
+            return errEnvelope("ledger gate", "GATE_CITATION_REQUIRED", `APPROVE --citation must contain a resolvable file:line reference. None found in: "${citText}"`, 1);
+          }
+        }
         if (verdict === "APPROVE" && process.env["GROUNDWORK_COMMENT_DENSITY"] !== "0") {
           if (!ledger.base_commit) {
             return errEnvelope("ledger gate", "DENSITY_NO_BASE_COMMIT", `DENSITY_NO_BASE_COMMIT: ledger has no base_commit; run: gw ledger set --motive ${motive} --base-commit <sha>`, 1);
@@ -1982,7 +2041,7 @@ Review and fix with:
           ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: advisorField
         };
-        atomicWrite(runPath, { ...ledger, gate: newGate });
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot));
         return okEnvelope("ledger gate", { content: `advisor: ${verdict}
 ` });
       }
@@ -1999,7 +2058,7 @@ Review and fix with:
           ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: "STOP"
         };
-        atomicWrite(runPath, { ...ledger, active: false, gate: newGate });
+        atomicWrite(runPath, reSeal({ ...ledger, active: false, gate: newGate }, repoRoot));
         return okEnvelope("ledger abandon", { content: `motive "${motive}" abandoned
 ` });
       }
@@ -2026,7 +2085,7 @@ Review and fix with:
           desc: flags["desc"],
           question: flags["question"]
         };
-        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] });
+        atomicWrite(runPath, reSeal({ ...ledger, slices: [...slices, slice] }, repoRoot));
         return okEnvelope("ledger fog", { content: `${id} added (fog)
 ` });
       }
@@ -2128,13 +2187,13 @@ Review and fix with:
         const base = gateWithoutSeal(ledger.gate ?? {});
         const rawGrants = Array.isArray(base["autopilot"]) ? base["autopilot"] : [];
         const existingGrants = rawGrants.filter((g) => typeof g === "object" && g !== null && typeof g["units"] === "number" && typeof g["reason"] === "string" && typeof g["ts"] === "string");
-        atomicWrite(runPath, {
+        atomicWrite(runPath, reSeal({
           ...ledger,
           gate: {
             ...base,
             autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }]
           }
-        });
+        }, repoRoot));
         return okEnvelope("ledger autopilot", {
           content: `autopilot extended by ${range} waves (reason: ${reason})
 `
@@ -2156,7 +2215,7 @@ Review and fix with:
         const token = randomBytes2(16).toString("hex");
         const existing = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : [];
         const updated = [...existing.filter((st) => st.scope !== scope), { token, scope }];
-        atomicWrite(runPath, { ...ledger, scoped_tokens: updated });
+        atomicWrite(runPath, reSeal({ ...ledger, scoped_tokens: updated }, repoRoot));
         return okEnvelope("ledger scope-token", {
           content: `scope_token: ${token}
   (pass as --token to complete for slices created_by ${scope})
@@ -2184,7 +2243,7 @@ Review and fix with:
           ...gateWithoutSeal(ledger.gate ?? {}),
           verifier: verdict
         };
-        atomicWrite(runPath, { ...ledger, gate: newGate });
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot));
         return okEnvelope("ledger milestone-signoff", {
           content: `milestone signed off: ${verdict} by ${verifiedBy}
 `
@@ -26949,11 +27008,11 @@ function buildReason(ledger, incomplete, count, ledgerBin) {
     lines.push("- One objective per Task; each prompt self-contained (paths, constraints, success criteria).");
     lines.push("- You are the ORCHESTRATOR \u2014 delegate to groundwork:general-purpose. Do not implement slices yourself.");
     lines.push("");
-    lines.push(`TO FINISH (use the ledger CLI \u2014 do NOT Read/Edit run.json by hand): as each slice lands, run \`${ledgerBin} complete <id>\`. When all slices are complete, run the completion gate ([qa if interactive UI] \u2192 advisor) and record it with \`${ledgerBin} gate advisor APPROVE\`. Check progress any time with \`${ledgerBin} status\`.`);
+    lines.push(`TO FINISH (use the ledger CLI \u2014 do NOT Read/Edit run.json by hand): as each slice lands, run \`${ledgerBin} complete <id>\`. When all slices are complete, run the completion gate ([qa if interactive UI] \u2192 advisor) and record it with \`gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>\`. Check progress any time with \`${ledgerBin} status\`.`);
     lines.push(`TO ABANDON: run \`${ledgerBin} abandon\` (sets active:false \u2014 the run is cancelled and the gate releases).`);
   } else {
     lines.push("");
-    lines.push(`Full rules were shown on the first block. Finish: ${ledgerBin} complete <ids> + gate advisor APPROVE. Abandon: ${ledgerBin} abandon.`);
+    lines.push(`Full rules were shown on the first block. Finish: ${ledgerBin} complete <ids> + gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>. Abandon: ${ledgerBin} abandon.`);
   }
   return lines.join(`
 `);
@@ -27057,7 +27116,7 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
     if (ledger.awaiting_human === true) {
       const sealResult = checkSeal(ledger, projectDir, sessionId);
       if (sealResult === false) {
-        return block("awaiting_human hold is set but the ledger seal is invalid or the key is missing. " + "A subagent may have set awaiting_human directly without the orchestrator write_token. " + "Re-run `bin/ledger await-human --token <write_token>` to restore a valid hold, " + "or `bin/ledger await-human --clear --token <write_token>` to release it.");
+        return block("awaiting_human hold is set but the ledger seal is invalid or the key is missing. " + "A subagent may have set awaiting_human directly without the orchestrator write_token. " + "Re-run `gw ledger await-human --token <write_token>` to restore a valid hold, " + "or `gw ledger await-human clear --token <write_token>` to release it.");
       }
       return allow();
     }
@@ -27069,7 +27128,7 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
     if (!workRemains) {
       const sealResult = checkSeal(ledger, projectDir, sessionId);
       if (sealResult === false) {
-        return block("Seal verification failed on all-complete + APPROVE release path \u2014 the ledger seal is invalid or the key is missing. " + "A subagent may have written gate.advisor=APPROVE directly without going through the CLI. " + "Re-run `bin/ledger gate advisor APPROVE` to produce a valid seal, or restore the key file.");
+        return block("Seal verification failed on all-complete + APPROVE release path \u2014 the ledger seal is invalid or the key is missing. " + "A subagent may have written gate.advisor=APPROVE directly without going through the CLI. " + "Re-run `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>` to produce a valid seal, or restore the key file.");
       }
       emitHookEvent({
         projectDir,

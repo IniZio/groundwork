@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 1457cd6342394390a13b5b36ee2d532bf7d2f285e8eecdcceb360d33c3972340
+// @bundle-source-hash: 45bf6eadddd7ae2180ab8e3ab3b37a657a0c979a8c2973f3ff7e9cba1d1098af
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -14446,7 +14446,7 @@ function cmdComplete(args) {
 }
 function cmdAwaitHuman(args) {
   const { flags, positionals } = parseFlags(args ?? []);
-  const clearing = positionals[0] === "clear";
+  const clearing = positionals[0] === "clear" || flags.clear === true;
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
@@ -14547,6 +14547,30 @@ function cmdScopeToken(args) {
 ` + `  (pass as --token to \`ledger complete\` for slices with created_by="${scope}")
 `);
 }
+function assertResolvableCitation(rawCitation) {
+  if (!rawCitation || rawCitation === true || !String(rawCitation).trim()) {
+    die("APPROVE requires --citation naming a file:line reference (e.g., src/foo.ts:42).", 1);
+  }
+  const citText = String(rawCitation).trim();
+  const refPattern = /([^\s;,("']+):(\d+)/g;
+  let refMatch;
+  let citResolved = false;
+  while (!citResolved && (refMatch = refPattern.exec(citText)) !== null) {
+    const filePart = refMatch[1];
+    const lineNum = parseInt(refMatch[2], 10);
+    const absFile = path7.isAbsolute(filePart) ? filePart : path7.resolve(process.cwd(), filePart);
+    if (existsSync8(absFile)) {
+      try {
+        if (lineNum <= readFileSync10(absFile, "utf8").split(`
+`).length)
+          citResolved = true;
+      } catch {}
+    }
+  }
+  if (!citResolved) {
+    die(`APPROVE --citation must contain a resolvable file:line reference. None found in: "${citText}"`, 1);
+  }
+}
 function cmdGate(args) {
   const { flags, positionals } = parseFlags(args);
   const [which, verdictRaw] = positionals;
@@ -14557,6 +14581,9 @@ function cmdGate(args) {
   const VALID_ADVISOR_VERDICTS = new Set(["APPROVE", "CORRECTION", "STOP", "GAPS", "REPLAN"]);
   if (which === "advisor" && !VALID_ADVISOR_VERDICTS.has(verdictRaw)) {
     die(`invalid advisor verdict "${verdictRaw}". Must be: APPROVE | CORRECTION | STOP | GAPS | REPLAN`, 1);
+  }
+  if (which === "advisor" && verdictRaw === "APPROVE") {
+    assertResolvableCitation(flags.citation);
   }
   const AXIS_KEYS = ["correctness", "completeness", "over_engineering", "contract_fitness", "plan_soundness"];
   const hasAxes = AXIS_KEYS.some((k) => flags[`axes-${k}`] != null);

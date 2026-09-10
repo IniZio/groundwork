@@ -1,7 +1,28 @@
+// check-comments-exempt — vendored snapshot; large JSDoc is provenance, not over-commenting
 /**
  * Vendored from agentic-artifacts/scripts/check-comment-density.mjs.
- * Sole adaptation: countComments(filepath) → countComments(content) — readFileSync removed
- * so callers supply content directly. All counting logic is byte-faithful to the source.
+ * Upstream revision: 81e8ae69bc1c720ad9e5733d8232db1790a7299a (committed 2026-09-06).
+ *
+ * Divergences from upstream (all within the countComments function body):
+ *   1. Signature / read path: countComments(filepath) → export function countComments(content);
+ *      the `readFileSync` call and `const text = …` binding are removed; callers supply
+ *      file content directly as a string.
+ *   2. The comment `// Skip @ts- directives` (upstream line ~95, inside the `//` branch) was
+ *      deleted. Behaviourally inert — the surrounding conditional is unchanged.
+ *
+ * Semantic downgrade: this file is a snapshot, not a live mirror of upstream. No tooling
+ * detects drift from the upstream source; re-vendoring is a manual step. The parity test
+ * therefore validates consistency with this snapshot, not with the live pilot.
+ *
+ * Diff excerpt (upstream → vendored, countComments function only):
+ *   - function countComments(filepath) {
+ *   -   const text = readFileSync(filepath, 'utf8');
+ *   -   const lines = text.split('\n');
+ *   + export function countComments(content) {
+ *   +   const lines = content.split('\n');
+ *   ...
+ *   -         // Skip @ts- directives
+ *        if (trimmed.startsWith('//@ts-') || trimmed.startsWith('// @ts-')) continue;
  */
 
 export function countComments(content) {

@@ -107,6 +107,35 @@ const FIXTURES: Array<{ name: string; relPath: string; content: string }> = [
       '',
     ].join('\n'),
   },
+  {
+    // SHEBANG delta class: pilot skips `#!` on line 1 unconditionally; engine has no
+    // shebang handler and also does not count `#!` as a comment → delta = 0.
+    name: 'shebang',
+    relPath: 'scripts/start.mjs',
+    content: [
+      '#!/usr/bin/env node',
+      '// Entry point',
+      "import { run } from './app.mjs';",
+      'run();',
+      '',
+    ].join('\n'),
+  },
+  {
+    // EXCL_SET delta class: pilot's AdonisJS walk() would have excluded `server/config/`;
+    // engine D-8 list does not — both count comments identically when content is supplied
+    // directly, so delta = 0 here. Documents the path-level divergence.
+    name: 'excl-set-adonis-config',
+    relPath: 'server/config/app.ts',
+    content: [
+      '// Application config',
+      'export const config = {',
+      '  port: 3000,',
+      '  // Debug flag',
+      "  debug: process.env.NODE_ENV !== 'production',",
+      '};',
+      '',
+    ].join('\n'),
+  },
 ];
 
 describe('comment-density pilot parity — in-repo fixtures', () => {
@@ -220,7 +249,7 @@ describe('comment-density pilot parity — in-repo fixtures', () => {
       ).toBeLessThanOrEqual(1.0);
     }
 
-    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length, 'all fixtures must produce rows — none excluded').toBe(FIXTURES.length);
 
     if (unexplained.length > 0) {
       const lines = unexplained.map(

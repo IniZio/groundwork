@@ -35,6 +35,14 @@ const WRITE_TOKEN = 'tok-test-001'
 
 const TEST_TOKEN = 'test-token-evt'
 
+/**
+ * Citation used for every `advisor APPROVE` invocation here. Both gate surfaces
+ * require a RESOLVABLE file:line; resolution is against the CLI's process.cwd()
+ * (the repo root under vitest). Shared by the S2-AC2 invocation and its
+ * round-trip expectation so the two cannot drift apart.
+ */
+const GATE_CITATION = 'hooks/ledger.mjs:1'
+
 function baseLedger(overrides: Record<string, unknown> = {}) {
   return {
     version: 1,
@@ -67,8 +75,7 @@ function run(args: string[]): { code: number; stdout: string; stderr: string } {
     HOME: process.env.HOME ?? '',
     CLAUDE_PROJECT_DIR: projectDir,
   }
-  // Explicitly omit CLAUDE_CODE_SESSION_ID so the CLI uses the legacy run.json path
-  const r = spawnSync('node', [CLI, ...args], {
+  const r = spawnSync('node', [CLI, ...args], { // Explicitly omit CLAUDE_CODE_SESSION_ID so the CLI uses the legacy run.json path
     env,
     encoding: 'utf8',
   })
@@ -122,7 +129,7 @@ test('S2-AC1: ledger complete S1 S2 appends exactly two TASK_COMPLETE events', (
 // ---------------------------------------------------------------------------
 
 test('S2-AC2: ledger gate advisor APPROVE --citation X --rubric Y appends one GATE event', () => {
-  const { code, stderr } = run(['gate', 'advisor', 'APPROVE', '--citation', 'TestCite', '--rubric', 'TestRubric', '--token', TEST_TOKEN])
+  const { code, stderr } = run(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--rubric', 'TestRubric', '--token', TEST_TOKEN])
   expect(code).toBe(0)
   expect(stderr).toBe('')
 
@@ -133,7 +140,7 @@ test('S2-AC2: ledger gate advisor APPROVE --citation X --rubric Y appends one GA
   const g = gateEvents[0] as any
   expect(g.source).toBe('hook:ledger')
   expect(g.data?.verdict).toBe('APPROVE')
-  expect(g.data?.citation).toBe('TestCite')
+  expect(g.data?.citation).toBe(GATE_CITATION)
   expect(g.data?.rubric).toBe('TestRubric')
 })
 
@@ -185,8 +192,7 @@ describe('S2-AC4: motive provenance', () => {
 // ---------------------------------------------------------------------------
 
 test('S2-AC5: unwritable journal dir → exit 0, slice complete, stderr non-empty', () => {
-  // Pre-create journal dir and make it unwritable
-  const journalDir = path.join(projectDir, '.groundwork', 'journal')
+  const journalDir = path.join(projectDir, '.groundwork', 'journal') // pre-create journal dir and make it unwritable
   mkdirSync(journalDir, { recursive: true })
   chmodSync(journalDir, 0o444)
 
@@ -194,18 +200,14 @@ test('S2-AC5: unwritable journal dir → exit 0, slice complete, stderr non-empt
   try {
     result = run(['complete', 'S1', '--token', TEST_TOKEN])
   } finally {
-    // restore so afterEach cleanup can remove it
-    chmodSync(journalDir, 0o755)
+    chmodSync(journalDir, 0o755) // restore so afterEach cleanup can remove it
   }
 
-  // exit 0 (fail-open)
-  expect(result!.code).toBe(0)
-  // slice still marked complete
-  const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
+  expect(result!.code).toBe(0) // exit 0 (fail-open)
+  const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8')) // slice still marked complete
   const s1 = ledger.slices.find((s: any) => s.id === 'S1')
   expect(s1?.status).toBe('complete')
-  // stderr contains a warning from emitHookEvent
-  expect(result!.stderr.length).toBeGreaterThan(0)
+  expect(result!.stderr.length).toBeGreaterThan(0) // stderr contains a warning from emitHookEvent
 })
 
 // ---------------------------------------------------------------------------
@@ -216,7 +218,7 @@ test('S2-AC6: stdout of complete / gate / abandon unchanged', () => {
   const complete = run(['complete', 'S1', '--token', TEST_TOKEN])
   expect(complete.stdout).toBe('S1 ✓ (1/2 complete)\n')
 
-  const gate = run(['gate', 'advisor', 'APPROVE', '--token', TEST_TOKEN])
+  const gate = run(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--token', TEST_TOKEN])
   expect(gate.stdout).toBe('advisor: APPROVE\n')
 
   const abandon = run(['abandon', '--token', TEST_TOKEN])
@@ -228,8 +230,7 @@ test('S2-AC6: stdout of complete / gate / abandon unchanged', () => {
 // ---------------------------------------------------------------------------
 
 test('S2-AC7: rejected write-token → no event appended', () => {
-  // Write ledger with a write_token set
-  writeFileSync(ledgerFile, JSON.stringify(baseLedger({ write_token: 'correct-token' }), null, 2))
+  writeFileSync(ledgerFile, JSON.stringify(baseLedger({ write_token: 'correct-token' }), null, 2)) // write ledger with write_token set
 
   const result = run(['complete', 'S1', '--token', 'wrong-token'])
   expect(result.code).not.toBe(0)
@@ -246,13 +247,11 @@ test('S2-AC8: ledger complete S1 BOGUS → exit 2, S1 complete, exactly one TASK
   const result = run(['complete', 'S1', 'BOGUS', '--token', TEST_TOKEN])
   expect(result.code).toBe(2)
 
-  // S1 should be complete on disk
-  const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
+  const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8')) // S1 should be complete on disk
   const s1 = ledger.slices.find((s: any) => s.id === 'S1')
   expect(s1?.status).toBe('complete')
 
-  // Exactly one TASK_COMPLETE event, for S1 only
-  const events = readShard()
+  const events = readShard() // Exactly one TASK_COMPLETE event, for S1 only
   const tc = events.filter((e: any) => e.type === 'TASK_COMPLETE')
   expect(tc).toHaveLength(1)
   expect((tc[0] as any).data?.slice).toBe('S1')

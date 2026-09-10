@@ -687,7 +687,7 @@ function cmdComplete(args) {
 
 function cmdAwaitHuman(args) {
   const { flags, positionals } = parseFlags(args ?? [])
-  const clearing = positionals[0] === 'clear'
+  const clearing = positionals[0] === 'clear' || flags.clear === true
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
@@ -795,6 +795,39 @@ function cmdScopeToken(args) {
   )
 }
 
+/**
+ * Enforce that an advisor APPROVE carries a citation containing at least one
+ * RESOLVABLE `file:line` reference — the file exists on disk and the line number
+ * is within its line count. Mirrors the validation in
+ * `src/gw/cli/commands/ledger.ts` (GATE_CITATION_REQUIRED) so both gate surfaces
+ * accept and reject exactly the same inputs. Relative paths resolve against
+ * `process.cwd()`, matching the new surface's `cwd` base (not CLAUDE_PROJECT_DIR).
+ * Dies with exit 1 when no resolvable reference is present.
+ * @param {string|true|undefined} rawCitation value of the `--citation` flag
+ */
+function assertResolvableCitation(rawCitation) {
+  if (!rawCitation || rawCitation === true || !String(rawCitation).trim()) {
+    die('APPROVE requires --citation naming a file:line reference (e.g., src/foo.ts:42).', 1)
+  }
+  const citText = String(rawCitation).trim()
+  const refPattern = /([^\s;,("']+):(\d+)/g
+  let refMatch
+  let citResolved = false
+  while (!citResolved && (refMatch = refPattern.exec(citText)) !== null) {
+    const filePart = refMatch[1]
+    const lineNum = parseInt(refMatch[2], 10)
+    const absFile = path.isAbsolute(filePart) ? filePart : path.resolve(process.cwd(), filePart)
+    if (existsSync(absFile)) {
+      try {
+        if (lineNum <= readFileSync(absFile, 'utf8').split('\n').length) citResolved = true
+      } catch { /* unreadable — try next match */ }
+    }
+  }
+  if (!citResolved) {
+    die(`APPROVE --citation must contain a resolvable file:line reference. None found in: "${citText}"`, 1)
+  }
+}
+
 function cmdGate(args) {
   const { flags, positionals } = parseFlags(args)
   const [which, verdictRaw] = positionals
@@ -803,6 +836,13 @@ function cmdGate(args) {
   const VALID_ADVISOR_VERDICTS = new Set(['APPROVE', 'CORRECTION', 'STOP', 'GAPS', 'REPLAN'])
   if (which === 'advisor' && !VALID_ADVISOR_VERDICTS.has(verdictRaw)) {
     die(`invalid advisor verdict "${verdictRaw}". Must be: APPROVE | CORRECTION | STOP | GAPS | REPLAN`, 1)
+  }
+  // FIX-03: APPROVE on the legacy surface must enforce the SAME citation validation as
+  // `gw ledger gate` (src/gw/cli/commands/ledger.ts). The stop-gate reads gate.advisor
+  // regardless of which surface wrote it, so anything weaker here is a live bypass.
+  // Parity, not refusal: the legacy path stays supported when given a real citation.
+  if (which === 'advisor' && verdictRaw === 'APPROVE') {
+    assertResolvableCitation(flags.citation)
   }
   const AXIS_KEYS = ['correctness', 'completeness', 'over_engineering', 'contract_fitness', 'plan_soundness']
   const hasAxes = AXIS_KEYS.some((k) => flags[`axes-${k}`] != null)

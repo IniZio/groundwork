@@ -56,6 +56,13 @@ const REAL_JOURNAL_DIR = path.join(ROOT, '.groundwork', 'journal')
 const SESSION_ID = 'sess-s6-int'
 const MOTIVE = 'test-motive-s6'
 const WRITE_TOKEN = 'tok-s6-test'
+
+/**
+ * Citation for `advisor APPROVE`: both gate surfaces require a RESOLVABLE
+ * file:line, resolved against the CLI's process.cwd() (the repo root under
+ * vitest) rather than the scratch CLAUDE_PROJECT_DIR.
+ */
+const GATE_CITATION = 'hooks/ledger.mjs:1'
 const RFC_DIR_NAME = 'test-rfc-s6'
 const STRUGGLE_THRESHOLD = '2'  // Override GROUNDWORK_STRUGGLE_THRESHOLD for fast crossing
 
@@ -327,7 +334,7 @@ beforeAll(async () => {
   runLedger(['complete', 'S1', '--token', WRITE_TOKEN])
 
   // ── 9. GATE ───────────────────────────────────────────────────────────────
-  runLedger(['gate', 'advisor', 'APPROVE', '--token', WRITE_TOKEN])
+  runLedger(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--token', WRITE_TOKEN])
 
   // ── 10. SESSION_END: stop-gate reads ledger (all complete + APPROVE) ──────
   const stopPayload = { session_id: SESSION_ID, cwd: tmpDir }
@@ -368,7 +375,7 @@ beforeAll(async () => {
   ])
 
   runLedger2(['complete', 'S1', '--token', WRITE_TOKEN])
-  runLedger2(['gate', 'advisor', 'APPROVE', '--token', WRITE_TOKEN])
+  runLedger2(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--token', WRITE_TOKEN])
   runHookSync2(STOP_GATE, { session_id: SESSION_ID, cwd: tmpDir2 }, {}, ['hook', 'stop-gate'])
 
   events2 = readShard2()

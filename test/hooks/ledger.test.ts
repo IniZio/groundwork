@@ -12,14 +12,21 @@ let ledgerFile: string;
 /** Shared write token for baseLedger-based tests (replaces retired token_free escape hatch). */
 const TEST_TOKEN = "testtoken12345678";
 
+/**
+ * A citation that resolves: `advisor APPROVE` requires a real file:line on both
+ * gate surfaces. Resolution is relative to the CLI's process.cwd() (the repo
+ * root under vitest), so a repo-relative path to a file that always has a line 1
+ * is stable regardless of how the target file changes.
+ */
+const GATE_CITATION = "hooks/ledger.mjs:1";
+
 const baseLedger = () => ({
 	version: 1,
 	active: true,
 	session_id: "sess-1",
 	brief: "test run",
 	reinforcements: 0,
-	// write_token: all sealed-regime operations (complete/gate/abandon/set-terminal) require --token.
-	write_token: TEST_TOKEN,
+	write_token: TEST_TOKEN, // all sealed-regime operations (complete/gate/abandon/set-terminal) require --token
 	slices: [
 		{ id: "S1", name: "tracer", wave: 0, blocked_by: [], status: "complete", acceptance: ["a"] },
 		{ id: "S2", name: "feature", wave: 1, blocked_by: ["S1"], status: "pending", acceptance: ["b", "c"] },
@@ -38,9 +45,7 @@ afterEach(() => rmSync(projectDir, { recursive: true, force: true }));
 
 /** Run the CLI with CLAUDE_PROJECT_DIR pointing at the temp project. */
 function run(args: string[], stdin?: string): { code: number; stdout: string; stderr: string } {
-	// Unset CLAUDE_CODE_SESSION_ID so the CLI uses the legacy run.json path (which is
-	// where the beforeEach fixture writes the test ledger).
-	const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
+	const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir }; // Unset CLAUDE_CODE_SESSION_ID so CLI uses legacy run.json path (beforeEach fixture)
 	delete env.CLAUDE_CODE_SESSION_ID;
 	try {
 		const stdout = execFileSync("node", [CLI, ...args], {
@@ -91,8 +96,7 @@ describe("ledger CLI — complete", () => {
 		const r = run(["complete", "S9", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(2);
 		expect(r.stderr).toContain("unknown slice id");
-		// S9 didn't exist; real slices untouched.
-		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending"); // S9 didn't exist; real slices untouched
 	});
 
 	it("output is tiny (the whole point) — single line, no ledger body echoed", () => {
@@ -107,21 +111,24 @@ describe("ledger CLI — complete", () => {
 		expect(r.code).toBe(0);
 		const ledger = readLedger();
 		const s = ledger.slices.find((s: any) => s.id === "S2");
-		// id must be present (unchanged)
-		expect(s.id).toBe("S2");
-		// completed_at must be a valid ISO-8601 date string
-		expect(s.completed_at).toBeTruthy();
+		expect(s.id).toBe("S2"); // id must be present (unchanged)
+		expect(s.completed_at).toBeTruthy(); // completed_at must be a valid ISO-8601 date string
 		expect(new Date(s.completed_at).toISOString()).toBe(s.completed_at);
-		// session_id on slice must match the run's top-level session_id
-		expect(s.session_id).toBe(ledger.session_id);
+		expect(s.session_id).toBe(ledger.session_id); // session_id on slice must match the run's top-level session_id
 	});
 });
 
 describe("ledger CLI — gate", () => {
 	it("sets gate.advisor as a bare string verdict", () => {
-		const r = run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		const r = run(["gate", "advisor", "CORRECTION", "--token", TEST_TOKEN]);
+		expect(r.stdout.trim()).toBe("advisor: CORRECTION");
+		expect(readLedger().gate.advisor).toBe("CORRECTION");
+	});
+
+	it("sets gate.advisor as an OBJECT for APPROVE (citation is mandatory, so bare form is unreachable)", () => {
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		expect(r.stdout.trim()).toBe("advisor: APPROVE");
-		expect(readLedger().gate.advisor).toBe("APPROVE");
+		expect(readLedger().gate.advisor).toEqual({ verdict: "APPROVE", citation: GATE_CITATION });
 	});
 
 	it("sets gate.advisor as an OBJECT when citation/rubric/axes flags are present", () => {
@@ -143,7 +150,7 @@ describe("ledger CLI — abandon & status", () => {
 	});
 
 	it("status prints a compact view with symbols and gate line, not the full JSON", () => {
-		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		const r = run(["status"]);
 		expect(r.stdout).toContain("S1✓");
 		expect(r.stdout).toContain("S2");
@@ -176,8 +183,7 @@ describe("ledger CLI — init & atomicity", () => {
 	});
 
 	it("survives many concurrent completes without losing a write (lock serializes)", () => {
-		// Fire 3 completes in parallel; all must land.
-		const { spawnSync } = require("node:child_process");
+		const { spawnSync } = require("node:child_process"); // Fire 3 completes in parallel; all must land
 		const spawnEnv = { ...process.env, CLAUDE_PROJECT_DIR: projectDir };
 		delete spawnEnv.CLAUDE_CODE_SESSION_ID;
 		const procs = ["S2", "S3"].map((id) =>
@@ -196,15 +202,12 @@ describe("ledger CLI — init & atomicity", () => {
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
-		// stdout must mention the token
-		expect(r.stdout).toContain("write_token:");
-		// extract the token value — 16 hex chars for 8 random bytes
-		const match = r.stdout.match(/write_token:\s+([0-9a-f]+)/);
+		expect(r.stdout).toContain("write_token:"); // stdout must mention the token
+		const match = r.stdout.match(/write_token:\s+([0-9a-f]+)/); // extract token value — 16 hex chars for 8 random bytes
 		expect(match).not.toBeNull();
 		const token = match![1];
 		expect(token).toMatch(/^[0-9a-f]{16}$/);
-		// token must also be persisted in run.json
-		expect(readLedger().write_token).toBe(token);
+		expect(readLedger().write_token).toBe(token); // token must also be persisted in run.json
 	});
 
 	it("init persists motive from JSON input", () => {
@@ -239,45 +242,42 @@ describe("ledger CLI — init & atomicity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: write a ledger that has an embedded write_token
 // ---------------------------------------------------------------------------
 
-function writeLedgerWithToken(token: string) {
+function writeLedgerWithToken(token: string) { // Helper: write a ledger with an embedded write_token
 	const l = { ...baseLedger(), write_token: token } as any;
 	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 	return token;
 }
 
 // ---------------------------------------------------------------------------
-// Write-token enforcement — gate
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — write-token enforcement (gate)", () => {
+describe("ledger CLI — write-token enforcement (gate)", () => { // Write-token enforcement — gate
 	it("gate succeeds (exit 0) with the correct --token", () => {
 		const token = writeLedgerWithToken("deadbeef01234567");
-		const r = run(["gate", "advisor", "APPROVE", "--token", token]);
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", token]);
 		expect(r.code).toBe(0);
-		expect(readLedger().gate.advisor).toBe("APPROVE");
+		expect(readLedger().gate.advisor).toEqual({ verdict: "APPROVE", citation: GATE_CITATION });
 	});
 
 	it("gate rejects (non-zero) when --token is omitted and ledger has write_token", () => {
 		writeLedgerWithToken("deadbeef01234567");
-		const r = run(["gate", "advisor", "APPROVE"]);
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION]);
 		expect(r.code).not.toBe(0);
 	});
 
 	it("gate rejects (non-zero) when --token is wrong and ledger has write_token", () => {
 		writeLedgerWithToken("deadbeef01234567");
-		const r = run(["gate", "advisor", "APPROVE", "--token", "wrongtoken000000"]);
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", "wrongtoken000000"]);
 		expect(r.code).not.toBe(0);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Write-token enforcement — complete
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — write-token enforcement (complete)", () => {
+describe("ledger CLI — write-token enforcement (complete)", () => { // Write-token enforcement — complete
 	it("complete succeeds (exit 0) with the correct --token", () => {
 		const token = writeLedgerWithToken("deadbeef01234567");
 		const r = run(["complete", "S2", "--token", token]);
@@ -299,15 +299,13 @@ describe("ledger CLI — write-token enforcement (complete)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fail-CLOSED: tokenless ledger (no write_token) → REJECTED
-// (token_free escape hatch retired D-6; there is no longer an opt-out path)
 // ---------------------------------------------------------------------------
 
 /**
  * Write a ledger that has no write_token (genuinely tokenless / broken).
  * Represents a misconfigured ledger that predates token enforcement.
  */
-function writeLedgerNoToken() {
+function writeLedgerNoToken() { // Fail-CLOSED: tokenless ledger rejected; token_free escape hatch retired D-6
 	const l = { ...baseLedger() } as any;
 	delete l.write_token;  // neither write_token — fail-closed must reject
 	writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
@@ -315,81 +313,64 @@ function writeLedgerNoToken() {
 
 describe("ledger CLI — fail-closed (tokenless ledger)", () => {
 	it("gate rejects (non-zero) when ledger has no write_token — regression: fix for fail-open bug", () => {
-		// A ledger with no write_token must be REJECTED (fail-closed).
-		writeLedgerNoToken();
-		const r = run(["gate", "advisor", "APPROVE"]);
+		writeLedgerNoToken(); // A ledger with no write_token must be REJECTED (fail-closed)
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION]);
 		expect(r.code).not.toBe(0);
-		// Gate must NOT have been written
-		expect(readLedger().gate?.advisor).toBeUndefined();
+		expect(readLedger().gate?.advisor).toBeUndefined(); // Gate must NOT have been written
 	});
 
 	it("complete rejects (non-zero) when ledger has no write_token", () => {
 		writeLedgerNoToken();
 		const r = run(["complete", "S2"]);
 		expect(r.code).not.toBe(0);
-		// Slice status must remain pending
-		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending"); // Slice status must remain pending
 	});
 
 	it("token_free:true no longer bypasses token enforcement (escape hatch retired, vector 1 closed)", () => {
-		// Write a ledger with token_free:true but no write_token — old opt-out form.
-		// After D-6, this must be REJECTED just like any other tokenless ledger.
-		const l = { ...baseLedger(), token_free: true } as any;
+		const l = { ...baseLedger(), token_free: true } as any; // old opt-out form; after D-6 must be REJECTED like any tokenless ledger
 		delete l.write_token;
 		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
-		const r = run(["gate", "advisor", "APPROVE"]);
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION]);
 		expect(r.code).not.toBe(0);
 		expect(readLedger().gate?.advisor).toBeUndefined();
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Sealed-regime enforcement — vectors 1-4 (S2-AC1 through S2-AC5)
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — sealed-regime vector coverage", () => {
-	// S2-AC1: init mints schema_version + key + seal
-	it("init mints schema_version, gate.seal, and writes the key file (S2-AC1)", () => {
+describe("ledger CLI — sealed-regime vector coverage", () => { // Sealed-regime enforcement — vectors 1-4 (S2-AC1 through S2-AC5)
+	it("init mints schema_version, gate.seal, and writes the key file (S2-AC1)", () => { // S2-AC1: init mints schema_version + key + seal
 		const src = path.join(projectDir, "plan.json");
 		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "X1", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile, { force: true });
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
 		const ledger = readLedger();
-		// schema_version marks sealed regime
-		expect(ledger.schema_version).toBe(1);
-		// gate.seal is a hex string
-		expect(typeof ledger.gate?.seal).toBe("string");
+		expect(ledger.schema_version).toBe(1); // schema_version marks sealed regime
+		expect(typeof ledger.gate?.seal).toBe("string"); // gate.seal is a hex string
 		expect(ledger.gate.seal).toMatch(/^[0-9a-f]{64}$/);  // HMAC-SHA256 = 64 hex chars
-		// key file must exist at .groundwork/runs/<session_id>.seal.key
-		const keyFile = path.join(projectDir, ".groundwork", "runs", `${ledger.session_id}.seal.key`);
+		const keyFile = path.join(projectDir, ".groundwork", "runs", `${ledger.session_id}.seal.key`); // key file must exist
 		expect(existsSync(keyFile)).toBe(true);
 	});
 
-	// S2-AC2: init refuses to overwrite an active tokened run without --token (vectors 1 & 2)
-	it("init refuses to overwrite an active tokened run without --token (S2-AC2, vectors 1&2)", () => {
-		// baseLedger is already written at ledgerFile with write_token: TEST_TOKEN, active: true
-		const src = path.join(projectDir, "plan.json");
+	it("init refuses to overwrite an active tokened run without --token (S2-AC2, vectors 1&2)", () => { // S2-AC2: init refuses to overwrite active tokened run without --token
+		const src = path.join(projectDir, "plan.json"); // baseLedger already written with write_token: TEST_TOKEN, active: true
 		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
-		// No token → rejected
-		const r = run(["init", src]);
+		const r = run(["init", src]); // No token → rejected
 		expect(r.code).toBe(2);
 		expect(r.stderr).toContain("--token");
-		// Wrong token → rejected
-		const r2 = run(["init", src, "--token", "wrongtoken"]);
+		const r2 = run(["init", src, "--token", "wrongtoken"]); // Wrong token → rejected
 		expect(r2.code).toBe(2);
-		// Correct token → succeeds and mints new run
-		const r3 = run(["init", src, "--token", TEST_TOKEN]);
+		const r3 = run(["init", src, "--token", TEST_TOKEN]); // Correct token → succeeds and mints new run
 		expect(r3.code).toBe(0);
 		expect(r3.stdout).toContain("write_token:");
 	});
 
-	// S2-AC3: abandon requires --token and re-seals (vector 4)
-	it("abandon without --token is rejected (S2-AC3, vector 4)", () => {
+	it("abandon without --token is rejected (S2-AC3, vector 4)", () => { // S2-AC3: abandon requires --token and re-seals (vector 4)
 		const r = run(["abandon"]);
 		expect(r.code).not.toBe(0);
-		// active must remain true (write did not happen)
-		expect(readLedger().active).toBe(true);
+		expect(readLedger().active).toBe(true); // active must remain true (write did not happen)
 	});
 
 	it("abandon with correct --token sets active:false (S2-AC3)", () => {
@@ -398,8 +379,7 @@ describe("ledger CLI — sealed-regime vector coverage", () => {
 		expect(readLedger().active).toBe(false);
 	});
 
-	// S2-AC4: raw `set --status complete` requires --token (vector 3)
-	it("set --status complete without --token is rejected (S2-AC4, vector 3)", () => {
+	it("set --status complete without --token is rejected (S2-AC4, vector 3)", () => { // S2-AC4: raw set --status complete requires --token (vector 3)
 		const r = run(["set", "S2", "--status", "complete"]);
 		expect(r.code).not.toBe(0);
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("pending");
@@ -417,25 +397,21 @@ describe("ledger CLI — sealed-regime vector coverage", () => {
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");
 	});
 
-	// Non-terminal set still works without token (only terminal requires it)
-	it("set --status in_progress without --token succeeds (non-terminal, no token required)", () => {
+	it("set --status in_progress without --token succeeds (non-terminal, no token required)", () => { // Non-terminal set still works without token (only terminal requires it)
 		const r = run(["set", "S2", "--status", "in_progress"]);
 		expect(r.code).toBe(0);
 		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("in_progress");
 	});
 
-	// S2-AC5: complete and gate re-seal after writing
-	it("complete re-seals the ledger in the sealed regime (S2-AC5)", () => {
-		// Use init to create a properly sealed ledger
-		const src = path.join(projectDir, "init-plan.json");
+	it("complete re-seals the ledger in the sealed regime (S2-AC5)", () => { // S2-AC5: complete and gate re-seal after writing
+		const src = path.join(projectDir, "init-plan.json"); // Use init to create a properly sealed ledger
 		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "T1", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile, { force: true });
 		const initR = run(["init", src]);
 		expect(initR.code).toBe(0);
 		const token = initR.stdout.match(/write_token:\s+([0-9a-f]+)/)?.[1] ?? "";
 		const sealBefore = readLedger().gate?.seal;
-		// Complete changes slice state → seal must change
-		run(["complete", "T1", "--token", token]);
+		run(["complete", "T1", "--token", token]); // Complete changes slice state → seal must change
 		const sealAfter = readLedger().gate?.seal;
 		expect(typeof sealAfter).toBe("string");
 		expect(sealAfter).not.toBe(sealBefore);
@@ -449,31 +425,25 @@ describe("ledger CLI — sealed-regime vector coverage", () => {
 		expect(initR.code).toBe(0);
 		const token = initR.stdout.match(/write_token:\s+([0-9a-f]+)/)?.[1] ?? "";
 		const sealBefore = readLedger().gate?.seal;
-		run(["gate", "advisor", "APPROVE", "--token", token]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", token]);
 		const sealAfter = readLedger().gate?.seal;
 		expect(typeof sealAfter).toBe("string");
 		expect(sealAfter).not.toBe(sealBefore);
 	});
 
-	// Legacy ledger (no gate.seal, no key file) — mutations still work without seal errors
-	it("legacy ledger (no seal, no key file) mutates without error — re-seal is skipped (legacy safety)", () => {
-		// baseLedger() written by beforeEach has write_token but no gate.seal and no key file.
-		// This simulates an in-flight pre-fix run. complete should still work.
-		expect(readLedger().gate?.seal).toBeUndefined();
+	it("legacy ledger (no seal, no key file) mutates without error — re-seal is skipped (legacy safety)", () => { // Legacy ledger — mutations still work; re-seal skipped
+		expect(readLedger().gate?.seal).toBeUndefined(); // baseLedger has write_token but no gate.seal; simulates in-flight pre-fix run
 		const r = run(["complete", "S2", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
-		// Seal is not added to a legacy ledger
-		expect(readLedger().gate?.seal).toBeUndefined();
-		// But the slice is still completed
-		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete");
+		expect(readLedger().gate?.seal).toBeUndefined(); // Seal is not added to a legacy ledger
+		expect(readLedger().slices.find((s: any) => s.id === "S2").status).toBe("complete"); // But the slice is still completed
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Token redaction — status, show, view must never expose write_token value
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — write_token redaction", () => {
+describe("ledger CLI — write_token redaction", () => { // Token redaction — status, show, view must never expose write_token value
 	const SECRET = "secrettoken123456";
 
 	beforeEach(() => {
@@ -500,10 +470,9 @@ describe("ledger CLI — write_token redaction", () => {
 });
 
 // ---------------------------------------------------------------------------
-// view command — markdown table shape
 // ---------------------------------------------------------------------------
 
-describe("ledger CLI — view", () => {
+describe("ledger CLI — view", () => { // view command — markdown table shape
 	it("renders a markdown table with ID, Kind, Status, Blocked By, and Description columns", () => {
 		const r = run(["view"]);
 		expect(r.code).toBe(0);
@@ -515,7 +484,7 @@ describe("ledger CLI — view", () => {
 	});
 
 	it("includes a Gate table section with advisor verdict", () => {
-		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		const r = run(["view"]);
 		expect(r.stdout).toContain("## Gate");
 		expect(r.stdout).toContain("| Gate | Verdict |");
@@ -541,7 +510,7 @@ describe("ledger CLI — view", () => {
 
 describe("ledger CLI — gate artifact", () => {
 	it("creates .groundwork/gates/<session-id>.md after gate command", () => {
-		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		const gatesDir = path.join(projectDir, ".groundwork", "gates");
 		expect(existsSync(gatesDir)).toBe(true);
 		// baseLedger session_id is "sess-1"
@@ -549,7 +518,7 @@ describe("ledger CLI — gate artifact", () => {
 	});
 
 	it("gate artifact first line is 'verdict: <VERDICT>'", () => {
-		run(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		const artifactPath = path.join(projectDir, ".groundwork", "gates", "sess-1.md");
 		expect(existsSync(artifactPath)).toBe(true);
 		const firstLine = readFileSync(artifactPath, "utf8").split("\n")[0];
@@ -568,7 +537,7 @@ describe("ledger CLI — gate artifact", () => {
 
 	it("gate with --token also writes the artifact", () => {
 		const token = writeLedgerWithToken("deadbeef01234567");
-		run(["gate", "advisor", "APPROVE", "--token", token]);
+		run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", token]);
 		const artifactPath = path.join(projectDir, ".groundwork", "gates", "sess-1.md");
 		expect(existsSync(artifactPath)).toBe(true);
 		const firstLine = readFileSync(artifactPath, "utf8").split("\n")[0];
@@ -1122,14 +1091,14 @@ describe("ledger CLI — legacy shapes remain valid", () => {
 
 describe("ledger CLI — gate.advisor forms survive validation", () => {
 	it("bare string advisor gate is accepted", () => {
-		const r = runFull(["gate", "advisor", "APPROVE", "--token", TEST_TOKEN]);
+		const r = runFull(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		// Schema-only issue: schema allows APPROVE — no warning expected
 		expect(r.stderr).toBe("");
 	});
 
 	it("object-form advisor gate is accepted", () => {
-		const r = runFull(["gate", "advisor", "APPROVE", "--citation", "src:42", "--rubric", "r1", "--token", TEST_TOKEN]);
+		const r = runFull(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--rubric", "r1", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		expect(r.stderr).toBe("");
 	});
@@ -1614,8 +1583,7 @@ describe("ledger CLI — scoped token (S5)", () => {
 		return m[1];
 	}
 
-	// SC-issuance: scope-token command writes to ledger.scoped_tokens
-	it("scope-token stores the issued token in ledger.scoped_tokens", () => {
+	it("scope-token stores the issued token in ledger.scoped_tokens", () => { // SC-issuance: scope-token command writes to ledger.scoped_tokens
 		const r = run(["scope-token", "junior-orch-1", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		expect(r.stdout).toContain("scoped_token:");
@@ -1627,20 +1595,17 @@ describe("ledger CLI — scoped token (S5)", () => {
 		expect(l.scoped_tokens[0].token).toMatch(/^sct_[0-9a-f]{16}$/);
 	});
 
-	// SC-issuance-auth: scope-token requires the orchestrator write_token
-	it("scope-token is rejected when --token is wrong (issuance is orchestrator-only)", () => {
+	it("scope-token is rejected when --token is wrong (issuance is orchestrator-only)", () => { // SC-issuance-auth: scope-token requires the orchestrator write_token
 		const r = run(["scope-token", "junior-orch-1", "--token", "wrongtoken"]);
 		expect(r.code).not.toBe(0);
 	});
 
-	// SC-issuance-auth-absent: scope-token requires --token present
-	it("scope-token is rejected when --token is absent", () => {
+	it("scope-token is rejected when --token is absent", () => { // SC-issuance-auth-absent: scope-token requires --token present
 		const r = run(["scope-token", "junior-orch-1"]);
 		expect(r.code).not.toBe(0);
 	});
 
-	// SC1: scoped token CAN complete a slice whose created_by matches its scope
-	it("SC1: scoped token completes a slice whose created_by matches the scope", () => {
+	it("SC1: scoped token completes a slice whose created_by matches the scope", () => { // SC1: scoped token CAN complete a slice whose created_by matches its scope
 		writeLedgerWithOwnedSlice("junior-orch-2");
 		const tok = issueScopedToken("junior-orch-2");
 		const r = run(["complete", "OWN1", "--token", tok]);
@@ -1650,22 +1615,18 @@ describe("ledger CLI — scoped token (S5)", () => {
 		expect(s.status).toBe("complete");
 	});
 
-	// SC2: scoped token CANNOT complete a slice with a DIFFERENT created_by
-	it("SC2: scoped token is rejected for a slice owned by a different scope", () => {
+	it("SC2: scoped token is rejected for a slice owned by a different scope", () => { // SC2: scoped token CANNOT complete a slice with a DIFFERENT created_by
 		writeLedgerWithOwnedSlice("other-orch");
 		const tok = issueScopedToken("junior-orch-3");
 		const r = run(["complete", "OWN1", "--token", tok]);
 		expect(r.code).not.toBe(0);
-		// Slice must remain incomplete
-		const l = readLedger() as any;
+		const l = readLedger() as any; // Slice must remain incomplete
 		const s = l.slices.find((x: any) => x.id === "OWN1");
 		expect(s.status).toBe("pending");
 	});
 
-	// SC3: scoped token CANNOT complete a slice with NO created_by
-	it("SC3: scoped token is rejected for a slice with no created_by set", () => {
-		// S2 in baseLedger has no created_by
-		const tok = issueScopedToken("junior-orch-4");
+	it("SC3: scoped token is rejected for a slice with no created_by set", () => { // SC3: scoped token CANNOT complete a slice with NO created_by
+		const tok = issueScopedToken("junior-orch-4"); // S2 in baseLedger has no created_by
 		const r = run(["complete", "S2", "--token", tok]);
 		expect(r.code).not.toBe(0);
 		const l = readLedger() as any;
@@ -1673,48 +1634,38 @@ describe("ledger CLI — scoped token (S5)", () => {
 		expect(s.status).toBe("pending");
 	});
 
-	// SC4: scoped token is REJECTED by gate (highest-value assertion)
-	it("SC4: scoped token is rejected by gate — subagent cannot record advisor verdict", () => {
+	it("SC4: scoped token is rejected by gate — subagent cannot record advisor verdict", () => { // SC4: scoped token is REJECTED by gate (highest-value assertion)
 		const tok = issueScopedToken("junior-orch-5");
-		const r = run(["gate", "advisor", "APPROVE", "--token", tok]);
+		const r = run(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", tok]);
 		expect(r.code).not.toBe(0);
-		// gate.advisor must remain unset
-		const l = readLedger() as any;
+		const l = readLedger() as any; // gate.advisor must remain unset
 		expect(l.gate?.advisor).toBeUndefined();
 	});
 
-	// SC5: scoped token is REJECTED by init (overwrite protection)
-	it("SC5: scoped token is rejected by init (cannot overwrite a live run)", () => {
+	it("SC5: scoped token is rejected by init (cannot overwrite a live run)", () => { // SC5: scoped token is REJECTED by init (overwrite protection)
 		const tok = issueScopedToken("junior-orch-6");
-		// init with --token validates against write_token — scoped token must be rejected
-		const r = run(["init", ledgerFile, "--token", tok]);
+		const r = run(["init", ledgerFile, "--token", tok]); // init with --token validates against write_token — scoped token must be rejected
 		expect(r.code).not.toBe(0);
 	});
 
-	// SC6: scoped token is REJECTED by abandon
-	it("SC6: scoped token is rejected by abandon", () => {
+	it("SC6: scoped token is rejected by abandon", () => { // SC6: scoped token is REJECTED by abandon
 		const tok = issueScopedToken("junior-orch-7");
 		const r = run(["abandon", "--token", tok]);
 		expect(r.code).not.toBe(0);
-		// ledger must still be active
-		const l = readLedger() as any;
+		const l = readLedger() as any; // ledger must still be active
 		expect(l.active).toBe(true);
 	});
 
-	// SC7: scoped token is REJECTED by rm
-	it("SC7: scoped token is rejected by rm", () => {
+	it("SC7: scoped token is rejected by rm", () => { // SC7: scoped token is REJECTED by rm
 		const tok = issueScopedToken("junior-orch-8");
 		const r = run(["rm", "S1", "--token", tok]);
 		expect(r.code).not.toBe(0);
-		// S1 must still exist
-		const l = readLedger() as any;
+		const l = readLedger() as any; // S1 must still exist
 		expect(l.slices.find((s: any) => s.id === "S1")).toBeDefined();
 	});
 
-	// SC8: scoped token is REJECTED by autopilot
-	it("SC8: scoped token is rejected by autopilot", () => {
-		// Ensure ledger has pacing field so autopilot doesn't fail on missing pacing
-		const l = readLedger() as any;
+	it("SC8: scoped token is rejected by autopilot", () => { // SC8: scoped token is REJECTED by autopilot
+		const l = readLedger() as any; // Ensure ledger has pacing field so autopilot doesn't fail on missing pacing
 		l.pacing = { policy: "wave", budget: 1, exempt_kinds: [] };
 		writeFileSync(ledgerFile, JSON.stringify(l, null, 2));
 		const tok = issueScopedToken("junior-orch-9");
@@ -1722,26 +1673,22 @@ describe("ledger CLI — scoped token (S5)", () => {
 		expect(r.code).not.toBe(0);
 	});
 
-	// SC9: orchestrator write_token retains FULL authority — can complete any slice
-	it("SC9: orchestrator write_token completes slices regardless of created_by", () => {
+	it("SC9: orchestrator write_token completes slices regardless of created_by", () => { // SC9: orchestrator write_token retains FULL authority — can complete any slice
 		writeLedgerWithOwnedSlice("some-other-scope");
-		// Orchestrator uses TEST_TOKEN — must succeed even though created_by != anything
-		const r = run(["complete", "OWN1", "--token", TEST_TOKEN]);
+		const r = run(["complete", "OWN1", "--token", TEST_TOKEN]); // Orchestrator uses TEST_TOKEN — must succeed even though created_by != anything
 		expect(r.code).toBe(0);
 		const l = readLedger() as any;
 		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("complete");
 	});
 
-	// SC9b: orchestrator write_token completes a no-created_by slice
-	it("SC9b: orchestrator write_token completes a slice with no created_by", () => {
+	it("SC9b: orchestrator write_token completes a slice with no created_by", () => { // SC9b: orchestrator write_token completes a no-created_by slice
 		const r = run(["complete", "S1", "--token", TEST_TOKEN]);
 		expect(r.code).toBe(0);
 		const l = readLedger() as any;
 		expect(l.slices.find((s: any) => s.id === "S1").status).toBe("complete");
 	});
 
-	// SC10: assertWriteToken remains fail-closed — absent token always denied (complete path)
-	it("SC10: complete with no --token is denied even for owned slices (fail-closed)", () => {
+	it("SC10: complete with no --token is denied even for owned slices (fail-closed)", () => { // SC10: assertWriteToken remains fail-closed — absent token always denied (complete path)
 		writeLedgerWithOwnedSlice("junior-orch-x");
 		const r = run(["complete", "OWN1"]);
 		expect(r.code).not.toBe(0);
@@ -1749,35 +1696,28 @@ describe("ledger CLI — scoped token (S5)", () => {
 		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
 	});
 
-	// SC11: a fabricated scoped-looking token not in ledger.scoped_tokens is denied
-	it("SC11: a fabricated scoped token (not issued by scope-token) is denied by complete", () => {
+	it("SC11: a fabricated scoped token (not issued by scope-token) is denied by complete", () => { // SC11: a fabricated scoped-looking token not in ledger.scoped_tokens is denied
 		writeLedgerWithOwnedSlice("junior-orch-y");
-		// Use a random hex that was never issued
-		const fakeToken = "deadbeef12345678";
+		const fakeToken = "deadbeef12345678"; // Use a random hex that was never issued
 		const r = run(["complete", "OWN1", "--token", fakeToken]);
 		expect(r.code).not.toBe(0);
 		const l = readLedger() as any;
 		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
 	});
 
-	// SC12: multiple slices — scoped token denied if ANY slice lacks ownership
-	it("SC12: scoped token denied when completing a mix of owned and unowned slices", () => {
-		// OWN1 is owned by junior-orch-z; S2 is pending with no created_by
-		writeLedgerWithOwnedSlice("junior-orch-z");
+	it("SC12: scoped token denied when completing a mix of owned and unowned slices", () => { // SC12: multiple slices — scoped token denied if ANY slice lacks ownership
+		writeLedgerWithOwnedSlice("junior-orch-z"); // OWN1 is owned by junior-orch-z; S2 is pending with no created_by
 		const tok = issueScopedToken("junior-orch-z");
 		const r = run(["complete", "OWN1", "S2", "--token", tok]);
 		expect(r.code).not.toBe(0);
-		// Neither slice should be marked complete (atomic failure; mutateLedger aborts on throw)
-		const l = readLedger() as any;
+		const l = readLedger() as any; // Neither slice should be marked complete (atomic failure; mutateLedger aborts on throw)
 		expect(l.slices.find((s: any) => s.id === "OWN1").status).toBe("pending");
 		expect(l.slices.find((s: any) => s.id === "S2").status).toBe("pending");
 	});
 });
 
-// S8 — schema gap: scoped_tokens declared + top-level additionalProperties tightened
-describe("ledger schema validation — scoped_tokens and top-level additionalProperties (S8)", () => {
-	// AC1: well-formed scoped_tokens is accepted by init
-	it("AC1: init accepts a ledger containing a well-formed scoped_tokens array", () => {
+describe("ledger schema validation — scoped_tokens and top-level additionalProperties (S8)", () => { // S8 — schema gap: scoped_tokens declared + top-level additionalProperties tightened
+	it("AC1: init accepts a ledger containing a well-formed scoped_tokens array", () => { // AC1: well-formed scoped_tokens is accepted by init
 		const src = path.join(projectDir, "s8-ac1.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1793,8 +1733,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(l.scoped_tokens[0].scope).toBe("junior-1");
 	});
 
-	// AC2a: scoped_tokens entry missing `scope` is REJECTED at init
-	it("AC2a: init rejects a scoped_tokens entry missing the required `scope` field", () => {
+	it("AC2a: init rejects a scoped_tokens entry missing the required `scope` field", () => { // AC2a: scoped_tokens entry missing `scope` is REJECTED at init
 		const src = path.join(projectDir, "s8-ac2a.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1807,8 +1746,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(r.code).not.toBe(0);
 	});
 
-	// AC2b: scoped_tokens entry missing `token` is REJECTED at init
-	it("AC2b: init rejects a scoped_tokens entry missing the required `token` field", () => {
+	it("AC2b: init rejects a scoped_tokens entry missing the required `token` field", () => { // AC2b: scoped_tokens entry missing `token` is REJECTED at init
 		const src = path.join(projectDir, "s8-ac2b.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1821,8 +1759,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(r.code).not.toBe(0);
 	});
 
-	// AC2c: scoped_tokens entry with a spurious extra field is REJECTED (additionalProperties:false on items)
-	it("AC2c: init rejects a scoped_tokens entry with an unknown extra field", () => {
+	it("AC2c: init rejects a scoped_tokens entry with an unknown extra field", () => { // AC2c: scoped_tokens entry with a spurious extra field is REJECTED (additionalProperties:false on items)
 		const src = path.join(projectDir, "s8-ac2c.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1835,8 +1772,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(r.code).not.toBe(0);
 	});
 
-	// AC2d: scoped_tokens is not an array is REJECTED at init
-	it("AC2d: init rejects scoped_tokens that is not an array", () => {
+	it("AC2d: init rejects scoped_tokens that is not an array", () => { // AC2d: scoped_tokens is not an array is REJECTED at init
 		const src = path.join(projectDir, "s8-ac2d.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1849,8 +1785,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(r.code).not.toBe(0);
 	});
 
-	// Regression: motive_ref is a legitimate top-level key read by stop-gate — must not be rejected
-	it("motive_ref is accepted by init and preserved in the written ledger", () => {
+	it("motive_ref is accepted by init and preserved in the written ledger", () => { // Regression: motive_ref is a legitimate top-level key read by stop-gate — must not be rejected
 		const src = path.join(projectDir, "s8-motive-ref.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1866,8 +1801,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(l.motive_ref).toBe("junior-orchestrator-parity");
 	});
 
-	// Regression: motive and motive_ref both accepted together
-	it("motive and motive_ref are both accepted when present together", () => {
+	it("motive and motive_ref are both accepted when present together", () => { // Regression: motive and motive_ref both accepted together
 		const src = path.join(projectDir, "s8-both-motives.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
@@ -1882,8 +1816,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		expect(r.stderr).not.toContain("must NOT have additional properties");
 	});
 
-	// AC3: a genuinely unknown top-level key is REJECTED by ledger init
-	it("AC3: init rejects a ledger containing an unknown top-level key", () => {
+	it("AC3: init rejects a ledger containing an unknown top-level key", () => { // AC3: a genuinely unknown top-level key is REJECTED by ledger init
 		const src = path.join(projectDir, "s8-ac3.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,

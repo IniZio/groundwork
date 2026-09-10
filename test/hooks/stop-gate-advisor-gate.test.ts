@@ -31,7 +31,8 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const ROOT = new URL('../../', import.meta.url).pathname
-const STOP_GATE = join(ROOT, 'bin', 'gw-hook')
+const BUN = process.env.GW_BUN ?? 'bun'
+const STOP_GATE_SRC = join(ROOT, 'src', 'gw', 'cli', 'main.ts')
 
 // ─── Temp project dir (isolated from live session ledger) ───────────────────
 
@@ -102,7 +103,7 @@ type HookOutput = {
  * signal the Claude Code harness uses to refuse session termination.
  */
 function runGate(sessionId: string): { out: HookOutput; exitCode: number } {
-  const r = spawnSync(STOP_GATE, ['hook', 'stop-gate'], {
+  const r = spawnSync(BUN, ['run', STOP_GATE_SRC, 'hook', 'stop-gate'], {
     input: JSON.stringify({ session_id: sessionId }),
     env: {
       PATH: process.env.PATH ?? '',
@@ -134,6 +135,9 @@ describe('stop-gate — advisor gate blocks completion until APPROVE', () => {
     expect(out.reason).toContain('must be APPROVE')
     // The harness reads hookSpecificOutput.additionalContext for the block message.
     expect(out.hookSpecificOutput?.additionalContext).toContain('⛔ GROUNDWORK STOP-GATE')
+    expect(out.reason).toContain('gw ledger gate')
+    expect(out.reason).toContain('--citation')
+    expect(out.reason).not.toContain('bin/ledger gate advisor APPROVE')
   })
 
   it('BLOCKS when gate.advisor is the string "CORRECTION"', () => {

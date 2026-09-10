@@ -42,6 +42,13 @@ const STOP_GATE = path.join(REPO, "bin", "gw-hook");
 /** A session id that passes the SAFE_ID regex and is unlikely to collide. */
 const TEST_SESSION = "sealed-gate-grill-001";
 
+/**
+ * A citation that resolves: `advisor APPROVE` requires a real file:line on both
+ * gate surfaces. Resolved against the CLI's process.cwd() (the repo root under
+ * vitest), not CLAUDE_PROJECT_DIR, which here points at a scratch temp dir.
+ */
+const GATE_CITATION = "hooks/ledger.mjs:1";
+
 /** Per-session ledger: .groundwork/runs/<session>.json */
 function perSessionLedgerPath(dir: string, sess = TEST_SESSION): string {
 	return path.join(dir, ".groundwork", "runs", `${sess}.json`);
@@ -136,19 +143,16 @@ describe("S5-AC1 — six vectors each must FAIL to release", () => {
 		initSealedLedger();
 		const before = readLedger();
 
-		// --no-token is a retired flag; it is silently ignored but the active-run guard still fires
-		const reinitFile = path.join(projectDir, "reinit.json");
+		const reinitFile = path.join(projectDir, "reinit.json"); // --no-token is a retired flag; it is silently ignored but the active-run guard still fires
 		writeFileSync(reinitFile, JSON.stringify({ slices: [] }));
 		const r = runLedger(["init", reinitFile, "--no-token"]);
 
 		expect(r.exitCode).not.toBe(0);
-		// Ledger must be identical (no overwrite)
-		const after = readLedger();
+		const after = readLedger(); // Ledger must be identical (no overwrite)
 		expect(after.write_token).toBe(before.write_token);
 		expect(after.active).toBe(true);
 		expect(after.gate?.seal).toBe(before.gate?.seal);
-		// Stop-gate must still block: work remains
-		expect(runStopGate().continue).not.toBe(true);
+		expect(runStopGate().continue).not.toBe(true); // Stop-gate must still block: work remains
 	});
 
 	it("V2: plain init re-init over active tokened run without --token is rejected", () => {
@@ -164,20 +168,17 @@ describe("S5-AC1 — six vectors each must FAIL to release", () => {
 		expect(after.write_token).toBe(before.write_token);
 		expect(after.active).toBe(true);
 		expect(after.gate?.seal).toBe(before.gate?.seal);
-		// Stop-gate must still block: work remains
-		expect(runStopGate().continue).not.toBe(true);
+		expect(runStopGate().continue).not.toBe(true); // Stop-gate must still block: work remains
 	});
 
 	it("V3: set --status complete tokenless is rejected; slice stays pending; seal unchanged", () => {
 		initSealedLedger();
 		const before = readLedger();
 
-		// No --token supplied
-		const r = runLedger(["set", "S1", "--status", "complete"]);
+		const r = runLedger(["set", "S1", "--status", "complete"]); // No --token supplied
 
 		expect(r.exitCode).not.toBe(0);
-		// Stop-gate must still block: work remains
-		expect(runStopGate().continue).not.toBe(true);
+		expect(runStopGate().continue).not.toBe(true); // Stop-gate must still block: work remains
 		const after = readLedger();
 		const s1 = after.slices?.find((s) => s.id === "S1");
 		expect(s1?.status).toBe("pending");
@@ -191,8 +192,7 @@ describe("S5-AC1 — six vectors each must FAIL to release", () => {
 		const r = runLedger(["abandon"]);
 
 		expect(r.exitCode).not.toBe(0);
-		// Stop-gate must still block: work remains
-		expect(runStopGate().continue).not.toBe(true);
+		expect(runStopGate().continue).not.toBe(true); // Stop-gate must still block: work remains
 		const after = readLedger();
 		expect(after.active).toBe(true);
 		expect(after.gate?.seal).toBe(before.gate?.seal);
@@ -205,8 +205,7 @@ describe("S5-AC1 — six vectors each must FAIL to release", () => {
 		const r = runLedger(["abandon", "--session", TEST_SESSION]);
 
 		expect(r.exitCode).not.toBe(0);
-		// Stop-gate must still block: work remains
-		expect(runStopGate().continue).not.toBe(true);
+		expect(runStopGate().continue).not.toBe(true); // Stop-gate must still block: work remains
 		const after = readLedger();
 		expect(after.active).toBe(true);
 		expect(after.gate?.seal).toBe(before.gate?.seal);
@@ -215,8 +214,7 @@ describe("S5-AC1 — six vectors each must FAIL to release", () => {
 	it("V5: direct file tamper (APPROVE + all-complete, stale seal) → stop-gate BLOCKS with seal reason", () => {
 		initSealedLedger();
 
-		// Tamper: set advisor APPROVE + all slices complete, but do NOT re-seal
-		const current = readLedger();
+		const current = readLedger(); // Tamper: set advisor APPROVE + all slices complete, but do NOT re-seal
 		const tampered: Ledger = {
 			...current,
 			gate: { ...current.gate, advisor: "APPROVE" },
@@ -314,23 +312,20 @@ describe("S5-AC3 — backward-compat & non-regression", () => {
 		// Complete all slices and record APPROVE legitimately
 		const rc = runLedger(["complete", "S1", "S2", "--token", token]);
 		if (rc.exitCode !== 0) throw new Error(`complete failed: ${rc.stderr}`);
-		const rg = runLedger(["gate", "advisor", "APPROVE", "--token", token]);
+		const rg = runLedger(["gate", "advisor", "APPROVE", "--citation", GATE_CITATION, "--token", token]);
 		if (rg.exitCode !== 0) throw new Error(`gate failed: ${rg.stderr}`);
 
 		// Sanity: with the key present, the ledger is in a releasable state
 		const ledger = readLedger();
-		expect(ledger.gate?.advisor).toBe("APPROVE");
+		expect(ledger.gate?.advisor).toEqual({ verdict: "APPROVE", citation: GATE_CITATION });
 		const s1 = ledger.slices?.find((s) => s.id === "S1");
 		expect(s1?.status).toBe("complete");
 
-		// Positive control: valid seal + key present → stop-gate releases
-		expect(runStopGate().continue).toBe(true);
+		expect(runStopGate().continue).toBe(true); // Positive control: valid seal + key present → stop-gate releases
 
-		// Delete the key file
-		unlinkSync(sealKeyPath(projectDir));
+		unlinkSync(sealKeyPath(projectDir)); // Delete the key file
 
-		// Stop-gate must now FAIL CLOSED (seal present but key missing)
-		const decision = runStopGate();
+		const decision = runStopGate(); // Stop-gate must now FAIL CLOSED (seal present but key missing)
 		expect(decision.continue).not.toBe(true);
 		expect(decision.decision).toBe("block");
 		expect(decision.reason).toMatch(/[Ss]eal verification failed/);

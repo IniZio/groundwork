@@ -38,7 +38,10 @@ function runGate(
 ) {
   return spawnSync(
     SHIM_PATH,
-    ['--json', 'ledger', 'gate', '--motive', MOTIVE, 'advisor', verdict, '--token', WRITE_TOKEN],
+    [
+      '--json', 'ledger', 'gate', '--motive', MOTIVE, 'advisor', verdict, '--token', WRITE_TOKEN,
+      '--citation', `.groundwork/runs/${sessionId}.json:1`,
+    ],
     {
       cwd: repoDir,
       encoding: 'utf8',

@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-// Import the REAL gate-seal helpers so tests exercise the actual HMAC, not a hand-rolled MAC.
+/** Import the REAL gate-seal helpers so tests exercise the actual HMAC, not a hand-rolled MAC. */
 import {
   SCHEMA_VERSION,
   canonicalReleaseState,
@@ -25,7 +25,8 @@ import {
   ensureKey,
 } from "../../hooks/lib/gate-seal.mjs";
 
-const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
+const BUN = process.env.GW_BUN ?? "bun";
+const GW_HOOK_SRC = path.resolve(import.meta.dirname, "..", "..", "src", "gw", "cli", "main.ts");
 
 let projectDir: string;
 let sessionId: string;
@@ -34,8 +35,7 @@ beforeEach(() => {
   sessionId = "seal-test-sess";
   projectDir = mkdtempSync(path.join(tmpdir(), "groundwork-seal-"));
   mkdirSync(path.join(projectDir, ".groundwork", "runs"), { recursive: true });
-  mkdirSync(path.join(projectDir, ".groundwork", "motives", "test-motive"), { recursive: true });
-  // Write a minimal motive charter so plan-pre-gate doesn't block
+  mkdirSync(path.join(projectDir, ".groundwork", "motives", "test-motive"), { recursive: true }); // Write a minimal motive charter so plan-pre-gate doesn't block
   writeFileSync(
     path.join(projectDir, ".groundwork", "motives", "test-motive", "motive.md"),
     "# Test motive\n",
@@ -52,7 +52,7 @@ function runHook(ledger: unknown, sid = sessionId): { continue?: boolean; decisi
   mkdirSync(runsDir, { recursive: true });
   writeFileSync(path.join(runsDir, `${sid}.json`), JSON.stringify(ledger, null, 2));
   const input = JSON.stringify({ cwd: projectDir, session_id: sid });
-  const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
+  const out = execFileSync(BUN, ["run", GW_HOOK_SRC, "hook", "stop-gate"], { input, encoding: "utf8" });
   return JSON.parse(out);
 }
 
@@ -73,16 +73,14 @@ function buildSealedLedger(overrides: Record<string, unknown> = {}): {
     },
     ...overrides,
   };
-  // Compute seal over the base ledger (before merging gate overrides that would break it)
-  const stateString = canonicalReleaseState(baseLedger as any);
+  const stateString = canonicalReleaseState(baseLedger as any); // Compute seal over the base ledger (before merging gate overrides that would break it)
   const seal = computeSeal(stateString, key);
-  // Merge gate.seal into the ledger
-  baseLedger.gate = { ...(baseLedger.gate as Record<string, unknown>), seal };
+  baseLedger.gate = { ...(baseLedger.gate as Record<string, unknown>), seal }; // Merge gate.seal into the ledger
   return { ledger: baseLedger, key };
 }
 
 // ---------------------------------------------------------------------------
-// S3-AC1: tampered gate.advisor — seal must block the release
+/** S3-AC1: tampered gate.advisor — seal must block the release */
 // ---------------------------------------------------------------------------
 
 describe("S3-AC1: tampered gate.advisor=APPROVE without valid seal", () => {
@@ -93,8 +91,7 @@ describe("S3-AC1: tampered gate.advisor=APPROVE without valid seal", () => {
   });
 
   it("blocks when gate.advisor flipped to APPROVE without re-sealing", () => {
-    // Start from a ledger where advisor is NOT APPROVE (so seal is valid for that state)
-    const key = ensureKey({ projectDir, sessionId });
+    const key = ensureKey({ projectDir, sessionId }); // Start from a ledger where advisor is NOT APPROVE (so seal is valid for that state)
     const baseLedger: Record<string, unknown> = {
       schema_version: SCHEMA_VERSION,
       session_id: sessionId,
@@ -105,8 +102,7 @@ describe("S3-AC1: tampered gate.advisor=APPROVE without valid seal", () => {
     };
     const stateString = canonicalReleaseState(baseLedger as any);
     const seal = computeSeal(stateString, key);
-    // Now tamper: flip advisor to APPROVE without updating the seal
-    const tamperedLedger = {
+    const tamperedLedger = { // Now tamper: flip advisor to APPROVE without updating the seal
       ...baseLedger,
       gate: { advisor: "APPROVE", seal }, // seal was computed over "pending", now invalid
     };
@@ -117,13 +113,12 @@ describe("S3-AC1: tampered gate.advisor=APPROVE without valid seal", () => {
 });
 
 // ---------------------------------------------------------------------------
-// S3-AC2: tampered active:false — seal must block the release
+/** S3-AC2: tampered active:false — seal must block the release */
 // ---------------------------------------------------------------------------
 
 describe("S3-AC2: active:false release path", () => {
   it("releases when active:false with a valid seal", () => {
-    // Build a ledger with active:false sealed correctly
-    const key = ensureKey({ projectDir, sessionId });
+    const key = ensureKey({ projectDir, sessionId }); // Build a ledger with active:false sealed correctly
     const ledger: Record<string, unknown> = {
       schema_version: SCHEMA_VERSION,
       session_id: sessionId,
@@ -140,10 +135,8 @@ describe("S3-AC2: active:false release path", () => {
   });
 
   it("blocks when active:false written directly without a valid seal (vector 4)", () => {
-    // Subagent writes active:false directly — no seal update
-    const key = ensureKey({ projectDir, sessionId });
-    // Seal was computed over active:true
-    const sealedAsActive: Record<string, unknown> = {
+    const key = ensureKey({ projectDir, sessionId }); // Subagent writes active:false directly — no seal update
+    const sealedAsActive: Record<string, unknown> = { // Seal was computed over active:true
       schema_version: SCHEMA_VERSION,
       session_id: sessionId,
       active: true,
@@ -179,7 +172,7 @@ describe("S3-AC2: active:false release path", () => {
 });
 
 // ---------------------------------------------------------------------------
-// S3-AC3: key file deleted → FAIL CLOSED
+/** S3-AC3: key file deleted → FAIL CLOSED */
 // ---------------------------------------------------------------------------
 
 describe("S3-AC3: missing key file on sealed ledger", () => {
@@ -191,11 +184,14 @@ describe("S3-AC3: missing key file on sealed ledger", () => {
     const result = runHook(ledger);
     expect(result.decision).toBe("block");
     expect(result.reason ?? "").toMatch(/seal/i);
+    expect(result.reason ?? "").toContain("gw ledger gate");
+    expect(result.reason ?? "").toContain("--citation");
+    expect(result.reason ?? "").not.toContain("bin/ledger gate advisor APPROVE");
   });
 });
 
 // ---------------------------------------------------------------------------
-// S3-AC4: legacy ledger (no gate.seal) → releases via old path
+/** S3-AC4: legacy ledger (no gate.seal) → releases via old path */
 // ---------------------------------------------------------------------------
 
 describe("S3-AC4: legacy ledger backward compatibility", () => {

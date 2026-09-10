@@ -148,13 +148,20 @@ function parseFlags(args: string[]): {
   while (i < args.length) {
     const a = args[i]
     if (a.startsWith('--')) {
-      const key = a.slice(2)
-      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
-        flags[key] = args[i + 1]
-        i += 2
-      } else {
-        flags[key] = true
+      const eqIdx = a.indexOf('=')
+      if (eqIdx !== -1) {
+        // AH-06: --key=value form — value may start with '--' (e.g. --acceptance="--clear …")
+        flags[a.slice(2, eqIdx)] = a.slice(eqIdx + 1)
         i++
+      } else {
+        const key = a.slice(2)
+        if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+          flags[key] = args[i + 1]
+          i += 2
+        } else {
+          flags[key] = true
+          i++
+        }
       }
     } else {
       positionals.push(a)
@@ -365,6 +372,12 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const wave = flags['wave'] ? parseInt(flags['wave'] as string, 10) : 0
         const kind = (flags['kind'] as string | undefined) ?? 'impl'
+        for (const f of ['blocked-by', 'acceptance', 'covers-ac', 'decisions'] as const) {
+          if (flags[f] === true) {
+            return errEnvelope('ledger add', 'USAGE_ERROR',
+              `--${f} requires a value; if the value starts with "--", use --${f}=<value>`, 2)
+          }
+        }
         const blockedBy = flags['blocked-by']
           ? (flags['blocked-by'] as string).split(',').map(s => s.trim())
           : undefined
@@ -394,7 +407,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             ? { created_by: flags['created-by'] as string }
             : {}),
         }
-        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
+        atomicWrite(runPath, reSeal({ ...ledger, slices: [...slices, slice] }, repoRoot))
         if (coversAc && coversAc.length > 0) {
           emitAcCoverageEvent({
             projectDir: repoRoot,
@@ -417,7 +430,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           if (check.status !== 0) {
             return errEnvelope('ledger set', 'INVALID_SHA', `not a valid commit: ${baseCommitFlag}`, 1)
           }
-          atomicWrite(runPath, { ...ledger, base_commit: baseCommitFlag })
+          atomicWrite(runPath, { ...ledger, base_commit: baseCommitFlag }) // base_commit not in canonical seal state
           return okEnvelope('ledger set', { content: `base_commit set to ${baseCommitFlag}\n` })
         }
         const id = positionals[0]
@@ -427,6 +440,12 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const slices = ledger.slices ?? []
         const existing = slices.find(s => s.id === id)
         if (!existing) return errEnvelope('ledger set', 'NOT_FOUND', `slice ${id} not found`, 1)
+        for (const f of ['blocked-by', 'acceptance', 'covers-ac', 'decisions'] as const) {
+          if (flags[f] === true) {
+            return errEnvelope('ledger set', 'USAGE_ERROR',
+              `--${f} requires a value; if the value starts with "--", use --${f}=<value>`, 2)
+          }
+        }
         const newStatus = flags['status'] as string | undefined
         const terminal = newStatus === 'complete' || newStatus === 'skipped'
         if (terminal) {
@@ -463,7 +482,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             : {}),
         }
         const newSlices = slices.map(s => (s.id === id ? updated : s))
-        atomicWrite(runPath, { ...ledger, slices: newSlices })
+        atomicWrite(runPath, reSeal({ ...ledger, slices: newSlices }, repoRoot))
         if (flags['covers-ac'] && flags['covers-ac'] !== true) {
           const setCoversAc = (flags['covers-ac'] as string).split(',').map(s => s.trim())
           if (setCoversAc.length > 0) {
@@ -541,7 +560,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           )
           terminalSet.add(id)
         }
-        atomicWrite(runPath, { ...ledger, slices: updatedSlices })
+        atomicWrite(runPath, reSeal({ ...ledger, slices: updatedSlices }, repoRoot))
         const done = updatedSlices.filter(s => s.status === 'complete').length
         return okEnvelope('ledger complete', {
           content: `${done}/${updatedSlices.length} slices complete\n`,
@@ -564,7 +583,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           removed.push(id)
         }
         const rmSet = new Set(removed)
-        atomicWrite(runPath, { ...ledger, slices: slices.filter(s => !rmSet.has(s.id)) })
+        atomicWrite(runPath, reSeal({ ...ledger, slices: slices.filter(s => !rmSet.has(s.id)) }, repoRoot))
         return okEnvelope('ledger rm', { content: `removed: ${removed.join(', ')}\n` })
       }
 
@@ -689,6 +708,39 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const citation = flags['citation'] as string | undefined
         const rubric = flags['rubric'] as string | undefined
+        if (verdict === 'APPROVE') {
+          const rawCitation = flags['citation']
+          if (!rawCitation || rawCitation === true || !(rawCitation as string).trim()) {
+            return errEnvelope(
+              'ledger gate',
+              'GATE_CITATION_REQUIRED',
+              'APPROVE requires --citation naming a file:line reference (e.g., src/foo.ts:42).',
+              1,
+            )
+          }
+          const citText = (rawCitation as string).trim()
+          const refPattern = /([^\s;,("']+):(\d+)/g
+          let refMatch: RegExpExecArray | null
+          let citResolved = false
+          while (!citResolved && (refMatch = refPattern.exec(citText)) !== null) {
+            const filePart = refMatch[1]
+            const lineNum = parseInt(refMatch[2], 10)
+            const absFile = path.isAbsolute(filePart) ? filePart : path.resolve(cwd, filePart)
+            if (existsSync(absFile)) {
+              try {
+                if (lineNum <= readFileSync(absFile, 'utf8').split('\n').length) citResolved = true
+              } catch { /* unreadable — try next match */ }
+            }
+          }
+          if (!citResolved) {
+            return errEnvelope(
+              'ledger gate',
+              'GATE_CITATION_REQUIRED',
+              `APPROVE --citation must contain a resolvable file:line reference. None found in: "${citText}"`,
+              1,
+            )
+          }
+        }
         if (verdict === 'APPROVE' && process.env['GROUNDWORK_COMMENT_DENSITY'] !== '0') {
           if (!ledger.base_commit) {
             return errEnvelope(
@@ -784,7 +836,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: advisorField,
         }
-        atomicWrite(runPath, { ...ledger, gate: newGate })
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot))
         return okEnvelope('ledger gate', { content: `advisor: ${verdict}\n` })
       }
 
@@ -801,7 +853,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: 'STOP',
         }
-        atomicWrite(runPath, { ...ledger, active: false, gate: newGate })
+        atomicWrite(runPath, reSeal({ ...ledger, active: false, gate: newGate }, repoRoot))
         return okEnvelope('ledger abandon', { content: `motive "${motive}" abandoned\n` })
       }
 
@@ -832,7 +884,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           desc: flags['desc'] as string,
           question: flags['question'] as string,
         }
-        atomicWrite(runPath, { ...ledger, slices: [...slices, slice] })
+        atomicWrite(runPath, reSeal({ ...ledger, slices: [...slices, slice] }, repoRoot))
         return okEnvelope('ledger fog', { content: `${id} added (fog)\n` })
       }
 
@@ -900,7 +952,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           }
         }
         if (claimed.length) {
-          atomicWrite(runPath, { ...ledger, slices })
+          atomicWrite(runPath, { ...ledger, slices }) // claimed_by/claimed_at not in canonicalReleaseState — unsealed write intentional
           lines.unshift(`claimed: ${claimed.join(', ')}`)
         }
         return okEnvelope('ledger claim', { content: lines.join('\n') + '\n' })
@@ -964,13 +1016,13 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             typeof (g as Record<string, unknown>)['reason'] === 'string' &&
             typeof (g as Record<string, unknown>)['ts'] === 'string',
         )
-        atomicWrite(runPath, {
+        atomicWrite(runPath, reSeal({
           ...ledger,
           gate: {
             ...base,
             autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }],
           },
-        })
+        }, repoRoot))
         return okEnvelope('ledger autopilot', {
           content: `autopilot extended by ${range} waves (reason: ${reason})\n`,
         })
@@ -994,7 +1046,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const token = randomBytes(16).toString('hex')
         const existing = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
         const updated = [...existing.filter(st => st.scope !== scope), { token, scope }]
-        atomicWrite(runPath, { ...ledger, scoped_tokens: updated })
+        atomicWrite(runPath, reSeal({ ...ledger, scoped_tokens: updated }, repoRoot))
         return okEnvelope('ledger scope-token', {
           content:
             `scope_token: ${token}\n` +
@@ -1034,7 +1086,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           ...gateWithoutSeal(ledger.gate ?? {}),
           verifier: verdict,
         }
-        atomicWrite(runPath, { ...ledger, gate: newGate })
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot))
         return okEnvelope('ledger milestone-signoff', {
           content: `milestone signed off: ${verdict} by ${verifiedBy}\n`,
         })

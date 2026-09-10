@@ -70,11 +70,9 @@ function isEmbeddedAgent(env: Record<string, string | undefined>): boolean {
 
 function resolveMotiveSlug(motiveRef: unknown): string | null {
   if (typeof motiveRef !== 'string' || motiveRef.length === 0) return null
-  // Path form: extract the segment after the last "motives/" component.
-  const match = motiveRef.match(/(?:^|[/\\])motives[/\\]([^/\\]+)/)
+  const match = motiveRef.match(/(?:^|[/\\])motives[/\\]([^/\\]+)/) // Path form: extract segment after last "motives/" component.
   if (match) return match[1]
-  // Slug form: return as-is.
-  return motiveRef
+  return motiveRef // Slug form: return as-is.
 }
 
 // ---------------------------------------------------------------------------
@@ -952,7 +950,7 @@ function buildReason(
     )
     lines.push('')
     lines.push(
-      `TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run \`${ledgerBin} complete <id>\`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with \`${ledgerBin} gate advisor APPROVE\`. Check progress any time with \`${ledgerBin} status\`.`,
+      `TO FINISH (use the ledger CLI — do NOT Read/Edit run.json by hand): as each slice lands, run \`${ledgerBin} complete <id>\`. When all slices are complete, run the completion gate ([qa if interactive UI] → advisor) and record it with \`gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>\`. Check progress any time with \`${ledgerBin} status\`.`,
     )
     lines.push(
       `TO ABANDON: run \`${ledgerBin} abandon\` (sets active:false — the run is cancelled and the gate releases).`,
@@ -960,7 +958,7 @@ function buildReason(
   } else {
     lines.push('')
     lines.push(
-      `Full rules were shown on the first block. Finish: ${ledgerBin} complete <ids> + gate advisor APPROVE. Abandon: ${ledgerBin} abandon.`,
+      `Full rules were shown on the first block. Finish: ${ledgerBin} complete <ids> + gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>. Abandon: ${ledgerBin} abandon.`,
     )
   }
   return lines.join('\n')
@@ -1137,8 +1135,8 @@ export const run: HookFn = async (
         return block(
           'awaiting_human hold is set but the ledger seal is invalid or the key is missing. ' +
             'A subagent may have set awaiting_human directly without the orchestrator write_token. ' +
-            'Re-run `bin/ledger await-human --token <write_token>` to restore a valid hold, ' +
-            'or `bin/ledger await-human --clear --token <write_token>` to release it.',
+            'Re-run `gw ledger await-human --token <write_token>` to restore a valid hold, ' +
+            'or `gw ledger await-human clear --token <write_token>` to release it.',
         )
       }
       return allow()
@@ -1163,7 +1161,7 @@ export const run: HookFn = async (
         return block(
           'Seal verification failed on all-complete + APPROVE release path — the ledger seal is invalid or the key is missing. ' +
             'A subagent may have written gate.advisor=APPROVE directly without going through the CLI. ' +
-            'Re-run `bin/ledger gate advisor APPROVE` to produce a valid seal, or restore the key file.',
+            'Re-run `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>` to produce a valid seal, or restore the key file.',
         )
       }
 

@@ -15,7 +15,9 @@ const REPO_ROOT = '/home/newman/.local/share/groundwork'
 const CLI_PATH = path.join(REPO_ROOT, 'src/gw/cli/main.ts')
 const LEGACY_LEDGER = path.join(REPO_ROOT, 'bin/ledger')
 const LEGACY_JOURNAL = path.join(REPO_ROOT, 'bin/journal')
+const HOOKS_LEDGER_SRC = path.join(REPO_ROOT, 'hooks/ledger.mjs')
 const LIVE_NEXT_DIR = path.join(REPO_ROOT, '.groundwork', 'next')
+const GATE_CITATION = `${CLI_PATH}:1`
 
 // Capture live-store state before any tests touch it
 let liveNextMtimeBefore: number | null = null
@@ -40,6 +42,14 @@ function runGw(args: string[], env?: Record<string, string>, cwd?: string) {
 // Run bin/ledger as executable (it is a shell script, not runnable via node)
 function runLegacy(args: string[], env?: Record<string, string>) {
   const result = spawnSync(LEGACY_LEDGER, args, {
+    cwd: REPO_ROOT, encoding: 'utf8',
+    env: { ...process.env, ...(env ?? {}) },
+  })
+  return { stdout: result.stdout ?? '', stderr: result.stderr ?? '', status: result.status ?? 1 }
+}
+
+function runLegacySrc(args: string[], env?: Record<string, string>) {
+  const result = spawnSync('node', [HOOKS_LEDGER_SRC, ...args], {
     cwd: REPO_ROOT, encoding: 'utf8',
     env: { ...process.env, ...(env ?? {}) },
   })
@@ -246,16 +256,125 @@ describe('AC2 — two-surface parity: gate advisor APPROVE', () => {
   it('legacy: gate advisor APPROVE → exit 0', () => {
     const legDir = makeTmpDir(); cleanups.push(legDir)
     const { token } = initLegacy(legDir)
-    const r = runLegacy(['gate', 'advisor', 'APPROVE', '--token', token], { CLAUDE_PROJECT_DIR: legDir })
+    const r = runLegacy(
+      ['gate', 'advisor', 'APPROVE', '--token', token, '--citation', GATE_CITATION],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
     expect(r.status).toBe(0)
   })
   it('new: gate advisor APPROVE → exit 0', () => {
     const gwDir = makeTmpDir(); cleanups.push(gwDir)
     const { token } = initGw(gwDir)
     runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
-    const r = runGw(['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token], { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' }, gwDir)
+    const r = runGw(
+      ['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token, '--citation', GATE_CITATION],
+      { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' },
+      gwDir,
+    )
     expect(r.status).toBe(0)
     expect(r.envelope.ok).toBe(true)
+  })
+})
+
+describe('AC2 — gate APPROVE citation enforcement: both surfaces must refuse without citation', () => {
+  it('without citation: legacy refuses (non-zero) — divergence-capable', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacySrc(
+      ['gate', 'advisor', 'APPROVE', '--token', token],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).not.toBe(0)
+  })
+  it('without citation: legacy deployed bundle refuses (non-zero) — bundle-surface coverage', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacy( /* bin/ledger → dist/hooks-ledger.mjs when bundle + bun present */
+      ['gate', 'advisor', 'APPROVE', '--token', token],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).not.toBe(0)
+  })
+  it('without citation: new surface refuses (non-zero) — divergence-capable', () => {
+    const gwDir = makeTmpDir(); cleanups.push(gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const r = runGw(
+      ['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token],
+      { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' },
+      gwDir,
+    )
+    expect(r.status).not.toBe(0)
+  })
+  it('with valid citation: legacy accepts (exit 0) — parity with the new surface, contract preserved', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacySrc(
+      ['gate', 'advisor', 'APPROVE', '--token', token, '--citation', GATE_CITATION],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).toBe(0)
+  })
+
+  it('unresolvable citation (real file, out-of-range line): legacy refuses', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacySrc(
+      ['gate', 'advisor', 'APPROVE', '--token', token, '--citation', `${CLI_PATH}:99999999`],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).not.toBe(0)
+  })
+
+  it('prose citation with no file:line: legacy refuses', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacySrc(
+      ['gate', 'advisor', 'APPROVE', '--token', token, '--citation', 'provisional probe'],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).not.toBe(0)
+  })
+
+  it('bare git ref as citation: legacy refuses', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const r = runLegacySrc(
+      ['gate', 'advisor', 'APPROVE', '--token', token, '--citation', 'HEAD'],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(r.status).not.toBe(0)
+  })
+
+  it('CORRECTION needs no citation on either surface (it does not release the stop-gate)', () => {
+    const legDir = makeTmpDir(); cleanups.push(legDir)
+    const { token } = initLegacy(legDir)
+    const leg = runLegacySrc(
+      ['gate', 'advisor', 'CORRECTION', '--token', token],
+      { CLAUDE_PROJECT_DIR: legDir },
+    )
+    expect(leg.status).toBe(0)
+
+    const gwDir = makeTmpDir(); cleanups.push(gwDir)
+    const { token: gwToken } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const gw = runGw(
+      ['ledger', 'gate', '--motive', 'tm', 'advisor', 'CORRECTION', '--token', gwToken],
+      { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' },
+      gwDir,
+    )
+    expect(gw.status).toBe(0)
+  })
+  it('with valid citation: new surface accepts (exit 0)', () => {
+    const gwDir = makeTmpDir(); cleanups.push(gwDir)
+    const { token } = initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const r = runGw(
+      ['ledger', 'gate', '--motive', 'tm', 'advisor', 'APPROVE', '--token', token, '--citation', GATE_CITATION],
+      { GROUNDWORK_COMMENT_DENSITY: '0', GROUNDWORK_COMMIT_LINT: '0' },
+      gwDir,
+    )
+    expect(r.status).toBe(0)
   })
 })
 
@@ -298,6 +417,25 @@ describe('AC2 — two-surface parity: journal append + show', () => {
     expect(r2.status).toBe(0)
     const content = String((r2.envelope as { data?: { content?: string } }).data?.content ?? '')
     expect(content).toContain('BASELINE')
+  })
+})
+
+describe('AH-11 — ledger set: bare flag returns USAGE_ERROR', () => {
+  it('set S1 --acceptance with no value → exit 2 + USAGE_ERROR', () => {
+    const gwDir = makeTmpDir(); cleanups.push(gwDir)
+    initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const r = runGw(['ledger', 'set', '--motive', 'tm', 'S1', '--acceptance'], {}, gwDir)
+    expect(r.status).toBe(2)
+    expect(String((r.envelope as { error?: { code?: string } }).error?.code ?? '')).toMatch(/USAGE_ERROR/)
+  })
+  it('set S1 --blocked-by with no value → exit 2 + USAGE_ERROR', () => {
+    const gwDir = makeTmpDir(); cleanups.push(gwDir)
+    initGw(gwDir)
+    runGw(['ledger', 'add', '--motive', 'tm', 'S1'], {}, gwDir)
+    const r = runGw(['ledger', 'set', '--motive', 'tm', 'S1', '--blocked-by'], {}, gwDir)
+    expect(r.status).toBe(2)
+    expect(String((r.envelope as { error?: { code?: string } }).error?.code ?? '')).toMatch(/USAGE_ERROR/)
   })
 })
 

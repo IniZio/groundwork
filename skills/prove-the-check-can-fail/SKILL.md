@@ -55,7 +55,7 @@ Full causal chains and corrections for the following modes are in [`reference/fa
 - Parity test blinded by narrowed input
 - Auditor shares the defect class
 - Guard blind to its own failure case
-- **Red→green proves sensitivity, not seam coverage** — a stash-based bite proof confirms the test bites but not that it runs both surfaces; a stub or offline variant satisfies the proof while the real seam (_seam_: module boundary where responsibilities end and callers' begin; see `engineering-judgment`) is unexercised
+- **Red→green proves sensitivity, not seam coverage** (_seam_: module boundary where responsibilities end and callers begin; see `engineering-judgment`) — a stash-based bite proof confirms the test bites but not that it runs both surfaces; a stub or offline variant satisfies the proof while the real seam is unexercised
 - Freshness check proves consistency, not correctness
 - Derived iteration is not a derived assertion
 - Assertion invariant to its input — algebraic cancellation, fixture off the boundary, slack in a ratchet, comparator admits the defect's value, body never ran

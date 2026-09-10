@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// scripts/check-skill-standard.mjs
 // Audits skills/groundwork/ against the authoring standard's mechanical targets.
 // Usage: node scripts/check-skill-standard.mjs [skillsDir] [options]
 //   --max-median N        word-count threshold (default 700)
@@ -88,13 +87,9 @@ function normalizeWS(s) {
 }
 
 function stripMarkdownBoilerplate(text) {
-  // Remove YAML frontmatter block
   text = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  // Remove code fences (``` ... ```)
   text = text.replace(/```[\s\S]*?```/g, '');
-  // Remove markdown headings
   text = text.replace(/^#{1,6}\s+.+$/gm, '');
-  // Remove table rows (including separator rows)
   text = text.replace(/^\|.+$/gm, '');
   return text;
 }
@@ -268,7 +263,6 @@ function parseCells(rawLine) {
 }
 
 function detectColumns(headerCells) {
-  // Locate classification and destination/reason columns by header name.
   // Falls back to col 1 / col 2 when no match is found.
   const lower = headerCells.map(c => c.toLowerCase());
   const clsCol = lower.findIndex(c => c === 'classification');
@@ -291,7 +285,6 @@ function validateAuditRows(auditRaw) {
     const line = lines[i];
     if (!line.startsWith('|')) continue;
 
-    // Skip separator rows (|---|---|---|)
     if (isSeparatorRow(line)) continue;
 
     // Header row: immediately followed (ignoring blank lines) by a separator.
@@ -378,6 +371,46 @@ function detectAuditCompleteness(skillOrPath, auditFile, skillsDir) {
   return { pass, lines: detailLines };
 }
 
+function detectSeamGlossParity(skillsDir) {
+  const CANONICAL_GLOSS = 'module boundary where responsibilities end and callers begin';
+  const AUTHORITY_CORE  = 'responsibilities end and callers begin';
+
+  if (!CANONICAL_GLOSS.includes(AUTHORITY_CORE)) {
+    return { pass: false, lines: ['FAIL seam-gloss-parity CANONICAL_GLOSS does not embed AUTHORITY_CORE'] };
+  }
+
+  const authorityPath = path.join(skillsDir, 'engineering-judgment', 'SKILL.md');
+  if (!existsSync(authorityPath)) {
+    return { pass: false, lines: ['FAIL seam-gloss-parity authority file not found: ' + authorityPath] };
+  }
+  const authorityContent = readFileSync(authorityPath, 'utf8');
+  const authLine = authorityContent.split('\n').find(l => l.startsWith('**Seam**'));
+  if (!authLine || !authLine.includes(AUTHORITY_CORE)) {
+    return { pass: false, lines: ['FAIL seam-gloss-parity authority line missing AUTHORITY_CORE'] };
+  }
+
+  const detailLines = [];
+  let pass = true;
+  let glossCount = 0;
+  for (const dir of getSkillDirs(skillsDir)) {
+    const skillPath = path.join(skillsDir, dir, 'SKILL.md');
+    const content = readFileSync(skillPath, 'utf8');
+    const m = content.match(/_seam_:\s*([^;)]+)/);
+    if (!m) continue;
+    glossCount++;
+    const extracted = m[1].trim();
+    if (extracted !== CANONICAL_GLOSS) {
+      pass = false;
+      detailLines.push(`  ${dir}: gloss mismatch — got "${extracted}" want "${CANONICAL_GLOSS}"`);
+    }
+  }
+  if (glossCount === 0) {
+    return { pass: false, lines: ['FAIL seam-gloss-parity no skills carry a _seam_: gloss (expected ≥1)'] };
+  }
+  detailLines.push(`${pass ? 'PASS' : 'FAIL'} seam-gloss-parity`);
+  return { pass, lines: detailLines };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
@@ -412,6 +445,7 @@ async function main() {
     results.push(detectVerbFirst(opts.skillsDir));
     results.push(detectOrphans(opts.skillsDir));
     results.push(detectHooksBaseline(opts.baselineFile));
+    results.push(detectSeamGlossParity(opts.skillsDir));
   }
 
   for (const r of results) {
@@ -420,6 +454,7 @@ async function main() {
   process.exit(results.some(r => !r.pass) ? 1 : 0);
 }
 
-main().catch(e => { console.error(e.message); process.exit(1); });
+const isEntryPoint = process.argv[1] && new URL(import.meta.url).pathname === process.argv[1].replace(/\\/g, '/');
+if (isEntryPoint) main().catch(e => { console.error(e.message); process.exit(1); });
 
-export { parseCells, detectColumns };
+export { parseCells, detectColumns, detectSeamGlossParity };

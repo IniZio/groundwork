@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { spawnSync, execSync } from 'node:child_process';
 import {
-  mkdtempSync, writeFileSync, mkdirSync, rmSync,
+  mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,7 +11,6 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
 const SCRIPT = path.join(REPO_ROOT, 'scripts', 'check-skill-standard.mjs');
 
-// Shared cleanup list
 const tempDirs: string[] = [];
 afterEach(() => {
   for (const d of tempDirs.splice(0)) {
@@ -95,7 +94,6 @@ describe('median-words', () => {
     const d = makeTempDir();
     const body = Array(60).fill('word').join(' ');
     makeSkill(d, 'alpha', 'Use something.', body);
-    // Should FAIL with a very low threshold
     const r = run([d, '--max-median', '10']);
     expect(r.stdout).toContain('FAIL median-words');
     expect(r.code).toBe(1);
@@ -178,7 +176,6 @@ describe('orphans', () => {
     const d = makeTempDir();
     makeSkill(d, 'alpha', 'Use something.', 'body');
     makeSkill(d, 'beta', 'Use something else.', 'body');
-    // router mentions only beta, not alpha → alpha is orphan
     makeRouter(d, ['beta']);
     const r = run([d]);
     expect(r.stdout).toContain('FAIL orphans');
@@ -256,7 +253,6 @@ describe('audit-completeness', () => {
     const wc = 'This is the second sentence. This is the third sentence.';
     const { skillsDir } = setupAuditRepo(head, wc);
 
-    // Audit file that does NOT mention the removed sentence
     const auditFile = path.join(skillsDir, 'audit.md');
     writeFileSync(auditFile, '| Some other sentence | dropped-with-reason |\n');
 
@@ -271,7 +267,6 @@ describe('audit-completeness', () => {
     const wc = 'This is the second sentence. This is the third sentence.';
     const { skillsDir } = setupAuditRepo(head, wc);
 
-    // Audit file that covers the removed sentence
     const auditFile = path.join(skillsDir, 'audit.md');
     writeFileSync(auditFile, '| This is the first sentence. | dropped-with-reason |\n');
 
@@ -505,5 +500,83 @@ describe('hooks-baseline', () => {
     const r = run([d, '--baseline-file', '/nonexistent/baseline.json']);
     expect(r.stdout).toContain('FAIL hooks-baseline');
     expect(r.code).toBe(1);
+  });
+});
+
+describe('detectSeamGlossParity', () => {
+  let detectSeamGlossParity: (skillsDir: string) => { pass: boolean; lines: string[] };
+
+  beforeAll(async () => {
+    const mod = await import(SCRIPT);
+    detectSeamGlossParity = mod.detectSeamGlossParity;
+  });
+
+  const CANONICAL = 'module boundary where responsibilities end and callers begin';
+  const AUTHORITY_LINE = '**Seam**: the module boundary where responsibilities end and callers begin.';
+  const CONSUMING = ['prove-the-check-can-fail', 'vertical-slice', 'diagnose'];
+
+  function makeSeamDir(overrides: Partial<Record<string, string>> = {}): string {
+    const d = makeTempDir();
+    const authority = overrides['engineering-judgment'] ?? AUTHORITY_LINE;
+    mkdirSync(path.join(d, 'engineering-judgment'), { recursive: true });
+    writeFileSync(path.join(d, 'engineering-judgment', 'SKILL.md'), `---\nname: engineering-judgment\n---\n\n${authority}\n`);
+    for (const skill of CONSUMING) {
+      const gloss = overrides[skill] ?? `(_seam_: ${CANONICAL}; see \`engineering-judgment\`)`;
+      mkdirSync(path.join(d, skill), { recursive: true });
+      writeFileSync(path.join(d, skill, 'SKILL.md'), `---\nname: ${skill}\n---\n\n${gloss}\n`);
+    }
+    if (!overrides['plan-review']) {
+      mkdirSync(path.join(d, 'plan-review'), { recursive: true });
+      writeFileSync(path.join(d, 'plan-review', 'SKILL.md'), `---\nname: plan-review\n---\n\nNo seam gloss here.\n`);
+    } else {
+      mkdirSync(path.join(d, 'plan-review'), { recursive: true });
+      writeFileSync(path.join(d, 'plan-review', 'SKILL.md'), `---\nname: plan-review\n---\n\n${overrides['plan-review']}\n`);
+    }
+    return d;
+  }
+
+  it('Test A — PASS: authority + three consuming skills + plan-review (no gloss)', () => {
+    const d = makeSeamDir();
+    const r = detectSeamGlossParity(d);
+    expect(r.pass).toBe(true);
+    expect(r.lines.join('\n')).toContain('PASS seam-gloss-parity');
+  });
+
+  it('Test B — FAIL: gloss text diverged in one skill', () => {
+    const d = makeSeamDir({ diagnose: `(_seam_: code boundary where responsibilities end and callers begin; see \`engineering-judgment\`)` });
+    const r = detectSeamGlossParity(d);
+    expect(r.pass).toBe(false);
+    const out = r.lines.join('\n');
+    expect(out).toContain('diagnose');
+    expect(out).toContain('gloss mismatch');
+    expect(out).toContain('FAIL seam-gloss-parity');
+  });
+
+  it('Test C — FAIL: authority line missing AUTHORITY_CORE', () => {
+    const d = makeSeamDir({ 'engineering-judgment': '**Seam**: some unrelated text.' });
+    const r = detectSeamGlossParity(d);
+    expect(r.pass).toBe(false);
+    expect(r.lines.join('\n')).toContain('authority line missing AUTHORITY_CORE');
+  });
+
+  it('Test D — FAIL: plan-review reintroduces a divergent gloss', () => {
+    const d = makeSeamDir({ 'plan-review': `(_seam_: code boundary where responsibilities end and callers begin; see \`engineering-judgment\`)` });
+    const r = detectSeamGlossParity(d);
+    expect(r.pass).toBe(false);
+    const out = r.lines.join('\n');
+    expect(out).toContain('plan-review');
+    expect(out).toContain('gloss mismatch');
+    expect(out).toContain('FAIL seam-gloss-parity');
+  });
+
+  it('Test E — FAIL: no skills carry a _seam_: gloss (AH-12 zero-adoption)', () => {
+    const d = makeSeamDir({
+      'prove-the-check-can-fail': 'No seam gloss here.',
+      'vertical-slice': 'No seam gloss here.',
+      'diagnose': 'No seam gloss here.',
+    });
+    const r = detectSeamGlossParity(d);
+    expect(r.pass).toBe(false);
+    expect(r.lines.join('\n')).toContain('no skills carry a _seam_: gloss');
   });
 });

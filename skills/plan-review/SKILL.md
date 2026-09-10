@@ -47,7 +47,7 @@ Minimum checks (do all of them):
 2. **Untestable ACs** (`untestable`)
 3. **Contradictions** (`contradicts`)
 4. **Negative-scope violations** (`unrequested`)
-5. **Missing seams** (`missing_seam`) — _seam_: module boundary where responsibilities end and callers' begin; see `engineering-judgment`
+5. **Missing seams** (`missing_seam`)
 6. **Orphan slices** (`unrequested`)
 7. **Wave / dependency sanity** (WARN → CRITICAL if delivery order contradicted)
 

@@ -58,7 +58,7 @@ Six named failure modes from observed incidents. Full causal chain and correctio
 
 - **fence-slices-by-file-not-ac**: AC-fenced slices on a shared decision tree break the views nobody was assigned.
 - **ledger-cannot-see-missing-slices**: the ledger verifies only registered slices; a forgotten obligation reads as N/N complete.
-- **green-slices-broken-seam**: a two-surface contract drifts while both sides stay green; slice-local tests cannot see the seam (_seam_: module boundary where responsibilities end and callers' begin; see `engineering-judgment`).
+- **green-slices-broken-seam**: a two-surface contract drifts while both sides stay green; slice-local tests cannot see the seam (_seam_: module boundary where responsibilities end and callers begin; see `engineering-judgment`).
 - **pipeline-stage-insertion-moves-wiring**: inserting a pipeline stage is not a phrasing edit; downstream handoff and resource ownership must move too.
 - **redgreen-perturbation-destroys-sibling-work**: perturbing real files for a red→green proof silently destroys uncommitted sibling work on that file.
 - **agent-git-stash-destroys-run**: prose banning `git stash` in briefs does not prevent it; commit every verified wave.

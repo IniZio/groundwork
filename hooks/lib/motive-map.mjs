@@ -1,11 +1,17 @@
-// hooks/lib/motive-map.mjs
-// Generates .groundwork/motives/<slug>/MAP.md — a human-readable wayfinder map.
-//
-// Design constraints:
-//   - Fully synchronous (ledger commands are sync; avoids async complexity).
-//   - Never throws — warns to stderr, exits 0 so CLI mutations are unaffected.
-//   - Single atomic writeFileSync at the end (no partial writes).
-//   - No compile() pipeline — lightweight direct read of charter + ledger + journal.
+/**
+ * hooks/lib/motive-map.mjs
+ * Generates .groundwork/motives/<slug>/MAP.md — a human-readable wayfinder map.
+ *
+ * Design constraints:
+ *   - Fully synchronous (ledger commands are sync; avoids async complexity).
+ *   - Never throws — warns to stderr, exits 0 so CLI mutations are unaffected.
+ *   - Single atomic writeFileSync at the end (no partial writes).
+ *   - No compile() pipeline — lightweight direct read of charter + ledger + journal.
+ *
+ * Comment density: file runs close to the per-file cap (5 / 100 lines).  New comments
+ * belong in JSDoc bodies (every interior line exempt) or trailing inline comments
+ * (code before // is exempt); plain standalone // lines are counted.
+ */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -583,7 +589,7 @@ function _buildJournalAcCoverage(events) { // Journal-derived AC coverage (fallb
 
     const sliceId = d.slice != null ? String(d.slice) : null
 
-    if (sliceId == null) {
+    if (sliceId == null) { // Declaration form (no slice): register AC so it appears even with zero coverage
       for (const acId of acIds) {
         if (!acMap.has(acId)) acMap.set(acId, new Map())
       }
@@ -774,7 +780,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   }
 
   // ── Tickets ───────────────────────────────────────────────────────────────
-  if (ticketFiles.length > 0) {
+  if (ticketFiles.length > 0) { // When the corpus is empty the section is omitted entirely (pure slice view preserved).
     const sliceByTicketStem = new Map()
     for (const s of slices) {
       if (s.ticket) {
@@ -848,7 +854,7 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   // ── Out of scope ──────────────────────────────────────────────────────────
   parts.push('## Out of scope')
   parts.push('')
-  const charterOos = charter?.out_of_scope?.trim()
+  const charterOos = charter?.out_of_scope?.trim() // Ignore the boilerplate comment stub that the template inserts
   const hasCharterOos =
     charterOos &&
     !charterOos.startsWith('<!--') &&

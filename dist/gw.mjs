@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 3c9c93cc9d41d452b7b883fcbfa52679f0dd82555f4bf992d65da7e7e7b923d2
+// @bundle-source-hash: 79546fae7843d70d94b1ab2759224aa17062ae59d5d9cc026fdc734d14eb57c8
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1601,17 +1601,17 @@ function extractGateVerdict(gate) {
   }
   return "pending";
 }
-function assertWriteToken(ledger, passedToken) {
+function assertWriteToken(ledger, passedToken, verb = "this subcommand") {
   if (!passedToken || passedToken === true) {
-    throw Object.assign(new Error("gate/complete/abandon are orchestrator-only \u2014 pass --token <write_token> printed at init"), { exitCode: 1 });
+    throw Object.assign(new Error(`${verb} is orchestrator-only \u2014 pass --token <write_token> printed at init`), { exitCode: 1 });
   }
   const stored = ledger?.write_token;
   if (!stored) {
-    throw Object.assign(new Error(`gate/complete/abandon require write_token authority \u2014 this ledger has none.
+    throw Object.assign(new Error(`${verb} requires write_token authority \u2014 this ledger has none.
 ` + "  Re-initialize via `ledger init <file>` (embeds a token)."), { exitCode: 1 });
   }
   if (stored !== passedToken) {
-    throw Object.assign(new Error(`gate/complete/abandon are orchestrator-only \u2014 pass --token <write_token> printed at init
+    throw Object.assign(new Error(`${verb} is orchestrator-only \u2014 pass --token <write_token> printed at init
 ` + "  (run `ledger status` to check run state; the token itself is never displayed)"), { exitCode: 1 });
   }
 }
@@ -1677,10 +1677,18 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
           return `  ${s.id}${sym}${wave}${claimed}${blockers}`;
         }).join(`
 `);
+        const checkpointHold = ledger.checkpoint_hold;
+        const holdLine = checkpointHold ? (() => {
+          const phases = ledger.gate?.phases ?? {};
+          const cp = phases[checkpointHold] ?? {};
+          const deliverable = cp["deliverable"] ?? checkpointHold;
+          return `checkpoint hold: ${checkpointHold} \u2014 awaiting verification: ${deliverable}
+`;
+        })() : "";
         const out = `motive: ${motive}
 ${rows}
 gate: advisor=${verdict}
-${done}/${all.length} slices complete
+${holdLine}${done}/${all.length} slices complete
 `;
         return okEnvelope("ledger status", { content: out });
       }
@@ -1769,7 +1777,7 @@ ${done}/${all.length} slices complete
         const terminal = newStatus === "complete" || newStatus === "skipped";
         if (terminal) {
           try {
-            assertWriteToken(ledger, flags["token"]);
+            assertWriteToken(ledger, flags["token"], "set");
           } catch (e) {
             return authErr("ledger set", e);
           }
@@ -1825,7 +1833,7 @@ ${done}/${all.length} slices complete
         const slices = ledger.slices ?? [];
         const masterOk = (() => {
           try {
-            assertWriteToken(ledger, flags["token"]);
+            assertWriteToken(ledger, flags["token"], "complete");
             return true;
           } catch {
             return false;
@@ -1956,7 +1964,15 @@ ${done}/${all.length} slices complete
           }
           lines.push("");
         }
-        lines.push("## Gate", "| Gate | Verdict |", "|---|---|", `| advisor | ${verdict} |`, "", `**Progress:** ${done}/${all.length} slices complete`);
+        const viewCheckpointHold = ledger.checkpoint_hold;
+        const holdRows = [];
+        if (viewCheckpointHold) {
+          const phases = ledger.gate?.phases ?? {};
+          const cp = phases[viewCheckpointHold] ?? {};
+          const deliverable = cp["deliverable"] ?? viewCheckpointHold;
+          holdRows.push(`| checkpoint hold | \u23F3 ${viewCheckpointHold} \u2014 awaiting verification: ${deliverable} |`);
+        }
+        lines.push("## Gate", "| Gate | Verdict |", "|---|---|", `| advisor | ${verdict} |`, ...holdRows, "", `**Progress:** ${done}/${all.length} slices complete`);
         return okEnvelope("ledger view", { content: lines.join(`
 `) + `
 ` });
@@ -1975,7 +1991,7 @@ ${done}/${all.length} slices complete
         if (!ledger)
           return errEnvelope("ledger gate", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "gate");
         } catch (e) {
           return authErr("ledger gate", e);
         }
@@ -2085,7 +2101,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger abandon", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "abandon");
         } catch (e) {
           return authErr("ledger abandon", e);
         }
@@ -2189,7 +2205,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger await-human", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "await-human");
         } catch (e) {
           return authErr("ledger await-human", e);
         }
@@ -2217,7 +2233,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger scope-token", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "scope-token");
         } catch (e) {
           return authErr("ledger scope-token", e);
         }
@@ -2247,7 +2263,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger checkpoint", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "checkpoint");
         } catch (e) {
           return authErr("ledger checkpoint", e);
         }
@@ -2297,7 +2313,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger hold", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "hold");
         } catch (e) {
           return authErr("ledger hold", e);
         }
@@ -2307,7 +2323,21 @@ Review and fix with:
           return okEnvelope("ledger hold", { content: `checkpoint-phase hold cleared
 ` });
         } else {
-          atomicWrite(runPath, reSeal({ ...rest2, checkpoint_hold: phase }, repoRoot));
+          const deliverable = flags["deliverable"] ?? phase;
+          const baseGate = gateWithoutSeal(rest2.gate ?? {});
+          const existingPhases = baseGate["phases"] ?? {};
+          const newGate = {
+            ...baseGate,
+            phases: {
+              ...existingPhases,
+              [phase]: {
+                ...existingPhases[phase] ?? {},
+                deliverable,
+                tier: /^wave-\d+$/.test(phase) ? "AUTO_ADVANCES" : "BLOCKS"
+              }
+            }
+          };
+          atomicWrite(runPath, reSeal({ ...rest2, checkpoint_hold: phase, gate: newGate }, repoRoot));
           return okEnvelope("ledger hold", { content: `checkpoint-phase hold set to '${phase}'
 ` });
         }
@@ -2325,7 +2355,7 @@ Review and fix with:
         if (!ledger)
           return errEnvelope("ledger milestone-signoff", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         try {
-          assertWriteToken(ledger, flags["token"]);
+          assertWriteToken(ledger, flags["token"], "milestone-signoff");
         } catch (e) {
           return authErr("ledger milestone-signoff", e);
         }
@@ -27783,7 +27813,7 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
         return passthrough5();
       if (isScopedSetBlockedByOnly(cmd))
         return passthrough5();
-      return deny4(`groundwork: subagent Bash blocked \u2014 mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|checkpoint|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`);
+      return deny4(`groundwork: subagent Bash blocked \u2014 mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff require the write token). Detected in command: ${cmd.slice(0, 120)}`);
     }
     return passthrough5();
   } catch {
@@ -27793,7 +27823,7 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
 var init_ledger_bash_guard = __esm(() => {
   LEDGER_OR_KEY_RE = /\.groundwork\/(?:run\.json|runs\/[^/\s]+\.(?:json|seal\.key))/;
   SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/;
-  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token)\b/;
+  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff)\b/;
   READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/;
   MUTATION_PATTERNS = [
     [/>{1,2}\s*\S*\.groundwork\/(?:run\.json|runs\/)/, "shell redirection (>/>>)"],

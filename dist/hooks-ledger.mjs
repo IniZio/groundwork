@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: f6ba28155656fe11060636a2557e074cf196d967a0b02dbf954de80ef3af6d78
+// @bundle-source-hash: c85147ad65f33ab2cd709c1a03b35cf5449eb549624a019439ff26a8d69a4777
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -13988,16 +13988,16 @@ function reSeal(ledger, projectDir) {
   ledger.gate = ledger.gate ?? {};
   ledger.gate.seal = computeSeal(canonicalReleaseState(ledger), key);
 }
-function assertWriteToken(ledger, passedToken) {
+function assertWriteToken(ledger, passedToken, verb = "this subcommand") {
   const stored = ledger?.write_token;
   if (!stored) {
-    const e = new Error(`gate/complete/abandon require write_token authority \u2014 this ledger has none.
+    const e = new Error(`${verb} requires write_token authority \u2014 this ledger has none.
 ` + "  Re-initialize via `ledger init <file>` (embeds a token).");
     e.exitCode = 1;
     throw e;
   }
   if (!passedToken || passedToken !== stored) {
-    const e = new Error(`gate/complete/abandon are orchestrator-only \u2014 pass --token <write_token> printed at init
+    const e = new Error(`${verb} is orchestrator-only \u2014 pass --token <write_token> printed at init
 ` + "  (run `ledger status` to check run state; the token itself is never displayed)");
     e.exitCode = 1;
     throw e;
@@ -14260,10 +14260,17 @@ function cmdStatus() {
     return `${s?.id ?? "?"}${sym}${wave ? " " + wave : ""}${dep}${claim}`;
   });
   const gate = l.gate ?? {};
+  const holdLine = l.checkpoint_hold ? (() => {
+    const phases = gate.phases ?? {};
+    const cp = phases[l.checkpoint_hold] ?? {};
+    const deliverable = cp.deliverable ?? l.checkpoint_hold;
+    return `checkpoint hold: ${l.checkpoint_hold} \u2014 awaiting verification: ${deliverable}
+`;
+  })() : "";
   process.stdout.write(`${head}
 ${rows.join("  ")}
 ` + `gate: advisor=${advisorVerdict(gate)}
-` + `${done}/${slices.length} slices complete
+` + holdLine + `${done}/${slices.length} slices complete
 `);
 }
 function cmdComplete(args) {
@@ -14338,7 +14345,7 @@ function cmdAwaitHuman(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "await-human");
     if (clearing) {
       delete l.awaiting_human;
     } else {
@@ -14370,7 +14377,7 @@ function cmdMilestoneSignoff(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "milestone-signoff");
     if (verdict === "APPROVE") {
       const hashCheck = checkMilestoneArtifacts(l, currentBuildHash);
       if (!hashCheck.satisfied) {
@@ -14424,7 +14431,7 @@ function cmdCheckpoint(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "checkpoint");
     if (!l.gate)
       l.gate = {};
     if (!l.gate.phases)
@@ -14463,11 +14470,21 @@ function cmdHold(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "hold");
     if (clearing) {
       delete l.checkpoint_hold;
     } else {
       l.checkpoint_hold = flags.phase;
+      const deliverable = flags.deliverable ?? flags.phase;
+      if (!l.gate)
+        l.gate = {};
+      if (!l.gate.phases)
+        l.gate.phases = {};
+      l.gate.phases[flags.phase] = {
+        ...l.gate.phases[flags.phase] ?? {},
+        deliverable,
+        tier: /^wave-\d+$/.test(flags.phase) ? "AUTO_ADVANCES" : "BLOCKS"
+      };
     }
     reSeal(l, projectDir);
   });
@@ -14489,7 +14506,7 @@ function cmdScopeToken(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "scope-token");
     const tok = "sct_" + randomBytes2(8).toString("hex");
     if (!Array.isArray(l.scoped_tokens))
       l.scoped_tokens = [];
@@ -14566,7 +14583,7 @@ function cmdGate(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "gate");
     capturedLedger = l;
     l.gate = l.gate ?? {};
     l.gate[which] = value;
@@ -14632,7 +14649,7 @@ function cmdAbandon(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to abandon");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "abandon");
     capturedLedger = l;
     l.active = false;
     reSeal(l, projectDir);
@@ -14789,7 +14806,7 @@ function cmdRm(args) {
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l)
       throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
+    assertWriteToken(l, flags.token, "rm");
     const slices = Array.isArray(l.slices) ? l.slices : [];
     const existingIds = new Set(slices.map((s) => s?.id));
     for (const id of ids) {
@@ -14848,7 +14865,7 @@ function cmdSet(args) {
       throw e;
     }
     if (flags.status != null && TERMINAL_STATUSES.has(flags.status)) {
-      assertWriteToken(l, flags.token);
+      assertWriteToken(l, flags.token, "set");
     }
     if (flags.status != null) {
       s.status = flags.status;
@@ -15086,6 +15103,12 @@ function cmdView() {
   lines.push(`| Gate | Verdict |`);
   lines.push(`|---|---|`);
   lines.push(`| advisor | ${advisorStr} |`);
+  if (l.checkpoint_hold) {
+    const phases = gate.phases ?? {};
+    const cp = phases[l.checkpoint_hold] ?? {};
+    const deliverable = cp.deliverable ?? l.checkpoint_hold;
+    lines.push(`| checkpoint hold | \u23F3 ${l.checkpoint_hold} \u2014 awaiting verification: ${deliverable} |`);
+  }
   if (gate.verifier != null)
     lines.push(`| verifier | ${gate.verifier} |`);
   if (gate.qa != null)

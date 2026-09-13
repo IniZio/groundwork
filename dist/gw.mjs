@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: c74cfaee228867af577bac2bfd1eee1efc7c5346d1959ea98526ff8116e1c379
+// @bundle-source-hash: 227084d071dbab8a472d92856f2a3ae84596cee69abba1c99e6ab1b89a7a9867
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1067,6 +1067,25 @@ function canonicalReleaseState(ledger) {
       verified_by: String(ms.verified_by ?? ""),
       verified_at: String(ms.verified_at ?? "")
     };
+  }
+  if (ledger.gate?.phases !== undefined) {
+    const phases = ledger.gate.phases;
+    const phaseKeys = Object.keys(phases).sort();
+    const normalizedPhases = {};
+    for (const k of phaseKeys) {
+      const p = phases[k];
+      normalizedPhases[k] = {
+        deliverable: String(p.deliverable ?? ""),
+        tier: String(p.tier ?? ""),
+        verdict: p.verdict !== undefined ? String(p.verdict) : null,
+        verified_by: p.verified_by !== undefined ? String(p.verified_by) : null,
+        verified_at: p.verified_at !== undefined ? String(p.verified_at) : null
+      };
+    }
+    state.gate_phases = normalizedPhases;
+  }
+  if (ledger.checkpoint_hold !== undefined) {
+    state.checkpoint_hold = String(ledger.checkpoint_hold);
   }
   return JSON.stringify(state);
 }
@@ -2171,33 +2190,7 @@ Review and fix with:
         }
       }
       case "autopilot": {
-        const ledger = readLedger(runPath);
-        if (!ledger)
-          return errEnvelope("ledger autopilot", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        try {
-          assertWriteToken(ledger, flags["token"]);
-        } catch (e) {
-          return authErr("ledger autopilot", e);
-        }
-        if (!flags["range"] || flags["range"] === true || !flags["reason"] || flags["reason"] === true) {
-          return errEnvelope("ledger autopilot", "USAGE_ERROR", 'autopilot requires --range N and --reason "..."', 2);
-        }
-        const range = parseInt(flags["range"], 10);
-        const reason = flags["reason"];
-        const base = gateWithoutSeal(ledger.gate ?? {});
-        const rawGrants = Array.isArray(base["autopilot"]) ? base["autopilot"] : [];
-        const existingGrants = rawGrants.filter((g) => typeof g === "object" && g !== null && typeof g["units"] === "number" && typeof g["reason"] === "string" && typeof g["ts"] === "string");
-        atomicWrite(runPath, reSeal({
-          ...ledger,
-          gate: {
-            ...base,
-            autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }]
-          }
-        }, repoRoot));
-        return okEnvelope("ledger autopilot", {
-          content: `autopilot extended by ${range} waves (reason: ${reason})
-`
-        });
+        return errEnvelope("ledger autopilot", "USAGE_ERROR", 'autopilot is retired \u2014 use "gw ledger checkpoint" to record a phase deliverable verdict', 2);
       }
       case "scope-token": {
         const scope = positionals[0];
@@ -2219,6 +2212,59 @@ Review and fix with:
         return okEnvelope("ledger scope-token", {
           content: `scope_token: ${token}
   (pass as --token to complete for slices created_by ${scope})
+`
+        });
+      }
+      case "checkpoint": {
+        const phase = flags["phase"];
+        const verdict = flags["verdict"];
+        const verifiedBy = flags["verified-by"];
+        if (!phase || !verdict || !verifiedBy) {
+          return errEnvelope("ledger checkpoint", "USAGE_ERROR", "--phase, --verdict, and --verified-by are required", 2);
+        }
+        if (verdict !== "APPROVE" && verdict !== "REJECT") {
+          return errEnvelope("ledger checkpoint", "USAGE_ERROR", "--verdict must be APPROVE or REJECT", 2);
+        }
+        const deliverable = flags["deliverable"] ?? phase;
+        const derivedTier = /^wave-\d+$/.test(phase) ? "AUTO_ADVANCES" : "BLOCKS";
+        const ledger = readLedger(runPath);
+        if (!ledger)
+          return errEnvelope("ledger checkpoint", "NOT_FOUND", `no ledger at ${runPath}`, 1);
+        try {
+          assertWriteToken(ledger, flags["token"]);
+        } catch (e) {
+          return authErr("ledger checkpoint", e);
+        }
+        const baseGate = gateWithoutSeal(ledger.gate ?? {});
+        const existingPhases = baseGate["phases"] ?? {};
+        const migratedPhases = { ...existingPhases };
+        const pacingMs = ledger.pacing?.["milestone_signoff"];
+        if (pacingMs && !migratedPhases["completion"]) {
+          const ms = pacingMs;
+          migratedPhases["completion"] = {
+            deliverable: "milestone",
+            tier: "BLOCKS",
+            verdict: ms["verdict"] ?? undefined,
+            verified_by: ms["verified_by"] ?? undefined,
+            verified_at: ms["verified_at"] ?? undefined
+          };
+        }
+        const newGate = {
+          ...baseGate,
+          phases: {
+            ...migratedPhases,
+            [phase]: {
+              deliverable,
+              tier: derivedTier,
+              verdict,
+              verified_by: verifiedBy,
+              verified_at: new Date().toISOString()
+            }
+          }
+        };
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot));
+        return okEnvelope("ledger checkpoint", {
+          content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}
 `
         });
       }
@@ -2276,6 +2322,7 @@ var init_ledger = __esm(() => {
     "claim",
     "await-human",
     "autopilot",
+    "checkpoint",
     "scope-token",
     "milestone-signoff"
   ];
@@ -24705,7 +24752,7 @@ var init_slice = __esm(() => {
 });
 
 // src/gw/schema/gate.ts
-var AdvisorVerdictEnum, AdvisorVerdictObject, GateSchema;
+var AdvisorVerdictEnum, AdvisorVerdictObject, PhaseTierEnum, PhaseVerdictEnum, PhaseCheckpointSchema, PhaseCheckpointsSchema, GateSchema;
 var init_gate = __esm(() => {
   init_zod();
   AdvisorVerdictEnum = exports_external.enum(["APPROVE", "CORRECTION", "STOP", "GAPS", "REPLAN"]);
@@ -24719,13 +24766,25 @@ var init_gate = __esm(() => {
       over_engineering: exports_external.number().min(0).max(1).optional()
     }).optional()
   });
+  PhaseTierEnum = exports_external.enum(["BLOCKS", "AUTO_ADVANCES"]);
+  PhaseVerdictEnum = exports_external.enum(["APPROVE", "REJECT", "PENDING"]);
+  PhaseCheckpointSchema = exports_external.object({
+    deliverable: exports_external.string(),
+    tier: PhaseTierEnum,
+    verdict: PhaseVerdictEnum.optional(),
+    verified_by: exports_external.string().optional(),
+    verified_at: exports_external.string().optional(),
+    artifacts: exports_external.array(exports_external.string()).optional()
+  });
+  PhaseCheckpointsSchema = exports_external.record(exports_external.string(), PhaseCheckpointSchema);
   GateSchema = exports_external.looseObject({
     session: exports_external.string(),
     motive: exports_external.string(),
     created_at: exports_external.string().optional(),
     advisor: exports_external.union([AdvisorVerdictEnum, AdvisorVerdictObject]).optional(),
     verifier: exports_external.string().optional(),
-    qa: exports_external.string().optional()
+    qa: exports_external.string().optional(),
+    phases: PhaseCheckpointsSchema.optional()
   });
 });
 
@@ -26365,6 +26424,13 @@ function canonicalReleaseState2(ledger) {
       verified_at: String(ms.verified_at ?? "")
     };
   }
+  if (ledger.checkpoint_hold !== undefined) {
+    state.checkpoint_hold = ledger.checkpoint_hold;
+  }
+  const gateForSeal = ledger.gate;
+  if (gateForSeal?.phases !== undefined) {
+    state.gate_phases = gateForSeal.phases;
+  }
   return JSON.stringify(state);
 }
 function computeSeal2(stateString, key) {
@@ -26473,80 +26539,6 @@ function mutateLedger(ledgerPath, fn) {
     if (next != null)
       atomicWriteJsonSync(ledgerPath, next);
   });
-}
-function getPacing(doc2) {
-  return doc2.pacing ?? null;
-}
-function getSlicesArr(doc2) {
-  return Array.isArray(doc2.slices) ? doc2.slices : [];
-}
-function isExemptSlice(slice2, exemptKinds) {
-  return exemptKinds.includes(String(slice2.kind ?? ""));
-}
-function resolvedUnits(doc2) {
-  const pacing = getPacing(doc2);
-  if (!pacing)
-    return 0;
-  const slices = getSlicesArr(doc2);
-  const exemptKinds = Array.isArray(pacing.exempt_kinds) ? pacing.exempt_kinds : [];
-  const policy = pacing.policy;
-  const offset = Number(pacing.offset ?? 0);
-  let raw = 0;
-  if (policy === "slice") {
-    raw = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "complete").length;
-  } else if (policy === "wave" || policy === "milestone") {
-    const waves = new Map;
-    for (const s of slices) {
-      if (isExemptSlice(s, exemptKinds))
-        continue;
-      const w = Number(s.wave ?? 0);
-      const entry = waves.get(w) ?? { total: 0, complete: 0 };
-      entry.total++;
-      if (s.status === "complete")
-        entry.complete++;
-      waves.set(w, entry);
-    }
-    for (const { total, complete } of waves.values()) {
-      if (total > 0 && complete === total)
-        raw++;
-    }
-  }
-  return Math.max(0, raw - offset);
-}
-function activeUnit(doc2) {
-  const pacing = getPacing(doc2);
-  if (!pacing)
-    return null;
-  const slices = getSlicesArr(doc2);
-  const exemptKinds = Array.isArray(pacing.exempt_kinds) ? pacing.exempt_kinds : [];
-  const policy = pacing.policy;
-  const active = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "in_progress");
-  if (active.length === 0)
-    return null;
-  if (policy === "slice")
-    return active[0].id;
-  let minWave = Infinity;
-  for (const s of active) {
-    const w = Number(s.wave ?? 0);
-    if (w < minWave)
-      minWave = w;
-  }
-  return minWave === Infinity ? null : minWave;
-}
-function isExhausted(doc2) {
-  const pacing = getPacing(doc2);
-  if (!pacing)
-    return false;
-  if (activeUnit(doc2) !== null)
-    return false;
-  const budget = Number(pacing.budget ?? 1);
-  const grant = pacing.grant;
-  const grantRange = Number(grant?.range ?? 0);
-  const cap = budget + grantRange;
-  const slices = getSlicesArr(doc2);
-  const exemptKinds = Array.isArray(pacing.exempt_kinds) ? pacing.exempt_kinds : [];
-  const hasRemainingWork = slices.some((s) => !isExemptSlice(s, exemptKinds) && s.status !== "complete");
-  return hasRemainingWork && resolvedUnits(doc2) >= cap;
 }
 function emitHookEvent(opts) {
   try {
@@ -26960,17 +26952,14 @@ function pacingGrantSummary(ledger) {
 \u26A0 Autopilot grant active this session: +${range} unit${range === 1 ? "" : "s"}${reason}${by}
 `;
 }
-function pacingExhaustionDirective(ledger, incomplete, projectDir) {
-  const sliceIds = incomplete.map((s) => s.id ?? "?").join(", ");
-  const motiveSlug = resolveMotiveSlug(ledger.motive_ref) || (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
-  const mapPath = motiveSlug ? path12.join(projectDir, ".groundwork", "motives", motiveSlug, "MAP.md") : null;
+function checkpointDirective(phaseKey, deliverable, incompleteIds) {
   const lines = [];
-  lines.push("\u23F1 GROUNDWORK PACING \u2014 session budget exhausted. This session ends here.");
+  lines.push(`\u23F1 GROUNDWORK CHECKPOINT \u2014 phase '${phaseKey}' deliverable not yet verified.`);
   lines.push("");
-  lines.push(`Remaining slices (carry into the next session): ${sliceIds}`);
-  if (mapPath)
-    lines.push(`Motive map: ${mapPath}`);
-  lines.push("DIRECTIVE: run /groundwork:pause, then open a new session to continue the remaining slices.");
+  lines.push(`Deliverable: ${deliverable}`);
+  if (incompleteIds.length > 0)
+    lines.push(`Remaining slices: ${incompleteIds.join(", ")}`);
+  lines.push(`DIRECTIVE: run /groundwork:pause, then open a new session after verifying the '${phaseKey}' phase deliverable.`);
   return lines.join(`
 `);
 }
@@ -27065,6 +27054,10 @@ function findNewLayoutLedger(projectDir, sessionId) {
         const gn = gateNote;
         if (gn?.pacing !== undefined)
           ledger.pacing = gn.pacing;
+        if (gn?.checkpoint_hold !== undefined)
+          ledger.checkpoint_hold = gn.checkpoint_hold;
+        if (gn?.phases !== undefined)
+          gate2.phases = gn.phases;
         return ledger;
       } catch {}
     }
@@ -27120,6 +27113,22 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
       }
       return allow();
     }
+    if (typeof ledger.checkpoint_hold === "string" && ledger.checkpoint_hold.length > 0) {
+      const holdPhaseKey = ledger.checkpoint_hold;
+      const phases = ledger.gate?.phases ?? {};
+      const phaseEntry = phases[holdPhaseKey];
+      const tier = /^wave-\d+$/.test(holdPhaseKey) ? "AUTO_ADVANCES" : "BLOCKS";
+      const deliverable = String(phaseEntry?.deliverable ?? "(deliverable not recorded)");
+      if (tier === "AUTO_ADVANCES") {
+        const autoIncomplete = (Array.isArray(ledger.slices) ? ledger.slices.filter((s) => !new Set(["complete", "skipped"]).has(String(s?.status ?? ""))) : []).map((s) => String(s.id ?? "?"));
+        return allow(checkpointDirective(holdPhaseKey, deliverable, autoIncomplete) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
+      }
+      const sealResult = checkSeal(ledger, projectDir, sessionId);
+      if (sealResult === false) {
+        return block(`checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` + "A subagent may have set checkpoint_hold directly without the orchestrator write_token. " + `Re-run \`gw ledger checkpoint ${holdPhaseKey} --token <write_token>\` to restore a valid hold.`);
+      }
+      return block(`Phase checkpoint hold: '${holdPhaseKey}' requires human verification. ` + `Deliverable: ${deliverable}. ` + `Run \`gw ledger checkpoint ${holdPhaseKey} APPROVE --token <write_token> --verified-by <name>\` to release.`);
+    }
     const slices = Array.isArray(ledger.slices) ? ledger.slices : [];
     const TERMINAL_STATUSES = new Set(["complete", "skipped"]);
     const incomplete = slices.filter((s) => !TERMINAL_STATUSES.has(String(s?.status ?? "")));
@@ -27141,11 +27150,6 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
       });
       return allow(pacingGrantSummary(ledger) + tbdAdvisory(projectDir, env) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
     }
-    try {
-      if (isExhausted(ledger)) {
-        return allow(pacingGrantSummary(ledger) + pacingExhaustionDirective(ledger, incomplete, projectDir) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
-      }
-    } catch {}
     try {
       const brief = typeof ledger.brief === "string" ? ledger.brief : "";
       const trivialEscape = slices.length <= 2 && !slices.some((s) => s?.kind === "impl") || /trivial|single-line|config|typo/i.test(brief);
@@ -27812,7 +27816,7 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
         return passthrough5();
       if (isScopedSetBlockedByOnly(cmd))
         return passthrough5();
-      return deny4(`groundwork: subagent Bash blocked \u2014 mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`);
+      return deny4(`groundwork: subagent Bash blocked \u2014 mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|checkpoint|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`);
     }
     return passthrough5();
   } catch {
@@ -27822,7 +27826,7 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
 var init_ledger_bash_guard = __esm(() => {
   LEDGER_OR_KEY_RE = /\.groundwork\/(?:run\.json|runs\/[^/\s]+\.(?:json|seal\.key))/;
   SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/;
-  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|autopilot|rm|scope-token)\b/;
+  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token)\b/;
   READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/;
   MUTATION_PATTERNS = [
     [/>{1,2}\s*\S*\.groundwork\/(?:run\.json|runs\/)/, "shell redirection (>/>>)"],

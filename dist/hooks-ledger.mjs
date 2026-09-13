@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: c85147ad65f33ab2cd709c1a03b35cf5449eb549624a019439ff26a8d69a4777
+// @bundle-source-hash: eb5e49fcdddc195d90617608d913647282e9f01829f2a8be60e4ef5cd67fd46d
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -12512,20 +12512,23 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   }
   if (ledgerDoc?.gate?.phases) {
     const phases = ledgerDoc.gate.phases;
-    const PHASE_ORDER = ["plan", "design", "wave", "completion"];
-    const PHASE_LABELS = { plan: "Plan / Charter", design: "Design", wave: "Implementation Wave", completion: "Completion" };
+    const NAMED_ORDER = ["plan", "design", "completion"];
+    const PHASE_LABELS = { plan: "Plan / Charter", design: "Design", completion: "Completion" };
     const TIER_LABELS = { BLOCKS: "BLOCKING", AUTO_ADVANCES: "auto-advance" };
     parts.push("## Phase Checkpoints");
     parts.push("");
     parts.push("| Phase | Tier | Deliverable | Status | Verified by |");
     parts.push("|---|---|---|---|---|");
+    const waveKeys = Object.keys(phases).filter((k) => /^wave-\d+$/.test(k)).sort((a, b) => +a.replace("wave-", "") - +b.replace("wave-", ""));
     const phaseKeys = [
-      ...PHASE_ORDER.filter((k) => phases[k] != null),
-      ...Object.keys(phases).filter((k) => !PHASE_ORDER.includes(k)).sort()
+      ...["plan", "design"].filter((k) => phases[k] != null),
+      ...waveKeys,
+      ...["completion"].filter((k) => phases[k] != null),
+      ...Object.keys(phases).filter((k) => !NAMED_ORDER.includes(k) && !/^wave-\d+$/.test(k)).sort()
     ];
     for (const key of phaseKeys) {
       const cp = phases[key];
-      const label = PHASE_LABELS[key] ?? key;
+      const label = PHASE_LABELS[key] ?? (/^wave-\d+$/.test(key) ? `Implementation Wave ${key.replace("wave-", "")}` : key);
       const tier = TIER_LABELS[cp.tier] ?? cp.tier;
       const deliverable = cp.deliverable ?? "\u2014";
       const verdict = cp.verdict ?? "PENDING";
@@ -14122,9 +14125,10 @@ var HELP = {
     summary: "set or clear the checkpoint-phase hold (blocks session end until APPROVE clears it)",
     usage: "ledger hold --phase <phase> --token <write_token>  |  ledger hold clear --token <write_token>",
     flags: [
-      'clear          positional \u2014 pass "clear" as the first argument to release the hold',
-      "--phase <p>    required when setting \u2014 phase key (plan | design | wave-<n> | completion)",
-      "--token <t>    orchestrator write-token (required)"
+      'clear              positional \u2014 pass "clear" as the first argument to release the hold',
+      "--phase <p>        required when setting \u2014 phase key (plan | design | wave-<n> | completion)",
+      "--deliverable <d>  optional \u2014 human-readable deliverable reference (defaults to phase key)",
+      "--token <t>        orchestrator write-token (required)"
     ]
   },
   checkpoint: {
@@ -14425,7 +14429,6 @@ function cmdCheckpoint(args) {
   const verifiedBy = flags["verified-by"];
   if (!verifiedBy)
     die("checkpoint requires --verified-by <name>", 2);
-  const deliverable = flags.deliverable ?? phase;
   const tier = /^wave-\d+$/.test(phase) ? "AUTO_ADVANCES" : "BLOCKS";
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   mutateLedgerChecked(ledgerPath(), (l) => {
@@ -14446,6 +14449,7 @@ function cmdCheckpoint(args) {
         verified_at: ms.verified_at
       };
     }
+    const deliverable = flags.deliverable ?? l.gate.phases[phase]?.deliverable ?? phase;
     l.gate.phases[phase] = {
       deliverable,
       tier,

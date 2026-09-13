@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 79546fae7843d70d94b1ab2759224aa17062ae59d5d9cc026fdc734d14eb57c8
+// @bundle-source-hash: 3aa4ea7817ab04bb36f8e155003d4da1f81433279947c7a694c393f722c4b477
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -2257,7 +2257,6 @@ Review and fix with:
         if (verdict !== "APPROVE" && verdict !== "REJECT") {
           return errEnvelope("ledger checkpoint", "USAGE_ERROR", "--verdict must be APPROVE or REJECT", 2);
         }
-        const deliverable = flags["deliverable"] ?? phase;
         const derivedTier = /^wave-\d+$/.test(phase) ? "AUTO_ADVANCES" : "BLOCKS";
         const ledger = readLedger(runPath);
         if (!ledger)
@@ -2269,6 +2268,8 @@ Review and fix with:
         }
         const baseGate = gateWithoutSeal(ledger.gate ?? {});
         const existingPhases = baseGate["phases"] ?? {};
+        const existingPhaseEntry = existingPhases[phase];
+        const deliverable = flags["deliverable"] ?? existingPhaseEntry?.["deliverable"] ?? phase;
         const migratedPhases = { ...existingPhases };
         const pacingMs = ledger.pacing?.["milestone_signoff"];
         if (pacingMs && !migratedPhases["completion"]) {

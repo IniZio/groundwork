@@ -51,11 +51,14 @@ const SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/
  * Mutating ledger CLI invocations — matches the bin wrapper and direct node invocation.
  * Subcommands: init | set | complete | gate | abandon | checkpoint | rm | scope-token |
  *              hold | await-human | milestone-signoff
+ *
+ * The `['"`)]*` group after the path segment catches quoted-path forms that a
+ * shell expands before exec — e.g. `"hooks/ledger.mjs" checkpoint` where a
+ * closing quote or paren separates the filename from the subcommand.
+ * Forms covered: double-quote ("), single-quote ('), backtick (`), closing paren ()).
  */
-const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff)\b/
+const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?['"`)]*\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff)\b/
 
-/** Read-only ledger CLI subcommands — these are explicitly allowed. */
-const READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/
 
 /**
  * Narrow allow: returns true iff the command is ONLY a `ledger complete`
@@ -208,8 +211,6 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       }
     }
 
-    // Allow read-only subcommands first (status/view/show/help).
-    if (READONLY_LEDGER_CMD_RE.test(cmd)) return passthrough()
     if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
       // Narrow allow: scoped `ledger complete` (sct_ token, no shell operators).
       if (isScopedCompleteOnly(cmd)) return passthrough()

@@ -246,6 +246,11 @@ describe("ledger-bash-guard — S4-AC3: subagent Bash mutation/exfil is denied",
 		const out = execFileSync(GW_HOOK, ["hook", "ledger-bash-guard"], { input: "not json", encoding: "utf8" });
 		expect(out.trim()).toBe("");
 	});
+
+	it("POSITIVE CONTROL: simple `ledger status` still allowed after bypass-1 fix", () => {
+		const d = runBashHook(`bin/ledger status`, SUBAGENT);
+		expect(d.hookSpecificOutput).toBeUndefined();
+	});
 });
 
 // ─── S6-AC1: narrow allow — subagent ledger complete with scoped token ────────
@@ -823,5 +828,143 @@ describe("ledger-bash-guard — AC-15 hold bite proof (T28)", () => {
 		const d = decideVia(pristineGuard);
 		expect(d?.permissionDecision).toBe("deny");
 		expect(d?.permissionDecisionReason).toMatch(/hold/);
+	});
+});
+
+// ─── T34a: bypass-1 bite proof (ordering fix — source perturbation) ──────────
+
+/**
+ * Proves the compound-command bypass (bypass-1) denial is load-bearing.
+ * Perturbation: re-insert the read-only short-circuit BEFORE the mutating check
+ * so the compound `ledger status; ledger checkpoint` exits at the readonly allow.
+ * Applied to a /tmp copy — never to a tracked file or dist/gw.mjs.
+ */
+describe("ledger-bash-guard — AC-15 bypass-1 bite proof (T34a)", () => {
+	const GUARD_SRC = path.resolve(import.meta.dirname, "..", "..", "src", "gw", "hook", "ledger-bash-guard.ts");
+	const COMPOUND_PAYLOAD = JSON.stringify({
+		hook_event_name: "PreToolUse",
+		tool_name: "Bash",
+		tool_input: { command: "bin/ledger status --motive m; bin/ledger checkpoint --motive m --phase design --verdict APPROVE --token abc" },
+		agent_type: "groundwork:general-purpose",
+	});
+
+	let bun: string;
+	let tmpDir: string;
+	let pristineGuard: string;
+	let withShortCircuitGuard: string;
+	let driver: string;
+
+	beforeAll(() => {
+		bun = findBun();
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gw-bite-t34a-"));
+
+		const src = fs.readFileSync(GUARD_SRC, "utf8").replace(/^import type .*\n/m, "");
+		const patched = src.replace(
+			"    if (MUTATING_LEDGER_CMD_RE.test(cmd)) {",
+			"    if (/\\bledger(?:\\.mjs)?['\"`)]*\\s+(?:status|view|show|help)\\b/.test(cmd)) return passthrough()\n    if (MUTATING_LEDGER_CMD_RE.test(cmd)) {",
+		);
+		expect(patched, "perturbation did not apply — guard structure changed").not.toBe(src);
+
+		pristineGuard = path.join(tmpDir, "guard-pristine.ts");
+		withShortCircuitGuard = path.join(tmpDir, "guard-short-circuit.ts");
+		driver = path.join(tmpDir, "driver.ts");
+		fs.writeFileSync(pristineGuard, src);
+		fs.writeFileSync(withShortCircuitGuard, patched);
+		fs.writeFileSync(driver, [
+			"const [modPath, payload] = process.argv.slice(2);",
+			"const mod = await import(modPath);",
+			"const r = await mod.run(JSON.parse(payload), {});",
+			"process.stdout.write(r.stdout ?? '');",
+			"",
+		].join("\n"));
+	});
+
+	afterAll(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	function decideVia(guardPath: string): Decision["hookSpecificOutput"] {
+		const r = spawnSync(bun, [driver, guardPath, COMPOUND_PAYLOAD], { encoding: "utf8" });
+		if (r.status !== 0) throw new Error(`bite driver failed (exit ${r.status}): ${r.stderr}`);
+		const decision: Decision = r.stdout?.trim() ? JSON.parse(r.stdout) : {};
+		return decision.hookSpecificOutput;
+	}
+
+	it("RED — guard with read-only short-circuit restored does NOT deny compound command", () => {
+		expect(decideVia(withShortCircuitGuard)?.permissionDecision).toBeUndefined();
+	});
+
+	it("GREEN — unmodified guard DENIES compound command (bypass-1 fix proven)", () => {
+		const d = decideVia(pristineGuard);
+		expect(d?.permissionDecision).toBe("deny");
+		expect(d?.permissionDecisionReason).toMatch(/checkpoint|mutating/i);
+	});
+});
+
+// ─── T34b: bypass-2 bite proof (quoted-path fix — source perturbation) ───────
+
+/**
+ * Proves the quoted-path bypass (bypass-2) denial is load-bearing.
+ * Perturbation: remove `['"`)]*` from MUTATING_LEDGER_CMD_RE so `"ledger.mjs"`
+ * no longer matches.
+ * Applied to a /tmp copy — never to a tracked file or dist/gw.mjs.
+ */
+describe("ledger-bash-guard — AC-15 bypass-2 bite proof (T34b)", () => {
+	const GUARD_SRC = path.resolve(import.meta.dirname, "..", "..", "src", "gw", "hook", "ledger-bash-guard.ts");
+	const QUOTED_PAYLOAD = JSON.stringify({
+		hook_event_name: "PreToolUse",
+		tool_name: "Bash",
+		tool_input: { command: `"hooks/ledger.mjs" checkpoint --phase design --verdict APPROVE --token abc` },
+		agent_type: "groundwork:general-purpose",
+	});
+
+	let bun: string;
+	let tmpDir: string;
+	let pristineGuard: string;
+	let noQuoteGuard: string;
+	let driver: string;
+
+	beforeAll(() => {
+		bun = findBun();
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gw-bite-t34b-"));
+
+		const src = fs.readFileSync(GUARD_SRC, "utf8").replace(/^import type .*\n/m, "");
+		const QUOTE_GROUP = `['"\`)]`;
+		const patched = src.replace(/const MUTATING_LEDGER_CMD_RE = [^\n]+/, (m) => m.replace(`${QUOTE_GROUP}*`, ""));
+		expect(patched, "perturbation did not apply — MUTATING_LEDGER_CMD_RE line not found or quote group absent").not.toBe(src);
+
+		pristineGuard = path.join(tmpDir, "guard-pristine.ts");
+		noQuoteGuard = path.join(tmpDir, "guard-no-quote.ts");
+		driver = path.join(tmpDir, "driver.ts");
+		fs.writeFileSync(pristineGuard, src);
+		fs.writeFileSync(noQuoteGuard, patched);
+		fs.writeFileSync(driver, [
+			"const [modPath, payload] = process.argv.slice(2);",
+			"const mod = await import(modPath);",
+			"const r = await mod.run(JSON.parse(payload), {});",
+			"process.stdout.write(r.stdout ?? '');",
+			"",
+		].join("\n"));
+	});
+
+	afterAll(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	function decideVia(guardPath: string): Decision["hookSpecificOutput"] {
+		const r = spawnSync(bun, [driver, guardPath, QUOTED_PAYLOAD], { encoding: "utf8" });
+		if (r.status !== 0) throw new Error(`bite driver failed (exit ${r.status}): ${r.stderr}`);
+		const decision: Decision = r.stdout?.trim() ? JSON.parse(r.stdout) : {};
+		return decision.hookSpecificOutput;
+	}
+
+	it("RED — guard without quote group does NOT deny `\"ledger.mjs\" checkpoint`", () => {
+		expect(decideVia(noQuoteGuard)?.permissionDecision).toBeUndefined();
+	});
+
+	it("GREEN — unmodified guard DENIES `\"ledger.mjs\" checkpoint` (bypass-2 fix proven)", () => {
+		const d = decideVia(pristineGuard);
+		expect(d?.permissionDecision).toBe("deny");
+		expect(d?.permissionDecisionReason).toMatch(/checkpoint|mutating/i);
 	});
 });

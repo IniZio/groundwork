@@ -13,6 +13,7 @@ import {
   readKey,
 } from '../../../../hooks/lib/gate-seal.mjs'
 import { regenerateMotiveMap } from '../../../../hooks/lib/motive-map.mjs'
+import { regenerateMotiveTraceHtml } from '../../../../hooks/lib/traceability-ambient.mjs'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
@@ -1109,6 +1110,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         atomicWrite(runPath, reSeal(base, repoRoot))
         try { if (base.motive) regenerateMotiveMap(process.env['CLAUDE_PROJECT_DIR'] ?? repoRoot, base.motive) } catch { /* best-effort */ }
+        try { if (base.motive) regenerateMotiveTraceHtml(process.env['CLAUDE_PROJECT_DIR'] ?? repoRoot, base.motive) } catch { /* best-effort */ }
         return okEnvelope('ledger checkpoint', {
           content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`,
         })
@@ -1133,6 +1135,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (clearing) {
           atomicWrite(runPath, reSeal(rest as LedgerJson, repoRoot))
           try { if (ledger.motive) regenerateMotiveMap(projectDir, ledger.motive) } catch { /* best-effort */ }
+          try { if (ledger.motive) regenerateMotiveTraceHtml(projectDir, ledger.motive) } catch { /* best-effort */ }
           return okEnvelope('ledger hold', { content: 'checkpoint-phase hold cleared\n' })
         } else {
           const deliverable = (flags['deliverable'] as string | undefined) ?? phase
@@ -1151,6 +1154,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           }
           atomicWrite(runPath, reSeal({ ...rest, checkpoint_hold: phase, gate: newGate } as LedgerJson, repoRoot))
           try { if (ledger.motive) regenerateMotiveMap(projectDir, ledger.motive) } catch { /* best-effort */ }
+          try { if (ledger.motive) regenerateMotiveTraceHtml(projectDir, ledger.motive) } catch { /* best-effort */ }
           return okEnvelope('ledger hold', { content: `checkpoint-phase hold set to '${phase}'\n` })
         }
       }

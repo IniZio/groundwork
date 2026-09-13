@@ -103,18 +103,17 @@
     },
     "pacing": {
       "type": "object",
-      "description": "Optional session-pacing policy (D-28). Absent means pacing is disabled; existing ledgers without this field validate unchanged. Consumption (resolved units) is derived at runtime and adjusted by the stored offset.",
-      "required": ["policy", "budget"],
+      "description": "Milestone sign-off tracking for the checkpoint gate (PACING-R-007..R-011). The wave-throttle fields (policy, budget, exempt_kinds, grant) are inert vestiges retained from the prior wave-pacing regime (D-8 migration decision); they are never written by ledger init and are read-only on existing ledgers. Absent means no milestone gate; existing ledgers without this field validate unchanged.",
       "properties": {
         "policy": {
           "type": "string",
           "enum": ["wave", "slice", "milestone"],
-          "description": "Unit of pacing. 'wave' counts completed waves; 'slice' counts completed non-exempt slices; 'milestone' gates on human-verified shippable deliverables (see milestone_artifacts and milestone_signoff)."
+          "description": "VESTIGE (D-8): former pacing unit selector. No longer written by ledger init. Retained as an optional declared property so legacy ledgers with this field still validate under additionalProperties:false."
         },
         "budget": {
           "type": "integer",
           "minimum": 0,
-          "description": "Number of units the session may start before pacing blocks further claims. 0 means no new units may be started without a grant."
+          "description": "VESTIGE (D-8): former session unit budget. No longer written by ledger init. Retained as an optional declared property so legacy ledgers with this field still validate under additionalProperties:false."
         },
         "exempt_kinds": {
           "type": "array",

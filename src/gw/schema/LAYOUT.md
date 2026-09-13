@@ -103,14 +103,13 @@ Frontmatter = `JournalEventSchema` fields (`ts`, `session`, `type`, `source`, `d
 
 `--type DECISION` MUST go through the S2-MOTIVE decision store (`writeDecision`) so decisions remain MADR notes under `decisions/`. `journal show` and `journal compile` read both the `journal/` event notes and the `decisions/` MADR notes for a complete view.
 
-### Session state (await-human, autopilot)
+### Session state (await-human)
 
-`await-human` hold and `autopilot` grants are session state. They live as properties on the session's gate note (`gate-<sessionId>.md`) written via `writeGate`:
+`await-human` hold is session state. It lives as a property on the session's gate note (`gate-<sessionId>.md`) written via `writeGate`:
 
 - `awaiting_human: true` — top-level boolean on the ledger; present and `true` when hold is active, absent when cleared. (The stop-gate reads `ledger.awaiting_human === true`; the schema declares it `type: boolean`; gate-seal folds the raw top-level value into the canonical HMAC state. An object shape here would write dead state — the stop-gate would never see it.)
-- `autopilot: Array<{ units: number; reason: string; ts: string }>` — append-only log of grants.
 
-Gate notes are sealed (token-gated); setting these fields without the correct token changes the canonical machine state and invalidates the seal (fail-closed).
+Gate notes are sealed (token-gated); setting this field without the correct token changes the canonical machine state and invalidates the seal (fail-closed).
 
 ### Session state — checkpoint_hold and gate.phases (phase-checkpoint-gate)
 

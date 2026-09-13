@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: d1ca31d4e419788b014730a8bee41b6aaeb5088b1b9ce67cda34b86cb585b8fc
+// @bundle-source-hash: d675cfca02ae9cae991ab1eca1d86dc73831bb6ce9cbe337c89342aa804b33ab
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -26940,18 +26940,6 @@ function detectYield(input2) {
     return "waiting on background tasks";
   return null;
 }
-function pacingGrantSummary(ledger) {
-  const pacing = ledger.pacing;
-  const grant = pacing?.grant;
-  if (!grant)
-    return "";
-  const range = grant.range ?? "?";
-  const reason = grant.reason ? ` reason="${grant.reason}"` : "";
-  const by = grant.granted_by ? ` granted_by=${grant.granted_by}` : "";
-  return `
-\u26A0 Autopilot grant active this session: +${range} unit${range === 1 ? "" : "s"}${reason}${by}
-`;
-}
 function checkpointDirective(phaseKey, deliverable, incompleteIds) {
   const lines = [];
   lines.push(`\u23F1 GROUNDWORK CHECKPOINT \u2014 phase '${phaseKey}' deliverable not yet verified.`);
@@ -27148,7 +27136,7 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
         source: "hook:stop-gate",
         data: { outcome: "complete" }
       });
-      return allow(pacingGrantSummary(ledger) + tbdAdvisory(projectDir, env) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
+      return allow(tbdAdvisory(projectDir, env) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
     }
     try {
       const brief = typeof ledger.brief === "string" ? ledger.brief : "";

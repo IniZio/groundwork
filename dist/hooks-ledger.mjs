@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 7894b2161ef1602ff0056044a5a2188c62b730016e47731d3fcf524a80c49264
+// @bundle-source-hash: a5a88f4e8e83618f843b908139a56963c12e227e6e414ecc350c0a45e6d157ef
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -14660,9 +14660,6 @@ function cmdInit(args) {
   obj.session_id = sessionId ?? randomBytes2(16).toString("hex");
   if (flags.motive != null)
     obj.motive = flags.motive;
-  if (!("pacing" in obj)) {
-    obj.pacing = { policy: "wave", budget: 1, exempt_kinds: ["plan", "diagnose", "design", "fog"] };
-  }
   checkLedgerStrict(obj);
   try {
     pruneStaleSessionLedgers(projectDir);

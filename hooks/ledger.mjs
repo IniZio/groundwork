@@ -1046,10 +1046,6 @@ function cmdInit(args) {
   const sessionId = resolveSessionId(null)
   obj.session_id = sessionId ?? randomBytes(16).toString('hex')
   if (flags.motive != null) obj.motive = flags.motive
-  if (!('pacing' in obj)) {
-    obj.pacing = { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] }
-  }
-
   checkLedgerStrict(obj)
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   const key = ensureKey({ projectDir, sessionId: obj.session_id })

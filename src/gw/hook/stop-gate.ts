@@ -770,16 +770,6 @@ function detectYield(input: unknown): string | null {
   return null
 }
 
-function pacingGrantSummary(ledger: Record<string, unknown>): string {
-  const pacing = ledger.pacing as Record<string, unknown> | undefined
-  const grant = pacing?.grant as Record<string, unknown> | undefined
-  if (!grant) return ''
-  const range = grant.range ?? '?'
-  const reason = grant.reason ? ` reason="${grant.reason}"` : ''
-  const by = grant.granted_by ? ` granted_by=${grant.granted_by}` : ''
-  return `\n⚠ Autopilot grant active this session: +${range} unit${range === 1 ? '' : 's'}${reason}${by}\n`
-}
-
 function checkpointDirective(
   phaseKey: string,
   deliverable: string,
@@ -1121,8 +1111,7 @@ export const run: HookFn = async (
         data: { outcome: 'complete' },
       })
       return allow(
-        pacingGrantSummary(ledger) +
-          tbdAdvisory(projectDir, env) +
+        tbdAdvisory(projectDir, env) +
           decisionResearchAdvisory(projectDir) +
           decisionAlternativesAdvisory(projectDir) +
           specAdvisory(projectDir),

@@ -298,30 +298,6 @@ describe("edge cases", () => {
 		expect(result.reason).not.toContain("Autopilot grant");
 	});
 
-	it("grant summary appears on normal completion allow path when grant exists", () => {
-		const completedWithGrant = {
-			version: 1,
-			active: true,
-			session_id: "sess-1",
-			brief: "done with grant",
-			pacing: {
-				policy: "wave",
-				budget: 1,
-				exempt_kinds: [],
-				grant: { range: 1, reason: "needed extra wave", granted_by: "sess-op", granted_at: new Date().toISOString() },
-			},
-			gate: { advisor: "APPROVE", verifier: "n/a" },
-			slices: [
-				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
-			],
-		};
-		mkdirSync(path.join(projectDir, ".groundwork", "journal"), { recursive: true });
-		const result = runHook(completedWithGrant);
-		expect(result.continue).toBe(true);
-		expect(result.reason).toContain("Autopilot grant");
-		expect(result.reason).toContain("needed extra wave");
-	});
-
 	it("pacing ledger with exempt kinds still blocks (exhaustion release removed)", () => {
 		const ledger = {
 			version: 1,

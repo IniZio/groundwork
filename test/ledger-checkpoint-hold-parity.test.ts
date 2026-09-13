@@ -171,10 +171,66 @@ function runSuiteOn(getSurface: (dir: string) => Surface) {
     expect(r.stdout).toContain('design doc v1')
     expect(r.stdout).toContain('awaiting verification')
   })
+
+  it('checkpoint without --deliverable preserves deliverable set by hold', () => {
+    surface.run(['hold', '--phase', 'plan', '--deliverable', 'charter v1', '--token', token])
+    const r = surface.run(['checkpoint', '--phase', 'plan', '--verdict', 'APPROVE', '--verified-by', 'test', '--token', token])
+    expect(r.status, r.stderr).toBe(0)
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.plan as Record<string, unknown>
+    expect(dp?.deliverable).toBe('charter v1')
+  })
+
+  it('checkpoint with explicit --deliverable overrides the held deliverable', () => {
+    surface.run(['hold', '--phase', 'plan', '--deliverable', 'charter v1', '--token', token])
+    surface.run(['checkpoint', '--phase', 'plan', '--verdict', 'APPROVE', '--verified-by', 'test', '--deliverable', 'charter v2', '--token', token])
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.plan as Record<string, unknown>
+    expect(dp?.deliverable).toBe('charter v2')
+  })
+
+  it('checkpoint without prior hold and without --deliverable falls back to phase key', () => {
+    surface.run(['checkpoint', '--phase', 'plan', '--verdict', 'APPROVE', '--verified-by', 'test', '--token', token])
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.plan as Record<string, unknown>
+    expect(dp?.deliverable).toBe('plan')
+  })
 }
 
 describe('hooks/ledger.mjs surface', () => runSuiteOn(hooksSurface))
 describe('src/gw/cli/main.ts surface', () => runSuiteOn(tsSurface))
+
+describe('checkpoint deliverable preservation bite proof', () => {
+  it('a perturbed hooks surface that clobbers the held deliverable on checkpoint fails the preservation assertion', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'gw-ckpt-del-bite-'))
+    const perturbedPath = join(tmpDir, 'ledger-perturbed.mjs')
+    const src = readFileSync(LEDGER_MJS, 'utf8').replace(
+      'const deliverable = flags.deliverable ?? l.gate.phases[phase]?.deliverable ?? phase',
+      'const deliverable = flags.deliverable ?? phase',
+    )
+    expect(src).not.toBe(readFileSync(LEDGER_MJS, 'utf8'))
+    writeFileSync(perturbedPath, src)
+
+    const projectDir = mkdtempSync(join(tmpdir(), 'gw-ckpt-del-bite-proj-'))
+    mkdirSync(join(projectDir, '.groundwork', 'runs'), { recursive: true })
+    const token = initLedger(projectDir)
+    const runPath = join(projectDir, '.groundwork', 'runs', `${SESSION_ID}.json`)
+
+    nodeRun(perturbedPath, projectDir, ['hold', '--phase', 'plan', '--deliverable', 'charter v1', '--token', token])
+    nodeRun(perturbedPath, projectDir, ['checkpoint', '--phase', 'plan', '--verdict', 'APPROVE', '--verified-by', 'test', '--token', token])
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.plan as Record<string, unknown>
+
+    expect(dp?.deliverable).not.toBe('charter v1')
+
+    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(projectDir, { recursive: true, force: true })
+  })
+})
 
 describe('deliverable parity bite proof', () => {
   it('a perturbed hooks surface that omits the deliverable write fails the deliverable assertion', () => {

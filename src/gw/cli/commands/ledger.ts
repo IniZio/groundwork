@@ -1060,7 +1060,6 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             2,
           )
         }
-        const deliverable = (flags['deliverable'] as string | undefined) ?? phase
         const derivedTier: string = /^wave-\d+$/.test(phase) ? 'AUTO_ADVANCES' : 'BLOCKS'
         const ledger = readLedger(runPath)
         if (!ledger)
@@ -1073,6 +1072,11 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const baseGate = gateWithoutSeal(ledger.gate ?? {})
         const existingPhases: Record<string, unknown> =
           (baseGate['phases'] as Record<string, unknown> | undefined) ?? {}
+        const existingPhaseEntry = existingPhases[phase] as Record<string, unknown> | undefined
+        const deliverable =
+          (flags['deliverable'] as string | undefined) ??
+          (existingPhaseEntry?.['deliverable'] as string | undefined) ??
+          phase
         const migratedPhases: Record<string, unknown> = { ...existingPhases }
         const pacingMs = (ledger.pacing as Record<string, unknown> | undefined)?.['milestone_signoff']
         if (pacingMs && !migratedPhases['completion']) {

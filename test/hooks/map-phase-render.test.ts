@@ -59,7 +59,7 @@ describe('AC-11 — phase checkpoint render', () => {
         phases: {
           plan: { deliverable: 'motive.md + slices', tier: 'BLOCKS', verdict: 'APPROVE', verified_by: 'alice', verified_at: '2026-09-01T10:00:00Z' },
           design: { deliverable: 'arch decisions', tier: 'BLOCKS', verdict: 'PENDING' },
-          wave: { deliverable: 'wave 1 artifacts', tier: 'AUTO_ADVANCES' },
+          'wave-1': { deliverable: 'wave 1 artifacts', tier: 'AUTO_ADVANCES' },
           completion: { deliverable: 'advisor APPROVE', tier: 'BLOCKS', verdict: 'PENDING' },
         },
       },
@@ -82,7 +82,7 @@ describe('AC-11 — phase checkpoint render', () => {
         motive: MOTIVE,
         phases: {
           plan: { deliverable: 'motive.md', tier: 'BLOCKS', verdict: 'PENDING' },
-          wave: { deliverable: 'wave artifacts', tier: 'AUTO_ADVANCES' },
+          'wave-1': { deliverable: 'wave artifacts', tier: 'AUTO_ADVANCES' },
         },
       },
     }))
@@ -157,7 +157,7 @@ describe('AC-11 — phase checkpoint render', () => {
         session: 'sess-1',
         motive: MOTIVE,
         phases: {
-          wave: { deliverable: 'wave 1', tier: 'AUTO_ADVANCES' },
+          'wave-1': { deliverable: 'wave 1', tier: 'AUTO_ADVANCES' },
         },
       },
     }))

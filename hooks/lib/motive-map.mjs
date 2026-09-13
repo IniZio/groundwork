@@ -988,8 +988,8 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
   // ── Phase Checkpoints ─────────────────────────────────────────────────────
   if (ledgerDoc?.gate?.phases) {
     const phases = ledgerDoc.gate.phases
-    const PHASE_ORDER = ['plan', 'design', 'wave', 'completion']
-    const PHASE_LABELS = { plan: 'Plan / Charter', design: 'Design', wave: 'Implementation Wave', completion: 'Completion' }
+    const NAMED_ORDER = ['plan', 'design', 'completion']
+    const PHASE_LABELS = { plan: 'Plan / Charter', design: 'Design', completion: 'Completion' }
     const TIER_LABELS = { BLOCKS: 'BLOCKING', AUTO_ADVANCES: 'auto-advance' }
 
     parts.push('## Phase Checkpoints')
@@ -997,14 +997,19 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     parts.push('| Phase | Tier | Deliverable | Status | Verified by |')
     parts.push('|---|---|---|---|---|')
 
+    const waveKeys = Object.keys(phases)
+      .filter((k) => /^wave-\d+$/.test(k))
+      .sort((a, b) => +a.replace('wave-', '') - +b.replace('wave-', ''))
     const phaseKeys = [
-      ...PHASE_ORDER.filter((k) => phases[k] != null),
-      ...Object.keys(phases).filter((k) => !PHASE_ORDER.includes(k)).sort(),
+      ...['plan', 'design'].filter((k) => phases[k] != null),
+      ...waveKeys,
+      ...['completion'].filter((k) => phases[k] != null),
+      ...Object.keys(phases).filter((k) => !NAMED_ORDER.includes(k) && !/^wave-\d+$/.test(k)).sort(),
     ]
 
     for (const key of phaseKeys) {
       const cp = phases[key]
-      const label = PHASE_LABELS[key] ?? key
+      const label = PHASE_LABELS[key] ?? (/^wave-\d+$/.test(key) ? `Implementation Wave ${key.replace('wave-', '')}` : key)
       const tier = TIER_LABELS[cp.tier] ?? cp.tier
       const deliverable = cp.deliverable ?? '—'
       const verdict = cp.verdict ?? 'PENDING'

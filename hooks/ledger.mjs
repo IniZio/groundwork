@@ -498,9 +498,10 @@ const HELP = {
     summary: 'set or clear the checkpoint-phase hold (blocks session end until APPROVE clears it)',
     usage: 'ledger hold --phase <phase> --token <write_token>  |  ledger hold clear --token <write_token>',
     flags: [
-      'clear          positional — pass "clear" as the first argument to release the hold',
-      '--phase <p>    required when setting — phase key (plan | design | wave-<n> | completion)',
-      '--token <t>    orchestrator write-token (required)',
+      'clear              positional — pass "clear" as the first argument to release the hold',
+      '--phase <p>        required when setting — phase key (plan | design | wave-<n> | completion)',
+      '--deliverable <d>  optional — human-readable deliverable reference (defaults to phase key)',
+      '--token <t>        orchestrator write-token (required)',
     ],
   },
   checkpoint: {
@@ -804,7 +805,6 @@ function cmdCheckpoint(args) {
   }
   const verifiedBy = flags['verified-by']
   if (!verifiedBy) die('checkpoint requires --verified-by <name>', 2)
-  const deliverable = flags.deliverable ?? phase
   const tier = /^wave-\d+$/.test(phase) ? 'AUTO_ADVANCES' : 'BLOCKS'
 
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
@@ -823,6 +823,7 @@ function cmdCheckpoint(args) {
         verified_at: ms.verified_at,
       }
     }
+    const deliverable = flags.deliverable ?? l.gate.phases[phase]?.deliverable ?? phase
     l.gate.phases[phase] = {
       deliverable,
       tier,

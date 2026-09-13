@@ -1,7 +1,8 @@
 // @verifies CHECKPOINT-R-010
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { run as bashGuardRun } from "#src/gw/hook/ledger-bash-guard.js";
 import type { HookResult } from "#src/gw/hook/types.js";
 
@@ -629,5 +630,97 @@ describe("ledger-bash-guard — AC-15: checkpoint guarded, autopilot removed (so
 	it("autopilot is no longer in the guarded set — subagent invocation falls through to CLI", async () => {
 		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger autopilot --token abc"), {}));
 		expect(d.permissionDecision).toBeUndefined();
+	});
+});
+
+// ─── T10: binary-path coverage ───────────────────────────────────────────────
+
+const DIST_GW = path.resolve(import.meta.dirname, "..", "..", "dist", "gw.mjs");
+
+function findBun(): string {
+	const home = process.env.HOME ?? "/root";
+	const candidates = [
+		process.env.GW_BUN,
+		`${home}/.local/share/mise/installs/bun/latest/bin/bun`,
+		`${home}/.bun/bin/bun`,
+		`${home}/.local/bin/bun`,
+		"/usr/local/bin/bun",
+		"/opt/homebrew/bin/bun",
+	].filter(Boolean) as string[];
+	for (const c of candidates) {
+		const r = spawnSync(c, ["--version"], { encoding: "utf8" });
+		if (r.status === 0) return c;
+	}
+	const r = spawnSync("which", ["bun"], { encoding: "utf8", shell: true });
+	if (r.status === 0 && r.stdout.trim()) return r.stdout.trim();
+	throw new Error("bun not found; cannot run binary-path tests");
+}
+
+describe("ledger-bash-guard — AC-15: checkpoint guarded (BINARY PATH T10)", () => {
+	const SUBAGENT = { agentType: "groundwork:general-purpose" };
+
+	it("bin/gw-hook is executable and exits 0 on malformed input (not 126)", () => {
+		const r = spawnSync(GW_HOOK, ["hook", "ledger-bash-guard"], {
+			input: "{ not json }",
+			encoding: "utf8",
+		});
+		expect(r.status).toBe(0);
+		expect(r.stdout?.trim()).toBe("");
+	});
+
+	it("dist/gw.mjs has executable bit set", () => {
+		const stat = fs.statSync(DIST_GW);
+		expect(stat.mode & 0o111).toBeGreaterThan(0);
+	});
+
+	it("DENY: subagent `ledger checkpoint` denied via binary path — printed decision", () => {
+		const d = runBashHook("bin/ledger checkpoint --phase planning --verdict APPROVE --token abc", SUBAGENT);
+		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
+	});
+
+	it("DENY: deny reason names checkpoint and orchestrator authority — binary path", () => {
+		const d = runBashHook("bin/ledger checkpoint --phase planning --verdict APPROVE --token abc", SUBAGENT);
+		const reason = d.hookSpecificOutput?.permissionDecisionReason ?? "";
+		expect(reason).toMatch(/checkpoint/);
+		expect(reason).toMatch(/write token|orchestrator/i);
+	});
+
+	it("POSITIVE CONTROL: orchestrator `ledger checkpoint` passes via binary path", () => {
+		const d = runBashHook("bin/ledger checkpoint --phase planning --verdict APPROVE --token abc", {});
+		expect(d.hookSpecificOutput?.permissionDecision).toBeUndefined();
+	});
+});
+
+// ─── T10: bite proof ─────────────────────────────────────────────────────────
+
+describe("ledger-bash-guard — AC-15 binary bite proof (T10)", () => {
+	const BITE_MJS = "/tmp/gw-bite-t10.mjs";
+	const BITE_SHIM = "/tmp/gw-bite-t10-shim.sh";
+	let bun: string;
+
+	beforeAll(() => {
+		bun = findBun();
+		const src = fs.readFileSync(DIST_GW, "utf8");
+		const patched = src.replace(/\|checkpoint/g, "");
+		expect(patched).not.toBe(src);
+		fs.writeFileSync(BITE_MJS, patched, { mode: 0o755 });
+		fs.writeFileSync(BITE_SHIM, `#!/bin/sh\nexec ${bun} "${BITE_MJS}" "$@"\n`, { mode: 0o755 });
+	});
+
+	afterAll(() => {
+		fs.rmSync(BITE_MJS, { force: true });
+		fs.rmSync(BITE_SHIM, { force: true });
+	});
+
+	it("mutated binary does NOT deny subagent checkpoint — proves the denial test bites", () => {
+		const payload = JSON.stringify({
+			hook_event_name: "PreToolUse",
+			tool_name: "Bash",
+			tool_input: { command: "bin/ledger checkpoint --phase planning --verdict APPROVE --token abc" },
+			agent_type: "groundwork:general-purpose",
+		});
+		const r = spawnSync(BITE_SHIM, ["hook", "ledger-bash-guard"], { input: payload, encoding: "utf8" });
+		const decision: Decision = r.stdout?.trim() ? JSON.parse(r.stdout) : {};
+		expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
 	});
 });

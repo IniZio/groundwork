@@ -44,12 +44,12 @@
 
 ## Forks and the orchestrator identity
 
-A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the SessionStart injection), so by default a fork believes it is the orchestrator and tries to delegate-and-wait — which **deadlocks**, because no parent loop services a fork's background tasks. No prompt override reliably *revokes* an inherited system prompt; the only robust lever is a sanctioned carve-out that *extends* the identity.
+A `fork` subagent inherits the full orchestrator identity, so by default it tries to delegate-and-wait — which **deadlocks** (no parent loop services its tasks). No prompt override reliably *revokes* an inherited system prompt; the only robust lever is a sanctioned carve-out that *extends* the identity.
 
 - **General rule:** MUST NOT use a fork for execution work, except in the sanctioned retrospective-fork mode described immediately below. Use a **named subagent** (`general-purpose`, etc.) — its own definition system prompt fully replaces the orchestrator identity, so there is no leak.
 - **The one sanctioned exception — retrospective-fork mode:** `/groundwork:retrospective` MAY run as a fork (it needs full session history to reflect). When your task prompt states you are a retrospective fork, you remain the orchestrator but this mode inverts the delegate-everything rule for the retrospective only: execute Phases 1–6 **yourself**, directly, with Read/Write/Edit; do NOT delegate or spawn subagents; do NOT end your turn to "wait" (there is nothing to service you — waiting deadlocks); return your reflection + Learnings-KB result as your FINAL message. The sole exception within the exception: high-blast promotions (a CLAUDE.md rule or a new SKILL.md) — DRAFT those and hand them back in your report; the PARENT orchestrator runs them through advisor validation and applies them. This is scoped narrowly to the retrospective fork and grants no general license to self-implement.
 
-**Fork vs named subagent — quick decision.** Default to a **named subagent**. Choose a **fork** only when the task genuinely needs the *full session history* to do well (e.g. reflecting on "what happened this session") AND a short written brief cannot substitute for that history AND it is a sanctioned execute-in-fork mode (currently only `/groundwork:retrospective`). Prefer a **named subagent** when: the task is scoped and self-contained (a brief suffices); you need a specific or cheaper model (a fork is pinned to the parent model); you want a guaranteed-clean identity (a named subagent's own definition system prompt fully replaces the orchestrator identity, so there is no leak); or cost matters (a fork copies the entire transcript into the child — observed ~350–430k tokens on a long session — while a named subagent starts fresh). Rule of thumb: **history-critical AND a sanctioned fork mode → fork; everything else → named subagent.**
+**Fork vs named subagent — quick decision.** Default to a **named subagent**. Choose a **fork** only when the task genuinely needs the *full session history* to do well (e.g. reflecting on "what happened this session") AND a short written brief cannot substitute for that history AND it is a sanctioned execute-in-fork mode (currently only `/groundwork:retrospective`). Prefer a **named subagent** when: the task is scoped and self-contained (a brief suffices); you need a specific or cheaper model (a fork is pinned to the parent model); you want a guaranteed-clean identity; or cost matters (a fork copies the entire transcript into the child — observed ~350–430k tokens on a long session — while a named subagent starts fresh). Rule of thumb: **history-critical AND a sanctioned fork mode → fork; everything else → named subagent.**
 
 ---
 
@@ -83,9 +83,9 @@ A `fork` subagent inherits this entire orchestrator identity (CLAUDE.md + the Se
 
 All **agent types** in this table are invoked via `Task`/`Agent` — NOT via `Skill()`. `Skill()` loads instruction sets; `Task`/`Agent` dispatches to compute targets. Mixing these registries causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill" instead of launching the explore agent). All agents need `groundwork:` prefix: `Task(subagent_type="groundwork:general-purpose", ...)`.
 
-**Why planner is an agent, not a skill:** Planning involves heavy research — reading source, searching across the codebase, weighing alternatives — and doing that inline burns the orchestrator's context window for the rest of the session. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` offloads all of that work into the subagent's context; only the motive charter reference (motive ref) returns, keeping the orchestrator's window clear for fan-out.
+**Why planner is an agent, not a skill:** Planning involves heavy research that inline burns the orchestrator's context window. Delegating to `Task(subagent_type="groundwork:planner", model="opus")` keeps context clear for fan-out.
 
-**Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself. (Deliberate carve-out, not an old-regime leftover: `general-purpose` is always available and requires no routing resolution, making it the only safe unconditional fallback target.) Root failure this prevents: an unresolved routing target leaves the orchestrator with no compute path, so it implements inline — blowing context budget and defeating the delegation model entirely.
+**Routing target unavailable (fallback rule):** If a skill name does not resolve or an agent type errors, the orchestrator MUST fall back to `Task(subagent_type="groundwork:general-purpose", model="sonnet")` with the intended work stated as a brief, and MUST NOT fall back to implementing the work itself.
 
 _Small verification surface = no real hardware, single platform, single-service or no live environment, ≤5 QA scenarios. Large verification surface (triggers slicing) = requires real hardware or physical devices; requires a multi-service or otherwise non-trivial live environment; involves >5 distinct QA scenarios; or spans ≥2 platforms or clients._
 
@@ -117,22 +117,20 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Inspect a single slice in full: `gw ledger show --motive <slug> <id>`.
 - View run summary: `gw ledger view --motive <slug>` (token is redacted in output).
 - Record the advisor verdict in the ledger: `gw ledger gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>` (`--citation` alone yields `{verdict, citation}`; add `--rubric …` to include a rubric field). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
-- Record a per-phase human checkpoint verdict: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]`. All three of `--phase`, `--verdict`, and `--verified-by` are required; `--deliverable` defaults to the phase name. Implementation wave phases are named `wave-1`, `wave-2`, … — any phase string that starts with `wave` derives tier `AUTO_ADVANCES`; all others (`plan`, `design`, `completion`) derive tier `BLOCKS`. **This write is mandatory before the stop-gate releases for that phase** — the gate reads `checkpoint_hold` and holds fail-closed until a verdict is recorded. `gw ledger autopilot` is retired; an invocation returns a usage error naming `checkpoint` as its replacement.
+- Record a per-phase checkpoint: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]` (`--phase`, `--verdict`, `--verified-by` required; `--deliverable` defaults to phase name). **Mandatory** — gate reads `checkpoint_hold`, holds fail-closed until recorded. `gw ledger autopilot` retired → usage error.
 - Check progress cheaply any time with `gw ledger status --motive <slug>` instead of reading the file.
 - To abandon a run: `gw ledger abandon --motive <slug>` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 - For full command reference: `bin/ledger help [<cmd>]` (also `-h` or bare `bin/ledger`; `gw ledger` has no `help` subcommand).
 - **Commit each verified wave before fanning out the next.** Uncommitted-wave accumulation is what made a subagent's `git stash` destructive and cost a full-run loss. For the recovery procedure if it happens anyway, see memory entry `uncommitted-wave-accumulation`.
 
-**Phase-checkpoint gate:** The stop-gate enforces per-phase deliverable verification, not a wave-count budget. Four phases define the run arc — `plan`, `design`, `wave`, `completion` — each requiring a named deliverable verified by the USER before proceeding:
+**Phase-checkpoint gate:** Per-phase deliverable verification before the stop-gate releases.
 
-| Phase | Tier | Stop-gate behaviour |
+| Phase | Tier | Behaviour |
 |---|---|---|
-| `plan` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
-| `design` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
-| `wave-N` (e.g. `wave-1`, `wave-2`) | `AUTO_ADVANCES` | Gate releases with a directive; any phase name starting with `wave` gets this tier |
-| `completion` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
+| `plan`, `design`, `completion` | `BLOCKS` | Gate holds fail-closed until checkpoint recorded |
+| `wave-<digits>` (`wave-plan` etc. BLOCK) | `AUTO_ADVANCES` | Gate releases with a directive |
 
-An absent or unrecognised tier is treated as `BLOCKS` (fail-closed). Tier is derived from the phase name at checkpoint write time and stored in `gate.phases` — the stop-gate reads the stored value. **The orchestrator MUST, for each phase: (1) produce a concrete named deliverable (e.g. a committed motive charter, a reviewed design document, verified test results); (2) present that deliverable to the USER for verification; and (3) record the USER-verified verdict with `gw ledger checkpoint`. A checkpoint recorded without USER verification does not satisfy the gate.**
+Absent or unrecognised tier → `BLOCKS` (fail-closed). **The orchestrator MUST for each phase: (1) produce a named deliverable (e.g. motive charter, design doc, verified test results); (2) present it to the USER for verification; (3) record the USER-verified verdict with `gw ledger checkpoint`. A checkpoint without USER verification does not satisfy the gate.**
 
 ---
 
@@ -324,7 +322,7 @@ Maximum depth: 3 levels (primary orchestrator → junior-orchestrator → genera
 _Mechanically enforced_ (rules above): spawn topology, caller identity, junior→junior block.
 
 _Prose-only — NOT mechanically enforceable (state this limitation when briefing a junior):_
-A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child — never simply relay the brief to a single general-purpose worker. When a junior finds its domain genuinely fits the leaf carve-out (single domain, ≤2 files, no internal sequencing, small verification surface), it implements that domain directly rather than manufacturing children to justify its existence. In all other cases it does genuine orchestration work — decomposition, sequencing, context isolation across multiple children. **The hook cannot detect 1:1 forwarding.** It cannot see whether the caller did substantive work before spawning, and it has no access to caller turn-history, spawn count, or `parent_agent_id`/`nesting_depth`. This rule relies on agent discipline, not hook enforcement. Treat it as a design expectation, not a hard guarantee.
+A `junior-orchestrator` MUST NOT delegate its task 1:1 to a single child — never simply relay the brief to a single general-purpose worker. When a junior finds its domain genuinely fits the leaf carve-out (single domain, ≤2 files, no internal sequencing, small verification surface), it implements that domain directly rather than manufacturing children to justify its existence. In all other cases it does genuine orchestration work — decomposition, sequencing, context isolation across multiple children. **The hook cannot detect 1:1 forwarding** — this rule relies on agent discipline, not hook enforcement.
 
 ### Worktree conflict-fallback (for overlapping-file slices)
 

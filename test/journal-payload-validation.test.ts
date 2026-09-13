@@ -23,7 +23,6 @@ import { spawnSync } from 'node:child_process'
 import { describe, test, expect, beforeAll, afterAll } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Infrastructure
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = '/home/newman/.local/share/groundwork'
@@ -56,24 +55,18 @@ function projectEnv(projectDir: string): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// ITEM 1 — help listing
 // ---------------------------------------------------------------------------
 
 describe('ITEM 1 — help listing', () => {
-  // BUG: HELP object does not contain an 'ac-retract' key.
-  // All three tests below will be RED until the HELP entry is added.
 
   test('journal help lists ac-retract', () => {
     const r = runJournal(['help'])
     expect(r.status).toBe(0)
-    // RED: ac-retract is absent from the HELP object, so it is not printed
     expect(r.stdout).toContain('ac-retract')
   })
 
   test('journal help ac-retract succeeds', () => {
     const r = runJournal(['help', 'ac-retract'])
-    // RED: cmdHelp looks up 'ac-retract' in HELP; not found → falls through to
-    // the generic listing, which does not include '--motive', '--ac', '--slice'
     expect(r.status).toBe(0)
     expect(r.stdout).toContain('--motive')
     expect(r.stdout).toContain('--ac')
@@ -83,7 +76,6 @@ describe('ITEM 1 — help listing', () => {
   test('all dispatch commands appear in help', () => {
     const r = runJournal(['help'])
     expect(r.status).toBe(0)
-    // RED: ac-retract absent; graph and migrate-tickets are present (GREEN portions)
     expect(r.stdout).toContain('ac-retract')
     expect(r.stdout).toContain('graph')
     expect(r.stdout).toContain('migrate-tickets')
@@ -91,7 +83,6 @@ describe('ITEM 1 — help listing', () => {
 })
 
 // ---------------------------------------------------------------------------
-// ITEM 2 — GRAPH_MUTATE validation
 // ---------------------------------------------------------------------------
 
 describe('ITEM 2 — GRAPH_MUTATE validation', () => {
@@ -105,7 +96,6 @@ describe('ITEM 2 — GRAPH_MUTATE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'GRAPH_MUTATE', '--msg', 'test', '--data', '{}'],
       projectEnv(projectDir),
     )
-    // RED: no GRAPH_MUTATE validator → exits 0 and writes the event
     expect(r.status).toBe(2)
     expect(r.stderr).toContain('data.op')
   })
@@ -115,7 +105,6 @@ describe('ITEM 2 — GRAPH_MUTATE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'GRAPH_MUTATE', '--msg', 'test', '--data', '{"op":"bad-op"}'],
       projectEnv(projectDir),
     )
-    // RED: no GRAPH_MUTATE validator → exits 0 and writes the event
     expect(r.status).toBe(2)
   })
 
@@ -124,7 +113,6 @@ describe('ITEM 2 — GRAPH_MUTATE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'GRAPH_MUTATE', '--msg', 'test', '--data', '{"op":"node.assert","id":"N-1"}'],
       projectEnv(projectDir),
     )
-    // GREEN already: no validator means valid payloads pass through
     expect(r.status).toBe(0)
   })
 
@@ -135,14 +123,12 @@ describe('ITEM 2 — GRAPH_MUTATE validation', () => {
         ['append', '--motive', MOTIVE, '--type', 'GRAPH_MUTATE', '--msg', `op-${op}`, '--data', JSON.stringify({ op })],
         projectEnv(projectDir),
       )
-      // GREEN already: no validator means all ops pass through
       expect(r.status, `op=${op} should exit 0`).toBe(0)
     }
   })
 })
 
 // ---------------------------------------------------------------------------
-// ITEM 2 — BASELINE validation
 // ---------------------------------------------------------------------------
 
 describe('ITEM 2 — BASELINE validation', () => {
@@ -156,7 +142,6 @@ describe('ITEM 2 — BASELINE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'BASELINE', '--msg', 'test', '--data', '{"shard":"s0"}'],
       projectEnv(projectDir),
     )
-    // BASELINE validator was removed — nameless payloads are free-form and accepted
     expect(r.status).toBe(0)
   })
 
@@ -165,13 +150,11 @@ describe('ITEM 2 — BASELINE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'BASELINE', '--msg', 'test', '--data', '{"name":"v1","shard":"s1"}'],
       projectEnv(projectDir),
     )
-    // GREEN already: no validator means valid payloads pass through
     expect(r.status).toBe(0)
   })
 })
 
 // ---------------------------------------------------------------------------
-// ITEM 2 — AC_COVERAGE validation
 // ---------------------------------------------------------------------------
 
 describe('ITEM 2 — AC_COVERAGE validation', () => {
@@ -185,7 +168,6 @@ describe('ITEM 2 — AC_COVERAGE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'AC_COVERAGE', '--msg', 'test', '--data', '{"ac":"AC-1","slice":"S-1"}'],
       projectEnv(projectDir),
     )
-    // GREEN already: no validator, write proceeds
     expect(r.status).toBe(0)
   })
 
@@ -194,7 +176,6 @@ describe('ITEM 2 — AC_COVERAGE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'AC_COVERAGE', '--msg', 'test', '--data', '{"slice":"S-1","covers":["AC-1"]}'],
       projectEnv(projectDir),
     )
-    // GREEN already: no validator, write proceeds
     expect(r.status).toBe(0)
   })
 
@@ -203,7 +184,6 @@ describe('ITEM 2 — AC_COVERAGE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'AC_COVERAGE', '--msg', 'test', '--data', '{"ac":"AC-1","covering":[]}'],
       projectEnv(projectDir),
     )
-    // GREEN already: no validator, write proceeds
     expect(r.status).toBe(0)
   })
 
@@ -212,7 +192,6 @@ describe('ITEM 2 — AC_COVERAGE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'AC_COVERAGE', '--msg', 'test', '--data', '{}'],
       projectEnv(projectDir),
     )
-    // RED: no AC_COVERAGE validator → exits 0 and writes the event
     expect(r.status).toBe(2)
   })
 
@@ -221,13 +200,11 @@ describe('ITEM 2 — AC_COVERAGE validation', () => {
       ['append', '--motive', MOTIVE, '--type', 'AC_COVERAGE', '--msg', 'test', '--data', '{"covers":["AC-1"]}'],
       projectEnv(projectDir),
     )
-    // RED: no AC_COVERAGE validator → exits 0 and writes the event
     expect(r.status).toBe(2)
   })
 })
 
 // ---------------------------------------------------------------------------
-// ITEM 2 — existing validators regression (must stay GREEN)
 // ---------------------------------------------------------------------------
 
 describe('ITEM 2 — existing validators regression', () => {
@@ -276,9 +253,6 @@ describe('ITEM 2 — existing validators regression', () => {
 })
 
 // ---------------------------------------------------------------------------
-// BASELINE regression — nameless eval-skill payload exits 0 on both surfaces
-// Regression guard: if the BASELINE validator is re-added (requiring data.name),
-// these tests go RED, alerting that the eval-skill documented payload broke.
 // ---------------------------------------------------------------------------
 
 const BASELINE_EVAL_PAYLOAD = JSON.stringify({
@@ -314,9 +288,6 @@ describe('BASELINE regression — nameless eval-skill payload exits 0 on both su
 })
 
 // ---------------------------------------------------------------------------
-// Cross-surface exit-code parity — malformed payloads
-// Both legacy (hooks/journal.mjs via bin/journal) and gw (src/gw/cli/main.ts)
-// must agree on exit code for each type: non-zero for malformed, 0 for valid.
 // ---------------------------------------------------------------------------
 
 describe('cross-surface exit-code parity — malformed payloads', () => {
@@ -429,7 +400,6 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
   test('positive control — AC_COVERAGE alone folds S-e2e into AC-e2e covering', () => {
     const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_CODE_SESSION_ID: 'e2e-retract' }
 
-    // Write coverage event only — no retraction yet.
     const coverageResult = spawnSync(
       'bun',
       [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', E2E_MOTIVE,
@@ -438,8 +408,6 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
     )
     expect(coverageResult.status, 'gw AC_COVERAGE should exit 0').toBe(0)
 
-    // Fold through motive-compile.mjs and assert S-e2e IS present.
-    // This proves the assertion can fail (guard is not vacuous).
     const jDir = path.join(projectDir, '.groundwork', 'motives', E2E_MOTIVE, 'journal')
     const scriptPath = path.join(scriptDir, 'verify-coverage.mjs')
     writeFileSync(scriptPath, [
@@ -487,7 +455,6 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
     )
     expect(coverageResult.status, 'gw AC_COVERAGE (retraction-test setup) should exit 0').toBe(0)
 
-    // Retract via gw.
     const retractionResult = spawnSync(
       'bun',
       [GW_CLI_PATH, '--json', 'journal', 'append', '--motive', E2E_MOTIVE,
@@ -496,7 +463,6 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
     )
     expect(retractionResult.status, 'gw AC_RETRACTION should exit 0').toBe(0)
 
-    // Fold all events (coverage + retraction) and assert S-e2e IS absent.
     const jDir = path.join(projectDir, '.groundwork', 'motives', E2E_MOTIVE, 'journal')
     const scriptPath = path.join(scriptDir, 'verify-fold.mjs')
     writeFileSync(scriptPath, [

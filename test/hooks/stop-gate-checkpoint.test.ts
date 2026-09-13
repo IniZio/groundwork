@@ -17,6 +17,10 @@
 // @verifies AC-7
 // @verifies AC-8
 // @verifies AC-9
+// @verifies CHECKPOINT-R-004
+// @verifies CHECKPOINT-R-005
+// @verifies CHECKPOINT-R-006
+// @verifies CHECKPOINT-R-008
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";

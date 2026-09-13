@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: checkpoint present in MUTATING_LEDGER_CMD_RE and autopilot absent; subagents cannot set phase verdicts via Bash
 status: active
-verification: unverified
+verification: verified
 criticality: must
 origin_decision_ref: phase-checkpoint-gate#D-5
 ---
@@ -15,5 +15,5 @@ The `MUTATING_LEDGER_CMD_RE` pattern in `src/gw/hook/ledger-bash-guard.ts` **sha
 
 - **Why** — `ledger checkpoint` is token-gated and writes phase verdicts. Excluding it from the Bash guard would let a subagent invoke it via Bash with a token it obtained by other means, bypassing the guard. `autopilot` is retired and cannot mutate state, so guarding it would only produce false positives on historical commands; removing it from the pattern is safe.
 - **Fit criterion** — A Bash command matching `ledger checkpoint` fired by a subagent is blocked by the ledger-bash-guard (exit 1, message citing the guard). A Bash command matching `ledger autopilot` is not blocked by the ledger-bash-guard.
-- **Verification**: unverified — backing tests in `test/hooks/ledger-guard.test.ts`; `// @verifies` annotation pending test-file update.
+- **Verification**: verified — `test/hooks/ledger-guard.test.ts` (AC-15: subagent `ledger checkpoint` DENIED; subagent `ledger autopilot` not blocked; orchestrator `ledger checkpoint` ALLOWED); `// @verifies CHECKPOINT-R-010` annotated.
 - **Criticality**: must

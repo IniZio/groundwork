@@ -13,6 +13,10 @@
 // @verifies AC-6
 // @verifies AC-13
 // @verifies AC-14
+// @verifies CHECKPOINT-R-001
+// @verifies CHECKPOINT-R-002
+// @verifies CHECKPOINT-R-007
+// @verifies CHECKPOINT-R-009
 
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

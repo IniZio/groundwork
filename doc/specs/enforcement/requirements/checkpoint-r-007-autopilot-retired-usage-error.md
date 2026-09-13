@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: gw ledger autopilot returns a usage error naming ledger checkpoint as its replacement
 status: active
-verification: unverified
+verification: verified
 criticality: must
 origin_decision_ref: phase-checkpoint-gate#D-5
 ---
@@ -15,5 +15,5 @@ When `ledger autopilot` is invoked with any arguments, both CLI implementations 
 
 - **Why** — A silent unknown-subcommand error (404-style exit) reads as a broken install to anyone with `autopilot` in muscle memory or a script. An explicit usage error with the replacement name gives the operator an actionable message. Exit code 2 distinguishes usage errors from operational failures in automated pipelines.
 - **Fit criterion** — `ledger autopilot --range 2 --token <t> --reason "x"` exits 2 and the output contains "retired" and "checkpoint". Both `hooks/ledger.mjs` and `src/gw/cli/commands/ledger.ts` produce this behavior.
-- **Verification**: unverified — backing tests in `test/hooks/guard-parity.test.ts`; `// @verifies` annotation pending test-file update.
+- **Verification**: verified — `test/hooks/ledger-checkpoint-parity.test.ts` (`autopilot retired: exit 2, output names "checkpoint" as replacement` on both CLI surfaces); `// @verifies CHECKPOINT-R-007` annotated.
 - **Criticality**: must

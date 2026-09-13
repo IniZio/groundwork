@@ -1,5 +1,7 @@
 /**
  * sealed-gate-vectors.test.ts — S5: End-to-end grill of every known self-approval vector.
+ * @verifies CHECKPOINT-R-003
+ * @verifies CHECKPOINT-R-005
  *
  * Replays ALL six vectors against a freshly-sealed ledger produced by the real `ledger init`
  * CLI, then runs the real stop-gate hook and asserts each vector is closed (either the CLI

@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: Absent gate.phases disables checkpoint enforcement; all commands and stop-gate pass through without error
 status: active
-verification: unverified
+verification: verified
 criticality: must
 origin_decision_ref: phase-checkpoint-gate#D-5
 ---
@@ -15,5 +15,5 @@ When a run ledger carries no `gate.phases` field and no `checkpoint_hold`, every
 
 - **Why** — Every pre-existing ledger lacks `gate.phases`. Blocking those sessions would break every in-flight run at the moment of deployment. The absent-means-disabled rule is the same pattern that PACING-R-001 established for the pacing field; it provides full backward compatibility without a migration step.
 - **Fit criterion** — A ledger with no `gate.phases` and no `checkpoint_hold` field passes through `ledger claim`, `ledger complete`, and the Stop hook (with all other gates satisfied) without exit 1 and without checkpoint-related output.
-- **Verification**: unverified — backing tests in `test/hooks/checkpoint.test.ts` and `test/hooks/stop-gate-checkpoint.test.ts`; `// @verifies` annotation pending test-file update.
+- **Verification**: verified — `test/hooks/stop-gate-checkpoint.test.ts` (ledger with no `checkpoint_hold` passes through the checkpoint block; stop-gate reaches normal gate checks); `// @verifies CHECKPOINT-R-008` annotated.
 - **Criticality**: must

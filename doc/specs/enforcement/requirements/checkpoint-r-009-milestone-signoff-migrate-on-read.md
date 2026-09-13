@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: pacing.milestone_signoff is migrated on read into gate.phases.completion by ledger checkpoint
 status: active
-verification: unverified
+verification: verified
 criticality: must
 origin_decision_ref: phase-checkpoint-gate#D-5
 ---
@@ -15,5 +15,5 @@ When `ledger checkpoint` is invoked on a ledger that carries `pacing.milestone_s
 
 - **Why** — `pacing.milestone_signoff` and `pacing.milestone_artifacts` remain in the `pacing` ledger namespace for in-flight and historical runs; they are not migrated to `gate.phases` eagerly. The migrate-on-read ensures the stop-gate sees a consistent `gate.phases.completion` regardless of which write path recorded the original sign-off, without requiring a one-time migration of all existing ledgers. Back-compat seal preservation prevents wedged sessions when the seal was computed before `gate.phases` was introduced.
 - **Fit criterion** — A ledger with `pacing.milestone_signoff = {verdict:"APPROVE", verified_by:"alice", verified_at:"..."}` and no `gate.phases.completion`, after `ledger checkpoint --phase design ...` is run, carries `gate.phases.completion = {tier:"BLOCKS", verdict:"APPROVE", verified_by:"alice", deliverable:"milestone"}`. A ledger sealed under the old scheme (no `gate.phases`) still passes seal verification without a new `ledger checkpoint` call.
-- **Verification**: unverified — backing tests in `test/hooks/checkpoint.test.ts` and `test/hooks/sealed-gate-vectors.test.ts`; `// @verifies` annotation pending test-file update.
+- **Verification**: verified — `test/hooks/ledger-checkpoint-parity.test.ts` (`AC-13: pacing.milestone_signoff migrates to gate.phases.completion on first checkpoint`); back-compat seal case in `test/hooks/gate-seal.test.ts` and `test/hooks/sealed-gate-vectors.test.ts` (AC-3); `// @verifies CHECKPOINT-R-009` annotated.
 - **Criticality**: must

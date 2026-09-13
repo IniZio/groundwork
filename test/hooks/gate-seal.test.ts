@@ -6,6 +6,7 @@
  *   AC2: verifySeal returns true for untampered; false for each tampered field.
  *   AC3: keyPath resolves correctly; minted key is mode 0600; round-trips via readKey.
  *   AC4: no .d.mts breakage (verified by pnpm run check, not at runtime).
+ * @verifies CHECKPOINT-R-003
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'

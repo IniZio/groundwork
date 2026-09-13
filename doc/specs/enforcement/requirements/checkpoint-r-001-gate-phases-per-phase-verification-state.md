@@ -4,7 +4,7 @@ type: requirement
 concept: C-ENFORCEMENT
 title: gate.phases records per-phase verification state keyed by phase name
 status: active
-verification: unverified
+verification: verified
 criticality: must
 origin_decision_ref: phase-checkpoint-gate#D-2
 ---
@@ -15,5 +15,5 @@ A run ledger **shall** carry `gate.phases` as a map from phase name to a phase-c
 
 - **Why** — A single per-phase record makes every verification event auditable and addressable by name, and lets the stop-gate evaluate one authoritative map rather than deriving state from multiple fields. `checkpoint_hold` provides a fast path for the stop-gate without requiring it to scan all phases.
 - **Fit criterion** — A ledger produced by `ledger checkpoint --phase plan --verdict APPROVE --verified-by alice --deliverable charter-v1 --token <t>` carries `gate.phases.plan = {deliverable:"charter-v1", tier:"BLOCKS", verdict:"APPROVE", verified_by:"alice", verified_at:<ISO>}`. A ledger schema validation (`schemas/run-ledger.schema.json`) passes for a ledger carrying both `checkpoint_hold` and `gate.phases`.
-- **Verification**: unverified — backing tests exist in `test/hooks/checkpoint.test.ts` and `test/hooks/guard-parity.test.ts`; `// @verifies` annotation linkage pending test-file update (outside T7 scope).
+- **Verification**: verified — `test/hooks/ledger-checkpoint-parity.test.ts` (`checkpoint happy path` writes `gate.phases.plan` with all required fields; `// @verifies CHECKPOINT-R-001` annotated).
 - **Criticality**: must

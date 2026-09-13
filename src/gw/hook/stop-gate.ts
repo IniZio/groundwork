@@ -28,14 +28,15 @@ import {
   writeFileSync,
   statSync,
 } from 'node:fs'
-import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 
+import { verifySeal, readKey } from '../../../hooks/lib/gate-seal.mjs'
 import type { HookFn, HookResult } from './types.js'
 import { bySession } from '../store/slice/index.js'
 import { readGate } from '../store/gate/index.js'
-import { LEDGER_SAFE_ID, resolveLedgerPath } from '../lib/resolve-ledger-path.js'
+import { resolveLedgerPath } from '../lib/resolve-ledger-path.js'
 
 // ---------------------------------------------------------------------------
 // HookResult builders — replace process.exit(0) pattern from the .mjs original.
@@ -76,127 +77,13 @@ function resolveMotiveSlug(motiveRef: unknown): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Inlined: gate-seal helpers (from hooks/lib/gate-seal.mjs)
-// ---------------------------------------------------------------------------
-
-const SAFE_ID = LEDGER_SAFE_ID
-
-/** Extract advisor verdict from gate.advisor (string or {verdict} object). */
-function extractAdvisorVerdictFromGateObj(gate: unknown): string | null {
-  const a = (gate as Record<string, unknown>)?.advisor
-  if (!a) return null
-  if (typeof a === 'string') return a
-  if (typeof a === 'object' && a !== null && 'verdict' in a)
-    return String((a as Record<string, unknown>).verdict)
-  return null
-}
-
-/** Deterministic JSON string of release-affecting ledger state. */
-function canonicalReleaseState(ledger: Record<string, unknown>): string {
-  const slices = Array.isArray(ledger.slices) ? (ledger.slices as Record<string, unknown>[]) : []
-  const sortedSlices = slices
-    .map(s => ({
-      id: String(s.id),
-      status: String(s.status),
-      created_by: s.created_by ?? null,
-    }))
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-
-  const state: Record<string, unknown> = {
-    schema_version: ledger.schema_version ?? null,
-    session_id: ledger.session_id ?? null,
-    active: ledger.active ?? null,
-    advisor_verdict: extractAdvisorVerdictFromGateObj(ledger.gate),
-    slices: sortedSlices,
-  }
-
-  if (ledger.scoped_tokens !== undefined) {
-    const rawTokens = Array.isArray(ledger.scoped_tokens)
-      ? (ledger.scoped_tokens as Record<string, unknown>[])
-      : []
-    state.scoped_tokens = rawTokens
-      .map(t => ({ scope: String(t.scope ?? ''), token: String(t.token ?? '') }))
-      .sort((a, b) =>
-        a.scope < b.scope
-          ? -1
-          : a.scope > b.scope
-            ? 1
-            : a.token < b.token
-              ? -1
-              : a.token > b.token
-                ? 1
-                : 0,
-      )
-  }
-
-  if (ledger.awaiting_human !== undefined) {
-    state.awaiting_human = ledger.awaiting_human === true
-  }
-
-  const pacing = ledger.pacing as Record<string, unknown> | undefined
-  if (pacing?.milestone_signoff !== undefined) {
-    const ms = pacing.milestone_signoff as Record<string, unknown>
-    state.milestone_signoff = {
-      verdict: String(ms.verdict ?? ''),
-      verified_by: String(ms.verified_by ?? ''),
-      verified_at: String(ms.verified_at ?? ''),
-    }
-  }
-
-  if (ledger.checkpoint_hold !== undefined) {
-    state.checkpoint_hold = ledger.checkpoint_hold
-  }
-  const gateForSeal = ledger.gate as Record<string, unknown> | undefined
-  if (gateForSeal?.phases !== undefined) {
-    state.gate_phases = gateForSeal.phases
-  }
-
-  return JSON.stringify(state)
-}
-
-function computeSeal(stateString: string, key: Buffer | string): string {
-  const keyBuf = Buffer.isBuffer(key) ? key : Buffer.from(key as string, 'hex')
-  return createHmac('sha256', keyBuf).update(stateString, 'utf8').digest('hex')
-}
-
-function verifySeal(ledger: Record<string, unknown>, key: Buffer | string): boolean {
-  const gate = ledger.gate as Record<string, unknown> | undefined
-  const storedSeal = gate?.seal
-  if (!storedSeal || typeof storedSeal !== 'string') return false
-  try {
-    const stateString = canonicalReleaseState(ledger)
-    const expected = computeSeal(stateString, key)
-    const storedBuf = Buffer.from(storedSeal, 'hex')
-    const expectedBuf = Buffer.from(expected, 'hex')
-    if (storedBuf.length !== expectedBuf.length) return false
-    return timingSafeEqual(storedBuf, expectedBuf)
-  } catch {
-    return false
-  }
-}
-
-function sealKeyPath({ projectDir, sessionId }: { projectDir: string; sessionId?: string }): string {
-  if (sessionId && SAFE_ID.test(sessionId)) {
-    return path.join(projectDir, '.groundwork', 'runs', `${sessionId}.seal.key`)
-  }
-  return path.join(projectDir, '.groundwork', 'runs', 'legacy.seal.key')
-}
-
-function readKey({ projectDir, sessionId }: { projectDir: string; sessionId?: string }): Buffer {
-  const kp = sealKeyPath({ projectDir, sessionId })
-  return readFileSync(kp)
-}
-
-// ---------------------------------------------------------------------------
 // Inlined: ledger-io helpers (from hooks/lib/ledger-io.mjs)
 // ---------------------------------------------------------------------------
 
 function sleepSync(ms: number): void {
   try {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-  } catch {
-    // SharedArrayBuffer unavailable — fall through
-  }
+  } catch { /* noop */ }
 }
 
 function atomicWriteFileSync(filePath: string, data: string): void {
@@ -218,9 +105,7 @@ function atomicWriteFileSync(filePath: string, data: string): void {
     } finally {
       closeSync(dfd)
     }
-  } catch {
-    // not fatal
-  }
+  } catch { /* noop */ }
 }
 
 function atomicWriteJsonSync(filePath: string, obj: unknown): void {
@@ -245,9 +130,7 @@ function withLock<T>(
           unlinkSync(lockPath)
           continue
         }
-      } catch {
-        // lock vanished between stat and unlink — retry
-      }
+      } catch { /* noop */ }
       if (i >= retries) throw new Error(`ledger lock timeout: ${lockPath}`)
       sleepSync(delayMs)
     }

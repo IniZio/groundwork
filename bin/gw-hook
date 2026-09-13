@@ -42,6 +42,10 @@ _DIR=$(dirname "$_REAL")
 _MAIN="$_DIR/../src/gw/cli/main.ts"
 _BUNDLE="$_DIR/../dist/gw.mjs"
 
+if [ -n "$GW_BUNDLE" ] && [ -f "$GW_BUNDLE" ]; then
+  _BUNDLE="$GW_BUNDLE"
+fi
+
 # Resolve bun: PATH first, then well-known install locations. A launcher that
 # inherits a non-login PATH (a terminal-multiplexer pane, a GUI-spawned editor)
 # can miss a perfectly good bun that a login shell would have found.

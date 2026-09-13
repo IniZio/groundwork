@@ -837,6 +837,7 @@ function cmdCheckpoint(args) {
     reSeal(l, projectDir)
   })
   process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`)
+  _tryRefreshMap(projectDir)
 }
 
 function cmdHold(args) {
@@ -867,6 +868,7 @@ function cmdHold(args) {
   } else {
     process.stdout.write(`checkpoint-phase hold set to '${flags.phase}'\n`)
   }
+  _tryRefreshMap(projectDir)
 }
 
 function cmdScopeToken(args) {

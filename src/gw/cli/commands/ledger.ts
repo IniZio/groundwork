@@ -12,6 +12,7 @@ import {
   keyPath,
   readKey,
 } from '../../../../hooks/lib/gate-seal.mjs'
+import { regenerateMotiveMap } from '../../../../hooks/lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
@@ -1107,6 +1108,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           delete (base as Record<string, unknown>)['checkpoint_hold']
         }
         atomicWrite(runPath, reSeal(base, repoRoot))
+        try { if (base.motive) regenerateMotiveMap(process.env['CLAUDE_PROJECT_DIR'] ?? repoRoot, base.motive) } catch { /* best-effort */ }
         return okEnvelope('ledger checkpoint', {
           content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`,
         })
@@ -1127,8 +1129,10 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           return authErr('ledger hold', e)
         }
         const { checkpoint_hold: _prev, ...rest } = ledger
+        const projectDir = process.env['CLAUDE_PROJECT_DIR'] ?? repoRoot
         if (clearing) {
           atomicWrite(runPath, reSeal(rest as LedgerJson, repoRoot))
+          try { if (ledger.motive) regenerateMotiveMap(projectDir, ledger.motive) } catch { /* best-effort */ }
           return okEnvelope('ledger hold', { content: 'checkpoint-phase hold cleared\n' })
         } else {
           const deliverable = (flags['deliverable'] as string | undefined) ?? phase
@@ -1146,6 +1150,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             },
           }
           atomicWrite(runPath, reSeal({ ...rest, checkpoint_hold: phase, gate: newGate } as LedgerJson, repoRoot))
+          try { if (ledger.motive) regenerateMotiveMap(projectDir, ledger.motive) } catch { /* best-effort */ }
           return okEnvelope('ledger hold', { content: `checkpoint-phase hold set to '${phase}'\n` })
         }
       }

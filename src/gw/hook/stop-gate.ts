@@ -1054,6 +1054,17 @@ export const run: HookFn = async (
       const tier = /^wave-\d+$/.test(holdPhaseKey) ? 'AUTO_ADVANCES' : 'BLOCKS'
       const deliverable = String(phaseEntry?.deliverable ?? '(deliverable not recorded)')
 
+      // Seal check applies to BOTH tiers — must precede the tier branch so AUTO_ADVANCES
+      // cannot be released via a stale/injected checkpoint_hold with no write token.
+      const sealResult = checkSeal(ledger, projectDir, sessionId)
+      if (sealResult === false) {
+        return block(
+          `checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` +
+            'A subagent may have set checkpoint_hold directly without the orchestrator write_token. ' +
+            `Re-run \`gw ledger checkpoint --motive <slug> --phase ${holdPhaseKey} --verdict APPROVE --verified-by <name> --token <write_token>\` to restore a valid hold.`,
+        )
+      }
+
       if (tier === 'AUTO_ADVANCES') {
         const autoIncomplete = (
           Array.isArray(ledger.slices)
@@ -1070,18 +1081,10 @@ export const run: HookFn = async (
         )
       }
 
-      const sealResult = checkSeal(ledger, projectDir, sessionId)
-      if (sealResult === false) {
-        return block(
-          `checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` +
-            'A subagent may have set checkpoint_hold directly without the orchestrator write_token. ' +
-            `Re-run \`gw ledger checkpoint ${holdPhaseKey} --token <write_token>\` to restore a valid hold.`,
-        )
-      }
       return block(
         `Phase checkpoint hold: '${holdPhaseKey}' requires human verification. ` +
           `Deliverable: ${deliverable}. ` +
-          `Run \`gw ledger checkpoint ${holdPhaseKey} APPROVE --token <write_token> --verified-by <name>\` to release.`,
+          `Run \`gw ledger checkpoint --motive <slug> --phase ${holdPhaseKey} --verdict APPROVE --verified-by <name> --token <write_token>\` to release.`,
       )
     }
 

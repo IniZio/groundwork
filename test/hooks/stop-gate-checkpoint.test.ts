@@ -9,6 +9,10 @@
  *       awaiting_human precedent.
  * AC-9: checkpoint_hold set to an AUTO_ADVANCES-tier phase → stop-gate allows with a
  *       DIRECTIVE naming the recorded deliverable and remaining incomplete slice ids.
+ * AC-14: checkpoint_hold set to an AUTO_ADVANCES-tier phase with invalid/stale seal →
+ *        stop-gate blocks fail-closed (seal check must precede tier branch).
+ * AC-15: remediation strings printed by the stop-gate use flag-based syntax that the
+ *        ledger CLI accepts without USAGE_ERROR.
  *
  * Tests run via `bun run src/gw/cli/main.ts` — bypasses dist/gw.mjs (stale bundle,
  * T9 owns the rebuild). Source-only invocation tests the actual updated code.
@@ -17,12 +21,14 @@
 // @verifies AC-7
 // @verifies AC-8
 // @verifies AC-9
+// @verifies AC-14
+// @verifies AC-15
 // @verifies CHECKPOINT-R-004
 // @verifies CHECKPOINT-R-005
 // @verifies CHECKPOINT-R-006
 // @verifies CHECKPOINT-R-008
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -143,6 +149,51 @@ function autoAdvancesLedger(overrides: Record<string, unknown> = {}): unknown {
 		],
 		...overrides,
 	};
+}
+
+function autoAdvancesLedgerWithBadSeal(overrides: Record<string, unknown> = {}): unknown {
+	return {
+		...(autoAdvancesLedger() as Record<string, unknown>),
+		gate: {
+			advisor: "pending",
+			seal: "deadbeef00000000000000000000000000000000000000000000000000000000",
+			phases: {
+				"wave-1": {
+					deliverable: "wave 1 deliverable artifacts",
+					tier: "AUTO_ADVANCES",
+				},
+			},
+		},
+		...overrides,
+	};
+}
+
+const LEDGER_TEST_SESS = "test-ledger-sess";
+
+function runLedgerCmd(
+	args: string[],
+	repoRoot: string,
+): { exitCode: number; stdout: string } {
+	const env: Record<string, string> = {};
+	for (const [k, v] of Object.entries(process.env)) {
+		if (v !== undefined) env[k] = v;
+	}
+	env["CLAUDE_PROJECT_DIR"] = repoRoot;
+	env["CLAUDE_CODE_SESSION_ID"] = LEDGER_TEST_SESS;
+	const r = spawnSync("bun", ["run", BUN_MAIN, "ledger", ...args], {
+		encoding: "utf8",
+		env,
+	});
+	return { exitCode: r.status ?? 1, stdout: typeof r.stdout === "string" ? r.stdout : "" };
+}
+
+function writeLedgerForCli(dir: string, ledger: unknown): void {
+	const runsDir = path.join(dir, ".groundwork", "runs");
+	mkdirSync(runsDir, { recursive: true });
+	writeFileSync(
+		path.join(runsDir, `${LEDGER_TEST_SESS}.json`),
+		JSON.stringify(ledger, null, 2),
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -350,5 +401,95 @@ describe("AC-10: wave prefix matching — only wave-<digits> auto-advances", () 
 			slices: [],
 		});
 		expect(result.reason?.toUpperCase()).not.toContain("DIRECTIVE");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AC-14: AUTO_ADVANCES + invalid seal → block fail-closed
+// ---------------------------------------------------------------------------
+
+// @verifies AC-14
+describe("AC-14: AUTO_ADVANCES tier + invalid seal → block fail-closed", () => {
+	it("blocks when AUTO_ADVANCES phase has an invalid/stale seal", () => {
+		const result = runHook(autoAdvancesLedgerWithBadSeal());
+		expect(result.decision).toBe("block");
+	});
+
+	it("fail-closed message mentions seal or key", () => {
+		const result = runHook(autoAdvancesLedgerWithBadSeal());
+		expect(
+			result.reason?.toLowerCase().includes("seal") ||
+				result.reason?.toLowerCase().includes("key"),
+		).toBe(true);
+	});
+
+	it("fail-closed message names the AUTO_ADVANCES phase key", () => {
+		const result = runHook(autoAdvancesLedgerWithBadSeal());
+		expect(result.reason).toContain("wave-1");
+	});
+
+	it("AUTO_ADVANCES with no seal still allows (null ≠ false, positive control)", () => {
+		const result = runHook(autoAdvancesLedger());
+		expect(result.continue).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AC-15: remediation strings use flag-based syntax the CLI accepts
+// ---------------------------------------------------------------------------
+
+// @verifies AC-15
+describe("AC-15: remediation strings use correct flag-based syntax", () => {
+	it("BLOCKS release: --phase --verdict --verified-by form succeeds against a real ledger", () => {
+		writeLedgerForCli(projectDir, {
+			version: 1,
+			active: true,
+			session_id: LEDGER_TEST_SESS,
+			write_token: "test-tok-remediation",
+			brief: "remediation test",
+			checkpoint_hold: "plan",
+			gate: { advisor: "pending", phases: { plan: { deliverable: "test", tier: "BLOCKS" } } },
+			slices: [],
+		});
+		const r = runLedgerCmd(
+			[
+				"checkpoint",
+				"--motive", "test-motive",
+				"--phase", "plan",
+				"--verdict", "APPROVE",
+				"--verified-by", "test-user",
+				"--token", "test-tok-remediation",
+			],
+			projectDir,
+		);
+		expect(r.exitCode).toBe(0);
+	});
+
+	it("AUTO_ADVANCES restore: --phase --verdict --verified-by form succeeds against a real ledger", () => {
+		writeLedgerForCli(projectDir, {
+			version: 1,
+			active: true,
+			session_id: LEDGER_TEST_SESS,
+			write_token: "test-tok-remediation",
+			brief: "remediation test",
+			checkpoint_hold: "wave-1",
+			gate: {
+				advisor: "pending",
+				phases: { "wave-1": { deliverable: "wave 1", tier: "AUTO_ADVANCES" } },
+			},
+			slices: [],
+		});
+		const r = runLedgerCmd(
+			[
+				"checkpoint",
+				"--motive", "test-motive",
+				"--phase", "wave-1",
+				"--verdict", "APPROVE",
+				"--verified-by", "test-user",
+				"--token", "test-tok-remediation",
+			],
+			projectDir,
+		);
+		expect(r.exitCode).toBe(0);
 	});
 });

@@ -445,7 +445,9 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
     writeFileSync(scriptPath, [
       `import { readdirSync, readFileSync } from 'node:fs'`,
       `import path from 'node:path'`,
-      `import matter from 'gray-matter'`,
+      // Script lives outside the repo: resolve gray-matter from the repo, not the script's ancestry.
+      `import { createRequire } from 'node:module'`,
+      `const matter = createRequire(${JSON.stringify(path.join(REPO_ROOT, 'package.json'))})('gray-matter')`,
       `import { compile } from '${REPO_ROOT}/hooks/lib/motive-compile.mjs'`,
       `const jDir = ${JSON.stringify(jDir)}`,
       `const files = readdirSync(jDir).filter(f => f.endsWith('.md'))`,
@@ -500,7 +502,8 @@ describe('e2e — gw-written AC_RETRACTION is folded by motive-compile', () => {
     writeFileSync(scriptPath, [
       `import { readdirSync, readFileSync } from 'node:fs'`,
       `import path from 'node:path'`,
-      `import matter from 'gray-matter'`,
+      `import { createRequire } from 'node:module'`,
+      `const matter = createRequire(${JSON.stringify(path.join(REPO_ROOT, 'package.json'))})('gray-matter')`,
       `import { compile } from '${REPO_ROOT}/hooks/lib/motive-compile.mjs'`,
       `const jDir = ${JSON.stringify(jDir)}`,
       `const files = readdirSync(jDir).filter(f => f.endsWith('.md'))`,

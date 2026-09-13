@@ -143,6 +143,14 @@ function canonicalReleaseState(ledger: Record<string, unknown>): string {
     }
   }
 
+  if (ledger.checkpoint_hold !== undefined) {
+    state.checkpoint_hold = ledger.checkpoint_hold
+  }
+  const gateForSeal = ledger.gate as Record<string, unknown> | undefined
+  if (gateForSeal?.phases !== undefined) {
+    state.gate_phases = gateForSeal.phases
+  }
+
   return JSON.stringify(state)
 }
 
@@ -280,98 +288,6 @@ function mutateLedger(
 }
 
 // ---------------------------------------------------------------------------
-// Inlined: pacing helpers (from hooks/lib/pacing.mjs)
-// ---------------------------------------------------------------------------
-
-function getPacing(doc: Record<string, unknown>): Record<string, unknown> | null {
-  return (doc.pacing as Record<string, unknown>) ?? null
-}
-
-function getSlicesArr(doc: Record<string, unknown>): Record<string, unknown>[] {
-  return Array.isArray(doc.slices) ? (doc.slices as Record<string, unknown>[]) : []
-}
-
-function isExemptSlice(slice: Record<string, unknown>, exemptKinds: string[]): boolean {
-  return exemptKinds.includes(String(slice.kind ?? ''))
-}
-
-function resolvedUnits(doc: Record<string, unknown>): number {
-  const pacing = getPacing(doc)
-  if (!pacing) return 0
-  const slices = getSlicesArr(doc)
-  const exemptKinds = Array.isArray(pacing.exempt_kinds)
-    ? (pacing.exempt_kinds as string[])
-    : []
-  const policy = pacing.policy as string
-  const offset = Number(pacing.offset ?? 0)
-
-  let raw = 0
-  if (policy === 'slice') {
-    raw = slices.filter(
-      s => !isExemptSlice(s, exemptKinds) && s.status === 'complete',
-    ).length
-  } else if (policy === 'wave' || policy === 'milestone') {
-    const waves = new Map<number, { total: number; complete: number }>()
-    for (const s of slices) {
-      if (isExemptSlice(s, exemptKinds)) continue
-      const w = Number(s.wave ?? 0)
-      const entry = waves.get(w) ?? { total: 0, complete: 0 }
-      entry.total++
-      if (s.status === 'complete') entry.complete++
-      waves.set(w, entry)
-    }
-    for (const { total, complete } of waves.values()) {
-      if (total > 0 && complete === total) raw++
-    }
-  }
-  return Math.max(0, raw - offset)
-}
-
-function activeUnit(doc: Record<string, unknown>): number | string | null {
-  const pacing = getPacing(doc)
-  if (!pacing) return null
-  const slices = getSlicesArr(doc)
-  const exemptKinds = Array.isArray(pacing.exempt_kinds)
-    ? (pacing.exempt_kinds as string[])
-    : []
-  const policy = pacing.policy as string
-
-  const active = slices.filter(
-    s => !isExemptSlice(s, exemptKinds) && s.status === 'in_progress',
-  )
-  if (active.length === 0) return null
-
-  if (policy === 'slice') return active[0].id as string
-
-  let minWave = Infinity
-  for (const s of active) {
-    const w = Number(s.wave ?? 0)
-    if (w < minWave) minWave = w
-  }
-  return minWave === Infinity ? null : minWave
-}
-
-function isExhausted(doc: Record<string, unknown>): boolean {
-  const pacing = getPacing(doc)
-  if (!pacing) return false
-  if (activeUnit(doc) !== null) return false
-
-  const budget = Number(pacing.budget ?? 1)
-  const grant = pacing.grant as Record<string, unknown> | undefined
-  const grantRange = Number(grant?.range ?? 0)
-  const cap = budget + grantRange
-
-  const slices = getSlicesArr(doc)
-  const exemptKinds = Array.isArray(pacing.exempt_kinds)
-    ? (pacing.exempt_kinds as string[])
-    : []
-  const hasRemainingWork = slices.some(
-    s => !isExemptSlice(s, exemptKinds) && s.status !== 'complete',
-  )
-  return hasRemainingWork && resolvedUnits(doc) >= cap
-}
-
-// ---------------------------------------------------------------------------
 // Inlined: simplified journal helpers (from hooks/lib/journal-io.mjs)
 // ---------------------------------------------------------------------------
 
@@ -396,7 +312,6 @@ function emitHookEvent(opts: {
     const date = new Date().toISOString().slice(0, 10)
     const shardPath = path.join(journalDir, `${date}-${sessionId || 'unknown'}.jsonl`)
 
-    // Resolve motive — full port of hooks/lib/journal-io.mjs:resolveMotive
     let motive: string
     let motive_provenance: string
     if (process.env.GROUNDWORK_MOTIVE) {
@@ -819,7 +734,6 @@ function hasInFlightBackgroundTasks(input: unknown): boolean {
 }
 
 function detectYield(input: unknown): string | null {
-  // 1. Authoritative: harness says background work is still running.
   if (hasInFlightBackgroundTasks(input)) {
     return 'background tasks still in flight (background_tasks payload) — orchestrator awaiting completion'
   }
@@ -835,7 +749,6 @@ function detectYield(input: unknown): string | null {
     return null
   }
 
-  // 2. Fallback in-flight detection from transcript launch/completion bookkeeping.
   if (outstandingBackgroundTasks(raw) > 0) {
     return 'background delegations still in flight — orchestrator awaiting completion'
   }
@@ -867,28 +780,18 @@ function pacingGrantSummary(ledger: Record<string, unknown>): string {
   return `\n⚠ Autopilot grant active this session: +${range} unit${range === 1 ? '' : 's'}${reason}${by}\n`
 }
 
-function pacingExhaustionDirective(
-  ledger: Record<string, unknown>,
-  incomplete: Record<string, unknown>[],
-  projectDir: string,
+function checkpointDirective(
+  phaseKey: string,
+  deliverable: string,
+  incompleteIds: string[],
 ): string {
-  const sliceIds = incomplete.map(s => s.id ?? '?').join(', ')
-  const motiveSlug =
-    resolveMotiveSlug(ledger.motive_ref) ||
-    (typeof ledger.motive === 'string' && ledger.motive.length > 0
-      ? ledger.motive
-      : null)
-  const mapPath = motiveSlug
-    ? path.join(projectDir, '.groundwork', 'motives', motiveSlug, 'MAP.md')
-    : null
-
   const lines: string[] = []
-  lines.push('⏱ GROUNDWORK PACING — session budget exhausted. This session ends here.')
+  lines.push(`⏱ GROUNDWORK CHECKPOINT — phase '${phaseKey}' deliverable not yet verified.`)
   lines.push('')
-  lines.push(`Remaining slices (carry into the next session): ${sliceIds}`)
-  if (mapPath) lines.push(`Motive map: ${mapPath}`)
+  lines.push(`Deliverable: ${deliverable}`)
+  if (incompleteIds.length > 0) lines.push(`Remaining slices: ${incompleteIds.join(', ')}`)
   lines.push(
-    'DIRECTIVE: run /groundwork:pause, then open a new session to continue the remaining slices.',
+    `DIRECTIVE: run /groundwork:pause, then open a new session after verifying the '${phaseKey}' phase deliverable.`,
   )
   return lines.join('\n')
 }
@@ -1000,7 +903,6 @@ function findNewLayoutLedger(
 
         const gateNote = readGate(projectDir, NEW_LAYOUT_TRACKER, slug, sessionId)
 
-        // Build legacy-compatible slice objects
         const legacySlices = slices.map(s => ({
           id: s.id,
           status: s.status,
@@ -1026,9 +928,10 @@ function findNewLayoutLedger(
           gate,
           motive: slug,
         }
-        // Forward pacing if present on gate note (optional field)
         const gn = gateNote as Record<string, unknown> | null
         if (gn?.pacing !== undefined) ledger.pacing = gn.pacing
+        if (gn?.checkpoint_hold !== undefined) ledger.checkpoint_hold = gn.checkpoint_hold
+        if (gn?.phases !== undefined) (gate as Record<string, unknown>).phases = gn.phases
 
         return ledger
       } catch {
@@ -1142,6 +1045,46 @@ export const run: HookFn = async (
       return allow()
     }
 
+    if (typeof ledger.checkpoint_hold === 'string' && ledger.checkpoint_hold.length > 0) {
+      const holdPhaseKey = ledger.checkpoint_hold
+      const phases = (
+        (ledger.gate as Record<string, unknown> | undefined)?.phases ?? {}
+      ) as Record<string, unknown>
+      const phaseEntry = phases[holdPhaseKey] as Record<string, unknown> | undefined
+      const tier = phaseEntry?.tier
+      const deliverable = String(phaseEntry?.deliverable ?? '(deliverable not recorded)')
+
+      if (tier === 'AUTO_ADVANCES') {
+        const autoIncomplete = (
+          Array.isArray(ledger.slices)
+            ? (ledger.slices as Record<string, unknown>[]).filter(
+                s => !new Set(['complete', 'skipped']).has(String(s?.status ?? '')),
+              )
+            : []
+        ).map(s => String(s.id ?? '?'))
+        return allow(
+          checkpointDirective(holdPhaseKey, deliverable, autoIncomplete) +
+            decisionResearchAdvisory(projectDir) +
+            decisionAlternativesAdvisory(projectDir) +
+            specAdvisory(projectDir),
+        )
+      }
+
+      const sealResult = checkSeal(ledger, projectDir, sessionId)
+      if (sealResult === false) {
+        return block(
+          `checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` +
+            'A subagent may have set checkpoint_hold directly without the orchestrator write_token. ' +
+            `Re-run \`gw ledger checkpoint ${holdPhaseKey} --token <write_token>\` to restore a valid hold.`,
+        )
+      }
+      return block(
+        `Phase checkpoint hold: '${holdPhaseKey}' requires human verification. ` +
+          `Deliverable: ${deliverable}. ` +
+          `Run \`gw ledger checkpoint ${holdPhaseKey} APPROVE --token <write_token> --verified-by <name>\` to release.`,
+      )
+    }
+
     const slices = Array.isArray(ledger.slices)
       ? (ledger.slices as Record<string, unknown>[])
       : []
@@ -1181,21 +1124,6 @@ export const run: HookFn = async (
           decisionAlternativesAdvisory(projectDir) +
           specAdvisory(projectDir),
       )
-    }
-
-    // D-29: pacing exhaustion is a sanctioned release path.
-    try {
-      if (isExhausted(ledger)) {
-        return allow(
-          pacingGrantSummary(ledger) +
-            pacingExhaustionDirective(ledger, incomplete, projectDir) +
-            decisionResearchAdvisory(projectDir) +
-            decisionAlternativesAdvisory(projectDir) +
-            specAdvisory(projectDir),
-        )
-      }
-    } catch {
-      // Fail-open: pacing check errors must never wedge the session.
     }
 
     // Contract B.5/B.6 — kind:plan / plan_ref pre-gate (non-trivial only).

@@ -1,22 +1,18 @@
 /**
- * stop-gate-pacing.test.ts — D-29: pacing exhaustion as a stop-gate release path.
+ * stop-gate-pacing.test.ts — D-29 pacing / AC-10 exhaustion-release removal.
  *
- * 8 acceptance criteria from ledger slice `pace-stopgate`:
- *  AC1  src/gw/hook/stop-gate.ts consumes isExhausted from hooks/lib/pacing.mjs (verified
- *       by testing behaviour driven by the pacing field — no re-implementation).
+ * Original D-29 criteria (pace-stopgate slice):
+ *  AC1  stop-gate.ts drives behaviour from the pacing field (no re-implementation).
  *  AC2  when isExhausted is true and incomplete slices remain, the stop is ALLOWED.
  *  AC3  the released stop emits a DIRECTIVE naming remaining slice ids, MAP.md path,
  *       and the handoff skill.
- *  AC4  no other stop-gate release condition changes — ordinary block still fires
- *       when pacing is not exhausted.
- *  AC5  existing D-13 (decisionResearchAdvisory) and D-26 (specAdvisory) advisories
- *       still append on the pacing allow path.
- *  AC6  a ledger with no pacing field is byte-identical to pre-D-29 behaviour.
- *  AC7  new assertions live in this file only.
- *  AC8  this slice owns src/gw/hook/stop-gate.ts and test/hooks/stop-gate-pacing.test.ts.
+ *  AC4  ordinary block still fires when pacing is not exhausted.
+ *  AC5  D-13 / D-26 advisories append on the pacing allow path.
+ *  AC6  absent pacing field → byte-identical block behaviour.
  *
- * AC7 and AC8 are structural — satisfied by the existence of this file and the
- * fact that stop-gate.test.ts is NOT modified.
+ * AC-10 (motive phase-checkpoint-gate, T3): the wave-exhaustion release path is
+ * REMOVED. AC2 and AC3 are now inverted — exhaustion no longer allows; the stop
+ * blocks on the normal path.  AC5 is updated accordingly.
  */
 
 // @verifies PACING-R-005
@@ -28,7 +24,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
+const BUN_MAIN = path.join(REPO_ROOT, "src/gw/cli/main.ts");
 
 let projectDir: string;
 
@@ -50,7 +47,11 @@ function runHook(
 		JSON.stringify(ledger, null, 2),
 	);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
+	const out = execFileSync("bun", ["run", BUN_MAIN, "hook", "stop-gate"], {
+		input,
+		encoding: "utf8",
+		env: { ...process.env, GW_REPO_ROOT: REPO_ROOT },
+	});
 	return JSON.parse(out);
 }
 
@@ -68,10 +69,9 @@ function exhaustedLedger(overrides: Record<string, unknown> = {}): unknown {
 		pacing: { policy: "wave", budget: 1, exempt_kinds: [] },
 		gate: { advisor: "pending", verifier: "n/a" },
 		slices: [
-			// wave 0 — fully resolved
+			{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 			{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
 			{ id: "S0b", wave: 0, status: "complete", kind: "impl" },
-			// wave 1 — not yet entered (pending); budget = 1 so this is blocked
 			{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
 			{ id: "S1b", wave: 1, status: "pending", kind: "impl" },
 		],
@@ -89,11 +89,9 @@ function inFlightLedger(): unknown {
 		pacing: { policy: "wave", budget: 1, exempt_kinds: [] },
 		gate: { advisor: "pending", verifier: "n/a" },
 		slices: [
-			// plan slice lets us bypass the plan pre-gate check
 			{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 			{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
 			{ id: "S0b", wave: 0, status: "complete", kind: "impl" },
-			// wave 1 actively being worked → isExhausted = false
 			{ id: "S1a", wave: 1, status: "in_progress", kind: "impl" },
 			{ id: "S1b", wave: 1, status: "pending", kind: "impl" },
 		],
@@ -109,7 +107,6 @@ function noPacingLedger(): unknown {
 		brief: "no pacing",
 		gate: { advisor: "pending", verifier: "n/a" },
 		slices: [
-			// plan slice lets us bypass the plan pre-gate check
 			{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 			{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
 			{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
@@ -121,16 +118,16 @@ function noPacingLedger(): unknown {
 // AC1+AC2: isExhausted → stop is ALLOWED
 // ---------------------------------------------------------------------------
 
-describe("AC1+AC2: pacing exhaustion releases the stop", () => {
-	it("allows the stop when pacing is exhausted and incomplete slices remain", () => {
+describe("AC1+AC2: exhaustion no longer releases the stop — blocks (AC-10)", () => {
+	it("blocks when pacing is exhausted and incomplete slices remain", () => {
 		const result = runHook(exhaustedLedger());
-		expect(result.continue).toBe(true);
-		expect(result.decision).toBeUndefined();
+		expect(result.decision).toBe("block");
+		expect(result.continue).toBeUndefined();
 	});
 
-	it("decision field is absent (not a block) on pacing exhaustion release", () => {
+	it("continue field is absent (not an allow) on pacing exhaustion", () => {
 		const result = runHook(exhaustedLedger());
-		expect(result.decision).toBeUndefined();
+		expect(result.continue).toBeUndefined();
 	});
 });
 
@@ -138,7 +135,7 @@ describe("AC1+AC2: pacing exhaustion releases the stop", () => {
 // AC3: DIRECTIVE content — slice ids, MAP.md path, handoff skill
 // ---------------------------------------------------------------------------
 
-describe("AC3: directive names remaining slice ids, MAP.md, and handoff skill", () => {
+describe("AC3: block reason (buildReason) lists incomplete slice ids (exhaustion-directive gone)", () => {
 	it("reason contains the pending slice ids", () => {
 		const result = runHook(exhaustedLedger());
 		expect(result.reason).toContain("S1a");
@@ -151,28 +148,14 @@ describe("AC3: directive names remaining slice ids, MAP.md, and handoff skill", 
 		expect(result.reason).not.toContain("S0b");
 	});
 
-	it("reason contains MAP.md when motive_ref is set", () => {
-		const ledger = exhaustedLedger({ motive_ref: "my-motive" });
-		const result = runHook(ledger);
-		expect(result.reason).toContain("MAP.md");
-		expect(result.reason).toContain("my-motive");
-	});
-
-	it("reason contains MAP.md when motive (legacy key) is set", () => {
-		const ledger = exhaustedLedger({ motive: "legacy-motive" });
-		const result = runHook(ledger);
-		expect(result.reason).toContain("MAP.md");
-		expect(result.reason).toContain("legacy-motive");
-	});
-
-	it("reason contains the pause skill reference", () => {
+	it("block reason does NOT contain /groundwork:pause (exhaustion directive removed)", () => {
 		const result = runHook(exhaustedLedger());
-		expect(result.reason).toContain("/groundwork:pause");
+		expect(result.reason).not.toContain("/groundwork:pause");
 	});
 
-	it("reason contains the word DIRECTIVE to distinguish it from advisories", () => {
+	it("block reason does NOT contain DIRECTIVE (exhaustion directive removed)", () => {
 		const result = runHook(exhaustedLedger());
-		expect(result.reason?.toUpperCase()).toContain("DIRECTIVE");
+		expect(result.reason?.toUpperCase()).not.toContain("DIRECTIVE");
 	});
 });
 
@@ -206,14 +189,10 @@ describe("AC4: ordinary block when pacing is not exhausted or absent", () => {
 // AC5: D-13 and D-26 advisories still append on the pacing allow path
 // ---------------------------------------------------------------------------
 
-describe("AC5: D-13 decisionResearchAdvisory appends on pacing allow path", () => {
-	it("advisor advisory appended when GROUNDWORK_TBD_GATE is 0 (tbd advisory silent)", () => {
-		// We can't easily test D-13 (needs journal events) or D-26 (needs git status)
-		// without setting up git repos. Verify that the result.reason is a string
-		// (may be empty for advisories when conditions aren't met), and the stop is allowed.
+describe("AC5: exhaustion allow path gone — exhausted ledger blocks (AC-10)", () => {
+	it("blocks when exhausted (allow path removed)", () => {
 		const result = runHook(exhaustedLedger());
-		// The stop must be allowed; advisories may be empty strings but must not throw.
-		expect(result.continue).toBe(true);
+		expect(result.decision).toBe("block");
 		expect(typeof result.reason).toBe("string");
 	});
 });
@@ -258,16 +237,15 @@ describe("edge cases", () => {
 		expect(result.continue).toBe(true);
 	});
 
-	it("allows when pacing budget = 0 with grant and budget+grant is exhausted", () => {
+	it("blocks when pacing exhausted with grant (exhaustion release removed)", () => {
 		const ledger = exhaustedLedger({
 			pacing: { policy: "wave", budget: 1, exempt_kinds: [], grant: { range: 0 } },
 		});
 		const result = runHook(ledger);
-		expect(result.continue).toBe(true);
+		expect(result.decision).toBe("block");
 	});
 
-	it("reason contains grant summary when pacing.grant is present (exhaustion path with grant.range=0)", () => {
-		// budget=1, grant.range=0 → cap=1, resolved=1 → exhausted; grant is still recorded
+	it("exhausted ledger with grant blocks — no grant summary in block reason", () => {
 		const ledger = {
 			version: 1,
 			active: true,
@@ -281,18 +259,17 @@ describe("edge cases", () => {
 			},
 			gate: { advisor: "pending", verifier: "n/a" },
 			slices: [
+				{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
 				{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
 			],
 		};
 		const result = runHook(ledger);
-		expect(result.continue).toBe(true);
-		expect(result.reason).toContain("Autopilot grant");
-		expect(result.reason).toContain("operator approved extra waves");
+		expect(result.decision).toBe("block");
+		expect(result.reason).not.toContain("Autopilot grant");
 	});
 
-	it("grant summary includes range, reason, and granted_by on pacing exhaustion path", () => {
-		// budget=1, grant.range=0 → cap=1, resolved=1 → exhausted; grant is still present
+	it("exhausted ledger with grant blocks — no grant detail in block reason", () => {
 		const exhaustedWithGrant = {
 			version: 1,
 			active: true,
@@ -306,15 +283,14 @@ describe("edge cases", () => {
 			},
 			gate: { advisor: "pending", verifier: "n/a" },
 			slices: [
+				{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
 				{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
 			],
 		};
 		const result = runHook(exhaustedWithGrant);
-		expect(result.continue).toBe(true);
-		expect(result.reason).toContain("Autopilot grant");
-		expect(result.reason).toContain("operator approved");
-		expect(result.reason).toContain("sess-op");
+		expect(result.decision).toBe("block");
+		expect(result.reason).not.toContain("Autopilot grant");
 	});
 
 	it("no grant summary when pacing.grant is absent", () => {
@@ -346,7 +322,7 @@ describe("edge cases", () => {
 		expect(result.reason).toContain("needed extra wave");
 	});
 
-	it("exempt slices do not count toward exhaustion (plan slice = exempt)", () => {
+	it("pacing ledger with exempt kinds still blocks (exhaustion release removed)", () => {
 		const ledger = {
 			version: 1,
 			active: true,
@@ -355,19 +331,12 @@ describe("edge cases", () => {
 			pacing: { policy: "wave", budget: 1, exempt_kinds: ["plan"] },
 			gate: { advisor: "pending", verifier: "n/a" },
 			slices: [
+				{ id: "P0", wave: 0, status: "complete", kind: "plan" },
 				{ id: "S0a", wave: 0, status: "complete", kind: "impl" },
-				// wave 1 — non-exempt pending → budget exhausted, isExhausted = true
 				{ id: "S1a", wave: 1, status: "pending", kind: "impl" },
-				// exempt plan slice — should not affect exhaustion
-				{ id: "P1", wave: 1, status: "pending", kind: "plan" },
 			],
 		};
 		const result = runHook(ledger);
-		// S1a is non-exempt and pending with budget consumed → exhausted → allow
-		expect(result.continue).toBe(true);
-		// The directive should mention S1a but NOT P1 (exempt)
-		// Note: incomplete includes all non-terminal slices; pacing exemption is in isExhausted
-		// The directive lists all incomplete slices (the hook uses the raw `incomplete` array)
-		expect(result.reason).toContain("S1a");
+		expect(result.decision).toBe("block");
 	});
 });

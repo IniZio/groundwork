@@ -247,3 +247,104 @@ describe("AC-9: AUTO_ADVANCES tier → allow with DIRECTIVE naming deliverable a
 		expect(result.decision).toBe("block");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// AC-10: stored tier cannot override gate — tier re-derived from phase key
+// ---------------------------------------------------------------------------
+
+// @verifies AC-10
+describe("AC-10: stored tier cannot override gate — re-derived at read time", () => {
+	it("blocks plan phase even when stored tier is AUTO_ADVANCES", () => {
+		// Simulate the bypass: plan phase with tier: AUTO_ADVANCES written by an agent
+		const result = runHook(
+			blocksLedger({
+				gate: {
+					advisor: "pending",
+					phases: {
+						plan: {
+							deliverable: "motive charter + registered slices",
+							tier: "AUTO_ADVANCES", // bypass attempt — should be ignored at read time
+						},
+					},
+				},
+			}),
+		);
+		expect(result.decision).toBe("block");
+	});
+
+	it("block reason names the plan phase (not a directive)", () => {
+		const result = runHook(
+			blocksLedger({
+				gate: {
+					advisor: "pending",
+					phases: {
+						plan: {
+							deliverable: "motive charter + registered slices",
+							tier: "AUTO_ADVANCES",
+						},
+					},
+				},
+			}),
+		);
+		expect(result.reason).toContain("plan");
+		expect(result.reason?.toUpperCase()).not.toContain("DIRECTIVE");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AC-10: wave prefix matching — only wave-<digits> auto-advances
+// ---------------------------------------------------------------------------
+
+// @verifies AC-10
+describe("AC-10: wave prefix matching — only wave-<digits> auto-advances", () => {
+	it("wave-1 phase auto-advances (genuine wave phase)", () => {
+		const result = runHook(autoAdvancesLedger()); // already uses wave-1
+		expect(result.continue).toBe(true);
+	});
+
+	it("wave-plan phase blocks (not a real wave phase)", () => {
+		// wave-plan matches startsWith('wave') but NOT /^wave-\d+$/
+		const result = runHook({
+			version: 1,
+			active: true,
+			session_id: "sess-1",
+			brief: "wave-plan test",
+			checkpoint_hold: "wave-plan",
+			gate: {
+				advisor: "pending",
+				phases: {
+					"wave-plan": {
+						deliverable: "some deliverable",
+						tier: "AUTO_ADVANCES", // stored bypass attempt
+					},
+				},
+			},
+			slices: [
+				{ id: "T1", wave: 0, status: "complete", kind: "plan" },
+				{ id: "T2", wave: 1, status: "pending", kind: "impl" },
+			],
+		});
+		expect(result.decision).toBe("block");
+	});
+
+	it("wave-plan block reason does not contain DIRECTIVE", () => {
+		const result = runHook({
+			version: 1,
+			active: true,
+			session_id: "sess-1",
+			brief: "wave-plan test",
+			checkpoint_hold: "wave-plan",
+			gate: {
+				advisor: "pending",
+				phases: {
+					"wave-plan": {
+						deliverable: "some deliverable",
+						tier: "AUTO_ADVANCES",
+					},
+				},
+			},
+			slices: [],
+		});
+		expect(result.reason?.toUpperCase()).not.toContain("DIRECTIVE");
+	});
+});

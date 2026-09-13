@@ -1051,7 +1051,7 @@ export const run: HookFn = async (
         (ledger.gate as Record<string, unknown> | undefined)?.phases ?? {}
       ) as Record<string, unknown>
       const phaseEntry = phases[holdPhaseKey] as Record<string, unknown> | undefined
-      const tier = phaseEntry?.tier
+      const tier = /^wave-\d+$/.test(holdPhaseKey) ? 'AUTO_ADVANCES' : 'BLOCKS'
       const deliverable = String(phaseEntry?.deliverable ?? '(deliverable not recorded)')
 
       if (tier === 'AUTO_ADVANCES') {

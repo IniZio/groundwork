@@ -188,6 +188,28 @@ describe.each([mjsSurface, tsSurface])('$name', (surface) => {
     expect(l.gate?.phases?.plan?.verdict).toBe('APPROVE')
   })
 
+  it('checkpoint wave-plan phase: tier derives to BLOCKS (not AUTO_ADVANCES)', async () => {
+    writeLedger(projectDir, baseLedger())
+    const r = await surface.invoke(
+      ['checkpoint', '--motive', MOTIVE, '--phase', 'wave-plan', '--verdict', 'APPROVE', '--verified-by', 'Dave', '--token', WRITE_TOKEN],
+      projectDir,
+    )
+    expect(r.code).toBe(0)
+    // wave-plan matches startsWith('wave') but NOT /^wave-\d+$/ — must derive BLOCKS
+    expect(readLedger(projectDir).gate?.phases?.['wave-plan']?.tier).toBe('BLOCKS')
+  })
+
+  it('checkpoint --tier AUTO_ADVANCES on plan phase is ignored: tier stored as BLOCKS', async () => {
+    writeLedger(projectDir, baseLedger())
+    const r = await surface.invoke(
+      ['checkpoint', '--motive', MOTIVE, '--phase', 'plan', '--verdict', 'APPROVE', '--verified-by', 'Eve', '--token', WRITE_TOKEN, '--tier', 'AUTO_ADVANCES'],
+      projectDir,
+    )
+    expect(r.code).toBe(0)
+    // --tier AUTO_ADVANCES must not override derivation for plan phase
+    expect(readLedger(projectDir).gate?.phases?.plan?.tier).toBe('BLOCKS')
+  })
+
   it('autopilot retired: exit 2, output names "checkpoint" as replacement', async () => {
     writeLedger(projectDir, baseLedger())
     const r = await surface.invoke(

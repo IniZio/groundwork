@@ -1042,11 +1042,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           )
         }
         const deliverable = (flags['deliverable'] as string | undefined) ?? phase
-        const tierFlag = flags['tier'] as string | undefined
-        const derivedTier: string =
-          tierFlag === 'AUTO_ADVANCES' ? 'AUTO_ADVANCES'
-          : tierFlag === 'BLOCKS' ? 'BLOCKS'
-          : phase.startsWith('wave') ? 'AUTO_ADVANCES' : 'BLOCKS'
+        const derivedTier: string = /^wave-\d+$/.test(phase) ? 'AUTO_ADVANCES' : 'BLOCKS'
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger checkpoint', 'NOT_FOUND', `no ledger at ${runPath}`, 1)

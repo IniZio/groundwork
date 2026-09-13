@@ -496,13 +496,12 @@ const HELP = {
   },
   checkpoint: {
     summary: 'record a human phase-deliverable verdict (SECURITY: requires write_token)',
-    usage: 'ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] [--tier BLOCKS|AUTO_ADVANCES] --token <write_token>',
+    usage: 'ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] --token <write_token>',
     flags: [
       '--phase <phase>          required — phase key: plan | design | wave-<n> | completion',
       '--verdict APPROVE|REJECT required — APPROVE clears the hold; REJECT keeps it',
       '--verified-by <name>     required — identity of the human verifier',
       '--deliverable <ref>      optional — deliverable reference (defaults to phase name)',
-      '--tier BLOCKS|AUTO_ADVANCES  optional — tier override (default: derived from phase name)',
       '--token <t>              orchestrator write-token (required)',
     ],
   },
@@ -788,9 +787,7 @@ function cmdCheckpoint(args) {
   const verifiedBy = flags['verified-by']
   if (!verifiedBy) die('checkpoint requires --verified-by <name>', 2)
   const deliverable = flags.deliverable ?? phase
-  const tier = flags.tier === 'AUTO_ADVANCES' ? 'AUTO_ADVANCES'
-    : flags.tier === 'BLOCKS' ? 'BLOCKS'
-    : phase.startsWith('wave') ? 'AUTO_ADVANCES' : 'BLOCKS'
+  const tier = /^wave-\d+$/.test(phase) ? 'AUTO_ADVANCES' : 'BLOCKS'
 
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {

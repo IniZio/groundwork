@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 3aa4ea7817ab04bb36f8e155003d4da1f81433279947c7a694c393f722c4b477
+// @bundle-source-hash: 20d9d735175a27dff1e2b125ca57276666080c96547945a05ac3d4fb8fe4fce1
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1124,6 +1124,1685 @@ var init_gate_seal = __esm(() => {
   SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 });
 
+// hooks/lib/motive-charter.mjs
+import path3 from "path";
+import fs from "fs";
+function charterPath(projectDir, motive) {
+  return path3.join(projectDir, ".groundwork", "motives", motive, "motive.md");
+}
+function parseOpenItems(body) {
+  const stripped = body.replace(/<!--[\s\S]*?-->/g, "");
+  const items = [];
+  let malformedCount = 0;
+  for (const line of stripped.split(`
+`)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) {
+      if (trimmed && items.length > 0) {
+        const current = items[items.length - 1];
+        if (current._bodyLines === undefined)
+          current._bodyLines = [];
+        current._bodyLines.push(trimmed);
+      }
+      continue;
+    }
+    const m = OPEN_ITEM_RE.exec(trimmed);
+    if (!m) {
+      malformedCount++;
+      continue;
+    }
+    const id = m[1];
+    const kind = id.slice(0, 3).toUpperCase();
+    let remainder = m[2].trim();
+    const ownerM = OWNER_RE.exec(remainder);
+    const owner = ownerM ? ownerM[1] : undefined;
+    const blockedByM = BLOCKED_BY_RE.exec(remainder);
+    const blocked_by = blockedByM ? blockedByM[1] : undefined;
+    const graduatedToM = GRADUATED_TO_RE.exec(remainder);
+    const graduated_to = graduatedToM ? graduatedToM[1] : undefined;
+    let statement = remainder.replace(OWNER_RE, "").replace(BLOCKED_BY_RE, "").replace(GRADUATED_TO_RE, "").trim().replace(/\s{2,}/g, " ");
+    const item = { id, kind, statement };
+    if (owner)
+      item.owner = owner;
+    if (blocked_by)
+      item.blocked_by = blocked_by;
+    if (graduated_to)
+      item.graduated_to = graduated_to;
+    items.push(item);
+  }
+  for (const item of items) {
+    if (item._bodyLines !== undefined) {
+      item.body = item._bodyLines.join(`
+`);
+      delete item._bodyLines;
+    }
+    if (!item.graduated_to && item.body) {
+      const bodyGraduatedToM = GRADUATED_TO_RE.exec(item.body);
+      if (bodyGraduatedToM)
+        item.graduated_to = bodyGraduatedToM[1];
+    }
+  }
+  const openItems = items.filter((item) => !item.statement.startsWith("~~"));
+  return { items: openItems, malformedCount };
+}
+function parseAcceptanceCriteria(body) {
+  if (!body)
+    return { items: [], caseMismatchLines: [] };
+  const stripped = body.replace(/<!--[\s\S]*?-->/g, "");
+  const items = [];
+  const caseMismatchLines = [];
+  for (const line of stripped.split(`
+`)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) {
+      if (trimmed && items.length > 0) {
+        items[items.length - 1].statement += " " + trimmed;
+      }
+      continue;
+    }
+    const m = AC_ITEM_RE.exec(trimmed);
+    if (!m) {
+      if (AC_ITEM_RE_CI.test(trimmed)) {
+        caseMismatchLines.push(trimmed);
+      }
+      continue;
+    }
+    items.push({ id: m[1], statement: m[2].trim() });
+  }
+  return { items, caseMismatchLines };
+}
+function splitSections(src) {
+  const sections = new Map;
+  let currentKey = null;
+  let sectionLevel = 0;
+  const bodyLines = [];
+  for (const line of src.split(`
+`)) {
+    const m = SECTION_RE.exec(line);
+    if (m) {
+      const level = m[1].length;
+      const title = m[2].trim().toLowerCase();
+      if (sectionLevel === 0) {
+        if (currentKey === null) {
+          currentKey = title;
+          bodyLines.length = 0;
+        } else {
+          sectionLevel = level;
+          sections.set(currentKey, bodyLines.join(`
+`).trim());
+          currentKey = title;
+          bodyLines.length = 0;
+        }
+      } else if (level <= sectionLevel) {
+        if (currentKey != null) {
+          sections.set(currentKey, bodyLines.join(`
+`).trim());
+        }
+        currentKey = title;
+        bodyLines.length = 0;
+      } else {
+        bodyLines.push(line);
+      }
+    } else {
+      bodyLines.push(line);
+    }
+  }
+  if (currentKey != null) {
+    sections.set(currentKey, bodyLines.join(`
+`).trim());
+  }
+  return sections;
+}
+function _parseCharterDecisions(body) {
+  if (!body)
+    return [];
+  const DECISION_RE = /^DECISION\s+(\S+?):\s*(.*)$/i;
+  const items = [];
+  for (const line of body.split(`
+`)) {
+    const trimmed = line.trim();
+    const m = DECISION_RE.exec(trimmed);
+    if (m) {
+      items.push({ id: m[1], text: m[2].trim() });
+    } else if (trimmed && items.length > 0) {
+      items[items.length - 1].text += " " + trimmed;
+    }
+  }
+  return items;
+}
+function readCharter({ projectDir, motive }) {
+  const filePath = charterPath(projectDir, motive);
+  let src;
+  try {
+    src = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const sections = splitSections(src);
+    const objective = sections.get("objective") ?? "";
+    const notes = sections.get("notes") ?? "";
+    const out_of_scope = sections.get("out of scope") ?? "";
+    const openItemsBody = sections.get("open items") ?? "";
+    const decisionsBody = sections.get("decisions") ?? "";
+    const acBody = sections.get("acceptance criteria") ?? "";
+    const { items: open_items, malformedCount } = parseOpenItems(openItemsBody);
+    if (malformedCount > 0) {
+      process.stderr.write(`[motive-charter] ${malformedCount} malformed open-item line(s) in ${filePath} \u2014 skipped
+`);
+    }
+    const decisions = _parseCharterDecisions(decisionsBody);
+    const { items: acceptance_criteria, caseMismatchLines } = parseAcceptanceCriteria(acBody);
+    for (const line of caseMismatchLines) {
+      process.stderr.write(`[motive-charter] warn: AC id must start with uppercase "AC-" \u2014 line skipped: "${line}" in ${filePath}
+`);
+    }
+    return {
+      objective,
+      open_items,
+      notes,
+      out_of_scope,
+      decisions,
+      acceptance_criteria,
+      path: filePath
+    };
+  } catch {
+    return null;
+  }
+}
+var SECTION_RE, OPEN_ITEM_RE, AC_ITEM_RE, AC_ITEM_RE_CI, OWNER_RE, BLOCKED_BY_RE, GRADUATED_TO_RE;
+var init_motive_charter = __esm(() => {
+  SECTION_RE = /^(#{1,6})\s+(.+)$/;
+  OPEN_ITEM_RE = /^-\s+((?:TBD|TBR)-\S+):\s+(.+)$/i;
+  AC_ITEM_RE = /^-\s+(AC-\S+):\s+(.+)$/;
+  AC_ITEM_RE_CI = /^-\s+(AC-\S+):\s+(.+)$/i;
+  OWNER_RE = /@(\S+)/;
+  BLOCKED_BY_RE = /\bblocked-by:(\S+)/i;
+  GRADUATED_TO_RE = /\bgraduated-to:\s*(\S+)/i;
+});
+
+// hooks/lib/journal-io.mjs
+import {
+  closeSync as closeSync2,
+  mkdirSync as mkdirSync3,
+  openSync as openSync2,
+  readdirSync,
+  readFileSync as readFileSync4,
+  writeSync as writeSync2
+} from "fs";
+import path4 from "path";
+function eventMotive(e) {
+  return e.motive;
+}
+function readAllEvents(journalDir) {
+  let files;
+  try {
+    files = readdirSync(journalDir).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+  const events = [];
+  for (const f of files) {
+    const fp = path4.join(journalDir, f);
+    let text;
+    try {
+      text = readFileSync4(fp, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split(`
+`)) {
+      const trimmed = line.trim();
+      if (!trimmed)
+        continue;
+      try {
+        events.push(JSON.parse(trimmed));
+      } catch {}
+    }
+  }
+  events.sort((a, b) => {
+    const ta = a.ts ?? "";
+    const tb = b.ts ?? "";
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
+  });
+  return events;
+}
+function filterEvents(events, { motive, type, since, last } = {}) {
+  let filtered = events;
+  if (motive != null) {
+    filtered = filtered.filter((e) => eventMotive(e) === motive);
+  }
+  if (type != null) {
+    const types = new Set(type.split(",").map((t) => t.trim()).filter(Boolean));
+    filtered = filtered.filter((e) => types.has(e.type));
+  }
+  if (since != null) {
+    const sinceDate = parseSince(since);
+    if (sinceDate) {
+      filtered = filtered.filter((e) => e.ts && new Date(e.ts) >= sinceDate);
+    }
+  }
+  const total = filtered.length;
+  const n = last != null ? Math.max(0, last) : total;
+  const shown = filtered.slice(-n);
+  const withheld = total - shown.length;
+  return { shown, withheld, total };
+}
+function parseSince(since) {
+  if (!since)
+    return null;
+  const rel = /^(\d+)d$/i.exec(since);
+  if (rel) {
+    const d2 = new Date;
+    d2.setUTCDate(d2.getUTCDate() - parseInt(rel[1], 10));
+    d2.setUTCHours(0, 0, 0, 0);
+    return d2;
+  }
+  const d = new Date(since);
+  return isNaN(d.getTime()) ? null : d;
+}
+var NEVER_COMPRESS;
+var init_journal_io = __esm(() => {
+  NEVER_COMPRESS = new Set(["DECISION", "SPEC_CHANGE", "MOTIVE_CREATED", "BASELINE", "AC_COVERAGE", "AC_RETRACTION"]);
+});
+
+// hooks/lib/journal-order.mjs
+import { readdirSync as readdirSync2, readFileSync as readFileSync5 } from "fs";
+import path5 from "path";
+function eventMotive2(e) {
+  return e.motive;
+}
+function compareEvents(a, b) {
+  const ta = a._order._ts ?? "";
+  const tb = b._order._ts ?? "";
+  if (ta < tb)
+    return -1;
+  if (ta > tb)
+    return 1;
+  const sa = a._order.shard;
+  const sb = b._order.shard;
+  if (sa < sb)
+    return -1;
+  if (sa > sb)
+    return 1;
+  return a._order.line - b._order.line;
+}
+function readOrderedEvents(journalDir, { motive } = {}) {
+  let shardFiles;
+  try {
+    shardFiles = readdirSync2(journalDir).filter((f) => f.endsWith(".jsonl")).sort();
+  } catch {
+    return { events: [], malformed_lines: 0 };
+  }
+  const tagged = [];
+  let malformed_lines = 0;
+  for (const shard of shardFiles) {
+    const fp = path5.join(journalDir, shard);
+    let text;
+    try {
+      text = readFileSync5(fp, "utf8");
+    } catch {
+      continue;
+    }
+    const rawLines = text.split(`
+`);
+    for (let lineIdx = 0;lineIdx < rawLines.length; lineIdx++) {
+      const raw = rawLines[lineIdx];
+      const trimmed = raw.trim();
+      if (!trimmed)
+        continue;
+      let evt;
+      try {
+        evt = JSON.parse(trimmed);
+      } catch {
+        malformed_lines++;
+        continue;
+      }
+      evt._order = { shard, line: lineIdx, _ts: evt.ts ?? "" };
+      tagged.push(evt);
+    }
+  }
+  tagged.sort(compareEvents);
+  const filtered = motive != null ? tagged.filter((e) => eventMotive2(e) === motive) : tagged;
+  for (let i = 0;i < filtered.length; i++) {
+    filtered[i].ord = i + 1;
+  }
+  for (const e of filtered) {
+    const { shard, line } = e._order;
+    e._order = { shard, line };
+  }
+  return { events: filtered, malformed_lines };
+}
+var init_journal_order = () => {};
+
+// hooks/lib/motive-graph-project.mjs
+var NON_RECONSTRUCTIBLE_FIELDS;
+var init_motive_graph_project = __esm(() => {
+  NON_RECONSTRUCTIBLE_FIELDS = Object.freeze({
+    "decision_log[].slices": "Requires ledger ground truth; empty on both sides without groundTruth",
+    "baselines[].line": "Shard line offset not stored in fold"
+  });
+});
+// hooks/lib/motive-graph.mjs
+var EDGE_KINDS;
+var init_motive_graph = __esm(() => {
+  init_journal_order();
+  init_motive_graph_fold();
+  init_motive_graph_project();
+  init_motive_charter();
+  EDGE_KINDS = {
+    anchors: { drives_layering: true, render: "primary", direction: "down" },
+    resolved_by: { drives_layering: false, render: "muted", direction: "lateral" },
+    graduated_to: { drives_layering: false, render: "muted", direction: "lateral" },
+    blocked_by: { drives_layering: true, render: "primary", direction: "up" },
+    covers_ac: { drives_layering: true, render: "primary", direction: "down" },
+    slice_decision: { drives_layering: true, render: "hidden", direction: "up" },
+    spec_xref: { drives_layering: false, render: "muted", direction: "lateral" },
+    supersedes: { drives_layering: false, render: "muted", direction: "lateral" },
+    retires: { drives_layering: false, render: "muted", direction: "lateral" },
+    revises: { drives_layering: false, render: "muted", direction: "lateral" }
+  };
+});
+
+// hooks/lib/motive-graph-fold.mjs
+function assembleGraphFold(orderedEvents, { at, charter: _charter, groundTruth: _groundTruth } = {}) {
+  const nodesMap = new Map;
+  const edgesArr = [];
+  const attrs = {
+    gates: [],
+    milestones: [],
+    sessions: [],
+    verifications: [],
+    pauses: [],
+    session_starts: [],
+    spec_changes: [],
+    lint_drifts: [],
+    prototype_results: [],
+    failures: [],
+    waivers: [],
+    handoffs: [],
+    spec_drifts: [],
+    ac_retractions: []
+  };
+  const motive = orderedEvents.length > 0 ? orderedEvents[0].motive ?? "" : "";
+  function nodeAssert(kind, id, nodeAttrs) {
+    if (!NODE_KINDS.has(kind)) {
+      throw new TypeError(`assembleGraphFold: unknown node kind "${kind}"`);
+    }
+    const existing = nodesMap.get(id);
+    if (existing) {
+      Object.assign(existing.attrs, nodeAttrs);
+    } else {
+      nodesMap.set(id, { id, type: kind, attrs: { ...nodeAttrs } });
+    }
+  }
+  function nodeRetire(id, by) {
+    const n = nodesMap.get(id);
+    if (n) {
+      n.retired = true;
+      n.attrs._retired_by = by;
+    }
+  }
+  function edgeAssert(kind, from, to) {
+    if (!EDGE_KINDS[kind]) {
+      throw new TypeError(`assembleGraphFold: unknown edge kind "${kind}"`);
+    }
+    const dup = edgesArr.some((e) => e.kind === kind && e.from === from && e.to === to && !e.retired);
+    if (!dup)
+      edgesArr.push({ kind, from, to });
+  }
+  function edgeRetire(kind, from, to) {
+    const e = edgesArr.find((e2) => e2.kind === kind && e2.from === from && e2.to === to && !e2.retired);
+    if (e)
+      e.retired = true;
+  }
+  function attrSet(nodeId, key, value) {
+    const n = nodesMap.get(nodeId);
+    if (n)
+      n.attrs[key] = value;
+  }
+  function handleMotiveCreated(data, _event) {
+    const { objective } = data;
+    nodeAssert("objective", "objective:root", { objective });
+  }
+  function handleDecision(data, event) {
+    const {
+      id,
+      title,
+      status,
+      summary,
+      rationale,
+      source,
+      alternatives,
+      blast,
+      gaps,
+      relates_to,
+      resolves,
+      retires,
+      revises,
+      refs,
+      research,
+      supersedes,
+      items_registered,
+      decision,
+      motive_provenance: _mp
+    } = data;
+    const nodeId = id ? `decision:${id}` : `decision:_legacy_ord${event.ord ?? event.ts}`;
+    const candidates = {
+      id,
+      title,
+      status,
+      summary,
+      rationale,
+      source,
+      alternatives,
+      blast,
+      gaps,
+      relates_to,
+      resolves,
+      retires,
+      revises,
+      refs,
+      research,
+      supersedes,
+      items_registered,
+      decision
+    };
+    const nodeAttrs = {};
+    for (const [k, v] of Object.entries(candidates)) {
+      if (v != null)
+        nodeAttrs[k] = v;
+    }
+    if (!nodesMap.has(nodeId)) {
+      if (event.ord != null)
+        nodeAttrs._ord = event.ord;
+      if (event.ts != null)
+        nodeAttrs._ts = event.ts;
+    }
+    nodeAssert("decision", nodeId, nodeAttrs);
+    if (nodesMap.has("objective:root")) {
+      edgeAssert("anchors", "objective:root", nodeId);
+    }
+    function emitLifecycleEdge(kind, targetRaw) {
+      if (!targetRaw || typeof targetRaw !== "string" || /\s/.test(targetRaw))
+        return;
+      edgeAssert(kind, nodeId, `decision:${targetRaw}`);
+    }
+    if (supersedes)
+      emitLifecycleEdge("supersedes", supersedes);
+    if (retires)
+      emitLifecycleEdge("retires", retires);
+    if (revises)
+      emitLifecycleEdge("revises", revises);
+  }
+  function handleBaseline(data, event) {
+    const { name, shard } = data;
+    const nodeId = name != null ? `baseline:${name}` : `baseline:@${event.ord ?? event.ts}`;
+    const baseAttrs = { name, shard };
+    if (!nodesMap.has(nodeId)) {
+      if (event.ord != null)
+        baseAttrs._ord = event.ord;
+      if (event.ts != null)
+        baseAttrs._ts = event.ts;
+    }
+    nodeAssert("baseline", nodeId, baseAttrs);
+  }
+  function handleGate(data, event) {
+    attrs.gates.push({ ts: event.ts, ...data });
+  }
+  function handleMilestone(data, event) {
+    attrs.milestones.push({ ts: event.ts, ...data });
+  }
+  function handleAcCoverage(data, _event) {
+    const { ac, slice, covering, motive_provenance: _mp } = data;
+    if (ac && slice) {
+      const acId = `ac:${ac}`;
+      const sliceId = `slice:${slice}`;
+      if (!nodesMap.has(acId))
+        nodeAssert("acceptance-criterion", acId, { ac });
+      if (!nodesMap.has(sliceId))
+        nodeAssert("slice", sliceId, { slice });
+      edgeAssert("covers_ac", sliceId, acId);
+    } else if (ac && Array.isArray(covering)) {
+      const acId = `ac:${ac}`;
+      if (!nodesMap.has(acId))
+        nodeAssert("acceptance-criterion", acId, { ac, covering });
+    }
+  }
+  function handleAcRetraction(data, event) {
+    const { ac, slice, reason, motive_provenance: _mp } = data;
+    if (ac && slice) {
+      edgeRetire("covers_ac", `slice:${slice}`, `ac:${ac}`);
+    }
+    attrs.ac_retractions.push({ ts: event.ts, ac, slice, reason });
+  }
+  function handleTaskComplete(data, event) {
+    const { slice, slice_id, motive_provenance: _mp, ...rest } = data;
+    const sliceKey = slice_id ?? slice;
+    if (sliceKey) {
+      nodeAssert("slice", `slice:${sliceKey}`, {
+        ...rest,
+        slice,
+        slice_id,
+        _completed_at: event.ts
+      });
+    }
+  }
+  function handleSessionEnd(data, event) {
+    attrs.sessions.push({ ts: event.ts, session: event.session, ...data });
+  }
+  function handleVerification(data, event) {
+    attrs.verifications.push({ ts: event.ts, ...data });
+  }
+  function handlePause(data, event) {
+    attrs.pauses.push({ ts: event.ts, ...data });
+  }
+  function handleSessionStart(data, event) {
+    attrs.session_starts.push({ ts: event.ts, ...data });
+  }
+  function handleSpecChange(data, event) {
+    attrs.spec_changes.push({ ts: event.ts, ...data });
+  }
+  function handleLintDrift(data, event) {
+    attrs.lint_drifts.push({ ts: event.ts, ...data });
+  }
+  function handlePrototypeResult(data, event) {
+    attrs.prototype_results.push({ ts: event.ts, ...data });
+  }
+  function handleFailure(data, event) {
+    attrs.failures.push({ ts: event.ts, ...data });
+  }
+  function handleWaiver(data, event) {
+    attrs.waivers.push({ ts: event.ts, ...data });
+  }
+  function handleHandoff(data, event) {
+    attrs.handoffs.push({ ts: event.ts, ...data });
+  }
+  function handleSpecDrift(data, event) {
+    attrs.spec_drifts.push({ ts: event.ts, ...data });
+  }
+  function handleGraphMutate(data, _event) {
+    switch (data.op) {
+      case "node.assert":
+        nodeAssert(data.kind, data.id, data.attrs ?? {});
+        break;
+      case "node.retire":
+        nodeRetire(data.id, data.by);
+        break;
+      case "edge.assert":
+        edgeAssert(data.kind, data.from, data.to);
+        break;
+      case "edge.retire":
+        edgeRetire(data.kind, data.from, data.to);
+        break;
+      case "attr.set":
+        attrSet(data.nodeId, data.key, data.value);
+        break;
+    }
+  }
+  const HANDLERS = {
+    MOTIVE_CREATED: handleMotiveCreated,
+    DECISION: handleDecision,
+    BASELINE: handleBaseline,
+    GATE: handleGate,
+    MILESTONE: handleMilestone,
+    AC_COVERAGE: handleAcCoverage,
+    AC_RETRACTION: handleAcRetraction,
+    TASK_COMPLETE: handleTaskComplete,
+    SESSION_END: handleSessionEnd,
+    VERIFICATION: handleVerification,
+    SPEC_CHANGE: handleSpecChange,
+    LINT_DRIFT: handleLintDrift,
+    PROTOTYPE_RESULT: handlePrototypeResult,
+    FAILURE: handleFailure,
+    WAIVER: handleWaiver,
+    HANDOFF: handleHandoff,
+    PAUSE: handlePause,
+    SESSION_START: handleSessionStart,
+    SPEC_DRIFT: handleSpecDrift,
+    GRAPH_MUTATE: handleGraphMutate
+  };
+  for (const event of orderedEvents) {
+    if (at != null && event.ts > at)
+      continue;
+    const handler = HANDLERS[event.type];
+    if (handler) {
+      handler(event.data ?? {}, event);
+    }
+  }
+  const nodes = Array.from(nodesMap.values()).filter((n) => !n.retired);
+  const edges = edgesArr.filter((e) => !e.retired);
+  return {
+    schema_version: SCHEMA_VERSION,
+    motive,
+    nodes,
+    edges,
+    attrs
+  };
+}
+var SCHEMA_VERSION = 1, AllFieldsSet, NODE_KINDS, CONSUMED_FIELDS;
+var init_motive_graph_fold = __esm(() => {
+  init_motive_graph();
+  AllFieldsSet = class AllFieldsSet extends Set {
+    has(_field) {
+      return true;
+    }
+  };
+  NODE_KINDS = Object.freeze(new Set([
+    "objective",
+    "decision",
+    "open-item",
+    "ticket",
+    "acceptance-criterion",
+    "slice",
+    "spec-requirement",
+    "baseline"
+  ]));
+  CONSUMED_FIELDS = Object.freeze({
+    MOTIVE_CREATED: Object.freeze(new Set(["objective"])),
+    DECISION: Object.freeze(new Set([
+      "id",
+      "title",
+      "status",
+      "summary",
+      "rationale",
+      "source",
+      "alternatives",
+      "blast",
+      "gaps",
+      "relates_to",
+      "resolves",
+      "retires",
+      "revises",
+      "refs",
+      "research",
+      "supersedes",
+      "items_registered",
+      "decision",
+      "motive_provenance",
+      "ord",
+      "ts"
+    ])),
+    BASELINE: Object.freeze(new Set(["name", "shard", "ord", "ts"])),
+    AC_COVERAGE: Object.freeze(new Set(["ac", "slice", "covering", "motive_provenance"])),
+    AC_RETRACTION: Object.freeze(new Set(["ac", "slice", "reason", "motive_provenance"])),
+    GATE: Object.freeze(new AllFieldsSet),
+    MILESTONE: Object.freeze(new AllFieldsSet),
+    TASK_COMPLETE: Object.freeze(new AllFieldsSet),
+    SESSION_END: Object.freeze(new AllFieldsSet),
+    VERIFICATION: Object.freeze(new AllFieldsSet),
+    PAUSE: Object.freeze(new AllFieldsSet),
+    SESSION_START: Object.freeze(new AllFieldsSet),
+    SPEC_CHANGE: Object.freeze(new AllFieldsSet),
+    LINT_DRIFT: Object.freeze(new AllFieldsSet),
+    PROTOTYPE_RESULT: Object.freeze(new AllFieldsSet),
+    FAILURE: Object.freeze(new AllFieldsSet),
+    WAIVER: Object.freeze(new AllFieldsSet),
+    HANDOFF: Object.freeze(new AllFieldsSet),
+    SPEC_DRIFT: Object.freeze(new AllFieldsSet),
+    GRAPH_MUTATE: Object.freeze(new AllFieldsSet)
+  });
+});
+
+// hooks/lib/motive-dag.mjs
+var init_motive_dag = __esm(() => {
+  init_motive_graph_fold();
+  init_motive_graph_project();
+});
+
+// hooks/lib/motive-tickets.mjs
+import {
+  writeFileSync as writeFileSync2,
+  readFileSync as readFileSync6,
+  readdirSync as readdirSync3,
+  mkdirSync as mkdirSync4,
+  rmSync,
+  existsSync as existsSync4
+} from "fs";
+import { join as join3 } from "path";
+function regenerateMotiveTickets(motiveDir, { slices = [], openItems = [], events = [] }) {
+  try {
+    _regenerate(motiveDir, { slices, openItems, events });
+  } catch (err) {
+    process.stderr.write(`[motive-tickets] warn: failed to regenerate tickets: ${err?.message ?? err}
+`);
+  }
+}
+function escapeRegExp(str2) {
+  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function sanitizeId(id) {
+  if (!id || typeof id !== "string")
+    return null;
+  if (id.includes("/") || id.includes(".."))
+    return null;
+  return id.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-{2,}/g, "-").replace(/^-|-$/g, "") || null;
+}
+function _regenerate(motiveDir, { openItems, events }) {
+  const openItemsDir = join3(motiveDir, "open-items");
+  mkdirSync4(openItemsDir, { recursive: true });
+  const expected = new Map;
+  const seenStems = new Map;
+  for (const item of openItems) {
+    if (item.resolved_by)
+      continue;
+    const safeName = sanitizeId(item.id);
+    if (!safeName)
+      continue;
+    if (seenStems.has(safeName)) {
+      process.stderr.write(`[motive-tickets] warn: id collision: "${item.id}" and "${seenStems.get(safeName)}" both sanitize to "${safeName}" \u2014 overwriting
+`);
+    } else {
+      seenStems.set(safeName, item.id);
+    }
+    const wordBoundary = new RegExp(`\\b${escapeRegExp(item.id)}\\b`);
+    const relatedDecisions = events.filter((ev) => ev.type === "DECISION" && (ev.data?.tbd === item.id || ev.data?.resolves === item.id || wordBoundary.test(ev.msg ?? "")));
+    expected.set(safeName, _renderOpenItemTicket(item, relatedDecisions));
+  }
+  for (const [safeName, content] of expected) {
+    writeFileSync2(join3(openItemsDir, `${safeName}.md`), content, "utf8");
+  }
+  if (existsSync4(openItemsDir)) {
+    for (const f of readdirSync3(openItemsDir)) {
+      if (!f.endsWith(".md"))
+        continue;
+      const stem = f.slice(0, -3);
+      if (!expected.has(stem)) {
+        try {
+          rmSync(join3(openItemsDir, f));
+        } catch {}
+      }
+    }
+  }
+}
+function _renderOpenItemTicket(item, relatedDecisions) {
+  const parts = [];
+  const statement = (item.statement ?? "").replace(/\s*\n\s*/g, " ").trim() || "(no statement)";
+  parts.push(`# ${item.id}: ${statement}`);
+  parts.push("");
+  const body = (item.body ?? "").trim();
+  if (body) {
+    parts.push(body);
+    parts.push("");
+  }
+  parts.push("## Status");
+  parts.push("");
+  const status = item.resolved_by ? "resolved" : "open";
+  parts.push(`**${status}**`);
+  parts.push("");
+  parts.push("## Details");
+  parts.push("");
+  if (item.kind)
+    parts.push(`**Kind:** ${item.kind}`);
+  if (item.owner)
+    parts.push(`**Owner:** @${item.owner}`);
+  if (item.blocked_by)
+    parts.push(`**Blocked by:** ${item.blocked_by}`);
+  if (item.resolved_by)
+    parts.push(`**Resolved by:** ${item.resolved_by}`);
+  if (item.graduated_to) {
+    parts.push(`**Graduated to:** [tickets/${item.graduated_to}.md](../tickets/${item.graduated_to}.md)`);
+  }
+  parts.push("");
+  if (relatedDecisions.length) {
+    parts.push("## Related decisions");
+    parts.push("");
+    for (const d of relatedDecisions) {
+      const ts = (d.ts ?? "").slice(0, 10);
+      const msg = d.msg ?? JSON.stringify(d.data ?? "");
+      parts.push(`- ${ts ? `[${ts}] ` : ""}${msg}`);
+    }
+    parts.push("");
+  }
+  parts.push("---");
+  parts.push("_Auto-generated \u2014 do not edit by hand._");
+  return parts.join(`
+`) + `
+`;
+}
+var init_motive_tickets = () => {};
+
+// hooks/lib/dag-utils.mjs
+function blockers(s) {
+  return Array.isArray(s.blocked_by) ? s.blocked_by : [];
+}
+function frontier(slices) {
+  if (!Array.isArray(slices))
+    return [];
+  const completeIds = new Set(slices.filter((s) => s?.status === "complete").map((s) => s.id));
+  return slices.filter((s) => {
+    if (!s)
+      return false;
+    const status = s.status ?? "pending";
+    if (status !== "pending")
+      return false;
+    if (s.kind === "fog")
+      return false;
+    return blockers(s).every((dep) => completeIds.has(dep));
+  });
+}
+
+// hooks/lib/motive-map.mjs
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync3, readdirSync as readdirSync4, existsSync as existsSync5 } from "fs";
+import { join as join4 } from "path";
+function regenerateMotiveMap(projectDir, motive) {
+  if (!projectDir || !motive)
+    return;
+  try {
+    _generate(projectDir, motive);
+  } catch (err) {
+    process.stderr.write(`[motive-map] warn: failed to regenerate MAP.md for "${motive}": ${err?.message ?? err}
+`);
+  }
+}
+function _generate(projectDir, motive) {
+  const motiveDir = join4(projectDir, ".groundwork", "motives", motive);
+  if (!existsSync5(motiveDir))
+    return;
+  const charter = readCharter({ projectDir, motive });
+  const ledgerDoc = _readMotiveLedgerDoc(projectDir, motive);
+  const slices = Array.isArray(ledgerDoc?.slices) ? ledgerDoc.slices.filter(Boolean) : [];
+  const acSlices = _readAllMotiveSlicesForAC(projectDir, motive);
+  const USE_LEGACY_DECISIONS = process.env.GROUNDWORK_MAP_LEGACY_DECISIONS === "1";
+  const journalDecisions = USE_LEGACY_DECISIONS ? _readDecisions(projectDir, motive) : _readDecisionsFromFold(projectDir, motive);
+  const decisions = journalDecisions.length > 0 ? journalDecisions : (charter?.decisions ?? []).map((d) => ({ msg: `${d.id}: ${d.text}` }));
+  const outOfScope = _readOutOfScope(projectDir);
+  const rejectionDecisions = _readRejectionDecisions(projectDir, motive);
+  const allEvents = _readAllMotiveEvents(projectDir, motive);
+  if (charter?.open_items?.length) {
+    const resolvedByDecisions = new Map;
+    for (const ev of allEvents) {
+      if (ev.type === "DECISION" && ev.data?.status === "accepted" && ev.data?.resolves != null) {
+        if (!resolvedByDecisions.has(ev.data.resolves)) {
+          resolvedByDecisions.set(ev.data.resolves, ev.data.id ?? ev.data.resolves);
+        }
+      }
+    }
+    for (const item of charter.open_items) {
+      if (item.resolved_by == null) {
+        const resolvedBy = resolvedByDecisions.get(item.id);
+        if (resolvedBy != null)
+          item.resolved_by = resolvedBy;
+      }
+    }
+  }
+  regenerateMotiveTickets(motiveDir, {
+    slices,
+    openItems: charter?.open_items ?? [],
+    events: allEvents
+  });
+  const ticketFiles = _readTicketFiles(motiveDir);
+  const lastPauseEvent = allEvents.find((ev) => ev.type === "PAUSE") ?? null;
+  const lastPause = lastPauseEvent != null ? {
+    pointer: lastPauseEvent.data?.pointer ?? null,
+    summary: lastPauseEvent.data?.summary ?? null,
+    next_actions: Array.isArray(lastPauseEvent.data?.next_actions) ? lastPauseEvent.data.next_actions : []
+  } : null;
+  const journalAcCoverage = _buildJournalAcCoverage(allEvents);
+  const acRetractions = _buildAcRetractions(allEvents);
+  const md = _renderMap({ motive, charter, slices, ledgerDoc, decisions, outOfScope, rejectionDecisions, ticketFiles, acSlices, journalAcCoverage, acRetractions, lastPause });
+  writeFileSync3(join4(motiveDir, "MAP.md"), md, "utf8");
+}
+function _readMotiveLedgerDoc(projectDir, motive) {
+  const candidates = [];
+  const runsDir = join4(projectDir, ".groundwork", "runs");
+  if (existsSync5(runsDir)) {
+    for (const f of readdirSync4(runsDir)) {
+      if (!f.endsWith(".json"))
+        continue;
+      try {
+        const data = JSON.parse(readFileSync7(join4(runsDir, f), "utf8"));
+        if (data.motive === motive)
+          candidates.push(data);
+      } catch {}
+    }
+  }
+  const legacyPath = join4(projectDir, ".groundwork", "run.json");
+  if (existsSync5(legacyPath)) {
+    try {
+      const data = JSON.parse(readFileSync7(legacyPath, "utf8"));
+      if (data.motive === motive)
+        candidates.push(data);
+    } catch {}
+  }
+  if (!candidates.length)
+    return null;
+  return candidates.find((c) => c.active) ?? candidates[candidates.length - 1];
+}
+function _readAllMotiveSlicesForAC(projectDir, motive) {
+  const sliceMap = new Map;
+  const runsDir = join4(projectDir, ".groundwork", "runs");
+  if (existsSync5(runsDir)) {
+    for (const f of readdirSync4(runsDir)) {
+      if (!f.endsWith(".json"))
+        continue;
+      try {
+        const data = JSON.parse(readFileSync7(join4(runsDir, f), "utf8"));
+        if (data.motive !== motive)
+          continue;
+        const sessionId = typeof data.session_id === "string" ? data.session_id : "";
+        for (const s of Array.isArray(data.slices) ? data.slices : []) {
+          if (!s || s.id == null)
+            continue;
+          const key = `${sessionId}::${s.id}`;
+          if (!sliceMap.has(key)) {
+            sliceMap.set(key, { ...s, _session_id: sessionId });
+          }
+        }
+      } catch {}
+    }
+  }
+  const legacyPath = join4(projectDir, ".groundwork", "run.json");
+  if (existsSync5(legacyPath)) {
+    try {
+      const data = JSON.parse(readFileSync7(legacyPath, "utf8"));
+      if (data.motive === motive) {
+        const sessionId = typeof data.session_id === "string" ? data.session_id : "";
+        for (const s of Array.isArray(data.slices) ? data.slices : []) {
+          if (!s || s.id == null)
+            continue;
+          const key = `${sessionId}::${s.id}`;
+          if (!sliceMap.has(key)) {
+            sliceMap.set(key, { ...s, _session_id: sessionId });
+          }
+        }
+      }
+    } catch {}
+  }
+  return [...sliceMap.values()].filter(Boolean);
+}
+function _readTicketFiles(motiveDir) {
+  const ticketsDir = join4(motiveDir, "tickets");
+  if (!existsSync5(ticketsDir))
+    return [];
+  try {
+    return readdirSync4(ticketsDir).filter((f) => f.endsWith(".md")).sort().map((f) => {
+      const stem = f.slice(0, -3);
+      let type = "other";
+      try {
+        const content = readFileSync7(join4(ticketsDir, f), "utf8");
+        const m = /^Type:\s*(.+)$/m.exec(content);
+        if (m)
+          type = m[1].trim().toLowerCase();
+      } catch {}
+      return { stem, type };
+    });
+  } catch {
+    return [];
+  }
+}
+function _readDecisionsFromFold(projectDir, motive) {
+  const journalDir = join4(projectDir, ".groundwork", "journal");
+  if (!existsSync5(journalDir))
+    return [];
+  try {
+    const { events: orderedEvents } = readOrderedEvents(journalDir, { motive });
+    const msgMap = new Map;
+    const idsFirstOrd = new Map;
+    for (const ev of orderedEvents) {
+      if (ev.type !== "DECISION")
+        continue;
+      const decId = ev.data?.id ?? null;
+      if (decId) {
+        if (!idsFirstOrd.has(decId))
+          idsFirstOrd.set(decId, ev.ord);
+        msgMap.set(idsFirstOrd.get(decId), ev.msg ?? null);
+      } else {
+        if (!msgMap.has(ev.ord))
+          msgMap.set(ev.ord, ev.msg ?? null);
+      }
+    }
+    const fold = assembleGraphFold(orderedEvents);
+    const decisionNodes = fold.nodes.filter((n) => n.type === "decision").sort((a, b) => (b.attrs._ord ?? 0) - (a.attrs._ord ?? 0));
+    const decisionLikes = decisionNodes.map((node) => _foldNodeToDecisionLike(node, msgMap));
+    return _dedupeDecisions(decisionLikes);
+  } catch {
+    return [];
+  }
+}
+function _foldNodeToDecisionLike(node, msgMap) {
+  const rawId = node.id.replace(/^decision:/, "");
+  const isLegacy = rawId.startsWith("_legacy_ord");
+  return {
+    ts: node.attrs._ts ?? null,
+    msg: msgMap.get(node.attrs._ord) ?? node.attrs.title ?? node.attrs.decision ?? null,
+    data: {
+      id: isLegacy ? null : rawId,
+      supersedes: node.attrs.supersedes ?? null,
+      retires: node.attrs.retires ?? null,
+      decision: node.attrs.decision ?? null
+    }
+  };
+}
+function _readDecisions(projectDir, motive) {
+  const journalDir = join4(projectDir, ".groundwork", "journal");
+  if (!existsSync5(journalDir))
+    return [];
+  try {
+    const all = readAllEvents(journalDir);
+    const { shown = [] } = filterEvents(all, { motive, type: "DECISION" });
+    const latest = shown.slice().reverse();
+    return _dedupeDecisions(latest);
+  } catch {
+    return [];
+  }
+}
+function _dedupeDecisions(decisions) {
+  const knownIds = new Set(decisions.map((d) => d.data?.id).filter(Boolean));
+  const supersededIds = new Set;
+  const descriptiveRetires = [];
+  for (const d of decisions) {
+    const s = d.data?.supersedes;
+    if (s != null) {
+      if (Array.isArray(s))
+        s.forEach((id) => supersededIds.add(id));
+      else
+        supersededIds.add(s);
+    }
+    const r = d.data?.retires;
+    if (r != null) {
+      const refs = Array.isArray(r) ? r : [r];
+      for (const ref of refs) {
+        supersededIds.add(ref);
+        if (!knownIds.has(ref))
+          descriptiveRetires.push(ref);
+      }
+    }
+  }
+  const normText = (d) => (d.msg ?? JSON.stringify(d.data ?? "")).toLowerCase().replace(/\s+/g, " ").trim();
+  const normSupersededTexts = new Set([...supersededIds].map((s) => s.toLowerCase().replace(/\s+/g, " ").trim()));
+  const _sigTokens = (text) => text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4);
+  const _tokenOverlapMatches = (retiresRef, decisionNorm) => {
+    const refTokens = _sigTokens(retiresRef);
+    if (refTokens.length === 0)
+      return false;
+    const matchCount = refTokens.filter((t) => decisionNorm.includes(t)).length;
+    const required = Math.max(2, Math.ceil(refTokens.length * 0.6));
+    return matchCount >= required;
+  };
+  const active = supersededIds.size === 0 ? decisions : decisions.filter((d) => {
+    const id = d.data?.id;
+    if (id != null && supersededIds.has(id))
+      return false;
+    const dNorm = normText(d);
+    if (normSupersededTexts.has(dNorm))
+      return false;
+    if (id == null && descriptiveRetires.length > 0 && descriptiveRetires.some((ref) => _tokenOverlapMatches(ref, dNorm)))
+      return false;
+    return true;
+  });
+  const norm = normText;
+  const result = [];
+  for (const d of active) {
+    const dNorm = norm(d);
+    let skip = false;
+    let replaceIdx = -1;
+    for (let i = 0;i < result.length; i++) {
+      const rNorm = norm(result[i]);
+      if (rNorm === dNorm) {
+        skip = true;
+        break;
+      }
+      if (rNorm.startsWith(dNorm)) {
+        skip = true;
+        break;
+      }
+      if (dNorm.startsWith(rNorm)) {
+        replaceIdx = i;
+        break;
+      }
+    }
+    if (!skip) {
+      if (replaceIdx >= 0)
+        result[replaceIdx] = d;
+      else
+        result.push(d);
+    }
+  }
+  const isJanitorialRetraction = (d) => d.data?.retires != null && (d.data?.decision ?? "").trimStart().toLowerCase().startsWith("retract");
+  return result.filter((d) => !isJanitorialRetraction(d));
+}
+function _readOutOfScope(projectDir) {
+  const dir = join4(projectDir, ".groundwork", "out-of-scope");
+  if (!existsSync5(dir))
+    return [];
+  try {
+    return readdirSync4(dir).filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, "").replace(/-/g, " "));
+  } catch {
+    return [];
+  }
+}
+function _readRejectionDecisions(projectDir, motive) {
+  const journalDir = join4(projectDir, ".groundwork", "journal");
+  if (!existsSync5(journalDir))
+    return [];
+  try {
+    const all = readAllEvents(journalDir);
+    const { shown = [] } = filterEvents(all, { motive, type: "DECISION" });
+    const retiredTexts = new Set;
+    for (const ev of shown) {
+      const r = ev.data?.retires;
+      if (r != null) {
+        const refs = Array.isArray(r) ? r : [r];
+        refs.forEach((ref) => retiredTexts.add(ref.toLowerCase().replace(/\s+/g, " ").trim()));
+      }
+    }
+    const rejections = [];
+    for (const ev of shown) {
+      const normMsg = (ev.msg ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+      if (retiredTexts.has(normMsg))
+        continue;
+      const data = ev.data ?? {};
+      const title = (data.title ?? "").toLowerCase();
+      const msg = (ev.msg ?? "").toLowerCase();
+      const isRejection = data.status === "rejected" || !!data.rejects || /\breject(ed|s)?\b/.test(title) || /\bnot adopted\b/.test(msg) || /\bdo not adopt\b/.test(msg) || /\brejected\b/.test(msg);
+      if (!isRejection)
+        continue;
+      rejections.push(ev);
+    }
+    const firstSentence = (ev) => {
+      const msg = (ev.msg ?? "").replace(/\s+/g, " ").trim();
+      const cut = msg.indexOf(". ");
+      return (cut >= 0 ? msg.slice(0, cut) : msg).toLowerCase();
+    };
+    const mergedInto = new Map;
+    const absorbedIds = new Map;
+    for (let i = 0;i < rejections.length; i++) {
+      if (mergedInto.has(i))
+        continue;
+      const fsI = firstSentence(rejections[i]);
+      for (let j = 0;j < rejections.length; j++) {
+        if (i === j || mergedInto.has(j))
+          continue;
+        const fsJ = firstSentence(rejections[j]);
+        if (fsJ === fsI)
+          continue;
+        if (fsI.startsWith(fsJ + " ") || fsI === fsJ) {
+          mergedInto.set(j, i);
+          const jId = rejections[j].data?.id;
+          if (jId) {
+            if (!absorbedIds.has(i))
+              absorbedIds.set(i, new Set);
+            absorbedIds.get(i).add(jId);
+          }
+        } else if (fsJ.startsWith(fsI + " ") || fsJ === fsI) {
+          mergedInto.set(i, j);
+          const iId = rejections[i].data?.id;
+          if (iId) {
+            if (!absorbedIds.has(j))
+              absorbedIds.set(j, new Set);
+            absorbedIds.get(j).add(iId);
+          }
+          break;
+        }
+      }
+    }
+    const seenLabels = new Set;
+    const results = [];
+    for (let i = 0;i < rejections.length; i++) {
+      if (mergedInto.has(i))
+        continue;
+      const ev = rejections[i];
+      const data = ev.data ?? {};
+      let label = data.id ? `[${data.id}] ${data.title ?? ev.msg}` : data.title ?? ev.msg;
+      const extra = absorbedIds.get(i);
+      if (extra?.size) {
+        label += ` (${[...extra].join(", ")})`;
+      }
+      const key = label.toLowerCase().trim();
+      if (!seenLabels.has(key)) {
+        seenLabels.add(key);
+        results.push(label);
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+function _readAllMotiveEvents(projectDir, motive) {
+  const journalDir = join4(projectDir, ".groundwork", "journal");
+  if (!existsSync5(journalDir))
+    return [];
+  try {
+    const all = readAllEvents(journalDir);
+    const { shown = [] } = filterEvents(all, { motive });
+    return shown.slice().reverse();
+  } catch {
+    return [];
+  }
+}
+function _buildJournalAcCoverage(events) {
+  const completedSlices = new Set;
+  for (const ev of events) {
+    if (ev.type === "TASK_COMPLETE" && ev.data?.slice != null) {
+      completedSlices.add(String(ev.data.slice));
+    }
+  }
+  const acMap = new Map;
+  for (const ev of events) {
+    if (ev.type !== "AC_COVERAGE")
+      continue;
+    const d = ev.data ?? {};
+    const acIds = [];
+    if (d.ac != null)
+      acIds.push(String(d.ac));
+    if (Array.isArray(d.covers)) {
+      for (const a of d.covers) {
+        if (a != null)
+          acIds.push(String(a));
+      }
+    }
+    const sliceId = d.slice != null ? String(d.slice) : null;
+    if (sliceId == null) {
+      for (const acId of acIds) {
+        if (!acMap.has(acId))
+          acMap.set(acId, new Map);
+      }
+      continue;
+    }
+    const status = completedSlices.has(sliceId) ? "complete" : "pending";
+    for (const acId of acIds) {
+      if (!acMap.has(acId))
+        acMap.set(acId, new Map);
+      acMap.get(acId).set(sliceId, { id: sliceId, status });
+    }
+  }
+  for (const ev of events) {
+    if (ev.type !== "AC_RETRACTION")
+      continue;
+    const d = ev.data ?? {};
+    const acId = d.ac != null ? String(d.ac) : null;
+    const sliceId = d.slice != null ? String(d.slice) : null;
+    if (acId == null || sliceId == null)
+      continue;
+    const slicesMap = acMap.get(acId);
+    if (slicesMap)
+      slicesMap.delete(sliceId);
+  }
+  const result = new Map;
+  for (const [acId, slicesMap] of acMap) {
+    result.set(acId, [...slicesMap.values()]);
+  }
+  return result;
+}
+function _buildAcRetractions(events) {
+  const retractions = new Map;
+  for (const ev of events) {
+    if (ev.type !== "AC_RETRACTION")
+      continue;
+    const d = ev.data ?? {};
+    const acId = d.ac != null ? String(d.ac) : null;
+    const sliceId = d.slice != null ? String(d.slice) : null;
+    if (acId == null || sliceId == null)
+      continue;
+    if (!retractions.has(acId))
+      retractions.set(acId, new Set);
+    retractions.get(acId).add(sliceId);
+  }
+  return retractions;
+}
+function _extractBareSliceId(id) {
+  const sep = id.indexOf("::");
+  return sep === -1 ? id : id.slice(sep + 2);
+}
+function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outOfScope, rejectionDecisions = [], ticketFiles = [], acSlices = null, journalAcCoverage = null, acRetractions = null, lastPause = null }) {
+  const parts = [];
+  parts.push(`# MAP: ${motive}`);
+  parts.push("");
+  parts.push("## Destination");
+  parts.push("");
+  const objective = charter?.objective?.trim();
+  if (objective) {
+    parts.push(objective);
+  } else {
+    parts.push("_No objective recorded yet._");
+  }
+  parts.push("");
+  const _decisionSlicesMap = new Map;
+  for (const s of slices) {
+    const decIds = s.decisions == null ? [] : Array.isArray(s.decisions) ? s.decisions : String(s.decisions).split(",").map((x) => x.trim()).filter(Boolean);
+    for (const did of decIds) {
+      if (!_decisionSlicesMap.has(did))
+        _decisionSlicesMap.set(did, []);
+      _decisionSlicesMap.get(did).push({ id: s.id, status: s.status ?? "pending" });
+    }
+  }
+  parts.push("## Decisions so far");
+  parts.push("");
+  if (decisions.length) {
+    for (const d of decisions) {
+      const ts = (d.ts ?? "").slice(0, 10);
+      const msg = d.msg ?? JSON.stringify(d.data ?? "");
+      let edgeSuffix = "";
+      const did = d.data?.id;
+      if (did != null) {
+        const refs = _decisionSlicesMap.get(did);
+        if (refs?.length) {
+          edgeSuffix = " \u2192 " + refs.map((r) => `${r.id} (${r.status === "complete" ? "complete" : "pending"})`).join(", ");
+        }
+      }
+      parts.push(`- ${ts ? `[${ts}] ` : ""}${msg}${edgeSuffix}`);
+    }
+  } else {
+    parts.push("_No decisions recorded yet._");
+  }
+  parts.push("");
+  const completeIds = new Set(slices.filter((s) => s.status === "complete").map((s) => s.id));
+  const inProgressList = slices.filter((s) => s.status === "in_progress" || s.claimed_by && s.status !== "complete");
+  const blockedList = slices.filter((s) => {
+    if (s.status === "complete" || s.status === "in_progress")
+      return false;
+    if (s.claimed_by)
+      return false;
+    const deps = _deps(s);
+    return deps.length > 0 && deps.some((d) => !completeIds.has(d));
+  });
+  const frontierList = frontier(slices).filter((s) => !s.claimed_by);
+  const _decSuffix = (s) => {
+    const decIds = s.decisions == null ? [] : Array.isArray(s.decisions) ? s.decisions : String(s.decisions).split(",").map((x) => x.trim()).filter(Boolean);
+    return decIds.length ? ` _(decisions: ${decIds.join(", ")})_` : "";
+  };
+  parts.push("## Frontier");
+  parts.push("");
+  parts.push("_Slices that can start now (no pending blockers):_");
+  parts.push("");
+  if (frontierList.length) {
+    for (const s of frontierList) {
+      parts.push(`- ${_sliceLink(s.id, s.ticket)} \u2014 ${s.desc ?? "(no description)"}${_decSuffix(s)}`);
+    }
+  } else {
+    parts.push("_No frontier slices \u2014 everything is in progress, blocked, or complete._");
+  }
+  parts.push("");
+  if (inProgressList.length || blockedList.length) {
+    parts.push("## In progress / Blocked");
+    parts.push("");
+    if (inProgressList.length) {
+      parts.push("**In progress:**");
+      parts.push("");
+      for (const s of inProgressList) {
+        const claim = s.claimed_by ? ` _(claimed by ${s.claimed_by})_` : "";
+        parts.push(`- ${_sliceLink(s.id, s.ticket)}${claim} \u2014 ${s.desc ?? "(no description)"}${_decSuffix(s)}`);
+      }
+      parts.push("");
+    }
+    if (blockedList.length) {
+      parts.push("**Blocked:**");
+      parts.push("");
+      for (const s of blockedList) {
+        const pending = _deps(s).filter((d) => !completeIds.has(d));
+        parts.push(`- ${_sliceLink(s.id, s.ticket)} \u2014 ${s.desc ?? "(no description)"} _(waiting on: ${pending.join(", ")})_${_decSuffix(s)}`);
+      }
+      parts.push("");
+    }
+  }
+  if (ticketFiles.length > 0) {
+    const sliceByTicketStem = new Map;
+    for (const s of slices) {
+      if (s.ticket) {
+        const safe = sanitizeId(String(s.ticket));
+        if (safe)
+          sliceByTicketStem.set(safe, s);
+      }
+    }
+    const ticketStemSet = new Set(ticketFiles.map((t) => t.stem));
+    const unlinkedSlices = slices.filter((s) => {
+      if (!s.ticket)
+        return true;
+      const safe = sanitizeId(String(s.ticket));
+      return !safe || !ticketStemSet.has(safe);
+    });
+    parts.push("## Tickets");
+    parts.push("");
+    const byType = new Map;
+    for (const { stem, type } of ticketFiles) {
+      const key = TICKET_TYPE_ORDER.includes(type) ? type : "other";
+      if (!byType.has(key))
+        byType.set(key, []);
+      byType.get(key).push(stem);
+    }
+    const renderOrder = TICKET_TYPE_ORDER.filter((t) => byType.has(t));
+    if (byType.has("other"))
+      renderOrder.push("other");
+    for (const typeKey of renderOrder) {
+      parts.push(`### ${typeKey}`);
+      parts.push("");
+      for (const stem of byType.get(typeKey)) {
+        const slice = sliceByTicketStem.get(stem);
+        const badge = slice ? _statusBadge(slice.status ?? "pending") : _statusBadge("no-slice");
+        const desc = slice?.desc ? ` \u2014 ${slice.desc}` : "";
+        parts.push(`- [${stem}](tickets/${stem}.md) ${badge}${desc}`);
+      }
+      parts.push("");
+    }
+    if (unlinkedSlices.length > 0) {
+      parts.push("**Unlinked slices** _(no ticket document):_");
+      parts.push("");
+      for (const s of unlinkedSlices) {
+        parts.push(`- ${_sliceLink(s.id, undefined)} \u2014 ${s.desc ?? "(no description)"}`);
+      }
+      parts.push("");
+    }
+  }
+  parts.push("## Open items");
+  parts.push("");
+  const openItems = (charter?.open_items ?? []).filter((item) => !item.resolved_by);
+  if (openItems.length) {
+    for (const item of openItems) {
+      const owner = item.owner ? ` @${item.owner}` : "";
+      const blocker = item.blocked_by ? ` _(blocked by ${item.blocked_by})_` : "";
+      const statement = (item.statement ?? "").trim();
+      parts.push(`- ${_openItemLink(item.id)}: ${statement}${owner}${blocker}`);
+    }
+  } else {
+    parts.push("_No open items._");
+  }
+  parts.push("");
+  parts.push("## Out of scope");
+  parts.push("");
+  const charterOos = charter?.out_of_scope?.trim();
+  const hasCharterOos = charterOos && !charterOos.startsWith("<!--") && charterOos.length > 0;
+  if (hasCharterOos) {
+    parts.push(charterOos);
+    parts.push("");
+  }
+  const seenOos = new Set;
+  const allOos = [];
+  for (const entry of [...outOfScope, ...rejectionDecisions]) {
+    const key = entry.toLowerCase().trim();
+    if (!seenOos.has(key)) {
+      seenOos.add(key);
+      allOos.push(entry);
+    }
+  }
+  if (allOos.length) {
+    for (const entry of allOos) {
+      parts.push(`- ${entry}`);
+    }
+  } else if (!hasCharterOos) {
+    parts.push("_Nothing explicitly ruled out yet._");
+  }
+  parts.push("");
+  const acList = charter?.acceptance_criteria ?? [];
+  if (acList.length > 0) {
+    const acSourceSlices = acSlices ?? slices;
+    const acSlicesMap = new Map;
+    const charterAcKeys = new Set;
+    for (const ac of acList) {
+      if (ac?.id != null) {
+        acSlicesMap.set(String(ac.id), []);
+        charterAcKeys.add(String(ac.id));
+      }
+    }
+    for (const s of acSourceSlices) {
+      const raw = s.covers_ac;
+      const acIds = Array.isArray(raw) ? raw : typeof raw === "string" && raw ? raw.split(",").map((x) => x.trim()).filter(Boolean) : [];
+      for (const acId of acIds) {
+        if (!acSlicesMap.has(acId)) {
+          acSlicesMap.set(acId, []);
+        }
+        const compositeId = s._session_id ? `${s._session_id}::${s.id}` : s.id;
+        acSlicesMap.get(acId).push({ id: compositeId, status: s.status ?? "pending" });
+      }
+    }
+    const acStatementMap = new Map;
+    for (const ac of acList) {
+      if (ac?.id != null && ac.statement)
+        acStatementMap.set(String(ac.id), ac.statement);
+    }
+    parts.push("## Acceptance criteria");
+    parts.push("");
+    const charterAcIds = acList.filter((ac) => ac?.id != null).map((ac) => String(ac.id));
+    const undeclaredAcIds = [...acSlicesMap.keys()].filter((k) => !charterAcKeys.has(k)).sort();
+    const orderedAcIds = [...charterAcIds, ...undeclaredAcIds];
+    for (const key of orderedAcIds) {
+      const ledgerCovering = acSlicesMap.get(key) ?? [];
+      const retractedBareIds = acRetractions?.get(key);
+      const ledgerCoveringFiltered = retractedBareIds && retractedBareIds.size > 0 ? ledgerCovering.filter((s) => !retractedBareIds.has(_extractBareSliceId(s.id))) : ledgerCovering;
+      const covering = ledgerCoveringFiltered.length > 0 ? ledgerCoveringFiltered : journalAcCoverage?.get(key) ?? [];
+      const rawStmt = acStatementMap.get(key) ?? "";
+      const stmt = rawStmt.length > 120 ? rawStmt.slice(0, 117) + "\u2026" : rawStmt;
+      const stmtSuffix = stmt ? ` \u2014 ${stmt}` : charterAcKeys.has(key) ? "" : " \u2014 _(not declared in charter)_";
+      const isMet = covering.length > 0 && covering.every((s) => s.status === "complete");
+      if (isMet) {
+        const coverIds = covering.map((s) => s.id).join(", ");
+        parts.push(`- \u2713 **${key}** \u2014 met (covered by: ${coverIds})${stmtSuffix}`);
+      } else if (covering.length === 0) {
+        parts.push(`- \u26A0 **${key}** \u2014 PLANNING HOLE: no covering slices assigned${stmtSuffix}`);
+      } else {
+        const incomplete = covering.filter((s) => s.status !== "complete");
+        parts.push(`- \u2717 **${key}** \u2014 covered, incomplete (slices: ${incomplete.map((s) => s.id).join(", ")})${stmtSuffix}`);
+      }
+    }
+    parts.push("");
+  }
+  if (slices.length > 0) {
+    const doneSlices = slices.filter((s) => s.status === "complete");
+    parts.push("## Progress");
+    parts.push("");
+    parts.push(`${doneSlices.length} / ${slices.length} slices complete`);
+    if (doneSlices.length > 0) {
+      parts.push("");
+      for (const s of doneSlices) {
+        const desc = s.desc ? ` \u2014 ${s.desc}` : "";
+        parts.push(`- \u2713 ${_sliceLink(s.id, s.ticket)}${desc}`);
+      }
+    }
+    parts.push("");
+  }
+  if (ledgerDoc?.gate?.phases) {
+    const phases = ledgerDoc.gate.phases;
+    const NAMED_ORDER = ["plan", "design", "completion"];
+    const PHASE_LABELS = { plan: "Plan / Charter", design: "Design", completion: "Completion" };
+    const TIER_LABELS = { BLOCKS: "BLOCKING", AUTO_ADVANCES: "auto-advance" };
+    parts.push("## Phase Checkpoints");
+    parts.push("");
+    parts.push("| Phase | Tier | Deliverable | Status | Verified by |");
+    parts.push("|---|---|---|---|---|");
+    const waveKeys = Object.keys(phases).filter((k) => /^wave-\d+$/.test(k)).sort((a, b) => +a.replace("wave-", "") - +b.replace("wave-", ""));
+    const phaseKeys = [
+      ...["plan", "design"].filter((k) => phases[k] != null),
+      ...waveKeys,
+      ...["completion"].filter((k) => phases[k] != null),
+      ...Object.keys(phases).filter((k) => !NAMED_ORDER.includes(k) && !/^wave-\d+$/.test(k)).sort()
+    ];
+    for (const key of phaseKeys) {
+      const cp = phases[key];
+      const label = PHASE_LABELS[key] ?? (/^wave-\d+$/.test(key) ? `Implementation Wave ${key.replace("wave-", "")}` : key);
+      const tier = TIER_LABELS[cp.tier] ?? cp.tier;
+      const deliverable = cp.deliverable ?? "\u2014";
+      const verdict = cp.verdict ?? "PENDING";
+      let statusCell;
+      if (verdict === "APPROVE") {
+        statusCell = `\u2713 verified${cp.verified_at ? ` (${String(cp.verified_at).slice(0, 10)})` : ""}`;
+      } else if (verdict === "REJECT") {
+        statusCell = "\u2717 rejected";
+      } else if (cp.tier === "AUTO_ADVANCES") {
+        statusCell = "auto-advancing";
+      } else {
+        statusCell = "\u23F3 awaiting verification";
+      }
+      const verifier = cp.verified_by ?? "\u2014";
+      parts.push(`| ${label} | ${tier} | ${deliverable} | ${statusCell} | ${verifier} |`);
+    }
+    parts.push("");
+  }
+  if (lastPause != null) {
+    parts.push("## Pause");
+    parts.push("");
+    if (lastPause.pointer)
+      parts.push(`**Pointer:** ${lastPause.pointer}`);
+    if (lastPause.summary)
+      parts.push(lastPause.summary);
+    if (Array.isArray(lastPause.next_actions) && lastPause.next_actions.length > 0) {
+      parts.push("");
+      parts.push("**Next actions:**");
+      parts.push("");
+      for (const na of lastPause.next_actions) {
+        if (typeof na === "string") {
+          parts.push(`- ${na}`);
+        } else if (na != null && typeof na === "object") {
+          if (na.slice != null) {
+            parts.push(`- **${na.slice}** (w${na.wave}): ${na.desc ?? ""}`);
+          } else {
+            parts.push(`- **${na.action ?? ""}:** ${na.detail ?? ""}`);
+          }
+        }
+      }
+    }
+    parts.push("");
+  }
+  parts.push("---");
+  parts.push("_Auto-generated \u2014 refreshed automatically by ledger/journal CLIs. Do not edit by hand._");
+  return parts.join(`
+`) + `
+`;
+}
+function _statusBadge(status) {
+  switch (status) {
+    case "complete":
+      return "(complete)";
+    case "in_progress":
+      return "(in progress)";
+    case "pending":
+      return "(pending)";
+    case "no-slice":
+      return "(unstarted \u2014 no slice)";
+    default:
+      return `(${status})`;
+  }
+}
+function _deps(slice) {
+  if (Array.isArray(slice.blocked_by))
+    return slice.blocked_by;
+  if (slice.blocked_by)
+    return [slice.blocked_by];
+  return [];
+}
+function _sliceLink(id, ticketRef) {
+  if (ticketRef) {
+    const safe = sanitizeId(ticketRef);
+    if (safe)
+      return `[${id}](tickets/${safe}.md)`;
+  }
+  const safeId = sanitizeId(id);
+  return safeId ? `**${id}**` : `**${id}**`;
+}
+function _openItemLink(id) {
+  const safe = sanitizeId(id);
+  return safe ? `[${id}](open-items/${safe}.md)` : `**${id}**`;
+}
+var TICKET_TYPE_ORDER;
+var init_motive_map = __esm(() => {
+  init_motive_charter();
+  init_journal_io();
+  init_journal_order();
+  init_motive_dag();
+  init_motive_tickets();
+  TICKET_TYPE_ORDER = ["research", "choose", "model", "build", "grill", "spec", "fix", "chore"];
+});
+
 // hooks/lib/derive-convention.mjs
 function enforcedGroups(rules) {
   return Array.isArray(rules?.enforce) ? rules.enforce : RULE_GROUPS;
@@ -1280,9 +2959,9 @@ __export(exports_commit_convention, {
   BODY_MAX_LINES: () => BODY_MAX_LINES,
   ATTRIBUTION_TRAILER_PATTERNS: () => ATTRIBUTION_TRAILER_PATTERNS
 });
-import { readdirSync, existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
+import { readdirSync as readdirSync5, existsSync as existsSync6, readFileSync as readFileSync8 } from "fs";
 import { execFileSync } from "child_process";
-import { dirname as dirname2, join as join3 } from "path";
+import { dirname as dirname2, join as join5 } from "path";
 import { fileURLToPath } from "url";
 function stripAttribution(text) {
   let stripped = String(text ?? "");
@@ -1305,25 +2984,25 @@ function resolveRepoRoot(cwd) {
 function hasOwnCommitTemplate(repoRoot) {
   if (typeof repoRoot !== "string" || repoRoot === "")
     return false;
-  return existsSync4(join3(repoRoot, ".gitmessage"));
+  return existsSync6(join5(repoRoot, ".gitmessage"));
 }
 function isGroundworkOwnRepo(repoRoot) {
   if (typeof repoRoot !== "string" || repoRoot === "")
     return false;
-  if (MODULE_DIR === join3(repoRoot, "hooks", "lib"))
+  if (MODULE_DIR === join5(repoRoot, "hooks", "lib"))
     return true;
   return resolveRepoRoot(MODULE_DIR) === repoRoot;
 }
 function readCommitTemplate(repoRoot) {
   if (typeof repoRoot !== "string" || repoRoot === "")
     return null;
-  const path3 = join3(repoRoot, ".gitmessage");
-  if (!existsSync4(path3))
+  const path6 = join5(repoRoot, ".gitmessage");
+  if (!existsSync6(path6))
     return null;
   try {
-    return { path: path3, text: readFileSync4(path3, "utf8") };
+    return { path: path6, text: readFileSync8(path6, "utf8") };
   } catch {
-    return { path: path3, text: null };
+    return { path: path6, text: null };
   }
 }
 function activeConvention(repoRoot) {
@@ -1376,7 +3055,7 @@ function clearHostRulesCache() {
 function getMotiveSlugs(repoRoot) {
   try {
     const root = repoRoot ?? resolveRepoRoot();
-    return readdirSync(join3(root, ".groundwork", "motives"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    return readdirSync5(join5(root, ".groundwork", "motives"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   } catch {
     return [];
   }
@@ -1497,32 +3176,32 @@ __export(exports_ledger, {
   run: () => run2,
   LEDGER_SUBCOMMANDS: () => LEDGER_SUBCOMMANDS
 });
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3, renameSync, existsSync as existsSync5 } from "fs";
+import { readFileSync as readFileSync9, writeFileSync as writeFileSync4, mkdirSync as mkdirSync5, renameSync, existsSync as existsSync7 } from "fs";
 import { spawnSync as spawnSync2 } from "child_process";
 import { randomBytes as randomBytes2 } from "crypto";
-import path3 from "path";
+import path6 from "path";
 function isLedgerSubcmd(s) {
   return LEDGER_SUBCOMMANDS.includes(s);
 }
 function readLedger(runPath) {
   try {
-    return JSON.parse(readFileSync5(runPath, "utf8"));
+    return JSON.parse(readFileSync9(runPath, "utf8"));
   } catch {
     return null;
   }
 }
 function atomicWrite(runPath, data) {
-  const dir = path3.dirname(runPath);
-  mkdirSync3(dir, { recursive: true });
+  const dir = path6.dirname(runPath);
+  mkdirSync5(dir, { recursive: true });
   const tmp = `${runPath}.tmp.${randomBytes2(4).toString("hex")}`;
-  writeFileSync2(tmp, JSON.stringify(data, null, 2) + `
+  writeFileSync4(tmp, JSON.stringify(data, null, 2) + `
 `, "utf8");
   renameSync(tmp, runPath);
 }
 function reSeal(ledger, projectDir) {
   const sessionId = typeof ledger.session_id === "string" ? ledger.session_id : undefined;
   const isSealed = ledger.gate?.seal != null;
-  if (!isSealed && !existsSync5(keyPath({ projectDir, sessionId })))
+  if (!isSealed && !existsSync7(keyPath({ projectDir, sessionId })))
     return ledger;
   const key = readKey({ projectDir, sessionId });
   const seal = computeSeal(canonicalReleaseState(ledger), key);
@@ -1673,8 +3352,8 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
           const sym = symForStatus(s.status);
           const wave = s.wave != null ? `w${s.wave}` : "w?";
           const claimed = s.claimed_by ? ` [claimed:${s.claimed_by}]` : "";
-          const blockers = (s.blocked_by ?? []).length > 0 ? ` [\u27F5${(s.blocked_by ?? []).join(",")}]` : "";
-          return `  ${s.id}${sym}${wave}${claimed}${blockers}`;
+          const blockers2 = (s.blocked_by ?? []).length > 0 ? ` [\u27F5${(s.blocked_by ?? []).join(",")}]` : "";
+          return `  ${s.id}${sym}${wave}${claimed}${blockers2}`;
         }).join(`
 `);
         const checkpointHold = ledger.checkpoint_hold;
@@ -1955,12 +3634,12 @@ ${holdLine}${done}/${all.length} slices complete
           for (const sl of waveMap.get(w)) {
             const icon = kindIcon(sl.kind);
             const sym = symForStatus(sl.status);
-            const blockers = (sl.blocked_by ?? []).join(", ") || "\u2014";
+            const blockers2 = (sl.blocked_by ?? []).join(", ") || "\u2014";
             const claimed = sl.claimed_by ?? "\u2014";
             const decs = (sl.decisions ?? []).join(", ") || "\u2014";
             const rawDesc = sl.desc ?? "";
             const desc = rawDesc.length > 40 ? rawDesc.slice(0, 37) + "..." : rawDesc || "\u2014";
-            lines.push(`| \`${sl.id}\` | ${icon} ${sl.kind ?? "impl"} | ${sym} ${sl.status} | ${blockers} | ${claimed} | ${decs} | ${desc} |`);
+            lines.push(`| \`${sl.id}\` | ${icon} ${sl.kind ?? "impl"} | ${sym} ${sl.status} | ${blockers2} | ${claimed} | ${decs} | ${desc} |`);
           }
           lines.push("");
         }
@@ -2009,10 +3688,10 @@ ${holdLine}${done}/${all.length} slices complete
           while (!citResolved && (refMatch = refPattern.exec(citText)) !== null) {
             const filePart = refMatch[1];
             const lineNum = parseInt(refMatch[2], 10);
-            const absFile = path3.isAbsolute(filePart) ? filePart : path3.resolve(cwd, filePart);
-            if (existsSync5(absFile)) {
+            const absFile = path6.isAbsolute(filePart) ? filePart : path6.resolve(cwd, filePart);
+            if (existsSync7(absFile)) {
               try {
-                if (lineNum <= readFileSync5(absFile, "utf8").split(`
+                if (lineNum <= readFileSync9(absFile, "utf8").split(`
 `).length)
                   citResolved = true;
               } catch {}
@@ -2032,13 +3711,13 @@ ${holdLine}${done}/${all.length} slices complete
             if (manifest.files.length > 0) {
               const slices = ledger.slices ?? [];
               const uncovered = manifest.files.filter((f) => {
-                const rel = path3.relative(cwd, f.path);
+                const rel = path6.relative(cwd, f.path);
                 return !slices.some((s) => typeof s.desc === "string" && s.desc.includes(rel) && s.desc.includes("cleanup"));
               });
               if (uncovered.length > 0) {
-                const fileLines = uncovered.map((f) => `  ${path3.relative(cwd, f.path)}  (${f.commentsPer100.toFixed(1)}/100, cap: ${manifest.cap.file})`).join(`
+                const fileLines = uncovered.map((f) => `  ${path6.relative(cwd, f.path)}  (${f.commentsPer100.toFixed(1)}/100, cap: ${manifest.cap.file})`).join(`
 `);
-                const relPaths = uncovered.map((f) => path3.relative(cwd, f.path)).join(",");
+                const relPaths = uncovered.map((f) => path6.relative(cwd, f.path)).join(",");
                 const msg = `APPROVE blocked \u2014 ${uncovered.length} touched file(s) exceed comment-density cap with no cleanup slice:
 ` + `${fileLines}
 
@@ -2150,14 +3829,14 @@ Review and fix with:
         }
         const slices = ledger.slices ?? [];
         const terminalSet = new Set(slices.filter((s) => s.status === "complete" || s.status === "skipped").map((s) => s.id));
-        const frontier = slices.filter((s) => s.status === "pending" && (s.blocked_by ?? []).every((id) => terminalSet.has(id)) && (s.claimed_by === undefined || s.claimed_by === sessionId));
-        if (!frontier.length) {
+        const frontier2 = slices.filter((s) => s.status === "pending" && (s.blocked_by ?? []).every((id) => terminalSet.has(id)) && (s.claimed_by === undefined || s.claimed_by === sessionId));
+        if (!frontier2.length) {
           return okEnvelope("ledger frontier", {
             content: `no frontier slices \u2014 all pending slices are blocked, in progress, or claimed by another session
 `
           });
         }
-        const rows = frontier.map((sl) => {
+        const rows = frontier2.map((sl) => {
           const wave = sl.wave != null ? `w${sl.wave}` : "w?";
           const claimed = sl.claimed_by ? ` [claimed:${sl.claimed_by}]` : "";
           const desc = (sl.desc ?? "").slice(0, 60);
@@ -2300,6 +3979,10 @@ Review and fix with:
           delete base["checkpoint_hold"];
         }
         atomicWrite(runPath, reSeal(base, repoRoot));
+        try {
+          if (base.motive)
+            regenerateMotiveMap(process.env["CLAUDE_PROJECT_DIR"] ?? repoRoot, base.motive);
+        } catch {}
         return okEnvelope("ledger checkpoint", {
           content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}
 `
@@ -2319,8 +4002,13 @@ Review and fix with:
           return authErr("ledger hold", e);
         }
         const { checkpoint_hold: _prev, ...rest2 } = ledger;
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? repoRoot;
         if (clearing) {
           atomicWrite(runPath, reSeal(rest2, repoRoot));
+          try {
+            if (ledger.motive)
+              regenerateMotiveMap(projectDir, ledger.motive);
+          } catch {}
           return okEnvelope("ledger hold", { content: `checkpoint-phase hold cleared
 ` });
         } else {
@@ -2339,6 +4027,10 @@ Review and fix with:
             }
           };
           atomicWrite(runPath, reSeal({ ...rest2, checkpoint_hold: phase, gate: newGate }, repoRoot));
+          try {
+            if (ledger.motive)
+              regenerateMotiveMap(projectDir, ledger.motive);
+          } catch {}
           return okEnvelope("ledger hold", { content: `checkpoint-phase hold set to '${phase}'
 ` });
         }
@@ -2396,6 +4088,7 @@ var init_ledger = __esm(() => {
   init_resolve_ledger_path();
   init_journal_emit();
   init_gate_seal();
+  init_motive_map();
   LEDGER_SUBCOMMANDS = [
     "status",
     "add",
@@ -5789,7 +7482,7 @@ var require_parse = __commonJS((exports, module) => {
 
 // node_modules/.pnpm/gray-matter@4.0.3/node_modules/gray-matter/index.js
 var require_gray_matter = __commonJS((exports, module) => {
-  var fs = __require("fs");
+  var fs2 = __require("fs");
   var sections = require_section_matter();
   var defaults = require_defaults();
   var stringify = require_stringify();
@@ -5876,7 +7569,7 @@ var require_gray_matter = __commonJS((exports, module) => {
     return stringify(file, data, options2);
   };
   matter.read = function(filepath, options2) {
-    const str2 = fs.readFileSync(filepath, "utf8");
+    const str2 = fs2.readFileSync(filepath, "utf8");
     const file = matter(str2, options2);
     file.path = filepath;
     return file;
@@ -6079,10 +7772,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -6413,11 +8106,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -6895,16 +8588,16 @@ function flattenError(error, mapper = (issue2) => issue2.message) {
 }
 function formatError(error, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error2, path4 = []) => {
+  const processError = (error2, path7 = []) => {
     for (const issue2 of error2.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -6943,17 +8636,17 @@ function formatError(error, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error2, path4 = []) => {
+  const processError = (error2, path7 = []) => {
     var _a2;
     for (const issue2 of error2.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -6992,8 +8685,8 @@ function treeifyError(error, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path4) {
+  const path7 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path7) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -23744,13 +25437,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path4 = ref.slice(1).split("/").filter(Boolean);
-  if (path4.length === 0) {
+  const path7 = ref.slice(1).split("/").filter(Boolean);
+  if (path7.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path4[0] === defsKey) {
-    const key = path4[1] === undefined ? undefined : decodeJSONPointerSegment(path4[1]);
+  if (path7[0] === defsKey) {
+    const key = path7[1] === undefined ? undefined : decodeJSONPointerSegment(path7[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -24970,35 +26663,35 @@ var init_concept = __esm(() => {
 });
 
 // src/gw/schema/layout.ts
-import path4 from "path";
+import path7 from "path";
 function motiveDir(repoRoot, tracker, slug) {
-  return path4.join(repoRoot, tracker, "motives", slug);
+  return path7.join(repoRoot, tracker, "motives", slug);
 }
 function sliceNotePath(repoRoot, tracker, motive, label, slug) {
   const filename = slug ? `${label}-${slug}.md` : `${label}.md`;
-  return path4.join(repoRoot, tracker, "motives", motive, filename);
+  return path7.join(repoRoot, tracker, "motives", motive, filename);
 }
 function gateNotePath(repoRoot, tracker, motive, sessionId) {
-  return path4.join(repoRoot, tracker, "motives", motive, `gate-${sessionId}.md`);
+  return path7.join(repoRoot, tracker, "motives", motive, `gate-${sessionId}.md`);
 }
 function ticketPath(repoRoot, tracker, motive, filename) {
   const base = filename.endsWith(".md") ? filename : `${filename}.md`;
-  return path4.join(repoRoot, tracker, "motives", motive, "tickets", base);
+  return path7.join(repoRoot, tracker, "motives", motive, "tickets", base);
 }
 function motiveDecisionPath(repoRoot, tracker, motive, decisionId) {
   const base = decisionId.endsWith(".md") ? decisionId : `${decisionId}.md`;
-  return path4.join(repoRoot, tracker, "motives", motive, "decisions", base);
+  return path7.join(repoRoot, tracker, "motives", motive, "decisions", base);
 }
 function conceptIndexPath(repoRoot, conceptSlug) {
-  return path4.join(repoRoot, "doc", "specs", conceptSlug, "index.md");
+  return path7.join(repoRoot, "doc", "specs", conceptSlug, "index.md");
 }
 function requirementPath(repoRoot, conceptSlug, reqId) {
   const base = reqId.endsWith(".md") ? reqId : `${reqId}.md`;
-  return path4.join(repoRoot, "doc", "specs", conceptSlug, "requirements", base);
+  return path7.join(repoRoot, "doc", "specs", conceptSlug, "requirements", base);
 }
 function specDecisionPath(repoRoot, conceptSlug, decisionId) {
   const base = decisionId.endsWith(".md") ? decisionId : `${decisionId}.md`;
-  return path4.join(repoRoot, "doc", "specs", conceptSlug, "decisions", base);
+  return path7.join(repoRoot, "doc", "specs", conceptSlug, "decisions", base);
 }
 var DEFAULT_TRACKER_PATH = ".groundwork";
 var init_layout = () => {};
@@ -25038,7 +26731,7 @@ var init_wikilink = __esm(() => {
 });
 
 // src/gw/fm/set-property.ts
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "fs";
+import { readFileSync as readFileSync10, writeFileSync as writeFileSync5 } from "fs";
 function escapeRegex2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -25121,9 +26814,9 @@ ${key}: ${serializeValue(value)}
 `);
 }
 function setProperty(filePath, key, value) {
-  const src = readFileSync6(filePath, "utf8");
+  const src = readFileSync10(filePath, "utf8");
   const result = setPropertyInContent(src, key, value);
-  writeFileSync3(filePath, result, "utf8");
+  writeFileSync5(filePath, result, "utf8");
 }
 var init_set_property = () => {};
 
@@ -25135,8 +26828,8 @@ var init_fm = __esm(() => {
 
 // src/gw/store/motive/decision.ts
 import { readFile, writeFile } from "fs/promises";
-import { mkdirSync as mkdirSync4 } from "fs";
-import path5 from "path";
+import { mkdirSync as mkdirSync6 } from "fs";
+import path8 from "path";
 async function writeDecision(opts) {
   const { repoRoot, tracker, motive: motive2, data } = opts;
   const normalizedId = DecisionSchema.parse({ id: data.id }).id;
@@ -25176,7 +26869,7 @@ async function writeDecision(opts) {
   ].join(`
 `);
   const dest = motiveDecisionPath(repoRoot, tracker, motive2, normalizedId);
-  mkdirSync4(path5.dirname(dest), { recursive: true });
+  mkdirSync6(path8.dirname(dest), { recursive: true });
   await writeFile(dest, import_gray_matter.default.stringify(body, fm), "utf8");
 }
 function fromLegacyDecision(event) {
@@ -25233,8 +26926,8 @@ __export(exports_journal, {
   run: () => run3,
   JOURNAL_SUBCOMMANDS: () => JOURNAL_SUBCOMMANDS
 });
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readdirSync as readdirSync2, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync7, readdirSync as readdirSync6, readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "fs";
+import { join as join6 } from "path";
 function isJournalSubcmd(s) {
   return JOURNAL_SUBCOMMANDS.includes(s);
 }
@@ -25260,19 +26953,19 @@ function sanitizeTs(ts) {
   return ts.replace(/:/g, "-").replace(/\./g, "-");
 }
 function readMotiveJournalEvents(repoRoot, tracker, motive2) {
-  const journalDir = join4(repoRoot, tracker, "motives", motive2, "journal");
-  if (!existsSync6(journalDir))
+  const journalDir = join6(repoRoot, tracker, "motives", motive2, "journal");
+  if (!existsSync8(journalDir))
     return [];
   const events = [];
   let files;
   try {
-    files = readdirSync2(journalDir).filter((f) => f.endsWith(".md"));
+    files = readdirSync6(journalDir).filter((f) => f.endsWith(".md"));
   } catch {
     return [];
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync7(join4(journalDir, file2), "utf8");
+      const raw = readFileSync11(join6(journalDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["ts"],
@@ -25288,19 +26981,19 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
-  const decisionsDir = join4(repoRoot, tracker, "motives", motive2, "decisions");
-  if (!existsSync6(decisionsDir))
+  const decisionsDir = join6(repoRoot, tracker, "motives", motive2, "decisions");
+  if (!existsSync8(decisionsDir))
     return [];
   const events = [];
   let files;
   try {
-    files = readdirSync2(decisionsDir).filter((f) => f.endsWith(".md"));
+    files = readdirSync6(decisionsDir).filter((f) => f.endsWith(".md"));
   } catch {
     return [];
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync7(join4(decisionsDir, file2), "utf8");
+      const raw = readFileSync11(join6(decisionsDir, file2), "utf8");
       const { data, content } = import_gray_matter2.default(raw);
       events.push({
         ts: data["date"] ?? "",
@@ -25315,16 +27008,16 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   }
   return events;
 }
-function readAllEvents(repoRoot, tracker, motiveFilter) {
-  const motivesRoot = join4(repoRoot, tracker, "motives");
+function readAllEvents2(repoRoot, tracker, motiveFilter) {
+  const motivesRoot = join6(repoRoot, tracker, "motives");
   let motives;
   if (motiveFilter) {
     motives = [motiveFilter];
   } else {
-    if (!existsSync6(motivesRoot))
+    if (!existsSync8(motivesRoot))
       return [];
     try {
-      motives = readdirSync2(motivesRoot);
+      motives = readdirSync6(motivesRoot);
     } catch {
       return [];
     }
@@ -25336,7 +27029,7 @@ function readAllEvents(repoRoot, tracker, motiveFilter) {
   }
   return all.sort((a, b) => (a.ts ?? "") > (b.ts ?? "") ? 1 : -1);
 }
-function parseSince(since) {
+function parseSince2(since) {
   if (!since || since === true)
     return null;
   if (typeof since === "string" && /^\d+d$/.test(since)) {
@@ -25420,9 +27113,9 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     const ts = new Date().toISOString();
     const sanitizedTs = sanitizeTs(ts);
     const noteFilename = `${sanitizedTs}-${type}.md`;
-    const journalDir = join4(repoRoot, tracker, "motives", motive3, "journal");
-    mkdirSync5(journalDir, { recursive: true });
-    const notePath = join4(journalDir, noteFilename);
+    const journalDir = join6(repoRoot, tracker, "motives", motive3, "journal");
+    mkdirSync7(journalDir, { recursive: true });
+    const notePath = join6(journalDir, noteFilename);
     const fm = {
       ts,
       session: sessionId,
@@ -25430,14 +27123,14 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
       source: "cli:journal",
       data: data ?? {}
     };
-    writeFileSync4(notePath, import_gray_matter2.default.stringify(msg, fm), "utf8");
+    writeFileSync6(notePath, import_gray_matter2.default.stringify(msg, fm), "utf8");
     return okEnvelope("journal append", { content: `journal: appended ${type} to journal/${noteFilename}
 ` });
   }
   if (subcmd === "show") {
     const motiveFilter = flags["motive"];
     const motiveStr = motiveFilter && motiveFilter !== true ? motiveFilter : undefined;
-    let events2 = readAllEvents(repoRoot, tracker, motiveStr);
+    let events2 = readAllEvents2(repoRoot, tracker, motiveStr);
     const typeFilter = flags["type"];
     if (typeFilter && typeFilter !== true) {
       const types = new Set(typeFilter.split(",").map((s) => s.trim()));
@@ -25446,7 +27139,7 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     const sinceStr = flags["since"];
     const hasExplicitWindow = motiveFilter || sinceStr;
     const effectiveSince = sinceStr ?? (hasExplicitWindow ? undefined : "7d");
-    const sinceDate = parseSince(effectiveSince);
+    const sinceDate = parseSince2(effectiveSince);
     if (sinceDate) {
       const sinceTs = sinceDate.toISOString();
       events2 = events2.filter((e) => (e.ts ?? "") >= sinceTs);
@@ -25456,13 +27149,13 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     if (events2.length > lastN)
       events2 = events2.slice(events2.length - lastN);
     if (events2.length === 0) {
-      const legacyJournalDir = join4(repoRoot, ".groundwork", "journal");
+      const legacyJournalDir = join6(repoRoot, ".groundwork", "journal");
       let legacyShards = [];
       try {
-        legacyShards = readdirSync2(legacyJournalDir).filter((f) => f.endsWith(".jsonl"));
+        legacyShards = readdirSync6(legacyJournalDir).filter((f) => f.endsWith(".jsonl"));
       } catch {}
       if (legacyShards.length > 0) {
-        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join4(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
+        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join6(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
       }
       return okEnvelope("journal show", { content: `no events found
 ` });
@@ -25483,7 +27176,7 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
   if (!motive2) {
     return errEnvelope("journal compile", "USAGE_ERROR", "Usage: gw journal compile <motive> [--json]", 2);
   }
-  const events = readAllEvents(repoRoot, tracker, motive2);
+  const events = readAllEvents2(repoRoot, tracker, motive2);
   const decisions = events.filter((e) => e.type === "DECISION").map((e) => e.data ?? {});
   const tasksComplete = events.filter((e) => e.type === "TASK_COMPLETE").map((e) => e.data ?? {});
   const gates = events.filter((e) => e.type === "GATE").map((e) => e.data ?? {});
@@ -25533,8 +27226,8 @@ __export(exports_commit_lint, {
   run: () => run4,
   COMMIT_LINT_SUBCOMMANDS: () => COMMIT_LINT_SUBCOMMANDS
 });
-import { readFileSync as readFileSync8 } from "fs";
-import { join as join5 } from "path";
+import { readFileSync as readFileSync12 } from "fs";
+import { join as join7 } from "path";
 import { spawnSync as spawnSync3 } from "child_process";
 function parseFlags4(args) {
   const flags = {};
@@ -25560,8 +27253,8 @@ function readSessionLedger2(cwd) {
   if (!sessionId)
     return null;
   try {
-    const p = join5(projectDir, ".groundwork", "runs", `${sessionId}.json`);
-    return JSON.parse(readFileSync8(p, "utf8"));
+    const p = join7(projectDir, ".groundwork", "runs", `${sessionId}.json`);
+    return JSON.parse(readFileSync12(p, "utf8"));
   } catch {
     return null;
   }
@@ -25772,8 +27465,8 @@ var HOOK_MARKER = "GROUNDWORK-COMMIT-MSG";
 
 // src/gw/hooks/installer.ts
 import { fileURLToPath as fileURLToPath2 } from "url";
-import { dirname as dirname3, resolve, join as join6 } from "path";
-import { readFileSync as readFileSync9, existsSync as existsSync7, mkdirSync as mkdirSync6, writeFileSync as writeFileSync5, rmSync, chmodSync } from "fs";
+import { dirname as dirname3, resolve, join as join8 } from "path";
+import { readFileSync as readFileSync13, existsSync as existsSync9, mkdirSync as mkdirSync8, writeFileSync as writeFileSync7, rmSync as rmSync2, chmodSync } from "fs";
 import { spawnSync as spawnSync4 } from "child_process";
 function _findGroundworkRoot() {
   const candidates = [
@@ -25782,11 +27475,11 @@ function _findGroundworkRoot() {
   ];
   for (const root of candidates) {
     try {
-      const version2 = JSON.parse(readFileSync9(join6(root, "package.json"), "utf8")).version;
-      return { version: version2, hooksLibPath: join6(root, "hooks", "lib") };
+      const version2 = JSON.parse(readFileSync13(join8(root, "package.json"), "utf8")).version;
+      return { version: version2, hooksLibPath: join8(root, "hooks", "lib") };
     } catch {}
   }
-  return { version: "0.0.0", hooksLibPath: join6(_dir, "..", "..", "..", "hooks", "lib") };
+  return { version: "0.0.0", hooksLibPath: join8(_dir, "..", "..", "..", "hooks", "lib") };
 }
 function extractVersion(content) {
   const prefix = "# GROUNDWORK-COMMIT-MSG v";
@@ -25804,8 +27497,8 @@ function resolveLayout(cwd) {
   const repoRoot = toplevel.stdout.trim();
   const commonDirResult = spawnSync4("git", ["rev-parse", "--git-common-dir"], { cwd: repoRoot, encoding: "utf8" });
   const commonGitDir = commonDirResult.status === 0 ? commonDirResult.stdout.trim() : ".git";
-  const hooksDir = join6(resolve(repoRoot, commonGitDir), "hooks");
-  return { repoRoot, hookPath: join6(hooksDir, "commit-msg"), hooksDir };
+  const hooksDir = join8(resolve(repoRoot, commonGitDir), "hooks");
+  return { repoRoot, hookPath: join8(hooksDir, "commit-msg"), hooksDir };
 }
 async function installHook(opts) {
   const cwd = opts?.cwd ?? process.cwd();
@@ -25814,20 +27507,20 @@ async function installHook(opts) {
     if (!layout2)
       return { status: "not-a-git-repo", cwd };
     const { repoRoot, hookPath, hooksDir } = layout2;
-    mkdirSync6(hooksDir, { recursive: true });
+    mkdirSync8(hooksDir, { recursive: true });
     const content = renderCommitMsgHook2({ hooksLibPath: HOOKS_LIB_PATH, version: CURRENT_VERSION });
-    if (existsSync7(hookPath)) {
-      const existing = readFileSync9(hookPath, "utf8");
+    if (existsSync9(hookPath)) {
+      const existing = readFileSync13(hookPath, "utf8");
       if (!isGroundworkHook2(existing))
         return { status: "skipped-foreign", repoRoot, hookPath };
       const fromVersion = extractVersion(existing);
       if (fromVersion === CURRENT_VERSION)
         return { status: "already-current", repoRoot, version: CURRENT_VERSION };
-      writeFileSync5(hookPath, content);
+      writeFileSync7(hookPath, content);
       chmodSync(hookPath, 493);
       return { status: "upgraded", repoRoot, fromVersion: fromVersion ?? "", toVersion: CURRENT_VERSION };
     }
-    writeFileSync5(hookPath, content, { mode: 493 });
+    writeFileSync7(hookPath, content, { mode: 493 });
     chmodSync(hookPath, 493);
     return { status: "installed", repoRoot };
   } catch (err) {
@@ -25841,12 +27534,12 @@ async function uninstallHook(opts) {
     if (!layout2)
       return { status: "not-a-git-repo", cwd };
     const { repoRoot, hookPath } = layout2;
-    if (!existsSync7(hookPath))
+    if (!existsSync9(hookPath))
       return { status: "not-installed", repoRoot };
-    const content = readFileSync9(hookPath, "utf8");
+    const content = readFileSync13(hookPath, "utf8");
     if (!isGroundworkHook2(content))
       return { status: "skipped-foreign", repoRoot, hookPath };
-    rmSync(hookPath);
+    rmSync2(hookPath);
     return { status: "removed", repoRoot };
   } catch (err) {
     return { status: "error", message: err.message };
@@ -25859,9 +27552,9 @@ async function getHookStatus(opts) {
     if (!layout2)
       return { status: "not-a-git-repo", cwd };
     const { repoRoot, hookPath } = layout2;
-    if (!existsSync7(hookPath))
+    if (!existsSync9(hookPath))
       return { status: "none", repoRoot };
-    const content = readFileSync9(hookPath, "utf8");
+    const content = readFileSync13(hookPath, "utf8");
     if (isGroundworkHook2(content))
       return { status: "ours", repoRoot, version: extractVersion(content) ?? "" };
     return { status: "foreign", repoRoot, hookPath };
@@ -25987,15 +27680,15 @@ var exports_cat = {};
 __export(exports_cat, {
   run: () => run6
 });
-import { readFileSync as readFileSync10 } from "fs";
-import path6 from "path";
+import { readFileSync as readFileSync14 } from "fs";
+import path9 from "path";
 async function run6(args, cwd) {
   if (args.length === 0) {
     return errEnvelope("cat", "USAGE_ERROR", "Usage: gw cat <path>", 2);
   }
-  const filePath = path6.resolve(cwd, args[0]);
+  const filePath = path9.resolve(cwd, args[0]);
   try {
-    const content = readFileSync10(filePath, "utf8");
+    const content = readFileSync14(filePath, "utf8");
     return okEnvelope("cat", { path: filePath, content });
   } catch {
     return errEnvelope("cat", "READ_ERROR", `Cannot read file: ${filePath}`, 1);
@@ -26090,16 +27783,16 @@ var exports_get_property = {};
 __export(exports_get_property, {
   run: () => run8
 });
-import { readFileSync as readFileSync11 } from "fs";
-import path7 from "path";
+import { readFileSync as readFileSync15 } from "fs";
+import path10 from "path";
 async function run8(args, cwd) {
   if (args.length < 2) {
     return errEnvelope("get-property", "USAGE_ERROR", "Usage: gw get-property <path> <key>", 2);
   }
-  const filePath = path7.resolve(cwd, args[0]);
+  const filePath = path10.resolve(cwd, args[0]);
   const key = args[1];
   try {
-    const src = readFileSync11(filePath, "utf8");
+    const src = readFileSync15(filePath, "utf8");
     const { data } = import_gray_matter3.default(src);
     const value = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
     return okEnvelope("get-property", { path: filePath, key, value });
@@ -26117,7 +27810,7 @@ var exports_set_property = {};
 __export(exports_set_property, {
   run: () => run9
 });
-import path8 from "path";
+import path11 from "path";
 function coerce(raw, type) {
   switch (type) {
     case "number": {
@@ -26156,7 +27849,7 @@ async function run9(args, cwd) {
   if (remaining.length < 3) {
     return errEnvelope("set-property", "USAGE_ERROR", "Usage: gw set-property <path> <key> <value> [--type string|number|boolean|list]", 2);
   }
-  const filePath = path8.resolve(cwd, remaining[0]);
+  const filePath = path11.resolve(cwd, remaining[0]);
   const key = remaining[1];
   const rawValue = remaining[2];
   let value;
@@ -26181,20 +27874,20 @@ var exports_append = {};
 __export(exports_append, {
   run: () => run10
 });
-import { readFileSync as readFileSync12, writeFileSync as writeFileSync6 } from "fs";
-import path9 from "path";
+import { readFileSync as readFileSync16, writeFileSync as writeFileSync8 } from "fs";
+import path12 from "path";
 async function run10(args, cwd) {
   if (args.length < 2) {
     return errEnvelope("append", "USAGE_ERROR", "Usage: gw append <path> <text>", 2);
   }
-  const filePath = path9.resolve(cwd, args[0]);
+  const filePath = path12.resolve(cwd, args[0]);
   const text = args.slice(1).join(" ");
   try {
-    const existing = readFileSync12(filePath, "utf8");
+    const existing = readFileSync16(filePath, "utf8");
     const separator = existing.endsWith(`
 `) ? "" : `
 `;
-    writeFileSync6(filePath, existing + separator + text + `
+    writeFileSync8(filePath, existing + separator + text + `
 `, "utf8");
     return okEnvelope("append", { path: filePath, appended: text });
   } catch {
@@ -26208,12 +27901,12 @@ var exports_link = {};
 __export(exports_link, {
   run: () => run11
 });
-import { readFileSync as readFileSync13 } from "fs";
-import path10 from "path";
+import { readFileSync as readFileSync17 } from "fs";
+import path13 from "path";
 function appendWikilink(filePath, key, targetPath) {
-  const src = readFileSync13(filePath, "utf8");
+  const src = readFileSync17(filePath, "utf8");
   const { data } = import_gray_matter4.default(src);
-  const link = wikilink(path10.basename(targetPath, ".md"));
+  const link = wikilink(path13.basename(targetPath, ".md"));
   let list;
   const current = data[key];
   if (Array.isArray(current)) {
@@ -26232,9 +27925,9 @@ async function run11(args, cwd) {
   if (args.length < 3) {
     return errEnvelope("link", "USAGE_ERROR", "Usage: gw link <src-path> <type> <dst-path>", 2);
   }
-  const srcPath = path10.resolve(cwd, args[0]);
+  const srcPath = path13.resolve(cwd, args[0]);
   const type = args[1];
-  const dstPath = path10.resolve(cwd, args[2]);
+  const dstPath = path13.resolve(cwd, args[2]);
   try {
     appendWikilink(srcPath, type, dstPath);
   } catch {
@@ -26249,8 +27942,8 @@ async function run11(args, cwd) {
     src: srcPath,
     dst: dstPath,
     type,
-    srcLink: wikilink(path10.basename(dstPath, ".md")),
-    dstLink: wikilink(path10.basename(srcPath, ".md"))
+    srcLink: wikilink(path13.basename(dstPath, ".md")),
+    dstLink: wikilink(path13.basename(srcPath, ".md"))
   });
 }
 var import_gray_matter4;
@@ -26261,20 +27954,20 @@ var init_link = __esm(() => {
 
 // src/gw/store/seal/index.ts
 import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2, randomBytes as randomBytes3 } from "crypto";
-import { readFileSync as readFileSync14, writeFileSync as writeFileSync7, existsSync as existsSync8, chmodSync as chmodSync2 } from "fs";
-import { join as join7 } from "path";
+import { readFileSync as readFileSync18, writeFileSync as writeFileSync9, existsSync as existsSync10, chmodSync as chmodSync2 } from "fs";
+import { join as join9 } from "path";
 function sealPath(notePath) {
   return `${notePath}.seal`;
 }
 function keyPath2(motiveDir2) {
-  return join7(motiveDir2, ".seal.key");
+  return join9(motiveDir2, ".seal.key");
 }
 function readKey2(motiveDir2) {
   const kp = keyPath2(motiveDir2);
-  if (!existsSync8(kp)) {
+  if (!existsSync10(kp)) {
     throw new Error(`Seal key not found: ${kp}`);
   }
-  return readFileSync14(kp);
+  return readFileSync18(kp);
 }
 function canonicalMachineState(fm, machineKeys) {
   const sorted = [...machineKeys].sort();
@@ -26291,10 +27984,10 @@ function computeHmac(key, canonical) {
 }
 function verifySeal2(notePath, motiveDir2, fm, machineKeys) {
   const sp = sealPath(notePath);
-  if (!existsSync8(sp)) {
+  if (!existsSync10(sp)) {
     return null;
   }
-  const stored = readFileSync14(sp, "utf8").trim();
+  const stored = readFileSync18(sp, "utf8").trim();
   const key = readKey2(motiveDir2);
   const canonical = canonicalMachineState(fm, machineKeys);
   const computed = computeHmac(key, canonical);
@@ -26305,7 +27998,7 @@ function verifySeal2(notePath, motiveDir2, fm, machineKeys) {
   return match ? true : false;
 }
 function verifyNote(notePath, motiveDir2, kind) {
-  const content = readFileSync14(notePath, "utf8");
+  const content = readFileSync18(notePath, "utf8");
   const { data } = import_gray_matter5.default(content);
   const machineKeys = kind === "slice" ? SLICE_MACHINE_KEYS : GATE_MACHINE_KEYS;
   return verifySeal2(notePath, motiveDir2, data, machineKeys);
@@ -26340,8 +28033,8 @@ var init_seal = __esm(() => {
 });
 
 // src/gw/store/slice/index.ts
-import { readFileSync as readFileSync15, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7, readdirSync as readdirSync3 } from "fs";
-import { join as join8, dirname as dirname4 } from "path";
+import { readFileSync as readFileSync19, writeFileSync as writeFileSync10, mkdirSync as mkdirSync9, readdirSync as readdirSync7 } from "fs";
+import { join as join10, dirname as dirname4 } from "path";
 function decodeBlockedBy(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
@@ -26356,7 +28049,7 @@ function decodeDecisions(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
 function readSlice(notePath) {
-  const raw = readFileSync15(notePath, "utf8");
+  const raw = readFileSync19(notePath, "utf8");
   const { data } = import_gray_matter6.default(raw);
   if (Array.isArray(data["blocked_by"])) {
     data["blocked_by"] = decodeBlockedBy(data["blocked_by"]);
@@ -26380,7 +28073,7 @@ function listSlices(repoRoot, tracker, motive2) {
   const dir = motiveDir(repoRoot, tracker, motive2);
   let entries;
   try {
-    entries = readdirSync3(dir);
+    entries = readdirSync7(dir);
   } catch {
     return [];
   }
@@ -26393,7 +28086,7 @@ function listSlices(repoRoot, tracker, motive2) {
     if (entry.startsWith("gate-"))
       continue;
     try {
-      slices.push(readSlice(join8(dir, entry)));
+      slices.push(readSlice(join10(dir, entry)));
     } catch {}
   }
   return slices;
@@ -26410,16 +28103,16 @@ var init_slice2 = __esm(() => {
 });
 
 // src/gw/store/gate/index.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync8, readFileSync as readFileSync16, writeFileSync as writeFileSync9 } from "fs";
-import path11 from "path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync10, readFileSync as readFileSync20, writeFileSync as writeFileSync11 } from "fs";
+import path14 from "path";
 function readGate(repoRoot, tracker, motive2, sessionId) {
   const notePath = gateNotePath(repoRoot, tracker, motive2, sessionId);
-  if (!existsSync9(notePath))
+  if (!existsSync11(notePath))
     return null;
-  const raw = readFileSync16(notePath, "utf8");
+  const raw = readFileSync20(notePath, "utf8");
   const { data } = import_gray_matter7.default(raw);
   const parsed = GateSchema.parse(data);
-  const mDir = path11.dirname(notePath);
+  const mDir = path14.dirname(notePath);
   const sealed = verifyNote(notePath, mDir, "gate");
   return { ...parsed, sealed };
 }
@@ -26432,22 +28125,22 @@ var init_gate2 = __esm(() => {
 
 // src/gw/hook/stop-gate.ts
 import {
-  existsSync as existsSync10,
-  readFileSync as readFileSync17,
-  readdirSync as readdirSync4,
-  closeSync as closeSync2,
-  mkdirSync as mkdirSync9,
-  openSync as openSync2,
-  writeSync as writeSync2,
+  existsSync as existsSync12,
+  readFileSync as readFileSync21,
+  readdirSync as readdirSync8,
+  closeSync as closeSync3,
+  mkdirSync as mkdirSync11,
+  openSync as openSync3,
+  writeSync as writeSync3,
   fsyncSync,
   renameSync as renameSync2,
   unlinkSync,
-  writeFileSync as writeFileSync10,
+  writeFileSync as writeFileSync12,
   statSync
 } from "fs";
 import { randomUUID } from "crypto";
 import { spawnSync as spawnSync5 } from "child_process";
-import path12 from "path";
+import path15 from "path";
 function allow(notice = "") {
   const payload = notice ? { continue: true, reason: notice } : { continue: true };
   return { stdout: JSON.stringify(payload) + `
@@ -26466,7 +28159,7 @@ function isEmbeddedAgent(env) {
   const ep = env.CLAUDE_CODE_ENTRYPOINT;
   return ep === "sdk-py" || ep === "sdk-js";
 }
-function resolveMotiveSlug(motiveRef) {
+function resolveMotiveSlug2(motiveRef) {
   if (typeof motiveRef !== "string" || motiveRef.length === 0)
     return null;
   const match = motiveRef.match(/(?:^|[/\\])motives[/\\]([^/\\]+)/);
@@ -26480,23 +28173,23 @@ function sleepSync(ms) {
   } catch {}
 }
 function atomicWriteFileSync(filePath, data) {
-  const dir = path12.dirname(filePath);
-  mkdirSync9(dir, { recursive: true });
-  const tmp = path12.join(dir, `.${path12.basename(filePath)}.tmp.${randomUUID()}`);
-  const fd = openSync2(tmp, "w");
+  const dir = path15.dirname(filePath);
+  mkdirSync11(dir, { recursive: true });
+  const tmp = path15.join(dir, `.${path15.basename(filePath)}.tmp.${randomUUID()}`);
+  const fd = openSync3(tmp, "w");
   try {
-    writeFileSync10(fd, data);
+    writeFileSync12(fd, data);
     fsyncSync(fd);
   } finally {
-    closeSync2(fd);
+    closeSync3(fd);
   }
   renameSync2(tmp, filePath);
   try {
-    const dfd = openSync2(dir, "r");
+    const dfd = openSync3(dir, "r");
     try {
       fsyncSync(dfd);
     } finally {
-      closeSync2(dfd);
+      closeSync3(dfd);
     }
   } catch {}
 }
@@ -26506,11 +28199,11 @@ function atomicWriteJsonSync(filePath, obj) {
 }
 function withLock(targetPath, fn, { retries = 100, delayMs = 20, staleMs = 5000 } = {}) {
   const lockPath = `${targetPath}.lock`;
-  mkdirSync9(path12.dirname(targetPath), { recursive: true });
+  mkdirSync11(path15.dirname(targetPath), { recursive: true });
   let fd = null;
   for (let i = 0;fd === null; i++) {
     try {
-      fd = openSync2(lockPath, "wx");
+      fd = openSync3(lockPath, "wx");
     } catch (e) {
       if (e?.code !== "EEXIST")
         throw e;
@@ -26529,7 +28222,7 @@ function withLock(targetPath, fn, { retries = 100, delayMs = 20, staleMs = 5000 
     return fn();
   } finally {
     try {
-      closeSync2(fd);
+      closeSync3(fd);
     } catch {}
     try {
       unlinkSync(lockPath);
@@ -26540,7 +28233,7 @@ function mutateLedger(ledgerPath, fn) {
   withLock(ledgerPath, () => {
     let ledger = null;
     try {
-      ledger = JSON.parse(readFileSync17(ledgerPath, "utf8"));
+      ledger = JSON.parse(readFileSync21(ledgerPath, "utf8"));
     } catch {
       ledger = null;
     }
@@ -26553,10 +28246,10 @@ function mutateLedger(ledgerPath, fn) {
 function emitHookEvent(opts) {
   try {
     const { projectDir, sessionId, type, msg, source, data, ledger } = opts;
-    const journalDir = path12.join(projectDir, ".groundwork", "journal");
-    mkdirSync9(journalDir, { recursive: true });
+    const journalDir = path15.join(projectDir, ".groundwork", "journal");
+    mkdirSync11(journalDir, { recursive: true });
     const date5 = new Date().toISOString().slice(0, 10);
-    const shardPath = path12.join(journalDir, `${date5}-${sessionId || "unknown"}.jsonl`);
+    const shardPath = path15.join(journalDir, `${date5}-${sessionId || "unknown"}.jsonl`);
     let motive2;
     let motive_provenance;
     if (process.env.GROUNDWORK_MOTIVE) {
@@ -26568,20 +28261,20 @@ function emitHookEvent(opts) {
         const dir = projectDir;
         l = null;
         try {
-          l = JSON.parse(readFileSync17(path12.join(dir, ".groundwork", "run.json"), "utf8"));
+          l = JSON.parse(readFileSync21(path15.join(dir, ".groundwork", "run.json"), "utf8"));
         } catch {
           l = null;
         }
         if (!l?.active) {
           let files = [];
           try {
-            files = readdirSync4(path12.join(dir, ".groundwork", "runs"));
+            files = readdirSync8(path15.join(dir, ".groundwork", "runs"));
           } catch {}
           for (const f of files) {
             if (!f.endsWith(".json"))
               continue;
             try {
-              const candidate = JSON.parse(readFileSync17(path12.join(dir, ".groundwork", "runs", f), "utf8"));
+              const candidate = JSON.parse(readFileSync21(path15.join(dir, ".groundwork", "runs", f), "utf8"));
               if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
                 l = candidate;
                 break;
@@ -26615,11 +28308,11 @@ function emitHookEvent(opts) {
     }
     const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
-    const fd = openSync2(shardPath, "a");
+    const fd = openSync3(shardPath, "a");
     try {
-      writeSync2(fd, buf);
+      writeSync3(fd, buf);
     } finally {
-      closeSync2(fd);
+      closeSync3(fd);
     }
   } catch (e) {
     try {
@@ -26628,18 +28321,18 @@ function emitHookEvent(opts) {
     } catch {}
   }
 }
-function readAllEvents2(journalDir) {
+function readAllEvents3(journalDir) {
   try {
     let files;
     try {
-      files = readdirSync4(journalDir).filter((f) => f.endsWith(".jsonl"));
+      files = readdirSync8(journalDir).filter((f) => f.endsWith(".jsonl"));
     } catch {
       return [];
     }
     const events = [];
     for (const f of files) {
       try {
-        const content = readFileSync17(path12.join(journalDir, f), "utf8");
+        const content = readFileSync21(path15.join(journalDir, f), "utf8");
         for (const line of content.split(`
 `)) {
           const trimmed = line.trim();
@@ -26656,7 +28349,7 @@ function readAllEvents2(journalDir) {
     return [];
   }
 }
-function filterEvents(events, { motive: motive2 }) {
+function filterEvents2(events, { motive: motive2 }) {
   if (!motive2)
     return { shown: events };
   const shown = events.filter((e) => {
@@ -26672,8 +28365,8 @@ function filterEvents(events, { motive: motive2 }) {
 }
 function charterOpenItemCount(projectDir, slug) {
   try {
-    const charterPath = path12.join(projectDir, ".groundwork", "motives", slug, "motive.md");
-    const content = readFileSync17(charterPath, "utf8");
+    const charterPath2 = path15.join(projectDir, ".groundwork", "motives", slug, "motive.md");
+    const content = readFileSync21(charterPath2, "utf8");
     const matches = content.match(/^-\s+(TBD|TBR)-\S+:/gim) ?? [];
     return matches.length;
   } catch {
@@ -26684,10 +28377,10 @@ function tbdAdvisory(projectDir, env) {
   if (env.GROUNDWORK_TBD_GATE !== "1")
     return "";
   try {
-    const motivesDir = path12.join(projectDir, ".groundwork", "motives");
+    const motivesDir = path15.join(projectDir, ".groundwork", "motives");
     let slugs;
     try {
-      slugs = readdirSync4(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+      slugs = readdirSync8(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
     } catch {
       return "";
     }
@@ -26708,8 +28401,8 @@ function tbdAdvisory(projectDir, env) {
 }
 function decisionResearchAdvisory(projectDir) {
   try {
-    const journalDir = path12.join(projectDir, ".groundwork", "journal");
-    const events = readAllEvents2(journalDir);
+    const journalDir = path15.join(projectDir, ".groundwork", "journal");
+    const events = readAllEvents3(journalDir);
     const missing = events.filter((e) => {
       if (e?.type !== "DECISION")
         return false;
@@ -26730,12 +28423,12 @@ function decisionResearchAdvisory(projectDir) {
 }
 function decisionAlternativesAdvisory(projectDir) {
   try {
-    const journalDir = path12.join(projectDir, ".groundwork", "journal");
-    const allEvents = readAllEvents2(journalDir);
+    const journalDir = path15.join(projectDir, ".groundwork", "journal");
+    const allEvents = readAllEvents3(journalDir);
     let slugs = null;
     try {
-      const motivesDir = path12.join(projectDir, ".groundwork", "motives");
-      const dirs = readdirSync4(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+      const motivesDir = path15.join(projectDir, ".groundwork", "motives");
+      const dirs = readdirSync8(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
       if (dirs.length > 0)
         slugs = dirs;
     } catch {}
@@ -26762,7 +28455,7 @@ function decisionAlternativesAdvisory(projectDir) {
     if (slugs !== null) {
       for (const slug of slugs) {
         try {
-          const { shown } = filterEvents(allEvents, { motive: slug });
+          const { shown } = filterEvents2(allEvents, { motive: slug });
           scanForNoAlts(shown, slug);
         } catch {}
       }
@@ -26773,7 +28466,7 @@ function decisionAlternativesAdvisory(projectDir) {
     try {
       for (const slug of slugs ?? []) {
         try {
-          const { shown: motiveEvts } = filterEvents(allEvents, { motive: slug });
+          const { shown: motiveEvts } = filterEvents2(allEvents, { motive: slug });
           const idCount = new Map;
           const revisedIds = new Set;
           for (const ev of motiveEvts) {
@@ -26926,7 +28619,7 @@ function detectYield(input2) {
     return null;
   let raw;
   try {
-    raw = readFileSync17(transcriptPath, "utf8");
+    raw = readFileSync21(transcriptPath, "utf8");
   } catch {
     return null;
   }
@@ -27008,12 +28701,12 @@ function findNewLayoutLedger(projectDir, sessionId) {
   if (!sessionId)
     return null;
   try {
-    const motivesDir = path12.join(projectDir, NEW_LAYOUT_TRACKER, "motives");
-    if (!existsSync10(motivesDir))
+    const motivesDir = path15.join(projectDir, NEW_LAYOUT_TRACKER, "motives");
+    if (!existsSync12(motivesDir))
       return null;
     let slugs;
     try {
-      slugs = readdirSync4(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+      slugs = readdirSync8(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
     } catch {
       return null;
     }
@@ -27065,8 +28758,8 @@ function findNewLayoutLedger(projectDir, sessionId) {
   }
 }
 function resolveLedgerBin() {
-  const projectRoot = process.env.GW_REPO_ROOT ?? path12.resolve(path12.dirname(new URL(import.meta.url).pathname), "../../..");
-  return path12.join(projectRoot, "bin", "ledger");
+  const projectRoot = process.env.GW_REPO_ROOT ?? path15.resolve(path15.dirname(new URL(import.meta.url).pathname), "../../..");
+  return path15.join(projectRoot, "bin", "ledger");
 }
 var REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = async (input2, env) => {
   try {
@@ -27087,7 +28780,7 @@ var REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = asy
         sessionId: sessionId || undefined
       });
       try {
-        ledger = JSON.parse(readFileSync17(ledgerPath, "utf8"));
+        ledger = JSON.parse(readFileSync21(ledgerPath, "utf8"));
       } catch {
         return allow();
       }
@@ -27153,9 +28846,9 @@ var REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = asy
       const trivialEscape = slices.length <= 2 && !slices.some((s) => s?.kind === "impl") || /trivial|single-line|config|typo/i.test(brief);
       if (!trivialEscape) {
         const planRef = ledger.plan_ref;
-        const planRefOk = typeof planRef === "string" && planRef.length > 0 && existsSync10(planRef);
-        const motiveSlug = resolveMotiveSlug(ledger.motive_ref) ?? (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
-        const motiveOk = motiveSlug !== null && existsSync10(path12.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
+        const planRefOk = typeof planRef === "string" && planRef.length > 0 && existsSync12(planRef);
+        const motiveSlug = resolveMotiveSlug2(ledger.motive_ref) ?? (typeof ledger.motive === "string" && ledger.motive.length > 0 ? ledger.motive : null);
+        const motiveOk = motiveSlug !== null && existsSync12(path15.join(projectDir, ".groundwork", "motives", motiveSlug, "motive.md"));
         const planSliceComplete = slices.some((s) => (s?.kind === "plan" || s?.kind === "design") && s?.status === "complete");
         if (!planRefOk && !motiveOk && !planSliceComplete) {
           return block("Non-trivial run has no plan artifact (plan_ref missing/absent on disk, motive/motive_ref charter missing, and no plan/design slice complete). Run interview or planner to produce a plan, or set motive/motive_ref to a slug whose charter exists at .groundwork/motives/<slug>/motive.md.");
@@ -27193,12 +28886,12 @@ var init_stop_gate = __esm(() => {
 });
 
 // src/gw/hook/session-reminder.ts
-import { existsSync as existsSync11 } from "fs";
+import { existsSync as existsSync13 } from "fs";
 import { spawnSync as spawnSync6 } from "child_process";
 import { resolve as resolve2, dirname as dirname5 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 var __dir, _repoRoot, LEGACY_MJS, BUNDLE, run13 = async (input2, _env) => {
-  const useBundle = existsSync11(BUNDLE);
+  const useBundle = existsSync13(BUNDLE);
   const runtime = useBundle ? "bun" : "node";
   const script = useBundle ? BUNDLE : LEGACY_MJS;
   const result = spawnSync6(runtime, [script], {
@@ -27248,7 +28941,7 @@ function normaliseAllowlistType(raw) {
 }
 
 // src/gw/hook/nesting-guard.ts
-import path13 from "path";
+import path16 from "path";
 function passthrough() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27273,7 +28966,7 @@ function isSubagentCall(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path13.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path16.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -27331,8 +29024,8 @@ var init_nesting_guard = __esm(() => {
 });
 
 // src/gw/hook/agent-model-guard.ts
-import { readFileSync as readFileSync18, appendFileSync } from "fs";
-import path14 from "path";
+import { readFileSync as readFileSync22, appendFileSync } from "fs";
+import path17 from "path";
 function passthrough2() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27407,20 +29100,20 @@ function resolveModel(registry2, subagentType) {
 function loadRegistry(env) {
   const candidates = [];
   if (env.CLAUDE_PLUGIN_ROOT) {
-    candidates.push(path14.join(env.CLAUDE_PLUGIN_ROOT, "model-registry.json"));
+    candidates.push(path17.join(env.CLAUDE_PLUGIN_ROOT, "model-registry.json"));
   }
-  const binDir = path14.dirname(process.argv[0] ?? "");
-  candidates.push(path14.join(binDir, "..", "model-registry.json"));
-  candidates.push(path14.join(binDir, "model-registry.json"));
+  const binDir = path17.dirname(process.argv[0] ?? "");
+  candidates.push(path17.join(binDir, "..", "model-registry.json"));
+  candidates.push(path17.join(binDir, "model-registry.json"));
   try {
-    const here = path14.dirname(new URL(import.meta.url).pathname);
-    candidates.push(path14.join(here, "..", "..", "..", "model-registry.json"));
-    candidates.push(path14.join(here, "..", "..", "model-registry.json"));
-    candidates.push(path14.join(here, "..", "model-registry.json"));
+    const here = path17.dirname(new URL(import.meta.url).pathname);
+    candidates.push(path17.join(here, "..", "..", "..", "model-registry.json"));
+    candidates.push(path17.join(here, "..", "..", "model-registry.json"));
+    candidates.push(path17.join(here, "..", "model-registry.json"));
   } catch {}
   for (const p of candidates) {
     try {
-      return JSON.parse(readFileSync18(p, "utf8"));
+      return JSON.parse(readFileSync22(p, "utf8"));
     } catch {}
   }
   return null;
@@ -27434,8 +29127,8 @@ function debugLog(input2, env) {
     if (envVal.includes("/")) {
       logPath = envVal;
     } else {
-      const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path14.join(path14.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-      logPath = path14.join(pluginRoot, ".groundwork", "hook-debug.log");
+      const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path17.join(path17.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+      logPath = path17.join(pluginRoot, ".groundwork", "hook-debug.log");
     }
     const line = JSON.stringify({ ts: new Date().toISOString(), ...input2 }) + `
 `;
@@ -27489,7 +29182,7 @@ var init_agent_model_guard = () => {};
 
 // src/gw/hook/orchestrator-impl-guard.ts
 import os from "os";
-import path15 from "path";
+import path18 from "path";
 function passthrough3() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27516,7 +29209,7 @@ function isSubagentCall2(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path15.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path18.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -27525,14 +29218,14 @@ function isOrchestratorWritablePath(rawPath) {
     return false;
   let resolved;
   try {
-    resolved = path15.resolve(rawPath);
+    resolved = path18.resolve(rawPath);
   } catch {
     return false;
   }
-  const memoryBase = path15.join(os.homedir(), ".claude", "projects");
-  if (resolved.startsWith(memoryBase + path15.sep)) {
+  const memoryBase = path18.join(os.homedir(), ".claude", "projects");
+  if (resolved.startsWith(memoryBase + path18.sep)) {
     const rel = resolved.slice(memoryBase.length + 1);
-    const segments = rel.split(path15.sep);
+    const segments = rel.split(path18.sep);
     if (segments.length >= 3 && segments[1] === "memory")
       return true;
   }
@@ -27541,8 +29234,8 @@ function isOrchestratorWritablePath(rawPath) {
 function isLedgerPath(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path15.normalize(fp);
-  return path15.basename(norm) === "run.json" && path15.basename(path15.dirname(norm)) === ".groundwork";
+  const norm = path18.normalize(fp);
+  return path18.basename(norm) === "run.json" && path18.basename(path18.dirname(norm)) === ".groundwork";
 }
 var GUARDED_CANONICAL, run16 = async (rawInput, _env) => {
   try {
@@ -27558,8 +29251,8 @@ var GUARDED_CANONICAL, run16 = async (rawInput, _env) => {
       return passthrough3();
     if (isOrchestratorWritablePath(filePath))
       return passthrough3();
-    const here = path15.dirname(new URL(import.meta.url).pathname);
-    const LEDGER_BIN = path15.resolve(here, "..", "..", "..", "bin", "ledger");
+    const here = path18.dirname(new URL(import.meta.url).pathname);
+    const LEDGER_BIN = path18.resolve(here, "..", "..", "..", "bin", "ledger");
     return warn(`\u26A0\uFE0F  groundwork: orchestrator ${rawTool} \u2014 HIGHLY ENCOURAGED to delegate this change instead of implementing directly:
 ` + `  task(subagent_type="groundwork:general-purpose", background=true, model="claude-sonnet-4-6", prompt="<file path> + exact change + success criteria")
 ` + `  Then mark it complete: ${LEDGER_BIN} complete <id>
@@ -27573,7 +29266,7 @@ var init_orchestrator_impl_guard = __esm(() => {
 });
 
 // src/gw/hook/ledger-guard.ts
-import path16 from "path";
+import path19 from "path";
 function passthrough4() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27598,11 +29291,11 @@ function isEmbeddedAgent2(env) {
 function isLedgerPath2(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path16.normalize(fp);
-  if (path16.basename(norm) === "run.json" && path16.basename(path16.dirname(norm)) === ".groundwork")
+  const norm = path19.normalize(fp);
+  if (path19.basename(norm) === "run.json" && path19.basename(path19.dirname(norm)) === ".groundwork")
     return true;
-  if (norm.endsWith(".json") && path16.basename(path16.dirname(norm)) === "runs") {
-    const grandparent = path16.basename(path16.dirname(path16.dirname(norm)));
+  if (norm.endsWith(".json") && path19.basename(path19.dirname(norm)) === "runs") {
+    const grandparent = path19.basename(path19.dirname(path19.dirname(norm)));
     if (grandparent === ".groundwork")
       return true;
   }
@@ -27611,12 +29304,12 @@ function isLedgerPath2(fp) {
 function isKeyPath(fp) {
   if (typeof fp !== "string" || !fp)
     return false;
-  const norm = path16.normalize(fp);
+  const norm = path19.normalize(fp);
   if (!norm.endsWith(".seal.key"))
     return false;
-  if (path16.basename(path16.dirname(norm)) !== "runs")
+  if (path19.basename(path19.dirname(norm)) !== "runs")
     return false;
-  const grandparent = path16.basename(path16.dirname(path16.dirname(norm)));
+  const grandparent = path19.basename(path19.dirname(path19.dirname(norm)));
   return grandparent === ".groundwork";
 }
 function isSubagentCall3(input2) {
@@ -27625,7 +29318,7 @@ function isSubagentCall3(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path16.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path19.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -27672,11 +29365,11 @@ var LEDGER_BIN, run17 = async (input2, env) => {
   }
 };
 var init_ledger_guard = __esm(() => {
-  LEDGER_BIN = path16.resolve(process.env.GW_REPO_ROOT ?? path16.resolve(import.meta.dirname, "../../../"), "bin/ledger");
+  LEDGER_BIN = path19.resolve(process.env.GW_REPO_ROOT ?? path19.resolve(import.meta.dirname, "../../../"), "bin/ledger");
 });
 
 // src/gw/hook/ledger-bash-guard.ts
-import path17 from "path";
+import path20 from "path";
 function passthrough5() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -27704,7 +29397,7 @@ function isSubagentCall4(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path17.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path20.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -27779,7 +29472,7 @@ function isScopedSetBlockedByOnly(cmd) {
   }
   return true;
 }
-var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_RE, MUTATION_PATTERNS, EXFIL_PATTERNS, run18 = async (input2, env) => {
+var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, MUTATION_PATTERNS, EXFIL_PATTERNS, run18 = async (input2, env) => {
   try {
     if (isEmbeddedAgent3(env))
       return passthrough5();
@@ -27807,8 +29500,6 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
         }
       }
     }
-    if (READONLY_LEDGER_CMD_RE.test(cmd))
-      return passthrough5();
     if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
       if (isScopedCompleteOnly(cmd))
         return passthrough5();
@@ -27824,8 +29515,7 @@ var LEDGER_OR_KEY_RE, SEAL_KEY_RE, MUTATING_LEDGER_CMD_RE, READONLY_LEDGER_CMD_R
 var init_ledger_bash_guard = __esm(() => {
   LEDGER_OR_KEY_RE = /\.groundwork\/(?:run\.json|runs\/[^/\s]+\.(?:json|seal\.key))/;
   SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/;
-  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff)\b/;
-  READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/;
+  MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?['"`)]*\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token|hold|await-human|milestone-signoff)\b/;
   MUTATION_PATTERNS = [
     [/>{1,2}\s*\S*\.groundwork\/(?:run\.json|runs\/)/, "shell redirection (>/>>)"],
     [/\btee\b[^|]*\.groundwork\/(?:run\.json|runs\/)/, "tee"],
@@ -27881,8 +29571,8 @@ var init_piped_exit_code_guard = __esm(() => {
 });
 
 // src/gw/hook/struggle-detector.ts
-import path18 from "path";
-import { readFileSync as readFileSync19, writeFileSync as writeFileSync11, mkdirSync as mkdirSync10, appendFileSync as appendFileSync2, openSync as openSync3, writeSync as writeSync3, closeSync as closeSync3, readdirSync as readdirSync5 } from "fs";
+import path21 from "path";
+import { readFileSync as readFileSync23, writeFileSync as writeFileSync13, mkdirSync as mkdirSync12, appendFileSync as appendFileSync2, openSync as openSync4, writeSync as writeSync4, closeSync as closeSync4, readdirSync as readdirSync9 } from "fs";
 import { createHash as createHash2 } from "crypto";
 function toSlug(str2) {
   return String(str2).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -27922,26 +29612,26 @@ function commandFingerprint(cmd) {
   return shortHash(normalizeCommand(cmd));
 }
 function appendSignal(projectDir, signalObj) {
-  const filePath = path18.join(projectDir, ".groundwork", "struggle-signals.jsonl");
-  const dir = path18.dirname(filePath);
-  mkdirSync10(dir, { recursive: true });
+  const filePath = path21.join(projectDir, ".groundwork", "struggle-signals.jsonl");
+  const dir = path21.dirname(filePath);
+  mkdirSync12(dir, { recursive: true });
   appendFileSync2(filePath, `${JSON.stringify(signalObj)}
 `, "utf8");
 }
 function resolveShardPath2(projectDir, sessionId, date5) {
   const safeId = SAFE_SESSION2.test(sessionId ?? "") ? sessionId : "default";
   const d = date5 ?? new Date().toISOString().slice(0, 10);
-  return path18.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
+  return path21.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
 }
 function appendEvent(shardPath, event) {
-  mkdirSync10(path18.dirname(shardPath), { recursive: true });
+  mkdirSync12(path21.dirname(shardPath), { recursive: true });
   const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
-  const fd = openSync3(shardPath, "a");
+  const fd = openSync4(shardPath, "a");
   try {
-    writeSync3(fd, buf);
+    writeSync4(fd, buf);
   } finally {
-    closeSync3(fd);
+    closeSync4(fd);
   }
 }
 function resolveMotive(opts) {
@@ -27954,20 +29644,20 @@ function resolveMotive(opts) {
     const dir = projectDir ?? process.cwd();
     l = null;
     try {
-      l = JSON.parse(readFileSync19(path18.join(dir, ".groundwork", "run.json"), "utf8"));
+      l = JSON.parse(readFileSync23(path21.join(dir, ".groundwork", "run.json"), "utf8"));
     } catch {
       l = null;
     }
     if (!l?.active) {
       let files = [];
       try {
-        files = readdirSync5(path18.join(dir, ".groundwork", "runs"));
+        files = readdirSync9(path21.join(dir, ".groundwork", "runs"));
       } catch {}
       for (const f of files) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const candidate = JSON.parse(readFileSync19(path18.join(dir, ".groundwork", "runs", f), "utf8"));
+          const candidate = JSON.parse(readFileSync23(path21.join(dir, ".groundwork", "runs", f), "utf8"));
           if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
             l = candidate;
             break;
@@ -28007,11 +29697,11 @@ function emitHookEvent2(opts) {
   } catch {}
 }
 function tallyPath(projectDir, sessionId) {
-  return path18.join(projectDir, ".groundwork", "runs", `${sessionId}.detector.json`);
+  return path21.join(projectDir, ".groundwork", "runs", `${sessionId}.detector.json`);
 }
 function readTally(tallyFile) {
   try {
-    const raw = readFileSync19(tallyFile, "utf8");
+    const raw = readFileSync23(tallyFile, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object")
       return parsed;
@@ -28020,8 +29710,8 @@ function readTally(tallyFile) {
 }
 function writeTally(tallyFile, tally) {
   try {
-    mkdirSync10(path18.dirname(tallyFile), { recursive: true });
-    writeFileSync11(tallyFile, JSON.stringify(tally), "utf8");
+    mkdirSync12(path21.dirname(tallyFile), { recursive: true });
+    writeFileSync13(tallyFile, JSON.stringify(tally), "utf8");
   } catch {}
 }
 function maybeEmit(tally, projectDir, sessionId, kind, fingerprint, detail) {
@@ -28197,8 +29887,8 @@ var init_struggle_detector = __esm(() => {
 });
 
 // src/gw/hook/comment-density-guard.ts
-import { readFileSync as readFileSync20 } from "fs";
-import path19 from "path";
+import { readFileSync as readFileSync24 } from "fs";
+import path22 from "path";
 function passthrough7() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -28225,7 +29915,7 @@ function isSubagentCall5(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path19.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path22.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -28272,7 +29962,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effect
         const newStr = toolInput.new_string;
         if (typeof oldStr !== "string" || typeof newStr !== "string")
           return passthrough7();
-        const existing = readFileSync20(filePath, "utf-8");
+        const existing = readFileSync24(filePath, "utf-8");
         content = applyEdit(existing, {
           old_string: oldStr,
           new_string: newStr,
@@ -28282,7 +29972,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effect
         const edits = toolInput.edits;
         if (!Array.isArray(edits))
           return passthrough7();
-        const existing = readFileSync20(filePath, "utf-8");
+        const existing = readFileSync24(filePath, "utf-8");
         content = existing;
         for (const e of edits) {
           if (!e || typeof e !== "object")
@@ -28335,7 +30025,7 @@ var init_comment_density_guard = __esm(() => {
 });
 
 // src/gw/hook/commit-message-guard.ts
-import { readFileSync as readFileSync21, statSync as statSync2 } from "fs";
+import { readFileSync as readFileSync25, statSync as statSync2 } from "fs";
 import { resolve as resolve3 } from "path";
 function passthrough8() {
   return { stdout: "", stderr: "", exit: 0 };
@@ -28440,7 +30130,7 @@ var run22 = async (rawInput, env) => {
         const st = statSync2(filePath);
         if (!st.isFile())
           return passthrough8();
-        fileMsg = readFileSync21(filePath, "utf-8");
+        fileMsg = readFileSync25(filePath, "utf-8");
       } catch {
         return passthrough8();
       }
@@ -28571,16 +30261,16 @@ var init_hook2 = __esm(async () => {
 
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
-import { existsSync as existsSync12 } from "fs";
-import path20 from "path";
+import { existsSync as existsSync14 } from "fs";
+import path23 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
-  const activeDir = path20.join(repoRoot, legacyTracker, "journal");
-  const archiveDir = path20.join(repoRoot, legacyTracker, "archive", "journal");
-  if (existsSync12(activeDir))
+  const activeDir = path23.join(repoRoot, legacyTracker, "journal");
+  const archiveDir = path23.join(repoRoot, legacyTracker, "archive", "journal");
+  if (existsSync14(activeDir))
     journalDirs.push(activeDir);
-  if (existsSync12(archiveDir))
+  if (existsSync14(archiveDir))
     journalDirs.push(archiveDir);
   const allEvents = [];
   let skippedEphemeral = 0;
@@ -28594,7 +30284,7 @@ async function readDecisionEvents(opts) {
     for (const file2 of files.filter((f) => f.endsWith(".jsonl"))) {
       let raw;
       try {
-        raw = await readFile2(path20.join(dir, file2), "utf8");
+        raw = await readFile2(path23.join(dir, file2), "utf8");
       } catch {
         continue;
       }
@@ -28645,14 +30335,14 @@ var init_journal_reader = () => {};
 
 // src/gw/store/motive/charter.ts
 import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
-import { mkdirSync as mkdirSync11 } from "fs";
-import path21 from "path";
-function charterPath(repoRoot, tracker, motive2) {
-  return path21.join(repoRoot, tracker, "motives", motive2, "index.md");
+import { mkdirSync as mkdirSync13 } from "fs";
+import path24 from "path";
+function charterPath2(repoRoot, tracker, motive2) {
+  return path24.join(repoRoot, tracker, "motives", motive2, "index.md");
 }
 async function writeCharter(opts) {
-  const filePath = charterPath(opts.repoRoot, opts.tracker, opts.motive);
-  mkdirSync11(path21.dirname(filePath), { recursive: true });
+  const filePath = charterPath2(opts.repoRoot, opts.tracker, opts.motive);
+  mkdirSync13(path24.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter8.default.stringify(opts.body, opts.fm);
   await writeFile2(filePath, output2, "utf8");
 }
@@ -28669,11 +30359,11 @@ var init_charter = __esm(() => {
 
 // src/gw/store/motive/ticket.ts
 import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
-import { mkdirSync as mkdirSync12 } from "fs";
-import path22 from "path";
+import { mkdirSync as mkdirSync14 } from "fs";
+import path25 from "path";
 async function writeTicket(opts) {
   const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
-  mkdirSync12(path22.dirname(filePath), { recursive: true });
+  mkdirSync14(path25.dirname(filePath), { recursive: true });
   const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
   await writeFile3(filePath, output2, "utf8");
 }
@@ -28690,14 +30380,14 @@ var init_ticket2 = __esm(() => {
 
 // src/gw/store/motive/open-item.ts
 import { readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
-import { mkdirSync as mkdirSync13 } from "fs";
-import path23 from "path";
+import { mkdirSync as mkdirSync15 } from "fs";
+import path26 from "path";
 function openItemPath(repoRoot, tracker, motive2, id) {
-  return path23.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
+  return path26.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
 }
 async function writeOpenItem(opts) {
   const dest = openItemPath(opts.repoRoot, opts.tracker, opts.motive, opts.fm.id);
-  mkdirSync13(path23.dirname(dest), { recursive: true });
+  mkdirSync15(path26.dirname(dest), { recursive: true });
   await writeFile4(dest, import_gray_matter10.default.stringify(opts.body, opts.fm), "utf8");
 }
 function normalizeRef(ref) {
@@ -28773,10 +30463,10 @@ var init_motive2 = __esm(() => {
 
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
-import { existsSync as existsSync13, mkdirSync as mkdirSync14 } from "fs";
-import path24 from "path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync16 } from "fs";
+import path27 from "path";
 function decisionFilePath(repoRoot, tracker, motive2, id) {
-  return path24.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
+  return path27.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
 }
 async function writeDecisionDirect(opts) {
   const { repoRoot, tracker, motive: motive2, id, decision: decision3, rationale, alternatives } = opts;
@@ -28812,7 +30502,7 @@ async function writeDecisionDirect(opts) {
 ` + JSON.stringify(opts.legacyExtra, null, 2) + "\n```\n";
   }
   const dest = decisionFilePath(repoRoot, tracker, motive2, id);
-  mkdirSync14(path24.dirname(dest), { recursive: true });
+  mkdirSync16(path27.dirname(dest), { recursive: true });
   await writeFile5(dest, import_gray_matter11.default.stringify(body, fm), "utf8");
 }
 async function migrateMotive(opts) {
@@ -28829,7 +30519,7 @@ async function migrateMotive(opts) {
     lossy: [],
     errors: []
   };
-  const charterFile = path24.join(sourceDir, "motive.md");
+  const charterFile = path27.join(sourceDir, "motive.md");
   let openItems = [];
   try {
     const charterRaw = await readFile6(charterFile, "utf8");
@@ -28851,14 +30541,14 @@ async function migrateMotive(opts) {
     report.charter = "error";
     report.charter_error = String(err);
   }
-  const ticketsDir = path24.join(sourceDir, "tickets");
-  if (existsSync13(ticketsDir)) {
+  const ticketsDir = path27.join(sourceDir, "tickets");
+  if (existsSync15(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
     } catch {}
     for (const filename of ticketFiles) {
-      const raw = await readFile6(path24.join(ticketsDir, filename), "utf8");
+      const raw = await readFile6(path27.join(ticketsDir, filename), "utf8");
       let fm;
       let body;
       try {
@@ -28973,8 +30663,8 @@ var init_runner = __esm(() => {
 
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
-import { existsSync as existsSync14 } from "fs";
-import path25 from "path";
+import { existsSync as existsSync16 } from "fs";
+import path28 from "path";
 async function migrate(opts) {
   const {
     repoRoot,
@@ -28984,8 +30674,8 @@ async function migrate(opts) {
     dryRun
   } = opts;
   const activeSlugs = [];
-  const activeMotivesDir = path25.join(repoRoot, legacyTracker, "motives");
-  if (existsSync14(activeMotivesDir)) {
+  const activeMotivesDir = path28.join(repoRoot, legacyTracker, "motives");
+  if (existsSync16(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -29000,8 +30690,8 @@ async function migrate(opts) {
     } catch {}
   }
   const archivedSlugs = [];
-  const archiveMotivesDir = path25.join(repoRoot, legacyTracker, "archive", "motives");
-  if (existsSync14(archiveMotivesDir)) {
+  const archiveMotivesDir = path28.join(repoRoot, legacyTracker, "archive", "motives");
+  if (existsSync16(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -29024,7 +30714,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "active",
-      sourceDir: path25.join(repoRoot, legacyTracker, "motives", slug),
+      sourceDir: path28.join(repoRoot, legacyTracker, "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -29035,7 +30725,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "archived",
-      sourceDir: path25.join(repoRoot, legacyTracker, "archive", "motives", slug),
+      sourceDir: path28.join(repoRoot, legacyTracker, "archive", "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],

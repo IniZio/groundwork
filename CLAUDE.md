@@ -49,7 +49,7 @@ A `fork` subagent inherits the full orchestrator identity, so by default it trie
 - **General rule:** MUST NOT use a fork for execution work, except in the sanctioned retrospective-fork mode described immediately below. Use a **named subagent** (`general-purpose`, etc.) — its own definition system prompt fully replaces the orchestrator identity, so there is no leak.
 - **The one sanctioned exception — retrospective-fork mode:** `/groundwork:retrospective` MAY run as a fork (it needs full session history to reflect). When your task prompt states you are a retrospective fork, you remain the orchestrator but this mode inverts the delegate-everything rule for the retrospective only: execute Phases 1–6 **yourself**, directly, with Read/Write/Edit; do NOT delegate or spawn subagents; do NOT end your turn to "wait" (there is nothing to service you — waiting deadlocks); return your reflection + Learnings-KB result as your FINAL message. The sole exception within the exception: high-blast promotions (a CLAUDE.md rule or a new SKILL.md) — DRAFT those and hand them back in your report; the PARENT orchestrator runs them through advisor validation and applies them. This is scoped narrowly to the retrospective fork and grants no general license to self-implement.
 
-**Fork vs named subagent — quick decision.** Default to a **named subagent**. Choose a **fork** only when the task genuinely needs the *full session history* to do well (e.g. reflecting on "what happened this session") AND a short written brief cannot substitute for that history AND it is a sanctioned execute-in-fork mode (currently only `/groundwork:retrospective`). Prefer a **named subagent** when: the task is scoped and self-contained (a brief suffices); you need a specific or cheaper model (a fork is pinned to the parent model); you want a guaranteed-clean identity; or cost matters (a fork copies the entire transcript into the child — observed ~350–430k tokens on a long session — while a named subagent starts fresh). Rule of thumb: **history-critical AND a sanctioned fork mode → fork; everything else → named subagent.**
+**Fork vs named subagent — quick decision.** Default to a **named subagent**. Choose a **fork** only when the task genuinely needs the *full session history* to do well AND a short written brief cannot substitute AND it is a sanctioned execute-in-fork mode (currently only `/groundwork:retrospective`). Prefer a **named subagent** when: the brief suffices; you need a specific or cheaper model (a fork is pinned to the parent model); or cost matters (a fork copies the full transcript — ~350–430k tokens — vs. a fresh start). Rule of thumb: **history-critical AND a sanctioned fork mode → fork; everything else → named subagent.**
 
 ---
 
@@ -117,7 +117,7 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Inspect a single slice in full: `gw ledger show --motive <slug> <id>`.
 - View run summary: `gw ledger view --motive <slug>` (token is redacted in output).
 - Record the advisor verdict in the ledger: `gw ledger gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>` (`--citation` alone yields `{verdict, citation}`; add `--rubric …` to include a rubric field). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
-- Phase checkpoint: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]` APPROVE releases `checkpoint_hold` when it names that phase; REJECT records only. Set a hold: `gw ledger hold --motive <slug> --phase <phase> --token <write_token>`; clear: `gw ledger hold clear --motive <slug> --token <write_token>`.
+- Phase checkpoint: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]` APPROVE releases `checkpoint_hold` when it names that phase; REJECT records only. Hold: `gw ledger hold --motive <slug> --phase <phase> [--deliverable <d>] --token <write_token>`; clear: `gw ledger hold clear --motive <slug> --token <write_token>`.
 - Check progress cheaply any time with `gw ledger status --motive <slug>` instead of reading the file.
 - To abandon a run: `gw ledger abandon --motive <slug>` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 - For full command reference: `bin/ledger help [<cmd>]` (also `-h` or bare `bin/ledger`; `gw ledger` has no `help` subcommand).
@@ -190,7 +190,7 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 
 ## Per-agent models — NEVER omit `model:` on dispatch
 
-> **Agent types vs. skills:** The entries below are **agent types** — invoked via `Task(subagent_type="groundwork:…")` or `Agent`. They are NOT skills and MUST NOT be invoked via `Skill()`. Skills (loaded via `Skill()`) are instruction sets read into the orchestrator's context; agent types are compute targets dispatched as background processes. Mixing these registries causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill" instead of launching the explore agent). For the context-offload rationale behind the planner being an agent, see the routing table above.
+> **Agent types vs. skills:** These are **agent types** — `Task`/`Agent` only, MUST NOT use `Skill()`. Mixing causes routing failures (e.g. `Skill("groundwork:explore")` → "Unknown skill"). For context-offload rationale, see routing table above.
 
 **Hard rule: every `Task`/`Agent` call MUST include `model:` explicitly.** Omitting it silently inherits the expensive session model and drives up cost for every background task. Source of truth is `model-registry.json` (`claude-code` column); the table below is generated from it.
 
@@ -352,8 +352,6 @@ Evidence rules live in the advisor's Verification Protocol; the orchestrator doe
 
 ---
 
-
-
 Same subtask fails 3× in a row:
 1. Stop retrying
 2. Collect all errors, approaches tried, specific blocker
@@ -423,7 +421,6 @@ Three trees, three editing rules — never confuse them:
 - **TypeScript:** `strict: true`, `target: ES2024`, `moduleResolution: NodeNext`. Path aliases: `#src/*` → `./src/*`, `#test/*` → `./test/*`.
 - **Hook CLIs:** exit `0` success · `1` operational failure · `2` usage error.
 
-<!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the

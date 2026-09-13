@@ -349,11 +349,11 @@ function reSeal(ledger, projectDir) {
   ledger.gate.seal = computeSeal(canonicalReleaseState(ledger), key)
 }
 
-function assertWriteToken(ledger, passedToken) {
+function assertWriteToken(ledger, passedToken, verb = 'this subcommand') {
   const stored = ledger?.write_token
   if (!stored) {
     const e = new Error(
-      'gate/complete/abandon require write_token authority — this ledger has none.\n' +
+      `${verb} requires write_token authority — this ledger has none.\n` +
       '  Re-initialize via `ledger init <file>` (embeds a token).',
     )
     e.exitCode = 1
@@ -361,7 +361,7 @@ function assertWriteToken(ledger, passedToken) {
   }
   if (!passedToken || passedToken !== stored) {
     const e = new Error(
-      'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init\n' +
+      `${verb} is orchestrator-only — pass --token <write_token> printed at init\n` +
       '  (run `ledger status` to check run state; the token itself is never displayed)',
     )
     e.exitCode = 1
@@ -636,9 +636,18 @@ function cmdStatus() {
     return `${s?.id ?? '?'}${sym}${wave ? ' ' + wave : ''}${dep}${claim}`
   })
   const gate = l.gate ?? {}
+  const holdLine = l.checkpoint_hold
+    ? (() => {
+        const phases = gate.phases ?? {}
+        const cp = phases[l.checkpoint_hold] ?? {}
+        const deliverable = cp.deliverable ?? l.checkpoint_hold
+        return `checkpoint hold: ${l.checkpoint_hold} — awaiting verification: ${deliverable}\n`
+      })()
+    : ''
   process.stdout.write(
     `${head}\n${rows.join('  ')}\n` +
       `gate: advisor=${advisorVerdict(gate)}\n` +
+      holdLine +
       `${done}/${slices.length} slices complete\n`,
   )
 }
@@ -711,7 +720,7 @@ function cmdAwaitHuman(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)  // orchestrator-only — same authority as complete/gate/abandon
+    assertWriteToken(l, flags.token, 'await-human')  // orchestrator-only — same authority as complete/gate/abandon
     if (clearing) {
       delete l.awaiting_human
     } else {
@@ -743,7 +752,7 @@ function cmdMilestoneSignoff(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)  // SECURITY: orchestrator-only — same authority as complete/gate/abandon
+    assertWriteToken(l, flags.token, 'milestone-signoff')  // SECURITY: orchestrator-only — same authority as complete/gate/abandon
 
     if (verdict === 'APPROVE') {
       const hashCheck = checkMilestoneArtifacts(l, currentBuildHash)
@@ -801,7 +810,7 @@ function cmdCheckpoint(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)  // SECURITY: orchestrator-only — same authority as milestone-signoff
+    assertWriteToken(l, flags.token, 'checkpoint')  // SECURITY: orchestrator-only — same authority as milestone-signoff
     if (!l.gate) l.gate = {}
     if (!l.gate.phases) l.gate.phases = {}
     if (l.pacing?.milestone_signoff && !l.gate.phases.completion) {
@@ -836,11 +845,19 @@ function cmdHold(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)
+    assertWriteToken(l, flags.token, 'hold')
     if (clearing) {
       delete l.checkpoint_hold
     } else {
       l.checkpoint_hold = flags.phase
+      const deliverable = flags.deliverable ?? flags.phase
+      if (!l.gate) l.gate = {}
+      if (!l.gate.phases) l.gate.phases = {}
+      l.gate.phases[flags.phase] = {
+        ...(l.gate.phases[flags.phase] ?? {}),
+        deliverable,
+        tier: /^wave-\d+$/.test(flags.phase) ? 'AUTO_ADVANCES' : 'BLOCKS',
+      }
     }
     reSeal(l, projectDir)
   })
@@ -859,7 +876,7 @@ function cmdScopeToken(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)  // orchestrator-only
+    assertWriteToken(l, flags.token, 'scope-token')  // orchestrator-only
     const tok = 'sct_' + randomBytes(8).toString('hex')
     if (!Array.isArray(l.scoped_tokens)) l.scoped_tokens = []
     l.scoped_tokens.push({ scope, token: tok })
@@ -943,7 +960,7 @@ function cmdGate(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)
+    assertWriteToken(l, flags.token, 'gate')
     capturedLedger = l
     l.gate = l.gate ?? {}
     l.gate[which] = value
@@ -1008,7 +1025,7 @@ function cmdAbandon(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to abandon')
-    assertWriteToken(l, flags.token)
+    assertWriteToken(l, flags.token, 'abandon')
     capturedLedger = l
     l.active = false
     reSeal(l, projectDir)  // S2-AC3: re-seal with active:false so stop-gate accepts abandon
@@ -1154,7 +1171,7 @@ function cmdRm(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   mutateLedgerChecked(ledgerPath(), (l) => {
     if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)
+    assertWriteToken(l, flags.token, 'rm')
     const slices = Array.isArray(l.slices) ? l.slices : []
     const existingIds = new Set(slices.map((s) => s?.id))
     for (const id of ids) {
@@ -1213,7 +1230,7 @@ function cmdSet(args) {
     // S2-AC4 (vector 3): raw `set` to a terminal status requires the write token —
     // prevents a subagent bypassing the complete guard. Fails closed if no write_token.
     if (flags.status != null && TERMINAL_STATUSES.has(flags.status)) {
-      assertWriteToken(l, flags.token)
+      assertWriteToken(l, flags.token, 'set')
     }
     if (flags.status != null) {
       s.status = flags.status
@@ -1454,6 +1471,12 @@ function cmdView() {
   lines.push(`| Gate | Verdict |`)
   lines.push(`|---|---|`)
   lines.push(`| advisor | ${advisorStr} |`)
+  if (l.checkpoint_hold) {
+    const phases = gate.phases ?? {}
+    const cp = phases[l.checkpoint_hold] ?? {}
+    const deliverable = cp.deliverable ?? l.checkpoint_hold
+    lines.push(`| checkpoint hold | ⏳ ${l.checkpoint_hold} — awaiting verification: ${deliverable} |`)
+  }
   if (gate.verifier != null) lines.push(`| verifier | ${gate.verifier} |`)
   if (gate.qa != null) lines.push(`| qa | ${gate.qa} |`)
   lines.push(``)

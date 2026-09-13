@@ -129,6 +129,27 @@ describe('AC-11 — phase checkpoint render', () => {
     expect(map).toContain('⏳ awaiting verification')
   })
 
+  it('shows awaiting verification for BLOCKS phase with NO verdict field (hold shape)', () => {
+    makeCharter(dir, MOTIVE)
+    writeLedger(dir, baseLedger({
+      checkpoint_hold: 'design',
+      gate: {
+        session: 'sess-1',
+        motive: MOTIVE,
+        phases: {
+          design: { deliverable: 'design doc v1', tier: 'BLOCKS' },
+        },
+      },
+    }))
+    regenerateMotiveMap(dir, MOTIVE)
+    const map = readMap(dir, MOTIVE)
+
+    expect(map).toContain('## Phase Checkpoints')
+    expect(map).toContain('⏳ awaiting verification')
+    expect(map).toContain('design doc v1')
+    expect(map).not.toContain('✓ verified')
+  })
+
   it('shows auto-advancing for AUTO_ADVANCES phase with no verdict', () => {
     makeCharter(dir, MOTIVE)
     writeLedger(dir, baseLedger({

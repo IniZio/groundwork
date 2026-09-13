@@ -124,10 +124,84 @@ function runSuiteOn(getSurface: (dir: string) => Surface) {
     surface.run(['checkpoint', '--phase', 'design', '--verdict', 'APPROVE', '--verified-by', 'test', '--token', token])
     expect(readLedger(runPath).checkpoint_hold).toBe('plan')
   })
+
+  it('hold --deliverable fills gate.phases[phase].deliverable', () => {
+    const r = surface.run(['hold', '--phase', 'design', '--deliverable', 'design doc v1', '--token', token])
+    expect(r.status, r.stderr).toBe(0)
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.design as Record<string, unknown>
+    expect(dp, 'gate.phases.design must exist').toBeDefined()
+    expect(dp.deliverable).toBe('design doc v1')
+    expect(dp.tier).toBe('BLOCKS')
+    expect(dp.verdict).toBeUndefined()
+  })
+
+  it('hold without --deliverable defaults deliverable to phase key', () => {
+    surface.run(['hold', '--phase', 'plan', '--token', token])
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.plan as Record<string, unknown>
+    expect(dp?.deliverable).toBe('plan')
+  })
+
+  it('status shows checkpoint hold with phase and deliverable', () => {
+    surface.run(['hold', '--phase', 'design', '--deliverable', 'design doc v1', '--token', token])
+    const r = surface.run(['status'])
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toContain('checkpoint hold: design')
+    expect(r.stdout).toContain('design doc v1')
+    expect(r.stdout).toContain('awaiting verification')
+  })
+
+  it('status does not mention checkpoint hold when none is set (positive-control: hold then clear)', () => {
+    surface.run(['hold', '--phase', 'design', '--token', token])
+    const withHold = surface.run(['status'])
+    expect(withHold.stdout).toContain('checkpoint hold')
+    surface.run(['hold', 'clear', '--token', token])
+    const cleared = surface.run(['status'])
+    expect(cleared.stdout).not.toContain('checkpoint hold')
+  })
+
+  it('view shows checkpoint hold in Gate table', () => {
+    surface.run(['hold', '--phase', 'design', '--deliverable', 'design doc v1', '--token', token])
+    const r = surface.run(['view'])
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toContain('checkpoint hold')
+    expect(r.stdout).toContain('design doc v1')
+    expect(r.stdout).toContain('awaiting verification')
+  })
 }
 
 describe('hooks/ledger.mjs surface', () => runSuiteOn(hooksSurface))
 describe('src/gw/cli/main.ts surface', () => runSuiteOn(tsSurface))
+
+describe('deliverable parity bite proof', () => {
+  it('a perturbed hooks surface that omits the deliverable write fails the deliverable assertion', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'gw-hold-del-bite-'))
+    const perturbedPath = join(tmpDir, 'ledger-perturbed.mjs')
+    const src = readFileSync(LEDGER_MJS, 'utf8').replace(
+      'const deliverable = flags.deliverable ?? flags.phase',
+      'const deliverable = undefined',
+    )
+    writeFileSync(perturbedPath, src)
+
+    const projectDir = mkdtempSync(join(tmpdir(), 'gw-hold-del-bite-proj-'))
+    mkdirSync(join(projectDir, '.groundwork', 'runs'), { recursive: true })
+    const token = initLedger(projectDir)
+    const runPath = join(projectDir, '.groundwork', 'runs', `${SESSION_ID}.json`)
+
+    nodeRun(perturbedPath, projectDir, ['hold', '--phase', 'design', '--deliverable', 'design doc v1', '--token', token])
+    const l = readLedger(runPath)
+    const phases = ((l.gate as Record<string, unknown>)?.phases ?? {}) as Record<string, unknown>
+    const dp = phases.design as Record<string, unknown>
+
+    expect(dp?.deliverable).not.toBe('design doc v1')
+
+    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(projectDir, { recursive: true, force: true })
+  })
+})
 
 describe('parity bite proof', () => {
   it('a perturbed hooks surface that omits the checkpoint_hold write fails the set assertion', () => {
@@ -157,7 +231,7 @@ describe('parity bite proof', () => {
 describe('CLAUDE.md documents the shipped command verbatim-runnable', () => {
   it('documented hold command is executable against a real ledger', () => {
     const claudeMd = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8')
-    expect(claudeMd).toContain('gw ledger hold --motive <slug> --phase <phase> --token <write_token>')
+    expect(claudeMd).toContain('gw ledger hold --motive <slug> --phase <phase> [--deliverable <d>] --token <write_token>')
 
     const projectDir = mkdtempSync(join(tmpdir(), 'gw-hold-doc-'))
     mkdirSync(join(projectDir, '.groundwork', 'runs'), { recursive: true })

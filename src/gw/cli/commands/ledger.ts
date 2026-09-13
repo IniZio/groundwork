@@ -216,11 +216,11 @@ function extractGateVerdict(gate: GateJson | undefined): string {
 // Auth — mirrors enforceWriteTokenAuth in hooks/ledger.mjs
 // ---------------------------------------------------------------------------
 
-function assertWriteToken(ledger: LedgerJson | null, passedToken: string | true | undefined): void {
+function assertWriteToken(ledger: LedgerJson | null, passedToken: string | true | undefined, verb = 'this subcommand'): void {
   if (!passedToken || passedToken === true) {
     throw Object.assign(
       new Error(
-        'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init',
+        `${verb} is orchestrator-only — pass --token <write_token> printed at init`,
       ),
       { exitCode: 1 },
     )
@@ -229,7 +229,7 @@ function assertWriteToken(ledger: LedgerJson | null, passedToken: string | true 
   if (!stored) {
     throw Object.assign(
       new Error(
-        'gate/complete/abandon require write_token authority — this ledger has none.\n' +
+        `${verb} requires write_token authority — this ledger has none.\n` +
         '  Re-initialize via `ledger init <file>` (embeds a token).',
       ),
       { exitCode: 1 },
@@ -238,7 +238,7 @@ function assertWriteToken(ledger: LedgerJson | null, passedToken: string | true 
   if (stored !== (passedToken as string)) {
     throw Object.assign(
       new Error(
-        'gate/complete/abandon are orchestrator-only — pass --token <write_token> printed at init\n' +
+        `${verb} is orchestrator-only — pass --token <write_token> printed at init\n` +
         '  (run `ledger status` to check run state; the token itself is never displayed)',
       ),
       { exitCode: 1 },
@@ -349,7 +349,16 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             return `  ${s.id}${sym}${wave}${claimed}${blockers}`
           })
           .join('\n')
-        const out = `motive: ${motive}\n${rows}\ngate: advisor=${verdict}\n${done}/${all.length} slices complete\n`
+        const checkpointHold = ledger.checkpoint_hold as string | undefined
+        const holdLine = checkpointHold
+          ? (() => {
+              const phases = (ledger.gate?.phases ?? {}) as Record<string, Record<string, unknown>>
+              const cp = phases[checkpointHold] ?? {}
+              const deliverable = (cp['deliverable'] as string | undefined) ?? checkpointHold
+              return `checkpoint hold: ${checkpointHold} — awaiting verification: ${deliverable}\n`
+            })()
+          : ''
+        const out = `motive: ${motive}\n${rows}\ngate: advisor=${verdict}\n${holdLine}${done}/${all.length} slices complete\n`
         return okEnvelope('ledger status', { content: out })
       }
 
@@ -453,7 +462,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const terminal = newStatus === 'complete' || newStatus === 'skipped'
         if (terminal) {
           try {
-            assertWriteToken(ledger, flags['token'])
+            assertWriteToken(ledger, flags['token'], 'set')
           } catch (e) {
             return authErr('ledger set', e)
           }
@@ -521,7 +530,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const slices = ledger.slices ?? []
         const masterOk = (() => {
           try {
-            assertWriteToken(ledger, flags['token'])
+            assertWriteToken(ledger, flags['token'], 'complete')
             return true
           } catch {
             return false
@@ -670,11 +679,20 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           }
           lines.push('')
         }
+        const viewCheckpointHold = ledger.checkpoint_hold as string | undefined
+        const holdRows: string[] = []
+        if (viewCheckpointHold) {
+          const phases = (ledger.gate?.phases ?? {}) as Record<string, Record<string, unknown>>
+          const cp = phases[viewCheckpointHold] ?? {}
+          const deliverable = (cp['deliverable'] as string | undefined) ?? viewCheckpointHold
+          holdRows.push(`| checkpoint hold | ⏳ ${viewCheckpointHold} — awaiting verification: ${deliverable} |`)
+        }
         lines.push(
           '## Gate',
           '| Gate | Verdict |',
           '|---|---|',
           `| advisor | ${verdict} |`,
+          ...holdRows,
           '',
           `**Progress:** ${done}/${all.length} slices complete`,
         )
@@ -705,7 +723,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger gate', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'gate')
         } catch (e) {
           return authErr('ledger gate', e)
         }
@@ -848,7 +866,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger abandon', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'abandon')
         } catch (e) {
           return authErr('ledger abandon', e)
         }
@@ -967,7 +985,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger)
           return errEnvelope('ledger await-human', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'await-human')
         } catch (e) {
           return authErr('ledger await-human', e)
         }
@@ -1005,7 +1023,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger)
           return errEnvelope('ledger scope-token', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'scope-token')
         } catch (e) {
           return authErr('ledger scope-token', e)
         }
@@ -1048,7 +1066,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger)
           return errEnvelope('ledger checkpoint', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'checkpoint')
         } catch (e) {
           return authErr('ledger checkpoint', e)
         }
@@ -1100,7 +1118,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger)
           return errEnvelope('ledger hold', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'hold')
         } catch (e) {
           return authErr('ledger hold', e)
         }
@@ -1109,7 +1127,21 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           atomicWrite(runPath, reSeal(rest as LedgerJson, repoRoot))
           return okEnvelope('ledger hold', { content: 'checkpoint-phase hold cleared\n' })
         } else {
-          atomicWrite(runPath, reSeal({ ...rest, checkpoint_hold: phase } as LedgerJson, repoRoot))
+          const deliverable = (flags['deliverable'] as string | undefined) ?? phase
+          const baseGate = gateWithoutSeal((rest as LedgerJson).gate ?? {})
+          const existingPhases = (baseGate['phases'] as Record<string, unknown> | undefined) ?? {}
+          const newGate: GateJson = {
+            ...baseGate,
+            phases: {
+              ...existingPhases,
+              [phase as string]: {
+                ...((existingPhases[phase as string] as Record<string, unknown> | undefined) ?? {}),
+                deliverable,
+                tier: /^wave-\d+$/.test(phase as string) ? 'AUTO_ADVANCES' : 'BLOCKS',
+              },
+            },
+          }
+          atomicWrite(runPath, reSeal({ ...rest, checkpoint_hold: phase, gate: newGate } as LedgerJson, repoRoot))
           return okEnvelope('ledger hold', { content: `checkpoint-phase hold set to '${phase}'\n` })
         }
       }
@@ -1138,7 +1170,7 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger)
           return errEnvelope('ledger milestone-signoff', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         try {
-          assertWriteToken(ledger, flags['token'])
+          assertWriteToken(ledger, flags['token'], 'milestone-signoff')
         } catch (e) {
           return authErr('ledger milestone-signoff', e)
         }

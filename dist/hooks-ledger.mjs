@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: a5a88f4e8e83618f843b908139a56963c12e227e6e414ecc350c0a45e6d157ef
+// @bundle-source-hash: f6ba28155656fe11060636a2557e074cf196d967a0b02dbf954de80ef3af6d78
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -14118,6 +14118,15 @@ var HELP = {
       "--token <t>   orchestrator write-token (required \u2014 hold is orchestrator-only)"
     ]
   },
+  hold: {
+    summary: "set or clear the checkpoint-phase hold (blocks session end until APPROVE clears it)",
+    usage: "ledger hold --phase <phase> --token <write_token>  |  ledger hold clear --token <write_token>",
+    flags: [
+      'clear          positional \u2014 pass "clear" as the first argument to release the hold',
+      "--phase <p>    required when setting \u2014 phase key (plan | design | wave-<n> | completion)",
+      "--token <t>    orchestrator write-token (required)"
+    ]
+  },
   checkpoint: {
     summary: "record a human phase-deliverable verdict (SECURITY: requires write_token)",
     usage: "ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] --token <write_token>",
@@ -14437,10 +14446,38 @@ function cmdCheckpoint(args) {
       verified_by: verifiedBy,
       verified_at: new Date().toISOString()
     };
+    if (verdict === "APPROVE" && l.checkpoint_hold === phase) {
+      delete l.checkpoint_hold;
+    }
     reSeal(l, projectDir);
   });
   process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}
 `);
+}
+function cmdHold(args) {
+  const { flags, positionals } = parseFlags(args ?? []);
+  const clearing = positionals[0] === "clear";
+  if (!clearing && !flags.phase)
+    die("ledger hold requires --phase <phase> when setting", 2);
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l)
+      throw new Error("no ledger to update");
+    assertWriteToken(l, flags.token);
+    if (clearing) {
+      delete l.checkpoint_hold;
+    } else {
+      l.checkpoint_hold = flags.phase;
+    }
+    reSeal(l, projectDir);
+  });
+  if (clearing) {
+    process.stdout.write(`checkpoint-phase hold cleared
+`);
+  } else {
+    process.stdout.write(`checkpoint-phase hold set to '${flags.phase}'
+`);
+  }
 }
 function cmdScopeToken(args) {
   const { flags, positionals } = parseFlags(args);
@@ -15171,6 +15208,8 @@ function main() {
         return cmdScopeToken(rest);
       case "await-human":
         return cmdAwaitHuman(rest);
+      case "hold":
+        return cmdHold(rest);
       case "checkpoint":
         return cmdCheckpoint(rest);
       case "milestone-signoff":

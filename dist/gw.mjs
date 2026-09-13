@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: d675cfca02ae9cae991ab1eca1d86dc73831bb6ce9cbe337c89342aa804b33ab
+// @bundle-source-hash: 823706e95c007698b1fbb6c498a5abaabbdd35fee610d8535047073edb36ff6d
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1092,6 +1092,22 @@ function canonicalReleaseState(ledger) {
 function computeSeal(stateString, key) {
   const keyBuf = Buffer.isBuffer(key) ? key : Buffer.from(key, "hex");
   return createHmac("sha256", keyBuf).update(stateString, "utf8").digest("hex");
+}
+function verifySeal(ledger, key) {
+  const storedSeal = ledger?.gate?.seal;
+  if (!storedSeal || typeof storedSeal !== "string")
+    return false;
+  try {
+    const stateString = canonicalReleaseState(ledger);
+    const expected = computeSeal(stateString, key);
+    const storedBuf = Buffer.from(storedSeal, "hex");
+    const expectedBuf = Buffer.from(expected, "hex");
+    if (storedBuf.length !== expectedBuf.length)
+      return false;
+    return timingSafeEqual(storedBuf, expectedBuf);
+  } catch {
+    return false;
+  }
 }
 function keyPath({ projectDir, sessionId } = {}) {
   if (sessionId && typeof sessionId === "string" && SAFE_ID.test(sessionId)) {
@@ -2262,11 +2278,39 @@ Review and fix with:
             }
           }
         };
-        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot));
+        const base = { ...ledger, gate: newGate };
+        if (verdict === "APPROVE" && typeof ledger.checkpoint_hold === "string" && ledger.checkpoint_hold === phase) {
+          delete base["checkpoint_hold"];
+        }
+        atomicWrite(runPath, reSeal(base, repoRoot));
         return okEnvelope("ledger checkpoint", {
           content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}
 `
         });
+      }
+      case "hold": {
+        const phase = flags["phase"];
+        const clearing = positionals[0] === "clear";
+        if (!clearing && !phase)
+          return errEnvelope("ledger hold", "USAGE_ERROR", "--phase is required when setting a hold", 2);
+        const ledger = readLedger(runPath);
+        if (!ledger)
+          return errEnvelope("ledger hold", "NOT_FOUND", `no ledger at ${runPath}`, 1);
+        try {
+          assertWriteToken(ledger, flags["token"]);
+        } catch (e) {
+          return authErr("ledger hold", e);
+        }
+        const { checkpoint_hold: _prev, ...rest2 } = ledger;
+        if (clearing) {
+          atomicWrite(runPath, reSeal(rest2, repoRoot));
+          return okEnvelope("ledger hold", { content: `checkpoint-phase hold cleared
+` });
+        } else {
+          atomicWrite(runPath, reSeal({ ...rest2, checkpoint_hold: phase }, repoRoot));
+          return okEnvelope("ledger hold", { content: `checkpoint-phase hold set to '${phase}'
+` });
+        }
       }
       case "milestone-signoff": {
         const verdict = flags["verdict"];
@@ -2323,6 +2367,7 @@ var init_ledger = __esm(() => {
     "await-human",
     "autopilot",
     "checkpoint",
+    "hold",
     "scope-token",
     "milestone-signoff"
   ];
@@ -26199,7 +26244,7 @@ function canonicalMachineState(fm, machineKeys) {
 function computeHmac(key, canonical) {
   return createHmac2("sha256", key).update(canonical, "utf8").digest("hex");
 }
-function verifySeal(notePath, motiveDir2, fm, machineKeys) {
+function verifySeal2(notePath, motiveDir2, fm, machineKeys) {
   const sp = sealPath(notePath);
   if (!existsSync8(sp)) {
     return null;
@@ -26218,7 +26263,7 @@ function verifyNote(notePath, motiveDir2, kind) {
   const content = readFileSync14(notePath, "utf8");
   const { data } = import_gray_matter5.default(content);
   const machineKeys = kind === "slice" ? SLICE_MACHINE_KEYS : GATE_MACHINE_KEYS;
-  return verifySeal(notePath, motiveDir2, data, machineKeys);
+  return verifySeal2(notePath, motiveDir2, data, machineKeys);
 }
 var import_gray_matter5, SLICE_MACHINE_KEYS, GATE_MACHINE_KEYS;
 var init_seal = __esm(() => {
@@ -26355,7 +26400,7 @@ import {
   writeFileSync as writeFileSync10,
   statSync
 } from "fs";
-import { createHmac as createHmac3, timingSafeEqual as timingSafeEqual3, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { spawnSync as spawnSync5 } from "child_process";
 import path12 from "path";
 function allow(notice = "") {
@@ -26383,86 +26428,6 @@ function resolveMotiveSlug(motiveRef) {
   if (match)
     return match[1];
   return motiveRef;
-}
-function extractAdvisorVerdictFromGateObj(gate2) {
-  const a = gate2?.advisor;
-  if (!a)
-    return null;
-  if (typeof a === "string")
-    return a;
-  if (typeof a === "object" && a !== null && "verdict" in a)
-    return String(a.verdict);
-  return null;
-}
-function canonicalReleaseState2(ledger) {
-  const slices = Array.isArray(ledger.slices) ? ledger.slices : [];
-  const sortedSlices = slices.map((s) => ({
-    id: String(s.id),
-    status: String(s.status),
-    created_by: s.created_by ?? null
-  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  const state = {
-    schema_version: ledger.schema_version ?? null,
-    session_id: ledger.session_id ?? null,
-    active: ledger.active ?? null,
-    advisor_verdict: extractAdvisorVerdictFromGateObj(ledger.gate),
-    slices: sortedSlices
-  };
-  if (ledger.scoped_tokens !== undefined) {
-    const rawTokens = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : [];
-    state.scoped_tokens = rawTokens.map((t) => ({ scope: String(t.scope ?? ""), token: String(t.token ?? "") })).sort((a, b) => a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : a.token < b.token ? -1 : a.token > b.token ? 1 : 0);
-  }
-  if (ledger.awaiting_human !== undefined) {
-    state.awaiting_human = ledger.awaiting_human === true;
-  }
-  const pacing = ledger.pacing;
-  if (pacing?.milestone_signoff !== undefined) {
-    const ms = pacing.milestone_signoff;
-    state.milestone_signoff = {
-      verdict: String(ms.verdict ?? ""),
-      verified_by: String(ms.verified_by ?? ""),
-      verified_at: String(ms.verified_at ?? "")
-    };
-  }
-  if (ledger.checkpoint_hold !== undefined) {
-    state.checkpoint_hold = ledger.checkpoint_hold;
-  }
-  const gateForSeal = ledger.gate;
-  if (gateForSeal?.phases !== undefined) {
-    state.gate_phases = gateForSeal.phases;
-  }
-  return JSON.stringify(state);
-}
-function computeSeal2(stateString, key) {
-  const keyBuf = Buffer.isBuffer(key) ? key : Buffer.from(key, "hex");
-  return createHmac3("sha256", keyBuf).update(stateString, "utf8").digest("hex");
-}
-function verifySeal2(ledger, key) {
-  const gate2 = ledger.gate;
-  const storedSeal = gate2?.seal;
-  if (!storedSeal || typeof storedSeal !== "string")
-    return false;
-  try {
-    const stateString = canonicalReleaseState2(ledger);
-    const expected = computeSeal2(stateString, key);
-    const storedBuf = Buffer.from(storedSeal, "hex");
-    const expectedBuf = Buffer.from(expected, "hex");
-    if (storedBuf.length !== expectedBuf.length)
-      return false;
-    return timingSafeEqual3(storedBuf, expectedBuf);
-  } catch {
-    return false;
-  }
-}
-function sealKeyPath({ projectDir, sessionId }) {
-  if (sessionId && SAFE_ID2.test(sessionId)) {
-    return path12.join(projectDir, ".groundwork", "runs", `${sessionId}.seal.key`);
-  }
-  return path12.join(projectDir, ".groundwork", "runs", "legacy.seal.key");
-}
-function readKey3({ projectDir, sessionId }) {
-  const kp = sealKeyPath({ projectDir, sessionId });
-  return readFileSync17(kp);
 }
 function sleepSync(ms) {
   try {
@@ -26836,8 +26801,8 @@ function checkSeal(ledger, projectDir, sessionId) {
   if (!storedSeal || typeof storedSeal !== "string")
     return null;
   try {
-    const key = readKey3({ projectDir, sessionId: sessionId || undefined });
-    return verifySeal2(ledger, key);
+    const key = readKey({ projectDir, sessionId: sessionId || undefined });
+    return verifySeal(ledger, key);
   } catch {
     return false;
   }
@@ -27058,7 +27023,7 @@ function resolveLedgerBin() {
   const projectRoot = process.env.GW_REPO_ROOT ?? path12.resolve(path12.dirname(new URL(import.meta.url).pathname), "../../..");
   return path12.join(projectRoot, "bin", "ledger");
 }
-var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = async (input2, env) => {
+var REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = async (input2, env) => {
   try {
     if (isEmbeddedAgent(env))
       return allow();
@@ -27176,10 +27141,10 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
   }
 };
 var init_stop_gate = __esm(() => {
+  init_gate_seal();
   init_slice2();
   init_gate2();
   init_resolve_ledger_path();
-  SAFE_ID2 = LEDGER_SAFE_ID;
 });
 
 // src/gw/hook/session-reminder.ts

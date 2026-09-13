@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 823706e95c007698b1fbb6c498a5abaabbdd35fee610d8535047073edb36ff6d
+// @bundle-source-hash: 3c9c93cc9d41d452b7b883fcbfa52679f0dd82555f4bf992d65da7e7e7b923d2
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -2329,11 +2329,25 @@ Review and fix with:
         } catch (e) {
           return authErr("ledger milestone-signoff", e);
         }
+        const note = flags["note"];
+        const pacingArtifacts = ledger.pacing?.["milestone_artifacts"];
+        const artifacts = Array.isArray(pacingArtifacts) ? pacingArtifacts : [];
+        const artifactsVerified = artifacts.map((a) => String(a["path"] ?? "")).filter(Boolean);
+        const newPacing = {
+          ...ledger.pacing ?? {},
+          milestone_signoff: {
+            verdict,
+            verified_by: verifiedBy,
+            verified_at: new Date().toISOString(),
+            artifacts_verified: artifactsVerified,
+            ...note !== undefined ? { note } : {}
+          }
+        };
         const newGate = {
           ...gateWithoutSeal(ledger.gate ?? {}),
           verifier: verdict
         };
-        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot));
+        atomicWrite(runPath, reSeal({ ...ledger, pacing: newPacing, gate: newGate }, repoRoot));
         return okEnvelope("ledger milestone-signoff", {
           content: `milestone signed off: ${verdict} by ${verifiedBy}
 `

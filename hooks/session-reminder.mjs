@@ -48,11 +48,8 @@ function buildSpecSkeleton(projectDir) {
     const sd = specDirPath(projectDir)
     if (!existsSync(sd)) return ''
 
-    // Load index (or build on the fly — we don't want to trigger a full build
-    // in a SessionStart hook, so use loadIndex only if present).
     let index = loadIndex(sd)
     if (!index) {
-      // Build on the fly (fast, no side effects other than reading files)
       const { nodes } = buildIndexData(sd)
       index = { nodes }
     }
@@ -60,11 +57,9 @@ function buildSpecSkeleton(projectDir) {
     const nodeValues = Object.values(nodes)
     if (nodeValues.length === 0) return ''
 
-    // Separate concept nodes (no concept field = root concept) from requirements
     const concepts = nodeValues.filter((n) => n.type === 'concept' || !n.concept)
     const requirements = nodeValues.filter((n) => n.type === 'requirement' || n.concept)
 
-    // Build child count map: concept id → number of direct requirements
     const childCounts = {}
     for (const r of requirements) {
       const parent = r.concept || r.parent
@@ -73,19 +68,15 @@ function buildSpecSkeleton(projectDir) {
       }
     }
 
-    // Try full depth-1 render first, degrade if over cap
     const lines = ['', '## Spec Skeleton', '']
     const topLevelConcepts = concepts.filter((n) => !n.parent && !n.concept)
 
-    // If too many top-level nodes, always use depth 1 with child counts
     const useDepth1 = topLevelConcepts.length > SPEC_NODE_DEPTH1_THRESHOLD || concepts.length > SPEC_NODE_DEPTH1_THRESHOLD
 
     if (useDepth1 || true) {
-      // Always render depth 1 with child counts (safe, bounded)
       for (const c of topLevelConcepts) {
         const children = childCounts[c.id] || 0
         lines.push(`- **${c.id}** ${c.title || c.id}${children ? ` (${children} req${children !== 1 ? 's' : ''})` : ''}`)
-        // Show direct concept children at depth 1
         const childConcepts = concepts.filter((n) => n.parent === c.id || n.concept === c.id)
         for (const cc of childConcepts) {
           const ccChildren = childCounts[cc.id] || 0
@@ -103,7 +94,6 @@ function buildSpecSkeleton(projectDir) {
       return rendered
     }
 
-    // Over cap at depth 1 — degrade to just top-level with counts
     const stripped = ['', '## Spec Skeleton', '']
     for (const c of topLevelConcepts) {
       const children = childCounts[c.id] || 0
@@ -201,11 +191,9 @@ function activeRunBlock(projectDir, sessionId) {
         incompleteWaveCount[w] = (incompleteWaveCount[w] ?? 0) + 1
       }
     }
-    // Cap the number of wave-width notices to prevent unbounded growth with many waves.
     const WAVE_NOTICE_CAP = 5
     let waveNoticeCount = 0
     for (const [wave, total] of Object.entries(totalWaveCount)) {
-      // Fire only when the wave was planned with exactly 1 impl slice AND that slice is still pending.
       if (total === 1 && (incompleteWaveCount[wave] ?? 0) === 1) {
         if (waveNoticeCount < WAVE_NOTICE_CAP) {
           lines.push(`NOTICE: wave ${wave} has 1 impl slice — if this work is non-trivial, reconsider whether it can run in parallel with an adjacent slice.`)
@@ -314,14 +302,10 @@ let input = {}
 try {
   const raw = await readStdin()
   if (raw.trim()) input = JSON.parse(raw)
-} catch {
-  // Invalid JSON or stdin failure — proceed without session identity.
-}
+} catch { /* proceed without session identity */ }
 
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
-// MAP.md — auto-regenerated per-motive human read path.
-// Enumerate actual existing motive MAP files; fall back to generic wording when none exist yet.
 const _cwdForMap =
   (typeof input?.cwd === 'string' && input.cwd) ||
   process.env.CLAUDE_PROJECT_DIR ||
@@ -336,13 +320,10 @@ function _findMotiveMaps(projectDir) {
   } catch { return [] }
 }
 const _motiveMaps = _findMotiveMaps(_cwdForMap)
-// Sort by mtime descending so the most recently active motive appears first.
 const _sortedMotiveMaps = _motiveMaps.slice().sort((a, b) => {
   try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
 })
-// Cap at MOTIVE_MAP_CAP to bound payload growth: each additional motive adds ~25 tokens.
-// With ~320 tokens of worst-case headroom before the cap was added, 12+ motives would
-// silently drop the spec skeleton.
+// Cap at MOTIVE_MAP_CAP — bounds payload; 12+ motives would silently drop the spec skeleton.
 const MOTIVE_MAP_CAP = 5
 const mapPointerBlock = (() => {
   const header = '\n\n## Motive MAP — human read path\n\nEach motive\'s MAP is at `.groundwork/motives/<slug>/MAP.md` — auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.'
@@ -354,16 +335,12 @@ const mapPointerBlock = (() => {
   return `${header}\n\nCurrent motive MAP(s) (${_sortedMotiveMaps.length} total, most recent first):\n${list}${suffix}`
 })()
 
-// Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
-// Subcommand list covers the operational set (13) + scope-token + milestone-signoff (orchestrator-
-// only token-gated commands; omitting them causes the orchestrator to assume they don't exist).
+// Absolute CLI tool paths — includes orchestrator-only token-gated commands (scope-token, milestone-signoff).
 const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist — use \`${LEDGER_BIN} init\` to start a new run.)`
 
 let additionalContext = reminder + mapPointerBlock + cliToolsBlock
 
-// Best-effort: export session id to Claude Code's session-scoped env file so
-// subsequent Bash subprocesses see CLAUDE_CODE_SESSION_ID even on hosts/versions
-// where it isn't set automatically.
+// Best-effort: propagate CLAUDE_CODE_SESSION_ID to the session env file for Bash subprocesses.
 try {
   const envFile = process.env.CLAUDE_ENV_FILE
   if (envFile && sessionId) {
@@ -394,19 +371,7 @@ try {
   additionalContext += buildStruggleNudge(projectDir)
 } catch { /* never fail the hook */ }
 
-// AC6/AC7: spec skeleton with 700-token cap; dropped first if total >3800 tokens.
-// Caps re-scaled from 3000/3300/600 to 3500/3800/700 (factor ×1.156) after the
-// estimator changed from Math.ceil(chars/4) to Math.ceil(utf8Bytes/3.5).
-// H22: bounded ACTIVE RUN slice enumeration at ACTIVE_RUN_SLICE_CAP=10.
-// H25: bounded motive MAP list at MOTIVE_MAP_CAP=5 (sorted most-recent-first),
-//      wave-width notices at WAVE_NOTICE_CAP=5, ledger.brief at 200 chars.
-//      Re-measured (H25): H22 fixture total=3264 headroom=536 (skeleton injected).
-//      Adversarial (15 motives/waves, 500-char brief): total=3223 headroom=577.
-//      Uncapped adversarial estimate ≈3909 > 3800 → caps genuinely matter.
-//      Remaining unbounded contributors: static reminder block,
-//      struggle nudge, CLI tools block — these are structurally fixed-size.
-// Note: TOTAL_TOKEN_ALARM can only fire when the skeleton-drop warning itself
-//       pushes the post-drop total above 4100 (rare; alarm is informational only).
+// AC6/AC7: spec skeleton, 700-token cap, payload cap 3800 tokens (×1.156 rescale after utf8Bytes/3.5 estimator); TOTAL_TOKEN_ALARM at 4100.
 const TOTAL_TOKEN_CAP = 3800
 const TOTAL_TOKEN_ALARM = 4100
 try {

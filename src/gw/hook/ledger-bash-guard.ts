@@ -62,8 +62,7 @@ const READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b
  * chaining operators.
  */
 function isScopedCompleteOnly(cmd: string): boolean {
-  // Reject any shell chaining or redirection that could hide a second command or
-  // redirect output/input unexpectedly.
+  // Reject shell chaining/redirection.
   if (/[;|&\n`<>]|\$\(/.test(cmd)) return false
   // Require specifically the `complete` subcommand (not init/gate/etc.).
   if (!/\bledger(?:\.mjs)?\s+complete\b/.test(cmd)) return false
@@ -94,28 +93,21 @@ function isScopedCompleteOnly(cmd: string): boolean {
  * The <id> positional may appear anywhere after `set` — before or after --motive.
  */
 function isScopedSetBlockedByOnly(cmd: string): boolean {
-  // Reject any shell chaining or redirection.
   if (/[;|&\n`<>]|\$\(/.test(cmd)) return false
-  // Require specifically the `set` subcommand.
   if (!/\bledger(?:\.mjs)?\s+set\b/.test(cmd)) return false
-  // Defence in depth: deny terminal-transition and write-token flags explicitly.
   if (/--status\b/.test(cmd)) return false
   if (/--token\b/.test(cmd)) return false
 
-  // Isolate all tokens that follow the `set` keyword.
   const setMatch = cmd.match(/\bledger(?:\.mjs)?\s+set\s+(.*)$/)
   if (!setMatch) return false
   const tokens = setMatch[1].trim().split(/\s+/).filter(Boolean)
 
-  // Find the id: first non-flag token that is not a value of a value-taking flag.
-  // Allowlisted flags that consume the next token as their value: --motive, --blocked-by.
   const VALUE_FLAGS = new Set(['--motive', '--blocked-by'])
   let idFound = false
   let skipNext = false
   for (const tok of tokens) {
     if (skipNext) { skipNext = false; continue }
     if (tok.startsWith('-')) {
-      // Bare form (no `=`) of a known value-taking flag: skip the next token as its value.
       if (!tok.includes('=') && VALUE_FLAGS.has(tok)) skipNext = true
       continue
     }
@@ -124,10 +116,8 @@ function isScopedSetBlockedByOnly(cmd: string): boolean {
   }
   if (!idFound) return false
 
-  // Positive allowlist: every flag token must be --blocked-by or --motive (bare or =form).
   const flagTokens = tokens.filter(t => t.startsWith('-'))
 
-  // Must have at least --blocked-by present.
   if (flagTokens.length === 0) return false
 
   for (const flag of flagTokens) {
@@ -136,8 +126,6 @@ function isScopedSetBlockedByOnly(cmd: string): boolean {
     return false // any other flag (including short flags) → denied
   }
 
-  // --blocked-by must carry a non-empty value: either embedded (`--blocked-by=val`) or
-  // the next token is non-empty and does not start with `-`.
   const hasBlockedByEqForm = flagTokens.some(t => /^--blocked-by=.+$/.test(t))
   if (!hasBlockedByEqForm) {
     const idx = tokens.indexOf('--blocked-by')
@@ -146,7 +134,6 @@ function isScopedSetBlockedByOnly(cmd: string): boolean {
     if (!next || next.startsWith('-')) return false
   }
 
-  // --motive (if present as bare form) must carry a non-empty value.
   const hasMotiveEqForm = flagTokens.some(t => /^--motive=.+$/.test(t))
   const hasBareMotive = flagTokens.includes('--motive')
   if (hasBareMotive && !hasMotiveEqForm) {
@@ -164,21 +151,13 @@ function isScopedSetBlockedByOnly(cmd: string): boolean {
  * Each entry is [pattern, label] for the deny reason.
  */
 const MUTATION_PATTERNS: Array<[RegExp, string]> = [
-  // Shell redirection into a path: "> path" or ">> path"
   [/>{1,2}\s*\S*\.groundwork\/(?:run\.json|runs\/)/, 'shell redirection (>/>>)'],
-  // tee to ledger/key
   [/\btee\b[^|]*\.groundwork\/(?:run\.json|runs\/)/, 'tee'],
-  // sed -i
   [/\bsed\s+-i\b/, 'sed -i'],
-  // mv into .groundwork/runs/
   [/\bmv\b[^|]*\.groundwork\/(?:run\.json|runs\/)/, 'mv'],
-  // cp into .groundwork/runs/
   [/\bcp\b[^|]*\.groundwork\/(?:run\.json|runs\/)/, 'cp'],
-  // rm of ledger or key
   [/\brm\b[^|]*\.groundwork\/(?:run\.json|runs\/[^/\s]+\.(?:json|seal\.key))/, 'rm'],
-  // chmod on ledger/key
   [/\bchmod\b[^|]*\.groundwork\/(?:run\.json|runs\/)/, 'chmod'],
-  // jq with redirection into ledger/key
   [/\bjq\b[^|]*>{1,2}[^|]*\.groundwork\/(?:run\.json|runs\/)/, 'jq redirect'],
 ]
 
@@ -218,7 +197,6 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       }
     }
 
-    // --- Check 2: seal key exfiltration ---
     if (SEAL_KEY_RE.test(cmd)) {
       for (const [pattern, label] of EXFIL_PATTERNS) {
         if (pattern.test(cmd)) {
@@ -229,16 +207,12 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       }
     }
 
-    // --- Check 3: mutating ledger CLI subcommand ---
     // Allow read-only subcommands first (status/view/show/help).
     if (READONLY_LEDGER_CMD_RE.test(cmd)) return passthrough()
     if (MUTATING_LEDGER_CMD_RE.test(cmd)) {
-      // Narrow allow: `ledger complete` with a scoped token (sct_ prefix) and no
-      // shell operators. All other mutating subcommands remain denied regardless
-      // of token shape.
+      // Narrow allow: scoped `ledger complete` (sct_ token, no shell operators).
       if (isScopedCompleteOnly(cmd)) return passthrough()
-      // Narrow allow: `ledger set <id> --blocked-by <list>` with no --status or
-      // --token flags and no shell operators. Edge repair only.
+      // Narrow allow: `ledger set <id> --blocked-by` — edge repair only.
       if (isScopedSetBlockedByOnly(cmd)) return passthrough()
       return deny(
         `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|checkpoint|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`,

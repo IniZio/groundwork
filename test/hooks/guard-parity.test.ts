@@ -20,11 +20,7 @@ import { join } from 'node:path'
 import { resolveLedgerPath } from '../../hooks/lib/ledger-io.mjs'
 import { keyPath as gateSealKeyPath } from '../../hooks/lib/gate-seal.mjs'
 import { keyPath as graphSealKeyPath } from '../../hooks/lib/graph-seal.mjs'
-// Repo root — this file lives at test/hooks/guard-parity.test.ts
 const REPO = new URL('../..', import.meta.url).pathname
-
-// A non-existent projectDir so resolveLedgerPath always falls to the
-// "new run" branch (neither per-session nor legacy file exists on disk).
 const PROJ = '/tmp/gp-parity-test'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -105,8 +101,6 @@ describe('SEAM 1 — SAFE_ID / SAFE_SLUG path-traversal guard parity (SECURITY)'
   describe('ledger-io resolveLedgerPath accept / reject', () => {
     for (const { id, expectAccept, label } of GUARD_CASES) {
       it(`${expectAccept ? 'ACCEPT' : 'REJECT'}: ${label}`, () => {
-        // Valid sessionId → per-session path ending /<id>.json
-        // Invalid sessionId → legacy path ending with run.json (never contains id)
         const result = resolveLedgerPath({ projectDir: PROJ, sessionId: id })
         const accepted = result.endsWith(`/${id}.json`)
         expect(accepted).toBe(expectAccept)
@@ -119,8 +113,6 @@ describe('SEAM 1 — SAFE_ID / SAFE_SLUG path-traversal guard parity (SECURITY)'
   describe('gate-seal keyPath accept / reject', () => {
     for (const { id, expectAccept, label } of GUARD_CASES) {
       it(`${expectAccept ? 'ACCEPT' : 'REJECT'}: ${label}`, () => {
-        // Valid sessionId → path ending /<id>.seal.key
-        // Invalid sessionId → path ending legacy.seal.key
         const result = gateSealKeyPath({ projectDir: PROJ, sessionId: id })
         const accepted = result.endsWith(`/${id}.seal.key`)
         expect(accepted).toBe(expectAccept)
@@ -133,8 +125,6 @@ describe('SEAM 1 — SAFE_ID / SAFE_SLUG path-traversal guard parity (SECURITY)'
   describe('graph-seal keyPath accept / reject', () => {
     for (const { id, expectAccept, label } of GUARD_CASES) {
       it(`${expectAccept ? 'ACCEPT' : 'REJECT'}: ${label}`, () => {
-        // Valid slug → path ending /<slug>/graph.seal.key
-        // Invalid slug → path ending unknown/graph.seal.key
         const result = graphSealKeyPath({ projectDir: PROJ, slug: id })
         const accepted = result.endsWith(`/${id}/graph.seal.key`)
         expect(accepted).toBe(expectAccept)

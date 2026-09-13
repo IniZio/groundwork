@@ -48,14 +48,13 @@ function runReminder(ledger: unknown, sessionId = "sess-wave"): string {
 		JSON.stringify(ledger, null, 2),
 	);
 	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, source: "compact" });
-	// Strip CLAUDE_PROJECT_DIR so the hook cannot fall back to the real tree.
 	const env = { ...process.env };
 	delete env["CLAUDE_PROJECT_DIR"];
 	const out = execFileSync("node", [HOOK], { input, encoding: "utf8", env });
 	return JSON.parse(out).hookSpecificOutput.additionalContext as string;
 }
 
-/** A valid active ledger shell shared across tests. */
+/** A valid active ledger shell used across tests. */
 function baseLedger(slices: unknown[]): unknown {
 	return {
 		active: true,
@@ -69,7 +68,6 @@ function baseLedger(slices: unknown[]): unknown {
 const NOTICE_PREFIX = "NOTICE: wave";
 
 describe("session-reminder — wave-width NOTICE diagnostic", () => {
-	// (a) A wave whose ONLY impl slice is incomplete → NOTICE fires.
 	it("(a) emits NOTICE when the wave's single impl slice is incomplete", () => {
 		const ledger = baseLedger([
 			{ id: "S1", wave: 1, status: "pending", behavior: "sole slice", kind: "impl" },
@@ -81,14 +79,12 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 		expect(ctx).toContain("NOTICE: wave 1 has 1 impl slice");
 	});
 
-	// (b) A wave with 2+ incomplete impl slices → no NOTICE.
 	it("(b) does NOT emit NOTICE when the wave has 2+ incomplete impl slices", () => {
 		const ledger = baseLedger([
 			{ id: "S1", wave: 1, status: "pending", behavior: "slice one", kind: "impl" },
 			{ id: "S2", wave: 1, status: "in_progress", behavior: "slice two", kind: "impl" },
 		]);
 		const ctx = runReminder(ledger);
-		// Harness is reading the fixture: ACTIVE RUN must appear.
 		expect(ctx).toContain("ACTIVE RUN");
 		expect(ctx).not.toContain(NOTICE_PREFIX);
 	});
@@ -107,39 +103,30 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 			{ id: "S5", wave: 2, status: "in_progress", behavior: "slice five", kind: "impl" },
 		]);
 		const ctx = runReminder(ledger);
-		// Harness is reading the fixture: ACTIVE RUN + remaining incomplete slice must appear.
 		expect(ctx).toContain("ACTIVE RUN");
 		expect(ctx).toContain("S5");
-		// No spurious NOTICE despite only 1 incomplete slice remaining.
 		expect(ctx).not.toContain(NOTICE_PREFIX);
 	});
 
-	// (d) A wave whose single impl slice is COMPLETE → no NOTICE.
 	it("(d) does NOT emit NOTICE when the wave's single impl slice is complete", () => {
 		const ledger = baseLedger([
 			{ id: "S1", wave: 3, status: "complete", behavior: "finished slice", kind: "impl" },
-			// Add a second incomplete slice in a different wave so ACTIVE RUN fires.
 			{ id: "S2", wave: 4, status: "pending", behavior: "other wave", kind: "impl" },
 		]);
 		const ctx = runReminder(ledger);
 		expect(ctx).toContain("ACTIVE RUN");
-		// Wave 3 (single but complete) must not fire; only wave 4 is a single-incomplete wave.
 		expect(ctx).toContain("NOTICE: wave 4 has 1 impl slice");
 		expect(ctx).not.toContain("NOTICE: wave 3");
 	});
 
-	// (e) A wave with a single exempt-kind slice (plan/diagnose/design/fog) → no NOTICE.
 	it("(e) does NOT emit NOTICE for a single exempt-kind slice (plan)", () => {
 		const ledger = baseLedger([
 			{ id: "P1", wave: 1, status: "pending", behavior: "planning phase", kind: "plan" },
-			// Incomplete non-exempt slice in wave 2 to ensure ACTIVE RUN fires.
 			{ id: "S1", wave: 2, status: "pending", behavior: "impl work", kind: "impl" },
 		]);
 		const ctx = runReminder(ledger);
 		expect(ctx).toContain("ACTIVE RUN");
-		// Wave 1 is a plan slice — exempt, must not fire.
 		expect(ctx).not.toContain("NOTICE: wave 1");
-		// Wave 2 is a single impl slice and should fire.
 		expect(ctx).toContain("NOTICE: wave 2 has 1 impl slice");
 	});
 
@@ -173,9 +160,7 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 		expect(ctx).not.toContain("NOTICE: wave 1");
 	});
 
-	// (f) Malformed / corrupt ledger → no throw, hook still returns normally.
 	it("(f-bad-json) does not throw on corrupt ledger JSON — hook returns normally", () => {
-		// Write corrupt JSON directly (bypass runReminder helper).
 		writeFileSync(
 			path.join(projectDir, ".groundwork", "run.json"),
 			"{ this is not : valid json :::}",
@@ -187,11 +172,9 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 		});
 		const env = { ...process.env };
 		delete env["CLAUDE_PROJECT_DIR"];
-		// Must not throw — hook exits 0 and still returns the rulebook.
 		const out = execFileSync("node", [HOOK], { input, encoding: "utf8", env });
 		const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
 		expect(ctx).toContain("Orchestrator Mode");
-		// Fails open — no ACTIVE RUN block, no throw.
 		expect(ctx).not.toContain("ACTIVE RUN");
 		expect(ctx).not.toContain(NOTICE_PREFIX);
 	});
@@ -205,7 +188,6 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 			gate: {},
 		};
 		const ctx = runReminder(ledger);
-		// Hook still emits the active-run block (ledger is otherwise valid).
 		expect(ctx).toContain("ACTIVE RUN");
 		expect(ctx).not.toContain(NOTICE_PREFIX);
 	});
@@ -217,7 +199,6 @@ describe("session-reminder — wave-width NOTICE diagnostic", () => {
 		]);
 		const ctx = runReminder(ledger);
 		expect(ctx).toContain("ACTIVE RUN");
-		// The null entry is ignored; the real single-incomplete slice should still fire.
 		expect(ctx).toContain("NOTICE: wave 1 has 1 impl slice");
 	});
 });

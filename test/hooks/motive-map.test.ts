@@ -28,16 +28,11 @@ import { loadSchema } from '../../hooks/lib/schema-io.mjs'
 // @ts-ignore
 import { compile } from '../../hooks/lib/motive-compile.mjs'
 
-// Helper: write a hand-authored ticket file to tickets/
 function writeTicketFile(dir: string, motive: string, stem: string, body = `# ${stem}\n\nContent.\n`) {
   const ticketsDir = join(dir, '.groundwork', 'motives', motive, 'tickets')
   mkdirSync(ticketsDir, { recursive: true })
   writeFileSync(join(ticketsDir, `${stem}.md`), body, 'utf8')
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function tmp() {
   return mkdtempSync(join(tmpdir(), 'motive-map-test-'))
@@ -65,10 +60,6 @@ function writeDecisions(dir: string, _motive: string, decisions: object[]) {
 function readMap(dir: string, motive: string): string {
   return readFileSync(join(dir, '.groundwork', 'motives', motive, 'MAP.md'), 'utf8')
 }
-
-// ---------------------------------------------------------------------------
-// Basic generation
-// ---------------------------------------------------------------------------
 
 describe('regenerateMotiveMap — basic generation', () => {
   let dir: string
@@ -100,7 +91,6 @@ describe('regenerateMotiveMap — basic generation', () => {
   })
 
   it('silent no-op when motive directory does not exist (no charter)', () => {
-    // No makeCharter call — directory doesn't exist
     expect(() => regenerateMotiveMap(dir, 'ghost-motive')).not.toThrow()
     expect(existsSync(join(dir, '.groundwork', 'motives', 'ghost-motive', 'MAP.md'))).toBe(false)
   })
@@ -112,10 +102,6 @@ describe('regenerateMotiveMap — basic generation', () => {
     expect(content).toContain('Auto-generated')
   })
 })
-
-// ---------------------------------------------------------------------------
-// Ledger integration
-// ---------------------------------------------------------------------------
 
 describe('regenerateMotiveMap — ledger slices', () => {
   let dir: string
@@ -204,7 +190,6 @@ describe('regenerateMotiveMap — ledger slices', () => {
     const before = readMap(dir, 'm')
     expect(before).toContain('0 / 1 slices complete')
 
-    // Simulate ledger mutation: S1 completed
     writeLedger(dir, 'm', {
       motive: 'm',
       active: true,
@@ -217,10 +202,6 @@ describe('regenerateMotiveMap — ledger slices', () => {
     expect(after).not.toContain('0 / 1')
   })
 })
-
-// ---------------------------------------------------------------------------
-// Decisions
-// ---------------------------------------------------------------------------
 
 describe('regenerateMotiveMap — decisions', () => {
   let dir: string
@@ -251,7 +232,6 @@ describe('regenerateMotiveMap — decisions', () => {
     ])
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Should appear exactly once
     const matches = content.match(/Use TypeScript for everything/g)
     expect(matches).toHaveLength(1)
   })
@@ -264,7 +244,6 @@ describe('regenerateMotiveMap — decisions', () => {
     ])
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Shorter truncation must be gone; longer version must appear once in the Decisions section
     const decisionsSection = content.split('## Decisions so far')[1]?.split('##')[0] ?? ''
     const matches = decisionsSection.match(/ASD-STE100 not adopted/g)
     expect(matches).toHaveLength(1)
@@ -284,7 +263,6 @@ describe('regenerateMotiveMap — decisions', () => {
     ])
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Both distinct decisions must survive
     expect(content).toContain('Trial showed no benefit.')
     expect(content).toContain('for spec files')
     expect(content).toContain('readability degraded')
@@ -340,10 +318,6 @@ describe('regenerateMotiveMap — decisions', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Error resilience — never throw, never break the caller
-// ---------------------------------------------------------------------------
-
 describe('regenerateMotiveMap — never throws', () => {
   it('does not throw when called with null/undefined projectDir', () => {
     expect(() => regenerateMotiveMap(null as unknown as string, 'x')).not.toThrow()
@@ -360,13 +334,10 @@ describe('regenerateMotiveMap — never throws', () => {
 
   it('writes a warning to stderr but does not throw on internal error (corrupt charter dir as file)', () => {
     const dir = tmp()
-    // Place a file where the motive directory should be — causes existsSync(motiveDir) to return true
-    // but readCharter will fail gracefully (returns null); motive-map should still complete
     try {
       const motiveParent = join(dir, '.groundwork', 'motives')
       mkdirSync(motiveParent, { recursive: true })
       writeFileSync(join(motiveParent, 'broken'), '{}', 'utf8')  // file, not directory
-      // This should not throw even if internal operations fail
       expect(() => regenerateMotiveMap(dir, 'broken')).not.toThrow()
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -374,15 +345,10 @@ describe('regenerateMotiveMap — never throws', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Integration resilience — MAP.md write failure must not affect prior mutations
-// ---------------------------------------------------------------------------
-
 describe('regenerateMotiveMap — resilience: MAP write failure leaves prior state intact', () => {
   let dir: string
   beforeEach(() => { dir = tmp() })
   afterEach(() => {
-    // Ensure we can clean up even if chmod made MAP.md read-only
     try {
       const mapPath = join(dir, '.groundwork', 'motives', 'm', 'MAP.md')
       if (existsSync(mapPath)) chmodSync(mapPath, 0o644)
@@ -391,36 +357,26 @@ describe('regenerateMotiveMap — resilience: MAP write failure leaves prior sta
   })
 
   it('exits 0 (no throw) and previously-written journal data persists when MAP write fails', () => {
-    // Simulate the pattern: journal/ledger mutation is written first, then MAP is regenerated.
-    // If MAP regeneration fails, the mutation must survive.
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     const journalDir = join(dir, '.groundwork', 'journal')
     mkdirSync(journalDir, { recursive: true })
     const journalFile = join(journalDir, '2026-01-01-test.jsonl')
-    // Simulate: mutation written (this is what ledger.mjs / journal.mjs do before calling regenerateMotiveMap)
     const mutationEvent = JSON.stringify({
       ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION', msg: 'Important decision',
     })
     writeFileSync(journalFile, mutationEvent + '\n', 'utf8')
 
-    // Make MAP.md path unwritable so _generate will throw at writeFileSync
     const motiveDir = join(dir, '.groundwork', 'motives', 'm')
     const mapPath = join(motiveDir, 'MAP.md')
     writeFileSync(mapPath, 'placeholder', 'utf8')
     chmodSync(mapPath, 0o444)  // read-only
 
-    // regenerateMotiveMap must not throw
     expect(() => regenerateMotiveMap(dir, 'm')).not.toThrow()
 
-    // The journal mutation written before the call must still be intact
     const journalContent = readFileSync(journalFile, 'utf8')
     expect(journalContent).toContain('Important decision')
   })
 })
-
-// ---------------------------------------------------------------------------
-// Open items and out-of-scope
-// ---------------------------------------------------------------------------
 
 describe('regenerateMotiveMap — open items and out-of-scope', () => {
   let dir: string
@@ -436,9 +392,6 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
   })
 
   it('multi-line open item: MAP shows handle (statement) only; body is a separate field', () => {
-    // Parser contract change: continuation lines go into `body`, not `statement`.
-    // The MAP renderer uses `statement` (the handle), so the continuation text
-    // is NOT rendered in the MAP until the renderer slice lands.
     const charter = [
       '# motive: m',
       '',
@@ -452,11 +405,8 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     makeCharter(dir, 'm', charter)
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // TBD-3 handle still appears
     expect(content).toContain('TBD-3')
-    // Continuation text lives in body; the MAP list line shows only the short handle
     expect(content).not.toContain('cannot correlate them')
-    // Bullet line contains the handle text (first-line statement) only — body absent from bullet
     const lines = content.split('\n')
     const bullet = lines.find((l) => l.includes('TBD-3'))
     expect(bullet).toBeDefined()
@@ -479,17 +429,13 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     const lines = content.split('\n')
     const bullet = lines.find((l) => l.includes('TBD-5'))
     expect(bullet).toBeDefined()
-    // Handle appears
     expect(bullet).toContain('Choose a cache strategy')
-    // Owner annotation
     expect(bullet).toContain('@alice')
-    // Blocker annotation
     expect(bullet).toContain('blocked by TBD-4')
   })
 
   it('FAILABILITY — body text absent from MAP bullet line', () => {
-    // This test proves failable: if the renderer appends body to the bullet
-    // line, it will fail. Demonstrates the guard is load-bearing.
+    // Failable guard: if renderer appends body to the bullet line, this fails.
     const charter = [
       '# motive: m',
       '',
@@ -506,11 +452,8 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     const lines = content.split('\n')
     const bullet = lines.find((l) => l.includes('TBD-7'))
     expect(bullet).toBeDefined()
-    // Handle on the bullet
     expect(bullet).toContain('Short handle text')
-    // Body must NOT appear on the bullet line
     expect(bullet).not.toContain('Continuation body')
-    // Body must NOT appear anywhere in the MAP
     expect(content).not.toContain('Continuation body')
   })
 
@@ -588,7 +531,6 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
-    // 'dark mode' should appear exactly once as a bullet
     const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
     const darkModeBullets = bullets.filter((l: string) => l.toLowerCase().includes('dark mode'))
     expect(darkModeBullets.length).toBeGreaterThanOrEqual(1)
@@ -596,7 +538,6 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
 
   it('Out of scope shows placeholder only when all three sources are empty', () => {
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
-    // No out-of-scope dir, no rejection decisions, no charter out_of_scope
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
@@ -620,23 +561,17 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
   })
 
   it('first-sentence prefix dedup: shorter summary form merged into longer prose form, prose kept with id suffix', () => {
-    // Regression: two DECISION events describe the same rejection. The id-bearing event
-    // has a SHORTER first sentence that is a strict prefix of the no-id event's first sentence.
-    // Identity rule: first-sentence strict prefix — the shorter first sentence is the "summary
-    // form"; the longer is the "full prose". Keep full prose (P-E human-first), append id.
+    // Regression: shorter first sentence is the "summary form"; longer is "full prose". Keep full prose, append id.
     // NOT fuzzy shared-prefix-length heuristic; NOT session-based suppression.
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     writeDecisions(dir, 'm', [
       {
         ts: '2026-01-01T00:00:00Z', session: 's', motive: 'm', type: 'DECISION',
-        // Longer first sentence: "ASD-STE100 controlled-prose style NOT adopted for spec files"
         msg: 'ASD-STE100 controlled-prose style NOT adopted for spec files. Trial showed no benefit.',
         data: { status: 'accepted' },
       },
       {
         ts: '2026-01-01T00:01:00Z', session: 's', motive: 'm', type: 'DECISION',
-        // Shorter first sentence: "ASD-STE100 controlled-prose style NOT adopted"
-        // (strict prefix of the above)
         msg: 'ASD-STE100 controlled-prose style NOT adopted. Verdict: do not adopt.',
         data: { id: 'D-6', title: 'STE100 rejected — trial evidence', status: 'accepted' },
       },
@@ -644,30 +579,23 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
-    // Full prose bullet kept, id appended
     expect(oosSection).toContain('for spec files')
     expect(oosSection).toContain('D-6')
-    // The terse "[D-6] STE100 rejected" title must NOT appear as a separate bullet
     const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
     expect(bullets.length).toBe(1)
   })
 
   it('first-sentence prefix dedup: unrelated rejection in same session survives alongside id-bearing one', () => {
-    // Regression guard: session-based suppression was too broad — it dropped DISTINCT
-    // rejections that happened to share a session with an id-bearing rejection.
-    // A no-id rejection whose first sentence is NOT a prefix of any id-bearing rejection
-    // must render regardless of session.
+    // Regression guard: session-based suppression was too broad — dropped distinct rejections sharing a session.
     makeCharter(dir, 'm', `# motive: m\n\n## Objective\nTest.\n`)
     writeDecisions(dir, 'm', [
       {
         ts: '2026-01-01T00:00:00Z', session: 'shared-session', motive: 'm', type: 'DECISION',
-        // Distinct rejection: different topic, not a prefix of the D-6 event
         msg: 'Problem definition adopted as yardstick. A proposal that violates P-D should be rejected.',
         data: { status: 'accepted' },
       },
       {
         ts: '2026-01-01T00:00:30Z', session: 'shared-session', motive: 'm', type: 'DECISION',
-        // Unrelated id-bearing rejection in the SAME session
         msg: 'ASD-STE100 controlled-prose style NOT adopted. Verdict: do not adopt.',
         data: { id: 'D-6', title: 'STE100 rejected', status: 'accepted' },
       },
@@ -675,7 +603,6 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     const oosSection = content.split('## Out of scope')[1]?.split('##')[0] ?? ''
-    // Both must appear — they are distinct rejections
     expect(oosSection).toContain('Problem definition adopted')
     expect(oosSection).toContain('[D-6]')
     const bullets = oosSection.split('\n').filter((l: string) => l.startsWith('- '))
@@ -699,16 +626,11 @@ describe('regenerateMotiveMap — open items and out-of-scope', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Host-project level-1 heading format (regression: SECTION_RE was ##-only)
-// ---------------------------------------------------------------------------
-
 describe('regenerateMotiveMap — host-project level-1 heading format', () => {
   let dir: string
   beforeEach(() => { dir = tmp() })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  // Fixture uses single-# headings (pilot project style) instead of the template's ##.
   const PILOT_STYLE_CHARTER = `# Objective
 
 Ship tempo v1 — a local-first time-tracking CLI.
@@ -737,7 +659,6 @@ Cloud sync or any network storage.
 
   it('decisions render from # Decisions section when journal has no DECISION events', () => {
     makeCharter(dir, 'm', PILOT_STYLE_CHARTER)
-    // No journal directory — no DECISION events at all
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
     expect(content).not.toContain('_No decisions recorded yet._')
@@ -753,9 +674,7 @@ Cloud sync or any network storage.
     ])
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Journal decision should appear
     expect(content).toContain('Use PostgreSQL')
-    // Charter decisions should NOT appear (journal took precedence)
     expect(content).not.toContain('D-1:')
   })
 
@@ -787,8 +706,7 @@ Cloud sync or any network storage.
     const content = readMap(dir, 'm')
     expect(content).not.toContain('_No objective recorded yet._')
     expect(content).toContain('Primary goal text.')
-    // Sub-detail body flows into the Destination section — it should NOT become a standalone MAP section.
-    // (Check as a line-anchored pattern to avoid false positive against '### Sub-detail' body text.)
+    // Sub-detail must NOT become a standalone MAP section (line-anchored to avoid false positive against body text).
     expect(content).not.toMatch(/\n## Sub-detail\b/)
   })
 
@@ -811,7 +729,6 @@ Cloud sync or any network storage.
     ].join('\n'))
     regenerateMotiveMap(dir, 'm')
     const content = readMap(dir, 'm')
-    // Both items must appear in the open items section
     expect(content).toContain('TBD-1')
     expect(content).toContain('TBD-2')
   })
@@ -841,8 +758,6 @@ Cloud sync or any network storage.
   })
 })
 
-// ---------------------------------------------------------------------------
-// T5: MAP renders from tickets + retires dedupe
 // ---------------------------------------------------------------------------
 
 describe('T5-AC1 — MAP renders one row per ticket with ledger status overlay', () => {

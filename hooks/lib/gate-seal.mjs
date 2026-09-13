@@ -76,15 +76,7 @@ export function canonicalReleaseState(ledger) {
     slices: sortedSlices,
   }
 
-  // Include scoped_tokens only when the field is explicitly present in the ledger
-  // (i.e., not undefined).  This preserves backward compatibility: ledgers sealed
-  // under the old shape — where scoped_tokens was absent — still verify correctly
-  // because the canonical string is unchanged for them.  Crucially, any injection
-  // of scoped_tokens into such a ledger moves the field from absent to present,
-  // which changes the canonical string and therefore breaks the seal — the attack
-  // is detected.  Token VALUES are included (not just scope names) so that swapping
-  // a known scope's token also invalidates the seal.  Sorting by scope then token
-  // ensures insertion-order differences never produce spurious mismatches.
+  // scoped_tokens: absent → no change (compat); injection moves it from absent to present → HMAC mismatch → attack detected. Values + sorted order prevent swap attacks.
   if (ledger.scoped_tokens !== undefined) {
     const rawTokens = Array.isArray(ledger.scoped_tokens) ? ledger.scoped_tokens : []
     state.scoped_tokens = rawTokens
@@ -95,21 +87,12 @@ export function canonicalReleaseState(ledger) {
       )
   }
 
-  // awaiting_human is included only when explicitly set on the ledger.
-  // Same conditional pattern as scoped_tokens: absent fields do not alter the canonical
-  // string (backward-compatible with pre-S5 ledgers).  Any direct file write that
-  // introduces awaiting_human on a sealed ledger changes this string without updating
-  // the HMAC → seal fails → stop-gate blocks (fail-closed).
+  // awaiting_human: same absent-field pattern — direct injection changes canonical string → HMAC fails → stop-gate blocks.
   if (ledger.awaiting_human !== undefined) {
     state.awaiting_human = ledger.awaiting_human === true
   }
 
-  // milestone_signoff is included when present in pacing — same fail-closed pattern as
-  // awaiting_human.  The milestone_signoff.verdict = 'APPROVE' is what releases the pacing
-  // gate under policy=milestone.  Without sealing, an attacker could write the APPROVE
-  // verdict directly to the ledger file (bypassing the CLI's write_token check) and the
-  // stop-gate would release.  Including it here means any such direct file write changes
-  // the canonical string → HMAC mismatch → seal fails → stop-gate blocks.
+  // milestone_signoff: same fail-closed pattern — seals APPROVE verdict against direct-write attacks.
   if (ledger.pacing?.milestone_signoff !== undefined) {
     const ms = ledger.pacing.milestone_signoff
     state.milestone_signoff = {

@@ -20,7 +20,7 @@ import { readAllEvents, filterEvents } from './journal-io.mjs'
 import { readOrderedEvents } from './journal-order.mjs'
 import { assembleGraphFold } from './motive-dag.mjs'
 import { regenerateMotiveTickets, sanitizeId } from './motive-tickets.mjs'
-import { resolvedUnits, inFlightUnit, isExhausted } from './pacing.mjs'
+
 import { frontier as dagFrontier } from './dag-utils.mjs'
 
 
@@ -985,46 +985,41 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     parts.push('')
   }
 
-  // ── Pacing ────────────────────────────────────────────────────────────────
-  if (ledgerDoc?.pacing) {
-    const pacing      = ledgerDoc.pacing
-    const budget      = pacing.budget ?? 1
-    const grant       = pacing.grant ?? null
-    const grantRange  = grant?.range ?? 0
-    const cap         = budget + grantRange
-    const unitWord    = pacing.policy === 'wave' ? 'wave' : 'slice'
-    const resolved    = resolvedUnits(ledgerDoc)
-    const inflight    = inFlightUnit(ledgerDoc)
-    const exhausted   = isExhausted(ledgerDoc)
+  // ── Phase Checkpoints ─────────────────────────────────────────────────────
+  if (ledgerDoc?.gate?.phases) {
+    const phases = ledgerDoc.gate.phases
+    const PHASE_ORDER = ['plan', 'design', 'wave', 'completion']
+    const PHASE_LABELS = { plan: 'Plan / Charter', design: 'Design', wave: 'Implementation Wave', completion: 'Completion' }
+    const TIER_LABELS = { BLOCKS: 'BLOCKING', AUTO_ADVANCES: 'auto-advance' }
 
-    parts.push('## Pacing')
+    parts.push('## Phase Checkpoints')
     parts.push('')
+    parts.push('| Phase | Tier | Deliverable | Status | Verified by |')
+    parts.push('|---|---|---|---|---|')
 
-    const budgetLine = grantRange > 0
-      ? `**Policy:** ${pacing.policy} · **Budget:** ${budget} ${unitWord}${budget === 1 ? '' : 's'} + ${grantRange} via autopilot (cap ${cap})`
-      : `**Policy:** ${pacing.policy} · **Budget:** ${budget} ${unitWord}${budget === 1 ? '' : 's'}`
-    parts.push(budgetLine)
-    parts.push(`**Consumption:** ${resolved} of ${cap} ${unitWord}${cap === 1 ? '' : 's'} resolved — ${resolved < cap ? 'new unit may be started' : 'budget consumed'}`)
+    const phaseKeys = [
+      ...PHASE_ORDER.filter((k) => phases[k] != null),
+      ...Object.keys(phases).filter((k) => !PHASE_ORDER.includes(k)).sort(),
+    ]
 
-    if (inflight !== null) {
-      const label = pacing.policy === 'wave' ? `wave ${inflight}` : `"${inflight}"`
-      parts.push(`**In-flight ${unitWord}:** ${label}`)
-    }
-
-    if (grant) {
-      const grantedBy  = grant.granted_by ? ` by ${grant.granted_by}` : ''
-      const grantedAt  = grant.granted_at ? ` (${String(grant.granted_at).slice(0, 10)})` : ''
-      const reason     = grant.reason     ? ` — ${grant.reason}`      : ''
-      parts.push(`**Autopilot grant:** +${grant.range} ${unitWord}${grant.range === 1 ? '' : 's'}${grantedBy}${grantedAt}${reason}`)
-    }
-
-    if (exhausted) {
-      const exemptKinds = pacing.exempt_kinds ?? []
-      const remaining   = (ledgerDoc.slices ?? []).filter(
-        (s) => !exemptKinds.includes(s.kind) && s.status !== 'complete',
-      )
-      const ids = remaining.map((s) => s.id).join(', ')
-      parts.push(`**Session exhausted.** Run \`/groundwork:pause\` and open a new session. Remaining work: ${ids || '(none listed)'}`)
+    for (const key of phaseKeys) {
+      const cp = phases[key]
+      const label = PHASE_LABELS[key] ?? key
+      const tier = TIER_LABELS[cp.tier] ?? cp.tier
+      const deliverable = cp.deliverable ?? '—'
+      const verdict = cp.verdict ?? 'PENDING'
+      let statusCell
+      if (verdict === 'APPROVE') {
+        statusCell = `✓ verified${cp.verified_at ? ` (${String(cp.verified_at).slice(0, 10)})` : ''}`
+      } else if (verdict === 'REJECT') {
+        statusCell = '✗ rejected'
+      } else if (cp.tier === 'AUTO_ADVANCES') {
+        statusCell = 'auto-advancing'
+      } else {
+        statusCell = '⏳ awaiting verification'
+      }
+      const verifier = cp.verified_by ?? '—'
+      parts.push(`| ${label} | ${tier} | ${deliverable} | ${statusCell} | ${verifier} |`)
     }
 
     parts.push('')

@@ -49,9 +49,9 @@ const SEAL_KEY_RE = /\.groundwork\/runs\/[^/\s]+\.seal\.key/
 
 /**
  * Mutating ledger CLI invocations — matches the bin wrapper and direct node invocation.
- * Subcommands: init | set | complete | gate | abandon | autopilot | rm | scope-token
+ * Subcommands: init | set | complete | gate | abandon | checkpoint | rm | scope-token
  */
-const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|autopilot|rm|scope-token)\b/
+const MUTATING_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:init|set|complete|gate|abandon|checkpoint|rm|scope-token)\b/
 
 /** Read-only ledger CLI subcommands — these are explicitly allowed. */
 const READONLY_LEDGER_CMD_RE = /\bledger(?:\.mjs)?\s+(?:status|view|show|help)\b/
@@ -241,7 +241,7 @@ export const run: HookFn = async (input, env): Promise<HookResult> => {
       // --token flags and no shell operators. Edge repair only.
       if (isScopedSetBlockedByOnly(cmd)) return passthrough()
       return deny(
-        `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|autopilot|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`,
+        `groundwork: subagent Bash blocked — mutating the run ledger via the 'ledger' CLI is restricted to the orchestrator (init|set|complete|gate|abandon|checkpoint|rm|scope-token require the write token). Detected in command: ${cmd.slice(0, 120)}`,
       )
     }
 

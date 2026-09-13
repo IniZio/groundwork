@@ -494,6 +494,18 @@ const HELP = {
       '--token <t>   orchestrator write-token (required — hold is orchestrator-only)',
     ],
   },
+  checkpoint: {
+    summary: 'record a human phase-deliverable verdict (SECURITY: requires write_token)',
+    usage: 'ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] [--tier BLOCKS|AUTO_ADVANCES] --token <write_token>',
+    flags: [
+      '--phase <phase>          required — phase key: plan | design | wave-<n> | completion',
+      '--verdict APPROVE|REJECT required — APPROVE clears the hold; REJECT keeps it',
+      '--verified-by <name>     required — identity of the human verifier',
+      '--deliverable <ref>      optional — deliverable reference (defaults to phase name)',
+      '--tier BLOCKS|AUTO_ADVANCES  optional — tier override (default: derived from phase name)',
+      '--token <t>              orchestrator write-token (required)',
+    ],
+  },
   'milestone-signoff': {
     summary: 'record a human sign-off on the current milestone (policy=milestone only; SECURITY: requires write_token)',
     usage: 'ledger milestone-signoff --verdict APPROVE|REJECT --verified-by <name> --token <write_token>',
@@ -561,7 +573,7 @@ const HELP = {
     ],
   },
   autopilot: {
-    summary: 'extend session pacing budget by N units (requires write-token authority)',
+    summary: '(retired) use "ledger checkpoint" instead',
     usage: 'ledger autopilot --range N --token <write_token> --reason "..."',
     flags: [
       '--range N        number of additional units to grant (required, ≥1)',
@@ -725,14 +737,6 @@ function cmdMilestoneSignoff(args) {
     if (!l) throw new Error('no ledger to update')
     assertWriteToken(l, flags.token)  // SECURITY: orchestrator-only — same authority as complete/gate/abandon
 
-    if (l.pacing?.policy !== 'milestone') {
-      const e = new Error(
-        `milestone-signoff requires pacing.policy = "milestone". Current policy: ${l.pacing?.policy ?? 'none'}.`,
-      )
-      e.exitCode = 1
-      throw e
-    }
-
     if (verdict === 'APPROVE') {
       const hashCheck = checkMilestoneArtifacts(l, currentBuildHash)
       if (!hashCheck.satisfied) {
@@ -771,6 +775,49 @@ function cmdMilestoneSignoff(args) {
     reSeal(l, projectDir)
   })
   process.stdout.write(`milestone-signoff: ${verdict} by ${verifiedBy}\n`)
+}
+
+function cmdCheckpoint(args) {
+  const { flags } = parseFlags(args ?? [])
+  const phase = flags.phase
+  if (!phase) die('checkpoint requires --phase <phase>', 2)
+  const verdict = flags.verdict
+  if (!verdict || !['APPROVE', 'REJECT'].includes(verdict)) {
+    die('checkpoint requires --verdict APPROVE|REJECT', 2)
+  }
+  const verifiedBy = flags['verified-by']
+  if (!verifiedBy) die('checkpoint requires --verified-by <name>', 2)
+  const deliverable = flags.deliverable ?? phase
+  const tier = flags.tier === 'AUTO_ADVANCES' ? 'AUTO_ADVANCES'
+    : flags.tier === 'BLOCKS' ? 'BLOCKS'
+    : phase.startsWith('wave') ? 'AUTO_ADVANCES' : 'BLOCKS'
+
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)  // SECURITY: orchestrator-only — same authority as milestone-signoff
+    if (!l.gate) l.gate = {}
+    if (!l.gate.phases) l.gate.phases = {}
+    if (l.pacing?.milestone_signoff && !l.gate.phases.completion) {
+      const ms = l.pacing.milestone_signoff
+      l.gate.phases.completion = {
+        deliverable: 'milestone',
+        tier: 'BLOCKS',
+        verdict: ms.verdict,
+        verified_by: ms.verified_by,
+        verified_at: ms.verified_at,
+      }
+    }
+    l.gate.phases[phase] = {
+      deliverable,
+      tier,
+      verdict,
+      verified_by: verifiedBy,
+      verified_at: new Date().toISOString(),
+    }
+    reSeal(l, projectDir)
+  })
+  process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`)
 }
 
 function cmdScopeToken(args) {
@@ -1432,44 +1479,8 @@ function cmdFrontier(args) {
   }
 }
 
-function cmdAutopilot(args) {
-  const { flags } = parseFlags(args)
-  if (flags.range == null) die('usage: ledger autopilot --range N --token <t> [--reason "..."]', 2)
-  const range = Number(flags.range)
-  if (!Number.isInteger(range) || range < 1) die('--range must be a positive integer (≥1)', 2)
-  const reason = flags.reason ?? ''
-  if (!reason.trim()) die('--reason is required and must be non-empty (e.g. --reason "operator authorized: multi-wave emergency")', 1)
-
-  let capturedLedger = null
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
-  mutateLedgerChecked(ledgerPath(), (l) => {
-    if (!l) throw new Error('no ledger to update')
-    assertWriteToken(l, flags.token)
-    capturedLedger = l
-    if (!l.pacing) {
-      const e = new Error('ledger has no pacing field — autopilot only applies to paced runs')
-      e.exitCode = 1
-      throw e
-    }
-    l.pacing.grant = {
-      range: (l.pacing.grant?.range ?? 0) + range,
-      granted_at: new Date().toISOString(),
-      granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? 'orchestrator',
-      reason,
-    }
-    reSeal(l, projectDir)  // S2-AC5: re-seal after autopilot grant (no-op for legacy runs)
-  })
-  if (capturedLedger) {
-    emitHookEvent({
-      projectDir,
-      sessionId: capturedLedger.session_id,
-      type: 'MILESTONE',
-      source: 'hook:ledger',
-      data: { event: 'autopilot', range, reason },
-      ledger: capturedLedger,
-    })
-  }
-  process.stdout.write(`autopilot granted: +${range} unit${range === 1 ? '' : 's'}${reason ? ` (${reason})` : ''}\n`)
+function cmdAutopilot(_args) {
+  die('autopilot is retired — use "ledger checkpoint" to record a phase deliverable verdict', 2)
 }
 
 function main() {
@@ -1504,6 +1515,7 @@ function main() {
       case 'autopilot': return cmdAutopilot(rest)
       case 'scope-token': return cmdScopeToken(rest)
       case 'await-human': return cmdAwaitHuman(rest)
+      case 'checkpoint': return cmdCheckpoint(rest)
       case 'milestone-signoff': return cmdMilestoneSignoff(rest)
       default:
         die(`unknown command "${cmd}". Run ledger help for a list.`, 2)

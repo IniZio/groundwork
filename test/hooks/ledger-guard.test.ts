@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { run as bashGuardRun } from "#src/gw/hook/ledger-bash-guard.js";
+import type { HookResult } from "#src/gw/hook/types.js";
 
 const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
 
@@ -312,11 +314,6 @@ describe("ledger-bash-guard — S6: scoped-token narrow allow for `ledger comple
 		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
 	});
 
-	it("DENIES subagent `ledger autopilot --token sct_<hex>`", () => {
-		const d = runBashHook(`bin/ledger autopilot --token ${SCT}`, SUBAGENT);
-		expect(d.hookSpecificOutput?.permissionDecision).toBe("deny");
-	});
-
 	// ── Deny: scope-token issuance is orchestrator-only ──────────────────────
 	it("DENIES subagent `ledger scope-token` (issuance is orchestrator-only)", () => {
 		const d = runBashHook(`bin/ledger scope-token myagent --token abc`, SUBAGENT);
@@ -592,5 +589,44 @@ describe("ledger-guard subagent Write deny-message / ledger-bash-guard consisten
 				`advertised command must pass ledger-bash-guard: ${cmd}`,
 			).not.toBe("deny");
 		}
+	});
+});
+
+function parseBashGuardDecision(result: HookResult): { permissionDecision?: string; permissionDecisionReason?: string } {
+	if (!result.stdout.trim()) return {};
+	const parsed: { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } } = JSON.parse(result.stdout);
+	return parsed.hookSpecificOutput ?? {};
+}
+
+describe("ledger-bash-guard — AC-15: checkpoint guarded, autopilot removed (source unit tests)", () => {
+	const SUBAGENT_ENV = { agent_type: "groundwork:general-purpose" };
+
+	function subagentInput(cmd: string) {
+		return { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: cmd }, ...SUBAGENT_ENV };
+	}
+
+	function orchInput(cmd: string) {
+		return { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: cmd } };
+	}
+
+	it("DENIES subagent `ledger checkpoint` — phase verdict requires orchestrator authority", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger checkpoint --phase planning --verdict pass --token abc"), {}));
+		expect(d.permissionDecision).toBe("deny");
+	});
+
+	it("deny reason names `checkpoint` and the write-token requirement", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger checkpoint --phase planning --verdict pass --token abc"), {}));
+		expect(d.permissionDecisionReason).toMatch(/checkpoint/);
+		expect(d.permissionDecisionReason).toMatch(/write token|orchestrator/i);
+	});
+
+	it("ALLOWS orchestrator `ledger checkpoint` — positive control, no agent markers", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(orchInput("bin/ledger checkpoint --phase planning --verdict pass --token abc"), {}));
+		expect(d.permissionDecision).toBeUndefined();
+	});
+
+	it("autopilot is no longer in the guarded set — subagent invocation falls through to CLI", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger autopilot --token abc"), {}));
+		expect(d.permissionDecision).toBeUndefined();
 	});
 });

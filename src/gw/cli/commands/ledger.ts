@@ -32,6 +32,7 @@ export const LEDGER_SUBCOMMANDS = [
   'claim',
   'await-human',
   'autopilot',
+  'checkpoint',
   'scope-token',
   'milestone-signoff',
 ] as const
@@ -69,6 +70,7 @@ interface GateJson {
   advisor?: string | { verdict: string; rubric?: string; citation?: string }
   autopilot?: Array<{ units: number; reason: string; ts: string }>
   verifier?: string
+  phases?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -984,48 +986,12 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
 
       // -----------------------------------------------------------------------
       case 'autopilot': {
-        const ledger = readLedger(runPath)
-        if (!ledger)
-          return errEnvelope('ledger autopilot', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
-        try {
-          assertWriteToken(ledger, flags['token'])
-        } catch (e) {
-          return authErr('ledger autopilot', e)
-        }
-        if (
-          !flags['range'] ||
-          flags['range'] === true ||
-          !flags['reason'] ||
-          flags['reason'] === true
-        ) {
-          return errEnvelope(
-            'ledger autopilot',
-            'USAGE_ERROR',
-            'autopilot requires --range N and --reason "..."',
-            2,
-          )
-        }
-        const range = parseInt(flags['range'] as string, 10)
-        const reason = flags['reason'] as string
-        const base = gateWithoutSeal(ledger.gate ?? {})
-        const rawGrants: unknown[] = Array.isArray(base['autopilot']) ? base['autopilot'] : []
-        const existingGrants = rawGrants.filter(
-          (g): g is { units: number; reason: string; ts: string } =>
-            typeof g === 'object' && g !== null &&
-            typeof (g as Record<string, unknown>)['units'] === 'number' &&
-            typeof (g as Record<string, unknown>)['reason'] === 'string' &&
-            typeof (g as Record<string, unknown>)['ts'] === 'string',
+        return errEnvelope(
+          'ledger autopilot',
+          'USAGE_ERROR',
+          'autopilot is retired — use "gw ledger checkpoint" to record a phase deliverable verdict',
+          2,
         )
-        atomicWrite(runPath, reSeal({
-          ...ledger,
-          gate: {
-            ...base,
-            autopilot: [...existingGrants, { units: range, reason, ts: new Date().toISOString() }],
-          },
-        }, repoRoot))
-        return okEnvelope('ledger autopilot', {
-          content: `autopilot extended by ${range} waves (reason: ${reason})\n`,
-        })
       }
 
       // -----------------------------------------------------------------------
@@ -1051,6 +1017,75 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           content:
             `scope_token: ${token}\n` +
             `  (pass as --token to complete for slices created_by ${scope})\n`,
+        })
+      }
+
+      // -----------------------------------------------------------------------
+      case 'checkpoint': {
+        const phase = flags['phase'] as string | undefined
+        const verdict = flags['verdict'] as string | undefined
+        const verifiedBy = flags['verified-by'] as string | undefined
+        if (!phase || !verdict || !verifiedBy) {
+          return errEnvelope(
+            'ledger checkpoint',
+            'USAGE_ERROR',
+            '--phase, --verdict, and --verified-by are required',
+            2,
+          )
+        }
+        if (verdict !== 'APPROVE' && verdict !== 'REJECT') {
+          return errEnvelope(
+            'ledger checkpoint',
+            'USAGE_ERROR',
+            '--verdict must be APPROVE or REJECT',
+            2,
+          )
+        }
+        const deliverable = (flags['deliverable'] as string | undefined) ?? phase
+        const tierFlag = flags['tier'] as string | undefined
+        const derivedTier: string =
+          tierFlag === 'AUTO_ADVANCES' ? 'AUTO_ADVANCES'
+          : tierFlag === 'BLOCKS' ? 'BLOCKS'
+          : phase.startsWith('wave') ? 'AUTO_ADVANCES' : 'BLOCKS'
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger checkpoint', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        try {
+          assertWriteToken(ledger, flags['token'])
+        } catch (e) {
+          return authErr('ledger checkpoint', e)
+        }
+        const baseGate = gateWithoutSeal(ledger.gate ?? {})
+        const existingPhases: Record<string, unknown> =
+          (baseGate['phases'] as Record<string, unknown> | undefined) ?? {}
+        const migratedPhases: Record<string, unknown> = { ...existingPhases }
+        const pacingMs = (ledger.pacing as Record<string, unknown> | undefined)?.['milestone_signoff']
+        if (pacingMs && !migratedPhases['completion']) {
+          const ms = pacingMs as Record<string, unknown>
+          migratedPhases['completion'] = {
+            deliverable: 'milestone',
+            tier: 'BLOCKS',
+            verdict: ms['verdict'] ?? undefined,
+            verified_by: ms['verified_by'] ?? undefined,
+            verified_at: ms['verified_at'] ?? undefined,
+          }
+        }
+        const newGate: GateJson = {
+          ...baseGate,
+          phases: {
+            ...migratedPhases,
+            [phase]: {
+              deliverable,
+              tier: derivedTier,
+              verdict,
+              verified_by: verifiedBy,
+              verified_at: new Date().toISOString(),
+            },
+          },
+        }
+        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot))
+        return okEnvelope('ledger checkpoint', {
+          content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`,
         })
       }
 

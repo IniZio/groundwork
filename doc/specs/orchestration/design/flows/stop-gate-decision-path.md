@@ -39,10 +39,10 @@ flowchart TD
     SEAL3 -->|yes / legacy| A5([ALLOW — emit SESSION_END\n+ advisories])
     SEAL3 -->|no| B3([BLOCK — seal invalid\non completion path])
 
-    WORK -->|work remains| PACING{pacing\nexhausted?}
-    PACING -->|yes| A6([ALLOW — emit DIRECTIVE\npacing handoff])
+    WORK -->|work remains| CHECKPOINT{checkpoint_hold\nauto-advancing?}
+    CHECKPOINT -->|yes| A6([ALLOW — emit DIRECTIVE\nphase handoff])
 
-    PACING -->|no| YIELD{detectYield:\nbackground tasks\nor yield markers?}
+    CHECKPOINT -->|no| YIELD{detectYield:\nbackground tasks\nor yield markers?}
     YIELD -->|yielding| A7([ALLOW — orchestrator\nawaiting completion])
 
     YIELD -->|stalled| RCAP{reinforcement\ncap exceeded?}
@@ -77,7 +77,7 @@ flowchart TD
 | 6 | Hook | Compute `incomplete` = slices where status ∉ {complete, skipped} | In-memory filter |
 | 7 | Hook | `advisorVerdict(gate)` — extract APPROVE from string or object form | `advisorVerdict()` helper |
 | 8 | Hook | `incomplete.length === 0 && advisorApproved` → check seal → **ALLOW** + emit `SESSION_END` | Completion path |
-| 9 | Hook | `isExhausted(pacing)` → **ALLOW** + emit `DIRECTIVE` pacing handoff | `lib/pacing.mjs` |
+| 9 | Hook | `checkpoint_hold` set to auto-advancing tier (`wave`) → **ALLOW** + emit `DIRECTIVE` phase handoff | `src/gw/hook/stop-gate.ts:1048` |
 | 10 | Hook | `detectYield()` — background task tokens or yield markers present → **ALLOW** | YIELD-AWARE guarantee |
 | 11 | Hook | Reinforcement counter ≥ cap (12) → **ALLOW** (release stuck session) | BOUNDED guarantee |
 | 12 | Hook | Otherwise → **BLOCK**, increment `reinforcements`, re-inject directive | Default block path |

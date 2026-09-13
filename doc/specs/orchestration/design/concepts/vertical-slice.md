@@ -70,9 +70,9 @@ The ledger does not evaluate dependency correctness — it trusts the orchestrat
 
 ---
 
-## The pacing constraint
+## The phase-checkpoint gate
 
-By default the ledger seeds with `pacing: { policy: "wave", budget: 1 }`. This means only one implementation wave may be claimed per session without an explicit `autopilot` grant. Planning, design, diagnose, and fog slices are exempt.
+Work is gated per phase rather than throttled by wave count. Four named phases — `plan`, `design`, `wave`, `completion` — each carry a verified deliverable recorded in the ledger under `gate.phases`. Blocking-tier phases (plan, design, completion) hold the stop-gate fail-closed until a human checkpoint verdict is recorded via `gw ledger checkpoint`. The auto-advancing tier (`wave`) releases with a directive. There is no wave budget, no `pacing.policy`, and no autopilot grant.
 
 ---
 

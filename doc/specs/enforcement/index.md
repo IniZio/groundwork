@@ -5,7 +5,7 @@ title: Enforcement Hooks
 summary: "Enforcement hooks mechanically bind CLAUDE.md prose rules as PreToolUse gates, blocking orchestrators and subagents from violating delegation constraints."
 status: draft
 depends_on: []
-date_updated: "2026-08-29"
+date_updated: "2026-09-13"
 parent: C-GROUNDWORK
 origin_decision_ref: plugin-cleanup#D-5
 tags: [index, enforcement]
@@ -28,7 +28,7 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 | Hook architecture | [[design/concepts/hook-architecture]] |
 | Stop-gate flow | [[design/flows/stop-gate-decision-path]] |
 | Orchestrator impl-guard (component) | [[design/components/orchestrator-impl-guard]] |
-| Recipe: authorize autopilot | [[design/recipes/authorize-autopilot-grant]] |
+| Recipe: authorize autopilot (retired) | [[design/recipes/authorize-autopilot-grant]] |
 | Hooks reference table | [[design/reference/enforcement-hooks-reference]] |
 | Glossary | [[glossary]] |
 
@@ -55,17 +55,27 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 | [[requirements/enforcement-r-015-keyword-router-hint-injection\|ENFORCEMENT-R-015]] | Keyword-router injects deterministic routing hints for user prompts | implemented |
 | [[requirements/enforcement-r-016-session-reminder-context-injection\|ENFORCEMENT-R-016]] | Session-reminder injects ledger state and orchestrator rules at session start | implemented |
 | [[requirements/enforcement-r-017-gw-hook-shim-requires-bun\|ENFORCEMENT-R-017]] | gw-hook shim requires bun, resolves it beyond PATH, and reports its absence legibly | implemented |
-| [[requirements/pacing-r-001-wave-default-pace-policy\|PACING-R-001]] | Wave-default pace policy initialised at ledger init | implemented |
-| [[requirements/pacing-r-002-start-time-hard-block-with-exact-reason-messaging\|PACING-R-002]] | Start-time hard block with exact-reason messaging | implemented |
-| [[requirements/pacing-r-003-ledger-complete-never-blocked-by-pacing\|PACING-R-003]] | `ledger complete` is never blocked by pacing | implemented |
-| [[requirements/pacing-r-004-autopilot-grant-token-gated-recorded-run-scoped\|PACING-R-004]] | Autopilot grant is token-gated, recorded in the ledger, and run-scoped | implemented |
-| [[requirements/pacing-r-005-pacing-exhaustion-stop-gate-release-directive-handoff\|PACING-R-005]] | Pacing exhaustion is a sanctioned stop-gate release with directive handoff | implemented |
-| [[requirements/pacing-r-006-autopilot-grant-requires-nonempty-reason\|PACING-R-006]] | Autopilot grant requires non-empty reason; HITL routing | implemented |
-| [[requirements/pacing-r-007-milestone-policy-gates-on-human-verified-shippable\|PACING-R-007]] | Milestone policy gates on human-verified shippable deliverables | open |
+| [[requirements/pacing-r-001-wave-default-pace-policy\|PACING-R-001]] | Wave-default pace policy initialised at ledger init | withdrawn |
+| [[requirements/pacing-r-002-start-time-hard-block-with-exact-reason-messaging\|PACING-R-002]] | Start-time hard block with exact-reason messaging | withdrawn |
+| [[requirements/pacing-r-003-ledger-complete-never-blocked-by-pacing\|PACING-R-003]] | `ledger complete` is never blocked by pacing | withdrawn |
+| [[requirements/pacing-r-004-autopilot-grant-token-gated-recorded-run-scoped\|PACING-R-004]] | Autopilot grant is token-gated, recorded in the ledger, and run-scoped | withdrawn |
+| [[requirements/pacing-r-005-pacing-exhaustion-stop-gate-release-directive-handoff\|PACING-R-005]] | Pacing exhaustion is a sanctioned stop-gate release with directive handoff | withdrawn |
+| [[requirements/pacing-r-006-autopilot-grant-requires-nonempty-reason\|PACING-R-006]] | Autopilot grant requires non-empty reason; HITL routing | withdrawn |
+| [[requirements/pacing-r-007-milestone-policy-gates-on-human-verified-shippable\|PACING-R-007]] | Milestone gate releases on human-verified shippable deliverables | open |
 | [[requirements/pacing-r-008-milestone-signoff-requires-write-token-authority\|PACING-R-008]] | Milestone sign-off requires write_token authority | open |
 | [[requirements/pacing-r-009-milestone-artifacts-hook-validatable-staleness\|PACING-R-009]] | Milestone artifacts are hook-validatable; staleness from build-hash | open |
 | [[requirements/pacing-r-010-milestone-signoff-composes-with-awaiting-human\|PACING-R-010]] | Milestone sign-off composes with awaiting_human | open |
 | [[requirements/pacing-r-011-evidence-artifacts-under-groundwork-never-committed\|PACING-R-011]] | Evidence artifacts under `.groundwork/` are never committed | implemented |
+| [[requirements/checkpoint-r-001-gate-phases-per-phase-verification-state\|CHECKPOINT-R-001]] | gate.phases records per-phase verification state keyed by phase name | active |
+| [[requirements/checkpoint-r-002-checkpoint-command-token-gated\|CHECKPOINT-R-002]] | gw ledger checkpoint records phase verdict and is token-gated | active |
+| [[requirements/checkpoint-r-003-hmac-seal-covers-gate-phases\|CHECKPOINT-R-003]] | HMAC seal folds gate.phases and checkpoint_hold | active |
+| [[requirements/checkpoint-r-004-stop-gate-blocks-on-blocking-tier-phase\|CHECKPOINT-R-004]] | Stop-gate blocks session end on BLOCKS-tier phase without APPROVE | active |
+| [[requirements/checkpoint-r-005-stop-gate-fail-closed-invalid-seal\|CHECKPOINT-R-005]] | Stop-gate blocks fail-closed when seal is invalid or key is missing | active |
+| [[requirements/checkpoint-r-006-auto-advances-tier-releases-with-directive\|CHECKPOINT-R-006]] | AUTO_ADVANCES-tier phase permits session end and emits directive | active |
+| [[requirements/checkpoint-r-007-autopilot-retired-usage-error\|CHECKPOINT-R-007]] | gw ledger autopilot returns usage error naming ledger checkpoint | active |
+| [[requirements/checkpoint-r-008-absent-gate-phases-no-enforcement\|CHECKPOINT-R-008]] | Absent gate.phases disables checkpoint enforcement | active |
+| [[requirements/checkpoint-r-009-milestone-signoff-migrate-on-read\|CHECKPOINT-R-009]] | pacing.milestone_signoff migrated on read into gate.phases.completion | active |
+| [[requirements/checkpoint-r-010-ledger-bash-guard-checkpoint-present-autopilot-absent\|CHECKPOINT-R-010]] | checkpoint in MUTATING_LEDGER_CMD_RE; autopilot absent | active |
 | [[requirements/seal-r-001-accepted-residual-ace-same-os-user\|SEAL-R-001]] | Accepted residual: ACE as same OS user can forge a valid seal | implemented |
 
 ---

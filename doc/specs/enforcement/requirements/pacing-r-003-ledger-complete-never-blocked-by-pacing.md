@@ -3,13 +3,15 @@ id: pacing-r-003
 type: requirement
 concept: C-ENFORCEMENT
 title: "`ledger complete` is never blocked by pacing"
-status: implemented
+status: withdrawn
 verification: automated
 criticality: must
 design: "[[design/reference/enforcement-hooks-reference]]"
 ---
 
 ## PACING-R-003 — `ledger complete` is never blocked by pacing {#pacing-r-003}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-pacing throttle described by PACING-R-001..R-006 was removed. Preserved for historical reference.
 
 When `ledger complete` is invoked for any slice, the ledger CLI **shall** record the completion without restriction, regardless of pacing state or budget exhaustion.
 

@@ -3,13 +3,15 @@ id: pacing-r-001
 type: requirement
 concept: C-ENFORCEMENT
 title: Wave-default pace policy initialised at ledger init; absent pacing disables enforcement
-status: implemented
+status: withdrawn
 verification: automated
 criticality: must
 design: "[[design/reference/enforcement-hooks-reference]]"
 ---
 
 ## PACING-R-001 — Wave-default pace policy initialised at ledger init; absent pacing disables enforcement {#pacing-r-001}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-pacing throttle described by PACING-R-001..R-006 was removed. No shipped code reads `pacing.policy`, `pacing.budget`, `pacing.exempt_kinds`, or `pacing.grant`. The per-phase checkpoint gate (CHECKPOINT-R-*) replaces this mechanism. Preserved for historical reference.
 
 When `ledger init` creates a new run and no `pacing` object is supplied, the ledger **shall** stamp `pacing` as `{policy:"wave", budget:1, exempt_kinds:["plan","diagnose","design","fog"]}`. When a run ledger carries no `pacing` field, the pacing module **shall** treat pacing as disabled and impose no start-time restrictions on any slice.
 

@@ -3,13 +3,15 @@ id: pacing-r-004
 type: requirement
 concept: C-ENFORCEMENT
 title: Autopilot grant is token-gated, recorded in the ledger, and run-scoped
-status: implemented
+status: withdrawn
 verification: unverified
 criticality: must
 design: "[[design/recipes/authorize-autopilot-grant]]"
 ---
 
 ## PACING-R-004 — Autopilot grant is token-gated, recorded in the ledger, and run-scoped {#pacing-r-004}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-pacing throttle described by PACING-R-001..R-006 was removed. `ledger autopilot` now returns a usage error naming `ledger checkpoint` as its replacement (see CHECKPOINT-R-007). Preserved for historical reference.
 
 When `ledger autopilot --range N` is invoked, the ledger CLI **shall** write `pacing.grant = {range: N, granted_at: <ISO-8601 timestamp>, granted_by: <session-id, falling back to "orchestrator">, reason: <reason string>}` to the active run ledger and emit a MILESTONE journal event; the grant **shall** expire automatically with the run because it is stored in the session-scoped ledger file. A second invocation of `ledger autopilot --range N` overwrites the existing grant (one-shot cap raise, not cumulative).
 

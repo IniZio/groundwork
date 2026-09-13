@@ -10,7 +10,7 @@ status: open
 
 ## GW-CLI-R-001 — Subcommand registry — 16 subcommands, no init {#gw-cli-r-001}
 
-The `gw ledger` command **shall** accept exactly the following 16 subcommands: `status`, `add`, `set`, `complete`, `rm`, `show`, `view`, `gate`, `abandon`, `fog`, `frontier`, `claim`, `await-human`, `autopilot`, `scope-token`, and `milestone-signoff`; it **shall not** accept `init`; and **when** an unknown subcommand is supplied, `gw ledger` **shall** exit 2 with an `UNKNOWN_SUBCOMMAND` error.
+The `gw ledger` command **shall** accept exactly the following 16 subcommands: `status`, `add`, `set`, `complete`, `rm`, `show`, `view`, `gate`, `abandon`, `fog`, `frontier`, `claim`, `await-human`, `checkpoint`, `scope-token`, and `milestone-signoff`; it **shall not** accept `init`; and **when** an unknown subcommand is supplied, `gw ledger` **shall** exit 2 with an `UNKNOWN_SUBCOMMAND` error.
 
 - **Why** — `init` is absent because `gw ledger` targets the already-initialised legacy run store; invoking a non-existent subcommand silently succeeding would make scripted callers unable to detect typos in subcommand names at call time.
 - **Fit criterion** — `gw ledger init --motive foo` exits 2 and emits `UNKNOWN_SUBCOMMAND` (verify with `--json`). `gw ledger status --motive <valid>` exits without `UNKNOWN_SUBCOMMAND`. Each of the 16 listed names is accepted (no `UNKNOWN_SUBCOMMAND` when run with a valid ledger).

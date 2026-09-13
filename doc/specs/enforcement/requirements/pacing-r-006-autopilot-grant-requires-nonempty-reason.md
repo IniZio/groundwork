@@ -3,13 +3,15 @@ id: pacing-r-006
 type: requirement
 concept: C-ENFORCEMENT
 title: Autopilot grant requires non-empty reason; block message routes authorization through the operator; stop-gate surfaces active grants
-status: implemented
+status: withdrawn
 verification: automated
 criticality: must
 design: "[[design/recipes/authorize-autopilot-grant]]"
 ---
 
 ## PACING-R-006 — Autopilot grant requires non-empty reason; block message routes authorization through the operator; stop-gate surfaces active grants {#pacing-r-006}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-pacing throttle described by PACING-R-001..R-006 was removed. Preserved for historical reference.
 
 Three HITL (human-in-the-loop) requirements for the pacing escape hatch:
 

@@ -69,7 +69,7 @@ Pacing-exempt kinds do not consume the one-impl-wave-per-session budget.
 # Add a new impl slice in wave 1
 ledger add s1 --desc "Implement token handler" --acceptance "token is validated;error is 401"
 
-# Add a plan slice (pacing-exempt)
+# Add a plan slice
 ledger add p1 --kind plan --desc "Research auth options"
 
 # Link a ticket and decision at claim time

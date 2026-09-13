@@ -3,13 +3,15 @@ id: pacing-r-002
 type: requirement
 concept: C-ENFORCEMENT
 title: Start-time hard block with exact-reason messaging
-status: implemented
+status: withdrawn
 verification: automated
 criticality: must
 design: "[[design/reference/enforcement-hooks-reference]]"
 ---
 
 ## PACING-R-002 — Start-time hard block with exact-reason messaging {#pacing-r-002}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-pacing throttle described by PACING-R-001..R-006 was removed. No shipped code reads `pacing.policy`, `pacing.budget`, `pacing.exempt_kinds`, or `pacing.grant`. Preserved for historical reference.
 
 If `ledger claim` or `ledger set --status in_progress` is invoked for a slice that belongs to a new unit (a unit other than the lowest-numbered unit holding any non-exempt `in_progress` slice) and `resolved_units >= budget + grant.range`, then the ledger CLI **shall** exit 1 and emit a block message that states all three of: which budget was consumed, which unit was refused, and the two available remedies (`ledger autopilot --range N` or handoff to a new session).
 

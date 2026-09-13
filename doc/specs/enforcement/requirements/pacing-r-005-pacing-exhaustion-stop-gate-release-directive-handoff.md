@@ -3,13 +3,15 @@ id: pacing-r-005
 type: requirement
 concept: C-ENFORCEMENT
 title: Pacing exhaustion is a sanctioned stop-gate release with directive handoff
-status: implemented
+status: withdrawn
 verification: automated
 criticality: must
 design: "[[design/flows/stop-gate-decision-path]]"
 ---
 
 ## PACING-R-005 — Pacing exhaustion is a sanctioned stop-gate release with directive handoff {#pacing-r-005}
+
+> **Withdrawn** (motive `phase-checkpoint-gate`): The wave-exhaustion release path (`isExhausted`) is removed. Auto-advancing-tier checkpoint phases replace it (see CHECKPOINT-R-006). Preserved for historical reference.
 
 If the Stop hook fires and pacing is exhausted (no claimable unit remains for the current session) and one or more incomplete slices remain in the ledger, the Stop hook **shall** allow the session to end and **shall** emit a directive (not an advisory) instructing the operator to run the handoff skill and open a new session, naming the motive MAP.md path and the exact ids of all remaining incomplete slices.
 

@@ -16,14 +16,14 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 
 | Command | Fields written / read | write_token required? | Notes |
 |---------|----------------------|----------------------|-------|
-| `bin/ledger init` | `session_id`, `active`, `slices=[]`, `pacing`, `write_token` | — | Seeds default pacing: `policy=wave`, `budget=1`, `exempt_kinds=[plan,diagnose,design,fog]`. Not available in `gw ledger`. |
+| `bin/ledger init` | `session_id`, `active`, `slices=[]`, `gate.phases`, `write_token` | — | Seeds empty `gate.phases` for per-phase checkpoint tracking. Not available in `gw ledger`. |
 | `gw ledger add --motive <slug> <id>` | `slices[].{id, wave, kind, status=pending, desc, blocked_by, acceptance, ticket, covers_ac, decisions}` | No | `kind` defaults to `impl` |
 | `gw ledger fog --motive <slug> <id>` | `slices[].{id, kind=fog, status=pending, question}` | No | No `acceptance`; excluded from frontier |
-| `gw ledger claim --motive <slug> <id>` | `slices[].{status=in_progress, claimed_by, claimed_at}` | No | Blocked by pacing gate and `blocked_by` |
-| `gw ledger set --motive <slug> <id>` | Any slice field | **Yes** for terminal status | Pacing check on `in_progress` transition |
-| `gw ledger complete --motive <slug> <id>` | `slices[].{status=complete, completed_at, session_id}` | **Yes** | Never blocked by pacing (PACING-R-003) |
+| `gw ledger claim --motive <slug> <id>` | `slices[].{status=in_progress, claimed_by, claimed_at}` | No | Blocked by `blocked_by` |
+| `gw ledger set --motive <slug> <id>` | Any slice field | **Yes** for terminal status | Token required for terminal status changes |
+| `gw ledger complete --motive <slug> <id>` | `slices[].{status=complete, completed_at, session_id}` | **Yes** | Never blocked at claim time; gate enforces at session end |
 | `gw ledger gate --motive <slug> advisor APPROVE` | `gate.advisor` | **Yes** | Triggers `reSeal()`; `APPROVE` is the only terminal verdict |
-| `gw ledger autopilot --motive <slug> --range N` | `pacing.grant.{range, granted_at, granted_by, reason}` | **Yes** | Emits `MILESTONE` journal event; requires non-empty `--reason` |
+| `gw ledger checkpoint --motive <slug> <phase> <verdict>` | `gate.phases[phase].{verdict, verifier, verified_at}` | **Yes** | Records per-phase human checkpoint verdict; triggers `reSeal()` |
 | `gw ledger await-human --motive <slug>` | `awaiting_human = true / false` | **Yes** | Silences stop-gate nag; does not release completion gate |
 | `gw ledger abandon --motive <slug>` | `active = false` | No | Triggers `reSeal()`; releases stop-gate |
 | `gw ledger frontier --motive <slug>` | — (read only) | — | Excludes `fog` and `complete`/`skipped` slices |
@@ -44,7 +44,8 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 | `awaiting_human` | `stop-gate.ts` | `true` → allow (session correctly paused) |
 | `slices[].status` | `stop-gate.ts` | Non-terminal statuses counted as incomplete |
 | `gate.advisor` | `stop-gate.ts` | `APPROVE` (string or object) → gate satisfied |
-| `pacing` | `stop-gate.ts`, `lib/pacing.mjs` | Exhausted budget → allow with DIRECTIVE |
+| `checkpoint_hold` | `stop-gate.ts` | Auto-advancing tier → allow with DIRECTIVE; blocking tier → hold fail-closed |
+| `gate.phases` | `stop-gate.ts` | Per-phase checkpoint verdicts read by phase-tier dispatch |
 | `reinforcements` | `stop-gate.ts` | Counter ≥ cap (12) → release stuck session |
 | `progressSig` | `stop-gate.ts` | Hash of enforcement state; reset detection |
 | `slices[]` (all) | `session-reminder.mjs` | SessionStart injection — status overlay on MAP |
@@ -53,13 +54,14 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 
 ---
 
-## Pacing exempt kinds
+## Phase tiers
 
-These slice kinds are always claimable regardless of the pacing budget:
-
-`plan`, `diagnose`, `design`, `fog`
-
-Only `impl` slices consume the wave budget. Change with `bin/ledger init` options (not derivable from HELP; source: schema `exempt_kinds` field).
+| Phase | Tier | Stop-gate behaviour |
+|-------|------|-------------------|
+| `plan` | Blocking | Gate holds fail-closed until checkpoint verdict recorded |
+| `design` | Blocking | Gate holds fail-closed until checkpoint verdict recorded |
+| `wave` | Auto-advances | Gate releases with a directive when `checkpoint_hold === "wave"` |
+| `completion` | Blocking | Gate holds fail-closed until checkpoint verdict recorded |
 
 ---
 

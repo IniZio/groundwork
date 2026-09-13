@@ -46,7 +46,7 @@ A slice has four lifecycle states. Three are non-terminal (`pending`, `in_progre
 - `completed_at` and `session_id` are required on `complete`; the Stop hook validates both (ARTIFACT-R-001).
 - The Stop hook blocks session end if any slice is not `complete` (ARTIFACT-R-003).
 - `blocked_by` ids are informational; the CLI does not mechanically prevent completing a slice whose predecessors are not yet complete (sequencing is the orchestrator's responsibility).
-- Pacing: `impl` and `design` slices consume the wave budget; `plan`, `diagnose`, and `fog` kinds are exempt.
+- The stop-gate enforces at session end via phase-checkpoint state, not at claim time. All kinds are claimable unconditionally.
 
 ## Related notes
 

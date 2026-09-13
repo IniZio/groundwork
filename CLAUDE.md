@@ -117,10 +117,22 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Inspect a single slice in full: `gw ledger show --motive <slug> <id>`.
 - View run summary: `gw ledger view --motive <slug>` (token is redacted in output).
 - Record the advisor verdict in the ledger: `gw ledger gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>` (`--citation` alone yields `{verdict, citation}`; add `--rubric …` to include a rubric field). **This write is mandatory** — the stop-gate reads `gate.advisor` from the ledger; invoking `advisor()` alone does not release the gate.
+- Record a per-phase human checkpoint verdict: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]`. All three of `--phase`, `--verdict`, and `--verified-by` are required; `--deliverable` defaults to the phase name. Implementation wave phases are named `wave-1`, `wave-2`, … — any phase string that starts with `wave` derives tier `AUTO_ADVANCES`; all others (`plan`, `design`, `completion`) derive tier `BLOCKS`. **This write is mandatory before the stop-gate releases for that phase** — the gate reads `checkpoint_hold` and holds fail-closed until a verdict is recorded. `gw ledger autopilot` is retired; an invocation returns a usage error naming `checkpoint` as its replacement.
 - Check progress cheaply any time with `gw ledger status --motive <slug>` instead of reading the file.
 - To abandon a run: `gw ledger abandon --motive <slug>` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
 - For full command reference: `bin/ledger help [<cmd>]` (also `-h` or bare `bin/ledger`; `gw ledger` has no `help` subcommand).
 - **Commit each verified wave before fanning out the next.** Uncommitted-wave accumulation is what made a subagent's `git stash` destructive and cost a full-run loss. For the recovery procedure if it happens anyway, see memory entry `uncommitted-wave-accumulation`.
+
+**Phase-checkpoint gate:** The stop-gate enforces per-phase deliverable verification, not a wave-count budget. Four phases define the run arc — `plan`, `design`, `wave`, `completion` — each requiring a named deliverable verified by the USER before proceeding:
+
+| Phase | Tier | Stop-gate behaviour |
+|---|---|---|
+| `plan` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
+| `design` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
+| `wave-N` (e.g. `wave-1`, `wave-2`) | `AUTO_ADVANCES` | Gate releases with a directive; any phase name starting with `wave` gets this tier |
+| `completion` | `BLOCKS` | Gate holds fail-closed until checkpoint verdict recorded |
+
+An absent or unrecognised tier is treated as `BLOCKS` (fail-closed). Tier is derived from the phase name at checkpoint write time and stored in `gate.phases` — the stop-gate reads the stored value. **The orchestrator MUST, for each phase: (1) produce a concrete named deliverable (e.g. a committed motive charter, a reviewed design document, verified test results); (2) present that deliverable to the USER for verification; and (3) record the USER-verified verdict with `gw ledger checkpoint`. A checkpoint recorded without USER verification does not satisfy the gate.**
 
 ---
 

@@ -18,7 +18,7 @@ _Derived from `KNOWN_SLICE_KEYS`, `TERMINAL_STATUSES`, and the `claim`/`set`/`co
 stateDiagram-v2
     [*] --> pending : gw ledger add
 
-    pending --> in_progress : gw ledger claim / set --status in_progress\n[pacing gate + blocked_by resolved]
+    pending --> in_progress : gw ledger claim / set --status in_progress\n[blocked_by resolved]
     pending --> skipped : gw ledger set --status skipped\n[write_token required]
 
     in_progress --> complete : gw ledger complete / set --status complete\n[write_token required]
@@ -52,7 +52,7 @@ stateDiagram-v2
 |------|-------|-----------|-------------|----------------|----------------|
 | 1 | Orchestrator | Create slice `pending` | `gw ledger add --motive <slug> <id>` | `add()` in ledger.mjs | No |
 | 1a | Orchestrator | Create fog slice | `gw ledger fog --motive <slug> <id> --question "..."` | `fog()` in ledger.mjs | No |
-| 2 | Subagent | Claim: `pending → in_progress` | `gw ledger claim --motive <slug> <id>` or `gw ledger set --motive <slug> <id> --status in_progress` | `claim()` / `set()` | No (but blocked by pacing gate and `blocked_by`) |
+| 2 | Subagent | Claim: `pending → in_progress` | `gw ledger claim --motive <slug> <id>` or `gw ledger set --motive <slug> <id> --status in_progress` | `claim()` / `set()` | No (but blocked by `blocked_by`) |
 | 3 | Subagent | Complete: `in_progress → complete` | `gw ledger complete --motive <slug> <id> --token <write_token>` | `complete()` | **Yes** |
 | 3a | Orchestrator | Skip: any → `skipped` | `gw ledger set --motive <slug> <id> --status skipped --token <write_token>` | `set()` | **Yes** |
 | 4 | Orchestrator | Fog → impl (manual) | Edit `kind` from `fog` to `impl`; add `acceptance` | n/a | n/a |
@@ -71,13 +71,9 @@ stateDiagram-v2
 
 ---
 
-## Pacing gate on claim
+## Phase-checkpoint gate
 
-When `pacing.policy === "wave"` and the budget is exhausted, `claim` is blocked. `complete` is never blocked by pacing (PACING-R-003). The orchestrator can extend the budget with:
-
-```
-gw ledger autopilot --motive <slug> --range N --reason "..." --token <write_token>
-```
+Work is gated per phase, not by wave count. The stop-gate reads `checkpoint_hold` from the ledger: if set to a blocking-tier phase (`plan`, `design`, `completion`), the gate holds fail-closed; if set to the auto-advancing tier (`wave`), the gate releases with a directive. `claim` and `complete` are not blocked by checkpoint state — the gate enforces at session end, not at slice claim time.
 
 ---
 

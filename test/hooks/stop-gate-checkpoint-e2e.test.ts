@@ -37,6 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { canonicalReleaseState, computeSeal, readKey } from "../../hooks/lib/gate-seal.mjs";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -112,6 +113,23 @@ function runStopGate(
 		continue?: boolean; decision?: string; reason?: string;
 	};
 	return { ...parsed, exitCode: r.status ?? 0 };
+}
+
+/**
+ * Build the single-field control state: checkpoint_hold sealed with NO
+ * gate.phases entry. `gw ledger hold` also records a gate.phases entry for the
+ * held phase, so this state is not reachable through the CLI; it is written
+ * directly and re-sealed with the product's own canonical fold
+ * (hooks/lib/gate-seal.mjs), never with a formula restated here.
+ */
+function sealHoldWithoutPhases(projectDir: string, sessionId: string, phase: string): void {
+	const ledgerPath = path.join(projectDir, ".groundwork", "runs", `${sessionId}.json`);
+	const led = JSON.parse(readFileSync(ledgerPath, "utf8")) as Record<string, unknown>;
+	delete led["gate"];
+	led["checkpoint_hold"] = phase;
+	const seal = computeSeal(canonicalReleaseState(led), readKey({ projectDir, sessionId }));
+	led["gate"] = { seal };
+	writeFileSync(ledgerPath, JSON.stringify(led, null, 2));
 }
 
 function tamperLedger(projectDir: string, sessionId: string, holdValue: string): void {
@@ -416,16 +434,14 @@ describe("Bite proof: pre-fix binary (eb42776) blocks valid-seal wave-1 hold", (
 		expect(current.reason?.toUpperCase()).toContain("DIRECTIVE");
 	});
 
-	it("without gate.phases (hold only), pre-fix allows — isolates defect 1 scope", () => {
+	it("checkpoint_hold sealed WITHOUT gate.phases — pre-fix allows, isolates defect 1 scope", () => {
 		if (!bunPath) { console.warn("bun not found — bite proof skipped"); return; }
 
 		const sessionId = freshSession();
-		const token = initLedger(projectDir, sessionId, "bite proof scope", [
+		initLedger(projectDir, sessionId, "bite proof scope", [
 			{ id: "S1", wave: 1, status: "pending", kind: "impl" },
 		]);
-		runLedger(projectDir, sessionId, [
-			"hold", "--motive", "test-e2e", "--phase", "wave-1", "--token", token,
-		]);
+		sealHoldWithoutPhases(projectDir, sessionId, "wave-1");
 
 		expect(runStopGate(projectDir, sessionId, bunPath, PRE_FIX_BUNDLE).continue).toBe(true);
 		expect(runStopGate(projectDir, sessionId).continue).toBe(true);

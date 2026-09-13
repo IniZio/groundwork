@@ -1,6 +1,7 @@
 // @verifies CHECKPOINT-R-010
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { run as bashGuardRun } from "#src/gw/hook/ledger-bash-guard.js";
@@ -631,6 +632,27 @@ describe("ledger-bash-guard — AC-15: checkpoint guarded, autopilot removed (so
 		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger autopilot --token abc"), {}));
 		expect(d.permissionDecision).toBeUndefined();
 	});
+
+	it("DENIES subagent `ledger hold` — checkpoint-phase hold requires orchestrator authority", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger hold --phase planning --token abc"), {}));
+		expect(d.permissionDecision).toBe("deny");
+	});
+
+	it("deny reason names `hold` and the write-token requirement", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger hold --phase planning --token abc"), {}));
+		expect(d.permissionDecisionReason).toMatch(/hold/);
+		expect(d.permissionDecisionReason).toMatch(/write token|orchestrator/i);
+	});
+
+	it("POSITIVE CONTROL: orchestrator `ledger hold` passes — no agent markers", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(orchInput("bin/ledger hold --phase planning --token abc"), {}));
+		expect(d.permissionDecision).toBeUndefined();
+	});
+
+	it("DENIES subagent `ledger hold clear` — positional-clear form is still mutating", async () => {
+		const d = parseBashGuardDecision(await bashGuardRun(subagentInput("bin/ledger hold clear --token abc"), {}));
+		expect(d.permissionDecision).toBe("deny");
+	});
 });
 
 // ─── T10: binary-path coverage ───────────────────────────────────────────────
@@ -722,5 +744,84 @@ describe("ledger-bash-guard — AC-15 binary bite proof (T10)", () => {
 		const r = spawnSync(BITE_SHIM, ["hook", "ledger-bash-guard"], { input: payload, encoding: "utf8" });
 		const decision: Decision = r.stdout?.trim() ? JSON.parse(r.stdout) : {};
 		expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
+	});
+});
+
+// ─── T28: hold bite proof (SOURCE perturbation — dist-independent) ───────────
+
+/**
+ * Proves the `ledger hold` denial is load-bearing: the same guard code run
+ * twice, differing only by `hold` removed from MUTATING_LEDGER_CMD_RE.
+ *
+ * The perturbation is applied to a COPY of the guard SOURCE written outside the
+ * repository — never to dist/gw.mjs and never to a tracked file. The earlier
+ * form string-patched the live bundle, which made the proof depend on the
+ * bundle's byte content and broke on the next routine rebuild.
+ *
+ * src/gw/hook/ledger-bash-guard.ts has one runtime import (node:path) plus a
+ * type-only import, so a standalone copy runs unchanged under bun.
+ */
+
+describe("ledger-bash-guard — AC-15 hold bite proof (T28)", () => {
+	const GUARD_SRC = path.resolve(import.meta.dirname, "..", "..", "src", "gw", "hook", "ledger-bash-guard.ts");
+	const HOLD_PAYLOAD = JSON.stringify({
+		hook_event_name: "PreToolUse",
+		tool_name: "Bash",
+		tool_input: { command: "bin/ledger hold --phase planning --token abc" },
+		agent_type: "groundwork:general-purpose",
+	});
+
+	let bun: string;
+	let tmpDir: string;
+	let pristineGuard: string;
+	let noHoldGuard: string;
+	let driver: string;
+
+	beforeAll(() => {
+		bun = findBun();
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gw-bite-t28-"));
+
+		const src = fs.readFileSync(GUARD_SRC, "utf8").replace(/^import type .*\n/m, "");
+		const patched = src.replace(/(const MUTATING_LEDGER_CMD_RE = [^\n]*?)\|hold\b/, "$1");
+		// Fails loudly if `hold` ever leaves the guarded alternation — that is a
+		// guard regression, not a proof-scaffolding problem.
+		expect(patched, "MUTATING_LEDGER_CMD_RE no longer lists `hold`").not.toBe(src);
+
+		pristineGuard = path.join(tmpDir, "guard-pristine.ts");
+		noHoldGuard = path.join(tmpDir, "guard-no-hold.ts");
+		driver = path.join(tmpDir, "driver.ts");
+		fs.writeFileSync(pristineGuard, src);
+		fs.writeFileSync(noHoldGuard, patched);
+		fs.writeFileSync(
+			driver,
+			[
+				"const [modPath, payload] = process.argv.slice(2);",
+				"const mod = await import(modPath);",
+				"const r = await mod.run(JSON.parse(payload), {});",
+				"process.stdout.write(r.stdout ?? '');",
+				"",
+			].join("\n"),
+		);
+	});
+
+	afterAll(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	function decideVia(guardPath: string): Decision["hookSpecificOutput"] {
+		const r = spawnSync(bun, [driver, guardPath, HOLD_PAYLOAD], { encoding: "utf8" });
+		if (r.status !== 0) throw new Error(`bite driver failed (exit ${r.status}): ${r.stderr}`);
+		const decision: Decision = r.stdout?.trim() ? JSON.parse(r.stdout) : {};
+		return decision.hookSpecificOutput;
+	}
+
+	it("RED — guard source with `hold` removed from the pattern does NOT deny subagent `ledger hold`", () => {
+		expect(decideVia(noHoldGuard)?.permissionDecision).toBeUndefined();
+	});
+
+	it("GREEN — unmodified guard source DENIES subagent `ledger hold` (fix proven)", () => {
+		const d = decideVia(pristineGuard);
+		expect(d?.permissionDecision).toBe("deny");
+		expect(d?.permissionDecisionReason).toMatch(/hold/);
 	});
 });

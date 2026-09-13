@@ -33,6 +33,7 @@ export const LEDGER_SUBCOMMANDS = [
   'await-human',
   'autopilot',
   'checkpoint',
+  'hold',
   'scope-token',
   'milestone-signoff',
 ] as const
@@ -1079,10 +1080,38 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             },
           },
         }
-        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot))
+        const base: LedgerJson = { ...ledger, gate: newGate }
+        if (verdict === 'APPROVE' && typeof ledger.checkpoint_hold === 'string' && ledger.checkpoint_hold === phase) {
+          delete (base as Record<string, unknown>)['checkpoint_hold']
+        }
+        atomicWrite(runPath, reSeal(base, repoRoot))
         return okEnvelope('ledger checkpoint', {
           content: `checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`,
         })
+      }
+
+      // -----------------------------------------------------------------------
+      case 'hold': {
+        const phase = flags['phase'] as string | undefined
+        const clearing = positionals[0] === 'clear'
+        if (!clearing && !phase)
+          return errEnvelope('ledger hold', 'USAGE_ERROR', '--phase is required when setting a hold', 2)
+        const ledger = readLedger(runPath)
+        if (!ledger)
+          return errEnvelope('ledger hold', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        try {
+          assertWriteToken(ledger, flags['token'])
+        } catch (e) {
+          return authErr('ledger hold', e)
+        }
+        const { checkpoint_hold: _prev, ...rest } = ledger
+        if (clearing) {
+          atomicWrite(runPath, reSeal(rest as LedgerJson, repoRoot))
+          return okEnvelope('ledger hold', { content: 'checkpoint-phase hold cleared\n' })
+        } else {
+          atomicWrite(runPath, reSeal({ ...rest, checkpoint_hold: phase } as LedgerJson, repoRoot))
+          return okEnvelope('ledger hold', { content: `checkpoint-phase hold set to '${phase}'\n` })
+        }
       }
 
       // -----------------------------------------------------------------------

@@ -494,6 +494,15 @@ const HELP = {
       '--token <t>   orchestrator write-token (required — hold is orchestrator-only)',
     ],
   },
+  hold: {
+    summary: 'set or clear the checkpoint-phase hold (blocks session end until APPROVE clears it)',
+    usage: 'ledger hold --phase <phase> --token <write_token>  |  ledger hold clear --token <write_token>',
+    flags: [
+      'clear          positional — pass "clear" as the first argument to release the hold',
+      '--phase <p>    required when setting — phase key (plan | design | wave-<n> | completion)',
+      '--token <t>    orchestrator write-token (required)',
+    ],
+  },
   checkpoint: {
     summary: 'record a human phase-deliverable verdict (SECURITY: requires write_token)',
     usage: 'ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] --token <write_token>',
@@ -812,9 +821,34 @@ function cmdCheckpoint(args) {
       verified_by: verifiedBy,
       verified_at: new Date().toISOString(),
     }
+    if (verdict === 'APPROVE' && l.checkpoint_hold === phase) {
+      delete l.checkpoint_hold
+    }
     reSeal(l, projectDir)
   })
   process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`)
+}
+
+function cmdHold(args) {
+  const { flags, positionals } = parseFlags(args ?? [])
+  const clearing = positionals[0] === 'clear'
+  if (!clearing && !flags.phase) die('ledger hold requires --phase <phase> when setting', 2)
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l) throw new Error('no ledger to update')
+    assertWriteToken(l, flags.token)
+    if (clearing) {
+      delete l.checkpoint_hold
+    } else {
+      l.checkpoint_hold = flags.phase
+    }
+    reSeal(l, projectDir)
+  })
+  if (clearing) {
+    process.stdout.write('checkpoint-phase hold cleared\n')
+  } else {
+    process.stdout.write(`checkpoint-phase hold set to '${flags.phase}'\n`)
+  }
 }
 
 function cmdScopeToken(args) {
@@ -1520,6 +1554,7 @@ function main() {
       case 'autopilot': return cmdAutopilot(rest)
       case 'scope-token': return cmdScopeToken(rest)
       case 'await-human': return cmdAwaitHuman(rest)
+      case 'hold':        return cmdHold(rest)
       case 'checkpoint': return cmdCheckpoint(rest)
       case 'milestone-signoff': return cmdMilestoneSignoff(rest)
       default:

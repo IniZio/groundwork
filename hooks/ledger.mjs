@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { mutateLedger, readLedger, atomicWriteJsonSync, resolveLedgerPath, pruneStaleSessionLedgers } from './lib/ledger-io.mjs'
 import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey, keyPath } from './lib/gate-seal.mjs'
-import { checkPace, resolvedUnits, checkMilestoneArtifacts } from './lib/pacing.mjs'
+import { checkMilestoneArtifacts } from './lib/checkpoint.mjs'
 import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
 import { regenerateMotiveMap } from './lib/motive-map.mjs'
@@ -748,7 +748,7 @@ function cmdMilestoneSignoff(args) {
         e.exitCode = 1
         throw e
       }
-      const artifacts = Array.isArray(l.pacing.milestone_artifacts) ? l.pacing.milestone_artifacts : []
+      const artifacts = Array.isArray(l.pacing?.milestone_artifacts) ? l.pacing.milestone_artifacts : []
       for (const artifact of artifacts) {
         if (artifact.kind !== 'live_url' && artifact.path && !existsSync(artifact.path)) {
           const e = new Error(
@@ -1052,7 +1052,7 @@ function cmdInit(args) {
   if (!('pacing' in obj)) {
     obj.pacing = { policy: 'wave', budget: 1, exempt_kinds: ['plan', 'diagnose', 'design', 'fog'] }
   }
-  obj.pacing.offset = resolvedUnits(obj)
+
   checkLedgerStrict(obj)
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   const key = ensureKey({ projectDir, sessionId: obj.session_id })
@@ -1189,14 +1189,6 @@ function cmdSet(args) {
       assertWriteToken(l, flags.token)
     }
     if (flags.status != null) {
-      if (flags.status === 'in_progress') {
-        const pace = checkPace(l, id, flags['build-hash'] ?? null)
-        if (!pace.allowed) {
-          const e = new Error(`${pace.reason}\n${pace.remedy}`)
-          e.exitCode = 1
-          throw e
-        }
-      }
       s.status = flags.status
       if (flags.status === 'complete') {
         s.completed_at = new Date().toISOString()
@@ -1310,15 +1302,35 @@ function cmdClaim(args) {
       e.exitCode = 2
       throw e
     }
+
     const claimBuildHash = flags['build-hash'] ?? null
-    for (const id of ids) {
-      const pace = checkPace(l, id, claimBuildHash)
-      if (!pace.allowed) {
-        const e = new Error(`${pace.reason}\n${pace.remedy}`)
+    if (Array.isArray(l.pacing?.milestone_artifacts) && l.pacing.milestone_artifacts.length > 0) {
+      const artCheck = checkMilestoneArtifacts(l, claimBuildHash)
+      if (!artCheck.satisfied) {
+        const e = new Error(artCheck.reason ?? 'stale milestone artifacts')
         e.exitCode = 1
         throw e
       }
     }
+
+    if (Array.isArray(l.pacing?.milestone_artifacts)) {
+      const hasHighWave = ids.some((id) => {
+        const s = byId.get(id)
+        return s && (s.wave ?? 0) > 0
+      })
+      if (hasHighWave) {
+        const signoff = l.pacing?.milestone_signoff
+        if (!signoff || signoff.verdict !== 'APPROVE') {
+          const e = new Error(
+            'Milestone gate: sign-off (APPROVE) required before claiming wave 1+ slices\n' +
+            'Run: ledger milestone-signoff --verdict APPROVE --verified-by <name> --token <write_token>',
+          )
+          e.exitCode = 1
+          throw e
+        }
+      }
+    }
+
     const now = new Date().toISOString()
     for (const id of ids) {
       const s = byId.get(id)

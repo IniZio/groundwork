@@ -18,7 +18,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
 import { estimateTokens } from './lib/doc-io.mjs'
-import { resolvedUnits, inFlightUnit, isExhausted } from './lib/pacing.mjs'
+
 
 /** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
 const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
@@ -160,32 +160,6 @@ function activeRunBlock(projectDir, sessionId) {
   if (typeof ledger.write_token === 'string' && ledger.write_token) {
     lines.push(`Ledger write-token for this run: ${ledger.write_token} — pass \`--token ${ledger.write_token}\` on every \`${GW_HOOK_BIN} ledger gate … --motive ${motiveSlug}\` and \`${GW_HOOK_BIN} ledger complete … --motive ${motiveSlug}\`. NEVER include this token in a subagent Task prompt.`)
     lines.push('')
-  }
-
-  // Pacing state — surface so a hard budget block reads as policy, not a bug.
-  const pacing = ledger.pacing ?? null
-  if (pacing) {
-    const policy = pacing.policy ?? 'wave'
-    const budget = pacing.budget ?? 1
-    const exemptKinds = Array.isArray(pacing.exempt_kinds) ? pacing.exempt_kinds.join(', ') : ''
-    const resolved = resolvedUnits(ledger)
-    const grant = pacing.grant ?? null
-    const grantRange = grant?.range ?? 0
-    const cap = budget + grantRange
-    const exhausted = isExhausted(ledger)
-    const inFlight = inFlightUnit(ledger)
-    const pacingLines = [
-      `Pacing policy: ${policy}, budget: ${budget} unit${budget === 1 ? '' : 's'}${grantRange > 0 ? ` + grant of ${grantRange}` : ''}, exempt kinds: [${exemptKinds}]`,
-      `Pacing state: ${resolved} of ${cap} unit${cap === 1 ? '' : 's'} resolved${inFlight !== null ? `, in-flight unit: ${inFlight}` : ''}`,
-    ]
-    if (exhausted) {
-      const tokenArg = typeof ledger.write_token === 'string' && ledger.write_token ? ` --token ${ledger.write_token}` : ''
-      pacingLines.push(`⚠ Budget exhausted — \`ledger claim\` and \`ledger set --status in_progress\` will exit 1 for new units. This is the pacing policy, not a bug.`)
-      pacingLines.push(`  Sanctioned overage: \`${GW_HOOK_BIN} ledger autopilot --range N${tokenArg} --motive ${motiveSlug}\` (orchestrator-only; NEVER pass token to subagents).`)
-    } else if (grantRange > 0) {
-      pacingLines.push(`Grant in effect: autopilot extended budget by ${grantRange} unit${grantRange === 1 ? '' : 's'}.`)
-    }
-    lines.push(...pacingLines, '')
   }
 
   if (incomplete.length) {
@@ -383,9 +357,6 @@ const mapPointerBlock = (() => {
 // Absolute CLI tool paths — injected so agents never rely on a cwd-relative bin/.
 // Subcommand list covers the operational set (13) + scope-token + milestone-signoff (orchestrator-
 // only token-gated commands; omitting them causes the orchestrator to assume they don't exist).
-// `autopilot` is intentionally omitted here: activeRunBlock surfaces it dynamically with full
-// usage only when the pacing budget is exhausted — listing it statically adds noise and it is
-// never applicable outside that context.
 const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist — use \`${LEDGER_BIN} init\` to start a new run.)`
 
 let additionalContext = reminder + mapPointerBlock + cliToolsBlock
@@ -432,7 +403,7 @@ try {
 //      Re-measured (H25): H22 fixture total=3264 headroom=536 (skeleton injected).
 //      Adversarial (15 motives/waves, 500-char brief): total=3223 headroom=577.
 //      Uncapped adversarial estimate ≈3909 > 3800 → caps genuinely matter.
-//      Remaining unbounded contributors: static reminder block, pacing block,
+//      Remaining unbounded contributors: static reminder block,
 //      struggle nudge, CLI tools block — these are structurally fixed-size.
 // Note: TOTAL_TOKEN_ALARM can only fire when the skeleton-drop warning itself
 //       pushes the post-drop total above 4100 (rare; alarm is informational only).

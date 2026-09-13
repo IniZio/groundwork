@@ -13,6 +13,8 @@
  */
 
 // @verifies PACING-R-009
+// @verifies pacing-r-001
+// @verifies pacing-r-002
 
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
@@ -154,5 +156,32 @@ describe('DEPLOYED PATH — ledger claim WITH mismatched --build-hash (stale art
     const r = run(['claim', 'W1a', '--build-hash', 'hash-xyz'])
     expect(r.code, `exit code must be 1 (blocked); stderr: ${r.stderr}`).toBe(1)
     expect(r.stderr + r.stdout).toMatch(/stale/i)
+  })
+})
+
+describe('PACING-R-001 — absent milestone_artifacts does not block claim', () => {
+  it('claim exits 0 when ledger has no pacing.milestone_artifacts (enforcement absent = disabled)', () => {
+    // @verifies pacing-r-001
+    writeLedger({
+      version: 1, active: true, brief: 'no-artifacts', write_token: 'tok-dp-test',
+      slices: [{ id: 'S1', wave: 0, kind: 'impl', status: 'pending' }], gate: {},
+    })
+    const r = run(['claim', 'S1'])
+    expect(r.code, `expected 0; stderr: ${r.stderr}`).toBe(0)
+  })
+})
+
+describe('PACING-R-003 — ledger complete is not blocked by artifact enforcement', () => {
+  it('complete exits 0 even when milestone artifacts are stale (enforcement only fires at claim)', () => {
+    // @verifies pacing-r-003
+    writeLedger({
+      ...milestoneLedger() as Record<string, unknown>,
+      slices: [
+        { id: 'W0', wave: 0, kind: 'impl', status: 'in_progress' },
+        { id: 'W1a', wave: 1, kind: 'impl', status: 'pending', desc: 'wave 1 slice a' },
+      ],
+    })
+    const r = run(['complete', 'W0', '--token', 'tok-dp-test'])
+    expect(r.code, `expected 0; stderr: ${r.stderr}`).toBe(0)
   })
 })

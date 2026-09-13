@@ -10,8 +10,6 @@
  *   Regex-pattern parity is checked at source level; accept/reject behaviour
  *   is checked against all three exported functions.
  *
- * SEAM 2  pacing `policy` enum — schemas/run-ledger.schema.json ↔ pacing.mjs
- *
  * SEAM 3  `kind` enum duplicated within schemas/run-ledger.schema.json
  *   $defs/slice.kind  ↔  pacing.exempt_kinds.items  (exempt ⊆ slice)
  */
@@ -22,8 +20,6 @@ import { join } from 'node:path'
 import { resolveLedgerPath } from '../../hooks/lib/ledger-io.mjs'
 import { keyPath as gateSealKeyPath } from '../../hooks/lib/gate-seal.mjs'
 import { keyPath as graphSealKeyPath } from '../../hooks/lib/graph-seal.mjs'
-import { checkPace, resolvedUnits } from '../../hooks/lib/pacing.mjs'
-
 // Repo root — this file lives at test/hooks/guard-parity.test.ts
 const REPO = new URL('../..', import.meta.url).pathname
 
@@ -143,111 +139,6 @@ describe('SEAM 1 — SAFE_ID / SAFE_SLUG path-traversal guard parity (SECURITY)'
         const accepted = result.endsWith(`/${id}/graph.seal.key`)
         expect(accepted).toBe(expectAccept)
       })
-    }
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SEAM 2: pacing `policy` enum — schema ↔ pacing.mjs
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('SEAM 2 — pacing policy enum parity (schema ↔ pacing.mjs)', () => {
-  const schema = JSON.parse(
-    readFileSync(join(REPO, 'schemas/run-ledger.schema.json'), 'utf8'),
-  ) as {
-    properties: { pacing: { properties: { policy: { enum: string[] } } } }
-  }
-  const schemaPolicies = schema.properties.pacing.properties.policy.enum
-  const pacingSrc = readFileSync(join(REPO, 'hooks/lib/pacing.mjs'), 'utf8')
-
-  it('schema policy enum is non-empty', () => {
-    expect(schemaPolicies.length).toBeGreaterThan(0)
-  })
-
-  it('pacing.mjs references every schema policy value (schema→engine direction)', () => {
-    // Adding a policy to the schema without handling it in pacing.mjs makes this fail.
-    // pacing.mjs uses 'wave' in `// policy === 'wave'` comments and 'slice' in code.
-    for (const policy of schemaPolicies) {
-      expect(pacingSrc,
-        `pacing.mjs must reference policy value '${policy}' — it is in the schema but appears unhandled`,
-      ).toContain(`'${policy}'`)
-    }
-  })
-
-  it('every explicitly-named policy in pacing.mjs is in the schema (engine→schema direction)', () => {
-    // Adding a policy branch in pacing.mjs without updating the schema makes this fail.
-    const found = [...pacingSrc.matchAll(/policy\s*!?===?\s*'(\w+)'/g)].map((m) => m[1])
-    const unique = [...new Set(found)]
-    for (const p of unique) {
-      expect(schemaPolicies,
-        `pacing.mjs explicitly handles policy '${p}' which is not in the schema enum`,
-      ).toContain(p)
-    }
-  })
-
-  it('checkPace returns a typed result for every schema policy value', () => {
-    // Behavioural: no schema policy value may cause checkPace to throw or return undefined.
-    for (const policy of schemaPolicies) {
-      const doc = {
-        pacing: { policy, budget: 2, exempt_kinds: [] as string[] },
-        slices: [{ id: 's1', wave: 1, kind: 'impl', status: 'pending' }],
-      }
-      const result = checkPace(doc, 's1')
-      expect(result,
-        `checkPace must return an object for policy='${policy}'`,
-      ).toBeDefined()
-      expect(typeof result.allowed,
-        `allowed field must be boolean for policy='${policy}'`,
-      ).toBe('boolean')
-    }
-  })
-
-  it('wave and slice policies produce distinct resolvedUnits (proves branching is live)', () => {
-    // A doc where waves and slices give different counts — confirms the engine branches.
-    // wave 1: s1 complete + s2 pending → wave 1 NOT fully resolved
-    // wave 2: s3 complete              → wave 2 resolved
-    // slice:  s1 + s3 complete         → 2 units resolved
-    const slices = [
-      { id: 's1', wave: 1, kind: 'impl', status: 'complete' },
-      { id: 's2', wave: 1, kind: 'impl', status: 'pending'  },
-      { id: 's3', wave: 2, kind: 'impl', status: 'complete' },
-    ]
-    const waveDoc  = { pacing: { policy: 'wave',  budget: 3, exempt_kinds: [] as string[] }, slices }
-    const sliceDoc = { pacing: { policy: 'slice', budget: 3, exempt_kinds: [] as string[] }, slices }
-
-    expect(resolvedUnits(waveDoc),  'wave policy: only wave 2 fully resolved').toBe(1)
-    expect(resolvedUnits(sliceDoc), 'slice policy: s1 + s3 resolved').toBe(2)
-  })
-
-  it('each schema policy is exercised by a live code branch in resolvedUnits (defeat-device guard)', () => {
-    // Fixture: wave 1 fully resolved (s1 + s2 complete), wave 2 incomplete (s3 pending).
-    // SECURITY INTENT: if a policy is in the schema enum but NOT handled by an
-    // explicit code branch in resolvedUnits (e.g. falls to an unrecognized-policy
-    // guard returning 0), this test fails because 0 ≠ the expected non-zero count.
-    // A source-text comment cannot satisfy this — the branch must be executable code.
-    const slices = [
-      { id: 's1', wave: 1, kind: 'impl', status: 'complete' },
-      { id: 's2', wave: 1, kind: 'impl', status: 'complete' },
-      { id: 's3', wave: 2, kind: 'impl', status: 'pending'  },
-    ]
-    // expectedByPolicy is itself a contract: adding a new policy to the schema enum
-    // without adding it here causes expect(expected).toBeDefined() to fail → RED.
-    const expectedByPolicy: Record<string, number> = {
-      wave:      1,  // wave 1 fully resolved (s1 + s2 complete, s2→wave1 done)
-      slice:     2,  // s1 + s2 each a unit, both complete
-      milestone: 1,  // defers to wave-unit counting (S7 stub); same as 'wave'
-    }
-    for (const policy of schemaPolicies) {
-      const expected = expectedByPolicy[policy]
-      expect(expected,
-        `Policy '${policy}' is in the schema enum but missing from expectedByPolicy — add it with the correct resolvedUnits count`,
-      ).toBeDefined()
-      const doc = { pacing: { policy, budget: 5, exempt_kinds: [] as string[] }, slices }
-      const count = resolvedUnits(doc)
-      expect(count,
-        `resolvedUnits(policy='${policy}') returned ${count}, expected ${expected}. ` +
-        `If '${policy}' lacks a live branch in resolvedUnits, the unrecognized-policy guard returns 0.`,
-      ).toBe(expected)
     }
   })
 })

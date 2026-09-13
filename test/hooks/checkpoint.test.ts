@@ -1,8 +1,7 @@
 /**
  * Unit tests for hooks/lib/checkpoint.mjs
  *
- * Covers AC-1 (types exist and export), extracted helpers behave correctly,
- * and pacing.mjs re-exports the same symbols for backward compatibility.
+ * Covers AC-1 (types exist and export) and extracted helpers behave correctly.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -11,11 +10,6 @@ import {
   KNOWN_ARTIFACT_KINDS,
   checkMilestoneArtifacts,
 } from '../../hooks/lib/checkpoint.mjs'
-import {
-  STALEABLE_ARTIFACT_KINDS as PACING_STALEABLE,
-  KNOWN_ARTIFACT_KINDS as PACING_KNOWN,
-  checkMilestoneArtifacts as pacingCheckMilestone,
-} from '../../hooks/lib/pacing.mjs'
 
 // ---------------------------------------------------------------------------
 // Export surface
@@ -34,12 +28,6 @@ describe('checkpoint.mjs exports', () => {
     }
     expect(KNOWN_ARTIFACT_KINDS).toContain('live_url')
     expect(KNOWN_ARTIFACT_KINDS).toContain('file')
-  })
-
-  it('pacing.mjs re-exports the same values (extraction back-compat)', () => {
-    expect(PACING_STALEABLE).toBe(STALEABLE_ARTIFACT_KINDS)
-    expect(PACING_KNOWN).toBe(KNOWN_ARTIFACT_KINDS)
-    expect(pacingCheckMilestone).toBe(checkMilestoneArtifacts)
   })
 })
 

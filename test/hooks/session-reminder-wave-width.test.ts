@@ -242,36 +242,4 @@ describe("session-reminder — verbatim-survival: stop-gate and pacing clauses",
 		);
 	});
 
-	// The pacing exhausted clauses must survive verbatim in the active-run block
-	// when the budget is consumed. These are the enforceable lines the orchestrator
-	// reads to understand the pacing block is policy, not a bug.
-	it("pacing budget-exhausted clauses survive verbatim in active-run block", () => {
-		// Build an exhausted ledger:
-		//   pacing budget=1, wave policy
-		//   wave 1: 1 complete non-exempt slice  → 1 resolved unit (= budget)
-		//   wave 2: 1 pending non-exempt slice   → remaining work, no in_progress → isExhausted=true
-		const ledger = {
-			active: true,
-			session_id: "sess-wave",
-			brief: "Pacing verbatim test",
-			slices: [
-				{ id: "W1S1", wave: 1, status: "complete", behavior: "done slice", kind: "impl" },
-				{ id: "W2S1", wave: 2, status: "pending", behavior: "blocked slice", kind: "impl" },
-			],
-			gate: {},
-			pacing: { policy: "wave", budget: 1, exempt_kinds: [] },
-		};
-		const ctx = runReminder(ledger);
-		expect(ctx).toContain("ACTIVE RUN");
-
-		// Verbatim budget-exhausted clause.
-		expect(ctx).toContain(
-			"⚠ Budget exhausted — `ledger claim` and `ledger set --status in_progress` will exit 1 for new units. This is the pacing policy, not a bug.",
-		);
-
-		// Verbatim sanctioned-overage fixed suffix (LEDGER_BIN is machine-specific; assert the stable tail).
-		expect(ctx).toContain(
-			"(orchestrator-only; NEVER pass token to subagents).",
-		);
-	});
 });

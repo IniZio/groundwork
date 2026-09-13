@@ -164,6 +164,7 @@ describe('PACING-R-008 — write_token authority required for milestone sign-off
 // Gate behavior: claim blocked before sign-off, released after APPROVE
 // ---------------------------------------------------------------------------
 
+// @verifies pacing-r-007
 describe('claim blocked before sign-off, released after APPROVE', () => {
   it('ledger claim into new wave is blocked before sign-off', () => {
     // W0 complete, budget=1 consumed. W1 claim must be blocked.
@@ -190,28 +191,29 @@ describe('claim blocked before sign-off, released after APPROVE', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Policy guard: must be milestone policy
-// ---------------------------------------------------------------------------
-
-describe('milestone-signoff requires policy=milestone', () => {
-  it('exits 1 when pacing.policy is not milestone', () => {
+// @verifies pacing-r-007
+describe('milestone-signoff and claim work with NO pacing key', () => {
+  it('milestone-signoff succeeds on a ledger with no pacing field', () => {
+    // @verifies pacing-r-007
     writeLedger({
-      version: 1,
-      active: true,
-      brief: 'wave pacing test',
-      write_token: 'tok-ms-secret',
-      pacing: { policy: 'wave', budget: 1, exempt_kinds: [] },
-      slices: [{ id: 'S1', wave: 0, kind: 'impl', status: 'pending' }],
-      gate: {},
+      version: 1, active: true, brief: 'no-pacing', write_token: 'tok-ms-secret',
+      slices: [{ id: 'W0', wave: 0, kind: 'impl', status: 'complete' }], gate: {},
     })
-    const result = run([
-      'milestone-signoff',
-      '--verdict', 'APPROVE',
-      '--verified-by', 'human',
-      '--token', 'tok-ms-secret',
-    ])
-    expect(result.code).toBe(1)
-    expect(result.stderr).toMatch(/policy.*milestone/i)
+    const r = run(['milestone-signoff', '--verdict', 'APPROVE', '--verified-by', 'human', '--token', 'tok-ms-secret'])
+    expect(r.code, `must exit 0; stderr: ${r.stderr}`).toBe(0)
+  })
+
+  it('claim does not block on a ledger with no pacing field (enforcement absent = disabled)', () => {
+    // @verifies pacing-r-007
+    writeLedger({
+      version: 1, active: true, brief: 'no-pacing', write_token: 'tok-ms-secret',
+      slices: [
+        { id: 'W0', wave: 0, kind: 'impl', status: 'complete' },
+        { id: 'W1', wave: 1, kind: 'impl', status: 'pending' },
+      ], gate: {},
+    })
+    const r = runWithSession(['claim', 'W1'], 'test-session-np')
+    expect(r.code, `must exit 0; stderr: ${r.stderr}`).toBe(0)
   })
 })
 

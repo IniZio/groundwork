@@ -1142,11 +1142,29 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         } catch (e) {
           return authErr('ledger milestone-signoff', e)
         }
+        const note = flags['note'] as string | undefined
+        const pacingArtifacts = (ledger.pacing as Record<string, unknown> | undefined)?.['milestone_artifacts']
+        const artifacts: Array<Record<string, unknown>> = Array.isArray(pacingArtifacts)
+          ? (pacingArtifacts as Array<Record<string, unknown>>)
+          : []
+        const artifactsVerified: string[] = artifacts
+          .map((a) => String(a['path'] ?? ''))
+          .filter(Boolean)
+        const newPacing: Record<string, unknown> = {
+          ...(ledger.pacing ?? {}),
+          milestone_signoff: {
+            verdict,
+            verified_by: verifiedBy,
+            verified_at: new Date().toISOString(),
+            artifacts_verified: artifactsVerified,
+            ...(note !== undefined ? { note } : {}),
+          },
+        }
         const newGate: GateJson = {
           ...gateWithoutSeal(ledger.gate ?? {}),
           verifier: verdict,
         }
-        atomicWrite(runPath, reSeal({ ...ledger, gate: newGate }, repoRoot))
+        atomicWrite(runPath, reSeal({ ...ledger, pacing: newPacing, gate: newGate }, repoRoot))
         return okEnvelope('ledger milestone-signoff', {
           content: `milestone signed off: ${verdict} by ${verifiedBy}\n`,
         })

@@ -56,16 +56,10 @@ function isExemptSlice(slice, exemptKinds) {
 }
 
 // ---------------------------------------------------------------------------
-// Artifact kind classification for milestone freshness enforcement.
-// Stale-able kinds MUST carry captured_build_hash — omitting the field is
-// treated as a required-field violation and rejected (fail-closed).
-// Non-stale-able kinds: `file` artifacts are verified for local-file existence
-// at sign-off time (ledger.mjs); `live_url` artifacts require a captured companion
-// (`file`, `run_output`, or `screenshot`) — no reachability probe is performed.
-// Hash tracking is optional for both kinds.
+// Artifact kind classification — re-exported from checkpoint.mjs (T1 extraction).
+// T6 deletes pacing.mjs; direct consumers should import from checkpoint.mjs.
 // ---------------------------------------------------------------------------
-export const STALEABLE_ARTIFACT_KINDS = ['screenshot', 'run_output']
-export const KNOWN_ARTIFACT_KINDS = ['screenshot', 'run_output', 'live_url', 'file']
+export { STALEABLE_ARTIFACT_KINDS, KNOWN_ARTIFACT_KINDS, checkMilestoneArtifacts } from './checkpoint.mjs'
 
 // ---------------------------------------------------------------------------
 // Exported API
@@ -375,104 +369,3 @@ export function checkPace(doc, sliceId, currentBuildHash) {
   return { allowed: false, reason, remedy }
 }
 
-/**
- * Validate milestone artifact freshness and declaration requirements.
- *
- * Pure function — no filesystem I/O. File existence must be checked by the caller.
- *
- * Fail-closed semantics (PACING-R-009):
- *   - Artifact kind not in KNOWN_ARTIFACT_KINDS                          → REJECTED
- *     (unknown kind; cannot determine staleness semantics; fail-closed).
- *   - Artifact kind in STALEABLE_ARTIFACT_KINDS + no captured_build_hash → REJECTED
- *     (stale-able kinds require a hash at declaration time; fail-closed).
- *   - Artifact declares captured_build_hash + currentBuildHash matches   → FRESH.
- *   - Artifact declares captured_build_hash + currentBuildHash differs   → STALE.
- *   - Artifact declares captured_build_hash + currentBuildHash is null   → STALE
- *     (cannot verify freshness without a current hash; fail closed — caller must
- *     supply the hash via --build-hash on ledger claim/set).
- *   - Non-stale-able kind (live_url, file) with no captured_build_hash   → FRESH
- *     (existence-only; hash tracking not required for these kinds).
- *
- * @param {object} doc - Ledger document.
- * @param {string|null} [currentBuildHash] - Current build hash for staleness comparison.
- *   When null/undefined AND an artifact declares a captured_build_hash, that artifact
- *   is classified stale (fail-closed).  Pass the hash explicitly via --build-hash.
- * @returns {{ satisfied: boolean, staleArtifacts: string[], reason?: string }}
- */
-export function checkMilestoneArtifacts(doc, currentBuildHash) {
-  const pacing = getPacing(doc)
-  if (!pacing) return { satisfied: true, staleArtifacts: [] }
-  const artifacts = Array.isArray(pacing.milestone_artifacts) ? pacing.milestone_artifacts : []
-  if (artifacts.length === 0) return { satisfied: true, staleArtifacts: [] }
-
-  const stale = []
-  let anyHashUnknown = false
-  let anyMissingHash = false
-  let anyUnknownKind = false
-
-  for (const artifact of artifacts) {
-    const kind = artifact.kind ?? ''
-    const pathLabel = artifact.path ?? '(unknown)'
-
-    // Fail-closed: unknown kind — cannot determine staleness semantics; reject.
-    if (!KNOWN_ARTIFACT_KINDS.includes(kind)) {
-      stale.push(pathLabel)
-      anyUnknownKind = true
-      continue
-    }
-
-    // Stale-able kinds MUST declare captured_build_hash.
-    // Omitting it bypasses freshness enforcement — reject (fail-closed).
-    if (STALEABLE_ARTIFACT_KINDS.includes(kind) && !artifact.captured_build_hash) {
-      stale.push(pathLabel)
-      anyMissingHash = true
-      continue
-    }
-
-    // Hash comparison for artifacts that declare a captured_build_hash.
-    if (artifact.captured_build_hash) {
-      if (!currentBuildHash) {
-        // Artifact declares a build hash but no current hash was supplied.
-        // Fail closed: cannot verify freshness — treat as stale.
-        stale.push(pathLabel)
-        anyHashUnknown = true
-      } else if (artifact.captured_build_hash !== currentBuildHash) {
-        // Hash mismatch → stale.
-        stale.push(pathLabel)
-      }
-    }
-  }
-
-  // Cross-artifact check: live_url alone does not satisfy the gate.
-  // A live_url MUST be accompanied by at least one captured companion
-  // (file, run_output, or screenshot) in the same milestone.
-  const CAPTURED_KINDS = ['file', 'run_output', 'screenshot']
-  const hasLiveUrl = artifacts.some(a => a.kind === 'live_url')
-  const hasCapturedCompanion = artifacts.some(a => CAPTURED_KINDS.includes(a.kind ?? ''))
-  let anyLiveUrlAlone = false
-  if (hasLiveUrl && !hasCapturedCompanion) {
-    // Push ALL live_url paths into stale to trigger rejection.
-    for (const artifact of artifacts) {
-      if (artifact.kind === 'live_url') stale.push(artifact.path ?? '(unknown)')
-    }
-    anyLiveUrlAlone = true
-  }
-
-  const reason = stale.length > 0
-    ? anyLiveUrlAlone
-      ? `live_url artifact requires a captured companion (file, run_output, or screenshot) in the same milestone — a URL alone is not a capture`
-      : anyUnknownKind
-        ? `Artifact with unknown kind rejected (fail-closed — must be one of: ${KNOWN_ARTIFACT_KINDS.join(', ')}): ${stale.join(', ')}`
-        : anyMissingHash
-          ? `screenshot and run_output artifacts require captured_build_hash — omitting the field is rejected (fail-closed): ${stale.join(', ')}`
-          : anyHashUnknown
-            ? `Stale artifacts (cannot verify freshness — no current build hash supplied; pass --build-hash to ledger claim): ${stale.join(', ')}`
-            : `Stale artifacts (build hash mismatch — artifact captured before the current build): ${stale.join(', ')}`
-    : undefined
-
-  return {
-    satisfied: stale.length === 0,
-    staleArtifacts: stale,
-    ...(reason != null ? { reason } : {}),
-  }
-}

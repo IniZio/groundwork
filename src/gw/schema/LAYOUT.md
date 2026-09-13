@@ -111,3 +111,12 @@ Frontmatter = `JournalEventSchema` fields (`ts`, `session`, `type`, `source`, `d
 - `autopilot: Array<{ units: number; reason: string; ts: string }>` — append-only log of grants.
 
 Gate notes are sealed (token-gated); setting these fields without the correct token changes the canonical machine state and invalidates the seal (fail-closed).
+
+### Session state — checkpoint_hold and gate.phases (phase-checkpoint-gate)
+
+`checkpoint_hold` and `gate.phases` are the two new fields introduced by the phase-checkpoint gate:
+
+- `checkpoint_hold: string` — top-level optional string naming the phase key currently blocking session end (e.g. `'plan'`, `'wave-1'`). Absent when nothing blocks. Must be top-level — the stop-gate reads top-level fields directly; a nested field would be dead state (same rule as `awaiting_human`).
+- `gate.phases: Record<string, PhaseCheckpoint>` — per-phase verification record under the existing `gate` object, covered by the write-token + seal machinery. Keys are phase keys (`plan`, `design`, `wave-<n>`, `completion`). Each value carries `deliverable`, `tier`, `verdict`, `verified_by`, `verified_at`, `artifacts[]`.
+
+Both are sealed (included in `canonicalReleaseState` in `hooks/lib/gate-seal.mjs`) using the same extend-not-replace pattern as `scoped_tokens` and `awaiting_human`: absent fields do not alter the canonical string, so already-sealed ledgers without these fields still verify correctly.

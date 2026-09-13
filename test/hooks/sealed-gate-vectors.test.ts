@@ -16,6 +16,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { canonicalReleaseState, computeSeal, ensureKey, verifySeal, SCHEMA_VERSION } from "../../hooks/lib/gate-seal.mjs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -337,7 +338,164 @@ describe("S5-AC3 — backward-compat & non-regression", () => {
 		const r = runLedger(["status"]);
 
 		expect(r.exitCode).toBe(0);
-		// Status output should mention the slices
 		expect(r.stdout).toMatch(/S1|S2|pending/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AC-3 — back-compat: ledger sealed with pacing.milestone_signoff (no gate.phases) still verifies
+// ---------------------------------------------------------------------------
+
+describe("AC-3 back-compat: old-fold-sealed ledger still verifies after T1 seal extension", () => {
+	it("ledger with pacing.milestone_signoff and no gate.phases verifies against its own seal", () => {
+		const sessionId = "backcompat-ms-001";
+		const key = ensureKey({ projectDir, sessionId });
+		const ledger = {
+			schema_version: SCHEMA_VERSION,
+			session_id: sessionId,
+			active: true,
+			gate: { advisor: "APPROVE" },
+			pacing: {
+				policy: "milestone",
+				budget: 1,
+				milestone_signoff: {
+					verdict: "APPROVE",
+					verified_by: "human-operator",
+					verified_at: "2025-01-01T00:00:00Z",
+					artifacts_verified: [],
+				},
+			},
+			slices: [{ id: "S1", status: "complete", created_by: "orchestrator" }],
+		};
+		const state = canonicalReleaseState(ledger);
+		const seal = computeSeal(state, key);
+		const sealed = { ...ledger, gate: { ...ledger.gate, seal } };
+		const ledgerPath = path.join(projectDir, ".groundwork", "runs", `${sessionId}.json`);
+		mkdirSync(path.join(projectDir, ".groundwork", "runs"), { recursive: true });
+		writeFileSync(ledgerPath, JSON.stringify(sealed, null, 2));
+
+		const parsed = JSON.parse(state);
+		expect(parsed).toHaveProperty("milestone_signoff");
+		expect(parsed).not.toHaveProperty("gate_phases");
+
+		const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
+		const result = spawnSync(STOP_GATE, ["hook", "stop-gate"], {
+			input,
+			encoding: "utf8",
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+		});
+		if (result.status !== 0) throw new Error(`stop-gate exited ${result.status}: ${result.stderr}`);
+		const decision = JSON.parse(result.stdout.trim());
+		expect(decision.continue).toBe(true);
+	});
+
+	it("bite proof: adding gate.phases to an old-fold-sealed ledger breaks the seal", () => {
+		const sessionId = "backcompat-bite-001";
+		const key = ensureKey({ projectDir, sessionId });
+		const ledger = {
+			schema_version: SCHEMA_VERSION,
+			session_id: sessionId,
+			active: true,
+			gate: { advisor: "APPROVE" },
+			pacing: { policy: "milestone", budget: 1 },
+			slices: [{ id: "S1", status: "complete", created_by: "orchestrator" }],
+		};
+		const state = canonicalReleaseState(ledger);
+		const seal = computeSeal(state, key);
+		const sealed = { ...ledger, gate: { ...ledger.gate, seal } };
+		const withPhases = { ...sealed, gate: { ...sealed.gate, phases: { plan: { deliverable: "injected", tier: "BLOCKS" } } } };
+		const newState = canonicalReleaseState(withPhases);
+		expect(newState).not.toBe(state);
+		const recomputed = computeSeal(newState, key);
+		expect(recomputed).not.toBe(seal);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Golden vectors — pinned canonical strings and seal hex from PRE-T1 module
+//
+// Fixed key: deadbeef * 8 (32 bytes, hex-encoded).  These values were computed
+// by running the pre-T1 gate-seal.mjs (git show HEAD:hooks/lib/gate-seal.mjs)
+// against each ledger object with this key and recorded as literals below.
+// The assertions prove byte-identical output from the post-T1 module.
+// ---------------------------------------------------------------------------
+
+const FIXED_KEY = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+
+describe("golden vectors: canonicalReleaseState is byte-identical to pre-T1 output", () => {
+	it("(a) withSignoff: ledger with pacing.milestone_signoff matches pinned canonical and seal", () => {
+		const ledger = {
+			schema_version: SCHEMA_VERSION,
+			session_id: "golden-vec-001",
+			active: true,
+			gate: { advisor: "APPROVE" },
+			pacing: {
+				policy: "milestone",
+				budget: 1,
+				milestone_signoff: {
+					verdict: "APPROVE",
+					verified_by: "human-operator",
+					verified_at: "2025-01-01T00:00:00Z",
+				},
+			},
+			slices: [
+				{ id: "S1", status: "complete", created_by: "orchestrator" },
+				{ id: "S2", status: "pending", created_by: "orchestrator" },
+			],
+		};
+		const PINNED_CANONICAL =
+			'{"schema_version":1,"session_id":"golden-vec-001","active":true,"advisor_verdict":"APPROVE","slices":[{"id":"S1","status":"complete","created_by":"orchestrator"},{"id":"S2","status":"pending","created_by":"orchestrator"}],"milestone_signoff":{"verdict":"APPROVE","verified_by":"human-operator","verified_at":"2025-01-01T00:00:00Z"}}';
+		const PINNED_SEAL = "49190ae68364983a5e18dfea21447c3514b0e133c63a9b0be45954d999b12844";
+
+		const canonical = canonicalReleaseState(ledger);
+		expect(canonical).toBe(PINNED_CANONICAL);
+		expect(computeSeal(canonical, FIXED_KEY)).toBe(PINNED_SEAL);
+
+		const sealedLedger = { ...ledger, gate: { ...ledger.gate, seal: PINNED_SEAL } };
+		expect(verifySeal(sealedLedger, FIXED_KEY)).toBe(true);
+	});
+
+	it("(b) noPacing: legacy run without pacing block matches pinned canonical and seal", () => {
+		const ledger = {
+			schema_version: SCHEMA_VERSION,
+			session_id: "golden-vec-002",
+			active: true,
+			gate: { advisor: "APPROVE" },
+			slices: [{ id: "S1", status: "complete", created_by: "orchestrator" }],
+		};
+		const PINNED_CANONICAL =
+			'{"schema_version":1,"session_id":"golden-vec-002","active":true,"advisor_verdict":"APPROVE","slices":[{"id":"S1","status":"complete","created_by":"orchestrator"}]}';
+		const PINNED_SEAL = "d67e1e8e1077bba2aa62f0b3f1395a126a64ee6b54a3e9b85617316ad28509f8";
+
+		const canonical = canonicalReleaseState(ledger);
+		expect(canonical).toBe(PINNED_CANONICAL);
+		expect(computeSeal(canonical, FIXED_KEY)).toBe(PINNED_SEAL);
+
+		const sealedLedger = { ...ledger, gate: { ...ledger.gate, seal: PINNED_SEAL } };
+		expect(verifySeal(sealedLedger, FIXED_KEY)).toBe(true);
+	});
+
+	it("(c) multiSlice: non-id-ordered slices and CORRECTION verdict match pinned canonical and seal", () => {
+		const ledger = {
+			schema_version: SCHEMA_VERSION,
+			session_id: "golden-vec-003",
+			active: false,
+			gate: { advisor: "CORRECTION" },
+			slices: [
+				{ id: "S2", status: "complete", created_by: "orchestrator" },
+				{ id: "S1", status: "complete", created_by: "orch-junior" },
+				{ id: "S3", status: "pending", created_by: "orchestrator" },
+			],
+		};
+		const PINNED_CANONICAL =
+			'{"schema_version":1,"session_id":"golden-vec-003","active":false,"advisor_verdict":"CORRECTION","slices":[{"id":"S1","status":"complete","created_by":"orch-junior"},{"id":"S2","status":"complete","created_by":"orchestrator"},{"id":"S3","status":"pending","created_by":"orchestrator"}]}';
+		const PINNED_SEAL = "8f9f24b61804ee1fe5f4ff0ac91a0efc20fcc08794f7a68e68198d40b60a9c52";
+
+		const canonical = canonicalReleaseState(ledger);
+		expect(canonical).toBe(PINNED_CANONICAL);
+		expect(computeSeal(canonical, FIXED_KEY)).toBe(PINNED_SEAL);
+
+		const sealedLedger = { ...ledger, gate: { ...ledger.gate, seal: PINNED_SEAL } };
+		expect(verifySeal(sealedLedger, FIXED_KEY)).toBe(true);
 	});
 });

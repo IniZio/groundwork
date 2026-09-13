@@ -346,25 +346,20 @@ describe('scoped_tokens seal coverage (S-TOKEN)', () => {
     return { ledger, key, sessionId }
   }
 
-  // S-TOKEN-AC1: injecting a scoped_token into a sealed ledger (that had none) breaks the seal
   it('S-TOKEN-AC1: injecting scoped_tokens into a sealed ledger (that had none) breaks verifySeal', () => {
     const { ledger, key } = makeSealedLedgerWithTokens() // no scoped_tokens
-    expect(verifySeal(ledger as any, key)).toBe(true) // baseline: valid
-    // Attacker injects a token — the field goes from absent to present
+    expect(verifySeal(ledger as any, key)).toBe(true) // baseline
     const tampered = { ...ledger, scoped_tokens: [{ scope: 'attacker', token: 'evil-tok' }] }
     expect(verifySeal(tampered as any, key)).toBe(false)
   })
 
-  // S-TOKEN-AC2: swapping the token VALUE for an existing scope also breaks the seal
   it('S-TOKEN-AC2: swapping a token value for an existing scope breaks verifySeal', () => {
     const { ledger, key } = makeSealedLedgerWithTokens([{ scope: 'orchestrator', token: 'legit-tok' }])
     expect(verifySeal(ledger as any, key)).toBe(true) // baseline
-    // Attacker knows the scope, swaps in their own token
     const tampered = { ...ledger, scoped_tokens: [{ scope: 'orchestrator', token: 'swapped-tok' }] }
     expect(verifySeal(tampered as any, key)).toBe(false)
   })
 
-  // S-TOKEN-AC3: determinism — different scoped_tokens array order yields the same seal
   it('S-TOKEN-AC3: scoped_tokens array order does not affect the canonical string', () => {
     const tokens = [
       { scope: 'beta', token: 'tok-b' },
@@ -375,41 +370,115 @@ describe('scoped_tokens seal coverage (S-TOKEN)', () => {
     expect(canonicalReleaseState(ledgerA)).toBe(canonicalReleaseState(ledgerB))
   })
 
-  // S-TOKEN-AC4: same seal computed twice from the same state
   it('S-TOKEN-AC4: canonicalReleaseState is deterministic with scoped_tokens present', () => {
     const ledger = makeLedger({ scoped_tokens: [{ scope: 'orch', token: 'abc' }] })
     expect(canonicalReleaseState(ledger)).toBe(canonicalReleaseState(ledger))
   })
 
-  // S-TOKEN-AC5: absent scoped_tokens (legacy) vs present-empty produce DIFFERENT canonicals
-  // (because absent = excluded from canonical; present-empty = included as [])
-  // This ensures an attacker cannot smuggle an empty array without breaking the seal.
   it('S-TOKEN-AC5: absent scoped_tokens and present-empty scoped_tokens produce different canonicals', () => {
     const withoutField = makeLedger() // no scoped_tokens
     const withEmptyField = makeLedger({ scoped_tokens: [] })
     expect(canonicalReleaseState(withoutField)).not.toBe(canonicalReleaseState(withEmptyField))
   })
 
-  // S-TOKEN-AC6: STOP-GATE BLOCKS — the full attack: inject token into sealed fixture, run stop-gate
   it('S-TOKEN-AC6: stop-gate BLOCKS when scoped_tokens is injected into a sealed ledger', () => {
     const { ledger, sessionId } = makeSealedLedgerWithTokens() // sealed without scoped_tokens
-    // Attacker injects token — seal now invalid
     const tampered = { ...ledger, scoped_tokens: [{ scope: 'attacker', token: 'evil-tok' }] }
-    // Write tampered ledger to disk
     const ledgerPath = path.join(tmpDir, '.groundwork', 'runs', `${sessionId}.json`)
     writeFileSync(ledgerPath, JSON.stringify(tampered, null, 2))
     const input = JSON.stringify({ cwd: tmpDir, session_id: sessionId })
     const out = execFileSync(STOP_GATE_HOOK, ['hook', 'stop-gate'], { input, encoding: 'utf8' })
     const result = JSON.parse(out)
-    // stop-gate returns {decision:"block",...} when it blocks (not {continue:false})
     expect(result.decision).toBe('block')
     expect(result.reason ?? '').toMatch(/seal/i)
   })
 
-  // S-TOKEN-LEGACY: ledger sealed without scoped_tokens field still verifies (backward compat)
   it('S-TOKEN-LEGACY: ledger sealed under old shape (no scoped_tokens field) still verifies', () => {
     const { ledger, key } = makeSealedLedgerWithTokens() // sealed without scoped_tokens
-    // No injection — just verify the original
     expect(verifySeal(ledger as any, key)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-1/AC-2 — gate.phases and checkpoint_hold seal coverage (phase-checkpoint-gate T1)
+// ---------------------------------------------------------------------------
+
+describe('gate.phases and checkpoint_hold seal coverage (T1)', () => {
+  it('gate.phases absent: canonical string is unchanged (back-compat guarantee)', () => {
+    const withPhases = canonicalReleaseState(makeLedger({
+      gate: { advisor: 'APPROVE', phases: { plan: { deliverable: 'doc', tier: 'BLOCKS' } } },
+    }))
+    const withoutPhases = canonicalReleaseState(makeLedger())
+    expect(withPhases).not.toBe(withoutPhases)
+    const parsed = JSON.parse(withoutPhases)
+    expect(parsed).not.toHaveProperty('gate_phases')
+  })
+
+  it('gate.phases present: canonical string includes gate_phases in sorted key order', () => {
+    const ledger = makeLedger({
+      gate: {
+        advisor: 'APPROVE',
+        phases: {
+          wave1: { deliverable: 'shipped wave', tier: 'AUTO_ADVANCES', verdict: 'APPROVE', verified_by: 'orch' },
+          plan:  { deliverable: 'charter', tier: 'BLOCKS' },
+        },
+      },
+    })
+    const parsed = JSON.parse(canonicalReleaseState(ledger))
+    expect(parsed).toHaveProperty('gate_phases')
+    expect(Object.keys(parsed.gate_phases)).toEqual(['plan', 'wave1'])
+    expect(parsed.gate_phases.plan.deliverable).toBe('charter')
+    expect(parsed.gate_phases.plan.verdict).toBeNull()
+  })
+
+  it('gate.phases phase-key order does not affect canonical string', () => {
+    const base = makeLedger({ gate: { advisor: 'APPROVE', phases: { plan: { deliverable: 'doc', tier: 'BLOCKS' }, design: { deliverable: 'ui', tier: 'BLOCKS' } } } })
+    const reordered = makeLedger({ gate: { advisor: 'APPROVE', phases: { design: { deliverable: 'ui', tier: 'BLOCKS' }, plan: { deliverable: 'doc', tier: 'BLOCKS' } } } })
+    expect(canonicalReleaseState(base)).toBe(canonicalReleaseState(reordered))
+  })
+
+  it('injecting gate.phases into a sealed-without-phases ledger breaks verifySeal', () => {
+    const ledger = makeLedger() // no gate.phases
+    const state = canonicalReleaseState(ledger)
+    const seal = computeSeal(state, TEST_KEY)
+    const sealed = { ...ledger, gate: { ...ledger.gate as object, seal } }
+    expect(verifySeal(sealed, TEST_KEY)).toBe(true) // baseline
+
+    const tampered = { ...sealed, gate: { ...sealed.gate as object, phases: { plan: { deliverable: 'injected', tier: 'BLOCKS' } } } }
+    expect(verifySeal(tampered, TEST_KEY)).toBe(false)
+  })
+
+  it('checkpoint_hold absent: canonical string has no checkpoint_hold key', () => {
+    const parsed = JSON.parse(canonicalReleaseState(makeLedger()))
+    expect(parsed).not.toHaveProperty('checkpoint_hold')
+  })
+
+  it('checkpoint_hold present: canonical string includes it and changes are detected', () => {
+    const withHold = canonicalReleaseState(makeLedger({ checkpoint_hold: 'plan' }))
+    const withoutHold = canonicalReleaseState(makeLedger())
+    expect(withHold).not.toBe(withoutHold)
+    expect(JSON.parse(withHold).checkpoint_hold).toBe('plan')
+  })
+
+  it('injecting checkpoint_hold into a sealed-without-hold ledger breaks verifySeal', () => {
+    const ledger = makeLedger()
+    const seal = computeSeal(canonicalReleaseState(ledger), TEST_KEY)
+    const sealed = { ...ledger, gate: { ...ledger.gate as object, seal } }
+    const tampered = { ...sealed, checkpoint_hold: 'plan' }
+    expect(verifySeal(sealed, TEST_KEY)).toBe(true)
+    expect(verifySeal(tampered, TEST_KEY)).toBe(false)
+  })
+
+  it('back-compat: ledger sealed under old fold (pacing.milestone_signoff, no gate.phases) still verifies', () => {
+    const ledger = makeLedger({
+      pacing: { policy: 'milestone', budget: 1, milestone_signoff: { verdict: 'APPROVE', verified_by: 'human', verified_at: '2025-01-01T00:00:00Z', artifacts_verified: [] } },
+    })
+    const state = canonicalReleaseState(ledger)
+    const seal = computeSeal(state, TEST_KEY)
+    const sealed = { ...ledger, gate: { ...ledger.gate as object, seal } }
+    expect(verifySeal(sealed, TEST_KEY)).toBe(true)
+    const parsed = JSON.parse(state)
+    expect(parsed.milestone_signoff).toEqual({ verdict: 'APPROVE', verified_by: 'human', verified_at: '2025-01-01T00:00:00Z' })
+    expect(parsed).not.toHaveProperty('gate_phases')
   })
 })

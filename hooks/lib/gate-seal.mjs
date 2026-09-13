@@ -119,6 +119,27 @@ export function canonicalReleaseState(ledger) {
     }
   }
 
+  if (ledger.gate?.phases !== undefined) {
+    const phases = ledger.gate.phases
+    const phaseKeys = Object.keys(phases).sort()
+    const normalizedPhases = {}
+    for (const k of phaseKeys) {
+      const p = phases[k]
+      normalizedPhases[k] = {
+        deliverable: String(p.deliverable ?? ''),
+        tier: String(p.tier ?? ''),
+        verdict: p.verdict !== undefined ? String(p.verdict) : null,
+        verified_by: p.verified_by !== undefined ? String(p.verified_by) : null,
+        verified_at: p.verified_at !== undefined ? String(p.verified_at) : null,
+      }
+    }
+    state.gate_phases = normalizedPhases
+  }
+
+  if (ledger.checkpoint_hold !== undefined) {
+    state.checkpoint_hold = String(ledger.checkpoint_hold)
+  }
+
   return JSON.stringify(state)
 }
 

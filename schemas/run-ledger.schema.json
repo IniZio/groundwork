@@ -54,6 +54,49 @@
         },
         "qa": {
           "type": "string"
+        },
+        "seal": {
+          "type": "string",
+          "description": "HMAC-SHA256 hex seal over the canonical release state. Written by ledger init. Any mutation that touches release-affecting state must update this seal via the write-token path or the stop-gate will block (fail-closed)."
+        },
+        "phases": {
+          "type": "object",
+          "description": "Per-phase verification record (phase-checkpoint-gate). Map keyed by phase key ('plan', 'design', 'wave-<n>', 'completion'), each value carrying deliverable, verdict, tier, and verifier identity. Lives under gate so the existing write-token + seal machinery covers it.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["deliverable", "tier"],
+            "properties": {
+              "deliverable": {
+                "type": "string",
+                "description": "Human-readable deliverable reference for this phase."
+              },
+              "tier": {
+                "type": "string",
+                "enum": ["BLOCKS", "AUTO_ADVANCES"],
+                "description": "BLOCKS: session cannot end without human APPROVE verdict. AUTO_ADVANCES: emits directive only, no blocking."
+              },
+              "verdict": {
+                "type": "string",
+                "enum": ["APPROVE", "REJECT", "PENDING"],
+                "description": "Verdict written by the checkpoint CLI command. Absent until the phase is explicitly verified."
+              },
+              "verified_by": {
+                "type": "string",
+                "description": "Identity of the verifier (session id or operator username)."
+              },
+              "verified_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp of verification."
+              },
+              "artifacts": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Paths or URLs of artifacts the verifier reviewed."
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": true
@@ -181,6 +224,10 @@
         },
         "additionalProperties": false
       }
+    },
+    "checkpoint_hold": {
+      "type": "string",
+      "description": "Top-level hold naming the phase key currently blocking session end. Absent when nothing blocks. Written by the checkpoint CLI command (token-gated). Read by the stop-gate — must be top-level because nested holds are invisible to the stop-gate reader (awaiting_human precedent)."
     }
   },
   "additionalProperties": false,

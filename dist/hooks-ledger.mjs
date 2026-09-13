@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 45bf6eadddd7ae2180ab8e3ab3b37a657a0c979a8c2973f3ff7e9cba1d1098af
+// @bundle-source-hash: 7894b2161ef1602ff0056044a5a2188c62b730016e47731d3fcf524a80c49264
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10673,6 +10673,25 @@ function canonicalReleaseState(ledger) {
       verified_at: String(ms.verified_at ?? "")
     };
   }
+  if (ledger.gate?.phases !== undefined) {
+    const phases = ledger.gate.phases;
+    const phaseKeys = Object.keys(phases).sort();
+    const normalizedPhases = {};
+    for (const k of phaseKeys) {
+      const p = phases[k];
+      normalizedPhases[k] = {
+        deliverable: String(p.deliverable ?? ""),
+        tier: String(p.tier ?? ""),
+        verdict: p.verdict !== undefined ? String(p.verdict) : null,
+        verified_by: p.verified_by !== undefined ? String(p.verified_by) : null,
+        verified_at: p.verified_at !== undefined ? String(p.verified_at) : null
+      };
+    }
+    state.gate_phases = normalizedPhases;
+  }
+  if (ledger.checkpoint_hold !== undefined) {
+    state.checkpoint_hold = String(ledger.checkpoint_hold);
+  }
   return JSON.stringify(state);
 }
 function computeSeal(stateString, key) {
@@ -10700,164 +10719,11 @@ function readKey({ projectDir, sessionId }) {
   return readFileSync2(kp);
 }
 
-// hooks/lib/pacing.mjs
-function getPacing(doc) {
-  return doc?.pacing ?? null;
-}
-function getSlices(doc) {
-  return Array.isArray(doc?.slices) ? doc.slices : [];
-}
-function isExemptSlice(slice, exemptKinds) {
-  return exemptKinds.includes(slice.kind ?? "");
-}
+// hooks/lib/checkpoint.mjs
 var STALEABLE_ARTIFACT_KINDS = ["screenshot", "run_output"];
 var KNOWN_ARTIFACT_KINDS = ["screenshot", "run_output", "live_url", "file"];
-function resolveUnit(doc, sliceId) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return null;
-  const slice = getSlices(doc).find((s) => s.id === sliceId);
-  if (!slice)
-    return null;
-  return pacing.policy === "slice" ? slice.id : slice.wave ?? 0;
-}
-function resolvedUnits(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return 0;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy, offset = 0 } = pacing;
-  let raw;
-  if (policy === "slice") {
-    raw = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "complete").length;
-  } else if (policy === "wave" || policy === "milestone") {
-    const waves = new Map;
-    for (const s of slices) {
-      if (isExemptSlice(s, exemptKinds))
-        continue;
-      const w = s.wave ?? 0;
-      const entry = waves.get(w) ?? { total: 0, complete: 0 };
-      entry.total++;
-      if (s.status === "complete")
-        entry.complete++;
-      waves.set(w, entry);
-    }
-    raw = 0;
-    for (const { total, complete } of waves.values()) {
-      if (total > 0 && complete === total)
-        raw++;
-    }
-  } else {
-    raw = 0;
-  }
-  return Math.max(0, raw - offset);
-}
-function inFlightUnit(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return null;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy } = pacing;
-  const incomplete = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status !== "complete");
-  if (incomplete.length === 0)
-    return null;
-  if (policy === "slice") {
-    return incomplete[0].id;
-  }
-  let minWave = Infinity;
-  for (const s of incomplete) {
-    const w = s.wave ?? 0;
-    if (w < minWave)
-      minWave = w;
-  }
-  return minWave === Infinity ? null : minWave;
-}
-function activeUnit(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return null;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy } = pacing;
-  const active = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "in_progress");
-  if (active.length === 0)
-    return null;
-  if (policy === "slice") {
-    return active[0].id;
-  }
-  let minWave = Infinity;
-  for (const s of active) {
-    const w = s.wave ?? 0;
-    if (w < minWave)
-      minWave = w;
-  }
-  return minWave === Infinity ? null : minWave;
-}
-function isExhausted(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return false;
-  if (activeUnit(doc) !== null)
-    return false;
-  const { budget = 1, grant } = pacing;
-  const grantRange = grant?.range ?? 0;
-  const cap = budget + grantRange;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [] } = pacing;
-  const hasRemainingWork = slices.some((s) => !isExemptSlice(s, exemptKinds) && s.status !== "complete");
-  return hasRemainingWork && resolvedUnits(doc) >= cap;
-}
-function checkPace(doc, sliceId, currentBuildHash) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return { allowed: true };
-  const slices = getSlices(doc);
-  const slice = slices.find((s) => s.id === sliceId);
-  if (!slice)
-    return { allowed: true };
-  const { exempt_kinds: exemptKinds = [], budget = 1, grant, policy } = pacing;
-  if (isExemptSlice(slice, exemptKinds))
-    return { allowed: true };
-  const targetUnit = resolveUnit(doc, sliceId);
-  const currentActive = activeUnit(doc);
-  if (currentActive !== null && targetUnit === currentActive) {
-    return { allowed: true };
-  }
-  const grantRange = grant?.range ?? 0;
-  const cap = budget + grantRange;
-  const consumed = resolvedUnits(doc);
-  if (consumed < cap) {
-    return { allowed: true };
-  }
-  if (policy === "milestone") {
-    const signoff = pacing.milestone_signoff;
-    if (signoff?.verdict === "APPROVE") {
-      const artCheck = checkMilestoneArtifacts(doc, currentBuildHash ?? null);
-      if (!artCheck.satisfied) {
-        const hashContext = currentBuildHash ? `(build hash changed since sign-off)` : `(no current build hash supplied \u2014 pass --build-hash <hash> to ledger claim)`;
-        const staleReason = `Milestone gate: APPROVE sign-off is present but artifacts cannot be verified as fresh ` + `${hashContext}.
-` + `${artCheck.reason}
-` + `Re-capture these artifacts against the current build, then record a fresh sign-off.`;
-        const staleRemedy = `1. Re-capture the stale artifacts (current build hash: ${currentBuildHash ?? "unknown"}).
-` + `2. ledger milestone-signoff --verdict APPROVE --verified-by <name> ` + `--build-hash <current> --token <write_token>`;
-        return { allowed: false, reason: staleReason, remedy: staleRemedy };
-      }
-      return { allowed: true };
-    }
-    const artifacts = Array.isArray(pacing.milestone_artifacts) ? pacing.milestone_artifacts : [];
-    const artifactList = artifacts.length > 0 ? artifacts.map((a) => `  \u2022 ${a.label ?? a.path ?? "(unnamed)"} (${a.kind ?? "unknown"})`).join(`
-`) : "  (no artifacts declared)";
-    const milestoneReason = `Milestone gate: human sign-off required before opening wave ${targetUnit}.
-` + `Declared artifacts:
-${artifactList}
-` + (signoff ? `Last verdict: ${signoff.verdict} (by ${signoff.verified_by}).` : "No sign-off recorded yet.");
-    const milestoneRemedy = `Record a human-verified sign-off with:
-` + `  ledger milestone-signoff --verdict APPROVE --verified-by <name> --token <write_token>`;
-    return { allowed: false, reason: milestoneReason, remedy: milestoneRemedy };
-  }
-  const unitLabel = policy === "slice" ? `slice "${sliceId}"` : `wave ${targetUnit}`;
-  const reason = `Pacing budget exhausted: ${consumed} of ${cap} unit${cap === 1 ? "" : "s"} consumed ` + `(budget=${budget}${grantRange > 0 ? `, grant.range=${grantRange}` : ""}). ` + `${unitLabel} would open a new unit but none remains for this session.`;
-  const remedy = `Option A: ask the operator to authorize \`ledger autopilot --range N --reason "\u2026"\` \u2014 do not self-grant. ` + `Option B: run \`/groundwork:pause\` and continue in a new session.`;
-  return { allowed: false, reason, remedy };
+function getPacing(doc) {
+  return doc?.pacing ?? null;
 }
 function checkMilestoneArtifacts(doc, currentBuildHash) {
   const pacing = getPacing(doc);
@@ -12644,36 +12510,37 @@ function _renderMap({ motive, charter, slices, ledgerDoc = null, decisions, outO
     }
     parts.push("");
   }
-  if (ledgerDoc?.pacing) {
-    const pacing = ledgerDoc.pacing;
-    const budget = pacing.budget ?? 1;
-    const grant = pacing.grant ?? null;
-    const grantRange = grant?.range ?? 0;
-    const cap = budget + grantRange;
-    const unitWord = pacing.policy === "wave" ? "wave" : "slice";
-    const resolved = resolvedUnits(ledgerDoc);
-    const inflight = inFlightUnit(ledgerDoc);
-    const exhausted = isExhausted(ledgerDoc);
-    parts.push("## Pacing");
+  if (ledgerDoc?.gate?.phases) {
+    const phases = ledgerDoc.gate.phases;
+    const PHASE_ORDER = ["plan", "design", "wave", "completion"];
+    const PHASE_LABELS = { plan: "Plan / Charter", design: "Design", wave: "Implementation Wave", completion: "Completion" };
+    const TIER_LABELS = { BLOCKS: "BLOCKING", AUTO_ADVANCES: "auto-advance" };
+    parts.push("## Phase Checkpoints");
     parts.push("");
-    const budgetLine = grantRange > 0 ? `**Policy:** ${pacing.policy} \xB7 **Budget:** ${budget} ${unitWord}${budget === 1 ? "" : "s"} + ${grantRange} via autopilot (cap ${cap})` : `**Policy:** ${pacing.policy} \xB7 **Budget:** ${budget} ${unitWord}${budget === 1 ? "" : "s"}`;
-    parts.push(budgetLine);
-    parts.push(`**Consumption:** ${resolved} of ${cap} ${unitWord}${cap === 1 ? "" : "s"} resolved \u2014 ${resolved < cap ? "new unit may be started" : "budget consumed"}`);
-    if (inflight !== null) {
-      const label = pacing.policy === "wave" ? `wave ${inflight}` : `"${inflight}"`;
-      parts.push(`**In-flight ${unitWord}:** ${label}`);
-    }
-    if (grant) {
-      const grantedBy = grant.granted_by ? ` by ${grant.granted_by}` : "";
-      const grantedAt = grant.granted_at ? ` (${String(grant.granted_at).slice(0, 10)})` : "";
-      const reason = grant.reason ? ` \u2014 ${grant.reason}` : "";
-      parts.push(`**Autopilot grant:** +${grant.range} ${unitWord}${grant.range === 1 ? "" : "s"}${grantedBy}${grantedAt}${reason}`);
-    }
-    if (exhausted) {
-      const exemptKinds = pacing.exempt_kinds ?? [];
-      const remaining = (ledgerDoc.slices ?? []).filter((s) => !exemptKinds.includes(s.kind) && s.status !== "complete");
-      const ids = remaining.map((s) => s.id).join(", ");
-      parts.push(`**Session exhausted.** Run \`/groundwork:pause\` and open a new session. Remaining work: ${ids || "(none listed)"}`);
+    parts.push("| Phase | Tier | Deliverable | Status | Verified by |");
+    parts.push("|---|---|---|---|---|");
+    const phaseKeys = [
+      ...PHASE_ORDER.filter((k) => phases[k] != null),
+      ...Object.keys(phases).filter((k) => !PHASE_ORDER.includes(k)).sort()
+    ];
+    for (const key of phaseKeys) {
+      const cp = phases[key];
+      const label = PHASE_LABELS[key] ?? key;
+      const tier = TIER_LABELS[cp.tier] ?? cp.tier;
+      const deliverable = cp.deliverable ?? "\u2014";
+      const verdict = cp.verdict ?? "PENDING";
+      let statusCell;
+      if (verdict === "APPROVE") {
+        statusCell = `\u2713 verified${cp.verified_at ? ` (${String(cp.verified_at).slice(0, 10)})` : ""}`;
+      } else if (verdict === "REJECT") {
+        statusCell = "\u2717 rejected";
+      } else if (cp.tier === "AUTO_ADVANCES") {
+        statusCell = "auto-advancing";
+      } else {
+        statusCell = "\u23F3 awaiting verification";
+      }
+      const verifier = cp.verified_by ?? "\u2014";
+      parts.push(`| ${label} | ${tier} | ${deliverable} | ${statusCell} | ${verifier} |`);
     }
     parts.push("");
   }
@@ -14251,6 +14118,17 @@ var HELP = {
       "--token <t>   orchestrator write-token (required \u2014 hold is orchestrator-only)"
     ]
   },
+  checkpoint: {
+    summary: "record a human phase-deliverable verdict (SECURITY: requires write_token)",
+    usage: "ledger checkpoint --phase <phase> --verdict APPROVE|REJECT --verified-by <name> [--deliverable <ref>] --token <write_token>",
+    flags: [
+      "--phase <phase>          required \u2014 phase key: plan | design | wave-<n> | completion",
+      "--verdict APPROVE|REJECT required \u2014 APPROVE clears the hold; REJECT keeps it",
+      "--verified-by <name>     required \u2014 identity of the human verifier",
+      "--deliverable <ref>      optional \u2014 deliverable reference (defaults to phase name)",
+      "--token <t>              orchestrator write-token (required)"
+    ]
+  },
   "milestone-signoff": {
     summary: "record a human sign-off on the current milestone (policy=milestone only; SECURITY: requires write_token)",
     usage: "ledger milestone-signoff --verdict APPROVE|REJECT --verified-by <name> --token <write_token>",
@@ -14318,7 +14196,7 @@ var HELP = {
     ]
   },
   autopilot: {
-    summary: "extend session pacing budget by N units (requires write-token authority)",
+    summary: '(retired) use "ledger checkpoint" instead',
     usage: 'ledger autopilot --range N --token <write_token> --reason "..."',
     flags: [
       "--range N        number of additional units to grant (required, \u22651)",
@@ -14484,11 +14362,6 @@ function cmdMilestoneSignoff(args) {
     if (!l)
       throw new Error("no ledger to update");
     assertWriteToken(l, flags.token);
-    if (l.pacing?.policy !== "milestone") {
-      const e = new Error(`milestone-signoff requires pacing.policy = "milestone". Current policy: ${l.pacing?.policy ?? "none"}.`);
-      e.exitCode = 1;
-      throw e;
-    }
     if (verdict === "APPROVE") {
       const hashCheck = checkMilestoneArtifacts(l, currentBuildHash);
       if (!hashCheck.satisfied) {
@@ -14498,7 +14371,7 @@ function cmdMilestoneSignoff(args) {
         e.exitCode = 1;
         throw e;
       }
-      const artifacts2 = Array.isArray(l.pacing.milestone_artifacts) ? l.pacing.milestone_artifacts : [];
+      const artifacts2 = Array.isArray(l.pacing?.milestone_artifacts) ? l.pacing.milestone_artifacts : [];
       for (const artifact of artifacts2) {
         if (artifact.kind !== "live_url" && artifact.path && !existsSync8(artifact.path)) {
           const e = new Error(`Milestone artifact not found on disk: ${artifact.path}
@@ -14522,6 +14395,51 @@ function cmdMilestoneSignoff(args) {
     reSeal(l, projectDir);
   });
   process.stdout.write(`milestone-signoff: ${verdict} by ${verifiedBy}
+`);
+}
+function cmdCheckpoint(args) {
+  const { flags } = parseFlags(args ?? []);
+  const phase = flags.phase;
+  if (!phase)
+    die("checkpoint requires --phase <phase>", 2);
+  const verdict = flags.verdict;
+  if (!verdict || !["APPROVE", "REJECT"].includes(verdict)) {
+    die("checkpoint requires --verdict APPROVE|REJECT", 2);
+  }
+  const verifiedBy = flags["verified-by"];
+  if (!verifiedBy)
+    die("checkpoint requires --verified-by <name>", 2);
+  const deliverable = flags.deliverable ?? phase;
+  const tier = /^wave-\d+$/.test(phase) ? "AUTO_ADVANCES" : "BLOCKS";
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  mutateLedgerChecked(ledgerPath(), (l) => {
+    if (!l)
+      throw new Error("no ledger to update");
+    assertWriteToken(l, flags.token);
+    if (!l.gate)
+      l.gate = {};
+    if (!l.gate.phases)
+      l.gate.phases = {};
+    if (l.pacing?.milestone_signoff && !l.gate.phases.completion) {
+      const ms = l.pacing.milestone_signoff;
+      l.gate.phases.completion = {
+        deliverable: "milestone",
+        tier: "BLOCKS",
+        verdict: ms.verdict,
+        verified_by: ms.verified_by,
+        verified_at: ms.verified_at
+      };
+    }
+    l.gate.phases[phase] = {
+      deliverable,
+      tier,
+      verdict,
+      verified_by: verifiedBy,
+      verified_at: new Date().toISOString()
+    };
+    reSeal(l, projectDir);
+  });
+  process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}
 `);
 }
 function cmdScopeToken(args) {
@@ -14745,7 +14663,6 @@ function cmdInit(args) {
   if (!("pacing" in obj)) {
     obj.pacing = { policy: "wave", budget: 1, exempt_kinds: ["plan", "diagnose", "design", "fog"] };
   }
-  obj.pacing.offset = resolvedUnits(obj);
   checkLedgerStrict(obj);
   try {
     pruneStaleSessionLedgers(projectDir);
@@ -14900,15 +14817,6 @@ function cmdSet(args) {
       assertWriteToken(l, flags.token);
     }
     if (flags.status != null) {
-      if (flags.status === "in_progress") {
-        const pace = checkPace(l, id, flags["build-hash"] ?? null);
-        if (!pace.allowed) {
-          const e = new Error(`${pace.reason}
-${pace.remedy}`);
-          e.exitCode = 1;
-          throw e;
-        }
-      }
       s.status = flags.status;
       if (flags.status === "complete") {
         s.completed_at = new Date().toISOString();
@@ -15024,13 +14932,27 @@ function cmdClaim(args) {
       throw e;
     }
     const claimBuildHash = flags["build-hash"] ?? null;
-    for (const id of ids) {
-      const pace = checkPace(l, id, claimBuildHash);
-      if (!pace.allowed) {
-        const e = new Error(`${pace.reason}
-${pace.remedy}`);
+    if (Array.isArray(l.pacing?.milestone_artifacts) && l.pacing.milestone_artifacts.length > 0) {
+      const artCheck = checkMilestoneArtifacts(l, claimBuildHash);
+      if (!artCheck.satisfied) {
+        const e = new Error(artCheck.reason ?? "stale milestone artifacts");
         e.exitCode = 1;
         throw e;
+      }
+    }
+    if (Array.isArray(l.pacing?.milestone_artifacts)) {
+      const hasHighWave = ids.some((id) => {
+        const s = byId.get(id);
+        return s && (s.wave ?? 0) > 0;
+      });
+      if (hasHighWave) {
+        const signoff = l.pacing?.milestone_signoff;
+        if (!signoff || signoff.verdict !== "APPROVE") {
+          const e = new Error(`Milestone gate: sign-off (APPROVE) required before claiming wave 1+ slices
+` + "Run: ledger milestone-signoff --verdict APPROVE --verified-by <name> --token <write_token>");
+          e.exitCode = 1;
+          throw e;
+        }
       }
     }
     const now = new Date().toISOString();
@@ -15196,48 +15118,8 @@ function cmdFrontier(args) {
 `);
   }
 }
-function cmdAutopilot(args) {
-  const { flags } = parseFlags(args);
-  if (flags.range == null)
-    die('usage: ledger autopilot --range N --token <t> [--reason "..."]', 2);
-  const range = Number(flags.range);
-  if (!Number.isInteger(range) || range < 1)
-    die("--range must be a positive integer (\u22651)", 2);
-  const reason = flags.reason ?? "";
-  if (!reason.trim())
-    die('--reason is required and must be non-empty (e.g. --reason "operator authorized: multi-wave emergency")', 1);
-  let capturedLedger = null;
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  mutateLedgerChecked(ledgerPath(), (l) => {
-    if (!l)
-      throw new Error("no ledger to update");
-    assertWriteToken(l, flags.token);
-    capturedLedger = l;
-    if (!l.pacing) {
-      const e = new Error("ledger has no pacing field \u2014 autopilot only applies to paced runs");
-      e.exitCode = 1;
-      throw e;
-    }
-    l.pacing.grant = {
-      range: (l.pacing.grant?.range ?? 0) + range,
-      granted_at: new Date().toISOString(),
-      granted_by: resolveSessionId(flags) ?? process.env.CLAUDE_CODE_SESSION_ID ?? "orchestrator",
-      reason
-    };
-    reSeal(l, projectDir);
-  });
-  if (capturedLedger) {
-    emitHookEvent({
-      projectDir,
-      sessionId: capturedLedger.session_id,
-      type: "MILESTONE",
-      source: "hook:ledger",
-      data: { event: "autopilot", range, reason },
-      ledger: capturedLedger
-    });
-  }
-  process.stdout.write(`autopilot granted: +${range} unit${range === 1 ? "" : "s"}${reason ? ` (${reason})` : ""}
-`);
+function cmdAutopilot(_args) {
+  die('autopilot is retired \u2014 use "ledger checkpoint" to record a phase deliverable verdict', 2);
 }
 function main() {
   const argv = process.argv.slice(2);
@@ -15292,6 +15174,8 @@ function main() {
         return cmdScopeToken(rest);
       case "await-human":
         return cmdAwaitHuman(rest);
+      case "checkpoint":
+        return cmdCheckpoint(rest);
       case "milestone-signoff":
         return cmdMilestoneSignoff(rest);
       default:

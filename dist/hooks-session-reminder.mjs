@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 45bf6eadddd7ae2180ab8e3ab3b37a657a0c979a8c2973f3ff7e9cba1d1098af
+// @bundle-source-hash: 7894b2161ef1602ff0056044a5a2188c62b730016e47731d3fcf524a80c49264
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -7389,102 +7389,6 @@ function estimateTokens(content) {
   return Math.ceil(Buffer.byteLength(content, "utf8") / 3.5);
 }
 
-// hooks/lib/pacing.mjs
-function getPacing(doc) {
-  return doc?.pacing ?? null;
-}
-function getSlices(doc) {
-  return Array.isArray(doc?.slices) ? doc.slices : [];
-}
-function isExemptSlice(slice, exemptKinds) {
-  return exemptKinds.includes(slice.kind ?? "");
-}
-function resolvedUnits(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return 0;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy, offset = 0 } = pacing;
-  let raw;
-  if (policy === "slice") {
-    raw = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "complete").length;
-  } else if (policy === "wave" || policy === "milestone") {
-    const waves = new Map;
-    for (const s of slices) {
-      if (isExemptSlice(s, exemptKinds))
-        continue;
-      const w = s.wave ?? 0;
-      const entry = waves.get(w) ?? { total: 0, complete: 0 };
-      entry.total++;
-      if (s.status === "complete")
-        entry.complete++;
-      waves.set(w, entry);
-    }
-    raw = 0;
-    for (const { total, complete } of waves.values()) {
-      if (total > 0 && complete === total)
-        raw++;
-    }
-  } else {
-    raw = 0;
-  }
-  return Math.max(0, raw - offset);
-}
-function inFlightUnit(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return null;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy } = pacing;
-  const incomplete = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status !== "complete");
-  if (incomplete.length === 0)
-    return null;
-  if (policy === "slice") {
-    return incomplete[0].id;
-  }
-  let minWave = Infinity;
-  for (const s of incomplete) {
-    const w = s.wave ?? 0;
-    if (w < minWave)
-      minWave = w;
-  }
-  return minWave === Infinity ? null : minWave;
-}
-function activeUnit(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return null;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [], policy } = pacing;
-  const active = slices.filter((s) => !isExemptSlice(s, exemptKinds) && s.status === "in_progress");
-  if (active.length === 0)
-    return null;
-  if (policy === "slice") {
-    return active[0].id;
-  }
-  let minWave = Infinity;
-  for (const s of active) {
-    const w = s.wave ?? 0;
-    if (w < minWave)
-      minWave = w;
-  }
-  return minWave === Infinity ? null : minWave;
-}
-function isExhausted(doc) {
-  const pacing = getPacing(doc);
-  if (!pacing)
-    return false;
-  if (activeUnit(doc) !== null)
-    return false;
-  const { budget = 1, grant } = pacing;
-  const grantRange = grant?.range ?? 0;
-  const cap = budget + grantRange;
-  const slices = getSlices(doc);
-  const { exempt_kinds: exemptKinds = [] } = pacing;
-  const hasRemainingWork = slices.some((s) => !isExemptSlice(s, exemptKinds) && s.status !== "complete");
-  return hasRemainingWork && resolvedUnits(doc) >= cap;
-}
-
 // hooks/lib/ledger-io.mjs
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
 import path from "path";
@@ -11086,30 +10990,6 @@ function activeRunBlock(projectDir, sessionId) {
   if (typeof ledger.write_token === "string" && ledger.write_token) {
     lines.push(`Ledger write-token for this run: ${ledger.write_token} \u2014 pass \`--token ${ledger.write_token}\` on every \`${GW_HOOK_BIN} ledger gate \u2026 --motive ${motiveSlug}\` and \`${GW_HOOK_BIN} ledger complete \u2026 --motive ${motiveSlug}\`. NEVER include this token in a subagent Task prompt.`);
     lines.push("");
-  }
-  const pacing = ledger.pacing ?? null;
-  if (pacing) {
-    const policy = pacing.policy ?? "wave";
-    const budget = pacing.budget ?? 1;
-    const exemptKinds = Array.isArray(pacing.exempt_kinds) ? pacing.exempt_kinds.join(", ") : "";
-    const resolved = resolvedUnits(ledger);
-    const grant = pacing.grant ?? null;
-    const grantRange = grant?.range ?? 0;
-    const cap = budget + grantRange;
-    const exhausted = isExhausted(ledger);
-    const inFlight = inFlightUnit(ledger);
-    const pacingLines = [
-      `Pacing policy: ${policy}, budget: ${budget} unit${budget === 1 ? "" : "s"}${grantRange > 0 ? ` + grant of ${grantRange}` : ""}, exempt kinds: [${exemptKinds}]`,
-      `Pacing state: ${resolved} of ${cap} unit${cap === 1 ? "" : "s"} resolved${inFlight !== null ? `, in-flight unit: ${inFlight}` : ""}`
-    ];
-    if (exhausted) {
-      const tokenArg = typeof ledger.write_token === "string" && ledger.write_token ? ` --token ${ledger.write_token}` : "";
-      pacingLines.push(`\u26A0 Budget exhausted \u2014 \`ledger claim\` and \`ledger set --status in_progress\` will exit 1 for new units. This is the pacing policy, not a bug.`);
-      pacingLines.push(`  Sanctioned overage: \`${GW_HOOK_BIN} ledger autopilot --range N${tokenArg} --motive ${motiveSlug}\` (orchestrator-only; NEVER pass token to subagents).`);
-    } else if (grantRange > 0) {
-      pacingLines.push(`Grant in effect: autopilot extended budget by ${grantRange} unit${grantRange === 1 ? "" : "s"}.`);
-    }
-    lines.push(...pacingLines, "");
   }
   if (incomplete.length) {
     lines.push(`${incomplete.length} slice(s) NOT complete \u2014 the Stop-gate stays armed until each is \`complete\` and \`gate.advisor\` is APPROVE:`);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 227084d071dbab8a472d92856f2a3ae84596cee69abba1c99e6ab1b89a7a9867
+// @bundle-source-hash: d1ca31d4e419788b014730a8bee41b6aaeb5088b1b9ce67cda34b86cb585b8fc
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -27119,15 +27119,15 @@ var SAFE_ID2, REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", r
       const phaseEntry = phases[holdPhaseKey];
       const tier = /^wave-\d+$/.test(holdPhaseKey) ? "AUTO_ADVANCES" : "BLOCKS";
       const deliverable = String(phaseEntry?.deliverable ?? "(deliverable not recorded)");
+      const sealResult = checkSeal(ledger, projectDir, sessionId);
+      if (sealResult === false) {
+        return block(`checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` + "A subagent may have set checkpoint_hold directly without the orchestrator write_token. " + `Re-run \`gw ledger checkpoint --motive <slug> --phase ${holdPhaseKey} --verdict APPROVE --verified-by <name> --token <write_token>\` to restore a valid hold.`);
+      }
       if (tier === "AUTO_ADVANCES") {
         const autoIncomplete = (Array.isArray(ledger.slices) ? ledger.slices.filter((s) => !new Set(["complete", "skipped"]).has(String(s?.status ?? ""))) : []).map((s) => String(s.id ?? "?"));
         return allow(checkpointDirective(holdPhaseKey, deliverable, autoIncomplete) + decisionResearchAdvisory(projectDir) + decisionAlternativesAdvisory(projectDir) + specAdvisory(projectDir));
       }
-      const sealResult = checkSeal(ledger, projectDir, sessionId);
-      if (sealResult === false) {
-        return block(`checkpoint_hold is set to '${holdPhaseKey}' but the ledger seal is invalid or the key is missing. ` + "A subagent may have set checkpoint_hold directly without the orchestrator write_token. " + `Re-run \`gw ledger checkpoint ${holdPhaseKey} --token <write_token>\` to restore a valid hold.`);
-      }
-      return block(`Phase checkpoint hold: '${holdPhaseKey}' requires human verification. ` + `Deliverable: ${deliverable}. ` + `Run \`gw ledger checkpoint ${holdPhaseKey} APPROVE --token <write_token> --verified-by <name>\` to release.`);
+      return block(`Phase checkpoint hold: '${holdPhaseKey}' requires human verification. ` + `Deliverable: ${deliverable}. ` + `Run \`gw ledger checkpoint --motive <slug> --phase ${holdPhaseKey} --verdict APPROVE --verified-by <name> --token <write_token>\` to release.`);
     }
     const slices = Array.isArray(ledger.slices) ? ledger.slices : [];
     const TERMINAL_STATUSES = new Set(["complete", "skipped"]);

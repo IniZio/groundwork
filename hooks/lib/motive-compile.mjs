@@ -510,6 +510,7 @@ export function compile(events, opts = {}) {
     if (!cur || s.status === 'complete') _sliceDedup.set(s.id, s)
   }
   const allSlices = [..._sliceDedup.values()]
+  const allLedgerSliceBareIds = new Set(allSlices.filter((s) => s.id != null).map((s) => String(s.id)))
 
   // ── open / blocked slices ─────────────────────────────────────────────────
   const completedIds = new Set(completedSlices.keys())
@@ -804,33 +805,32 @@ export function compile(events, opts = {}) {
   const ledgerFound = groundTruth?.ledger?.found ?? false
   const acMet = []
   const acUnmet = []
+  const acProvenanceLost = []
   const acKeys = [...acCoverageMap.keys()].sort((a, b) => {
     const na = parseInt(a.replace(/^AC/, ''), 10)
     const nb = parseInt(b.replace(/^AC/, ''), 10)
     if (!isNaN(na) && !isNaN(nb)) return na - nb
     return a < b ? -1 : a > b ? 1 : 0
   })
-  // Project composite ids back to bare ids for output (MUST NOT leak composite
-  // keys into the view — output format is stable bare ids).
   const toBare = (id) => {
     const sep = id.indexOf('::')
     return sep === -1 ? id : id.slice(sep + 2)
   }
+  const isInAnyLedger = (id) => { const bare = toBare(id); return allLedgerSliceBareIds.has(bare) || (sessionCompleted?.has(bare) ?? false) }
   for (const key of acKeys) {
     const coveringComposite = [...acCoverageMap.get(key)]
-    // Output: deduplicated bare ids (composite projection).
     const covering = [...new Set(coveringComposite.map(toBare))]
-    // Completion check: session-scoped via composite ids.
     const missingComposite = coveringComposite.filter((s) => !isCompleteAnywhereComposite(s))
     const missing = [...new Set(missingComposite.map(toBare))]
     const isMet = covering.length > 0 && missing.length === 0
-    // status_unknown: covering exists but no ledger to verify completion
+    const provenanceLost = ledgerFound && isMet && coveringComposite.some((s) => !isInAnyLedger(s))
     const statusUnknown = !ledgerFound && covering.length > 0 && !isMet
-    const entry = { id: key, covering, missing, met: isMet, status_unknown: statusUnknown }
-    if (isMet) acMet.push(entry)
+    const entry = { id: key, covering, missing, met: isMet && !provenanceLost, status_unknown: statusUnknown, provenance_lost: provenanceLost }
+    if (isMet && !provenanceLost) acMet.push(entry)
+    else if (provenanceLost) acProvenanceLost.push(entry)
     else acUnmet.push(entry)
   }
-  const acCoverage = { met: acMet, unmet: acUnmet }
+  const acCoverage = { met: acMet, unmet: acUnmet, provenance_lost: acProvenanceLost }
 
   // ── provenance ────────────────────────────────────────────────────────────
   const atOrd = ordered.length > 0 ? ordered.length : 0

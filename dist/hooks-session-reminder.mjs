@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: b65bdf26c182546713171cf1bdeb1d863c07f6c21b730d69afc819c2a2f3cb97
+// @bundle-source-hash: d0b01681327cf973818ad5421054be93e1ae7bc2b54395d675e3c18eda3c0eb9
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -7362,7 +7362,7 @@ var require_dist = __commonJS((exports, module) => {
 });
 
 // hooks/session-reminder.mjs
-import { appendFileSync as appendFileSync3, existsSync as existsSync4, readdirSync as readdirSync4, readFileSync as readFileSync7, statSync as statSync4 } from "fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync4, readFileSync as readFileSync7 } from "fs";
 import path5 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
@@ -11134,49 +11134,12 @@ try {
     input = JSON.parse(raw);
 } catch {}
 var sessionId = typeof input?.session_id === "string" ? input.session_id : "";
-var _cwdForMap = typeof input?.cwd === "string" && input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-function _findMotiveMaps(projectDir) {
-  try {
-    const motivesDir = path5.join(projectDir, ".groundwork", "motives");
-    return readdirSync4(motivesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path5.join(motivesDir, d.name, "MAP.md")).filter((p) => existsSync4(p));
-  } catch {
-    return [];
-  }
-}
-var _motiveMaps = _findMotiveMaps(_cwdForMap);
-var _sortedMotiveMaps = _motiveMaps.slice().sort((a, b) => {
-  try {
-    return statSync4(b).mtimeMs - statSync4(a).mtimeMs;
-  } catch {
-    return 0;
-  }
-});
-var MOTIVE_MAP_CAP = 5;
-var mapPointerBlock = (() => {
-  const header = `
-
-## Motive MAP \u2014 human read path
-
-Each motive's MAP is at \`.groundwork/motives/<slug>/MAP.md\` \u2014 auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.`;
-  if (_sortedMotiveMaps.length === 0)
-    return header;
-  const shownMaps = _sortedMotiveMaps.slice(0, MOTIVE_MAP_CAP);
-  const hiddenMapCount = _sortedMotiveMaps.length - shownMaps.length;
-  const list = shownMaps.map((p) => `- \`${p}\``).join(`
-`);
-  const suffix = hiddenMapCount > 0 ? `
-  (and ${hiddenMapCount} more motive(s) \u2014 see \`.groundwork/motives/\` for the full list)` : "";
-  return `${header}
-
-Current motive MAP(s) (${_sortedMotiveMaps.length} total, most recent first):
-${list}${suffix}`;
-})();
 var cliToolsBlock = `
 
 ## Groundwork CLI tools (absolute paths \u2014 use these, not bin/)
 
 Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist \u2014 use \`${LEDGER_BIN} init\` to start a new run.)`;
-var additionalContext = reminder + mapPointerBlock + cliToolsBlock;
+var additionalContext = reminder + cliToolsBlock;
 try {
   const envFile = process.env.CLAUDE_ENV_FILE;
   if (envFile && sessionId) {

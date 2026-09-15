@@ -12,8 +12,6 @@ import { SCHEMA_VERSION, canonicalReleaseState, computeSeal, ensureKey, readKey,
 import { checkMilestoneArtifacts } from './lib/checkpoint.mjs'
 import { emitHookEvent, readAllEvents, filterEvents } from './lib/journal-io.mjs'
 import { loadSchema, ajvErrorsToLines } from './lib/schema-io.mjs'
-import { regenerateMotiveMap } from './lib/motive-map.mjs'
-import { regenerateMotiveTraceHtml } from './lib/traceability-ambient.mjs'
 import { assembleGraphFold, validateFoldRefs } from './lib/motive-dag.mjs'
 import { frontier as dagFrontier } from './lib/dag-utils.mjs'
 
@@ -26,15 +24,6 @@ function ledgerPath() {
   return _ledgerPath
 }
 
-function _tryRefreshMap(projectDir) {
-  try {
-    const ledger = readLedger(ledgerPath())
-    if (ledger?.motive) {
-      regenerateMotiveMap(projectDir, ledger.motive)
-      regenerateMotiveTraceHtml(projectDir, ledger.motive)
-    }
-  } catch { /* best-effort */ }
-}
 
 function die(msg, code = 1) {
   process.stderr.write(`ledger: ${msg}\n`)
@@ -711,7 +700,6 @@ function cmdComplete(args) {
     }
   }
   if (missing.length) die(`unknown slice id(s): ${missing.join(', ')}`, 2)
-  _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${ids.join(', ')} ✓ (${done}/${total} complete)\n`)
 }
 
@@ -837,7 +825,6 @@ function cmdCheckpoint(args) {
     reSeal(l, projectDir)
   })
   process.stdout.write(`checkpoint: ${phase} ${verdict} by ${verifiedBy}\n`)
-  _tryRefreshMap(projectDir)
 }
 
 function cmdHold(args) {
@@ -868,7 +855,6 @@ function cmdHold(args) {
   } else {
     process.stdout.write(`checkpoint-phase hold set to '${flags.phase}'\n`)
   }
-  _tryRefreshMap(projectDir)
 }
 
 function cmdScopeToken(args) {
@@ -981,8 +967,6 @@ function cmdGate(args) {
       data: { which, verdict: verdictRaw, ...(flags.citation ? { citation: flags.citation } : {}), ...(flags.rubric ? { rubric: flags.rubric } : {}) },
       ledger: capturedLedger,
     })
-    regenerateMotiveMap(projectDir, capturedLedger.motive)
-    regenerateMotiveTraceHtml(projectDir, capturedLedger.motive)
   }
   process.stdout.write(`${which}: ${hasObj ? value.verdict : value}\n`)
 }
@@ -1042,8 +1026,6 @@ function cmdAbandon(args) {
       data: { outcome: 'abandoned' },
       ledger: capturedLedger,
     })
-    regenerateMotiveMap(projectDir, capturedLedger.motive)
-    regenerateMotiveTraceHtml(projectDir, capturedLedger.motive)
   }
   process.stdout.write('run cancelled (active:false) — gate released\n')
 }
@@ -1106,8 +1088,6 @@ function cmdInit(args) {
   obj.gate = obj.gate ?? {}
   obj.gate.seal = computeSeal(canonicalReleaseState(obj), key)
   atomicWriteJsonSync(ledgerPath(), obj)
-  if (obj.motive) regenerateMotiveMap(projectDir, obj.motive)
-  if (obj.motive) regenerateMotiveTraceHtml(projectDir, obj.motive)
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
   process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`)
@@ -1162,7 +1142,6 @@ function cmdAdd(args) {
     return l === null ? ledger : undefined // return new object only if we created it
   })
   const kindNote = flags.kind != null ? `, kind=${flags.kind}` : ''
-  _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} added (wave ${wave}, ${status}${kindNote})\n`)
 }
 
@@ -1190,7 +1169,6 @@ function cmdRm(args) {
     remaining = l.slices.length
     reSeal(l, projectDir)  // Vector 6: re-seal after rm (slice removal changes release predicate)
   })
-  _tryRefreshMap(projectDir)
   process.stdout.write(`removed: ${ids.join(', ')} (${remaining} slice${remaining === 1 ? '' : 's'} remain)\n`)
 }
 
@@ -1275,7 +1253,6 @@ function cmdSet(args) {
     }
     reSeal(l, projectDir)  // S2-AC4: re-seal after any set (no-op for legacy runs)
   })
-  _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   process.stdout.write(`${id} updated: ${updated.join(' ')}\n`)
 }
 
@@ -1398,7 +1375,6 @@ function cmdClaim(args) {
     }
   })
 
-  if (claimed.length) _tryRefreshMap(process.env.CLAUDE_PROJECT_DIR || process.cwd())
   if (jsonMode) {
     const ok = refused.length === 0
     process.stdout.write(JSON.stringify({ claimed, refused, ok }) + '\n')

@@ -1,19 +1,10 @@
 #!/usr/bin/env node
 /**
  * check-gitignore-tracked.mjs — S13 guard (D-24)
- *
- * Fails when any git-tracked file matches a .gitignore rule.
- * Catches `git add -f` force-adds of deliberately-ignored files.
- *
- * Algorithm:
- *   1. `git ls-files`                  — enumerate every tracked path
- *   2. `git check-ignore --no-index`   — which are gitignored (ignoring index)
- *   3. subtract ALLOWLIST              — pre-existing intentional exceptions
- *
- * Exit codes: 0 clean  1 new offending paths found  2 git error
- *
- * To permanently allow a path, add it to ALLOWLIST below with a reason comment.
- * This requires a code-reviewed change — deliberate, not accidental.
+ * Fails when any git-tracked file matches a .gitignore rule (catches `git add -f`).
+ * Algorithm: git ls-files → git check-ignore --no-index → subtract ALLOWLIST.
+ * Exit codes: 0 clean  1 offending paths found  2 git error
+ * To add an exception: append to ALLOWLIST below with a reason comment (requires code review).
  */
 
 import { spawnSync } from 'node:child_process'
@@ -22,12 +13,8 @@ import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..')
 
-/**
- * Pre-existing tracked files that legitimately match a .gitignore rule.
- * Each entry requires a justification; add new entries only after code review.
- *
- * @type {string[]}
- */
+// Pre-existing tracked files that legitimately match a .gitignore rule.
+// Each entry requires a justification; add new entries only after code review.
 const ALLOWLIST = new Set([
   'groundwork/CLAUDE.md',                                          // test scaffold under /groundwork/ (root-anchored rule)
   'skills/groundwork/housekeep/.vscode/settings.json',             // IDE config intentionally shipped with housekeep skill

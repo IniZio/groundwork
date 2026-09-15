@@ -4,7 +4,9 @@
  * NEGATIVE: AC with phantom covering slice must not appear in ac_coverage.met,
  *           even when a surviving-but-unrelated ledger is present (the masking bug:
  *           ledgerFound=true suppressed status_unknown, so isMet stayed true).
- *
+ */
+
+/**
  * POSITIVE CONTROL: AC with resolvable covering slice still reads met:true.
  *                   Without this, a fix that marks everything unknown would pass
  *                   the negative case falsely.

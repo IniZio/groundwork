@@ -59,32 +59,22 @@ export function compile(events, opts = {}) {
   const at = opts.at != null ? Math.floor(opts.at) : null
   const stream = at != null ? events.slice(0, at) : events
 
-  // Assign per-motive ordinals (1..N) after truncation
   const ordered = stream.map((e, i) => Object.assign({}, e, { ord: i + 1 }))
 
   // ── fold state ────────────────────────────────────────────────────────────
   const sessions = []
-  // Map<id, {ord, ts}>
   const completedSlices = new Map()
-  // Map<compositeKey, {ord, ts}> — composite key is `${session_id}::${sliceId}` when session known
   const completedSlicesComposite = new Map()
-  // Map<which, record>
   const gates = new Map()
   const drift = []
-  // Map<fingerprint, record>  — highest ord per fingerprint wins
   const failuresMap = new Map()
   const decisions = []
-  // Map<id, decision record> — keyed ADR decisions (id present)
   const decisionLogMap = new Map()
   // Map<decisionId, Set<sliceId>> — slice refs from DECISION data.slice (source a)
   const decisionSliceFromEvent = new Map()
-  // insertion order for decision_log output
   const decisionLogOrder = []
-  // Map<id, number> — count of same-id merge hits (second+ event for a keyed id)
   const decisionMergeHits = new Map()
-  // Set<id> — ids for which at least one merge event carried revises === id
   const decisionRevisesMarked = new Set()
-  // Set of decision ids that resolved an open item (accepted only)
   const resolvedByDecisions = new Map() // resolves-id → decision-id
   let lastHandoff = null
   let lastPause = null
@@ -93,20 +83,14 @@ export function compile(events, opts = {}) {
   const specChanges = []
   const waivers = []
   const baselines = []
-  // Map<ac_key, Set<sliceId>> — built from AC_COVERAGE events
   const acCoverageMap = new Map()
-  // Set<"acKey::bareSlice"> — built from AC_RETRACTION events; applied post-loop
   const retractedPairs = new Set()
 
   let objective = null
   let objectiveSource = 'absent'
   let modelWrittenCount = 0
   let unknownTypeEvents = 0
-  // List of NEVER_COMPRESS events whose payload guard failed (malformed/unusable).
-  // Each entry: { type, shard, ts, reason } — capped at 50 so a burst of bad
-  // events does not grow the provenance object unboundedly.
-  // The count field malformed_never_compress_events mirrors .length for callers
-  // that only need the number.
+  // Each entry: { type, shard, ts, reason } — capped at 50 to bound growth.
   const malformedNeverCompressEventList = []
 
   for (const ev of ordered) {
@@ -133,7 +117,6 @@ export function compile(events, opts = {}) {
       }
 
       case 'GATE': {
-        // d.which, d.verdict — hooks/ledger.mjs; d.citation, d.rubric optional.
         // d.link_id — optional per-link scope (D-8 additive field).
         const rec = { ord, ts, which: d.which, verdict: d.verdict }
         if (d.citation != null) rec.citation = d.citation
@@ -158,8 +141,6 @@ export function compile(events, opts = {}) {
 
       case 'FAILURE': {
         // Highest ord per fingerprint wins (struggle-detector re-emits as count climbs).
-        // d.cmd ?? d.target — struggle-detector writes cmd; other emitters may write target.
-        // d.count ?? d.attempts — struggle-detector writes count.
         const fp = d.fingerprint
         const existing = failuresMap.get(fp)
         if (!existing || ord > existing.ord) {
@@ -179,7 +160,6 @@ export function compile(events, opts = {}) {
       }
 
       case 'SESSION_END': {
-        // d.outcome ?? d.reason — stop-gate writes outcome
         const rec = { ord, ts, session_id, event: 'end', outcome: d.outcome ?? d.reason ?? null }
         if (d.gate != null) rec.gate = d.gate
         sessions.push(rec)
@@ -192,7 +172,6 @@ export function compile(events, opts = {}) {
           // ADR lifecycle: keyed by id; first-seen order preserved
           const existing = decisionLogMap.get(d.id)
           if (existing == null) {
-            // First appearance — create the entry
             const entry = {
               id: d.id,
               status: d.status ?? 'proposed',
@@ -209,7 +188,6 @@ export function compile(events, opts = {}) {
             }
             decisionLogMap.set(d.id, entry)
             decisionLogOrder.push(d.id)
-            // If this event supersedes another, mark that one superseded
             if (d.supersedes != null) {
               const target = decisionLogMap.get(d.supersedes)
               if (target != null) {
@@ -218,7 +196,6 @@ export function compile(events, opts = {}) {
               }
             }
             // data.retires is the authoring vocabulary for retraction (D-36).
-            // Compile: mark the retired decision superseded/retired by this one.
             if (d.retires != null) {
               entry.retires = d.retires
               const target = decisionLogMap.get(d.retires)
@@ -228,7 +205,6 @@ export function compile(events, opts = {}) {
               }
             }
           } else {
-            // Update existing entry's status (and other optional fields)
             if (d.status != null) existing.status = d.status
             if (d.title != null) existing.title = d.title
             else if (d.decision != null) existing.title = d.decision
@@ -384,15 +360,9 @@ export function compile(events, opts = {}) {
       }
 
       case 'AC_COVERAGE': {
-        // Three payload forms:
-        //   Single-AC form:   { ac, slice }              — registers slice as covering the AC
-        //   Array-covers form:{ slice, covers: ['AC-1'] } — registers slice as covering each listed AC
-        //   Declaration form: { ac, covering: [] }        — declares AC with no covering slices
-        //                     (slice absent/null)  so it appears as unmet in the view
-        //
-        // Store composite "${session_id}::${sliceId}" when session is known so the
-        // completion check is session-scoped (fixes STATUS-SEAM bug, D-12).
-        // Falls back to bare slice id for legacy events without a session field.
+        // Three payload forms: { ac, slice } (single), { slice, covers:[] } (array),
+        // { ac, covering:[] } (declaration; slice absent → AC appears unmet in view).
+        // Store composite "${session_id}::${sliceId}" for session-scoped completion (D-12); falls back to bare id.
         const sliceCompositeId = d.slice != null
           ? (session_id != null ? `${session_id}::${String(d.slice)}` : String(d.slice))
           : null
@@ -401,7 +371,6 @@ export function compile(events, opts = {}) {
           if (!acCoverageMap.has(key)) acCoverageMap.set(key, new Set())
           if (sliceCompositeId != null) acCoverageMap.get(key).add(sliceCompositeId)
         }
-        // Array covers form: { slice, covers: ['AC-1', 'AC-2'] }
         if (Array.isArray(d.covers) && sliceCompositeId != null) {
           for (const ac of d.covers) {
             if (ac != null) {
@@ -411,8 +380,7 @@ export function compile(events, opts = {}) {
             }
           }
         }
-        // Neither form applied — payload is malformed/unusable. Surface the
-        // discard rather than silently dropping it (NEVER_COMPRESS obligation).
+        // Neither form applied — surface the malformed payload (NEVER_COMPRESS obligation).
         if (d.ac == null && !(Array.isArray(d.covers) && sliceCompositeId != null)) {
           if (malformedNeverCompressEventList.length < 50) {
             malformedNeverCompressEventList.push({
@@ -427,15 +395,11 @@ export function compile(events, opts = {}) {
       }
 
       case 'AC_RETRACTION': {
-        // Retraction: record this (ac, bare-slice) pair for post-loop removal.
-        // Collected here and applied after the full event loop so the fold is
-        // order-independent — a retraction arriving before or after the claim
-        // it targets produces the same result.
+        // Collect this (ac, bare-slice) pair for post-loop removal; fold is order-independent.
         if (d.ac != null && d.slice != null) {
           retractedPairs.add(`${String(d.ac)}::${String(d.slice)}`)
         } else {
-          // Payload guard failed — event cannot be applied. Surface the discard
-          // rather than silently dropping it (NEVER_COMPRESS obligation).
+          // Payload guard failed — surface the discard (NEVER_COMPRESS obligation).
           if (malformedNeverCompressEventList.length < 50) {
             malformedNeverCompressEventList.push({
               type,
@@ -455,8 +419,6 @@ export function compile(events, opts = {}) {
     }
   }
 
-  // ── post-pass: apply AC_RETRACTION events ─────────────────────────────────
-  // Remove all composite ids matching a retracted (ac, bare-slice) pair.
   // Done after the full event loop so order-independence is guaranteed.
   for (const pair of retractedPairs) {
     const sep = pair.indexOf('::')
@@ -484,7 +446,6 @@ export function compile(events, opts = {}) {
   }))
 
   // ── gates ─────────────────────────────────────────────────────────────────
-  // last_gate = advisor entry, or highest-ord entry if absent
   let lastGate = gates.get('advisor') ?? null
   if (!lastGate && gates.size > 0) {
     lastGate = [...gates.values()].reduce((a, b) => (a.ord > b.ord ? a : b))
@@ -494,19 +455,11 @@ export function compile(events, opts = {}) {
   const groundTruth = opts.groundTruth ?? null
   const ledger = groundTruth?.ledger ?? null
   const _rawSlices = ledger?.found && Array.isArray(ledger.slices) ? ledger.slices : []
-  // When motive sessions are unioned, _rawSlices may contain multiple entries
-  // with the same slice id (one per session, each tagged with _session_id).
-  // Deduplicate by id here so that:
-  //   • Totals (all_slices / open_slices counts) are not inflated.
-  //   • A slice completed in ANY session counts as complete in the merged view
-  //     (status 'complete' takes priority; other statuses use most-recent-file order
-  //     which is preserved by the union algorithm).
-  // Note: openSlices/divergence checks below all use this deduped view, so a slice
-  // that was completed in an earlier session is never reported as open or mismatched.
+  // Deduplicate _rawSlices by id when sessions are unioned ('complete' wins; other
+  // statuses use last-write order), so totals aren't inflated and any-session completes count.
   const _sliceDedup = new Map()
   for (const s of _rawSlices) {
     const cur = _sliceDedup.get(s.id)
-    // 'complete' wins over any other status; otherwise last-write (insertion order) wins
     if (!cur || s.status === 'complete') _sliceDedup.set(s.id, s)
   }
   const allSlices = [..._sliceDedup.values()]
@@ -514,15 +467,10 @@ export function compile(events, opts = {}) {
 
   // ── open / blocked slices ─────────────────────────────────────────────────
   const completedIds = new Set(completedSlices.keys())
-  // TBD-26: a slice is "open" only when ALL three conditions hold:
-  //   1. not completed in the fold (no TASK_COMPLETE event in completedIds)
-  //   2. not marked complete in the ledger (s.status !== 'complete') — handles
-  //      cases where TASK_COMPLETE was emitted under a synthetic motive so it
-  //      missed the fold but the ledger was updated correctly; divergence check
-  //      still fires the slice_state_mismatch finding independently
-  //   3. not from a retired run (_retired:true from readLedger) — retired runs
-  //      (active===false, or APPROVE with all slices complete) must never
-  //      resurface actionable work
+  // TBD-26: slice is "open" iff (1) no TASK_COMPLETE in fold, (2) ledger not 'complete'
+  // (covers TASK_COMPLETE emitted under a synthetic motive, absent from fold stream;
+  // divergence check still fires slice_state_mismatch independently), and
+  // (3) not from a retired run (_retired:true: active:false or all-complete APPROVE).
   const openSlices = allSlices.filter(
     (s) => !completedIds.has(s.id) && s.status !== 'complete' && s._retired !== true,
   )
@@ -591,7 +539,6 @@ export function compile(events, opts = {}) {
 
   // ── objective ─────────────────────────────────────────────────────────────
   if (objectiveSource === 'absent' && groundTruth?.ledger?.found) {
-    // Reconstruct from ledger: use the first slice desc as a proxy label.
     const desc = allSlices[0]?.desc ?? null
     if (desc != null) {
       objective = desc
@@ -618,24 +565,18 @@ export function compile(events, opts = {}) {
   }
 
   // ── shared completeness predicate ────────────────────────────────────────
-  // session_completed_ids supplements completedIds with TASK_COMPLETE events
-  // that were emitted before the ledger's motive field was set (so they carry
-  // a synthetic motive and are absent from the motive-filtered fold stream).
-  // Used by both the divergence check and ac_coverage to keep one notion of
-  // "complete" across the entire compile() output.
+  // session_completed_ids covers pre-motive TASK_COMPLETE events (synthetic motive, absent from fold stream).
   const sessionCompleted = Array.isArray(groundTruth?.session_completed_ids)
     ? new Set(groundTruth.session_completed_ids)
     : null
   /** @param {string} id */
   const isComplete = (id) => completedIds.has(id) || (sessionCompleted?.has(id) ?? false)
-  // For acCoverage: a slice is "done" if the fold, session stream, OR the ledger says so.
-  // The divergence check still uses isComplete (fold-only) to detect fold↔ledger mismatches.
+  // isCompleteAnywhere adds ledger status for ac_coverage; isComplete is fold-only (divergence).
   const ledgerCompleteIds = new Set(allSlices.filter((s) => s.status === 'complete').map((s) => s.id))
   /** @param {string} id */
   const isCompleteAnywhere = (id) => isComplete(id) || ledgerCompleteIds.has(id)
 
   // Session-scoped composite completion check (fixes STATUS-SEAM bug, D-12).
-  // _rawSlices have _session_id from motive-ground-truth.mjs:319.
   const ledgerCompleteCompositeIds = new Set(
     _rawSlices
       .filter((s) => s.status === 'complete' && s.id != null)
@@ -646,11 +587,9 @@ export function compile(events, opts = {}) {
   )
   /** @param {string} id — may be composite ("session::slice") or bare */
   const isCompleteAnywhereComposite = (id) => {
-    // Composite id: check composite maps only (session-scoped).
     if (id.includes('::')) {
       return completedSlicesComposite.has(id) || ledgerCompleteCompositeIds.has(id)
     }
-    // Bare id (legacy event without session field): fall back to bare check.
     return isCompleteAnywhere(id)
   }
 
@@ -681,7 +620,6 @@ export function compile(events, opts = {}) {
       }
     }
 
-    // gate_mismatch (high)
     if (lastGate && ledger?.found && ledger.gate != null) {
       const la = ledger.gate.advisor
       const ledgerVerdict = la != null
@@ -696,7 +634,6 @@ export function compile(events, opts = {}) {
       }
     }
 
-    // no_ledger (medium)
     if (!ledger?.found) {
       findings.push({
         severity: 'medium',
@@ -705,7 +642,6 @@ export function compile(events, opts = {}) {
       })
     }
 
-    // Sort: severity → kind → path/id
     findings.sort((a, b) => {
       const sa = SEVERITY_ORDER[a.severity] ?? 99
       const sb = SEVERITY_ORDER[b.severity] ?? 99
@@ -763,9 +699,8 @@ export function compile(events, opts = {}) {
       why: 'blocked; listed so resume sees the whole graph',
     })
   }
-  // Only prompt for the advisor gate when there are non-retired slices — a run
-  // whose slices are all _retired (already APPROVE-gated or deactivated) does
-  // not need another gate pass.
+  // Only prompt for the advisor gate when non-retired slices exist — a fully _retired
+  // run (all APPROVE-gated or deactivated) needs no gate pass.
   const nonRetiredSlices = allSlices.filter((s) => s._retired !== true)
   if (
     openSlices.length === 0 &&
@@ -788,10 +723,9 @@ export function compile(events, opts = {}) {
   }
 
   // ── ac_coverage ───────────────────────────────────────────────────────────
-  // AC coverage semantics:
-  //   met     = covering non-empty AND every listed slice in completedSlices
-  //   unmet   = absent | empty | any incomplete covering slice (and ledger found)
-  //   unknown = covering non-empty but no ledger to verify completion status
+  // AC coverage semantics: met = covering non-empty, all complete; provenance_lost = met but
+  // covering slice pruned from all ledgers (work done but attribution lost); unmet = empty
+  // or any incomplete covering; unknown = covering non-empty but no ledger found.
 
   // Seed from charter-declared ACs so they appear as unmet even with no events
   if (charter != null && Array.isArray(charter.acceptance_criteria)) {

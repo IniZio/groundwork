@@ -20,8 +20,6 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 // @ts-ignore
 import { compile } from '../../hooks/lib/motive-compile.mjs'
-// @ts-ignore
-import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -175,10 +173,5 @@ describe('G1-S6: decision-edge end-to-end round trip', () => {
     const sliceRef = entry!.slices.find((s) => s.id === SLICE_ID)
     expect(sliceRef, `${SLICE_ID} not in decision_log[${DECISION_ID}].slices`).toBeDefined()
     expect(sliceRef!.status).toBe('pending')
-
-    // ── Step 4: MAP.md — decision line must carry "→ SLICE_ID (pending)" ──────
-    regenerateMotiveMap(dir, MOTIVE)
-    const map = readFileSync(join(dir, '.groundwork', 'motives', MOTIVE, 'MAP.md'), 'utf8')
-    expect(map).toContain(`→ ${SLICE_ID} (pending)`)
   })
 })

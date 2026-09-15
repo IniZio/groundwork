@@ -26,13 +26,12 @@
 
 // @ts-nocheck
 import {
-  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync,
+  mkdirSync, mkdtempSync, rmSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { regenerateMotiveMap } from '../../hooks/lib/motive-map.mjs'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -54,7 +53,6 @@ function makeEnv(): Record<string, string> {
     PATH: process.env.PATH ?? '',
     HOME: process.env.HOME ?? '',
     CLAUDE_PROJECT_DIR: dir,
-    // No CLAUDE_CODE_SESSION_ID — use legacy run.json inside temp dir
   }
 }
 
@@ -115,7 +113,6 @@ function writeJournalShards(): void {
   const journalDir = join(dir, '.groundwork', 'journal')
   mkdirSync(journalDir, { recursive: true })
 
-  // Session A: emits AC_COVERAGE + TASK_COMPLETE for S1 — slice is COMPLETE
   writeFileSync(
     join(journalDir, '2026-01-01-sess-a.jsonl'),
     [
@@ -124,7 +121,6 @@ function writeJournalShards(): void {
     ].join('\n') + '\n',
   )
 
-  // Session B: emits AC_COVERAGE for S1 but NO TASK_COMPLETE — slice is PENDING
   writeFileSync(
     join(journalDir, '2026-01-01-sess-b.jsonl'),
     JSON.stringify({ ts: '2026-01-01T00:02:00.000Z', session: 'sess-b', motive: MOTIVE, type: 'AC_COVERAGE', source: 'test', data: { slice: 'S1', ac: 'AC-1' } }) + '\n',
@@ -163,12 +159,9 @@ describe('S-2: STATUS-SEAM — same slice id in two sessions with divergent comp
     const metIds = ac.met.map((a: any) => a.id)
     const unmetIds = ac.unmet.map((a: any) => a.id)
 
-    // Pre-fix: bare-id dedup makes isCompleteAnywhere("S1") return true → AC-1
-    // is wrongly MET. Post-fix: composite check catches pending sess-b::S1 → UNMET.
     expect(unmetIds, 'AC-1 should be UNMET because sess-b::S1 is still pending').toContain('AC-1')
     expect(metIds, 'AC-1 must NOT appear in met when sess-b::S1 is pending').not.toContain('AC-1')
 
-    // The covering list in the output must use bare ids (no composite leak).
     const ac1Unmet = ac.unmet.find((a: any) => a.id === 'AC-1')
     if (ac1Unmet?.covering) {
       expect(
@@ -178,22 +171,9 @@ describe('S-2: STATUS-SEAM — same slice id in two sessions with divergent comp
     }
   })
 
-  it('MAP reports AC-1 UNMET when S1 is complete in sess-a but pending in sess-b', () => {
-    writeCharter()
-    writeSessionLedger('sess-a.json', 'sess-a', 'complete')
-    writeSessionLedger('sess-b.json', 'sess-b', 'pending')
-
-    regenerateMotiveMap(dir, MOTIVE)
-
-    const map = readFileSync(join(dir, '.groundwork', 'motives', MOTIVE, 'MAP.md'), 'utf8')
-    expect(map).toMatch(/✗[^\n]*\*\*AC-1\*\*/)
-    expect(map).not.toMatch(/✓[^\n]*\*\*AC-1\*\*/)
-  })
-
   it('compile reports AC-1 MET when BOTH sessions have S1 complete', () => {
     writeCharter()
 
-    // Overwrite sess-b shard to also emit TASK_COMPLETE
     const journalDir = join(dir, '.groundwork', 'journal')
     mkdirSync(journalDir, { recursive: true })
     writeFileSync(

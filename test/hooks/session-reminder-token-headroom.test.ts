@@ -127,7 +127,6 @@ beforeAll(() => {
     const slug = `test-h25-adv-motive-${String(i).padStart(2, '0')}`
     const mapDir = path.join(motivesDir, slug)
     fs.mkdirSync(mapDir, { recursive: true })
-    fs.writeFileSync(path.join(mapDir, 'MAP.md'), `# ${slug}\n\nAdversarial fixture motive ${i}.\n`)
   }
 
   const slices = Array.from({ length: ADV_WAVE_COUNT }, (_, i) => ({

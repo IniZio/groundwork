@@ -3,7 +3,6 @@
  *
  * Exports:
  *   renderTraceHtml(classifiedGraph, slug?)  → string   (pure, no I/O)
- *   regenerateMotiveTraceHtml(projectDir, slug)  → void (reads store, writes TRACE.html)
  *
  * OFFLINE CONTRACT: zero external URLs. All CSS/JS/data inlined.
  *
@@ -11,17 +10,8 @@
  *   1. WAVE-BAND TOPOLOGICAL LAYOUT — six tiers as horizontal swimlanes
  *   2. SEMANTIC EDGE STYLING — proven=green, unproven=amber, stale=red-hatch, missing=dashed-red
  *   3. NEEDS YOU list — unproven+stale+missing links surfaced as a visible action list
- *
- * NEVER throws — warns to stderr on error; exit code is unaffected (mirrors motive-map.mjs).
  */
 
-import { writeFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-// NOTE: traceability-adapter.mjs has a static import of parseSpecRequirements from spec-io.mjs
-// which may be absent in some build states. Use a dynamic import so the broken chain only
-// fires inside _generate (already wrapped in try/catch) rather than at ledger module load time.
-import { buildTraceabilityGraph } from './traceability-join.mjs'
-import { classifyTraceabilityGraph } from './traceability-classify.mjs'
 import { topoLayers, frontier, transitiveBlockers, hasCycle } from './dag-utils.mjs'
 
 // ---------------------------------------------------------------------------
@@ -805,44 +795,3 @@ ${needsYou}
 </html>`
 }
 
-// ---------------------------------------------------------------------------
-// Public: ambient regenerator (reads store, writes file)
-// ---------------------------------------------------------------------------
-
-/**
- * Regenerate TRACE.html for a given motive.
- *
- * Silent no-op when the motive directory doesn't exist.
- * Warns to stderr on any error — never throws, never changes the caller's exit code.
- *
- * @param {string} projectDir - Absolute path, same as CLAUDE_PROJECT_DIR.
- * @param {string} slug       - Motive slug (e.g. "tracking-viz").
- */
-export function regenerateMotiveTraceHtml(projectDir, slug) {
-  if (!projectDir || !slug) return
-  // _generate uses a dynamic import for NativeSpineAdapter to avoid surfacing
-  // a broken static-import chain in traceability-adapter.mjs at ledger module-load time.
-  // The returned promise is fire-and-forget; errors are reported to stderr only.
-  _generate(projectDir, slug).catch((err) => {
-    process.stderr.write(
-      `[traceability-ambient] warn: failed to regenerate TRACE.html for "${slug}": ${err?.message ?? err}\n`,
-    )
-  })
-}
-
-async function _generate(projectDir, slug) {
-  const motiveDir = join(projectDir, '.groundwork', 'motives', slug)
-  if (!existsSync(motiveDir)) return  // no charter directory yet — skip silently
-
-  // Dynamic import isolates the traceability-adapter.mjs broken-chain from ledger's module graph.
-  const { NativeSpineAdapter } = await import('./traceability-adapter.mjs')
-  const adapter = new NativeSpineAdapter({ projectDir, slug })
-  const graph = buildTraceabilityGraph(adapter)
-  // Pass empty stampedRefs — evidence wiring is S4's concern; ambient regen uses basic pipeline.
-  const classified = classifyTraceabilityGraph(graph, [])
-
-  const html = renderTraceHtml(classified, slug)
-
-  const outPath = join(motiveDir, 'TRACE.html')
-  writeFileSync(outPath, html, 'utf8')
-}

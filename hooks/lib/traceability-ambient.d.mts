@@ -17,13 +17,3 @@ export interface ClassifiedGraph {
  */
 export declare function renderTraceHtml(classifiedGraph: ClassifiedGraph, slug?: string): string
 
-/**
- * Regenerate TRACE.html for a given motive.
- *
- * Silent no-op when the motive directory doesn't exist.
- * Warns to stderr on any error — never throws, never changes the caller's exit code.
- *
- * @param projectDir - Absolute path, same as CLAUDE_PROJECT_DIR.
- * @param slug       - Motive slug (e.g. "tracking-viz").
- */
-export declare function regenerateMotiveTraceHtml(projectDir: string, slug: string): void

@@ -13,7 +13,7 @@
  * Stop-gate is armed. This block carries that state across the boundary.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readStdin, isEmbeddedAgent } from './lib/hook-io.mjs'
@@ -306,39 +306,10 @@ try {
 
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
-const _cwdForMap =
-  (typeof input?.cwd === 'string' && input.cwd) ||
-  process.env.CLAUDE_PROJECT_DIR ||
-  process.cwd()
-function _findMotiveMaps(projectDir) {
-  try {
-    const motivesDir = path.join(projectDir, '.groundwork', 'motives')
-    return readdirSync(motivesDir, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => path.join(motivesDir, d.name, 'MAP.md'))
-      .filter(p => existsSync(p))
-  } catch { return [] }
-}
-const _motiveMaps = _findMotiveMaps(_cwdForMap)
-const _sortedMotiveMaps = _motiveMaps.slice().sort((a, b) => {
-  try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
-})
-// Cap at MOTIVE_MAP_CAP — bounds payload; 12+ motives would silently drop the spec skeleton.
-const MOTIVE_MAP_CAP = 5
-const mapPointerBlock = (() => {
-  const header = '\n\n## Motive MAP — human read path\n\nEach motive\'s MAP is at `.groundwork/motives/<slug>/MAP.md` — auto-regenerated; the intended entry point for humans reviewing progress. CLI tools are the implementation detail.'
-  if (_sortedMotiveMaps.length === 0) return header
-  const shownMaps = _sortedMotiveMaps.slice(0, MOTIVE_MAP_CAP)
-  const hiddenMapCount = _sortedMotiveMaps.length - shownMaps.length
-  const list = shownMaps.map(p => `- \`${p}\``).join('\n')
-  const suffix = hiddenMapCount > 0 ? `\n  (and ${hiddenMapCount} more motive(s) — see \`.groundwork/motives/\` for the full list)` : ''
-  return `${header}\n\nCurrent motive MAP(s) (${_sortedMotiveMaps.length} total, most recent first):\n${list}${suffix}`
-})()
-
 // Absolute CLI tool paths — includes orchestrator-only token-gated commands (scope-token, milestone-signoff).
 const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist — use \`${LEDGER_BIN} init\` to start a new run.)`
 
-let additionalContext = reminder + mapPointerBlock + cliToolsBlock
+let additionalContext = reminder + cliToolsBlock
 
 // Best-effort: propagate CLAUDE_CODE_SESSION_ID to the session env file for Bash subprocesses.
 try {

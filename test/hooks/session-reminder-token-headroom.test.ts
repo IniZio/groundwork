@@ -69,7 +69,6 @@ const FIXTURE_DEST = path.join(ROOT, '.groundwork', 'runs', 'test-h22-worst-case
 const TOTAL_TOKEN_CAP = 3800
 const MIN_HEADROOM = 200
 
-// H22 test fixtures
 beforeAll(() => {
   fs.mkdirSync(path.dirname(FIXTURE_DEST), { recursive: true })
   fs.copyFileSync(FIXTURE_SRC, FIXTURE_DEST)
@@ -111,30 +110,7 @@ describe('session-reminder: token headroom regression (H22)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// H25: adversarial fixture — many motives + many waves + long brief
-// ---------------------------------------------------------------------------
-//
-// Purpose: prove that all three newly-bounded contributors (motive MAP list,
-// wave-width notices, ledger.brief) are genuinely capped and that the cap
-// matters — i.e. without the caps the payload would breach TOTAL_TOKEN_CAP.
-//
-// ADVERSARIAL FIXTURE SHAPE:
-//   - 15 motive MAP files  (MOTIVE_MAP_CAP=5 → 10 hidden)
-//   - 15 single-impl-slice waves, all incomplete (WAVE_NOTICE_CAP=5 → 10 hidden)
-//   - ledger.brief of 500 chars (truncated at 200)
-//   - 10 slices at ACTIVE_RUN_SLICE_CAP (already bounded by H22)
-//
-// BITE PROOF (pre-fix vs post-fix estimate):
-//   Each extra motive beyond cap adds ~25 tokens (one absolute-path line).
-//   Each extra wave notice beyond cap adds ~35 tokens.
-//   Each extra brief char beyond 200 adds 1/3.5 ≈ 0.29 tokens.
-//   Pre-fix additions over the H22 baseline (3480 tokens):
-//     +10 motives × 25  = 250 tokens
-//     +10 notices × 35  = 350 tokens
-//     +300 extra chars  = ~86 tokens
-//     Total extra       ≈ 686 tokens → estimated pre-fix total ≈ 4166 tokens
-//   4166 > TOTAL_TOKEN_CAP (3800) → skeleton would have been silently dropped.
-//   The adversarial test asserts the post-fix total stays under cap.
+// H25: adversarial fixture — many waves + long brief
 
 const ADV_SESSION_ID = 'test-h25-adversarial'
 const ADV_MOTIVE_COUNT = 15
@@ -144,10 +120,8 @@ const ADV_BRIEF_LEN = 500  // truncated at 200
 let advTempDir: string
 
 beforeAll(() => {
-  // Create isolated temp directory so we control the motive MAP count precisely.
   advTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-h25-adv-'))
 
-  // Create motive MAP files
   const motivesDir = path.join(advTempDir, '.groundwork', 'motives')
   for (let i = 1; i <= ADV_MOTIVE_COUNT; i++) {
     const slug = `test-h25-adv-motive-${String(i).padStart(2, '0')}`
@@ -156,7 +130,6 @@ beforeAll(() => {
     fs.writeFileSync(path.join(mapDir, 'MAP.md'), `# ${slug}\n\nAdversarial fixture motive ${i}.\n`)
   }
 
-  // Build adversarial ledger: 15 incomplete slices each in a distinct wave
   const slices = Array.from({ length: ADV_WAVE_COUNT }, (_, i) => ({
     id: `H25-ADV-S${String(i + 1).padStart(2, '0')}`,
     status: 'open',
@@ -186,13 +159,11 @@ beforeAll(() => {
 })
 
 afterAll(() => {
-  // Clean up temp directory
   try { fs.rmSync(advTempDir, { recursive: true, force: true }) } catch { /* ignore */ }
 })
 
 describe('session-reminder: H25 adversarial cap verification', () => {
   it('payload stays under TOTAL_TOKEN_CAP with >= 200 headroom despite many motives, waves, and long brief', () => {
-    // Use advTempDir as cwd so the hook reads the 15 motive MAPs from there.
     const input = JSON.stringify({ session_id: ADV_SESSION_ID, cwd: advTempDir })
     const result = spawnSync(process.execPath, [HOOK], {
       input,
@@ -207,12 +178,11 @@ describe('session-reminder: H25 adversarial cap verification', () => {
     // Verify ACTIVE RUN block is present (adversarial ledger has active=true)
     expect(ctx, 'ACTIVE RUN block missing — adversarial ledger not found').toContain('## ⚠ ACTIVE RUN')
 
-    // Verify the motive MAP list is capped (should show 5, not 15)
     const mapLines = ctx.split('\n').filter(l => l.startsWith('- `') && l.includes('test-h25-adv-motive'))
     expect(
       mapLines.length,
-      `expected at most 5 motive MAP lines (MOTIVE_MAP_CAP), got ${mapLines.length}`,
-    ).toBeLessThanOrEqual(5)
+      `expected 0 motive MAP lines (MAP section removed, D-24), got ${mapLines.length}`,
+    ).toBe(0)
 
     // Verify the wave notice count is capped (should show <= 5 NOTICEs)
     const noticeLines = ctx.split('\n').filter(l => l.startsWith('NOTICE: wave '))
@@ -240,23 +210,5 @@ describe('session-reminder: H25 adversarial cap verification', () => {
         `Adversarial fixture breached cap — one of the three H25 caps is not working.`,
     ).toBeGreaterThanOrEqual(MIN_HEADROOM)
 
-    // Bite proof: the uncapped pre-fix estimate would have breached the cap.
-    // Each motive beyond MOTIVE_MAP_CAP adds ~25 tokens; each notice beyond
-    // WAVE_NOTICE_CAP adds ~35 tokens; each char beyond 200 adds ~0.29 tokens.
-    const MOTIVE_MAP_CAP = 5
-    const WAVE_NOTICE_CAP = 5
-    const BRIEF_MAX_CHARS = 200
-    const hiddenMotives = Math.max(0, ADV_MOTIVE_COUNT - MOTIVE_MAP_CAP)
-    const hiddenNotices = Math.max(0, ADV_WAVE_COUNT - WAVE_NOTICE_CAP)
-    const hiddenBriefChars = Math.max(0, ADV_BRIEF_LEN - BRIEF_MAX_CHARS)
-    const estimatedUncappedExtra =
-      hiddenMotives * 25 + hiddenNotices * 35 + Math.ceil(hiddenBriefChars / 3.5)
-    const estimatedUncappedTotal = totalTokens + estimatedUncappedExtra
-
-    expect(
-      estimatedUncappedTotal,
-      `bite-proof failed: uncapped estimate (${estimatedUncappedTotal}) should exceed ` +
-        `TOTAL_TOKEN_CAP (${TOTAL_TOKEN_CAP}) — the adversarial fixture is not adversarial enough`,
-    ).toBeGreaterThan(TOTAL_TOKEN_CAP)
   })
 })

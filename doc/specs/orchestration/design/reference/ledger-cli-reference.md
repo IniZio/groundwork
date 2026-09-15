@@ -1,6 +1,5 @@
 ---
 tags: [reference, orchestration, ledger, cli]
-realizes: "[[../../requirements/orchestration-r-004-every-decision-event-carries-a-structured-data-id|R-004]]"
 source: hooks/ledger.mjs (HELP constant), src/gw/hook/stop-gate.ts, hooks/session-reminder.mjs
 ---
 
@@ -48,7 +47,7 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 | `gate.phases` | `stop-gate.ts` | Per-phase checkpoint verdicts read by phase-tier dispatch |
 | `reinforcements` | `stop-gate.ts` | Counter ≥ cap (12) → release stuck session |
 | `progressSig` | `stop-gate.ts` | Hash of enforcement state; reset detection |
-| `slices[]` (all) | `session-reminder.mjs` | SessionStart injection — status overlay on MAP |
+| `slices[]` (all) | `session-reminder.mjs` | SessionStart injection — active run status summary |
 | `write_token` | `stop-gate.ts`, `ledger.mjs` | Required for terminal mutations; never logged |
 | `gate.seal` | `lib/gate-seal.mjs` | Cryptographic integrity on release paths |
 
@@ -66,8 +65,6 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 ---
 
 ## Related requirements
-
-- [[../../requirements/orchestration-r-004-every-decision-event-carries-a-structured-data-id|R-004]] — DECISION events cross-reference journal.mjs alongside this table
 
 ## Related notes
 

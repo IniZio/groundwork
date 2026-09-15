@@ -74,4 +74,3 @@ Map of Content for the **Orchestration** design folder. Start here; follow the r
 | [[../requirements/orchestration-r-001-orchestrator-delegates-non-trivial-implementation\|R-001]] | Orchestrator delegates non-trivial implementation |
 | [[../requirements/orchestration-r-002-ledger-fog-slice-tracks-open-questions-without-blocking-frontier\|R-002]] | Fog slice tracks open questions without blocking frontier |
 | [[../requirements/orchestration-r-003-authorship-duties-for-ticket-sections\|R-003]] | Authorship duties for ticket sections |
-| [[../requirements/orchestration-r-004-every-decision-event-carries-a-structured-data-id\|R-004]] | Every DECISION event carries a structured data.id |

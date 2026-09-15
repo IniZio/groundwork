@@ -67,4 +67,4 @@ The `index.md` at the concept root carries ConceptIndexSchema frontmatter and li
 
 - Prototype source: `.groundwork/motives/obsidian-native-groundwork/prototype-spec-shapes/round-4-design-folder/orchestration/`
 - Related concept: [[../index]]
-- Requirements: [[../requirements/orchestration-r-001-orchestrator-delegates-non-trivial-implementation|R-001]] … [[../requirements/orchestration-r-004-every-decision-event-carries-a-structured-data-id|R-004]]
+- Requirements: [[../requirements/orchestration-r-001-orchestrator-delegates-non-trivial-implementation|R-001]] … [[../requirements/orchestration-r-003-authorship-duties-for-ticket-sections|R-003]]

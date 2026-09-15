@@ -23,7 +23,7 @@ flowchart TD
     F -- No --> Z4[ALLOW — all done]
     F -- Yes --> G{Pacing exhausted?}
     G -- No --> BLOCK2[BLOCK — work remains]
-    G -- Yes --> RELEASE[ALLOW + emit directive\nnaming MAP.md path\nand incomplete slice ids]
+    G -- Yes --> RELEASE[ALLOW + emit directive\nnaming motive slug\nand incomplete slice ids]
 ```
 
 > **Note:** This diagram is derived from the source logic in `src/gw/hook/stop-gate.ts` and the requirements in PACING-R-005. If the source code is updated, regenerate this diagram from it — do not treat this note as authoritative over the code.
@@ -34,7 +34,7 @@ When pacing is exhausted AND incomplete slices remain, the Stop hook takes the r
 
 1. Run the handoff skill
 2. Open a new session
-3. Resume the named incomplete slices (by id) in the context of the named motive MAP.md
+3. Resume the named incomplete slices (by id) in the context of the named motive
 
 This resolves the deadlock: pacing blocks starting new work, but the stop-gate must not also block session end — doing so would strand the session with no exit.
 

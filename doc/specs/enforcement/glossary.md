@@ -14,7 +14,7 @@ A ledger flag (`awaiting_human = true`) that suppresses the stop-gate block nag 
 A content hash of the data/build state at the time an evidence artifact was captured. Required on `screenshot` and `run_output` milestone artifacts; optional on `file` and `live_url`. Used for staleness detection: if the underlying data is regenerated, the hash drifts and the hook marks the artifact stale.
 
 **directive**
-An output line from the Stop hook that is an instruction to the operator, not an advisory. Specifically: when pacing is exhausted and incomplete slices remain, the Stop hook emits a directive naming the motive MAP.md path and all remaining incomplete slice ids. Contrast with advisory (a suggestion the operator may ignore).
+An output line from the Stop hook that is an instruction to the operator, not an advisory. Specifically: when pacing is exhausted and incomplete slices remain, the Stop hook emits a directive naming the motive slug and all remaining incomplete slice ids. Contrast with advisory (a suggestion the operator may ignore).
 
 **exempt_kinds**
 The slice kinds (`plan`, `diagnose`, `design`, `fog`) that are excluded from pacing enforcement. Exempt slices may be claimed in any unit without consuming pacing budget.

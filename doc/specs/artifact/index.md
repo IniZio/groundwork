@@ -41,7 +41,6 @@ origin_decision_ref: "plugin-cleanup#D-5"
 | [[requirements/artifact-r-003-stop-hook-incomplete-slice-guard\|R-003]] | Stop hook incomplete-slice guard |
 | [[requirements/artifact-r-004-journal-decision-events-require-structured-data-fields\|R-004]] | Journal DECISION events require structured data fields |
 | [[requirements/artifact-r-005-motive-archive-moves-directory-and-refuses-open-items\|R-005]] | Motive archive moves directory and refuses open items without --force |
-| [[requirements/artifact-r-006-map-out-of-scope-section-merges-three-sources\|R-006]] | MAP.md out-of-scope section merges three sources with identity-based dedup |
 | [[requirements/artifact-r-007-ticket-is-the-durable-work-object\|R-007]] | Ticket is the durable work object |
 | [[requirements/artifact-r-008-no-delete-invariant-for-markdown-files\|R-008]] | No-delete invariant for markdown files |
 | [[requirements/artifact-r-009-ticket-location-resolution\|R-009]] | Ticket location resolution |

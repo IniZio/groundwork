@@ -17,8 +17,7 @@ tags: [glossary, artifact]
 | **DECISION event** | A journal event of type `DECISION`, requiring `data.id`, `data.decision`, and `data.rationale`. The primary mechanism for recording architectural choices. |
 | **Spec tree** | The `doc/specs/` directory tree of committed EARS-pattern requirements, organised by concept. |
 | **Ticket** | A durable markdown work object with canonical sections (Question, Context, Evidence, Decision, Ruled out, Revisions, Links), stored at `.groundwork/motives/<slug>/tickets/` or a committed `tickets_dir`. |
-| **Motive** | A named goal tracked under `.groundwork/motives/<slug>/`, containing a charter, MAP.md, tickets, and journal events. |
-| **MAP.md** | The auto-generated map-of-content file for a motive, regenerated from the ticket corpus with ledger status overlay. |
+| **Motive** | A named goal tracked under `.groundwork/motives/<slug>/`, containing a charter, tickets, and journal events. |
 | **`completed_at`** | ISO-8601 timestamp set by `ledger complete` on a slice; required by the Stop hook (ARTIFACT-R-001). |
 | **No-delete invariant** | The rule that no groundwork code path removes a markdown file it did not itself generate; hand-authored files are always preserved (ARTIFACT-R-008). |
 | **`revises`** | A `data.revises` field on a DECISION event that marks an intentional same-id refinement, suppressing the `unmarked_collision` flag (ARTIFACT-R-011). |

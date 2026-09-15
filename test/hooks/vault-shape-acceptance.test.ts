@@ -172,6 +172,25 @@ describe('vault-shape invariant (D-24)', () => {
     expect(violations, summary).toEqual([])
   })
 
+  it('deployed path (bin/gw-hook): journal append writes only to allowed journal/ dir (not MAP.md or other banned artifacts)', () => {
+    const gwHook = path.join(ROOT, 'bin', 'gw-hook')
+    const deployedEnv = { ...env, CLAUDE_CODE_SESSION_ID: 'vault-shape-deployed-test' }
+
+    const r = spawnSync(gwHook, [
+      'journal', 'append',
+      '--motive', 'probe',
+      '--type', 'BASELINE',
+      '--msg', 'vault shape deployed-path probe',
+    ], { encoding: 'utf8', env: deployedEnv })
+    expect(r.status, `bin/gw-hook journal append failed: ${r.stderr}`).toBe(0)
+
+    const violations = findNonConformingVaultPaths(path.join(tmpDir, '.groundwork', 'motives'))
+    expect(
+      violations,
+      `bin/gw-hook journal append must write only to journal/; introduced: ${JSON.stringify(violations)}`,
+    ).toEqual([])
+  })
+
   // ── Live vault RED tracer ────────────────────────────────────────────────────
 
   it('live vault: contains non-conforming paths (RED until implementation slices remove generators)', () => {

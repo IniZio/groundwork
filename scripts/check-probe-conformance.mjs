@@ -414,8 +414,7 @@ function checkSCB1() {
   if (!composePath) {
     const e2eForCLI = findFiles(repoPath, isE2eTestFile)
     if (e2eForCLI.length > 0) {
-      const combined = e2eForCLI.map(f => readText(f) ?? '').join('\n')
-      if (hasCLIBinarySpawn(combined)) {
+      if (e2eForCLI.some(f => hasCLIBinarySpawn(readText(f) ?? ''))) {
         return { result: 'UNKNOWN', reason: 'no docker-compose.yml; acceptance tests target a CLI binary — composed-services check not applicable' }
       }
     }

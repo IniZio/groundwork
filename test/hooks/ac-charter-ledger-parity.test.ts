@@ -388,32 +388,30 @@ Lowercase-AC fixture for case-mismatch contract test.
 
   test('lowercase declaration emits [motive-charter] warn: to stderr and does not parse the id', () => {
     writeCharter(LOWERCASE_CHARTER)
-
-    // Init ledger directly (not via initLedger helper) so we can inspect stderr.
-    // ledger init reads the charter to seed journal events, so the strict-parser
-    // warning fires here — this is the most direct observable evidence.
-    const seed = JSON.stringify({ version: 1, active: true, brief: 'parity test run', slices: [], gate: {} })
-    const initR = spawnLedger(['init', '-', '--motive', MOTIVE], { input: seed })
-    expect(initR.code).toBe(0)
-
-    // (a) The warning must name the offending line and appear on stderr
-    expect(initR.stderr).toContain('[motive-charter] warn:')
-    expect(initR.stderr).toContain('ac-1')
-
-    // Extract the write-token so we can add/complete a slice.
-    const tokenM = initR.stdout.match(/write_token:\s+(\S+)/)
-    if (!tokenM) throw new Error(`write_token not found in:\n${initR.stdout}`)
-    const token = tokenM[1]
+    const token = initLedger()
 
     // Add and complete a dummy slice (no --covers-ac) so journal compile has
     // events to process — compile exits 1 with "no events found" otherwise.
     spawnLedger(['add', 'S0', '--wave', '1', '--desc', 'dummy — no AC claim'])
     spawnLedger(['complete', 'S0', '--token', token])
 
+    // `journal compile` is the surviving charter-consuming path: it calls
+    // readCharter() to seed charter-declared ACs into the coverage join, so the
+    // strict-parser warning fires on its stderr.  This is the seam under test —
+    // the same invocation whose ac_coverage output is asserted below.
+    const compileR = spawnJournal([
+      'compile', MOTIVE, '--no-ground-truth', '--stdout', '--json',
+    ])
+    expect(compileR.code).toBe(0)
+
+    // (a) The warning must name the offending line and appear on stderr
+    expect(compileR.stderr).toContain('[motive-charter] warn:')
+    expect(compileR.stderr).toContain('ac-1')
+
     // (b) The lowercase id must NOT appear in ac_coverage at all —
     //     neither as a met nor as an unmet entry.  The item was rejected;
     //     there are zero charter-seeded keys and no slice claimed any AC.
-    const { met, unmet } = compileAcCoverage()
+    const { met, unmet } = JSON.parse(compileR.stdout).agent.ac_coverage as { met: any[]; unmet: any[] }
     const allIds = [...met, ...unmet].map((e: any) => e.id)
     expect(allIds).not.toContain('ac-1')
     expect(allIds).not.toContain('AC-1')

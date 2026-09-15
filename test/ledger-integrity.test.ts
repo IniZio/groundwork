@@ -192,10 +192,10 @@ describe('AH-07: gate APPROVE citation guard (file:line control)', () => {
     expect(errCode(result)).toBe('GATE_CITATION_REQUIRED')
   })
 
-  it('APPROVE with real advisor citation hooks/lib/motive-map.mjs:443 is not citation-blocked', async () => {
+  it('APPROVE with real advisor citation src/gw/cli/main.ts:50 is not citation-blocked', async () => {
     const result = await run(
       ['gate', '--motive', MOTIVE, 'advisor', 'APPROVE', '--token', WRITE_TOKEN,
-       '--citation', 'hooks/lib/motive-map.mjs:443'],
+       '--citation', 'src/gw/cli/main.ts:50'],
       repoRoot,
     )
     expect(errCode(result)).not.toBe('GATE_CITATION_REQUIRED')

@@ -144,13 +144,6 @@ function waiverIsIdentityProvider(waiver) {
 
 // ---------------------------------------------------------------------------
 // SC-A1: Toolchain-enforced module boundaries (D-12 data-driven recognizer table)
-//
-// Table layout: each entry describes one recognizable enforcer.
-//   detect(repo) → true when the enforcer evidence is present.
-// Resolution:
-//   Any entry matches → PASS
-//   No entry matches, but package.json or go.mod present → FAIL
-//   No stack detected at all → UNKNOWN (not a failure)
 // ---------------------------------------------------------------------------
 
 const ENFORCER_TABLE = [
@@ -218,9 +211,6 @@ function checkSCA1() {
 
 // ---------------------------------------------------------------------------
 // SC-A2: No route/controller handler file importing ≥3 distinct concern namespaces
-//
-// Concern namespaces: auth, session, render/view, audit, authorization/policy, storage
-// Checked on files under routes/, controllers/, or named *.controller.* / *.router.* / *.routes.*
 // ---------------------------------------------------------------------------
 
 const CONCERN_NAMESPACES = [
@@ -273,9 +263,6 @@ function checkSCA2() {
 
 // ---------------------------------------------------------------------------
 // SC-A3: No optional (?:) fields on load-bearing wiring option types
-//
-// Types whose name matches /Options|Config|Deps/ must not have ?-optional fields.
-// Uses line-by-line parsing with brace-depth tracking to find type bodies.
 // ---------------------------------------------------------------------------
 
 function isTestFile(fullPath) {
@@ -340,14 +327,6 @@ function checkSCA3() {
 
 // ---------------------------------------------------------------------------
 // SC-A4: Acceptance/e2e tests import the production entrypoint
-//
-// Isolated controller unit specs using Test.createTestingModule are legitimate;
-// only the acceptance layer is checked here.
-//
-// Resolution:
-//   No acceptance/e2e/feature files found → UNKNOWN (SC-B1 handles missing layer)
-//   At least one acceptance file imports the production entrypoint → PASS
-//   Acceptance layer exists but none import the production entrypoint → FAIL
 // ---------------------------------------------------------------------------
 
 const PRODUCTION_ENTRYPOINT_PATTERNS = [
@@ -359,13 +338,34 @@ const PRODUCTION_ENTRYPOINT_PATTERNS = [
   /\bbootstrap\s*\(/,
 ]
 
+/**
+ * Returns true if the given file content is a CLI acceptance test that exercises
+ * the production binary by path. CLI stacks have no AppModule/app-factory — their
+ * equivalent entrypoint is the deployed binary (e.g. bin/gw-hook).
+ *
+ * Two independent signals must both be present to avoid false-positives against
+ * web-project helpers that happen to use spawnSync:
+ *   1. A process-spawn call (spawnSync / execFileSync / execSync)
+ *   2. A binary-path construction (path.join with a 'bin' argument, or a literal bin/ path)
+ */
+function hasCLIBinarySpawn(content) {
+  const hasSpawn = /\b(spawnSync|execFileSync|execSync)\b/.test(content)
+  const hasBinPath =
+    /path\.join\([^)]*['"]bin['"]/.test(content) ||
+    /['"`]\.?\/bin\//.test(content)
+  return hasSpawn && hasBinPath
+}
+
 function checkSCA4() {
   const acceptanceFiles = findFiles(repoPath, isE2eTestFile)
   if (acceptanceFiles.length === 0) {
     return { result: 'UNKNOWN', reason: 'no acceptance/e2e/feature test files found; SC-B1 covers this gap' }
   }
-  const importsProduction = acceptanceFiles.some(f =>
-    PRODUCTION_ENTRYPOINT_PATTERNS.some(p => p.test(readText(f) ?? '')))
+  const importsProduction = acceptanceFiles.some(f => {
+    const content = readText(f) ?? ''
+    if (PRODUCTION_ENTRYPOINT_PATTERNS.some(p => p.test(content))) return true
+    return hasCLIBinarySpawn(content)
+  })
   if (importsProduction) {
     return { result: 'PASS', reason: 'at least one acceptance test imports the production entrypoint' }
   }
@@ -412,6 +412,13 @@ function checkSCB1() {
     null
 
   if (!composePath) {
+    const e2eForCLI = findFiles(repoPath, isE2eTestFile)
+    if (e2eForCLI.length > 0) {
+      const combined = e2eForCLI.map(f => readText(f) ?? '').join('\n')
+      if (hasCLIBinarySpawn(combined)) {
+        return { result: 'UNKNOWN', reason: 'no docker-compose.yml; acceptance tests target a CLI binary — composed-services check not applicable' }
+      }
+    }
     return { result: 'FAIL', reason: 'no docker-compose.yml found; no real-service acceptance layer' }
   }
 

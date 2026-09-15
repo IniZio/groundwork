@@ -73,7 +73,6 @@ function runJournal(args: string[], env: Record<string, string>) {
 function initLedger(dir: string) {
   const runsDir = join(dir, '.groundwork', 'runs')
   mkdirSync(runsDir, { recursive: true })
-  // ledger init writes to stdout the write token; we just call it
   const r = runLedger(['init', '--motive', 'test'], makeLedgerEnv(dir))
   return r
 }

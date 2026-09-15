@@ -302,7 +302,6 @@ async function cmdCompile(args) {
     }
   }
 
-  // Read events for this motive
   const { events, malformed_lines } = readOrderedEvents(journalDir, { motive })
 
   if (events.length === 0) {
@@ -338,7 +337,6 @@ async function cmdCompile(args) {
     groundTruth = await collectGroundTruth({ projectDir, events, motive, ledgerPath: ledgerOverride })
   }
 
-  // Compile
   const rawView = compile(events, {
     at: atOrd,
     groundTruth,
@@ -408,7 +406,6 @@ async function cmdCompile(args) {
     mkdirSync(compiledDir, { recursive: true })
     writeFileSync(jsonPath, jsonOut)
     writeFileSync(mdPath, mdOut + '\n')
-    // --html: write dashboard alongside .json/.md
     if (asHtml) {
       const htmlOut = renderHtml(view)
       const htmlPath = path.join(compiledDir, `${slug}.html`)
@@ -526,7 +523,6 @@ function cmdMotiveArchive(args) {
   mkdirSync(path.dirname(archiveDir), { recursive: true })
   renameSync(motiveDir, archiveDir)
 
-  // Append MILESTONE event
   const shardPath = resolveShardPath(projectDir, sessionId)
   const ts = new Date().toISOString()
   const event = {
@@ -794,7 +790,6 @@ function cmdDigest(args) {
 
   const rebuild = 'rebuild' in flags
 
-  // Load stored digest (unless --rebuild)
   let digest = null
   if (!rebuild) {
     try {

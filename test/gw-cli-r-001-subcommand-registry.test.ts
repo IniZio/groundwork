@@ -15,7 +15,7 @@ import { LEDGER_SUBCOMMANDS } from '#src/gw/cli/commands/ledger.js'
  * LEDGER_SUBCOMMANDS updated without updating spec → red. A duplicate list
  * here would catch only source-vs-test drift, missing spec-vs-source drift —
  * which is the defect that let the spec sit at "16 subcommands" while the
- * source had 18.
+ * source had 19.
  */
 
 const SPEC_PATH = resolve(
@@ -29,6 +29,7 @@ const SPEC_PATH = resolve(
  * multi-word tokens (e.g. `gw ledger`). A rewording of the EARS sentence
  * that changes those two anchor strings is itself a spec change — the author
  * must update the sentence or this parser to re-synchronise.
+ * A false-positive from a reword is preferable to silent drift.
  */
 function parseSpecSubcommands(): ReadonlyArray<string> {
   let content: string
@@ -66,10 +67,29 @@ function parseSpecSubcommands(): ReadonlyArray<string> {
 
 const SPEC_SUBCOMMANDS = parseSpecSubcommands()
 
+/**
+ * Extracts the integer N from "exactly the following N subcommands:" in the
+ * EARS sentence. Guards against a numeral left stale while names are updated.
+ */
+function parseSpecNumeral(): number {
+  const content = readFileSync(SPEC_PATH, 'utf8')
+  const line = content.split('\n').find(l => /subcommands: `[a-z]/.test(l))
+  if (!line) throw new Error(`spec parse failure: no EARS sentence in ${SPEC_PATH}`)
+  const m = /following (\d+) subcommands:/.exec(line)
+  if (!m) throw new Error(`spec parse failure: no numeral in EARS sentence in ${SPEC_PATH}`)
+  return Number(m[1])
+}
+
+const SPEC_NUMERAL = parseSpecNumeral()
+
 describe('GW-CLI-R-001 subcommand registry', () => {
   it('matches the spec EARS sentence exactly (set equality)', () => {
     // If this fails, either the spec or the source was changed without updating the other.
     expect([...LEDGER_SUBCOMMANDS].sort()).toEqual([...SPEC_SUBCOMMANDS].sort())
+  })
+
+  it('spec numeral matches parsed name count', () => {
+    expect(SPEC_NUMERAL).toBe(SPEC_SUBCOMMANDS.length)
   })
 
   it('includes init', () => {

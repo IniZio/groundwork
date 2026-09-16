@@ -1525,6 +1525,43 @@ function cmdAutopilot(_args) {
   die('autopilot is retired — use "ledger checkpoint" to record a phase deliverable verdict', 2)
 }
 
+// ---------------------------------------------------------------------------
+// Motive guard (S45-GUARD-SCOPE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that --motive matches the ledger's recorded motive.
+ * Applied to every command except `init` (which stamps the motive).
+ * Skipped when --motive is absent (backward-compatible).
+ *
+ * MOTIVE_MISMATCH: wrong ledger is open.
+ * MOTIVE_MISSING: ledger has no motive — repair via:
+ *   ledger init <ledger.json> --motive <slug> [--token <tok>]
+ *   (stamps the motive; slices and gate state are preserved).
+ */
+function _assertMotiveGuard(flags, cmd) {
+  const motiveArg = flags.motive
+  if (motiveArg == null) return  // no --motive supplied — skip check
+  const l = readLedger(ledgerPath())
+  if (!l) return  // no ledger yet — commands handle missing-ledger themselves
+  const rp = ledgerPath()
+  if (!l.motive) {
+    die(
+      `${cmd} error [MOTIVE_MISSING]: ledger at ${rp} has no recorded motive — ` +
+      `cannot verify --motive "${motiveArg}"; ` +
+      `repair with: ledger init ${rp} --motive ${motiveArg} --token <write_token>`,
+      1,
+    )
+  }
+  if (l.motive !== motiveArg) {
+    die(
+      `${cmd} error [MOTIVE_MISMATCH]: --motive "${motiveArg}" does not match ` +
+      `the resolved ledger's recorded motive "${l.motive}" (${rp})`,
+      1,
+    )
+  }
+}
+
 function main() {
   const argv = process.argv.slice(2)
   const [cmd, ...rest] = argv
@@ -1538,6 +1575,7 @@ function main() {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   const sessionId = resolveSessionId(flags)
   _ledgerPath = resolveLedgerPath({ projectDir: base, sessionId })
+  if (cmd !== 'init') _assertMotiveGuard(flags, cmd)
 
   try {
     switch (cmd) {

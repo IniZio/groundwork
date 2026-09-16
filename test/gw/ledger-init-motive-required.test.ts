@@ -51,6 +51,90 @@ function runGwLedger(args: string[]): { code: number; stdout: string } {
 	return { code: r.status ?? 1, stdout: r.stdout ?? "" };
 }
 
+function runBinLedger(args: string[], envOverride?: NodeJS.ProcessEnv): { code: number; stdout: string; stderr: string } {
+	const r = spawnSync("node", [CLI, ...args], {
+		env: { ...env(), ...envOverride },
+		encoding: "utf8",
+	});
+	return { code: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+function writeLedger(motive: string | null, writeToken = "tok-abc"): string {
+	const p = path.join(projectDir, ".groundwork", "runs", `${SESSION}.json`);
+	const obj: Record<string, unknown> = {
+		active: true,
+		session_id: SESSION,
+		write_token: writeToken,
+		slices: [{ id: "S1", wave: 0, status: "pending", kind: "impl" }],
+		gate: {},
+	};
+	if (motive !== null) obj.motive = motive;
+	writeFileSync(p, JSON.stringify(obj));
+	return p;
+}
+
+describe("bin/ledger mutations — motive guard (S45-GUARD-SCOPE)", () => {
+	const REAL = "test-motive";
+	const WRONG = "wrong-motive";
+
+	it("complete: exits 1 with MOTIVE_MISMATCH when --motive disagrees", () => {
+		writeLedger(REAL);
+		const r = runBinLedger(["complete", "S1", "--motive", WRONG, "--token", "tok-abc"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("MOTIVE_MISMATCH");
+		expect(r.stderr).toContain(WRONG);
+		expect(r.stderr).toContain(REAL);
+	});
+
+	it("set: exits 1 with MOTIVE_MISMATCH when --motive disagrees", () => {
+		writeLedger(REAL);
+		const r = runBinLedger(["set", "S1", "--motive", WRONG, "--status", "in_progress"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("MOTIVE_MISMATCH");
+	});
+
+	it("gate: exits 1 with MOTIVE_MISMATCH when --motive disagrees", () => {
+		writeLedger(REAL);
+		const r = runBinLedger(["gate", "advisor", "APPROVE", "--motive", WRONG, "--token", "tok-abc"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("MOTIVE_MISMATCH");
+	});
+
+	it("rm: exits 1 with MOTIVE_MISMATCH when --motive disagrees", () => {
+		writeLedger(REAL);
+		const r = runBinLedger(["rm", "S1", "--motive", WRONG]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("MOTIVE_MISMATCH");
+	});
+
+	it("complete: exits 1 with MOTIVE_MISSING when ledger has no motive", () => {
+		writeLedger(null);
+		const r = runBinLedger(["complete", "S1", "--motive", REAL, "--token", "tok-abc"]);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("MOTIVE_MISSING");
+	});
+
+	it("recovery: motive-less ledger repaired via init, then bin/ledger and gw ledger accept it", () => {
+		const ledgerP = writeLedger(null);
+
+		const refuse = runGwLedger(["status", "--motive", REAL]);
+		expect(refuse.code, "gw ledger must refuse motive-less ledger").not.toBe(0);
+
+		const repair = runInit([ledgerP, "--motive", REAL, "--token", "tok-abc"]);
+		expect(repair.code, "init repair must succeed").toBe(0);
+
+		const tokenMatch = /write_token:\s+(\S+)/.exec(repair.stdout);
+		expect(tokenMatch, "init must print new write_token").not.toBeNull();
+		const newToken = tokenMatch![1];
+
+		const accept = runGwLedger(["status", "--motive", REAL]);
+		expect(accept.code, "gw ledger must accept repaired ledger").toBe(0);
+
+		const complete = runBinLedger(["complete", "S1", "--motive", REAL, "--token", newToken]);
+		expect(complete.code, "bin/ledger complete must succeed after repair").toBe(0);
+	});
+});
+
 describe("bin/ledger init — motive required", () => {
 	it("exits 2 when JSON input has no motive and --motive is omitted", () => {
 		const r = runInit(["-"], JSON.stringify({ active: true, slices: [], gate: {} }));

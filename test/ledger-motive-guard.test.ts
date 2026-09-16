@@ -138,5 +138,7 @@ describe('ledger without motive field', () => {
     expect(envelope.error.code).toBe('MOTIVE_MISSING')
     expect(envelope.error.message).toContain(REAL_MOTIVE)
     expect(envelope.error.message).toContain(runPath)
+    expect(envelope.error.message).toContain('bin/ledger init')
+    expect(envelope.error.message).toContain('--motive')
   })
 })

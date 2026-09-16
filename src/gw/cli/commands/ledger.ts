@@ -306,7 +306,7 @@ function motiveMissingError(
   return errEnvelope(
     `ledger ${cmdName}`,
     'MOTIVE_MISSING',
-    `ledger at ${resolvedPath} has no recorded motive — cannot verify --motive "${motiveArg}"; set the motive field before use`,
+    `ledger at ${resolvedPath} has no recorded motive — cannot verify --motive "${motiveArg}"; to stamp the motive, run: bin/ledger init ${resolvedPath} --motive ${motiveArg} --token <write_token>`,
     1,
   )
 }

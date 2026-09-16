@@ -88,6 +88,14 @@ export interface ScannedFile {
 export interface Manifest {
   cap: { file: number; aggregate: number }
   aggregatePer100: number
+  /**
+   * Always false — the aggregate cap is recorded for diagnostics only.
+   * No gate, guard, or advisor criterion reads `aggregatePer100` against
+   * `cap.aggregate`. A 5× breach produces an empty `files` array and cannot
+   * block APPROVE. Recommendation: remove `cap.aggregate` and this field in a
+   * future cleanup (S39-DENSITY-AGGREGATE).
+   */
+  aggregateEnforced: false
   files: ManifestFile[]
   /** All scanned files with their per-file density, including unflagged ones. */
   scannedFiles: ScannedFile[]
@@ -159,12 +167,12 @@ export async function buildManifest(relPaths: string[], cwd: string): Promise<Ma
     })
   }
 
-  return { cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP }, aggregatePer100, files: flaggedFiles, scannedFiles }
+  return { cap: { file: FILE_CAP, aggregate: AGGREGATE_CAP }, aggregatePer100, aggregateEnforced: false, files: flaggedFiles, scannedFiles }
 }
 
 async function runReport(args: string[], cwd: string): Promise<GwEnvelope> {
   if (process.env['GROUNDWORK_COMMENT_DENSITY'] === '0') {
-    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [], scannedFiles: [] }
+    const empty: Manifest = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, aggregateEnforced: false, files: [], scannedFiles: [] }
     return okEnvelope('comment-density report', empty)
   }
   const { flags, positionals } = parseFlags(args)

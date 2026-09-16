@@ -276,6 +276,89 @@ describe('lintResearchCitation (D-81)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// S5-LINT-PORT — lintResearchCitation with YAML frontmatter type
+// ---------------------------------------------------------------------------
+
+function makeFrontmatterTicket(type: string, evidenceBody: string, linksBody: string): string {
+  return [
+    '---',
+    `type: ${type}`,
+    'status: open',
+    '---',
+    '',
+    '# Test ticket',
+    '',
+    '## Question',
+    '',
+    'Some question.',
+    '',
+    '## Context',
+    '',
+    'Some context.',
+    '',
+    '## Evidence',
+    '',
+    evidenceBody,
+    '',
+    '## Decision',
+    '',
+    'TBD.',
+    '',
+    '## Ruled out',
+    '',
+    'Nothing yet.',
+    '',
+    '## Revisions',
+    '',
+    'None.',
+    '',
+    '## Links',
+    '',
+    linksBody,
+    '',
+  ].join('\n')
+}
+
+describe('lintResearchCitation — YAML frontmatter type (S5-LINT-PORT)', () => {
+  it('frontmatter research with NO citation FAILS (criterion 1 — the bite)', () => {
+    const content = makeFrontmatterTicket('research', 'No concrete sources here.', 'Nothing concrete.')
+    const { pass, reason } = lintResearchCitation(content)
+    expect(pass).toBe(false)
+    expect(reason).toMatch(/resolvable reference/)
+  })
+
+  it('frontmatter research with URL in Evidence PASSES (criterion 2)', () => {
+    const content = makeFrontmatterTicket('research', 'See https://example.com/paper.', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('frontmatter research with relative path in Links PASSES', () => {
+    const content = makeFrontmatterTicket('research', '', './doc/specs/foo/requirements/bar.md')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('frontmatter research with requirement id in Evidence PASSES', () => {
+    const content = makeFrontmatterTicket('research', 'Grounded in ARTIFACT-R-012.', '')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('frontmatter non-research with no citation PASSES', () => {
+    const content = makeFrontmatterTicket('decision', 'No refs.', 'No refs.')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(true)
+  })
+
+  it('bare-header research with no citation still FAILS (criterion 3 — no regression)', () => {
+    const content = makeTicket('research', 'No concrete sources.', 'Nothing concrete.')
+    const { pass } = lintResearchCitation(content)
+    expect(pass).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T3-AC4 — location resolution: charter tickets_dir override + default fallback
 // ---------------------------------------------------------------------------
 

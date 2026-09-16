@@ -166,8 +166,7 @@ const RESOLVABLE_REF_RE = /https?:\/\/|\.\.?\/|(?:^|[ \t(["'])\/[a-zA-Z0-9_]|\b[
  * @returns {{ pass: boolean, reason: string|null }}
  */
 export function lintResearchCitation(content) {
-  const typeMatch = /^Type:\s*(.+)$/m.exec(content)
-  const type = typeMatch ? typeMatch[1].trim().toLowerCase() : ''
+  const type = _extractTicketType(content)
 
   if (type !== 'research') {
     return { pass: true, reason: null }
@@ -200,6 +199,16 @@ function _extractSectionBody(content, sectionName) {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function _extractTicketType(content) {
+  const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
+  if (fmMatch) {
+    const fmType = /^type:\s*(.+)$/im.exec(fmMatch[1])
+    if (fmType) return fmType[1].trim().toLowerCase()
+  }
+  const bareMatch = /^Type:\s*(.+)$/m.exec(content)
+  return bareMatch ? bareMatch[1].trim().toLowerCase() : ''
+}
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -7,6 +7,8 @@ import {
   existsSync,
   readFileSync,
   rmSync,
+  writeFileSync,
+  unlinkSync,
 } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,8 +22,8 @@ import {
   fromLegacyOpenItems,
   readCharter,
   readTicket,
-  readDecision,
 } from '#src/gw/store/motive/index.js'
+import { run as runJournal } from '#src/gw/cli/commands/journal.js'
 
 const REAL_REPO = '/home/newman/.local/share/groundwork'
 const NEXT_TRACKER = '.groundwork/next'
@@ -91,6 +93,48 @@ describe('live-repo guard', () => {
 
   it('.groundwork/next does not exist in the live repo before the suite', () => {
     expect(beforeStat.exists).toBe(false)
+  })
+})
+
+describe('live-repo guard: DEFAULT_TRACKER_PATH', () => {
+  const LIVE_DEFAULT = path.join(REAL_REPO, DEFAULT_TRACKER_PATH)
+  let snapshotBefore: Map<string, number>
+
+  beforeAll(() => {
+    snapshotBefore = walkFiles(LIVE_DEFAULT)
+  })
+
+  afterAll(() => {
+    const snapshotAfter = walkFiles(LIVE_DEFAULT)
+    for (const f of snapshotAfter.keys()) {
+      if (!snapshotBefore.has(f)) {
+        throw new Error(
+          `[GUARD] New file written to live ${DEFAULT_TRACKER_PATH} during suite: ${f}`,
+        )
+      }
+    }
+    for (const [f, mtime] of snapshotAfter) {
+      if (snapshotBefore.get(f) !== mtime) {
+        throw new Error(
+          `[GUARD] File modified in live ${DEFAULT_TRACKER_PATH} during suite: ${f}`,
+        )
+      }
+    }
+  })
+
+  it('guard bites: detects a synthetic write to live DEFAULT_TRACKER_PATH', () => {
+    const probe = path.join(LIVE_DEFAULT, 'GUARD-PROBE-DO-NOT-COMMIT.tmp')
+    expect(existsSync(probe)).toBe(false)
+    const snapBefore = walkFiles(LIVE_DEFAULT)
+    try {
+      writeFileSync(probe, 'probe: synthetic guard-bite test')
+      const snapAfter = walkFiles(LIVE_DEFAULT)
+      const newFiles = [...snapAfter.keys()].filter(k => !snapBefore.has(k))
+      expect(newFiles).toContain(probe)
+    } finally {
+      if (existsSync(probe)) unlinkSync(probe)
+    }
+    expect(existsSync(probe)).toBe(false)
   })
 })
 
@@ -511,32 +555,34 @@ describe('gw migrate', () => {
       expect(DEFAULT_MIGRATE_TRACKER).toBe(DEFAULT_TRACKER_PATH)
     })
 
-    it('a migrated decision is readable via readDecision using DEFAULT_TRACKER_PATH', async () => {
+    it('a migrated decision is readable via gw journal compile (AC-15)', async () => {
       const withDecisions = ac15Result.motives.find(m => m.decisions > 0)
       expect(withDecisions).toBeDefined()
       if (!withDecisions) return
 
-      const decisionsDir = path.join(
-        ac15Dir,
-        DEFAULT_TRACKER_PATH,
-        'motives',
-        withDecisions.slug,
-        'decisions',
-      )
-      const { readdirSync: rds, existsSync: exs } = await import('node:fs')
-      expect(exs(decisionsDir)).toBe(true)
-      const files = rds(decisionsDir).filter((f: string) => f.endsWith('.md'))
-      expect(files.length).toBeGreaterThan(0)
+      const savedEnv = process.env['CLAUDE_PROJECT_DIR']
+      let envelope: Awaited<ReturnType<typeof runJournal>>
+      try {
+        process.env['CLAUDE_PROJECT_DIR'] = ac15Dir
+        envelope = await runJournal(['compile', withDecisions.slug, '--json'], ac15Dir)
+      } finally {
+        if (savedEnv === undefined) {
+          delete process.env['CLAUDE_PROJECT_DIR']
+        } else {
+          process.env['CLAUDE_PROJECT_DIR'] = savedEnv
+        }
+      }
 
-      const id = files[0].replace(/\.md$/, '')
-      const note = await readDecision({
-        repoRoot: ac15Dir,
-        tracker: DEFAULT_TRACKER_PATH,
-        motive: withDecisions.slug,
-        id,
-      })
-      expect(typeof note.fm['id']).toBe('string')
-      expect((note.fm['id'] as string).length).toBeGreaterThan(0)
+      expect(envelope.ok).toBe(true)
+      if (!envelope.ok) return
+
+      const content = (envelope.data as { content: string }).content
+      const summary = JSON.parse(content) as { decisions: Array<{ id: string }> }
+      expect(Array.isArray(summary.decisions)).toBe(true)
+      expect(summary.decisions.length).toBeGreaterThan(0)
+      const first = summary.decisions[0]
+      expect(typeof first.id).toBe('string')
+      expect(first.id.length).toBeGreaterThan(0)
     })
   })
 })

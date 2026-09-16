@@ -1,17 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import matter from 'gray-matter'
 import {
-  // AC1: all schema exports present
   MotiveSchema,
   SliceSchema,
   GateSchema,
   DecisionSchema,
   TicketSchema,
+  TicketType,
   RequirementSchema,
   ConceptIndexSchema,
   DesignNoteKind,
   JournalEventSchema,
-  // layout
   DEFAULT_TRACKER_PATH,
   motiveDir,
   sliceNotePath,
@@ -136,7 +135,6 @@ This body is preserved exactly.
 
   it('body content is byte-identical after round-trip', () => {
     const parsed = matter(fixture)
-    // Stringify back and re-parse — body must survive
     const stringified = matter.stringify(parsed.content, parsed.data)
     const reparsed = matter(stringified)
     expect(reparsed.content).toBe(parsed.content)
@@ -146,11 +144,8 @@ This body is preserved exactly.
     const parsed = matter(fixture)
     const stringified = matter.stringify(parsed.content, parsed.data)
     const reparsed = matter(stringified)
-    // Wikilink strings survive as strings
     expect(reparsed.data.links).toEqual(['[[note-one]]', '[[note-two]]'])
-    // Nested structures survive
     expect(reparsed.data.nested).toEqual({ key: 'value', list: ['a', 'b'] })
-    // id with colon survives
     expect(reparsed.data.id).toBe('my-concept: special')
   })
 })
@@ -190,5 +185,45 @@ describe('AC8 — frontmatter schema monopoly', () => {
     }
 
     expect(violations, `Found z.object() frontmatter defs outside schema/: ${violations.join(', ')}`).toEqual([])
+  })
+})
+
+// ============================================================
+// S4-TICKET-SCHEMA: TicketSchema type field
+// ============================================================
+describe('S4 — TicketSchema.type field', () => {
+  const validTypes = [
+    'build', 'chore', 'choose', 'decision', 'design',
+    'enhancement', 'feat', 'fix', 'grill', 'model', 'research', 'spec',
+  ] as const
+
+  it('accepts every corpus type value', () => {
+    for (const t of validTypes) {
+      const result = TicketSchema.safeParse({ title: 'x', type: t })
+      expect(result.success, `expected type '${t}' to be accepted`).toBe(true)
+    }
+  })
+
+  it('rejects an unknown type value', () => {
+    const result = TicketSchema.safeParse({ title: 'x', type: 'unknown-type' })
+    expect(result.success).toBe(false)
+  })
+
+  it('type field is optional — parses without it', () => {
+    const result = TicketSchema.safeParse({ title: 'x' })
+    expect(result.success).toBe(true)
+  })
+
+  it('status enum is unchanged', () => {
+    const result = TicketSchema.safeParse({ status: 'in-progress' })
+    expect(result.success).toBe(true)
+    const bad = TicketSchema.safeParse({ status: 'pending' })
+    expect(bad.success).toBe(false)
+  })
+
+  it('TicketType enum exported from barrel', () => {
+    expect(TicketType).toBeDefined()
+    expect(TicketType.options).toContain('build')
+    expect(TicketType.options).toContain('grill')
   })
 })

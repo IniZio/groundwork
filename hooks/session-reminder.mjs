@@ -30,6 +30,7 @@ import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
 import { specDirPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
+import { LEDGER_SUBCOMMANDS } from './lib/ledger-subcommands.mjs'
 
 // ---------------------------------------------------------------------------
 // Spec skeleton renderer (AC6, AC7)
@@ -307,7 +308,7 @@ try {
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
 // Absolute CLI tool paths — includes orchestrator-only token-gated commands (scope-token, milestone-signoff).
-const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: ${LEDGER_SUBCOMMANDS.join(', ')} · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`
 
 let additionalContext = reminder + cliToolsBlock
 

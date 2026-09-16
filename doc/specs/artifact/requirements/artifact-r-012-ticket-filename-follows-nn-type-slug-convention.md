@@ -3,7 +3,7 @@ id: "artifact-r-012"
 type: requirement
 concept: C-ARTIFACT
 criticality: must
-verification: unverified
+verification: automated
 status: open
 design: "[[design/reference/slice-fields-reference]]"
 ---
@@ -14,7 +14,7 @@ When a ticket file is created, its filename **shall** follow the pattern `<NN>-<
 
 - **Why** — A consistent filename convention enables deterministic id derivation from the stem, supports machine-parseable ticket corpora, and makes ticket type immediately visible in directory listings without opening each file. A closed enum prevents proliferation of ad-hoc type labels that cannot be mapped to ledger `--kind` values.
 - **Fit criterion** — Creating a ticket with `type: research` produces a file named `NN-research-<slug>.md`; the ticket's type field (frontmatter `type:` or bare-header `Type:`) reads `research`; creating a ticket with `type: invalid` is rejected with an error naming the invalid value. All thirteen valid types produce correctly formatted filenames.
-- **Verification**: unverified — the ticket creation path validates type against the enum before writing the file; tests cover valid type acceptance and at least one invalid type rejection.
+- **Verification**: Automated — `test/hooks/motive-ticket-cli.test.ts` ("invalid type is rejected": asserts exit 2 and stderr names the value; "all thirteen valid types": iterates `TicketType.options` and asserts exit 0 + `NN-type-slug.md` filename shape for each). `test/hooks/ticket-type-parity.test.ts` guards that `hooks/lib/ticket-types.mjs` stays in sync with `TicketType` in `src/gw/schema/ticket.ts`.
 - **Criticality**: must
 
 ### Ticket type vocabulary

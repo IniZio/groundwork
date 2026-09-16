@@ -8,7 +8,8 @@
  *   motive-ticket lint [--motive <id>] [<file>]
  *   motive-ticket help [<cmd>]
  *
- * Ticket types (controlled vocabulary): research, choose, model, build, grill, spec, fix, chore
+ * Ticket types (controlled vocabulary): analysis, build, chore, choose, decision, design,
+ *   enhancement, feat, fix, grill, model, research, spec
  * Naming convention: NN-type-slug.md (2-digit ordinal)
  *
  * Exit codes: 0 success  1 operational failure  2 usage error
@@ -28,8 +29,7 @@ import {
   _extractTicketType,
   _extractTicketStatus,
 } from './lib/motive-ticket-doc.mjs'
-
-const TICKET_TYPES = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore']
+import { TICKET_TYPES } from './lib/ticket-types.mjs'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -185,6 +185,7 @@ async function cmdCreate(args) {
   const motiveSlug = flags.motive
 
   if (!type || type === true) die('create requires --type <T>', 2)
+  if (!TICKET_TYPES.includes(type)) die(`invalid ticket type "${type}" — must be one of: ${TICKET_TYPES.join(', ')}`, 2)
   if (!slug || slug === true) die('create requires --slug <S>', 2)
   if (!motiveSlug || motiveSlug === true) die('create requires --motive <id>', 2)
 

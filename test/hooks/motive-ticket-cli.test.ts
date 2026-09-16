@@ -6,6 +6,8 @@
  *   - create: scaffolds stub when absent; exits 0
  *   - create: idempotent — second call does NOT overwrite; prints "already exists"
  *   - create: auto-ordinal increments across distinct slugs
+ *   - create: invalid type → exit 2 + error naming the value (ARTIFACT-R-012)
+ *   - create: all thirteen valid types produce NN-type-slug.md (ARTIFACT-R-012)
  *   - list: enumerates created tickets with their Type: fields (tab-separated)
  *   - list: reports "no tickets found" when motive has no tickets subdirectory
  *   - lint: research ticket with URL in Evidence → exit 0
@@ -277,6 +279,7 @@ describe('motive-ticket list — format compatibility', () => {
 // ---------------------------------------------------------------------------
 
 import { readTicket } from '../../src/gw/store/motive/ticket.js'
+import { TicketType } from '../../src/gw/schema/ticket.js'
 
 describe('motive-ticket create — frontmatter conforms to TicketSchema', () => {
   let dir: string
@@ -367,5 +370,57 @@ describe('motive-ticket lint — exit codes', () => {
     const { status, stdout } = run(['lint', p])
     expect(stdout).toContain('OK')
     expect(status).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// create — type validation (ARTIFACT-R-012)
+// ---------------------------------------------------------------------------
+
+describe('motive-ticket create — invalid type is rejected (ARTIFACT-R-012)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkProject()
+    makeMotiveDir(dir, 'type-test')
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  // @verifies ARTIFACT-R-012
+  it('exits 2 and names the invalid value; no file is written', () => {
+    const { status, stderr } = run(
+      ['create', '--type', 'banana', '--slug', 'my-ticket', '--motive', 'type-test'],
+      { env: projectEnv(dir) },
+    )
+    expect(status).toBe(2)
+    expect(stderr).toContain('"banana"')
+    const ticketsDir = join(dir, '.groundwork', 'motives', 'type-test', 'tickets')
+    expect(existsSync(ticketsDir)).toBe(false)
+  })
+})
+
+describe('motive-ticket create — all thirteen valid types produce NN-type-slug.md (ARTIFACT-R-012)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkProject()
+    makeMotiveDir(dir, 'all-types')
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  // @verifies ARTIFACT-R-012
+  it('each valid type exits 0 and stdout names a file matching the NN-type-slug shape', () => {
+    for (const t of TicketType.options) {
+      const { status, stdout } = run(
+        ['create', '--type', t, '--slug', 'chk', '--motive', 'all-types'],
+        { env: projectEnv(dir) },
+      )
+      expect(status, `type "${t}" should exit 0`).toBe(0)
+      expect(stdout, `type "${t}" filename shape`).toMatch(new RegExp(`\\d{2}-${t}-chk\\.md`))
+    }
   })
 })

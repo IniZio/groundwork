@@ -22,6 +22,7 @@ import { pruneStaleSessionLedgers } from '../../../../hooks/lib/ledger-io.mjs'
 
 export const LEDGER_SUBCOMMANDS = [
   'init',
+  'stamp-motive',
   'status',
   'add',
   'set',
@@ -72,7 +73,7 @@ interface SliceJson {
 }
 
 interface GateJson {
-  advisor?: string | { verdict: string; rubric?: string; citation?: string }
+  advisor?: string | { verdict: string; rubric?: string; citation?: string; commit?: string }
   autopilot?: Array<{ units: number; reason: string; ts: string }>
   verifier?: string
   phases?: Record<string, unknown>
@@ -310,7 +311,7 @@ function motiveMissingError(
   return errEnvelope(
     `ledger ${cmdName}`,
     'MOTIVE_MISSING',
-    `ledger at ${resolvedPath} has no recorded motive — cannot verify --motive "${motiveArg}"; to stamp the motive, run: bin/ledger init ${resolvedPath} --motive ${motiveArg} --token <write_token>`,
+    `ledger at ${resolvedPath} has no recorded motive — cannot verify --motive "${motiveArg}"; to stamp the motive without overwriting the run, use: gw ledger stamp-motive ${motiveArg}`,
     1,
   )
 }
@@ -343,7 +344,7 @@ function cmdInitGw(rest: string[], repoRoot: string): GwEnvelope {
     return errEnvelope(
       'ledger init',
       'USAGE_ERROR',
-      'usage: gw ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>]',
+      'usage: gw ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]',
       2,
     )
   }
@@ -396,6 +397,10 @@ function cmdInitGw(rest: string[], repoRoot: string): GwEnvelope {
         'init would overwrite a tokenless active run — pass --force to confirm, or abandon/gate the run first.',
         2,
       )
+    } else {
+      const n = Array.isArray(existing.slices) ? (existing.slices as unknown[]).length : 0
+      const m = (existing.motive as string | undefined) ?? '(none)'
+      process.stderr.write(`WARNING: --force: destroying active run — motive: ${m}, ${n} slices\n`)
     }
   }
 
@@ -438,6 +443,59 @@ function cmdInitGw(rest: string[], repoRoot: string): GwEnvelope {
 }
 
 // ---------------------------------------------------------------------------
+// Stamp motive
+// ---------------------------------------------------------------------------
+
+function cmdStampMotiveGw(rest: string[], repoRoot: string): GwEnvelope {
+  const { flags, positionals } = parseFlags(rest)
+  const newMotive = positionals[0]
+  if (!newMotive) {
+    return errEnvelope(
+      'ledger stamp-motive',
+      'USAGE_ERROR',
+      'usage: gw ledger stamp-motive <motive-slug> [--session <id>] [--token <write_token>]',
+      2,
+    )
+  }
+  const explicitSession = flags['session'] as string | undefined
+  const sessionId = explicitSession ?? currentSession()
+  if (!sessionId) {
+    return errEnvelope(
+      'ledger stamp-motive',
+      'NO_SESSION',
+      'CLAUDE_CODE_SESSION_ID is not set — pass --session <id> or run inside a Claude Code session',
+      1,
+    )
+  }
+  const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId })
+  const ledger = readLedger(runPath)
+  if (!ledger) {
+    return errEnvelope('ledger stamp-motive', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+  }
+  if (ledger.motive) {
+    return errEnvelope(
+      'ledger stamp-motive',
+      'ALREADY_STAMPED',
+      `ledger at ${runPath} already has motive "${ledger.motive}" — use gw ledger init --token <write_token> to reinitialize`,
+      1,
+    )
+  }
+  if (ledger.write_token) {
+    const passedToken = flags['token'] as string | undefined
+    if (!passedToken || passedToken !== String(ledger.write_token)) {
+      return errEnvelope(
+        'ledger stamp-motive',
+        'AUTH_REQUIRED',
+        'ledger has a write_token — pass --token <write_token> to stamp the motive on a tokened run',
+        1,
+      )
+    }
+  }
+  atomicWrite(runPath, { ...ledger, motive: newMotive })
+  return okEnvelope('ledger stamp-motive', { content: `motive stamped: ${newMotive} → ${runPath}\n` })
+}
+
+// ---------------------------------------------------------------------------
 // Main dispatcher
 // ---------------------------------------------------------------------------
 
@@ -465,6 +523,11 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   if (subcmd === 'init') {
     const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
     return cmdInitGw(rest, repoRoot)
+  }
+
+  if (subcmd === 'stamp-motive') {
+    const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
+    return cmdStampMotiveGw(rest, repoRoot)
   }
 
   const { flags, positionals } = parseFlags(rest)
@@ -1007,9 +1070,23 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
             }
           }
         }
+        const headResultForGate = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+          cwd,
+          encoding: 'utf8',
+          timeout: 3000,
+        })
+        const gateCommit =
+          headResultForGate.status === 0
+            ? (headResultForGate.stdout ?? '').trim() || undefined
+            : undefined
         const advisorField =
-          citation || rubric
-            ? { verdict, ...(rubric ? { rubric } : {}), ...(citation ? { citation } : {}) }
+          citation || rubric || gateCommit
+            ? {
+                verdict,
+                ...(rubric ? { rubric } : {}),
+                ...(citation ? { citation } : {}),
+                ...(gateCommit ? { commit: gateCommit } : {}),
+              }
             : verdict
         const newGate: GateJson = {
           ...gateWithoutSeal(ledger.gate ?? {}),

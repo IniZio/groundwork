@@ -974,7 +974,41 @@ export const run: HookFn = async (
     const workRemains = incomplete.length > 0 || !advisorApproved
 
     if (!workRemains) {
-      // Complete + APPROVE — FAIL-CLOSED seal check.
+      // S64-GATE-STALENESS: void the verdict when git is reachable and the recorded commit
+      // no longer matches HEAD. Fail-open when git is unavailable (headCommitForStaleness===null).
+      const headForStaleness = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+        cwd: projectDir,
+        encoding: 'utf8',
+        timeout: 3000,
+      })
+      const headCommitForStaleness =
+        headForStaleness.status === 0 ? (headForStaleness.stdout ?? '').trim() : null
+
+      if (headCommitForStaleness !== null) {
+        const advisorFieldRaw = (ledger.gate as Record<string, unknown> | undefined)?.advisor
+        const recordedCommit =
+          advisorFieldRaw && typeof advisorFieldRaw === 'object'
+            ? String((advisorFieldRaw as Record<string, unknown>).commit ?? '')
+            : ''
+
+        if (!recordedCommit) {
+          return block(
+            'Verdict VOID — no commit recorded on the APPROVE ' +
+              '(written before staleness tracking was added). ' +
+              'Re-run: `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>`',
+          )
+        }
+
+        if (recordedCommit !== headCommitForStaleness) {
+          return block(
+            `Verdict VOID — recorded at ${recordedCommit.slice(0, 7)}, HEAD is now ${headCommitForStaleness.slice(0, 7)}. ` +
+              'Evidence does not describe the current tree. ' +
+              'Re-run: `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>`',
+          )
+        }
+      }
+
+      // Complete + APPROVE + fresh verdict (or git unavailable) — FAIL-CLOSED seal check.
       const sealResult = checkSeal(ledger, projectDir, sessionId)
       if (sealResult === false) {
         return block(

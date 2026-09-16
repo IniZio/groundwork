@@ -449,7 +449,15 @@ const HELP = {
     flags: [
       '--motive <id>        motive id to stamp on the ledger (overrides JSON input)',
       '--token <t>          write-token of the existing active run (required to overwrite a tokened live run)',
-      '--force              overwrite a tokenless active run (use when recovering a motive-less ledger)',
+      '--force              overwrite a tokenless active run; prints victim motive and slice count before overwriting',
+    ],
+  },
+  'stamp-motive': {
+    summary: 'stamp a motive onto a motive-less ledger without overwriting the run',
+    usage: 'ledger stamp-motive <motive-slug> [--session <id>] [--token <write_token>]',
+    flags: [
+      '--token <t>   required only if the ledger has a write_token (tokened run)',
+      '--session <id>  override session id (default: CLAUDE_CODE_SESSION_ID env)',
     ],
   },
   add: {
@@ -942,6 +950,15 @@ function cmdGate(args) {
       if (flags[`axes-${k}`] != null) axes[k] = Number(flags[`axes-${k}`])
     }
     if (Object.keys(axes).length) value.axes = axes
+    const headForGate = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      cwd: process.env.CLAUDE_PROJECT_DIR || process.cwd(),
+      encoding: 'utf8',
+      timeout: 3000,
+    })
+    if (headForGate.status === 0) {
+      const sha = (headForGate.stdout ?? '').trim()
+      if (sha) value.commit = sha
+    }
   } else {
     value = verdictRaw
   }
@@ -1071,6 +1088,10 @@ function cmdInit(args) {
           'init would overwrite a tokenless active run — pass --force to confirm, or abandon/gate the run first.',
           2,
         )
+      } else {
+        const n = Array.isArray(existing.slices) ? existing.slices.length : 0
+        const m = existing.motive ?? '(none)'
+        process.stderr.write(`WARNING: --force: destroying active run — motive: ${m}, ${n} slices\n`)
       }
     }
   } catch { /* no existing ledger or unreadable — fresh init, proceed */ }
@@ -1100,6 +1121,24 @@ function cmdInit(args) {
   const n = Array.isArray(obj?.slices) ? obj.slices.length : 0
   process.stdout.write(`ledger initialized: ${n} slices → ${ledgerPath()}\n`)
   process.stdout.write(`write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`)
+}
+
+function cmdStampMotive(args) {
+  const { flags, positionals } = parseFlags(args)
+  const newMotive = positionals[0]
+  if (!newMotive) die('usage: ledger stamp-motive <motive-slug> [--session <id>] [--token <write_token>]', 2)
+  const l = readLedger(ledgerPath())
+  if (!l) die(`no ledger at ${ledgerPath()}`, 1)
+  if (l.motive) {
+    die(`ledger at ${ledgerPath()} already has motive "${l.motive}" — use init --token <write_token> to reinitialize`, 1)
+  }
+  if (l.write_token) {
+    if (!flags.token || flags.token !== l.write_token) {
+      die('ledger has a write_token — pass --token <write_token> to stamp the motive on a tokened run', 1)
+    }
+  }
+  atomicWriteJsonSync(ledgerPath(), { ...l, motive: newMotive })
+  process.stdout.write(`motive stamped: ${newMotive} → ${ledgerPath()}\n`)
 }
 
 function cmdAdd(args) {
@@ -1557,7 +1596,7 @@ function _assertMotiveGuard(flags, cmd) {
     die(
       `${cmd} error [MOTIVE_MISSING]: ledger at ${rp} has no recorded motive — ` +
       `cannot verify --motive "${motiveArg}"; ` +
-      `repair with: ledger init ${rp} --motive ${motiveArg} --token <write_token>`,
+      `to stamp the motive without overwriting the run, use: ledger stamp-motive ${motiveArg}`,
       1,
     )
   }
@@ -1583,7 +1622,7 @@ function main() {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd()
   const sessionId = resolveSessionId(flags)
   _ledgerPath = resolveLedgerPath({ projectDir: base, sessionId })
-  if (cmd !== 'init') _assertMotiveGuard(flags, cmd)
+  if (cmd !== 'init' && cmd !== 'stamp-motive') _assertMotiveGuard(flags, cmd)
 
   try {
     switch (cmd) {
@@ -1595,6 +1634,7 @@ function main() {
       case 'add':      return cmdAdd(rest)
       case 'rm':       return cmdRm(rest)
       case 'set':      return cmdSet(rest)
+      case 'stamp-motive': return cmdStampMotive(rest)
       case 'claim':    return cmdClaim(rest)
       case 'show':     return cmdShow(rest[0])
       case 'view':     return cmdView()

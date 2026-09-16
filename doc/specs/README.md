@@ -26,7 +26,7 @@ This spec covers the following areas:
 - **Enforcement** ([`enforcement`](enforcement/)) — all PreToolUse hook gates, including the orchestrator-impl-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, stop-gate, struggle-detector, deslop-guard, prose-negation-guard, prose-modality-guard, doc-read-guard, doc-size-guard, spec-guard, keyword-router, agent-model-guard, and the session-start injection pipeline (session-reminder).
 - **Orchestration model** ([`orchestration`](orchestration/)) — how the orchestrator classifies, delegates, and stays out of implementation.
 - **Verification gate** ([`verification`](verification/)) — advisor validation as the non-trivial-task completion gate.
-- **`gw ledger` CLI** ([`gw-cli`](gw-cli/)) — the nineteen ledger subcommands that read and mutate the run store.
+- **`gw ledger` CLI** ([`gw-cli`](gw-cli/)) — the `gw ledger` subcommands that read and mutate the run store.
 - **`journal` CLI and motive lifecycle** ([`journal-motive`](journal-motive/)) — journal CLI surface, motive on-disk layout, and DECISION authoring contract.
 - **Motive DAG** ([`motive-dag`](motive-dag/)) — the typed node/edge DAG as the canonical primary store for motive state.
 - **Agents and skills** ([`agents-skills`](agents-skills/)) — agent roster, skill registries, model assignments, and delegation topology.

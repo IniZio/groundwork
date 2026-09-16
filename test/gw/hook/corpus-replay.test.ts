@@ -36,16 +36,12 @@ import { execSync, spawnSync } from 'node:child_process'
 import { HOOKS } from '../../../src/gw/hook/index.js'
 
 // ---------------------------------------------------------------------------
-// Paths
-// ---------------------------------------------------------------------------
 
 const __filename = fileURLToPath(import.meta.url)
 const __dir = dirname(__filename)
 const REPO_ROOT = join(__dir, '../../..')
 const FIXTURE_ROOT = join(REPO_ROOT, 'test/fixtures/parity-corpus')
 
-// ---------------------------------------------------------------------------
-// Helpers
 // ---------------------------------------------------------------------------
 
 /** Replace <isolated_temp_dir> and <temp_dir> placeholders with the real tmp path. */
@@ -70,11 +66,9 @@ function replacePlaceholders(value: unknown, tmpDir: string): unknown {
 /** Write disk_state_setup entries to tmpDir. */
 function setupDiskState(tmpDir: string, diskState: unknown[]): void {
   for (const entry of diskState) {
-    if (typeof entry === 'string') {
-      // mkdir command: "mkdir -p <temp_dir>/.groundwork/runs"
+    if (typeof entry === 'string') { // entry format: "mkdir -p <temp_dir>/.groundwork/runs"
       const resolved = entry.replace(/<isolated_temp_dir>/g, tmpDir).replace(/<temp_dir>/g, tmpDir)
-      // Only handle mkdir -p pattern for safety
-      const match = resolved.match(/^mkdir\s+-p\s+(.+)$/)
+      const match = resolved.match(/^mkdir\s+-p\s+(.+)$/) // only mkdir -p pattern handled, for safety
       if (match) {
         mkdirSync(match[1].trim(), { recursive: true })
       }
@@ -120,23 +114,18 @@ function extractDecision(stdout: string): string {
     return 'PASS'
   }
 
-  // stop-gate deny — fixtures label this DENY (even though stdout says "block")
-  if (parsed.decision === 'block') return 'DENY'
+  if (parsed.decision === 'block') return 'DENY' // stop-gate deny — fixtures label this DENY (even though stdout says "block")
 
-  // stop-gate allow / session-reminder allow
-  if (parsed.continue === true) return 'ALLOW'
+  if (parsed.continue === true) return 'ALLOW' // stop-gate allow / session-reminder allow
 
-  // PreToolUse hooks via hookSpecificOutput
-  const hso = parsed.hookSpecificOutput as Record<string, unknown> | undefined
+  const hso = parsed.hookSpecificOutput as Record<string, unknown> | undefined // PreToolUse hooks via hookSpecificOutput
   if (hso) {
     const pd = hso.permissionDecision as string | undefined
     if (pd === 'deny') return 'DENY'
     if (pd === 'allow') {
-      // agent-model-guard injects a model → INJECT; plain allow → ALLOW
-      return hso.updatedInput !== undefined ? 'INJECT' : 'ALLOW'
+      return hso.updatedInput !== undefined ? 'INJECT' : 'ALLOW' // agent-model-guard injects a model → INJECT; plain allow → ALLOW
     }
-    // orchestrator-impl-guard / piped-exit-code-guard use additionalContext warn
-    if (hso.additionalContext !== undefined) return 'WARN'
+    if (hso.additionalContext !== undefined) return 'WARN' // orchestrator-impl-guard / piped-exit-code-guard use additionalContext warn
   }
 
   return 'PASS'
@@ -154,7 +143,6 @@ function detectSignal(tmpDir: string, sessionId: string): string {
     const emitted = tally.emitted as Record<string, unknown> | undefined
     if (emitted && Object.keys(emitted).length > 0) return 'SIGNAL'
   } catch {
-    // fall through
   }
   return 'NO-SIGNAL'
 }
@@ -183,12 +171,9 @@ function discoverFixtures(): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Build the test suite dynamically
-// ---------------------------------------------------------------------------
 
 const allFixtures = discoverFixtures()
 
-// Group by hook name for reporting
 const byHook: Record<string, string[]> = {}
 for (const fp of allFixtures) {
   let raw: Record<string, unknown>
@@ -202,8 +187,7 @@ for (const fp of allFixtures) {
   byHook[hookName].push(fp)
 }
 
-// Emit one describe block per hook so vitest shows pass/fail counts per hook
-for (const [hookName, fixturePaths] of Object.entries(byHook)) {
+for (const [hookName, fixturePaths] of Object.entries(byHook)) { // one describe per hook so vitest shows pass/fail counts per hook
   describe(`corpus-replay / ${hookName}`, () => {
     let tmpDir: string
 
@@ -215,7 +199,6 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
       try {
         rmSync(tmpDir, { recursive: true, force: true })
       } catch {
-        // ignore
       }
     })
 
@@ -223,7 +206,6 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
       const scenarioName = basename(fixturePath, '.json')
 
       it(scenarioName, async () => {
-        // Parse fixture (skip unparseable)
         let fixture: Record<string, unknown>
         try {
           fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as Record<string, unknown>
@@ -238,19 +220,16 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
           return
         }
 
-        // Resolve hook function
         const hookFn = HOOKS[hookName]
         if (!hookFn) {
           console.warn(`[corpus-replay] No TS hook for "${hookName}" — skipping ${fixturePath}`)
           return
         }
 
-        // Prepare disk state
         const diskState = (fixture.disk_state_setup as unknown[]) ?? []
         const resolvedDiskState = replacePlaceholders(diskState, tmpDir) as unknown[]
         setupDiskState(tmpDir, resolvedDiskState)
 
-        // Prepare env
         const rawEnv = (fixture.env as Record<string, string>) ?? {}
         const resolvedEnv = replacePlaceholders(rawEnv, tmpDir) as Record<string, string>
         const env: Record<string, string | undefined> = {
@@ -259,16 +238,12 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
           ...resolvedEnv,
         }
 
-        // Multi-invocation (struggle-detector)
-        // NOTE: struggle-detector.ts reads process.env.CLAUDE_PROJECT_DIR directly
-        // (ignores the _env parameter). Set it for the duration of the invocations.
-        if (Array.isArray(fixture.invocations)) {
+        if (Array.isArray(fixture.invocations)) { // struggle-detector reads process.env.CLAUDE_PROJECT_DIR directly (ignores _env param); set for duration
           const invocations = fixture.invocations as Array<{
             stdin_payload: unknown
           }>
 
-          // struggle-detector reads process.env directly — propagate all fixture env vars
-          const prevEnv: Record<string, string | undefined> = {}
+          const prevEnv: Record<string, string | undefined> = {} // struggle-detector reads process.env directly — propagate all fixture env vars
           const envOverrides = { CLAUDE_PROJECT_DIR: tmpDir, ...resolvedEnv }
           for (const [k, v] of Object.entries(envOverrides)) {
             prevEnv[k] = process.env[k]
@@ -289,7 +264,6 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
             }
           }
 
-          // Derive session_id for tally lookup from first invocation's stdin_payload
           const firstPayload = invocations[0]?.stdin_payload as Record<string, unknown> | undefined
           const sessionId = String(firstPayload?.session_id ?? env.CLAUDE_SESSION_ID ?? 'test-session')
           const actual = detectSignal(tmpDir, sessionId)
@@ -297,7 +271,6 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
           return
         }
 
-        // Single invocation
         const stdinPayload = replacePlaceholders(fixture.stdin_payload, tmpDir)
         const result = await hookFn(stdinPayload, env)
         const actual = extractDecision(result.stdout)
@@ -308,11 +281,8 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) {
 }
 
 // ---------------------------------------------------------------------------
-// Exec-bit + shim-spawn tests (parametric over all hooks in hooks/hooks.json)
-// ---------------------------------------------------------------------------
 
-// Parse hooks.json at module load time to derive the unique set of .mjs filenames.
-const HOOKS_JSON_PATH = join(REPO_ROOT, 'hooks/hooks.json')
+const HOOKS_JSON_PATH = join(REPO_ROOT, 'hooks/hooks.json') // parse hooks.json at module load to derive unique .mjs filenames
 const _hooksJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8')) as {
   hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>
 }
@@ -321,7 +291,6 @@ for (const eventHooks of Object.values(_hooksJson.hooks)) {
   for (const entry of eventHooks) {
     for (const h of entry.hooks) {
       if (h.command && h.command.endsWith('.mjs')) {
-        // Strip the variable prefix to get the bare filename
         const filename = h.command.replace(/.*\/hooks\//, '')
         if (!_allHookFiles.includes(filename)) {
           _allHookFiles.push(filename)
@@ -346,8 +315,7 @@ describe('hook exec-bit and shim-spawn', () => {
     it(`hooks/${hookFile} has exec bit set`, () => {
       const hookPath = join(REPO_ROOT, 'hooks', hookFile)
       const mode = statSync(hookPath).mode
-      // at least one of owner/group/other exec bits must be set
-      expect(mode & 0o111).toBeGreaterThan(0)
+      expect(mode & 0o111).toBeGreaterThan(0) // at least one of owner/group/other exec bits must be set
     })
 
     it(`hooks/${hookFile} spawns correctly when invoked by bare path`, () => {
@@ -360,9 +328,7 @@ describe('hook exec-bit and shim-spawn', () => {
           env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir },
           timeout: 5000,
         })
-        // Success criterion: the process executed — no spawn error (e.g. not a 126 EACCES).
-        // Exit code may be 0 or non-zero depending on the hook's validation logic.
-        expect(result.error).toBeUndefined()
+        expect(result.error).toBeUndefined() // spawned without error (not a 126 EACCES); exit code may be 0 or non-zero per hook validation logic
       } finally {
         rmSync(tmpDir, { recursive: true, force: true })
       }
@@ -370,7 +336,6 @@ describe('hook exec-bit and shim-spawn', () => {
   }
 })
 
-// stop-gate-specific test: verify the allow path returns continue:true
 describe('stop-gate deployed-path spawn (allow path)', () => {
   it('bin/gw-hook hook stop-gate spawns correctly when invoked by the deployed path', () => {
     const hookPath = join(REPO_ROOT, 'bin', 'gw-hook')
@@ -383,10 +348,8 @@ describe('stop-gate deployed-path spawn (allow path)', () => {
         env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir },
         timeout: 5000,
       })
-      // Should exit 0 (fail-open, no active run)
-      expect(result.status).toBe(0)
-      // stdout should have continue:true (no active run → allow)
-      if (result.stdout && result.stdout.trim()) {
+      expect(result.status).toBe(0) // fail-open, no active run → exit 0
+      if (result.stdout && result.stdout.trim()) { // stdout should have continue:true (no active run → allow)
         const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>
         expect(parsed.continue).toBe(true)
       }
@@ -396,8 +359,6 @@ describe('stop-gate deployed-path spawn (allow path)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// New-layout scenario
 // ---------------------------------------------------------------------------
 
 describe('stop-gate / new-layout (next/motives/<motive>/<slice>.md)', () => {
@@ -411,7 +372,6 @@ describe('stop-gate / new-layout (next/motives/<motive>/<slice>.md)', () => {
     try {
       rmSync(tmpDir, { recursive: true, force: true })
     } catch {
-      // ignore
     }
   })
 
@@ -419,11 +379,8 @@ describe('stop-gate / new-layout (next/motives/<motive>/<slice>.md)', () => {
     const hookFn = HOOKS['stop-gate']
     expect(hookFn, 'stop-gate hook must exist in HOOKS').toBeDefined()
 
-    // Write new-layout slice notes for a DIFFERENT session
-    const motiveDir = join(tmpDir, '.groundwork', 'next', 'motives', 'my-motive')
-    mkdirSync(motiveDir, { recursive: true })
-
-    // Slice belonging to other-session (not our test session)
+    const motiveDir = join(tmpDir, '.groundwork', 'next', 'motives', 'my-motive') // write slice notes for a DIFFERENT session
+    mkdirSync(motiveDir, { recursive: true }) // slice belongs to other-session (not our test session)
     const sliceContent = `---
 id: s1
 session: other-session-id
@@ -440,9 +397,7 @@ Slice note body.
 `
     writeFileSync(join(motiveDir, 's1.md'), sliceContent, 'utf8')
 
-    // Our test session has no matching slices → bySession returns 0
-    // → findNewLayoutLedger returns null → no legacy ledger → ALLOW
-    const testSessionId = 'abandoned-new-layout-test-session'
+    const testSessionId = 'abandoned-new-layout-test-session' // no matching slices → bySession=0 → findNewLayoutLedger=null → no ledger → ALLOW
     const env: Record<string, string | undefined> = {
       CLAUDE_PROJECT_DIR: tmpDir,
       CLAUDE_SESSION_ID: testSessionId,
@@ -455,13 +410,12 @@ Slice note body.
     const result = await hookFn(payload, env)
     const decision = extractDecision(result.stdout)
 
-    // No active run for this session → fail-open → ALLOW
-    expect(decision).toBe('ALLOW')
+    expect(decision).toBe('ALLOW') // no active run for this session → fail-open → ALLOW
   })
 })
 
 // ---------------------------------------------------------------------------
-// Parity-corpus registration coverage (AC-8)
+// ---- Parity-corpus registration coverage (AC-8) ----
 // ---------------------------------------------------------------------------
 
 describe('gw hook parity-corpus registration coverage', () => {

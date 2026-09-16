@@ -28,6 +28,11 @@ const INDEX_PATH = resolve(
   '../doc/specs/gw-cli/index.md',
 )
 
+const README_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../doc/specs/README.md',
+)
+
 /** EARS SHALL anchor — the opening of the R-001 requirement sentence. */
 const EARS_ANCHOR = /\*\*shall\*\* accept exactly the following \d+ subcommands:/
 
@@ -154,5 +159,20 @@ describe('GW-CLI-R-001 subcommand registry', () => {
     const content = readFileSync(INDEX_PATH, 'utf8')
     const m = SPELLED_COUNT_RE.exec(content)
     expect(m, `found spelled-out count word "${m?.[0]}" in ${INDEX_PATH}`).toBeNull()
+  })
+
+  it('all count-numerals in README.md equal LEDGER_SUBCOMMANDS.length', () => {
+    const nums = extractCountNumerals(README_PATH)
+    for (const n of nums) {
+      expect(n, `numeral ${n} in README.md does not match LEDGER_SUBCOMMANDS.length (${LEDGER_SUBCOMMANDS.length})`).toBe(
+        LEDGER_SUBCOMMANDS.length,
+      )
+    }
+  })
+
+  it('no spelled-out count word in README.md', () => {
+    const content = readFileSync(README_PATH, 'utf8')
+    const m = SPELLED_COUNT_RE.exec(content)
+    expect(m, `found spelled-out count word "${m?.[0]}" in ${README_PATH}`).toBeNull()
   })
 })

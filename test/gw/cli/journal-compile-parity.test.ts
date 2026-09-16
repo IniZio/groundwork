@@ -25,7 +25,12 @@
  * Bite proof (manual, not committed): seeding D-99 into parity.jsonl only causes
  * test 1 to fail: `slug "alpha": gw IDs=["D-1","D-2"] bin IDs=["D-1","D-2","D-99"]`
  *
- * delta (JSONL-only) FINDING: gw compile exits 0 with decisions=[] for delta;
+ * AC-11 (motive obsidian-native-groundwork) owns the JSONL-only compile contract:
+ * gw journal compile must either return the same decision IDs as bin/journal for that
+ * slug, OR exit 1 with stderr/stdout matching /STORE_DIVERGENCE/. When test 3 starts
+ * passing (i.e. vitest no longer reports it as expected-to-fail), remove `it.fails`.
+ *
+ * delta (JSONL-only) CURRENT FINDING: gw compile exits 0 with decisions=[] for delta;
  * bin/journal compile exits 0 with decision_log=[{id:"D-30"}]. gw does NOT detect
  * or report the divergence at compile time — no STORE_DIVERGENCE, no non-zero exit.
  */
@@ -166,8 +171,8 @@ describe('S76-AC12-COMPILE-PARITY — gw journal compile vs bin/journal compile'
     })
   })
 
-  describe('JSONL-only slug (delta): gw compile silently returns empty — FINDING', () => {
-    it('gw exits 0 with decisions=[] for delta; bin/journal exits 0 with [D-30] — stores diverge undetected', () => {
+  describe('JSONL-only slug (delta): gw compile must match bin/journal IDs or report STORE_DIVERGENCE — AC-11', () => {
+    it.fails('gw decision-id set equals bin/journal for JSONL-only slug, OR gw exits 1 with /STORE_DIVERGENCE/', () => {
       const proj = tempDir()
       fs.cpSync(FIXTURE, proj, { recursive: true })
 
@@ -180,14 +185,19 @@ describe('S76-AC12-COMPILE-PARITY — gw journal compile vs bin/journal compile'
         const gw = runGw(slug, proj)
         const bin = runBin(slug, proj)
 
-        expect(gw.status, `gw compile for JSONL-only "${slug}" must exit 0 (no STORE_DIVERGENCE at compile)`).toBe(0)
         expect(bin.status, `bin/journal compile for "${slug}" must exit 0`).toBe(0)
-
-        const gIds = gwIds(gw)
         const bIds = binIds(bin)
-
-        expect(gIds, `FINDING: gw sees no decisions for "${slug}" (reads decisions/*.md — dir absent)`).toEqual([])
         expect(bIds, `bin/journal must see decisions for "${slug}" from JSONL`).not.toHaveLength(0)
+
+        const combined = (gw.stdout ?? '') + (gw.stderr ?? '')
+        const reportsDivergence = gw.status === 1 && /STORE_DIVERGENCE/i.test(combined)
+        const gwIdsMatch = gw.status === 0 && JSON.stringify(gwIds(gw)) === JSON.stringify(bIds)
+
+        expect(
+          reportsDivergence || gwIdsMatch,
+          `slug "${slug}": gw must match bin/journal IDs or exit 1 with STORE_DIVERGENCE; ` +
+          `got status=${gw.status} gw-ids=${JSON.stringify(gwIds(gw))} bin-ids=${JSON.stringify(bIds)}`
+        ).toBe(true)
       }
     })
   })

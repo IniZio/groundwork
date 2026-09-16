@@ -9,19 +9,13 @@ import { LEDGER_SUBCOMMANDS } from '#src/gw/cli/commands/ledger.js'
  * GW-CLI-R-001 enforcement.
  *
  * The expected subcommand list is derived at test-run time from the EARS
- * sentence in doc/specs/gw-cli/requirements/gw-cli-r-001-subcommand-registry.md.
- *
- * This catches drift in BOTH directions:
- *   - spec updated without updating source (LEDGER_SUBCOMMANDS) → red
- *   - source updated without updating spec → red
- *
- * The parser looks for the first line matching /subcommands: `[a-z]/,
- * extracts every backtick-quoted token before the first semicolon,
- * then filters out multi-word tokens (e.g. `gw ledger`).
- *
- * A rewording of the EARS sentence that changes those two anchor strings is
- * itself a spec change — the author must fix the parser or the sentence to
- * re-synchronise. A false-positive from a reword is preferable to silent drift.
+ * sentence in doc/specs/gw-cli/requirements/gw-cli-r-001-subcommand-registry.md,
+ * not from a hand-maintained list in this file. This catches drift in BOTH
+ * directions: spec updated without updating LEDGER_SUBCOMMANDS → red;
+ * LEDGER_SUBCOMMANDS updated without updating spec → red. A duplicate list
+ * here would catch only source-vs-test drift, missing spec-vs-source drift —
+ * which is the defect that let the spec sit at "16 subcommands" while the
+ * source had 18.
  */
 
 const SPEC_PATH = resolve(
@@ -29,6 +23,13 @@ const SPEC_PATH = resolve(
   '../doc/specs/gw-cli/requirements/gw-cli-r-001-subcommand-registry.md',
 )
 
+/**
+ * Finds the first line matching /subcommands: `[a-z]/, extracts every
+ * backtick-quoted token before the first semicolon, and filters out
+ * multi-word tokens (e.g. `gw ledger`). A rewording of the EARS sentence
+ * that changes those two anchor strings is itself a spec change — the author
+ * must update the sentence or this parser to re-synchronise.
+ */
 function parseSpecSubcommands(): ReadonlyArray<string> {
   let content: string
   try {

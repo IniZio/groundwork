@@ -216,18 +216,30 @@ describe("session-reminder hook — pacing state", () => {
 		slices: [
 			{ id: "W1S1", wave: 1, status: "complete", behavior: "slice one" },
 			{ id: "W2S1", wave: 2, status: "pending", behavior: "slice two" },
+			{ id: "W2S2", wave: 2, status: "pending", behavior: "slice three" },
 		],
 		gate: {},
 	};
 
 	it("does NOT emit pacing text when the ledger has no pacing field", () => {
-		// Ledger without pacing: output must be identical in shape to pre-change output.
 		const ctx = runReminder(baseLedger);
 		expect(ctx).toContain("ACTIVE RUN — RESUME HERE");
 		expect(ctx).not.toContain("Pacing policy");
 		expect(ctx).not.toContain("Pacing state");
 		expect(ctx).not.toContain("Budget exhausted");
-		expect(ctx).not.toContain("autopilot");
+		expect(ctx).not.toContain("reconsider whether it can run in parallel");
+	});
+
+	it("emits wave-width notice when a wave has exactly 1 impl slice pending (positive control)", () => {
+		const singleSliceLedger = {
+			...baseLedger,
+			slices: [
+				{ id: "W1S1", wave: 1, status: "complete", behavior: "slice one" },
+				{ id: "W2S1", wave: 2, status: "pending", behavior: "slice two" },
+			],
+		};
+		const ctx = runReminder(singleSliceLedger);
+		expect(ctx).toContain("reconsider whether it can run in parallel");
 	});
 
 });

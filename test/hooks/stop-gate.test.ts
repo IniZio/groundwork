@@ -876,6 +876,7 @@ describe("stop-gate — spec advisory (D-26)", () => {
 	}
 
 	function runHookInGitRepo(): { continue?: boolean; decision?: string; reason?: string } {
+		const headSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectDir, encoding: "utf8" }).trim();
 		writeFileSync(
 			path.join(projectDir, ".groundwork", "run.json"),
 			JSON.stringify({
@@ -883,7 +884,7 @@ describe("stop-gate — spec advisory (D-26)", () => {
 				session_id: "sess-git",
 				reinforcements: 0,
 				slices: [{ id: "S1", status: "complete", acceptance: ["done"] }],
-				gate: { advisor: "APPROVE" },
+				gate: { advisor: { verdict: "APPROVE", citation: "test:init", commit: headSha } },
 			}),
 		);
 		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-git" });

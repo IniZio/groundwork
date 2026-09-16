@@ -4,10 +4,10 @@
  *
  * Covers AC-13: round-trip id/status/rationale/alternatives/kind,
  * status distribution confirmed, writeDecision shape matches vault,
- * non-vacuity proven via /tmp corruption test.
+ * non-vacuity proven in-suite (S17 — non-vacuity block below).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -36,6 +36,17 @@ const PROTECTED_BODY_CHECKSUMS: Record<string, string> = {
   'D-29': '4d6fd311db9fdf1cac783c053af819cd',
   'D-30': 'eb601244b6540ed3dc1113e4231957c1',
   'D-31': '344597b2d73a8b895ada4c92a9969ae1',
+}
+
+const PROTECTED_FRONTMATTER: Record<string, { id: string; status: string; motive: string }> = {
+  'D-24': { id: 'D-24', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-25': { id: 'D-25', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-26': { id: 'D-26', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-27': { id: 'D-27', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-28': { id: 'D-28', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-29': { id: 'D-29', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-30': { id: 'D-30', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-31': { id: 'D-31', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
 }
 
 function parseDecisionNote(filePath: string): {
@@ -213,6 +224,44 @@ describe('S17 — protected files: decision body unchanged after this slice', ()
       const { content } = matter(raw)
       const digest = createHash('md5').update(content.trim()).digest('hex')
       expect(digest).toBe(PROTECTED_BODY_CHECKSUMS[id])
+    })
+  }
+})
+
+describe('S17 — protected files: body hash guard positive control (guard can fail)', () => {
+  let tmpDir: string
+
+  beforeAll(() => {
+    tmpDir = join(tmpdir(), `s17-hash-control-${Date.now()}`)
+    mkdirSync(tmpDir, { recursive: true })
+    copyFileSync(join(DECISIONS_DIR, 'D-24.md'), join(tmpDir, 'D-24.md'))
+    const raw = readFileSync(join(tmpDir, 'D-24.md'), 'utf8')
+    const parsed = matter(raw)
+    const tamperedBody = parsed.content + '\n\nTAMPERED'
+    writeFileSync(join(tmpDir, 'D-24.md'), matter.stringify(tamperedBody, parsed.data))
+  })
+
+  afterAll(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* best-effort */ }
+  })
+
+  it('tampered body produces a different hash than the baseline (guard is sensitive)', () => {
+    const raw = readFileSync(join(tmpDir, 'D-24.md'), 'utf8')
+    const { content } = matter(raw)
+    const digest = createHash('md5').update(content.trim()).digest('hex')
+    expect(digest).not.toBe(PROTECTED_BODY_CHECKSUMS['D-24'])
+  })
+})
+
+describe('S17 — protected files: frontmatter id/status/motive pinned', () => {
+  for (const id of PROTECTED_IDS) {
+    it(`${id}.md frontmatter id/status/motive match baseline`, () => {
+      const raw = readFileSync(join(DECISIONS_DIR, `${id}.md`), 'utf8')
+      const { data } = matter(raw)
+      const expected = PROTECTED_FRONTMATTER[id]
+      expect(data['id']).toBe(expected.id)
+      expect(data['status']).toBe(expected.status)
+      expect(data['motive']).toBe(expected.motive)
     })
   }
 })

@@ -192,10 +192,11 @@ describe('AC8 — frontmatter schema monopoly', () => {
 // S4-TICKET-SCHEMA: TicketSchema type field
 // ============================================================
 describe('S4 — TicketSchema.type field', () => {
-  const validTypes = [
-    'analysis', 'build', 'chore', 'choose', 'decision', 'design',
-    'enhancement', 'feat', 'fix', 'grill', 'model', 'research', 'spec',
-  ] as const
+  const validTypes = TicketType.options
+
+  it('covers all thirteen canonical types (staleness guard)', () => {
+    expect(validTypes).toHaveLength(13)
+  })
 
   it('accepts every corpus type value', () => {
     for (const t of validTypes) {

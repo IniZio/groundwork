@@ -225,6 +225,64 @@ describe('active-run guard', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 4b. Tokenless active-run guard
+// ---------------------------------------------------------------------------
+
+describe('tokenless active-run guard', () => {
+  function seedTokenlessRun(motive: string): void {
+    writeFileSync(
+      ledgerPath(),
+      JSON.stringify({ active: true, motive, slices: [], session_id: SESSION_ID }),
+    )
+  }
+
+  it('gw: refuses to overwrite tokenless active run without --force', () => {
+    seedTokenlessRun('victim-motive')
+    const seedPath = join(projectDir, 'new.json')
+    writeFileSync(seedPath, CLEAN_SEED)
+
+    const r = runGwLedger(['init', seedPath, '--motive', 'attacker'])
+    expect(r.status).not.toBe(0)
+    expect(r.stderr + r.stdout).toMatch(/active run/)
+    const surviving = readLedger()
+    expect(surviving['motive']).toBe('victim-motive')
+    expect(surviving['active']).toBe(true)
+  })
+
+  it('gw: allows overwriting tokenless active run with --force', () => {
+    seedTokenlessRun('victim-motive')
+    const seedPath = join(projectDir, 'new.json')
+    writeFileSync(seedPath, CLEAN_SEED)
+
+    const r = runGwLedger(['init', seedPath, '--motive', 'replacement', '--force'])
+    expect(r.status).toBe(0)
+    expect(readLedger()['motive']).toBe('replacement')
+  })
+
+  it('bin/ledger: refuses to overwrite tokenless active run without --force', () => {
+    seedTokenlessRun('victim-motive')
+    const seedPath = join(projectDir, 'new.json')
+    writeFileSync(seedPath, CLEAN_SEED)
+
+    const r = runBinLedger(['init', seedPath, '--motive', 'attacker'])
+    expect(r.status).not.toBe(0)
+    expect(r.stderr + r.stdout).toMatch(/active run/)
+    const surviving = readLedger()
+    expect(surviving['motive']).toBe('victim-motive')
+    expect(surviving['active']).toBe(true)
+  })
+
+  it('bin/ledger: allows overwriting tokenless active run with --force', () => {
+    seedTokenlessRun('victim-motive')
+    const seedPath = join(projectDir, 'new.json')
+    writeFileSync(seedPath, CLEAN_SEED)
+
+    const r = runBinLedger(['init', seedPath, '--motive', 'replacement', '--force'])
+    expect(r.status).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 5. write_token on stdout
 // ---------------------------------------------------------------------------
 

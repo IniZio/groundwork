@@ -377,14 +377,23 @@ function cmdInitGw(rest: string[], repoRoot: string): GwEnvelope {
   const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId: sessionId ?? undefined })
 
   const existing = readLedger(runPath)
-  if (existing?.active === true && existing?.write_token) {
-    const passedToken = flags['token'] as string | undefined
-    if (!passedToken || passedToken !== String(existing.write_token)) {
+  if (existing?.active === true) {
+    if (existing?.write_token) {
+      const passedToken = flags['token'] as string | undefined
+      if (!passedToken || passedToken !== String(existing.write_token)) {
+        return errEnvelope(
+          'ledger init',
+          'ACTIVE_RUN',
+          'init would overwrite an active run — pass --token <write_token> to confirm overwrite,\n' +
+          '  or wait for the run to end (abandon/gate) before re-initializing.',
+          2,
+        )
+      }
+    } else if (!flags['force']) {
       return errEnvelope(
         'ledger init',
         'ACTIVE_RUN',
-        'init would overwrite an active run — pass --token <write_token> to confirm overwrite,\n' +
-        '  or wait for the run to end (abandon/gate) before re-initializing.',
+        'init would overwrite a tokenless active run — pass --force to confirm, or abandon/gate the run first.',
         2,
       )
     }

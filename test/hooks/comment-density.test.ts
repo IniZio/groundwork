@@ -6,7 +6,6 @@ import {
   analyzeFiles,
   isExcluded,
   FILE_CAP,
-  AGGREGATE_CAP,
   LANGUAGE_TABLE,
 } from '../../hooks/lib/comment-density.mjs';
 
@@ -19,7 +18,6 @@ function readFixture(dir: string, name: string): string {
 
 describe('constants', () => {
   it('FILE_CAP is 5', () => expect(FILE_CAP).toBe(5));
-  it('AGGREGATE_CAP is 2', () => expect(AGGREGATE_CAP).toBe(2));
   it('LANGUAGE_TABLE has required extensions', () => {
     for (const ext of ['.ts', '.tsx', '.js', '.go', '.rs', '.java', '.py', '.rb', '.sh']) {
       expect(LANGUAGE_TABLE).toHaveProperty(ext);

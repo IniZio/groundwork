@@ -5,9 +5,6 @@ import { basename, extname } from 'path';
 /** Per-file cap: 5 comment lines per 100 total lines. */
 export const FILE_CAP = 5;
 
-/** Aggregate cap: 2 comment lines per 100 total lines. */
-export const AGGREGATE_CAP = 2;
-
 /** Minimum total lines before the per-file ratio cap applies. Files below this floor skip the ratio check. */
 export const SMALL_FILE_MIN_LINES = 40;
 

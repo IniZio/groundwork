@@ -104,7 +104,6 @@ describe('gw comment-density report', () => {
 
     const manifest = envelope.data
     expect(manifest.cap.file).toBe(5)
-    expect(manifest.cap.aggregate).toBe(2)
     expect(Array.isArray(manifest.files)).toBe(true)
     expect(manifest.files.length).toBeGreaterThanOrEqual(1)
 

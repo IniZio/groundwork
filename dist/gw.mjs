@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 79130ac417f50d78b96f6546a5957e5062f5c664e10d7b752b8faccdb8b8db1f
+// @bundle-source-hash: 60aeffcc39f0448f495487405c468004d31e71ed1f8aa43cedacbbbae7be8eb6
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -64,8 +64,7 @@ __export(exports_comment_density, {
   analyzeFile: () => analyzeFile,
   SMALL_FILE_MIN_LINES: () => SMALL_FILE_MIN_LINES,
   LANGUAGE_TABLE: () => LANGUAGE_TABLE,
-  FILE_CAP: () => FILE_CAP,
-  AGGREGATE_CAP: () => AGGREGATE_CAP
+  FILE_CAP: () => FILE_CAP
 });
 import { createHash } from "crypto";
 import { basename, extname } from "path";
@@ -511,7 +510,7 @@ function analyzeFiles(entries, opts = {}) {
   const aggregatePer100 = totalLines === 0 ? 0 : totalComment / totalLines * 100;
   return { files, aggregatePer100 };
 }
-var FILE_CAP = 5, AGGREGATE_CAP = 2, SMALL_FILE_MIN_LINES = 40, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS, _SECTION_DIV_RE, _ANNOT_TAG_RE, _URL_LINE_RE;
+var FILE_CAP = 5, SMALL_FILE_MIN_LINES = 40, LANGUAGE_TABLE, _cache, LOCKFILES, DATA_EXTS, _SECTION_DIV_RE, _ANNOT_TAG_RE, _URL_LINE_RE;
 var init_comment_density = __esm(() => {
   LANGUAGE_TABLE = {
     ".ts": { lineComment: "//", blockOpen: "/*", blockClose: "*/", jsxBlock: true },
@@ -805,7 +804,7 @@ function touchedFilesSince(ledger, cwd) {
   return [...set];
 }
 async function buildManifest(relPaths, cwd) {
-  const { isExcluded: isExcluded2, analyzeFiles: analyzeFiles2, FILE_CAP: FILE_CAP2, AGGREGATE_CAP: AGGREGATE_CAP2, SMALL_FILE_MIN_LINES: SMALL_FILE_MIN_LINES2 } = await Promise.resolve().then(() => (init_comment_density(), exports_comment_density));
+  const { isExcluded: isExcluded2, analyzeFiles: analyzeFiles2, FILE_CAP: FILE_CAP2, SMALL_FILE_MIN_LINES: SMALL_FILE_MIN_LINES2 } = await Promise.resolve().then(() => (init_comment_density(), exports_comment_density));
   const { findAllRestatingComments: findAllRestatingComments2 } = await Promise.resolve().then(() => (init_comment_restate(), exports_comment_restate));
   const entries = [];
   const relToAbs = new Map;
@@ -863,11 +862,11 @@ async function buildManifest(relPaths, cwd) {
       reasons
     });
   }
-  return { cap: { file: FILE_CAP2, aggregate: AGGREGATE_CAP2 }, aggregatePer100, aggregateEnforced: false, files: flaggedFiles, scannedFiles };
+  return { cap: { file: FILE_CAP2 }, aggregatePer100, files: flaggedFiles, scannedFiles };
 }
 async function runReport(args, cwd) {
   if (process.env["GROUNDWORK_COMMENT_DENSITY"] === "0") {
-    const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, aggregateEnforced: false, files: [], scannedFiles: [] };
+    const empty = { cap: { file: 5 }, aggregatePer100: 0, files: [], scannedFiles: [] };
     return okEnvelope("comment-density report", empty);
   }
   const { flags, positionals } = parseFlags(args);
@@ -1637,7 +1636,7 @@ function motiveMismatchError(cmdName, expected, actual, resolvedPath) {
   return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISMATCH", `--motive "${expected}" does not match the resolved ledger's recorded motive "${actual}" (${resolvedPath})`, 1);
 }
 function motiveMissingError(cmdName, motiveArg, resolvedPath) {
-  return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISSING", `ledger at ${resolvedPath} has no recorded motive \u2014 cannot verify --motive "${motiveArg}"; set the motive field before use`, 1);
+  return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISSING", `ledger at ${resolvedPath} has no recorded motive \u2014 cannot verify --motive "${motiveArg}"; to stamp the motive, run: bin/ledger init ${resolvedPath} --motive ${motiveArg} --token <write_token>`, 1);
 }
 function checkMotiveGuard(cmdName, ledger, motiveArg, resolvedPath) {
   if (!ledger.motive)

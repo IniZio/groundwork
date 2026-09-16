@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: e84ccbf6f949945dbcd2d827a1abff19579c5a69ba81656c2dcaafc1eb03e1f8
+// @bundle-source-hash: 228185a6547943bd68564598b787afc78924fb06b995c88b44d8a78c4bfb881c
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -9789,6 +9789,21 @@ function cmdFrontier(args) {
 function cmdAutopilot(_args) {
   die('autopilot is retired \u2014 use "ledger checkpoint" to record a phase deliverable verdict', 2);
 }
+function _assertMotiveGuard(flags, cmd) {
+  const motiveArg = flags.motive;
+  if (motiveArg == null)
+    return;
+  const l = readLedger(ledgerPath());
+  if (!l)
+    return;
+  const rp = ledgerPath();
+  if (!l.motive) {
+    die(`${cmd} error [MOTIVE_MISSING]: ledger at ${rp} has no recorded motive \u2014 ` + `cannot verify --motive "${motiveArg}"; ` + `repair with: ledger init ${rp} --motive ${motiveArg} --token <write_token>`, 1);
+  }
+  if (l.motive !== motiveArg) {
+    die(`${cmd} error [MOTIVE_MISMATCH]: --motive "${motiveArg}" does not match ` + `the resolved ledger's recorded motive "${l.motive}" (${rp})`, 1);
+  }
+}
 function main() {
   const argv = process.argv.slice(2);
   const [cmd, ...rest] = argv;
@@ -9808,6 +9823,8 @@ function main() {
   const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const sessionId = resolveSessionId(flags);
   _ledgerPath = resolveLedgerPath({ projectDir: base, sessionId });
+  if (cmd !== "init")
+    _assertMotiveGuard(flags, cmd);
   try {
     switch (cmd) {
       case "status":

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 1108302e99c56d14e4e22ea5965615b887e3fbbdf7f0a122e4095c421837ac89
+// @bundle-source-hash: 79130ac417f50d78b96f6546a5957e5062f5c664e10d7b752b8faccdb8b8db1f
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -863,11 +863,11 @@ async function buildManifest(relPaths, cwd) {
       reasons
     });
   }
-  return { cap: { file: FILE_CAP2, aggregate: AGGREGATE_CAP2 }, aggregatePer100, files: flaggedFiles, scannedFiles };
+  return { cap: { file: FILE_CAP2, aggregate: AGGREGATE_CAP2 }, aggregatePer100, aggregateEnforced: false, files: flaggedFiles, scannedFiles };
 }
 async function runReport(args, cwd) {
   if (process.env["GROUNDWORK_COMMENT_DENSITY"] === "0") {
-    const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, files: [], scannedFiles: [] };
+    const empty = { cap: { file: 5, aggregate: 2 }, aggregatePer100: 0, aggregateEnforced: false, files: [], scannedFiles: [] };
     return okEnvelope("comment-density report", empty);
   }
   const { flags, positionals } = parseFlags(args);
@@ -1636,6 +1636,16 @@ function authErr(cmd, e) {
 function motiveMismatchError(cmdName, expected, actual, resolvedPath) {
   return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISMATCH", `--motive "${expected}" does not match the resolved ledger's recorded motive "${actual}" (${resolvedPath})`, 1);
 }
+function motiveMissingError(cmdName, motiveArg, resolvedPath) {
+  return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISSING", `ledger at ${resolvedPath} has no recorded motive \u2014 cannot verify --motive "${motiveArg}"; set the motive field before use`, 1);
+}
+function checkMotiveGuard(cmdName, ledger, motiveArg, resolvedPath) {
+  if (!ledger.motive)
+    return motiveMissingError(cmdName, motiveArg, resolvedPath);
+  if (ledger.motive !== motiveArg)
+    return motiveMismatchError(cmdName, motiveArg, ledger.motive, resolvedPath);
+  return null;
+}
 async function run2(args, cwd) {
   const subcmd = args[0];
   if (!subcmd) {
@@ -1666,8 +1676,11 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
         if (!ledger) {
           return errEnvelope("ledger status", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         }
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("status", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("status", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const all = ledger.slices ?? [];
         const verdict = extractGateVerdict(ledger.gate);
         const done = all.filter((s) => s.status === "complete").length;
@@ -1702,8 +1715,11 @@ ${holdLine}${done}/${all.length} slices complete
         if (!ledger) {
           return errEnvelope("ledger add", "NOT_FOUND", `no ledger at ${runPath}`, 1);
         }
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("add", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("add", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         if (slices.some((s) => s.id === id)) {
           return errEnvelope("ledger add", "ALREADY_EXISTS", `slice ${id} already exists`, 1);
@@ -1751,8 +1767,11 @@ ${holdLine}${done}/${all.length} slices complete
           const ledger2 = readLedger(runPath);
           if (!ledger2)
             return errEnvelope("ledger set", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-          if (ledger2.motive && ledger2.motive !== motive)
-            return motiveMismatchError("set", motive, ledger2.motive, runPath);
+          {
+            const g = checkMotiveGuard("set", ledger2, motive, runPath);
+            if (g)
+              return g;
+          }
           const check = spawnSync2("git", ["cat-file", "-e", `${baseCommitFlag}^{commit}`], { cwd });
           if (check.status !== 0) {
             return errEnvelope("ledger set", "INVALID_SHA", `not a valid commit: ${baseCommitFlag}`, 1);
@@ -1767,8 +1786,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger set", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("set", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("set", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         const existing = slices.find((s) => s.id === id);
         if (!existing)
@@ -1794,7 +1816,7 @@ ${holdLine}${done}/${all.length} slices complete
           ...flags["desc"] && flags["desc"] !== true ? { desc: flags["desc"] } : {},
           ...flags["blocked-by"] && flags["blocked-by"] !== true ? { blocked_by: flags["blocked-by"].split(",").map((s) => s.trim()) } : {},
           ...flags["acceptance"] && flags["acceptance"] !== true ? { acceptance: flags["acceptance"].split(";").map((s) => s.trim()) } : {},
-          ...flags["covers-ac"] && flags["covers-ac"] !== true ? { covers_ac: flags["covers-ac"].split(",").map((s) => s.trim()) } : {},
+          ...flags["covers-ac"] !== undefined && flags["covers-ac"] !== true ? { covers_ac: flags["covers-ac"].split(",").map((s) => s.trim()).filter(Boolean) } : {},
           ...flags["decisions"] && flags["decisions"] !== true ? { decisions: flags["decisions"].split(",").map((s) => s.trim()) } : {},
           ...flags["ticket"] && flags["ticket"] !== true ? { ticket: flags["ticket"] } : {},
           ...flags["claimed-by"] && flags["claimed-by"] !== true ? { claimed_by: flags["claimed-by"] } : {}
@@ -1835,8 +1857,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger complete", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("complete", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("complete", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         const masterOk = (() => {
           try {
@@ -1881,8 +1906,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger rm", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("rm", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("rm", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         const removed = [];
         for (const id of ids) {
@@ -1903,8 +1931,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger show", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("show", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("show", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         const sl = slices.find((s) => s.id === id);
         if (!sl)
@@ -1937,8 +1968,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger view", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("view", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("view", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const all = ledger.slices ?? [];
         const verdict = extractGateVerdict(ledger.gate);
         const done = all.filter((s) => s.status === "complete").length;
@@ -2000,8 +2034,11 @@ ${holdLine}${done}/${all.length} slices complete
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger gate", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("gate", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("gate", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "gate");
         } catch (e) {
@@ -2112,8 +2149,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger abandon", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("abandon", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("abandon", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "abandon");
         } catch (e) {
@@ -2137,8 +2177,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger fog", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("fog", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("fog", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         if (slices.some((s) => s.id === id)) {
           return errEnvelope("ledger fog", "ALREADY_EXISTS", `slice ${id} already exists`, 1);
@@ -2164,8 +2207,11 @@ Review and fix with:
 `
           });
         }
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("frontier", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("frontier", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         const slices = ledger.slices ?? [];
         const terminalSet = new Set(slices.filter((s) => s.status === "complete" || s.status === "skipped").map((s) => s.id));
         const frontier = slices.filter((s) => s.status === "pending" && (s.blocked_by ?? []).every((id) => terminalSet.has(id)) && (s.claimed_by === undefined || s.claimed_by === sessionId));
@@ -2193,8 +2239,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger claim", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("claim", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("claim", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         let slices = ledger.slices ?? [];
         const claimed = [];
         const lines = [];
@@ -2224,8 +2273,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger await-human", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("await-human", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("await-human", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "await-human");
         } catch (e) {
@@ -2254,8 +2306,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger scope-token", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("scope-token", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("scope-token", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "scope-token");
         } catch (e) {
@@ -2285,8 +2340,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger checkpoint", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("checkpoint", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("checkpoint", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "checkpoint");
         } catch (e) {
@@ -2339,8 +2397,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger hold", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("hold", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("hold", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "hold");
         } catch (e) {
@@ -2383,8 +2444,11 @@ Review and fix with:
         const ledger = readLedger(runPath);
         if (!ledger)
           return errEnvelope("ledger milestone-signoff", "NOT_FOUND", `no ledger at ${runPath}`, 1);
-        if (ledger.motive && ledger.motive !== motive)
-          return motiveMismatchError("milestone-signoff", motive, ledger.motive, runPath);
+        {
+          const g = checkMotiveGuard("milestone-signoff", ledger, motive, runPath);
+          if (g)
+            return g;
+        }
         try {
           assertWriteToken(ledger, flags["token"], "milestone-signoff");
         } catch (e) {
@@ -25183,12 +25247,8 @@ var init_fm = __esm(() => {
 import { readFile, writeFile } from "fs/promises";
 import { mkdirSync as mkdirSync4 } from "fs";
 import path5 from "path";
-async function writeDecision(opts) {
-  const { repoRoot, tracker, motive: motive2, data } = opts;
-  const normalizedId = DecisionSchema.parse({ id: data.id }).id;
-  const fm = {
-    id: normalizedId
-  };
+function buildDecisionFm(data) {
+  const fm = { id: data.id };
   if (data.status !== undefined)
     fm.status = data.status;
   if (data.kind !== undefined)
@@ -25204,10 +25264,33 @@ async function writeDecision(opts) {
     fm.related = data.related.map((r) => r.startsWith("[[") ? r : wikilink(r));
   }
   if (data.motive !== undefined) {
-    if (data.motive.startsWith("[[")) {
-      fm.motive = data.motive;
-    } else {
-      fm.motive = wikilink(`motives/${data.motive}/motive`, data.motive);
+    fm.motive = data.motive.startsWith("[[") ? data.motive : wikilink(`motives/${data.motive}/motive`, data.motive);
+  }
+  return fm;
+}
+function checkDecisionExtrasCollision(data) {
+  if (!data.extras)
+    return;
+  const fm = buildDecisionFm(data);
+  for (const [k, v] of Object.entries(data.extras)) {
+    if (k in fm && JSON.stringify(fm[k]) !== JSON.stringify(v)) {
+      return `Decision ${data.id}: extras key "${k}" collides with a canonically-written ` + `frontmatter field. Canonical value: ${JSON.stringify(fm[k])}, ` + `extras value: ${JSON.stringify(v)}. ` + `Add "${k}" to CANONICAL_DATA_KEYS in fromLegacyDecision or resolve the ` + `conflict before calling writeDecision.`;
+    }
+  }
+  return;
+}
+async function writeDecision(opts) {
+  const { repoRoot, tracker, motive: motive2, data } = opts;
+  const normalizedId = DecisionSchema.parse({ id: data.id }).id;
+  const fm = buildDecisionFm(data);
+  fm.id = normalizedId;
+  const collision = checkDecisionExtrasCollision(data);
+  if (collision)
+    throw new Error(collision);
+  if (data.extras) {
+    for (const [k, v] of Object.entries(data.extras)) {
+      if (!(k in fm))
+        fm[k] = v;
     }
   }
   const altBullets = data.alternatives.length > 0 ? data.alternatives.map((a) => `- ${a}`).join(`
@@ -25227,17 +25310,6 @@ async function writeDecision(opts) {
     ""
   ].join(`
 `);
-  if (data.extras) {
-    for (const [k, v] of Object.entries(data.extras)) {
-      if (k in fm) {
-        if (JSON.stringify(fm[k]) !== JSON.stringify(v)) {
-          throw new Error(`Decision ${data.id}: extras key "${k}" collides with a canonically-written ` + `frontmatter field. Canonical value: ${JSON.stringify(fm[k])}, ` + `extras value: ${JSON.stringify(v)}. ` + `Add "${k}" to CANONICAL_DATA_KEYS in fromLegacyDecision or resolve the ` + `conflict before calling writeDecision.`);
-        }
-        continue;
-      }
-      fm[k] = v;
-    }
-  }
   const dest = motiveDecisionPath(repoRoot, tracker, motive2, normalizedId);
   mkdirSync4(path5.dirname(dest), { recursive: true });
   await writeFile(dest, import_gray_matter.default.stringify(body, fm), "utf8");
@@ -28933,7 +29005,11 @@ async function migrateMotive(opts) {
     try {
       if (hasId) {
         const noteData = fromLegacyDecision(event);
-        if (!dryRun) {
+        if (dryRun) {
+          const collision = checkDecisionExtrasCollision(noteData);
+          if (collision)
+            throw new Error(collision);
+        } else {
           await writeDecision({ repoRoot, tracker: nextTracker, motive: slug, data: noteData });
         }
       } else {

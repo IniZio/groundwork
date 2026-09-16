@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 19d03a06bb6cc28761705c5db135291038c34d452a89cf099246e54205b6c8b0
+// @bundle-source-hash: e84ccbf6f949945dbcd2d827a1abff19579c5a69ba81656c2dcaafc1eb03e1f8
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -9333,6 +9333,8 @@ function cmdInit(args) {
   if (flags.motive != null)
     obj.motive = flags.motive;
   checkLedgerStrict(obj);
+  if (!obj.motive)
+    die('ledger init requires a motive \u2014 pass --motive <id> or include "motive" in the JSON input', 2);
   try {
     pruneStaleSessionLedgers(projectDir);
   } catch {}

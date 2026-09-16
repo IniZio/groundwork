@@ -22,7 +22,7 @@ import { estimateTokens } from './lib/doc-io.mjs'
 
 /** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
 const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
-const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger') // kept: init and help have no gw equivalent
+const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger') // kept: 'help' subcommand has no gw equivalent
 const GW_HOOK_BIN = path.resolve(_hooksDir, '../bin/gw-hook') // operational gw ledger commands
 const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'

@@ -205,14 +205,14 @@ describe("session-reminder hook — CLAUDE_ENV_FILE export", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pacing state injection
+// Wave-width notice injection
 
-describe("session-reminder hook — pacing state", () => {
+describe("session-reminder hook — wave-width notice", () => {
 	const baseLedger = {
 		active: true,
 		session_id: "sess-1",
 		write_token: "tok-abc",
-		brief: "Pacing test run",
+		brief: "Wave-width notice test run",
 		slices: [
 			{ id: "W1S1", wave: 1, status: "complete", behavior: "slice one" },
 			{ id: "W2S1", wave: 2, status: "pending", behavior: "slice two" },
@@ -221,12 +221,9 @@ describe("session-reminder hook — pacing state", () => {
 		gate: {},
 	};
 
-	it("does NOT emit pacing text when the ledger has no pacing field", () => {
+	it("does NOT emit wave-width notice when a wave has multiple impl slices pending", () => {
 		const ctx = runReminder(baseLedger);
 		expect(ctx).toContain("ACTIVE RUN — RESUME HERE");
-		expect(ctx).not.toContain("Pacing policy");
-		expect(ctx).not.toContain("Pacing state");
-		expect(ctx).not.toContain("Budget exhausted");
 		expect(ctx).not.toContain("reconsider whether it can run in parallel");
 	});
 

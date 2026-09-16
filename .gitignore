@@ -28,6 +28,8 @@ tmp/
 .groundwork/
 !test/fixtures/motive-corpus/.groundwork/
 !test/fixtures/motive-corpus/.groundwork/**
+!test/fixtures/journal-compile-parity/.groundwork/
+!test/fixtures/journal-compile-parity/.groundwork/**
 /groundwork/
 .opencode/background-tasks/
 .vscode/

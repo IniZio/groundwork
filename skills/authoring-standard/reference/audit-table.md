@@ -19,6 +19,6 @@ Template for per-skill audit files written to `.groundwork/motives/<slug>/audits
 | Original sentence | Classification | Destination or reason |
 |---|---|---|
 | "Always read the file before editing." | no-op | Model reads files before editing by default; removing this changes behaviour for no model. |
-| "Ledger CLI commands: `gw ledger init`, `gw ledger complete`…" | moved-to-pointer | Moved to `reference/ledger-commands.md`; body now reads "see `bin/ledger help`". |
+| "Ledger CLI commands: `gw ledger init`, `gw ledger complete`…" | moved-to-pointer | Moved to `reference/ledger-commands.md`; body now reads "see `gw ledger <subcommand>`". |
 | "Do not spawn a junior-orchestrator from a general-purpose agent." | already-hook-enforced | `src/gw/hook/nesting-guard.ts` mechanically blocks this spawn; prose adds no protection. |
 | "Commit after each wave to avoid accumulation." | dropped-with-reason | Covered by memory entry `uncommitted-wave-accumulation`; duplicating here would drift. |

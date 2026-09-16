@@ -17,9 +17,9 @@ Apply this test sentence by sentence before any other edits.
 
 ## 2. Restated environment
 
-**Failure:** a sentence copies what `bin/ledger help`, `package.json` scripts, or a hook already declares → the copy drifts on the next change, pointing agents at stale facts.
+**Failure:** a sentence copies what `gw ledger`, `package.json` scripts, or a hook already declares → the copy drifts on the next change, pointing agents at stale facts.
 
-Replace with a pointer (`bin/ledger help <cmd>`) or omit entirely. Cache only what the environment cannot show: the unwritten convention, the reason behind a choice, the gotcha no config confesses.
+Replace with a pointer to the relevant `gw ledger <subcommand>` or omit entirely. Cache only what the environment cannot show: the unwritten convention, the reason behind a choice, the gotcha no config confesses.
 
 ## 3. MUST-list
 
@@ -61,6 +61,6 @@ Reserve prose guards for steps the harness cannot cover: irreversible actions (d
 
 ## Completion
 
-Rewrite is complete when: `wc -w` on the skill file is ≤ 700; `scripts/check-skill-standard.mjs` exits 0; the skill's audit table at `.groundwork/motives/<slug>/audits/<skill>.md` has one row per removed or moved sentence and `scripts/check-skill-standard.mjs --audit <skill> <audit-file>` exits 0; description's leading word is an operative verb; no sentence duplicates `bin/ledger help` output.
+Rewrite is complete when: `wc -w` on the skill file is ≤ 700; `scripts/check-skill-standard.mjs` exits 0; the skill's audit table at `.groundwork/motives/<slug>/audits/<skill>.md` has one row per removed or moved sentence and `scripts/check-skill-standard.mjs --audit <skill> <audit-file>` exits 0; description's leading word is an operative verb; no sentence duplicates `gw ledger` output.
 
 For audit table columns and worked rows, see [`reference/audit-table.md`](reference/audit-table.md).

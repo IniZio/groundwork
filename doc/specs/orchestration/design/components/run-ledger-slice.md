@@ -1,6 +1,6 @@
 ---
 tags: [component, orchestration, slice, ledger]
-source: schemas/run-ledger.schema.json, hooks/ledger.mjs
+source: schemas/run-ledger.schema.json, src/gw/cli/commands/ledger.ts
 ---
 
 # Run-Ledger Slice

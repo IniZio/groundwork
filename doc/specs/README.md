@@ -20,7 +20,21 @@ Groundwork is an orchestrator-mode AI coding framework that classifies, delegate
 
 ## Scope
 
-This spec is partial. It covers four load-bearing behavioral areas established in RFC-0001: artifact records (C-ARTIFACT), enforcement hooks (C-ENFORCEMENT), the orchestration model (C-ORCHESTRATION), and the verification gate (C-VERIFICATION). It does not yet specify the four CLIs (`spec`, `ledger`, `rfc`, `journal`), the hooks beyond `orchestrator-impl-guard`, `nesting-guard`, `stop-gate`, `deslop-guard`, and `agent-model-guard`, the twenty-plus skills, or the session-start injection pipeline. Coverage grows incrementally: each decision in a motive's Decision Log is the traceability link using `origin_decision_ref`.
+This spec covers the following areas:
+
+- **Artifact records** ([`artifact`](artifact/)) — the three groundwork artifact types: run ledger, session journal, and spec tree.
+- **Enforcement** ([`enforcement`](enforcement/)) — all PreToolUse hook gates, including the orchestrator-impl-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, stop-gate, struggle-detector, deslop-guard, prose-negation-guard, prose-modality-guard, doc-read-guard, doc-size-guard, spec-guard, keyword-router, agent-model-guard, and the session-start injection pipeline (session-reminder).
+- **Orchestration model** ([`orchestration`](orchestration/)) — how the orchestrator classifies, delegates, and stays out of implementation.
+- **Verification gate** ([`verification`](verification/)) — advisor validation as the non-trivial-task completion gate.
+- **`gw ledger` CLI** ([`gw-cli`](gw-cli/)) — the nineteen ledger subcommands that read and mutate the run store.
+- **`journal` CLI and motive lifecycle** ([`journal-motive`](journal-motive/)) — journal CLI surface, motive on-disk layout, and DECISION authoring contract.
+- **Motive DAG** ([`motive-dag`](motive-dag/)) — the typed node/edge DAG as the canonical primary store for motive state.
+- **Agents and skills** ([`agents-skills`](agents-skills/)) — agent roster, skill registries, model assignments, and delegation topology.
+- **Spec tooling** ([`spec-tooling`](spec-tooling/)) — `spec`/`spec lint` CLI contracts, corpus invariants, and the coverage model.
+- **Token economy** ([`token-economy`](token-economy/)) — prose-compression rules, per-surface intensity levels, and forbidden output zones.
+- **Traceability** ([`traceability`](traceability/)) — links from spec requirements to ledger slices and verification evidence.
+
+Not yet specified: the `rfc` CLI surface. Coverage grows incrementally: each decision in a motive's Decision Log is the traceability link using `origin_decision_ref`.
 
 ---
 

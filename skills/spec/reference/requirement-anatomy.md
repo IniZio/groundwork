@@ -27,7 +27,7 @@ status: implemented
 
 ## ARTIFACT-R-001 — Ledger records slice completion {#artifact-r-001}
 
-**When** a vertical slice is marked complete via the ledger CLI, `hooks/ledger.mjs`
+**When** a vertical slice is marked complete via the ledger CLI, `src/gw/cli/commands/ledger.ts`
 **shall** persist the slice id, completion timestamp, and session id to
 `.groundwork/runs/<session_id>.json`.
 

@@ -110,7 +110,7 @@ gw ledger gate --motive <slug> advisor APPROVE \
   --rubric "All ACs verified against source; no parity gaps found"
 ```
 
-> The `write_token` is printed at `bin/ledger init` and re-surfaced in the SessionStart injection. Never pass it to subagents.
+> The `write_token` is printed at `gw ledger init` and re-surfaced in the SessionStart injection. Never pass it to subagents.
 
 ---
 

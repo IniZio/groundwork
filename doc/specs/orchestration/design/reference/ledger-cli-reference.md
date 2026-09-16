@@ -1,6 +1,6 @@
 ---
 tags: [reference, orchestration, ledger, cli]
-source: hooks/ledger.mjs (HELP constant), src/gw/hook/stop-gate.ts, hooks/session-reminder.mjs
+source: src/gw/cli/commands/ledger.ts, src/gw/hook/stop-gate.ts, hooks/session-reminder.mjs
 ---
 
 # Ledger CLI Reference
@@ -11,7 +11,7 @@ source: hooks/ledger.mjs (HELP constant), src/gw/hook/stop-gate.ts, hooks/sessio
 
 ## Command reference
 
-_Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logic in `src/gw/hook/stop-gate.ts`._
+_Derived from the command registry in `src/gw/cli/commands/ledger.ts` and the enforcement logic in `src/gw/hook/stop-gate.ts`._
 
 | Command | Fields written / read | write_token required? | Notes |
 |---------|----------------------|----------------------|-------|

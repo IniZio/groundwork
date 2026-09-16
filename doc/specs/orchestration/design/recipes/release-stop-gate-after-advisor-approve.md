@@ -18,7 +18,7 @@ End a session cleanly, with the stop-gate allowing the stop rather than blocking
 
 - All implementation slices must be `complete` or `skipped`
 - The advisor (`groundwork:advisor`) has been invoked with real evidence — not a filtered test run
-- You have the `write_token` (printed at `bin/ledger init`; re-surfaced in the SessionStart injection)
+- You have the `write_token` (printed at `gw ledger init`; re-surfaced in the SessionStart injection)
 - The `write_token` must remain orchestrator-only — never pass it to a subagent
 
 ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: dad59e49ad4f24f89660d935dbb8b5712f8216c2563d1605e31900fde3417666
+// @bundle-source-hash: 1da3cf4ad16a773638cd106774ad725267390876d6cf4603f25fe3451ecb4355
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -8702,9 +8702,10 @@ var HELP = {
   },
   init: {
     summary: "write the initial ledger atomically from a JSON file or stdin",
-    usage: "ledger init <file|-> [--motive <id>] [--token <existing-token>] [--force]",
+    usage: "ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]",
     flags: [
       "--motive <id>        motive id to stamp on the ledger (overrides JSON input)",
+      "--session <id>       override session id (default: CLAUDE_CODE_SESSION_ID env)",
       "--token <t>          write-token of the existing active run (required to overwrite a tokened live run)",
       "--force              overwrite a tokenless active run; prints victim motive and slice count before overwriting"
     ]
@@ -9311,7 +9312,7 @@ function cmdInit(args) {
   const { flags, positionals } = parseFlags(argv);
   const src = positionals[0];
   if (!src)
-    die("usage: ledger init <file|-> [--motive <id>] [--token <existing-token>]", 2);
+    die("usage: ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]", 2);
   let obj = {};
   if (src) {
     let raw;

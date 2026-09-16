@@ -445,9 +445,10 @@ const HELP = {
   },
   init: {
     summary: 'write the initial ledger atomically from a JSON file or stdin',
-    usage: 'ledger init <file|-> [--motive <id>] [--token <existing-token>] [--force]',
+    usage: 'ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]',
     flags: [
       '--motive <id>        motive id to stamp on the ledger (overrides JSON input)',
+      '--session <id>       override session id (default: CLAUDE_CODE_SESSION_ID env)',
       '--token <t>          write-token of the existing active run (required to overwrite a tokened live run)',
       '--force              overwrite a tokenless active run; prints victim motive and slice count before overwriting',
     ],
@@ -1053,7 +1054,7 @@ function cmdInit(args) {
   const { flags, positionals } = parseFlags(argv)
   const src = positionals[0]
 
-  if (!src) die('usage: ledger init <file|-> [--motive <id>] [--token <existing-token>]', 2)
+  if (!src) die('usage: ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]', 2)
 
   let obj = {}
 

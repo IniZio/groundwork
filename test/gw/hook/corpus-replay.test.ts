@@ -25,6 +25,7 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   statSync,
   existsSync,
 } from 'node:fs'
@@ -330,6 +331,16 @@ for (const eventHooks of Object.values(_hooksJson.hooks)) {
   }
 }
 
+const _gwHookNames: string[] = []
+for (const eventHooks of Object.values(_hooksJson.hooks)) {
+  for (const entry of eventHooks) {
+    for (const h of entry.hooks) {
+      const m = (h.command ?? '').match(/bin\/gw-hook hook (\S+)/)
+      if (m && !_gwHookNames.includes(m[1])) _gwHookNames.push(m[1])
+    }
+  }
+}
+
 describe('hook exec-bit and shim-spawn', () => {
   for (const hookFile of _allHookFiles) {
     it(`hooks/${hookFile} has exec bit set`, () => {
@@ -447,4 +458,30 @@ Slice note body.
     // No active run for this session → fail-open → ALLOW
     expect(decision).toBe('ALLOW')
   })
+})
+
+// ---------------------------------------------------------------------------
+// Parity-corpus registration coverage (AC-8)
+// ---------------------------------------------------------------------------
+
+describe('gw hook parity-corpus registration coverage', () => {
+  it('hooks.json contains ≥1 bin/gw-hook hook registration', () => {
+    expect(_gwHookNames.length).toBeGreaterThan(0)
+  })
+
+  for (const name of _gwHookNames) {
+    it(`parity-corpus/${name}/ exists and contains ≥1 fixture`, () => {
+      const corpusDir = join(FIXTURE_ROOT, name)
+      const expectedPath = `test/fixtures/parity-corpus/${name}/`
+      expect(
+        existsSync(corpusDir),
+        `hook '${name}': missing parity-corpus directory — expected ${expectedPath}`,
+      ).toBe(true)
+      const count = readdirSync(corpusDir).filter(f => f.endsWith('.json')).length
+      expect(
+        count,
+        `hook '${name}': ${expectedPath} has 0 fixtures`,
+      ).toBeGreaterThan(0)
+    })
+  }
 })

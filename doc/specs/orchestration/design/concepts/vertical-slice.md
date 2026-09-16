@@ -1,7 +1,7 @@
 ---
 tags: [concept, orchestration, slice]
 realizes: "[[../../requirements/orchestration-r-002-ledger-fog-slice-tracks-open-questions-without-blocking-frontier|R-002]]"
-source: schemas/run-ledger.schema.json, hooks/ledger.mjs
+source: schemas/run-ledger.schema.json, src/gw/cli/commands/ledger.ts
 ---
 
 # Vertical Slice

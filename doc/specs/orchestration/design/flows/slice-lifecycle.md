@@ -1,7 +1,7 @@
 ---
 tags: [flow, orchestration, slice]
 realizes: "[[../../requirements/orchestration-r-002-ledger-fog-slice-tracks-open-questions-without-blocking-frontier|R-002]]"
-source: hooks/ledger.mjs, schemas/run-ledger.schema.json
+source: src/gw/cli/commands/ledger.ts, schemas/run-ledger.schema.json
 ---
 
 # Slice Lifecycle
@@ -12,7 +12,7 @@ source: hooks/ledger.mjs, schemas/run-ledger.schema.json
 
 ## State diagram
 
-_Derived from `KNOWN_SLICE_KEYS`, `TERMINAL_STATUSES`, and the `claim`/`set`/`complete`/`fog` commands in `hooks/ledger.mjs`._
+_Derived from `KNOWN_SLICE_KEYS`, `TERMINAL_STATUSES`, and the `claim`/`set`/`complete`/`fog` commands in `src/gw/cli/commands/ledger.ts`._
 
 ```mermaid
 stateDiagram-v2

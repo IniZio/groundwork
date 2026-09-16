@@ -11,13 +11,17 @@ import {
   computeSeal,
   keyPath,
   readKey,
+  SCHEMA_VERSION,
+  ensureKey,
 } from '../../../../hooks/lib/gate-seal.mjs'
+import { pruneStaleSessionLedgers } from '../../../../hooks/lib/ledger-io.mjs'
 
 // ---------------------------------------------------------------------------
 // Subcommand registry
 // ---------------------------------------------------------------------------
 
 export const LEDGER_SUBCOMMANDS = [
+  'init',
   'status',
   'add',
   'set',
@@ -328,6 +332,103 @@ function checkMotiveGuard(
 }
 
 // ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
+function cmdInitGw(rest: string[], repoRoot: string): GwEnvelope {
+  const { flags, positionals } = parseFlags(rest)
+  const src = positionals[0]
+
+  if (!src) {
+    return errEnvelope(
+      'ledger init',
+      'USAGE_ERROR',
+      'usage: gw ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>]',
+      2,
+    )
+  }
+
+  let obj: Record<string, unknown> = {}
+  let raw: string
+  try {
+    raw = src === '-' ? readFileSync(0, 'utf8') : readFileSync(src, 'utf8')
+  } catch (e) {
+    const err = e as { message?: string }
+    return errEnvelope('ledger init', 'IO_ERROR', `cannot read initial ledger from ${src}: ${err.message ?? String(e)}`, 1)
+  }
+  try {
+    obj = JSON.parse(raw) as Record<string, unknown>
+  } catch (e) {
+    const err = e as { message?: string }
+    return errEnvelope('ledger init', 'PARSE_ERROR', `initial ledger is not valid JSON: ${err.message ?? String(e)}`, 2)
+  }
+
+  delete obj['awaiting_human']
+  delete obj['gate']
+  delete obj['claimed_by']
+  delete obj['token_free']
+  if (obj['pacing'] !== null && typeof obj['pacing'] === 'object') {
+    const pacing = { ...(obj['pacing'] as Record<string, unknown>) }
+    delete pacing['grant']
+    obj['pacing'] = pacing
+  }
+
+  const sessionId = (flags['session'] as string | undefined) ?? currentSession()
+  const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId: sessionId ?? undefined })
+
+  const existing = readLedger(runPath)
+  if (existing?.active === true && existing?.write_token) {
+    const passedToken = flags['token'] as string | undefined
+    if (!passedToken || passedToken !== String(existing.write_token)) {
+      return errEnvelope(
+        'ledger init',
+        'ACTIVE_RUN',
+        'init would overwrite an active run — pass --token <write_token> to confirm overwrite,\n' +
+        '  or wait for the run to end (abandon/gate) before re-initializing.',
+        2,
+      )
+    }
+  }
+
+  const writeToken = randomBytes(8).toString('hex')
+  obj['write_token'] = writeToken
+  obj['schema_version'] = SCHEMA_VERSION
+
+  try {
+    const bcr = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' })
+    if (bcr.status === 0) obj['base_commit'] = (bcr.stdout as string).trim()
+  } catch { /* no git */ }
+
+  if (!('active' in obj)) obj['active'] = true
+  const stampedSession = sessionId ?? randomBytes(16).toString('hex')
+  obj['session_id'] = stampedSession
+
+  if (flags['motive'] != null) obj['motive'] = flags['motive']
+
+  if (!obj['motive']) {
+    return errEnvelope(
+      'ledger init',
+      'USAGE_ERROR',
+      'ledger init requires a motive — pass --motive <id> or include "motive" in the JSON input',
+      2,
+    )
+  }
+
+  try { pruneStaleSessionLedgers(repoRoot) } catch { /* best-effort */ }
+
+  const key = ensureKey({ projectDir: repoRoot, sessionId: stampedSession })
+  obj['gate'] = {}
+  ;(obj['gate'] as Record<string, unknown>)['seal'] = computeSeal(canonicalReleaseState(obj), key)
+
+  atomicWrite(runPath, obj as LedgerJson)
+
+  const n = Array.isArray(obj['slices']) ? (obj['slices'] as unknown[]).length : 0
+  return okEnvelope('ledger init', {
+    content: `ledger initialized: ${n} slices → ${runPath}\nwrite_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon)\n`,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Main dispatcher
 // ---------------------------------------------------------------------------
 
@@ -351,6 +452,12 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   }
 
   const rest = args.slice(1)
+
+  if (subcmd === 'init') {
+    const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
+    return cmdInitGw(rest, repoRoot)
+  }
+
   const { flags, positionals } = parseFlags(rest)
 
   const motiveFlag = flags['motive']

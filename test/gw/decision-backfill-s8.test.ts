@@ -3,7 +3,9 @@ import { readdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
 const REPO = join(import.meta.dirname, '../..')
-const DECISIONS_DIR = join(REPO, '.groundwork/motives/obsidian-native-groundwork/decisions')
+const DECISIONS_DIR = join(import.meta.dirname, '../fixtures/decisions')
+const VAULT_DIR = join(REPO, '.groundwork/motives/obsidian-native-groundwork/decisions')
+const VAULT_PRESENT = existsSync(VAULT_DIR)
 const PROTECTED = new Set(['D-24', 'D-25', 'D-26', 'D-27', 'D-28', 'D-29', 'D-30', 'D-31'])
 
 const BACKFILL_IDS = [
@@ -75,6 +77,17 @@ describe('S8-DECISION-BACKFILL — status preserved from source', () => {
       } else {
         expect(status).toBe('proposed')
       }
+    })
+  }
+})
+
+describe.skipIf(!VAULT_PRESENT)('S8 — vault consistency: fixture matches live vault (skipped when vault absent)', () => {
+  const ALL_IDS = [...BACKFILL_IDS, ...Array.from(PROTECTED)]
+  for (const id of ALL_IDS) {
+    it(`${id}.md fixture identical to vault`, () => {
+      const fixture = readFileSync(join(DECISIONS_DIR, `${id}.md`), 'utf8')
+      const vault = readFileSync(join(VAULT_DIR, `${id}.md`), 'utf8')
+      expect(fixture).toBe(vault)
     })
   }
 })

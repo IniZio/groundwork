@@ -5,6 +5,11 @@
  * Covers AC-13: round-trip id/status/rationale/alternatives/kind,
  * status distribution confirmed, writeDecision shape matches vault,
  * non-vacuity proven in-suite (S17 — non-vacuity block below).
+ *
+ * Portability: DECISIONS_DIR points to the committed fixture copy
+ * (test/fixtures/decisions/) so the suite runs on any machine without a live
+ * vault.  When the live vault is present a separate describe block verifies
+ * that fixture and vault are byte-identical (skipped in CI/fresh clones).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, existsSync } from 'fs'
@@ -15,7 +20,9 @@ import matter from 'gray-matter'
 import { writeDecision } from '#src/gw/store/motive/decision.js'
 
 const REPO = join(import.meta.dirname, '../..')
-const DECISIONS_DIR = join(REPO, '.groundwork/motives/obsidian-native-groundwork/decisions')
+const DECISIONS_DIR = join(import.meta.dirname, '../fixtures/decisions')
+const VAULT_DIR = join(REPO, '.groundwork/motives/obsidian-native-groundwork/decisions')
+const VAULT_PRESENT = existsSync(VAULT_DIR)
 
 const BACKFILL_IDS = [
   'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
@@ -262,6 +269,17 @@ describe('S17 — protected files: frontmatter id/status/motive pinned', () => {
       expect(data['id']).toBe(expected.id)
       expect(data['status']).toBe(expected.status)
       expect(data['motive']).toBe(expected.motive)
+    })
+  }
+})
+
+describe.skipIf(!VAULT_PRESENT)('S17 — vault consistency: fixture matches live vault (skipped when vault absent)', () => {
+  const ALL_IDS = [...BACKFILL_IDS, ...PROTECTED_IDS]
+  for (const id of ALL_IDS) {
+    it(`${id}.md fixture identical to vault`, () => {
+      const fixture = readFileSync(join(DECISIONS_DIR, `${id}.md`), 'utf8')
+      const vault = readFileSync(join(VAULT_DIR, `${id}.md`), 'utf8')
+      expect(fixture).toBe(vault)
     })
   }
 })

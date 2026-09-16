@@ -193,7 +193,7 @@ describe('AC8 — frontmatter schema monopoly', () => {
 // ============================================================
 describe('S4 — TicketSchema.type field', () => {
   const validTypes = [
-    'build', 'chore', 'choose', 'decision', 'design',
+    'analysis', 'build', 'chore', 'choose', 'decision', 'design',
     'enhancement', 'feat', 'fix', 'grill', 'model', 'research', 'spec',
   ] as const
 

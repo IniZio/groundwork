@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 951a44696d6590fa72bc983072813d516832446cd5d78daaca6fff4a1da01dd3
+// @bundle-source-hash: 8136a38eea426b804ce5c4779b27f3d30dd7395d439f4ff1e13289d752af6c7c
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -24900,12 +24900,28 @@ var init_decision = __esm(() => {
 });
 
 // src/gw/schema/ticket.ts
-var TicketSchema;
+var TicketType, TicketSchema;
 var init_ticket = __esm(() => {
   init_zod();
+  TicketType = exports_external.enum([
+    "analysis",
+    "build",
+    "chore",
+    "choose",
+    "decision",
+    "design",
+    "enhancement",
+    "feat",
+    "fix",
+    "grill",
+    "model",
+    "research",
+    "spec"
+  ]);
   TicketSchema = exports_external.looseObject({
     id: exports_external.string().optional(),
     title: exports_external.string().optional(),
+    type: TicketType.optional(),
     status: exports_external.enum(["open", "in-progress", "done", "cancelled"]).optional(),
     created: exports_external.string().optional(),
     tags: exports_external.array(exports_external.string()).optional(),
@@ -25145,6 +25161,8 @@ async function writeDecision(opts) {
   };
   if (data.status !== undefined)
     fm.status = data.status;
+  if (data.kind !== undefined)
+    fm.kind = data.kind;
   if (data.date !== undefined)
     fm.date = data.date;
   fm.rationale = data.rationale;
@@ -25156,7 +25174,11 @@ async function writeDecision(opts) {
     fm.related = data.related.map((r) => r.startsWith("[[") ? r : wikilink(r));
   }
   if (data.motive !== undefined) {
-    fm.motive = data.motive.startsWith("[[") ? data.motive : wikilink(data.motive);
+    if (data.motive.startsWith("[[")) {
+      fm.motive = data.motive;
+    } else {
+      fm.motive = wikilink(`motives/${data.motive}/motive`, data.motive);
+    }
   }
   const altBullets = data.alternatives.length > 0 ? data.alternatives.map((a) => `- ${a}`).join(`
 `) : "";
@@ -25175,6 +25197,12 @@ async function writeDecision(opts) {
     ""
   ].join(`
 `);
+  if (data.extras) {
+    for (const [k, v] of Object.entries(data.extras)) {
+      if (!(k in fm))
+        fm[k] = v;
+    }
+  }
   const dest = motiveDecisionPath(repoRoot, tracker, motive2, normalizedId);
   mkdirSync4(path5.dirname(dest), { recursive: true });
   await writeFile(dest, import_gray_matter.default.stringify(body, fm), "utf8");
@@ -25184,21 +25212,33 @@ function fromLegacyDecision(event) {
   const id = String(d.id ?? "");
   const date5 = event.ts ? event.ts.slice(0, 10) : undefined;
   const alternatives = Array.isArray(d.alternatives) ? d.alternatives.map(String) : [];
+  const status = d.status ?? "proposed";
+  const kind = d.kind !== undefined ? String(d.kind) : undefined;
+  const extras = {};
+  for (const [k, v] of Object.entries(d)) {
+    if (!CANONICAL_DATA_KEYS.has(k))
+      extras[k] = v;
+  }
+  if (event.rfc !== undefined && !("rfc" in extras))
+    extras.rfc = event.rfc;
   return {
     id,
     decision: String(d.decision ?? ""),
     rationale: String(d.rationale ?? ""),
     alternatives,
-    status: "accepted",
+    status,
+    kind,
     date: date5,
-    motive: event.motive
+    motive: event.motive,
+    extras: Object.keys(extras).length > 0 ? extras : undefined
   };
 }
-var import_gray_matter;
+var import_gray_matter, CANONICAL_DATA_KEYS;
 var init_decision2 = __esm(() => {
   init_schema();
   init_fm();
   import_gray_matter = __toESM(require_gray_matter(), 1);
+  CANONICAL_DATA_KEYS = new Set(["id", "decision", "rationale", "alternatives", "status", "kind"]);
 });
 
 // hooks/lib/journal-payload-validators.mjs
@@ -25308,7 +25348,14 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
         type: "DECISION",
         source: "cli:journal",
         motive: motive2,
-        data: { id: data["id"], decision: content.trim() },
+        data: {
+          id: data["id"],
+          decision: content.trim(),
+          status: data["status"] ?? "proposed",
+          rationale: data["rationale"] ?? null,
+          alternatives: Array.isArray(data["alternatives"]) ? data["alternatives"] : [],
+          kind: typeof data["kind"] === "string" ? data["kind"] : null
+        },
         msg: ""
       });
     } catch {}
@@ -28769,49 +28816,9 @@ var init_motive2 = __esm(() => {
 });
 
 // src/gw/migrate/runner.ts
-import { readdir as readdir2, readFile as readFile6, writeFile as writeFile5 } from "fs/promises";
-import { existsSync as existsSync13, mkdirSync as mkdirSync14 } from "fs";
+import { readdir as readdir2, readFile as readFile6 } from "fs/promises";
+import { existsSync as existsSync13 } from "fs";
 import path24 from "path";
-function decisionFilePath(repoRoot, tracker, motive2, id) {
-  return path24.join(repoRoot, tracker, "motives", motive2, "decisions", `${id}.md`);
-}
-async function writeDecisionDirect(opts) {
-  const { repoRoot, tracker, motive: motive2, id, decision: decision3, rationale, alternatives } = opts;
-  const fm = { id };
-  if (opts.status)
-    fm["status"] = opts.status;
-  if (opts.date)
-    fm["date"] = opts.date;
-  if (opts.rfc)
-    fm["rfc"] = opts.rfc;
-  if (opts.motiveSlug)
-    fm["motive"] = opts.motiveSlug;
-  const altBullets = alternatives.length > 0 ? alternatives.map((a) => `- ${a}`).join(`
-`) : "- (none)";
-  let body = [
-    decision3,
-    "",
-    "## Rationale",
-    "",
-    rationale || "(none)",
-    "",
-    "## Alternatives Considered",
-    "",
-    altBullets,
-    ""
-  ].join(`
-`);
-  if (opts.legacyExtra && Object.keys(opts.legacyExtra).length > 0) {
-    body += `
-## Legacy Data
-
-\`\`\`json
-` + JSON.stringify(opts.legacyExtra, null, 2) + "\n```\n";
-  }
-  const dest = decisionFilePath(repoRoot, tracker, motive2, id);
-  mkdirSync14(path24.dirname(dest), { recursive: true });
-  await writeFile5(dest, import_gray_matter11.default.stringify(body, fm), "utf8");
-}
 async function migrateMotive(opts) {
   const { slug, kind, sourceDir, repoRoot, nextTracker, decisionEvents, dryRun } = opts;
   const report = {
@@ -28891,43 +28898,25 @@ async function migrateMotive(opts) {
     try {
       if (hasId) {
         const noteData = fromLegacyDecision(event);
-        const legacyExtra = {};
-        for (const [k, v] of Object.entries(event.data ?? {})) {
-          if (!DECISION_KNOWN_FIELDS.has(k)) {
-            legacyExtra[k] = v;
-          }
-        }
         if (!dryRun) {
-          await writeDecisionDirect({
-            repoRoot,
-            tracker: nextTracker,
-            motive: slug,
-            id: noteData.id,
-            decision: noteData.decision,
-            rationale: noteData.rationale,
-            alternatives: noteData.alternatives,
-            status: noteData.status,
-            date: noteData.date,
-            motiveSlug: slug,
-            rfc: event.rfc,
-            legacyExtra: Object.keys(legacyExtra).length > 0 ? legacyExtra : undefined
-          });
+          await writeDecision({ repoRoot, tracker: nextTracker, motive: slug, data: noteData });
         }
       } else {
         const syntheticId = `D-LEGACY-${String(i + 1).padStart(3, "0")}`;
         report.synthetic_decisions++;
         if (!dryRun) {
-          await writeDecisionDirect({
+          await writeDecision({
             repoRoot,
             tracker: nextTracker,
             motive: slug,
-            id: syntheticId,
-            decision: event.msg ?? "",
-            rationale: "",
-            alternatives: [],
-            date: event.ts ? event.ts.slice(0, 10) : undefined,
-            motiveSlug: slug,
-            rfc: event.rfc
+            data: {
+              id: syntheticId,
+              decision: event.msg ?? "",
+              rationale: "",
+              alternatives: [],
+              date: event.ts ? event.ts.slice(0, 10) : undefined,
+              motive: slug
+            }
           });
         }
       }
@@ -28954,18 +28943,10 @@ async function migrateMotive(opts) {
   }
   return report;
 }
-var import_gray_matter11, DECISION_KNOWN_FIELDS;
+var import_gray_matter11;
 var init_runner = __esm(() => {
   init_motive2();
   import_gray_matter11 = __toESM(require_gray_matter(), 1);
-  DECISION_KNOWN_FIELDS = new Set([
-    "id",
-    "decision",
-    "rationale",
-    "alternatives",
-    "status",
-    "date"
-  ]);
 });
 
 // src/gw/migrate/index.ts
@@ -28976,7 +28957,7 @@ async function migrate(opts) {
   const {
     repoRoot,
     legacyTracker = ".groundwork",
-    nextTracker = ".groundwork/next",
+    nextTracker = DEFAULT_TRACKER_PATH,
     motive: motiveFilter,
     dryRun
   } = opts;
@@ -29052,6 +29033,7 @@ async function migrate(opts) {
   return { motives, summary };
 }
 var init_migrate = __esm(() => {
+  init_layout();
   init_journal_reader();
   init_runner();
 });

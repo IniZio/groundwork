@@ -59,7 +59,7 @@ function initLedger(
 	slices: unknown[] = [],
 ): string {
 	const initFile = path.join(projectDir, "init.json");
-	writeFileSync(initFile, JSON.stringify({ brief, slices }));
+	writeFileSync(initFile, JSON.stringify({ brief, slices, motive: "test-e2e" }));
 	const r = spawnSync(LEDGER_BIN, ["init", initFile], {
 		encoding: "utf8",
 		env: {

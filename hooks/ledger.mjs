@@ -1083,6 +1083,7 @@ function cmdInit(args) {
   obj.session_id = sessionId ?? randomBytes(16).toString('hex')
   if (flags.motive != null) obj.motive = flags.motive
   checkLedgerStrict(obj)
+  if (!obj.motive) die('ledger init requires a motive — pass --motive <id> or include "motive" in the JSON input', 2)
   try { pruneStaleSessionLedgers(projectDir) } catch { /* best-effort */ }
   const key = ensureKey({ projectDir, sessionId: obj.session_id })
   obj.gate = obj.gate ?? {}

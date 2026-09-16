@@ -444,6 +444,7 @@ describe("AC-15: remediation strings use correct flag-based syntax", () => {
 		writeLedgerForCli(projectDir, {
 			version: 1,
 			active: true,
+			motive: "test-motive",
 			session_id: LEDGER_TEST_SESS,
 			write_token: "test-tok-remediation",
 			brief: "remediation test",
@@ -469,6 +470,7 @@ describe("AC-15: remediation strings use correct flag-based syntax", () => {
 		writeLedgerForCli(projectDir, {
 			version: 1,
 			active: true,
+			motive: "test-motive",
 			session_id: LEDGER_TEST_SESS,
 			write_token: "test-tok-remediation",
 			brief: "remediation test",

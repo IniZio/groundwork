@@ -31,6 +31,7 @@ beforeEach(() => {
 		seed,
 		JSON.stringify({
 			active: true,
+			motive: "gw-seal-regress",
 			slices: [{ id: "T1", wave: 0, blocked_by: [], status: "pending", acceptance: ["a"] }],
 			gate: {},
 		}),
@@ -76,16 +77,11 @@ describe("ledger init — seal key survives the stale-ledger prune", () => {
 			// 2. Re-init the SAME session id — this is the defect path.
 			const second =
 				mode === "stdin"
-					? run(["init", "-"], SESSION, JSON.stringify({ active: true, slices: [{ id: "T1", wave: 0, blocked_by: [], status: "pending", acceptance: ["a"] }], gate: {} }))
+					? run(["init", "-"], SESSION, JSON.stringify({ active: true, motive: "gw-seal-regress", slices: [{ id: "T1", wave: 0, blocked_by: [], status: "pending", acceptance: ["a"] }], gate: {} }))
 					: run(["init", seed]);
 			expect(second.code).toBe(0);
 			expect(existsSync(jsonFile())).toBe(true);
-
-			// 3. The key must exist alongside the ledger init just reported as written.
 			expect(existsSync(keyFile())).toBe(true);
-
-			// 4. The real defect path: a token-authenticated write must succeed.
-			//    Before the fix this failed with ENOENT on the .seal.key.
 			const write = run(["complete", "T1", "--token", tokenOf(second.stdout)]);
 			expect(write.stderr + write.stdout).not.toMatch(/ENOENT/);
 			expect(write.code).toBe(0);

@@ -107,6 +107,7 @@ function initSealedLedger(): string {
 	writeFileSync(
 		initFile,
 		JSON.stringify({
+			motive: "sealed-vectors",
 			slices: [
 				{ id: "S1", status: "pending", desc: "test slice 1" },
 				{ id: "S2", status: "pending", desc: "test slice 2" },

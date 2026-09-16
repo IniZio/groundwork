@@ -163,7 +163,7 @@ describe("ledger CLI — abandon & status", () => {
 describe("ledger CLI — init & atomicity", () => {
 	it("init writes the initial ledger from a file", () => {
 		const src = path.join(projectDir, "plan.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "X1", status: "pending" }], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [{ id: "X1", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -172,7 +172,7 @@ describe("ledger CLI — init & atomicity", () => {
 
 	it("init reads from stdin with '-'", () => {
 		rmSync(ledgerFile);
-		run(["init", "-"], JSON.stringify({ active: true, slices: [], gate: {} }));
+		run(["init", "-"], JSON.stringify({ active: true, motive: "ledger-test", slices: [], gate: {} }));
 		expect(readLedger().active).toBe(true);
 	});
 
@@ -198,7 +198,7 @@ describe("ledger CLI — init & atomicity", () => {
 
 	it("init generates a write_token hex string and prints it once to stdout", () => {
 		const src = path.join(projectDir, "plan.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [], gate: {} }));
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -230,7 +230,7 @@ describe("ledger CLI — init & atomicity", () => {
 
 	it("init always mints a write_token (token-free escape hatch retired per D-6)", () => {
 		const src = path.join(projectDir, "plan.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [], gate: {} }));
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -342,7 +342,7 @@ describe("ledger CLI — fail-closed (tokenless ledger)", () => {
 describe("ledger CLI — sealed-regime vector coverage", () => { // Sealed-regime enforcement — vectors 1-4 (S2-AC1 through S2-AC5)
 	it("init mints schema_version, gate.seal, and writes the key file (S2-AC1)", () => { // S2-AC1: init mints schema_version + key + seal
 		const src = path.join(projectDir, "plan.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "X1", status: "pending" }], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [{ id: "X1", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile, { force: true });
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -356,7 +356,7 @@ describe("ledger CLI — sealed-regime vector coverage", () => { // Sealed-regim
 
 	it("init refuses to overwrite an active tokened run without --token (S2-AC2, vectors 1&2)", () => { // S2-AC2: init refuses to overwrite active tokened run without --token
 		const src = path.join(projectDir, "plan.json"); // baseLedger already written with write_token: TEST_TOKEN, active: true
-		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [], gate: {} }));
 		const r = run(["init", src]); // No token → rejected
 		expect(r.code).toBe(2);
 		expect(r.stderr).toContain("--token");
@@ -405,7 +405,7 @@ describe("ledger CLI — sealed-regime vector coverage", () => { // Sealed-regim
 
 	it("complete re-seals the ledger in the sealed regime (S2-AC5)", () => { // S2-AC5: complete and gate re-seal after writing
 		const src = path.join(projectDir, "init-plan.json"); // Use init to create a properly sealed ledger
-		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "T1", status: "pending" }], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [{ id: "T1", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile, { force: true });
 		const initR = run(["init", src]);
 		expect(initR.code).toBe(0);
@@ -419,7 +419,7 @@ describe("ledger CLI — sealed-regime vector coverage", () => { // Sealed-regim
 
 	it("gate re-seals the ledger in the sealed regime (S2-AC5)", () => {
 		const src = path.join(projectDir, "init-plan2.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [{ id: "T2", status: "pending" }], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [{ id: "T2", status: "pending" }], gate: {} }));
 		rmSync(ledgerFile, { force: true });
 		const initR = run(["init", src]);
 		expect(initR.code).toBe(0);
@@ -641,6 +641,7 @@ describe("ledger CLI — init kind preservation", () => {
 			src,
 			JSON.stringify({
 				active: true,
+				motive: "ledger-test",
 				slices: [
 					{ id: "P1", status: "pending", kind: "design" },
 					{ id: "P2", status: "pending" },
@@ -663,6 +664,7 @@ describe("ledger CLI — init kind preservation", () => {
 			src,
 			JSON.stringify({
 				active: true,
+				motive: "ledger-test",
 				slices: [{ id: "P2", status: "pending" }],
 				gate: {},
 			}),
@@ -680,6 +682,7 @@ describe("ledger CLI — init kind preservation", () => {
 			src,
 			JSON.stringify({
 				active: true,
+				motive: "ledger-test",
 				slices: [
 					{ id: "M1", status: "pending", kind: "plan" },
 					{ id: "M2", status: "pending" },
@@ -703,14 +706,14 @@ describe("ledger CLI — per-session isolation", () => {
 	it("two different session ids write to different files and don't interfere", () => {
 		// Init run for session aaa
 		const srcA = path.join(projectDir, "plan-aaa.json");
-		writeFileSync(srcA, JSON.stringify({ active: true, brief: "run-aaa", slices: [{ id: "A1", status: "pending" }], gate: {} }));
+		writeFileSync(srcA, JSON.stringify({ active: true, motive: "ledger-test", brief: "run-aaa", slices: [{ id: "A1", status: "pending" }], gate: {} }));
 		const rA = runWithSession("aaa", ["init", srcA]);
 		expect(rA.code).toBe(0);
 		expect(rA.stdout).toContain(".groundwork/runs/aaa.json");
 
 		// Init run for session bbb
 		const srcB = path.join(projectDir, "plan-bbb.json");
-		writeFileSync(srcB, JSON.stringify({ active: true, brief: "run-bbb", slices: [{ id: "B1", status: "pending" }, { id: "B2", status: "pending" }], gate: {} }));
+		writeFileSync(srcB, JSON.stringify({ active: true, motive: "ledger-test", brief: "run-bbb", slices: [{ id: "B1", status: "pending" }, { id: "B2", status: "pending" }], gate: {} }));
 		const rB = runWithSession("bbb", ["init", srcB]);
 		expect(rB.code).toBe(0);
 		expect(rB.stdout).toContain(".groundwork/runs/bbb.json");
@@ -777,7 +780,7 @@ describe("ledger CLI — per-session isolation", () => {
 
 	it("init stamps session_id from CLAUDE_CODE_SESSION_ID into the ledger", () => {
 		const src = path.join(projectDir, "plan-sid.json");
-		writeFileSync(src, JSON.stringify({ active: true, slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ active: true, motive: "ledger-test", slices: [], gate: {} }));
 		const r = runWithSession("my-sess-42", ["init", src]);
 		expect(r.code).toBe(0);
 		const lp = path.join(projectDir, ".groundwork", "runs", "my-sess-42.json");
@@ -861,7 +864,7 @@ describe("ledger CLI — negative ownership", () => {
 
 		// Session A initialises its own run — uses per-session path runs/sess-A.json.
 		const srcFile = path.join(projectDir, "plan-a.json");
-		writeFileSync(srcFile, JSON.stringify({ brief: "session A run", slices: [] }));
+		writeFileSync(srcFile, JSON.stringify({ brief: "session A run", motive: "ledger-test", slices: [] }));
 		const rA = runWithSession("sess-A", ["init", srcFile]);
 		expect(rA.code).toBe(0);
 		expect(rA.stdout).toContain(".groundwork/runs/sess-A.json");
@@ -1119,7 +1122,7 @@ describe("ledger CLI — gate.advisor forms survive validation", () => {
 describe("ledger CLI — init sets active:true", () => {
 	it("init from a JSON file without active sets active:true in the written ledger", () => {
 		const src = path.join(projectDir, "no-active.json");
-		writeFileSync(src, JSON.stringify({ session_id: "x", slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ session_id: "x", motive: "ledger-test", slices: [], gate: {} }));
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -1129,7 +1132,7 @@ describe("ledger CLI — init sets active:true", () => {
 
 	it("init from a JSON file that already has active:true keeps it true", () => {
 		const src = path.join(projectDir, "with-active.json");
-		writeFileSync(src, JSON.stringify({ session_id: "x", active: true, slices: [], gate: {} }));
+		writeFileSync(src, JSON.stringify({ session_id: "x", active: true, motive: "ledger-test", slices: [], gate: {} }));
 		rmSync(ledgerFile);
 		const r = run(["init", src]);
 		expect(r.code).toBe(0);
@@ -1290,21 +1293,19 @@ describe("ledger CLI — motive propagation to journal events", () => {
 	});
 
 	it("ledger complete without motive falls back to synthetic motive (backward compat)", () => {
-		// A ledger WITHOUT motive field — should emit synthetic motive
 		const SESSION_ID = "no-motive-session";
-		const src = path.join(projectDir, "plan-no-motive.json");
-		writeFileSync(src, JSON.stringify({
+		const BACKWARD_TOKEN = "backwardcompat12";
+		const runsDir = path.join(projectDir, ".groundwork", "runs");
+		mkdirSync(runsDir, { recursive: true });
+		writeFileSync(path.join(runsDir, `${SESSION_ID}.json`), JSON.stringify({
 			active: true,
 			session_id: SESSION_ID,
-			// no motive field
+			write_token: BACKWARD_TOKEN,
 			slices: [{ id: "NM1", status: "pending" }],
 			gate: {},
 		}));
-		const initR = runWithSession(SESSION_ID, ["init", src]);
-		expect(initR.code).toBe(0);
-		const token = extractToken(initR.stdout);
 
-		runWithSession(SESSION_ID, ["complete", "NM1", "--token", token]);
+		runWithSession(SESSION_ID, ["complete", "NM1", "--token", BACKWARD_TOKEN]);
 
 		const journalDir = path.join(projectDir, ".groundwork", "journal");
 		const shards = readdirSync(journalDir).filter((f) => f.endsWith(".jsonl"));
@@ -1721,6 +1722,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		const src = path.join(projectDir, "s8-ac1.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
+			motive: "ledger-test",
 			slices: [],
 			gate: {},
 			scoped_tokens: [{ scope: "junior-1", token: "aaaabbbbccccdddd" }],
@@ -1789,6 +1791,7 @@ describe("ledger schema validation — scoped_tokens and top-level additionalPro
 		const src = path.join(projectDir, "s8-motive-ref.json");
 		writeFileSync(src, JSON.stringify({
 			active: true,
+			motive: "ledger-test",
 			slices: [],
 			gate: {},
 			motive_ref: "junior-orchestrator-parity",

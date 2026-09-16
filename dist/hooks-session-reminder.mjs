@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 747ddabb238b6dc027ec64b9f2217bba2ed566dfedf775ac397f0af966ebb8f6
+// @bundle-source-hash: dad59e49ad4f24f89660d935dbb8b5712f8216c2563d1605e31900fde3417666
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10887,6 +10887,30 @@ function appendEvent(shardPath, event) {
   }
 }
 
+// hooks/lib/ledger-subcommands.mjs
+var LEDGER_SUBCOMMANDS = [
+  "init",
+  "stamp-motive",
+  "status",
+  "add",
+  "set",
+  "complete",
+  "rm",
+  "show",
+  "view",
+  "gate",
+  "abandon",
+  "fog",
+  "frontier",
+  "claim",
+  "await-human",
+  "autopilot",
+  "checkpoint",
+  "hold",
+  "scope-token",
+  "milestone-signoff"
+];
+
 // hooks/session-reminder.mjs
 var _hooksDir = path5.dirname(fileURLToPath2(import.meta.url));
 var LEDGER_BIN = path5.resolve(_hooksDir, "../bin/ledger");
@@ -11138,7 +11162,7 @@ var cliToolsBlock = `
 
 ## Groundwork CLI tools (absolute paths \u2014 use these, not bin/)
 
-Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`;
+Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: ${LEDGER_SUBCOMMANDS.join(", ")} \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`;
 var additionalContext = reminder + cliToolsBlock;
 try {
   const envFile = process.env.CLAUDE_ENV_FILE;

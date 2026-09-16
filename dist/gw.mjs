@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: 793dd04ddd8482067cd17a5ba9cd7061f19c5e255effae7468d29a5672420496
+// @bundle-source-hash: e61c70edf84ebd4223382fb231c77a9465dbe20b3b2b157d927858da8d7f06e3
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1678,7 +1678,7 @@ function motiveMismatchError(cmdName, expected, actual, resolvedPath) {
   return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISMATCH", `--motive "${expected}" does not match the resolved ledger's recorded motive "${actual}" (${resolvedPath})`, 1);
 }
 function motiveMissingError(cmdName, motiveArg, resolvedPath) {
-  return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISSING", `ledger at ${resolvedPath} has no recorded motive \u2014 cannot verify --motive "${motiveArg}"; to stamp the motive, run: bin/ledger init ${resolvedPath} --motive ${motiveArg} --token <write_token>`, 1);
+  return errEnvelope(`ledger ${cmdName}`, "MOTIVE_MISSING", `ledger at ${resolvedPath} has no recorded motive \u2014 cannot verify --motive "${motiveArg}"; to stamp the motive without overwriting the run, use: gw ledger stamp-motive ${motiveArg}`, 1);
 }
 function checkMotiveGuard(cmdName, ledger, motiveArg, resolvedPath) {
   if (!ledger.motive)
@@ -1691,7 +1691,7 @@ function cmdInitGw(rest, repoRoot) {
   const { flags, positionals } = parseFlags2(rest);
   const src = positionals[0];
   if (!src) {
-    return errEnvelope("ledger init", "USAGE_ERROR", "usage: gw ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>]", 2);
+    return errEnvelope("ledger init", "USAGE_ERROR", "usage: gw ledger init <file|-> [--motive <id>] [--session <id>] [--token <existing-token>] [--force]", 2);
   }
   let obj = {};
   let raw;
@@ -1728,6 +1728,11 @@ function cmdInitGw(rest, repoRoot) {
       }
     } else if (!flags["force"]) {
       return errEnvelope("ledger init", "ACTIVE_RUN", "init would overwrite a tokenless active run \u2014 pass --force to confirm, or abandon/gate the run first.", 2);
+    } else {
+      const n2 = Array.isArray(existing.slices) ? existing.slices.length : 0;
+      const m = existing.motive ?? "(none)";
+      process.stderr.write(`WARNING: --force: destroying active run \u2014 motive: ${m}, ${n2} slices
+`);
     }
   }
   const writeToken = randomBytes2(8).toString("hex");
@@ -1761,6 +1766,35 @@ write_token: ${writeToken}  (orchestrator: pass --token on gate/complete/abandon
 `
   });
 }
+function cmdStampMotiveGw(rest, repoRoot) {
+  const { flags, positionals } = parseFlags2(rest);
+  const newMotive = positionals[0];
+  if (!newMotive) {
+    return errEnvelope("ledger stamp-motive", "USAGE_ERROR", "usage: gw ledger stamp-motive <motive-slug> [--session <id>] [--token <write_token>]", 2);
+  }
+  const explicitSession = flags["session"];
+  const sessionId = explicitSession ?? currentSession();
+  if (!sessionId) {
+    return errEnvelope("ledger stamp-motive", "NO_SESSION", "CLAUDE_CODE_SESSION_ID is not set \u2014 pass --session <id> or run inside a Claude Code session", 1);
+  }
+  const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId });
+  const ledger = readLedger(runPath);
+  if (!ledger) {
+    return errEnvelope("ledger stamp-motive", "NOT_FOUND", `no ledger at ${runPath}`, 1);
+  }
+  if (ledger.motive) {
+    return errEnvelope("ledger stamp-motive", "ALREADY_STAMPED", `ledger at ${runPath} already has motive "${ledger.motive}" \u2014 use gw ledger init --token <write_token> to reinitialize`, 1);
+  }
+  if (ledger.write_token) {
+    const passedToken = flags["token"];
+    if (!passedToken || passedToken !== String(ledger.write_token)) {
+      return errEnvelope("ledger stamp-motive", "AUTH_REQUIRED", "ledger has a write_token \u2014 pass --token <write_token> to stamp the motive on a tokened run", 1);
+    }
+  }
+  atomicWrite(runPath, { ...ledger, motive: newMotive });
+  return okEnvelope("ledger stamp-motive", { content: `motive stamped: ${newMotive} \u2192 ${runPath}
+` });
+}
 async function run2(args, cwd) {
   const subcmd = args[0];
   if (!subcmd) {
@@ -1774,6 +1808,10 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
   if (subcmd === "init") {
     const repoRoot2 = process.env["CLAUDE_PROJECT_DIR"] || cwd;
     return cmdInitGw(rest, repoRoot2);
+  }
+  if (subcmd === "stamp-motive") {
+    const repoRoot2 = process.env["CLAUDE_PROJECT_DIR"] || cwd;
+    return cmdStampMotiveGw(rest, repoRoot2);
   }
   const { flags, positionals } = parseFlags2(rest);
   const motiveFlag = flags["motive"];
@@ -2255,7 +2293,18 @@ Review and fix with:
             }
           }
         }
-        const advisorField = citation || rubric ? { verdict, ...rubric ? { rubric } : {}, ...citation ? { citation } : {} } : verdict;
+        const headResultForGate = spawnSync2("git", ["rev-parse", "--verify", "HEAD"], {
+          cwd,
+          encoding: "utf8",
+          timeout: 3000
+        });
+        const gateCommit = headResultForGate.status === 0 ? (headResultForGate.stdout ?? "").trim() || undefined : undefined;
+        const advisorField = citation || rubric || gateCommit ? {
+          verdict,
+          ...rubric ? { rubric } : {},
+          ...citation ? { citation } : {},
+          ...gateCommit ? { commit: gateCommit } : {}
+        } : verdict;
         const newGate = {
           ...gateWithoutSeal(ledger.gate ?? {}),
           advisor: advisorField
@@ -2612,6 +2661,7 @@ var init_ledger = __esm(() => {
   init_ledger_io();
   LEDGER_SUBCOMMANDS = [
     "init",
+    "stamp-motive",
     "status",
     "add",
     "set",
@@ -27408,6 +27458,22 @@ var REINFORCEMENT_CAP = 12, NEW_LAYOUT_TRACKER = ".groundwork/next", run12 = asy
     const advisorApproved = advisorVerdict(ledger.gate) === "APPROVE";
     const workRemains = incomplete.length > 0 || !advisorApproved;
     if (!workRemains) {
+      const headForStaleness = spawnSync5("git", ["rev-parse", "--verify", "HEAD"], {
+        cwd: projectDir,
+        encoding: "utf8",
+        timeout: 3000
+      });
+      const headCommitForStaleness = headForStaleness.status === 0 ? (headForStaleness.stdout ?? "").trim() : null;
+      if (headCommitForStaleness !== null) {
+        const advisorFieldRaw = ledger.gate?.advisor;
+        const recordedCommit = advisorFieldRaw && typeof advisorFieldRaw === "object" ? String(advisorFieldRaw.commit ?? "") : "";
+        if (!recordedCommit) {
+          return block("Verdict VOID \u2014 no commit recorded on the APPROVE " + "(written before staleness tracking was added). " + "Re-run: `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>`");
+        }
+        if (recordedCommit !== headCommitForStaleness) {
+          return block(`Verdict VOID \u2014 recorded at ${recordedCommit.slice(0, 7)}, HEAD is now ${headCommitForStaleness.slice(0, 7)}. ` + "Evidence does not describe the current tree. " + "Re-run: `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>`");
+        }
+      }
       const sealResult = checkSeal(ledger, projectDir, sessionId);
       if (sealResult === false) {
         return block("Seal verification failed on all-complete + APPROVE release path \u2014 the ledger seal is invalid or the key is missing. " + "A subagent may have written gate.advisor=APPROVE directly without going through the CLI. " + "Re-run `gw ledger gate --motive <slug> advisor APPROVE --token <t> --citation <file:line>` to produce a valid seal, or restore the key file.");

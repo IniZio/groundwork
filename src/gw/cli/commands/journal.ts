@@ -78,7 +78,14 @@ function readMotiveDecisionEvents(repoRoot: string, tracker: string, motive: str
         type: 'DECISION',
         source: 'cli:journal',
         motive,
-        data: { id: data['id'] as string, decision: content.trim() },
+        data: {
+            id: data['id'] as string,
+            decision: content.trim(),
+            status: (data['status'] as string | undefined) ?? 'proposed',
+            rationale: (data['rationale'] as string | undefined) ?? null,
+            alternatives: Array.isArray(data['alternatives']) ? data['alternatives'] : [],
+            kind: typeof data['kind'] === 'string' ? data['kind'] : null,
+          },
         msg: '',
       } as unknown as JournalEvent)
     } catch { /* skip malformed */ }

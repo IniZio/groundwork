@@ -92,7 +92,7 @@ describe('motive store — round-trip (real obsidian-native-groundwork data)', (
       for (const ev of events) {
         const data = fromLegacyDecision(ev)
         expect(data.rationale).toBeTruthy()
-        expect(data.status).toBe('accepted')
+        expect(data.status).toBe('proposed')
 
         await writeDecision({ repoRoot: '', tracker: tempTracker, motive: MOTIVE, data })
         const readBack = await readDecision({
@@ -105,7 +105,7 @@ describe('motive store — round-trip (real obsidian-native-groundwork data)', (
         // canonical id stored is always D-N form
         expect(String(readBack.fm['id'])).toMatch(/^D-\d+$/)
         expect(readBack.fm['rationale']).toBeTruthy()
-        expect(readBack.fm['status']).toBe('accepted')
+        expect(readBack.fm['status']).toBe('proposed')
         if (data.date) expect(readBack.fm['date']).toBeTruthy()
       }
     })

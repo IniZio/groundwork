@@ -1,8 +1,12 @@
 import { readdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { DEFAULT_TRACKER_PATH } from '../schema/layout.js'
 import { readDecisionEvents } from './journal-reader.js'
 import { migrateMotive } from './runner.js'
+
+/** Default destination tracker for migrate — equals DEFAULT_TRACKER_PATH from layout.ts. */
+export const DEFAULT_MIGRATE_TRACKER = DEFAULT_TRACKER_PATH
 
 export type { MotiveMigrateReport } from './runner.js'
 
@@ -29,7 +33,7 @@ export async function migrate(opts: {
   const {
     repoRoot,
     legacyTracker = '.groundwork',
-    nextTracker = '.groundwork/next',
+    nextTracker = DEFAULT_TRACKER_PATH,
     motive: motiveFilter,
     dryRun,
   } = opts
@@ -46,9 +50,7 @@ export async function migrate(opts: {
         if (entry.name === 'archive') continue
         activeSlugs.push(entry.name)
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* */ }
   }
 
   // 2. Discover archived motives
@@ -62,9 +64,7 @@ export async function migrate(opts: {
         if (entry.name.startsWith('.')) continue
         archivedSlugs.push(entry.name)
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* */ }
   }
 
   // 3. Filter by motive if specified

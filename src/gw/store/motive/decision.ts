@@ -12,6 +12,7 @@ interface DecisionNoteData {
   rationale: string
   alternatives: string[]
   status?: 'proposed' | 'accepted' | 'deprecated' | 'superseded'
+  kind?: string
   date?: string
   supersedes?: string
   related?: string[]
@@ -50,6 +51,7 @@ export async function writeDecision(opts: {
     id: normalizedId,
   }
   if (data.status !== undefined) fm.status = data.status
+  if (data.kind !== undefined) fm.kind = data.kind
   if (data.date !== undefined) fm.date = data.date
   fm.rationale = data.rationale
   fm.alternatives = data.alternatives
@@ -94,12 +96,15 @@ export function fromLegacyDecision(event: {
   const id = String(d.id ?? '')
   const date = event.ts ? event.ts.slice(0, 10) : undefined
   const alternatives = Array.isArray(d.alternatives) ? d.alternatives.map(String) : []
+  const status = (d.status as 'proposed' | 'accepted' | 'deprecated' | 'superseded' | undefined) ?? 'proposed'
+  const kind = d.kind !== undefined ? String(d.kind) : undefined
   return {
     id,
     decision: String(d.decision ?? ''),
     rationale: String(d.rationale ?? ''),
     alternatives,
-    status: 'accepted',
+    status,
+    kind,
     date,
     motive: event.motive,
   }

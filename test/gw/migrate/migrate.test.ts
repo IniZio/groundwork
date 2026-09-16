@@ -12,13 +12,15 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import matter from 'gray-matter'
-import { migrate, type MigrateResult } from '#src/gw/migrate/index.js'
+import { migrate, DEFAULT_MIGRATE_TRACKER, type MigrateResult } from '#src/gw/migrate/index.js'
+import { DEFAULT_TRACKER_PATH } from '#src/gw/schema/layout.js'
 import {
   fromLegacyCharter,
   fromLegacyTicket,
   fromLegacyOpenItems,
   readCharter,
   readTicket,
+  readDecision,
 } from '#src/gw/store/motive/index.js'
 
 const REAL_REPO = '/home/newman/.local/share/groundwork'
@@ -131,7 +133,7 @@ describe('gw migrate', () => {
       // on a clean slate (the real .groundwork/ may already have a next/ from
       // a prior test run).
       await rm(path.join(dryRunDir, LEGACY_TRACKER, 'next'), { recursive: true, force: true })
-      result = await migrate({ repoRoot: dryRunDir, dryRun: true })
+      result = await migrate({ repoRoot: dryRunDir, nextTracker: NEXT_TRACKER, dryRun: true })
     }, 45000)
 
     afterAll(async () => {
@@ -180,7 +182,7 @@ describe('gw migrate', () => {
     beforeAll(async () => {
       const nextDir = path.join(tempDir, NEXT_TRACKER)
       snapshotBefore = walkFiles(path.join(tempDir, LEGACY_TRACKER), nextDir)
-      result = await migrate({ repoRoot: tempDir, dryRun: false })
+      result = await migrate({ repoRoot: tempDir, nextTracker: NEXT_TRACKER, dryRun: false })
     }, 60000)
 
     // -----------------------------------------------------------------------
@@ -481,6 +483,60 @@ describe('gw migrate', () => {
           expect(known).toBe(true)
         }
       })
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // AC-15: default tracker agreement + journal read-back
+  // -------------------------------------------------------------------------
+  describe('AC-15: default tracker agreement', () => {
+    let ac15Dir: string
+    let ac15Result: MigrateResult
+
+    beforeAll(async () => {
+      ac15Dir = mkdtempSync(path.join(tmpdir(), 'gw-migrate-ac15-'))
+      cpSync(
+        path.join(REAL_REPO, LEGACY_TRACKER),
+        path.join(ac15Dir, LEGACY_TRACKER),
+        { recursive: true },
+      )
+      ac15Result = await migrate({ repoRoot: ac15Dir, dryRun: false })
+    }, 60000)
+
+    afterAll(async () => {
+      if (ac15Dir) await rm(ac15Dir, { recursive: true, force: true })
+    })
+
+    it('DEFAULT_MIGRATE_TRACKER equals DEFAULT_TRACKER_PATH', () => {
+      expect(DEFAULT_MIGRATE_TRACKER).toBe(DEFAULT_TRACKER_PATH)
+    })
+
+    it('a migrated decision is readable via readDecision using DEFAULT_TRACKER_PATH', async () => {
+      const withDecisions = ac15Result.motives.find(m => m.decisions > 0)
+      expect(withDecisions).toBeDefined()
+      if (!withDecisions) return
+
+      const decisionsDir = path.join(
+        ac15Dir,
+        DEFAULT_TRACKER_PATH,
+        'motives',
+        withDecisions.slug,
+        'decisions',
+      )
+      const { readdirSync: rds, existsSync: exs } = await import('node:fs')
+      expect(exs(decisionsDir)).toBe(true)
+      const files = rds(decisionsDir).filter((f: string) => f.endsWith('.md'))
+      expect(files.length).toBeGreaterThan(0)
+
+      const id = files[0].replace(/\.md$/, '')
+      const note = await readDecision({
+        repoRoot: ac15Dir,
+        tracker: DEFAULT_TRACKER_PATH,
+        motive: withDecisions.slug,
+        id,
+      })
+      expect(typeof note.fm['id']).toBe('string')
+      expect((note.fm['id'] as string).length).toBeGreaterThan(0)
     })
   })
 })

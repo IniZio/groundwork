@@ -119,11 +119,11 @@ describe('matching motive is accepted', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Ledger without a recorded motive field must not be rejected (back-compat)
+// Ledger without a recorded motive field must be rejected (MOTIVE_MISSING)
 // ---------------------------------------------------------------------------
 
 describe('ledger without motive field', () => {
-  it('status: exits 0 when ledger has no motive field', () => {
+  it('status: exits non-zero with MOTIVE_MISSING when ledger has no motive field', () => {
     const data = JSON.stringify({
       active: true,
       session_id: SESSION_ID,
@@ -132,6 +132,11 @@ describe('ledger without motive field', () => {
     })
     writeFileSync(runPath, data, 'utf8')
     const r = gw(['status', '--motive', REAL_MOTIVE])
-    expect(r.status).toBe(0)
+    expect(r.status, 'exit code').not.toBe(0)
+    const envelope = JSON.parse(r.stdout as string) as { ok: boolean; error: { code: string; message: string } }
+    expect(envelope.ok).toBe(false)
+    expect(envelope.error.code).toBe('MOTIVE_MISSING')
+    expect(envelope.error.message).toContain(REAL_MOTIVE)
+    expect(envelope.error.message).toContain(runPath)
   })
 })

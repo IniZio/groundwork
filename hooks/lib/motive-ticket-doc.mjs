@@ -1,23 +1,7 @@
 // check-comments-exempt — hook lib; ticket document format documented inline
-// hooks/lib/motive-ticket-doc.mjs
-// Ticket document format + writer library.
-//
-// A ticket is a durable work object — human-authored, never overwritten by
-// groundwork code once created.  Format matches the mattpocock issue style:
-// plain-text metadata lines, then ## section headings.
-//
-// Exports
-//   renderTemplate(opts)   → markdown string (empty bodies for authors)
-//   parseTicket(content)   → { emptySections: string[] }
-//   writeTicket(path, opts) → Promise<{ written: boolean }>
-//   resolveTicketPath(charter, motiveDir, ticketId) → string (absolute path)
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-
-// ---------------------------------------------------------------------------
-// Required sections (order matches template)
-// ---------------------------------------------------------------------------
 
 export const REQUIRED_SECTIONS = [
   'Question',
@@ -28,10 +12,6 @@ export const REQUIRED_SECTIONS = [
   'Revisions',
   'Links',
 ]
-
-// ---------------------------------------------------------------------------
-// renderTemplate
-// ---------------------------------------------------------------------------
 
 /**
  * Render an empty ticket template in mattpocock issue style.
@@ -50,10 +30,6 @@ export function renderTemplate({ title, type = 'decision', status = 'open', bloc
   return `---\ntitle: ${title}\ntype: ${type}\nstatus: ${status}${linksFm}\n---\n\n# ${title}\n\n${sections}`
 }
 
-// ---------------------------------------------------------------------------
-// parseTicket
-// ---------------------------------------------------------------------------
-
 /**
  * Parse an existing ticket and report which required sections have empty bodies.
  *
@@ -69,19 +45,16 @@ export function parseTicket(content) {
   const emptySections = []
 
   for (const name of REQUIRED_SECTIONS) {
-    // Match the section heading (## exactly, case-sensitive)
     const headingRe = new RegExp(
       `^## ${escapeRegExp(name)}\\s*$`,
       'm',
     )
     const match = headingRe.exec(content)
     if (!match) {
-      // Section is absent — counts as empty
       emptySections.push(name)
       continue
     }
 
-    // Body: from end of heading line to next ## heading or EOF
     const afterHeading = content.slice(match.index + match[0].length)
     const nextHeadingIdx = afterHeading.search(/^## /m)
     const body = nextHeadingIdx === -1 ? afterHeading : afterHeading.slice(0, nextHeadingIdx)
@@ -93,10 +66,6 @@ export function parseTicket(content) {
 
   return { emptySections }
 }
-
-// ---------------------------------------------------------------------------
-// writeTicket
-// ---------------------------------------------------------------------------
 
 /**
  * Write a ticket file only when it does not already exist.
@@ -115,10 +84,6 @@ export async function writeTicket(ticketPath, opts) {
   writeFileSync(ticketPath, renderTemplate(opts), 'utf8')
   return { written: true }
 }
-
-// ---------------------------------------------------------------------------
-// resolveTicketPath
-// ---------------------------------------------------------------------------
 
 /**
  * Resolve the absolute path for a ticket file.
@@ -157,10 +122,8 @@ export function resolveTicketPath(charter, motiveDir, ticketId) {
 const RESOLVABLE_REF_RE = /https?:\/\/|\.\.?\/|(?:^|[ \t(["'])\/[a-zA-Z0-9_]|\b[A-Z][A-Z0-9]*-R-\d+\b/m
 
 /**
- * Lint rule scoped to research-type tickets.
- *
- * A research ticket must carry at least one resolvable primary-source
- * reference in its Evidence or Links section (D-81).
+ * Lint rule: research ticket must carry ≥1 resolvable primary-source reference
+ * in Evidence or Links section (D-81).
  *
  * Non-research ticket types always pass this rule.
  *
@@ -197,10 +160,6 @@ function _extractSectionBody(content, sectionName) {
   const nextIdx = after.search(/^## /m)
   return nextIdx === -1 ? after : after.slice(0, nextIdx)
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 export function _extractTicketType(content) {
   const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)

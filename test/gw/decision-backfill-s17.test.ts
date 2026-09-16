@@ -28,10 +28,15 @@ const BACKFILL_IDS = [
   'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
   'D-9', 'D-10', 'D-11', 'D-12', 'D-13', 'D-14', 'D-15', 'D-16',
   'D-17', 'D-18', 'D-19', 'D-20', 'D-21', 'D-22', 'D-23',
-  'D-32', 'D-33', 'D-34', 'D-35', 'D-98', 'D-99',
+  'D-32', 'D-33', 'D-34', 'D-35', 'D-36', 'D-98', 'D-99',
 ]
 
-const ACCEPTED_IDS = new Set(['D-32', 'D-33', 'D-34', 'D-35'])
+const ACCEPTED_IDS = new Set([
+  'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
+  'D-9', 'D-10',
+  'D-17', 'D-18', 'D-20', 'D-21', 'D-22', 'D-23',
+  'D-32', 'D-33', 'D-34', 'D-35', 'D-36', 'D-98', 'D-99',
+])
 const PROTECTED_IDS = ['D-24', 'D-25', 'D-26', 'D-27', 'D-28', 'D-29', 'D-30', 'D-31']
 
 const PROTECTED_BODY_CHECKSUMS: Record<string, string> = {
@@ -48,12 +53,12 @@ const PROTECTED_BODY_CHECKSUMS: Record<string, string> = {
 const PROTECTED_FRONTMATTER: Record<string, { id: string; status: string; motive: string }> = {
   'D-24': { id: 'D-24', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
   'D-25': { id: 'D-25', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-26': { id: 'D-26', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-27': { id: 'D-27', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-28': { id: 'D-28', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-29': { id: 'D-29', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-30': { id: 'D-30', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
-  'D-31': { id: 'D-31', status: 'proposed', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-26': { id: 'D-26', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-27': { id: 'D-27', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-28': { id: 'D-28', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-29': { id: 'D-29', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-30': { id: 'D-30', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
+  'D-31': { id: 'D-31', status: 'accepted', motive: '[[motives/obsidian-native-groundwork/motive|obsidian-native-groundwork]]' },
 }
 
 function parseDecisionNote(filePath: string): {
@@ -76,13 +81,13 @@ function parseDecisionNote(filePath: string): {
   }
 }
 
-describe('S17 — markdown read path: all 29 backfill notes present', () => {
-  it('decisions dir has 37 .md files total', () => {
+describe('S17 — markdown read path: all 30 backfill notes present', () => {
+  it('decisions dir has 38 .md files total', () => {
     const files = readdirSync(DECISIONS_DIR).filter(f => f.endsWith('.md'))
-    expect(files.length).toBe(37)
+    expect(files.length).toBe(38)
   })
 
-  it('all 29 backfill IDs have .md files', () => {
+  it('all 30 backfill IDs have .md files', () => {
     for (const id of BACKFILL_IDS) {
       expect(existsSync(join(DECISIONS_DIR, `${id}.md`)), `${id}.md should exist`).toBe(true)
     }
@@ -106,17 +111,17 @@ describe('S17 — markdown read path: round-trip id/status/rationale/alternative
 })
 
 describe('S17 — status distribution confirmed by reading (not assumption)', () => {
-  it('25 proposed, 4 accepted among the 29 backfilled notes', () => {
+  it('7 proposed, 23 accepted among the 30 backfilled notes', () => {
     const counts: Record<string, number> = {}
     for (const id of BACKFILL_IDS) {
       const note = parseDecisionNote(join(DECISIONS_DIR, `${id}.md`))
       counts[note.status] = (counts[note.status] ?? 0) + 1
     }
-    expect(counts['proposed'] ?? 0).toBe(25)
-    expect(counts['accepted'] ?? 0).toBe(4)
+    expect(counts['proposed'] ?? 0).toBe(7)
+    expect(counts['accepted'] ?? 0).toBe(23)
   })
 
-  it('D-32, D-33, D-34, D-35 are accepted; all others are proposed', () => {
+  it('accepted IDs are accepted; D-11/D-12/D-13/D-14/D-15/D-16/D-19 are proposed', () => {
     for (const id of BACKFILL_IDS) {
       const note = parseDecisionNote(join(DECISIONS_DIR, `${id}.md`))
       if (ACCEPTED_IDS.has(id)) {

@@ -12,19 +12,24 @@ const BACKFILL_IDS = [
   'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
   'D-9', 'D-10', 'D-11', 'D-12', 'D-13', 'D-14', 'D-15', 'D-16',
   'D-17', 'D-18', 'D-19', 'D-20', 'D-21', 'D-22', 'D-23',
-  'D-32', 'D-33', 'D-34', 'D-35', 'D-98', 'D-99',
+  'D-32', 'D-33', 'D-34', 'D-35', 'D-36', 'D-98', 'D-99',
 ]
 
-const ACCEPTED_IDS = new Set(['D-32', 'D-33', 'D-34', 'D-35'])
+const ACCEPTED_IDS = new Set([
+  'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
+  'D-9', 'D-10',
+  'D-17', 'D-18', 'D-20', 'D-21', 'D-22', 'D-23',
+  'D-32', 'D-33', 'D-34', 'D-35', 'D-36', 'D-98', 'D-99',
+])
 
 function readDecision(id: string): string {
   return readFileSync(join(DECISIONS_DIR, `${id}.md`), 'utf8')
 }
 
-describe('S8-DECISION-BACKFILL — all 29 files present', () => {
-  it('decisions dir contains exactly the 8 protected + 29 backfill files', () => {
+describe('S8-DECISION-BACKFILL — all 30 files present', () => {
+  it('decisions dir contains exactly the 8 protected + 30 backfill files', () => {
     const files = readdirSync(DECISIONS_DIR).filter(f => f.endsWith('.md'))
-    expect(files.length).toBe(37)
+    expect(files.length).toBe(38)
   })
 
   for (const id of BACKFILL_IDS) {

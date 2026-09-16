@@ -270,6 +270,25 @@ function authErr(cmd: string, e: unknown): GwEnvelope {
   return errEnvelope(cmd, 'AUTH_ERROR', err.message ?? 'auth error', (err.exitCode ?? 1) as 1 | 2)
 }
 
+/**
+ * Return a MOTIVE_MISMATCH envelope when the resolved ledger's recorded motive
+ * disagrees with the --motive flag.  Names both values and the resolved path so
+ * the caller can see which ledger was actually opened.
+ */
+function motiveMismatchError(
+  cmdName: string,
+  expected: string,
+  actual: string,
+  resolvedPath: string,
+): GwEnvelope {
+  return errEnvelope(
+    `ledger ${cmdName}`,
+    'MOTIVE_MISMATCH',
+    `--motive "${expected}" does not match the resolved ledger's recorded motive "${actual}" (${resolvedPath})`,
+    1,
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Main dispatcher
 // ---------------------------------------------------------------------------
@@ -328,14 +347,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger) {
           return errEnvelope('ledger status', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         }
-        if (ledger.motive && ledger.motive !== motive) {
-          return errEnvelope(
-            'ledger status',
-            'MOTIVE_MISMATCH',
-            `ledger motive is "${ledger.motive}", not "${motive}"`,
-            1,
-          )
-        }
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('status', motive, ledger.motive, runPath)
         const all = ledger.slices ?? []
         const verdict = extractGateVerdict(ledger.gate)
         const done = all.filter(s => s.status === 'complete').length
@@ -370,14 +383,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!ledger) {
           return errEnvelope('ledger add', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
         }
-        if (ledger.motive && ledger.motive !== motive) {
-          return errEnvelope(
-            'ledger add',
-            'MOTIVE_MISMATCH',
-            `ledger motive is "${ledger.motive}", not "${motive}"`,
-            1,
-          )
-        }
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('add', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         if (slices.some(s => s.id === id)) {
           return errEnvelope('ledger add', 'ALREADY_EXISTS', `slice ${id} already exists`, 1)
@@ -438,6 +445,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (baseCommitFlag && !positionals[0]) {
           const ledger = readLedger(runPath)
           if (!ledger) return errEnvelope('ledger set', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+          if (ledger.motive && ledger.motive !== motive)
+            return motiveMismatchError('set', motive, ledger.motive, runPath)
           const check = spawnSync('git', ['cat-file', '-e', `${baseCommitFlag}^{commit}`], { cwd })
           if (check.status !== 0) {
             return errEnvelope('ledger set', 'INVALID_SHA', `not a valid commit: ${baseCommitFlag}`, 1)
@@ -449,6 +458,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!id) return errEnvelope('ledger set', 'USAGE_ERROR', 'set requires <id> or --base-commit <sha>', 2)
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger set', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('set', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         const existing = slices.find(s => s.id === id)
         if (!existing) return errEnvelope('ledger set', 'NOT_FOUND', `slice ${id} not found`, 1)
@@ -527,6 +538,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger complete', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('complete', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         const masterOk = (() => {
           try {
@@ -586,6 +599,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
           return errEnvelope('ledger rm', 'USAGE_ERROR', 'rm requires <id> [<id>...]', 2)
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger rm', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('rm', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         const removed: string[] = []
         for (const id of ids) {
@@ -605,6 +620,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         if (!id) return errEnvelope('ledger show', 'USAGE_ERROR', 'show requires <id>', 2)
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger show', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('show', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         const sl = slices.find(s => s.id === id)
         if (!sl) return errEnvelope('ledger show', 'NOT_FOUND', `slice ${id} not found`, 1)
@@ -635,14 +652,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'view': {
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger view', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
-        if (ledger.motive && ledger.motive !== motive) {
-          return errEnvelope(
-            'ledger view',
-            'MOTIVE_MISMATCH',
-            `ledger motive is "${ledger.motive}", not "${motive}"`,
-            1,
-          )
-        }
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('view', motive, ledger.motive, runPath)
         const all = ledger.slices ?? []
         const verdict = extractGateVerdict(ledger.gate)
         const done = all.filter(s => s.status === 'complete').length
@@ -722,6 +733,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger gate', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('gate', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'gate')
         } catch (e) {
@@ -865,6 +878,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
       case 'abandon': {
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger abandon', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('abandon', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'abandon')
         } catch (e) {
@@ -892,6 +907,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger fog', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('fog', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         if (slices.some(s => s.id === id)) {
           return errEnvelope('ledger fog', 'ALREADY_EXISTS', `slice ${id} already exists`, 1)
@@ -918,6 +935,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
               'no frontier slices — all pending slices are blocked, in progress, or claimed by another session\n',
           })
         }
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('frontier', motive, ledger.motive, runPath)
         const slices = ledger.slices ?? []
         const terminalSet = new Set(
           slices.filter(s => s.status === 'complete' || s.status === 'skipped').map(s => s.id),
@@ -951,6 +970,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         }
         const ledger = readLedger(runPath)
         if (!ledger) return errEnvelope('ledger claim', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('claim', motive, ledger.motive, runPath)
         let slices = ledger.slices ?? []
         const claimed: string[] = []
         const lines: string[] = []
@@ -984,6 +1005,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger await-human', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('await-human', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'await-human')
         } catch (e) {
@@ -1022,6 +1045,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger scope-token', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('scope-token', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'scope-token')
         } catch (e) {
@@ -1064,6 +1089,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger checkpoint', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('checkpoint', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'checkpoint')
         } catch (e) {
@@ -1121,6 +1148,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger hold', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('hold', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'hold')
         } catch (e) {
@@ -1173,6 +1202,8 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
         const ledger = readLedger(runPath)
         if (!ledger)
           return errEnvelope('ledger milestone-signoff', 'NOT_FOUND', `no ledger at ${runPath}`, 1)
+        if (ledger.motive && ledger.motive !== motive)
+          return motiveMismatchError('milestone-signoff', motive, ledger.motive, runPath)
         try {
           assertWriteToken(ledger, flags['token'], 'milestone-signoff')
         } catch (e) {

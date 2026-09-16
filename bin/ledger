@@ -22,8 +22,8 @@ _DIR=$(dirname "$_REAL")
 _BUNDLE="$_DIR/../dist/hooks-ledger.mjs"
 
 # Deprecation notice — stderr only; stdout must stay byte-identical for callers
-# that parse ledger output. 'gw ledger init' is not yet implemented in gw.
-echo "DEPRECATED: bin/ledger is superseded by 'gw ledger'. Most subcommands have moved; 'gw ledger init' is not yet implemented." >&2
+# that parse ledger output.
+echo "DEPRECATED: bin/ledger is superseded by 'gw ledger'. All subcommands including 'gw ledger init' have moved; prefer 'gw ledger' for all operations." >&2
 
 # Prefer committed bundle (runs with zero node_modules on remote installs).
 # Fall back to node + source for local dev (where node_modules IS present).

@@ -221,4 +221,17 @@ describe("bin/ledger wrapper (deployed-path)", () => {
 			rmSync(naiveSymlinkDir, { recursive: true, force: true });
 		}
 	});
+
+	it("prints a deprecation notice to stderr that does not claim gw ledger init is unimplemented", () => {
+		const r = spawnSync(WRAPPER, ["help"], {
+			env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+			encoding: "utf8",
+		});
+		expect(r.status, `spawn failed: ${r.error ?? r.stderr}`).not.toBeNull();
+		expect(r.stderr, "deprecation notice missing from stderr").toMatch(/DEPRECATED.*superseded/i);
+		expect(
+			r.stderr,
+			"notice must not claim gw ledger init is unimplemented — it is implemented",
+		).not.toMatch(/not yet implemented/i);
+	});
 });

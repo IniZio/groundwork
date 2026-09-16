@@ -307,7 +307,7 @@ try {
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
 // Absolute CLI tool paths — includes orchestrator-only token-gated commands (scope-token, milestone-signoff).
-const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init\` does not exist — use \`${LEDGER_BIN} init\` to start a new run.)`
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` or \`${LEDGER_BIN} init\` to start a new run.)`
 
 let additionalContext = reminder + cliToolsBlock
 

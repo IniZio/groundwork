@@ -1,5 +1,5 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises'
-import { existsSync, mkdirSync } from 'node:fs'
+import { readdir, readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
 import {
@@ -8,6 +8,7 @@ import {
   fromLegacyTicket,
   writeTicket,
   fromLegacyDecision,
+  writeDecision,
   fromLegacyOpenItems,
   writeOpenItem,
 } from '../store/motive/index.js'
@@ -28,66 +29,6 @@ export interface MotiveMigrateReport {
   errors: string[]
 }
 
-const DECISION_KNOWN_FIELDS = new Set([
-  'id', 'decision', 'rationale', 'alternatives', 'status', 'date',
-])
-
-function decisionFilePath(
-  repoRoot: string,
-  tracker: string,
-  motive: string,
-  id: string,
-): string {
-  return path.join(repoRoot, tracker, 'motives', motive, 'decisions', `${id}.md`)
-}
-
-async function writeDecisionDirect(opts: {
-  repoRoot: string
-  tracker: string
-  motive: string
-  id: string
-  decision: string
-  rationale: string
-  alternatives: string[]
-  status?: string
-  date?: string
-  motiveSlug?: string
-  rfc?: string
-  legacyExtra?: Record<string, unknown>
-}): Promise<void> {
-  const { repoRoot, tracker, motive, id, decision, rationale, alternatives } = opts
-
-  const fm: Record<string, unknown> = { id }
-  if (opts.status) fm['status'] = opts.status
-  if (opts.date) fm['date'] = opts.date
-  if (opts.rfc) fm['rfc'] = opts.rfc
-  if (opts.motiveSlug) fm['motive'] = opts.motiveSlug
-
-  const altBullets = alternatives.length > 0
-    ? alternatives.map(a => `- ${a}`).join('\n')
-    : '- (none)'
-
-  let body = [
-    decision,
-    '',
-    '## Rationale',
-    '',
-    rationale || '(none)',
-    '',
-    '## Alternatives Considered',
-    '',
-    altBullets,
-    '',
-  ].join('\n')
-
-  if (opts.legacyExtra && Object.keys(opts.legacyExtra).length > 0) {
-    body += '\n## Legacy Data\n\n```json\n' + JSON.stringify(opts.legacyExtra, null, 2) + '\n```\n'
-  }
-
-  const dest = decisionFilePath(repoRoot, tracker, motive, id)
-  mkdirSync(path.dirname(dest), { recursive: true })
-  await writeFile(dest, matter.stringify(body, fm), 'utf8')
-}
 
 export async function migrateMotive(opts: {
   slug: string
@@ -192,29 +133,8 @@ export async function migrateMotive(opts: {
       if (hasId) {
         const noteData = fromLegacyDecision(event)
 
-        // Collect extra fields not in the canonical set
-        const legacyExtra: Record<string, unknown> = {}
-        for (const [k, v] of Object.entries(event.data ?? {})) {
-          if (!DECISION_KNOWN_FIELDS.has(k)) {
-            legacyExtra[k] = v
-          }
-        }
-
         if (!dryRun) {
-          await writeDecisionDirect({
-            repoRoot,
-            tracker: nextTracker,
-            motive: slug,
-            id: noteData.id,
-            decision: noteData.decision,
-            rationale: noteData.rationale,
-            alternatives: noteData.alternatives,
-            status: noteData.status,
-            date: noteData.date,
-            motiveSlug: slug,
-            rfc: event.rfc,
-            legacyExtra: Object.keys(legacyExtra).length > 0 ? legacyExtra : undefined,
-          })
+          await writeDecision({ repoRoot, tracker: nextTracker, motive: slug, data: noteData })
         }
       } else {
         // Msg-only event: preserve with synthetic ID using msg as decision text.
@@ -223,17 +143,18 @@ export async function migrateMotive(opts: {
         report.synthetic_decisions++
 
         if (!dryRun) {
-          await writeDecisionDirect({
+          await writeDecision({
             repoRoot,
             tracker: nextTracker,
             motive: slug,
-            id: syntheticId,
-            decision: event.msg ?? '',
-            rationale: '',
-            alternatives: [],
-            date: event.ts ? event.ts.slice(0, 10) : undefined,
-            motiveSlug: slug,
-            rfc: event.rfc,
+            data: {
+              id: syntheticId,
+              decision: event.msg ?? '',
+              rationale: '',
+              alternatives: [],
+              date: event.ts ? event.ts.slice(0, 10) : undefined,
+              motive: slug,
+            },
           })
         }
       }

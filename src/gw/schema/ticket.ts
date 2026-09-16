@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const TicketType = z.enum([
-  'build', 'chore', 'choose', 'decision', 'design',
+  'analysis', 'build', 'chore', 'choose', 'decision', 'design',
   'enhancement', 'feat', 'fix', 'grill', 'model', 'research', 'spec',
 ])
 

@@ -46,6 +46,26 @@ describe('renderTemplate (T3-AC1)', () => {
     expect(md).toMatch(/^status: open$/m)
   })
 
+  it('emits links frontmatter array when blockedBy is a ticket id', () => {
+    const md = renderTemplate({ title: 'T', blockedBy: '08-build-gw-migrate' })
+    expect(md).toMatch(/^links:$/m)
+    expect(md).toContain('- "[[08-build-gw-migrate]]"')
+  })
+
+  it('emits separate wikilink entries for multiple blockedBy targets — corpus shape ticket 18', () => {
+    const md = renderTemplate({ title: 'T', blockedBy: '17-fix-spec-hierarchy-repair, 15-research-spec-hierarchy-audit' })
+    expect(md).toMatch(/^links:$/m)
+    const entries = (md.match(/^  - ".*"$/mg) ?? [])
+    expect(entries).toContain('  - "[[17-fix-spec-hierarchy-repair]]"')
+    expect(entries).toContain('  - "[[15-research-spec-hierarchy-audit]]"')
+    expect(entries).toHaveLength(2)
+  })
+
+  it('omits links field when blockedBy is the default dash', () => {
+    const md = renderTemplate({ title: 'T' })
+    expect(md).not.toMatch(/^links:/m)
+  })
+
   it('section bodies are empty for authors to fill', () => {
     const md = renderTemplate({ title: 'T' })
     const { emptySections } = parseTicket(md)

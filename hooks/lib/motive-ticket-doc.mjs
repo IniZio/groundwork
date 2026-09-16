@@ -44,9 +44,10 @@ export const REQUIRED_SECTIONS = [
  * @returns {string}
  */
 export function renderTemplate({ title, type = 'decision', status = 'open', blockedBy = '—' }) {
-  void blockedBy
   const sections = REQUIRED_SECTIONS.map((name) => `## ${name}\n\n`).join('\n')
-  return `---\ntitle: ${title}\ntype: ${type}\nstatus: ${status}\n---\n\n# ${title}\n\n${sections}`
+  const linksFm = blockedBy && blockedBy !== '—'
+    ? `\nlinks:\n${blockedBy.split(',').map((t) => `  - "[[${t.trim()}]]"`).join('\n')}` : ''
+  return `---\ntitle: ${title}\ntype: ${type}\nstatus: ${status}${linksFm}\n---\n\n# ${title}\n\n${sections}`
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { readdirSync } from 'node:fs'
+import { describe, it, expect, afterEach } from 'vitest'
+import { readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { readTicket } from '../../../../src/gw/store/motive/index.js'
 
@@ -36,7 +37,7 @@ describe('ticket frontmatter conversion — obsidian-native-groundwork', () => {
   })
 
   it('all type values are accepted by TicketSchema', async () => {
-    const validTypes = new Set(['build','chore','choose','decision','design','enhancement','feat','fix','grill','model','research','spec'])
+    const validTypes = new Set(['analysis','build','chore','choose','decision','design','enhancement','feat','fix','grill','model','research','spec'])
     const results = await Promise.all(
       TICKET_FILES.map(f => readTicket({ repoRoot: REPO_ROOT, tracker: TRACKER, motive: MOTIVE, filename: f }))
     )
@@ -51,5 +52,39 @@ describe('ticket frontmatter conversion — obsidian-native-groundwork', () => {
   it('file count is exactly 39 after conversion', () => {
     const current = readdirSync(TICKETS_DIR).filter(f => f.endsWith('.md'))
     expect(current).toHaveLength(39)
+  })
+})
+
+describe('ticket links round-trip — dependency expression', () => {
+  let tmpBase: string
+
+  afterEach(() => {
+    if (tmpBase) rmSync(tmpBase, { recursive: true, force: true })
+  })
+
+  it('ticket created with blockedBy link reads back with link value intact', async () => {
+    tmpBase = mkdtempSync(path.join(tmpdir(), 'gw-link-rt-'))
+    const tracker = '.groundwork'
+    const motive = 'test-motive'
+    const ticketsDir = path.join(tmpBase, tracker, 'motives', motive, 'tickets')
+    mkdirSync(ticketsDir, { recursive: true })
+
+    const content = [
+      '---',
+      'title: Dep test',
+      'type: decision',
+      'status: open',
+      'links:',
+      '  - "[[08-build-gw-migrate]]"',
+      '---',
+      '',
+      '# Dep test',
+      '',
+    ].join('\n')
+    writeFileSync(path.join(ticketsDir, 'dep-test.md'), content, 'utf8')
+
+    const note = await readTicket({ repoRoot: tmpBase, tracker, motive, filename: 'dep-test.md' })
+    expect(Array.isArray(note.fm.links)).toBe(true)
+    expect((note.fm.links as string[])).toContain('[[08-build-gw-migrate]]')
   })
 })

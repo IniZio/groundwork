@@ -44,8 +44,9 @@ export const REQUIRED_SECTIONS = [
  * @returns {string}
  */
 export function renderTemplate({ title, type = 'decision', status = 'open', blockedBy = '—' }) {
+  void blockedBy
   const sections = REQUIRED_SECTIONS.map((name) => `## ${name}\n\n`).join('\n')
-  return `# ${title}\n\nType: ${type}\nStatus: ${status}\nBlocked by: ${blockedBy}\n\n${sections}`
+  return `---\ntitle: ${title}\ntype: ${type}\nstatus: ${status}\n---\n\n# ${title}\n\n${sections}`
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,7 @@ function _extractSectionBody(content, sectionName) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function _extractTicketType(content) {
+export function _extractTicketType(content) {
   const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
   if (fmMatch) {
     const fmType = /^type:\s*(.+)$/im.exec(fmMatch[1])
@@ -208,6 +209,16 @@ function _extractTicketType(content) {
   }
   const bareMatch = /^Type:\s*(.+)$/m.exec(content)
   return bareMatch ? bareMatch[1].trim().toLowerCase() : ''
+}
+
+export function _extractTicketStatus(content) {
+  const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
+  if (fmMatch) {
+    const fmStatus = /^status:\s*(.+)$/im.exec(fmMatch[1])
+    if (fmStatus) return fmStatus[1].trim()
+  }
+  const bareMatch = /^Status:\s*(.+)$/m.exec(content)
+  return bareMatch ? bareMatch[1].trim() : ''
 }
 
 function escapeRegExp(str) {

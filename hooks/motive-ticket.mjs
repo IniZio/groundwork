@@ -25,6 +25,8 @@ import {
   writeTicket,
   resolveTicketPath,
   lintResearchCitation,
+  _extractTicketType,
+  _extractTicketStatus,
 } from './lib/motive-ticket-doc.mjs'
 
 const TICKET_TYPES = ['research', 'choose', 'model', 'build', 'grill', 'spec', 'fix', 'chore']
@@ -98,12 +100,12 @@ function quickParse(filePath) {
   try {
     const content = readFileSync(filePath, 'utf8')
     const titleMatch = /^#\s+(.+)$/m.exec(content)
-    const typeMatch = /^Type:\s*(.+)$/m.exec(content)
-    const statusMatch = /^Status:\s*(.+)$/m.exec(content)
+    const type = _extractTicketType(content)
+    const status = _extractTicketStatus(content)
     return {
       title: titleMatch ? titleMatch[1].trim() : '(unknown)',
-      type: typeMatch ? typeMatch[1].trim() : '(unknown)',
-      status: statusMatch ? statusMatch[1].trim() : '(unknown)',
+      type: type || '(unknown)',
+      status: status || '(unknown)',
     }
   } catch {
     return { title: '(unreadable)', type: '(unreadable)', status: '(unreadable)' }

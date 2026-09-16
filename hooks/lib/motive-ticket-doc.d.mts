@@ -35,3 +35,6 @@ export interface LintResearchCitationResult {
 }
 
 export declare function lintResearchCitation(content: string): LintResearchCitationResult
+
+export declare function _extractTicketType(content: string): string
+export declare function _extractTicketStatus(content: string): string

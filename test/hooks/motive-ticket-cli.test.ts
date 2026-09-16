@@ -220,6 +220,92 @@ describe('motive-ticket list', () => {
 })
 
 // ---------------------------------------------------------------------------
+// list — format compatibility (frontmatter + bare-header regression guard)
+// ---------------------------------------------------------------------------
+
+describe('motive-ticket list — format compatibility', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkProject()
+    makeMotiveDir(dir, 'my-motive')
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('bare-header ticket: list reports correct type and status (regression guard)', () => {
+    const ticketsDir = join(dir, '.groundwork', 'motives', 'my-motive', 'tickets')
+    mkdirSync(ticketsDir, { recursive: true })
+    writeFileSync(join(ticketsDir, '01-research-old-style.md'), [
+      '# old style ticket',
+      '',
+      'Type: research',
+      'Status: in-progress',
+      'Blocked by: —',
+      '',
+      '## Question',
+      '',
+      'Some question.',
+    ].join('\n'), 'utf8')
+
+    const { status, stdout } = run(['list', '--motive', 'my-motive'], { env: projectEnv(dir) })
+    expect(status).toBe(0)
+    const lines = stdout.trim().split('\n').filter((l) => l.includes('\t'))
+    expect(lines).toHaveLength(1)
+    const [, type, ticketStatus] = lines[0].split('\t')
+    expect(type).toBe('research')
+    expect(ticketStatus).toBe('in-progress')
+  })
+
+  it('frontmatter ticket created by CLI: list reports correct type and status', () => {
+    const env = { env: projectEnv(dir) }
+    run(['create', '--type', 'build', '--slug', 'new-style', '--motive', 'my-motive'], env)
+
+    const { status, stdout } = run(['list', '--motive', 'my-motive'], env)
+    expect(status).toBe(0)
+    const lines = stdout.trim().split('\n').filter((l) => l.includes('\t'))
+    expect(lines).toHaveLength(1)
+    const [, type, ticketStatus] = lines[0].split('\t')
+    expect(type).toBe('build')
+    expect(ticketStatus).toBe('open')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// create — emitted file conforms to TicketSchema (SC1)
+// ---------------------------------------------------------------------------
+
+import { readTicket } from '../../src/gw/store/motive/ticket.js'
+
+describe('motive-ticket create — frontmatter conforms to TicketSchema', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkProject()
+    makeMotiveDir(dir, 'my-motive')
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('created file is readable via readTicket and type/status fields are correct', async () => {
+    const env = { env: projectEnv(dir) }
+    run(['create', '--type', 'research', '--slug', 'schema-check', '--motive', 'my-motive'], env)
+
+    const note = await readTicket({
+      repoRoot: dir,
+      tracker: '.groundwork',
+      motive: 'my-motive',
+      filename: '01-research-schema-check',
+    })
+    expect(note.fm.type).toBe('research')
+    expect(note.fm.status).toBe('open')
+    expect(note.fm.title).toBe('schema check')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // lint — exit codes
 // ---------------------------------------------------------------------------
 

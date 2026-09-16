@@ -97,40 +97,57 @@ describe('live-repo guard', () => {
 })
 
 describe('live-repo guard: DEFAULT_TRACKER_PATH', () => {
-  const LIVE_DEFAULT = path.join(REAL_REPO, DEFAULT_TRACKER_PATH)
+  const LIVE_MOTIVES = path.join(REAL_REPO, DEFAULT_TRACKER_PATH, 'motives')
   let snapshotBefore: Map<string, number>
 
   beforeAll(() => {
-    snapshotBefore = walkFiles(LIVE_DEFAULT)
+    snapshotBefore = walkFiles(LIVE_MOTIVES)
   })
 
   afterAll(() => {
-    const snapshotAfter = walkFiles(LIVE_DEFAULT)
+    const snapshotAfter = walkFiles(LIVE_MOTIVES)
     for (const f of snapshotAfter.keys()) {
       if (!snapshotBefore.has(f)) {
         throw new Error(
-          `[GUARD] New file written to live ${DEFAULT_TRACKER_PATH} during suite: ${f}`,
+          `[GUARD] New file written to live ${DEFAULT_TRACKER_PATH}/motives during suite: ${f}`,
         )
       }
     }
     for (const [f, mtime] of snapshotAfter) {
       if (snapshotBefore.get(f) !== mtime) {
         throw new Error(
-          `[GUARD] File modified in live ${DEFAULT_TRACKER_PATH} during suite: ${f}`,
+          `[GUARD] File modified in live ${DEFAULT_TRACKER_PATH}/motives during suite: ${f}`,
         )
       }
     }
   })
 
-  it('guard bites: detects a synthetic write to live DEFAULT_TRACKER_PATH', () => {
-    const probe = path.join(LIVE_DEFAULT, 'GUARD-PROBE-DO-NOT-COMMIT.tmp')
+  it('guard bites (positive control A): detects a synthetic write inside the guarded corpus (motives/)', () => {
+    expect(existsSync(LIVE_MOTIVES)).toBe(true)
+    const probe = path.join(LIVE_MOTIVES, 'GUARD-PROBE-DO-NOT-COMMIT.tmp')
     expect(existsSync(probe)).toBe(false)
-    const snapBefore = walkFiles(LIVE_DEFAULT)
+    const snapBefore = walkFiles(LIVE_MOTIVES)
     try {
       writeFileSync(probe, 'probe: synthetic guard-bite test')
-      const snapAfter = walkFiles(LIVE_DEFAULT)
+      const snapAfter = walkFiles(LIVE_MOTIVES)
       const newFiles = [...snapAfter.keys()].filter(k => !snapBefore.has(k))
       expect(newFiles).toContain(probe)
+    } finally {
+      if (existsSync(probe)) unlinkSync(probe)
+    }
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  it('guard ignores (positive control B): synthetic write to session-state path outside motives/ is NOT reported', () => {
+    const probe = path.join(REAL_REPO, DEFAULT_TRACKER_PATH, 'GUARD-IGNORE-PROBE-DO-NOT-COMMIT.synthetic')
+    expect(existsSync(probe)).toBe(false)
+    const snapBefore = walkFiles(LIVE_MOTIVES)
+    try {
+      writeFileSync(probe, 'probe: synthetic guard-ignore test')
+      const snapAfter = walkFiles(LIVE_MOTIVES)
+      const newFiles = [...snapAfter.keys()].filter(k => !snapBefore.has(k))
+      expect(newFiles).not.toContain(probe)
+      expect(newFiles).toHaveLength(0)
     } finally {
       if (existsSync(probe)) unlinkSync(probe)
     }

@@ -33,18 +33,17 @@ describe('renderTemplate (T3-AC1)', () => {
     expect(md).toMatch(/^# Decide: foo bar$/m)
   })
 
-  it('renders metadata header lines', () => {
+  it('renders metadata header lines as YAML frontmatter', () => {
     const md = renderTemplate({ title: 'T', type: 'grilling', status: 'open', blockedBy: 'T1' })
-    expect(md).toMatch(/^Type: grilling$/m)
-    expect(md).toMatch(/^Status: open$/m)
-    expect(md).toMatch(/^Blocked by: T1$/m)
+    expect(md).toMatch(/^type: grilling$/m)
+    expect(md).toMatch(/^status: open$/m)
+    expect(md).toMatch(/^---$/m)
   })
 
-  it('defaults type=decision, status=open, blockedBy=—', () => {
+  it('defaults type=decision, status=open in frontmatter', () => {
     const md = renderTemplate({ title: 'T' })
-    expect(md).toMatch(/^Type: decision$/m)
-    expect(md).toMatch(/^Status: open$/m)
-    expect(md).toMatch(/^Blocked by: —$/m)
+    expect(md).toMatch(/^type: decision$/m)
+    expect(md).toMatch(/^status: open$/m)
   })
 
   it('section bodies are empty for authors to fill', () => {

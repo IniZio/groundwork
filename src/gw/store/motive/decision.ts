@@ -95,7 +95,19 @@ export async function writeDecision(opts: {
 
   if (data.extras) {
     for (const [k, v] of Object.entries(data.extras)) {
-      if (!(k in fm)) fm[k] = v
+      if (k in fm) {
+        if (JSON.stringify(fm[k]) !== JSON.stringify(v)) {
+          throw new Error(
+            `Decision ${data.id}: extras key "${k}" collides with a canonically-written ` +
+            `frontmatter field. Canonical value: ${JSON.stringify(fm[k])}, ` +
+            `extras value: ${JSON.stringify(v)}. ` +
+            `Add "${k}" to CANONICAL_DATA_KEYS in fromLegacyDecision or resolve the ` +
+            `conflict before calling writeDecision.`
+          )
+        }
+        continue
+      }
+      fm[k] = v
     }
   }
 

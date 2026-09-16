@@ -15,7 +15,8 @@ _Derived from the `HELP` constant in `hooks/ledger.mjs` and the enforcement logi
 
 | Command | Fields written / read | write_token required? | Notes |
 |---------|----------------------|----------------------|-------|
-| `bin/ledger init` | `session_id`, `active`, `slices=[]`, `gate.phases`, `write_token` | — | Seeds empty `gate.phases` for per-phase checkpoint tracking. Not available in `gw ledger`. |
+| `bin/ledger init` | `session_id`, `active`, `slices=[]`, `gate.phases`, `write_token` | — | Seeds empty `gate.phases` for per-phase checkpoint tracking. |
+| `gw ledger init --motive <slug>` | same as `bin/ledger init` | — | Guarded: requires non-empty `--motive` slug; refuses to overwrite an existing active run without explicit confirmation. |
 | `gw ledger add --motive <slug> <id>` | `slices[].{id, wave, kind, status=pending, desc, blocked_by, acceptance, ticket, covers_ac, decisions}` | No | `kind` defaults to `impl` |
 | `gw ledger fog --motive <slug> <id>` | `slices[].{id, kind=fog, status=pending, question}` | No | No `acceptance`; excluded from frontier |
 | `gw ledger claim --motive <slug> <id>` | `slices[].{status=in_progress, claimed_by, claimed_at}` | No | Blocked by `blocked_by` |

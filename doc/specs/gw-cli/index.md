@@ -2,7 +2,7 @@
 id: "C-GW-CLI"
 type: "moc"
 title: "gw Command Surface"
-summary: "Sixteen gw ledger subcommands that read and mutate the legacy JSON run store; init is absent and requires bin/ledger directly."
+summary: "Nineteen gw ledger subcommands that read and mutate the legacy JSON run store; init is guarded and also available via bin/ledger."
 parent: C-GROUNDWORK
 status: "draft"
 ---
@@ -11,13 +11,13 @@ status: "draft"
 
 > This index covers the `gw ledger` command surface as implemented in `src/gw/cli/commands/ledger.ts`. It specifies the subcommand registry, required flags, run-store path contract, write-token authority, JSON envelope shape, and exit-code semantics.
 
-The `gw` CLI exposes 16 ledger subcommands that operate on the same legacy JSON run store (`hooks/ledger.mjs`, `hooks/lib/ledger-io.mjs`). The `init` subcommand is deliberately absent — ledger initialization still requires `bin/ledger init`. Decision D6 (behavior-preservation) is the hard constraint: the `gw` path must read and write the same store format and path as the legacy hooks, or the stop-gate reads a different file and the completion gate passes vacuously.
+The `gw` CLI exposes 19 ledger subcommands that operate on the same legacy JSON run store (`hooks/ledger.mjs`, `hooks/lib/ledger-io.mjs`). The `init` subcommand is now present and guarded: it requires a `--motive` slug and refuses to overwrite an existing active run without explicit confirmation. `bin/ledger init` remains available for direct use. Decision D6 (behavior-preservation) is the hard constraint: the `gw` path must read and write the same store format and path as the legacy hooks, or the stop-gate reads a different file and the completion gate passes vacuously.
 
 ## Requirements
 
 | Id | Title | Criticality |
 |----|-------|-------------|
-| [[requirements/gw-cli-r-001-subcommand-registry\|R-001]] | Subcommand registry — 16 subcommands, no init | must |
+| [[requirements/gw-cli-r-001-subcommand-registry\|R-001]] | Subcommand registry — 19 subcommands, init guarded | must |
 | [[requirements/gw-cli-r-002-motive-flag-required\|R-002]] | --motive flag required on every subcommand | must |
 | [[requirements/gw-cli-r-003-motive-validation\|R-003]] | Motive slug validation against ledger | must |
 | [[requirements/gw-cli-r-004-run-store-path\|R-004]] | Run-store path contract matches legacy hooks | must |

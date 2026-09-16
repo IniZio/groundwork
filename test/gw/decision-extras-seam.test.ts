@@ -15,7 +15,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkDecisionExtrasCollision, writeDecision } from '#src/gw/store/motive/decision.js'
+import { checkDecisionExtrasCollision, fromLegacyDecision, writeDecision } from '#src/gw/store/motive/decision.js'
 import { migrate } from '#src/gw/migrate/index.js'
 
 const BASE = {
@@ -128,10 +128,18 @@ describe('S40-COLLISION-SEAM: dry-run migrate uses same check, writes no file (C
   })
 
   it('C6: dry-run reports collision in errors', async () => {
+    const noteData = fromLegacyDecision({
+      ts: '2026-09-16T10:00:00Z',
+      motive: 'seam-dry',
+      data: { id: 'D-seam-dry', decision: 'x', rationale: 'y', alternatives: [], status: 'proposed', date: '1970-01-01' },
+    })
+    const collision = checkDecisionExtrasCollision(noteData)
+    expect(collision).toBeDefined()
+    const expected = `decision event ts=2026-09-16T10:00:00Z: Error: ${collision}`
     const result = await migrate({ repoRoot: dryDir, nextTracker: NEXT, dryRun: true })
     const mo = result.motives.find(m => m.slug === 'seam-dry')
     expect(mo).toBeDefined()
-    expect(mo!.errors.some(e => e.includes('collides'))).toBe(true)
+    expect(mo!.errors).toContain(expected)
   })
 
   it('C6: dry-run writes no decision file', async () => {

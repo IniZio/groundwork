@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import {
   mkdtempSync,
+  mkdirSync,
   cpSync,
   readdirSync,
   statSync,
@@ -229,6 +230,13 @@ describe('gw migrate', () => {
 
     it('total_decisions > 0', () => {
       expect(result.summary.total_decisions).toBeGreaterThan(0)
+    })
+
+    it('no extras/canonical collision errors in corpus dry-run (AC-4 corpus check)', () => {
+      const collisionErrors = result.motives
+        .flatMap(m => m.errors)
+        .filter(e => e.includes('collides'))
+      expect(collisionErrors).toEqual([])
     })
   })
 
@@ -601,5 +609,72 @@ describe('gw migrate', () => {
       expect(typeof first.id).toBe('string')
       expect(first.id.length).toBeGreaterThan(0)
     })
+  })
+})
+
+describe('S37: dry-run extras/canonical collision detection', () => {
+  const NEXT = '.groundwork/next'
+  let collisionDir: string
+
+  const COLLIDING_JSONL = JSON.stringify({
+    type: 'DECISION',
+    ts: '2024-01-15T10:00:00Z',
+    motive: 'collision-test',
+    session: 'sess-test',
+    data: {
+      id: 'D-COLLISION-1',
+      decision: 'test decision',
+      rationale: 'test rationale',
+      date: '2024-01-01',
+    },
+  }) + '\n'
+
+  beforeAll(() => {
+    collisionDir = mkdtempSync(path.join(tmpdir(), 'gw-migrate-collision-'))
+    const moDir = path.join(collisionDir, '.groundwork', 'motives', 'collision-test')
+    const journalDir = path.join(collisionDir, '.groundwork', 'journal')
+    mkdirSync(moDir, { recursive: true })
+    mkdirSync(journalDir, { recursive: true })
+    writeFileSync(path.join(journalDir, 'collision.jsonl'), COLLIDING_JSONL, 'utf8')
+  })
+
+  afterAll(async () => {
+    if (collisionDir) await rm(collisionDir, { recursive: true, force: true })
+  })
+
+  it('dry-run: collision appears in report.errors', async () => {
+    const result = await migrate({ repoRoot: collisionDir, nextTracker: NEXT, dryRun: true })
+    const motiveReport = result.motives.find(m => m.slug === 'collision-test')
+    expect(motiveReport).toBeDefined()
+    const collisionError = motiveReport?.errors.find(e => e.includes('collides'))
+    expect(collisionError).toBeDefined()
+    expect(collisionError).toMatch(/extras key "date"/)
+  })
+
+  it('dry-run: no decision file written despite detected collision', async () => {
+    const result = await migrate({ repoRoot: collisionDir, nextTracker: NEXT, dryRun: true })
+    const motiveReport = result.motives.find(m => m.slug === 'collision-test')
+    expect(motiveReport?.errors.some(e => e.includes('collides'))).toBe(true)
+    const decisionsDir = path.join(collisionDir, NEXT, 'motives', 'collision-test', 'decisions')
+    expect(existsSync(decisionsDir)).toBe(false)
+  })
+
+  it('real run: same collision reported (paths agree)', async () => {
+    const realDir = mkdtempSync(path.join(tmpdir(), 'gw-migrate-collision-real-'))
+    try {
+      const moDir = path.join(realDir, '.groundwork', 'motives', 'collision-test')
+      const journalDir = path.join(realDir, '.groundwork', 'journal')
+      mkdirSync(moDir, { recursive: true })
+      mkdirSync(journalDir, { recursive: true })
+      writeFileSync(path.join(journalDir, 'collision.jsonl'), COLLIDING_JSONL, 'utf8')
+      const result = await migrate({ repoRoot: realDir, nextTracker: NEXT, dryRun: false })
+      const motiveReport = result.motives.find(m => m.slug === 'collision-test')
+      expect(motiveReport).toBeDefined()
+      const collisionError = motiveReport?.errors.find(e => e.includes('collides'))
+      expect(collisionError).toBeDefined()
+      expect(collisionError).toMatch(/extras key "date"/)
+    } finally {
+      await rm(realDir, { recursive: true, force: true })
+    }
   })
 })

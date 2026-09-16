@@ -9,6 +9,7 @@ import {
   writeTicket,
   fromLegacyDecision,
   writeDecision,
+  checkDecisionExtrasCollision,
   fromLegacyOpenItems,
   writeOpenItem,
 } from '../store/motive/index.js'
@@ -133,7 +134,10 @@ export async function migrateMotive(opts: {
       if (hasId) {
         const noteData = fromLegacyDecision(event)
 
-        if (!dryRun) {
+        if (dryRun) {
+          const collision = checkDecisionExtrasCollision(noteData)
+          if (collision) throw new Error(collision)
+        } else {
           await writeDecision({ repoRoot, tracker: nextTracker, motive: slug, data: noteData })
         }
       } else {

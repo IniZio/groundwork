@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 // Input shape for writing a decision note
-interface DecisionNoteData {
+export interface DecisionNoteData {
   id: string
   decision: string
   rationale: string
@@ -42,18 +42,10 @@ export async function readDecision(opts: {
   return { fm: data as Record<string, unknown>, body: content }
 }
 
-export async function writeDecision(opts: {
-  repoRoot: string
-  tracker: string
-  motive: string
-  data: DecisionNoteData
-}): Promise<void> {
-  const { repoRoot, tracker, motive, data } = opts
-  const normalizedId = DecisionSchema.parse({ id: data.id }).id
-
-  const fm: Record<string, unknown> = {
-    id: normalizedId,
-  }
+/** Builds the canonical frontmatter map for a decision note (no extras applied).
+ * Uses data.id directly; callers that write files normalize via DecisionSchema. */
+function buildDecisionFm(data: DecisionNoteData): Record<string, unknown> {
+  const fm: Record<string, unknown> = { id: data.id }
   if (data.status !== undefined) fm.status = data.status
   if (data.kind !== undefined) fm.kind = data.kind
   if (data.date !== undefined) fm.date = data.date
@@ -66,13 +58,51 @@ export async function writeDecision(opts: {
     fm.related = data.related.map(r => (r.startsWith('[[') ? r : wikilink(r)))
   }
   if (data.motive !== undefined) {
-    if (data.motive.startsWith('[[')) {
-      fm.motive = data.motive
-    } else {
-      // Build a path-qualified wikilink that resolves unambiguously when the vault root is
-      // .groundwork/ — stem-only [[motive]] is ambiguous (every motive dir has motive.md);
-      // [[motives/<slug>/motive|<slug>]] resolves to the exact motive.md via vault-relative path.
-      fm.motive = wikilink(`motives/${data.motive}/motive`, data.motive)
+    fm.motive = data.motive.startsWith('[[')
+      ? data.motive
+      : wikilink(`motives/${data.motive}/motive`, data.motive)
+  }
+  return fm
+}
+
+/** Returns an error message when an extras key diverges from a canonical frontmatter value;
+ * undefined when no collision exists. Performs NO file I/O. Used by both writeDecision
+ * (throws on collision) and the dry-run migrate path (returns the string to the caller). */
+export function checkDecisionExtrasCollision(data: DecisionNoteData): string | undefined {
+  if (!data.extras) return undefined
+  const fm = buildDecisionFm(data)
+  for (const [k, v] of Object.entries(data.extras)) {
+    if (k in fm && JSON.stringify(fm[k]) !== JSON.stringify(v)) {
+      return (
+        `Decision ${data.id}: extras key "${k}" collides with a canonically-written ` +
+        `frontmatter field. Canonical value: ${JSON.stringify(fm[k])}, ` +
+        `extras value: ${JSON.stringify(v)}. ` +
+        `Add "${k}" to CANONICAL_DATA_KEYS in fromLegacyDecision or resolve the ` +
+        `conflict before calling writeDecision.`
+      )
+    }
+  }
+  return undefined
+}
+
+export async function writeDecision(opts: {
+  repoRoot: string
+  tracker: string
+  motive: string
+  data: DecisionNoteData
+}): Promise<void> {
+  const { repoRoot, tracker, motive, data } = opts
+  const normalizedId = DecisionSchema.parse({ id: data.id }).id
+
+  const fm = buildDecisionFm(data)
+  fm.id = normalizedId
+
+  const collision = checkDecisionExtrasCollision(data)
+  if (collision) throw new Error(collision)
+
+  if (data.extras) {
+    for (const [k, v] of Object.entries(data.extras)) {
+      if (!(k in fm)) fm[k] = v
     }
   }
 
@@ -92,24 +122,6 @@ export async function writeDecision(opts: {
     altBullets,
     '',
   ].join('\n')
-
-  if (data.extras) {
-    for (const [k, v] of Object.entries(data.extras)) {
-      if (k in fm) {
-        if (JSON.stringify(fm[k]) !== JSON.stringify(v)) {
-          throw new Error(
-            `Decision ${data.id}: extras key "${k}" collides with a canonically-written ` +
-            `frontmatter field. Canonical value: ${JSON.stringify(fm[k])}, ` +
-            `extras value: ${JSON.stringify(v)}. ` +
-            `Add "${k}" to CANONICAL_DATA_KEYS in fromLegacyDecision or resolve the ` +
-            `conflict before calling writeDecision.`
-          )
-        }
-        continue
-      }
-      fm[k] = v
-    }
-  }
 
   const dest = motiveDecisionPath(repoRoot, tracker, motive, normalizedId)
   mkdirSync(path.dirname(dest), { recursive: true })

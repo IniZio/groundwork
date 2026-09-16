@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 1da3cf4ad16a773638cd106774ad725267390876d6cf4603f25fe3451ecb4355
+// @bundle-source-hash: c1e55a28b5b0eccb3ad1eafd0176ae1b06a4d0484a7526295d592a93bc247785
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10265,8 +10265,11 @@ function parseYamlFrontmatter(content) {
 function specDirPath(projectRoot) {
   return join(projectRoot, "doc", "specs");
 }
+function generatedDirPath(sd) {
+  return join(dirname2(dirname2(sd)), ".groundwork", "spec-build");
+}
 function indexJsonPath(sd) {
-  return join(sd, "_generated", "index.json");
+  return join(generatedDirPath(sd), "index.json");
 }
 function walkSpecFiles(sd) {
   const results = [];
@@ -10278,7 +10281,7 @@ function walkSpecFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {
@@ -10301,7 +10304,7 @@ function walkSpecYamlFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {
@@ -10908,12 +10911,12 @@ var LEDGER_SUBCOMMANDS = [
   "checkpoint",
   "hold",
   "scope-token",
-  "milestone-signoff"
+  "milestone-signoff",
+  "help"
 ];
 
 // hooks/session-reminder.mjs
 var _hooksDir = path5.dirname(fileURLToPath2(import.meta.url));
-var LEDGER_BIN = path5.resolve(_hooksDir, "../bin/ledger");
 var GW_HOOK_BIN = path5.resolve(_hooksDir, "../bin/gw-hook");
 var JOURNAL_BIN = path5.resolve(_hooksDir, "../bin/journal");
 var SPEC_SKELETON_TOKEN_CAP = 700;
@@ -11162,7 +11165,7 @@ var cliToolsBlock = `
 
 ## Groundwork CLI tools (absolute paths \u2014 use these, not bin/)
 
-Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: ${LEDGER_SUBCOMMANDS.join(", ")} \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`;
+Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: ${LEDGER_SUBCOMMANDS.join(", ")} \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${GW_HOOK_BIN} ledger help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`;
 var additionalContext = reminder + cliToolsBlock;
 try {
   const envFile = process.env.CLAUDE_ENV_FILE;

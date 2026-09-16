@@ -27,7 +27,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { parseSpecRequirements } from './spec-io.mjs'
+import { parseSpecRequirements, generatedDirPath, specDirPath } from './spec-io.mjs'
 import { resolveMotiveSlug } from './motive-ref.mjs'
 
 // ---------------------------------------------------------------------------
@@ -201,14 +201,14 @@ export class NativeSpineAdapter {
 
   getCoverageMap() {
     // 'declared' comes from the verification field in requirements/*.md frontmatter.
-    // When doc/specs/_generated/coverage.json exists (produced by `gw spec build`),
+    // When .groundwork/spec-build/coverage.json exists (produced by `gw spec build`),
     // its per-requirement `tests` and `verified` values are merged in.
     // Absent file → tests:[] verified:false as fallback.
     const map = {}
     for (const r of this.getSpecRequirements()) {
       map[r.id] = { declared: r.verification ?? null, verified: false, tests: [] }
     }
-    const covPath = path.join(this._projectDir, 'doc', 'specs', '_generated', 'coverage.json')
+    const covPath = path.join(generatedDirPath(specDirPath(this._projectDir)), 'coverage.json')
     if (existsSync(covPath)) {
       try {
         const cov = JSON.parse(readFileSync(covPath, 'utf8'))

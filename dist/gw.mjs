@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: e61c70edf84ebd4223382fb231c77a9465dbe20b3b2b157d927858da8d7f06e3
+// @bundle-source-hash: db71e9e397d18286c9d9255447b85dcb45ac16bbc9ee70a73b22a159d058f209
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1795,6 +1795,28 @@ function cmdStampMotiveGw(rest, repoRoot) {
   return okEnvelope("ledger stamp-motive", { content: `motive stamped: ${newMotive} \u2192 ${runPath}
 ` });
 }
+function cmdHelpGw(args) {
+  const target = args[0];
+  if (!target) {
+    const lines = [
+      "Usage: gw ledger <subcommand> [options]",
+      "",
+      "Subcommands:",
+      ...LEDGER_SUBCOMMANDS.map((s) => `  ${s}`),
+      "",
+      "Run `gw ledger help <subcommand>` for per-subcommand usage."
+    ];
+    return okEnvelope("ledger help", { content: lines.join(`
+`) + `
+` });
+  }
+  const desc = HELP_DESCRIPTIONS[target];
+  if (!desc) {
+    return errEnvelope("ledger help", "USAGE_ERROR", `Unknown subcommand: "${target}". Run \`gw ledger help\` for the full list.`, 2);
+  }
+  return okEnvelope("ledger help", { content: `Usage: gw ledger ${desc}
+` });
+}
 async function run2(args, cwd) {
   const subcmd = args[0];
   if (!subcmd) {
@@ -1812,6 +1834,9 @@ Subcommands: ${LEDGER_SUBCOMMANDS.join(", ")}`, 2);
   if (subcmd === "stamp-motive") {
     const repoRoot2 = process.env["CLAUDE_PROJECT_DIR"] || cwd;
     return cmdStampMotiveGw(rest, repoRoot2);
+  }
+  if (subcmd === "help") {
+    return cmdHelpGw(rest);
   }
   const { flags, positionals } = parseFlags2(rest);
   const motiveFlag = flags["motive"];
@@ -2652,7 +2677,7 @@ Review and fix with:
     return errEnvelope(`ledger ${subcmd}`, "INTERNAL_ERROR", err.message ?? String(e), 1);
   }
 }
-var LEDGER_SUBCOMMANDS;
+var LEDGER_SUBCOMMANDS, HELP_DESCRIPTIONS;
 var init_ledger = __esm(() => {
   init_comment_density2();
   init_resolve_ledger_path();
@@ -2679,8 +2704,53 @@ var init_ledger = __esm(() => {
     "checkpoint",
     "hold",
     "scope-token",
-    "milestone-signoff"
+    "milestone-signoff",
+    "help"
   ];
+  HELP_DESCRIPTIONS = {
+    init: `init <file|-> --motive <slug> [--force]
+  Initialize a new run ledger from a JSON file or stdin.`,
+    "stamp-motive": `stamp-motive --motive <slug>
+  Stamp the motive slug into an existing run ledger.`,
+    status: `status --motive <slug>
+  Print a compact progress summary.`,
+    add: `add --motive <slug> <id> [--wave N] [--desc "\u2026"] [--blocked-by a,b] [--acceptance "a;b"]
+  Add a new slice to the run.`,
+    set: `set --motive <slug> <id> --status in_progress|complete [--wave N] [--desc "\u2026"]
+  Update fields on an existing slice.`,
+    complete: `complete --motive <slug> <id> [<id> \u2026] --token <write_token>
+  Mark one or more slices complete.`,
+    rm: `rm --motive <slug> <id>
+  Remove a slice.`,
+    show: `show --motive <slug> <id>
+  Print a single slice in full.`,
+    view: `view --motive <slug>
+  Print the run summary (write-token redacted).`,
+    gate: `gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>
+  Record the advisor gate verdict.`,
+    abandon: `abandon --motive <slug>
+  Mark the active run inactive.`,
+    fog: `fog --motive <slug> --reason "\u2026"
+  Mark the run as blocked by uncertainty.`,
+    frontier: `frontier --motive <slug>
+  List boundary slices.`,
+    claim: `claim --motive <slug> <id> --token <write_token>
+  Claim a slice for this session.`,
+    "await-human": `await-human --motive <slug> --reason "\u2026"
+  Pause the run pending human input.`,
+    autopilot: `autopilot --motive <slug> --on|--off
+  Toggle autopilot mode.`,
+    checkpoint: `checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token>
+  Record a phase checkpoint.`,
+    hold: `hold --motive <slug> --phase <phase> --token <write_token>
+  Set or clear a checkpoint hold.`,
+    "scope-token": `scope-token --motive <slug>
+  Print the scope token for external tools.`,
+    "milestone-signoff": `milestone-signoff --motive <slug> --verdict APPROVE|REJECT --verified-by <name> --token <write_token>
+  Sign off on a milestone.`,
+    help: `help [<subcommand>]
+  Print usage for a subcommand, or list all subcommands.`
+  };
 });
 
 // node_modules/.pnpm/kind-of@6.0.3/node_modules/kind-of/index.js

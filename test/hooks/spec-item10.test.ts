@@ -201,7 +201,7 @@ describe('Part B: coverage.json by_concept', () => {
     const buildResult = runBuild()
     expect(buildResult.code).toBe(0)
 
-    const coveragePath = path.join(projectDir, 'doc', 'specs', '_generated', 'coverage.json')
+    const coveragePath = path.join(projectDir, '.groundwork', 'spec-build', 'coverage.json')
     expect(existsSync(coveragePath)).toBe(true)
 
     const coverage = JSON.parse(readFileSync(coveragePath, 'utf8'))

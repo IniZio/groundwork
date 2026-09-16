@@ -41,6 +41,7 @@ export const LEDGER_SUBCOMMANDS = [
   'hold',
   'scope-token',
   'milestone-signoff',
+  'help',
 ] as const
 
 type LedgerSubcmd = (typeof LEDGER_SUBCOMMANDS)[number]
@@ -496,6 +497,59 @@ function cmdStampMotiveGw(rest: string[], repoRoot: string): GwEnvelope {
 }
 
 // ---------------------------------------------------------------------------
+// help subcommand
+// ---------------------------------------------------------------------------
+
+const HELP_DESCRIPTIONS: Record<string, string> = {
+  init:            'init <file|-> --motive <slug> [--force]\n  Initialize a new run ledger from a JSON file or stdin.',
+  'stamp-motive':  'stamp-motive --motive <slug>\n  Stamp the motive slug into an existing run ledger.',
+  status:          'status --motive <slug>\n  Print a compact progress summary.',
+  add:             'add --motive <slug> <id> [--wave N] [--desc "…"] [--blocked-by a,b] [--acceptance "a;b"]\n  Add a new slice to the run.',
+  set:             'set --motive <slug> <id> --status in_progress|complete [--wave N] [--desc "…"]\n  Update fields on an existing slice.',
+  complete:        'complete --motive <slug> <id> [<id> …] --token <write_token>\n  Mark one or more slices complete.',
+  rm:              'rm --motive <slug> <id>\n  Remove a slice.',
+  show:            'show --motive <slug> <id>\n  Print a single slice in full.',
+  view:            'view --motive <slug>\n  Print the run summary (write-token redacted).',
+  gate:            'gate --motive <slug> advisor APPROVE --token <write_token> --citation <file:line>\n  Record the advisor gate verdict.',
+  abandon:         'abandon --motive <slug>\n  Mark the active run inactive.',
+  fog:             'fog --motive <slug> --reason "…"\n  Mark the run as blocked by uncertainty.',
+  frontier:        'frontier --motive <slug>\n  List boundary slices.',
+  claim:           'claim --motive <slug> <id> --token <write_token>\n  Claim a slice for this session.',
+  'await-human':   'await-human --motive <slug> --reason "…"\n  Pause the run pending human input.',
+  autopilot:       'autopilot --motive <slug> --on|--off\n  Toggle autopilot mode.',
+  checkpoint:      'checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token>\n  Record a phase checkpoint.',
+  hold:            'hold --motive <slug> --phase <phase> --token <write_token>\n  Set or clear a checkpoint hold.',
+  'scope-token':   'scope-token --motive <slug>\n  Print the scope token for external tools.',
+  'milestone-signoff': 'milestone-signoff --motive <slug> --verdict APPROVE|REJECT --verified-by <name> --token <write_token>\n  Sign off on a milestone.',
+  help:            'help [<subcommand>]\n  Print usage for a subcommand, or list all subcommands.',
+}
+
+function cmdHelpGw(args: string[]): GwEnvelope {
+  const target = args[0]
+  if (!target) {
+    const lines = [
+      'Usage: gw ledger <subcommand> [options]',
+      '',
+      'Subcommands:',
+      ...LEDGER_SUBCOMMANDS.map(s => `  ${s}`),
+      '',
+      'Run `gw ledger help <subcommand>` for per-subcommand usage.',
+    ]
+    return okEnvelope('ledger help', { content: lines.join('\n') + '\n' })
+  }
+  const desc = HELP_DESCRIPTIONS[target]
+  if (!desc) {
+    return errEnvelope(
+      'ledger help',
+      'USAGE_ERROR',
+      `Unknown subcommand: "${target}". Run \`gw ledger help\` for the full list.`,
+      2,
+    )
+  }
+  return okEnvelope('ledger help', { content: `Usage: gw ledger ${desc}\n` })
+}
+
+// ---------------------------------------------------------------------------
 // Main dispatcher
 // ---------------------------------------------------------------------------
 
@@ -528,6 +582,10 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
   if (subcmd === 'stamp-motive') {
     const repoRoot = process.env['CLAUDE_PROJECT_DIR'] || cwd
     return cmdStampMotiveGw(rest, repoRoot)
+  }
+
+  if (subcmd === 'help') {
+    return cmdHelpGw(rest)
   }
 
   const { flags, positionals } = parseFlags(rest)

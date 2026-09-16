@@ -322,7 +322,7 @@ describe('Bug 3 — linter verification-unparseable violation', () => {
   afterEach(() => rmSync(tmpDir, { recursive: true, force: true }))
 
   function specDir() { return path.join(tmpDir, 'doc', 'specs') }
-  function generatedDir() { return path.join(specDir(), '_generated') }
+  function generatedDir() { return path.join(tmpDir, '.groundwork', 'spec-build') }
 
   /** Build and write an index.json for spec-lint to consume. */
   function buildAndWriteIndex(): void {
@@ -585,7 +585,7 @@ describe('Bug 7 — build-then-lint succeeds when CLAUDE_PROJECT_DIR is unset', 
 describe('Bug 5 — index.json requirement-count parity with requirement files', () => {
   const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..')
   const SPEC_DIR = path.join(REPO_ROOT, 'doc', 'specs')
-  const INDEX_PATH = path.join(SPEC_DIR, '_generated', 'index.json')
+  const INDEX_PATH = path.join(REPO_ROOT, '.groundwork', 'spec-build', 'index.json')
 
   /** Recursively collect all *.md files under any `requirements/` directory inside baseDir.
    *  Returns paths relative to baseDir (matching index node relPath values). */

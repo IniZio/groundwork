@@ -81,20 +81,17 @@ describe("spec-guard — pass-through (paths outside guarded prefixes)", () => {
 	});
 });
 
-describe("spec-guard — _generated/ writes go through normal ledger check (D-15)", () => {
-	it("permits writes to doc/specs/_generated/ with WARN when no ledger (fail-open, not unconditionally exempt)", () => {
-		// D-15: GENERATED_EXEMPT branch removed; _generated/ writes now reach the ledger check.
-		// No ledger → fail-open WARN + permit, same as any other guarded spec path.
+describe("spec-guard — spec-build dir is outside guarded prefixes (D-101)", () => {
+	it("permits writes to .groundwork/spec-build/ with no WARN (not a guarded path)", () => {
 		const projectDir = makeProjectDir();
 		const r = runHook({
 			tool_name: "Write",
-			tool_input: { file_path: path.join(projectDir, "doc", "specs", "_generated", "index.md") },
+			tool_input: { file_path: path.join(projectDir, ".groundwork", "spec-build", "index.md") },
 			cwd: projectDir,
 			session_id: "sess-1",
 		});
 		expect(r.exitCode).toBe(0);
-		// WARN emitted because no ledger found (fail-open)
-		expect(r.stderr).toContain("spec-guard: WARN");
+		expect(r.stderr).not.toContain("spec-guard: WARN");
 	});
 });
 
@@ -129,15 +126,7 @@ describe("spec-guard — malformed stdin", () => {
 
 describe("spec-guard — fail-open behavior documentation (do not change without RFC discussion)", () => {
 	it("documents current fail-open behavior for out-of-project paths (see RFC discussion)", () => {
-		// CURRENT BEHAVIOR (pinned, not endorsed): when a write targets an absolute path
-		// in a different repo, relativeFromProject() returns the absolute path unchanged.
-		// That absolute path does not start with "doc/specs/" or "docs/steering/", so
-		// isGuarded = false and the hook passes through with exit 0 — no RFC check performed.
-		//
-		// This means cross-repo spec writes are NOT authorization-checked.
-		// If the design decision flips to fail-closed, invert this test.
 		const projectDir = makeProjectDir();
-		// Simulate a write in a completely different project directory (not a subdirectory of projectDir).
 		const otherProjectPath = "/home/newman/magic/hanlun-lms/doc/specs/artifact/requirements.md";
 		const r = runHook({
 			tool_name: "Write",

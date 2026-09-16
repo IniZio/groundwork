@@ -253,7 +253,7 @@ describe('NativeSpineAdapter.getSlices — wave field exposure', () => {
 // getCoverageMap — coverage.json merge seam (S6-COVERAGE-MAP-RESTORE)
 // ---------------------------------------------------------------------------
 
-describe('NativeSpineAdapter.getCoverageMap — _generated/coverage.json merge', () => {
+describe('NativeSpineAdapter.getCoverageMap — spec-build/coverage.json merge', () => {
   /**
    * Write a minimal requirements file with one requirement section.
    * Uses the RFC-0003 H3 format that parseRequirementsDocument expects.
@@ -278,7 +278,7 @@ describe('NativeSpineAdapter.getCoverageMap — _generated/coverage.json merge',
   }
 
   function writeCoverageJson(projectDir: string, byRequirement: Record<string, unknown>): void {
-    const genDir = path.join(projectDir, 'doc', 'specs', '_generated')
+    const genDir = path.join(projectDir, '.groundwork', 'spec-build')
     mkdirSync(genDir, { recursive: true })
     writeFileSync(
       path.join(genDir, 'coverage.json'),
@@ -355,7 +355,7 @@ describe('buildTraceabilityGraph — getCoverageMap.tests seam (S6-COVERAGE-MAP-
   }
 
   function writeCoverageJson(projectDir: string, byRequirement: Record<string, unknown>): void {
-    const genDir = path.join(projectDir, 'doc', 'specs', '_generated')
+    const genDir = path.join(projectDir, '.groundwork', 'spec-build')
     mkdirSync(genDir, { recursive: true })
     writeFileSync(path.join(genDir, 'coverage.json'), JSON.stringify({ by_requirement: byRequirement }), 'utf8')
   }

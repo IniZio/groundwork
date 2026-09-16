@@ -485,7 +485,7 @@ describe("S1: spec-lint manifest invariants", () => {
   });
 
   it("S1-AC1: spec-lint exits 0 on the current live spec tree (regression check)", () => {
-    // The live index already exists at doc/specs/_generated/index.json —
+    // The live index already exists at .groundwork/spec-build/index.json —
     // run lint directly without rebuilding so tests stay read-only on the live tree.
     const r = lint(REPO_ROOT);
     expect(
@@ -620,9 +620,8 @@ describe("S1: spec-lint manifest invariants", () => {
     // Anchor: confirm C-TESTCONCEPT was actually indexed before checking the negative
     const indexPath = path.join(
       projectDir,
-      "doc",
-      "specs",
-      "_generated",
+      ".groundwork",
+      "spec-build",
       "index.json",
     );
     const indexJson = JSON.parse(readFileSync(indexPath, "utf8")) as {

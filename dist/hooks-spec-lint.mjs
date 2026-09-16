@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 1da3cf4ad16a773638cd106774ad725267390876d6cf4603f25fe3451ecb4355
+// @bundle-source-hash: c1e55a28b5b0eccb3ad1eafd0176ae1b06a4d0484a7526295d592a93bc247785
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10093,7 +10093,7 @@ function walkSpecFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {
@@ -10116,7 +10116,7 @@ function walkSpecYamlFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {

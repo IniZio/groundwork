@@ -9,5 +9,5 @@
 export const LEDGER_SUBCOMMANDS = [
   'init', 'stamp-motive', 'status', 'add', 'set', 'complete', 'rm', 'show', 'view',
   'gate', 'abandon', 'fog', 'frontier', 'claim', 'await-human',
-  'autopilot', 'checkpoint', 'hold', 'scope-token', 'milestone-signoff',
+  'autopilot', 'checkpoint', 'hold', 'scope-token', 'milestone-signoff', 'help',
 ]

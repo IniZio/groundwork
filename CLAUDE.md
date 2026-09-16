@@ -120,7 +120,7 @@ _Injected at SessionStart by hooks/session-reminder.mjs — see that injection f
 - Phase checkpoint: `gw ledger checkpoint --motive <slug> --phase <phase> --verdict APPROVE|REJECT --verified-by <name> --token <write_token> [--deliverable <desc>]` APPROVE releases `checkpoint_hold` when it names that phase; REJECT records only. Hold: `gw ledger hold --motive <slug> --phase <phase> [--deliverable <d>] --token <write_token>`; clear: `gw ledger hold clear --motive <slug> --token <write_token>`.
 - Check progress cheaply any time with `gw ledger status --motive <slug>` instead of reading the file.
 - To abandon a run: `gw ledger abandon --motive <slug>` (sets `active:false`). Trivial tasks write no ledger, so the gate stays out of the way.
-- For full command reference: `bin/ledger help [<cmd>]` (deprecated legacy CLI — retained because `gw ledger` has no `help` subcommand).
+- For full command reference: `gw ledger help [<cmd>]`.
 - **Commit each verified wave before fanning out the next.** Uncommitted-wave accumulation is what made a subagent's `git stash` destructive and cost a full-run loss. For the recovery procedure if it happens anyway, see memory entry `uncommitted-wave-accumulation`.
 
 **Phase-checkpoint gate:** Per-phase deliverable verification before the stop-gate releases.

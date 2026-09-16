@@ -2,7 +2,7 @@
  * spec CLI tests — covers all 13 acceptance criteria from RFC-0001 T1.
  *
  * AC1  — spec init creates doc/specs/README.md with a valid concept node
- * AC2  — spec build writes _generated/{index.md,index.json,coverage.json}
+ * AC2  — spec build writes .groundwork/spec-build/{index.md,index.json,coverage.json}
  * AC3  — spec build exits 1 on parent/dir mismatch, printing node id + both values
  * AC4  — spec build exits 1 on duplicate id, printing both paths
  * AC5  — spec req new creates a file with a unique 4-char base32 id suffix
@@ -81,7 +81,7 @@ function run(
 // ---------------------------------------------------------------------------
 
 const SPEC_DIR = () => path.join(projectDir, "doc", "specs");
-const GEN_DIR = () => path.join(projectDir, "doc", "specs", "_generated");
+const GEN_DIR = () => path.join(projectDir, ".groundwork", "spec-build");
 
 function mkSpec() {
 	mkdirSync(SPEC_DIR(), { recursive: true });

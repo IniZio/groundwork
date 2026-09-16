@@ -77,7 +77,7 @@ import { scanVerifies, lookupVerifies } from './lib/verifies-scan.mjs'
 
 function loadSpecIndex(projectDir) {
   // Always build from disk — never read the generated cache.
-  // The cache (_generated/index.json) is gitignored and drifts silently; a
+  // The spec-build cache (.groundwork/spec-build/index.json) is gitignored and drifts silently; a
   // machine holding a stale cache would pass automated-unverified (and every
   // other node-level rule) against nodes that no longer reflect disk truth.
   // Disk is authoritative; the cache is only a build artefact for other tools.
@@ -340,12 +340,8 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
     }
   }
 
-  // Parse body sections
   const sections = parseRequirementsDocument(fileContent)
 
-  // Reject old-format individual requirement files (no anchored H3/H2 heading).
-  // Files in a requirements/ subdir that lack the "## REQ-ID — Title {#anchor}"
-  // heading are using the deprecated ## Statement format and must be converted to H2+bullets.
   const isIndividualReqFile = fileAbsPath.includes('/requirements/') &&
     !fileAbsPath.endsWith('/requirements.md') && !fileAbsPath.endsWith('/constraints.md')
   if (sections.length === 0 && isIndividualReqFile) {
@@ -356,7 +352,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
     return violations
   }
 
-  // Reject H3-headed individual requirement files. Canonical Shape A is H2 (##).
   if (sections.length > 0 && isIndividualReqFile) {
     const H3_HEADING_RE = /^### [A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-R-/m
     if (H3_HEADING_RE.test(fileContent)) {
@@ -372,12 +367,10 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
   const targetIds = new Set(targetNodes.map(n => n.id))
 
   for (const section of sections) {
-    // In RFC mode, only check sections present in targetNodes
     if (rfcMode && targetIds.size > 0 && !targetIds.has(section.id)) continue
 
     const id = section.id
 
-    // Strict 3-digit ID format
     if (!STRICT_REQ_ID_RE.test(id)) {
       violations.push({
         nodeId: id,
@@ -385,7 +378,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Anchor must equal id lowercased
     if (section.anchor !== id.toLowerCase()) {
       violations.push({
         nodeId: id,
@@ -393,10 +385,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Normative statement with bolded **shall** or **shall not**
-    // Accepts: **shall** (affirmative), **shall not** (prohibition inside bold),
-    //          **shall** not (prohibition outside bold). RFC 2119 / ISO 29148 both
-    // treat SHALL NOT as first-class normative.
     if (!section.normativeStatement) {
       violations.push({
         nodeId: id,
@@ -409,7 +397,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Why — REQUIRED
     if (!section.why) {
       violations.push({
         nodeId: id,
@@ -417,7 +404,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Fit criterion — REQUIRED
     if (!section.fitCriterion) {
       violations.push({
         nodeId: id,
@@ -425,8 +411,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       })
     }
 
-    // Unparseable **Verification** line: present but not understood is worse than absent
-    // Fire only when a bullet starting with **Verification** exists but did not parse.
     const rawChunk = sectionChunks.get(id) || ''
     if (!section.verification || section.verification === 'unknown') {
       for (const line of rawChunk.split('\n')) {
@@ -441,7 +425,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       }
     }
 
-    // Same-file cross-references: must resolve to a section in this file
     for (const anchor of section.seeAlso) {
       if (!fileAnchors.has(anchor)) {
         violations.push({
@@ -451,7 +434,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       }
     }
 
-    // Relative-path cross-references: file must exist and anchor must be present
     for (const { filePart, anchor } of extractRelativeLinks(rawChunk)) {
       const targetAbsPath = resolve(dirname(fileAbsPath), filePart)
       if (!existsSync(targetAbsPath)) {
@@ -462,8 +444,6 @@ function checkRequirementsFile(fileContent, fileAbsPath, targetNodes, rfcMode) {
       } else {
         try {
           const targetContent = readFileSync(targetAbsPath, 'utf8')
-          // Collect anchors from requirement sections (existing behaviour) and
-          // also from every ordinary heading (GitHub-style slug or explicit {#…}).
           const targetSections = parseRequirementsDocument(targetContent)
           const targetAnchors = new Set([
             ...targetSections.map(s => s.anchor),
@@ -508,7 +488,6 @@ function checkNodeInvariants(node, rawFm, index) {
   const isConcept = !isRequirement
 
   if (isConcept) {
-    // Schema validation for concept nodes (handles required-field, enum-values, id-format, unknown-field)
     try {
       const validate = loadSchema('spec-concept')
       if (!validate(rawFm)) {
@@ -516,11 +495,8 @@ function checkNodeInvariants(node, rawFm, index) {
           violations.push(line)
         }
       }
-    } catch {
-      // Schema not found — hand-written checks below cover the essentials
-    }
+    } catch { /* schema not found — hand-written checks below */ }
 
-    // Whitespace-only required fields (schema minLength:1 passes for "   ")
     for (const field of CONCEPT_WHITESPACE_FIELDS) {
       const val = rawFm[field]
       if (typeof val === 'string' && val !== '' && val.trim() === '') {
@@ -528,7 +504,6 @@ function checkNodeInvariants(node, rawFm, index) {
       }
     }
   } else {
-    // Schema validation for requirement nodes (handles required-field, enum-values, unknown-field)
     try {
       const validate = loadSchema('spec-requirement')
       if (!validate(rawFm)) {
@@ -536,43 +511,31 @@ function checkNodeInvariants(node, rawFm, index) {
           violations.push(line)
         }
       }
-    } catch {
-      // Schema not found — hand-written checks below cover the essentials
-    }
-    // Old-format requirement nodes (not from requirements.md):
-    // Check for stale fields that moved to body in RFC-0003
+    } catch { /* schema not found — hand-written checks below */ }
     if (Object.prototype.hasOwnProperty.call(rawFm, 'ears')) {
       violations.push(`stale-frontmatter: node "${id}" has "ears" in frontmatter (EARS sentence belongs in body prose)`)
     }
     if (Object.prototype.hasOwnProperty.call(rawFm, 'verify')) {
       violations.push(`stale-frontmatter: node "${id}" has "verify" in frontmatter (fit criterion belongs in body prose)`)
     }
-    // D-15 individual requirement files live in a requirements/ subdirectory (e.g.
-    // concept/requirements/concept-r-001.md). They use lowercase IDs and additional
-    // frontmatter fields not present in old-format nodes.
     const isD15ReqFile = !!(node.relPath && node.relPath.includes('/requirements/'))
 
-    // Unknown fields check (for non-concept nodes not covered by schema)
     for (const field of Object.keys(rawFm)) {
       if (!ALLOWED_FRONTMATTER_FIELDS.has(field) && field !== 'ears' && field !== 'verify') {
         violations.push(`unknown-field: node "${id}" has unknown frontmatter key "${field}"`)
       }
     }
-    // Strict requirement ID format — skip D-15 individual files (they use lowercase ids)
     if (!isD15ReqFile && rawFm.id && !STRICT_REQ_ID_RE.test(String(rawFm.id))) {
       violations.push(`id-format: requirement "${rawFm.id}" does not match <CONCEPT>-R-NNN (exactly 3 zero-padded digits)`)
     }
   }
 
-  // origin_decision_ref is optional; if present it must be a valid decision ref (<motive-slug>#D-<n>)
   if (rawFm.origin_decision_ref !== undefined) {
     if (!rawFm.origin_decision_ref || typeof rawFm.origin_decision_ref !== 'string' || !rawFm.origin_decision_ref.trim() || rawFm.origin_decision_ref === 'null' || !/^[a-z0-9][a-z0-9-]*#D-\d+$/.test(rawFm.origin_decision_ref.trim())) {
       violations.push(`origin-decision-ref: node "${id}" has invalid origin_decision_ref in frontmatter (expected <motive-slug>#D-<n>, e.g. plugin-cleanup#D-5)`)
     }
   }
 
-  // Summary length ≤25 words (all node types except D-15 individual requirement files,
-  // which use body sections for normative content rather than a frontmatter summary gloss)
   const _isD15ForSummary = !isConcept && !!(node.relPath && node.relPath.includes('/requirements/'))
   const summary = rawFm.summary || node.summary
   if (!_isD15ForSummary && summary && summary.trim()) {
@@ -582,7 +545,6 @@ function checkNodeInvariants(node, rawFm, index) {
     }
   }
 
-  // snapshot_of referential integrity (all node types)
   if (rawFm.snapshot_of) {
     const snapshotTarget = String(rawFm.snapshot_of).trim()
     if (snapshotTarget && !(index.nodes && index.nodes[snapshotTarget])) {
@@ -833,13 +795,6 @@ const violations = []
 // ---------------------------------------------------------------------------
 // Pass 0a: File-walk YAML-parse scan
 // ---------------------------------------------------------------------------
-// Walk every *.md under requirements/ and attempt a YAML frontmatter parse.
-// Files with unparseable frontmatter produce no index node (buildIndexData
-// silently skips them), so checkRequirementsFile is never called for them —
-// this pass is the only gate for that case.
-// Note: parseYamlFrontmatter returns {data:{}, body} with NO parseError for
-// no-frontmatter files (no ---) and non-object YAML (e.g. bare `true`) —
-// those cases do not throw. Count-parity (Pass 0b) is the backstop for them.
 const diskReqFiles = walkReqFiles(specDir)
 
 for (const absReqPath of diskReqFiles) {
@@ -856,17 +811,8 @@ for (const absReqPath of diskReqFiles) {
 // ---------------------------------------------------------------------------
 // Pass 0b: Count-parity check (full-tree mode only)
 // ---------------------------------------------------------------------------
-// The index is built fresh from disk (loadSpecIndex calls buildIndexData, not
-// the gitignored _generated/index.json cache), so a count mismatch means a
-// file was silently dropped (bad frontmatter that did not throw, missing id
-// field, etc.). Skipped in RFC mode: that mode scans a subset, so counts
-// diverge by design.
 if (!rfcMode) {
   const diskCount = diskReqFiles.length
-  // Compare files to unique indexed file paths, not raw node count: one file
-  // may contain multiple requirement sections (multiple nodes, one relPath).
-  // A silently-dropped file produces zero nodes for its relPath — that's the
-  // mismatch we're detecting.
   const indexedFileCount = new Set(
     allNodes.filter(n => n.type === 'requirement' && n.relPath).map(n => n.relPath),
   ).size
@@ -908,7 +854,6 @@ for (const [relPath, nodes] of byFile) {
       emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
     }
   } else {
-    // Concept/metadata nodes: check frontmatter-based invariants
     const { data: rawFm } = parseYamlFrontmatter(fileContent)
     for (const node of nodes) {
       for (const v of checkNodeInvariants(node, rawFm, index)) {
@@ -916,9 +861,6 @@ for (const [relPath, nodes] of byFile) {
         emitLintDrift(projectDir, rfcForJournal, node.id, v)
       }
     }
-    // Hard error: frontmatter verification↔body **Verification** agreement
-    // D-15 individual requirement files carry both a frontmatter `verification:` and a body
-    // `**Verification**` bullet; they land here (not in isReqFile) but the hard check applies equally.
     for (const { nodeId, violation } of checkFmBodyVerificationMismatch(fileContent, absPath, nodes, projectDir)) {
       violations.push({ nodeId, violation })
       emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
@@ -930,8 +872,6 @@ for (const [relPath, nodes] of byFile) {
 // automated-unverified: every automated requirement must have ≥1 @verifies test
 // ---------------------------------------------------------------------------
 
-// D-15 individual requirement files (in requirements/ subdirs) that carry
-// verification: automated MUST have @verifies backing — this rule enforces it.
 const automatedNodes = targetNodes.filter(n => n.verification === 'automated')
 if (automatedNodes.length > 0) {
   const verifiesMap = scanVerifies(projectDir)
@@ -966,14 +906,12 @@ function levenshtein(a, b) {
   return dp[m][n]
 }
 
-// Process each concept node (README.md-based nodes indexed with type === 'concept')
 const conceptNodes = targetNodes.filter(n => n.type === 'concept')
 
 for (const conceptNode of conceptNodes) {
   const nodeId = conceptNode.id
   const conceptDir = join(specDir, dirname(conceptNode.relPath || ''))
 
-  // 1. Validate spec.yaml when present
   const { manifest, errors: manifestErrors } = loadSpecManifestSync(conceptDir)
   for (const { field, problem } of manifestErrors) {
     const violation = `manifest-invalid: concept "${nodeId}" spec.yaml field "${field}": ${problem}`
@@ -981,8 +919,6 @@ for (const conceptNode of conceptNodes) {
     emitLintDrift(projectDir, rfcForJournal, nodeId, violation)
   }
 
-  // 2. View-file frontmatter rules (from spec.yaml manifest views; views are also
-  //    serialized into index.json for queryability)
   const views = (manifest && Array.isArray(manifest.views)) ? manifest.views : []
   for (const view of views) {
     if (!view || typeof view.file !== 'string') continue
@@ -995,14 +931,10 @@ for (const conceptNode of conceptNodes) {
     }
     let viewContent
     try { viewContent = readFileSync(viewAbsPath, 'utf8') } catch { continue }
-    // If the view file is the concept node itself (e.g. overview → README.md),
-    // its frontmatter is already validated by the concept schema — skip the
-    // strict two-field check (plan decision V2).
     const conceptNodeAbsPath = join(specDir, conceptNode.relPath || '')
     if (viewAbsPath === conceptNodeAbsPath) continue
     const { data: viewFm } = parseYamlFrontmatter(viewContent)
     const viewFields = Object.keys(viewFm || {})
-    // Must have exactly 'type' and 'id' — no more, no less
     for (const f of VIEW_ALLOWED_FIELDS) {
       if (!viewFields.includes(f)) {
         const violation = `required-field: view file "${view.file}" in concept "${nodeId}" is missing required field "${f}"`
@@ -1056,8 +988,6 @@ for (const conceptNode of conceptNodes) {
       const view = views[i]
       if (!view || typeof view.type !== 'string') continue
       if (!CORE_VIEW_TYPES.has(view.type) && !projectDeclaredNames.has(view.type)) {
-        // Special case: "requirements" is a deprecated FILENAME alias, not a view type.
-        // A reader who names the file requirements.md and writes type: requirements hits this.
         let didYouMean = ''
         if (view.type === 'requirements') {
           didYouMean = `\n  "requirements" is not a view type — it is the deprecated alias for the FILENAME.\n  The file requirements.md must still be registered with type: constraints, not type: requirements.\n  Change this entry to: type: constraints`
@@ -1162,13 +1092,11 @@ for (const conceptNode of conceptNodes) {
 // ---------------------------------------------------------------------------
 // Hierarchy invariants (D-22): exactly-one-root, parent-resolves, no-cycles,
 // parent-field-present.  Applied to the full concept tree in non-RFC mode.
-// _generated/** is already excluded: walkSpecFiles skips the _generated dir,
-// so no _generated nodes appear in allNodes.
+// spec-build output is under .groundwork/spec-build/ (outside doc/specs/),
+// so no spec-build nodes appear in allNodes.
 // ---------------------------------------------------------------------------
 
 if (!rfcMode) {
-  // Concept nodes are index.md or README.md files with an id field.
-  // (type may be 'concept' or 'moc' depending on frontmatter; filter by filename.)
   const allConceptNodes = allNodes.filter(n =>
     n.relPath && (
       n.relPath === 'README.md' ||
@@ -1177,9 +1105,6 @@ if (!rfcMode) {
     ),
   )
 
-  // The spec index collapses both `parent: null` (explicit) and absent parent
-  // to node.parent===null.  Re-read raw frontmatter to distinguish them so that
-  // invariant 4 (parent-field-present) can fire on truly absent fields.
   const parentFieldAbsent = new Set()
   for (const cn of allConceptNodes) {
     if (!cn.relPath) continue
@@ -1192,12 +1117,8 @@ if (!rfcMode) {
     }
   }
 
-  // Build id→node lookup for O(1) parent resolution and cycle walks.
   const conceptNodeById = new Map(allConceptNodes.map(n => [n.id, n]))
 
-  // Invariant 4: parent-field-present — a concept without a parent field is an
-  // implicit second root and must be reported before the root-count check so the
-  // user sees which node is the culprit.
   for (const cn of allConceptNodes) {
     if (parentFieldAbsent.has(cn.id)) {
       violations.push({
@@ -1207,10 +1128,8 @@ if (!rfcMode) {
     }
   }
 
-  // Root concepts: node.parent===null covers both explicit `parent: null` and absent parent.
   const rootNodes = allConceptNodes.filter(cn => cn.parent === null)
 
-  // Invariant 1: exactly-one-root
   if (rootNodes.length === 0) {
     violations.push({
       nodeId: '(tree)',
@@ -1224,7 +1143,6 @@ if (!rfcMode) {
     })
   }
 
-  // Invariant 2: parent-resolves — non-root concepts must reference an existing concept id
   const conceptIdSet = new Set(allConceptNodes.map(n => n.id))
   for (const cn of allConceptNodes) {
     if (cn.parent === null) continue // root (or absent-parent, already reported)
@@ -1236,9 +1154,6 @@ if (!rfcMode) {
     }
   }
 
-  // Invariant 3: no-cycles — follow parent links from every concept; a revisited
-  // node signals a cycle.  Guard against unknown parents (invariant 2) with a
-  // belt-and-suspenders null check so we never loop infinitely.
   const reportedInCycle = new Set()
   for (const startNode of allConceptNodes) {
     if (reportedInCycle.has(startNode.id)) continue
@@ -1246,8 +1161,6 @@ if (!rfcMode) {
     let cur = startNode.id
     while (cur !== null && cur !== undefined) {
       if (visited.has(cur)) {
-        // Every node on the path from startNode to cur is in the cycle.
-        // Report the starting node (one violation per cycle participant).
         if (!reportedInCycle.has(startNode.id)) {
           reportedInCycle.add(startNode.id)
           violations.push({

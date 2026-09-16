@@ -50,7 +50,7 @@ For the EARS pattern table and a complete worked example: [`reference/requiremen
 
 **Ledger:** `gw ledger add --covers-ac "AC1,AC2"` records which acceptance criteria a slice addresses. The `verifies:` frontmatter field on requirement files declares which ledger slices implement that requirement (slice linkage only — no lint rule reads it for coverage).
 
-Run `spec build` after adding or editing requirements to refresh `doc/specs/_generated/`. For build output fields: `spec build --help`.
+Run `spec build` after adding or editing requirements to refresh `.groundwork/spec-build/`. For build output fields: `spec build --help`.
 
 ## Concept layout
 

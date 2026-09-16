@@ -154,7 +154,7 @@ describe('spec-guard events — permitted writes emit zero events', () => {
     expect(events.filter(e => e.type === 'SPEC_DRIFT')).toHaveLength(0)
   })
 
-  it('_generated/ exemption → zero events', () => {
+  it('spec-build dir → outside guarded prefix → zero events', () => {
     const projectDir = makeTmp()
     const sessionId = 'sess-generated'
 
@@ -162,7 +162,7 @@ describe('spec-guard events — permitted writes emit zero events', () => {
       {
         tool_name: 'Write',
         tool_input: {
-          file_path: path.join(projectDir, 'doc', 'specs', '_generated', 'index.md'),
+          file_path: path.join(projectDir, '.groundwork', 'spec-build', 'index.md'),
         },
         cwd: projectDir,
         session_id: sessionId,

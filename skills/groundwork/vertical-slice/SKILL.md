@@ -21,7 +21,7 @@ Chain: `feature-interview → planner` produces a `motive_ref`; this skill runs 
 4. **Assign waves by dependency** — Wave 0: tracer; Wave N: slices whose blockers are all complete. Make each wave as wide as the DAG permits.
 5. **Write the slice table**: Slice | Behavior | Files Owned | Wave | Depends On.
 
-For ledger CLI subcommands and schema: `gw ledger <subcommand> --motive <slug>` (see CLAUDE.md command reference); `bin/ledger help` lists all subcommands (deprecated legacy CLI — `gw ledger` has no `help` subcommand).
+For ledger CLI subcommands and schema: `gw ledger <subcommand> --motive <slug>` (see CLAUDE.md command reference); `gw ledger help [<cmd>]` for the full command reference.
 
 ## Conflict-free rules
 

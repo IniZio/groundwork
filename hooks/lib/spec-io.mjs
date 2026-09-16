@@ -78,12 +78,22 @@ export function specDirPath(projectRoot) {
   return join(projectRoot, 'doc', 'specs')
 }
 
+/**
+ * Return the absolute path to the spec-build output directory.
+ * Output was relocated from doc/specs/_generated/ to .groundwork/spec-build/ (D-101).
+ * @param {string} sd  Spec directory path (join(projectRoot, 'doc', 'specs'))
+ */
 export function generatedDirPath(sd) {
-  return join(sd, '_generated')
+  return join(dirname(dirname(sd)), '.groundwork', 'spec-build')
 }
 
 export function indexJsonPath(sd) {
-  return join(sd, '_generated', 'index.json')
+  return join(generatedDirPath(sd), 'index.json')
+}
+
+/** Return the absolute path to the spec-build output directory from a project root. */
+export function specBuildDirPath(projectRoot) {
+  return join(projectRoot, '.groundwork', 'spec-build')
 }
 
 /**
@@ -103,7 +113,7 @@ export function isRequirementsDoc(relPath) {
 }
 
 // ---------------------------------------------------------------------------
-// Walk spec files (excludes _generated and dotfiles)
+// Walk spec files (excludes dotfiles)
 // ---------------------------------------------------------------------------
 
 export function walkSpecFiles(sd) {
@@ -112,7 +122,7 @@ export function walkSpecFiles(sd) {
     let entries
     try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
     for (const e of entries) {
-      if (e.name.startsWith('.') || e.name === '_generated') continue
+      if (e.name.startsWith('.')) continue
       const full = join(dir, e.name)
       if (e.isDirectory()) {
         walk(full)
@@ -130,7 +140,7 @@ export function walkSpecFiles(sd) {
 // ---------------------------------------------------------------------------
 
 /**
- * Walk all spec.yaml sidecar files found under `sd` (excludes _generated and dotfiles).
+ * Walk all spec.yaml sidecar files found under `sd` (excludes dotfiles).
  * Returns an array of { absPath, conceptDir } where conceptDir is the directory
  * that contains the spec.yaml.
  *
@@ -143,7 +153,7 @@ function walkSpecYamlFiles(sd) {
     let entries
     try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
     for (const e of entries) {
-      if (e.name.startsWith('.') || e.name === '_generated') continue
+      if (e.name.startsWith('.')) continue
       const full = join(dir, e.name)
       if (e.isDirectory()) {
         walk(full)

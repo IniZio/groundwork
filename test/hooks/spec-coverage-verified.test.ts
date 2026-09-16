@@ -143,7 +143,7 @@ describe("coverage.verified excludes non-automated requirements", () => {
 
     const cov = JSON.parse(
       readFileSync(
-        path.join(sd, "_generated", "coverage.json"),
+        path.join(projectDir, ".groundwork", "spec-build", "coverage.json"),
         "utf8",
       ),
     );

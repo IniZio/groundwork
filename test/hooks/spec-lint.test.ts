@@ -1050,12 +1050,8 @@ describe("automated-unverified: automated requirement must have a @verifies test
   });
 
   it("flags a D-15 requirement file (in requirements/ subdir) with verification=automated and no @verifies test", () => {
-    // Positive-control test: proves the fixed filter includes D-15 req files.
-    // Before the fix, the dead conjunct excluded any node whose relPath contained
-    // '/requirements/', so this would have wrongly passed clean.
     mkSpec();
     writeConcept("root", minConcept("C-ROOT"));
-    // Write a D-15-style individual requirement file in a requirements/ subdir.
     const reqDir = path.join(SPEC_DIR(), "root", "requirements");
     mkdirSync(reqDir, { recursive: true });
     writeFileSync(
@@ -1194,7 +1190,7 @@ describe("anchor-mismatch: anchor must equal id lowercased", () => {
 // ---------------------------------------------------------------------------
 // Cache-vs-disk parity: loadSpecIndex must be disk-authoritative
 //
-// Regression for the fail-open bug where a stale _generated/index.json caused
+// Regression for the fail-open bug where a stale .groundwork/spec-build/index.json caused
 // spec-lint to exit 0 even though disk truth would produce a violation.
 // Paired experiment: same fixture tree, same mutation, same violation — the
 // only variable is whether the cache directory is present or absent.
@@ -1210,38 +1206,25 @@ describe("loadSpecIndex cache-vs-disk parity", () => {
       minSection("ROOT-R-001", { verification: "unverified" }),
     ]);
 
-    // Build the cache — index now reflects unverified state
     const br = build();
     expect(br.code, `build stderr: ${br.stderr}`).toBe(0);
     const cacheDir = path.join(
       projectDir,
-      "doc",
-      "specs",
-      "_generated",
+      ".groundwork",
+      "spec-build",
     );
-    expect(existsSync(cacheDir)).toBe(true); // cache was created
+    expect(existsSync(cacheDir)).toBe(true);
 
-    // Mutate on disk: unverified → automated (no @verifies annotation exists).
-    // Cache is now stale: it still records verification=unverified for ROOT-R-001.
     writeRequirementsDoc("", [
       minSection("ROOT-R-001", { verification: "automated" }),
     ]);
 
-    // Run lint WITH the stale cache present.
-    // Before the fix, loadSpecIndex read the cache → unverified node → no
-    // automated-unverified violation → exit 0 (fail-open).
-    // After the fix, loadSpecIndex always rebuilds from disk → automated node
-    // → no @verifies → automated-unverified violation → exit 1.
     const withCache = lint();
 
-    // Delete the cache and run again.
     rmSync(cacheDir, { recursive: true, force: true });
     expect(existsSync(cacheDir)).toBe(false);
     const withoutCache = lint();
 
-    // Both runs must exit 1 with an automated-unverified violation.
-    // A divergence (withCache.code===0, withoutCache.code===1) proves the
-    // cache-preferred branch is still active.
     expect(
       withCache.code,
       `with-cache stdout: ${withCache.stdout}`,
@@ -1272,14 +1255,11 @@ describe("loadSpecIndex cache-vs-disk parity", () => {
 
 describe("no-spec-tree: exits non-zero when doc/specs does not exist", () => {
   it("exits 1 (not 0) when the project has no doc/specs directory", () => {
-    // Do NOT call mkSpec() — the fixture has no spec tree at all.
     const r = lint();
-    // Before fix: code was 0 (false success). After fix: code is 1.
     expect(
       r.code,
       `expected non-zero exit when no spec tree found, got ${r.code}; stdout: ${r.stdout}; stderr: ${r.stderr}`,
     ).not.toBe(0);
-    // The message must name the missing directory so the user knows what to look at.
     expect(r.stdout + r.stderr).toContain("no spec tree found");
   });
 });

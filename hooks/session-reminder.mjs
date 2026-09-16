@@ -22,8 +22,7 @@ import { estimateTokens } from './lib/doc-io.mjs'
 
 /** Absolute paths to the bin wrappers — reliable regardless of session cwd. */
 const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
-const LEDGER_BIN = path.resolve(_hooksDir, '../bin/ledger') // kept: 'help' subcommand has no gw equivalent
-const GW_HOOK_BIN = path.resolve(_hooksDir, '../bin/gw-hook') // operational gw ledger commands
+const GW_HOOK_BIN = path.resolve(_hooksDir, '../bin/gw-hook')
 const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
 import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
@@ -308,7 +307,7 @@ try {
 const sessionId = typeof input?.session_id === 'string' ? input.session_id : ''
 
 // Absolute CLI tool paths — includes orchestrator-only token-gated commands (scope-token, milestone-signoff).
-const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: ${LEDGER_SUBCOMMANDS.join(', ')} · Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`
+const cliToolsBlock = `\n\n## Groundwork CLI tools (absolute paths — use these, not bin/)\n\nLedger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` — valid subcommands: ${LEDGER_SUBCOMMANDS.join(', ')} · Journal: \`${JOURNAL_BIN}\`. Run \`${GW_HOOK_BIN} ledger help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`
 
 let additionalContext = reminder + cliToolsBlock
 

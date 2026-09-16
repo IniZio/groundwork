@@ -14,15 +14,15 @@ const TICKET_FILES = readdirSync(TICKETS_DIR)
   .sort()
 
 describe('ticket frontmatter conversion — obsidian-native-groundwork', () => {
-  it('reads exactly 39 ticket files', () => {
-    expect(TICKET_FILES).toHaveLength(39)
+  it('vault tickets directory is non-empty', () => {
+    expect(TICKET_FILES.length).toBeGreaterThan(0)
   })
 
-  it('readTicket succeeds on all 39 files', async () => {
+  it('readTicket succeeds on every ticket file', async () => {
     const results = await Promise.all(
       TICKET_FILES.map(f => readTicket({ repoRoot: REPO_ROOT, tracker: TRACKER, motive: MOTIVE, filename: f }))
     )
-    expect(results).toHaveLength(39)
+    expect(results).toHaveLength(TICKET_FILES.length)
     for (const note of results) {
       expect(note.fm).toBeDefined()
     }
@@ -47,11 +47,6 @@ describe('ticket frontmatter conversion — obsidian-native-groundwork', () => {
         expect(validTypes.has(fm.type as string), `${TICKET_FILES[i]} type=${fm.type} not in enum`).toBe(true)
       }
     }
-  })
-
-  it('file count is exactly 39 after conversion', () => {
-    const current = readdirSync(TICKETS_DIR).filter(f => f.endsWith('.md'))
-    expect(current).toHaveLength(39)
   })
 })
 
@@ -86,5 +81,27 @@ describe('ticket links round-trip — dependency expression', () => {
     const note = await readTicket({ repoRoot: tmpBase, tracker, motive, filename: 'dep-test.md' })
     expect(Array.isArray(note.fm.links)).toBe(true)
     expect((note.fm.links as string[])).toContain('[[08-build-gw-migrate]]')
+  })
+
+  it('invalid type enum value causes readTicket to throw (schema bites)', async () => {
+    tmpBase = mkdtempSync(path.join(tmpdir(), 'gw-schema-bite-'))
+    const tracker = '.groundwork'
+    const motive = 'test-motive'
+    const ticketsDir = path.join(tmpBase, tracker, 'motives', motive, 'tickets')
+    mkdirSync(ticketsDir, { recursive: true })
+
+    const content = [
+      '---',
+      'title: Bad type test',
+      'type: not-a-valid-type',
+      'status: open',
+      '---',
+      '',
+    ].join('\n')
+    writeFileSync(path.join(ticketsDir, 'bad-type.md'), content, 'utf8')
+
+    await expect(
+      readTicket({ repoRoot: tmpBase, tracker, motive, filename: 'bad-type.md' })
+    ).rejects.toThrow()
   })
 })

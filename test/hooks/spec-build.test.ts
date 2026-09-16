@@ -46,7 +46,7 @@ function run(args: string[]): { code: number; stdout: string; stderr: string } {
 }
 
 const SPEC_DIR = () => path.join(projectDir, 'doc', 'specs')
-const GEN_DIR = () => path.join(projectDir, 'doc', 'specs', '_generated')
+const GEN_DIR = () => path.join(projectDir, '.groundwork', 'spec-build')
 
 function mkSpec() {
   mkdirSync(SPEC_DIR(), { recursive: true })
@@ -182,8 +182,8 @@ describe('index.md — anchor link format', () => {
 
     const md = readFileSync(path.join(GEN_DIR(), 'index.md'), 'utf8')
 
-    // Link must use the ../relPath#anchor form (relative from _generated/ to spec root)
-    expect(md).toContain('../myfeature/requirements.md#myfeature-r-001')
+    // Link must use the ../../doc/specs/relPath#anchor form (relative from .groundwork/spec-build/ to spec root)
+    expect(md).toContain('../../doc/specs/myfeature/requirements.md#myfeature-r-001')
 
     // Must not use a bare fragment anchor (which would be a same-page link, not a cross-file link)
     expect(md).not.toMatch(/\]\(#myfeature-r-001\)/)

@@ -4,7 +4,7 @@
  *
  * Subcommands:
  *   init                    — create doc/specs/README.md with a root concept node
- *   build                   — build doc/specs/_generated/{index.md,index.json,coverage.json}
+ *   build                   — build .groundwork/spec-build/{index.md,index.json,coverage.json}
  *   req new <concept> <name>— create a new requirement file
  *   show <id> [--full]      — show a spec node (8 lines without --full)
  *   search <q> [--limit N]  — search nodes (default --limit 8)
@@ -51,7 +51,6 @@ function parseFlags(args) {
     const a = args[i]
     if (a.startsWith('--')) {
       const key = a.slice(2)
-      // Boolean flags (no next arg or next arg starts with --)
       if (i + 1 >= args.length || args[i + 1].startsWith('--')) {
         flags[key] = true
       } else {
@@ -110,12 +109,10 @@ async function runBuild(sd, { silent = false } = {}) {
     process.exit(1)
   }
 
-  // Report build warnings (deprecations, informational notices)
   for (const w of warnings) {
     process.stderr.write(`spec: [warning] ${w.message}\n`)
   }
 
-  // Report non-blocking parse errors as warnings
   for (const e of errors) {
     if (e.type === 'requirement_parse_error') {
       process.stderr.write(`spec: [warning] parse error in "${e.nodeId}": ${e.message}\n  in: ${e.path}\n`)
@@ -126,7 +123,6 @@ async function runBuild(sd, { silent = false } = {}) {
     }
   }
 
-  // Prepare output
   const genDir = generatedDirPath(sd)
   mkdirSync(genDir, { recursive: true })
 
@@ -163,17 +159,10 @@ async function runBuild(sd, { silent = false } = {}) {
   }
   writeFileSync(join(genDir, 'index.json'), JSON.stringify(indexJson, null, 2) + '\n', 'utf8')
 
-  // coverage.json
-  // by_source replaces by_status: status is not present in the body-first format;
-  // source RFC is extracted from the **Source** token in each requirement's attribute line.
   const reqs = Object.values(nodes).filter(n => n.type === 'requirement')
-
-  // Scan test files for @verifies annotations to compute ACTUAL verification evidence.
-  // sd is <projectRoot>/doc/specs, so the project root is two levels up.
   const projectRootDir = dirname(dirname(sd))
   const verifiesMap = scanVerifies(projectRootDir)
 
-  // Build per-requirement map: declared intent + actual test coverage
   /** @type {Record<string, {declared: string|null, verified: boolean, tests: string[]}>} */
   const byRequirement = {}
   for (const req of reqs) {
@@ -206,8 +195,6 @@ async function runBuild(sd, { silent = false } = {}) {
   }
   writeFileSync(join(genDir, 'coverage.json'), JSON.stringify(coverage, null, 2) + '\n', 'utf8')
 
-  // index.md — grouped by concept, full normative statement, working anchor links
-  // A reader can skim the whole spec and click through to any requirement from this file.
   const allNodes = Object.values(nodes)
   const requirementNodes = allNodes.filter(n => n.type === 'requirement')
   const conceptNodes = allNodes
@@ -224,7 +211,7 @@ async function runBuild(sd, { silent = false } = {}) {
   // Concepts table — placed at top of index.md, before requirement sections
   {
     const conceptDirs = readdirSync(sd, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== '_generated')
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
       .sort((a, b) => a.name.localeCompare(b.name))
 
     // Map: first path component of relPath → concept node (skips root-level concepts)
@@ -299,8 +286,8 @@ async function runBuild(sd, { silent = false } = {}) {
     mdLines.push('')
 
     for (const req of anchoredReqs) {
-      // Link is relative from _generated/ to the spec root (prepend ../ to relPath)
-      const link = `../${req.relPath}#${req.anchor}`
+      // Link is relative from .groundwork/spec-build/ to the spec root (prepend ../../doc/specs/ to relPath)
+      const link = `../../doc/specs/${req.relPath}#${req.anchor}`
       mdLines.push(`### [${req.id} — ${req.title}](${link})`)
       mdLines.push('')
       if (req.ears) {
@@ -370,7 +357,7 @@ const HELP = {
     flags: [],
   },
   build: {
-    summary: 'build doc/specs/_generated/{index.md,index.json,coverage.json}',
+    summary: 'build .groundwork/spec-build/{index.md,index.json,coverage.json}',
     usage: 'spec build',
     flags: [],
   },

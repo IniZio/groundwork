@@ -36,8 +36,11 @@ export declare function findProjectRoot(startDir: string): string
 /** Return the absolute path to the spec directory. */
 export declare function specDirPath(projectRoot: string): string
 
-/** Return the absolute path to the generated output directory under the spec dir. */
+/** Return the absolute path to the spec-build output directory (.groundwork/spec-build/). Output relocated from doc/specs/_generated/ per D-101. */
 export declare function generatedDirPath(sd: string): string
+
+/** Return the absolute path to the spec-build output directory from a project root. */
+export declare function specBuildDirPath(projectRoot: string): string
 
 /** Return the absolute path to the index.json file. */
 export declare function indexJsonPath(sd: string): string

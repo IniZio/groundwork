@@ -50,7 +50,7 @@ function run(args: string[]): { code: number; stdout: string; stderr: string } {
 }
 
 const SPEC_DIR = () => path.join(projectDir, 'doc', 'specs')
-const GEN_DIR = () => path.join(projectDir, 'doc', 'specs', '_generated')
+const GEN_DIR = () => path.join(projectDir, '.groundwork', 'spec-build')
 
 function setup(): void {
   const conceptDir = path.join(SPEC_DIR(), 'my-concept')

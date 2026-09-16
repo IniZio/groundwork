@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 1da3cf4ad16a773638cd106774ad725267390876d6cf4603f25fe3451ecb4355
+// @bundle-source-hash: c1e55a28b5b0eccb3ad1eafd0176ae1b06a4d0484a7526295d592a93bc247785
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -10099,10 +10099,10 @@ function specDirPath(projectRoot) {
   return join(projectRoot, "doc", "specs");
 }
 function generatedDirPath(sd) {
-  return join(sd, "_generated");
+  return join(dirname2(dirname2(sd)), ".groundwork", "spec-build");
 }
 function indexJsonPath(sd) {
-  return join(sd, "_generated", "index.json");
+  return join(generatedDirPath(sd), "index.json");
 }
 function walkSpecFiles(sd) {
   const results = [];
@@ -10114,7 +10114,7 @@ function walkSpecFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {
@@ -10137,7 +10137,7 @@ function walkSpecYamlFiles(sd) {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "_generated")
+      if (e.name.startsWith("."))
         continue;
       const full = join(dir, e.name);
       if (e.isDirectory()) {
@@ -10855,7 +10855,7 @@ async function runBuild(sd, { silent = false } = {}) {
     ""
   ];
   {
-    const conceptDirs = readdirSync3(sd, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "_generated").sort((a, b) => a.name.localeCompare(b.name));
+    const conceptDirs = readdirSync3(sd, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).sort((a, b) => a.name.localeCompare(b.name));
     const conceptByDir = {};
     for (const cn of conceptNodes) {
       const parts = cn.relPath.split("/");
@@ -10910,7 +10910,7 @@ async function runBuild(sd, { silent = false } = {}) {
     mdLines.push(`## ${concept.title || concept.id}`);
     mdLines.push("");
     for (const req of anchoredReqs) {
-      const link = `../${req.relPath}#${req.anchor}`;
+      const link = `../../doc/specs/${req.relPath}#${req.anchor}`;
       mdLines.push(`### [${req.id} \u2014 ${req.title}](${link})`);
       mdLines.push("");
       if (req.ears) {
@@ -10964,7 +10964,7 @@ var HELP = {
     flags: []
   },
   build: {
-    summary: "build doc/specs/_generated/{index.md,index.json,coverage.json}",
+    summary: "build .groundwork/spec-build/{index.md,index.json,coverage.json}",
     usage: "spec build",
     flags: []
   },

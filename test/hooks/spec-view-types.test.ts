@@ -38,7 +38,7 @@ beforeEach(() => {
 afterEach(() => rmSync(projectDir, { recursive: true, force: true }))
 
 function SPEC_DIR(): string { return path.join(projectDir, 'doc', 'specs') }
-function GEN_DIR(): string { return path.join(SPEC_DIR(), '_generated') }
+function GEN_DIR(): string { return path.join(projectDir, '.groundwork', 'spec-build') }
 
 function runBuild(): { code: number; stdout: string; stderr: string } {
   const env = { ...process.env, CLAUDE_PROJECT_DIR: projectDir }

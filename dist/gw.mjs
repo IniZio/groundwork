@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: e302eaa9dc5b05dd1eb3b6c423bd8aa5cf4a947081bc4eef4268b3fe0a5d91ba
+// @bundle-source-hash: 793dd04ddd8482067cd17a5ba9cd7061f19c5e255effae7468d29a5672420496
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -1719,11 +1719,15 @@ function cmdInitGw(rest, repoRoot) {
   const sessionId = flags["session"] ?? currentSession();
   const runPath = resolveLedgerPath({ projectDir: repoRoot, sessionId: sessionId ?? undefined });
   const existing = readLedger(runPath);
-  if (existing?.active === true && existing?.write_token) {
-    const passedToken = flags["token"];
-    if (!passedToken || passedToken !== String(existing.write_token)) {
-      return errEnvelope("ledger init", "ACTIVE_RUN", `init would overwrite an active run \u2014 pass --token <write_token> to confirm overwrite,
+  if (existing?.active === true) {
+    if (existing?.write_token) {
+      const passedToken = flags["token"];
+      if (!passedToken || passedToken !== String(existing.write_token)) {
+        return errEnvelope("ledger init", "ACTIVE_RUN", `init would overwrite an active run \u2014 pass --token <write_token> to confirm overwrite,
 ` + "  or wait for the run to end (abandon/gate) before re-initializing.", 2);
+      }
+    } else if (!flags["force"]) {
+      return errEnvelope("ledger init", "ACTIVE_RUN", "init would overwrite a tokenless active run \u2014 pass --force to confirm, or abandon/gate the run first.", 2);
     }
   }
   const writeToken = randomBytes2(8).toString("hex");

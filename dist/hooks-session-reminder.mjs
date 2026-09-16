@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 375b46108e4aa2886418b2aafc68958ac98478d1828f8dd1f81b0b285560437c
+// @bundle-source-hash: 747ddabb238b6dc027ec64b9f2217bba2ed566dfedf775ac397f0af966ebb8f6
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -11138,7 +11138,7 @@ var cliToolsBlock = `
 
 ## Groundwork CLI tools (absolute paths \u2014 use these, not bin/)
 
-Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` or \`${LEDGER_BIN} init\` to start a new run.)`;
+Ledger (operational): \`${GW_HOOK_BIN} ledger <subcommand> --motive <slug>\` \u2014 valid subcommands: status, add, set, complete, rm, show, view, gate, abandon, fog, frontier, claim, await-human, scope-token, milestone-signoff \xB7 Journal: \`${JOURNAL_BIN}\`. Run \`${LEDGER_BIN} help\` for the full command reference. (\`gw ledger init <file|-> --motive <slug>\` to start a new run.)`;
 var additionalContext = reminder + cliToolsBlock;
 try {
   const envFile = process.env.CLAUDE_ENV_FILE;

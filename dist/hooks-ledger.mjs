@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: 375b46108e4aa2886418b2aafc68958ac98478d1828f8dd1f81b0b285560437c
+// @bundle-source-hash: 747ddabb238b6dc027ec64b9f2217bba2ed566dfedf775ac397f0af966ebb8f6
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -8702,10 +8702,11 @@ var HELP = {
   },
   init: {
     summary: "write the initial ledger atomically from a JSON file or stdin",
-    usage: "ledger init <file|-> [--motive <id>] [--token <existing-token>]",
+    usage: "ledger init <file|-> [--motive <id>] [--token <existing-token>] [--force]",
     flags: [
       "--motive <id>        motive id to stamp on the ledger (overrides JSON input)",
-      "--token <t>          write-token of the existing active run (required to overwrite a live run)"
+      "--token <t>          write-token of the existing active run (required to overwrite a tokened live run)",
+      "--force              overwrite a tokenless active run (use when recovering a motive-less ledger)"
     ]
   },
   add: {
@@ -9310,10 +9311,14 @@ function cmdInit(args) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   try {
     const existing = readLedger(ledgerPath());
-    if (existing?.active === true && existing?.write_token) {
-      if (!flags.token || flags.token !== existing.write_token) {
-        die(`init would overwrite an active run \u2014 pass --token <write_token> to confirm overwrite,
+    if (existing?.active === true) {
+      if (existing?.write_token) {
+        if (!flags.token || flags.token !== existing.write_token) {
+          die(`init would overwrite an active run \u2014 pass --token <write_token> to confirm overwrite,
 ` + "  or wait for the run to end (abandon/gate) before re-initializing.", 2);
+        }
+      } else if (!flags.force) {
+        die("init would overwrite a tokenless active run \u2014 pass --force to confirm, or abandon/gate the run first.", 2);
       }
     }
   } catch {}

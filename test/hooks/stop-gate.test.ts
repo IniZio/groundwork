@@ -1,947 +1,179 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, it, expect, afterEach } from "bun:test";
+import { Database } from "bun:sqlite";
+import { unlinkSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { run, checkStore } from "../../src/hooks/stop-gate.js";
+import { runMigrations } from "../../src/store/migrations.js";
+import { MIGRATIONS } from "../../src/store/schema.js";
 
-const GW_HOOK = path.resolve(import.meta.dirname, "..", "..", "bin", "gw-hook");
+const TMP = "/tmp/gw-stop-gate-test";
+mkdirSync(TMP, { recursive: true });
+let dbFiles: string[] = [];
 
-let projectDir: string;
+function makeDb(label: string): { db: Database; dbPath: string } {
+  const dbPath = path.join(TMP, `${label}-${Date.now()}.db`);
+  dbFiles.push(dbPath);
+  const db = new Database(dbPath);
+  db.exec("PRAGMA journal_mode = WAL");
+  runMigrations(db, MIGRATIONS);
+  return { db, dbPath };
+}
 
-beforeEach(() => {
-	projectDir = mkdtempSync(path.join(tmpdir(), "groundwork-stopgate-"));
-	mkdirSync(path.join(projectDir, ".groundwork"), { recursive: true });
-});
+function cleanCountFiles(dbPath: string) {
+  const dir = path.dirname(dbPath);
+  try {
+    for (const f of readdirSync(dir)) {
+      if (f.startsWith("stop-gate.")) unlinkSync(path.join(dir, f));
+    }
+  } catch { /* ok */ }
+}
 
 afterEach(() => {
-	rmSync(projectDir, { recursive: true, force: true });
+  for (const f of dbFiles) {
+    try { cleanCountFiles(f); } catch { /* ok */ }
+    try { unlinkSync(f); } catch { /* ok */ }
+  }
+  dbFiles = [];
 });
 
-/** Write a ledger and run the hook against it; return the parsed stdout decision. */
-function runHook(ledger: unknown, sessionId = "sess-1"): { continue?: boolean; decision?: string; reason?: string } {
-	if (ledger !== undefined) {
-		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
-	}
-	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-	return JSON.parse(out);
-}
+describe("stop-gate — Family 3", () => {
+  it("VIOLATION: incomplete slices → block with gw CLI hint", () => {
+    const { db, dbPath } = makeDb("incomplete");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t1" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toMatch(/incomplete/);
+    expect(out.reason).toContain("$GW slice complete");
+    expect(out.reason).toContain("$GW hold set");
+    expect(out.reason).toContain("S1");
+  });
 
-/** Run the hook with a transcript file whose last assistant turn is `assistantContent`. */
-function runHookWithTranscript(
-	ledger: unknown,
-	assistantContent: unknown,
-	sessionId = "sess-1",
-): { continue?: boolean; decision?: string; reason?: string } {
-	writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
-	const transcriptPath = path.join(projectDir, "transcript.jsonl");
-	const lines = [
-		JSON.stringify({ type: "user", message: { role: "user", content: "go" } }),
-		JSON.stringify({ type: "assistant", message: { role: "assistant", content: assistantContent } }),
-	];
-	writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
-	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, transcript_path: transcriptPath });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-	return JSON.parse(out);
-}
+  it("VIOLATION: no GATE_APPROVE event → block", () => {
+    const { db, dbPath } = makeDb("no-gate");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t2" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toMatch(/GATE_APPROVE/);
+  });
 
-/** Run the hook with a `background_tasks` payload (the structured Stop-hook field). */
-function runHookWithBackgroundTasks(
-	ledger: unknown,
-	backgroundTasks: unknown,
-	sessionId = "sess-1",
-): { continue?: boolean; decision?: string; reason?: string } {
-	writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
-	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId, background_tasks: backgroundTasks });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-	return JSON.parse(out);
-}
+  it("CLEAN: all slices complete + GATE_APPROVE → allow", () => {
+    const { db, dbPath } = makeDb("clean");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t3" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+  });
 
-/** Read the persisted reinforcements counter from the ledger after a run. */
-function readReinforcements(): number {
-	const raw = JSON.parse(readFileSync(path.join(projectDir, ".groundwork", "run.json"), "utf8"));
-	return raw.reinforcements ?? 0;
-}
+  it("CLEAN: no db file → allow (no active run)", () => {
+    const result = run({}, { GROUNDWORK_DB: "/tmp/nonexistent-gw-999.db" });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+  });
 
-const completeSlice = { id: "S1", status: "complete", acceptance: ["does the thing"] };
+  it("CLEAN: embedded agent (sdk-js) → allow without reading db", () => {
+    const result = run({}, { CLAUDE_CODE_ENTRYPOINT: "sdk-js", GROUNDWORK_DB: "/tmp/nonexistent.db" });
+    expect(JSON.parse(result.stdout).continue).toBe(true);
+  });
 
-// @verifies VERIFICATION-R-001
-describe("stop-gate hook — advisor verdict (object or string)", () => {
-	it("allows the stop when gate.advisor is an OBJECT with verdict APPROVE and all slices complete", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [completeSlice],
-			gate: {
-				advisor: {
-					verdict: "APPROVE",
-					rubric: "groundwork-completion-v1",
-					axes: { correctness: 3, completeness: 3, over_engineering: 0 },
-					citation: "none",
-				},
-			},
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
+  it("CLEAN: active HOLD (no HOLD_CLEAR) → allow immediately", () => {
+    const { db, dbPath } = makeDb("hold-active");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('HOLD','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-hold" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+    expect(out.reason).toContain("HOLD");
+  });
 
-	it("blocks the stop when gate.advisor is an OBJECT with verdict CORRECTION (even if slices complete)", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [completeSlice],
-			gate: { advisor: { verdict: "CORRECTION", citation: "contact.ts:42" } },
-		});
-		expect(decision.decision).toBe("block");
-		// The block reason renders the normalized verdict, never "[object Object]".
-		expect(decision.reason).toContain("CORRECTION");
-		expect(decision.reason).not.toContain("[object Object]");
-	});
+  it("CLEAN: HOLD_CLEAR cancels HOLD → gate blocks normally", () => {
+    const { db, dbPath } = makeDb("hold-cleared");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('HOLD','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('HOLD_CLEAR','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-cleared" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+  });
 
-	it("still accepts the LEGACY string form 'APPROVE' (backward compatible)", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [{ id: "S1", status: "complete" }],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-	});
+  it("COUNTER: 3rd consecutive block emits unresolvable message", () => {
+    const { db, dbPath } = makeDb("counter-3");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const env = { GROUNDWORK_DB: dbPath };
+    const payload = { session_id: "sess-c3" };
+    const r1 = JSON.parse(run(payload, env).stdout);
+    const r2 = JSON.parse(run(payload, env).stdout);
+    const r3 = JSON.parse(run(payload, env).stdout);
+    expect(r1.decision).toBe("block");
+    expect(r2.decision).toBe("block");
+    expect(r3.decision).toBe("block");
+    expect(r3.reason).toContain("unresolvable");
+  });
 
-	it("blocks when the verdict is APPROVE but a slice is still incomplete", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [{ id: "S1", status: "pending", acceptance: ["a", "b"] }],
-			gate: { advisor: { verdict: "APPROVE" } },
-		});
-		expect(decision.decision).toBe("block");
-		// Surfaces the acceptance-criteria count for the incomplete slice.
-		expect(decision.reason).toContain("acceptance criteria");
-	});
+  it("COUNTER: 4th attempt allows after 3 blocks", () => {
+    const { db, dbPath } = makeDb("counter-4");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const env = { GROUNDWORK_DB: dbPath };
+    const payload = { session_id: "sess-c4" };
+    run(payload, env);
+    run(payload, env);
+    run(payload, env);
+    const r4 = JSON.parse(run(payload, env).stdout);
+    expect(r4.continue).toBe(true);
+  });
 
-	it("fails open (allows) on a malformed ledger", () => {
-		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), "{ not valid json :::");
-		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1" });
-		const decision = JSON.parse(execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" }));
-		expect(decision.continue).toBe(true);
-	});
+  it("COUNTER: counter resets after gate passes — count file absent, next block is count-1 (not unresolvable)", () => {
+    const { db, dbPath } = makeDb("counter-reset");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const env = { GROUNDWORK_DB: dbPath };
+    const payload = { session_id: "sess-reset" };
+    const cf = path.join(TMP, `stop-gate.sess-reset.count`);
+    run(payload, env);
+    run(payload, env);
+    const db2 = new Database(dbPath);
+    db2.run("UPDATE slices SET status='complete', completed_at=? WHERE id='S1'", [new Date().toISOString()]);
+    db2.close();
+    const pass = JSON.parse(run(payload, env).stdout);
+    expect(pass.continue).toBe(true);
+    expect(existsSync(cf)).toBe(false);
+    const db3 = new Database(dbPath);
+    db3.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S2',1,'pending',?)", [new Date().toISOString()]);
+    db3.close();
+    const r1 = JSON.parse(run(payload, env).stdout);
+    expect(r1.decision).toBe("block");
+    expect(r1.reason).not.toContain("unresolvable");
+    expect(r1.reason).toContain("$GW slice complete");
+  });
 
-	it("fails open (allows) when there is no ledger at all", () => {
-		const decision = runHook(undefined);
-		expect(decision.continue).toBe(true);
-	});
+  it("GUARD-CAN-FAIL: checkStore with complete slices + no approval returns approved=false", () => {
+    const { db, dbPath } = makeDb("can-fail");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.close();
+    const { incomplete, approved } = checkStore(dbPath);
+    expect(incomplete).toBe(0);
+    expect(approved).toBe(false);
+  });
 
-	it("does not block a run owned by a different session", () => {
-		const decision = runHook(
-			{
-				active: true,
-				session_id: "other-session",
-				reinforcements: 0,
-				slices: [{ id: "S1", status: "pending" }],
-				gate: { advisor: "pending" },
-			},
-			"sess-1",
-		);
-		expect(decision.continue).toBe(true);
-	});
+  it("GUARD-CAN-FAIL: checkStore detects active HOLD", () => {
+    const { db, dbPath } = makeDb("hold-detect");
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('HOLD','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const { holdActive } = checkStore(dbPath);
+    expect(holdActive).toBe(true);
+  });
 });
-
-describe("stop-gate hook — yield-awareness (Fix B)", () => {
-	const incompleteLedger = {
-		active: true,
-		session_id: "sess-1",
-		reinforcements: 0,
-		slices: [{ id: "S1", status: "pending" }],
-		gate: { advisor: "pending" },
-	};
-
-	it("allows the stop (without blocking) when the last turn says 'needs input:'", () => {
-		const decision = runHookWithTranscript(incompleteLedger, [{ type: "text", text: "needs input: which API key should I use?" }]);
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("does NOT burn a reinforcement when yielding for input", () => {
-		runHookWithTranscript(incompleteLedger, [{ type: "text", text: "needs input: clarify scope" }]);
-		expect(readReinforcements()).toBe(0);
-	});
-
-	it("allows the stop when the last turn says 'failed:'", () => {
-		const decision = runHookWithTranscript(incompleteLedger, [{ type: "text", text: "failed: the target repo does not exist" }]);
-		expect(decision.continue).toBe(true);
-	});
-
-	it("allows the stop when the last turn launched background delegation", () => {
-		const decision = runHookWithTranscript(incompleteLedger, [
-			{ type: "text", text: "Launching slices." },
-			{ type: "tool_use", name: "Task", input: {} },
-		]);
-		expect(decision.continue).toBe(true);
-	});
-
-	it("still BLOCKS when the last turn is ordinary prose (genuine stall)", () => {
-		const decision = runHookWithTranscript(incompleteLedger, [{ type: "text", text: "Okay, that looks done to me." }]);
-		expect(decision.decision).toBe("block");
-	});
-
-	it("allows the stop when background_tasks shows a running subagent (authoritative payload)", () => {
-		const decision = runHookWithBackgroundTasks(incompleteLedger, [
-			{ id: "t1", type: "subagent", status: "running", agent_type: "general-purpose" },
-		]);
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("does NOT burn a reinforcement while background_tasks reports in-flight work", () => {
-		runHookWithBackgroundTasks(incompleteLedger, [{ id: "t1", type: "subagent", status: "in_progress" }]);
-		expect(readReinforcements()).toBe(0);
-	});
-
-	it("BLOCKS when every background_tasks entry is terminal (completed/failed)", () => {
-		const decision = runHookWithBackgroundTasks(incompleteLedger, [
-			{ id: "t1", type: "subagent", status: "completed" },
-			{ id: "t2", type: "subagent", status: "failed" },
-		]);
-		expect(decision.decision).toBe("block");
-	});
-
-	it("BLOCKS when background_tasks is an empty array (nothing in flight)", () => {
-		const decision = runHookWithBackgroundTasks(incompleteLedger, []);
-		expect(decision.decision).toBe("block");
-	});
-
-	/**
-	 * Build a transcript with `launches` background-launch results and `completions`
-	 * task-notification entries, ending on an ordinary-prose assistant turn (no
-	 * Task call this turn — the partial-completion re-invocation shape).
-	 */
-	function runHookWithBackground(
-		ledger: unknown,
-		launches: number,
-		completions: number,
-	): { continue?: boolean; decision?: string; reason?: string } {
-		writeFileSync(path.join(projectDir, ".groundwork", "run.json"), JSON.stringify(ledger, null, 2));
-		const transcriptPath = path.join(projectDir, "transcript.jsonl");
-		const lines: string[] = [JSON.stringify({ type: "user", message: { role: "user", content: "go" } })];
-		for (let i = 0; i < launches; i++) {
-			lines.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Task", input: {} }] } }));
-			lines.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", content: `<task id="..." state="running">` }] } }));
-		}
-		for (let i = 0; i < completions; i++) {
-			lines.push(JSON.stringify({ type: "user", message: { role: "user", content: "<task-notification>S done</task-notification>" } }));
-		}
-		// Final turn: plain prose, no Task call (re-yielding to await the rest).
-		lines.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "S1 complete, still waiting." }] } }));
-		writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
-		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-1", transcript_path: transcriptPath });
-		return JSON.parse(execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" }));
-	}
-
-	it("allows the stop when background delegations are still in flight (partial completion, no Task this turn)", () => {
-		// 5 launched, 1 completed → 4 still running. This is the bug: the last turn
-		// is plain prose with no Task call, yet the orchestrator is legitimately waiting.
-		const decision = runHookWithBackground(incompleteLedger, 5, 1);
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("does NOT burn a reinforcement while background tasks are in flight", () => {
-		runHookWithBackground(incompleteLedger, 5, 1);
-		expect(readReinforcements()).toBe(0);
-	});
-
-	it("BLOCKS once all background delegations have completed and work still remains", () => {
-		// 5 launched, 5 completed → none in flight; plain-prose final turn is a real stall.
-		const decision = runHookWithBackground(incompleteLedger, 5, 5);
-		expect(decision.decision).toBe("block");
-	});
-});
-
-// @verifies ARTIFACT-R-003
-describe("stop-gate hook — skipped status is terminal", () => {
-	it("allows stop when all slices are skipped and gate is APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "skipped" },
-				{ id: "S2", status: "skipped" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("allows stop when slices are mixed complete+skipped and gate is APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete" },
-				{ id: "S2", status: "skipped" },
-				{ id: "S3", status: "complete" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("blocks when one slice is pending even if others are skipped and gate is APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "skipped" },
-				{ id: "S2", status: "pending" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.decision).toBe("block");
-	});
-
-	it("blocks when all slices are skipped but gate is not APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [{ id: "S1", status: "skipped" }],
-			gate: { advisor: "pending" },
-		});
-		expect(decision.decision).toBe("block");
-	});
-});
-
-describe("stop-gate hook — kind-aware gating (kind does not change terminal logic)", () => {
-	it("allows stop with mixed-kind slices all complete + gate APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete", kind: "plan" },
-				{ id: "S2", status: "complete", kind: "design" },
-				{ id: "S3", status: "complete", kind: "impl" },
-				{ id: "S4", status: "complete", kind: "diagnose" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("allows stop with mixed-kind slices all skipped or complete + gate APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete", kind: "plan" },
-				{ id: "S2", status: "skipped", kind: "design" },
-				{ id: "S3", status: "complete" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("blocks when one mixed-kind item is still pending even with gate APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete", kind: "plan" },
-				{ id: "S2", status: "pending", kind: "design" },
-				{ id: "S3", status: "complete", kind: "impl" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.decision).toBe("block");
-	});
-});
-
-describe("stop-gate hook — backward compat (no kind fields anywhere)", () => {
-	it("blocks a legacy no-kind ledger with incomplete slices", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete" },
-				{ id: "S2", status: "pending" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.decision).toBe("block");
-	});
-
-	it("allows a legacy no-kind ledger when all slices complete and gate is APPROVE", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [
-				{ id: "S1", status: "complete" },
-				{ id: "S2", status: "complete" },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-
-	it("blocks a legacy no-kind ledger when gate is not APPROVE even if all slices complete", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [{ id: "S1", status: "complete" }],
-			gate: { advisor: "pending" },
-		});
-		expect(decision.decision).toBe("block");
-	});
-});
-
-describe("stop-gate hook — consecutive-no-progress counter (Fix A)", () => {
-	it("fails open once the cap of no-progress blocks is reached (same signature)", () => {
-		// reinforcements already at the cap AND progressSig matches current state → release.
-		const ledger = {
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 12,
-			progressSig: JSON.stringify({ sliceState: "S1:pending", verifier: null, advisor: null }),
-			slices: [{ id: "S1", status: "pending" }],
-			gate: {},
-		};
-		const decision = runHook(ledger);
-		expect(decision.continue).toBe(true);
-	});
-
-	it("RESETS the counter when the ledger advanced since the last block (progress)", () => {
-		// Counter was high, but a slice has since completed → signature differs → block again, count back to 1.
-		const ledger = {
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 12,
-			progressSig: JSON.stringify({ sliceState: "S1:pending,S2:pending", verifier: null, advisor: null }),
-			slices: [
-				{ id: "S1", status: "complete" },
-				{ id: "S2", status: "pending" },
-			],
-			gate: { advisor: "pending" },
-		};
-		const decision = runHook(ledger);
-		expect(decision.decision).toBe("block");
-		expect(readReinforcements()).toBe(1);
-	});
-});
-
-describe("stop-gate hook — progressive block message verbosity", () => {
-	const pendingSlice = { id: "S1", status: "pending" };
-
-	it("block #1 (reinforcements=0, no prior sig) emits the full static ruleset", () => {
-		const ledger = {
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			slices: [pendingSlice],
-			gate: { advisor: "pending" },
-		};
-		const decision = runHook(ledger);
-		expect(decision.decision).toBe("block");
-		expect(decision.reason).toContain("REMEMBER THE FAN-OUT RULES");
-		expect(decision.reason).toContain("TO FINISH");
-		expect(decision.reason).toContain("TO ABANDON");
-		expect(decision.reason).not.toContain("Full rules were shown on the first block");
-	});
-
-	it("block #2 (reinforcements=1, same sig) emits only the compact one-liner", () => {
-		// Simulate a second block on the same state: reinforcements=1, progressSig matches current.
-		// Note: advisorVerdict("pending") returns "PENDING" (uppercased), so sig must match that.
-		const sliceState = "S1:pending";
-		const ledger = {
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 1,
-			progressSig: JSON.stringify({ sliceState, verifier: null, advisor: "PENDING" }),
-			slices: [pendingSlice],
-			gate: { advisor: "pending" },
-		};
-		const decision = runHook(ledger);
-		expect(decision.decision).toBe("block");
-		expect(decision.reason).toContain("Full rules were shown on the first block");
-		expect(decision.reason).toMatch(/\/bin\/ledger complete/);
-		expect(decision.reason).toMatch(/\/bin\/ledger abandon/);
-		expect(decision.reason).not.toContain("REMEMBER THE FAN-OUT RULES");
-		expect(decision.reason).not.toContain("TO FINISH");
-	});
-
-	it("block #2 compact message still includes the dynamic slice status and gate info", () => {
-		const sliceState = "S1:pending";
-		const ledger = {
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 1,
-			progressSig: JSON.stringify({ sliceState, verifier: null, advisor: "PENDING" }),
-			slices: [pendingSlice],
-			gate: { advisor: "pending" },
-		};
-		const decision = runHook(ledger);
-		expect(decision.reason).toContain("Slices: 0/1 complete");
-		expect(decision.reason).toContain("S1");
-		expect(decision.reason).toContain("Completion gate");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Multi-session isolation — per-session ledger files
-// ---------------------------------------------------------------------------
-
-const pendingSliceMulti = { id: "M1", status: "pending", acceptance: ["does the thing"] };
-const completeSliceMulti = { id: "M1", status: "complete", acceptance: ["does the thing"] };
-
-/** Run the hook with a per-session ledger file at .groundwork/runs/<sessionId>.json */
-function runHookWithPerSessionLedger(
-	ledger: unknown,
-	sessionId: string,
-): { continue?: boolean; decision?: string; reason?: string } {
-	const runsDir = path.join(projectDir, ".groundwork", "runs");
-	mkdirSync(runsDir, { recursive: true });
-	writeFileSync(path.join(runsDir, `${sessionId}.json`), JSON.stringify(ledger, null, 2));
-	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-	return JSON.parse(out);
-}
-
-describe("stop-gate hook — per-session ledger isolation", () => {
-	it("blocks on its own per-session ledger when slices incomplete", () => {
-		const decision = runHookWithPerSessionLedger({
-			active: true,
-			session_id: "sess-aaa",
-			reinforcements: 0,
-			slices: [pendingSliceMulti],
-			gate: { advisor: "pending" },
-		}, "sess-aaa");
-		expect(decision.decision).toBe("block");
-	});
-
-	it("allows when its per-session ledger shows all complete + APPROVE", () => {
-		const decision = runHookWithPerSessionLedger({
-			active: true,
-			session_id: "sess-aaa",
-			reinforcements: 0,
-			slices: [completeSliceMulti],
-			gate: { advisor: "APPROVE" },
-		}, "sess-aaa");
-		expect(decision.continue).toBe(true);
-	});
-
-	it("session bbb is not blocked by session aaa's incomplete run", () => {
-		// Write aaa's ledger as incomplete
-		const runsDir = path.join(projectDir, ".groundwork", "runs");
-		mkdirSync(runsDir, { recursive: true });
-		writeFileSync(
-			path.join(runsDir, "sess-aaa.json"),
-			JSON.stringify({
-				active: true,
-				session_id: "sess-aaa",
-				reinforcements: 0,
-				slices: [pendingSliceMulti],
-				gate: { advisor: "pending" },
-			}),
-		);
-		// Session bbb has no ledger — should allow (fail-open)
-		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-bbb" });
-		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-		const decision = JSON.parse(out);
-		expect(decision.continue).toBe(true);
-	});
-
-	it("legacy path used when no per-session file exists and run.json matches session", () => {
-		// Write legacy run.json with session_id: sess-legacy
-		writeFileSync(
-			path.join(projectDir, ".groundwork", "run.json"),
-			JSON.stringify({
-				active: true,
-				session_id: "sess-legacy",
-				reinforcements: 0,
-				slices: [pendingSliceMulti],
-				gate: { advisor: "pending" },
-			}),
-		);
-		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-legacy" });
-		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-		const decision = JSON.parse(out);
-		// Should block because the legacy ledger is active and owned by this session
-		expect(decision.decision).toBe("block");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// New skillset contracts (R1/R3) — REPLAN non-terminal + plan_ref pre-gate
-// ---------------------------------------------------------------------------
-
-describe("stop-gate — new skillset contracts (R1/R3)", () => {
-	it("REPLAN is non-terminal: blocks with interview/vertical-slice guidance", () => {
-		// ≤2 slices, no kind:impl → trivial escape so pre-gate does not swallow REPLAN reason
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "feature work mid-flight",
-			slices: [{ id: "S1", status: "pending", acceptance: ["still open"] }],
-			gate: { advisor: "REPLAN" },
-		});
-		expect(decision.decision).toBe("block");
-		expect(decision.continue).not.toBe(true);
-		expect(decision.reason).toContain("REPLAN");
-		expect(decision.reason).toMatch(/interview|vertical-slice/);
-	});
-
-	it("REPLAN does not release even when all slices are terminal", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "feature work mid-flight",
-			slices: [
-				{ id: "S1", status: "complete", acceptance: ["done"] },
-				{ id: "S2", status: "complete", acceptance: ["also done"] },
-			],
-			gate: { advisor: "REPLAN" },
-		});
-		expect(decision.decision).toBe("block");
-		expect(decision.continue).not.toBe(true);
-		expect(decision.reason).toContain("REPLAN");
-		expect(decision.reason).toMatch(/interview|vertical-slice/);
-	});
-
-	it("plan_ref pre-gate blocks a non-trivial run lacking a plan artifact", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "multi-slice feature implementation",
-			slices: [
-				{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
-				{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
-				{ id: "S3", kind: "impl", status: "pending", acceptance: ["c"] },
-			],
-			gate: { advisor: "pending" },
-		});
-		expect(decision.decision).toBe("block");
-		expect(decision.reason).toMatch(/plan artifact/i);
-	});
-
-	it("plan_ref pre-gate passes when plan_ref points at a real file (falls through to incomplete-slices)", () => {
-		const planDir = mkdtempSync(path.join(tmpdir(), "gw-plan-"));
-		const planPath = path.join(planDir, "plan.md");
-		writeFileSync(planPath, "# plan\n\nDo the feature.\n");
-		try {
-			const decision = runHook({
-				active: true,
-				session_id: "sess-1",
-				reinforcements: 0,
-				brief: "multi-slice feature implementation",
-				plan_ref: planPath,
-				slices: [
-					{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
-					{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
-					{ id: "S3", kind: "impl", status: "pending", acceptance: ["c"] },
-				],
-				gate: { advisor: "pending" },
-			});
-			expect(decision.decision).toBe("block");
-			// Pre-gate did not fire — normal incomplete-slices path
-			expect(decision.reason).not.toMatch(/plan artifact/i);
-			expect(decision.reason).toContain("Incomplete slices");
-		} finally {
-			rmSync(planDir, { recursive: true, force: true });
-		}
-	});
-
-	it("plan_ref pre-gate passes when a plan slice is complete (falls through to incomplete-slices)", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "multi-slice feature implementation",
-			slices: [
-				{ id: "P0", kind: "plan", status: "complete", acceptance: ["plan written"] },
-				{ id: "S1", kind: "impl", status: "pending", acceptance: ["a"] },
-				{ id: "S2", kind: "impl", status: "pending", acceptance: ["b"] },
-			],
-			gate: { advisor: "pending" },
-		});
-		expect(decision.decision).toBe("block");
-		expect(decision.reason).not.toMatch(/plan artifact/i);
-		expect(decision.reason).toContain("Incomplete slices");
-	});
-
-	it("trivial escape skips plan_ref pre-gate (block reason is incomplete-slices, not plan artifact)", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "config tweak",
-			slices: [
-				{ id: "S1", status: "pending", acceptance: ["flip flag"] },
-				{ id: "S2", status: "pending", acceptance: ["document"] },
-			],
-			gate: { advisor: "pending" },
-		});
-		expect(decision.decision).toBe("block");
-		expect(decision.reason).not.toMatch(/plan artifact/i);
-		expect(decision.reason).toContain("Incomplete slices");
-	});
-
-	it("complete+APPROVE with no plan_ref is ALLOWED (pre-gate must not fire on done runs)", () => {
-		const decision = runHook({
-			active: true,
-			session_id: "sess-1",
-			reinforcements: 0,
-			brief: "multi-slice feature implementation",
-			slices: [
-				{ id: "S1", kind: "impl", status: "complete", acceptance: ["a"] },
-				{ id: "S2", kind: "impl", status: "complete", acceptance: ["b"] },
-				{ id: "S3", kind: "impl", status: "complete", acceptance: ["c"] },
-			],
-			gate: { advisor: "APPROVE" },
-		});
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// D-13: DECISION research advisory (non-blocking)
-// ---------------------------------------------------------------------------
-
-/** Write a journal shard with one or more events and run the hook against a complete+APPROVE ledger. */
-function runHookWithJournal(
-	events: object[],
-	sessionId = "sess-1",
-): { continue?: boolean; decision?: string; reason?: string } {
-	const journalDir = path.join(projectDir, ".groundwork", "journal");
-	mkdirSync(journalDir, { recursive: true });
-	const shardPath = path.join(journalDir, `2099-01-01-${sessionId}.jsonl`);
-	writeFileSync(shardPath, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
-
-	writeFileSync(
-		path.join(projectDir, ".groundwork", "run.json"),
-		JSON.stringify({
-			active: true,
-			session_id: sessionId,
-			reinforcements: 0,
-			slices: [{ id: "S1", status: "complete", acceptance: ["done"] }],
-			gate: { advisor: "APPROVE" },
-		}),
-	);
-
-	const input = JSON.stringify({ cwd: projectDir, session_id: sessionId });
-	const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-	return JSON.parse(out);
-}
-
-// @verifies D-13
-describe("stop-gate — DECISION research advisory (D-13)", () => {
-	it("emits advisory finding when DECISION has blast=high and no data.research", () => {
-		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-1", blast: "high" } },
-		]);
-		// Non-blocking: session is allowed
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-		// Advisory text names the offending decision id
-		expect(decision.reason).toMatch(/D-1/);
-		expect(decision.reason).toMatch(/research/i);
-	});
-
-	it("emits advisory finding when DECISION has blast=medium and no data.research", () => {
-		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-2", blast: "medium" } },
-		]);
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-		expect(decision.reason).toMatch(/D-2/);
-		expect(decision.reason).toMatch(/research/i);
-	});
-
-	it("names all offending decision ids when multiple DECISION events lack research", () => {
-		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-5", blast: "high" } },
-			{ type: "DECISION", data: { id: "D-6", blast: "medium" } },
-		]);
-		expect(decision.continue).toBe(true);
-		expect(decision.reason).toMatch(/D-5/);
-		expect(decision.reason).toMatch(/D-6/);
-	});
-
-	it("produces no advisory when DECISION has data.research present (high blast)", () => {
-		const decision = runHookWithJournal([
-			{
-				type: "DECISION",
-				data: {
-					id: "D-3",
-					blast: "high",
-					research: "docs/research/d3.md",
-					// alternatives present so the new decisionAlternativesAdvisory does not fire
-					alternatives: ["Option A: rejected"],
-				},
-			},
-		]);
-		expect(decision.continue).toBe(true);
-		// No advisory: reason should be absent or not mention research warning
-		expect(decision.reason ?? "").not.toMatch(/D-3/);
-	});
-
-	it("produces no advisory when DECISION blast is low", () => {
-		const decision = runHookWithJournal([
-			{
-				type: "DECISION",
-				data: {
-					id: "D-4",
-					blast: "low",
-					alternatives: ["Option A: rejected"],
-				},
-			},
-		]);
-		expect(decision.continue).toBe(true);
-		expect(decision.reason ?? "").not.toMatch(/D-4/);
-	});
-
-	it("produces no advisory when DECISION has no blast field", () => {
-		const decision = runHookWithJournal([
-			{
-				type: "DECISION",
-				data: {
-					id: "D-7",
-					alternatives: ["Option A: rejected"],
-				},
-			},
-		]);
-		expect(decision.continue).toBe(true);
-		expect(decision.reason ?? "").not.toMatch(/D-7/);
-	});
-
-	it("does not block the session — exit code 0, continue:true, no decision:block", () => {
-		const decision = runHookWithJournal([
-			{ type: "DECISION", data: { id: "D-8", blast: "high" } },
-		]);
-		// The hook always exits 0; the parsed output should show allow, not block
-		expect(decision.continue).toBe(true);
-		expect(decision.decision).toBeUndefined();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// D-26: Spec advisory (non-blocking)
-// ---------------------------------------------------------------------------
-
-// @verifies D-26
-describe("stop-gate — spec advisory (D-26)", () => {
-	/** Init a git repo in projectDir, commit an initial state, then add/dirty specific files. */
-	function setupGitRepo(
-		uncommittedFiles: string[],
-		specFiles: string[] = [],
-	): void {
-		execFileSync("git", ["init", "-b", "main"], { cwd: projectDir });
-		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectDir });
-		execFileSync("git", ["config", "user.name", "Test"], { cwd: projectDir });
-		writeFileSync(path.join(projectDir, "README"), "placeholder");
-		execFileSync("git", ["add", "README"], { cwd: projectDir });
-		execFileSync("git", ["commit", "-m", "init"], { cwd: projectDir });
-
-		for (const f of uncommittedFiles) {
-			const fullPath = path.join(projectDir, f);
-			mkdirSync(path.dirname(fullPath), { recursive: true });
-			writeFileSync(fullPath, "// changed");
-		}
-		for (const f of specFiles) {
-			const fullPath = path.join(projectDir, f);
-			mkdirSync(path.dirname(fullPath), { recursive: true });
-			writeFileSync(fullPath, "# spec");
-		}
-	}
-
-	function runHookInGitRepo(): { continue?: boolean; decision?: string; reason?: string } {
-		const headSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectDir, encoding: "utf8" }).trim();
-		writeFileSync(
-			path.join(projectDir, ".groundwork", "run.json"),
-			JSON.stringify({
-				active: true,
-				session_id: "sess-git",
-				reinforcements: 0,
-				slices: [{ id: "S1", status: "complete", acceptance: ["done"] }],
-				gate: { advisor: { verdict: "APPROVE", citation: "test:init", commit: headSha } },
-			}),
-		);
-		const input = JSON.stringify({ cwd: projectDir, session_id: "sess-git" });
-		const out = execFileSync(GW_HOOK, ["hook", "stop-gate"], { input, encoding: "utf8" });
-		return JSON.parse(out);
-	}
-
-	it("emits advisory when enforcement files changed and doc/specs/ untouched", () => {
-		setupGitRepo(["hooks/my-hook.mjs"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.decision).toBeUndefined();
-		expect(result.reason).toMatch(/hooks\/my-hook\.mjs/);
-		expect(result.reason).toMatch(/doc\/specs/i);
-	});
-
-	it("lists multiple changed enforcement files", () => {
-		setupGitRepo(["hooks/stop-gate.mjs", "bin/ledger"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.reason).toMatch(/hooks\/stop-gate\.mjs/);
-		expect(result.reason).toMatch(/bin\/ledger/);
-	});
-
-	it("emits no advisory when doc/specs/ was also touched", () => {
-		setupGitRepo(["hooks/my-hook.mjs"], ["doc/specs/foo/requirements/bar.md"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.reason ?? "").not.toMatch(/doc\/specs/i);
-	});
-
-	it("emits no advisory when no enforcement files changed", () => {
-		setupGitRepo([]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.reason ?? "").not.toMatch(/Enforcement-surface/i);
-	});
-
-	it("emits no advisory when only non-enforcement files changed", () => {
-		setupGitRepo(["src/something.ts"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.reason ?? "").not.toMatch(/Enforcement-surface/i);
-	});
-
-	it("handles hooks/lib/ files as enforcement surface", () => {
-		setupGitRepo(["hooks/lib/hook-io.mjs"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.reason).toMatch(/hooks\/lib\/hook-io\.mjs/);
-	});
-
-	it("does not block — continue:true and no decision:block", () => {
-		setupGitRepo(["hooks/my-hook.mjs"]);
-		const result = runHookInGitRepo();
-		expect(result.continue).toBe(true);
-		expect(result.decision).toBeUndefined();
-	});
-});
-

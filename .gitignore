@@ -1,39 +1,12 @@
 node_modules/
-dist/*
-!dist/gw.mjs
-!dist/hooks-ledger.mjs
-!dist/hooks-session-reminder.mjs
-!dist/hooks-spec.mjs
-!dist/hooks-spec-lint.mjs
-*.log
-.DS_Store
-.opencode/goal.json
-.opencode/plugins/*.js
-test-*.ts
-test-*.mjs
-.opencode/goals/
-!
-.pi-lens/
-.playwright-mcp/
-.pi/agents/
+dist/
+test/deployed/_proof-harness-scratch/
 
-test-results/
-tmp/
-*.png
-.pi/docs/
-.pi/research/
-.pi/specs/
-.pi1/
-.omc/
-.groundwork/
-!test/fixtures/motive-corpus/.groundwork/
-!test/fixtures/motive-corpus/.groundwork/**
-!test/fixtures/journal-compile-parity/.groundwork/
-!test/fixtures/journal-compile-parity/.groundwork/**
-/groundwork/
-.opencode/background-tasks/
-.vscode/
-# Added by code-review-graph
-.code-review-graph/
-# Eval runner results
-evals/**/results/
+# SQLite work store — machine state, not review material (D-9)
+*.db
+*.db-shm
+*.db-wal
+.groundwork.db
+
+# Test databases
+*.test.db

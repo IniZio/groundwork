@@ -2,23 +2,24 @@
   "name": "groundwork",
   "owner": {
     "name": "Newman",
-    "email": "inizio@skymakers.digital"
+    "email": "newman.kcchow@gmail.com"
   },
   "metadata": {
-    "description": "Groundwork — structured AI development practices for Claude Code",
-    "version": "3.7.0"
+    "description": "Groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
+    "version": "2.0.0"
   },
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
   "plugins": [
     {
       "name": "groundwork",
       "source": "./",
-      "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
-      "version": "3.7.0",
+      "description": "Convention detection, enforcement hooks, work store, and advisor gate for Claude Code",
+      "version": "2.0.0",
       "author": {
         "name": "Newman"
       },
       "category": "development",
-      "keywords": ["orchestration", "agents", "workflow", "fan-out", "routing"]
+      "keywords": ["orchestration", "agents", "workflow", "enforcement", "conventions"]
     }
   ]
 }

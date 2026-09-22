@@ -1,0 +1,8 @@
+{"ts":"2026-01-01T00:00:00Z","session":"abc123","motive":"test-motive","type":"DECISION","msg":"Use SQLite for storage"}
+{"ts":"2026-01-01T00:01:00Z","session":"abc123","motive":"test-motive","type":"PAUSE","msg":"pausing for review","data":{"next_actions":"continue with S2"}}
+{"ts":"2026-01-01T00:02:00Z","session":"abc123","motive":"test-motive","type":"VERIFICATION","msg":"verified S1 complete"}
+{"ts":"2026-01-01T00:03:00Z","session":"abc123","motive":"test-motive","type":"GATE","source":"hook:ledger","data":{"which":"advisor","verdict":"APPROVE","citation":"src/store/store.ts:42","rubric":"correctness 3","motive_provenance":"ledger.motive"}}
+{"ts":"2026-01-01T00:04:00Z","session":"abc123","motive":"test-motive","type":"MOTIVE_CREATED","msg":"motive created"}
+{"ts":"2026-01-01T00:05:00Z","session":"abc123","motive":"test-motive","type":"AC_COVERAGE","msg":"coverage check"}
+{"ts":"2026-01-01T00:06:00Z","session":"abc123","motive":"other-motive","type":"DECISION","msg":"from other motive"}
+{"ts":"2026-01-01T00:07:00Z","session":"abc123","type":"DECISION","msg":"legacy line with no motive field"}

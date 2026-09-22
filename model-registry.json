@@ -1,52 +1,16 @@
 {
-  "$schema": "https://groundwork.dev/model-registry/v1",
-  "version": "2.3.0",
-  "description": "Central model registry — SSOT for claude-code model assignments (and optional codex routing). Agent source files (agents-src/*.md) are model-neutral; OMP/pi agents-pi definitions inherit the session model (no pi registry column).",
   "agents": {
-    "orchestrator": {
-      "claude-code": "opus"
-    },
-    "general-purpose": {
-      "claude-code": "sonnet",
-      "codex": "gpt-5.6-sol"
-    },
-    "advisor": {
-      "claude-code": "opus"
-    },
-    "designer": {
-      "claude-code": "sonnet"
-    },
-    "qa": {
-      "claude-code": "sonnet"
-    },
-    "test-engineer": {
-      "claude-code": "sonnet"
-    },
-    "planner": {
-      "claude-code": "opus"
-    },
-    "git-master": {
-      "claude-code": "haiku"
-    },
-    "explore": {
-      "claude-code": "haiku",
-      "codex": "gpt-5.6-luna"
-    },
-    "researcher": {
-      "claude-code": "sonnet"
-    },
-    "debugger": {
-      "claude-code": "opus"
-    },
-    "junior-orchestrator": {
-      "claude-code": "sonnet",
-      "codex": "gpt-5.6-sol"
-    }
-  },
-  "disabled": {
-    "claude-code": []
-  },
-  "aliases": {
-    "claude-code": {}
+    "orchestrator":       { "claude-code": "opus" },
+    "general-purpose":    { "claude-code": "sonnet" },
+    "advisor":            { "claude-code": "opus" },
+    "designer":           { "claude-code": "sonnet" },
+    "qa":                 { "claude-code": "sonnet" },
+    "test-engineer":      "sonnet",
+    "planner":            { "claude-code": "opus" },
+    "git-master":         { "claude-code": "haiku" },
+    "explore":            { "claude-code": "haiku" },
+    "researcher":         { "claude-code": "sonnet" },
+    "debugger":           { "claude-code": "opus" },
+    "junior-orchestrator":{ "claude-code": "sonnet" }
   }
 }

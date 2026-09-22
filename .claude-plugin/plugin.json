@@ -1,21 +1,53 @@
 {
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "groundwork",
-  "version": "3.7.0",
-  "description": "Structured AI development: orchestrated fan-out, advisor gate, intent routing, and skill-driven workflow for Claude Code",
-  "author": {
-    "name": "Newman",
-    "url": "https://github.com/newman"
-  },
-  "license": "MIT",
-  "keywords": [
-    "orchestration",
-    "agents",
-    "workflow",
-    "fan-out",
-    "routing"
+  "version": "2.0.0",
+  "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
+  "dependencies": [
+    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }
   ],
-  "skills": "./skills/groundwork/",
-  "mcpServers": {},
-  "claudeMd": "./CLAUDE.md"
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts" },
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/piped-exit-code-guard.ts" }
+        ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/spawn-model-guard.ts" },
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/store-write-guard.ts" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prose-quality-guard.ts" }
+        ]
+      }
+    ]
+  }
 }

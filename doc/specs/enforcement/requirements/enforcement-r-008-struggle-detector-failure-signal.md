@@ -3,7 +3,8 @@ id: enforcement-r-008
 type: requirement
 concept: C-ENFORCEMENT
 title: Struggle-detector emits FAILURE journal event on consecutive tool failures
-status: implemented
+status: withdrawn
+superseded_by: D-113
 verification: unverified
 criticality: should
 design: "[[design/reference/enforcement-hooks-reference]]"

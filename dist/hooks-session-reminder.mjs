@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @bundle-source-hash: c1e55a28b5b0eccb3ad1eafd0176ae1b06a4d0484a7526295d592a93bc247785
+// @bundle-source-hash: 2c6ce3e78a40870c9ea868bc771ce0190e17a31b833a932eba828cad736c48e6
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -3160,8 +3160,8 @@ var require_utils = __commonJS((exports, module) => {
     }
     return ind;
   }
-  function removeDotSegments(path4) {
-    let input = path4;
+  function removeDotSegments(path3) {
+    let input = path3;
     const output = [];
     let nextSlash = -1;
     let len = 0;
@@ -3404,8 +3404,8 @@ var require_schemes = __commonJS((exports, module) => {
       wsComponent.secure = undefined;
     }
     if (wsComponent.resourceName) {
-      const [path4, query] = wsComponent.resourceName.split("?");
-      wsComponent.path = path4 && path4 !== "/" ? path4 : undefined;
+      const [path3, query] = wsComponent.resourceName.split("?");
+      wsComponent.path = path3 && path3 !== "/" ? path3 : undefined;
       wsComponent.query = query;
       wsComponent.resourceName = undefined;
     }
@@ -7362,8 +7362,8 @@ var require_dist = __commonJS((exports, module) => {
 });
 
 // hooks/session-reminder.mjs
-import { appendFileSync as appendFileSync3, existsSync as existsSync4, readFileSync as readFileSync7 } from "fs";
-import path5 from "path";
+import { appendFileSync as appendFileSync2, existsSync as existsSync4, readFileSync as readFileSync6 } from "fs";
+import path4 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 
 // hooks/lib/hook-io.mjs
@@ -7414,85 +7414,9 @@ function resolveLedgerPath({ projectDir, sessionId } = {}) {
   return perSessionPath;
 }
 
-// hooks/lib/signals-io.mjs
-import { appendFileSync, mkdirSync as mkdirSync2, readFileSync as readFileSync2 } from "fs";
-import path2 from "path";
-function resolveSignalsPath(projectDir) {
-  return path2.join(projectDir, ".groundwork", "struggle-signals.jsonl");
-}
-function readSignals(projectDir) {
-  const filePath = resolveSignalsPath(projectDir);
-  let raw;
-  try {
-    raw = readFileSync2(filePath, "utf8");
-  } catch {
-    return [];
-  }
-  const results = [];
-  for (const line of raw.split(`
-`)) {
-    const trimmed = line.trim();
-    if (!trimmed)
-      continue;
-    try {
-      results.push(JSON.parse(trimmed));
-    } catch {}
-  }
-  return results;
-}
-
-// hooks/lib/struggle-nudge.mjs
-function buildStruggleNudge(projectDir, { windowDays = 7, maxLines = 4 } = {}) {
-  let signals;
-  try {
-    signals = readSignals(projectDir);
-  } catch {
-    return "";
-  }
-  if (!signals.length)
-    return "";
-  const cutoff = Date.now() - windowDays * 24 * 60 * 60 * 1000;
-  const recent = signals.filter((s) => {
-    try {
-      return new Date(s.ts).getTime() >= cutoff;
-    } catch {
-      return false;
-    }
-  });
-  if (!recent.length)
-    return "";
-  const groups = new Map;
-  for (const s of recent) {
-    const key = `${s.kind ?? ""}::${s.fingerprint ?? ""}`;
-    const existing = groups.get(key);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      groups.set(key, { kind: s.kind ?? "?", fingerprint: s.fingerprint ?? "", count: 1, detail: s.detail });
-    }
-  }
-  const lines = ["", "## \u26A0 Struggle signals detected"];
-  let shown = 0;
-  for (const { kind, fingerprint, count, detail } of groups.values()) {
-    if (shown >= maxLines)
-      break;
-    const label = fingerprint || (detail && typeof detail === "object" && "cmd" in detail ? detail.cmd : "");
-    const suffix = label ? ` \`${label}\`` : "";
-    lines.push(`- ${kind}\xD7${count}${suffix}`);
-    shown++;
-  }
-  if (groups.size > maxLines)
-    lines.push(`  \u2026 and ${groups.size - maxLines} more pattern(s)`);
-  lines.push("");
-  lines.push("Consider running `/retrospective` to codify the lesson before ending this session.");
-  return `
-${lines.join(`
-`)}`;
-}
-
 // hooks/lib/ensure-git-exclude.mjs
-import { existsSync as existsSync2, readFileSync as readFileSync3, mkdirSync as mkdirSync3, appendFileSync as appendFileSync2, statSync as statSync2 } from "fs";
-import path3 from "path";
+import { existsSync as existsSync2, readFileSync as readFileSync2, mkdirSync as mkdirSync2, appendFileSync, statSync as statSync2 } from "fs";
+import path2 from "path";
 var EXCLUDE_ENTRY = ".groundwork/";
 function normaliseLine(line) {
   return line.trim().replace(/^\//, "").replace(/\/$/, "");
@@ -7503,7 +7427,7 @@ function alreadyContains(content) {
 }
 function ensureGroundworkExcluded(projectDir) {
   try {
-    const gitPath = path3.join(projectDir, ".git");
+    const gitPath = path2.join(projectDir, ".git");
     if (!existsSync2(gitPath))
       return;
     let stat;
@@ -7514,23 +7438,23 @@ function ensureGroundworkExcluded(projectDir) {
     }
     if (!stat.isDirectory())
       return;
-    const gitignorePath = path3.join(projectDir, ".gitignore");
+    const gitignorePath = path2.join(projectDir, ".gitignore");
     if (existsSync2(gitignorePath)) {
       try {
-        const content = readFileSync3(gitignorePath, "utf8");
+        const content = readFileSync2(gitignorePath, "utf8");
         if (alreadyContains(content))
           return;
       } catch {}
     }
-    const excludePath = path3.join(gitPath, "info", "exclude");
+    const excludePath = path2.join(gitPath, "info", "exclude");
     if (existsSync2(excludePath)) {
       try {
-        const content = readFileSync3(excludePath, "utf8");
+        const content = readFileSync2(excludePath, "utf8");
         if (alreadyContains(content))
           return;
         const needsNewline = content.length > 0 && !content.endsWith(`
 `);
-        appendFileSync2(excludePath, (needsNewline ? `
+        appendFileSync(excludePath, (needsNewline ? `
 ` : "") + EXCLUDE_ENTRY + `
 `);
         return;
@@ -7539,15 +7463,15 @@ function ensureGroundworkExcluded(projectDir) {
       }
     }
     try {
-      mkdirSync3(path3.join(gitPath, "info"), { recursive: true });
-      appendFileSync2(excludePath, EXCLUDE_ENTRY + `
+      mkdirSync2(path2.join(gitPath, "info"), { recursive: true });
+      appendFileSync(excludePath, EXCLUDE_ENTRY + `
 `);
     } catch {}
   } catch {}
 }
 
 // hooks/lib/spec-io.mjs
-import { existsSync as existsSync3, readFileSync as readFileSync5, statSync as statSync3, readdirSync as readdirSync2 } from "fs";
+import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync3, readdirSync as readdirSync2 } from "fs";
 import { join, dirname as dirname2, relative, basename } from "path";
 
 // node_modules/.pnpm/js-yaml@4.1.1/node_modules/js-yaml/dist/js-yaml.mjs
@@ -10200,7 +10124,7 @@ var safeDump = renamed("safeDump", "dump");
 // hooks/lib/schema-io.mjs
 var import__2020 = __toESM(require_2020(), 1);
 var import_ajv_formats = __toESM(require_dist(), 1);
-import { readFileSync as readFileSync4 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 var SCHEMAS_DIR = process.env.CLAUDE_PLUGIN_ROOT ? resolve(process.env.CLAUDE_PLUGIN_ROOT, "schemas") : resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "schemas");
@@ -10211,7 +10135,7 @@ function loadSchema(name) {
   if (cache.has(name))
     return cache.get(name);
   const schemaPath = resolve(SCHEMAS_DIR, `${name}.schema.json`);
-  const raw = readFileSync4(schemaPath, "utf8");
+  const raw = readFileSync3(schemaPath, "utf8");
   const schema2 = JSON.parse(raw);
   const validate = ajv.compile(schema2);
   cache.set(name, validate);
@@ -10495,7 +10419,7 @@ function findNearestConceptId(reqAbsPath, sd) {
     for (const filename of ["index.md", "README.md"]) {
       const candidate = join(dir, filename);
       if (existsSync3(candidate)) {
-        const { data } = parseYamlFrontmatter(readFileSync5(candidate, "utf8"));
+        const { data } = parseYamlFrontmatter(readFileSync4(candidate, "utf8"));
         if (data.id)
           return String(data.id);
       }
@@ -10511,7 +10435,7 @@ function resolveConceptRef(rawConcept, sd) {
     return s;
   const indexPath = join(sd, m[1], "index.md");
   if (existsSync3(indexPath)) {
-    const { data } = parseYamlFrontmatter(readFileSync5(indexPath, "utf8"));
+    const { data } = parseYamlFrontmatter(readFileSync4(indexPath, "utf8"));
     if (data.id)
       return String(data.id);
   }
@@ -10523,7 +10447,7 @@ function _loadSpecManifestSync(conceptDir) {
     return { manifest: null, errors: [] };
   let raw;
   try {
-    raw = readFileSync5(p, "utf8");
+    raw = readFileSync4(p, "utf8");
   } catch {
     return { manifest: null, errors: [] };
   }
@@ -10570,7 +10494,7 @@ function buildIndexData(sd) {
     if (viewFilePaths.has(absPath) && _bn !== "README.md" && _bn !== "constraints.md" && _bn !== "requirements.md") {
       let _viewRaw;
       try {
-        _viewRaw = readFileSync5(absPath, "utf8");
+        _viewRaw = readFileSync4(absPath, "utf8");
       } catch {}
       if (_viewRaw && /^##+ [A-Z].*-R-\d/m.test(_viewRaw)) {
         warnings.push({
@@ -10587,7 +10511,7 @@ function buildIndexData(sd) {
       continue;
     let raw;
     try {
-      raw = readFileSync5(absPath, "utf8");
+      raw = readFileSync4(absPath, "utf8");
     } catch {
       continue;
     }
@@ -10757,7 +10681,7 @@ function loadIndex(sd) {
   if (!existsSync3(p))
     return null;
   try {
-    return JSON.parse(readFileSync5(p, "utf8"));
+    return JSON.parse(readFileSync4(p, "utf8"));
   } catch {
     return null;
   }
@@ -10766,13 +10690,13 @@ function loadIndex(sd) {
 // hooks/lib/journal-io.mjs
 import {
   closeSync as closeSync2,
-  mkdirSync as mkdirSync4,
+  mkdirSync as mkdirSync3,
   openSync as openSync2,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync6,
+  readFileSync as readFileSync5,
   writeSync
 } from "fs";
-import path4 from "path";
+import path3 from "path";
 var VALID_TYPES = [
   "DECISION",
   "SPEC_CHANGE",
@@ -10805,20 +10729,20 @@ function resolveMotive({ projectDir, sessionId, ledger } = {}) {
     const dir = projectDir ?? process.cwd();
     l = null;
     try {
-      l = JSON.parse(readFileSync6(path4.join(dir, ".groundwork", "run.json"), "utf8"));
+      l = JSON.parse(readFileSync5(path3.join(dir, ".groundwork", "run.json"), "utf8"));
     } catch {
       l = null;
     }
     if (!l?.active) {
       let files = [];
       try {
-        files = readdirSync3(path4.join(dir, ".groundwork", "runs"));
+        files = readdirSync3(path3.join(dir, ".groundwork", "runs"));
       } catch {}
       for (const f of files) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const candidate = JSON.parse(readFileSync6(path4.join(dir, ".groundwork", "runs", f), "utf8"));
+          const candidate = JSON.parse(readFileSync5(path3.join(dir, ".groundwork", "runs", f), "utf8"));
           if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
             l = candidate;
             break;
@@ -10876,10 +10800,10 @@ var SAFE_SESSION = /^[A-Za-z0-9_-]{1,128}$/;
 function resolveShardPath(projectDir, sessionId, date) {
   const safeId = SAFE_SESSION.test(sessionId ?? "") ? sessionId : "default";
   const d = date ?? new Date().toISOString().slice(0, 10);
-  return path4.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
+  return path3.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
 }
 function appendEvent(shardPath, event) {
-  mkdirSync4(path4.dirname(shardPath), { recursive: true });
+  mkdirSync3(path3.dirname(shardPath), { recursive: true });
   const buf = Buffer.from(JSON.stringify(event) + `
 `, "utf8");
   const fd = openSync2(shardPath, "a");
@@ -10916,9 +10840,9 @@ var LEDGER_SUBCOMMANDS = [
 ];
 
 // hooks/session-reminder.mjs
-var _hooksDir = path5.dirname(fileURLToPath2(import.meta.url));
-var GW_HOOK_BIN = path5.resolve(_hooksDir, "../bin/gw-hook");
-var JOURNAL_BIN = path5.resolve(_hooksDir, "../bin/journal");
+var _hooksDir = path4.dirname(fileURLToPath2(import.meta.url));
+var GW_HOOK_BIN = path4.resolve(_hooksDir, "../bin/gw-hook");
+var JOURNAL_BIN = path4.resolve(_hooksDir, "../bin/journal");
 var SPEC_SKELETON_TOKEN_CAP = 700;
 var SPEC_NODE_DEPTH1_THRESHOLD = 40;
 function buildSpecSkeleton(projectDir) {
@@ -10991,7 +10915,7 @@ function activeRunBlock(projectDir, sessionId) {
   let ledger;
   try {
     const lp = resolveLedgerPath({ projectDir, sessionId: sessionId || undefined });
-    ledger = JSON.parse(readFileSync7(lp, "utf8"));
+    ledger = JSON.parse(readFileSync6(lp, "utf8"));
   } catch {
     return "";
   }
@@ -11173,11 +11097,11 @@ try {
     const line = `CLAUDE_CODE_SESSION_ID=${sessionId}`;
     let existing = "";
     try {
-      existing = readFileSync7(envFile, "utf8");
+      existing = readFileSync6(envFile, "utf8");
     } catch {}
     if (!existing.split(`
 `).some((l) => l.trim() === line)) {
-      appendFileSync3(envFile, (existing && !existing.endsWith(`
+      appendFileSync2(envFile, (existing && !existing.endsWith(`
 `) ? `
 ` : "") + line + `
 `);
@@ -11201,9 +11125,6 @@ try {
   ensureGroundworkExcluded(projectDir);
 } catch {}
 additionalContext += activeRunBlock(projectDir, sessionId);
-try {
-  additionalContext += buildStruggleNudge(projectDir);
-} catch {}
 var TOTAL_TOKEN_CAP = 3800;
 var TOTAL_TOKEN_ALARM = 4100;
 try {

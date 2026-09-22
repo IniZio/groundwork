@@ -1,0 +1,22 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "e2_implements_not_standalone",
+  "description": "'implements' does not match \\bimpl\\b. No advisory fires.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "The class does this.",
+      "new_string": "The class implements the interface."
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

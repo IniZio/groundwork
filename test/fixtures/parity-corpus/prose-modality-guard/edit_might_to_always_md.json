@@ -1,0 +1,24 @@
+{
+  "hook": "prose-modality-guard.mjs",
+  "hook_path": "hooks/prose-modality-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "edit_might_to_always_md",
+  "description": "Edit .md: \"might trigger\" → \"always triggers\". Hedge \"might\" removed, assertion \"always\" added. Advisory fires.",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "parity-corpus-fixed-session-id"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/orchestrator.md",
+      "old_string": "The hook might trigger on every restart cycle.",
+      "new_string": "The hook always triggers on every restart cycle."
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-modality-guard: modal hedge(s) removed [might] while stronger assertion(s) added [always]. TOKEN-ECONOMY-R-005 — hedges carry the author's confidence and must be preserved.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

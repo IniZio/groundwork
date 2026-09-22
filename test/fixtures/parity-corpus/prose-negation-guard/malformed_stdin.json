@@ -1,0 +1,14 @@
+{
+  "hook": "prose-negation-guard.mjs",
+  "hook_path": "hooks/prose-negation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "malformed_stdin",
+  "description": "Stdin is not valid JSON. Hook catches the parse error and fails open: silent passthrough, exit 0.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": "NOT_JSON",
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASSTHROUGH"
+}

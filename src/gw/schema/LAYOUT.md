@@ -119,3 +119,30 @@ Gate notes are sealed (token-gated); setting this field without the correct toke
 - `gate.phases: Record<string, PhaseCheckpoint>` — per-phase verification record under the existing `gate` object, covered by the write-token + seal machinery. Keys are phase keys (`plan`, `design`, `wave-<n>`, `completion`). Each value carries `deliverable`, `tier`, `verdict`, `verified_by`, `verified_at`, `artifacts[]`.
 
 Both are sealed (included in `canonicalReleaseState` in `hooks/lib/gate-seal.mjs`) using the same extend-not-replace pattern as `scoped_tokens` and `awaiting_human`: absent fields do not alter the canonical string, so already-sealed ledgers without these fields still verify correctly.
+
+## Gate-note machine keys (S84, D-110)
+
+`GATE_MACHINE_KEYS` (in `src/gw/store/seal/index.ts`) lists every frontmatter key on a gate note whose value is covered by the HMAC-SHA256 sidecar seal. Editing any of these keys without the write-token changes the canonical machine state and invalidates the seal (fail-closed).
+
+| Key | Ledger-legacy field | Sealed? |
+|-----|---------------------|---------|
+| `active` | `ledger.active` | yes |
+| `advisor` | `ledger.gate.advisor` | yes |
+| `awaiting_human` | `ledger.awaiting_human` | yes |
+| `base_commit` | `ledger.base_commit` | yes |
+| `brief` | `ledger.brief` | yes |
+| `checkpoint_hold` | `ledger.checkpoint_hold` | yes |
+| `claimed_by` | `ledger.claimed_by` | yes |
+| `created_at` | — | yes |
+| `motive` | `ledger.motive` | yes |
+| `pacing` | `ledger.pacing` | yes |
+| `plan_ref` | `ledger.plan_ref` | yes |
+| `qa` | `ledger.gate.qa` | yes |
+| `scoped_tokens` | `ledger.scoped_tokens` | yes |
+| `session` | `ledger.session_id` | yes |
+| `verifier` | `ledger.gate.verifier` | yes |
+| `write_token` | `ledger.write_token` | yes |
+
+Human-owned keys (`desc`, `question`, and the note body) are NOT in this list — humans may edit them freely in Obsidian without invalidating the seal.
+
+Slice machine keys (`SLICE_MACHINE_KEYS`) cover the per-slice release-affecting fields: `id`, `status`, `created_by`, `session`, `wave`, `kind`, `blocked_by`, `acceptance`, `ticket`, `covers_ac`, `decisions`, `claimed_by`, `claimed_at`, `completed_at`.

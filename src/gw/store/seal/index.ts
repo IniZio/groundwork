@@ -53,12 +53,22 @@ export const SLICE_MACHINE_KEYS: readonly string[] = [
  * Machine-owned frontmatter keys for gate notes (sorted alphabetically).
  */
 export const GATE_MACHINE_KEYS: readonly string[] = [
+  'active',
   'advisor',
+  'awaiting_human',
+  'base_commit',
+  'brief',
+  'checkpoint_hold',
+  'claimed_by',
   'created_at',
   'motive',
+  'pacing',
+  'plan_ref',
   'qa',
+  'scoped_tokens',
   'session',
   'verifier',
+  'write_token',
 ] as const;
 
 // ---------------------------------------------------------------------------

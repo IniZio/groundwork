@@ -8,7 +8,6 @@ import { run as orchestratorImplGuard } from './orchestrator-impl-guard.js'
 import { run as ledgerGuard } from './ledger-guard.js'
 import { run as ledgerBashGuard } from './ledger-bash-guard.js'
 import { run as pipedExitCodeGuard } from './piped-exit-code-guard.js'
-import { run as struggleDetector } from './struggle-detector.js'
 import { run as commentDensityGuard } from './comment-density-guard.js'
 import { run as commitMessageGuard } from './commit-message-guard.js'
 import { run as sessionCommitMsgInstaller } from './session-commit-msg-installer.js'
@@ -22,7 +21,6 @@ export const HOOKS: Record<string, HookFn> = {
   'ledger-guard': ledgerGuard,
   'ledger-bash-guard': ledgerBashGuard,
   'piped-exit-code-guard': pipedExitCodeGuard,
-  'struggle-detector': struggleDetector,
   'comment-density-guard': commentDensityGuard,
   'commit-message-guard': commitMessageGuard,
   'session-commit-msg-installer': sessionCommitMsgInstaller,

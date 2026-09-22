@@ -22,7 +22,7 @@ Answer three questions before writing anything:
 
 3. **Is it reusable?** Would this lesson apply in a different project or a different session on the same project? If yes, it clears the cross-project bar and belongs in a SKILL.md. If it only applies to this codebase, it belongs in a reference file. If it belongs in the orchestrator's standing instructions only, it belongs in CLAUDE.md.
 
-Read `.groundwork/struggle-signals.jsonl` (if it exists) for mechanical evidence. Signals are raw — repeated command hashes, fail-retry sequences, error signatures. Use them to confirm the lesson is real and recurring, not a one-off fluke.
+Survey session tool events and journal shards for mechanical evidence of repeated failures. Use them to confirm the lesson is real and recurring, not a one-off fluke.
 
 ---
 

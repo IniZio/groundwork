@@ -1,0 +1,22 @@
+{
+  "hook": "prose-negation-guard.mjs",
+  "hook_path": "hooks/prose-negation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "negation_preserved_no_fire",
+  "description": "old_string contains no negation word. Guard has nothing to protect: silent passthrough.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "The hook proceeds.",
+      "new_string": "The hook fires."
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASSTHROUGH"
+}

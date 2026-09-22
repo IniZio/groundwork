@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "design_ui_keyword",
+  "description": "\"UI\" keyword → routes to groundwork:designer",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "improve the UI for the dashboard",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true,\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[GROUNDWORK ROUTING SIGNAL]\\nDetected routing signals in this prompt → groundwork:designer\\n\\n- Route to `groundwork:designer` for UI/UX work.\\n\\nApply this routing immediately. Do not implement directly.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "SIGNAL"
+}

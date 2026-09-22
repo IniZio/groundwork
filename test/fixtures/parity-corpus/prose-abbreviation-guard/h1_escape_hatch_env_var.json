@@ -1,0 +1,24 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "h1_escape_hatch_env_var",
+  "description": "GROUNDWORK_PROSE_ABBREVIATION_GUARD=0 set in env. Hook returns passthrough immediately before any analysis.",
+  "env": {
+    "GROUNDWORK_PROSE_ABBREVIATION_GUARD": "0"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "Set the configuration.",
+      "new_string": "Set the cfg."
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

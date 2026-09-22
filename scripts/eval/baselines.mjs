@@ -5,11 +5,10 @@
  *
  * Signals:
  *   1. LINT_DRIFT events per session (from .groundwork/journal/*.jsonl)
- *   2. Struggle signals on doc/specs paths (from .groundwork/struggle-signals.jsonl)
- *   3. AC_RETRACTION / AC_COVERAGE ratio per motive (from journal shards)
+ *   2. AC_RETRACTION / AC_COVERAGE ratio per motive (from journal shards)
  *
  * Usage:
- *   node scripts/eval/baselines.mjs [--signal lint-drift|struggle|ac-ratio]
+ *   node scripts/eval/baselines.mjs [--signal lint-drift|ac-ratio]
  */
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
@@ -19,7 +18,6 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const JOURNAL_DIR = join(REPO_ROOT, '.groundwork', 'journal');
-const STRUGGLE_FILE = join(REPO_ROOT, '.groundwork', 'struggle-signals.jsonl');
 
 // Parse CLI args
 const args = process.argv.slice(2);
@@ -76,21 +74,6 @@ function computeSignal1(events, files) {
   return { totalEvents, sessionsWithEvents, totalSessions, avg, bySession };
 }
 
-function computeSignal2() {
-  const entries = parseJsonl(STRUGGLE_FILE);
-  const bySession = new Map();
-  for (const ev of entries) {
-    const detail = JSON.stringify(ev.detail ?? '');
-    if (!detail.includes('doc/specs')) continue;
-    const sid = ev.session_id ?? 'unknown';
-    bySession.set(sid, (bySession.get(sid) ?? 0) + 1);
-  }
-  const totalEvents = [...bySession.values()].reduce((a, b) => a + b, 0);
-  const sessionsWithEvents = bySession.size;
-  const avg = sessionsWithEvents > 0 ? (totalEvents / sessionsWithEvents) : 0;
-  return { totalEvents, sessionsWithEvents, avg, bySession };
-}
-
 function computeSignal3(events) {
   // Count AC_COVERAGE and AC_RETRACTION per motive
   const motives = new Map();
@@ -130,13 +113,6 @@ function printSignal1(s1) {
   }
 }
 
-function printSignal2(s2) {
-  console.log('\n=== Signal 2: Struggle signals on doc/specs paths ===');
-  console.log(pad('Total matching entries', 35) + ': ' + s2.totalEvents);
-  console.log(pad('Sessions affected', 35) + ': ' + s2.sessionsWithEvents);
-  console.log(pad('Avg per affected session', 35) + ': ' + s2.avg.toFixed(2));
-}
-
 function printSignal3(motives) {
   console.log('\n=== Signal 3: AC_RETRACTION / AC_COVERAGE ratio per motive ===');
   if (motives.size === 0) {
@@ -157,17 +133,11 @@ const { events: allEvents, files: journalFiles } = loadAllJournalEventsWithFiles
 
 const runAll = !signalFilter;
 const runS1 = runAll || signalFilter === 'lint-drift';
-const runS2 = runAll || signalFilter === 'struggle';
 const runS3 = runAll || signalFilter === 'ac-ratio';
 
 if (runS1) {
   const s1 = computeSignal1(allEvents, journalFiles);
   printSignal1(s1);
-}
-
-if (runS2) {
-  const s2 = computeSignal2();
-  printSignal2(s2);
 }
 
 if (runS3) {

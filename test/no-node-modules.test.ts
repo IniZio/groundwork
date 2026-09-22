@@ -132,7 +132,6 @@ describe('gw-hook dispatched hooks without node_modules', () => {
     'ledger-bash-guard',
     'piped-exit-code-guard',
     'orchestrator-impl-guard',
-    'struggle-detector',
     'stop-gate',
   ]
   for (const sub of subCommands) {

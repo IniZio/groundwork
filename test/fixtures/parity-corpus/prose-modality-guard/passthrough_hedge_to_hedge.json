@@ -1,0 +1,24 @@
+{
+  "hook": "prose-modality-guard.mjs",
+  "hook_path": "hooks/prose-modality-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "passthrough_hedge_to_hedge",
+  "description": "Edit .md: \"may delegate\" → \"might delegate\". Hedge replaced with another hedge; no strong assertion (will/does/always/is) added. No advisory.",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "parity-corpus-fixed-session-id"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/orchestrator.md",
+      "old_string": "The agent may delegate to a specialist when uncertain.",
+      "new_string": "The agent might delegate to a specialist when uncertain."
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

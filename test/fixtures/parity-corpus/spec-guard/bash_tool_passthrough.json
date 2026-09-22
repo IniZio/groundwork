@@ -1,0 +1,25 @@
+{
+  "hook": "spec-guard.mjs",
+  "hook_path": "hooks/spec-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "bash_tool_passthrough",
+  "description": "Bash tool is not in GUARDED_TOOLS (edit/write/multiedit). Immediate passthrough: exit 0.",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>",
+    "CLAUDE_CODE_SESSION_ID": "parity-spec-guard-fixture-session"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo hello"
+    },
+    "cwd": "/tmp/groundwork-sg-s3-vHrIte",
+    "session_id": "parity-spec-guard-fixture-session"
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

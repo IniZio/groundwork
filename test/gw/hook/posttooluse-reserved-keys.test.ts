@@ -5,28 +5,16 @@
  * JSON key on stdout — which causes a user-visible runtime error:
  *   "PostToolUse hook error — Hook JSON output validation failed"
  *
- * Background: struggle-detector.ts:387 previously emitted `decision: 'SIGNAL'`.
- * `decision` is a reserved PostToolUse field validated against "approve"|"block",
- * so every fired signal produced the error above. It was fixed to `signal: 'SIGNAL'`.
- * Nothing in the suite would catch reintroduction; this test closes that gap.
+ * Positive control: comment-density-guard emits JSON on a dense file, proving
+ * the detection infrastructure can see real hook output. A bite-proof test
+ * confirms the same hook is silent on a sparse file.
  *
- * Design:
- *  1. Drive the REAL DEPLOYED PATH via spawnSync on ./bin/gw-hook — the bug
- *     only manifests through the registered invocation path, not the TS module.
- *  2. Fire an actual signal: GROUNDWORK_STRUGGLE_THRESHOLD=2, temp CLAUDE_PROJECT_DIR,
- *     same Bash payload twice so repeat-command trips.
- *  3. POSITIVE CONTROL FIRST: assert stdout is non-empty and every line parses
- *     as JSON. Without this, a hook that silently stops emitting would make the
- *     negative assertion vacuous.
- *  4. Then assert no emitted object has a reserved PostToolUse top-level key.
- *  5. GENERALIZE: reads PostToolUse registrations from hooks/hooks.json and
- *     iterates them, so a future PostToolUse hook inherits the guard automatically.
- *     Hooks whose stdout is legitimately non-JSON (e.g. doc-size-guard.mjs) are
- *     handled by skipping non-JSON lines — without making the whole test vacuous.
+ * Reads PostToolUse registrations from hooks/hooks.json and iterates them,
+ * so a future PostToolUse hook inherits the guard automatically.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
@@ -139,137 +127,105 @@ describe('PostToolUse hooks — no reserved Claude Code keys on stdout', () => {
     expect(postToolUseHooks.length).toBeGreaterThan(0)
   })
 
-  // Sanity: struggle-detector must be among them so the positive control fires.
-  it('struggle-detector is registered as a PostToolUse hook', () => {
-    const found = postToolUseHooks.some(h => h.command.includes('struggle-detector'))
-    expect(found, 'struggle-detector not found in PostToolUse registrations in hooks/hooks.json').toBe(true)
+  it('comment-density-guard emits non-empty JSON when density threshold exceeded', () => {
+    const denseFile = join(tmpDir, 'dense-comments.ts')
+    const codeLines = Array.from({length: 30}, (_, i) => `const v${i} = ${i}`)
+    const commentLines = Array.from({length: 10}, (_, i) => `// comment line ${i + 1}`)
+    const highDensity = [...commentLines.slice(0, 5), ...codeLines.slice(0, 15), ...commentLines.slice(5), ...codeLines.slice(15)].join('\n') + '\n'
+    writeFileSync(denseFile, highDensity)
+
+    const bin = join(REPO_ROOT, 'bin', 'gw-hook')
+    const payload = JSON.stringify({
+      tool_name: 'Edit',
+      tool_input: {
+        file_path: denseFile,
+        old_string: 'const a = 1',
+        new_string: 'const a = 1 // still dense',
+      },
+      session_id: SESSION_ID,
+      cwd: tmpDir,
+    })
+
+    const r = spawnSync(bin, ['hook', 'comment-density-guard'], {
+      input: payload,
+      encoding: 'utf8',
+      timeout: 10000,
+      env: { ...process.env },
+    })
+    expect(r.error, `comment-density-guard spawn failed: ${r.error?.message ?? ''}`).toBeUndefined()
+    expect(r.status).toBe(0)
+
+    const out = (r.stdout ?? '').trim()
+    expect(out.length, 'comment-density-guard produced no output on dense file — positive control failed').toBeGreaterThan(0)
+    expect(() => JSON.parse(out), `comment-density-guard output is not valid JSON: ${out}`).not.toThrow()
+  })
+
+  it('comment-density-guard is silent on low-density file (bite proof)', () => {
+    const sparseFile = join(tmpDir, 'sparse.ts')
+    writeFileSync(sparseFile, 'const a = 1\nconst b = 2\nconst c = 3\n')
+
+    const bin = join(REPO_ROOT, 'bin', 'gw-hook')
+    const payload = JSON.stringify({
+      tool_name: 'Edit',
+      tool_input: {
+        file_path: sparseFile,
+        old_string: 'const a = 1',
+        new_string: 'const a = 1',
+      },
+      session_id: SESSION_ID,
+      cwd: tmpDir,
+    })
+    const r = spawnSync(bin, ['hook', 'comment-density-guard'], {
+      input: payload,
+      encoding: 'utf8',
+      timeout: 10000,
+      env: { ...process.env },
+    })
+    expect(r.status).toBe(0)
+    expect((r.stdout ?? '').trim()).toBe('')
   })
 
   for (const { command, matcher } of postToolUseHooks) {
     const resolvedCmd = resolveCommand(command)
     const { bin, args } = parseArgv(resolvedCmd)
     const hookLabel = resolvedCmd.replace(REPO_ROOT + '/', '')
-    const isStruggleDetector = resolvedCmd.includes('struggle-detector')
 
     describe(`hook: ${hookLabel} (matcher: ${matcher})`, () => {
       it('emits no reserved PostToolUse key on stdout', () => {
-        if (isStruggleDetector) {
-          // ──────────────────────────────────────────────────────────────
-          // struggle-detector: fire a real signal and apply positive control
-          // ──────────────────────────────────────────────────────────────
+        const result = spawnSync(bin, args, {
+          input: BASH_PAYLOAD,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            CLAUDE_PROJECT_DIR: tmpDir,
+          },
+          timeout: 10000,
+        })
+        expect(
+          result.error,
+          `hook "${hookLabel}" spawn failed: ${result.error?.message ?? ''}`,
+        ).toBeUndefined()
+        expect(result.status).toBe(0)
 
-          // First invocation: count reaches 1 (below threshold=2, no signal yet)
-          const r1 = spawnSync(bin, args, {
-            input: BASH_PAYLOAD,
-            encoding: 'utf8',
-            env: {
-              ...process.env,
-              CLAUDE_PROJECT_DIR: tmpDir,
-              GROUNDWORK_STRUGGLE_THRESHOLD: '2',
-            },
-            timeout: 10000,
-          })
-          expect(
-            r1.error,
-            `struggle-detector first spawn failed: ${r1.error?.message ?? ''}`,
-          ).toBeUndefined()
-          expect(r1.status).toBe(0)
+        const stdout = (result.stdout ?? '').trim()
+        if (!stdout) return
 
-          // Second invocation: count reaches 2 == threshold → repeat-command signal fired
-          const r2 = spawnSync(bin, args, {
-            input: BASH_PAYLOAD,
-            encoding: 'utf8',
-            env: {
-              ...process.env,
-              CLAUDE_PROJECT_DIR: tmpDir,
-              GROUNDWORK_STRUGGLE_THRESHOLD: '2',
-            },
-            timeout: 10000,
-          })
-          expect(
-            r2.error,
-            `struggle-detector second spawn failed: ${r2.error?.message ?? ''}`,
-          ).toBeUndefined()
-          expect(r2.status).toBe(0)
-
-          // POSITIVE CONTROL (step 3): stdout must be non-empty and every line
-          // must parse as JSON. If the hook silently stops emitting, an
-          // all-negative test would vacuously pass — this assertion prevents that.
-          const lines = (r2.stdout ?? '').trim().split('\n').filter(l => l.trim() !== '')
-          expect(
-            lines.length,
-            'struggle-detector must emit at least one JSON line when threshold is crossed — ' +
-            `stdout was: ${JSON.stringify(r2.stdout)}`,
-          ).toBeGreaterThan(0)
-
-          for (const line of lines) {
-            let parsed: Record<string, unknown>
-            try {
-              parsed = JSON.parse(line) as Record<string, unknown>
-            } catch {
-              throw new Error(
-                `struggle-detector stdout line is not valid JSON: ${JSON.stringify(line)}`,
-              )
-            }
-
-            // Step 4: assert no reserved PostToolUse key is present
-            for (const key of RESERVED_POSTTOOLUSE_KEYS) {
-              expect(
-                Object.prototype.hasOwnProperty.call(parsed, key),
-                `struggle-detector emitted reserved PostToolUse key "${key}" ` +
-                `in stdout object — Claude Code will reject it. ` +
-                `Object was: ${JSON.stringify(parsed)}`,
-              ).toBe(false)
-            }
+        const lines = stdout.split('\n').filter(l => l.trim() !== '')
+        for (const line of lines) {
+          let parsed: Record<string, unknown>
+          try {
+            parsed = JSON.parse(line) as Record<string, unknown>
+          } catch {
+            continue
           }
-        } else {
-          // ──────────────────────────────────────────────────────────────
-          // Other PostToolUse hooks (e.g. doc-size-guard.mjs).
-          // doc-size-guard emits plain-text violation messages (not JSON)
-          // for over-budget doc-class files, and is silent otherwise.
-          // We skip non-JSON lines rather than failing to avoid false
-          // positives — but we still assert the exit code so the hook at
-          // least runs successfully through the deployed path.
-          // ──────────────────────────────────────────────────────────────
-          const result = spawnSync(bin, args, {
-            input: BASH_PAYLOAD,
-            encoding: 'utf8',
-            env: {
-              ...process.env,
-              CLAUDE_PROJECT_DIR: tmpDir,
-            },
-            timeout: 10000,
-          })
-          expect(
-            result.error,
-            `hook "${hookLabel}" spawn failed: ${result.error?.message ?? ''}`,
-          ).toBeUndefined()
-          expect(result.status).toBe(0)
 
-          const stdout = (result.stdout ?? '').trim()
-          if (!stdout) return // silent output → no JSON keys to check
-
-          const lines = stdout.split('\n').filter(l => l.trim() !== '')
-          for (const line of lines) {
-            let parsed: Record<string, unknown>
-            try {
-              parsed = JSON.parse(line) as Record<string, unknown>
-            } catch {
-              // Not JSON — skip. Hooks like doc-size-guard.mjs legitimately
-              // emit human-readable plain-text violation messages, not JSON
-              // objects, so a parse failure here is not a bug.
-              continue
-            }
-
-            // If a line IS valid JSON, assert no reserved PostToolUse key
-            for (const key of RESERVED_POSTTOOLUSE_KEYS) {
-              expect(
-                Object.prototype.hasOwnProperty.call(parsed, key),
-                `hook "${hookLabel}" emitted reserved PostToolUse key "${key}" ` +
-                `in stdout object — Claude Code will reject it. ` +
-                `Object was: ${JSON.stringify(parsed)}`,
-              ).toBe(false)
-            }
+          for (const key of RESERVED_POSTTOOLUSE_KEYS) {
+            expect(
+              Object.prototype.hasOwnProperty.call(parsed, key),
+              `hook "${hookLabel}" emitted reserved PostToolUse key "${key}" ` +
+              `in stdout object — Claude Code will reject it. ` +
+              `Object was: ${JSON.stringify(parsed)}`,
+            ).toBe(false)
           }
         }
       })

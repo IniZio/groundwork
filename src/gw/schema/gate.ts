@@ -51,6 +51,17 @@ export const GateSchema = z.looseObject({
   verifier: z.string().optional(),
   qa: z.string().optional(),
   phases: PhaseCheckpointsSchema.optional(),
+  // Session-state keys (D-110, S84): written by initRun; consumed by loadRun + stop-gate wave-33 ports
+  active: z.boolean().optional(),
+  write_token: z.string().optional(),
+  scoped_tokens: z.array(z.object({ scope: z.string(), token: z.string() })).optional(),
+  awaiting_human: z.boolean().optional(),
+  checkpoint_hold: z.string().optional(),
+  pacing: z.looseObject({ milestone_signoff: z.looseObject({}).optional() }).optional(),
+  base_commit: z.string().optional(),
+  brief: z.string().optional(),
+  plan_ref: z.string().optional(),
+  claimed_by: z.string().optional(),
 })
 
 export type Gate = z.infer<typeof GateSchema>

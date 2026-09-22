@@ -1,0 +1,24 @@
+{
+  "hook": "prose-negation-guard.mjs",
+  "hook_path": "hooks/prose-negation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "escape_hatch_env_var",
+  "description": "GROUNDWORK_PROSE_NEGATION_GUARD=0 disables the guard entirely. Silent passthrough even though 'not' is removed.",
+  "env": {
+    "GROUNDWORK_PROSE_NEGATION_GUARD": "0"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "**You MUST NOT delegate your task wholesale to a single child agent.**",
+      "new_string": "**You MUST delegate your task wholesale to a single child agent.**"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASSTHROUGH"
+}

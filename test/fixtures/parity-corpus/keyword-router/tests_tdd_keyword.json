@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "tests_tdd_keyword",
+  "description": "\"TDD\" keyword → routes to groundwork:test-engineer",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "use TDD to implement this feature",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true,\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[GROUNDWORK ROUTING SIGNAL]\\nDetected routing signals in this prompt → groundwork:planner, groundwork:test-engineer\\n\\n- Route to `groundwork:planner` first. Planner MUST create or update a motive charter (`.groundwork/motives/<slug>/motive.md`) with DECISION events and report it as `motive_ref` to the orchestrator BEFORE any fan-out — never fan out from a memory-only plan. Then `vertical-slice` + `groundwork:general-purpose`.\\n- Route to `groundwork:test-engineer` for test strategy and implementation.\\n\\nApply this routing immediately. Do not implement directly.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "SIGNAL"
+}

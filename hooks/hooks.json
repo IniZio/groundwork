@@ -178,16 +178,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook struggle-detector",
-            "async": false
-          }
-        ]
-      },
-      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {

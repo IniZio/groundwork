@@ -25,7 +25,6 @@ const _hooksDir = path.dirname(fileURLToPath(import.meta.url))
 const GW_HOOK_BIN = path.resolve(_hooksDir, '../bin/gw-hook')
 const JOURNAL_BIN = path.resolve(_hooksDir, '../bin/journal')
 import { resolveLedgerPath } from './lib/ledger-io.mjs'
-import { buildStruggleNudge } from './lib/struggle-nudge.mjs'
 import { ensureGroundworkExcluded } from './lib/ensure-git-exclude.mjs'
 import { specDirPath, loadIndex, buildIndexData } from './lib/spec-io.mjs'
 import { emitHookEvent } from './lib/journal-io.mjs'
@@ -338,10 +337,6 @@ const projectDir =
   process.cwd()
 try { ensureGroundworkExcluded(projectDir) } catch { /* never fail the hook */ }
 additionalContext += activeRunBlock(projectDir, sessionId)
-try {
-  additionalContext += buildStruggleNudge(projectDir)
-} catch { /* never fail the hook */ }
-
 // AC6/AC7: spec skeleton, 700-token cap, payload cap 3800 tokens (×1.156 rescale after utf8Bytes/3.5 estimator); TOTAL_TOKEN_ALARM at 4100.
 const TOTAL_TOKEN_CAP = 3800
 const TOTAL_TOKEN_ALARM = 4100

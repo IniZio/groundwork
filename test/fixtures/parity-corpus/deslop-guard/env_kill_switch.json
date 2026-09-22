@@ -1,0 +1,26 @@
+{
+  "hook": "deslop-guard.mjs",
+  "hook_path": "hooks/deslop-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "env_kill_switch",
+  "description": "GROUNDWORK_DESLOP_GUARD=0 disables detection. Content has slop but no warning (PASS).",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "test-deslop-guard-corpus",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>",
+    "GROUNDWORK_DESLOP_GUARD": "0"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/p/src/x.ts",
+      "content": "// Let's go\n// 🚀\nexport const x = 1;\n"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

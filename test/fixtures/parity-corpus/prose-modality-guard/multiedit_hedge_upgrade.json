@@ -1,0 +1,28 @@
+{
+  "hook": "prose-modality-guard.mjs",
+  "hook_path": "hooks/prose-modality-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "multiedit_hedge_upgrade",
+  "description": "MultiEdit on agents-src .md: \"could delegate\" → \"does delegate\". Hedge \"could\" removed, assertion \"does\" added across edits array. Advisory fires.",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "parity-corpus-fixed-session-id"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "MultiEdit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "edits": [
+        {
+          "old_string": "This agent could delegate tasks to downstream workers efficiently.",
+          "new_string": "This agent does delegate tasks to downstream workers efficiently."
+        }
+      ]
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-modality-guard: modal hedge(s) removed [could] while stronger assertion(s) added [does]. TOKEN-ECONOMY-R-005 — hedges carry the author's confidence and must be preserved.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

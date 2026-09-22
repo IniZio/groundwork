@@ -5,7 +5,7 @@
  * project. No `journal append` call is made anywhere in this test.
  *
  * AC coverage:
- *  S6-AC1 — shard contains all four mandate types: TASK_COMPLETE, GATE, SESSION_END, FAILURE
+ *  S6-AC1 — shard contains all three mandate types: TASK_COMPLETE, GATE, SESSION_END
  *  S6-AC2 — zero events carry source:"cli:journal"; every mandate-type event has source starting "hook:"
  *  S6-AC3 — `journal show --motive <id>` returns all four event types
  *  S6-AC4 — every event carries non-empty `motive`; no `rfc` field present (motive-only schema)
@@ -38,7 +38,6 @@ const ROOT = path.resolve(import.meta.dirname, '../..')
 const LEDGER_CLI = path.join(ROOT, 'hooks', 'ledger.mjs')
 const STOP_GATE = path.join(ROOT, 'bin', 'gw-hook')
 const SPEC_GUARD = path.join(ROOT, 'hooks', 'spec-guard.mjs')
-const STRUGGLE_DETECTOR = path.join(ROOT, 'hooks', 'struggle-detector.mjs')
 const JOURNAL_CLI = path.join(ROOT, 'hooks', 'journal.mjs')
 
 // Fixture destination — written to a temp dir during tests to avoid dirtying the committed file.
@@ -64,8 +63,6 @@ const WRITE_TOKEN = 'tok-s6-test'
  */
 const GATE_CITATION = 'hooks/ledger.mjs:1'
 const RFC_DIR_NAME = 'test-rfc-s6'
-const STRUGGLE_THRESHOLD = '2'  // Override GROUNDWORK_STRUGGLE_THRESHOLD for fast crossing
-
 // ---------------------------------------------------------------------------
 // Fixture state
 // ---------------------------------------------------------------------------
@@ -96,7 +93,6 @@ function baseEnv(): Record<string, string> {
     CLAUDE_CODE_SESSION_ID: SESSION_ID,
     CLAUDE_SESSION_ID: SESSION_ID,       // spec-guard uses this env var
     GROUNDWORK_MOTIVE: MOTIVE,           // force known motive via step-1 override
-    GROUNDWORK_STRUGGLE_THRESHOLD: STRUGGLE_THRESHOLD,
   }
 }
 
@@ -147,17 +143,6 @@ function spawnHookAsync(
   })
 }
 
-/** Build a Bash PostToolUse payload for struggle-detector. */
-function bashPayload(cmd: string, exitCode = 0): object {
-  return {
-    tool_name: 'Bash',
-    tool_input: { command: cmd },
-    tool_response: { output: '', exit_code: exitCode },
-    session_id: SESSION_ID,
-    cwd: tmpDir,
-  }
-}
-
 /** Read all lines from the journal shard and parse as JSON objects. */
 function readShard(): object[] {
   try {
@@ -182,22 +167,11 @@ function baseEnvNoMotive(): Record<string, string> {
     CLAUDE_PROJECT_DIR: tmpDir2,
     CLAUDE_CODE_SESSION_ID: SESSION_ID,
     CLAUDE_SESSION_ID: SESSION_ID,
-    GROUNDWORK_STRUGGLE_THRESHOLD: STRUGGLE_THRESHOLD,
   }
 }
 
 function shardPath2(): string {
   return path.join(tmpDir2, '.groundwork', 'journal', `${today()}-${SESSION_ID}.jsonl`)
-}
-
-function bashPayload2(cmd: string, exitCode = 0): object {
-  return {
-    tool_name: 'Bash',
-    tool_input: { command: cmd },
-    tool_response: { output: '', exit_code: exitCode },
-    session_id: SESSION_ID,
-    cwd: tmpDir2,
-  }
 }
 
 function runLedger2(args: string[]): { code: number; stdout: string; stderr: string } {
@@ -311,36 +285,26 @@ beforeAll(async () => {
     JSON.stringify(ledger, null, 2),
   )
 
-  // ── 6. FAILURE: drive struggle-detector twice with same command ───────────
-  //    threshold=2 → first invocation sets count=1 (no emit)
-  //    second invocation sets count=2 (≥ threshold → emit FAILURE)
-  const repeatCmd = 'echo integration-test-repeat'
-  runHookSync(STRUGGLE_DETECTOR, bashPayload(repeatCmd))
-
-  // ── 7. SPEC_DRIFT + FAILURE in parallel (exercises O_APPEND, AC6) ────────
-  //    struggle-detector #2 emits FAILURE; spec-guard emits SPEC_DRIFT
+  // ── 6. SPEC_DRIFT via spec-guard (exercises O_APPEND, AC6) ──────────────
   const specPayload = {
     tool_name: 'Edit',
     tool_input: { file_path: path.join(tmpDir, 'doc', 'specs', 'test.md') },
     session_id: SESSION_ID,
     cwd: tmpDir,
   }
-  const [, ] = await Promise.all([
-    spawnHookAsync(STRUGGLE_DETECTOR, bashPayload(repeatCmd)),
-    spawnHookAsync(SPEC_GUARD, specPayload),
-  ])
+  await spawnHookAsync(SPEC_GUARD, specPayload)
 
-  // ── 8. TASK_COMPLETE ──────────────────────────────────────────────────────
+  // ── 7. TASK_COMPLETE ──────────────────────────────────────────────────────
   runLedger(['complete', 'S1', '--token', WRITE_TOKEN])
 
-  // ── 9. GATE ───────────────────────────────────────────────────────────────
+  // ── 8. GATE ───────────────────────────────────────────────────────────────
   runLedger(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--token', WRITE_TOKEN])
 
-  // ── 10. SESSION_END: stop-gate reads ledger (all complete + APPROVE) ──────
+  // ── 9. SESSION_END: stop-gate reads ledger (all complete + APPROVE) ───────
   const stopPayload = { session_id: SESSION_ID, cwd: tmpDir }
   runHookSync(STOP_GATE, stopPayload, {}, ['hook', 'stop-gate'])
 
-  // ── 11. Collect events ───────────────────────────────────────────────────
+  // ── 10. Collect events ────────────────────────────────────────────────────
   events = readShard()
 
   // ── Pass 2: identical sequence WITHOUT GROUNDWORK_MOTIVE ─────────────────
@@ -360,19 +324,13 @@ beforeAll(async () => {
     JSON.stringify(ledger, null, 2),
   )
 
-  const repeatCmd2 = 'echo integration-test-repeat-p2'
-  runHookSync2(STRUGGLE_DETECTOR, bashPayload2(repeatCmd2))
-
   const specPayload2 = {
     tool_name: 'Edit',
     tool_input: { file_path: path.join(tmpDir2, 'doc', 'specs', 'test.md') },
     session_id: SESSION_ID,
     cwd: tmpDir2,
   }
-  await Promise.all([
-    spawnHookAsync2(STRUGGLE_DETECTOR, bashPayload2(repeatCmd2)),
-    spawnHookAsync2(SPEC_GUARD, specPayload2),
-  ])
+  await spawnHookAsync2(SPEC_GUARD, specPayload2)
 
   runLedger2(['complete', 'S1', '--token', WRITE_TOKEN])
   runLedger2(['gate', 'advisor', 'APPROVE', '--citation', GATE_CITATION, '--token', WRITE_TOKEN])
@@ -398,7 +356,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('S6 hook-only stream integration', () => {
-  const MANDATE_TYPES = ['TASK_COMPLETE', 'GATE', 'SESSION_END', 'FAILURE'] as const
+  const MANDATE_TYPES = ['TASK_COMPLETE', 'GATE', 'SESSION_END'] as const
 
   test('S6-AC6: all journal lines parse as valid JSON (no partial-line corruption)', () => {
     // readShard() uses JSON.parse on every line — if any throws, events will be empty or throw
@@ -410,7 +368,7 @@ describe('S6 hook-only stream integration', () => {
     }
   })
 
-  test('S6-AC1: shard contains all four mandate event types', () => {
+  test('S6-AC1: shard contains all three mandate event types', () => {
     const types = new Set(events.map((e: any) => e.type))
     for (const t of MANDATE_TYPES) {
       expect(types, `missing type: ${t}`).toContain(t)
@@ -435,7 +393,7 @@ describe('S6 hook-only stream integration', () => {
     }
   })
 
-  test('S6-AC3: journal show --motive returns all four event types', () => {
+  test('S6-AC3: journal show --motive returns all three mandate event types', () => {
     const r = spawnSync(
       'node',
       [JOURNAL_CLI, 'show', '--motive', MOTIVE, '--since', '9999d', '--last', '9999'],

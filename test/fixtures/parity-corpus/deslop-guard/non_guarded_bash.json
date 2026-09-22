@@ -1,0 +1,24 @@
+{
+  "hook": "deslop-guard.mjs",
+  "hook_path": "hooks/deslop-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "non_guarded_bash",
+  "description": "Bash is not in GUARDED set (Edit/Write/MultiEdit). Passthrough immediately (PASS).",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "test-deslop-guard-corpus",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo hi"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

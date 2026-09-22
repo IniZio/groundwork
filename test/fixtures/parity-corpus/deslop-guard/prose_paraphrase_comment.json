@@ -1,0 +1,25 @@
+{
+  "hook": "deslop-guard.mjs",
+  "hook_path": "hooks/deslop-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "prose_paraphrase_comment",
+  "description": "// return the result above return result; — prose-paraphrase narrates code below (WARN).",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "test-deslop-guard-corpus",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/p/src/x.ts",
+      "content": "// return the result\nreturn result;\n"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"groundwork deslop-guard: 1 comment-slop finding(s) in Write of /p/src/x.ts. This is advisory only — the write proceeds. These look like AI comment slop (narrator openers, restating comments, commented-out code blocks, or AI emoji). Prefer self-documenting code; drop comments that restate the code below them. To silence for a region, add \\\"// deslop:disable\\\" or set GROUNDWORK_DESLOP_GUARD=0.\\n\\nline 1: prose-paraphrase comment \\\"// return the result\\\" narrates the line below without adding info — drop it\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

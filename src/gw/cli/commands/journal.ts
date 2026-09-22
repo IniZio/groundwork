@@ -2,13 +2,14 @@
  * journal.ts — `gw journal <subcommand>` implementation.
  * Subcommands: append, show, compile
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import type { JournalEvent } from '../../schema/journal.js'
 import { JournalEventType } from '../../schema/journal.js'
 import { type GwEnvelope, errEnvelope, okEnvelope } from '../envelope.js'
 import { writeDecision } from '../../store/motive/decision.js'
+import { writeJournalEvent } from '../../store/motive/journal-event.js'
 import { DEFAULT_TRACKER_PATH } from '../../schema/layout.js'
 import { APPEND_PAYLOAD_VALIDATORS } from '../../../../hooks/lib/journal-payload-validators.mjs'
 
@@ -32,10 +33,6 @@ function parseFlags(args: string[]): { flags: Record<string, string | true>; pos
     } else { positionals.push(a) }
   }
   return { flags, positionals }
-}
-
-function sanitizeTs(ts: string): string {
-  return ts.replace(/:/g, '-').replace(/\./g, '-')
 }
 
 function readMotiveJournalEvents(repoRoot: string, tracker: string, motive: string): JournalEvent[] {
@@ -215,19 +212,21 @@ export async function run(args: string[], cwd: string): Promise<GwEnvelope> {
     }
 
     const ts = new Date().toISOString()
-    const sanitizedTs = sanitizeTs(ts)
+    const sanitizedTs = ts.replace(/:/g, '-').replace(/\./g, '-')
     const noteFilename = `${sanitizedTs}-${type}.md`
-    const journalDir = join(repoRoot, tracker, 'motives', motive as string, 'journal')
-    mkdirSync(journalDir, { recursive: true })
-    const notePath = join(journalDir, noteFilename)
-    const fm: Record<string, unknown> = {
-      ts,
-      session: sessionId,
-      type,
-      source: 'cli:journal',
-      data: data ?? {},
-    }
-    writeFileSync(notePath, matter.stringify(msg as string, fm), 'utf8')
+    writeJournalEvent({
+      projectDir: repoRoot,
+      motive: motive as string,
+      tracker,
+      event: {
+        ts,
+        session: sessionId,
+        type: type as import('../../schema/journal.js').JournalEvent['type'],
+        source: 'cli:journal',
+        data: data ?? {},
+        msg: msg as string,
+      },
+    })
 
     return okEnvelope('journal append', { content: `journal: appended ${type} to journal/${noteFilename}\n` })
   }

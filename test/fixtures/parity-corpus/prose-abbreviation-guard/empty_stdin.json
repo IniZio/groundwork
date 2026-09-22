@@ -1,0 +1,14 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "empty_stdin",
+  "description": "Empty stdin. input={} after trim-guard, tool_name='' is not in GUARDED set. Passthrough, no advisory.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": "",
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

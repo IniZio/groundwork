@@ -7,10 +7,11 @@
  */
 
 import { spawnSync, execSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { REPO_ROOT, type DiskSetupEntry } from './corpus-loader.js'
+import { initRun, type LedgerJson } from '../../../src/gw/store/run/index.js'
 
 export interface RunResult {
   stdout: string
@@ -45,7 +46,7 @@ export function setupTempDir(diskSetup: DiskSetupEntry[]): {
     } else {
       const obj = entry as { path: string; content_summary?: string; content: unknown }
       const relativePath = interpolate(obj.path, tempDir)
-      const fullPath = path.join(tempDir, relativePath)
+      const fullPath = path.resolve(tempDir, relativePath)
       mkdirSync(path.dirname(fullPath), { recursive: true })
       const body =
         typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content, null, 2)
@@ -80,6 +81,7 @@ export function buildEnv(
   for (const [k, v] of Object.entries(fixtureEnv)) {
     merged[k] = interpolate(v, tempDir)
   }
+  merged['CLAUDE_PROJECT_DIR'] = tempDir
   return merged
 }
 
@@ -106,6 +108,103 @@ export function runGwHook(
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
     exit: result.status ?? (result.error ? 1 : 0),
+  }
+}
+
+const HOOKS_DIR = path.join(REPO_ROOT, 'hooks')
+
+/**
+ * Invoke `node hooks/<hookName>.mjs` with stdinPayload piped to stdin.
+ * Used for PENDING_PORT hooks that exist only as .mjs legacy files.
+ */
+export function runMjsHook(
+  hookName: string,
+  stdinPayload: unknown,
+  env: Record<string, string | undefined>,
+): RunResult {
+  const hookPath = path.join(HOOKS_DIR, `${hookName}.mjs`)
+  const projectDir = env['CLAUDE_PROJECT_DIR'] ?? REPO_ROOT
+  const mergedEnv: Record<string, string | undefined> = {
+    PATH: process.env['PATH'],
+    ...env,
+    CLAUDE_PLUGIN_ROOT: undefined,
+  }
+  const result = spawnSync('node', [hookPath], {
+    input: JSON.stringify(stdinPayload),
+    encoding: 'utf8',
+    cwd: projectDir,
+    env: mergedEnv,
+    timeout: 15_000,
+  })
+
+  return {
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    exit: result.status ?? (result.error ? 1 : 0),
+  }
+}
+
+/**
+ * Create the vault-notes form alongside the legacy JSON run file.
+ *
+ * Scans diskSetup for the first entry that looks like a JSON ledger
+ * (object with path ending in `.json` under a `runs/` segment).
+ * Calls initRun to write gate + slice notes.  Applies seal translation:
+ *   - JSON ledger had gate.seal that is a 64-char hex string → leave the
+ *     valid sidecar that writeGate wrote (= valid)
+ *   - JSON ledger had gate.seal that is present but NOT 64-char hex     →
+ *     overwrite the sidecar with a mismatched value
+ *   - JSON ledger had no gate.seal                                       →
+ *     delete the sidecar (unsealed)
+ *
+ * Motive-less ledgers are skipped (JSON-only).  Any error from initRun is
+ * swallowed so that non-ledger fixtures remain unaffected.
+ *
+ * NOTE: This function mutates tempDir in-place.  The legacy JSON file
+ * written by setupTempDir remains; vault notes are added alongside it.
+ */
+export function materialiseVaultForm(diskSetup: DiskSetupEntry[], tempDir: string): void {
+  for (const entry of diskSetup) {
+    if (typeof entry === 'string') continue
+    const obj = entry as { path?: string; content?: unknown }
+    if (!obj.path || !obj.content) continue
+
+    if (!obj.path.includes('runs/') || !obj.path.endsWith('.json')) continue
+
+    const content = obj.content as LedgerJson
+    if (!content?.motive || typeof content.motive !== 'string') continue // motive-less → JSON-only
+
+    try {
+      initRun(content, { projectDir: tempDir })
+    } catch {
+      // RunStoreMissingMotiveError or schema error — skip
+      return
+    }
+
+    const notePath = path.join(
+      tempDir,
+      '.groundwork',
+      'next',
+      'motives',
+      content.motive,
+      `gate-${content.session_id}.md`,
+    )
+    const sealFilePath = `${notePath}.seal`
+    const jsonSeal = (content.gate as { seal?: unknown } | undefined)?.seal
+
+    if (jsonSeal === undefined || jsonSeal === null) {
+      // unsealed → remove sidecar that writeGate wrote
+      if (existsSync(sealFilePath)) {
+        try { rmSync(sealFilePath) } catch { /* best-effort */ }
+      }
+    } else if (typeof jsonSeal === 'string' && /^[0-9a-f]{64}$/.test(jsonSeal)) {
+      // valid-looking HMAC → leave the valid sidecar writeGate wrote
+    } else {
+      // invalid seal → overwrite sidecar with a mismatched value
+      try { writeFileSync(sealFilePath, 'deadbeef'.repeat(8), 'utf8') } catch { /* best-effort */ }
+    }
+
+    return // process only the first ledger entry
   }
 }
 

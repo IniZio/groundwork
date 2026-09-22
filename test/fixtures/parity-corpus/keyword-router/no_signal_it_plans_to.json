@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "no_signal_it_plans_to",
+  "description": "\"it plans to\" — subordinate clause, not an imperative → no routing",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "it plans to run the migration next week",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "NO-SIGNAL"
+}

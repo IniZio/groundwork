@@ -1,0 +1,22 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "b1_ac_expanded",
+  "description": "Old content uses 'AC'; new content replaces it with 'acceptance criteria' and omits 'AC'. Advisory fires; reason contains 'AC' and TOKEN-ECONOMY-R-006.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "Each AC must be verifiable.",
+      "new_string": "Each acceptance criteria must be verifiable."
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-abbreviation-guard: domain vocabulary expanded in new content: `AC`. These are defined terms-of-art; retain the short form. TOKEN-ECONOMY-R-006.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

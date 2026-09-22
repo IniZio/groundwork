@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "multi_signal_noise_suppressed",
+  "description": ">3 routing groups matched in one prompt (bug + design + tests + advisor + git) → all hints suppressed (noise prevention)",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "fix the broken design, write tests, review the code and commit the PR",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "NO-SIGNAL"
+}

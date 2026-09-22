@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import { execSync, spawnSync } from 'node:child_process'
 import { HOOKS } from '../../../src/gw/hook/index.js'
+import { PENDING_PORT_HOOKS } from '../parity/corpus-loader.js'
 
 // ---------------------------------------------------------------------------
 
@@ -66,20 +67,22 @@ function replacePlaceholders(value: unknown, tmpDir: string): unknown {
 /** Write disk_state_setup entries to tmpDir. */
 function setupDiskState(tmpDir: string, diskState: unknown[]): void {
   for (const entry of diskState) {
-    if (typeof entry === 'string') { // entry format: "mkdir -p <temp_dir>/.groundwork/runs"
+    if (typeof entry === 'string') {
       const resolved = entry.replace(/<isolated_temp_dir>/g, tmpDir).replace(/<temp_dir>/g, tmpDir)
-      const match = resolved.match(/^mkdir\s+-p\s+(.+)$/) // only mkdir -p pattern handled, for safety
-      if (match) {
-        mkdirSync(match[1].trim(), { recursive: true })
+      const mkdirMatch = resolved.match(/^mkdir\s+-p\s+(.+)$/)
+      if (mkdirMatch) {
+        mkdirSync(mkdirMatch[1].trim(), { recursive: true })
+      } else {
+        try { execSync(resolved, { cwd: tmpDir }) } catch { }
       }
     } else if (entry !== null && typeof entry === 'object') {
       const obj = entry as Record<string, unknown>
-      const relPath = String(obj.path ?? '')
+      const rawPath = String(obj.path ?? '').replace(/<isolated_temp_dir>/g, tmpDir).replace(/<temp_dir>/g, tmpDir)
       const content = obj.content
 
-      if (!relPath || content === undefined) continue
+      if (!rawPath || content === undefined) continue
 
-      const absPath = join(tmpDir, relPath)
+      const absPath = rawPath.startsWith('/') ? rawPath : join(tmpDir, rawPath)
       mkdirSync(dirname(absPath), { recursive: true })
 
       if (content !== null && typeof content === 'object') {
@@ -170,6 +173,34 @@ function discoverFixtures(): string[] {
   return results
 }
 
+function runMjsHook(
+  hookName: string,
+  stdinPayload: unknown,
+  env: Record<string, string | undefined>,
+): { stdout: string; stderr: string; exit: number } {
+  const hookPath = join(REPO_ROOT, 'hooks', `${hookName}.mjs`)
+  const projectDir = env['CLAUDE_PROJECT_DIR'] ?? REPO_ROOT
+  const mergedEnv: Record<string, string | undefined> = {
+    PATH: process.env['PATH'],
+    ...env,
+    CLAUDE_PLUGIN_ROOT: undefined,
+  }
+  const result = spawnSync('node', [hookPath], {
+    input: JSON.stringify(stdinPayload),
+    encoding: 'utf8',
+    cwd: projectDir,
+    env: mergedEnv as NodeJS.ProcessEnv,
+    timeout: 15_000,
+  })
+  return {
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    exit: result.status ?? (result.error ? 1 : 0),
+  }
+}
+
+function materialiseVaultForm(_diskSetup: unknown[], _tmpDir: string): void {}
+
 // ---------------------------------------------------------------------------
 
 const allFixtures = discoverFixtures()
@@ -202,6 +233,8 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) { // one describe
       }
     })
 
+    const isPendingPort = (PENDING_PORT_HOOKS as readonly string[]).includes(hookName)
+
     for (const fixturePath of fixturePaths) {
       const scenarioName = basename(fixturePath, '.json')
 
@@ -220,22 +253,32 @@ for (const [hookName, fixturePaths] of Object.entries(byHook)) { // one describe
           return
         }
 
-        const hookFn = HOOKS[hookName]
-        if (!hookFn) {
-          console.warn(`[corpus-replay] No TS hook for "${hookName}" — skipping ${fixturePath}`)
-          return
-        }
-
         const diskState = (fixture.disk_state_setup as unknown[]) ?? []
         const resolvedDiskState = replacePlaceholders(diskState, tmpDir) as unknown[]
         setupDiskState(tmpDir, resolvedDiskState)
+        materialiseVaultForm(fixture.disk_state_setup as unknown[], tmpDir)
 
         const rawEnv = (fixture.env as Record<string, string>) ?? {}
         const resolvedEnv = replacePlaceholders(rawEnv, tmpDir) as Record<string, string>
         const env: Record<string, string | undefined> = {
-          CLAUDE_PROJECT_DIR: tmpDir,
           CLAUDE_SESSION_ID: 'test-session',
           ...resolvedEnv,
+          CLAUDE_PROJECT_DIR: tmpDir,
+        }
+
+        if (isPendingPort) {
+          const stdinPayload = replacePlaceholders(fixture.stdin_payload, tmpDir)
+          const mjsResult = runMjsHook(hookName, stdinPayload, env)
+          const expectedStdout = replacePlaceholders(fixture.stdout ?? '', tmpDir) as string
+          expect(mjsResult.stdout).toBe(expectedStdout)
+          expect(mjsResult.exit).toBe((fixture.exit_code as number) ?? 0)
+          return
+        }
+
+        const hookFn = HOOKS[hookName]
+        if (!hookFn) {
+          console.warn(`[corpus-replay] No TS hook for "${hookName}" — skipping ${fixturePath}`)
+          return
         }
 
         if (Array.isArray(fixture.invocations)) { // struggle-detector reads process.env.CLAUDE_PROJECT_DIR directly (ignores _env param); set for duration

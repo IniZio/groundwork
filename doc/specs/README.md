@@ -23,7 +23,7 @@ Groundwork is an orchestrator-mode AI coding framework that classifies, delegate
 This spec covers the following areas:
 
 - **Artifact records** ([`artifact`](artifact/)) — the three groundwork artifact types: run ledger, session journal, and spec tree.
-- **Enforcement** ([`enforcement`](enforcement/)) — all PreToolUse hook gates, including the orchestrator-impl-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, stop-gate, struggle-detector, deslop-guard, prose-negation-guard, prose-modality-guard, doc-read-guard, doc-size-guard, spec-guard, keyword-router, agent-model-guard, and the session-start injection pipeline (session-reminder).
+- **Enforcement** ([`enforcement`](enforcement/)) — all PreToolUse hook gates, including the orchestrator-impl-guard, nesting-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard, stop-gate, deslop-guard, prose-negation-guard, prose-modality-guard, doc-read-guard, doc-size-guard, spec-guard, keyword-router, agent-model-guard, and the session-start injection pipeline (session-reminder).
 - **Orchestration model** ([`orchestration`](orchestration/)) — how the orchestrator classifies, delegates, and stays out of implementation.
 - **Verification gate** ([`verification`](verification/)) — advisor validation as the non-trivial-task completion gate.
 - **`gw ledger` CLI** ([`gw-cli`](gw-cli/)) — the `gw ledger` subcommands that read and mutate the run store.

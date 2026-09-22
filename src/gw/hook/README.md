@@ -14,7 +14,6 @@ TypeScript implementations of every groundwork hook, dispatched through `gw hook
 | `ledger-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-guard` | `src/gw/hook/ledger-guard.ts` |
 | `ledger-bash-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook ledger-bash-guard` | `src/gw/hook/ledger-bash-guard.ts` |
 | `piped-exit-code-guard` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook piped-exit-code-guard` | `src/gw/hook/piped-exit-code-guard.ts` |
-| `struggle-detector` | `${CLAUDE_PLUGIN_ROOT}/bin/gw-hook hook struggle-detector` | `src/gw/hook/struggle-detector.ts` |
 
 ## Dispatch strategy
 
@@ -30,8 +29,7 @@ Two execution paths:
 The legacy `hooks/*.mjs` shims for the seven ported guards (stop-gate, nesting-guard,
 agent-model-guard, orchestrator-impl-guard, ledger-guard, ledger-bash-guard, piped-exit-code-guard)
 were deleted in wave 2 of the groundwork-hardening motive. `hooks/session-start` remains as a
-standalone shim. `struggle-detector` is registered via `bin/gw-hook` in hooks.json like all other
-TypeScript-ported guards; `hooks/struggle-detector.mjs` exists on disk but is not the live entrypoint.
+standalone shim.
 
 ## stop-gate: new-layout vs legacy precedence
 

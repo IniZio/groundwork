@@ -1,12 +1,18 @@
 # Parity Corpus — Groundwork Hook Fixtures
 
-> **FROZEN** — This corpus is a pre-conversion recording from D-10. Fixture files must not be hand-edited or regenerated. The per-hook capture scripts are guarded to refuse execution when the target hook is a gw shim.
+> **FROZEN** — Fixture files must not be hand-edited or regenerated. The per-hook capture scripts are guarded to refuse execution when the target hook is a gw shim.
 
 ## Purpose
 
-This directory contains a replayable scenario corpus capturing real verdicts from the 9 registered groundwork hooks. It is the ground truth for **AC-3 parity testing**: when the legacy `.mjs` hooks are rewritten in Bun/TypeScript, the new implementation must produce identical decisions against every scenario here.
+This directory contains a replayable scenario corpus capturing real verdicts from groundwork hooks. It is the ground truth for **AC-3 parity testing**: when legacy `.mjs` hooks are rewritten in Bun/TypeScript, the new implementation must produce identical decisions against every scenario here.
 
-Once the legacy hook code is deleted (D-10), these verdicts are unrecoverable from source. **The corpus IS the truth record.** Do not delete or hand-edit fixture files.
+Once legacy hook code is deleted, these verdicts are unrecoverable from source. **The corpus IS the truth record.** Do not delete or hand-edit fixture files.
+
+### PENDING_PORT hooks
+
+Eight hooks exist only as `.mjs` files (not yet ported to the gw TypeScript registry). The parity harness replays these via `node hooks/<name>.mjs` instead of `bun src/gw/cli/main.ts hook <name>`. Remove an entry from `PENDING_PORT_HOOKS` in `test/gw/parity/corpus-loader.ts` once the TypeScript port lands.
+
+Current PENDING_PORT hooks: `spec-guard`, `deslop-guard`, `prose-negation-guard`, `prose-modality-guard`, `doc-read-guard`, `doc-size-guard`, `keyword-router`, `prose-abbreviation-guard`
 
 ---
 
@@ -33,20 +39,6 @@ Each fixture is a JSON file with this schema:
 }
 ```
 
-### Multi-invocation format (struggle-detector only)
-
-struggle-detector scenarios that cross the signal threshold via accumulated calls use an `invocations` array instead of a single `stdin_payload`:
-
-```jsonc
-{
-  "invocations": [
-    { "stdin_payload": { ... }, "stdout": "...", "stderr": "...", "exit_code": 0 },
-    ...
-  ],
-  "decision": "SIGNAL" | "NO-SIGNAL"
-}
-```
-
 ### stop-gate exit codes
 
 stop-gate exits `0` for **both** allow and deny. The decision is in the stdout JSON:
@@ -69,18 +61,28 @@ Pass `--dry-run` to forward that flag to each per-hook script without writing fi
 
 ## Hook × Scenario Audit Table
 
-| Hook | Event | Trigger | Scenarios | ALLOW/PASS | DENY/BLOCK/SIGNAL |
-|------|-------|---------|-----------|------------|-------------------|
-| agent-model-guard | PreToolUse | Agent\|Task\|TaskCreate | 6 | 1 ALLOW, 1 INJECT | 4 DENY |
-| nesting-guard | PreToolUse | Agent\|Task\|TaskCreate | 9 | 1 ALLOW | 8 DENY |
-| ledger-guard | PreToolUse | Read\|Edit\|MultiEdit\|Write | 8 | 4 PASS | 4 DENY |
-| ledger-bash-guard | PreToolUse | Bash | 8 | 5 PASS | 3 DENY |
-| piped-exit-code-guard | PreToolUse | Bash | 8 | 5 PASS | 3 DENY |
-| orchestrator-impl-guard | PreToolUse | Edit\|Write\|MultiEdit | 6 | 4 PASS | 2 WARN |
-| stop-gate | Stop | — | 9 | 4 ALLOW | 5 BLOCK |
-| struggle-detector | PostToolUse | Bash\|Edit\|Write | 6 | 3 NO-SIGNAL | 3 SIGNAL |
-| session-reminder | SessionStart | — | 4 | 4 PASS | 0 |
-| **Total** | | | **64** | | |
+| Hook | Port | Event | Scenarios |
+|------|------|-------|-----------|
+| agent-model-guard | gw TS | PreToolUse | 6 |
+| comment-density-guard | gw TS | PostToolUse | 3 |
+| commit-message-guard | gw TS | PostToolUse | 2 |
+| deslop-guard | **PENDING** | PostToolUse | 20 |
+| doc-read-guard | **PENDING** | PreToolUse | 18 |
+| doc-size-guard | **PENDING** | PostToolUse | 18 |
+| keyword-router | **PENDING** | SessionStart | 31 |
+| ledger-bash-guard | gw TS | PreToolUse | 8 |
+| ledger-guard | gw TS | PreToolUse | 8 |
+| nesting-guard | gw TS | PreToolUse | 9 |
+| orchestrator-impl-guard | gw TS | PreToolUse | 6 |
+| piped-exit-code-guard | gw TS | PreToolUse | 8 |
+| prose-abbreviation-guard | **PENDING** | PostToolUse | 22 |
+| prose-modality-guard | **PENDING** | PostToolUse | 17 |
+| prose-negation-guard | **PENDING** | PostToolUse | 13 |
+| session-commit-msg-installer | gw TS | SessionStart | 1 |
+| session-reminder | gw TS | SessionStart | 4 |
+| spec-guard | **PENDING** | PreToolUse | 9 |
+| stop-gate | gw TS | Stop | 9 |
+| **Total** | | | **212** |
 
 ---
 
@@ -106,10 +108,6 @@ Parse stdout as JSON and compare the `decision` field:
 - `"block"` → DENY
 - absent (or `continue: true`) → ALLOW
 
-### struggle-detector multi-call scenarios
-
-Replay each invocation in the `invocations` array in sequence against a **shared** temp dir (state accumulates across calls). After the final invocation, compare `signal_emitted` boolean and `signal_kind`.
-
 ### Critical: never assert on source text
 
 Do **not** assert on the source code of the hook implementation — that defeats the purpose of a fixture corpus. Always execute both surfaces and diff verdicts. The corpus is the expected output (ground truth from the legacy implementation).
@@ -121,6 +119,4 @@ Do **not** assert on the source code of the hook implementation — that defeats
 1. **stop-gate exit code is always 0** — both allow and deny exit 0; the verdict is in stdout JSON (`decision: "block"` = deny, `continue: true` = allow).
 2. **orchestrator-impl-guard is non-blocking** — it uses `additionalContext` warn rather than a hard deny; decision label is `WARN`.
 3. **agent-model-guard injects missing model** — when a model field is absent it injects the correct model into the returned `tool_input`; decision label is `INJECT`.
-4. **struggle-detector always exits 0** — PostToolUse hooks cannot block; decision is `SIGNAL` (threshold crossed) or `NO-SIGNAL`.
-5. **ledger `add` is NOT a mutating command in ledger-bash-guard** — only `init|set|complete|gate|abandon|autopilot|rm|scope-token` are treated as mutations; `add` passes through.
-6. **struggle-detector session_id from stdin, not env** — reads `session_id` from the stdin JSON payload, not from `CLAUDE_SESSION_ID` env var.
+4. **ledger `add` is NOT a mutating command in ledger-bash-guard** — only `init|set|complete|gate|abandon|autopilot|rm|scope-token` are treated as mutations; `add` passes through.

@@ -93,7 +93,19 @@ describe('S2-AC0 — input is stable', () => {
 describe('S2-AC1 — hook-only usefulness', () => {
   it('hook-only stream + injected ledger produces usable view', () => {
     const gt = makeGroundTruth()
-    const view = compile(motiveA, { groundTruth: gt })
+    // Seed one FAILURE event so the failures.length assertion is non-vacuous.
+    const seededFailure = {
+      ts: '2026-08-04T10:56:55.000Z',
+      session: 'sess-s6-int',
+      motive: 'test-motive-s6',
+      type: 'FAILURE',
+      msg: 'failure detected',
+      source: 'hook:test',
+      data: { kind: 'repeat-command', fingerprint: 'fp-ac1-seed', cmd: 'echo test', count: 2 },
+      _order: { shard: 'inline', line: 0 },
+    }
+    const eventsWithFailure = [seededFailure, ...motiveA]
+    const view = compile(eventsWithFailure, { groundTruth: gt })
     expect(view.agent.all_slices.length).toBeGreaterThan(0)
     expect(view.agent.last_gate?.verdict).toBe('APPROVE')
     expect(view.agent.failures.length).toBeGreaterThanOrEqual(1)
@@ -177,11 +189,22 @@ describe('S2-AC4 — field contract', () => {
   })
 
   it('FAILURE reads d.fingerprint, d.cmd, d.count; fold maps count→attempts', () => {
-    const fEvent = motiveA.find((e: any) => e.type === 'FAILURE')
+    const inlineFailure = {
+      ts: '2026-08-04T10:56:55.000Z',
+      session: 'sess-s6-int',
+      motive: 'test-motive-s6',
+      type: 'FAILURE',
+      msg: 'failure detected',
+      source: 'hook:test',
+      data: { kind: 'repeat-command', fingerprint: 'fp-inline-01', cmd: 'echo test', count: 2 },
+      _order: { shard: 'inline', line: 0 },
+    }
+    const events = [inlineFailure, ...motiveA]
+    const fEvent = events.find((e: any) => e.type === 'FAILURE')
     expect(fEvent?.data?.fingerprint).toBeTruthy()
     expect(fEvent?.data?.cmd).toBeTruthy()
     expect(fEvent?.data?.count).toBeTypeOf('number')
-    const view = compile(motiveA)
+    const view = compile(events)
     expect(view.agent.failures[0]?.attempts).toBe(fEvent.data.count)
   })
 
@@ -359,9 +382,9 @@ describe('S2-AC10 — divergence is pure', () => {
 // ── S2-AC11 ───────────────────────────────────────────────────────────────
 
 describe('S2-AC11 — motive scoping', () => {
-  it('compiling test-motive-s6 yields events_folded === 4', () => {
+  it('compiling test-motive-s6 yields events_folded === 3', () => {
     const view = compile(motiveA)
-    expect(view.provenance.events_folded).toBe(4)
+    expect(view.provenance.events_folded).toBe(3)
   })
 
   it('no field in view mentions the other motive', () => {

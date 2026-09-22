@@ -25,6 +25,7 @@ import { describe, it, expect } from 'vitest'
 import {
   loadCorpus,
   isMultiFixture,
+  PENDING_PORT_HOOKS,
   type SingleFixture,
   type MultiFixture,
 } from './corpus-loader.js'
@@ -32,6 +33,8 @@ import {
   setupTempDir,
   buildEnv,
   runGwHook,
+  runMjsHook,
+  materialiseVaultForm,
   runMultiInvocations,
   classifyDecision,
 } from './runner.js'
@@ -83,6 +86,23 @@ describe('corpus integrity', () => {
         `checksum mismatch for ${relPath}\n  expected: ${expectedHash}\n  actual:   ${actualHash}`,
       ).toBe(expectedHash)
     }
+  })
+
+  it('MANIFEST entry count matches on-disk fixture count (count-parity)', () => {
+    const diskCount = readdirSync(CORPUS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .reduce((acc, d) => {
+        try {
+          return acc + readdirSync(join(CORPUS_DIR, d.name)).filter(f => f.endsWith('.json')).length
+        } catch {
+          return acc
+        }
+      }, 0)
+    expect(
+      Object.keys(MANIFEST.fixtures).length,
+      `MANIFEST has ${Object.keys(MANIFEST.fixtures).length} entries but ${diskCount} .json fixtures exist on disk.\n` +
+      `  Run the MANIFEST generator to sync them.`,
+    ).toBe(diskCount)
   })
 })
 
@@ -210,12 +230,38 @@ describe('coverage completeness', () => {
       `  rewire-eligible set (for T5): ${rewireEligible.join(', ')}`,
     ).toEqual([])
 
-    // Assert fixture-covered ⊆ gw: no orphan fixture dirs for hooks not in gw
-    const fixturesWithoutGw = [...fixtureCoveredNames].filter(h => !gwRegistryNames.has(h)).sort()
+    const pendingPortSet = new Set<string>(PENDING_PORT_HOOKS)
+    const fixturesWithoutGw = [...fixtureCoveredNames]
+      .filter(h => !gwRegistryNames.has(h) && !pendingPortSet.has(h))
+      .sort()
     expect(
       fixturesWithoutGw,
-      `fixture-covered hooks absent from gw registry (stale fixture dirs):\n` +
-      `  stale: ${fixturesWithoutGw.join(', ')}`,
+      `fixture-covered hooks absent from gw registry and not in PENDING_PORT_HOOKS (stale fixture dirs):\n` +
+      `  stale: ${fixturesWithoutGw.join(', ')}\n` +
+      `  PENDING_PORT (excluded from this check): ${[...pendingPortSet].sort().join(', ')}`,
+    ).toEqual([])
+
+    const pendingPortWithoutFixtures = [...pendingPortSet].filter(h => {
+      const dirPath = join(CORPUS_DIR, h)
+      try {
+        return !readdirSync(dirPath).some(f => f.endsWith('.json'))
+      } catch {
+        return true
+      }
+    }).sort()
+    expect(
+      pendingPortWithoutFixtures,
+      `PENDING_PORT hooks lacking corpus fixture dirs or JSON files:\n` +
+      `  missing: ${pendingPortWithoutFixtures.join(', ')}`,
+    ).toEqual([])
+
+    const pendingPortWithoutMjs = [...pendingPortSet].filter(h =>
+      !commandsWalked.some(cmd => cmd.includes(h) && cmd.endsWith('.mjs')),
+    ).sort()
+    expect(
+      pendingPortWithoutMjs,
+      `PENDING_PORT hooks lacking hooks/<name>.mjs registration in hooks.json:\n` +
+      `  missing: ${pendingPortWithoutMjs.join(', ')}`,
     ).toEqual([])
 
     // Assert gw-hook entries exist (positive control — catches silent extraction failures).
@@ -310,8 +356,9 @@ describe('divergence registry lock', () => {
 //
 // This catches silent loss of emitHookEvent calls that the decision oracle cannot see.
 
-describe('struggle-detector journal oracle', () => {
-  const struggleScenarios = corpus.filter(s => s.hookName === 'struggle-detector')
+const _struggleScenarios = corpus.filter(s => s.hookName === 'struggle-detector')
+describe.skipIf(_struggleScenarios.length === 0)('struggle-detector journal oracle', () => {
+  const struggleScenarios = _struggleScenarios
 
   for (const { fixture, filePath } of struggleScenarios) {
     if (!isMultiFixture(fixture)) continue
@@ -392,6 +439,8 @@ describe('struggle-detector journal oracle', () => {
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 
+const _pendingPortSet = new Set<string>(PENDING_PORT_HOOKS)
+
 for (const [hookName, scenarios] of byHook) {
   describe(`parity: ${hookName}`, () => {
     for (const { fixture, filePath } of scenarios) {
@@ -403,6 +452,21 @@ for (const [hookName, scenarios] of byHook) {
 
         try {
           const env = buildEnv(fixture.env, tempDir)
+          materialiseVaultForm(fixture.disk_state_setup, tempDir)
+
+          if (_pendingPortSet.has(hookName)) {
+            const single = fixture as SingleFixture
+            const interpolatedPayload = JSON.parse(
+              JSON.stringify(single.stdin_payload).replace(/<(?:temp_dir|isolated_temp_dir)>/g, tempDir),
+            )
+            const expectedStdout = single.stdout.replace(/<(?:temp_dir|isolated_temp_dir)>/g, tempDir)
+            const result = runMjsHook(hookName, interpolatedPayload, env)
+            if (!divergenceNote) {
+              expect(result.stdout, `stdout mismatch\n  file: ${filePath}`).toBe(expectedStdout)
+              expect(result.exit, `exit_code mismatch\n  corpus: ${single.exit_code}\n  mjs:    ${result.exit}\n  file:   ${filePath}`).toBe(single.exit_code)
+            }
+            return
+          }
 
           if (isMultiFixture(fixture)) {
             // struggle-detector: run all invocations sequentially on shared disk state

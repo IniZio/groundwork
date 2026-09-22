@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "non_user_compaction_summary",
+  "description": "Context compaction summary containing \"PR\", \"tests\", \"fix\" → discriminator suppresses all routing hints",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "<context_window_compaction>Conversation compacted. Previous context summarized. The PR was reviewed, tests were written, fix shipped.</context_window_compaction>",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "NO-SIGNAL"
+}

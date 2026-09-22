@@ -1,0 +1,19 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "malformed_stdin",
+  "description": "Non-JSON stdin → hook catches JSON.parse error silently, passes through with continue:true",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": null,
+  "stdin_raw": "not json at all",
+  "stdout": "{\"continue\":true}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "NO-SIGNAL"
+}

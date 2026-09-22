@@ -1,100 +1,17 @@
 /**
- * Unit tests for hooks/lib/signals-io.mjs and hooks/lib/concept-slug.mjs.
+ * Unit tests for hooks/lib/concept-slug.mjs.
  *
  * Framework: vitest (same as extension.test.ts).
- * The libs are plain Node ESM — imported via relative path.
+ * The lib is plain Node ESM — imported via relative path.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-
-// Dynamic imports resolve to .mjs from the project root.
-import {
-  resolveSignalsPath,
-  appendSignal,
-  readSignals,
-} from '../hooks/lib/signals-io.mjs'
+import { describe, test, expect } from 'vitest'
 
 import {
   toSlug,
   normalizeCommand,
   commandFingerprint,
 } from '../hooks/lib/concept-slug.mjs'
-
-// ---------------------------------------------------------------------------
-// signals-io
-// ---------------------------------------------------------------------------
-
-describe('signals-io', () => {
-  let tmpDir: string
-
-  beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `gw-signals-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-    mkdirSync(tmpDir, { recursive: true })
-  })
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  test('resolveSignalsPath returns path inside .groundwork/', () => {
-    const p = resolveSignalsPath(tmpDir)
-    expect(p).toBe(path.join(tmpDir, '.groundwork', 'struggle-signals.jsonl'))
-  })
-
-  test('appendSignal creates the file and .groundwork/ dir on first call', () => {
-    const signal = {
-      ts: '2026-07-21T00:00:00.000Z',
-      session_id: 'ses_test1',
-      kind: 'repeat-command',
-      fingerprint: 'abc123def456',
-      detail: { cmd: 'go build ./x', count: 3 },
-    }
-    appendSignal(tmpDir, signal)
-    const filePath = resolveSignalsPath(tmpDir)
-    expect(existsSync(filePath)).toBe(true)
-  })
-
-  test('JSONL round-trip: appended signals are parsed back intact', () => {
-    const signals = [
-      { ts: '2026-07-21T01:00:00.000Z', session_id: 'ses_a', kind: 'repeat-command', fingerprint: 'fp1', detail: { n: 1 } },
-      { ts: '2026-07-21T02:00:00.000Z', session_id: 'ses_b', kind: 'fail-retry', fingerprint: 'fp2', detail: { n: 2 } },
-      { ts: '2026-07-21T03:00:00.000Z', session_id: 'ses_c', kind: 'file-thrash', fingerprint: 'fp3', detail: { n: 3 } },
-    ]
-    for (const s of signals) appendSignal(tmpDir, s)
-    const read = readSignals(tmpDir)
-    expect(read).toHaveLength(3)
-    expect(read[0]).toEqual(signals[0])
-    expect(read[1]).toEqual(signals[1])
-    expect(read[2]).toEqual(signals[2])
-  })
-
-  test('readSignals returns [] when file does not exist', () => {
-    expect(readSignals(tmpDir)).toEqual([])
-  })
-
-  test('corrupt trailing line is skipped, valid lines are returned', () => {
-    // Write one valid line, then a partial/corrupt trailing line.
-    const filePath = resolveSignalsPath(tmpDir)
-    mkdirSync(path.dirname(filePath), { recursive: true })
-    const valid = { ts: 'T', session_id: 'ses_x', kind: 'error-signature', fingerprint: 'fp0', detail: {} }
-    writeFileSync(filePath, `${JSON.stringify(valid)}\n{"corrupt":true, "trunc\n`)
-    const read = readSignals(tmpDir)
-    expect(read).toHaveLength(1)
-    expect(read[0]).toEqual(valid)
-  })
-
-  test('multiple appends accumulate in order', () => {
-    for (let i = 0; i < 5; i++) {
-      appendSignal(tmpDir, { ts: `T${i}`, session_id: 'ses_z', kind: 'repeat-command', fingerprint: `fp${i}`, detail: { i } })
-    }
-    const read = readSignals(tmpDir)
-    expect(read).toHaveLength(5)
-    expect(read.map((s: any) => s.detail.i)).toEqual([0, 1, 2, 3, 4])
-  })
-})
 
 // ---------------------------------------------------------------------------
 // concept-slug — toSlug

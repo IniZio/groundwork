@@ -1,0 +1,25 @@
+{
+  "hook": "spec-guard.mjs",
+  "hook_path": "hooks/spec-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "cross_repo_path",
+  "description": "Write to absolute path in another project. relativeFromProject returns raw path; isGuarded=false → passthrough. Exit 0, stderr empty (no WARN).",
+  "env": {
+    "CLAUDE_PROJECT_DIR": "<isolated_temp_dir>",
+    "CLAUDE_CODE_SESSION_ID": "parity-spec-guard-fixture-session"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/home/newman/magic/hanlun-lms/doc/specs/artifact/requirements.md"
+    },
+    "cwd": "/tmp/groundwork-sg-s8-auC6d5",
+    "session_id": "parity-spec-guard-fixture-session"
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

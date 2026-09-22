@@ -1,0 +1,16 @@
+{
+  "hook": "prose-modality-guard.mjs",
+  "hook_path": "hooks/prose-modality-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "passthrough_malformed_stdin",
+  "description": "Malformed JSON on stdin. JSON.parse throws; catch block calls passthrough(). FAIL-OPEN: exit 0, empty stdout.",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "parity-corpus-fixed-session-id"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": "{this is not valid json",
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

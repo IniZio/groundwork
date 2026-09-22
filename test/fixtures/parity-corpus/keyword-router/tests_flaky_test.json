@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "tests_flaky_test",
+  "description": "\"flaky test\" phrase → routes to groundwork:test-engineer",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "the flaky test in CI is causing issues",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true,\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[GROUNDWORK ROUTING SIGNAL]\\nDetected routing signals in this prompt → groundwork:test-engineer\\n\\n- Route to `groundwork:test-engineer` for test strategy and implementation.\\n\\nApply this routing immediately. Do not implement directly.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "SIGNAL"
+}

@@ -14,7 +14,7 @@ Invoke at session end when any of these fire:
 - A user correction should become a standing rule
 - A streamlined recipe or improvement emerged (e.g., "local run guarantees CI before PR")
 - The user said "remember this" or "add this to the rules"
-- The struggle-detector surfaced a recurring signal in `.groundwork/struggle-signals.jsonl`
+- A recurring failure pattern was observed across multiple sessions
 
 **Skipping-when-triggered failure:** the next session re-learns the same lesson from scratch. The Stop-gate does not enforce invocation; the fork does. A session that ran cleanly on the first attempt does not require a retrospective.
 
@@ -34,7 +34,7 @@ See [`reference/phases.md`](reference/phases.md) for per-phase detail and fork r
 
 ## Six Phases
 
-1. **Reflection** — survey session events for trigger conditions; identify concrete lessons. Read `.groundwork/struggle-signals.jsonl` for mechanical evidence.
+1. **Reflection** — survey session events for trigger conditions; identify concrete lessons.
 2. **Classification** — classify each lesson by destination: `housekeep/reference/*.md` bullet, CLAUDE.md rule, or new SKILL.md.
 3. **Apply policy** — auto-apply low-blast lessons (reference file bullets); draft high-blast changes (CLAUDE.md, new SKILL.md) for hand-back to the parent orchestrator. Never apply high-blast changes directly from the fork.
 4. **Durable store** — write or upsert the Learnings KB entry at `.groundwork/learnings/<concept-slug>.md`; see schema below.

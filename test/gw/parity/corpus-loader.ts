@@ -17,6 +17,24 @@ const __dirname = path.dirname(__filename)
 export const REPO_ROOT = path.resolve(__dirname, '../../..')
 export const CORPUS_DIR = path.join(REPO_ROOT, 'test/fixtures/parity-corpus')
 
+/**
+ * Hooks that exist only as .mjs legacy files — not yet ported to the gw TypeScript
+ * registry.  The parity harness replays these via `node hooks/<name>.mjs` instead
+ * of `bun src/gw/cli/main.ts hook <name>`.  Remove an entry once the TS port lands.
+ */
+export const PENDING_PORT_HOOKS = [
+  'spec-guard',
+  'deslop-guard',
+  'prose-negation-guard',
+  'prose-modality-guard',
+  'doc-read-guard',
+  'doc-size-guard',
+  'keyword-router',
+  'prose-abbreviation-guard',
+] as const
+
+export type PendingPortHook = (typeof PENDING_PORT_HOOKS)[number]
+
 /** A disk_state_setup entry — either a shell command (string) or a file-write spec. */
 export type DiskSetupEntry =
   | string

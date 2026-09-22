@@ -45,7 +45,7 @@ Enforcement hooks translate prose rules from CLAUDE.md into mechanically binding
 | [[requirements/enforcement-r-005-ledger-bash-guard-bash-manipulation\|ENFORCEMENT-R-005]] | Ledger-bash-guard blocks subagent bash manipulation of ledger and seal key | implemented |
 | [[requirements/enforcement-r-006-piped-exit-code-guard-pipe-status\|ENFORCEMENT-R-006]] | Piped-exit-code-guard blocks reading $? after piping through a filter | implemented |
 | [[requirements/enforcement-r-007-stop-gate-session-end-enforcement\|ENFORCEMENT-R-007]] | Stop-gate blocks session end when run is incomplete or gate is unsealed | implemented |
-| [[requirements/enforcement-r-008-struggle-detector-failure-signal\|ENFORCEMENT-R-008]] | Struggle-detector emits FAILURE journal event on consecutive tool failures | implemented |
+| [[requirements/enforcement-r-008-struggle-detector-failure-signal\|ENFORCEMENT-R-008]] | Struggle-detector emits FAILURE journal event on consecutive tool failures | withdrawn |
 | [[requirements/enforcement-r-009-deslop-guard-advisory\|ENFORCEMENT-R-009]] | Deslop-guard emits advisory on AI-fingerprint comment patterns | implemented |
 | [[requirements/enforcement-r-010-prose-negation-guard-advisory\|ENFORCEMENT-R-010]] | Prose-negation-guard warns when negation words are removed from surviving sentences | implemented |
 | [[requirements/enforcement-r-011-prose-modality-guard-advisory\|ENFORCEMENT-R-011]] | Prose-modality-guard warns when modal hedges are upgraded to strong assertions | implemented |

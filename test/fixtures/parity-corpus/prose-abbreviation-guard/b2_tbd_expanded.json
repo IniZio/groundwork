@@ -1,0 +1,22 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "b2_tbd_expanded",
+  "description": "Old content uses 'TBD'; new content replaces it with 'to be determined'. Advisory fires; reason contains 'TBD'.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "The scope is TBD.",
+      "new_string": "The scope is to be determined."
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-abbreviation-guard: domain vocabulary expanded in new content: `TBD`. These are defined terms-of-art; retain the short form. TOKEN-ECONOMY-R-006.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

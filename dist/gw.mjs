@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @bundle-source-hash: db71e9e397d18286c9d9255447b85dcb45ac16bbc9ee70a73b22a159d058f209
+// @bundle-source-hash: 4e2e61dfc440b967b5650edd998c971522f4c45edf9816a22a2b264aefea3b8a
 // @bun
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
@@ -25209,7 +25209,17 @@ var init_gate = __esm(() => {
     advisor: exports_external.union([AdvisorVerdictEnum, AdvisorVerdictObject]).optional(),
     verifier: exports_external.string().optional(),
     qa: exports_external.string().optional(),
-    phases: PhaseCheckpointsSchema.optional()
+    phases: PhaseCheckpointsSchema.optional(),
+    active: exports_external.boolean().optional(),
+    write_token: exports_external.string().optional(),
+    scoped_tokens: exports_external.array(exports_external.object({ scope: exports_external.string(), token: exports_external.string() })).optional(),
+    awaiting_human: exports_external.boolean().optional(),
+    checkpoint_hold: exports_external.string().optional(),
+    pacing: exports_external.looseObject({ milestone_signoff: exports_external.looseObject({}).optional() }).optional(),
+    base_commit: exports_external.string().optional(),
+    brief: exports_external.string().optional(),
+    plan_ref: exports_external.string().optional(),
+    claimed_by: exports_external.string().optional()
   });
 });
 
@@ -25589,6 +25599,37 @@ var init_decision2 = __esm(() => {
   CANONICAL_DATA_KEYS = new Set(["id", "decision", "rationale", "alternatives", "status", "kind"]);
 });
 
+// src/gw/store/motive/journal-event.ts
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync5 } from "fs";
+import { join as join4 } from "path";
+function sanitizeTs(ts) {
+  return ts.replace(/:/g, "-").replace(/\./g, "-");
+}
+function writeJournalEvent(opts) {
+  const { projectDir, motive: motive2, event } = opts;
+  const tracker = opts.tracker ?? DEFAULT_TRACKER_PATH;
+  const ts = event.ts ?? new Date().toISOString();
+  const sanitizedTs = sanitizeTs(ts);
+  const noteFilename = `${sanitizedTs}-${event.type}.md`;
+  const journalDir = join4(projectDir, tracker, "motives", motive2, "journal");
+  mkdirSync6(journalDir, { recursive: true });
+  const notePath = join4(journalDir, noteFilename);
+  const fm = {
+    ts,
+    session: event.session,
+    type: event.type,
+    source: event.source ?? "cli:journal",
+    data: event.data ?? {}
+  };
+  writeFileSync5(notePath, import_gray_matter2.default.stringify(event.msg ?? "", fm), "utf8");
+  return notePath;
+}
+var import_gray_matter2;
+var init_journal_event = __esm(() => {
+  init_layout();
+  import_gray_matter2 = __toESM(require_gray_matter(), 1);
+});
+
 // hooks/lib/journal-payload-validators.mjs
 var APPEND_PAYLOAD_VALIDATORS;
 var init_journal_payload_validators = __esm(() => {
@@ -25621,8 +25662,8 @@ __export(exports_journal, {
   run: () => run3,
   JOURNAL_SUBCOMMANDS: () => JOURNAL_SUBCOMMANDS
 });
-import { existsSync as existsSync7, mkdirSync as mkdirSync6, readdirSync as readdirSync3, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync7, readdirSync as readdirSync3, readFileSync as readFileSync8 } from "fs";
+import { join as join5 } from "path";
 function isJournalSubcmd(s) {
   return JOURNAL_SUBCOMMANDS.includes(s);
 }
@@ -25644,11 +25685,8 @@ function parseFlags3(args) {
   }
   return { flags, positionals };
 }
-function sanitizeTs(ts) {
-  return ts.replace(/:/g, "-").replace(/\./g, "-");
-}
 function readMotiveJournalEvents(repoRoot, tracker, motive2) {
-  const journalDir = join4(repoRoot, tracker, "motives", motive2, "journal");
+  const journalDir = join5(repoRoot, tracker, "motives", motive2, "journal");
   if (!existsSync7(journalDir))
     return [];
   const events = [];
@@ -25660,8 +25698,8 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync8(join4(journalDir, file2), "utf8");
-      const { data, content } = import_gray_matter2.default(raw);
+      const raw = readFileSync8(join5(journalDir, file2), "utf8");
+      const { data, content } = import_gray_matter3.default(raw);
       events.push({
         ts: data["ts"],
         session: data["session"],
@@ -25676,7 +25714,7 @@ function readMotiveJournalEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
-  const decisionsDir = join4(repoRoot, tracker, "motives", motive2, "decisions");
+  const decisionsDir = join5(repoRoot, tracker, "motives", motive2, "decisions");
   if (!existsSync7(decisionsDir))
     return [];
   const events = [];
@@ -25688,8 +25726,8 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   }
   for (const file2 of files) {
     try {
-      const raw = readFileSync8(join4(decisionsDir, file2), "utf8");
-      const { data, content } = import_gray_matter2.default(raw);
+      const raw = readFileSync8(join5(decisionsDir, file2), "utf8");
+      const { data, content } = import_gray_matter3.default(raw);
       events.push({
         ts: data["date"] ?? "",
         session: "",
@@ -25711,7 +25749,7 @@ function readMotiveDecisionEvents(repoRoot, tracker, motive2) {
   return events;
 }
 function readAllEvents(repoRoot, tracker, motiveFilter) {
-  const motivesRoot = join4(repoRoot, tracker, "motives");
+  const motivesRoot = join5(repoRoot, tracker, "motives");
   let motives;
   if (motiveFilter) {
     motives = [motiveFilter];
@@ -25813,19 +25851,21 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
 ` });
     }
     const ts = new Date().toISOString();
-    const sanitizedTs = sanitizeTs(ts);
+    const sanitizedTs = ts.replace(/:/g, "-").replace(/\./g, "-");
     const noteFilename = `${sanitizedTs}-${type}.md`;
-    const journalDir = join4(repoRoot, tracker, "motives", motive3, "journal");
-    mkdirSync6(journalDir, { recursive: true });
-    const notePath = join4(journalDir, noteFilename);
-    const fm = {
-      ts,
-      session: sessionId,
-      type,
-      source: "cli:journal",
-      data: data ?? {}
-    };
-    writeFileSync5(notePath, import_gray_matter2.default.stringify(msg, fm), "utf8");
+    writeJournalEvent({
+      projectDir: repoRoot,
+      motive: motive3,
+      tracker,
+      event: {
+        ts,
+        session: sessionId,
+        type,
+        source: "cli:journal",
+        data: data ?? {},
+        msg
+      }
+    });
     return okEnvelope("journal append", { content: `journal: appended ${type} to journal/${noteFilename}
 ` });
   }
@@ -25851,13 +25891,13 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
     if (events2.length > lastN)
       events2 = events2.slice(events2.length - lastN);
     if (events2.length === 0) {
-      const legacyJournalDir = join4(repoRoot, ".groundwork", "journal");
+      const legacyJournalDir = join5(repoRoot, ".groundwork", "journal");
       let legacyShards = [];
       try {
         legacyShards = readdirSync3(legacyJournalDir).filter((f) => f.endsWith(".jsonl"));
       } catch {}
       if (legacyShards.length > 0) {
-        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join4(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
+        return errEnvelope("journal show", "STORE_DIVERGENCE", `journal: 0 events in new store at ${join5(repoRoot, tracker, "motives")} ` + `but ${legacyShards.length} JSONL shards exist at ${legacyJournalDir} \u2014 ` + `use bin/journal to read the legacy store until migration is complete`, 1);
       }
       return okEnvelope("journal show", { content: `no events found
 ` });
@@ -25911,13 +25951,14 @@ Subcommands: ${JOURNAL_SUBCOMMANDS.join(", ")}`, 2);
   }
   return okEnvelope("journal compile", { content });
 }
-var import_gray_matter2, JOURNAL_SUBCOMMANDS, VALID_TYPES;
+var import_gray_matter3, JOURNAL_SUBCOMMANDS, VALID_TYPES;
 var init_journal2 = __esm(() => {
   init_journal();
   init_decision2();
+  init_journal_event();
   init_layout();
   init_journal_payload_validators();
-  import_gray_matter2 = __toESM(require_gray_matter(), 1);
+  import_gray_matter3 = __toESM(require_gray_matter(), 1);
   JOURNAL_SUBCOMMANDS = ["append", "show", "compile"];
   VALID_TYPES = new Set(JournalEventType.options);
 });
@@ -25929,7 +25970,7 @@ __export(exports_commit_lint, {
   COMMIT_LINT_SUBCOMMANDS: () => COMMIT_LINT_SUBCOMMANDS
 });
 import { readFileSync as readFileSync9 } from "fs";
-import { join as join5 } from "path";
+import { join as join6 } from "path";
 import { spawnSync as spawnSync3 } from "child_process";
 function parseFlags4(args) {
   const flags = {};
@@ -25955,7 +25996,7 @@ function readSessionLedger2(cwd) {
   if (!sessionId)
     return null;
   try {
-    const p = join5(projectDir, ".groundwork", "runs", `${sessionId}.json`);
+    const p = join6(projectDir, ".groundwork", "runs", `${sessionId}.json`);
     return JSON.parse(readFileSync9(p, "utf8"));
   } catch {
     return null;
@@ -26167,7 +26208,7 @@ var HOOK_MARKER = "GROUNDWORK-COMMIT-MSG";
 
 // src/gw/hooks/installer.ts
 import { fileURLToPath as fileURLToPath2 } from "url";
-import { dirname as dirname3, resolve, join as join6 } from "path";
+import { dirname as dirname3, resolve, join as join7 } from "path";
 import { readFileSync as readFileSync10, existsSync as existsSync8, mkdirSync as mkdirSync7, writeFileSync as writeFileSync6, rmSync, chmodSync } from "fs";
 import { spawnSync as spawnSync4 } from "child_process";
 function _findGroundworkRoot() {
@@ -26177,11 +26218,11 @@ function _findGroundworkRoot() {
   ];
   for (const root of candidates) {
     try {
-      const version2 = JSON.parse(readFileSync10(join6(root, "package.json"), "utf8")).version;
-      return { version: version2, hooksLibPath: join6(root, "hooks", "lib") };
+      const version2 = JSON.parse(readFileSync10(join7(root, "package.json"), "utf8")).version;
+      return { version: version2, hooksLibPath: join7(root, "hooks", "lib") };
     } catch {}
   }
-  return { version: "0.0.0", hooksLibPath: join6(_dir, "..", "..", "..", "hooks", "lib") };
+  return { version: "0.0.0", hooksLibPath: join7(_dir, "..", "..", "..", "hooks", "lib") };
 }
 function extractVersion(content) {
   const prefix = "# GROUNDWORK-COMMIT-MSG v";
@@ -26199,8 +26240,8 @@ function resolveLayout(cwd) {
   const repoRoot = toplevel.stdout.trim();
   const commonDirResult = spawnSync4("git", ["rev-parse", "--git-common-dir"], { cwd: repoRoot, encoding: "utf8" });
   const commonGitDir = commonDirResult.status === 0 ? commonDirResult.stdout.trim() : ".git";
-  const hooksDir = join6(resolve(repoRoot, commonGitDir), "hooks");
-  return { repoRoot, hookPath: join6(hooksDir, "commit-msg"), hooksDir };
+  const hooksDir = join7(resolve(repoRoot, commonGitDir), "hooks");
+  return { repoRoot, hookPath: join7(hooksDir, "commit-msg"), hooksDir };
 }
 async function installHook(opts) {
   const cwd = opts?.cwd ?? process.cwd();
@@ -26495,16 +26536,16 @@ async function run8(args, cwd) {
   const key = args[1];
   try {
     const src = readFileSync12(filePath, "utf8");
-    const { data } = import_gray_matter3.default(src);
+    const { data } = import_gray_matter4.default(src);
     const value = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
     return okEnvelope("get-property", { path: filePath, key, value });
   } catch {
     return errEnvelope("get-property", "READ_ERROR", `Cannot read file: ${filePath}`, 1);
   }
 }
-var import_gray_matter3;
+var import_gray_matter4;
 var init_get_property = __esm(() => {
-  import_gray_matter3 = __toESM(require_gray_matter(), 1);
+  import_gray_matter4 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/cli/commands/set-property.ts
@@ -26607,7 +26648,7 @@ import { readFileSync as readFileSync14 } from "fs";
 import path11 from "path";
 function appendWikilink(filePath, key, targetPath) {
   const src = readFileSync14(filePath, "utf8");
-  const { data } = import_gray_matter4.default(src);
+  const { data } = import_gray_matter5.default(src);
   const link = wikilink(path11.basename(targetPath, ".md"));
   let list;
   const current = data[key];
@@ -26648,21 +26689,21 @@ async function run11(args, cwd) {
     dstLink: wikilink(path11.basename(srcPath, ".md"))
   });
 }
-var import_gray_matter4;
+var import_gray_matter5;
 var init_link = __esm(() => {
   init_fm();
-  import_gray_matter4 = __toESM(require_gray_matter(), 1);
+  import_gray_matter5 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/store/seal/index.ts
 import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2, randomBytes as randomBytes3 } from "crypto";
 import { readFileSync as readFileSync15, writeFileSync as writeFileSync8, existsSync as existsSync9, chmodSync as chmodSync2 } from "fs";
-import { join as join7 } from "path";
+import { join as join8 } from "path";
 function sealPath(notePath) {
   return `${notePath}.seal`;
 }
 function keyPath2(motiveDir2) {
-  return join7(motiveDir2, ".seal.key");
+  return join8(motiveDir2, ".seal.key");
 }
 function readKey2(motiveDir2) {
   const kp = keyPath2(motiveDir2);
@@ -26701,13 +26742,13 @@ function verifySeal2(notePath, motiveDir2, fm, machineKeys) {
 }
 function verifyNote(notePath, motiveDir2, kind) {
   const content = readFileSync15(notePath, "utf8");
-  const { data } = import_gray_matter5.default(content);
+  const { data } = import_gray_matter6.default(content);
   const machineKeys = kind === "slice" ? SLICE_MACHINE_KEYS : GATE_MACHINE_KEYS;
   return verifySeal2(notePath, motiveDir2, data, machineKeys);
 }
-var import_gray_matter5, SLICE_MACHINE_KEYS, GATE_MACHINE_KEYS;
+var import_gray_matter6, SLICE_MACHINE_KEYS, GATE_MACHINE_KEYS;
 var init_seal = __esm(() => {
-  import_gray_matter5 = __toESM(require_gray_matter(), 1);
+  import_gray_matter6 = __toESM(require_gray_matter(), 1);
   SLICE_MACHINE_KEYS = [
     "acceptance",
     "blocked_by",
@@ -26725,18 +26766,28 @@ var init_seal = __esm(() => {
     "wave"
   ];
   GATE_MACHINE_KEYS = [
+    "active",
     "advisor",
+    "awaiting_human",
+    "base_commit",
+    "brief",
+    "checkpoint_hold",
+    "claimed_by",
     "created_at",
     "motive",
+    "pacing",
+    "plan_ref",
     "qa",
+    "scoped_tokens",
     "session",
-    "verifier"
+    "verifier",
+    "write_token"
   ];
 });
 
 // src/gw/store/slice/index.ts
 import { readFileSync as readFileSync16, writeFileSync as writeFileSync9, mkdirSync as mkdirSync8, readdirSync as readdirSync4 } from "fs";
-import { join as join8, dirname as dirname4 } from "path";
+import { join as join9, dirname as dirname4 } from "path";
 function decodeBlockedBy(links) {
   return links.map((l) => l.replace(/^\[\[/, "").replace(/\]\]$/, ""));
 }
@@ -26752,7 +26803,7 @@ function decodeDecisions(links) {
 }
 function readSlice(notePath) {
   const raw = readFileSync16(notePath, "utf8");
-  const { data } = import_gray_matter6.default(raw);
+  const { data } = import_gray_matter7.default(raw);
   if (Array.isArray(data["blocked_by"])) {
     data["blocked_by"] = decodeBlockedBy(data["blocked_by"]);
   }
@@ -26788,7 +26839,7 @@ function listSlices(repoRoot, tracker, motive2) {
     if (entry.startsWith("gate-"))
       continue;
     try {
-      slices.push(readSlice(join8(dir, entry)));
+      slices.push(readSlice(join9(dir, entry)));
     } catch {}
   }
   return slices;
@@ -26796,12 +26847,12 @@ function listSlices(repoRoot, tracker, motive2) {
 function bySession(repoRoot, tracker, motive2, session) {
   return listSlices(repoRoot, tracker, motive2).filter((s) => s.session === session);
 }
-var import_gray_matter6;
+var import_gray_matter7;
 var init_slice2 = __esm(() => {
   init_schema();
   init_wikilink();
   init_seal();
-  import_gray_matter6 = __toESM(require_gray_matter(), 1);
+  import_gray_matter7 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/store/gate/index.ts
@@ -26812,17 +26863,17 @@ function readGate(repoRoot, tracker, motive2, sessionId) {
   if (!existsSync10(notePath))
     return null;
   const raw = readFileSync17(notePath, "utf8");
-  const { data } = import_gray_matter7.default(raw);
+  const { data } = import_gray_matter8.default(raw);
   const parsed = GateSchema.parse(data);
   const mDir = path12.dirname(notePath);
   const sealed = verifyNote(notePath, mDir, "gate");
   return { ...parsed, sealed };
 }
-var import_gray_matter7;
+var import_gray_matter8;
 var init_gate2 = __esm(() => {
   init_schema();
   init_seal();
-  import_gray_matter7 = __toESM(require_gray_matter(), 1);
+  import_gray_matter8 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/hook/stop-gate.ts
@@ -28288,325 +28339,9 @@ var init_piped_exit_code_guard = __esm(() => {
   PIPED_EXIT_RE = /\|[^|;\n&]*\b(?:head|tail|grep|sort|uniq|wc|cut|awk|sed)\b[^|;\n&]*(?:;|\n|&&)[ \t]*(?:echo|printf|test|\[\[?|if|rc=|status=)?[^;\n&|]*\$\?/;
 });
 
-// src/gw/hook/struggle-detector.ts
-import path19 from "path";
-import { readFileSync as readFileSync20, writeFileSync as writeFileSync12, mkdirSync as mkdirSync11, appendFileSync as appendFileSync2, openSync as openSync4, writeSync as writeSync3, closeSync as closeSync4, readdirSync as readdirSync6 } from "fs";
-import { createHash as createHash2 } from "crypto";
-function toSlug(str2) {
-  return String(str2).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function shortHash(str2) {
-  return createHash2("sha1").update(String(str2).slice(0, 200)).digest("hex").slice(0, 12);
-}
-function isVariantToken(tok) {
-  if (tok.startsWith("/") || tok.startsWith("./") || tok.startsWith("../"))
-    return true;
-  if (/^[0-9a-f]{7,64}$/i.test(tok))
-    return true;
-  return false;
-}
-function normalizeCommand(cmd) {
-  const stripped = cmd.replace(/^(\s*[A-Z_][A-Z0-9_]*=\S*\s+)+/i, "");
-  const tokens = stripped.trim().split(/\s+/);
-  const kept = [];
-  let inFlagValue = false;
-  for (const tok of tokens) {
-    if (tok.startsWith("-")) {
-      inFlagValue = !tok.includes("=");
-      continue;
-    }
-    if (inFlagValue) {
-      continue;
-    }
-    if (isVariantToken(tok)) {
-      continue;
-    }
-    inFlagValue = false;
-    kept.push(tok);
-  }
-  return kept.join(" ").trim();
-}
-function commandFingerprint(cmd) {
-  return shortHash(normalizeCommand(cmd));
-}
-function appendSignal(projectDir, signalObj) {
-  const filePath = path19.join(projectDir, ".groundwork", "struggle-signals.jsonl");
-  const dir = path19.dirname(filePath);
-  mkdirSync11(dir, { recursive: true });
-  appendFileSync2(filePath, `${JSON.stringify(signalObj)}
-`, "utf8");
-}
-function resolveShardPath2(projectDir, sessionId, date5) {
-  const safeId = SAFE_SESSION2.test(sessionId ?? "") ? sessionId : "default";
-  const d = date5 ?? new Date().toISOString().slice(0, 10);
-  return path19.join(projectDir, ".groundwork", "journal", `${d}-${safeId}.jsonl`);
-}
-function appendEvent(shardPath, event) {
-  mkdirSync11(path19.dirname(shardPath), { recursive: true });
-  const buf = Buffer.from(JSON.stringify(event) + `
-`, "utf8");
-  const fd = openSync4(shardPath, "a");
-  try {
-    writeSync3(fd, buf);
-  } finally {
-    closeSync4(fd);
-  }
-}
-function resolveMotive(opts) {
-  const { projectDir, sessionId, ledger } = opts;
-  if (process.env.GROUNDWORK_MOTIVE) {
-    return { motive: process.env.GROUNDWORK_MOTIVE, provenance: "env" };
-  }
-  let l = ledger;
-  if (l === undefined) {
-    const dir = projectDir ?? process.cwd();
-    l = null;
-    try {
-      l = JSON.parse(readFileSync20(path19.join(dir, ".groundwork", "run.json"), "utf8"));
-    } catch {
-      l = null;
-    }
-    if (!l?.active) {
-      let files = [];
-      try {
-        files = readdirSync6(path19.join(dir, ".groundwork", "runs"));
-      } catch {}
-      for (const f of files) {
-        if (!f.endsWith(".json"))
-          continue;
-        try {
-          const candidate = JSON.parse(readFileSync20(path19.join(dir, ".groundwork", "runs", f), "utf8"));
-          if (candidate.active && (!sessionId || candidate.session_id === sessionId)) {
-            l = candidate;
-            break;
-          }
-        } catch {}
-      }
-    }
-  }
-  const lx = l;
-  if (lx?.motive)
-    return { motive: lx.motive, provenance: "ledger.motive" };
-  if (lx?.rfc_ref)
-    return { motive: lx.rfc_ref, provenance: "ledger.rfc_ref" };
-  const sid = sessionId ?? "unknown";
-  return { motive: `session:${sid}`, provenance: "synthetic" };
-}
-function emitHookEvent2(opts) {
-  try {
-    if (!VALID_TYPES2.includes(opts.type)) {
-      process.stderr.write(`journal: emitHookEvent: invalid type "${opts.type}" \u2014 event not written
-`);
-      return;
-    }
-    const { motive: motive2 } = resolveMotive({ projectDir: opts.projectDir, sessionId: opts.sessionId });
-    const event = {
-      ts: new Date().toISOString(),
-      session: opts.sessionId ?? "unknown",
-      motive: motive2,
-      type: opts.type,
-      msg: opts.msg,
-      source: opts.source
-    };
-    if (opts.data !== undefined)
-      event.data = opts.data;
-    const shardPath = resolveShardPath2(opts.projectDir, opts.sessionId ?? "unknown", opts.date);
-    appendEvent(shardPath, event);
-  } catch {}
-}
-function tallyPath(projectDir, sessionId) {
-  return path19.join(projectDir, ".groundwork", "runs", `${sessionId}.detector.json`);
-}
-function readTally(tallyFile) {
-  try {
-    const raw = readFileSync20(tallyFile, "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object")
-      return parsed;
-  } catch {}
-  return { fingerprints: {}, errorSigs: {}, emitted: {} };
-}
-function writeTally(tallyFile, tally) {
-  try {
-    mkdirSync11(path19.dirname(tallyFile), { recursive: true });
-    writeFileSync12(tallyFile, JSON.stringify(tally), "utf8");
-  } catch {}
-}
-function maybeEmit(tally, projectDir, sessionId, kind, fingerprint, detail) {
-  const key = `${kind}:${fingerprint}`;
-  if (tally.emitted[key])
-    return false;
-  tally.emitted[key] = true;
-  try {
-    appendSignal(projectDir, {
-      ts: new Date().toISOString(),
-      session_id: sessionId,
-      kind,
-      fingerprint,
-      detail
-    });
-  } catch {}
-  emitHookEvent2({
-    projectDir,
-    sessionId,
-    type: "FAILURE",
-    msg: `struggle detected: ${kind} on ${fingerprint}`,
-    source: "hook:struggle-detector",
-    data: { kind, fingerprint, ...detail }
-  });
-  return true;
-}
-function resolveThreshold(opts) {
-  if (opts && typeof opts.threshold === "number")
-    return opts.threshold;
-  const raw = process.env.GROUNDWORK_STRUGGLE_THRESHOLD;
-  const n = parseInt(raw ?? "", 10);
-  return Number.isFinite(n) && n > 0 ? n : 3;
-}
-async function processPayload(input2, opts) {
-  const threshold = resolveThreshold(opts);
-  const fired = [];
-  if (!input2 || typeof input2 !== "object")
-    return fired;
-  const inp = input2;
-  const toolName = typeof inp.tool_name === "string" ? inp.tool_name : "";
-  if (!["Bash", "Edit", "Write"].includes(toolName))
-    return fired;
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || (typeof inp.cwd === "string" ? inp.cwd : "") || "";
-  if (!projectDir)
-    return fired;
-  const sessionId = typeof inp.session_id === "string" ? inp.session_id : "";
-  if (!sessionId)
-    return fired;
-  const toolInput = inp.tool_input;
-  const toolResponse = inp.tool_response;
-  const tFile = tallyPath(projectDir, sessionId);
-  const tally = readTally(tFile);
-  if (!tally.fingerprints)
-    tally.fingerprints = {};
-  if (!tally.errorSigs)
-    tally.errorSigs = {};
-  if (!tally.emitted)
-    tally.emitted = {};
-  function emit(kind, fingerprint, detail) {
-    if (maybeEmit(tally, projectDir, sessionId, kind, fingerprint, detail)) {
-      fired.push({ kind, fingerprint, detail });
-    }
-  }
-  if (toolName === "Bash") {
-    const cmd = typeof toolInput?.command === "string" ? toolInput.command : "";
-    if (!cmd) {
-      writeTally(tFile, tally);
-      return fired;
-    }
-    const fp = commandFingerprint(cmd);
-    const exitCode = (() => {
-      const direct = toolResponse?.exit_code;
-      if (typeof direct === "number")
-        return direct;
-      const nested = toolResponse?.result?.exit_code;
-      if (typeof nested === "number")
-        return nested;
-      return 0;
-    })();
-    if (!tally.fingerprints[fp]) {
-      tally.fingerprints[fp] = { count: 0, lastExitCode: 0, lastCmd: cmd, fails: 0 };
-    }
-    const rec = tally.fingerprints[fp];
-    rec.count += 1;
-    rec.lastCmd = cmd;
-    const hadFail = rec.fails > 0;
-    if (exitCode !== 0)
-      rec.fails += 1;
-    rec.lastExitCode = exitCode;
-    if (hadFail && rec.count >= 2) {
-      emit("fail-retry", fp, { cmd, count: rec.count, fails: rec.fails });
-    }
-    if (rec.count >= threshold) {
-      emit("repeat-command", fp, { cmd, count: rec.count });
-    }
-    const stderr = (() => {
-      const s = toolResponse?.stderr;
-      if (typeof s === "string")
-        return s;
-      const t = toolResponse?.result?.stderr;
-      if (typeof t === "string")
-        return t;
-      return "";
-    })();
-    if (stderr && exitCode !== 0) {
-      const errHash = shortHash(stderr);
-      tally.errorSigs[errHash] = (tally.errorSigs[errHash] || 0) + 1;
-      if (tally.errorSigs[errHash] >= threshold) {
-        emit("error-signature", errHash, {
-          stderrPrefix: stderr.slice(0, 200),
-          count: tally.errorSigs[errHash]
-        });
-      }
-    }
-  } else {
-    const filePath = typeof toolInput?.file_path === "string" ? toolInput.file_path : "";
-    if (!filePath) {
-      writeTally(tFile, tally);
-      return fired;
-    }
-    const fp = toSlug(filePath);
-    if (!tally.fingerprints[fp]) {
-      tally.fingerprints[fp] = { count: 0, lastExitCode: 0, lastCmd: filePath, fails: 0 };
-    }
-    const rec = tally.fingerprints[fp];
-    rec.count += 1;
-    if (rec.count >= threshold) {
-      emit("file-thrash", fp, { filePath, count: rec.count });
-    }
-  }
-  writeTally(tFile, tally);
-  return fired;
-}
-var SAFE_SESSION2, VALID_TYPES2, run20 = async (input2, _env) => {
-  let fired = [];
-  try {
-    fired = await processPayload(input2);
-  } catch {}
-  const stdout = fired.map((s) => JSON.stringify({ signal: "SIGNAL", kind: s.kind, fingerprint: s.fingerprint })).join(`
-`);
-  return { stdout: stdout ? stdout + `
-` : "", stderr: "", exit: 0 };
-};
-var init_struggle_detector = __esm(() => {
-  SAFE_SESSION2 = /^[a-zA-Z0-9_-]{1,128}$/;
-  VALID_TYPES2 = [
-    "SIGNAL",
-    "FAILURE",
-    "DECISION",
-    "BASELINE",
-    "TBD",
-    "TBR",
-    "OBJECTIVE",
-    "PAUSE",
-    "RESUME",
-    "ARCHIVE",
-    "MOTIVE",
-    "AC_COVERAGE",
-    "PACING",
-    "PACING_NUDGE",
-    "GATE",
-    "WAVE_START",
-    "WAVE_COMPLETE",
-    "SLICE_START",
-    "SLICE_COMPLETE",
-    "SLICE_FAIL",
-    "PLAN_START",
-    "PLAN_COMPLETE",
-    "HANDOFF",
-    "RETROSPECTIVE",
-    "SESSION_START"
-  ];
-});
-
 // src/gw/hook/comment-density-guard.ts
-import { readFileSync as readFileSync21 } from "fs";
-import path20 from "path";
+import { readFileSync as readFileSync20 } from "fs";
+import path19 from "path";
 function passthrough7() {
   return { stdout: "", stderr: "", exit: 0 };
 }
@@ -28633,7 +28368,7 @@ function isSubagentCall5(input2) {
   if (input2.agent_id)
     return true;
   const tp = input2.transcript_path;
-  if (typeof tp === "string" && path20.basename(tp).startsWith("agent-"))
+  if (typeof tp === "string" && path19.basename(tp).startsWith("agent-"))
     return true;
   return false;
 }
@@ -28647,7 +28382,7 @@ function applyEdit(content, edit) {
     return content;
   return content.slice(0, idx) + new_string + content.slice(idx + old_string.length);
 }
-var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effective) in every file you touch. JSDoc blocks, inline comments, section dividers, @-tagged lines, and URL-only lines are exempt from the count; plain // narration lines are not. Do not add comments that restate the adjacent code. This rule applies to every Edit, Write, and MultiEdit call.", run21 = async (rawInput, env) => {
+var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effective) in every file you touch. JSDoc blocks, inline comments, section dividers, @-tagged lines, and URL-only lines are exempt from the count; plain // narration lines are not. Do not add comments that restate the adjacent code. This rule applies to every Edit, Write, and MultiEdit call.", run20 = async (rawInput, env) => {
   try {
     if (env.GROUNDWORK_COMMENT_DENSITY === "0")
       return passthrough7();
@@ -28680,7 +28415,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effect
         const newStr = toolInput.new_string;
         if (typeof oldStr !== "string" || typeof newStr !== "string")
           return passthrough7();
-        const existing = readFileSync21(filePath, "utf-8");
+        const existing = readFileSync20(filePath, "utf-8");
         content = applyEdit(existing, {
           old_string: oldStr,
           new_string: newStr,
@@ -28690,7 +28425,7 @@ var GUARDED_TOOLS, RULE_TEXT = "Comments per 100 lines must stay \u22645 (effect
         const edits = toolInput.edits;
         if (!Array.isArray(edits))
           return passthrough7();
-        const existing = readFileSync21(filePath, "utf-8");
+        const existing = readFileSync20(filePath, "utf-8");
         content = existing;
         for (const e of edits) {
           if (!e || typeof e !== "object")
@@ -28743,7 +28478,7 @@ var init_comment_density_guard = __esm(() => {
 });
 
 // src/gw/hook/commit-message-guard.ts
-import { readFileSync as readFileSync22, statSync as statSync3 } from "fs";
+import { readFileSync as readFileSync21, statSync as statSync3 } from "fs";
 import { resolve as resolve3 } from "path";
 function passthrough8() {
   return { stdout: "", stderr: "", exit: 0 };
@@ -28819,7 +28554,7 @@ function extractFilePath(cmd) {
     return m[1] === "-" ? null : m[1];
   return null;
 }
-var run22 = async (rawInput, env) => {
+var run21 = async (rawInput, env) => {
   try {
     if (env.GROUNDWORK_COMMIT_LINT === "0")
       return passthrough8();
@@ -28848,7 +28583,7 @@ var run22 = async (rawInput, env) => {
         const st = statSync3(filePath);
         if (!st.isFile())
           return passthrough8();
-        fileMsg = readFileSync22(filePath, "utf-8");
+        fileMsg = readFileSync21(filePath, "utf-8");
       } catch {
         return passthrough8();
       }
@@ -28882,7 +28617,7 @@ function announce(msg) {
     exit: 0
   };
 }
-var run23 = async (_input, env) => {
+var run22 = async (_input, env) => {
   try {
     if (env["GROUNDWORK_COMMIT_MSG_HOOK"] === "0")
       return silent();
@@ -28922,7 +28657,6 @@ var init_hook = __esm(async () => {
   init_ledger_guard();
   init_ledger_bash_guard();
   init_piped_exit_code_guard();
-  init_struggle_detector();
   init_comment_density_guard();
   init_commit_message_guard();
   await init_session_commit_msg_installer();
@@ -28935,20 +28669,19 @@ var init_hook = __esm(async () => {
     "ledger-guard": run17,
     "ledger-bash-guard": run18,
     "piped-exit-code-guard": run19,
-    "struggle-detector": run20,
-    "comment-density-guard": run21,
-    "commit-message-guard": run22,
-    "session-commit-msg-installer": run23
+    "comment-density-guard": run20,
+    "commit-message-guard": run21,
+    "session-commit-msg-installer": run22
   };
 });
 
 // src/gw/cli/commands/hook.ts
 var exports_hook = {};
 __export(exports_hook, {
-  run: () => run24
+  run: () => run23
 });
 import process3 from "process";
-async function run24(args, _cwd) {
+async function run23(args, _cwd) {
   const name = args[0] ?? "";
   const hookFn = HOOKS[name];
   if (!hookFn) {
@@ -28980,12 +28713,12 @@ var init_hook2 = __esm(async () => {
 // src/gw/migrate/journal-reader.ts
 import { readdir, readFile as readFile2 } from "fs/promises";
 import { existsSync as existsSync13 } from "fs";
-import path21 from "path";
+import path20 from "path";
 async function readDecisionEvents(opts) {
   const { repoRoot, legacyTracker } = opts;
   const journalDirs = [];
-  const activeDir = path21.join(repoRoot, legacyTracker, "journal");
-  const archiveDir = path21.join(repoRoot, legacyTracker, "archive", "journal");
+  const activeDir = path20.join(repoRoot, legacyTracker, "journal");
+  const archiveDir = path20.join(repoRoot, legacyTracker, "archive", "journal");
   if (existsSync13(activeDir))
     journalDirs.push(activeDir);
   if (existsSync13(archiveDir))
@@ -29002,7 +28735,7 @@ async function readDecisionEvents(opts) {
     for (const file2 of files.filter((f) => f.endsWith(".jsonl"))) {
       let raw;
       try {
-        raw = await readFile2(path21.join(dir, file2), "utf8");
+        raw = await readFile2(path20.join(dir, file2), "utf8");
       } catch {
         continue;
       }
@@ -29053,60 +28786,60 @@ var init_journal_reader = () => {};
 
 // src/gw/store/motive/charter.ts
 import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
-import { mkdirSync as mkdirSync12 } from "fs";
-import path22 from "path";
+import { mkdirSync as mkdirSync11 } from "fs";
+import path21 from "path";
 function charterPath(repoRoot, tracker, motive2) {
-  return path22.join(repoRoot, tracker, "motives", motive2, "index.md");
+  return path21.join(repoRoot, tracker, "motives", motive2, "index.md");
 }
 async function writeCharter(opts) {
   const filePath = charterPath(opts.repoRoot, opts.tracker, opts.motive);
-  mkdirSync12(path22.dirname(filePath), { recursive: true });
-  const output2 = import_gray_matter8.default.stringify(opts.body, opts.fm);
+  mkdirSync11(path21.dirname(filePath), { recursive: true });
+  const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
   await writeFile2(filePath, output2, "utf8");
 }
 function fromLegacyCharter(raw) {
-  const { data, content } = import_gray_matter8.default(raw);
+  const { data, content } = import_gray_matter9.default(raw);
   const fm = MotiveSchema.parse(data);
   return { fm, body: content };
 }
-var import_gray_matter8;
-var init_charter = __esm(() => {
-  init_schema();
-  import_gray_matter8 = __toESM(require_gray_matter(), 1);
-});
-
-// src/gw/store/motive/ticket.ts
-import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
-import { mkdirSync as mkdirSync13 } from "fs";
-import path23 from "path";
-async function writeTicket(opts) {
-  const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
-  mkdirSync13(path23.dirname(filePath), { recursive: true });
-  const output2 = import_gray_matter9.default.stringify(opts.body, opts.fm);
-  await writeFile3(filePath, output2, "utf8");
-}
-function fromLegacyTicket(raw) {
-  const { data, content } = import_gray_matter9.default(raw);
-  const fm = TicketSchema.parse(data);
-  return { fm, body: content };
-}
 var import_gray_matter9;
-var init_ticket2 = __esm(() => {
+var init_charter = __esm(() => {
   init_schema();
   import_gray_matter9 = __toESM(require_gray_matter(), 1);
 });
 
+// src/gw/store/motive/ticket.ts
+import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
+import { mkdirSync as mkdirSync12 } from "fs";
+import path22 from "path";
+async function writeTicket(opts) {
+  const filePath = ticketPath(opts.repoRoot, opts.tracker, opts.motive, opts.filename);
+  mkdirSync12(path22.dirname(filePath), { recursive: true });
+  const output2 = import_gray_matter10.default.stringify(opts.body, opts.fm);
+  await writeFile3(filePath, output2, "utf8");
+}
+function fromLegacyTicket(raw) {
+  const { data, content } = import_gray_matter10.default(raw);
+  const fm = TicketSchema.parse(data);
+  return { fm, body: content };
+}
+var import_gray_matter10;
+var init_ticket2 = __esm(() => {
+  init_schema();
+  import_gray_matter10 = __toESM(require_gray_matter(), 1);
+});
+
 // src/gw/store/motive/open-item.ts
 import { readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
-import { mkdirSync as mkdirSync14 } from "fs";
-import path24 from "path";
+import { mkdirSync as mkdirSync13 } from "fs";
+import path23 from "path";
 function openItemPath(repoRoot, tracker, motive2, id) {
-  return path24.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
+  return path23.join(repoRoot, tracker, "motives", motive2, "open-items", `${id}.md`);
 }
 async function writeOpenItem(opts) {
   const dest = openItemPath(opts.repoRoot, opts.tracker, opts.motive, opts.fm.id);
-  mkdirSync14(path24.dirname(dest), { recursive: true });
-  await writeFile4(dest, import_gray_matter10.default.stringify(opts.body, opts.fm), "utf8");
+  mkdirSync13(path23.dirname(dest), { recursive: true });
+  await writeFile4(dest, import_gray_matter11.default.stringify(opts.body, opts.fm), "utf8");
 }
 function normalizeRef(ref) {
   const trimmed = ref.trim();
@@ -29165,10 +28898,10 @@ function fromLegacyOpenItems(charterRaw, motiveSlug) {
   flushCurrent();
   return notes;
 }
-var import_gray_matter10;
+var import_gray_matter11;
 var init_open_item = __esm(() => {
   init_fm();
-  import_gray_matter10 = __toESM(require_gray_matter(), 1);
+  import_gray_matter11 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/store/motive/index.ts
@@ -29177,12 +28910,13 @@ var init_motive2 = __esm(() => {
   init_ticket2();
   init_decision2();
   init_open_item();
+  init_journal_event();
 });
 
 // src/gw/migrate/runner.ts
 import { readdir as readdir2, readFile as readFile6 } from "fs/promises";
 import { existsSync as existsSync14 } from "fs";
-import path25 from "path";
+import path24 from "path";
 async function migrateMotive(opts) {
   const { slug, kind, sourceDir, repoRoot, nextTracker, decisionEvents, dryRun } = opts;
   const report = {
@@ -29197,7 +28931,7 @@ async function migrateMotive(opts) {
     lossy: [],
     errors: []
   };
-  const charterFile = path25.join(sourceDir, "motive.md");
+  const charterFile = path24.join(sourceDir, "motive.md");
   let openItems = [];
   try {
     const charterRaw = await readFile6(charterFile, "utf8");
@@ -29219,14 +28953,14 @@ async function migrateMotive(opts) {
     report.charter = "error";
     report.charter_error = String(err);
   }
-  const ticketsDir = path25.join(sourceDir, "tickets");
+  const ticketsDir = path24.join(sourceDir, "tickets");
   if (existsSync14(ticketsDir)) {
     let ticketFiles = [];
     try {
       ticketFiles = (await readdir2(ticketsDir)).filter((f) => f.endsWith(".md"));
     } catch {}
     for (const filename of ticketFiles) {
-      const raw = await readFile6(path25.join(ticketsDir, filename), "utf8");
+      const raw = await readFile6(path24.join(ticketsDir, filename), "utf8");
       let fm;
       let body;
       try {
@@ -29234,7 +28968,7 @@ async function migrateMotive(opts) {
         fm = parsed.fm;
         body = parsed.body;
       } catch {
-        const parsed = import_gray_matter11.default(raw);
+        const parsed = import_gray_matter12.default(raw);
         fm = parsed.data;
         body = parsed.content;
       }
@@ -29311,16 +29045,16 @@ async function migrateMotive(opts) {
   }
   return report;
 }
-var import_gray_matter11;
+var import_gray_matter12;
 var init_runner = __esm(() => {
   init_motive2();
-  import_gray_matter11 = __toESM(require_gray_matter(), 1);
+  import_gray_matter12 = __toESM(require_gray_matter(), 1);
 });
 
 // src/gw/migrate/index.ts
 import { readdir as readdir3 } from "fs/promises";
 import { existsSync as existsSync15 } from "fs";
-import path26 from "path";
+import path25 from "path";
 async function migrate(opts) {
   const {
     repoRoot,
@@ -29330,7 +29064,7 @@ async function migrate(opts) {
     dryRun
   } = opts;
   const activeSlugs = [];
-  const activeMotivesDir = path26.join(repoRoot, legacyTracker, "motives");
+  const activeMotivesDir = path25.join(repoRoot, legacyTracker, "motives");
   if (existsSync15(activeMotivesDir)) {
     try {
       const entries = await readdir3(activeMotivesDir, { withFileTypes: true });
@@ -29346,7 +29080,7 @@ async function migrate(opts) {
     } catch {}
   }
   const archivedSlugs = [];
-  const archiveMotivesDir = path26.join(repoRoot, legacyTracker, "archive", "motives");
+  const archiveMotivesDir = path25.join(repoRoot, legacyTracker, "archive", "motives");
   if (existsSync15(archiveMotivesDir)) {
     try {
       const entries = await readdir3(archiveMotivesDir, { withFileTypes: true });
@@ -29370,7 +29104,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "active",
-      sourceDir: path26.join(repoRoot, legacyTracker, "motives", slug),
+      sourceDir: path25.join(repoRoot, legacyTracker, "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -29381,7 +29115,7 @@ async function migrate(opts) {
     tasks.push(migrateMotive({
       slug,
       kind: "archived",
-      sourceDir: path26.join(repoRoot, legacyTracker, "archive", "motives", slug),
+      sourceDir: path25.join(repoRoot, legacyTracker, "archive", "motives", slug),
       repoRoot,
       nextTracker,
       decisionEvents: decisionEventsByMotive.get(slug) ?? [],
@@ -29409,9 +29143,9 @@ var init_migrate = __esm(() => {
 // src/gw/cli/commands/migrate.ts
 var exports_migrate = {};
 __export(exports_migrate, {
-  run: () => run25
+  run: () => run24
 });
-async function run25(args, cwd) {
+async function run24(args, cwd) {
   let dryRun = false;
   let motiveFilter;
   let legacyTracker;

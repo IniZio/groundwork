@@ -1,0 +1,25 @@
+{
+  "hook": "deslop-guard.mjs",
+  "hook_path": "hooks/deslop-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "clean_write",
+  "description": "Write with clean comment-free code. No slop — passthrough (PASS, exit 0, empty stdout).",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "test-deslop-guard-corpus",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/p/src/x.ts",
+      "content": "export function add(a: number, b: number): number {\n  return a + b;\n}\n"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

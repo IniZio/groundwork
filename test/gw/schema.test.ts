@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import matter from 'gray-matter'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import * as os from 'node:os'
+import { writeGate } from '../../src/gw/store/gate/index.js'
+import { GATE_MACHINE_KEYS, SLICE_MACHINE_KEYS, verifyNote } from '../../src/gw/store/seal/index.js'
 import {
   MotiveSchema,
   SliceSchema,
@@ -227,4 +232,127 @@ describe('S4 — TicketSchema.type field', () => {
     expect(TicketType.options).toContain('build')
     expect(TicketType.options).toContain('grill')
   })
+})
+
+// ============================================================
+// S84-AC1 seal invalidation and table coverage
+// ============================================================
+describe('S84-AC1 — seal invalidation', () => {
+  let tmpDir: string
+  beforeEach(() => { tmpDir = mkdtempSync(join(os.tmpdir(), 'gw-seal-test-')) })
+  afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }) })
+
+  it('flipping a machine key (active) invalidates the gate sidecar', () => {
+    const notePath = writeGate({
+      repoRoot: tmpDir,
+      tracker: '.groundwork',
+      motive: 'test-motive',
+      gate: { session: 'sess-1', motive: 'test-motive', active: false },
+    })
+    const mDir = join(tmpDir, '.groundwork', 'motives', 'test-motive')
+
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+
+    const raw = readFileSync(notePath, 'utf8')
+    const parsed = matter(raw)
+    parsed.data['active'] = true
+    writeFileSync(notePath, matter.stringify(parsed.content, parsed.data), 'utf8')
+
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(false)
+  })
+
+  it('flipping awaiting_human invalidates the gate sidecar', () => {
+    const notePath = writeGate({
+      repoRoot: tmpDir,
+      tracker: '.groundwork',
+      motive: 'test-motive',
+      gate: { session: 'sess-2', motive: 'test-motive', awaiting_human: false },
+    })
+    const mDir = join(tmpDir, '.groundwork', 'motives', 'test-motive')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+    const raw = readFileSync(notePath, 'utf8')
+    const p = matter(raw)
+    p.data['awaiting_human'] = true
+    writeFileSync(notePath, matter.stringify(p.content, p.data), 'utf8')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(false)
+  })
+
+  it('flipping checkpoint_hold invalidates the gate sidecar', () => {
+    const notePath = writeGate({
+      repoRoot: tmpDir,
+      tracker: '.groundwork',
+      motive: 'test-motive',
+      gate: { session: 'sess-3', motive: 'test-motive', checkpoint_hold: 'plan' },
+    })
+    const mDir = join(tmpDir, '.groundwork', 'motives', 'test-motive')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+    const raw = readFileSync(notePath, 'utf8')
+    const p = matter(raw)
+    p.data['checkpoint_hold'] = 'completion'
+    writeFileSync(notePath, matter.stringify(p.content, p.data), 'utf8')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(false)
+  })
+
+  it('flipping write_token invalidates the gate sidecar', () => {
+    const notePath = writeGate({
+      repoRoot: tmpDir,
+      tracker: '.groundwork',
+      motive: 'test-motive',
+      gate: { session: 'sess-4', motive: 'test-motive', write_token: 'token-abc' },
+    })
+    const mDir = join(tmpDir, '.groundwork', 'motives', 'test-motive')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+    const raw = readFileSync(notePath, 'utf8')
+    const p = matter(raw)
+    p.data['write_token'] = 'token-tampered'
+    writeFileSync(notePath, matter.stringify(p.content, p.data), 'utf8')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(false)
+  })
+
+  it('editing desc (non-machine key) does NOT invalidate the gate sidecar', () => {
+    const notePath = writeGate({
+      repoRoot: tmpDir,
+      tracker: '.groundwork',
+      motive: 'test-motive',
+      gate: { session: 'sess-5', motive: 'test-motive', active: true },
+    })
+    const mDir = join(tmpDir, '.groundwork', 'motives', 'test-motive')
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+
+    const raw = readFileSync(notePath, 'utf8')
+    const p = matter(raw)
+    p.data['desc'] = 'Human-authored description — should not invalidate seal'
+    writeFileSync(notePath, matter.stringify(p.content, p.data), 'utf8')
+
+    expect(verifyNote(notePath, mDir, 'gate')).toBe(true)
+  })
+})
+
+describe('S84-AC1 — GATE_MACHINE_KEYS covers canonical release state fields', () => {
+  const gateKeys = new Set(GATE_MACHINE_KEYS)
+  const sliceKeys = new Set(SLICE_MACHINE_KEYS)
+
+  const legacyCoverageMap: Array<{ canonicalField: string; noteKey: string; noteType: 'gate' | 'slice' }> = [
+    { canonicalField: 'active',                  noteKey: 'active',            noteType: 'gate' },
+    { canonicalField: 'session_id',              noteKey: 'session',           noteType: 'gate' },
+    { canonicalField: 'advisor_verdict',         noteKey: 'advisor',           noteType: 'gate' },
+    { canonicalField: 'scoped_tokens',           noteKey: 'scoped_tokens',     noteType: 'gate' },
+    { canonicalField: 'awaiting_human',          noteKey: 'awaiting_human',    noteType: 'gate' },
+    { canonicalField: 'pacing.milestone_signoff',noteKey: 'pacing',            noteType: 'gate' },
+    { canonicalField: 'checkpoint_hold',         noteKey: 'checkpoint_hold',   noteType: 'gate' },
+    { canonicalField: 'slices[].id',             noteKey: 'id',                noteType: 'slice' },
+    { canonicalField: 'slices[].status',         noteKey: 'status',            noteType: 'slice' },
+    { canonicalField: 'slices[].created_by',     noteKey: 'created_by',        noteType: 'slice' },
+  ]
+
+  it.each(legacyCoverageMap)(
+    'canonical field "$canonicalField" → $noteType key "$noteKey" is in machine key list',
+    ({ noteKey, noteType }) => {
+      if (noteType === 'gate') {
+        expect(gateKeys.has(noteKey)).toBe(true)
+      } else {
+        expect(sliceKeys.has(noteKey)).toBe(true)
+      }
+    },
+  )
 })

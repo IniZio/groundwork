@@ -1,0 +1,22 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "a5_permission_decision_is_allow",
+  "description": "Guard fires but is advisory-only: permissionDecision='allow', exit 0. Write proceeds despite warning.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "old_string": "Set the configuration.",
+      "new_string": "Set the cfg."
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-abbreviation-guard: ad-hoc abbreviation(s) introduced in new content: `cfg` (abbreviation for configuration). These save no tokens and impose a decode cost on the reader. TOKEN-ECONOMY-R-006.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

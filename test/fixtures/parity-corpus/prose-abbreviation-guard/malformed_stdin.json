@@ -1,0 +1,14 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "malformed_stdin",
+  "description": "Malformed (non-JSON) stdin. FAIL-OPEN: hook catches the parse error, emits nothing, and exits 0.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": "<non-json: \"not valid json { broken\">",
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "ALLOW"
+}

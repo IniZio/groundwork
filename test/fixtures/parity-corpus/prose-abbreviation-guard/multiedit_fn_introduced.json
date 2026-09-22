@@ -1,0 +1,26 @@
+{
+  "hook": "prose-abbreviation-guard.mjs",
+  "hook_path": "hooks/prose-abbreviation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "multiedit_fn_introduced",
+  "description": "MultiEdit on a prose path. One edit introduces 'fn' as a new standalone word. Advisory fires.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "MultiEdit",
+    "tool_input": {
+      "file_path": "/home/newman/.local/share/groundwork/agents-src/junior-orchestrator.md",
+      "edits": [
+        {
+          "old_string": "Pass a callback to the handler.",
+          "new_string": "Pass a fn to the handler."
+        }
+      ]
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-abbreviation-guard: ad-hoc abbreviation(s) introduced in new content: `fn` (abbreviation for function). These save no tokens and impose a decode cost on the reader. TOKEN-ECONOMY-R-006.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

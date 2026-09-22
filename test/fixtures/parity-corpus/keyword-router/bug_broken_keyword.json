@@ -1,0 +1,21 @@
+{
+  "hook": "keyword-router.mjs",
+  "hook_path": "hooks/keyword-router.mjs",
+  "event_type": "UserPromptSubmit",
+  "scenario_name": "bug_broken_keyword",
+  "description": "\"broken\" keyword in genuine bug report → routes to groundwork:general-purpose (bug path)",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "<fixed>",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "prompt": "this is broken and crashes on startup",
+    "role": "user"
+  },
+  "stdout": "{\"continue\":true,\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[GROUNDWORK ROUTING SIGNAL]\\nDetected routing signals in this prompt → groundwork:general-purpose\\n\\n- Bug or regression detected. Load the `diagnose` skill FIRST — it owns the 6-phase diagnosis loop and will guide root-cause analysis before any fix, then delegate the diagnosis-and-fix to `groundwork:general-purpose`.\\n\\nApply this routing immediately. Do not implement directly.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "SIGNAL"
+}

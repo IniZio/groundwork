@@ -1,0 +1,25 @@
+{
+  "hook": "deslop-guard.mjs",
+  "hook_path": "hooks/deslop-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "jsdoc_param_annotation",
+  "description": "/** @param … */ annotation lines match ALLOW_BLOCK_BODY; not scanned for slop (PASS).",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "test-deslop-guard-corpus",
+    "CLAUDE_PROJECT_DIR": "<scrubbed>",
+    "CLAUDE_PLUGIN_ROOT": "<scrubbed>"
+  },
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "/p/src/x.ts",
+      "content": "/**\n * @param a first operand\n * @param b second operand\n */\nexport function add(a: number, b: number) { return a + b; }\n"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASS"
+}

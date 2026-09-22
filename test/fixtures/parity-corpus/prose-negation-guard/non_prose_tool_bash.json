@@ -1,0 +1,20 @@
+{
+  "hook": "prose-negation-guard.mjs",
+  "hook_path": "hooks/prose-negation-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "non_prose_tool_bash",
+  "description": "Bash tool is not in the GUARDED set {Edit, Write, MultiEdit}. Hook short-circuits: silent passthrough.",
+  "env": {},
+  "disk_state_setup": [],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo hello"
+    }
+  },
+  "stdout": "",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "PASSTHROUGH"
+}

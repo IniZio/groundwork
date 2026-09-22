@@ -1,0 +1,29 @@
+{
+  "hook": "prose-modality-guard.mjs",
+  "hook_path": "hooks/prose-modality-guard.mjs",
+  "event_type": "PreToolUse",
+  "scenario_name": "write_existing_file_upgrade",
+  "description": "Write tool on existing .md file. Existing content has \"may succeed\", new content has \"will succeed\". Hook reads file from disk, detects upgrade, advisory fires.",
+  "env": {
+    "CLAUDE_CODE_SESSION_ID": "parity-corpus-fixed-session-id"
+  },
+  "disk_state_setup": [
+    {
+      "path": "<isolated_temp_dir>/doc.md",
+      "content_summary": "Existing .md with hedge \"may succeed\" — hook reads via fs.readFileSync(file_path)",
+      "content": "This operation may succeed on retry when the service recovers.\n"
+    }
+  ],
+  "stdin_payload": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "<isolated_temp_dir>/doc.md",
+      "content": "This operation will succeed on retry when the service recovers.\n"
+    }
+  },
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"permissionDecisionReason\":\"prose-modality-guard: modal hedge(s) removed [may] while stronger assertion(s) added [will]. TOKEN-ECONOMY-R-005 — hedges carry the author's confidence and must be preserved.\"}}\n",
+  "stderr": "",
+  "exit_code": 0,
+  "decision": "WARN"
+}

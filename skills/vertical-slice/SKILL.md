@@ -34,3 +34,14 @@ Wave 0: tracer bullet (1–2 slices) — shared types, E2E path proof
 Wave 1: parallel implementation — one implementer per slice
 Wave 2: verification — [qa] → advisor → APPROVE
 ```
+
+## Failure modes
+
+Six named causal chains — full details in `reference/failure-modes.md`:
+
+- **fence-slices-by-file-not-ac** — AC-fenced slices on shared decision tree leave views unowned.
+- **ledger-cannot-see-missing-slices** — forgotten obligation reads N/N complete at gate time.
+- **green-slices-broken-seam** — two-surface contract drifts while both sides stay green.
+- **pipeline-stage-insertion-moves-wiring** — inserting a stage moves downstream handoff + ownership.
+- **redgreen-perturbation-destroys-sibling-work** — perturbation proof silently destroys uncommitted sibling work.
+- **agent-git-stash-destroys-run** — prose banning `git stash` in briefs does not prevent it.

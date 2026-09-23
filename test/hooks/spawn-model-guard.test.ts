@@ -66,4 +66,44 @@ describe("spawn-model-guard — Family 1", () => {
     const reg = loadRegistry();
     expect(reg["general-purpose"]).toBe("sonnet");
   });
+
+  // T16: built-in ban + case-insensitive registry lookup
+  it("VIOLATION: bare Explore → deny naming groundwork:explore", () => {
+    const result = check(task("Explore"));
+    expect(safeDecision(result)).toBe("deny");
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason as string;
+    expect(reason).toContain("groundwork:explore");
+  });
+
+  it("VIOLATION: bare general-purpose → deny naming groundwork:implementer", () => {
+    const result = check(task("general-purpose"));
+    expect(safeDecision(result)).toBe("deny");
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason as string;
+    expect(reason).toContain("groundwork:implementer");
+  });
+
+  it("VIOLATION: bare EXPLORE (upper) → deny (case-insensitive)", () => {
+    const result = check(task("EXPLORE"));
+    expect(safeDecision(result)).toBe("deny");
+  });
+
+  it("CLEAN: groundwork:explore → inject haiku", () => {
+    const result = check(task("groundwork:explore"));
+    const out = JSON.parse(result.stdout);
+    expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("haiku");
+  });
+
+  it("CLEAN: groundwork:Explore (mixed case) → inject haiku (case-insensitive registry)", () => {
+    const result = check(task("groundwork:Explore"));
+    const out = JSON.parse(result.stdout);
+    expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("haiku");
+  });
+
+  it("CLEAN: unknown agent → no crash, allow", () => {
+    const result = check(task("some-unknown-agent-xyz"));
+    // Should not throw; may inject model or allow
+    expect(result.exit).toBe(0);
+  });
 });

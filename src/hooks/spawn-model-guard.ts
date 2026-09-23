@@ -18,6 +18,12 @@ function inject(ti: Record<string, unknown>, model: string): HookResult {
 
 const JUNIOR_BANNED = new Set(["groundwork:junior-orchestrator", "groundwork:orchestrator", "groundwork:debugger"]);
 
+// Built-in agent names that are banned; value is the groundwork replacement to name in the deny reason.
+const BANNED_BUILTINS: Record<string, string> = {
+  "explore": "groundwork:explore",
+  "general-purpose": "groundwork:implementer",
+};
+
 export function loadRegistry(): Record<string, string> {
   try {
     const here = path.dirname(new URL(import.meta.url).pathname);
@@ -46,11 +52,21 @@ export function check(input: unknown, callerType?: string): HookResult {
       return deny(`spawn-model-guard: junior-orchestrator cannot spawn "${subType}" — depth-2 nesting denied.`);
     }
 
+    // Deny bare built-ins that have a groundwork replacement.
+    if (subType && !subType.includes(":")) {
+      const lc = subType.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(BANNED_BUILTINS, lc)) {
+        const replacement = BANNED_BUILTINS[lc];
+        return deny(`spawn-model-guard: built-in "${subType}" is banned — use "${replacement}" instead.`);
+      }
+    }
+
     if (typeof ti.model === "string" && ti.model.trim()) return allow();
 
     const registry = loadRegistry();
-    const key = subType.startsWith("groundwork:") ? subType.slice(11) : subType;
-    const model = registry[key] ?? registry[subType] ?? "sonnet";
+    const rawKey = subType.startsWith("groundwork:") ? subType.slice(11) : subType;
+    const key = rawKey.toLowerCase();
+    const model = registry[key] ?? registry[rawKey] ?? "sonnet";
     return inject(ti, model);
   } catch { return allow(); }
 }

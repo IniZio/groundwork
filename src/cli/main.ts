@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { WorkStore, EVENT_TYPES } from "../store/store.js";
+import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
 import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -170,7 +170,8 @@ function cmdSliceStatus(motiveSlug?: string): void {
   const store = requireDb(motiveSlug);
   const slices = store.getAllSlices();
   const done = slices.filter(s => s.status === "complete" || s.status === "archived").length;
-  const gate = store.getEvents("GATE_APPROVE").length > 0 ? "APPROVED" : "pending";
+  const newestGate = store.getNewestGateVerdict();
+  const gate = newestGate ? newestGate.event_type.replace("GATE_", "") : "pending";
   const hold = store.getHoldState() ?? "none";
   const motiveLabel = motiveSlug ? `  motive: ${motiveSlug}` : "";
   process.stdout.write(`slices: ${done}/${slices.length} complete  gate: ${gate}  hold: ${hold}${motiveLabel}\n`);
@@ -201,7 +202,12 @@ function cmdSliceRm(args: string[], motiveSlug?: string): void {
   store.close();
 }
 
-function cmdGateApprove(args: string[], motiveSlug?: string): void {
+function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): void {
+  const upper = verdict.toUpperCase() as typeof GATE_VERDICTS[number];
+  if (!(GATE_VERDICTS as readonly string[]).includes(upper)) {
+    process.stderr.write(`error: unknown gate verdict '${verdict}'\nvalid: ${GATE_VERDICTS.map(v => v.toLowerCase()).join(", ")}\n`);
+    process.exit(1);
+  }
   const citation = flag(args, "--citation");
   if (!citation || !/\S+:\d+/.test(citation)) {
     process.stderr.write("error: --citation must include at least one file:line reference (e.g. src/foo.ts:42)\n");
@@ -209,8 +215,9 @@ function cmdGateApprove(args: string[], motiveSlug?: string): void {
   }
   const store = requireDb(motiveSlug);
   checkToken(store, args);
-  store.appendEvent("GATE_APPROVE", { citation });
-  process.stdout.write(`GATE_APPROVE recorded  citation: ${citation}\n`);
+  const eventType = `GATE_${upper}`;
+  store.appendEvent(eventType, { citation });
+  process.stdout.write(`${eventType} recorded  citation: ${citation}\n`);
   store.close();
 }
 
@@ -272,7 +279,8 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const slices = store.getAllSlices();
   const openSlices = slices.filter(s => s.status === "pending" || s.status === "in_progress");
   const decisions = store.getDecisionEvents();
-  const gateOk = store.getEvents("GATE_APPROVE").length > 0;
+  const newestGateEvent = store.getNewestGateVerdict();
+  const gateOk = newestGateEvent?.event_type === "GATE_APPROVE";
   const hold = store.getHoldState();
   const lastPause = store.getLastEvent("PAUSE");
   const pausePayload = lastPause ? JSON.parse(lastPause.payload) as Record<string, unknown> : null;
@@ -420,8 +428,8 @@ if (cmd === "init") {
 } else if (cmd === "gate") {
   const sub = argv[1];
   const rest = argv.slice(2);
-  if (sub === "approve") cmdGateApprove(rest, globalMotive);
-  else { process.stderr.write(`unknown gate subcommand: ${sub}\n`); process.exit(1); }
+  if (sub && (GATE_VERDICTS as readonly string[]).includes(sub.toUpperCase())) cmdGateVerdict(sub, rest, globalMotive);
+  else { process.stderr.write(`unknown gate subcommand: ${sub ?? "(none)"}\nvalid: ${GATE_VERDICTS.map(v => v.toLowerCase()).join(", ")}\n`); process.exit(1); }
 } else if (cmd === "hold") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -444,6 +452,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|claim|set-ac|status|rm, gate approve, hold set|clear, event append, compile, motive add|use|list|complete\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete\n`);
   process.exit(1);
 }

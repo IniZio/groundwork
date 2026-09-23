@@ -213,9 +213,10 @@ export function checkStore(dbPath: string): {
         const incIds = db.query<{ id: string }, [string]>(
           "SELECT id FROM slices WHERE status IN ('pending','in_progress') AND motive_id = ? ORDER BY id LIMIT 10"
         ).all(motiveId).map(r => r.id);
-        const approveCount = db.query<{ n: number }, [string]>(
-          "SELECT COUNT(*) AS n FROM events WHERE event_type='GATE_APPROVE' AND motive_id = ?"
-        ).get(motiveId)?.n ?? 0;
+        const newestGate = db.query<{ event_type: string }, [string]>(
+          "SELECT event_type FROM events WHERE event_type IN ('GATE_APPROVE','GATE_CORRECTION','GATE_STOP','GATE_GAPS','GATE_REPLAN') AND motive_id = ? ORDER BY id DESC LIMIT 1"
+        ).get(motiveId);
+        const approved = newestGate?.event_type === "GATE_APPROVE";
         const holdId = db.query<{ max_id: number | null }, [string]>(
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD' AND motive_id = ?"
         ).get(motiveId)?.max_id ?? null;
@@ -223,7 +224,7 @@ export function checkStore(dbPath: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR' AND motive_id = ?"
         ).get(motiveId)?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approveCount > 0, holdActive };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved, holdActive };
       } else {
         // Legacy schema without motive_id column.
         const inc = db.query<{ n: number }, []>(
@@ -232,9 +233,10 @@ export function checkStore(dbPath: string): {
         const incIds = db.query<{ id: string }, []>(
           "SELECT id FROM slices WHERE status IN ('pending','in_progress') ORDER BY id LIMIT 10"
         ).all().map(r => r.id);
-        const approveCount = db.query<{ n: number }, []>(
-          "SELECT COUNT(*) AS n FROM events WHERE event_type='GATE_APPROVE'"
-        ).get()?.n ?? 0;
+        const newestGateLegacy = db.query<{ event_type: string }, []>(
+          "SELECT event_type FROM events WHERE event_type IN ('GATE_APPROVE','GATE_CORRECTION','GATE_STOP','GATE_GAPS','GATE_REPLAN') ORDER BY id DESC LIMIT 1"
+        ).get();
+        const approvedLegacy = newestGateLegacy?.event_type === "GATE_APPROVE";
         const holdId = db.query<{ max_id: number | null }, []>(
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD'"
         ).get()?.max_id ?? null;
@@ -242,7 +244,7 @@ export function checkStore(dbPath: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
         ).get()?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approveCount > 0, holdActive };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approvedLegacy, holdActive };
       }
     });
 
@@ -380,7 +382,10 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
         }
         return { result: block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "<why>"\` to stop for a human.`), yieldResult: null };
       }
-      return { result: block("stop-gate: no GATE_APPROVE event recorded. Record an advisor approval before ending."), yieldResult: null };
+      // All slices complete but newest verdict is not APPROVE (or no verdict recorded).
+      const unapprovedMotive = motiveDetails.find(m => !m.approved);
+      const verdictHint = unapprovedMotive ? ` (motive: ${unapprovedMotive.motiveId})` : "";
+      return { result: block(`stop-gate: no GATE_APPROVE recorded as the newest verdict.${verdictHint} Record an advisor approval before ending.`), yieldResult: null };
     };
 
     const { result, yieldResult } = compute();

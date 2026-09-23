@@ -29,9 +29,19 @@ Lists all slices with blocked-by, N/M complete count, gate state, hold state. Re
 Removes a slice. Writes a `RETENTION_ACTION` event first, then attempts DELETE.
 Refused (exit 1) on completed/archived slices via the D-12 SQLite trigger.
 
-### `gw gate approve --citation "file:line ..." --token T`
-Records a `GATE_APPROVE` event. Citation must contain at least one `file:line` reference.
-The stop-gate hook releases when this event exists.
+### `gw gate <verdict> --citation "file:line ..." --token T`
+Records a gate verdict event. `verdict` is one of: `approve`, `correction`, `stop`, `gaps`, `replan`.
+Every verdict requires `--citation` with at least one `file:line` reference.
+The stop-gate hook releases only when the **newest** gate verdict for the motive is `approve` (`GATE_APPROVE`).
+A `correction`, `stop`, `gaps`, or `replan` recorded after an `approve` closes the gate.
+
+| Verdict     | Event type        | Gate effect    |
+|-------------|-------------------|----------------|
+| `approve`   | `GATE_APPROVE`    | Opens gate     |
+| `correction`| `GATE_CORRECTION` | Closes gate    |
+| `stop`      | `GATE_STOP`       | Closes gate    |
+| `gaps`      | `GATE_GAPS`       | Closes gate    |
+| `replan`    | `GATE_REPLAN`     | Closes gate    |
 
 ### `gw hold set --reason "..." --token T`
 Records a `HOLD` event. Hold reason appears in `gw slice status`.
@@ -60,7 +70,7 @@ AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: 
 | 16 | `gw-hook ledger help init` | `gw init` |
 | 10 | `gw-hook ledger view --motive` | `gw compile` |
 | 10 | `gw-hook ledger gate --motive` | `gw gate approve --citation` |
-| 8 | `gw-hook ledger gate --motive` (v2 run) | `gw gate approve --citation` |
+| 8 | `gw-hook ledger gate --motive` (v2 run) | `gw gate approve|correction|... --citation` |
 | 6 | `gw-hook ledger checkpoint --motive` | `gw event append --type CHECKPOINT` |
 | 5 | `bin/journal compile --json` | `gw compile --json` |
 | 4 | `gw-hook ledger abandon --motive` | `gw slice rm` |
@@ -94,7 +104,8 @@ Marks the motive complete (excluded from future stop-gate evaluation).
 
 Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event append` and `gw compile`.
 
-`GATE_APPROVE`, `HOLD`, `HOLD_CLEAR`, `DECISION`, `OBJECTIVE`, `PAUSE`, `VERIFICATION`, `FAILURE`,
+`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`,
+`HOLD`, `HOLD_CLEAR`, `DECISION`, `OBJECTIVE`, `PAUSE`, `VERIFICATION`, `FAILURE`,
 `MILESTONE`, `HANDOFF`, `SESSION_START`, `CHECKPOINT`, `SLICE_COMPLETE`, `RETENTION_ACTION`
 
 `DECISION` — records a decision; `msg` is the decision text. Shown in `gw compile` under `decisions (N)`.

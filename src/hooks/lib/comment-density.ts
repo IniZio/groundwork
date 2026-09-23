@@ -372,7 +372,9 @@ function isFallbackExempt(raw: string): boolean {
   );
 }
 
-function countEffectiveFallback(text: string): { total: number; effective: number; commentRows: number[] } {
+const HASH_COMMENT_LANGS = new Set<Lang>(["bash", "yaml", "python", "dockerfile"]);
+
+function countEffectiveFallback(text: string, lang?: Lang | null): { total: number; effective: number; commentRows: number[] } {
   const rows = text.split("\n");
   let effective = 0;
   const commentRows: number[] = [];
@@ -416,6 +418,7 @@ function countEffectiveFallback(text: string): { total: number; effective: numbe
     }
 
     if (trimmed.startsWith("#")) {
+      if (!lang || !HASH_COMMENT_LANGS.has(lang)) continue;
       if (i === 0 && trimmed.startsWith("#!")) continue;
       const inner = trimmed.slice(1).trim();
       if (!isExemptInner(inner)) {
@@ -453,7 +456,7 @@ export async function density(
     }
   }
 
-  const fb = countEffectiveFallback(text);
+  const fb = countEffectiveFallback(text, lang);
   const commentRows = rows
     ? fb.commentRows.filter(r => rows.has(r))
     : fb.commentRows;

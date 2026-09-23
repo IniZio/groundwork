@@ -488,3 +488,32 @@ describe("parse-error fallback", () => {
     expect(withFix.effective).toBeGreaterThan(oldBehaviorCount);
   });
 });
+
+// ---- AC-lib6: # in TS/JS is not a comment (private class fields) ----
+
+const failParser6: GetParserFn = async () => ({ ok: false, reason: "forced-fallback-for-hash-test" });
+
+describe("fallback # counting excludes TS private fields", () => {
+  it("TS private field #field counts as 0 in fallback (lang=typescript)", async () => {
+    const code = `class Foo {\n  #count = 0;\n  #name = '';\n}\n`;
+    const r = await density(code, "typescript", undefined, failParser6);
+    expect(r.mode).toBe("fallback");
+    expect(r.effective).toBe(0);
+  });
+
+  it("bash: same # prefix IS a comment in fallback", async () => {
+    const code = `echo hi\n#count=0\n#name=foo\n`;
+    const r = await density(code, "bash", undefined, failParser6);
+    expect(r.mode).toBe("fallback");
+    expect(r.effective).toBeGreaterThan(0);
+  });
+
+  it("bite: TS #field counted differently than bash # (proves fix is lang-gated)", async () => {
+    const code = `class Foo {\n  #count = 0;\n}\n`;
+    const tsR = await density(code, "typescript", undefined, failParser6);
+    const bashR = await density(code, "bash", undefined, failParser6);
+    expect(tsR.effective).toBe(0);
+    expect(bashR.effective).toBeGreaterThan(0);
+    expect(tsR.effective).not.toBe(bashR.effective);
+  });
+});

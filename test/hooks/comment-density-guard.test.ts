@@ -1,10 +1,13 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeAll } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import os from "node:os";
 import { check } from "../../src/hooks/comment-density-guard.js";
+import type { GetParserFn } from "../../src/hooks/lib/comment-density.js";
 
-// 25 code lines, 0 comments — clean baseline
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
 
-// 25 lines: 20 code + 5 comment lines → 5/25 * 100 = 20 > 5 — over-cap
 const OVER_CAP_25 = [
   ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
   "// comment one",
@@ -14,7 +17,6 @@ const OVER_CAP_25 = [
   "// comment five",
 ].join("\n");
 
-// 25 lines: 20 code + 2 exempt annotations, 1 plain comment → 1/25 * 100 = 4 ≤ 5 — clean
 const WITH_ANNOTATIONS_25 = [
   ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
   "// @ts-expect-error legacy type mismatch",
@@ -24,7 +26,6 @@ const WITH_ANNOTATIONS_25 = [
   "// plain narration comment",
 ].join("\n");
 
-// 21 lines: 20 code + 3 plain comments → 3/21 * 100 = 14.3 > 5 — over-cap
 const OVER_CAP_EDIT_NEW = [
   ...Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`),
   "// narration A",
@@ -44,100 +45,131 @@ function multiedit(filePath: string, edits: { old_string: string; new_string: st
   return { tool_name: "MultiEdit", tool_input: { file_path: filePath, edits } };
 }
 
-function safeContext(r: { stdout: string }): string | null {
+function parseOut(r: { stdout: string }): Record<string, unknown> {
   const s = r.stdout.trim();
-  if (!s) return null;
-  try {
-    const parsed = JSON.parse(s) as { hookSpecificOutput?: { additionalContext?: string } };
-    return parsed.hookSpecificOutput?.additionalContext ?? null;
-  } catch {
-    return `parse-error(${s.slice(0, 80)})`;
-  }
+  if (!s) return {};
+  return JSON.parse(s) as Record<string, unknown>;
 }
 
+function getHso(r: { stdout: string }): Record<string, unknown> {
+  const parsed = parseOut(r);
+  return (parsed.hookSpecificOutput as Record<string, unknown>) ?? {};
+}
+
+function safeContext(r: { stdout: string }): string | null {
+  const hso = getHso(r);
+  return typeof hso.additionalContext === "string" ? hso.additionalContext : null;
+}
+
+const failParser: GetParserFn = async () => ({ ok: false, reason: "test-loader-failure" });
+
 describe("comment-density-guard", () => {
-  it("CLEAN: Write with no comments → empty stdout, exit 0", () => {
-    const r = check(write("/tmp/cdg-test.ts", CODE_25));
+
+  it("CLEAN: Write with no comments → empty stdout, exit 0", async () => {
+    const r = await check(write("/tmp/cdg-test.ts", CODE_25));
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("VIOLATION: Write over-cap → additionalContext contains 'over-cap', exit 0", () => {
-    const r = check(write("/tmp/cdg-over.ts", OVER_CAP_25));
+  it("AUTOCORRECT: Write over-cap → updatedInput present, no permissionDecision", async () => {
+    const r = await check(write("/tmp/cdg-over.ts", OVER_CAP_25));
     expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    expect(hso).not.toHaveProperty("permissionDecision");
+    const parsed = parseOut(r);
+    expect(parsed).not.toHaveProperty("permissionDecision");
+  });
+
+  it("AUTOCORRECT: additionalContext contains file path and correction message", async () => {
+    const r = await check(write("/tmp/cdg-pathtest.ts", OVER_CAP_25));
     const ctx = safeContext(r);
     expect(ctx).not.toBeNull();
-    expect(ctx!).toContain("over-cap");
-    // Advisory — no permissionDecision
-    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
-    expect(parsed).not.toHaveProperty("permissionDecision");
-    const hso = parsed.hookSpecificOutput as Record<string, unknown>;
-    expect(hso).not.toHaveProperty("permissionDecision");
+    expect(ctx!).toContain("cdg-pathtest.ts");
+    expect(ctx!).toContain("not another session's edit");
   });
 
-  it("VIOLATION: printed stdout contains the file path", () => {
-    const r = check(write("/tmp/cdg-pathtest.ts", OVER_CAP_25));
-    expect(safeContext(r)!).toContain("cdg-pathtest.ts");
+  it("AUTOCORRECT: Write over-cap keeps first comment, strips rest from content", async () => {
+    const r = await check(write("/tmp/cdg-over2.ts", OVER_CAP_25));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    expect(typeof ui.content).toBe("string");
+    const content = ui.content as string;
+    const commentCount = content.split("\n").filter(l => l.trim().startsWith("//")).length;
+    expect(commentCount).toBe(1);
+    const ctx = safeContext(r);
+    expect(ctx!).toContain("removed 4 comment(s)");
   });
 
-  it("WHITELIST: @-tagged annotations and TODO(owner) are not counted — stays clean", () => {
-    const r = check(write("/tmp/cdg-annot.ts", WITH_ANNOTATIONS_25));
-    // Only 1 plain comment among 25 lines → 4/100 ≤ 5 → clean
+  it("WHITELIST: @-tagged annotations and TODO(owner) — stays clean", async () => {
+    const r = await check(write("/tmp/cdg-annot.ts", WITH_ANNOTATIONS_25));
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("WHITELIST: eslint-disable and @ts-expect-error individually exempt", () => {
+  it("WHITELIST: eslint-disable and @ts-expect-error individually exempt", async () => {
     const content = [
       ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
       "// @ts-expect-error needed",
       "// eslint-disable-next-line no-unused-vars",
       "// @ts-ignore temporary",
     ].join("\n");
-    const r = check(write("/tmp/cdg-eslint.ts", content));
+    const r = await check(write("/tmp/cdg-eslint.ts", content));
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("VIOLATION: Edit new_string over-cap → warns", () => {
-    const r = check(edit("/tmp/cdg-edit.ts", "const x = 1;", OVER_CAP_EDIT_NEW));
+  it("AUTOCORRECT: Edit new_string over-cap → updatedInput with stripped new_string", async () => {
+    const pre = "const x = 1;";
+    const r = await check(
+      edit("/tmp/cdg-edit.ts", "const x = 1;", OVER_CAP_EDIT_NEW),
+      { readFile: () => pre },
+    );
     expect(r.exit).toBe(0);
-    expect(safeContext(r)!).toContain("over-cap");
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    expect(typeof ui.new_string).toBe("string");
+    expect(ui.old_string).toBe("const x = 1;");
+    const stripped = (ui.new_string as string).split("\n").filter(l => l.trim().startsWith("//")).length;
+    expect(stripped).toBeLessThan(3);
   });
 
-  it("CLEAN: MultiEdit new_strings under cap → empty stdout", () => {
-    const r = check(multiedit("/tmp/cdg-multi.ts", [
+  it("CLEAN: MultiEdit new_strings under cap → empty stdout", async () => {
+    const r = await check(multiedit("/tmp/cdg-multi.ts", [
       { old_string: "a", new_string: CODE_25 },
-    ]));
+    ]), { readFile: () => "a" });
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("VIOLATION: MultiEdit new_strings over cap → warns", () => {
-    const r = check(multiedit("/tmp/cdg-multi-over.ts", [
+  it("AUTOCORRECT: MultiEdit new_strings over cap → updatedInput", async () => {
+    const r = await check(multiedit("/tmp/cdg-multi-over.ts", [
       { old_string: "a", new_string: OVER_CAP_25 },
-    ]));
+    ]), { readFile: () => "a" });
     expect(r.exit).toBe(0);
-    expect(safeContext(r)!).toContain("over-cap");
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
   });
 
-  it("CLEAN: non-guarded tool (Bash) → empty stdout, exit 0", () => {
-    const r = check({ tool_name: "Bash", tool_input: { command: "echo hi" } });
+  it("CLEAN: non-guarded tool (Bash) → empty stdout, exit 0", async () => {
+    const r = await check({ tool_name: "Bash", tool_input: { command: "echo hi" } });
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("CLEAN: malformed stdin → empty stdout, exit 0", () => {
-    const r = check("not-json");
+  it("CLEAN: malformed stdin → empty stdout, exit 0", async () => {
+    const r = await check("not-json");
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("CLEAN: kill switch (GROUNDWORK_COMMENT_DENSITY=0) → empty stdout, exit 0", () => {
+  it("CLEAN: kill switch (GROUNDWORK_COMMENT_DENSITY=0) → empty stdout, exit 0", async () => {
     const orig = process.env.GROUNDWORK_COMMENT_DENSITY;
     process.env.GROUNDWORK_COMMENT_DENSITY = "0";
     try {
-      const r = check(write("/tmp/cdg-kill.ts", OVER_CAP_25));
+      const r = await check(write("/tmp/cdg-kill.ts", OVER_CAP_25));
       expect(r.stdout).toBe("");
       expect(r.exit).toBe(0);
     } finally {
@@ -146,22 +178,284 @@ describe("comment-density-guard", () => {
     }
   });
 
-  it("CLEAN: fewer than MIN_ADDED_LINES → no check, empty stdout", () => {
-    // 5 lines even if 100% comments — below minimum floor
+  it("NO FLOOR: small file with all comments → strips (no MIN_ADDED_LINES bypass)", async () => {
     const tiny = "// c1\n// c2\n// c3\n// c4\n// c5";
-    const r = check(write("/tmp/cdg-tiny.ts", tiny));
+    const r = await check(write("/tmp/cdg-tiny.ts", tiny));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+  });
+
+  it("BITE-PROOF: stripping fires on over-cap TS Write", async () => {
+    const r = await check(write("/tmp/cdg-bite.ts", OVER_CAP_25));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = ui.content as string;
+    const commentCount = content.split("\n").filter(l => l.trim().startsWith("//")).length;
+    expect(commentCount).toBeLessThan(5);
+  });
+
+  it("AC1: Write .sh with 5 # comments → keeps first, strips 4, no permissionDecision", async () => {
+    const lines = [
+      "#!/usr/bin/env bash",
+      ...Array.from({ length: 19 }, (_, i) => `echo "line ${i}"`),
+      "# comment A",
+      "# comment B",
+      "# comment C",
+      "# comment D",
+      "# comment E",
+    ];
+    const content = lines.join("\n");
+    const r = await check(write("/tmp/cdg-ac1.sh", content));
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    expect(hso).not.toHaveProperty("permissionDecision");
+    const parsed = parseOut(r);
+    expect(parsed).not.toHaveProperty("permissionDecision");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const commentLines = (ui.content as string).split("\n").filter(l => l.match(/^#(?!!)/));
+    expect(commentLines.length).toBe(1);
+    const ctx = safeContext(r);
+    expect(ctx!).toContain("removed 4 comment(s)");
+  });
+
+  it("AC3: trailing YAML comment stripped, code value preserved", async () => {
+    const yamlBase = [
+      "apiVersion: v1",
+      ...Array.from({ length: 14 }, (_, i) => `key${i}: value${i}`),
+      "x: 1  # note",
+      "y: 2  # desc",
+      "z: 3  # reason",
+      "a: 4  # extra",
+      "b: 5  # more",
+    ].join("\n");
+    const r = await check(write("/tmp/cdg-ac3.yaml", yamlBase));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const content = (hso.updatedInput as Record<string, unknown>).content as string;
+    expect(content).toContain("x: 1");
+    expect(content).toContain("y: 2");
+    expect(content).not.toContain("# more");
+    expect(content).not.toContain("# extra");
+  });
+
+  it("AC5: ambiguous replace_all (occurrences differ) → advisory only, no updatedInput", async () => {
+    const pre = "// note A\nconst a = 1;\n// note A\nconst b = 2;";
+    const budgetFillerLines = Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n");
+    const manyComments = [
+      "// narration 1",
+      "// narration 2",
+      "// narration 3",
+      "// narration 4",
+      "// narration 5",
+    ].join("\n");
+    const new_string = `${budgetFillerLines}\n${manyComments}`;
+    const r = await check(
+      { tool_name: "Edit", tool_input: { file_path: "/tmp/cdg-ac5.ts", old_string: "// note A", new_string, replace_all: true } },
+      { readFile: () => pre },
+    );
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+  });
+
+  it("AC7: loader unavailable → no updatedInput, advisory contains 'advisory only', stderr line", async () => {
+    const r = await check(
+      write("/tmp/cdg-ac7.ts", OVER_CAP_25),
+      { getParser: failParser },
+    );
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    expect(ctx!).toContain("advisory only");
+    expect(r.stderr.trim().length).toBeGreaterThan(0);
+  });
+
+  it("AC2: Edit YAML — only new comments stripped, carried-over survive, old_string unchanged", async () => {
+    const pre = [
+      "apiVersion: v1",
+      "# existing comment A",
+      "# existing comment B",
+      ...Array.from({ length: 18 }, (_, i) => `key${i}: val${i}`),
+    ].join("\n");
+    const old_string = "# existing comment B";
+    const new_string = [
+      "# existing comment B",
+      "# new comment 1",
+      "# new comment 2",
+      "# new comment 3",
+    ].join("\n");
+    const r = await check(
+      edit("/tmp/cdg-ac2.yaml", old_string, new_string),
+      { readFile: () => pre },
+    );
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    expect(ui.old_string).toBe(old_string);
+    const ns = ui.new_string as string;
+    expect(ns).toContain("existing comment B");
+  });
+});
+
+// AC4: cumulative budget tests using real git repo + transcript
+
+function gitIn(dir: string, args: string[], env: Record<string, string> = {}) {
+  return spawnSync("git", ["-C", dir, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, HOME: process.env.HOME, ...env },
+  });
+}
+
+function makeSessionRepo(opts: {
+  priorCodeLines: number;
+  priorCommentLines: number;
+  baseCommentLines?: number;
+  baseCodeLines?: number;
+}): { dir: string; file: string; transcript: string } {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac4-"));
+  gitIn(dir, ["init"]);
+  gitIn(dir, ["config", "user.email", "test@test.com"]);
+  gitIn(dir, ["config", "user.name", "Test"]);
+
+  const file = path.join(dir, "session.ts");
+  const bCode = opts.baseCodeLines ?? 0;
+  const bComment = opts.baseCommentLines ?? 0;
+  const baseLines = [
+    ...Array.from({ length: bComment }, (_, i) => `// base comment ${i}`),
+    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};`),
+    'const ANCHOR = "session";',
+  ].join("\n") + "\n";
+  writeFileSync(file, baseLines);
+  gitIn(dir, ["add", "session.ts"]);
+  gitIn(dir, ["commit", "-m", "base"], {
+    GIT_AUTHOR_DATE: "2024-01-01T12:00:00+00:00",
+    GIT_COMMITTER_DATE: "2024-01-01T12:00:00+00:00",
+  });
+
+  const transcript = path.join(dir, "transcript.jsonl");
+  writeFileSync(transcript, JSON.stringify({ timestamp: "2024-01-02T12:00:00.000Z" }) + "\n");
+
+  const sessionLines = [
+    ...Array.from({ length: opts.priorCommentLines }, (_, i) => `// session comment ${i}`),
+    ...Array.from({ length: opts.priorCodeLines }, (_, i) => `const sessionLine${i} = ${i};`),
+    ...Array.from({ length: bComment }, (_, i) => `// base comment ${i}`),
+    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};`),
+    'const ANCHOR = "session";',
+  ].join("\n") + "\n";
+  writeFileSync(file, sessionLines);
+  gitIn(dir, ["add", "session.ts"]);
+  gitIn(dir, ["commit", "-m", "session"], {
+    GIT_AUTHOR_DATE: "2024-01-03T12:00:00+00:00",
+    GIT_COMMITTER_DATE: "2024-01-03T12:00:00+00:00",
+  });
+
+  return { dir, file, transcript };
+}
+
+describe("AC4 cumulative budget", () => {
+  let strippedRepo: ReturnType<typeof makeSessionRepo>;
+  let allowedRepo: ReturnType<typeof makeSessionRepo>;
+  let baseCommentRepo: ReturnType<typeof makeSessionRepo>;
+
+  beforeAll(() => {
+    // priorLines=40, priorComments=2 → budget=floor(0.05*(40+10))-2=0 → strip
+    strippedRepo = makeSessionRepo({ priorCodeLines: 38, priorCommentLines: 2 });
+    // priorLines=100, priorComments=1 → budget=floor(0.05*(100+10))-1=4 → allow
+    allowedRepo = makeSessionRepo({ priorCodeLines: 99, priorCommentLines: 1 });
+    // base has 3 comments, session adds 40 code lines (no comments) → priorAddedComments=0
+    baseCommentRepo = makeSessionRepo({ priorCodeLines: 40, priorCommentLines: 0, baseCommentLines: 3, baseCodeLines: 5 });
+  });
+
+  function makeNewString(codeLines: number, includeComment: boolean): string {
+    const lines = Array.from({ length: codeLines }, (_, i) => `const editLine${i} = ${i};`);
+    if (includeComment) lines.push("// edit comment");
+    return lines.join("\n");
+  }
+
+  it("budget=0: prior 40 lines + 2 comments, 10-line edit + 1 comment → stripped", async () => {
+    const { dir, file, transcript } = strippedRepo;
+    const new_string = makeNewString(9, true); // 10 lines: 9 code + 1 comment
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ctx = safeContext(r);
+    expect(ctx!).toContain("40 lines added");
+    expect(ctx!).toContain("2 comments already added");
+  });
+
+  it("budget=4: prior 100 lines + 1 comment, 10-line edit + 1 comment → allowed", async () => {
+    const { dir, file, transcript } = allowedRepo;
+    const new_string = makeNewString(9, true); // 10 lines
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
+      transcript_path: transcript,
+      cwd: dir,
+    });
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  // Bite proof: disabling the effective count breaks the VIOLATION tests
-  it("BITE-PROOF: countEffective detects over-cap in OVER_CAP_25", () => {
-    // If we remove all `//` detection, per100 would be 0 → allow.
-    // This test verifies the detection by checking the violation fires.
-    const r = check(write("/tmp/cdg-bite.ts", OVER_CAP_25));
+  it("base-commit comments not counted as session-added", async () => {
+    const { dir, file, transcript } = baseCommentRepo;
+    // base has 3 comments; session adds 40 code lines (no comments)
+    // priorAddedComments=0 → budget=floor(0.05*(40+20))-0=3 → allow 1 comment
+    const new_string = makeNewString(19, true); // 20 lines: 19 code + 1 comment
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+    // 3 base comments excluded → budget 3 → allow
+    expect(r.stdout).toBe("");
+    expect(r.exit).toBe(0);
+  });
+
+  it("missing transcript → edit-alone budget applies", async () => {
+    const { file } = strippedRepo;
+    // No transcript_path → priorAddedCount=0, priorAddedComments=0
+    // changedRows=5 (4 code + 1 comment), budget=floor(0.05*5)=0 → strip
+    const new_string = makeNewString(4, true); // 5 lines
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
+      // no transcript_path
+    });
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+  });
+
+  it("BITE: prior always 0 → should-strip case becomes allow (red without real prior)", async () => {
+    // This is a design-time bite proof. With prior=0:
+    // budget=floor(0.05*10)-0=0 for strippedRepo's 10-line edit.
+    // But real budget=floor(0.05*50)-2=0 too. Both zero → same result.
+    // Use a repo where bite changes the outcome: 20 prior + 2 comments, 20-line edit
+    const biteRepo = makeSessionRepo({ priorCodeLines: 18, priorCommentLines: 2 });
+    // Real: floor(0.05*(20+20))-2=2-2=0 → strip
+    // Bite (prior=0): floor(0.05*20)-0=1 → allow
+    const new_string = makeNewString(19, true); // 20 lines: 19 code + 1 comment
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: biteRepo.file, old_string: 'const ANCHOR = "session";', new_string },
+      transcript_path: biteRepo.transcript,
+      cwd: biteRepo.dir,
+    });
+    const hso = getHso(r);
+    // Real budget=0 → strip → updatedInput present
+    expect(hso).toHaveProperty("updatedInput");
     const ctx = safeContext(r);
-    expect(ctx).not.toBeNull();
-    // Must cite line numbers (proof detection ran)
-    expect(ctx!).toMatch(/\[[\d,]+\]/);
+    expect(ctx!).toContain("20 lines added");
+    expect(ctx!).toContain("2 comments already added");
   });
 });

@@ -5,9 +5,7 @@ model: sonnet
 tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 ---
 
-<!-- token-target: ≤747 (v1 qa.md was 2242 tokens; 1/3 = 747) -->
-
-Verify behavior by running the actual app. Not a completion gate — produce evidence for advisor to consume.
+Verify behavior by running the actual app. Not a completion gate — produce evidence for advisor.
 
 ## Protocol
 
@@ -20,22 +18,17 @@ Verify behavior by running the actual app. Not a completion gate — produce evi
 
 ## Browser/TUI walkthroughs
 
-When output will be large (DOM snapshots, screenshots, console logs): delegate the walkthrough
-to a haiku subagent with a numbered checklist. Subagent returns compact PASS/FAIL-per-step report.
-Reason over the compact report.
+Large output (DOM, screenshots, console logs): delegate to haiku subagent with numbered checklist.
+Subagent returns compact PASS/FAIL-per-step. Reason over the compact report.
 
-## Output format
+## Output
 
 ```
-## QA Report
-Environment: <url or "headless">
-Scenarios: N run, M passed, K failed
-
-### Results
-- [PASS] <scenario>: <one line evidence>
-- [FAIL] <scenario>: <exact failure + steps to reproduce>
-
-Artifacts: <paths>
+environment: <url or "headless">
+scenarios: <N> run, <M> passed, <K> failed
+[PASS] <scenario>: <one-line evidence>
+[FAIL] <scenario>: <exact failure> · steps: <reproduce>
+artifacts: <paths>
 ```
 
-Feed this report to `groundwork:advisor` as evidence.
+Feed to `groundwork:advisor` as evidence.

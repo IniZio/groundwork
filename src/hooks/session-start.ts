@@ -27,17 +27,41 @@ async function main() {
     : "";
 
   const env = process.env as Record<string, string | undefined>;
-  const pluginRoot = env.CLAUDE_PLUGIN_ROOT
-    ?? path.resolve(new URL(import.meta.url).pathname, "..", "..", "..");
-  const gwNote = env.CLAUDE_PLUGIN_ROOT ? "" : " (path from hook; CLAUDE_PLUGIN_ROOT not set)";
 
-  const additionalContext = `# groundwork v2
+  // Derive root from this hook's own location — CLAUDE_PLUGIN_ROOT is unreliable
+  // when multiple plugins are installed (resolves to whichever ran last).
+  // File is at <root>/src/hooks/session-start.ts → root = 3 levels up.
+  const pluginRoot = path.resolve(new URL(import.meta.url).pathname, "..", "..", "..");
+
+  // Cross-check env; warn in output if they differ (signals a stale CLAUDE_PLUGIN_ROOT).
+  const envRoot = env.CLAUDE_PLUGIN_ROOT ? path.resolve(env.CLAUDE_PLUGIN_ROOT) : null;
+  const rootMismatchLine = envRoot && envRoot !== pluginRoot
+    ? `> [groundwork] CLAUDE_PLUGIN_ROOT mismatch: env=${envRoot} hook=${pluginRoot} — using hook root\n\n`
+    : "";
+
+  // Version from plugin manifest (fail silently — cache copies may not have git).
+  let version = "v2";
+  try {
+    const manifest = JSON.parse(await Bun.file(path.join(pluginRoot, ".claude-plugin/plugin.json")).text()) as Record<string, unknown>;
+    if (typeof manifest.version === "string") version = `v${manifest.version}`;
+  } catch { /* ignore */ }
+
+  // Git sha — only when the root is a git checkout (cache copies may lack .git).
+  let sha = "";
+  try {
+    const r = Bun.spawnSync(["git", "-C", pluginRoot, "rev-parse", "--short", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+    if (r.exitCode === 0) sha = r.stdout.toString().trim();
+  } catch { /* not a git checkout */ }
+
+  const shaLabel = sha ? ` (${sha})` : "";
+
+  const additionalContext = `${rootMismatchLine}# groundwork ${version}${shaLabel} — ${pluginRoot}
 
 Classify, delegate, review. Never implement directly.
 
 ## gw
 
-\`GW="bun ${pluginRoot}/src/cli/main.ts"\`${gwNote}
+\`GW="bun ${pluginRoot}/src/cli/main.ts"\`
 
 \`$GW init\` → write token T. \`$GW slice add <id> --acceptance "..." --token T\`. \`$GW slice complete <id> --token T\`. \`$GW slice status\`. \`$GW gate approve --citation "file:line" --token T\`. \`$GW compile\` → resume view.
 

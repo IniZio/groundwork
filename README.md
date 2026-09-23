@@ -63,3 +63,18 @@ Convention detection, targeted writing, best-practice enforcement, and known-fro
 bun install
 bun test
 ```
+
+### Testing a change live
+
+The `groundwork` marketplace is a `directory` source pointing at this repo. Every session runs the working tree directly, including uncommitted edits. No reinstall step.
+
+**What applies when:**
+
+- Hook and CLI edits apply on the next hook invocation.
+- SessionStart text, skills, and agents need a new session (or `/reload-plugins`).
+
+**Risk:** a half-finished edit affects every open session. Commit at wave boundaries.
+
+**Verify you are running the dev checkout:** SessionStart prints the version, git sha, and root path. If the root is the cache path (`~/.claude/plugins/cache/...`), you are not running the dev checkout.
+
+**How the root is resolved:** the session-start hook derives its root from its own file location (`import.meta.url`). `CLAUDE_PLUGIN_ROOT` is cross-checked only — if it mismatches, a line is printed. The hook command itself is located via `CLAUDE_PLUGIN_ROOT`, so the hook file and the cross-check should agree.

@@ -68,4 +68,26 @@ describe("session-start hook", () => {
     expect(exit).toBe(0);
     expect(stdout).toBe("");
   });
+
+  // AC: CLAUDE_PLUGIN_ROOT pointing at a foreign dir must not affect the GW path.
+  // Bite proof: if we revert to env.CLAUDE_PLUGIN_ROOT ?? import.meta, this fails.
+  it("GW path uses hook root even when CLAUDE_PLUGIN_ROOT is a foreign dir", () => {
+    const { stdout } = run({}, { CLAUDE_PLUGIN_ROOT: "/tmp/foreign-plugin-root" });
+    const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    // GW must point at the hook's actual root, not the foreign dir
+    expect(ctx).toMatch(new RegExp(`GW="bun ${ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/src/cli/main\\.ts"`));
+    expect(ctx).not.toContain("/tmp/foreign-plugin-root/src/cli/main.ts");
+    // Mismatch warning must appear
+    expect(ctx).toContain("CLAUDE_PLUGIN_ROOT mismatch");
+  });
+
+  it("additionalContext names version and root", () => {
+    const { stdout } = run({});
+    const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    // Header line: groundwork v<semver> [optionally (sha)] — <root>
+    expect(ctx).toMatch(/# groundwork v\d+\.\d+\.\d+/);
+    expect(ctx).toContain(ROOT);
+  });
 });

@@ -186,6 +186,56 @@ describe("by-path (entrypoint) — spawn bun src/hooks/spawn-model-guard.ts", ()
   });
 });
 
+describe("F2 — omitted subagent_type normalises to general-purpose", () => {
+  it("DENY by-path: main thread, subagent_type omitted → deny naming groundwork:implementer (exit 0)", () => {
+    const r = spawnHook({ tool_name: "Agent", tool_input: {} });
+    expect(r.exit).toBe(0);
+    expect(spawnDecision(r.stdout)).toBe("deny");
+    expect(spawnReason(r.stdout)).toContain("groundwork:implementer");
+  });
+
+  it("DENY by-path: implementer, subagent_type omitted → deny (exit 0)", () => {
+    const r = spawnHook({ tool_name: "Agent", tool_input: {}, agent_type: "groundwork:implementer", agent_id: "x" });
+    expect(r.exit).toBe(0);
+    expect(spawnDecision(r.stdout)).toBe("deny");
+  });
+
+  it("DENY by-path: subagent_type empty string → deny (exit 0)", () => {
+    const r = spawnHook({ tool_name: "Agent", tool_input: { subagent_type: "" } });
+    expect(r.exit).toBe(0);
+    expect(spawnDecision(r.stdout)).toBe("deny");
+  });
+
+  it("ALLOW by-path: implementer, explicit groundwork:explore → still allowed (exit 0)", () => {
+    const r = spawnHook({ tool_name: "Agent", tool_input: { subagent_type: "groundwork:explore" }, agent_type: "groundwork:implementer", agent_id: "x" });
+    expect(r.exit).toBe(0);
+    expect(spawnDecision(r.stdout)).toBe("allow");
+  });
+});
+
+describe("F2 — bite proof: omitted-field sensitivity", () => {
+  it("omitted subagent_type → deny (unit)", () => {
+    const r = check({ tool_name: "Agent", tool_input: {} });
+    expect(decision(r)).toBe("deny");
+    expect(reason(r)).toContain("groundwork:implementer");
+  });
+
+  it("empty string subagent_type → deny (unit)", () => {
+    const r = check({ tool_name: "Agent", tool_input: { subagent_type: "" } });
+    expect(decision(r)).toBe("deny");
+  });
+
+  it("implementer + omitted subagent_type → deny (unit)", () => {
+    const r = check({ tool_name: "Agent", tool_input: {}, agent_type: "groundwork:implementer" });
+    expect(decision(r)).toBe("deny");
+  });
+
+  it("implementer + explicit groundwork:explore → allow (unit)", () => {
+    const r = check({ tool_name: "Agent", tool_input: { subagent_type: "groundwork:explore" }, agent_type: "groundwork:implementer" });
+    expect(decision(r)).toBe("allow");
+  });
+});
+
 describe("bite proof — depth-guard sensitivity", () => {
   it("widening implementer allowlist defeats the deny", () => {
     const beforeWiden = check(agent("groundwork:implementer", "groundwork:implementer"));

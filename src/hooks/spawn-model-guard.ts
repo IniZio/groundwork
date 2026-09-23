@@ -69,24 +69,28 @@ export function check(input: unknown, callerType?: string): HookResult {
     if (tool !== "Agent" && tool !== "Task") return allow();
 
     const ti = (inp.tool_input && typeof inp.tool_input === "object" ? inp.tool_input : {}) as Record<string, unknown>;
-    const subType = typeof ti.subagent_type === "string" ? ti.subagent_type.trim() : "";
+    const rawSubType = typeof ti.subagent_type === "string" ? ti.subagent_type.trim() : "";
+    const subTypeOmitted = rawSubType === "";
+    const subType = subTypeOmitted ? "general-purpose" : rawSubType;
     const caller = callerType ?? (typeof inp.agent_type === "string" ? inp.agent_type : "");
 
     // D5: depth-allowlist — apply only to known groundwork callers.
     if (caller && DEPTH_ALLOWLIST.has(caller)) {
       const allowed = DEPTH_ALLOWLIST.get(caller)!;
-      if (subType && !allowed.has(subType)) {
+      if (!allowed.has(subType)) {
         const list = allowed.size ? [...allowed].join(", ") : "none";
-        return deny(`depth-guard: "${caller}" may not spawn "${subType}" — allowed: [${list}].`);
+        const spawnedLabel = subTypeOmitted ? `"general-purpose" (subagent_type omitted)` : `"${subType}"`;
+        return deny(`depth-guard: "${caller}" may not spawn ${spawnedLabel} — allowed: [${list}].`);
       }
     }
 
     // Deny bare built-ins that have a groundwork replacement.
-    if (subType && !subType.includes(":")) {
+    if (!subType.includes(":")) {
       const lc = subType.toLowerCase();
       if (Object.prototype.hasOwnProperty.call(BANNED_BUILTINS, lc)) {
         const replacement = BANNED_BUILTINS[lc];
-        return deny(`spawn-model-guard: built-in "${subType}" is banned — use "${replacement}" instead.`);
+        const omitNote = subTypeOmitted ? ` (subagent_type omitted)` : "";
+        return deny(`spawn-model-guard: built-in "${subType}"${omitNote} is banned — use "${replacement}" instead.`);
       }
     }
 

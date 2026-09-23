@@ -739,7 +739,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     expect(String(out.reason)).toMatch(/in-flight|background/i);
   });
 
-  it("RC2: HEAD-moved void, no background tasks, 4 calls → 1-3 block, 4 allow", () => {
+  it("RC2: HEAD-moved void, no background tasks — 1-3 block, 4-8 allow (sticky), new HEAD re-arms (AC3)", () => {
     const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
     gitDir = d; dbPath = db;
     const sdb = makeStoreDb(dbPath);
@@ -751,13 +751,149 @@ describe("stop-gate — HEAD binding (T14)", () => {
     sdb.close();
     makeCommit(d);
     const inp = { cwd: d, session_id: "rc2", stop_hook_active: true, background_tasks: [] };
-    const outs = [1, 2, 3, 4].map(() => JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout));
-    expect(outs[0].decision).toBe("block");
-    expect(String(outs[0].reason)).toMatch(/HEAD moved/i);
-    expect(outs[1].decision).toBe("block");
-    expect(outs[2].decision).toBe("block");
-    expect(String(outs[2].reason)).toMatch(/externally unresolvable|resolve store state/i);
-    expect(outs[3].continue).toBe(true);
-    expect(String(outs[3].reason)).toMatch(/consecutive block limit/i);
+    const r1 = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+    const r2 = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+    const r3 = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(r1.decision).toBe("block");
+    expect(String(r1.reason)).toMatch(/HEAD moved/i);
+    expect(r2.decision).toBe("block");
+    expect(r3.decision).toBe("block");
+    expect(String(r3.reason)).toMatch(/externally unresolvable|resolve store state/i);
+    const r4 = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(r4.continue).toBe(true);
+    expect(String(r4.reason)).toMatch(/consecutive block limit/i);
+    for (let i = 5; i <= 8; i++) {
+      const ri = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+      expect(ri.continue).toBe(true);
+    }
+    makeCommit(d);
+    const r9 = JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(r9.decision).toBe("block");
+    expect(String(r9.reason)).toMatch(/HEAD moved/i);
+  });
+
+  it("AC2a: approval predates session (transcript first-entry after approval), HEAD moved → allow with notice", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const approvalTime = "2026-09-23T10:00:00.000Z";
+    const sessionFirstEntry = "2026-09-23T11:00:00.000Z";
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [approvalTime, approvalTime]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), approvalTime]);
+    sdb.close();
+    makeCommit(d);
+    const transcriptPath = path.join(d, ".groundwork", "test-transcript-a.jsonl");
+    const tline = JSON.stringify({ parentUuid: null, type: "human", uuid: "u1", timestamp: sessionFirstEntry });
+    Bun.write(transcriptPath, tline + "\n");
+    dbFiles.push(transcriptPath);
+    const out = JSON.parse(run({ cwd: d, session_id: "t-ac2a", background_tasks: [], transcript_path: transcriptPath }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.continue).toBe(true);
+    expect(String(out.reason)).toMatch(/run finished|not gating/i);
+  });
+
+  it("AC2b: same-session approval (realistic timestamps: slices done before approval, HEAD moved) → blocks", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const sessionStart = new Date(Date.now() - 600000).toISOString();
+    const sliceDone = new Date(Date.now() - 300000).toISOString();
+    const approvalTime = new Date(Date.now() - 60000).toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [sliceDone, sliceDone]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), approvalTime]);
+    sdb.close();
+    makeCommit(d);
+    const transcriptPath = path.join(d, ".groundwork", "test-transcript-b.jsonl");
+    const tline = JSON.stringify({ parentUuid: null, type: "human", uuid: "u1", timestamp: sessionStart });
+    Bun.write(transcriptPath, tline + "\n");
+    dbFiles.push(transcriptPath);
+    const out = JSON.parse(run({ cwd: d, session_id: "t-ac2b", background_tasks: [], transcript_path: transcriptPath }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/HEAD moved/i);
+  });
+
+  it("AC2c: no transcript_path + HEAD moved → fail closed (blocks)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const past = "2026-09-23T10:00:00.000Z";
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    sdb.close();
+    makeCommit(d);
+    const out = JSON.parse(run({ cwd: d, session_id: "t-ac2c", background_tasks: [] }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/HEAD moved/i);
+  });
+
+  it("AC2d: SQLite-format approval after session start → blocks (spawned TZ=Asia/Tokyo, bites without +Z normalization)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const sqliteApprovalAt = "2026-09-23 12:30:00";
+    const sessionFirstEntry = "2026-09-23T12:00:00.000Z";
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [sqliteApprovalAt, sqliteApprovalAt]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), sqliteApprovalAt]);
+    sdb.close();
+    makeCommit(d);
+    const transcriptPath = path.join(d, ".groundwork", "test-transcript-d.jsonl");
+    const tline = JSON.stringify({ parentUuid: null, type: "human", uuid: "u1", timestamp: sessionFirstEntry });
+    Bun.write(transcriptPath, tline + "\n");
+    dbFiles.push(transcriptPath);
+    const hookPath = path.resolve(import.meta.dir, "../../src/hooks/stop-gate.ts");
+    const inp = JSON.stringify({ cwd: d, session_id: "t-ac2d", background_tasks: [], transcript_path: transcriptPath });
+    const result = spawnSync("bun", ["run", hookPath], {
+      input: inp,
+      env: { ...process.env, GROUNDWORK_DB: dbPath, TZ: "Asia/Tokyo" },
+      encoding: "utf8",
+    });
+    const out = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/HEAD moved/i);
+  });
+
+  it("AC2-NOTIMESTAMP: transcript with no top-level timestamp lines + old approval + HEAD moved → fail closed (blocks)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const past = "2026-09-23T04:00:00.000Z";
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    sdb.close();
+    makeCommit(d);
+    const transcriptPath = path.join(d, ".groundwork", "test-transcript-notimestamp.jsonl");
+    Bun.write(transcriptPath, JSON.stringify({ type: "system", mode: "interactive", sessionId: "s1" }) + "\n"
+      + JSON.stringify({ type: "system", subtype: "init" }) + "\n");
+    dbFiles.push(transcriptPath);
+    const out = JSON.parse(run({ cwd: d, session_id: "t-notimestamp", background_tasks: [], transcript_path: transcriptPath }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/HEAD moved/i);
+  });
+});
+
+describe("stop-gate — AC1: motive-complete release", () => {
+  it("AC1: all motives marked complete in DB → allow even with slices present", () => {
+    const { db, dbPath } = makeDb("ac1-motive-complete");
+    const now = new Date().toISOString();
+    db.run("UPDATE motives SET status = 'complete' WHERE id = 'default'");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('S1',1,'complete',?,?,'default')",
+      [now, now]);
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,?)", [now, "default"]);
+    db.close();
+    const result = run({ session_id: "t-ac1" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+    expect(String(out.reason)).toMatch(/no active motives/i);
   });
 });

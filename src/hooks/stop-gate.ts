@@ -171,6 +171,40 @@ function writeCount(f: string, n: number): void {
 }
 function resetCount(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
 
+function sigFile(dbPath: string, sessionId: string): string {
+  return path.join(path.dirname(dbPath), `stop-gate.${sessionId}.sig`);
+}
+function readSig(f: string): string | null {
+  try { const s = readFileSync(f, "utf8").trim(); return s || null; } catch { return null; }
+}
+function writeSig(f: string, sig: string): void {
+  try { mkdirSync(path.dirname(f), { recursive: true }); writeFileSync(f, sig); } catch { /* fail-open */ }
+}
+function resetSig(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
+
+export function parseTs(s: string | null): number {
+  if (!s) return NaN;
+  const n = s.replace(" ", "T");
+  return Date.parse(/[+-]\d\d:\d\d$|Z$/.test(n) ? n : n + "Z");
+}
+
+export function getSessionStartTime(inp: Record<string, unknown>): string | null {
+  const tp = typeof inp.transcript_path === "string" ? inp.transcript_path : "";
+  if (!tp) return null;
+  let raw: string;
+  try { raw = readFileSync(tp, "utf8"); } catch { return null; }
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const obj = JSON.parse(t) as Record<string, unknown>;
+      const ts = obj.timestamp;
+      if (typeof ts === "string" && ts) return ts;
+    } catch { continue; }
+  }
+  return null;
+}
+
 export interface MotiveStatus {
   motiveId: string;
   incomplete: number;
@@ -402,9 +436,14 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
         resetCount(cf);
         return { result: allow("stop-gate: no slices in store — nothing to gate"), yieldResult: null };
       }
+      if (motiveDetails.length === 0) {
+        resetCount(cf);
+        return { result: allow("stop-gate: no active motives in scope — session may end"), yieldResult: null };
+      }
       if (incomplete === 0 && approved) {
-        // Check per-motive HEAD binding before releasing.
         const currentHead = getCurrentHead(cwd ?? process.cwd());
+        const sessionStartTs = parseTs(getSessionStartTime(inp));
+        const retiredMotives: string[] = [];
         let voidReason: string | null = null;
         for (const m of motiveDetails) {
           if (!m.approved) continue;
@@ -413,21 +452,43 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
             break;
           }
           if (m.approvalBaseCommit && currentHead && m.approvalBaseCommit !== currentHead) {
-            voidReason = `stop-gate: APPROVE for motive '${m.motiveId}' is void — HEAD moved (approved at ${m.approvalBaseCommit.slice(0, 7)}, now ${currentHead.slice(0, 7)}). Re-run \`$GW gate approve\`.`;
-            break;
+            const approvalTs = parseTs(m.approvalCreatedAt);
+            if (!isNaN(sessionStartTs) && !isNaN(approvalTs) && approvalTs < sessionStartTs) {
+              retiredMotives.push(m.motiveId);
+            } else {
+              voidReason = `stop-gate: APPROVE for motive '${m.motiveId}' is void — HEAD moved (approved at ${m.approvalBaseCommit.slice(0, 7)}, now ${currentHead.slice(0, 7)}). Re-run \`$GW gate approve\`.`;
+              break;
+            }
           }
+        }
+        if (!voidReason && retiredMotives.length > 0) {
+          resetCount(cf);
+          resetSig(sigFile(dbPath, sessionId));
+          return { result: allow(`stop-gate: approval for motive(s) [${retiredMotives.join(", ")}] predates HEAD; run finished — not gating`), yieldResult: null };
         }
         if (!voidReason) {
           resetCount(cf);
+          resetSig(sigFile(dbPath, sessionId));
           return { result: allow("stop-gate: all slices complete, gate approved"), yieldResult: null };
         }
         const yieldReason = detectYield(inp);
         if (yieldReason) {
           return { result: allow(`stop-gate: ${yieldReason}`), yieldResult: yieldReason };
         }
+        const sf = sigFile(dbPath, sessionId);
+        const voidSig = `${motiveDetails.filter(m => m.approvalBaseCommit).map(m => m.approvalBaseCommit).join(",")}:${currentHead ?? ""}`;
+        const storedSig = readSig(sf);
+        if (storedSig !== null) {
+          if (storedSig === voidSig) {
+            return { result: allow("stop-gate: override — consecutive block limit reached"), yieldResult: null };
+          }
+          resetSig(sf);
+          resetCount(cf);
+        }
         const voidCount = readCount(cf) + 1;
         writeCount(cf, voidCount);
         if (voidCount >= 4) {
+          writeSig(sf, voidSig);
           resetCount(cf);
           process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
           return { result: allow("stop-gate: override — consecutive block limit reached"), yieldResult: null };

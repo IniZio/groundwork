@@ -9,6 +9,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { installHook } from './installer.js'
 
 function silent(): void {
@@ -43,14 +44,21 @@ async function main() {
 
   const cwd = env['CLAUDE_PROJECT_DIR'] ?? process.cwd()
 
-  // Skip repos where core.hooksPath is already set — they have an active hooks
-  // mechanism; writing to .git/hooks/ would be shadowed.
   const hooksPathResult = spawnSync('git', ['config', 'core.hooksPath'], {
     cwd,
     encoding: 'utf8',
     timeout: 5000,
   })
   if (hooksPathResult.status === 0 && hooksPathResult.stdout.trim() !== '') {
+    const hooksPath = hooksPathResult.stdout.trim()
+    let dirExists = false
+    try { dirExists = statSync(hooksPath).isDirectory() } catch { /* absent */ }
+    if (!dirExists) {
+      announce(
+        `[groundwork] WARNING: core.hooksPath="${hooksPath}" does not exist — no git hooks run here. ` +
+        `Fix: git config --unset core.hooksPath`,
+      )
+    }
     silent()
   }
 

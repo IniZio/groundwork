@@ -148,15 +148,88 @@ describe("commit-message-guard — Family 6", () => {
     expect(result.exit).toBe(0);
   });
 
-  // BITE PROOF: removing the body check makes the body test pass when it should fail
   it("BITE-PROOF: modifying the guard to skip body check breaks TC DENY body test", () => {
-    // We verify the guard can detect a multi-paragraph message.
-    // This test directly calls lintMessage logic via check() to confirm sensitivity.
     const result = check(bash(
       'git commit -m "fix(auth): correct token expiry check" -m "Body text here"',
     ));
-    // Must deny — if the body check were removed this would be "allow" and this test fails
     expect(decision(result)).toBe("deny");
     expect(reason(result)).toMatch(/line/);
+  });
+});
+
+describe("commit-message-guard — wrapper forms", () => {
+  it("DENY: command git commit — bad message blocked", () => {
+    const result = check(bash('command git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: command git commit — valid message passes", () => {
+    const result = check(bash('command git commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("DENY: builtin git commit — bad message blocked", () => {
+    const result = check(bash('builtin git commit -m "bad message"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("DENY: FOO=1 git commit — bad message blocked", () => {
+    const result = check(bash('FOO=1 git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: FOO=1 git commit — valid message passes", () => {
+    const result = check(bash('FOO=1 git commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("DENY: git -C /some/path commit — bad message blocked", () => {
+    const result = check(bash('git -C /tmp commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: git -C /some/path commit — valid message passes", () => {
+    const result = check(bash('git -C /tmp commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("DENY: git -c core.autocrlf=true commit — bad message blocked", () => {
+    const result = check(bash('git -c core.autocrlf=true commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: git -c core.autocrlf=true commit — valid message passes", () => {
+    const result = check(bash('git -c core.autocrlf=true commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("DENY: git --git-dir=.git commit — bad message blocked", () => {
+    const result = check(bash('git --git-dir=.git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("DENY: cmd && git commit — bad message after && blocked", () => {
+    const result = check(bash('git add . && git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: cmd && git commit — valid message after && passes", () => {
+    const result = check(bash('git add . && git commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("DENY: cmd; git commit — bad message after ; blocked", () => {
+    const result = check(bash('echo prep; git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+  });
+
+  it("ALLOW: unrelated command only — no false positive", () => {
+    const result = check(bash('git add . && echo done'));
+    expect(result.stdout).toBe("");
+  });
+
+  it("BITE-PROOF: reverting command-prefix handling makes command-git test fail", () => {
+    const result = check(bash('command git commit -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
   });
 });

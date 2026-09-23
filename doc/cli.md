@@ -121,3 +121,13 @@ Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event appe
 
 `DECISION` — records a decision; `msg` is the decision text. Shown in `gw compile` under `decisions (N)`.
 `OBJECTIVE` — sets the motive objective; `msg` is the objective text. `gw compile` shows the newest.
+
+## Commit-message lint guard (Family 6)
+
+The `commit-message-guard` PreToolUse hook intercepts `git commit` calls and lints the message before the commit runs. Kill-switch: `GROUNDWORK_COMMIT_LINT=0`.
+
+**Detectable forms** (all linted): bare `git commit`, `command git commit`, `builtin git commit`, env-prefixed `FOO=1 git commit`, `git -C <path> commit`, `git -c key=val commit`, `git --git-dir=<dir> commit`, and any of these appearing after `&&`, `||`, `;`, or `|`.
+
+**Not detectable**: shell function aliases such as `g(){ command git "$@"; }; g commit`. The git-level `commit-msg` hook installed by `session-commit-msg-installer` is the backstop for those cases.
+
+**`core.hooksPath` handling**: if `core.hooksPath` is set and the target directory exists, the session installer skips silently (the host hooks mechanism is active). If the target directory does not exist, the installer emits a one-line warning naming the path and the fix (`git config --unset core.hooksPath`) and does not install. The installer never modifies git config.

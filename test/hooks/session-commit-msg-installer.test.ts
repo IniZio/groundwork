@@ -129,15 +129,33 @@ describe("session-commit-msg-installer — by-path (entrypoint test)", () => {
     }
   });
 
-  it("core.hooksPath set: no .git/hooks/commit-msg written", () => {
-    const { dir, cleanup } = makeRepo({ coreHooksPath: "/tmp/custom-hooks" });
+  it("core.hooksPath set to non-existent dir: warns, no install", () => {
+    const { dir, cleanup } = makeRepo({ coreHooksPath: "/tmp/gw-test-no-such-hooks-dir-xyzzy" });
     try {
       const hookPath = join(dir, ".git", "hooks", "commit-msg");
-      const { exit } = run(dir);
+      const { stdout, exit } = run(dir);
       expect(exit).toBe(0);
       expect(existsSync(hookPath)).toBe(false);
+      const ctx = additionalContext(stdout);
+      expect(ctx).toContain("core.hooksPath");
+      expect(ctx).toContain("git config --unset core.hooksPath");
     } finally {
       cleanup();
+    }
+  });
+
+  it("core.hooksPath set to existing dir: silent skip, no install", () => {
+    const existingHooksDir = mkdtempSync(join(tmpdir(), "gw-test-hooks-exist-"));
+    const { dir, cleanup } = makeRepo({ coreHooksPath: existingHooksDir });
+    try {
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      const { stdout, exit } = run(dir);
+      expect(exit).toBe(0);
+      expect(existsSync(hookPath)).toBe(false);
+      expect(additionalContext(stdout)).toBe("");
+    } finally {
+      cleanup();
+      rmSync(existingHooksDir, { recursive: true, force: true });
     }
   });
 

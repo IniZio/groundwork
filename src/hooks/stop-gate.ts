@@ -36,10 +36,13 @@ function writeCount(f: string, n: number): void {
 function resetCount(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
 
 export function checkStore(dbPath: string): {
-  incomplete: number; incompleteIds: string[]; approved: boolean; holdActive: boolean;
+  sliceCount: number; incomplete: number; incompleteIds: string[]; approved: boolean; holdActive: boolean;
 } {
   const db = new Database(dbPath, { readonly: true });
   try {
+    const sliceCount = db.query<{ n: number }, []>(
+      "SELECT COUNT(*) AS n FROM slices"
+    ).get()?.n ?? 0;
     const incomplete = db.query<{ n: number }, []>(
       "SELECT COUNT(*) AS n FROM slices WHERE status IN ('pending','in_progress')"
     ).get()?.n ?? 0;
@@ -56,7 +59,7 @@ export function checkStore(dbPath: string): {
       "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
     ).get()?.max_id ?? null;
     const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-    return { incomplete, incompleteIds, approved: approveCount > 0, holdActive };
+    return { sliceCount, incomplete, incompleteIds, approved: approveCount > 0, holdActive };
   } finally {
     db.close();
   }
@@ -70,11 +73,15 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
     if (!dbPath) return allow("stop-gate: no active work store — session may end");
-    const { incomplete, incompleteIds, approved, holdActive } = checkStore(dbPath);
+    const { sliceCount, incomplete, incompleteIds, approved, holdActive } = checkStore(dbPath);
     const cf = countFile(dbPath, sessionId);
     if (holdActive) {
       resetCount(cf);
       return allow("stop-gate: HOLD active — human hold in effect, session may end");
+    }
+    if (sliceCount === 0) {
+      resetCount(cf);
+      return allow("stop-gate: no slices in store — nothing to gate");
     }
     if (incomplete === 0 && approved) {
       resetCount(cf);

@@ -176,4 +176,22 @@ describe("stop-gate — Family 3", () => {
     const { holdActive } = checkStore(dbPath);
     expect(holdActive).toBe(true);
   });
+
+  it("REGRESSION: empty store (0 slices, 0 events) → allow", () => {
+    const { dbPath } = makeDb("empty-store");
+    // no inserts — store is completely empty
+    const result = run({ session_id: "t-empty" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+    expect(out.reason).toContain("nothing to gate");
+  });
+
+  it("REGRESSION: empty slices with GATE_APPROVE present → allow", () => {
+    const { db, dbPath } = makeDb("empty-with-approve");
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-empty-approve" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+  });
 });

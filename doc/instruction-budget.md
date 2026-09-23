@@ -8,7 +8,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 |---|---|---|---|---|---|
 | SessionStart injection | 7068 | 1767 | 2101 | 525 | 0.30 |
 | CLAUDE.md (orchestrator project file) | 39614 | 9904 | — (none) | — | — |
-| orchestrator.md | 10706 | 2677 | 1523 | 381 | 0.14 |
+| orchestrator.md | 10706 | 2677 | 1534 | 381 | 0.14 |
 | general-purpose / implementer.md | 5728 | 1432 | 1504 | 376 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |

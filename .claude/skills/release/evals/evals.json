@@ -1,0 +1,53 @@
+{
+  "skill_name": "release",
+  "evals": [
+    {
+      "id": 1,
+      "name": "infer-minor-afk",
+      "prompt": "ok the hooks stuff is done — bump the version and push the plugin. go with whatever level you'd pick, I'm AFK so don't wait on me.",
+      "expected_output": "2.1.0 released: 4 fields bumped, checks run first, tag v2.1.0 pushed",
+      "expected_version": "2.1.0",
+      "fixture_flags": "",
+      "files": [],
+      "assertions": [
+        "All 4 version fields on remote main equal expected version",
+        "Tag vX.Y.Z pushed and points at remote main",
+        "Release commit touches exactly the 3 version files",
+        "Commit message is chore(release): bump version to X.Y.Z",
+        "test and typecheck ran before the version bump",
+        "Untracked notes-scratch.txt not committed"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "explicit-version",
+      "prompt": "release groundwork as 2.0.1 please",
+      "expected_output": "2.0.1 released with tag v2.0.1",
+      "expected_version": "2.0.1",
+      "fixture_flags": "",
+      "files": [],
+      "assertions": [
+        "All 4 version fields on remote main equal expected version",
+        "Tag vX.Y.Z pushed and points at remote main",
+        "Release commit touches exactly the 3 version files",
+        "Commit message is chore(release): bump version to X.Y.Z",
+        "test and typecheck ran before the version bump",
+        "Untracked notes-scratch.txt not committed"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "failing-checks-block",
+      "prompt": "push a new patch release of the plugin, no need to check with me",
+      "expected_output": "Tests fail; no bump, no commit, no tag, no push; failure reported",
+      "expected_version": "2.0.1",
+      "fixture_flags": "--fail-tests",
+      "expect_no_release": true,
+      "files": [],
+      "assertions": [
+        "Failing checks block the release (remote still 2.0.0, no tag)",
+        "Version files not modified locally after failed checks"
+      ]
+    }
+  ]
+}

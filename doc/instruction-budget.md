@@ -13,7 +13,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | general-purpose / implementer.md | 5728 | 1432 | 1445 | 361 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |
-| implement/SKILL.md | 4522 | 1130 | 1901 | 475 | 0.42 |
+| implement/SKILL.md | 4522 | 1130 | 2153 | 538 | 0.48 |
 | vertical-slice/SKILL.md | 4867 | 1216 | 2223 | 556 | 0.46 |
 | advisor-gate/SKILL.md | 5381 | 1345 | 1282 | 320 | 0.24 |
 | pause/SKILL.md | 2822 | 705 | 861 | 215 | 0.30 |

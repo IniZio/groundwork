@@ -28,6 +28,9 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 ## Worktree fallback
 
 Slices in one wave that edit the same file run with `Agent({ isolation: "worktree" })`.
+A worktree branches from the pushed base, not local HEAD; the brief's first step is `git rebase main`.
+Receipt reports the base sha (`git rev-parse HEAD` after rebase).
+Orchestrator checks `git merge-base <branch> main` equals that sha before merging.
 Merge branches after wave, run full suite.
 Hard-size-limit files (e.g. `agents/orchestrator.md`) get one owner per wave.
 

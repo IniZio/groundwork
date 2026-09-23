@@ -90,7 +90,7 @@ describe("AC1: nexus-probe fixtures", () => {
 
     const timestamp = "2020-01-01T00:00:00.000Z";
     const transcriptPath = makeTranscript(tmpDir, copiedPaths, timestamp);
-    const payload = { event: "Stop", session_id: sessionId, transcript_path: transcriptPath };
+    const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: transcriptPath };
 
     const r = runGate(payload);
     expect(r.status).toBe(0);
@@ -113,7 +113,7 @@ describe("AC1: nexus-probe fixtures", () => {
     const commitEpoch = parseInt(logR.stdout.trim(), 10);
     const afterTs = new Date((commitEpoch + 1) * 1000).toISOString();
     const transcriptPath = makeTranscript(tmpDir, copiedPaths, afterTs);
-    const payload = { event: "Stop", session_id: `bite-${Date.now()}`, transcript_path: transcriptPath };
+    const payload = { hook_event_name: "Stop", session_id: `bite-${Date.now()}`, transcript_path: transcriptPath };
 
     const r = runGate(payload);
     expect(r.status).toBe(0);
@@ -148,7 +148,7 @@ describe("AC2: 1 comment per 15 lines exceeds 5/100 cap", () => {
     writeFileSync(fp, lines.join("\n") + "\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: `ac2-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac2-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     expect(out.reason as string).toContain("small.ts");
@@ -173,7 +173,7 @@ describe("AC3: positive controls", () => {
     const fp = makeViolatorTs(tmpDir, "dense.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: `ac3a-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac3a-${Date.now()}`, transcript_path: tp });
     expect(parseOut(r.stdout).decision).toBe("block");
   });
 
@@ -182,7 +182,7 @@ describe("AC3: positive controls", () => {
     writeFileSync(fp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: `ac3b-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac3b-${Date.now()}`, transcript_path: tp });
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 
@@ -200,7 +200,7 @@ describe("AC3: positive controls", () => {
 
     const afterBaseTs = new Date((baseEpoch + 1) * 1000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], afterBaseTs);
-    const r = runGate({ event: "Stop", session_id: `ac3c-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac3c-${Date.now()}`, transcript_path: tp });
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 });
@@ -228,7 +228,7 @@ describe("AC4: transcript-driven targeting", () => {
     writeFileSync(other, "const x = 1;\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [other], ts);
-    const r = runGate({ event: "Stop", session_id: `ac4-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac4-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
     expect(out.decision).not.toBe("block");
     if (out.reason) expect(out.reason as string).not.toContain("changed-not-in-transcript");
@@ -257,7 +257,7 @@ describe("AC5: block limit counter", () => {
   });
 
   it("blocks 3 times then allows on 4th and 5th", async () => {
-    const payload = { event: "Stop", session_id: sessionId, transcript_path: tp };
+    const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp };
     const results = Array.from({ length: 5 }, () => {
       const r = runGate(payload);
       return { out: parseOut(r.stdout), stderr: r.stderr };
@@ -272,13 +272,13 @@ describe("AC5: block limit counter", () => {
   });
 
   it("counter resets when violating files change", async () => {
-    const payload = { event: "Stop", session_id: sessionId, transcript_path: tp };
+    const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp };
     runGate(payload); runGate(payload); runGate(payload);
 
     const fp2 = makeViolatorTs(tmpDir, "violator2.ts");
     const ts2 = new Date(Date.now() - 10000).toISOString();
     const tp2 = makeTranscript(tmpDir, [fp2], ts2);
-    const r = runGate({ event: "Stop", session_id: sessionId, transcript_path: tp2 });
+    const r = runGate({ hook_event_name: "Stop", session_id: sessionId, transcript_path: tp2 });
     expect(parseOut(r.stdout).decision).toBe("block");
   });
 
@@ -287,7 +287,7 @@ describe("AC5: block limit counter", () => {
     const agentB = `agent-b-${Date.now()}`;
 
     const mkPayload = (agentId: string) => ({
-      event: "SubagentStop", session_id: sessionId,
+      hook_event_name: "SubagentStop", session_id: sessionId,
       agent_id: agentId, transcript_path: tp, agent_transcript_path: tp,
     });
 
@@ -319,7 +319,7 @@ describe("AC6: fail-open", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: "ac6a", transcript_path: tp }, { CLAUDE_CODE_ENTRYPOINT: "sdk-py" });
+    const r = runGate({ hook_event_name: "Stop", session_id: "ac6a", transcript_path: tp }, { CLAUDE_CODE_ENTRYPOINT: "sdk-py" });
     expect(r.stdout.trim()).toBe("");
     expect(r.status).toBe(0);
   });
@@ -328,12 +328,12 @@ describe("AC6: fail-open", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: "ac6b", transcript_path: tp }, { GROUNDWORK_COMMENT_DENSITY: "0" });
+    const r = runGate({ hook_event_name: "Stop", session_id: "ac6b", transcript_path: tp }, { GROUNDWORK_COMMENT_DENSITY: "0" });
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 
   it("allows when transcript_path is missing", () => {
-    const r = runGate({ event: "Stop", session_id: "ac6c" });
+    const r = runGate({ hook_event_name: "Stop", session_id: "ac6c" });
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 
@@ -341,7 +341,7 @@ describe("AC6: fail-open", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ event: "Stop", session_id: `ac6d-${Date.now()}`, transcript_path: tp });
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac6d-${Date.now()}`, transcript_path: tp });
     expect(r.stdout).not.toContain("hookSpecificOutput");
   });
 });
@@ -365,10 +365,47 @@ describe("AC6b: stop_hook_active does not skip check", () => {
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate(
-      { event: "Stop", session_id: `ac6b-${Date.now()}`, transcript_path: tp, stop_hook_active: true },
+      { hook_event_name: "Stop", session_id: `ac6b-${Date.now()}`, transcript_path: tp, stop_hook_active: true },
     );
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
+  });
+});
+
+describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-sub-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("SubagentStop with over-cap file in agent transcript blocks", async () => {
+    const fp = makeViolatorTs(tmpDir, "sub-dense.ts");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const agentTranscriptPath = makeTranscript(tmpDir, [fp], ts);
+    const sessionTranscriptPath = path.join(tmpDir, "session.jsonl");
+    writeFileSync(sessionTranscriptPath, JSON.stringify({
+      type: "assistant", message: { content: [] },
+      timestamp: ts, cwd: tmpDir,
+    }) + "\n");
+
+    const r = runGate({
+      hook_event_name: "SubagentStop",
+      session_id: `ac7-${Date.now()}`,
+      agent_id: "test-subagent-id-001",
+      transcript_path: sessionTranscriptPath,
+      agent_transcript_path: agentTranscriptPath,
+    });
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason as string).toContain("sub-dense.ts");
   });
 });
 

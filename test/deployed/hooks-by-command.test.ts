@@ -76,6 +76,10 @@ function makeTempRepo(label: string): string {
   return dir;
 }
 
+function makeParityDensitySetupSubagent(parityDensityTranscript: string): { paritySubagentTranscript: string } {
+  return { paritySubagentTranscript: parityDensityTranscript };
+}
+
 function makeParityDensitySetup(): { parityDensityTranscript: string } {
   const dir = path.join(tmpDir, "repo-cdg");
   mkdirSync(dir, { recursive: true });
@@ -104,6 +108,7 @@ function makeParityDensitySetup(): { parityDensityTranscript: string } {
 const parityStopGateDb = makeTempDb("parity-sg");
 const parityNewCodeRepo = makeTempRepo("parity-ncg");
 const { parityDensityTranscript } = makeParityDensitySetup();
+const { paritySubagentTranscript } = makeParityDensitySetupSubagent(parityDensityTranscript);
 
 afterAll(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ } });
 
@@ -145,17 +150,38 @@ describe("event-output contract — every (event, command) pair must produce the
     "src/hooks/new-code-gate.ts": [
       { cwd: parityNewCodeRepo }, {}
     ],
-    "src/hooks/comment-density-gate.ts": [
-      { event: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
+    "src/hooks/comment-density-gate.ts@Stop": [
+      { hook_event_name: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
+      {}
+    ],
+    "src/hooks/comment-density-gate.ts@SubagentStop": [
+      {
+        hook_event_name: "SubagentStop",
+        session_id: "parity-cdg-sub",
+        agent_id: "parity-subagent-001",
+        transcript_path: parityDensityTranscript,
+        agent_transcript_path: paritySubagentTranscript,
+      },
       {}
     ],
   };
 
+  function findPayloadKey(cmd: string, event: string): string | undefined {
+    const specific = Object.keys(triggeringPayloads).find(k => {
+      const at = k.lastIndexOf("@");
+      if (at < 0) return false;
+      return cmd.includes(k.slice(0, at)) && k.slice(at + 1) === event;
+    });
+    if (specific) return specific;
+    return Object.keys(triggeringPayloads).find(k => !k.includes("@") && cmd.includes(k));
+  }
+
   for (const { cmd, event } of allCommands()) {
-    const key = Object.keys(triggeringPayloads).find(k => cmd.includes(k));
+    const key = findPayloadKey(cmd, event);
     if (!key) continue;
     const [payload, env] = triggeringPayloads[key];
-    it(`${path.basename(key, ".ts")} [${event}] must produce non-empty output with correct shape`, async () => {
+    const displayKey = key.includes("@") ? key.slice(0, key.lastIndexOf("@")) : key;
+    it(`${path.basename(displayKey, ".ts")} [${event}] must produce non-empty output with correct shape`, async () => {
       const { stdout } = await spawnHook(cmd, payload, env);
       expect(stdout.trim()).not.toBe("");
       const out = JSON.parse(stdout) as Record<string, unknown> & { hookSpecificOutput?: { hookEventName?: string } };
@@ -170,7 +196,7 @@ describe("event-output contract — every (event, command) pair must produce the
   it("every Stop/SubagentStop hook has a triggering payload", () => {
     for (const { cmd, event } of allCommands()) {
       if (!STOP_EVENTS.has(event)) continue;
-      const key = Object.keys(triggeringPayloads).find(k => cmd.includes(k));
+      const key = findPayloadKey(cmd, event);
       expect(key, `${cmd} [${event}] has no triggering payload`).toBeDefined();
     }
   });

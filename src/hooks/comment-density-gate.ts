@@ -56,7 +56,8 @@ export async function run(input: unknown, env: Record<string, string | undefined
 
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
 
-    const event = typeof inp.event === "string" ? inp.event : "";
+    const event = typeof inp.hook_event_name === "string" ? inp.hook_event_name
+      : typeof inp.event === "string" ? inp.event : "";
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
 
     const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;

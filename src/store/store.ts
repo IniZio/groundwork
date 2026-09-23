@@ -33,6 +33,13 @@ export interface Slice {
   decisions: string | null;
   created_at: string;
   completed_at: string | null;
+  motive_id: string;
+}
+
+export interface Motive {
+  id: string;
+  status: string;
+  created_at: string;
 }
 
 export interface DecisionEvent {
@@ -46,10 +53,12 @@ export interface Event {
   event_type: string;
   payload: string;
   created_at: string;
+  motive_id: string;
 }
 
 export class WorkStore {
   private db: Database;
+  private _motiveContext: string | null = null;
 
   get database(): Database { return this.db; }
 
@@ -63,13 +72,62 @@ export class WorkStore {
     this.db.close();
   }
 
-  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description"> & { description?: string | null }): void {
+  // ---------------------------------------------------------------------------
+  // Active motive context
+  // ---------------------------------------------------------------------------
+
+  /** Effective motive for all scoped queries. CLI sets this from --motive flag. */
+  get activeMotive(): string {
+    if (this._motiveContext) return this._motiveContext;
+    return this.getMeta("active_motive") ?? "default";
+  }
+
+  /** Override the active motive for this store instance (in-memory, not persisted). */
+  setMotiveContext(slug: string): void {
+    this._motiveContext = slug;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Motive management
+  // ---------------------------------------------------------------------------
+
+  createMotive(slug: string): void {
     this.db.run(
-      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "INSERT OR IGNORE INTO motives (id, status, created_at) VALUES (?, 'active', ?)",
+      [slug, new Date().toISOString()]
+    );
+  }
+
+  listMotives(): Motive[] {
+    return this.db.query<Motive, []>("SELECT * FROM motives ORDER BY created_at").all();
+  }
+
+  getActiveMotive(): string {
+    return this.activeMotive;
+  }
+
+  /** Persistently set the active motive (written to meta table). */
+  setActiveMotive(slug: string): void {
+    this.setMeta("active_motive", slug);
+    this._motiveContext = slug;
+  }
+
+  completeMotive(slug: string): void {
+    this.db.run("UPDATE motives SET status = 'complete' WHERE id = ?", [slug]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Slices
+  // ---------------------------------------------------------------------------
+
+  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description" | "motive_id"> & { description?: string | null; motiveId?: string }): void {
+    const motiveId = slice.motiveId ?? this.activeMotive;
+    this.db.run(
+      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, created_at, motive_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [slice.id, slice.wave, slice.status, slice.description ?? null,
        slice.acceptance ?? null, slice.blocked_by ?? null,
-       slice.covers_ac ?? null, slice.decisions ?? null, new Date().toISOString()]
+       slice.covers_ac ?? null, slice.decisions ?? null, new Date().toISOString(), motiveId]
     );
   }
 
@@ -104,19 +162,80 @@ export class WorkStore {
     this.db.run("UPDATE slices SET status = 'archived' WHERE id = ?", [id]);
   }
 
-  appendEvent(event_type: string, payload: Record<string, unknown>): void {
+  getAllSlices(motiveId?: string): Slice[] {
+    const mid = motiveId ?? this.activeMotive;
+    return this.db.query<Slice, [string]>(
+      "SELECT * FROM slices WHERE motive_id = ? ORDER BY wave, id"
+    ).all(mid);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Events
+  // ---------------------------------------------------------------------------
+
+  appendEvent(event_type: string, payload: Record<string, unknown>, motiveId?: string): void {
+    const mid = motiveId ?? this.activeMotive;
     this.db.run(
-      "INSERT INTO events (event_type, payload, created_at) VALUES (?, ?, ?)",
-      [event_type, JSON.stringify(payload), new Date().toISOString()]
+      "INSERT INTO events (event_type, payload, created_at, motive_id) VALUES (?, ?, ?, ?)",
+      [event_type, JSON.stringify(payload), new Date().toISOString(), mid]
     );
   }
 
-  getEvents(event_type?: string): Event[] {
+  getEvents(event_type?: string, motiveId?: string): Event[] {
+    const mid = motiveId ?? this.activeMotive;
     if (event_type) {
-      return this.db.query<Event, [string]>("SELECT * FROM events WHERE event_type = ? ORDER BY id").all(event_type);
+      return this.db.query<Event, [string, string]>(
+        "SELECT * FROM events WHERE event_type = ? AND motive_id = ? ORDER BY id"
+      ).all(event_type, mid);
     }
-    return this.db.query<Event, []>("SELECT * FROM events ORDER BY id").all();
+    return this.db.query<Event, [string]>(
+      "SELECT * FROM events WHERE motive_id = ? ORDER BY id"
+    ).all(mid);
   }
+
+  getDecisionEvents(motiveId?: string): DecisionEvent[] {
+    const mid = motiveId ?? this.activeMotive;
+    return this.db.query<Event, [string]>(
+      "SELECT * FROM events WHERE event_type = 'DECISION' AND motive_id = ? ORDER BY id"
+    ).all(mid).map(e => {
+      let payload: Record<string, unknown> = {};
+      try { payload = JSON.parse(e.payload) as Record<string, unknown>; } catch { /* ignore */ }
+      return { id: e.id, msg: String(payload.msg ?? ""), created_at: e.created_at };
+    });
+  }
+
+  getObjective(motiveId?: string): string | null {
+    const mid = motiveId ?? this.activeMotive;
+    const ev = this.db.query<Event, [string]>(
+      "SELECT * FROM events WHERE event_type = 'OBJECTIVE' AND motive_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(mid);
+    if (!ev) return null;
+    try {
+      const p = JSON.parse(ev.payload) as Record<string, unknown>;
+      return String(p.msg ?? "");
+    } catch { return null; }
+  }
+
+  getHoldState(motiveId?: string): string | null {
+    const mid = motiveId ?? this.activeMotive;
+    const row = this.db.query<{ event_type: string; payload: string }, [string]>(
+      "SELECT event_type, payload FROM events WHERE event_type IN ('HOLD','HOLD_CLEAR') AND motive_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(mid);
+    if (!row || row.event_type === "HOLD_CLEAR") return null;
+    try { return (JSON.parse(row.payload) as { reason?: string }).reason ?? "on hold"; }
+    catch { return "on hold"; }
+  }
+
+  getLastEvent(event_type: string, motiveId?: string): Event | null {
+    const mid = motiveId ?? this.activeMotive;
+    return this.db.query<Event, [string, string]>(
+      "SELECT * FROM events WHERE event_type = ? AND motive_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(event_type, mid);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Meta (store-wide, not motive-scoped)
+  // ---------------------------------------------------------------------------
 
   getMeta(key: string): string | null {
     const row = this.db.query<{ value: string }, [string]>("SELECT value FROM meta WHERE key = ?").get(key);
@@ -126,45 +245,4 @@ export class WorkStore {
   setMeta(key: string, value: string): void {
     this.db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", [key, value]);
   }
-
-  getAllSlices(): Slice[] {
-    return this.db.query<Slice, []>("SELECT * FROM slices ORDER BY wave, id").all();
-  }
-
-  getDecisionEvents(): DecisionEvent[] {
-    return this.db.query<Event, []>(
-      "SELECT * FROM events WHERE event_type = 'DECISION' ORDER BY id"
-    ).all().map(e => {
-      let payload: Record<string, unknown> = {};
-      try { payload = JSON.parse(e.payload) as Record<string, unknown>; } catch { /* ignore */ }
-      return { id: e.id, msg: String(payload.msg ?? ""), created_at: e.created_at };
-    });
-  }
-
-  getObjective(): string | null {
-    const ev = this.db.query<Event, []>(
-      "SELECT * FROM events WHERE event_type = 'OBJECTIVE' ORDER BY id DESC LIMIT 1"
-    ).get();
-    if (!ev) return null;
-    try {
-      const p = JSON.parse(ev.payload) as Record<string, unknown>;
-      return String(p.msg ?? "");
-    } catch { return null; }
-  }
-
-  getHoldState(): string | null {
-    const row = this.db.query<{ event_type: string; payload: string }, []>(
-      "SELECT event_type, payload FROM events WHERE event_type IN ('HOLD','HOLD_CLEAR') ORDER BY id DESC LIMIT 1"
-    ).get();
-    if (!row || row.event_type === "HOLD_CLEAR") return null;
-    try { return (JSON.parse(row.payload) as { reason?: string }).reason ?? "on hold"; }
-    catch { return "on hold"; }
-  }
-
-  getLastEvent(event_type: string): Event | null {
-    return this.db.query<Event, [string]>(
-      "SELECT * FROM events WHERE event_type = ? ORDER BY id DESC LIMIT 1"
-    ).get(event_type);
-  }
-
 }

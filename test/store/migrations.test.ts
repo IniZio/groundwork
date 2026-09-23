@@ -63,6 +63,7 @@ describe("migration runner", () => {
     expect(tables).toContain("events");
     expect(tables).toContain("meta");
     expect(tables).toContain("schema_version");
+    expect(tables).toContain("motives");
     // decisions and charter dropped in migration v4
     expect(tables).not.toContain("decisions");
     expect(tables).not.toContain("charter");

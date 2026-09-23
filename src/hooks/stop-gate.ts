@@ -169,31 +169,95 @@ function writeCount(f: string, n: number): void {
 }
 function resetCount(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
 
+export interface MotiveStatus {
+  motiveId: string;
+  incomplete: number;
+  incompleteIds: string[];
+  approved: boolean;
+  holdActive: boolean;
+}
+
 export function checkStore(dbPath: string): {
   sliceCount: number; incomplete: number; incompleteIds: string[]; approved: boolean; holdActive: boolean;
+  motiveDetails: MotiveStatus[];
 } {
   const db = new Database(dbPath, { readonly: true });
   try {
     const sliceCount = db.query<{ n: number }, []>(
       "SELECT COUNT(*) AS n FROM slices"
     ).get()?.n ?? 0;
-    const incomplete = db.query<{ n: number }, []>(
-      "SELECT COUNT(*) AS n FROM slices WHERE status IN ('pending','in_progress')"
-    ).get()?.n ?? 0;
-    const incompleteIds = db.query<{ id: string }, []>(
-      "SELECT id FROM slices WHERE status IN ('pending','in_progress') ORDER BY id LIMIT 10"
-    ).all().map(r => r.id);
-    const approveCount = db.query<{ n: number }, []>(
-      "SELECT COUNT(*) AS n FROM events WHERE event_type='GATE_APPROVE'"
-    ).get()?.n ?? 0;
-    const holdId = db.query<{ max_id: number | null }, []>(
+
+    // Check whether the motives table exists (migration 5+).
+    const hasMotives = (db.query<{ n: number }, []>(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='motives'"
+    ).get()?.n ?? 0) > 0;
+
+    let motiveIds: string[];
+    if (hasMotives) {
+      const rows = db.query<{ id: string }, []>(
+        `SELECT DISTINCT s.motive_id AS id FROM slices s
+         JOIN motives m ON m.id = s.motive_id
+         WHERE m.status != 'complete'
+         ORDER BY s.motive_id`
+      ).all();
+      motiveIds = rows.map(r => r.id);
+    } else {
+      motiveIds = ["default"];
+    }
+
+    const motiveDetails: MotiveStatus[] = motiveIds.map(motiveId => {
+      if (hasMotives) {
+        const inc = db.query<{ n: number }, [string]>(
+          "SELECT COUNT(*) AS n FROM slices WHERE status IN ('pending','in_progress') AND motive_id = ?"
+        ).get(motiveId)?.n ?? 0;
+        const incIds = db.query<{ id: string }, [string]>(
+          "SELECT id FROM slices WHERE status IN ('pending','in_progress') AND motive_id = ? ORDER BY id LIMIT 10"
+        ).all(motiveId).map(r => r.id);
+        const approveCount = db.query<{ n: number }, [string]>(
+          "SELECT COUNT(*) AS n FROM events WHERE event_type='GATE_APPROVE' AND motive_id = ?"
+        ).get(motiveId)?.n ?? 0;
+        const holdId = db.query<{ max_id: number | null }, [string]>(
+          "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD' AND motive_id = ?"
+        ).get(motiveId)?.max_id ?? null;
+        const clearId = db.query<{ max_id: number | null }, [string]>(
+          "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR' AND motive_id = ?"
+        ).get(motiveId)?.max_id ?? null;
+        const holdActive = holdId !== null && (clearId === null || holdId > clearId);
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approveCount > 0, holdActive };
+      } else {
+        // Legacy schema without motive_id column.
+        const inc = db.query<{ n: number }, []>(
+          "SELECT COUNT(*) AS n FROM slices WHERE status IN ('pending','in_progress')"
+        ).get()?.n ?? 0;
+        const incIds = db.query<{ id: string }, []>(
+          "SELECT id FROM slices WHERE status IN ('pending','in_progress') ORDER BY id LIMIT 10"
+        ).all().map(r => r.id);
+        const approveCount = db.query<{ n: number }, []>(
+          "SELECT COUNT(*) AS n FROM events WHERE event_type='GATE_APPROVE'"
+        ).get()?.n ?? 0;
+        const holdId = db.query<{ max_id: number | null }, []>(
+          "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD'"
+        ).get()?.max_id ?? null;
+        const clearId = db.query<{ max_id: number | null }, []>(
+          "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
+        ).get()?.max_id ?? null;
+        const holdActive = holdId !== null && (clearId === null || holdId > clearId);
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approveCount > 0, holdActive };
+      }
+    });
+
+    const incomplete = motiveDetails.reduce((s, m) => s + m.incomplete, 0);
+    const incompleteIds = motiveDetails.flatMap(m => m.incompleteIds).slice(0, 10);
+    const approved = motiveDetails.length > 0 && motiveDetails.every(m => m.approved);
+    const globalHoldId = db.query<{ max_id: number | null }, []>(
       "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD'"
     ).get()?.max_id ?? null;
-    const clearId = db.query<{ max_id: number | null }, []>(
+    const globalClearId = db.query<{ max_id: number | null }, []>(
       "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
     ).get()?.max_id ?? null;
-    const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-    return { sliceCount, incomplete, incompleteIds, approved: approveCount > 0, holdActive };
+    const holdActive = globalHoldId !== null && (globalClearId === null || globalHoldId > globalClearId);
+
+    return { sliceCount, incomplete, incompleteIds, approved, holdActive, motiveDetails };
   } finally {
     db.close();
   }
@@ -274,7 +338,7 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     if (!dbPath) return allow("stop-gate: no active work store — session may end");
 
     const compute = (): { result: HookResult; yieldResult: string | null } => {
-      const { sliceCount, incomplete, incompleteIds, approved, holdActive } = checkStore(dbPath);
+      const { sliceCount, incomplete, incompleteIds, approved, holdActive, motiveDetails } = checkStore(dbPath);
       const cf = countFile(dbPath, sessionId);
       if (holdActive) {
         resetCount(cf);
@@ -303,7 +367,17 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
         return { result: block("stop-gate: condition appears externally unresolvable — stop trying; resolve store state manually before continuing."), yieldResult: null };
       }
       if (incomplete > 0) {
-        const ids = incompleteIds.join(", ");
+        const multiMotive = motiveDetails.length > 1;
+        let ids: string;
+        if (multiMotive) {
+          // Name each motive that has incomplete slices.
+          const parts = motiveDetails
+            .filter(m => m.incomplete > 0)
+            .map(m => `${m.motiveId}: [${m.incompleteIds.join(", ")}]`);
+          ids = parts.join("; ");
+        } else {
+          ids = incompleteIds.join(", ");
+        }
         return { result: block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "<why>"\` to stop for a human.`), yieldResult: null };
       }
       return { result: block("stop-gate: no GATE_APPROVE event recorded. Record an advisor approval before ending."), yieldResult: null };

@@ -88,4 +88,22 @@ export const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS charter;
     `,
   },
+  {
+    version: 5,
+    description: "T11: multi-motive store — motives table, motive_id scoping on slices and events",
+    up: `
+      CREATE TABLE motives (
+        id         TEXT PRIMARY KEY,
+        status     TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL
+      );
+
+      INSERT OR IGNORE INTO motives (id, status, created_at) VALUES ('default', 'active', datetime('now'));
+
+      ALTER TABLE slices ADD COLUMN motive_id TEXT NOT NULL DEFAULT 'default';
+      ALTER TABLE events ADD COLUMN motive_id TEXT NOT NULL DEFAULT 'default';
+
+      INSERT OR IGNORE INTO meta (key, value) VALUES ('active_motive', 'default');
+    `,
+  },
 ];

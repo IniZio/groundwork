@@ -58,6 +58,31 @@ Resume view: objective, decisions, open slices, last PAUSE, gate state, hold sta
 | 5 | `bin/journal compile --json` | `gw compile --json` |
 | 4 | `gw-hook ledger abandon --motive` | `gw slice rm` |
 
+## Multi-motive design (T11)
+
+**Structure.** A `motives` table holds slugs + status. Slices and events carry a `motive_id` column (DEFAULT `'default'`). The active motive pointer is stored in `meta['active_motive']`.
+
+**Token.** One token per store. All motives in a store share the same write token.
+
+**Stop-gate.** Evaluates every active motive that has at least one slice. Blocks if any motive has incomplete slices or no `GATE_APPROVE`. Block message names which motive has incomplete slices. `HOLD` is checked globally (any event in the store, not per-motive) because it is a session-level signal.
+
+**Migration 5.** Adds `motives` table, inserts `'default'` row, adds `motive_id TEXT NOT NULL DEFAULT 'default'` to `slices` and `events`. Existing rows silently inherit `motive_id = 'default'`. Sets `meta['active_motive'] = 'default'`.
+
+### `gw --motive <slug> <command>`
+Global flag parsed before subcommand. Targets all reads and writes at `<slug>` instead of the active motive.
+
+### `gw motive add <slug> [--use] --token T`
+Creates a new motive. `--use` sets it as active.
+
+### `gw motive use <slug> --token T`
+Persistently sets the active motive (written to `meta['active_motive']`).
+
+### `gw motive list`
+Lists all motives; marks the active one with `*`.
+
+### `gw motive complete <slug> --token T`
+Marks the motive complete (excluded from future stop-gate evaluation).
+
 ## Event types
 
 Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event append` and `gw compile`.

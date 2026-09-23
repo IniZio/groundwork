@@ -218,6 +218,75 @@ describe("token guard", () => {
   });
 });
 
+describe("multi-motive CLI", () => {
+  it("--motive scopes slice add and compile to that motive", () => {
+    run(["--motive", "default", "motive", "add", "alpha", "--use", "--token", tok], dir);
+    run(["--motive", "alpha", "slice", "add", "A-1", "--token", tok], dir);
+    run(["--motive", "default", "slice", "add", "D-1", "--token", tok], dir);
+
+    const ca = run(["--motive", "alpha", "compile"], dir);
+    expect(ca.stdout).toContain("A-1");
+    expect(ca.stdout).not.toContain("D-1");
+
+    const cd = run(["--motive", "default", "compile"], dir);
+    expect(cd.stdout).toContain("D-1");
+    expect(cd.stdout).not.toContain("A-1");
+  });
+
+  it("compile shows the active motive name", () => {
+    const c = run(["compile"], dir);
+    expect(c.stdout).toContain("motive:");
+    expect(c.stdout).toContain("default");
+  });
+
+  it("motive list shows all motives with active marker", () => {
+    run(["motive", "add", "work", "--token", tok], dir);
+    const r = run(["motive", "list"], dir);
+    expect(r.stdout).toContain("default");
+    expect(r.stdout).toContain("work");
+    expect(r.stdout).toMatch(/\* default/);
+  });
+
+  it("motive use switches active motive", () => {
+    run(["motive", "add", "next", "--token", tok], dir);
+    run(["motive", "use", "next", "--token", tok], dir);
+    const r = run(["motive", "list"], dir);
+    expect(r.stdout).toMatch(/\* next/);
+  });
+
+  it("migration v5: old-schema store (pre-motives) migrates with counts preserved", () => {
+    const { Database } = require("bun:sqlite") as typeof import("bun:sqlite");
+    const { runMigrations } = require("../../src/store/migrations.js") as typeof import("../../src/store/migrations.js");
+    const { MIGRATIONS } = require("../../src/store/schema.js") as typeof import("../../src/store/schema.js");
+
+    const migsV4 = MIGRATIONS.filter((m: { version: number }) => m.version <= 4);
+    const db = new Database(":memory:");
+    runMigrations(db, migsV4);
+
+    db.run("INSERT INTO slices (id, wave, status, created_at) VALUES ('S-old', 1, 'pending', '2024-01-01')");
+    db.run("INSERT INTO events (event_type, payload, created_at) VALUES ('DECISION', '{\"msg\":\"keep\"}', '2024-01-01')");
+
+    runMigrations(db, MIGRATIONS);
+
+    const tables = db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'").all().map((r: { name: string }) => r.name);
+    expect(tables).toContain("motives");
+
+    const slices = db.query<{ id: string; motive_id: string }, []>("SELECT id, motive_id FROM slices").all();
+    expect(slices).toHaveLength(1);
+    expect(slices[0].id).toBe("S-old");
+    expect(slices[0].motive_id).toBe("default");
+
+    const events = db.query<{ motive_id: string }, []>("SELECT motive_id FROM events WHERE event_type='DECISION'").all();
+    expect(events).toHaveLength(1);
+    expect(events[0].motive_id).toBe("default");
+
+    const motives = db.query<{ id: string }, []>("SELECT id FROM motives").all();
+    expect(motives.some((m: { id: string }) => m.id === "default")).toBe(true);
+
+    db.close();
+  });
+});
+
 describe("stop-gate seam", () => {
   it("incomplete slice → block with gw slice complete hint", () => {
     run(["slice", "add", "SG-1", "--token", tok], dir);

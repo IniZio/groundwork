@@ -387,6 +387,70 @@ describe("stop-gate — yield detection (T05)", () => {
     expect(withoutField).toBeNull();      // no signal at all → null (proves fallback can't see this)
   });
 
+  it("MULTI-MOTIVE: completing and approving motive A does not release gate when motive B has incomplete slices", () => {
+    const { db, dbPath } = makeDb("multi-motive-ab");
+    const now = new Date().toISOString();
+
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-a', 'active', ?)", [now]);
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-b', 'active', ?)", [now]);
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'motive-a')",
+      [now, now]);
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'motive-a')", [now]);
+    db.run("INSERT INTO slices (id,wave,status,created_at,motive_id) VALUES ('B1',1,'pending',?,'motive-b')", [now]);
+    db.close();
+
+    const result = run({ session_id: "t-multi" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toContain("incomplete");
+    expect(String(out.reason)).toContain("motive-b");
+  });
+
+  it("MULTI-MOTIVE: all motives complete + all have GATE_APPROVE → allow", () => {
+    const { db, dbPath } = makeDb("multi-motive-both-done");
+    const now = new Date().toISOString();
+
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('alpha', 'active', ?)", [now]);
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('beta', 'active', ?)", [now]);
+
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'alpha')",
+      [now, now]);
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'alpha')", [now]);
+
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('B1',1,'complete',?,?,'beta')",
+      [now, now]);
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'beta')", [now]);
+
+    db.close();
+
+    const result = run({ session_id: "t-both-done" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(out.continue).toBe(true);
+  });
+
+  it("MULTI-MOTIVE BITE-PROOF: ignoring motive scope hides B's incomplete slices — gate would falsely allow", () => {
+    const { db, dbPath } = makeDb("multi-motive-bite");
+    const now = new Date().toISOString();
+
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-a', 'active', ?)", [now]);
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-b', 'active', ?)", [now]);
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'motive-a')",
+      [now, now]);
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'motive-a')", [now]);
+    db.run("INSERT INTO slices (id,wave,status,created_at,motive_id) VALUES ('B1',1,'pending',?,'motive-b')", [now]);
+    db.close();
+
+    const { motiveDetails, incomplete, approved } = checkStore(dbPath);
+    expect(incomplete).toBeGreaterThan(0);
+    const bStatus = motiveDetails.find(m => m.motiveId === "motive-b");
+    expect(bStatus).toBeDefined();
+    expect(bStatus!.incomplete).toBe(1);
+    expect(bStatus!.approved).toBe(false);
+    const aStatus = motiveDetails.find(m => m.motiveId === "motive-a");
+    expect(aStatus!.approved).toBe(true);
+    expect(approved).toBe(false);
+  });
+
   it("BITE-PROOF: extractBackgroundAgentIds and detectYield are sensitive to the real fixture shapes", () => {
     const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
     const completedPath = path.join(FIXTURES, "stop-gate-completed.jsonl");

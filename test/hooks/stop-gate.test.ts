@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
 import path from "node:path";
-import { run, checkStore, detectYield, extractBackgroundAgentIds } from "../../src/hooks/stop-gate.js";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { run, checkStore, detectYield, extractBackgroundAgentIds, getCurrentHead } from "../../src/hooks/stop-gate.js";
 import { WorkStore } from "../../src/store/store.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
@@ -592,5 +594,113 @@ describe("stop-gate — verdict logic (T13)", () => {
     // newest verdict is CORRECTION → not approved
     expect(motiveDetails[0]?.approved ?? approved).toBe(false);
     expect(approved).toBe(false);
+  });
+});
+
+describe("stop-gate — HEAD binding (T14)", () => {
+  let gitDir: string;
+  let dbPath: string;
+
+  function initGitRepo(): { gitDir: string; dbPath: string; initialHead: string } {
+    const d = mkdtempSync(path.join(tmpdir(), "gw-head-test-"));
+    spawnSync("git", ["init", "--initial-branch=main", d], { encoding: "utf8" });
+    spawnSync("git", ["config", "user.email", "test@test.com"], { cwd: d, encoding: "utf8" });
+    spawnSync("git", ["config", "user.name", "Test"], { cwd: d, encoding: "utf8" });
+    Bun.write(path.join(d, "README.md"), "init");
+    spawnSync("git", ["add", "README.md"], { cwd: d, encoding: "utf8" });
+    spawnSync("git", ["commit", "-m", "init"], { cwd: d, encoding: "utf8" });
+    const initialHead = spawnSync("git", ["rev-parse", "HEAD"], { cwd: d, encoding: "utf8" }).stdout.trim();
+    const dbP = path.join(d, ".groundwork", "work.db");
+    mkdirSync(path.join(d, ".groundwork"), { recursive: true });
+    return { gitDir: d, dbPath: dbP, initialHead };
+  }
+
+  function makeCommit(d: string): string {
+    Bun.write(path.join(d, `c-${Date.now()}.txt`), "change");
+    spawnSync("git", ["add", "-A"], { cwd: d, encoding: "utf8" });
+    spawnSync("git", ["commit", "-m", "new commit"], { cwd: d, encoding: "utf8" });
+    return spawnSync("git", ["rev-parse", "HEAD"], { cwd: d, encoding: "utf8" }).stdout.trim();
+  }
+
+  function makeStoreDb(dbP: string) {
+    const store_db = new Database(dbP);
+    store_db.exec("PRAGMA journal_mode=WAL");
+    return store_db;
+  }
+
+  afterEach(() => {
+    if (gitDir && existsSync(gitDir)) rmSync(gitDir, { recursive: true, force: true });
+  });
+
+  it("approve → stop-gate allows (no new commit, no new slices)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    sdb.close();
+    const out = JSON.parse(run({ cwd: d, session_id: "t-head-ok" }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.continue).toBe(true);
+  });
+
+  it("approve → new commit → stop-gate blocks with 'HEAD moved'", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    sdb.close();
+    makeCommit(d);
+    const out = JSON.parse(run({ cwd: d, session_id: "t-head-moved" }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/HEAD moved/i);
+  });
+
+  it("approve → slice added after approval → stop-gate blocks with 'slice added'", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const past = new Date(Date.now() - 5000).toISOString();
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S2',1,'complete',?,?)", [now, now]);
+    sdb.close();
+    const out = JSON.parse(run({ cwd: d, session_id: "t-slice-added" }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toMatch(/slice.*added/i);
+  });
+
+  it("no git repo → approval honoured (HEAD binding skipped)", () => {
+    const d = mkdtempSync(path.join(tmpdir(), "gw-nogit-test-"));
+    gitDir = d; dbPath = path.join(d, ".groundwork", "work.db");
+    mkdirSync(path.join(d, ".groundwork"), { recursive: true });
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: "abc123" }), now]);
+    sdb.close();
+    const out = JSON.parse(run({ cwd: d, session_id: "t-nogit" }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.continue).toBe(true);
+  });
+
+  it("BITE-PROOF: HEAD moved test goes red when comparison removed", () => {
+    const { gitDir: d, initialHead } = initGitRepo();
+    gitDir = d; dbPath = path.join(d, ".groundwork", "work.db");
+    const newHead = makeCommit(d);
+    expect(initialHead).not.toBe(newHead);
+    const currentHead = getCurrentHead(d);
+    expect(currentHead).toBe(newHead);
+    expect(currentHead).not.toBe(initialHead);
   });
 });

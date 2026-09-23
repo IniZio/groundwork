@@ -3,6 +3,7 @@ import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
 import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
 
@@ -14,6 +15,15 @@ function flag(args: string[], name: string): string | undefined {
 
 function boolFlag(args: string[], name: string): boolean {
   return args.includes(name);
+}
+
+/** Returns the current git HEAD SHA, or null if not a git repo or git unavailable. */
+function getGitHead(cwd: string): string | null {
+  try {
+    const r = spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd, encoding: "utf8", timeout: 3000 });
+    if (r.status !== 0) return null;
+    return (r.stdout ?? "").trim() || null;
+  } catch { return null; }
 }
 
 function dbPath(): string {
@@ -216,7 +226,15 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   const eventType = `GATE_${upper}`;
-  store.appendEvent(eventType, { citation });
+  const payload: Record<string, unknown> = { citation };
+  if (upper === "APPROVE") {
+    const head = getGitHead(process.cwd());
+    if (head) {
+      payload.base_commit = head;
+    }
+    // If not a git repo, base_commit is omitted and HEAD binding is skipped by the stop-gate.
+  }
+  store.appendEvent(eventType, payload);
   process.stdout.write(`${eventType} recorded  citation: ${citation}\n`);
   store.close();
 }
@@ -242,6 +260,13 @@ function cmdHoldClear(args: string[], motiveSlug?: string): void {
 function cmdEventAppend(args: string[], motiveSlug?: string): void {
   const type = flag(args, "--type");
   if (!type) { process.stderr.write(`usage: ${gw} event append --type TYPE [--msg TEXT] [--data JSON] --token T\n`); process.exit(1); }
+  // Gate verdict types must go through `$GW gate <verdict>` with a citation.
+  const gatePrefix = "GATE_";
+  if (type.startsWith(gatePrefix)) {
+    const verdictLower = type.slice(gatePrefix.length).toLowerCase();
+    process.stderr.write(`error: gate verdict types cannot be appended directly — use \`$GW gate ${verdictLower}\` with --citation\n`);
+    process.exit(1);
+  }
   if (!(EVENT_TYPES as readonly string[]).includes(type)) {
     process.stderr.write(`error: unknown event type '${type}'\nvalid: ${EVENT_TYPES.join(", ")}\n`);
     process.exit(1);

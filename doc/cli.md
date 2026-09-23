@@ -43,6 +43,8 @@ A `correction`, `stop`, `gaps`, or `replan` recorded after an `approve` closes t
 | `gaps`      | `GATE_GAPS`       | Closes gate    |
 | `replan`    | `GATE_REPLAN`     | Closes gate    |
 
+**HEAD binding (approve only):** `gw gate approve` records the current git HEAD SHA as `base_commit` in the event payload. The stop-gate treats the approval as void if (a) the repo's HEAD has moved since approval, or (b) a slice was added to the motive after the approval was recorded. In both cases the stop-gate names which condition applies. Uncommitted working-tree changes do not void an approval — only HEAD moving (a new commit) does. If the working directory is not inside a git repository, HEAD binding is skipped and the approval is honoured as-is.
+
 ### `gw hold set --reason "..." --token T`
 Records a `HOLD` event. Hold reason appears in `gw slice status`.
 
@@ -50,7 +52,7 @@ Records a `HOLD` event. Hold reason appears in `gw slice status`.
 Records a `HOLD_CLEAR` event.
 
 ### `gw event append --type TYPE [--msg TEXT] [--data JSON] --token T`
-Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list.
+Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate verdict types (`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`) are rejected — use `gw gate <verdict>` instead.
 
 ### `gw compile [--json]`
 Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.

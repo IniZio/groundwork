@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // Yield detection — allow stop when background Agents are still in-flight
@@ -175,6 +176,21 @@ export interface MotiveStatus {
   incompleteIds: string[];
   approved: boolean;
   holdActive: boolean;
+  /** SHA recorded in GATE_APPROVE payload, or null if absent/not recorded. */
+  approvalBaseCommit: string | null;
+  /** created_at of the newest GATE_APPROVE event, or null if no approval. */
+  approvalCreatedAt: string | null;
+  /** True when a slice was inserted into this motive after the approval event. */
+  sliceAddedAfterApproval: boolean;
+}
+
+/** Returns the current git HEAD SHA for a given directory, or null if not a git repo or git unavailable. */
+export function getCurrentHead(cwd: string): string | null {
+  try {
+    const r = spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd, encoding: "utf8", timeout: 3000 });
+    if (r.status !== 0) return null;
+    return (r.stdout ?? "").trim() || null;
+  } catch { return null; }
 }
 
 export function checkStore(dbPath: string): {
@@ -213,10 +229,25 @@ export function checkStore(dbPath: string): {
         const incIds = db.query<{ id: string }, [string]>(
           "SELECT id FROM slices WHERE status IN ('pending','in_progress') AND motive_id = ? ORDER BY id LIMIT 10"
         ).all(motiveId).map(r => r.id);
-        const newestGate = db.query<{ event_type: string }, [string]>(
-          "SELECT event_type FROM events WHERE event_type IN ('GATE_APPROVE','GATE_CORRECTION','GATE_STOP','GATE_GAPS','GATE_REPLAN') AND motive_id = ? ORDER BY id DESC LIMIT 1"
+        const newestGate = db.query<{ event_type: string; payload: string; created_at: string }, [string]>(
+          "SELECT event_type, payload, created_at FROM events WHERE event_type IN ('GATE_APPROVE','GATE_CORRECTION','GATE_STOP','GATE_GAPS','GATE_REPLAN') AND motive_id = ? ORDER BY id DESC LIMIT 1"
         ).get(motiveId);
         const approved = newestGate?.event_type === "GATE_APPROVE";
+        let approvalBaseCommit: string | null = null;
+        let approvalCreatedAt: string | null = null;
+        let sliceAddedAfterApproval = false;
+        if (approved && newestGate) {
+          approvalCreatedAt = newestGate.created_at;
+          try {
+            const p = JSON.parse(newestGate.payload) as Record<string, unknown>;
+            approvalBaseCommit = typeof p.base_commit === "string" ? p.base_commit : null;
+          } catch { /* ok */ }
+          // Check if any slice was inserted after the approval event.
+          const sliceAfter = db.query<{ n: number }, [string, string]>(
+            "SELECT COUNT(*) AS n FROM slices WHERE motive_id = ? AND created_at > ?"
+          ).get(motiveId, newestGate.created_at)?.n ?? 0;
+          sliceAddedAfterApproval = sliceAfter > 0;
+        }
         const holdId = db.query<{ max_id: number | null }, [string]>(
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD' AND motive_id = ?"
         ).get(motiveId)?.max_id ?? null;
@@ -224,7 +255,7 @@ export function checkStore(dbPath: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR' AND motive_id = ?"
         ).get(motiveId)?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved, holdActive };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved, holdActive, approvalBaseCommit, approvalCreatedAt, sliceAddedAfterApproval };
       } else {
         // Legacy schema without motive_id column.
         const inc = db.query<{ n: number }, []>(
@@ -244,7 +275,7 @@ export function checkStore(dbPath: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
         ).get()?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approvedLegacy, holdActive };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approvedLegacy, holdActive, approvalBaseCommit: null, approvalCreatedAt: null, sliceAddedAfterApproval: false };
       }
     });
 
@@ -351,6 +382,17 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
         return { result: allow("stop-gate: no slices in store — nothing to gate"), yieldResult: null };
       }
       if (incomplete === 0 && approved) {
+        // Check per-motive HEAD binding before releasing.
+        const currentHead = getCurrentHead(cwd ?? process.cwd());
+        for (const m of motiveDetails) {
+          if (!m.approved) continue;
+          if (m.sliceAddedAfterApproval) {
+            return { result: block(`stop-gate: APPROVE for motive '${m.motiveId}' is void — a slice was added after the approval. Re-run \`$GW gate approve\`.`), yieldResult: null };
+          }
+          if (m.approvalBaseCommit && currentHead && m.approvalBaseCommit !== currentHead) {
+            return { result: block(`stop-gate: APPROVE for motive '${m.motiveId}' is void — HEAD moved (approved at ${m.approvalBaseCommit.slice(0, 7)}, now ${currentHead.slice(0, 7)}). Re-run \`$GW gate approve\`.`), yieldResult: null };
+          }
+        }
         resetCount(cf);
         return { result: allow("stop-gate: all slices complete, gate approved"), yieldResult: null };
       }

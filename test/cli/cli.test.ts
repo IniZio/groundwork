@@ -152,10 +152,25 @@ describe("hold state", () => {
 });
 
 describe("event append", () => {
-  it("every EVENT_TYPES entry appends without error", () => {
+  it("every non-gate EVENT_TYPES entry appends without error", () => {
     for (const type of EVENT_TYPES) {
+      if (type.startsWith("GATE_")) continue;
       const r = run(["event", "append", "--type", type, "--msg", `test ${type}`, "--token", tok], dir);
       expect(r.exitCode).toBe(0);
+    }
+  });
+
+  it("GATE_APPROVE via event append exits non-zero naming gate approve command", () => {
+    const r = run(["event", "append", "--type", "GATE_APPROVE", "--token", tok], dir);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toContain("gate approve");
+  });
+
+  it("all GATE_* types rejected by event append", () => {
+    for (const type of ["GATE_APPROVE", "GATE_CORRECTION", "GATE_STOP", "GATE_GAPS", "GATE_REPLAN"]) {
+      const r = run(["event", "append", "--type", type, "--token", tok], dir);
+      expect(r.exitCode).not.toBe(0);
+      expect(r.stderr).toContain("gate");
     }
   });
 

@@ -44,7 +44,7 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 
 - **Intent routing** — classifies requests and fans out to the right agent type
 - **Work store + stop-gate** — SQLite slice/decision/event store with a stop-gate that blocks when work is open
-- **Enforcement hooks** — five hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate)
+- **Enforcement hooks** — six hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate, comment-density-gate)
 - **Convention adaptation** — DETECT → CONFIRM → WRITE to per-repo convention files
 - **Advisor gate** — evidence-graded APPROVE/CORRECTION/STOP verdicts before completion
 - **Session continuity** — SessionStart hook restores context across sessions

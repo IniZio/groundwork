@@ -91,7 +91,11 @@ Blocks session end while any slice ≠ complete OR no GATE_APPROVE event. After 
 
 ## New-code-gate
 
-Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <name>\`). No active rules → always allows.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <name>\`). No active rules → always allows.
+
+## Comment-density-gate
+
+Blocks at Stop/SubagentStop when a file changed in the session exceeds 5 effective comment lines per 100 added lines. Remove restate comments; keep only one-line "why" comments. Releases after 4 identical blocks.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

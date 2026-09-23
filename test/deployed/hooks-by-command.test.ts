@@ -76,8 +76,34 @@ function makeTempRepo(label: string): string {
   return dir;
 }
 
+function makeParityDensitySetup(): { parityDensityTranscript: string } {
+  const dir = path.join(tmpDir, "repo-cdg");
+  mkdirSync(dir, { recursive: true });
+  execSync("git init -q", { cwd: dir });
+  execSync('git config user.email "test@example.com"', { cwd: dir });
+  execSync('git config user.name "Test"', { cwd: dir });
+  execSync("git commit --allow-empty -m base", { cwd: dir });
+  const FIXTURES = path.join(ROOT, "test/fixtures/comment-density/nexus-probe");
+  for (const name of ["Dockerfile", "probe.sh"]) {
+    writeFileSync(path.join(dir, name), readFileSync(path.join(FIXTURES, name), "utf8"));
+  }
+  execSync("git add . && git commit -m 'add fixtures'", { cwd: dir });
+  const transcriptPath = path.join(tmpDir, "parity-cdg.jsonl");
+  const entries = ["Dockerfile", "probe.sh"].map(name =>
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Write", input: { file_path: path.join(dir, name), content: "x" } }] },
+      timestamp: "2020-01-01T00:00:00.000Z",
+      cwd: dir,
+    })
+  );
+  writeFileSync(transcriptPath, entries.join("\n") + "\n");
+  return { parityDensityTranscript: transcriptPath };
+}
+
 const parityStopGateDb = makeTempDb("parity-sg");
 const parityNewCodeRepo = makeTempRepo("parity-ncg");
+const { parityDensityTranscript } = makeParityDensitySetup();
 
 afterAll(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ } });
 
@@ -119,6 +145,10 @@ describe("event-output contract — every (event, command) pair must produce the
     "src/hooks/new-code-gate.ts": [
       { cwd: parityNewCodeRepo }, {}
     ],
+    "src/hooks/comment-density-gate.ts": [
+      { event: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
+      {}
+    ],
   };
 
   for (const { cmd, event } of allCommands()) {
@@ -136,6 +166,14 @@ describe("event-output contract — every (event, command) pair must produce the
       }
     });
   }
+
+  it("every Stop/SubagentStop hook has a triggering payload", () => {
+    for (const { cmd, event } of allCommands()) {
+      if (!STOP_EVENTS.has(event)) continue;
+      const key = Object.keys(triggeringPayloads).find(k => cmd.includes(k));
+      expect(key, `${cmd} [${event}] has no triggering payload`).toBeDefined();
+    }
+  });
 });
 
 describe("deployed — piped-exit-code-guard (PreToolUse/Bash)", () => {

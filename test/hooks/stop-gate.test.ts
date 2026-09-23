@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { run, checkStore, detectYield, extractBackgroundAgentIds } from "../../src/hooks/stop-gate.js";
+import { WorkStore } from "../../src/store/store.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
 
@@ -511,27 +512,40 @@ describe("stop-gate — verdict logic (T13)", () => {
     expect(out.continue).toBe(true);
   });
 
-  it("per-motive isolation — motive A CORRECTION does not affect motive B gate", () => {
-    // Motive A: complete slice + APPROVE then CORRECTION → A is closed
-    const { db: dbA, dbPath: dbPathA } = makeDb("motive-a");
-    dbA.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
-      [new Date().toISOString(), new Date().toISOString()]);
-    dbA.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
-    dbA.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
-    dbA.close();
+  it("per-motive isolation — ONE store, two motives: CORRECTION on A doesn't affect B", () => {
+    const { dbPath } = makeDb("one-store-two-motives");
+    const store = new WorkStore(dbPath);
+    store.createMotive("ma");
+    store.createMotive("mb");
 
-    // Motive B: complete slice + APPROVE only → B is open
-    const { db: dbB, dbPath: dbPathB } = makeDb("motive-b");
-    dbB.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
-      [new Date().toISOString(), new Date().toISOString()]);
-    dbB.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
-    dbB.close();
+    // Complete slice for motive A; APPROVE then CORRECTION
+    store.setMotiveContext("ma");
+    store.insertSlice({ id: "SA", wave: 1, status: "pending", covers_ac: null, decisions: null, acceptance: null, blocked_by: null });
+    store.completeSlice("SA");
+    store.appendEvent("GATE_APPROVE", { citation: "src/x.ts:1" });
+    store.appendEvent("GATE_CORRECTION", { citation: "src/x.ts:2" });
 
-    const rA = run({ session_id: "t-iso-a" }, { GROUNDWORK_DB: dbPathA });
-    const rB = run({ session_id: "t-iso-b" }, { GROUNDWORK_DB: dbPathB });
+    store.setMotiveContext("mb");
+    store.insertSlice({ id: "SB", wave: 1, status: "pending", covers_ac: null, decisions: null, acceptance: null, blocked_by: null });
+    store.completeSlice("SB");
+    store.appendEvent("GATE_APPROVE", { citation: "src/y.ts:1" });
 
-    expect(JSON.parse(rA.stdout).decision).toBe("block");   // A closed by CORRECTION
-    expect(JSON.parse(rB.stdout).continue).toBe(true);      // B unaffected
+    expect(store.getNewestGateVerdict("ma")?.event_type).toBe("GATE_CORRECTION");
+    expect(store.getNewestGateVerdict("mb")?.event_type).toBe("GATE_APPROVE");
+
+    store.close();
+
+    const { approved, motiveDetails } = checkStore(dbPath);
+    const ma = motiveDetails.find(m => m.motiveId === "ma");
+    const mb = motiveDetails.find(m => m.motiveId === "mb");
+    expect(ma?.approved).toBe(false);
+    expect(mb?.approved).toBe(true);
+    expect(approved).toBe(false);
+
+    const result = run({ session_id: "t-iso-single" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toContain("ma");
   });
 
   it("STOP verdict → gate closed", () => {

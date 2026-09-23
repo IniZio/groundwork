@@ -16,7 +16,7 @@
 | Verify/gate | `groundwork:qa`, `groundwork:advisor` |
 | Motive | /motive, /pause, /continue |
 
-Unknown location → `groundwork:explore`; never Read/Grep/Glob code yourself.
+Unknown location → `groundwork:explore`; never Read/Grep/Glob or run grep/rg/find/git-grep/ag yourself.
 Bug → `groundwork:debugger`; never diagnose inline.
-Fan out all independent agents in ONE message. End turn after dispatching.
+Fan out agents in ONE message; end turn.
 Tickets: user runs `/to-tickets`; then load `/vertical-slice` without asking.

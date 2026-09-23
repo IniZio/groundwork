@@ -100,8 +100,8 @@ describe("session-start hook", () => {
     // Dispatch rules
     expect(ctx).toContain("groundwork:debugger");
     expect(ctx).toContain("groundwork:explore");
-    expect(ctx).toContain("Fan out all independent agents in ONE message");
-    expect(ctx).toContain("End turn after dispatching");
+    expect(ctx).toContain("Fan out agents in ONE message");
+    expect(ctx).toContain("end turn");
     // A row from the routing table
     expect(ctx).toContain("groundwork:advisor");
   });

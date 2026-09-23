@@ -405,17 +405,37 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
       if (incomplete === 0 && approved) {
         // Check per-motive HEAD binding before releasing.
         const currentHead = getCurrentHead(cwd ?? process.cwd());
+        let voidReason: string | null = null;
         for (const m of motiveDetails) {
           if (!m.approved) continue;
           if (m.sliceAddedAfterApproval) {
-            return { result: block(`stop-gate: APPROVE for motive '${m.motiveId}' is void — a slice was added after the approval. Re-run \`$GW gate approve\`.`), yieldResult: null };
+            voidReason = `stop-gate: APPROVE for motive '${m.motiveId}' is void — a slice was added after the approval. Re-run \`$GW gate approve\`.`;
+            break;
           }
           if (m.approvalBaseCommit && currentHead && m.approvalBaseCommit !== currentHead) {
-            return { result: block(`stop-gate: APPROVE for motive '${m.motiveId}' is void — HEAD moved (approved at ${m.approvalBaseCommit.slice(0, 7)}, now ${currentHead.slice(0, 7)}). Re-run \`$GW gate approve\`.`), yieldResult: null };
+            voidReason = `stop-gate: APPROVE for motive '${m.motiveId}' is void — HEAD moved (approved at ${m.approvalBaseCommit.slice(0, 7)}, now ${currentHead.slice(0, 7)}). Re-run \`$GW gate approve\`.`;
+            break;
           }
         }
-        resetCount(cf);
-        return { result: allow("stop-gate: all slices complete, gate approved"), yieldResult: null };
+        if (!voidReason) {
+          resetCount(cf);
+          return { result: allow("stop-gate: all slices complete, gate approved"), yieldResult: null };
+        }
+        const yieldReason = detectYield(inp);
+        if (yieldReason) {
+          return { result: allow(`stop-gate: ${yieldReason}`), yieldResult: yieldReason };
+        }
+        const voidCount = readCount(cf) + 1;
+        writeCount(cf, voidCount);
+        if (voidCount >= 4) {
+          resetCount(cf);
+          process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
+          return { result: allow("stop-gate: override — consecutive block limit reached"), yieldResult: null };
+        }
+        if (voidCount >= 3) {
+          return { result: block("stop-gate: condition appears externally unresolvable — stop trying; resolve store state manually before continuing."), yieldResult: null };
+        }
+        return { result: block(voidReason), yieldResult: null };
       }
       const yieldReason = detectYield(inp);
       if (yieldReason) {

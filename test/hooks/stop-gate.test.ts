@@ -703,4 +703,61 @@ describe("stop-gate — HEAD binding (T14)", () => {
     expect(currentHead).toBe(newHead);
     expect(currentHead).not.toBe(initialHead);
   });
+
+  it("RC1: HEAD-moved void + running background advisor → allow (yield)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    sdb.close();
+    makeCommit(d);
+    const bgTasks = [{ id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" }];
+    const out = JSON.parse(run({ cwd: d, session_id: "rc1-head", background_tasks: bgTasks }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.continue).toBe(true);
+    expect(String(out.reason)).toMatch(/in-flight|background/i);
+  });
+
+  it("RC1: slice-added void + running background advisor → allow (yield)", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const past = new Date(Date.now() - 5000).toISOString();
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S2',1,'complete',?,?)", [now, now]);
+    sdb.close();
+    const bgTasks = [{ id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" }];
+    const out = JSON.parse(run({ cwd: d, session_id: "rc1-slice", background_tasks: bgTasks }, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(out.continue).toBe(true);
+    expect(String(out.reason)).toMatch(/in-flight|background/i);
+  });
+
+  it("RC2: HEAD-moved void, no background tasks, 4 calls → 1-3 block, 4 allow", () => {
+    const { gitDir: d, dbPath: db, initialHead } = initGitRepo();
+    gitDir = d; dbPath = db;
+    const sdb = makeStoreDb(dbPath);
+    runMigrations(sdb, MIGRATIONS);
+    const now = new Date().toISOString();
+    sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
+    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
+      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    sdb.close();
+    makeCommit(d);
+    const inp = { cwd: d, session_id: "rc2", stop_hook_active: true, background_tasks: [] };
+    const outs = [1, 2, 3, 4].map(() => JSON.parse(run(inp, { GROUNDWORK_DB: dbPath }).stdout));
+    expect(outs[0].decision).toBe("block");
+    expect(String(outs[0].reason)).toMatch(/HEAD moved/i);
+    expect(outs[1].decision).toBe("block");
+    expect(outs[2].decision).toBe("block");
+    expect(String(outs[2].reason)).toMatch(/externally unresolvable|resolve store state/i);
+    expect(outs[3].continue).toBe(true);
+    expect(String(outs[3].reason)).toMatch(/consecutive block limit/i);
+  });
 });

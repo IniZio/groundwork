@@ -6,11 +6,11 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 
 | Surface | v1 chars | v1 tokens | v2 bytes (wc -c) | v2 tokens | Ratio |
 |---|---|---|---|---|---|
-| SessionStart injection | 7068 | 1767 | 3508 | 735 | 0.42 |
+| SessionStart injection | 7068 | 1767 | 3002 | 751 | 0.42 |
 | Per-turn reminder (UserPromptSubmit) | — | — | 79 | 20 | — |
 | CLAUDE.md (orchestrator project file) | 39614 | 9904 | — (none) | — | — |
 | orchestrator.md | 10706 | 2677 | 1007 | 252 | 0.09 |
-| general-purpose / implementer.md | 5728 | 1432 | 1504 | 376 | 0.26 |
+| general-purpose / implementer.md | 5728 | 1432 | 1445 | 361 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |
 | implement/SKILL.md | 4522 | 1130 | 1901 | 475 | 0.42 |
@@ -18,7 +18,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | advisor-gate/SKILL.md | 5381 | 1345 | 1282 | 320 | 0.24 |
 | pause/SKILL.md | 2822 | 705 | 861 | 215 | 0.30 |
 | continue/SKILL.md | 3610 | 902 | 944 | 236 | 0.26 |
-| motive/SKILL.md | 4879 | 1219 | 1432 | 358 | 0.29 |
+| motive/SKILL.md | 4879 | 1219 | 1473 | 368 | 0.29 |
 
 Recompute v2 bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size is measured on the normalised output — root path replaced with `/GROUNDWORK_ROOT`, sha replaced with `(XXXXXXX)` — to stay environment-independent: `ROOT=$(pwd) && echo '{}' | CLAUDE_PLUGIN_ROOT="$ROOT" bun src/hooks/session-start.ts | bun -e "const d=await Bun.stdin.json();const c=d.hookSpecificOutput.additionalContext;const n=c.replace(new RegExp('$ROOT'.replace(/[.*+?^\${}()|[\]\\\\\\\\]/g,'\\\\\\\\$&'),'g'),'/GROUNDWORK_ROOT').replace(/\\([0-9a-f]{7,40}\\)/g,'(XXXXXXX)');console.log(Buffer.byteLength(n,'utf8'))"`).
 
@@ -31,11 +31,11 @@ SessionStart fires for primary session only, not subagents.
 
 | Component | v1 | v2 |
 |---|---|---|
-| SessionStart injection | 1767 | 735 |
+| SessionStart injection | 1767 | 749 |
 | orchestrator.md | 2677 | 252 |
 | Per-turn reminder (per prompt) | — | 20 |
-| **Total (session start)** | **4444** | **987** |
-| **Ratio** | — | **0.22 (22%)** |
+| **Total (session start)** | **4444** | **1021** |
+| **Ratio** | — | **0.23 (23%)** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 

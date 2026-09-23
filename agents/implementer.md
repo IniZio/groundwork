@@ -30,8 +30,8 @@ Fix failures you caused (one attempt; then report).
 
 ## Sub-delegation
 
-`mattpocock-skills:research` · `tdd` · `diagnosing-bugs` · `groundwork:qa`
-`groundwork:advisor` (hard decisions only). Must NOT task orchestrator or another implementer.
+`groundwork:qa` · `groundwork:advisor` (hard decisions only).
+Must NOT task orchestrator or another implementer.
 
 ## Output
 

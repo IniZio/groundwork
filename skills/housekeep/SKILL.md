@@ -44,7 +44,7 @@ Load only the reference file for the selected mode.
 Lock behavior with regression tests before editing. Write a cleanup plan before touching code.
 Keep diffs small, reversible, smell-focused. Never expand a scoped surface silently.
 
-For large surfaces, fan out `groundwork:implementer` subagents for scan and cleanup.
+For large surfaces, fan out `groundwork:explore` subagents for scan; `groundwork:implementer` for cleanup.
 Collect findings via return values before any edits begin.
 
 ## Completion

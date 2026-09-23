@@ -36,7 +36,8 @@ status: active | complete | abandoned
 1. Use `mattpocock-skills:grilling` to capture intent if the objective is unclear.
 2. Write the charter at `.groundwork/motives/<slug>/motive.md`.
 3. Run `$GW init` to create the work store.
-4. For planning/decomposition: use `mattpocock-skills:to-tickets` for ticket decomposition, then load `/vertical-slice` to register slices.
+4. Tell user to run `/to-tickets` (or `/wayfinder` for large work) to decompose into tickets.
+   Load `/vertical-slice` yourself without asking — no confirmation prompt.
 
 ## Recording decisions
 
@@ -46,5 +47,5 @@ $GW event append --type DECISION --msg "<decision statement>" --data '{"rational
 
 ## Upstream coverage
 
-Interview: `mattpocock-skills:grilling`. Decomposition: `mattpocock-skills:to-tickets`.
+Interview: `mattpocock-skills:grilling`. Decomposition: user runs `/to-tickets` or `/wayfinder`.
 Both are upstream; this skill adds the persistent `.groundwork/` charter and gw event log.

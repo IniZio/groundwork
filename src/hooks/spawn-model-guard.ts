@@ -2,6 +2,7 @@
  * Family 1: Spawn topology + model discipline.
  * Design level: declarative registry lookup.
  * D-11 reuse: v1 agent-model-guard structure; debug logging, prefix warnings, banned-builtins env dropped.
+ * D5: depth-allowlist per caller type (replaces dead JUNIOR_BANNED rule).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -16,7 +17,30 @@ function inject(ti: Record<string, unknown>, model: string): HookResult {
   return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: `spawn-model-guard: injected model "${model}" (was unset — would inherit session model)`, updatedInput: { ...ti, model } } }) + "\n", stderr: "", exit: 0 };
 }
 
-const JUNIOR_BANNED = new Set(["groundwork:junior-orchestrator", "groundwork:orchestrator", "groundwork:debugger"]);
+/**
+ * Flat allowlist per caller agent type (D5).
+ * Callers NOT in this map are unrestricted (main thread, orchestrator, non-groundwork plugins).
+ * Source of truth for each entry:
+ *   junior-orchestrator: ticket T20 — may spawn implementer + explore
+ *   implementer/designer/debugger: ticket T20 — leaf implementers → explore only
+ *   advisor: agents/advisor.md — no Agent in disallowedTools, delegates read-only work → explore
+ *   explore: agents/explore.md — disallowedTools includes Agent → empty set
+ *   git-master: agents/git-master.md — tools:[Bash,Read], Agent absent → empty set
+ *   planner/researcher: agents/*.md — Agent not in disallowedTools → explore
+ *   qa: agents/qa.md — tools includes Agent (delegates haiku walkthroughs) → explore
+ */
+export const DEPTH_ALLOWLIST = new Map<string, ReadonlySet<string>>([
+  ["groundwork:junior-orchestrator", new Set(["groundwork:implementer", "groundwork:explore"])],
+  ["groundwork:implementer",         new Set(["groundwork:explore"])],
+  ["groundwork:designer",            new Set(["groundwork:explore"])],
+  ["groundwork:debugger",            new Set(["groundwork:explore"])],
+  ["groundwork:advisor",             new Set(["groundwork:explore"])],
+  ["groundwork:explore",             new Set()],
+  ["groundwork:git-master",          new Set()],
+  ["groundwork:planner",             new Set(["groundwork:explore"])],
+  ["groundwork:researcher",          new Set(["groundwork:explore"])],
+  ["groundwork:qa",                  new Set(["groundwork:explore"])],
+]);
 
 // Built-in agent names that are banned; value is the groundwork replacement to name in the deny reason.
 const BANNED_BUILTINS: Record<string, string> = {
@@ -48,8 +72,13 @@ export function check(input: unknown, callerType?: string): HookResult {
     const subType = typeof ti.subagent_type === "string" ? ti.subagent_type.trim() : "";
     const caller = callerType ?? (typeof inp.agent_type === "string" ? inp.agent_type : "");
 
-    if (caller === "groundwork:junior-orchestrator" && subType && JUNIOR_BANNED.has(subType)) {
-      return deny(`spawn-model-guard: junior-orchestrator cannot spawn "${subType}" — depth-2 nesting denied.`);
+    // D5: depth-allowlist — apply only to known groundwork callers.
+    if (caller && DEPTH_ALLOWLIST.has(caller)) {
+      const allowed = DEPTH_ALLOWLIST.get(caller)!;
+      if (subType && !allowed.has(subType)) {
+        const list = allowed.size ? [...allowed].join(", ") : "none";
+        return deny(`depth-guard: "${caller}" may not spawn "${subType}" — allowed: [${list}].`);
+      }
     }
 
     // Deny bare built-ins that have a groundwork replacement.

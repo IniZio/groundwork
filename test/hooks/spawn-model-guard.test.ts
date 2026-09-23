@@ -57,14 +57,14 @@ describe("spawn-model-guard — Family 1", () => {
     expect(out.hookSpecificOutput.updatedInput.model).toBe("opus");
   });
 
-  it("GUARD-CAN-FAIL: general-purpose spawned by junior-orchestrator → allow (topology rule not triggered)", () => {
+  it("VIOLATION: general-purpose spawned by junior-orchestrator → deny (not in allowlist)", () => {
     const result = check(task("groundwork:general-purpose"), "groundwork:junior-orchestrator");
-    expect(safeDecision(result)).toBe("allow");
+    expect(safeDecision(result)).toBe("deny");
   });
 
-  it("loadRegistry returns sonnet for general-purpose", () => {
+  it("loadRegistry returns sonnet for implementer", () => {
     const reg = loadRegistry();
-    expect(reg["general-purpose"]).toBe("sonnet");
+    expect(reg["implementer"]).toBe("sonnet");
   });
 
   // T16: built-in ban + case-insensitive registry lookup

@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/camdencheek/tree-sitter-dockerfile",
+  "commit": "971acdd908568b4531b0ba28a445bf0bb720aba5",
+  "cli_version": "0.25.3",
+  "build_command": "tree-sitter build --wasm --docker",
+  "sha256": "6d95cfe08d32ad32cd4e3e13e209f03ae59fbd495ad61014e1873fbbbb6c5078",
+  "bytes": 48699,
+  "rebuild_byte_identical": "not verified; Docker+emscripten builds are not guaranteed byte-identical across runs"
+}

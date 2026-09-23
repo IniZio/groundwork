@@ -26,6 +26,8 @@ git config commit.gpgsign false; git config core.hooksPath /dev/null
 
 mkdir -p .claude-plugin
 cp "$SRC/.claude-plugin/plugin.json" "$SRC/.claude-plugin/marketplace.json" .claude-plugin/
+# Pin the copied manifests to the fixture's 2.0.0 whatever the live repo is at.
+sed -i -E 's/"version": "[0-9]+\.[0-9]+\.[0-9]+"/"version": "2.0.0"/' .claude-plugin/plugin.json .claude-plugin/marketplace.json
 TEST_EXIT=0; [[ $FAIL_TESTS == 1 ]] && TEST_EXIT=1
 mkdir -p scripts
 cat > scripts/check-stub.sh <<EOF

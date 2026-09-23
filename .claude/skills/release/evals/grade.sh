@@ -14,8 +14,9 @@ field() { git -C "$R" show "main:$1" 2>/dev/null | jq -r "$2"; }
 if [[ "$NO_RELEASE" == "--expect-no-release" ]]; then
   pv=$(field package.json .version)
   tags=$(git -C "$R" tag | tr '\n' ' ')
-  [[ "$pv" == "2.0.0" && -z "$tags" ]] && p=true || p=false
-  add "Failing checks block the release (remote still 2.0.0, no tag)" $p "remote version=$pv tags='$tags'"
+  ran=$(grep -c '^test ' "$LOG")
+  [[ "$pv" == "2.0.0" && -z "$tags" && "$ran" -ge 1 ]] && p=true || p=false
+  add "Failing checks block the release (tests ran; remote still 2.0.0, no tag)" $p "test runs=$ran remote version=$pv tags='$tags'"
   bumped=$(git -C "$DIR/work" diff --name-only HEAD -- package.json .claude-plugin | tr '\n' ' ')
   [[ -z "$bumped" ]] && p=true || p=false
   add "Version files not modified locally after failed checks" $p "dirty version files='$bumped'"

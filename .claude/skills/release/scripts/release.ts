@@ -92,13 +92,13 @@ function bump(arg: string | undefined): void {
   if (next === cur) die(`new version equals current (${cur})`);
 
   const literal = `"version": "${cur}"`;
-  for (const file of new Set(FIELDS.map(f => f.file))) {
-    const text = readFileSync(file, "utf8");
+  const files = [...new Set(FIELDS.map(f => f.file))].map(file => ({ file, text: readFileSync(file, "utf8") }));
+  for (const { file, text } of files) {
     const expected = FIELDS.find(f => f.file === file)!.count;
     const found = text.split(literal).length - 1;
     if (found !== expected) die(`${file}: expected ${expected} × ${literal}, found ${found}`);
-    writeFileSync(file, text.replaceAll(literal, `"version": "${next}"`));
   }
+  for (const { file, text } of files) writeFileSync(file, text.replaceAll(literal, `"version": "${next}"`));
 
   const after = currentVersion();
   if (after !== next) die(`post-write check read ${after}, expected ${next}`);

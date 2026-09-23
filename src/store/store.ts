@@ -4,8 +4,21 @@ import { MIGRATIONS } from "./schema.js";
 
 export type SliceStatus = "pending" | "in_progress" | "complete" | "archived";
 
+export const GATE_VERDICTS = [
+  "APPROVE",
+  "CORRECTION",
+  "STOP",
+  "GAPS",
+  "REPLAN",
+] as const;
+export type GateVerdict = typeof GATE_VERDICTS[number];
+
 export const EVENT_TYPES = [
   "GATE_APPROVE",
+  "GATE_CORRECTION",
+  "GATE_STOP",
+  "GATE_GAPS",
+  "GATE_REPLAN",
   "HOLD",
   "HOLD_CLEAR",
   "DECISION",
@@ -261,5 +274,13 @@ export class WorkStore {
 
   setMeta(key: string, value: string): void {
     this.db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", [key, value]);
+  }
+
+  /** Returns the newest GATE_* event for a given motive (or activeMotive), or null. */
+  getNewestGateVerdict(motiveId?: string): Event | null {
+    const mid = motiveId ?? this.activeMotive;
+    return this.db.query<Event, [string]>(
+      "SELECT * FROM events WHERE event_type IN ('GATE_APPROVE','GATE_CORRECTION','GATE_STOP','GATE_GAPS','GATE_REPLAN') AND motive_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(mid);
   }
 }

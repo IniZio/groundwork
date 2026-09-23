@@ -79,6 +79,66 @@ describe("gate approve", () => {
   });
 });
 
+describe("gate verdicts (T13)", () => {
+  it("correction requires citation", () => {
+    const r = run(["gate", "correction", "--citation", "no-line-ref", "--token", tok], dir);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("file:line");
+  });
+
+  it("correction without citation rejected", () => {
+    const r = run(["gate", "correction", "--token", tok], dir);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("correction with valid citation records GATE_CORRECTION", () => {
+    const r = run(["gate", "correction", "--citation", "src/foo.ts:10", "--token", tok], dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("GATE_CORRECTION");
+  });
+
+  it("stop with valid citation records GATE_STOP", () => {
+    const r = run(["gate", "stop", "--citation", "src/bar.ts:5", "--token", tok], dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("GATE_STOP");
+  });
+
+  it("gaps with valid citation records GATE_GAPS", () => {
+    const r = run(["gate", "gaps", "--citation", "src/baz.ts:1", "--token", tok], dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("GATE_GAPS");
+  });
+
+  it("replan with valid citation records GATE_REPLAN", () => {
+    const r = run(["gate", "replan", "--citation", "src/qux.ts:7", "--token", tok], dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("GATE_REPLAN");
+  });
+
+  it("APPROVE then CORRECTION → stop-gate closed", () => {
+    run(["slice", "add", "V1", "--token", tok], dir);
+    run(["slice", "complete", "V1", "--token", tok], dir);
+    run(["gate", "approve", "--citation", "src/x.ts:1", "--token", tok], dir);
+    run(["gate", "correction", "--citation", "src/x.ts:2", "--token", tok], dir);
+    const result = stopGate(dir, "verdict-seam-1");
+    expect(result.decision).toBe("block");
+  });
+
+  it("CORRECTION then APPROVE → stop-gate open", () => {
+    run(["slice", "add", "V2", "--token", tok], dir);
+    run(["slice", "complete", "V2", "--token", tok], dir);
+    run(["gate", "correction", "--citation", "src/x.ts:2", "--token", tok], dir);
+    run(["gate", "approve", "--citation", "src/x.ts:1", "--token", tok], dir);
+    const result = stopGate(dir, "verdict-seam-2");
+    expect(result.continue).toBe(true);
+  });
+
+  it("unknown verdict rejected", () => {
+    const r = run(["gate", "badverdict", "--citation", "src/x.ts:1", "--token", tok], dir);
+    expect(r.exitCode).toBe(1);
+  });
+});
+
 describe("hold state", () => {
   it("hold set appears in status; hold clear removes it", () => {
     run(["hold", "set", "--reason", "blocked on review", "--token", tok], dir);

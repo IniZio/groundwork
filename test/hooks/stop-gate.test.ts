@@ -484,3 +484,99 @@ describe("stop-gate — yield detection (T05)", () => {
     expect(detectYield({ transcript_path: resumeCompletedPath })).toBeNull();
   });
 });
+
+describe("stop-gate — verdict logic (T13)", () => {
+  it("APPROVE then CORRECTION → gate closed (stale-verdict regression)", () => {
+    const { db, dbPath } = makeDb("approve-then-correction");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-verdict-1" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toMatch(/GATE_APPROVE/i);
+  });
+
+  it("CORRECTION then APPROVE → gate open", () => {
+    const { db, dbPath } = makeDb("correction-then-approve");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-verdict-2" }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+  });
+
+  it("per-motive isolation — motive A CORRECTION does not affect motive B gate", () => {
+    // Motive A: complete slice + APPROVE then CORRECTION → A is closed
+    const { db: dbA, dbPath: dbPathA } = makeDb("motive-a");
+    dbA.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    dbA.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    dbA.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
+    dbA.close();
+
+    // Motive B: complete slice + APPROVE only → B is open
+    const { db: dbB, dbPath: dbPathB } = makeDb("motive-b");
+    dbB.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    dbB.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    dbB.close();
+
+    const rA = run({ session_id: "t-iso-a" }, { GROUNDWORK_DB: dbPathA });
+    const rB = run({ session_id: "t-iso-b" }, { GROUNDWORK_DB: dbPathB });
+
+    expect(JSON.parse(rA.stdout).decision).toBe("block");   // A closed by CORRECTION
+    expect(JSON.parse(rB.stdout).continue).toBe(true);      // B unaffected
+  });
+
+  it("STOP verdict → gate closed", () => {
+    const { db, dbPath } = makeDb("stop-verdict");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_STOP','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-stop" }, { GROUNDWORK_DB: dbPath });
+    expect(JSON.parse(result.stdout).decision).toBe("block");
+  });
+
+  it("GAPS verdict → gate closed", () => {
+    const { db, dbPath } = makeDb("gaps-verdict");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_GAPS','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-gaps" }, { GROUNDWORK_DB: dbPath });
+    expect(JSON.parse(result.stdout).decision).toBe("block");
+  });
+
+  it("REPLAN verdict → gate closed", () => {
+    const { db, dbPath } = makeDb("replan-verdict");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_REPLAN','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({ session_id: "t-replan" }, { GROUNDWORK_DB: dbPath });
+    expect(JSON.parse(result.stdout).decision).toBe("block");
+  });
+
+  it("checkStore verdict: CORRECTION after APPROVE → motive approved=false", () => {
+    const { db, dbPath } = makeDb("newest-verdict");
+    db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
+      [new Date().toISOString(), new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
+    db.close();
+    const { approved, motiveDetails } = checkStore(dbPath);
+    // newest verdict is CORRECTION → not approved
+    expect(motiveDetails[0]?.approved ?? approved).toBe(false);
+    expect(approved).toBe(false);
+  });
+});

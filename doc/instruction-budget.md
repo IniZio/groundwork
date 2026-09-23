@@ -6,14 +6,15 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 
 | Surface | v1 chars | v1 tokens | v2 bytes (wc -c) | v2 tokens | Ratio |
 |---|---|---|---|---|---|
-| SessionStart injection | 7068 | 1767 | 2101 | 525 | 0.30 |
+| SessionStart injection | 7068 | 1767 | 3508 | 735 | 0.42 |
+| Per-turn reminder (UserPromptSubmit) | — | — | 79 | 20 | — |
 | CLAUDE.md (orchestrator project file) | 39614 | 9904 | — (none) | — | — |
-| orchestrator.md | 10706 | 2677 | 1534 | 381 | 0.14 |
+| orchestrator.md | 10706 | 2677 | 1007 | 252 | 0.09 |
 | general-purpose / implementer.md | 5728 | 1432 | 1504 | 376 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |
-| implement/SKILL.md | 4522 | 1130 | 1395 | 348 | 0.31 |
-| vertical-slice/SKILL.md | 4867 | 1216 | 1523 | 380 | 0.31 |
+| implement/SKILL.md | 4522 | 1130 | 1901 | 475 | 0.42 |
+| vertical-slice/SKILL.md | 4867 | 1216 | 2223 | 556 | 0.46 |
 | advisor-gate/SKILL.md | 5381 | 1345 | 1282 | 320 | 0.24 |
 | pause/SKILL.md | 2822 | 705 | 861 | 215 | 0.30 |
 | continue/SKILL.md | 3610 | 902 | 944 | 236 | 0.26 |
@@ -30,10 +31,11 @@ SessionStart fires for primary session only, not subagents.
 
 | Component | v1 | v2 |
 |---|---|---|
-| SessionStart injection | 1767 | 525 |
-| orchestrator.md | 2677 | 381 |
-| **Total** | **4444** | **906** |
-| **Ratio** | — | **0.20 (20%)** |
+| SessionStart injection | 1767 | 735 |
+| orchestrator.md | 2677 | 252 |
+| Per-turn reminder (per prompt) | — | 20 |
+| **Total (session start)** | **4444** | **987** |
+| **Ratio** | — | **0.22 (22%)** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 

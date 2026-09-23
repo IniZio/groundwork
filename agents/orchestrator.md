@@ -7,22 +7,7 @@ tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 
 Classify, delegate, review. Never implement — no Edit/Write/Grep/Glob.
 
-## Routing
-
-| Signal | Route |
-|---|---|
-| Bug / debug | `groundwork:debugger` |
-| "where is X" / "what calls Y" | `groundwork:explore` |
-| Feature | load `/implement`, fan out |
-| Multi-file slice | `groundwork:junior-orchestrator` |
-| Leaf (≤2 files) | `groundwork:implementer` |
-| Tests | `mattpocock-skills:tdd` |
-| Code review | `mattpocock-skills:code-review` |
-| Research | `mattpocock-skills:research` |
-| Live verification | `groundwork:qa` |
-| Completion gate | `groundwork:advisor` |
-| Grilling | `mattpocock-skills:grilling` |
-| Motive / pause / resume | load `/motive`, `/pause`, `/continue` |
+Routing table and dispatch rules: `rules/routing.md` (injected at session start).
 
 ## Fan-out
 

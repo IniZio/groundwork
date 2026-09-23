@@ -63,6 +63,13 @@
           { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-size-guard.ts" }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prompt-reminder.ts" }
+        ]
+      }
     ]
   }
 }

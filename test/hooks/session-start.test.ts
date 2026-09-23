@@ -91,6 +91,21 @@ describe("session-start hook", () => {
     expect(ctx).toContain(ROOT);
   });
 
+  it("additionalContext injects routing rules from rules/routing.md", () => {
+    const { stdout } = run({});
+    const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    // Routing section header
+    expect(ctx).toContain("## Routing");
+    // Dispatch rules
+    expect(ctx).toContain("groundwork:debugger");
+    expect(ctx).toContain("groundwork:explore");
+    expect(ctx).toContain("Fan out all independent agents in ONE message");
+    expect(ctx).toContain("End turn after dispatching");
+    // A row from the routing table
+    expect(ctx).toContain("groundwork:advisor");
+  });
+
   it("additionalContext injects authoring rules from rules/authoring-rules.md", () => {
     const { stdout } = run({});
     const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };

@@ -1,0 +1,81 @@
+# SPIKE ONLY — not production.
+#
+# Root variant: root + NET_ADMIN only (no SYS_ADMIN). Run AFTER
+# pod-root-sysadmin.yaml (the proven-working baseline) — see README.md "run
+# order". Per pod-root-sysadmin.yaml's comment, nexus's netns child requires
+# CLONE_NEWUSER|CLONE_NEWNET (ch_netns_linux.go:20) which containerd's
+# RuntimeDefault seccomp profile blocks without CAP_SYS_ADMIN, so this pod
+# is EXPECTED to fail at the same userns/netns step pod-nonroot.yaml does.
+# Its purpose is now narrower than before: with the sysadmin baseline
+# passing and this one failing, the diff isolates "SYS_ADMIN is required"
+# from "root vs. non-root matters" — pod-nonroot.yaml (NET_ADMIN only, UID
+# 1000) then tells you whether UID adds a second, independent failure on
+# top of the missing SYS_ADMIN.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nexus-probe-root
+  namespace: artifacts
+  labels:
+    app: nexus-probe
+    variant: root
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 0
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+      - 994 # kvm group gid — /dev/kvm is 0660 root:994 on cluster nodes
+  containers:
+    - name: nexus-probe
+      image: registry.oursky.dev/nexus-probe:TAG
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_ADMIN"]
+      env:
+        - name: HOME
+          value: /root
+        - name: XDG_RUNTIME_DIR
+          value: /work/rt
+        - name: TMPDIR
+          value: /work/tmp
+        # Substituted by CI (same sed pass as the probe image ref, see
+        # .github/workflows/nexus-probe.yaml); points at the toolchain image
+        # CI builds+pushes with docker buildx (nexus's own `image build`
+        # path needs a builder VM not wired at this ref — probe.sh SKIPs the
+        # compile section if this is left unset).
+        - name: TOOLCHAIN_REF
+          value: registry.oursky.dev/nexus-probe-toolchain:TAG
+      command: ["/usr/local/bin/probe.sh"]
+      volumeMounts:
+        - name: nexus-state
+          mountPath: /root/.local/state/nexus
+        - name: work
+          mountPath: /work
+        # /dev/net/tun is not present in the container by default; a hostPath
+        # CharDevice mount worked in an earlier non-privileged probe.
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "4"
+          memory: 6Gi
+          devic.es/kvm: 1
+  volumes:
+    - name: nexus-state
+      emptyDir:
+        sizeLimit: 8Gi
+    - name: work
+      emptyDir:
+        sizeLimit: 4Gi
+    - name: dev-net-tun
+      hostPath:
+        path: /dev/net/tun
+        type: CharDevice

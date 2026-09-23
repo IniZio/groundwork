@@ -1,0 +1,113 @@
+# SPIKE ONLY — not production.
+#
+# Non-root variant of the pod spec already verified on this cluster to open
+# /dev/kvm successfully (see task cluster facts). This is that exact spec,
+# plus the env/volumes probe.sh and nexus need to run as UID 1000 with
+# emptyDir-backed state (see README.md "Four portability gotchas", lifted
+# from /tmp/nexus/examples/nexus-in-docker/README.md).
+#
+# What this pod exists to answer: does nexus's TAP-based networking actually
+# work for a non-root UID with only NET_ADMIN added (not SYS_ADMIN, unlike
+# nexus's own docker example which uses both)? See probe.sh's "TAP device
+# create test" section — that is the load-bearing unknown, not /dev/kvm
+# (already proven to open under this exact spec).
+#
+# Run AFTER pod-root-sysadmin.yaml (baseline) and pod-root.yaml — see
+# README.md "run order". Both this pod and pod-root.yaml add NET_ADMIN
+# only, so both are EXPECTED to fail the new "userns/netns" probe.sh
+# section (CAP_SYS_ADMIN gates CLONE_NEWUSER|CLONE_NEWNET under
+# RuntimeDefault seccomp — ch_netns_linux.go:20). Comparing this pod against
+# pod-root.yaml (same caps, different UID) isolates any UID-specific
+# effective-capability gap from the SYS_ADMIN gap both share.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nexus-probe-nonroot
+  namespace: artifacts
+  labels:
+    app: nexus-probe
+    variant: nonroot
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+      - 994 # kvm group gid — /dev/kvm is 0660 root:994 on cluster nodes
+    # fsGroup makes kubelet chown/chmod emptyDir volumes to this gid on
+    # mount, so UID 1000 (which has no /etc/passwd entry and is not in any
+    # named group) can still write nexus's state/tmp/runtime dirs below.
+    # UNVERIFIED against the real cluster — see README.md "Unresolved gaps".
+    fsGroup: 1000
+  containers:
+    - name: nexus-probe
+      image: registry.oursky.dev/nexus-probe:TAG
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_ADMIN"]
+      env:
+        # HOME drives Go's os.UserHomeDir() without needing an /etc/passwd
+        # entry for UID 1000 (the runtime image has none).
+        - name: HOME
+          value: /home/nexus
+        # Two socket-directory formulas diverge when TMPDIR is set (CLI uses
+        # $TMPDIR, CHDriver fallback hardcodes /tmp) — XDG_RUNTIME_DIR takes
+        # precedence in both, so set it explicitly. See gotcha #3 in README.
+        - name: XDG_RUNTIME_DIR
+          value: /work/rt
+        - name: TMPDIR
+          value: /work/tmp
+        # Substituted by CI (same sed pass as the probe image ref, see
+        # .github/workflows/nexus-probe.yaml); points at the toolchain image
+        # CI builds+pushes with docker buildx (nexus's own `image build`
+        # path needs a builder VM not wired at this ref — probe.sh SKIPs the
+        # compile section if this is left unset).
+        - name: TOOLCHAIN_REF
+          value: registry.oursky.dev/nexus-probe-toolchain:TAG
+      command: ["/usr/local/bin/probe.sh"]
+      volumeMounts:
+        # nexus's on-disk state: images/, disks/, caches/, volumes/,
+        # snapshots/, supervisors/, sockets, netns, locks
+        # (docs/site/cli/auth-mcp-reap.md "nexus disk usage" category table).
+        # Container-owned (fresh emptyDir), not a bind-mount of host state —
+        # see gotcha #1: cloud-hypervisor opens disk images O_RDWR from
+        # inside its user-namespace wrapper and gets EACCES on host-uid-owned
+        # files.
+        - name: nexus-state
+          mountPath: /home/nexus/.local/state/nexus
+        # TMPDIR and the source workspace for `nexus create --context` must
+        # be siblings on the SAME device (gotcha #2) — both live under /work.
+        - name: work
+          mountPath: /work
+        # /dev/net/tun is not present in the container by default; a hostPath
+        # CharDevice mount worked in an earlier non-privileged probe.
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          # Sized for one CH VM (compile workloads inside it) plus the host
+          # nexus/buildkitd/virtiofsd processes. 4 CPU / 6Gi per the task's
+          # deliverable spec; bump if the toolchain build or a compile step
+          # OOMs — see README.md "how to read the results".
+          cpu: "4"
+          memory: 6Gi
+          devic.es/kvm: 1
+  volumes:
+    - name: nexus-state
+      emptyDir:
+        sizeLimit: 8Gi
+    - name: work
+      emptyDir:
+        sizeLimit: 4Gi
+    - name: dev-net-tun
+      hostPath:
+        path: /dev/net/tun
+        type: CharDevice

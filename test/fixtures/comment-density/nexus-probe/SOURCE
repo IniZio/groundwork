@@ -1,0 +1,9 @@
+repo: /home/newman/.herdr/worktrees/agentic-artifacts/sandbox
+commit: 142dedaa
+files:
+  probe.sh: deploy/nexus-probe/probe.sh
+  pod-nonroot.yaml: deploy/nexus-probe/pod-nonroot.yaml
+  pod-root.yaml: deploy/nexus-probe/pod-root.yaml
+  pod-root-sysadmin.yaml: deploy/nexus-probe/pod-root-sysadmin.yaml
+  Dockerfile: deploy/nexus-probe/Dockerfile
+  Containerfile: deploy/nexus-probe/toolchain/.nexus/Containerfile

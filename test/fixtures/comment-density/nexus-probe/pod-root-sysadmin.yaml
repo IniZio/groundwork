@@ -1,0 +1,94 @@
+# SPIKE ONLY — not production.
+#
+# Baseline variant: root + NET_ADMIN + SYS_ADMIN — the exact posture nexus's
+# own docker example proves works end to end
+# (/tmp/nexus/examples/nexus-in-docker/run.sh:8, "SYS_ADMIN — unshare
+# (CLONE_NEWNET) inside the egress supervisor"). Still not --privileged.
+#
+# Why this baseline is needed: /tmp/nexus/internal/core/driver/cloudhypervisor
+# /ch_netns_linux.go:20 sets Cloneflags: CLONE_NEWUSER | CLONE_NEWNET on the
+# re-exec'd netns child. Under containerd's RuntimeDefault seccomp profile
+# (used by both pod-root.yaml and pod-nonroot.yaml), clone/unshare calls that
+# create new namespaces are blocked unless the caller has CAP_SYS_ADMIN —
+# NET_ADMIN alone does not cover it. pod-root.yaml and pod-nonroot.yaml
+# (NET_ADMIN only) are therefore both likely to fail at the same
+# userns/netns step, which would look like a nexus problem but is actually
+# a missing baseline: without this pod passing first, there is nothing to
+# compare pod-root.yaml/pod-nonroot.yaml's failures against.
+#
+# SETFCAP: nexus's netns child maps in-ns uid 0 -> host uid 0
+# (ch_netns_linux.go:21-23). Since Linux 5.12 (kernel/user_namespace.c
+# verify_root_map) writing a uid_map that maps uid 0 requires CAP_SETFCAP;
+# without it nexus fails with "spawn child: fork/exec ...: operation not
+# permitted". Docker's default cap set includes SETFCAP, which is why the
+# nexus-in-docker example only needs --cap-add NET_ADMIN/SYS_ADMIN.
+#
+# Run this FIRST. See README.md "run order".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nexus-probe-root-sysadmin
+  namespace: artifacts
+  labels:
+    app: nexus-probe
+    variant: root-sysadmin
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 0
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+      - 994 # kvm group gid — /dev/kvm is 0660 root:994 on cluster nodes
+  containers:
+    - name: nexus-probe
+      image: registry.oursky.dev/nexus-probe:TAG
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_ADMIN", "SYS_ADMIN", "SETFCAP"]
+      env:
+        - name: HOME
+          value: /root
+        - name: XDG_RUNTIME_DIR
+          value: /work/rt
+        - name: TMPDIR
+          value: /work/tmp
+        # Substituted by CI (same sed pass as the probe image ref, see
+        # .github/workflows/nexus-probe.yaml); points at the toolchain image
+        # CI builds+pushes with docker buildx (nexus's own `image build`
+        # path needs a builder VM not wired at this ref — probe.sh SKIPs the
+        # compile section if this is left unset).
+        - name: TOOLCHAIN_REF
+          value: registry.oursky.dev/nexus-probe-toolchain:TAG
+      command: ["/usr/local/bin/probe.sh"]
+      volumeMounts:
+        - name: nexus-state
+          mountPath: /root/.local/state/nexus
+        - name: work
+          mountPath: /work
+        # /dev/net/tun is not present in the container by default; a hostPath
+        # CharDevice mount worked in an earlier non-privileged probe.
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "4"
+          memory: 6Gi
+          devic.es/kvm: 1
+  volumes:
+    - name: nexus-state
+      emptyDir:
+        sizeLimit: 8Gi
+    - name: work
+      emptyDir:
+        sizeLimit: 4Gi
+    - name: dev-net-tun
+      hostPath:
+        path: /dev/net/tun
+        type: CharDevice

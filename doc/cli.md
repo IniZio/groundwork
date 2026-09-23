@@ -38,9 +38,6 @@ Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list.
 ### `gw compile [--json]`
 Resume view: objective, decisions, open slices, last PAUSE, gate state, hold state. Read-only.
 
-### `gw import-v1 --ledger PATH --journal PATH-OR-DIR --motive SLUG --token T`
-Imports v1 slices and journal events. Prints `N slices, M events`.
-
 ## v1 → v2 command mapping
 
 | Raw mentions in transcripts | v1 command | v2 equivalent |

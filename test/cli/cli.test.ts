@@ -2,11 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { EVENT_TYPES, WorkStore } from "../../src/store/store.js";
+import { EVENT_TYPES } from "../../src/store/store.js";
 
 const CLI = path.resolve(import.meta.dir, "../../src/cli/main.ts");
 const STOP_GATE = path.resolve(import.meta.dir, "../../src/hooks/stop-gate.ts");
-const FIXTURES = path.resolve(import.meta.dir, "fixtures");
 
 function run(args: string[], cwd: string, env?: Record<string, string>) {
   const result = Bun.spawnSync(["bun", CLI, ...args], {
@@ -107,28 +106,6 @@ describe("event append", () => {
   });
 });
 
-describe("import-v1", () => {
-  it("imports fixture slices and events with correct counts, skips unknown types, excludes other-motive and no-motive", () => {
-    const r = run([
-      "import-v1",
-      "--ledger", path.join(FIXTURES, "ledger.json"),
-      "--journal", path.join(FIXTURES, "journal.jsonl"),
-      "--motive", "test-motive",
-      "--token", tok,
-    ], dir);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain("2 slices");
-    expect(r.stdout).toContain("4 events");
-    expect(r.stdout).toContain("skipped 2 unknown-type");
-    expect(r.stdout).toContain("MOTIVE_CREATED: 1");
-    expect(r.stdout).toContain("AC_COVERAGE: 1");
-    expect(r.stdout).toContain("skipped 1 no-motive");
-
-    const store = new WorkStore(path.join(dir, ".groundwork", "work.db"));
-    expect(store.getEvents("GATE_APPROVE")).toHaveLength(1);
-    store.close();
-  });
-});
 
 describe("slice rm", () => {
   it("rm on a completed slice is refused with D-12 trigger message", () => {

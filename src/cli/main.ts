@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { WorkStore, EVENT_TYPES } from "../store/store.js";
-import { mkdirSync, existsSync, readFileSync, createReadStream, statSync, readdirSync } from "node:fs";
-import { createInterface } from "node:readline";
+import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -226,118 +225,6 @@ function cmdCompile(args: string[]): void {
   store.close();
 }
 
-interface V1Slice {
-  id: string;
-  wave?: number;
-  status?: string;
-  desc?: string;
-  acceptance?: string[] | string | null;
-  blocked_by?: string[] | string | null;
-  decisions?: string[] | string | null;
-}
-
-interface V1JournalEntry {
-  ts?: string;
-  session?: string;
-  motive?: string;
-  type?: string;
-  verdict?: string;
-  msg?: string;
-  data?: Record<string, unknown>;
-}
-
-function mapV1Type(entry: V1JournalEntry): string | null {
-  const t = entry.type ?? "";
-  const verdict = (entry.data?.verdict as string | undefined) ?? entry.verdict;
-  if (t === "GATE" && verdict === "APPROVE") return "GATE_APPROVE";
-  if (t === "TASK_COMPLETE") return "SLICE_COMPLETE";
-  if ((EVENT_TYPES as readonly string[]).includes(t)) return t;
-  return null;
-}
-
-async function cmdImportV1(args: string[]): Promise<void> {
-  const ledgerPath = flag(args, "--ledger");
-  const journalPath = flag(args, "--journal");
-  const motiveSlug = flag(args, "--motive");
-  if (!ledgerPath || !journalPath || !motiveSlug) {
-    process.stderr.write(`usage: ${gw} import-v1 --ledger PATH --journal PATH --motive SLUG --token T\n`);
-    process.exit(1);
-  }
-  const store = requireDb();
-  checkToken(store, args);
-
-  let sliceCount = 0;
-  try {
-    const ledger = JSON.parse(readFileSync(ledgerPath, "utf8")) as { slices?: V1Slice[] };
-    for (const s of ledger.slices ?? []) {
-      const rawStatus = s.status ?? "pending";
-      const status = rawStatus === "complete" ? "complete"
-        : rawStatus === "in_progress" ? "in_progress"
-        : rawStatus === "archived" ? "archived"
-        : "pending";
-      try {
-        store.insertSlice({
-          id: s.id,
-          wave: s.wave ?? 0,
-          status: status as "pending" | "in_progress" | "complete" | "archived",
-          description: s.desc ?? null,
-          acceptance: Array.isArray(s.acceptance) ? s.acceptance.join(";") : (s.acceptance ?? null),
-          blocked_by: Array.isArray(s.blocked_by) ? s.blocked_by.join(",") : (s.blocked_by ?? null),
-          covers_ac: null,
-          decisions: Array.isArray(s.decisions) ? s.decisions.join(",") : (s.decisions ?? null),
-        });
-        sliceCount++;
-      } catch { /* skip duplicates */ }
-    }
-  } catch (e) {
-    process.stderr.write(`error reading ledger: ${e}\n`);
-  }
-
-  let eventCount = 0;
-  let noMotiveCount = 0;
-  const skipped = new Map<string, number>();
-
-  try {
-    const stat = statSync(journalPath);
-    const files: string[] = stat.isDirectory()
-      ? readdirSync(journalPath).filter((f: string) => f.endsWith(".jsonl")).map((f: string) => path.join(journalPath, f))
-      : [journalPath];
-
-    for (const file of files) {
-      const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
-      for await (const line of rl) {
-        if (!line.trim()) continue;
-        try {
-          const entry = JSON.parse(line) as V1JournalEntry;
-          if (entry.motive === undefined) { noMotiveCount++; continue; }
-          if (entry.motive !== motiveSlug) continue;
-          const mapped = mapV1Type(entry);
-          if (mapped === null) {
-            const raw = entry.type ?? "UNKNOWN";
-            skipped.set(raw, (skipped.get(raw) ?? 0) + 1);
-            continue;
-          }
-          store.appendEvent(mapped, { msg: entry.msg ?? "", session: entry.session, ts: entry.ts, ...(entry.data ?? {}) });
-          eventCount++;
-        } catch { /* skip malformed lines */ }
-      }
-    }
-  } catch (e) {
-    process.stderr.write(`error reading journal: ${e}\n`);
-  }
-
-  store.upsertCharter(motiveSlug, motiveSlug, `imported from v1 motive: ${motiveSlug}`);
-
-  let out = `import-v1 complete: ${sliceCount} slices, ${eventCount} events`;
-  if (skipped.size > 0) {
-    const skippedTotal = [...skipped.values()].reduce((a, b) => a + b, 0);
-    const detail = [...skipped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([t, n]) => `${t}: ${n}`).join(", ");
-    out += `, skipped ${skippedTotal} unknown-type (${detail})`;
-  }
-  if (noMotiveCount > 0) out += `, skipped ${noMotiveCount} no-motive`;
-  process.stdout.write(out + "\n");
-  store.close();
-}
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -370,9 +257,7 @@ if (cmd === "init") {
   else { process.stderr.write(`unknown event subcommand: ${sub}\n`); process.exit(1); }
 } else if (cmd === "compile") {
   cmdCompile(argv.slice(1));
-} else if (cmd === "import-v1") {
-  await cmdImportV1(argv.slice(1));
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|status|rm, gate approve, hold set|clear, event append, compile, import-v1\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|status|rm, gate approve, hold set|clear, event append, compile\n`);
   process.exit(1);
 }

@@ -91,11 +91,7 @@ Blocks session end while any slice ≠ complete OR no GATE_APPROVE event. After 
 
 ## New-code-gate
 
-Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <name>\`). No active rules → always allows.
-
-## Available mattpocock skills
-
-\`mattpocock-skills:research\` · \`mattpocock-skills:tdd\` · \`mattpocock-skills:diagnosing-bugs\` · \`mattpocock-skills:code-review\` · \`mattpocock-skills:improve-codebase-architecture\` · \`mattpocock-skills:prototype\` · \`mattpocock-skills:grilling\` · \`mattpocock-skills:to-tickets\` · \`mattpocock-skills:handoff\`${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <name>\`). No active rules → always allows.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
 
@@ -87,8 +88,7 @@ function collectScannedFiles(): string[] {
   // rules/routing.md
   files.push(path.join(ROOT, "rules", "routing.md"));
 
-  // src/hooks/session-start.ts (source — advertises routes in its emitted text)
-  files.push(path.join(ROOT, "src", "hooks", "session-start.ts"));
+  // session-start.ts source uses escaped backticks; scan the emitted text instead (suite below).
 
   // agents/*.md
   const agentsDir = path.join(ROOT, "agents");
@@ -219,4 +219,63 @@ describe("registry-parity — model-registry.json matches agents/", () => {
       `agent files without a registry entry: ${missing.join(", ")}`,
     ).toHaveLength(0);
   });
+});
+
+// ---------------------------------------------------------------------------
+// session-start emitted text — refs must resolve and be model-invocable
+// Bite proof: add mattpocock-skills:to-tickets to the emitted text → red here.
+// ---------------------------------------------------------------------------
+
+describe("session-start emitted refs resolve", () => {
+  const HOOK = path.join(ROOT, "src/hooks/session-start.ts");
+
+  function runHook(): string {
+    const r = spawnSync("bun", [HOOK], {
+      input: "{}",
+      env: Object.fromEntries(
+        Object.entries({ ...process.env, CLAUDE_PLUGIN_ROOT: ROOT }).filter(
+          ([k, v]) => k !== "CLAUDE_PROJECT_DIR" && v !== undefined,
+        ),
+      ) as Record<string, string>,
+      cwd: ROOT,
+    });
+    if (r.status !== 0) throw new Error(`session-start exited ${r.status}: ${r.stderr?.toString()}`);
+    const out = JSON.parse(r.stdout.toString()) as {
+      hookSpecificOutput: { additionalContext: string };
+    };
+    return out.hookSpecificOutput.additionalContext;
+  }
+
+  it("emitted additionalContext contains at least 1 skill ref (non-vacuous)", () => {
+    const ctx = runHook();
+    const { groundwork, mattpocock } = extractRefs(ctx);
+    expect(
+      groundwork.length + mattpocock.length,
+      "emitted additionalContext must contain at least one groundwork: or mattpocock-skills: ref",
+    ).toBeGreaterThan(0);
+  });
+
+  it("every groundwork: ref in emitted text resolves to agent or skill", () => {
+    const ctx = runHook();
+    const { groundwork } = extractRefs(ctx);
+    for (const name of [...new Set(groundwork)]) {
+      expect(
+        gwResolves(name),
+        `groundwork:${name} in emitted text — no agents/${name}.md and no skills/${name}/`,
+      ).toBe(true);
+    }
+  });
+
+  it.skipIf(MP_SKIP_REASON !== null)(
+    "every mattpocock-skills: ref in emitted text is model-invocable",
+    () => {
+      const ctx = runHook();
+      const { mattpocock } = extractRefs(ctx);
+      for (const name of [...new Set(mattpocock)]) {
+        const { exists, disabled } = mpSkillInfo(name);
+        expect(exists, `mattpocock-skills:${name} not found in installed plugin`).toBe(true);
+        expect(disabled, `mattpocock-skills:${name} has disable-model-invocation: true`).toBe(false);
+      }
+    },
+  );
 });

@@ -51,7 +51,7 @@ describe("migration runner", () => {
     db.close();
   });
 
-  it("creates the required tables after migration 1", () => {
+  it("creates the required tables after all migrations", () => {
     const db = new Database(":memory:");
     runMigrations(db, MIGRATIONS);
 
@@ -60,10 +60,12 @@ describe("migration runner", () => {
     ).all().map((r) => r.name);
 
     expect(tables).toContain("slices");
-    expect(tables).toContain("decisions");
     expect(tables).toContain("events");
-    expect(tables).toContain("charter");
+    expect(tables).toContain("meta");
     expect(tables).toContain("schema_version");
+    // decisions and charter dropped in migration v4
+    expect(tables).not.toContain("decisions");
+    expect(tables).not.toContain("charter");
     db.close();
   });
 

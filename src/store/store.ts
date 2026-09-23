@@ -3,13 +3,13 @@ import { runMigrations } from "./migrations.js";
 import { MIGRATIONS } from "./schema.js";
 
 export type SliceStatus = "pending" | "in_progress" | "complete" | "archived";
-export type DecisionStatus = "proposed" | "accepted" | "superseded";
 
 export const EVENT_TYPES = [
   "GATE_APPROVE",
   "HOLD",
   "HOLD_CLEAR",
   "DECISION",
+  "OBJECTIVE",
   "PAUSE",
   "VERIFICATION",
   "FAILURE",
@@ -35,24 +35,9 @@ export interface Slice {
   completed_at: string | null;
 }
 
-export interface Charter {
-  id: string;
-  title: string;
-  status: string;
-  objective: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Decision {
-  id: string;
-  status: DecisionStatus;
-  kind: string;
-  decision: string;
-  rationale: string | null;
-  alternatives: string | null;
-  supersedes: string | null;
-  resolves: string | null;
+export interface DecisionEvent {
+  id: number;
+  msg: string;
   created_at: string;
 }
 
@@ -133,25 +118,6 @@ export class WorkStore {
     return this.db.query<Event, []>("SELECT * FROM events ORDER BY id").all();
   }
 
-  insertDecision(d: Omit<Decision, "created_at">): void {
-    this.db.run(
-      `INSERT INTO decisions (id, status, kind, decision, rationale, alternatives, supersedes, resolves, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [d.id, d.status, d.kind, d.decision, d.rationale ?? null,
-       d.alternatives ?? null, d.supersedes ?? null, d.resolves ?? null,
-       new Date().toISOString()]
-    );
-  }
-
-  upsertCharter(id: string, title: string, objective: string): void {
-    const now = new Date().toISOString();
-    this.db.run(
-      `INSERT INTO charter (id, title, status, objective, created_at, updated_at) VALUES (?, ?, 'active', ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET title = excluded.title, objective = excluded.objective, updated_at = excluded.updated_at`,
-      [id, title, objective, now, now]
-    );
-  }
-
   getMeta(key: string): string | null {
     const row = this.db.query<{ value: string }, [string]>("SELECT value FROM meta WHERE key = ?").get(key);
     return row?.value ?? null;
@@ -165,8 +131,25 @@ export class WorkStore {
     return this.db.query<Slice, []>("SELECT * FROM slices ORDER BY wave, id").all();
   }
 
-  getAllDecisions(): Decision[] {
-    return this.db.query<Decision, []>("SELECT * FROM decisions ORDER BY created_at").all();
+  getDecisionEvents(): DecisionEvent[] {
+    return this.db.query<Event, []>(
+      "SELECT * FROM events WHERE event_type = 'DECISION' ORDER BY id"
+    ).all().map(e => {
+      let payload: Record<string, unknown> = {};
+      try { payload = JSON.parse(e.payload) as Record<string, unknown>; } catch { /* ignore */ }
+      return { id: e.id, msg: String(payload.msg ?? ""), created_at: e.created_at };
+    });
+  }
+
+  getObjective(): string | null {
+    const ev = this.db.query<Event, []>(
+      "SELECT * FROM events WHERE event_type = 'OBJECTIVE' ORDER BY id DESC LIMIT 1"
+    ).get();
+    if (!ev) return null;
+    try {
+      const p = JSON.parse(ev.payload) as Record<string, unknown>;
+      return String(p.msg ?? "");
+    } catch { return null; }
   }
 
   getHoldState(): string | null {
@@ -184,7 +167,4 @@ export class WorkStore {
     ).get(event_type);
   }
 
-  getCharter(): Charter | null {
-    return this.db.query<Charter, []>("SELECT * FROM charter LIMIT 1").get();
-  }
 }

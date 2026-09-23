@@ -106,6 +106,88 @@ describe("event append", () => {
   });
 });
 
+describe("DECISION events in compile (regression: decisions (0))", () => {
+  it("two DECISION events appear in compile output", () => {
+    run(["event", "append", "--type", "DECISION", "--msg", "use SQLite for storage", "--token", tok], dir);
+    run(["event", "append", "--type", "DECISION", "--msg", "events are append-only", "--token", tok], dir);
+    const c = run(["compile"], dir);
+    expect(c.exitCode).toBe(0);
+    expect(c.stdout).toContain("decisions (2)");
+    expect(c.stdout).toContain("use SQLite for storage");
+    expect(c.stdout).toContain("events are append-only");
+  });
+
+  it("BITE PROOF: compile currently reads events table — removing the events breaks the count", () => {
+    // Append 2 DECISION events
+    run(["event", "append", "--type", "DECISION", "--msg", "decision A", "--token", tok], dir);
+    run(["event", "append", "--type", "DECISION", "--msg", "decision B", "--token", tok], dir);
+    const c = run(["compile"], dir);
+    // Confirm we see them; if the old decisions table (empty) were used, count would be 0
+    expect(c.stdout).not.toContain("decisions (0)");
+    expect(c.stdout).toContain("decisions (2)");
+  });
+});
+
+describe("OBJECTIVE event in compile", () => {
+  it("OBJECTIVE event set via event append appears in compile", () => {
+    run(["event", "append", "--type", "OBJECTIVE", "--msg", "ship parity recovery", "--token", tok], dir);
+    const c = run(["compile"], dir);
+    expect(c.exitCode).toBe(0);
+    expect(c.stdout).toContain("ship parity recovery");
+  });
+
+  it("gw init --objective appends OBJECTIVE event and it appears in compile", () => {
+    // Re-init with objective (idempotent — token already set)
+    const r = run(["init", "--objective", "deliver v2 parity"], dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("objective set");
+    const c = run(["compile"], dir);
+    expect(c.stdout).toContain("deliver v2 parity");
+  });
+
+  it("newest OBJECTIVE event wins when multiple are appended", () => {
+    run(["event", "append", "--type", "OBJECTIVE", "--msg", "old goal", "--token", tok], dir);
+    run(["event", "append", "--type", "OBJECTIVE", "--msg", "new goal", "--token", tok], dir);
+    const c = run(["compile"], dir);
+    expect(c.stdout).toContain("new goal");
+    expect(c.stdout).not.toContain("old goal");
+  });
+});
+
+describe("migration v4 — dead tables dropped on existing store", () => {
+  it("store seeded with v1-v3 schema keeps events and slices after v4 migration", () => {
+    const { Database } = require("bun:sqlite") as typeof import("bun:sqlite");
+    const { runMigrations } = require("../../src/store/migrations.js") as typeof import("../../src/store/migrations.js");
+    const { MIGRATIONS } = require("../../src/store/schema.js") as typeof import("../../src/store/schema.js");
+
+    // Build a store at v3 (no v4)
+    const migsV3 = MIGRATIONS.filter((m: { version: number }) => m.version <= 3);
+    const db = new Database(":memory:");
+    runMigrations(db, migsV3);
+
+    // Seed data into old tables
+    db.run("INSERT INTO slices (id, wave, status, created_at) VALUES ('S-old', 1, 'pending', '2024-01-01')");
+    db.run("INSERT INTO events (event_type, payload, created_at) VALUES ('DECISION', '{\"msg\":\"keep me\"}', '2024-01-01')");
+    db.run("INSERT INTO decisions (id, status, kind, decision, created_at) VALUES ('D-old', 'proposed', 'DECISION', 'old row', '2024-01-01')");
+
+    // Apply v4
+    runMigrations(db, MIGRATIONS);
+
+    // Slices and events survive
+    const slices = db.query<{ id: string }, []>("SELECT id FROM slices").all();
+    expect(slices.some((s: { id: string }) => s.id === "S-old")).toBe(true);
+    const events = db.query<{ payload: string }, []>("SELECT payload FROM events WHERE event_type = 'DECISION'").all();
+    expect(events).toHaveLength(1);
+
+    // Dead tables are gone
+    const tables = db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'").all().map((r: { name: string }) => r.name);
+    expect(tables).not.toContain("decisions");
+    expect(tables).not.toContain("charter");
+
+    db.close();
+  });
+});
+
 
 describe("slice rm", () => {
   it("rm on a completed slice is refused with D-12 trigger message", () => {

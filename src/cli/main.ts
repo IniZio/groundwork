@@ -45,7 +45,7 @@ function checkToken(store: WorkStore, args: string[]): void {
   }
 }
 
-function cmdInit(): void {
+function cmdInit(args: string[]): void {
   const p = dbPath();
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -57,6 +57,11 @@ function cmdInit(): void {
     process.stdout.write(`initialized: ${p}\ntoken: ${tok}\n`);
   } else {
     process.stdout.write(`already initialized: ${p}\n`);
+  }
+  const objective = flag(args, "--objective");
+  if (objective) {
+    store.appendEvent("OBJECTIVE", { msg: objective });
+    process.stdout.write(`objective set\n`);
   }
   store.close();
 }
@@ -185,10 +190,10 @@ function cmdEventAppend(args: string[]): void {
 function cmdCompile(args: string[]): void {
   const asJson = boolFlag(args, "--json");
   const store = requireDb();
-  const charter = store.getCharter();
+  const objective = store.getObjective();
   const slices = store.getAllSlices();
   const openSlices = slices.filter(s => s.status === "pending" || s.status === "in_progress");
-  const decisions = store.getAllDecisions();
+  const decisions = store.getDecisionEvents();
   const gateOk = store.getEvents("GATE_APPROVE").length > 0;
   const hold = store.getHoldState();
   const lastPause = store.getLastEvent("PAUSE");
@@ -196,7 +201,7 @@ function cmdCompile(args: string[]): void {
 
   if (asJson) {
     process.stdout.write(JSON.stringify({
-      objective: charter?.objective ?? null,
+      objective: objective ?? null,
       decisions,
       open_slices: openSlices,
       last_pause: pausePayload,
@@ -204,7 +209,7 @@ function cmdCompile(args: string[]): void {
       hold: hold ?? null,
     }, null, 2) + "\n");
   } else {
-    process.stdout.write(`objective: ${charter?.objective ?? "(none)"}\n`);
+    process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
     process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}\n`);
     process.stdout.write(`hold: ${hold ?? "none"}\n`);
     process.stdout.write(`open slices (${openSlices.length}):\n`);
@@ -213,7 +218,7 @@ function cmdCompile(args: string[]): void {
     }
     process.stdout.write(`decisions (${decisions.length}):\n`);
     for (const d of decisions) {
-      process.stdout.write(`  ${d.id} [${d.status}] ${d.decision.slice(0, 80)}\n`);
+      process.stdout.write(`  [event ${d.id}] ${d.msg.slice(0, 80)}\n`);
     }
     if (pausePayload) {
       process.stdout.write(`last PAUSE: ${String(pausePayload.msg ?? "(no msg)")}\n`);
@@ -230,7 +235,7 @@ const argv = process.argv.slice(2);
 const cmd = argv[0];
 
 if (cmd === "init") {
-  cmdInit();
+  cmdInit(argv.slice(1));
 } else if (cmd === "slice") {
   const sub = argv[1];
   const rest = argv.slice(2);

@@ -79,4 +79,13 @@ export const MIGRATIONS: Migration[] = [
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `,
   },
+  {
+    version: 4,
+    description: "D11: drop dead decisions and charter tables; decisions sourced from DECISION events",
+    up: `
+      DROP TRIGGER IF EXISTS prevent_delete_accepted_decisions;
+      DROP TABLE IF EXISTS decisions;
+      DROP TABLE IF EXISTS charter;
+    `,
+  },
 ];

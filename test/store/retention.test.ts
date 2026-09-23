@@ -47,15 +47,6 @@ describe("D-12 retention guarantee — structural (trigger-layer)", () => {
     expect(store.getEvents()).toHaveLength(1);
   });
 
-  it("raw DELETE on an accepted decision throws", () => {
-    store.insertDecision({ id: "D-1", status: "accepted", kind: "DECISION", decision: "use SQLite", rationale: null, alternatives: null, supersedes: null, resolves: null });
-    const db = store.database;
-
-    expect(() => db.run("DELETE FROM decisions WHERE id = ?", ["D-1"])).toThrow(
-      "D-12: accepted/superseded decision deletion is prohibited"
-    );
-  });
-
   it("BITE PROOF: drop trigger → raw DELETE succeeds (row disappears) — trigger is the guard", () => {
     const db2 = new Database(":memory:");
     runMigrations(db2, MIGRATIONS);

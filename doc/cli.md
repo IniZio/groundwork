@@ -6,8 +6,9 @@ All mutation commands require `--token <t>` matching the value printed by `gw in
 
 ## Commands
 
-### `gw init`
+### `gw init [--objective TEXT]`
 Creates the work store and prints the write token. Idempotent — safe to re-run.
+If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
 
 ### `gw slice add <id> [--desc TEXT] [--wave N] [--blocked-by a,b] [--acceptance "x;y"] --token T`
 Adds a pending slice.
@@ -61,5 +62,8 @@ Resume view: objective, decisions, open slices, last PAUSE, gate state, hold sta
 
 Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event append` and `gw compile`.
 
-`GATE_APPROVE`, `HOLD`, `HOLD_CLEAR`, `DECISION`, `PAUSE`, `VERIFICATION`, `FAILURE`,
+`GATE_APPROVE`, `HOLD`, `HOLD_CLEAR`, `DECISION`, `OBJECTIVE`, `PAUSE`, `VERIFICATION`, `FAILURE`,
 `MILESTONE`, `HANDOFF`, `SESSION_START`, `CHECKPOINT`, `SLICE_COMPLETE`, `RETENTION_ACTION`
+
+`DECISION` — records a decision; `msg` is the decision text. Shown in `gw compile` under `decisions (N)`.
+`OBJECTIVE` — sets the motive objective; `msg` is the objective text. `gw compile` shows the newest.

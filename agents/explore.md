@@ -1,5 +1,5 @@
 ---
-name: groundwork:explore
+name: explore
 description: >
   Read-only code locator. Returns path:line rows for "where is X defined",
   "what calls Y", "list all Z uses". Refuses to edit or propose fixes.

@@ -10,6 +10,30 @@ const agentFiles = readdirSync(AGENTS_DIR)
   .filter((f) => f.endsWith(".md"))
   .map((f) => ({ name: f, absPath: path.join(AGENTS_DIR, f) }));
 
+function extractFrontmatterName(content: string): string | null {
+  const m = content.match(/^---\n[\s\S]*?^name:\s*(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+
+describe("agent-shape: frontmatter name is bare (no colon) and matches filename", () => {
+  for (const { name, absPath } of agentFiles) {
+    it(`${name} frontmatter name is bare and matches basename`, () => {
+      const content = readFileSync(absPath, "utf8");
+      const agentName = extractFrontmatterName(content);
+      expect(agentName, `${name}: missing name: in frontmatter`).not.toBeNull();
+      expect(
+        agentName,
+        `${name}: name must match /^[a-z0-9-]+$/ (no colon/prefix)`,
+      ).toMatch(/^[a-z0-9-]+$/);
+      const basename = path.basename(name, ".md");
+      expect(
+        agentName,
+        `${name}: name "${agentName}" must equal basename "${basename}"`,
+      ).toBe(basename);
+    });
+  }
+});
+
 describe("agent-shape: each agents/*.md ≤1.5 KB with non-empty Output section", () => {
   for (const { name, absPath } of agentFiles) {
     it(`${name} is ≤${MAX_BYTES} bytes`, () => {

@@ -31,6 +31,7 @@ export interface Slice {
   blocked_by: string | null;
   covers_ac: string | null;
   decisions: string | null;
+  claimed_by: string | null;
   created_at: string;
   completed_at: string | null;
   motive_id: string;
@@ -120,14 +121,15 @@ export class WorkStore {
   // Slices
   // ---------------------------------------------------------------------------
 
-  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description" | "motive_id"> & { description?: string | null; motiveId?: string }): void {
+  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description" | "motive_id" | "claimed_by"> & { description?: string | null; motiveId?: string; claimed_by?: string | null }): void {
     const motiveId = slice.motiveId ?? this.activeMotive;
     this.db.run(
-      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, created_at, motive_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, claimed_by, created_at, motive_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [slice.id, slice.wave, slice.status, slice.description ?? null,
        slice.acceptance ?? null, slice.blocked_by ?? null,
-       slice.covers_ac ?? null, slice.decisions ?? null, new Date().toISOString(), motiveId]
+       slice.covers_ac ?? null, slice.decisions ?? null,
+       slice.claimed_by ?? null, new Date().toISOString(), motiveId]
     );
   }
 
@@ -142,6 +144,21 @@ export class WorkStore {
       [now, id]
     );
     this.appendEvent("SLICE_COMPLETE", { slice_id: id, completed_at: now });
+  }
+
+  claimSlice(id: string, by: string): void {
+    const slice = this.getSlice(id);
+    if (!slice) throw new Error(`Slice '${id}' not found`);
+    if (slice.claimed_by) {
+      throw new Error(`Slice '${id}' is already claimed by '${slice.claimed_by}'`);
+    }
+    this.db.run("UPDATE slices SET status = 'in_progress', claimed_by = ? WHERE id = ?", [by, id]);
+  }
+
+  setCoversAc(id: string, covers_ac: string): void {
+    const slice = this.getSlice(id);
+    if (!slice) throw new Error(`Slice '${id}' not found`);
+    this.db.run("UPDATE slices SET covers_ac = ? WHERE id = ?", [covers_ac, id]);
   }
 
   deleteSlice(id: string): void {

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, statSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, statSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { installHook, uninstallHook, getHookStatus } from "../../src/hooks/installer.js";
+import { renderCommitMsgHook, HOOK_MARKER } from "../../hooks/lib/commit-msg-template.mjs";
 
 function makeRepo(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "gw-installer-test-"));
@@ -117,6 +118,172 @@ describe("commit-msg hook installer", () => {
       const skipped = await uninstallHook({ cwd: dir });
       expect(skipped.status).toBe("skipped-foreign");
       expect(readFileSync(hookPath, "utf8")).toBe(FOREIGN);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("upgrade: old-version groundwork hook is replaced with current version", async () => {
+    const { dir, cleanup } = makeRepo();
+    try {
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+      // Plant a hook with an old marker version
+      const oldHook = "#!/bin/bash\n# " + HOOK_MARKER + " v0.1.0\n# Managed by groundwork — do not edit.\nexit 0\n";
+      writeFileSync(hookPath, oldHook, { mode: 0o755 });
+
+      const result = await installHook({ cwd: dir });
+      expect(result.status).toBe("upgraded");
+      if (result.status === "upgraded") {
+        expect(result.fromVersion).toBe("0.1.0");
+      }
+
+      const newContent = readFileSync(hookPath, "utf8");
+      expect(newContent).toContain(HOOK_MARKER);
+      expect(newContent).not.toContain("v0.1.0");
+      // New content has the runtime detection logic
+      expect(newContent).toContain("command -v bun");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ── runtime selection tests ────────────────────────────────────────────────
+
+function whichBin(name: string): string {
+  const r = spawnSync("which", [name], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`${name} not found on PATH`);
+  return r.stdout.trim();
+}
+
+/** Create a temp dir with named symlinks; caller must rmSync it. */
+function makeFakeBinDir(entries: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "gw-fakebin-"));
+  for (const [name, target] of Object.entries(entries)) {
+    symlinkSync(target, join(dir, name));
+  }
+  return dir;
+}
+
+/** Minimal env for a git commit: no HOME/USER inference needed, just enough for bash + git. */
+function minGitEnv(extraPath: string): Record<string, string> {
+  return {
+    PATH: extraPath + ":/usr/bin:/bin",
+    HOME: process.env.HOME ?? "/root",
+    GIT_AUTHOR_NAME: "Test",
+    GIT_AUTHOR_EMAIL: "test@test.com",
+    GIT_COMMITTER_NAME: "Test",
+    GIT_COMMITTER_EMAIL: "test@test.com",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+}
+
+describe("commit-msg hook runtime selection", () => {
+  it("(a) bun-only PATH: rejects bad message, accepts good", async () => {
+    const { dir, cleanup } = makeRepo();
+    const bunPath = whichBin("bun");
+    const fakeBin = makeFakeBinDir({ bun: bunPath });
+    try {
+      await installHook({ cwd: dir });
+      const env = minGitEnv(fakeBin);
+
+      const bad = spawnSync("git", ["commit", "--allow-empty", "-m", "bad message"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...env, GROUNDWORK_HOOKS_LIB: join(resolve(import.meta.dir, "../.."), "hooks", "lib") },
+      });
+      expect(bad.status).not.toBe(0);
+
+      const good = spawnSync("git", ["commit", "--allow-empty", "-m", "feat: runtime selection"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...env, GROUNDWORK_HOOKS_LIB: join(resolve(import.meta.dir, "../.."), "hooks", "lib") },
+      });
+      expect(good.status).toBe(0);
+    } finally {
+      cleanup();
+      rmSync(fakeBin, { recursive: true, force: true });
+    }
+  });
+
+  it("(b) node-only PATH: rejects bad message, accepts good", async () => {
+    const { dir, cleanup } = makeRepo();
+    const nodePath = whichBin("node");
+    const fakeBin = makeFakeBinDir({ node: nodePath });
+    try {
+      await installHook({ cwd: dir });
+      const env = minGitEnv(fakeBin);
+
+      const bad = spawnSync("git", ["commit", "--allow-empty", "-m", "bad message"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...env, GROUNDWORK_HOOKS_LIB: join(resolve(import.meta.dir, "../.."), "hooks", "lib") },
+      });
+      expect(bad.status).not.toBe(0);
+
+      const good = spawnSync("git", ["commit", "--allow-empty", "-m", "feat: runtime selection"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...env, GROUNDWORK_HOOKS_LIB: join(resolve(import.meta.dir, "../.."), "hooks", "lib") },
+      });
+      expect(good.status).toBe(0);
+    } finally {
+      cleanup();
+      rmSync(fakeBin, { recursive: true, force: true });
+    }
+  });
+
+  it("(c) neither bun nor node: exits 0 with expected stderr line", async () => {
+    const { dir, cleanup } = makeRepo();
+    try {
+      await installHook({ cwd: dir });
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      const msgFile = join(dir, "COMMIT_EDITMSG");
+      writeFileSync(msgFile, "bad message\n");
+
+      // PATH has git + coreutils but NOT bun or node
+      const r = spawnSync(hookPath, [msgFile], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME ?? "/root" },
+      });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("groundwork commit-msg: no bun/node, skipping lint");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("bite proof — (c) goes red without fallback branch", async () => {
+    const { dir, cleanup } = makeRepo();
+    try {
+      // Generate hook and strip the fallback block so neither-runtime path exits non-zero
+      const hookContent = renderCommitMsgHook({
+        hooksLibPath: join(resolve(import.meta.dir, "../.."), "hooks", "lib"),
+        version: "0.0.0-bite",
+      });
+      const withoutFallback = hookContent
+        .split("\n")
+        .filter((l) => !l.includes("no bun/node") && !l.includes("skipping lint"))
+        .join("\n");
+
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+      writeFileSync(hookPath, withoutFallback, { mode: 0o755 });
+
+      const msgFile = join(dir, "COMMIT_EDITMSG");
+      writeFileSync(msgFile, "bad message\n");
+
+      const r = spawnSync(hookPath, [msgFile], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME ?? "/root" },
+      });
+      // Without the fallback, the hook should fail (non-zero or no "skipping lint" message)
+      const hasSkipLine = r.stderr.includes("groundwork commit-msg: no bun/node, skipping lint");
+      const exitedClean = r.status === 0 && hasSkipLine;
+      expect(exitedClean).toBe(false);
     } finally {
       cleanup();
     }

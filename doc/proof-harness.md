@@ -17,7 +17,7 @@ Differential evidence:
 | condition | plugins in init event | groundwork present | agents |
 |---|---|---|---|
 | `--plugin-dir` with `dependencies` in manifest | 12 | no | none |
-| `--plugin-dir` with `dependencies` removed | 13 | yes (2.0.0) | advisor, implementer, orchestrator, qa |
+| `--plugin-dir` with `dependencies` removed | 13 | yes | advisor, implementer, orchestrator, qa |
 
 `claude plugin validate .` exits 0 and `--debug` prints nothing in either case. The failure is invisible at validation time and silent at load time.
 
@@ -44,9 +44,9 @@ The `--check-log` flag is useful for re-checking a saved run or for fast testing
 
 The check parses the first `{"type":"system","subtype":"init"}` line in `stdout.log` and asserts:
 
-- **(a)** a plugin entry named `groundwork` with `version` exactly `"2.0.0"` is present.
+- **(a)** a plugin entry named `groundwork` with `version` exactly matching the version in `package.json` is present.
 - **(b)** a plugin entry named `mattpocock-skills` is present.
-- **(c)** no `groundwork` entry exists with any version other than `2.0.0`. (The v1 plugin at version 3.7.0 lives at `~/.config/opencode/plugins/groundwork` and has leaked into past runs via HOME inheritance.)
+- **(c)** no `groundwork` entry exists with any version other than the version in `package.json`. (The v1 plugin at version 3.7.0 lives at `~/.config/opencode/plugins/groundwork` and has leaked into past runs via HOME inheritance.)
 - **(d)** all four agents are listed: `groundwork:advisor`, `groundwork:implementer`, `groundwork:orchestrator`, `groundwork:qa`.
 
 The harness prints a `PASS/FAIL` block and exits non-zero on any failure before any behaviour from the run is interpreted.

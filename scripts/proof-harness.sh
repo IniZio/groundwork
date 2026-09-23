@@ -20,6 +20,19 @@ set -uo pipefail
 
 die() { echo "ERROR: $*" >&2; exit 3; }
 
+# Resolve SCRIPT_DIR early so EXPECTED_VERSION is available inside run_init_check,
+# which is called before argument parsing when --check-log is used.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+_PKG_JSON="$_REPO_ROOT/package.json"
+if [[ ! -f "$_PKG_JSON" ]]; then
+  die "package.json not found at $_PKG_JSON"
+fi
+EXPECTED_VERSION="$(jq -r '.version // ""' "$_PKG_JSON" 2>/dev/null)" || die "jq failed reading $_PKG_JSON"
+if [[ -z "$EXPECTED_VERSION" ]]; then
+  die "package.json at $_PKG_JSON has no .version field"
+fi
+
 PASS_COUNT=0
 FAIL_COUNT=0
 FAIL_MESSAGES=()
@@ -50,10 +63,10 @@ run_init_check() {
   gw_version=$(echo "$init_line" | jq -r '
     (.plugins // []) | map(select(.name=="groundwork")) | first | .version // ""
   ' 2>/dev/null || true)
-  if [[ "$gw_version" == "2.0.0" ]]; then
-    _pass "groundwork plugin version 2.0.0 present"
+  if [[ "$gw_version" == "$EXPECTED_VERSION" ]]; then
+    _pass "groundwork plugin version ${EXPECTED_VERSION} present"
   else
-    _fail "groundwork 2.0.0 not found (got: '${gw_version}')"
+    _fail "groundwork ${EXPECTED_VERSION} not found (got: '${gw_version}')"
   fi
 
   local mps_count
@@ -67,11 +80,11 @@ run_init_check() {
   fi
 
   local gw_other
-  gw_other=$(echo "$init_line" | jq -r '
-    (.plugins // []) | map(select(.name=="groundwork" and .version!="2.0.0")) | map(.version) | join(", ")
+  gw_other=$(echo "$init_line" | jq -r --arg v "$EXPECTED_VERSION" '
+    (.plugins // []) | map(select(.name=="groundwork" and .version!=$v)) | map(.version) | join(", ")
   ' 2>/dev/null || true)
   if [[ -z "$gw_other" ]]; then
-    _pass "no groundwork version other than 2.0.0"
+    _pass "no groundwork version other than ${EXPECTED_VERSION}"
   else
     _fail "unexpected groundwork versions present: $gw_other"
   fi
@@ -139,8 +152,6 @@ fi
 
 REPO="$(realpath "$REPO")"
 [[ -d "$REPO" ]] || die "--repo path does not exist: $REPO"
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ -z "$PLUGIN" ]]; then
   PLUGIN="$(cd "$SCRIPT_DIR/.." && pwd)"

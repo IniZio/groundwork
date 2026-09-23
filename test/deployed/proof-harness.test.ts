@@ -1,11 +1,15 @@
 import { describe, it, expect, afterAll } from "bun:test";
-import { statSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { statSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, copyFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const HARNESS = path.join(ROOT, "scripts/proof-harness.sh");
 const SCRATCH = path.join(ROOT, "test/deployed/_proof-harness-scratch");
+
+const EXPECTED_VERSION: string = JSON.parse(
+  readFileSync(path.join(ROOT, "package.json"), "utf8")
+).version;
 
 mkdirSync(SCRATCH, { recursive: true });
 afterAll(() => { try { rmSync(SCRATCH, { recursive: true, force: true }); } catch { /**/ } });
@@ -62,7 +66,7 @@ describe("proof-harness.sh --check-log — init check bites on bad input", () =>
     const result = runCheckLog(log);
     expect(result.exit).not.toBe(0);
     expect(result.stdout).toContain("FAIL");
-    expect(result.stdout).toContain("groundwork 2.0.0 not found");
+    expect(result.stdout).toContain(`groundwork ${EXPECTED_VERSION} not found`);
   });
 
   it("exits non-zero when groundwork has wrong version", () => {
@@ -95,7 +99,7 @@ describe("proof-harness.sh --check-log — init check bites on bad input", () =>
       type: "system",
       subtype: "init",
       plugins: [
-        { name: "groundwork", version: "2.0.0" },
+        { name: "groundwork", version: EXPECTED_VERSION },
         { name: "mattpocock-skills", version: "1.0.0" },
       ],
       agents: [
@@ -115,7 +119,7 @@ describe("proof-harness.sh --check-log — init check bites on bad input", () =>
       type: "system",
       subtype: "init",
       plugins: [
-        { name: "groundwork", version: "2.0.0" },
+        { name: "groundwork", version: EXPECTED_VERSION },
         { name: "mattpocock-skills", version: "1.0.0" },
       ],
       agents: [
@@ -132,6 +136,58 @@ describe("proof-harness.sh --check-log — init check bites on bad input", () =>
   });
 });
 
+describe("proof-harness.sh — version follows package.json", () => {
+  it("fails when package.json declares a different version than the log", () => {
+    const treeDir = path.join(SCRATCH, "alt-pkg-tree");
+    const scriptsDir = path.join(treeDir, "scripts");
+    mkdirSync(scriptsDir, { recursive: true });
+
+    copyFileSync(HARNESS, path.join(scriptsDir, "proof-harness.sh"));
+    execSync(`chmod +x "${path.join(scriptsDir, "proof-harness.sh")}"`);
+
+    const altVersion = "9.9.9";
+    writeFileSync(
+      path.join(treeDir, "package.json"),
+      JSON.stringify({ name: "groundwork", version: altVersion }),
+    );
+
+    const logDir = path.join(SCRATCH, "alt-pkg-log");
+    mkdirSync(logDir, { recursive: true });
+    const log = makeLog(logDir, {
+      type: "system",
+      subtype: "init",
+      plugins: [
+        { name: "groundwork", version: EXPECTED_VERSION },
+        { name: "mattpocock-skills", version: "1.0.0" },
+      ],
+      agents: [
+        { name: "groundwork:advisor" },
+        { name: "groundwork:implementer" },
+        { name: "groundwork:orchestrator" },
+        { name: "groundwork:qa" },
+      ],
+    });
+
+    const altHarness = path.join(scriptsDir, "proof-harness.sh");
+    let exit = 0;
+    let stdout = "";
+    try {
+      stdout = execSync(`bash "${altHarness}" --check-log "${log}"`, {
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (err: unknown) {
+      const e = err as { status?: number; stdout?: string };
+      exit = e.status ?? 1;
+      stdout = e.stdout ?? "";
+    }
+
+    expect(exit).not.toBe(0);
+    expect(stdout).toContain("FAIL");
+    expect(stdout).toContain(`groundwork ${altVersion} not found`);
+  });
+});
+
 describe("proof-harness.sh — missing-plugin bite proof", () => {
   it("exits non-zero when plugin name is changed (simulating wrong plugin)", () => {
     const dir = path.join(SCRATCH, "wrong-name");
@@ -140,7 +196,7 @@ describe("proof-harness.sh — missing-plugin bite proof", () => {
       type: "system",
       subtype: "init",
       plugins: [
-        { name: "not-groundwork", version: "2.0.0" },
+        { name: "not-groundwork", version: EXPECTED_VERSION },
         { name: "mattpocock-skills", version: "1.0.0" },
       ],
       agents: [
@@ -153,6 +209,6 @@ describe("proof-harness.sh — missing-plugin bite proof", () => {
     const result = runCheckLog(log);
     expect(result.exit).not.toBe(0);
     expect(result.stdout).toContain("FAIL");
-    expect(result.stdout).toContain("groundwork 2.0.0 not found");
+    expect(result.stdout).toContain(`groundwork ${EXPECTED_VERSION} not found`);
   });
 });

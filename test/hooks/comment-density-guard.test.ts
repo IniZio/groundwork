@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
-import { check } from "../../src/hooks/comment-density-guard.js";
+import { check, buildCtx } from "../../src/hooks/comment-density-guard.js";
 import type { GetParserFn } from "../../src/hooks/lib/comment-density.js";
 
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
@@ -457,5 +457,35 @@ describe("AC4 cumulative budget", () => {
     const ctx = safeContext(r);
     expect(ctx!).toContain("20 lines added");
     expect(ctx!).toContain("2 comments already added");
+  });
+});
+
+
+import { readFileSync as readFS } from "node:fs";
+import path2 from "node:path";
+
+const PROBE_SH = readFS(
+  path2.join(import.meta.dir, "../fixtures/comment-density/nexus-probe/probe.sh"),
+  "utf8",
+);
+
+describe("remainder (K) computation", () => {
+  it("probe.sh Write: strips 121, K=0, B=37 (bite: old code said re-add 37)", async () => {
+    const r = await check(write("/tmp/cdg-probe.sh", PROBE_SH));
+    expect(r.exit).toBe(0);
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    expect(ctx!).toContain("removed 121 comment(s)");
+    expect(ctx!).toContain("budget left before this edit: 37");
+    expect(ctx!).toContain("No comment budget remains");
+    expect(ctx!).not.toContain("re-add up to 37");
+  });
+
+  it("buildCtx K>0: remainder=2 shows re-add count", () => {
+    const fakeStripped = [{ startRow: 0, endRow: 0, startIndex: 0, endIndex: 7, text: "# extra", nodeType: "comment", exempt: false }];
+    const ctx = buildCtx("write", "/tmp/f.ts", fakeStripped, 5, 2, 100, 3);
+    expect(ctx).toContain("re-add up to 2");
+    expect(ctx).not.toContain("No comment budget remains");
+    expect(ctx).toContain("budget left before this edit: 5");
   });
 });

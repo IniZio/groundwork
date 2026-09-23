@@ -21,6 +21,7 @@ Each hook is registered under exactly one Claude Code event. The event, output s
 | prose-quality-guard | PostToolUse | `hookSpecificOutput.hookEventName: "PostToolUse"` + `additionalContext` — no `permissionDecision` (advisory only) |
 | stop-gate | Stop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
 | new-code-gate | Stop, SubagentStop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
+| comment-density-guard | PreToolUse | emits `updatedInput` + `additionalContext` — NEVER `permissionDecision`; Claude Code runs its normal permission check on the rewritten input (emitting `"allow"` would bypass that prompt) |
 | comment-density-gate | Stop, SubagentStop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
 
 For PreToolUse and PostToolUse hooks, `hookSpecificOutput.hookEventName` must equal the registered event. Stop/SubagentStop hooks use only the top-level `decision` + `reason` shape and emit no `hookSpecificOutput`.

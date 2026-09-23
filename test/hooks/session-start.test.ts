@@ -33,10 +33,12 @@ describe("session-start hook", () => {
 
   it("additionalContext contains stop-gate, new-code-gate, and comment-density-gate info", () => {
     const { stdout } = run({});
-    const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toContain("Stop-gate");
-    expect(out.hookSpecificOutput.additionalContext).toContain("New-code-gate");
-    expect(out.hookSpecificOutput.additionalContext).toContain("Comment-density-gate");
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("Stop-gate");
+    expect(ctx).toContain("New-code-gate");
+    expect(ctx).toContain("Comment-density-gate");
+    expect(ctx).toContain("after 3 blocks");
+    expect(ctx).toContain("comment-density-guard");
   });
 
   it("additionalContext contains mattpocock skills", () => {

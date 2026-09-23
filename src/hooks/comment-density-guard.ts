@@ -145,11 +145,12 @@ function mapToInput(
   return null;
 }
 
-function buildCtx(
+export function buildCtx(
   tool: string,
   filePath: string,
   stripped: Comment[],
-  budget: number,
+  budgetBefore: number,
+  remainder: number,
   priorAddedCount: number,
   priorAddedComments: number,
 ): string {
@@ -157,8 +158,8 @@ function buildCtx(
   const displayTool = tool.charAt(0).toUpperCase() + tool.slice(1);
   const A = priorAddedCount;
   const C = priorAddedComments;
-  const B = Math.max(0, Math.floor(0.05 * priorAddedCount) - priorAddedComments);
-  const K = Math.max(0, budget);
+  const B = Math.max(0, budgetBefore);
+  const K = Math.max(0, remainder);
 
   const rows = stripped
     .map(c => `  L${c.startRow + 1}: ${c.text.split("\n")[0].slice(0, 80)}`)
@@ -265,15 +266,17 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     const updatedTi = mapToInput(tool, ti, pre ?? "", stripped_post);
 
+    const remainder = Math.max(0, budget - keep);
+
     if (updatedTi !== null) {
       const verified = reconstructPostEdit(tool, updatedTi as Parameters<typeof reconstructPostEdit>[1], pre);
       if (verified && verified.post === stripped_post) {
-        const ctx = buildCtx(tool, filePath, to_strip, budget, priorAddedCount, priorAddedComments);
+        const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments);
         return rewrite(updatedTi, ctx);
       }
     }
 
-    const ctx = buildCtx(tool, filePath, to_strip, budget, priorAddedCount, priorAddedComments);
+    const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments);
     return advisory(ctx);
   } catch {
     return allow();

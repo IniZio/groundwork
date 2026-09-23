@@ -244,12 +244,16 @@ describe("addedRanges — repo resolution uses file's own repo", () => {
 
     writeFileSync(path.join(repo, "f.ts"), "line1\nline2\n");
 
-    process.env.CLAUDE_PROJECT_DIR = decoyRepo;
-    const ranges = addedRanges(path.join(repo, "f.ts"), base);
-    delete process.env.CLAUDE_PROJECT_DIR;
-
-    expect(ranges).not.toBeNull();
-    expect(ranges).toContain(2);
+    const prev = process.env.CLAUDE_PROJECT_DIR;
+    try {
+      process.env.CLAUDE_PROJECT_DIR = decoyRepo;
+      const ranges = addedRanges(path.join(repo, "f.ts"), base);
+      expect(ranges).not.toBeNull();
+      expect(ranges).toContain(2);
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = prev;
+    }
   });
 
   it("deleted file returns null", () => {

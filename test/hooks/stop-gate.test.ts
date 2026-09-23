@@ -1,10 +1,12 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { unlinkSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { unlinkSync, mkdirSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { run, checkStore } from "../../src/hooks/stop-gate.js";
+import { run, checkStore, detectYield, extractBackgroundAgentIds } from "../../src/hooks/stop-gate.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
+
+const FIXTURES = path.join(import.meta.dir, "fixtures");
 
 const TMP = "/tmp/gw-stop-gate-test";
 mkdirSync(TMP, { recursive: true });
@@ -193,5 +195,136 @@ describe("stop-gate — Family 3", () => {
     const result = run({ session_id: "t-empty-approve" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);
     expect(out.continue).toBe(true);
+  });
+});
+
+describe("stop-gate — yield detection (T05)", () => {
+  it("YIELD: in-flight background Agent → allow, counter not incremented", () => {
+    const { db, dbPath } = makeDb("yield-inflight");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const env = { GROUNDWORK_DB: dbPath };
+    const payload = { session_id: "sess-yield", transcript_path: transcriptPath };
+    const r1 = JSON.parse(run(payload, env).stdout);
+    expect(r1.continue).toBe(true);
+    expect(r1.reason).toContain("in-flight");
+    // Counter must not have advanced — next call should still be count=1, not unresolvable
+    const r2 = JSON.parse(run(payload, env).stdout);
+    expect(r2.continue).toBe(true);
+    expect(r2.reason).toContain("in-flight");
+    // Confirm count file was never written (counter stays at 0 through yield allows)
+    const db2 = new Database(dbPath);
+    db2.run("UPDATE slices SET status='complete', completed_at=? WHERE id='S1'", [new Date().toISOString()]);
+    db2.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    db2.close();
+    // Now without agents in-flight the gate should pass cleanly (counter wasn't burned)
+    const noAgentPath = path.join(FIXTURES, "stop-gate-noagents.jsonl");
+    const r3 = JSON.parse(run({ session_id: "sess-yield", transcript_path: noAgentPath }, env).stdout);
+    expect(r3.continue).toBe(true);
+  });
+
+  it("YIELD: no in-flight agents with incomplete slices → block as normal", () => {
+    const { db, dbPath } = makeDb("yield-no-agents");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-noagents.jsonl");
+    const payload = { session_id: "sess-no-yield", transcript_path: transcriptPath };
+    const result = JSON.parse(run(payload, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(result.decision).toBe("block");
+    expect(result.reason).toContain("incomplete");
+  });
+
+  it("YIELD: completed background agent (task-notification present) → not in-flight, block as normal", () => {
+    const { db, dbPath } = makeDb("yield-completed");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-completed.jsonl");
+    const payload = { session_id: "sess-completed", transcript_path: transcriptPath };
+    const result = JSON.parse(run(payload, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(result.decision).toBe("block");
+    expect(result.reason).toContain("incomplete");
+  });
+
+  it("YIELD: 4-block release is unchanged — yield-allowing stops do not count", () => {
+    const { db, dbPath } = makeDb("yield-4block");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const noAgentsPath = path.join(FIXTURES, "stop-gate-noagents.jsonl");
+    const env = { GROUNDWORK_DB: dbPath };
+    const sid = "sess-4b";
+    // Two yield-allows (in-flight) — should not advance counter
+    run({ session_id: sid, transcript_path: inFlightPath }, env);
+    run({ session_id: sid, transcript_path: inFlightPath }, env);
+    // Now 3 normal blocks (no agents in-flight)
+    const b1 = JSON.parse(run({ session_id: sid, transcript_path: noAgentsPath }, env).stdout);
+    const b2 = JSON.parse(run({ session_id: sid, transcript_path: noAgentsPath }, env).stdout);
+    const b3 = JSON.parse(run({ session_id: sid, transcript_path: noAgentsPath }, env).stdout);
+    expect(b1.decision).toBe("block");
+    expect(b2.decision).toBe("block");
+    expect(b3.decision).toBe("block");
+    expect(b3.reason).toContain("unresolvable");
+    // 4th normal → allow (release)
+    const b4 = JSON.parse(run({ session_id: sid, transcript_path: noAgentsPath }, env).stdout);
+    expect(b4.continue).toBe(true);
+  });
+
+  it("YIELD: resumed-and-still-running SendMessage → allow, counter not incremented", () => {
+    const { db, dbPath } = makeDb("yield-resume-inflight");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-resumed-inflight.jsonl");
+    const payload = { session_id: "sess-resume-inflight", transcript_path: transcriptPath };
+    const r1 = JSON.parse(run(payload, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(r1.continue).toBe(true);
+    expect(r1.reason).toContain("in-flight");
+    // Counter was not burned: second yield-allow still passes
+    const r2 = JSON.parse(run(payload, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(r2.continue).toBe(true);
+  });
+
+  it("YIELD: resumed-and-completed SendMessage (task-notification present) → not in-flight, block as normal", () => {
+    const { db, dbPath } = makeDb("yield-resume-completed");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-resumed-completed.jsonl");
+    const payload = { session_id: "sess-resume-done", transcript_path: transcriptPath };
+    const result = JSON.parse(run(payload, { GROUNDWORK_DB: dbPath }).stdout);
+    expect(result.decision).toBe("block");
+    expect(result.reason).toContain("incomplete");
+  });
+
+  it("BITE-PROOF: extractBackgroundAgentIds and detectYield are sensitive to the real fixture shapes", () => {
+    const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const completedPath = path.join(FIXTURES, "stop-gate-completed.jsonl");
+    const noAgentsPath = path.join(FIXTURES, "stop-gate-noagents.jsonl");
+
+    // extractBackgroundAgentIds finds the real id from the Async-launched tool_result
+    const ids = extractBackgroundAgentIds(readFileSync(inFlightPath, "utf8"));
+    expect(ids).toContain("toolu_017r6rPz9FpJmcafHLu7StLi");
+
+    // detectYield: in-flight → non-null with "in-flight"
+    const resultInflight = detectYield({ transcript_path: inFlightPath });
+    expect(resultInflight).not.toBeNull();
+    expect(resultInflight).toContain("in-flight");
+
+    // detectYield: completed (task-notification present) → null
+    expect(detectYield({ transcript_path: completedPath })).toBeNull();
+
+    // detectYield: no agents → null
+    expect(detectYield({ transcript_path: noAgentsPath })).toBeNull();
+
+    // SendMessage resumes: in-flight → non-null; completed → null
+    const resumeInflightPath = path.join(FIXTURES, "stop-gate-resumed-inflight.jsonl");
+    const resumeInflightIds = extractBackgroundAgentIds(readFileSync(resumeInflightPath, "utf8"));
+    expect(resumeInflightIds).toContain("toolu_01FTUrSykao5EUdu5ohtxnA4");
+    expect(detectYield({ transcript_path: resumeInflightPath })).not.toBeNull();
+    expect(detectYield({ transcript_path: resumeInflightPath })).toContain("in-flight");
+
+    const resumeCompletedPath = path.join(FIXTURES, "stop-gate-resumed-completed.jsonl");
+    const resumeCompletedIds = extractBackgroundAgentIds(readFileSync(resumeCompletedPath, "utf8"));
+    expect(resumeCompletedIds).toContain("toolu_01XhWdCxXKSmrb9RLpei8Kpx");
+    expect(detectYield({ transcript_path: resumeCompletedPath })).toBeNull();
   });
 });

@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_017r6rPz9FpJmcafHLu7StLi", "name": "Agent", "input": {"description": "Parity: agents & orchestration", "subagent_type": "general-purpose", "prompt": "[trimmed]"}, "caller": {"type": "direct"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"tool_use_id": "toolu_017r6rPz9FpJmcafHLu7StLi", "type": "tool_result", "content": [{"type": "text", "text": "Async agent launched successfully. (This tool result is internal metadata.)"}]}]}}

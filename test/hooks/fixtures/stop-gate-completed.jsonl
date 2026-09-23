@@ -1,0 +1,3 @@
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01X96DbQeJ9Ee9bshTfaLrDT", "name": "Agent", "input": {"description": "Inspect herdr nexus session", "subagent_type": "general-purpose", "prompt": "[trimmed]"}, "caller": {"type": "direct"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"tool_use_id": "toolu_01X96DbQeJ9Ee9bshTfaLrDT", "type": "tool_result", "content": [{"type": "text", "text": "Async agent launched successfully. (This tool result is internal metadata.)"}]}]}}
+{"type": "user", "message": {"role": "user", "content": "<task-notification>\n<task-id>a0ad7385218b2fcc2</task-id>\n<tool-use-id>toolu_01X96DbQeJ9Ee9bshTfaLrDT</tool-use-id>\n[trimmed]\n</task-notification>"}}

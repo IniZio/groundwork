@@ -2,6 +2,116 @@ import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+// ---------------------------------------------------------------------------
+// Yield detection — allow stop when background Agents are still in-flight
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract ids of background agent launches from a JSONL transcript.
+ *
+ * Two launch kinds are detected:
+ *
+ * 1. Agent tool_use — confirmed when its tool_result text contains
+ *    "Async agent launched successfully". `run_in_background: true` in the
+ *    input is accepted as an extra hint but is NOT required.
+ *
+ * 2. SendMessage resume — a SendMessage tool_use whose tool_result text is
+ *    JSON containing `"resumedAgentId"`. A plain SendMessage (no resumedAgentId)
+ *    is not a launch.
+ *
+ * COMPLETION signal (checked in detectYield): `<tool-use-id>ID</tool-use-id>`
+ * appearing inside a task-notification. That XML tag does not appear in either
+ * launch tool_result line, so it cannot false-match the launch itself.
+ */
+export function extractBackgroundAgentIds(raw: string): string[] {
+  // Pass 1: collect all Agent and SendMessage tool_use ids.
+  // 'Agent' ids also record whether run_in_background hint is set.
+  const toolUseIds = new Map<string, { kind: "Agent" | "SendMessage"; hint: boolean }>();
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(trimmed) as Record<string, unknown>; } catch { continue; }
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    for (const blk of content as Record<string, unknown>[]) {
+      if (blk.type !== "tool_use" || typeof blk.id !== "string") continue;
+      if (blk.name === "Agent") {
+        const hint = (blk.input as Record<string, unknown>)?.run_in_background === true;
+        toolUseIds.set(blk.id as string, { kind: "Agent", hint });
+      } else if (blk.name === "SendMessage") {
+        toolUseIds.set(blk.id as string, { kind: "SendMessage", hint: false });
+      }
+    }
+  }
+  if (toolUseIds.size === 0) return [];
+
+  // Pass 2: confirm each id as a background launch via its tool_result text.
+  const confirmedIds = new Set<string>();
+
+  // Agent: run_in_background hint requires no tool_result confirmation.
+  for (const [id, { kind, hint }] of toolUseIds) {
+    if (kind === "Agent" && hint) confirmedIds.add(id);
+  }
+
+  // Scan tool_result lines for the two confirmation phrases.
+  for (const line of raw.split("\n")) {
+    const hasAsync = line.includes("Async agent launched successfully");
+    const hasResumed = line.includes("resumedAgentId");
+    if (!hasAsync && !hasResumed) continue;
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(line.trim()) as Record<string, unknown>; } catch { continue; }
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    for (const blk of content as Record<string, unknown>[]) {
+      if (blk.type !== "tool_result") continue;
+      const tid = typeof blk.tool_use_id === "string" ? blk.tool_use_id as string : "";
+      if (!tid || !toolUseIds.has(tid)) continue;
+      const { kind } = toolUseIds.get(tid)!;
+      const blockContent = blk.content;
+      let text = "";
+      if (typeof blockContent === "string") {
+        text = blockContent;
+      } else if (Array.isArray(blockContent)) {
+        for (const c of blockContent as Record<string, unknown>[]) {
+          if (c.type === "text" && typeof c.text === "string") text += c.text as string;
+        }
+      }
+      if (kind === "Agent" && text.includes("Async agent launched successfully")) {
+        confirmedIds.add(tid);
+      } else if (kind === "SendMessage" && text.includes("resumedAgentId")) {
+        confirmedIds.add(tid);
+      }
+    }
+  }
+  return Array.from(confirmedIds);
+}
+
+/**
+ * Return a reason string if the session is waiting on in-flight background
+ * Agent tasks, or null if no background agents are in-flight.
+ */
+export function detectYield(input: unknown): string | null {
+  const inp = (input ?? {}) as Record<string, unknown>;
+  const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : "";
+  if (!transcriptPath) return null;
+
+  let raw: string;
+  try { raw = readFileSync(transcriptPath, "utf8"); } catch { return null; }
+
+  const backgroundIds = extractBackgroundAgentIds(raw);
+  if (backgroundIds.length === 0) return null;
+
+  // An agent is complete when its tool-use id appears inside a task-notification.
+  // The `<tool-use-id>` XML tag does not appear in the launch tool_result, so this
+  // test cannot false-match the launch line itself.
+  const inFlight = backgroundIds.filter(id => !raw.includes(`<tool-use-id>${id}</tool-use-id>`));
+  if (inFlight.length === 0) return null;
+  return `background Agent(s) still in-flight (${inFlight.length} without task-notification) — orchestrator awaiting completion`;
+}
+
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
 function block(reason: string): HookResult {
@@ -86,6 +196,10 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     if (incomplete === 0 && approved) {
       resetCount(cf);
       return allow("stop-gate: all slices complete, gate approved");
+    }
+    const yieldReason = detectYield(inp);
+    if (yieldReason) {
+      return allow(`stop-gate: ${yieldReason}`);
     }
     const count = readCount(cf) + 1;
     writeCount(cf, count);

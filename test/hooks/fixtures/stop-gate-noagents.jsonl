@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "I will complete this task now."}]}}
+{"type": "user", "message": {"role": "user", "content": "Please continue."}}

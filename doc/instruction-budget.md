@@ -13,11 +13,11 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | general-purpose / implementer.md | 5728 | 1432 | 1445 | 361 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |
-| implement/SKILL.md | 4522 | 1130 | 2153 | 538 | 0.48 |
+| implement/SKILL.md | 4522 | 1130 | 2248 | 562 | 0.50 |
 | vertical-slice/SKILL.md | 4867 | 1216 | 2223 | 556 | 0.46 |
 | advisor-gate/SKILL.md | 5381 | 1345 | 1282 | 320 | 0.24 |
-| pause/SKILL.md | 2822 | 705 | 861 | 215 | 0.30 |
-| continue/SKILL.md | 3610 | 902 | 944 | 236 | 0.26 |
+| pause/SKILL.md | 2822 | 705 | 886 | 221 | 0.31 |
+| continue/SKILL.md | 3610 | 902 | 1026 | 257 | 0.28 |
 | motive/SKILL.md | 4879 | 1219 | 1473 | 368 | 0.29 |
 
 Recompute v2 bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size is measured on the normalised output — root path replaced with `/GROUNDWORK_ROOT`, sha replaced with `(XXXXXXX)` — to stay environment-independent: `ROOT=$(pwd) && echo '{}' | CLAUDE_PLUGIN_ROOT="$ROOT" bun src/hooks/session-start.ts | bun -e "const d=await Bun.stdin.json();const c=d.hookSpecificOutput.additionalContext;const n=c.replace(new RegExp('$ROOT'.replace(/[.*+?^\${}()|[\]\\\\\\\\]/g,'\\\\\\\\$&'),'g'),'/GROUNDWORK_ROOT').replace(/\\([0-9a-f]{7,40}\\)/g,'(XXXXXXX)');console.log(Buffer.byteLength(n,'utf8'))"`).

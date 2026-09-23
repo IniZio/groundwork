@@ -7,11 +7,12 @@ description: Resume a paused session — restore ledger state, re-inject run con
 
 ## Steps
 
-1. Read `.groundwork/pause-state.md` — extract session_id, write token, open slices, next action.
-2. Run `$GW compile` — verify current ledger state matches pause record.
-3. Run `$GW slice status` — confirm which slices are pending/complete.
-4. Emit resume banner: `GROUNDWORK ▸ resuming: <N> open slices, token: <T>`
-5. Continue fan-out from where the prior session stopped. Use the same write token.
+1. Read `.groundwork/pause-state.md` — extract session_id, open slices, next action (no token stored there).
+2. Run `$GW token` — prints `token: <T>`. Capture T for this session's mutations.
+3. Run `$GW compile` — verify current ledger state matches pause record.
+4. Run `$GW slice status` — confirm which slices are pending/complete.
+5. Emit resume banner: `GROUNDWORK ▸ resuming: <N> open slices, token: <T>`
+6. Continue fan-out from where the prior session stopped. Use token T.
 
 ## If pause-state.md missing
 

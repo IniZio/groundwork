@@ -2,8 +2,14 @@
 import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
 import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import {
+  readWriteToken,
+  ensureWriteToken,
+  ensureSealKey,
+  computeSeal,
+  type SealFields,
+} from "../store/key-store.js";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
 
@@ -31,6 +37,10 @@ function dbPath(): string {
   return path.join(process.cwd(), ".groundwork", "work.db");
 }
 
+function repoDir(): string {
+  return path.dirname(path.dirname(dbPath()));
+}
+
 function requireDb(motiveSlug?: string): WorkStore {
   const p = dbPath();
   if (!existsSync(p)) {
@@ -44,9 +54,11 @@ function requireDb(motiveSlug?: string): WorkStore {
 
 function checkToken(store: WorkStore, args: string[]): void {
   const t = flag(args, "--token");
-  const stored = store.getMeta("token");
+  // Token lives in config dir (not in work.db).  Fall back to meta for stores
+  // that have not yet run $GW init under the new scheme.
+  const stored = readWriteToken(repoDir()) ?? store.getMeta("token");
   if (!stored) {
-    process.stderr.write(`error: store has no token — re-run \`${gw} init\`\n`);
+    process.stderr.write(`error: store has no token — run \`${gw} init\` first\n`);
     store.close();
     process.exit(1);
   }
@@ -62,14 +74,19 @@ function cmdInit(args: string[]): void {
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const store = new WorkStore(p);
-  let tok = store.getMeta("token");
+
+  const metaTok = store.getMeta("token");
+  let tok = readWriteToken(repoDir());
   if (!tok) {
-    tok = randomBytes(16).toString("hex");
-    store.setMeta("token", tok);
+    tok = ensureWriteToken(repoDir(), metaTok ?? undefined);
+    if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
     process.stdout.write(`initialized: ${p}\ntoken: ${tok}\n`);
   } else {
+    if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
     process.stdout.write(`already initialized: ${p}\n`);
   }
+  ensureSealKey(repoDir());
+
   const objective = flag(args, "--objective");
   if (objective) {
     store.appendEvent("OBJECTIVE", { msg: objective });
@@ -229,10 +246,19 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
   const payload: Record<string, unknown> = { citation };
   if (upper === "APPROVE") {
     const head = getGitHead(process.cwd());
-    if (head) {
-      payload.base_commit = head;
-    }
-    // If not a git repo, base_commit is omitted and HEAD binding is skipped by the stop-gate.
+    if (head) payload.base_commit = head;
+    const sealKey = ensureSealKey(repoDir());
+    const createdAt = new Date().toISOString();
+    payload.created_at = createdAt;
+    const motiveId = motiveSlug ?? store.activeMotive;
+    const sealFields: SealFields = {
+      citation,
+      created_at: createdAt,
+      event_type: eventType,
+      motive_id: motiveId,
+      base_commit: typeof payload.base_commit === "string" ? payload.base_commit : null,
+    };
+    payload.seal = computeSeal(sealKey, sealFields);
   }
   store.appendEvent(eventType, payload);
   process.stdout.write(`${eventType} recorded  citation: ${citation}\n`);
@@ -440,6 +466,10 @@ const cmd = argv[0];
 
 if (cmd === "init") {
   cmdInit(argv.slice(1));
+} else if (cmd === "token") {
+  const tok = readWriteToken(repoDir());
+  if (!tok) { process.stderr.write(`error: no token — run \`${gw} init\` first\n`); process.exit(1); }
+  process.stdout.write(`token: ${tok}\n`);
 } else if (cmd === "slice") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -477,6 +507,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete\n`);
   process.exit(1);
 }

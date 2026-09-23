@@ -13,8 +13,8 @@ description: Capture current session state so a successor session can resume exa
    - session_id (from SessionStart injection)
    - transcript_path (from SessionStart injection)
    - open slice ids and statuses
-   - write token (for successor to continue ledger mutations)
    - next action for successor
+   - **do NOT record the write token** — successor retrieves it fresh via `$GW init`
 
 4. Tell user: "Paused. Successor session: load `/continue` and read `.groundwork/pause-state.md`."
 

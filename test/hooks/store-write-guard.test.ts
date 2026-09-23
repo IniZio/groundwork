@@ -66,4 +66,26 @@ describe("store-write-guard — Family 2", () => {
     expect(result.stdout).toBe("");
     expect(result.exit).toBe(0);
   });
+
+  it("FALSE-POSITIVE FIX: cp whose SOURCE is the store db → allow (read, not write)", () => {
+    const result = check({ tool_name: "Bash", tool_input: { command: "cp .groundwork/work.db /tmp/backup.db" } });
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("FALSE-POSITIVE FIX: printf that merely mentions cp+db inside quoted text → allow", () => {
+    const result = check({ tool_name: "Bash", tool_input: { command: 'printf "see: cp /tmp/foo .groundwork/work.db" > ticket.md' } });
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("VIOLATION: cp whose DESTINATION is the store db → deny", () => {
+    const result = check({ tool_name: "Bash", tool_input: { command: "cp /tmp/backup.db .groundwork/work.db" } });
+    expect(safeDecision(result)).toBe("deny");
+  });
+
+  it("VIOLATION: mv involving the store db → deny", () => {
+    const result = check({ tool_name: "Bash", tool_input: { command: "mv .groundwork/work.db /tmp/gone.db" } });
+    expect(safeDecision(result)).toBe("deny");
+  });
 });

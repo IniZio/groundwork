@@ -11,7 +11,7 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 
 ## Protocol
 
-1. Run `$GW init` → capture write token T.
+1. Run `$GW init` → prints `token: T` on first run only. Capture T for this session; store nowhere persistent. On resume use `$GW token`.
 2. Decompose into vertical slices (load `/vertical-slice` for non-trivial fan-out).
    Each slice: single domain, independent, owns its files exclusively.
 3. Add slices: `$GW slice add <id> --desc "..." --wave N --blocked-by <deps> --acceptance "crit1;crit2" --token T`

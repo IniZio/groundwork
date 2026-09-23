@@ -2,13 +2,22 @@
 
 Binary: `gw` (`bun src/cli/main.ts`). DB path: `$GROUNDWORK_DB` or `<cwd>/.groundwork/work.db`.
 
-All mutation commands require `--token <t>` matching the value printed by `gw init`.
+All mutation commands require `--token <t>` matching the value printed by `gw init` on first run or by `gw token` on subsequent runs.
+
+## Token security
+
+The write token and gate-seal key live in `~/.config/groundwork/repos/<hash>/` (outside the repo, mode 0600, not in work.db). The `store-write-guard` PreToolUse hook denies subagents (those with `agent_type` set) from using Read/Bash/Grep/Glob to access paths containing `.config/groundwork`, `groundwork/repos`, `write.token`, or `seal.key`, and from invoking `gw init` or `gw token`. The main thread (no `agent_type`) is unrestricted.
+
+**Limitation:** a subagent that builds the config-dir path fully dynamically at runtime (e.g. a `bun -e` script computing `$HOME` and the repo hash) can bypass the string-match guard. The HMAC seal on gate verdicts is the primary protection: forging a GATE_APPROVE requires the seal key, which only the `gw gate approve` CLI command reads.
 
 ## Commands
 
 ### `gw init [--objective TEXT]`
-Creates the work store and prints the write token. Idempotent — safe to re-run.
+Creates the work store and prints the write token **once** (first run only). Idempotent on re-run — prints `already initialized` without revealing the token.
 If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
+
+### `gw token`
+Prints the current write token for the store. Use this on session resume — the main session only; subagents are denied this command by the `store-write-guard` hook.
 
 ### `gw slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] --token T`
 Adds a pending slice. `--wave` must be a numeric integer; a non-numeric value is a usage error (exit 1). `--covers-ac` is a comma-separated list of AC identifiers this slice satisfies.

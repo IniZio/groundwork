@@ -1,0 +1,43 @@
+#!/bin/bash
+if [ "${GROUNDWORK_COMMIT_LINT:-}" = "0" ]; then exit 0; fi
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMMENT_CHAR="$(git config --get core.commentChar 2>/dev/null || echo '#')"
+CLEANUP_MODE="$(git config --get commit.cleanup 2>/dev/null || echo 'default')"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
+COMMIT_MSG_FILE="$1" HOOK_DIR="$HOOK_DIR" COMMENT_CHAR="$COMMENT_CHAR" CLEANUP_MODE="$CLEANUP_MODE" REPO_ROOT="$REPO_ROOT" exec node --input-type=module <<'EOF'
+import { readFileSync, writeFileSync } from 'node:fs'
+const { lintMessage } = await import(`file://${process.env.HOOK_DIR}/lib/commit-convention.mjs`)
+
+const msgFile = process.env.COMMIT_MSG_FILE
+if (!msgFile) {
+  process.stderr.write('commit-msg: missing argument (commit message file path)\n')
+  process.exit(1)
+}
+
+const commentChar = process.env.COMMENT_CHAR || '#'
+const cleanupMode = process.env.CLEANUP_MODE || 'default'
+const escapedChar = commentChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const original = readFileSync(msgFile, 'utf8')
+let cleaned = original
+
+if (cleanupMode === 'scissors') {
+  const idx = cleaned.search(new RegExp('^' + escapedChar + ' -{8,} >8 -{8,}$', 'm'))
+  if (idx !== -1) cleaned = cleaned.slice(0, idx)
+}
+
+cleaned = cleaned.replace(new RegExp('^' + escapedChar + '.*$', 'gm'), '')
+cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+
+const { stripped, violations } = lintMessage(cleaned, { repoRoot: process.env.REPO_ROOT || null })
+
+writeFileSync(msgFile, stripped.trimEnd() + '\n')
+
+if (violations.length > 0) {
+  for (const { line, reason } of violations) {
+    process.stderr.write(`commit-msg: line ${line}: ${reason}\n`)
+  }
+  process.exit(1)
+}
+EOF

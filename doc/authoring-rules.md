@@ -20,3 +20,5 @@
 13. No hedge phrases as soft directives: not "you might want to", "consider", "it may be worth".
 14. Line length ≤140 characters.
 15. Cite paths absolutely when referencing files: `/home/...` or `src/hooks/...`.
+16. Evidence verbatim: citations, test output, file:line references, error messages — never paraphrase.
+17. Sequencing prose not compressed: multi-step sequences where fragment order risks misread stay full sentences.

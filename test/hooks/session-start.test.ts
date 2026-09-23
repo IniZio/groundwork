@@ -90,4 +90,18 @@ describe("session-start hook", () => {
     expect(ctx).toMatch(/# groundwork v\d+\.\d+\.\d+/);
     expect(ctx).toContain(ROOT);
   });
+
+  it("additionalContext injects authoring rules from rules/authoring-rules.md", () => {
+    const { stdout } = run({});
+    const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    // Rules section header must be present
+    expect(ctx).toContain("## Authoring rules");
+    // The forbidden zones must appear
+    expect(ctx).toMatch(/Negations inviolable/i);
+    expect(ctx).toMatch(/Modality preserved/i);
+    expect(ctx).toMatch(/Evidence verbatim/i);
+    expect(ctx).toMatch(/Sequencing prose/i);
+    expect(ctx).toMatch(/invented abbreviations/i);
+  });
 });

@@ -55,6 +55,16 @@ async function main() {
 
   const shaLabel = sha ? ` (${sha})` : "";
 
+  // Authoring rules — read from single source, no inline duplicate.
+  let authoringRules = "";
+  try {
+    authoringRules = await Bun.file(path.join(pluginRoot, "rules/authoring-rules.md")).text();
+  } catch { /* absent in cache copies — skip silently */ }
+
+  const authoringRulesBlock = authoringRules
+    ? `\n\n## Authoring rules\n\n${authoringRules.trim()}`
+    : "";
+
   const additionalContext = `${rootMismatchLine}# groundwork ${version}${shaLabel} — ${pluginRoot}
 
 Classify, delegate, review. Never implement directly.
@@ -75,7 +85,7 @@ Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <
 
 ## Available mattpocock skills
 
-\`mattpocock-skills:research\` · \`mattpocock-skills:tdd\` · \`mattpocock-skills:diagnosing-bugs\` · \`mattpocock-skills:code-review\` · \`mattpocock-skills:improve-codebase-architecture\` · \`mattpocock-skills:prototype\` · \`mattpocock-skills:grilling\` · \`mattpocock-skills:to-tickets\` · \`mattpocock-skills:handoff\`${identityBlock}`;
+\`mattpocock-skills:research\` · \`mattpocock-skills:tdd\` · \`mattpocock-skills:diagnosing-bugs\` · \`mattpocock-skills:code-review\` · \`mattpocock-skills:improve-codebase-architecture\` · \`mattpocock-skills:prototype\` · \`mattpocock-skills:grilling\` · \`mattpocock-skills:to-tickets\` · \`mattpocock-skills:handoff\`${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

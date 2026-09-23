@@ -43,6 +43,15 @@ Rules:
 - totals when N > 1
 - evidence (citations, test output, file:line, errors) verbatim — never compressed
 
+### Sub-delegation / Allowed spawns (required for agents that may spawn)
+
+List every `groundwork:<x>` the agent is permitted to spawn or escalate to. Use **one of these two section names**:
+- `## Sub-delegation` — for implementer-style agents with a short list
+- `## Allowed spawns` — for orchestrators with a longer + negation list
+
+Convention enforced by `test/instructions/agent-spawn-parity.test.ts`:
+Every `groundwork:<x>` that appears in a `## Sub-delegation` **or** `## Allowed spawns` section body is treated as a **spawn/escalate target**. The test checks that `x` is permitted by `DEPTH_ALLOWLIST` for that agent's caller type. Mentions of `groundwork:<x>` outside these sections (e.g. "never spawn", prose description) are **references only** and are not checked.
+
 ### Tools (if restricted)
 
 List tools allowed or disallowed. Omit if unrestricted.

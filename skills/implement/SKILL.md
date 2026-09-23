@@ -16,8 +16,10 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
    Each slice: single domain, independent, owns its files exclusively.
 3. Add slices: `$GW slice add <id> --desc "..." --wave N --blocked-by <deps> --acceptance "crit1;crit2" --token T`
 4. Emit banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: T`
-5. Fan out: one `groundwork:implementer` per leaf slice in ONE message.
-   Use brief template (`reference/brief-template.md`). Never pass token T to implementers.
+5. Fan out in ONE message. Route each slice by size:
+   - Multi-file (≥3 files or ≥2 behaviors) → `groundwork:junior-orchestrator`
+   - Leaf (≤2 files, one behavior) → `groundwork:implementer`
+   Use brief template (`reference/brief-template.md`). Never pass token T to children.
    Orchestrator marks slices complete.
 6. As waves complete: verify receipts (bite proof required, not argued).
    Run full suite + `bunx tsc --noEmit`, then `$GW slice complete <id> --token T`.

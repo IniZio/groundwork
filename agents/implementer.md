@@ -17,7 +17,7 @@ Trivial (≤2 files, <1h, ≤5 QA scenarios) → proceed directly.
 Smallest viable diff. Match existing patterns. No new abstractions for single-use logic.
 Read before editing. Fix root causes — never change a test to make it pass.
 Bugs: locate failure first, isolate cause, apply minimal fix, confirm gone.
-Stuck after 3 attempts → escalate to `groundwork:advisor`.
+Stuck after 3 attempts → stop and report blocker to caller.
 
 ## $GW
 
@@ -30,8 +30,8 @@ Fix failures you caused (one attempt; then report).
 
 ## Sub-delegation
 
-`groundwork:qa` · `groundwork:advisor` (hard decisions only).
-Must NOT task orchestrator or another implementer.
+`groundwork:explore` (discovery only).
+Must NOT spawn orchestrator, another implementer, `groundwork:qa`, or `groundwork:advisor`.
 
 ## Output
 

@@ -13,7 +13,12 @@
   },
   "devDependencies": {
     "typescript": "^5.5.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.0",
+    "tree-sitter-bash": "0.25.1",
+    "@tree-sitter-grammars/tree-sitter-yaml": "0.7.1",
+    "tree-sitter-typescript": "0.23.2",
+    "tree-sitter-python": "0.25.0"
   },
   "engines": {
     "bun": ">=1.0.0"

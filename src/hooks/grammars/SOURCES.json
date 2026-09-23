@@ -1,0 +1,51 @@
+{
+  "tree-sitter.js": {
+    "package": "web-tree-sitter",
+    "version": "0.25.0",
+    "file": "tree-sitter.js",
+    "sha256": "1b179766fc9b7801465af1ce343b0f7eaa6f39f949a1f5d49bb344e48f0365de",
+    "bytes": 151963
+  },
+  "tree-sitter.wasm": {
+    "package": "web-tree-sitter",
+    "version": "0.25.0",
+    "file": "tree-sitter.wasm",
+    "sha256": "34fccc64e12bc201fd8f4780fdc6a10b3ff8832cfb84e2d7419583480ce6b97e",
+    "bytes": 204350
+  },
+  "tree-sitter-bash.wasm": {
+    "package": "tree-sitter-bash",
+    "version": "0.25.1",
+    "file": "tree-sitter-bash.wasm",
+    "sha256": "8292919c88a0f7d3fb31d0cd0253ca5a9531bc1ede82b0537f2c63dd8abe6a7a",
+    "bytes": 1358224
+  },
+  "tree-sitter-yaml.wasm": {
+    "package": "@tree-sitter-grammars/tree-sitter-yaml",
+    "version": "0.7.1",
+    "file": "tree-sitter-yaml.wasm",
+    "sha256": "e752dc21c3591df9b45692fe417d101f45d1828c28c44d79005f4066dc7e4e91",
+    "bytes": 189255
+  },
+  "tree-sitter-typescript.wasm": {
+    "package": "tree-sitter-typescript",
+    "version": "0.23.2",
+    "file": "tree-sitter-typescript.wasm",
+    "sha256": "778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d",
+    "bytes": 1413849
+  },
+  "tree-sitter-tsx.wasm": {
+    "package": "tree-sitter-typescript",
+    "version": "0.23.2",
+    "file": "tree-sitter-tsx.wasm",
+    "sha256": "79e5da75ea62855a0cd67177685f0164eac87d5f630b3cbe1e0a099751ad30f8",
+    "bytes": 1445638
+  },
+  "tree-sitter-python.wasm": {
+    "package": "tree-sitter-python",
+    "version": "0.25.0",
+    "file": "tree-sitter-python.wasm",
+    "sha256": "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47",
+    "bytes": 457883
+  }
+}

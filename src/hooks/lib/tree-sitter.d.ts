@@ -1,0 +1,28 @@
+export {
+  Parser,
+  Language,
+  Tree,
+  Node,
+  TreeCursor,
+  Query,
+  LookaheadIterator,
+  LANGUAGE_VERSION,
+  MIN_COMPATIBLE_VERSION,
+  CaptureQuantifier,
+} from "web-tree-sitter";
+export type {
+  Point,
+  Range,
+  Edit,
+  ParseCallback,
+  ProgressCallback,
+  LogCallback,
+  ParseOptions,
+  ParseState,
+  QueryOptions,
+  QueryProperties,
+  QueryPredicate,
+  QueryCapture,
+  QueryMatch,
+  PredicateStep,
+} from "web-tree-sitter";

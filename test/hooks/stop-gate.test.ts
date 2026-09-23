@@ -295,6 +295,98 @@ describe("stop-gate — yield detection (T05)", () => {
     expect(result.reason).toContain("incomplete");
   });
 
+  it("DIAG: run() writes stop-gate.last.json with yield_result and decision", () => {
+    const { db, dbPath } = makeDb("diag");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const transcriptPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    run({ session_id: "sess-diag", transcript_path: transcriptPath }, { GROUNDWORK_DB: dbPath });
+    const diagPath = path.join(path.dirname(dbPath), "stop-gate.last.json");
+    expect(existsSync(diagPath)).toBe(true);
+    const diag = JSON.parse(readFileSync(diagPath, "utf8")) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(diag, "yield_result")).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(diag, "decision")).toBe(true);
+    expect(["allow", "block"]).toContain(diag.decision as string);
+    // inflight fixture → agents in-flight → yield_result non-null, decision=allow
+    expect(diag.yield_result).not.toBeNull();
+    expect(diag.decision as string).toBe("allow");
+  });
+
+  it("BG-TASKS: background_tasks with running entry → allow even when transcript shows nothing", () => {
+    // Primary signal: background_tasks present with a running subagent.
+    // No transcript_path → transcript fallback would return null → proves primary wins.
+    const result = detectYield({
+      background_tasks: [
+        { id: "abc123", type: "subagent", status: "running", description: "test agent", agent_type: "groundwork:implementer" },
+      ],
+    });
+    expect(result).not.toBeNull();
+    expect(result).toContain("in-flight");
+  });
+
+  it("BG-TASKS: background_tasks empty array → no yield even when transcript fixture shows in-flight agents", () => {
+    // Empty array means harness says nothing running — must NOT fall back.
+    const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const result = detectYield({ background_tasks: [], transcript_path: inFlightPath });
+    expect(result).toBeNull();
+  });
+
+  it("BG-TASKS: run() with background_tasks running → allow, block skipped for incomplete slices", () => {
+    const { db, dbPath } = makeDb("bg-tasks-running");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({
+      session_id: "sess-bg-running",
+      background_tasks: [
+        { id: "abc123", type: "subagent", status: "running", description: "test agent", agent_type: "groundwork:implementer" },
+      ],
+    }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.continue).toBe(true);
+    expect(out.reason).toContain("in-flight");
+  });
+
+  it("BG-TASKS: run() with empty background_tasks + in-flight transcript → block (primary wins)", () => {
+    const { db, dbPath } = makeDb("bg-tasks-empty-primary");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const result = run({
+      session_id: "sess-bg-empty",
+      background_tasks: [],
+      transcript_path: inFlightPath,
+    }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    // Empty background_tasks → nothing in-flight → gate proceeds to block on incomplete slice
+    expect(out.decision).toBe("block");
+    expect(out.reason).toContain("incomplete");
+  });
+
+  it("BG-TASKS: background_tasks absent → transcript fallback still works", () => {
+    // Existing behaviour: no background_tasks field → fall back to transcript parsing.
+    const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
+    const result = detectYield({ transcript_path: inFlightPath });
+    expect(result).not.toBeNull();
+    expect(result).toContain("in-flight");
+  });
+
+  it("BITE-PROOF: ignore background_tasks → BG-TASKS running test goes red", () => {
+    // If detectYield ignored background_tasks and relied only on transcript,
+    // passing no transcript_path would return null even with a running task.
+    // This test proves background_tasks IS the signal (no transcript needed).
+    const withBgTasks = detectYield({
+      background_tasks: [
+        { id: "xyz", type: "subagent", status: "running", description: "agent", agent_type: "groundwork:implementer" },
+      ],
+      // no transcript_path — fallback would return null
+    });
+    const withoutField = detectYield({
+      // background_tasks field absent, no transcript — old fallback returns null
+    });
+    expect(withBgTasks).not.toBeNull();   // primary signal fires
+    expect(withoutField).toBeNull();      // no signal at all → null (proves fallback can't see this)
+  });
+
   it("BITE-PROOF: extractBackgroundAgentIds and detectYield are sensitive to the real fixture shapes", () => {
     const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");
     const completedPath = path.join(FIXTURES, "stop-gate-completed.jsonl");

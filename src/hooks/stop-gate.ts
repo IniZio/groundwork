@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -92,9 +92,33 @@ export function extractBackgroundAgentIds(raw: string): string[] {
 /**
  * Return a reason string if the session is waiting on in-flight background
  * Agent tasks, or null if no background agents are in-flight.
+ *
+ * Primary signal: `background_tasks` from the harness input (CC ≥ recent).
+ * Each entry with `status === "running"` is an in-flight agent/task.
+ * An empty array means nothing is running — do NOT fall back to transcript.
+ *
+ * Fallback: transcript JSONL parsing (older CC without `background_tasks`).
+ * Used only when the field is entirely absent from the input.
  */
 export function detectYield(input: unknown): string | null {
   const inp = (input ?? {}) as Record<string, unknown>;
+
+  // Primary signal: present when harness provides it (including empty array).
+  if (Object.prototype.hasOwnProperty.call(inp, "background_tasks")) {
+    const tasks = inp.background_tasks;
+    if (Array.isArray(tasks)) {
+      const inFlight = (tasks as Record<string, unknown>[]).filter(
+        t => t.status === "running"
+      );
+      if (inFlight.length > 0) {
+        return `background Agent(s) still in-flight (${inFlight.length} running) — orchestrator awaiting completion`;
+      }
+    }
+    // Field present (even if empty/non-array) → harness says nothing running.
+    return null;
+  }
+
+  // Fallback: transcript parsing for older Claude Code without background_tasks.
   const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : "";
   if (!transcriptPath) return null;
 
@@ -175,6 +199,71 @@ export function checkStore(dbPath: string): {
   }
 }
 
+function writeDiag(
+  dbPath: string,
+  inp: Record<string, unknown>,
+  yieldResult: string | null,
+  result: HookResult,
+): void {
+  try {
+    const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : "";
+    let transcriptExists = false;
+    let transcriptBytes = 0;
+    let transcriptLastLineType: string | null = null;
+    if (transcriptPath) {
+      try {
+        const st = statSync(transcriptPath);
+        transcriptExists = true;
+        transcriptBytes = st.size;
+      } catch { /* file absent */ }
+      if (transcriptExists) {
+        try {
+          const raw = readFileSync(transcriptPath, "utf8");
+          const lines = raw.split("\n").filter(l => l.trim());
+          if (lines.length > 0) {
+            try {
+              const obj = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+              const msg = (obj.message ?? obj) as Record<string, unknown>;
+              transcriptLastLineType = typeof msg.type === "string" ? msg.type
+                : typeof obj.type === "string" ? obj.type : null;
+            } catch { /* ok */ }
+          }
+        } catch { /* ok */ }
+      }
+    }
+    let decision: "allow" | "block" = "allow";
+    let reason: string | null = null;
+    try {
+      const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+      decision = parsed.decision === "block" ? "block" : "allow";
+      reason = typeof parsed.reason === "string" ? parsed.reason : null;
+    } catch { /* ok */ }
+    const truncate = (v: unknown): unknown => {
+      if (v === null || v === undefined) return v;
+      if (typeof v === "string") return v.length > 200 ? v.slice(0, 200) + "…" : v;
+      if (Array.isArray(v)) return v.map(truncate);
+      return v;
+    };
+    const rawBackgroundTasks = inp.background_tasks;
+    const rawSessionCrons = inp.session_crons;
+    const diag = {
+      ts: new Date().toISOString(),
+      session_id: typeof inp.session_id === "string" ? inp.session_id : "default",
+      input_keys: Object.keys(inp),
+      transcript_path: transcriptPath || null,
+      transcript_exists: transcriptExists,
+      transcript_bytes: transcriptBytes,
+      transcript_last_line_type: transcriptLastLineType,
+      background_tasks: truncate(rawBackgroundTasks),
+      session_crons: truncate(rawSessionCrons),
+      yield_result: yieldResult,
+      decision,
+      reason,
+    };
+    writeFileSync(path.join(path.dirname(dbPath), "stop-gate.last.json"), JSON.stringify(diag, null, 2));
+  } catch { /* never throw */ }
+}
+
 export function run(input: unknown, env: Record<string, string | undefined>): HookResult {
   try {
     if (isEmbedded(env)) return allow();
@@ -183,39 +272,46 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
     if (!dbPath) return allow("stop-gate: no active work store — session may end");
-    const { sliceCount, incomplete, incompleteIds, approved, holdActive } = checkStore(dbPath);
-    const cf = countFile(dbPath, sessionId);
-    if (holdActive) {
-      resetCount(cf);
-      return allow("stop-gate: HOLD active — human hold in effect, session may end");
-    }
-    if (sliceCount === 0) {
-      resetCount(cf);
-      return allow("stop-gate: no slices in store — nothing to gate");
-    }
-    if (incomplete === 0 && approved) {
-      resetCount(cf);
-      return allow("stop-gate: all slices complete, gate approved");
-    }
-    const yieldReason = detectYield(inp);
-    if (yieldReason) {
-      return allow(`stop-gate: ${yieldReason}`);
-    }
-    const count = readCount(cf) + 1;
-    writeCount(cf, count);
-    if (count >= 4) {
-      resetCount(cf);
-      process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
-      return allow("stop-gate: override — consecutive block limit reached");
-    }
-    if (count >= 3) {
-      return block("stop-gate: condition appears externally unresolvable — stop trying; resolve store state manually before continuing.");
-    }
-    if (incomplete > 0) {
-      const ids = incompleteIds.join(", ");
-      return block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "<why>"\` to stop for a human.`);
-    }
-    return block("stop-gate: no GATE_APPROVE event recorded. Record an advisor approval before ending.");
+
+    const compute = (): { result: HookResult; yieldResult: string | null } => {
+      const { sliceCount, incomplete, incompleteIds, approved, holdActive } = checkStore(dbPath);
+      const cf = countFile(dbPath, sessionId);
+      if (holdActive) {
+        resetCount(cf);
+        return { result: allow("stop-gate: HOLD active — human hold in effect, session may end"), yieldResult: null };
+      }
+      if (sliceCount === 0) {
+        resetCount(cf);
+        return { result: allow("stop-gate: no slices in store — nothing to gate"), yieldResult: null };
+      }
+      if (incomplete === 0 && approved) {
+        resetCount(cf);
+        return { result: allow("stop-gate: all slices complete, gate approved"), yieldResult: null };
+      }
+      const yieldReason = detectYield(inp);
+      if (yieldReason) {
+        return { result: allow(`stop-gate: ${yieldReason}`), yieldResult: yieldReason };
+      }
+      const count = readCount(cf) + 1;
+      writeCount(cf, count);
+      if (count >= 4) {
+        resetCount(cf);
+        process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
+        return { result: allow("stop-gate: override — consecutive block limit reached"), yieldResult: null };
+      }
+      if (count >= 3) {
+        return { result: block("stop-gate: condition appears externally unresolvable — stop trying; resolve store state manually before continuing."), yieldResult: null };
+      }
+      if (incomplete > 0) {
+        const ids = incompleteIds.join(", ");
+        return { result: block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "<why>"\` to stop for a human.`), yieldResult: null };
+      }
+      return { result: block("stop-gate: no GATE_APPROVE event recorded. Record an advisor approval before ending."), yieldResult: null };
+    };
+
+    const { result, yieldResult } = compute();
+    writeDiag(dbPath, inp, yieldResult, result);
+    return result;
   } catch { return allow("stop-gate: error reading store — fail-open"); }
 }
 

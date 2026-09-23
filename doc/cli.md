@@ -10,11 +10,17 @@ All mutation commands require `--token <t>` matching the value printed by `gw in
 Creates the work store and prints the write token. Idempotent — safe to re-run.
 If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
 
-### `gw slice add <id> [--desc TEXT] [--wave N] [--blocked-by a,b] [--acceptance "x;y"] --token T`
-Adds a pending slice.
+### `gw slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] --token T`
+Adds a pending slice. `--wave` must be a numeric integer; a non-numeric value is a usage error (exit 1). `--covers-ac` is a comma-separated list of AC identifiers this slice satisfies.
+
+### `gw slice claim <id> --by AGENT --token T`
+Claims a slice for an agent: sets status to `in_progress` and records `claimed_by`. Refused (exit 1) if the slice is already claimed by any agent.
+
+### `gw slice set-ac <id> --covers-ac AC-1,AC-3 --token T`
+Sets (or replaces) the `covers_ac` field on an existing slice.
 
 ### `gw slice complete <id> --token T`
-Marks a slice complete and records a `SLICE_COMPLETE` event.
+Marks a slice complete and records a `SLICE_COMPLETE` event. Works from `pending` or `in_progress`.
 
 ### `gw slice status`
 Lists all slices with blocked-by, N/M complete count, gate state, hold state. Read-only.
@@ -37,7 +43,8 @@ Records a `HOLD_CLEAR` event.
 Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list.
 
 ### `gw compile [--json]`
-Resume view: objective, decisions, open slices, last PAUSE, gate state, hold state. Read-only.
+Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.
+AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: slice-id, ...` rows (sorted). If no slice has `covers_ac` set, prints `ac coverage: none`. The `--json` output includes an `ac_coverage` object mapping each AC id to the list of slice ids that cover it.
 
 ## v1 → v2 command mapping
 

@@ -106,4 +106,11 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO meta (key, value) VALUES ('active_motive', 'default');
     `,
   },
+  {
+    version: 6,
+    description: "T12: claimed_by column on slices for in-progress agent ownership",
+    up: `
+      ALTER TABLE slices ADD COLUMN claimed_by TEXT;
+    `,
+  },
 ];

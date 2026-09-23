@@ -71,19 +71,28 @@ function cmdInit(args: string[]): void {
 function cmdSliceAdd(args: string[], motiveSlug?: string): void {
   const id = args[0];
   if (!id || id.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--blocked-by a,b] [--acceptance "x;y"] --token T\n`);
+    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] --token T\n`);
     process.exit(1);
+  }
+  const waveRaw = flag(args, "--wave");
+  let wave = 0;
+  if (waveRaw !== undefined) {
+    if (!/^-?\d+$/.test(waveRaw.trim())) {
+      process.stderr.write(`error: --wave must be a numeric integer (got: ${JSON.stringify(waveRaw)})\nusage: ${gw} slice add <id> [--wave N] --token T\n`);
+      process.exit(1);
+    }
+    wave = parseInt(waveRaw, 10);
   }
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   store.insertSlice({
     id,
-    wave: parseInt(flag(args, "--wave") ?? "0", 10),
+    wave,
     status: "pending",
     description: flag(args, "--desc") ?? null,
     acceptance: flag(args, "--acceptance") ?? null,
     blocked_by: flag(args, "--blocked-by") ?? null,
-    covers_ac: null,
+    covers_ac: flag(args, "--covers-ac") ?? null,
     decisions: null,
   });
   process.stdout.write(`slice ${id} added\n`);
@@ -102,6 +111,58 @@ function cmdSliceComplete(args: string[], motiveSlug?: string): void {
   }
   store.completeSlice(id);
   process.stdout.write(`slice ${id} complete\n`);
+  store.close();
+}
+
+function cmdSliceClaim(args: string[], motiveSlug?: string): void {
+  const id = args[0];
+  if (!id || id.startsWith("-")) {
+    process.stderr.write(`usage: ${gw} slice claim <id> --by AGENT --token T\n`);
+    process.exit(1);
+  }
+  const by = flag(args, "--by");
+  if (!by) {
+    process.stderr.write(`error: --by required\nusage: ${gw} slice claim <id> --by AGENT --token T\n`);
+    process.exit(1);
+  }
+  const store = requireDb(motiveSlug);
+  checkToken(store, args);
+  if (!store.getSlice(id)) {
+    process.stderr.write(`error: slice '${id}' not found\n`);
+    store.close();
+    process.exit(1);
+  }
+  try {
+    store.claimSlice(id, by);
+    process.stdout.write(`slice ${id} claimed by ${by}\n`);
+  } catch (e: unknown) {
+    process.stderr.write(`error: ${e instanceof Error ? e.message : String(e)}\n`);
+    store.close();
+    process.exit(1);
+  }
+  store.close();
+}
+
+function cmdSliceSetAc(args: string[], motiveSlug?: string): void {
+  const id = args[0];
+  if (!id || id.startsWith("-")) {
+    process.stderr.write(`usage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3 --token T\n`);
+    process.exit(1);
+  }
+  const covers_ac = flag(args, "--covers-ac");
+  if (!covers_ac) {
+    process.stderr.write(`error: --covers-ac required\nusage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3 --token T\n`);
+    process.exit(1);
+  }
+  const store = requireDb(motiveSlug);
+  checkToken(store, args);
+  if (!store.getSlice(id)) {
+    process.stderr.write(`error: slice '${id}' not found\n`);
+    store.close();
+    process.exit(1);
+  }
+  store.setCoversAc(id, covers_ac);
+  process.stdout.write(`slice ${id} covers-ac set to ${covers_ac}\n`);
   store.close();
 }
 
@@ -190,6 +251,19 @@ function cmdEventAppend(args: string[], motiveSlug?: string): void {
   store.close();
 }
 
+function buildAcCoverage(slices: import("../store/store.js").Slice[]): Map<string, string[]> {
+  const coverage = new Map<string, string[]>();
+  for (const s of slices) {
+    if (!s.covers_ac) continue;
+    for (const ac of s.covers_ac.split(",").map(a => a.trim()).filter(Boolean)) {
+      const existing = coverage.get(ac) ?? [];
+      existing.push(s.id);
+      coverage.set(ac, existing);
+    }
+  }
+  return coverage;
+}
+
 function cmdCompile(args: string[], motiveSlug?: string): void {
   const asJson = boolFlag(args, "--json");
   const store = requireDb(motiveSlug);
@@ -202,6 +276,8 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const hold = store.getHoldState();
   const lastPause = store.getLastEvent("PAUSE");
   const pausePayload = lastPause ? JSON.parse(lastPause.payload) as Record<string, unknown> : null;
+  const acCoverage = buildAcCoverage(slices);
+  const acCoverageObj = Object.fromEntries([...acCoverage.entries()]);
 
   if (asJson) {
     process.stdout.write(JSON.stringify({
@@ -212,6 +288,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       last_pause: pausePayload,
       gate: gateOk ? "APPROVED" : "pending",
       hold: hold ?? null,
+      ac_coverage: acCoverageObj,
     }, null, 2) + "\n");
   } else {
     process.stdout.write(`motive: ${motive}\n`);
@@ -225,6 +302,15 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
     process.stdout.write(`decisions (${decisions.length}):\n`);
     for (const d of decisions) {
       process.stdout.write(`  [event ${d.id}] ${d.msg.slice(0, 80)}\n`);
+    }
+    if (acCoverage.size > 0) {
+      const slicesWithAc = slices.filter(s => s.covers_ac).length;
+      process.stdout.write(`ac coverage: ${acCoverage.size} ACs covered by ${slicesWithAc} slice(s)\n`);
+      for (const [ac, ids] of [...acCoverage.entries()].sort()) {
+        process.stdout.write(`  ${ac}: ${ids.join(", ")}\n`);
+      }
+    } else {
+      process.stdout.write(`ac coverage: none\n`);
     }
     if (pausePayload) {
       process.stdout.write(`last PAUSE: ${String(pausePayload.msg ?? "(no msg)")}\n`);
@@ -326,6 +412,8 @@ if (cmd === "init") {
   const rest = argv.slice(2);
   if (sub === "add") cmdSliceAdd(rest, globalMotive);
   else if (sub === "complete") cmdSliceComplete(rest, globalMotive);
+  else if (sub === "claim") cmdSliceClaim(rest, globalMotive);
+  else if (sub === "set-ac") cmdSliceSetAc(rest, globalMotive);
   else if (sub === "status") cmdSliceStatus(globalMotive);
   else if (sub === "rm") cmdSliceRm(rest, globalMotive);
   else { process.stderr.write(`unknown slice subcommand: ${sub}\n`); process.exit(1); }
@@ -356,6 +444,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|status|rm, gate approve, hold set|clear, event append, compile, motive add|use|list|complete\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, slice add|complete|claim|set-ac|status|rm, gate approve, hold set|clear, event append, compile, motive add|use|list|complete\n`);
   process.exit(1);
 }

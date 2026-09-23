@@ -6,12 +6,12 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 
 | Surface | v1 chars | v1 tokens | v2 bytes (wc -c) | v2 tokens | Ratio |
 |---|---|---|---|---|---|
-| SessionStart injection | 7068 | 1767 | 1205 | 301 | 0.17 |
+| SessionStart injection | 7068 | 1767 | 2101 | 525 | 0.30 |
 | CLAUDE.md (orchestrator project file) | 39614 | 9904 | — (none) | — | — |
-| orchestrator.md | 10706 | 2677 | 2913 | 728 | 0.27 |
-| general-purpose / implementer.md | 5728 | 1432 | 1806 | 451 | 0.32 |
-| advisor.md | 17875 | 4469 | 2515 | 628 | 0.14 |
-| qa.md | 8969 | 2242 | 1424 | 356 | 0.16 |
+| orchestrator.md | 10706 | 2677 | 1523 | 381 | 0.14 |
+| general-purpose / implementer.md | 5728 | 1432 | 1504 | 376 | 0.26 |
+| advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
+| qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |
 | implement/SKILL.md | 4522 | 1130 | 1395 | 348 | 0.31 |
 | vertical-slice/SKILL.md | 4867 | 1216 | 1523 | 380 | 0.31 |
 | advisor-gate/SKILL.md | 5381 | 1345 | 1282 | 320 | 0.24 |
@@ -19,7 +19,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | continue/SKILL.md | 3610 | 902 | 944 | 236 | 0.26 |
 | motive/SKILL.md | 4879 | 1219 | 1432 | 358 | 0.29 |
 
-Recompute v2 bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size: `echo '{}' | CLAUDE_PLUGIN_ROOT=/x bun run src/hooks/session-start.ts | bun -e "const d=await Bun.stdin.json();console.log(Buffer.byteLength(d.hookSpecificOutput.additionalContext,'utf8'))"`).
+Recompute v2 bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size is measured on the normalised output — root path replaced with `/GROUNDWORK_ROOT`, sha replaced with `(XXXXXXX)` — to stay environment-independent: `ROOT=$(pwd) && echo '{}' | CLAUDE_PLUGIN_ROOT="$ROOT" bun src/hooks/session-start.ts | bun -e "const d=await Bun.stdin.json();const c=d.hookSpecificOutput.additionalContext;const n=c.replace(new RegExp('$ROOT'.replace(/[.*+?^\${}()|[\]\\\\\\\\]/g,'\\\\\\\\$&'),'g'),'/GROUNDWORK_ROOT').replace(/\\([0-9a-f]{7,40}\\)/g,'(XXXXXXX)');console.log(Buffer.byteLength(n,'utf8'))"`).
 
 ## Per-spawn totals
 
@@ -30,18 +30,18 @@ SessionStart fires for primary session only, not subagents.
 
 | Component | v1 | v2 |
 |---|---|---|
-| SessionStart injection | 1767 | 301 |
-| orchestrator.md | 2677 | 728 |
-| **Total** | **4444** | **1029** |
-| **Ratio** | — | **0.23 (23%)** |
+| SessionStart injection | 1767 | 525 |
+| orchestrator.md | 2677 | 381 |
+| **Total** | **4444** | **906** |
+| **Ratio** | — | **0.20 (20%)** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 
 | Component | v1 | v2 |
 |---|---|---|
-| implementer / general-purpose.md | 1432 | 451 |
-| **Total** | **1432** | **451** |
-| **Ratio** | — | **0.31 (31%)** |
+| implementer / general-purpose.md | 1432 | 376 |
+| **Total** | **1432** | **376** |
+| **Ratio** | — | **0.26 (26%)** |
 
 Both totals are under the ≤1/3 target.
 

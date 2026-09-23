@@ -44,20 +44,30 @@ describe("instruction-budget.md — v2 byte counts match files at HEAD", () => {
     });
   }
 
-  it("SessionStart injection byte count is current (CLAUDE_PLUGIN_ROOT=/x)", () => {
+  it("SessionStart injection byte count is current (normalised)", () => {
     const docBytes = parseDocBytes("SessionStart injection");
     if (docBytes === null) throw new Error("surface 'SessionStart injection' not found in doc table");
+    // Set CLAUDE_PLUGIN_ROOT to the real root so no mismatch line is injected.
+    // Then normalise environment-dependent parts before measuring:
+    //   - actual repo path → /GROUNDWORK_ROOT
+    //   - git sha → (XXXXXXX)
+    // This keeps the test a real drift detector while being checkout/commit agnostic.
     const result = spawnSync("bun", ["src/hooks/session-start.ts"], {
       input: "{}",
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: "/x" },
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT },
       cwd: ROOT,
     });
     if (result.status !== 0) throw new Error(`session-start hook exited ${result.status}: ${result.stderr.toString()}`);
     const out = JSON.parse(result.stdout.toString("utf8")) as { hookSpecificOutput: { additionalContext: string } };
-    const actualBytes = Buffer.byteLength(out.hookSpecificOutput.additionalContext, "utf8");
+    const raw = out.hookSpecificOutput.additionalContext;
+    const rootEscaped = ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const norm = raw
+      .replace(new RegExp(rootEscaped, "g"), "/GROUNDWORK_ROOT")
+      .replace(/\([0-9a-f]{7,40}\)/g, "(XXXXXXX)");
+    const actualBytes = Buffer.byteLength(norm, "utf8");
     expect(
       actualBytes,
-      `SessionStart additionalContext: doc says ${docBytes} bytes but hook emits ${actualBytes} bytes — update doc row`,
+      `SessionStart additionalContext (normalised): doc says ${docBytes} bytes but hook emits ${actualBytes} bytes — update doc row`,
     ).toBe(docBytes);
   });
 });

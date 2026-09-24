@@ -1103,3 +1103,228 @@ describe("Rust doc comment exact matching", () => {
     expect(newExempt).toBe(false);
   });
 });
+
+// ---- Fix 1: Go trailing comments must NOT be exempt as go-doc ----
+
+describe("Go trailing comments are NOT doc-comments", () => {
+  it("struct field trailing comment is NOT exempt", async () => {
+    const code = [
+      "package main",
+      "type Config struct {",
+      "\tPort int    // listen port",
+      "\tHost string // bind host",
+      "\tTLS  bool   // use tls",
+      "}",
+      "",
+    ].join("\n");
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const trailing = r.comments.filter(c => c.text.includes("listen port") || c.text.includes("bind host") || c.text.includes("use tls"));
+    expect(trailing.length).toBe(3);
+    for (const c of trailing) {
+      expect(c.exempt).toBe(false);
+    }
+  });
+
+  it("const spec trailing comment is NOT exempt", async () => {
+    const code = [
+      "package main",
+      "const (",
+      "\tA = 1 // first",
+      "\tB = 2 // second",
+      ")",
+      "",
+    ].join("\n");
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const trailing = r.comments.filter(c => c.text.includes("first") || c.text.includes("second"));
+    expect(trailing.length).toBe(2);
+    for (const c of trailing) {
+      expect(c.exempt).toBe(false);
+    }
+  });
+
+  it("consecutive one-line func with trailing comment: trailing comment NOT exempt", async () => {
+    const code = [
+      "package main",
+      "func A() {} // implements A",
+      "func B() {} // implements B",
+      "",
+    ].join("\n");
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const trailing = r.comments.filter(c => c.text.includes("implements"));
+    expect(trailing.length).toBe(2);
+    for (const c of trailing) {
+      expect(c.exempt).toBe(false);
+    }
+  });
+
+  it("whole-line doc comment above struct field remains exempt", async () => {
+    const code = [
+      "package main",
+      "type Config struct {",
+      "\t// Addr is the listen address.",
+      "\tAddr string",
+      "}",
+      "",
+    ].join("\n");
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("Addr is"));
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+
+  it("bite: before fix, struct field trailing comment was wrongly exempt", async () => {
+    const code = [
+      "package main",
+      "type Config struct {",
+      "\tPort int // listen port",
+      "\tHost string // bind host",
+      "}",
+      "",
+    ].join("\n");
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const portComment = r.comments.find(c => c.text.includes("listen port"));
+    expect(portComment).toBeDefined();
+    expect(portComment!.exempt).toBe(false);
+  });
+});
+
+// ---- Fix 2: autoFix single-pass reaches ≤5/100 ----
+
+describe("autoFix single-pass density compliance", () => {
+  it("20×(1 whole-line comment + 4 code): single autoFix reaches ≤5/100", async () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      lines.push(`// comment ${i}`);
+      for (let j = 0; j < 4; j++) lines.push(`const v${i}_${j} = ${i * 4 + j};`);
+    }
+    const text = lines.join("\n") + "\n";
+    const allRows = new Set(lines.map((_, i) => i));
+
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    // Remap addedRows: whole-line removed comments disappear and shift rows
+    const fixedLines = r.fixed.split("\n");
+    const origLines = text.split("\n");
+    const removedWholeLineRows = new Set<number>();
+    for (let i = 0; i < origLines.length; i++) {
+      const orig = origLines[i];
+      if (orig.trimStart().startsWith("//") && allRows.has(i)) {
+        const inFixed = fixedLines.some(l => l === orig);
+        if (!inFixed) removedWholeLineRows.add(i);
+      }
+    }
+    const sortedRemoved = [...removedWholeLineRows].sort((a, b) => a - b);
+    const remappedRows = new Set<number>();
+    for (const row of allRows) {
+      if (removedWholeLineRows.has(row)) continue;
+      const offset = sortedRemoved.filter(rr => rr < row).length;
+      remappedRows.add(row - offset);
+    }
+
+    const d = await density(r.fixed, "typescript", remappedRows);
+    expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
+
+    // Second autoFix with remapped rows removes 0
+    const r2 = await autoFix(r.fixed, "typescript", remappedRows);
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.removed).toBe(0);
+  });
+
+  it("all-new file 21 comments ~80 lines: single autoFix reaches ≤5/100", async () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 21; i++) {
+      lines.push(`// note ${i}`);
+      for (let j = 0; j < 3; j++) lines.push(`const w${i}_${j} = ${i * 3 + j};`);
+    }
+    // pad to ~80 lines
+    while (lines.length < 80) lines.push(`const pad${lines.length} = 0;`);
+    const text = lines.join("\n") + "\n";
+    const allRows = new Set(lines.map((_, i) => i));
+
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    // Compute remapped rows naively: fixed has fewer lines; map by counting removed whole-line comments
+    const origLines = text.split("\n");
+    const fixedLinesArr = r.fixed.split("\n");
+    const removedWholeLineRows = new Set<number>();
+    for (let i = 0; i < origLines.length; i++) {
+      const orig = origLines[i];
+      if (orig.trimStart().startsWith("//") && allRows.has(i)) {
+        const inFixed = fixedLinesArr.some(l => l === orig);
+        if (!inFixed) removedWholeLineRows.add(i);
+      }
+    }
+    const sortedRemoved = [...removedWholeLineRows].sort((a, b) => a - b);
+    const remappedRows = new Set<number>();
+    for (const row of allRows) {
+      if (removedWholeLineRows.has(row)) continue;
+      const offset = sortedRemoved.filter(rr => rr < row).length;
+      remappedRows.add(row - offset);
+    }
+
+    const d = await density(r.fixed, "typescript", remappedRows);
+    expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
+
+    const r2 = await autoFix(r.fixed, "typescript", remappedRows);
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.removed).toBe(0);
+  });
+
+  it("bite: old keptRows/addedRows.size denominator leaves fixed text over cap", async () => {
+    // 20×(1 comment + 4 code) = 100 rows; budget=5; keeps 5 comments; fixed=85 rows
+    // old check: 5/100*100=5 ≤5 → passes; but density(fixed,remapped)=5/85*100≈5.88 > 5
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      lines.push(`// comment ${i}`);
+      for (let j = 0; j < 4; j++) lines.push(`const v${i}_${j} = ${i * 4 + j};`);
+    }
+    const text = lines.join("\n") + "\n";
+    const allRows = new Set(lines.map((_, i) => i));
+
+    // Simulate old logic: maxAllowedRows = floor(0.05*100)=5, keep 5 comment rows
+    const addedRowsSize = 100;
+    const keptRows = 5; // 5 comments kept
+    const oldCheck = keptRows / addedRowsSize * 100;
+    // Old check passes (≤5), but real density would be:
+    const fixedRowCount = 100 - 15; // 15 comments removed
+    const realDensity = keptRows / fixedRowCount * 100;
+
+    expect(oldCheck).toBeLessThanOrEqual(5); // old check wrongly passes
+    expect(realDensity).toBeGreaterThan(5);  // actual density is over cap
+
+    // The new autoFix should reach compliant state (fixed text density ≤5/100)
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // Compute remapped rows for verification
+    const origLines = text.split("\n");
+    const fixedLinesArr = r.fixed.split("\n");
+    const removedWholeLineRows = new Set<number>();
+    for (let i = 0; i < origLines.length; i++) {
+      const orig = origLines[i];
+      if (orig.trimStart().startsWith("//") && allRows.has(i)) {
+        if (!fixedLinesArr.some(l => l === orig)) removedWholeLineRows.add(i);
+      }
+    }
+    const sortedRemoved = [...removedWholeLineRows].sort((a, b) => a - b);
+    const remappedRows = new Set<number>();
+    for (const row of allRows) {
+      if (removedWholeLineRows.has(row)) continue;
+      const offset = sortedRemoved.filter(rr => rr < row).length;
+      remappedRows.add(row - offset);
+    }
+    const d = await density(r.fixed, "typescript", remappedRows);
+    expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
+  });
+});

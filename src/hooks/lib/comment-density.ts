@@ -155,7 +155,14 @@ const GO_DOC_DECL_TYPES = new Set([
   "field_declaration",
 ]);
 
-function isGoDocComment(node: Node): boolean {
+function nodeIsWholeLine(node: Node, text: string): boolean {
+  const lineStart = text.lastIndexOf("\n", node.startIndex - 1) + 1;
+  return !text.slice(lineStart, node.startIndex).trim();
+}
+
+function isGoDocComment(node: Node, text: string): boolean {
+  // Doc comments must start on their own line (only whitespace before them).
+  if (!nodeIsWholeLine(node, text)) return false;
   let cur: Node | null = node;
   while (cur !== null) {
     const next: Node | null = cur.nextNamedSibling;
@@ -164,6 +171,8 @@ function isGoDocComment(node: Node): boolean {
       return next.startPosition.row === cur.endPosition.row + 1;
     }
     if (next.type === "comment" && next.startPosition.row === cur.endPosition.row + 1) {
+      // Chained comments must also be whole-line.
+      if (!nodeIsWholeLine(next, text)) return false;
       cur = next;
     } else {
       return false;
@@ -210,7 +219,7 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
         const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
         exempt = rawExempt;
         reason = rawReason;
-        if (!exempt && lang === "go" && isGoDocComment(node)) {
+        if (!exempt && lang === "go" && isGoDocComment(node, text)) {
           exempt = true;
           reason = "go-doc";
         }
@@ -614,7 +623,19 @@ export async function autoFix(
     return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length };
   }
 
-  // Greedily keep from start until budget exhausted
+  // Effective rows from non-candidate comments that land on added rows.
+  // These survive any strip and count toward post-fix density.
+  const candidateSet = new Set(candidates.map(c => c.startIndex));
+  let extraEffective = 0;
+  for (const c of origParsed.comments) {
+    if (c.exempt) continue;
+    if (candidateSet.has(c.startIndex)) continue;
+    for (let r = c.startRow; r <= c.endRow; r++) {
+      if (addedRows.has(r)) extraEffective++;
+    }
+  }
+
+  // Greedily keep from start until initial budget estimate.
   let keptRows = 0;
   let keepCount = 0;
   for (const c of candidates) {
@@ -626,6 +647,23 @@ export async function autoFix(
       break;
     }
   }
+
+  // Refine keepCount: removed whole-line comments shrink the added-row denominator,
+  // so verify density against the remapped size and reduce further if needed.
+  while (keepCount >= 0) {
+    const removedCands = candidates.slice(keepCount);
+    const wlRemovedRows = removedCands.reduce(
+      (sum, c) => sum + (commentIsWholeLine(c, text) ? commentRowCount(c) : 0),
+      0,
+    );
+    const remappedSize = addedRows.size - wlRemovedRows;
+    if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
+    if (keepCount === 0) return { ok: false, reason: "still over cap after fix" };
+    keptRows -= commentRowCount(candidates[keepCount - 1]);
+    keepCount--;
+  }
+  if (keepCount < 0) return { ok: false, reason: "still over cap after fix" };
+
   const toRemove = candidates.slice(keepCount);
   const fixed = stripComments(text, toRemove);
 
@@ -648,11 +686,6 @@ export async function autoFix(
   for (const c of fp.comments) fixedMap.set(c.text, (fixedMap.get(c.text) ?? 0) + 1);
   for (const [t, cnt] of preMap) {
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
-  }
-
-  // Post-fix density check: verify the fix actually brings density ≤ 5/100
-  if (addedRows.size > 0 && keptRows / addedRows.size * 100 > 5) {
-    return { ok: false, reason: "still over cap after fix" };
   }
 
   return { ok: true, fixed, removed: toRemove.length, kept: keepCount, total: candidates.length };

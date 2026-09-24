@@ -393,7 +393,7 @@ export async function run(
 
     const fallbackNotices = unfixable
       .filter(v => v.fallback)
-      .map(v => `(${v.path}: tree-sitter unavailable — prefix count used)`);
+      .map(v => `(${v.path}: parse error — prefix count used)`);
 
     const fixedNote = fixedFiles.length > 0
       ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`

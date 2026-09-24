@@ -46,15 +46,18 @@ function walkFiles(dir: string, ext: string): string[] {
   return results;
 }
 
-function extractRefs(content: string): { groundwork: string[]; mattpocock: string[] } {
+function extractRefs(content: string): { groundwork: string[]; mattpocock: string[]; houseRules: string[] } {
   const groundwork: string[] = [];
   const mattpocock: string[] = [];
+  const houseRules: string[] = [];
   const gwRe = /`groundwork:([a-z][a-z0-9-]*)`/g;
   const mpRe = /`mattpocock-skills:([a-z][a-z0-9-]*)`/g;
+  const hrRe = /`house-rules:([a-z][a-z0-9-]*)`/g;
   let m: RegExpExecArray | null;
   while ((m = gwRe.exec(content)) !== null) groundwork.push(m[1]);
   while ((m = mpRe.exec(content)) !== null) mattpocock.push(m[1]);
-  return { groundwork, mattpocock };
+  while ((m = hrRe.exec(content)) !== null) houseRules.push(m[1]);
+  return { groundwork, mattpocock, houseRules };
 }
 
 function gwResolves(name: string): boolean {
@@ -62,6 +65,10 @@ function gwResolves(name: string): boolean {
     existsSync(path.join(ROOT, "agents", `${name}.md`)) ||
     existsSync(path.join(ROOT, "skills", name))
   );
+}
+
+function houseRulesSkillResolves(name: string): boolean {
+  return existsSync(path.join(ROOT, "plugins", "house-rules", "skills", name, "SKILL.md"));
 }
 
 function mpSkillInfo(name: string): { exists: boolean; disabled: boolean } {
@@ -130,7 +137,7 @@ describe("routes-resolve — every advertised route resolves", () => {
   for (const file of files) {
     const rel = path.relative(ROOT, file);
     const content = readFileSync(file, "utf8");
-    const { groundwork, mattpocock } = extractRefs(content);
+    const { groundwork, mattpocock, houseRules } = extractRefs(content);
 
     for (const name of [...new Set(groundwork)]) {
       it(`${rel}: groundwork:${name} resolves to agent or skill`, () => {
@@ -153,6 +160,15 @@ describe("routes-resolve — every advertised route resolves", () => {
           ).toBe(false);
         },
       );
+    }
+
+    for (const name of [...new Set(houseRules)]) {
+      it(`${rel}: house-rules:${name} resolves to plugins/house-rules/skills/${name}/SKILL.md`, () => {
+        expect(
+          houseRulesSkillResolves(name),
+          `house-rules:${name} — no plugins/house-rules/skills/${name}/SKILL.md`,
+        ).toBe(true);
+      });
     }
   }
 

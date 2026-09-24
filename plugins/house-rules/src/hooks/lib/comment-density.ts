@@ -17,7 +17,7 @@ export interface Comment {
 }
 
 export type FindResult =
-  | { ok: true; comments: Comment[] }
+  | { ok: true; comments: Comment[]; errorRows: Set<number> }
   | { ok: false; reason: string };
 
 export type DensityResult = {
@@ -244,6 +244,23 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
   return results;
 }
 
+function collectErrorRows(root: Node): Set<number> {
+  const result = new Set<number>();
+  function walk(node: Node): void {
+    if (node.type === "ERROR" || node.isMissing) {
+      for (let r = node.startPosition.row; r <= node.endPosition.row; r++) {
+        result.add(r);
+      }
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) walk(child);
+    }
+  }
+  walk(root);
+  return result;
+}
+
 export async function findComments(
   text: string,
   lang: Lang,
@@ -254,11 +271,23 @@ export async function findComments(
 
   const { parser } = result;
   const tree = parser.parse(text);
-  if (tree.rootNode.hasError) {
+  if (!tree.rootNode.hasError) {
+    const comments = collectComments(tree.rootNode, text, lang);
+    return { ok: true, comments, errorRows: new Set() };
+  }
+
+  const errorRows = collectErrorRows(tree.rootNode);
+  const allComments = collectComments(tree.rootNode, text, lang);
+  const safeComments = allComments.filter(c => {
+    for (let r = c.startRow; r <= c.endRow; r++) {
+      if (errorRows.has(r)) return false;
+    }
+    return true;
+  });
+  if (safeComments.length === 0 && errorRows.size > 0) {
     return { ok: false, reason: "parse-error" };
   }
-  const comments = collectComments(tree.rootNode, text, lang);
-  return { ok: true, comments };
+  return { ok: true, comments: safeComments, errorRows };
 }
 
 export function detectLanguage(filePath: string, firstLine?: string): Lang | null {
@@ -687,6 +716,16 @@ export async function netNewCommentRows(
   const postParsed = await findComments(postText, lang, getParser);
   if (!postParsed.ok) return { ok: false, reason: postParsed.reason };
 
+  // If errors overlap any hunk rows, refuse: caller falls back to density()
+  for (const hunk of hunks) {
+    if (hunk.added.some(ln => postParsed.errorRows.has(ln - 1))) {
+      return { ok: false, reason: "parse-error-in-hunk" };
+    }
+    if (hunk.removedBaseLineNos.some(ln => baseParsed.errorRows.has(ln - 1))) {
+      return { ok: false, reason: "parse-error-in-hunk" };
+    }
+  }
+
   const baseCommentLines = new Set<number>();
   for (const c of baseParsed.comments) {
     if (c.exempt) continue;
@@ -742,6 +781,11 @@ export async function autoFix(
   const candidates: Comment[] = [];
   for (const c of origParsed.comments) {
     if (c.exempt) continue;
+    let overlapsError = false;
+    for (let r = c.startRow; r <= c.endRow; r++) {
+      if (origParsed.errorRows.has(r)) { overlapsError = true; break; }
+    }
+    if (overlapsError) continue;
     const rowSet = netNewRows ?? addedRows;
     let allAdded = true;
     for (let r = c.startRow; r <= c.endRow; r++) {

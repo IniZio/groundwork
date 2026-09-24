@@ -1432,3 +1432,58 @@ describe("netNewCommentRows", () => {
     expect(r.fixed).toContain("// new");
   });
 });
+
+// ---- HR-22: Partial-error tree fix ----
+
+describe("findComments: partial-error tree yields safe comments", () => {
+  it("TypeScript inline-import array suffix: ok:true with both trailing and inline comments", async () => {
+    const code = "const a = 1; // trailing restating\nlet x: import('a').B[];\nfoo(); /* inline */\n";
+    const r = await findComments(code, "typescript");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const effective = r.comments.filter(c => !c.exempt);
+    expect(effective).toHaveLength(2);
+    const texts = effective.map(c => c.text);
+    expect(texts.some(t => t.includes("trailing restating"))).toBe(true);
+    expect(texts.some(t => t.includes("inline"))).toBe(true);
+  });
+});
+
+describe("netNewCommentRows: partial parse errors", () => {
+  const ts = "typescript" as Lang;
+
+  it("parse error line outside added hunk: AST counting, reword pairing works", async () => {
+    const errLine = "\nlet x: import('a').B[];";
+    const base = `function f() {\n  // old comment\n  return 1;\n}${errLine}\n`;
+    const post = `function f() {\n  // new comment\n  return 1;\n}${errLine}\n`;
+    const hunk: DiffHunk = { added: [2], removed: ["  // old comment"], removedBaseLineNos: [2] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(0);
+  });
+
+  it("parse error on an added hunk row: falls back ok:false", async () => {
+    const base = `function f() {\n  // existing comment\n  return 1;\n}\n`;
+    const post = `function f() {\n  // existing comment\n  return 1;\n}\nlet x: import('a').B[];\n`;
+    const hunk: DiffHunk = { added: [5], removed: [], removedBaseLineNos: [] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("autoFix: skips candidates overlapping error region", () => {
+  it("does not strip a trailing comment on the same row as a parse error", async () => {
+    const lines: string[] = [
+      "const x0 = 0; // over-cap-comment",
+      "let x: import('a').B[]; // error-row-comment",
+      ...Array.from({ length: 8 }, (_, i) => `const x${i + 2} = ${i + 2};`),
+    ];
+    const text = lines.join("\n") + "\n";
+    const addedRows = new Set(Array.from({ length: lines.length }, (_, i) => i));
+    const r = await autoFix(text, "typescript", addedRows);
+    if (r.ok && r.removed > 0) {
+      expect(r.fixed).toContain("// error-row-comment");
+    }
+  });
+});

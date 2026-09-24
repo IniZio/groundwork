@@ -44,7 +44,7 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 
 - **Intent routing** — classifies requests and fans out to the right agent type
 - **Work store + stop-gate** — SQLite slice/decision/event store with a stop-gate that blocks when work is open
-- **Enforcement hooks** — six hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate, comment-density-gate)
+- **Enforcement hooks** — five hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate); comment-density and stray-artifact enforcement is provided by the `house-rules` plugin dependency (auto-installed)
 - **Convention adaptation** — DETECT → CONFIRM → WRITE to per-repo convention files
 - **Advisor gate** — evidence-graded APPROVE/CORRECTION/STOP verdicts before completion
 - **Session continuity** — SessionStart hook restores context across sessions
@@ -52,6 +52,8 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 ## Peer plugins
 
 **mattpocock/skills** is installed automatically as a dependency. It provides capabilities groundwork does not reinvent: debugger, arch-review, prototype, tdd, code-review, research (D-11 reuse-first). See `doc/collision-policy.md` for the skill-name collision policy.
+
+**house-rules** is installed automatically as a dependency (requires Claude Code v2.1.193+). It provides comment-density enforcement (5/100 net-new comment cap, per-edit guard and Stop/SubagentStop gate) and stray-artifact prevention. On older Claude Code versions enforcement is silently lost; this is accepted and documented.
 
 ## Conventions layer
 

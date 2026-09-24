@@ -93,9 +93,9 @@ Blocks session end while any slice ≠ complete OR no GATE_APPROVE event. After 
 
 Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <name>\`). No active rules → always allows.
 
-## Comment-density-gate
+## house-rules enforcement
 
-Blocks at Stop/SubagentStop when a file changed in the session exceeds 5 effective comment lines per 100 added lines (ts/tsx/js, py, sh, yaml, dockerfile, go, rs, sql, make, toml). Remove restate comments; keep only one-line "why" comments. Releases after 3 blocks. Per-edit autocorrect (comment-density-guard) strips over-budget comments before each Write/Edit/MultiEdit lands.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Comment density and stray artifacts are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before each Write/Edit/MultiEdit, and the gate blocks at Stop/SubagentStop. The stray-artifacts rule denies creation of synonym dirs and scratch files.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

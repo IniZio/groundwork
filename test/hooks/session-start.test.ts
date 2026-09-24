@@ -31,14 +31,14 @@ describe("session-start hook", () => {
     expect(out.hookSpecificOutput.additionalContext).toContain("$GW gate approve");
   });
 
-  it("additionalContext contains stop-gate, new-code-gate, and comment-density-gate info", () => {
+  it("additionalContext contains stop-gate, new-code-gate, and house-rules enforcement info", () => {
     const { stdout } = run({});
     const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
     expect(ctx).toContain("Stop-gate");
     expect(ctx).toContain("New-code-gate");
-    expect(ctx).toContain("Comment-density-gate");
-    expect(ctx).toContain("after 3 blocks");
-    expect(ctx).toContain("comment-density-guard");
+    expect(ctx).toContain("house-rules enforcement");
+    expect(ctx).toContain("house-rules");
+    expect(ctx).not.toContain("Comment-density-gate");
   });
 
   it("additionalContext contains mattpocock skills", () => {

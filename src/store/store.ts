@@ -44,6 +44,7 @@ export interface Slice {
   blocked_by: string | null;
   covers_ac: string | null;
   decisions: string | null;
+  files: string | null;
   claimed_by: string | null;
   created_at: string;
   completed_at: string | null;
@@ -134,15 +135,16 @@ export class WorkStore {
   // Slices
   // ---------------------------------------------------------------------------
 
-  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description" | "motive_id" | "claimed_by"> & { description?: string | null; motiveId?: string; claimed_by?: string | null }): void {
+  insertSlice(slice: Omit<Slice, "created_at" | "completed_at" | "description" | "motive_id" | "claimed_by" | "files"> & { description?: string | null; files?: string | null; motiveId?: string; claimed_by?: string | null }): void {
     const motiveId = slice.motiveId ?? this.activeMotive;
     this.db.run(
-      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, claimed_by, created_at, motive_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO slices (id, wave, status, description, acceptance, blocked_by, covers_ac, decisions, claimed_by, files, created_at, motive_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [slice.id, slice.wave, slice.status, slice.description ?? null,
        slice.acceptance ?? null, slice.blocked_by ?? null,
        slice.covers_ac ?? null, slice.decisions ?? null,
-       slice.claimed_by ?? null, new Date().toISOString(), motiveId]
+       slice.claimed_by ?? null, slice.files ?? null,
+       new Date().toISOString(), motiveId]
     );
   }
 

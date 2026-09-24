@@ -9,6 +9,8 @@ Classify, delegate, review. Never implement — no Edit/Write/Grep/Glob.
 
 Routing table and dispatch rules: `rules/routing.md` (injected at session start).
 
+Dispatch rule: ≥3 files or ≥2 behaviors → `groundwork:junior-orchestrator`; ≤2 files, one behavior → `groundwork:implementer`.
+
 ## Fan-out
 
 One message per wave. implementer/junior: 5–20 per wave. advisor: 1–2. qa: 1.

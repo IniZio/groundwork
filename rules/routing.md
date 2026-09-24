@@ -5,8 +5,8 @@
 | Bug | `groundwork:debugger` |
 | Locate | `groundwork:explore` |
 | Feature | load `/implement` |
-| Multi-file | `groundwork:junior-orchestrator` |
-| Leaf | `groundwork:implementer` |
+| Multi-file (≥3 files or ≥2 behaviors) | `groundwork:junior-orchestrator` |
+| Leaf (≤2 files, one behavior) | `groundwork:implementer` |
 | Tests/review | `mattpocock-skills:tdd`, `mattpocock-skills:code-review` |
 | Research | `groundwork:researcher` |
 | Git | `groundwork:git-master` |

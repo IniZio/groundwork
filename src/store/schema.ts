@@ -113,4 +113,11 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE slices ADD COLUMN claimed_by TEXT;
     `,
   },
+  {
+    version: 7,
+    description: "S1: files column on slices for routing size enforcement",
+    up: `
+      ALTER TABLE slices ADD COLUMN files TEXT;
+    `,
+  },
 ];

@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { Database } from "bun:sqlite";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -62,7 +63,7 @@ export function loadRegistry(): Record<string, string> {
   } catch { return {}; }
 }
 
-export function check(input: unknown, callerType?: string): HookResult {
+export function check(input: unknown, callerType?: string, projectDir?: string): HookResult {
   try {
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const tool = typeof inp.tool_name === "string" ? inp.tool_name : "";
@@ -81,6 +82,36 @@ export function check(input: unknown, callerType?: string): HookResult {
         const list = allowed.size ? [...allowed].join(", ") : "none";
         const spawnedLabel = subTypeOmitted ? `"general-purpose" (subagent_type omitted)` : `"${subType}"`;
         return deny(`depth-guard: "${caller}" may not spawn ${spawnedLabel} — allowed: [${list}].`);
+      }
+    }
+
+    if (subType === "groundwork:implementer" && caller !== "groundwork:junior-orchestrator") {
+      const prompt = typeof ti.prompt === "string" ? ti.prompt : "";
+      const sliceMatch = /^SLICE:\s*(\S+)/.exec(prompt.trimStart());
+      if (sliceMatch) {
+        const sliceId = sliceMatch[1];
+        try {
+          const projDir = projectDir ?? process.env.CLAUDE_PROJECT_DIR ?? "";
+          if (projDir) {
+            const dbPath = path.join(projDir, ".groundwork", "work.db");
+            const db = new Database(dbPath, { readonly: true, create: false });
+            try {
+              const row = db.query<{ files: string | null }, [string]>(
+                "SELECT files FROM slices WHERE id = ?"
+              ).get(sliceId);
+              if (row?.files) {
+                const fileList: unknown = JSON.parse(row.files);
+                if (Array.isArray(fileList) && fileList.length >= 3) {
+                  return deny(
+                    `size-guard: slice "${sliceId}" has ${fileList.length} files — use groundwork:junior-orchestrator (≥3 files or ≥2 behaviors).`
+                  );
+                }
+              }
+            } finally {
+              db.close();
+            }
+          }
+        } catch { /* fail-open */ }
       }
     }
 
@@ -108,7 +139,7 @@ if (import.meta.main) {
   const raw = await Bun.stdin.text();
   let input: unknown = {};
   try { input = JSON.parse(raw); } catch { /* fail-open */ }
-  const result = check(input, process.env.CLAUDE_SUBAGENT_TYPE);
+  const result = check(input, process.env.CLAUDE_SUBAGENT_TYPE, process.env.CLAUDE_PROJECT_DIR);
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   process.exit(result.exit);

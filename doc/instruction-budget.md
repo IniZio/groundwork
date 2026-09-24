@@ -6,10 +6,10 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 
 | Surface | v1 chars | v1 tokens | v2 bytes (wc -c) | v2 tokens | Ratio |
 |---|---|---|---|---|---|
-| SessionStart injection | 7068 | 1767 | 3054 | 764 | 0.43 |
+| SessionStart injection | 7068 | 1767 | 3112 | 778 | 0.44 |
 | Per-turn reminder (UserPromptSubmit) | — | — | 79 | 20 | — |
 | CLAUDE.md (orchestrator project file) | 39614 | 9904 | — (none) | — | — |
-| orchestrator.md | 10706 | 2677 | 1007 | 252 | 0.09 |
+| orchestrator.md | 10706 | 2677 | 1145 | 286 | 0.11 |
 | general-purpose / implementer.md | 5728 | 1432 | 1463 | 366 | 0.26 |
 | advisor.md | 17875 | 4469 | 1504 | 376 | 0.08 |
 | qa.md | 8969 | 2242 | 1251 | 313 | 0.14 |

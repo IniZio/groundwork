@@ -98,7 +98,7 @@ function cmdInit(args: string[]): void {
 function cmdSliceAdd(args: string[], motiveSlug?: string): void {
   const id = args[0];
   if (!id || id.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] --token T\n`);
+    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] [--files a.ts,b.ts] --token T\n`);
     process.exit(1);
   }
   const waveRaw = flag(args, "--wave");
@@ -110,6 +110,8 @@ function cmdSliceAdd(args: string[], motiveSlug?: string): void {
     }
     wave = parseInt(waveRaw, 10);
   }
+  const filesRaw = flag(args, "--files");
+  const files = filesRaw ? JSON.stringify(filesRaw.split(",").map(f => f.trim()).filter(Boolean)) : null;
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   store.insertSlice({
@@ -121,6 +123,7 @@ function cmdSliceAdd(args: string[], motiveSlug?: string): void {
     blocked_by: flag(args, "--blocked-by") ?? null,
     covers_ac: flag(args, "--covers-ac") ?? null,
     decisions: null,
+    files,
   });
   process.stdout.write(`slice ${id} added\n`);
   store.close();
@@ -205,7 +208,9 @@ function cmdSliceStatus(motiveSlug?: string): void {
   for (const s of slices) {
     const bl = s.blocked_by ? `  blocked-by=[${s.blocked_by}]` : "";
     const d = s.description ? `  ${s.description.slice(0, 60)}` : "";
-    process.stdout.write(`  ${s.status.padEnd(11)} ${s.id}${bl}${d}\n`);
+    const filesArr: string[] = s.files ? (() => { try { return JSON.parse(s.files) as string[]; } catch { return []; } })() : [];
+    const fl = filesArr.length ? `  files=[${filesArr.join(",")}]` : "";
+    process.stdout.write(`  ${s.status.padEnd(11)} ${s.id}${bl}${d}${fl}\n`);
   }
   store.close();
 }

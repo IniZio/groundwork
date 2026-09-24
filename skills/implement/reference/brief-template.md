@@ -1,5 +1,15 @@
 # Agent Brief Template
 
+## Required first line
+
+Every implementer brief MUST begin with:
+
+```
+SLICE: <id>
+```
+
+This line is parsed by the spawn-model-guard hook to enforce routing size rules. Omit it only if there is no active slice (the guard fails open).
+
 Every spawn uses this template. Fill every field; send in ONE message before delegating.
 
 ## One-line statement (before delegating)
@@ -7,6 +17,8 @@ Every spawn uses this template. Fill every field; send in ONE message before del
 > Delegating to `<agent>` because `<why>`. Success check: `<verifiable outcome>`.
 
 ## Brief fields
+
+**Slice ID** — the SLICE: <id> line (first line of brief).
 
 **Goal** — one sentence: what behavior must exist when done. No process description.
 

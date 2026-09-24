@@ -402,6 +402,85 @@ describe("addedRanges — mv/cp from committed source (Bug C)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// AC6: git mv rename detection
+// ---------------------------------------------------------------------------
+describe("addedRanges — git mv rename detection", () => {
+  it("git mv uncommitted: identical content → empty added ranges", () => {
+    const repo = tmpDir("gitmv-identical");
+    initRepo(repo);
+
+    writeFileSync(path.join(repo, "old.ts"), "line1\nline2\nline3\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    execSync("command git mv old.ts new.ts", { cwd: repo, shell: "/bin/bash" });
+
+    const ranges = addedRanges(path.join(repo, "new.ts"), base);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([]);
+  });
+
+  it("git mv + appended 5-line block → exactly those 5 rows", () => {
+    const repo = tmpDir("gitmv-appended");
+    initRepo(repo);
+
+    const origLines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join("\n") + "\n";
+    writeFileSync(path.join(repo, "old.ts"), origLines);
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    execSync("command git mv old.ts new.ts", { cwd: repo, shell: "/bin/bash" });
+    writeFileSync(path.join(repo, "new.ts"), origLines + "extra1\nextra2\nextra3\nextra4\nextra5\n");
+
+    const ranges = addedRanges(path.join(repo, "new.ts"), base);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([11, 12, 13, 14, 15]);
+  });
+
+  it("git mv + commit: rename committed after base → empty added ranges", () => {
+    const repo = tmpDir("gitmv-committed");
+    initRepo(repo);
+
+    writeFileSync(path.join(repo, "old.ts"), "line1\nline2\nline3\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    execSync("command git mv old.ts new.ts", { cwd: repo, shell: "/bin/bash" });
+    commit(repo, "rename", "2026-09-01T11:00:00+00:00");
+
+    const ranges = addedRanges(path.join(repo, "new.ts"), base);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([]);
+  });
+
+  it("mv + git add: staged rename → empty added ranges", () => {
+    const repo = tmpDir("mv-gitadd");
+    initRepo(repo);
+
+    writeFileSync(path.join(repo, "old.ts"), "line1\nline2\nline3\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    execSync("mv old.ts new.ts && command git add new.ts", { cwd: repo, shell: "/bin/bash" });
+
+    const ranges = addedRanges(path.join(repo, "new.ts"), base);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([]);
+  });
+
+  it("new tracked file (git add): all rows added", () => {
+    const repo = tmpDir("new-tracked");
+    initRepo(repo);
+
+    writeFileSync(path.join(repo, "existing.ts"), "x\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    writeFileSync(path.join(repo, "new.ts"), "alpha\nbeta\ngamma\n");
+    execSync("command git add new.ts", { cwd: repo, shell: "/bin/bash" });
+
+    const ranges = addedRanges(path.join(repo, "new.ts"), base);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([1, 2, 3]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 describe("touchedFiles — Bash heredoc file write is captured", () => {
   it("cat > evals.json <<EOF in fixture is included", () => {

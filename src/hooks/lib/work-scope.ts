@@ -219,6 +219,20 @@ function firstTouchInfo(transcriptPath: string, file: string): TouchKind | null 
   return null;
 }
 
+function findRenameSourceFromGit(relPath: string, base: string, repoRoot: string): string | null {
+  const result = spawnSync(
+    "git",
+    ["-C", repoRoot, "diff", base, "--name-status", "-M", "-C"],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) return null;
+  for (const line of result.stdout.split("\n")) {
+    const m = line.match(/^R\d*\t(.+)\t(.+)$/);
+    if (m && m[2] === relPath) return m[1];
+  }
+  return null;
+}
+
 function addedVsCommittedSource(
   file: string,
   src: string,
@@ -293,6 +307,29 @@ export function addedRanges(file: string, base: string, transcriptPath?: string)
     }
 
     return null;
+  }
+
+  const catFileResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "cat-file", "-e", `${base}:${relPath}`],
+    { encoding: "utf8" },
+  );
+
+  if (catFileResult.status !== 0) {
+    const gitSrc = findRenameSourceFromGit(relPath, base, repoRoot);
+    const transcriptSrc =
+      !gitSrc && transcriptPath
+        ? (() => {
+            const touch = firstTouchInfo(transcriptPath, file);
+            return touch?.kind === "Bash" ? touch.from : null;
+          })()
+        : null;
+    const src = gitSrc ?? transcriptSrc;
+    if (src) return addedVsCommittedSource(file, src, base, repoRoot);
+    const content = readFileSync(file, "utf8");
+    const lines = content.split("\n");
+    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    return lines.map((_, i) => i + 1);
   }
 
   const diffResult = spawnSync(

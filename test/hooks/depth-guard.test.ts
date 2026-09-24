@@ -25,6 +25,15 @@ function spawnDecision(stdout: string): string {
   } catch { return `parse-error(${s.slice(0, 60)})`; }
 }
 
+function spawnUpdatedSubType(stdout: string): string {
+  const s = stdout.trim();
+  if (!s) return "";
+  try {
+    return (JSON.parse(s) as { hookSpecificOutput: { updatedInput?: { subagent_type?: string } } })
+      .hookSpecificOutput.updatedInput?.subagent_type ?? "";
+  } catch { return ""; }
+}
+
 function spawnReason(stdout: string): string {
   const s = stdout.trim();
   if (!s) return "";
@@ -59,6 +68,15 @@ function reason(result: { stdout: string }): string {
   try {
     return (JSON.parse(s) as { hookSpecificOutput: { permissionDecisionReason: string } })
       .hookSpecificOutput.permissionDecisionReason ?? "";
+  } catch { return ""; }
+}
+
+function updatedSubType(result: { stdout: string }): string {
+  const s = result.stdout.trim();
+  if (!s) return "";
+  try {
+    return (JSON.parse(s) as { hookSpecificOutput: { updatedInput?: { subagent_type?: string } } })
+      .hookSpecificOutput.updatedInput?.subagent_type ?? "";
   } catch { return ""; }
 }
 
@@ -272,7 +290,7 @@ function makeDb(files: string[]): { dir: string } {
 }
 
 describe("S1 file-count routing guard", () => {
-  it("DENY: orchestrator spawns implementer with SLICE pointing to ≥3-file slice", () => {
+  it("REDIRECT: orchestrator spawns implementer with SLICE pointing to ≥3-file slice", () => {
     const { dir: d } = makeDb(["a.ts", "b.ts", "c.ts"]);
     try {
       const payload = {
@@ -286,7 +304,8 @@ describe("S1 file-count routing guard", () => {
         agent_id: "abc",
       };
       const r = check(payload, "groundwork:orchestrator", d);
-      expect(decision(r)).toBe("deny");
+      expect(decision(r)).toBe("allow");
+      expect(updatedSubType(r)).toBe("groundwork:junior-orchestrator");
       expect(reason(r)).toContain("size-guard");
       expect(reason(r)).toContain("S-guard-1");
       expect(reason(r)).toContain("groundwork:junior-orchestrator");
@@ -398,7 +417,7 @@ describe("S1 file-count routing guard", () => {
     }
   });
 
-  it("DENY via CLAUDE_PROJECT_DIR env when projectDir arg is absent", () => {
+  it("REDIRECT via CLAUDE_PROJECT_DIR env when projectDir arg is absent", () => {
     const { dir: d } = makeDb(["a.ts", "b.ts", "c.ts"]);
     const saved = process.env.CLAUDE_PROJECT_DIR;
     process.env.CLAUDE_PROJECT_DIR = d;
@@ -415,7 +434,8 @@ describe("S1 file-count routing guard", () => {
       };
       // projectDir arg omitted — guard must fall back to CLAUDE_PROJECT_DIR
       const r = check(payload, "groundwork:orchestrator", undefined);
-      expect(decision(r)).toBe("deny");
+      expect(decision(r)).toBe("allow");
+      expect(updatedSubType(r)).toBe("groundwork:junior-orchestrator");
       expect(reason(r)).toContain("size-guard");
     } finally {
       if (saved !== undefined) {
@@ -447,7 +467,7 @@ describe("S1 file-count routing guard", () => {
     }
   });
 
-  it("T2 DENY main-thread: no agent_type, implementer, 3-file SLICE → deny", () => {
+  it("T2 REDIRECT main-thread: no agent_type, implementer, 3-file SLICE → redirect", () => {
     const { dir: d } = makeDb(["a.ts", "b.ts", "c.ts"]);
     try {
       const payload = {
@@ -459,7 +479,8 @@ describe("S1 file-count routing guard", () => {
         },
       };
       const r = check(payload, undefined, d);
-      expect(decision(r)).toBe("deny");
+      expect(decision(r)).toBe("allow");
+      expect(updatedSubType(r)).toBe("groundwork:junior-orchestrator");
       expect(reason(r)).toContain("size-guard");
     } finally {
       rmSync(d, { recursive: true, force: true });
@@ -494,7 +515,7 @@ describe("S1 file-count routing guard", () => {
     }
   });
 
-  it("T4 deployed path: main-thread implementer 3-file SLICE → deny via CLAUDE_PROJECT_DIR", () => {
+  it("T4 deployed path: main-thread implementer 3-file SLICE → redirect via CLAUDE_PROJECT_DIR", () => {
     const { dir: d } = makeDb(["a.ts", "b.ts", "c.ts"]);
     try {
       const payload = {
@@ -512,7 +533,8 @@ describe("S1 file-count routing guard", () => {
         env,
       });
       const stdout = Buffer.from(r.stdout).toString("utf8");
-      expect(spawnDecision(stdout)).toBe("deny");
+      expect(spawnDecision(stdout)).toBe("allow");
+      expect(spawnUpdatedSubType(stdout)).toBe("groundwork:junior-orchestrator");
     } finally {
       rmSync(d, { recursive: true, force: true });
     }

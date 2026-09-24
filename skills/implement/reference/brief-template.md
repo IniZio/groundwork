@@ -8,7 +8,9 @@ Every implementer brief MUST begin with:
 SLICE: <id>
 ```
 
-This line is parsed by the spawn-model-guard hook to enforce routing size rules. Omit it only if there is no active slice (the guard fails open).
+This line is parsed by the spawn-model-guard hook. When the named slice owns ≥3 files and the caller is not `groundwork:junior-orchestrator`, the guard **redirects** (does not deny) the spawn to `groundwork:junior-orchestrator`, prefixing the prompt with `[size-guard: slice <id> owns <N> files — redirected from implementer; split into ≤2-file leaves]`.
+
+**Leaf exception**: if `Files owned` lists 1–2 entries and each is a slice file or sits under a slice directory, the spawn stays a leaf implementer. A list that is missing, unparseable, has >2 entries, or names a file outside the slice triggers a redirect. Omit `SLICE:` only if there is no active slice (the guard fails open).
 
 Every spawn uses this template. Fill every field; send in ONE message before delegating.
 
@@ -22,7 +24,21 @@ Every spawn uses this template. Fill every field; send in ONE message before del
 
 **Goal** — one sentence: what behavior must exist when done. No process description.
 
-**Files owned** — explicit list. Implementer touches only these.
+**Files owned** — explicit list; parsed by spawn-model-guard (see SLICE rules above). Implementer touches only these. Accepted syntaxes — comma-separated on the same line:
+
+```
+Files owned: src/foo.ts, src/bar.ts
+```
+
+or `- ` / `* ` bullets on the lines that follow (rest of label line must be empty):
+
+```
+**Files owned:**
+- src/foo.ts
+- src/bar.ts
+```
+
+Label separator may be `:`, `—`, or `-`; separator may sit inside the bold (`**Files owned:**`) or outside (`**Files owned**:`). Backticks and a trailing `(…)` parenthetical are stripped from each entry.
 
 **Files NOT owned** — explicit list. Read-only or hands-off. If uncertain, list here and ask.
 

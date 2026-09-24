@@ -17,6 +17,77 @@ function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 function inject(ti: Record<string, unknown>, model: string): HookResult {
   return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: `spawn-model-guard: injected model "${model}" (was unset — would inherit session model)`, updatedInput: { ...ti, model } } }) + "\n", stderr: "", exit: 0 };
 }
+function redirect(ti: Record<string, unknown>, sliceId: string, fileCount: number, model: string, outsideFiles?: string[]): HookResult {
+  const reasonSuffix = outsideFiles && outsideFiles.length > 0
+    ? ` (brief files outside slice: ${outsideFiles.map(f => `"${f}"`).join(", ")})`
+    : "";
+  const reason = `size-guard: slice "${sliceId}" has ${fileCount} files — spawn redirected to groundwork:junior-orchestrator${reasonSuffix}.`;
+  const context = `size-guard: slice "${sliceId}" owns ${fileCount} files — spawn was redirected from groundwork:implementer to groundwork:junior-orchestrator; split into ≤2-file leaves.`;
+  const prefix = `[size-guard: slice ${sliceId} owns ${fileCount} files — redirected from implementer; split into ≤2-file leaves]`;
+  const origPrompt = typeof ti.prompt === "string" ? ti.prompt : "";
+  const newPrompt = `${prefix}\n${origPrompt}`;
+  return {
+    stdout: JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        permissionDecisionReason: reason,
+        additionalContext: context,
+        updatedInput: { ...ti, subagent_type: "groundwork:junior-orchestrator", model, prompt: newPrompt },
+      }
+    }) + "\n",
+    stderr: "",
+    exit: 0,
+  };
+}
+
+/**
+ * Parse the "Files owned" section from a brief prompt.
+ * Returns the list of file entries, or null if missing/unparseable.
+ * Accepts:
+ *   Files owned: file1, file2   (same-line, comma-separated)
+ *   Files owned:                 (followed by bullet lines)
+ *   **Files owned** — …         (bold syntax, separators: : — -)
+ */
+export function parseBriefFiles(prompt: string): string[] | null {
+  const lines = prompt.split("\n");
+  const headerRe = /^\*{0,2}Files\s+owned(?:\s*[:—-])?\*{0,2}(?:\s*[:—-])?\s*(.*)/i;
+  for (let i = 0; i < lines.length; i++) {
+    const m = headerRe.exec(lines[i].trim());
+    if (!m) continue;
+    const rest = m[1].trim();
+    if (rest) {
+      return rest.split(",").map(s => stripEntry(s)).filter(Boolean);
+    }
+    const files: string[] = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const bl = lines[j];
+      const bm = /^[\s]*[-*]\s+(.+)/.exec(bl);
+      if (!bm) break;
+      const entry = stripEntry(bm[1]);
+      if (entry) files.push(entry);
+    }
+    return files.length > 0 ? files : null;
+  }
+  return null;
+}
+
+function stripEntry(s: string): string {
+  return s.trim().replace(/\s*\([^)]*\)\s*$/, "").replace(/^`|`$/g, "").trim();
+}
+
+/**
+ * Returns true if briefFile is within sliceFile: either exact match or sliceFile is a
+ * directory prefix (sliceFile ends with a path separator boundary).
+ */
+export function isWithinSlice(briefFile: string, sliceFiles: string[]): boolean {
+  for (const sf of sliceFiles) {
+    if (briefFile === sf) return true;
+    const prefix = sf.endsWith("/") ? sf : sf + "/";
+    if (briefFile.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 /**
  * Flat allowlist per caller agent type (D5).
@@ -102,9 +173,20 @@ export function check(input: unknown, callerType?: string, projectDir?: string):
               if (row?.files) {
                 const fileList: unknown = JSON.parse(row.files);
                 if (Array.isArray(fileList) && fileList.length >= 3) {
-                  return deny(
-                    `size-guard: slice "${sliceId}" has ${fileList.length} files — use groundwork:junior-orchestrator (≥3 files or ≥2 behaviors).`
-                  );
+                  const sliceFiles = fileList as string[];
+                  const briefFiles = parseBriefFiles(prompt);
+                  if (briefFiles !== null && briefFiles.length >= 1 && briefFiles.length <= 2) {
+                    const outside = briefFiles.filter(f => !isWithinSlice(f, sliceFiles));
+                    if (outside.length > 0) {
+                      const reg = loadRegistry();
+                      const joModel = reg["junior-orchestrator"] ?? "sonnet";
+                      return redirect(ti, sliceId, sliceFiles.length, joModel, outside);
+                    }
+                  } else {
+                    const reg = loadRegistry();
+                    const joModel = reg["junior-orchestrator"] ?? "sonnet";
+                    return redirect(ti, sliceId, sliceFiles.length, joModel);
+                  }
                 }
               }
             } finally {

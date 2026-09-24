@@ -5,9 +5,10 @@ import path from 'node:path';
 import type { Rule, RuleCases, RuleContext, ScopedFile, Finding, Case } from './types.js';
 import { diffTextToHunks } from '../hooks/lib/work-scope.js';
 
-/** Extend Case for tree cases: per-file tracked override. */
+/** Extend Case for tree cases: per-file tracked and sessionCreated overrides. */
 export interface TrackedCase extends Case {
   trackedOverrides?: Record<string, boolean>;
+  sessionCreatedOverrides?: Record<string, boolean>;
 }
 
 export interface RuleTesterOpts {
@@ -115,6 +116,7 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
         text,
         lang: extToLang(ext),
         tracked: c.trackedOverrides?.[filePath] ?? true,
+        sessionCreated: c.sessionCreatedOverrides?.[filePath] ?? false,
       });
     }
     return { repoRoot: tmp, mode: 'cli', files };

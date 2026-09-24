@@ -1,0 +1,157 @@
+#!/usr/bin/env bun
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs';
+import { loadRules } from '../engine/registry.js';
+import { buildContext } from '../engine/context.js';
+import { runRules, isBlocking } from '../engine/run.js';
+import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
+
+const rulesDir = path.resolve(import.meta.dir, '../../rules');
+
+function getRepoRoot(repoFlag?: string): string {
+  if (repoFlag) return repoFlag;
+  const r = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    process.stderr.write('Error: not in a git repository and --repo not specified\n');
+    process.exit(2);
+  }
+  return r.stdout.trim();
+}
+
+function defaultBase(repoRoot: string): string {
+  for (const ref of ['origin/HEAD', 'main', 'master']) {
+    const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', ref], {
+      encoding: 'utf8',
+    });
+    if (r.status === 0) return ref;
+  }
+  return 'HEAD';
+}
+
+function validateBase(repoRoot: string, base: string): void {
+  const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', base], {
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    process.stderr.write(`Error: invalid --base ref: ${base}\n`);
+    process.exit(2);
+  }
+}
+
+function printUsage(): void {
+  process.stderr.write(
+    'Usage:\n' +
+      '  house-rules check [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
+      '  house-rules baseline [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
+  );
+}
+
+function parseArgs(argv: string[]): {
+  subcommand: string | undefined;
+  base?: string;
+  rulesDir?: string;
+  baselineFile?: string;
+  repo?: string;
+} {
+  const args = argv.slice(0);
+  const subcommand = args.shift();
+  const opts: Record<string, string> = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--base' || arg === '--rules-dir' || arg === '--baseline-file' || arg === '--repo') {
+      opts[arg.slice(2)] = args[++i] ?? '';
+    }
+  }
+
+  return {
+    subcommand,
+    base: opts['base'],
+    rulesDir: opts['rules-dir'],
+    baselineFile: opts['baseline-file'],
+    repo: opts['repo'],
+  };
+}
+
+async function cmdCheck(opts: {
+  base?: string;
+  rulesDir?: string;
+  baselineFile?: string;
+  repo?: string;
+}): Promise<void> {
+  const repoRoot = getRepoRoot(opts.repo);
+  const baselineFile = opts.baselineFile ?? path.join(repoRoot, '.house-rules', 'baseline.json');
+  const rulesDirResolved = opts.rulesDir ?? rulesDir;
+
+  let base: string;
+  if (opts.base !== undefined) {
+    validateBase(repoRoot, opts.base);
+    base = opts.base;
+  } else {
+    base = defaultBase(repoRoot);
+  }
+
+  const ctx = buildContext({ repoRoot, mode: 'cli', base });
+  const rules = await loadRules(rulesDirResolved);
+  const allFindings = await runRules(rules, ctx);
+  const baseline = await readBaseline(baselineFile);
+  const findings = subtractBaseline(allFindings, baseline);
+
+  for (const f of findings) {
+    if (f.line !== undefined) {
+      process.stdout.write(`${f.path}:${f.line} ${f.ruleId} ${f.message}\n`);
+    } else {
+      process.stdout.write(`${f.path} ${f.ruleId} ${f.message}\n`);
+    }
+  }
+
+  process.stdout.write(`${findings.length} finding(s)\n`);
+  process.exit(isBlocking(findings) ? 1 : 0);
+}
+
+async function cmdBaseline(opts: {
+  base?: string;
+  rulesDir?: string;
+  baselineFile?: string;
+  repo?: string;
+}): Promise<void> {
+  const repoRoot = getRepoRoot(opts.repo);
+  const baselineFile = opts.baselineFile ?? path.join(repoRoot, '.house-rules', 'baseline.json');
+  const rulesDirResolved = opts.rulesDir ?? rulesDir;
+
+  let base: string;
+  if (opts.base !== undefined) {
+    validateBase(repoRoot, opts.base);
+    base = opts.base;
+  } else {
+    base = 'HEAD';
+  }
+
+  const ctx = buildContext({ repoRoot, mode: 'cli', base });
+  const rules = await loadRules(rulesDirResolved);
+  const findings = await runRules(rules, ctx);
+
+  const dir = path.dirname(baselineFile);
+  fs.mkdirSync(dir, { recursive: true });
+
+  await writeBaseline(baselineFile, findings);
+  process.stdout.write(`Baseline written to ${baselineFile} (${findings.length} entries)\n`);
+}
+
+const parsed = parseArgs(process.argv.slice(2));
+
+switch (parsed.subcommand) {
+  case 'check':
+    await cmdCheck(parsed);
+    break;
+  case 'baseline':
+    await cmdBaseline(parsed);
+    break;
+  default:
+    printUsage();
+    process.exit(2);
+}

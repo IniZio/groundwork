@@ -290,3 +290,54 @@ describe('ruleTester — code case with base field', () => {
     ],
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC — tree case sessionCreatedOverrides: sets sessionCreated on ScopedFile
+// ---------------------------------------------------------------------------
+
+describe('ruleTester — sessionCreatedOverrides', () => {
+  // Rule that only flags files where sessionCreated === true
+  const sessionCreatedRule: Rule = {
+    id: 'session-created-only',
+    meta: { description: 'flags only session-created files' },
+    vehicles: ['tree'],
+    check: (ctx) =>
+      (ctx.files ?? [])
+        .filter((f) => f.sessionCreated === true)
+        .map((f) => ({
+          ruleId: 'session-created-only',
+          path: f.path,
+          message: 'session-created file flagged',
+          fingerprintBasis: f.path,
+        })),
+  };
+
+  ruleTester(sessionCreatedRule, {
+    valid: [
+      {
+        why: 'tracked=true but sessionCreated not set: not flagged',
+        tree: { 'normal.ts': '' },
+      },
+      {
+        why: 'tracked=false, sessionCreated defaults false: not flagged',
+        tree: { 'untracked.ts': '' },
+        trackedOverrides: { 'untracked.ts': false },
+      },
+    ],
+    invalid: [
+      {
+        why: 'sessionCreated=true marks file as flagged',
+        tree: { 'new-file.ts': '' },
+        trackedOverrides: { 'new-file.ts': false },
+        sessionCreatedOverrides: { 'new-file.ts': true },
+        findings: [
+          {
+            ruleId: 'session-created-only',
+            path: 'new-file.ts',
+            message: 'session-created file flagged',
+          },
+        ],
+      },
+    ],
+  } as any);
+});

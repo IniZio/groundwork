@@ -1,0 +1,9 @@
+#!/bin/sh
+# Resolve symlinks portably
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+while [ -L "$self" ]; do
+  dir="$(dirname "$self")"
+  self="$(cd "$dir" && pwd -P)/$(readlink "$self")"
+done
+dir="$(dirname "$self")"
+exec bun "$dir/../src/cli/main.ts" "$@"

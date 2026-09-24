@@ -47,5 +47,33 @@
     "file": "tree-sitter-python.wasm",
     "sha256": "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47",
     "bytes": 457883
+  },
+  "tree-sitter-go.wasm": {
+    "package": "tree-sitter-go",
+    "version": "0.25.0",
+    "file": "tree-sitter-go.wasm",
+    "sha256": "9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7",
+    "bytes": 217182
+  },
+  "tree-sitter-rust.wasm": {
+    "package": "tree-sitter-rust",
+    "version": "0.24.0",
+    "file": "tree-sitter-rust.wasm",
+    "sha256": "f65f354215611fd94ad34134b3427eb3d58cbb745df7b6509ba722184db73d57",
+    "bytes": 1102547
+  },
+  "tree-sitter-make.wasm": {
+    "package": "tree-sitter-make",
+    "version": "1.1.1",
+    "file": "tree-sitter-make.wasm",
+    "sha256": "1254d1e5787be8bb944d55d1f6552b6b2b7908272ed498013bfdc07bd7d042dd",
+    "bytes": 147061
+  },
+  "tree-sitter-toml.wasm": {
+    "package": "@tree-sitter-grammars/tree-sitter-toml",
+    "version": "0.7.0",
+    "file": "tree-sitter-toml.wasm",
+    "sha256": "1ac6a83826c35a68857f8325e00c78f6bcbef4eb6db3931a6cf3041f76e5e09f",
+    "bytes": 24040
   }
 }

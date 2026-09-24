@@ -1,0 +1,7 @@
+{
+  "package": "tree-sitter-go",
+  "version": "0.25.0",
+  "wasm_file": "tree-sitter-go.wasm",
+  "sha256": "9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7",
+  "bytes": 217182
+}

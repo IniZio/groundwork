@@ -12,13 +12,18 @@
     "gw": "bun src/cli/main.ts"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.0",
-    "tree-sitter-bash": "0.25.1",
+    "@derekstride/tree-sitter-sql": "0.3.11",
+    "@tree-sitter-grammars/tree-sitter-toml": "0.7.0",
     "@tree-sitter-grammars/tree-sitter-yaml": "0.7.1",
+    "@types/bun": "latest",
+    "tree-sitter-bash": "0.25.1",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-make": "1.1.1",
+    "tree-sitter-python": "0.25.0",
+    "tree-sitter-rust": "0.24.0",
     "tree-sitter-typescript": "0.23.2",
-    "tree-sitter-python": "0.25.0"
+    "typescript": "^5.5.0",
+    "web-tree-sitter": "0.25.0"
   },
   "engines": {
     "bun": ">=1.0.0"

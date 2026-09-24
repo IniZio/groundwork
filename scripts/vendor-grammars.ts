@@ -47,6 +47,18 @@ record("tree-sitter-typescript", tsgramVer, path.join(NM, "tree-sitter-typescrip
 const pyVer = JSON.parse(readFileSync(path.join(NM, "tree-sitter-python/package.json"), "utf8")).version as string;
 record("tree-sitter-python", pyVer, path.join(NM, "tree-sitter-python/tree-sitter-python.wasm"), path.join(GRAMMARS_DIR, "tree-sitter-python.wasm"));
 
+const goVer = JSON.parse(readFileSync(path.join(NM, "tree-sitter-go/package.json"), "utf8")).version as string;
+record("tree-sitter-go", goVer, path.join(NM, "tree-sitter-go/tree-sitter-go.wasm"), path.join(GRAMMARS_DIR, "tree-sitter-go.wasm"));
+
+const rustVer = JSON.parse(readFileSync(path.join(NM, "tree-sitter-rust/package.json"), "utf8")).version as string;
+record("tree-sitter-rust", rustVer, path.join(NM, "tree-sitter-rust/tree-sitter-rust.wasm"), path.join(GRAMMARS_DIR, "tree-sitter-rust.wasm"));
+
+const makeVer = JSON.parse(readFileSync(path.join(NM, "tree-sitter-make/package.json"), "utf8")).version as string;
+record("tree-sitter-make", makeVer, path.join(NM, "tree-sitter-make/tree-sitter-make.wasm"), path.join(GRAMMARS_DIR, "tree-sitter-make.wasm"));
+
+const tomlVer = JSON.parse(readFileSync(path.join(NM, "@tree-sitter-grammars/tree-sitter-toml/package.json"), "utf8")).version as string;
+record("@tree-sitter-grammars/tree-sitter-toml", tomlVer, path.join(NM, "@tree-sitter-grammars/tree-sitter-toml/tree-sitter-toml.wasm"), path.join(GRAMMARS_DIR, "tree-sitter-toml.wasm"));
+
 const sourcesPath = path.join(GRAMMARS_DIR, "SOURCES.json");
 const json = JSON.stringify(sources, null, 2) + "\n";
 Bun.write(sourcesPath, json);

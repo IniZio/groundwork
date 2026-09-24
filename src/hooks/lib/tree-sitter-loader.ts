@@ -1,7 +1,7 @@
 import path from "node:path";
 import { Parser, Language } from "./tree-sitter.js";
 
-export type Lang = "bash" | "yaml" | "typescript" | "tsx" | "python" | "dockerfile";
+export type Lang = "bash" | "yaml" | "typescript" | "tsx" | "python" | "dockerfile" | "go" | "rust" | "sql" | "make" | "toml";
 
 export type LoadResult =
   | { ok: true; parser: Parser; language: Language }
@@ -17,6 +17,11 @@ const WASM_FILES: Record<Lang, string> = {
   tsx: "tree-sitter-tsx.wasm",
   python: "tree-sitter-python.wasm",
   dockerfile: "tree-sitter-dockerfile.wasm",
+  go: "tree-sitter-go.wasm",
+  rust: "tree-sitter-rust.wasm",
+  sql: "tree-sitter-sql.wasm",
+  make: "tree-sitter-make.wasm",
+  toml: "tree-sitter-toml.wasm",
 };
 
 let initPromise: Promise<void> | null = null;

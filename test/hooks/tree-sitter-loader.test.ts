@@ -145,3 +145,29 @@ describe("AC6: getParser is memoised; dockerfile loads; Lang type includes all 6
     expect(r.ok).toBe(true);
   });
 });
+
+describe("AC7: new language grammars load (go, rust, sql, make, toml)", () => {
+  const NEW_LANGS: { lang: Parameters<typeof getParser>[0]; sample: string }[] = [
+    { lang: "go", sample: "// go comment\npackage main\nfunc main() {}\n" },
+    { lang: "rust", sample: "// rust comment\nfn main() {}\n" },
+    { lang: "sql", sample: "-- sql comment\nSELECT 1;\n" },
+    { lang: "make", sample: "# make comment\nall:\n\techo hi\n" },
+    { lang: "toml", sample: "# toml comment\n[package]\nname = \"test\"\n" },
+  ];
+
+  for (const { lang, sample } of NEW_LANGS) {
+    it(`${lang}: loads with ok:true and parses sample`, async () => {
+      const r = await getParser(lang);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      const tree = r.parser.parse(sample);
+      expect(tree.rootNode).toBeDefined();
+    });
+
+    it(`${lang}: second call returns memoised result (same object reference)`, async () => {
+      const r1 = await getParser(lang);
+      const r2 = await getParser(lang);
+      expect(r1).toBe(r2);
+    });
+  }
+});

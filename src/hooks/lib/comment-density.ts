@@ -45,6 +45,11 @@ const PYLINT_RE = /^pylint:/;
 const PRAGMA_RE = /^pragma:/i;
 const YAML_LS_RE = /^yaml-language-server:/;
 const DOCKERFILE_DIRECTIVE_RE = /^(?:syntax|escape)=/i;
+// Go directive exemptions (matched against stripped inner text after removing "//")
+const GO_DIRECTIVE_RE = /^go:/;
+const GO_BUILD_CONSTRAINT_RE = /^\+build\b/;
+const GO_NOLINT_RE = /^nolint\b/;
+const TOML_SCHEMA_RE = /^:schema\b/;
 
 function stripMarkers(raw: string): string {
   let t = raw.trim();
@@ -57,8 +62,8 @@ function stripMarkers(raw: string): string {
   return t.trim();
 }
 
-function isExemptInner(inner: string): boolean {
-  return (
+function isExemptInner(inner: string, lang?: Lang): boolean {
+  if (
     ANNOT_TAG_RE.test(inner) ||
     ESLINT_RE.test(inner) ||
     PRETTIER_RE.test(inner) ||
@@ -73,7 +78,10 @@ function isExemptInner(inner: string): boolean {
     PYLINT_RE.test(inner) ||
     PRAGMA_RE.test(inner) ||
     YAML_LS_RE.test(inner)
-  );
+  ) return true;
+  if (lang === "go" && (GO_DIRECTIVE_RE.test(inner) || GO_BUILD_CONSTRAINT_RE.test(inner) || GO_NOLINT_RE.test(inner))) return true;
+  if (lang === "toml" && TOML_SCHEMA_RE.test(inner)) return true;
+  return false;
 }
 
 function checkExempt(
@@ -94,13 +102,20 @@ function checkExempt(
     return { exempt: true, reason: "jsdoc" };
   }
 
+  if (lang === "rust") {
+    const trimmed = raw.trimStart();
+    if (trimmed.startsWith("///") || trimmed.startsWith("//!") || trimmed.startsWith("/*!")) {
+      return { exempt: true, reason: "rust-doc" };
+    }
+  }
+
   for (const line of raw.split("\n")) {
     const inner = stripMarkers(line);
     if (!inner) continue;
     if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
       return { exempt: true, reason: "dockerfile-directive" };
     }
-    if (isExemptInner(inner)) {
+    if (isExemptInner(inner, lang)) {
       return { exempt: true, reason: inner.slice(0, 30) };
     }
   }
@@ -108,12 +123,46 @@ function checkExempt(
   return { exempt: false };
 }
 
+function isCommentNode(node: Node, lang: Lang): boolean {
+  return node.type.includes("comment") || (lang === "sql" && node.type === "marginalia");
+}
+
+const GO_DOC_DECL_TYPES = new Set([
+  "package_clause",
+  "function_declaration",
+  "method_declaration",
+  "type_declaration",
+  "type_spec",
+  "const_declaration",
+  "const_spec",
+  "var_declaration",
+  "var_spec",
+  "field_declaration",
+]);
+
+function isGoDocComment(node: Node): boolean {
+  let cur: Node | null = node;
+  while (cur !== null) {
+    const next: Node | null = cur.nextNamedSibling;
+    if (!next) return false;
+    if (GO_DOC_DECL_TYPES.has(next.type)) {
+      return next.startPosition.row === cur.endPosition.row + 1;
+    }
+    if (next.type === "comment" && next.startPosition.row === cur.endPosition.row + 1) {
+      cur = next;
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
 function collectComments(root: Node, text: string, lang: Lang): Comment[] {
   const results: Comment[] = [];
   let leadingBlockDone = false;
 
   function walk(node: Node): void {
-    if (node.type.includes("comment")) {
+    if (isCommentNode(node, lang)) {
       const raw = node.text ?? text.slice(node.startIndex, node.endIndex);
       const startRow = node.startPosition.row;
       const endRow = node.endPosition.row;
@@ -121,7 +170,13 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
       if (!leadingBlockDone && startRow > 0) leadingBlockDone = true;
       const inLeadingBlock = !leadingBlockDone || startRow === 0;
 
-      const { exempt, reason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
+      const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
+      let exempt = rawExempt;
+      let reason = rawReason;
+      if (!exempt && lang === "go" && isGoDocComment(node)) {
+        exempt = true;
+        reason = "go-doc";
+      }
       results.push({
         startIndex: node.startIndex,
         endIndex: node.endIndex,
@@ -174,6 +229,13 @@ export function detectLanguage(filePath: string, firstLine?: string): Lang | nul
   if (ext === ".py") return "python";
   if (ext === ".sh" || ext === ".bash") return "bash";
   if (ext === ".yml" || ext === ".yaml") return "yaml";
+
+  if (ext === ".go") return "go";
+  if (ext === ".rs") return "rust";
+  if (ext === ".sql") return "sql";
+  if (ext === ".mk") return "make";
+  if (base === "Makefile" || base === "GNUmakefile" || base === "makefile") return "make";
+  if (ext === ".toml") return "toml";
 
   if (!ext && firstLine) {
     const m = firstLine.match(/^#!.*?\b(ba?sh|sh|zsh)\b/);
@@ -373,7 +435,7 @@ function isFallbackExempt(raw: string): boolean {
   );
 }
 
-const HASH_COMMENT_LANGS = new Set<Lang>(["bash", "yaml", "python", "dockerfile"]);
+const HASH_COMMENT_LANGS = new Set<Lang>(["bash", "yaml", "python", "dockerfile", "make", "toml"]);
 
 function countEffectiveFallback(text: string, lang?: Lang | null): { total: number; effective: number; commentRows: number[] } {
   const rows = text.split("\n");
@@ -467,10 +529,10 @@ function commentIsWholeLine(c: Comment, text: string): boolean {
   return !text.slice(lineStart, c.startIndex).trim();
 }
 
-function collectCodeText(root: Node, text: string): string {
+function collectCodeText(root: Node, text: string, lang: Lang): string {
   const parts: string[] = [];
   function walk(node: Node): void {
-    if (node.type.includes("comment")) return;
+    if (isCommentNode(node, lang)) return;
     if (node.childCount === 0) {
       parts.push(node.text ?? text.slice(node.startIndex, node.endIndex));
       return;
@@ -521,8 +583,8 @@ export async function autoFix(
 
   const pr = await getParser(lang);
   if (!pr.ok) return { ok: false, reason: `parser: ${pr.reason}` };
-  const origCode = collectCodeText(pr.parser.parse(text).rootNode, text);
-  const fixedCode = collectCodeText(pr.parser.parse(fixed).rootNode, fixed);
+  const origCode = collectCodeText(pr.parser.parse(text).rootNode, text, lang);
+  const fixedCode = collectCodeText(pr.parser.parse(fixed).rootNode, fixed, lang);
   if (origCode !== fixedCode) return { ok: false, reason: "code content changed" };
 
   const preMap = new Map<string, number>();

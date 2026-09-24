@@ -1,0 +1,9 @@
+{
+  "package": "@derekstride/tree-sitter-sql",
+  "version": "0.3.11",
+  "cli_version": "0.25.3",
+  "build_command": "tree-sitter build --wasm --docker",
+  "sha256": "f9d5638965f6f7ecc6b6979b8717f44e756687a1cbe4fef411b84506bdb81451",
+  "bytes": 2433442,
+  "rebuild_byte_identical": "not verified; Docker+emscripten builds are not guaranteed byte-identical across runs"
+}

@@ -1,0 +1,7 @@
+{
+  "package": "@tree-sitter-grammars/tree-sitter-toml",
+  "version": "0.7.0",
+  "wasm_file": "tree-sitter-toml.wasm",
+  "sha256": "1ac6a83826c35a68857f8325e00c78f6bcbef4eb6db3931a6cf3041f76e5e09f",
+  "bytes": 24040
+}

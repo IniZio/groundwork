@@ -660,3 +660,307 @@ describe("autoFix", () => {
     }
   });
 });
+
+// ---- AC-wave-a: New language fixtures ----
+
+describe("detectLanguage — new languages", () => {
+  const cases: [string, string | undefined, import("../../src/hooks/lib/comment-density.js").Lang | null][] = [
+    ["/foo/main.go", undefined, "go"],
+    ["/foo/lib.rs", undefined, "rust"],
+    ["/foo/schema.sql", undefined, "sql"],
+    ["/foo/Makefile", undefined, "make"],
+    ["/foo/GNUmakefile", undefined, "make"],
+    ["/foo/makefile", undefined, "make"],
+    ["/foo/rules.mk", undefined, "make"],
+    ["/foo/config.toml", undefined, "toml"],
+    ["/foo/Cargo.toml", undefined, "toml"],
+  ];
+
+  it.each(cases)("detectLanguage(%s, %s) → %s", (fp, first, expected) => {
+    expect(detectLanguage(fp, first)).toBe(expected);
+  });
+});
+
+describe("findComments + density — fixture files", () => {
+  it("go/main.go: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+    const text = await Bun.file(path.join(FIXTURES, "go/main.go")).text();
+    const r = await findComments(text, "go");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(10);
+    const d = await density(text, "go");
+    expect(d.mode).toBe("tree-sitter");
+    expect(d.effective).toBeGreaterThan(0);
+  });
+
+  it("rust/lib.rs: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+    const text = await Bun.file(path.join(FIXTURES, "rust/lib.rs")).text();
+    const r = await findComments(text, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(10);
+    const d = await density(text, "rust");
+    expect(d.mode).toBe("tree-sitter");
+    expect(d.effective).toBeGreaterThan(0);
+  });
+
+  it("sql/schema.sql: findComments finds ≥10 comments (including marginalia), density uses tree-sitter", async () => {
+    const text = await Bun.file(path.join(FIXTURES, "sql/schema.sql")).text();
+    const r = await findComments(text, "sql");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(10);
+    const d = await density(text, "sql");
+    expect(d.mode).toBe("tree-sitter");
+    expect(d.effective).toBeGreaterThan(0);
+  });
+
+  it("make/Makefile: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+    const text = await Bun.file(path.join(FIXTURES, "make/Makefile")).text();
+    const r = await findComments(text, "make");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(10);
+    const d = await density(text, "make");
+    expect(d.mode).toBe("tree-sitter");
+    expect(d.effective).toBeGreaterThan(0);
+  });
+
+  it("toml/config.toml: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+    const text = await Bun.file(path.join(FIXTURES, "toml/config.toml")).text();
+    const r = await findComments(text, "toml");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(10);
+    const d = await density(text, "toml");
+    expect(d.mode).toBe("tree-sitter");
+    expect(d.effective).toBeGreaterThan(0);
+  });
+});
+
+describe("SQL block comments (marginalia) are captured", () => {
+  it("/* ... */ block comment is collected as non-exempt comment in SQL", async () => {
+    const sql = `/* This is a block comment */\nSELECT 1;\n`;
+    const r = await findComments(sql, "sql");
+    if (!r.ok) throw new Error(r.reason);
+    const blockComments = r.comments.filter(c => c.nodeType === "marginalia");
+    expect(blockComments.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("bite: without marginalia handling, block comments would be missed", async () => {
+    // marginalia node type does NOT include the word "comment",
+    // so the old node.type.includes("comment") check would miss it.
+    const sql = `/* orphan block */\nSELECT 1;\n`;
+    const r = await findComments(sql, "sql");
+    if (!r.ok) throw new Error(r.reason);
+    // With fix: found; without fix: 0 block comments
+    expect(r.comments.some(c => c.nodeType === "marginalia")).toBe(true);
+  });
+});
+
+describe("Go exemptions", () => {
+  it("//go:generate directive is exempt", async () => {
+    const code = `//go:generate stringer -type=Weekday\nfunc main() {}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(true);
+  });
+
+  it("// +build constraint is exempt", async () => {
+    const code = `// +build !windows\npackage main\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(true);
+  });
+
+  it("//nolint directive is exempt", async () => {
+    const code = `package main\nfunc f() {\n  x := 1 //nolint:deadcode\n  _ = x\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const nolint = r.comments.find(c => c.text.includes("nolint"));
+    expect(nolint).toBeDefined();
+    expect(nolint!.exempt).toBe(true);
+  });
+
+  it("comment inside function body is NOT exempt", async () => {
+    const code = `package main\nfunc main() {\n\t// This is a body comment\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("body comment"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+});
+
+describe("Rust doc comment exemptions", () => {
+  it("/// outer doc comment is exempt", async () => {
+    const code = `/// Computes the answer.\npub fn answer() -> i32 { 42 }\n`;
+    const r = await findComments(code, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(true);
+  });
+
+  it("//! inner doc comment is exempt", async () => {
+    const code = `//! Module description.\npub mod m {}\n`;
+    const r = await findComments(code, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(true);
+  });
+
+  it("/*! inner block doc comment is exempt", async () => {
+    const code = `/*! Inner doc block. */\npub mod m {}\n`;
+    const r = await findComments(code, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(true);
+  });
+
+  it("regular // Rust comment is NOT exempt", async () => {
+    const code = `// Just a plain comment\npub fn f() {}\n`;
+    const r = await findComments(code, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(false);
+  });
+});
+
+describe("TOML schema directive exemption", () => {
+  it("#:schema directive is exempt", async () => {
+    const code = `#:schema https://example.com/schema.json\n[package]\nname = "test"\n`;
+    const r = await findComments(code, "toml");
+    if (!r.ok) throw new Error(r.reason);
+    const schema = r.comments.find(c => c.text.includes("#:schema"));
+    expect(schema).toBeDefined();
+    expect(schema!.exempt).toBe(true);
+  });
+
+  it("regular # TOML comment is NOT exempt", async () => {
+    const code = `# This is a plain comment\n[package]\nname = "test"\n`;
+    const r = await findComments(code, "toml");
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.comments.length).toBeGreaterThanOrEqual(1);
+    expect(r.comments[0].exempt).toBe(false);
+  });
+});
+
+describe("autoFix — new languages", () => {
+  async function countErrorNodes(text: string, lang: Parameters<typeof findComments>[1]): Promise<number> {
+    const { getParser: gp } = await import("../../src/hooks/lib/tree-sitter-loader.js");
+    const r = await gp(lang);
+    if (!r.ok) throw new Error(r.reason);
+    const tree = r.parser.parse(text);
+    let count = 0;
+    function walk(node: import("../../src/hooks/lib/tree-sitter.js").Node): void {
+      if (node.type === "ERROR") count++;
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) walk(child);
+      }
+    }
+    walk(tree.rootNode);
+    return count;
+  }
+
+  it("over-budget Go file: autoFix removes comments and preserves code", async () => {
+    const codeLines = Array.from({ length: 30 }, (_, i) => `var x${i} = ${i}`);
+    const commentLines = Array.from({ length: 8 }, (_, i) => `// session comment ${i}`);
+    const text = `package main\n\n` + [...codeLines, ...commentLines].join("\n") + "\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "go", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    // Code lines preserved
+    for (let i = 0; i < 30; i++) {
+      expect(r.fixed).toContain(`var x${i} = ${i}`);
+    }
+    // Re-parses cleanly
+    const errorsBefore = await countErrorNodes(text, "go");
+    const errorsAfter = await countErrorNodes(r.fixed, "go");
+    expect(errorsAfter).toBeLessThanOrEqual(errorsBefore);
+  });
+
+  it("over-budget Rust file: autoFix removes comments and preserves code", async () => {
+    const codeLines = Array.from({ length: 30 }, (_, i) => `let x${i} = ${i};`);
+    const commentLines = Array.from({ length: 8 }, (_, i) => `// session comment ${i}`);
+    const text = `fn main() {\n` + [...codeLines, ...commentLines].join("\n") + "\n}\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "rust", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    // Code lines preserved
+    for (let i = 0; i < 30; i++) {
+      expect(r.fixed).toContain(`let x${i} = ${i};`);
+    }
+    // Re-parses cleanly
+    const errorsBefore = await countErrorNodes(text, "rust");
+    const errorsAfter = await countErrorNodes(r.fixed, "rust");
+    expect(errorsAfter).toBeLessThanOrEqual(errorsBefore);
+  });
+});
+
+// ---- Go doc comment exemption ----
+
+describe("Go doc comment exemption", () => {
+  it("top-level func doc is exempt (go-doc)", async () => {
+    const code = `package main\n// defaultConfig returns sensible defaults.\nfunc defaultConfig() {}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("defaultConfig returns"));
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+
+  it("comment inside function body is NOT exempt", async () => {
+    const code = `package main\nfunc f() {\n\t// internal implementation note\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("internal implementation"));
+    expect(c?.exempt).toBe(false);
+  });
+
+  it("const-spec doc in group is exempt (go-doc)", async () => {
+    const code = `package main\nconst (\n\t// StatusOK means all checks passed.\n\tStatusOK = iota\n)\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("StatusOK means"));
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+
+  it("struct field doc is exempt (go-doc)", async () => {
+    const code = `package main\ntype Config struct {\n\t// Addr is the listen address.\n\tAddr string\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("Addr is the listen"));
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+
+  it("comment separated from decl by blank line is NOT exempt", async () => {
+    const code = `package main\n// This has a blank line before the func.\n\nfunc f() {}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("blank line before"));
+    expect(c?.exempt).toBe(false);
+  });
+
+  it("package doc comment adjacent to package clause is exempt (go-doc)", async () => {
+    const code = `// Package main is the entry point.\npackage main\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("Package main is"));
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+
+  it("bite: without go-doc rule, func doc would be non-exempt", async () => {
+    const code = `package main\n// docFunc documents the function below.\nfunc docFunc() {}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("docFunc documents"));
+    // Must be exempt; removing the go-doc rule makes this fail
+    expect(c?.exempt).toBe(true);
+    expect(c?.exemptReason).toBe("go-doc");
+  });
+});

@@ -1,0 +1,113 @@
+# Groundwork project configuration
+# This file configures the build pipeline, dependencies, and deployment settings.
+#:schema https://example.com/groundwork-config-schema.json
+
+[package]
+name = "groundwork"
+version = "1.0.0"
+description = "A project configuration with # hash in description string"
+authors = ["Newman Chow <newman.kcchow@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/newman/groundwork"
+readme = "README.md"
+
+# Build configuration section
+[build]
+target = "bun"
+entry = "src/main.ts"
+output_dir = "dist"
+minify = false
+source_maps = true
+
+# Paths that should be excluded from the build
+exclude = [
+  "node_modules",
+  ".git",
+  "dist",
+  "*.test.ts",
+]
+
+[build.env]
+NODE_ENV = "production"
+# This value contains a hash character: "log_prefix = '# LOG'"
+LOG_LEVEL = "info"
+DATABASE_URL = "postgres://localhost/mydb # not a comment in env"
+
+# Dependencies section — locked versions for reproducibility
+[dependencies]
+typescript = "^5.0.0"
+bun-types = "latest"
+tree-sitter = "^0.21.0"
+
+[dev_dependencies]
+"@types/node" = "^20.0.0"
+eslint = "^8.0.0"
+prettier = "^3.0.0"
+
+# Test runner configuration
+[test]
+runner = "bun"
+pattern = "test/**/*.test.ts"
+timeout = 30000
+# coverage thresholds must be met before merging
+coverage_threshold = 80
+
+[test.reporters]
+default = "spec"
+ci = "junit"
+output = "test-results/junit.xml"
+
+# Linting rules
+[lint]
+extends = ["eslint:recommended"]
+# The rule 'no-unused-vars' triggers on patterns like `_name # ignore`
+ignore_patterns = ["dist/", "*.generated.ts"]
+
+[[plugins]]
+name = "comment-density"
+enabled = true
+# minimum comment ratio per file
+min_ratio = 0.15
+
+[[plugins]]
+name = "tree-sitter"
+enabled = true
+languages = ["typescript", "rust", "go", "toml"]
+wasm_dir = "src/hooks/grammars"
+
+# Deployment targets
+[[deploy.targets]]
+name = "staging"
+host = "staging.example.com"
+# credentials stored in vault, not here
+vault_path = "secret/staging/deploy"
+
+[[deploy.targets]]
+name = "production"
+host = "prod.example.com"
+vault_path = "secret/prod/deploy"
+
+# Inline table examples
+[server]
+address = { host = "0.0.0.0", port = 8080 }
+tls = { enabled = true, cert = "certs/server.crt # not a comment", key = "certs/server.key" }
+
+# Numeric and boolean values
+[limits]
+max_connections = 1000
+request_timeout_ms = 5000
+enable_compression = true
+enable_metrics = false
+ratio = 0.95
+large_int = 9_007_199_254_740_992
+
+# Multi-line string with # characters that are NOT comments
+[messages]
+template = """
+Hello, welcome to groundwork!
+# This line inside a multi-line string is NOT a comment.
+Visit https://example.com/#section for more info.
+"""
+raw_template = '''
+Raw string: # also not a comment
+'''

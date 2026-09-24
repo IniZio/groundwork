@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
     { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }

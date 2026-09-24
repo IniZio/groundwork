@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -172,7 +172,88 @@ export function touchedFiles(opts: TouchedFilesOpts): string[] {
   return [...files];
 }
 
-export function addedRanges(file: string, base: string): number[] | null {
+type TouchKind =
+  | { kind: "Write" }
+  | { kind: "Edit" }
+  | { kind: "Bash"; from: string };
+
+function firstTouchInfo(transcriptPath: string, file: string): TouchKind | null {
+  let raw: string;
+  try { raw = readFileSync(transcriptPath, "utf8"); } catch { return null; }
+
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
+    if (obj.type !== "assistant") continue;
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    for (const blk of content as Record<string, unknown>[]) {
+      if (blk.type !== "tool_use") continue;
+      const name = blk.name as string | undefined;
+      const inp = blk.input as Record<string, unknown> | undefined;
+      if (name === "Write" || name === "Edit" || name === "MultiEdit") {
+        const fp = inp && typeof inp.file_path === "string" ? inp.file_path : null;
+        if (fp && fp === file) {
+          return name === "Write" ? { kind: "Write" } : { kind: "Edit" };
+        }
+      } else if (name === "Bash") {
+        const cmd = inp && typeof inp.command === "string" ? inp.command : "";
+        for (const cmdLine of cmd.split("\n")) {
+          const m = cmdLine.match(
+            /\b(?:mv|cp)\s+(?:-\S+\s+)*(['"]?[^\s'"<>&|$;]+['"]?)\s+(['"]?[^\s'"<>&|$;]+['"]?)\s*(?:$|[|&;])/,
+          );
+          if (m) {
+            const src = m[1].replace(/^["']|["']$/g, "");
+            const dst = m[2].replace(/^["']|["']$/g, "");
+            if (dst === file || path.resolve(dst) === file) {
+              return { kind: "Bash", from: src };
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function addedVsCommittedSource(
+  file: string,
+  src: string,
+  base: string,
+  repoRoot: string,
+): number[] | null {
+  // Resolve src relative to repoRoot
+  const srcAbs = src.startsWith("/") ? src : path.resolve(repoRoot, src);
+  const srcRel = path.relative(repoRoot, srcAbs);
+
+  const showResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "show", `${base}:${srcRel}`],
+    { encoding: "utf8" },
+  );
+  if (showResult.status !== 0) return null;
+
+  // Write original content to a temp file
+  const tmpFile = `/dev/shm/gw-work-scope-orig-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    writeFileSync(tmpFile, showResult.stdout, "utf8");
+    const diffResult = spawnSync(
+      "git",
+      ["diff", "--no-index", "--", tmpFile, file],
+      { encoding: "utf8" },
+    );
+    // git diff --no-index exits 1 when there are differences, 0 when identical
+    if (diffResult.status !== 0 && diffResult.status !== 1) return null;
+    return parseDiffAdded(diffResult.stdout);
+  } finally {
+    try { unlinkSync(tmpFile); } catch { /* ok */ }
+  }
+}
+
+export function addedRanges(file: string, base: string, transcriptPath?: string): number[] | null {
   const dir = path.dirname(file);
 
   const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
@@ -194,10 +275,24 @@ export function addedRanges(file: string, base: string): number[] | null {
   );
 
   if (isTrackedResult.status !== 0) {
-    const content = readFileSync(file, "utf8");
-    const lines = content.split("\n");
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    return lines.map((_, i) => i + 1);
+    // Fail-closed: if we can't consult the transcript, don't treat as session-added
+    if (!transcriptPath) return null;
+
+    const touch = firstTouchInfo(transcriptPath, file);
+    if (!touch) return null;
+
+    if (touch.kind === "Write") {
+      const content = readFileSync(file, "utf8");
+      const lines = content.split("\n");
+      if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+      return lines.map((_, i) => i + 1);
+    }
+
+    if (touch.kind === "Bash") {
+      return addedVsCommittedSource(file, touch.from, base, repoRoot);
+    }
+
+    return null;
   }
 
   const diffResult = spawnSync(

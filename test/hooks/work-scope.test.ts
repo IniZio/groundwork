@@ -215,7 +215,7 @@ describe("addedRanges — returns exact 1-based line numbers added since base", 
     expect(addedRanges(path.join(repo, "f.ts"), base)).toEqual([4, 5, 6]);
   });
 
-  it("untracked file — all lines are added", () => {
+  it("untracked file — returns null when no transcript (fail-closed)", () => {
     const repo = tmpDir("untracked");
     initRepo(repo);
 
@@ -225,7 +225,7 @@ describe("addedRanges — returns exact 1-based line numbers added since base", 
     writeFileSync(path.join(repo, "new.ts"), "a\nb\nc\n");
 
     const ranges = addedRanges(path.join(repo, "new.ts"), base);
-    expect(ranges).toEqual([1, 2, 3]);
+    expect(ranges).toBeNull();
   });
 });
 
@@ -276,7 +276,132 @@ describe("addedRanges — repo resolution uses file's own repo", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC7: Bash file writes — heredoc cat > file parsed from real transcript line
+// Bug B: Untracked pre-existing file — Edit touch → null (not all-added)
+// ---------------------------------------------------------------------------
+describe("addedRanges — untracked pre-existing file (Bug B)", () => {
+  function makeAssistantToolUse(name: string, input: Record<string, unknown>): string {
+    return JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-01-01T00:00:00Z",
+      message: {
+        content: [{ type: "tool_use", name, input }],
+      },
+    });
+  }
+
+  it("returns null when first touch is Edit (pre-existing untracked)", () => {
+    const repo = tmpDir("bug-b-preexisting");
+    initRepo(repo);
+    writeFileSync(path.join(repo, "seed.ts"), "x\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    const file = path.join(repo, "draft.ts");
+    writeFileSync(file, "line1\nline2\nline3\nline4\nline5\n");
+    // NOT git-added — pre-existing untracked file
+
+    const tp = path.join(repo, "transcript.jsonl");
+    writeFileSync(tp, makeAssistantToolUse("Edit", { file_path: file }) + "\n");
+
+    const ranges = addedRanges(file, base, tp);
+    // Bite proof: if we comment out `if (!transcriptPath) return null` and the
+    // transcriptPath branch, the old code returns [1,2,3,4,5] instead of null.
+    // Perturb: comment out `if (!touch) return null` line → test goes red.
+    expect(ranges).toBeNull();
+  });
+
+  it("bite: old behavior (no transcript) returns all lines for untracked", () => {
+    const repo = tmpDir("bug-b-bite");
+    initRepo(repo);
+    writeFileSync(path.join(repo, "seed.ts"), "x\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    const file = path.join(repo, "draft.ts");
+    writeFileSync(file, "line1\nline2\nline3\n");
+
+    // No transcriptPath → fail-closed → null (new behavior)
+    const ranges = addedRanges(file, base);
+    expect(ranges).toBeNull();
+  });
+
+  it("returns all line numbers when first touch is Write (session-created)", () => {
+    const repo = tmpDir("bug-b2-session-created");
+    initRepo(repo);
+    writeFileSync(path.join(repo, "seed.ts"), "x\n");
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    const file = path.join(repo, "new.ts");
+    writeFileSync(file, "alpha\nbeta\ngamma\n");
+
+    const tp = path.join(repo, "transcript.jsonl");
+    writeFileSync(tp, makeAssistantToolUse("Write", { file_path: file }) + "\n");
+
+    const ranges = addedRanges(file, base, tp);
+    expect(ranges).toEqual([1, 2, 3]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+describe("addedRanges — mv/cp from committed source (Bug C)", () => {
+  function makeAssistantBash(cmd: string): string {
+    return JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-01-01T00:00:00Z",
+      message: {
+        content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }],
+      },
+    });
+  }
+
+  it("mv of committed file: only changed lines returned, not all 20", () => {
+    const repo = tmpDir("bug-c-mv");
+    initRepo(repo);
+
+    const origLines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n") + "\n";
+    writeFileSync(path.join(repo, "original.ts"), origLines);
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    const newFile = path.join(repo, "new.ts");
+    const modifiedLines = Array.from({ length: 20 }, (_, i) => {
+      if (i === 17) return "changed-line18";
+      if (i === 18) return "changed-line19";
+      return `line${i + 1}`;
+    }).join("\n") + "\n";
+    writeFileSync(newFile, modifiedLines);
+
+    const tp = path.join(repo, "transcript.jsonl");
+    writeFileSync(tp, makeAssistantBash(`mv original.ts ${newFile}`) + "\n");
+
+    const ranges = addedRanges(newFile, base, tp);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toContain(18);
+    expect(ranges).toContain(19);
+    expect(ranges).not.toContain(1);
+    expect(ranges).not.toContain(10);
+    expect(ranges).not.toContain(20);
+  });
+
+  it("mv of committed file: identical content → empty added ranges", () => {
+    const repo = tmpDir("bug-c-mv-identical");
+    initRepo(repo);
+
+    const origLines = "line1\nline2\nline3\n";
+    writeFileSync(path.join(repo, "src.ts"), origLines);
+    const base = commit(repo, "init", "2026-09-01T10:00:00+00:00");
+
+    const newFile = path.join(repo, "dest.ts");
+    writeFileSync(newFile, origLines);
+
+    const tp = path.join(repo, "transcript.jsonl");
+    writeFileSync(tp, makeAssistantBash(`mv src.ts ${newFile}`) + "\n");
+
+    const ranges = addedRanges(newFile, base, tp);
+    expect(ranges).not.toBeNull();
+    expect(ranges).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 describe("touchedFiles — Bash heredoc file write is captured", () => {
   it("cat > evals.json <<EOF in fixture is included", () => {

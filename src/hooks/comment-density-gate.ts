@@ -3,7 +3,7 @@
  * Trigger: Stop + SubagentStop.
  * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -19,6 +19,7 @@ function block(reason: string): HookResult {
 }
 
 const CAP = 5;
+const AUTO_FIX_ENABLED = false;
 
 function gitTopLevel(filePath: string): string | null {
   const dir = path.dirname(filePath);
@@ -51,7 +52,11 @@ interface ViolatingFile {
   lang: Lang;
 }
 
-export async function run(input: unknown, env: Record<string, string | undefined>): Promise<HookResult> {
+export async function run(
+  input: unknown,
+  env: Record<string, string | undefined>,
+  opts?: { autoFixEnabled?: boolean; afterTmpWrite?: (tmp: string, target: string) => void },
+): Promise<HookResult> {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
 
@@ -94,7 +99,7 @@ export async function run(input: unknown, env: Record<string, string | undefined
 
       const base = sessionBase(relevantTranscriptPath, topLevel);
 
-      const rowArr = addedRanges(file, base);
+      const rowArr = addedRanges(file, base, relevantTranscriptPath);
       if (!rowArr || rowArr.length === 0) continue;
 
       // addedRanges returns 1-indexed; density uses 0-indexed rows internally
@@ -123,11 +128,17 @@ export async function run(input: unknown, env: Record<string, string | undefined
     interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
     const fixedFiles: FixResult[] = [];
     const unfixable: ViolatingFile[] = [];
+    const autoFixEnabled = opts?.autoFixEnabled ?? AUTO_FIX_ENABLED;
 
     for (const v of violations) {
+      if (!autoFixEnabled) { unfixable.push(v); continue; }
       if (v.fallback) { unfixable.push(v); continue; }
       let txt: string;
-      try { txt = readFileSync(v.path, "utf8"); } catch { unfixable.push(v); continue; }
+      let txtStat: import("node:fs").Stats;
+      try {
+        txtStat = statSync(v.path);
+        txt = readFileSync(v.path, "utf8");
+      } catch { unfixable.push(v); continue; }
       const ar = await autoFix(txt, v.lang, v.rowSet);
       if (!ar.ok || ar.removed === 0) { unfixable.push(v); continue; }
       const trailNl = txt.endsWith("\n");
@@ -136,10 +147,23 @@ export async function run(input: unknown, env: Record<string, string | undefined
       else if (!trailNl && content.endsWith("\n")) content = content.slice(0, -1);
       let wrote = false;
       try {
-        const mode = statSync(v.path).mode & 0o7777;
+        const mode = txtStat.mode & 0o7777;
         const tmp = v.path + `.cdg-${process.pid}`;
         writeFileSync(tmp, content, { encoding: "utf8" });
         chmodSync(tmp, mode);
+        opts?.afterTmpWrite?.(tmp, v.path);
+        try {
+          const nowStat = statSync(v.path);
+          if (nowStat.mtimeMs !== txtStat.mtimeMs || nowStat.size !== txtStat.size) {
+            try { unlinkSync(tmp); } catch {}
+            unfixable.push(v);
+            continue;
+          }
+        } catch {
+          try { unlinkSync(tmp); } catch {}
+          unfixable.push(v);
+          continue;
+        }
         renameSync(tmp, v.path);
         wrote = true;
       } catch (e) {

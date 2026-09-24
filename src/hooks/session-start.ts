@@ -95,7 +95,7 @@ Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <
 
 ## Comment-density-gate
 
-Blocks at Stop/SubagentStop when a file changed in the session exceeds 5 effective comment lines per 100 added lines. Remove restate comments; keep only one-line "why" comments. Releases after 3 blocks. Per-edit autocorrect (comment-density-guard) strips over-budget comments before each Write/Edit/MultiEdit lands.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Blocks at Stop/SubagentStop when a file changed in the session exceeds 5 effective comment lines per 100 added lines (ts/tsx/js, py, sh, yaml, dockerfile, go, rs, sql, make, toml). Remove restate comments; keep only one-line "why" comments. Releases after 3 blocks. Per-edit autocorrect (comment-density-guard) strips over-budget comments before each Write/Edit/MultiEdit lands.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

@@ -22,15 +22,19 @@ Each hook is registered under exactly one Claude Code event. The event, output s
 | stop-gate | Stop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
 | new-code-gate | Stop, SubagentStop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
 | comment-density-guard | PreToolUse | emits `updatedInput` + `additionalContext` — NEVER `permissionDecision`; Claude Code runs its normal permission check on the rewritten input (emitting `"allow"` would bypass that prompt) |
-| comment-density-gate | Stop, SubagentStop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` |
+| comment-density-gate | Stop, SubagentStop | `decision: "block"` + `reason`; or `continue: true` — no `hookSpecificOutput` (auto-fix disabled) |
 
-For PreToolUse and PostToolUse hooks, `hookSpecificOutput.hookEventName` must equal the registered event. Stop/SubagentStop hooks use only the top-level `decision` + `reason` shape and emit no `hookSpecificOutput`.
+For PreToolUse and PostToolUse hooks, `hookSpecificOutput.hookEventName` must equal the registered event. Stop/SubagentStop hooks use only the top-level `decision` + `reason` shape and emit no `hookSpecificOutput`. (comment-density-gate is designed to emit `hookSpecificOutput` after auto-fix, but auto-fix is currently disabled.)
 
 **stop-gate 4-attempt bound**: the gate tracks consecutive blocks in a sidecar file `.groundwork/stop-gate.<session_id>.count` alongside the work db. Attempt 1–2: normal block message naming `gw slice complete <id>` and `gw hold set`. Attempt 3: block with "externally unresolvable" reason. Attempt 4: allow with a stderr warning and counter reset. A HOLD event (with no later HOLD_CLEAR) causes an immediate allow and counter reset — a human hold is a legitimate stop.
 
 **new-code-gate has no consecutive-block bound**: if new-code-gate keeps blocking (e.g. a rule violation cannot be fixed in the session), stop-gate's 4-attempt release does not bound the session — new-code-gate will continue to fire after stop-gate releases.
 
 **comment-density-gate 4-attempt bound**: the gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming the over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+
+**comment-density-gate auto-fix (currently disabled)**: the gate is designed to attempt to auto-fix violating files before the block decision. It would strip session-added comments that are over budget, verifying: (a) all comment rows being removed were added in this session (ALL rows in addedRanges, not just some), (b) code text is unchanged, (c) no pre-existing comments are removed, and (d) post-fix density is ≤ 5/100. When re-enabled, a successful fix will allow with a `hookSpecificOutput` notification listing removed comments; an unfixable file goes to the block path.
+
+**Supported languages for comment-density measurement**: TypeScript (ts, tsx), JavaScript (js, jsx), Python, Bash/Shell, YAML, Dockerfile, Go, Rust, SQL, Makefile, TOML. Files in other languages are not measured.
 
 **comment-density has no opt-out**: there is no environment variable or config knob to disable comment-density enforcement. The `CLAUDE_CODE_ENTRYPOINT=sdk-py/sdk-js` skip exists only to prevent nested-agent leakage and is not user-settable in practice. Files under the plugin's own `test/fixtures/` directory are exempt from enforcement; no such exemption exists for any other path.
 

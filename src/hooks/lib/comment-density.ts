@@ -50,6 +50,11 @@ const GO_DIRECTIVE_RE = /^go:/;
 const GO_BUILD_CONSTRAINT_RE = /^\+build\b/;
 const GO_NOLINT_RE = /^nolint\b/;
 const TOML_SCHEMA_RE = /^:schema\b/;
+const TSREF_RE = /^\/\s*<reference\b/;
+const GO_OUTPUT_RE = /^(?:Unordered )?Output:/;
+const GO_EXPORT_RE = /^export\b/;
+const GO_LINE_RE = /^line\b/;
+const GW_RULE_RE = /^groundwork-rule:/;
 
 function stripMarkers(raw: string): string {
   let t = raw.trim();
@@ -81,6 +86,13 @@ function isExemptInner(inner: string, lang?: Lang): boolean {
   ) return true;
   if (lang === "go" && (GO_DIRECTIVE_RE.test(inner) || GO_BUILD_CONSTRAINT_RE.test(inner) || GO_NOLINT_RE.test(inner))) return true;
   if (lang === "toml" && TOML_SCHEMA_RE.test(inner)) return true;
+  if (TSREF_RE.test(inner)) return true;
+  if (GW_RULE_RE.test(inner)) return true;
+  if (lang === "go") {
+    if (GO_OUTPUT_RE.test(inner)) return true;
+    if (GO_EXPORT_RE.test(inner)) return true;
+    if (GO_LINE_RE.test(inner)) return true;
+  }
   return false;
 }
 
@@ -98,15 +110,18 @@ function checkExempt(
   if (nodeType.includes("doc")) {
     return { exempt: true, reason: "doc-comment" };
   }
-  if (raw.trimStart().startsWith("/**")) {
+  const trimmed0 = raw.trimStart();
+  if (trimmed0.startsWith("/**") && !trimmed0.startsWith("/***")) {
     return { exempt: true, reason: "jsdoc" };
   }
 
   if (lang === "rust") {
     const trimmed = raw.trimStart();
-    if (trimmed.startsWith("///") || trimmed.startsWith("//!") || trimmed.startsWith("/*!")) {
-      return { exempt: true, reason: "rust-doc" };
-    }
+    const isRustDoc =
+      (trimmed.startsWith("///") && (trimmed.length === 3 || trimmed[3] !== "/")) ||
+      trimmed.startsWith("//!") ||
+      (trimmed.startsWith("/*!") && !trimmed.startsWith("/***"));
+    if (isRustDoc) return { exempt: true, reason: "rust-doc" };
   }
 
   for (const line of raw.split("\n")) {
@@ -157,6 +172,22 @@ function isGoDocComment(node: Node): boolean {
   return false;
 }
 
+function isGoCgoComment(node: Node): boolean {
+  const next = node.nextNamedSibling;
+  if (!next || next.type !== "import_declaration") return false;
+  let cur: Node | null = next.firstNamedChild;
+  while (cur) {
+    if (cur.type === "import_spec") {
+      const pathNode = cur.childForFieldName ? cur.childForFieldName("path") : null;
+      if (pathNode && (pathNode.text === '"C"' || pathNode.text === "`C`")) return true;
+    } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
+      return true;
+    }
+    cur = cur.nextNamedSibling;
+  }
+  return false;
+}
+
 function collectComments(root: Node, text: string, lang: Lang): Comment[] {
   const results: Comment[] = [];
   let leadingBlockDone = false;
@@ -170,12 +201,19 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
       if (!leadingBlockDone && startRow > 0) leadingBlockDone = true;
       const inLeadingBlock = !leadingBlockDone || startRow === 0;
 
-      const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
-      let exempt = rawExempt;
-      let reason = rawReason;
-      if (!exempt && lang === "go" && isGoDocComment(node)) {
+      let exempt: boolean;
+      let reason: string | undefined;
+      if (lang === "go" && raw.startsWith("/*") && isGoCgoComment(node)) {
         exempt = true;
-        reason = "go-doc";
+        reason = "cgo-preamble";
+      } else {
+        const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
+        exempt = rawExempt;
+        reason = rawReason;
+        if (!exempt && lang === "go" && isGoDocComment(node)) {
+          exempt = true;
+          reason = "go-doc";
+        }
       }
       results.push({
         startIndex: node.startIndex,
@@ -524,7 +562,7 @@ export type AutoFixResult =
   | { ok: true; fixed: string; removed: number; kept: number; total: number }
   | { ok: false; reason: string };
 
-function commentIsWholeLine(c: Comment, text: string): boolean {
+export function commentIsWholeLine(c: Comment, text: string): boolean {
   const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
   return !text.slice(lineStart, c.startIndex).trim();
 }
@@ -558,24 +596,37 @@ export async function autoFix(
   const candidates: Comment[] = [];
   for (const c of origParsed.comments) {
     if (c.exempt) continue;
-    let hit = false;
-    for (let r = c.startRow; r <= c.endRow && !hit; r++) hit = addedRows.has(r);
-    if (hit) candidates.push(c);
+    let allAdded = true;
+    for (let r = c.startRow; r <= c.endRow; r++) {
+      if (!addedRows.has(r)) { allAdded = false; break; }
+    }
+    if (allAdded) candidates.push(c);
   }
 
-  let budget = Math.floor(0.05 * addedRows.size);
-  if (candidates.length <= budget) {
+  function commentRowCount(c: Comment): number {
+    return c.endRow - c.startRow + 1;
+  }
+
+  const totalCandidateRows = candidates.reduce((sum, c) => sum + commentRowCount(c), 0);
+  const maxAllowedRows = Math.floor(0.05 * addedRows.size);
+
+  if (totalCandidateRows <= maxAllowedRows) {
     return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length };
   }
 
-  while (budget > 0) {
-    const toCheck = candidates.slice(budget);
-    const wlRemoved = toCheck.filter(c => commentIsWholeLine(c, text)).length;
-    if (budget <= Math.floor(0.05 * (addedRows.size - wlRemoved))) break;
-    budget--;
+  // Greedily keep from start until budget exhausted
+  let keptRows = 0;
+  let keepCount = 0;
+  for (const c of candidates) {
+    const rows = commentRowCount(c);
+    if (keptRows + rows <= maxAllowedRows) {
+      keptRows += rows;
+      keepCount++;
+    } else {
+      break;
+    }
   }
-
-  const toRemove = candidates.slice(budget);
+  const toRemove = candidates.slice(keepCount);
   const fixed = stripComments(text, toRemove);
 
   const fp = await findComments(fixed, lang, getParser);
@@ -599,7 +650,12 @@ export async function autoFix(
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
   }
 
-  return { ok: true, fixed, removed: toRemove.length, kept: budget, total: candidates.length };
+  // Post-fix density check: verify the fix actually brings density ≤ 5/100
+  if (addedRows.size > 0 && keptRows / addedRows.size * 100 > 5) {
+    return { ok: false, reason: "still over cap after fix" };
+  }
+
+  return { ok: true, fixed, removed: toRemove.length, kept: keepCount, total: candidates.length };
 }
 
 export async function density(

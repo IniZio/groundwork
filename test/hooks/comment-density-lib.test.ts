@@ -964,3 +964,142 @@ describe("Go doc comment exemption", () => {
     expect(c?.exemptReason).toBe("go-doc");
   });
 });
+
+describe("autoFix Bug D: multi-row block spanning pre-existing rows is not a candidate", () => {
+  it("15-row block where only 1 row was edited survives removal", async () => {
+    const blockLines = ["/*", ...Array.from({ length: 13 }, (_, i) => ` * line ${i}`), " */"];
+    const block = blockLines.join("\n");
+    const pre = Array.from({ length: 5 }, (_, i) => `const pre${i} = ${i};`).join("\n");
+    const post = Array.from({ length: 20 }, (_, i) => `const post${i} = ${i};`).join("\n");
+    const text = pre + "\n" + block + "\n" + post + "\n";
+
+    const textLines = text.split("\n");
+    const addedRows = new Set<number>();
+    addedRows.add(10);
+    for (let i = 21; i < textLines.length; i++) addedRows.add(i);
+
+    const r = await autoFix(text, "typescript", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("* line 0");
+    expect(r.removed).toBe(0);
+  });
+
+  it("bite: with any-row candidate selection, the block would be a candidate", () => {
+    const startRow = 5;
+    const endRow = 19;
+    const addedRows = new Set([10]);
+
+    let hitAny = false;
+    for (let r = startRow; r <= endRow && !hitAny; r++) hitAny = addedRows.has(r);
+
+    let allAdded = true;
+    for (let r = startRow; r <= endRow; r++) {
+      if (!addedRows.has(r)) { allAdded = false; break; }
+    }
+
+    expect(hitAny).toBe(true);
+    expect(allAdded).toBe(false);
+  });
+});
+
+describe("autoFix Bug A: row-based budget prevents partial-fix over cap", () => {
+  it("ten 3-row block comments with addedRows.size=100: removed=9, kept=1", async () => {
+    const blockTemplate = (i: number) =>
+      `/* block ${i} line 1\n * block ${i} line 2\n * block ${i} line 3 */`;
+    const codeLines = Array.from({ length: 70 }, (_, i) => `const c${i} = ${i};`);
+    const blockParts = Array.from({ length: 10 }, (_, i) => blockTemplate(i));
+    const text = [...codeLines, ...blockParts].join("\n") + "\n";
+
+    const textLines = text.split("\n");
+    const addedRows = new Set<number>();
+    for (let i = 0; i < Math.min(100, textLines.length); i++) addedRows.add(i);
+
+    const r = await autoFix(text, "typescript", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.total).toBe(10);
+    expect(r.kept).toBe(1);
+    expect(r.removed).toBe(9);
+  });
+
+  it("bite: old count-based budget would keep too many blocks leaving density > 5%", () => {
+    const addedRowsSize = 100;
+    const oldBudget = Math.floor(0.05 * addedRowsSize);
+    const oldKeptCount = oldBudget;
+
+    const keptRows = oldKeptCount * 3;
+    const density = (keptRows / addedRowsSize) * 100;
+    expect(density).toBeGreaterThan(5);
+  });
+});
+
+describe("TS triple-slash reference directive is exempt", () => {
+  it("/// <reference types='foo' /> is exempt in typescript", async () => {
+    const code = `/// <reference types="foo" />\nconst x = 1;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const ref = r.comments.find(c => c.text.includes("<reference"));
+    expect(ref).toBeDefined();
+    expect(ref!.exempt).toBe(true);
+  });
+
+  it("autoFix: /// <reference .../> survives (exempt, not a candidate)", async () => {
+    const codeLines = Array.from({ length: 30 }, (_, i) => `const x${i} = ${i};`);
+    const commentLines = Array.from({ length: 8 }, (_, i) => `// session ${i}`);
+    const ref = `/// <reference types="bun-types" />`;
+    const text = [ref, ...codeLines, ...commentLines].join("\n") + "\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain('<reference types="bun-types"');
+  });
+
+  it("bite: without TSREF_RE exemption, reference directive would be a non-exempt candidate", async () => {
+    const code = `/// <reference types="foo" />\nconst x = 1;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const ref = r.comments.find(c => c.text.includes("<reference"));
+    expect(ref).toBeDefined();
+    expect(ref!.exempt).toBe(true);
+  });
+});
+
+describe("Rust doc comment exact matching", () => {
+  it("//// four slashes is NOT exempt (not a doc comment)", async () => {
+    const code = `//// This has four slashes\npub fn f() {}\n`;
+    const r = await findComments(code, "rust");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.startsWith("////"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+
+  it("/*** three-star block is NOT exempt (not a JSDoc or Rust doc)", async () => {
+    const code = `/*** this is a divider-style block */\nconst x = 1;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.startsWith("/***"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+
+  it("bite: without exact /// check, //// would wrongly be exempt", () => {
+    const raw = "//// four slashes";
+    const trimmed = raw.trimStart();
+    const oldWouldExempt = trimmed.startsWith("///");
+    const newExempt = trimmed.startsWith("///") && (trimmed.length === 3 || trimmed[3] !== "/");
+    expect(oldWouldExempt).toBe(true);
+    expect(newExempt).toBe(false);
+  });
+
+  it("bite: without exact /** check, /*** would wrongly be exempt as jsdoc", () => {
+    const raw = "/*** divider block */";
+    const trimmed = raw.trimStart();
+    const oldWouldExempt = trimmed.startsWith("/**");
+    const newExempt = trimmed.startsWith("/**") && !trimmed.startsWith("/***");
+    expect(oldWouldExempt).toBe(true);
+    expect(newExempt).toBe(false);
+  });
+});

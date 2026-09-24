@@ -444,7 +444,9 @@ export function stripComments(text: string, comments: Comment[]): { text: string
     const after = result.slice(c.endIndex);
     const lineStart = before.lastIndexOf("\n") + 1;
     const beforeOnLine = before.slice(lineStart);
-    const isWholeLine = !beforeOnLine.trim();
+    const lineEndOffset = after.indexOf("\n");
+    const afterOnLine = lineEndOffset !== -1 ? after.slice(0, lineEndOffset) : after;
+    const isWholeLine = !beforeOnLine.trim() && !afterOnLine.trim();
 
     if (isWholeLine) {
       const lineEnd = after.indexOf("\n");
@@ -461,11 +463,26 @@ export function stripComments(text: string, comments: Comment[]): { text: string
           rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
         }
       }
+    } else if (!beforeOnLine.trim()) {
+      result = result.slice(0, c.startIndex) + after.replace(/^[ \t]+/, "");
+      touchedInlineRows.add(c.startRow);
+      for (let r = c.startRow + 1; r <= c.endRow; r++) {
+        if (!deletedOrigRows.has(r)) {
+          deletedOrigRows.add(r);
+          rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
+        }
+      }
     } else {
       const wsStart = before.search(/\s+$/);
       const codeEnd = wsStart !== -1 ? wsStart : c.startIndex;
       result = result.slice(0, codeEnd) + after;
       touchedInlineRows.add(c.startRow);
+      for (let r = c.startRow + 1; r <= c.endRow; r++) {
+        if (!deletedOrigRows.has(r)) {
+          deletedOrigRows.add(r);
+          rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
+        }
+      }
     }
   }
 
@@ -592,10 +609,6 @@ export type AutoFixResult =
   | { ok: true; fixed: string; removed: number; kept: number; total: number; rowChanges: RowChange[] }
   | { ok: false; reason: string };
 
-export function commentIsWholeLine(c: Comment, text: string): boolean {
-  const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
-  return !text.slice(lineStart, c.startIndex).trim();
-}
 
 function collectCodeText(root: Node, text: string, lang: Lang): string {
   const parts: string[] = [];
@@ -669,10 +682,9 @@ export async function autoFix(
   // Whole-line removals shrink the added-row denominator; loop until post-fix density ≤5/100.
   while (keepCount >= 0) {
     const removedCands = candidates.slice(keepCount);
-    const wlRemovedRows = removedCands.reduce(
-      (sum, c) => sum + (commentIsWholeLine(c, text) ? commentRowCount(c) : 0),
-      0,
-    );
+    const wlRemovedRows = stripComments(text, removedCands).rowChanges.filter(
+      rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
+    ).length;
     const remappedSize = addedRows.size - wlRemovedRows;
     if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
     if (keepCount === 0) return { ok: false, reason: "still over cap after fix" };

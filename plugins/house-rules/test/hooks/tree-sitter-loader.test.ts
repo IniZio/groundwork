@@ -117,7 +117,7 @@ describe("AC4: SOURCES.json records package@version + sha256", () => {
 
 describe("AC5: package.json pins exact versions, no tree-sitter-wasms", () => {
   it("devDependencies contain the required packages at pinned versions", async () => {
-    const pkg = await Bun.file(path.resolve(import.meta.dir, "../../package.json")).json();
+    const pkg = await Bun.file(path.resolve(import.meta.dir, "../../../../package.json")).json();
     const dev = pkg.devDependencies;
     expect(dev["web-tree-sitter"]).toBe("0.25.0");
     expect(dev["tree-sitter-bash"]).toBe("0.25.1");
@@ -127,7 +127,7 @@ describe("AC5: package.json pins exact versions, no tree-sitter-wasms", () => {
   });
 
   it("tree-sitter-wasms is absent from package.json", async () => {
-    const pkg = await Bun.file(path.resolve(import.meta.dir, "../../package.json")).json();
+    const pkg = await Bun.file(path.resolve(import.meta.dir, "../../../../package.json")).json();
     const all = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
     expect(Object.keys(all)).not.toContain("tree-sitter-wasms");
   });

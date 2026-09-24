@@ -4,7 +4,8 @@ import { copyFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
-const NM = path.join(ROOT, "node_modules");
+const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
+const NM = path.join(REPO_ROOT, "node_modules");
 const LIB_DIR = path.join(ROOT, "src/hooks/lib");
 const GRAMMARS_DIR = path.join(ROOT, "src/hooks/grammars");
 

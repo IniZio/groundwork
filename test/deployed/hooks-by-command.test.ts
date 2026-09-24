@@ -83,7 +83,7 @@ function makeParityDensityRepo(label: string): { transcriptPath: string } {
   execSync('git config user.email "test@example.com"', { cwd: dir });
   execSync('git config user.name "Test"', { cwd: dir });
   execSync("git commit --allow-empty -m base", { cwd: dir });
-  const FIXTURES = path.join(ROOT, "test/fixtures/comment-density/nexus-probe");
+  const FIXTURES = path.join(ROOT, "plugins/house-rules/test/fixtures/comment-density/nexus-probe");
   for (const name of ["Dockerfile", "probe.sh"]) {
     writeFileSync(path.join(dir, name), readFileSync(path.join(FIXTURES, name), "utf8"));
   }
@@ -146,11 +146,11 @@ describe("event-output contract — every (event, command) pair must produce the
     "src/hooks/new-code-gate.ts": [
       { cwd: parityNewCodeRepo }, {}
     ],
-    "src/hooks/comment-density-gate.ts@Stop": [
+    "plugins/house-rules/src/hooks/comment-density-gate.ts@Stop": [
       { hook_event_name: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
       {}
     ],
-    "src/hooks/comment-density-gate.ts@SubagentStop": [
+    "plugins/house-rules/src/hooks/comment-density-gate.ts@SubagentStop": [
       {
         hook_event_name: "SubagentStop",
         session_id: "parity-cdg-sub",

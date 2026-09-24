@@ -5,7 +5,7 @@ PKG_VERSION="0.3.11"
 CLI_VERSION="0.25.3"
 OUT_DIR="$(cd "$(dirname "$0")/.." && pwd)/src/hooks/grammars"
 SOURCE_JSON="$OUT_DIR/tree-sitter-sql.source.json"
-NM="$(cd "$(dirname "$0")/.." && pwd)/node_modules/@derekstride/tree-sitter-sql"
+NM="$(cd "$(dirname "$0")/../.." && pwd)/node_modules/@derekstride/tree-sitter-sql"
 
 if [ ! -d "$NM" ]; then
   echo "ERROR: @derekstride/tree-sitter-sql not found in node_modules"

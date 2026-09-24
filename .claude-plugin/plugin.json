@@ -19,7 +19,7 @@
         "hooks": [
           { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts" },
           { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-gate.ts" }
         ]
       }
     ],
@@ -27,7 +27,7 @@
       {
         "hooks": [
           { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-gate.ts" }
         ]
       }
     ],
@@ -35,7 +35,7 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-guard.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-guard.ts" }
         ]
       },
       {

@@ -493,7 +493,7 @@ describe("isPluginFixture", () => {
   });
 
   it("true via opencode symlink path", () => {
-    const fp = "/home/newman/.config/opencode/plugins/groundwork/test/fixtures/comment-density/over-cap.ts";
+    const fp = "/home/newman/.config/opencode/plugins/groundwork/plugins/house-rules/test/fixtures/comment-density/over-cap.ts";
     expect(isPluginFixture(fp)).toBe(true);
   });
 

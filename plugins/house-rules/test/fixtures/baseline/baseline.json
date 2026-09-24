@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule": "no-console",
+      "path": "src/bar.ts",
+      "fingerprint": "13024ff680309a59126286391e99132ee327cefd5e17c70f4ff8c9764918ef2d"
+    },
+    {
+      "rule": "no-console",
+      "path": "src/foo.ts",
+      "fingerprint": "aca7136534a0c0ba1e7681083c5b8efd38479b88e616c096ed8b1bde21acbf8b"
+    }
+  ]
+}

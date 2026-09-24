@@ -3,7 +3,7 @@ import { readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { Parser, Language } from "../../src/hooks/lib/tree-sitter.js";
 
-const REPO_ROOT = "/home/newman/.local/share/groundwork";
+const REPO_ROOT = join(import.meta.dir, "../..");
 const GRAMMARS_DIR = join(REPO_ROOT, "src/hooks/grammars");
 const FIXTURES_DIR = join(REPO_ROOT, "test/fixtures/comment-density/sql");
 

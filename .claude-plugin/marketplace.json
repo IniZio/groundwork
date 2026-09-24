@@ -8,7 +8,9 @@
     "description": "Groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
     "version": "2.5.2"
   },
-  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
+  "allowCrossMarketplaceDependenciesOn": [
+    "claude-plugins-official"
+  ],
   "plugins": [
     {
       "name": "groundwork",
@@ -19,7 +21,29 @@
         "name": "Newman"
       },
       "category": "development",
-      "keywords": ["orchestration", "agents", "workflow", "enforcement", "conventions"]
+      "keywords": [
+        "orchestration",
+        "agents",
+        "workflow",
+        "enforcement",
+        "conventions"
+      ]
+    },
+    {
+      "name": "house-rules",
+      "source": "./plugins/house-rules",
+      "description": "Code-quality rule engine: guard codebase health against vibe-coded bloat",
+      "version": "0.1.0",
+      "author": {
+        "name": "Newman"
+      },
+      "category": "development",
+      "keywords": [
+        "code-quality",
+        "rules",
+        "enforcement",
+        "linting"
+      ]
     }
   ]
 }

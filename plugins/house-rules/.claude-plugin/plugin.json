@@ -1,0 +1,10 @@
+{
+  "name": "house-rules",
+  "version": "0.1.0",
+  "description": "house-rules — code-quality rule engine: guard codebase health against vibe-coded bloat",
+  "author": {
+    "name": "Newman",
+    "email": "newman.kcchow@gmail.com"
+  },
+  "repository": "https://github.com/IniZio/groundwork"
+}

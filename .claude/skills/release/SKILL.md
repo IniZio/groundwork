@@ -1,6 +1,6 @@
 ---
 name: release
-description: Bump the groundwork plugin version and push it so installs pick up the latest changes. Use whenever the user wants to release, publish, ship, cut a version, bump the version, or "push the latest changes for the plugin" in this repo — even if they only say "push it" after plugin work, because pushing without a bump leaves every install on the old cached copy.
+description: Bump the groundwork or house-rules plugin version and push it so installs pick up the latest changes. Use whenever the user wants to release, publish, ship, cut a version, bump the version, or "push the latest changes for the plugin" in this repo — even if they only say "push it" after plugin work, because pushing without a bump leaves every install on the old cached copy.
 ---
 
 # Release the groundwork plugin
@@ -13,6 +13,20 @@ field together, prove the tree is healthy, commit, tag, push.
 All commands run from the repo root. The helper is
 `bun .claude/skills/release/scripts/release.ts`; call it `$REL` below.
 
+## Plugins and versioning
+
+The monorepo publishes two plugins with independent semver:
+
+| Plugin | Tag format | Version fields |
+|---|---|---|
+| groundwork (default) | `vX.Y.Z` | `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata + groundwork entry) |
+| house-rules | `house-rules-vX.Y.Z` | `plugins/house-rules/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (house-rules entry) |
+
+Pass `--plugin house-rules` to every `$REL` command when releasing house-rules.
+Omitting `--plugin` always operates on groundwork.
+
+When both plugins release in one push, tag and commit house-rules first, then groundwork.
+
 ## 1. Preflight
 
 1. `git status --porcelain` (use `command git` if output looks filtered). Uncommitted
@@ -20,13 +34,20 @@ All commands run from the repo root. The helper is
    untracked scratch like `.groundwork/` is fine to leave.
 2. `git fetch origin && git status -sb`. The branch must be `main` and not behind
    `origin/main`. If behind, stop and report — never rebase or merge on your own.
-3. `$REL check` — all 4 version fields must agree. If it reports disagreement, show
-   the rows and stop; a mismatched tree means a previous release went wrong.
+3. `$REL check` — all groundwork version fields must agree, and if groundwork declares
+   a house-rules dependency range it must be satisfied. If it reports disagreement or
+   an unsatisfied range, show the rows and stop; a mismatched tree means a previous
+   release went wrong.
 
 ## 2. Choose the version
 
-Run `$REL suggest`. It lists commits since the last `vX.Y.Z` tag (or since the last
-version change, before any tag exists) and proposes a level:
+Run `$REL suggest` (or `$REL suggest --plugin house-rules`). It lists commits since
+the last tag for that plugin, filtered to paths that plugin owns:
+
+- house-rules path: `plugins/house-rules/**`
+- groundwork paths: everything else
+
+Level heuristic:
 
 - any `type!:` subject or `BREAKING CHANGE` body → major
 - any `feat:` → minor
@@ -46,8 +67,15 @@ do not bump or push a red tree.
 ## 4. Bump, commit, tag, push
 
 ```bash
-$REL bump <level-or-X.Y.Z>          # rewrites package.json + .claude-plugin/{plugin,marketplace}.json
-$REL check                          # must print the new version
+$REL bump <level-or-X.Y.Z> [--plugin <name>]   # rewrites only that plugin's fields
+$REL check [--plugin <name>]                     # must print the new version
+```
+
+### Releasing groundwork
+
+```bash
+$REL bump <level-or-X.Y.Z>
+$REL check
 git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
 git commit -m "chore(release): bump version to X.Y.Z"
 git tag -a vX.Y.Z -m "vX.Y.Z"
@@ -55,9 +83,21 @@ git push origin main
 git push origin vX.Y.Z
 ```
 
-Stage those 3 files by path only — never `git add -A` — so stray untracked files
-don't ride along. If the commit hook rejects the message, fix the message; never
-`--no-verify`. If a push is rejected, stop and report; never force-push.
+### Releasing house-rules
+
+```bash
+$REL bump <level-or-X.Y.Z> --plugin house-rules
+$REL check --plugin house-rules
+git add plugins/house-rules/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+git commit -m "chore(release): bump house-rules to X.Y.Z"
+git tag -a house-rules-vX.Y.Z -m "house-rules-vX.Y.Z"
+git push origin main
+git push origin house-rules-vX.Y.Z
+```
+
+Stage files by path only — never `git add -A` — so stray untracked files don't ride
+along. If the commit hook rejects the message, fix the message; never `--no-verify`.
+If a push is rejected, stop and report; never force-push.
 
 ## 5. Report
 

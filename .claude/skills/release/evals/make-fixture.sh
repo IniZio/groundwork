@@ -25,9 +25,54 @@ git config user.name "Fixture"; git config user.email "fixture@example.invalid"
 git config commit.gpgsign false; git config core.hooksPath /dev/null
 
 mkdir -p .claude-plugin
-cp "$SRC/.claude-plugin/plugin.json" "$SRC/.claude-plugin/marketplace.json" .claude-plugin/
-# Pin the copied manifests to the fixture's 2.0.0 whatever the live repo is at.
-sed -i -E 's/"version": "[0-9]+\.[0-9]+\.[0-9]+"/"version": "2.0.0"/' .claude-plugin/plugin.json .claude-plugin/marketplace.json
+mkdir -p plugins/house-rules/.claude-plugin
+
+# Write manifests with pinned fixture versions (groundwork=2.0.0, house-rules=0.1.0).
+# Written directly rather than copying+patching to keep both plugin versions distinct.
+cat > .claude-plugin/plugin.json <<'EOPLUGIN'
+{
+  "name": "groundwork",
+  "version": "2.0.0",
+  "description": "groundwork fixture plugin"
+}
+EOPLUGIN
+
+cat > .claude-plugin/marketplace.json <<'EOMARKET'
+{
+  "name": "groundwork",
+  "owner": {
+    "name": "Fixture",
+    "email": "fixture@example.invalid"
+  },
+  "metadata": {
+    "description": "fixture",
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "groundwork",
+      "source": "./",
+      "description": "fixture groundwork plugin",
+      "version": "2.0.0"
+    },
+    {
+      "name": "house-rules",
+      "source": "./plugins/house-rules",
+      "description": "fixture house-rules plugin",
+      "version": "0.1.0"
+    }
+  ]
+}
+EOMARKET
+
+cat > plugins/house-rules/.claude-plugin/plugin.json <<'EOHR'
+{
+  "name": "house-rules",
+  "version": "0.1.0",
+  "description": "fixture house-rules plugin"
+}
+EOHR
+
 TEST_EXIT=0; [[ $FAIL_TESTS == 1 ]] && TEST_EXIT=1
 mkdir -p scripts
 cat > scripts/check-stub.sh <<EOF

@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 
 const REPO = path.resolve(import.meta.dir, "../..");
-const GUARD = path.join(REPO, "src/hooks/comment-density-guard.ts");
+const GUARD = path.join(REPO, "src/hooks/guard.ts");
 const PROBE_SH = path.join(REPO, "test/fixtures/comment-density/nexus-probe/probe.sh");
 
 async function spawnGuard(payload: unknown, tmpDir: string): Promise<{ stdout: string; stderr: string; exit: number }> {

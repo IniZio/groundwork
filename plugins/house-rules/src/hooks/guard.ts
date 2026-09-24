@@ -6,13 +6,12 @@
  * Never emits permissionDecision.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   detectLanguage,
   findComments,
-  isPluginFixture,
   reconstructPostEdit,
   newComments as findNewComments,
   stripComments,
@@ -22,6 +21,9 @@ import {
 } from "./lib/comment-density.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
+import { loadRules } from "../engine/registry.js";
+import { runRules, isBlocking } from "../engine/run.js";
+import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -47,6 +49,48 @@ function advisory(ctx: string, stderrLine?: string): HookResult {
     stderr: stderrLine ? stderrLine + "\n" : "",
     exit: 0,
   };
+}
+
+function deny(reason: string): HookResult {
+  return {
+    stdout: JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", additionalContext: reason },
+    }) + "\n",
+    stderr: "",
+    exit: 0,
+  };
+}
+
+function isIgnoredByDefault(filePath: string, cwd: string | null): boolean {
+  let dir = cwd ?? path.dirname(filePath);
+  // Walk up to the nearest existing directory (the target path may not exist yet)
+  while (dir !== path.dirname(dir) && !existsSync(dir)) {
+    dir = path.dirname(dir);
+  }
+  const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  if (r.status !== 0) return false;
+  const repoRoot = r.stdout.trim();
+  const relPath = path.relative(repoRoot, filePath);
+  return DEFAULT_IGNORE.some((pattern) => new Bun.Glob(pattern).match(relPath));
+}
+
+async function checkStray(filePath: string, cwd: string | null): Promise<HookResult | null> {
+  const dir = cwd ?? path.dirname(filePath);
+  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  if (rootResult.status !== 0) return null;
+  const repoRoot = rootResult.stdout.trim();
+  const relPath = path.relative(repoRoot, filePath);
+  const rulesDir = path.join(import.meta.dir, "../../rules");
+  const allRules = await loadRules(rulesDir);
+  const treeRules = allRules.filter((r) => r.vehicles.includes("tree"));
+  const ctx: import("../engine/types.js").RuleContext = {
+    repoRoot,
+    mode: "guard",
+    files: [{ path: relPath, baseText: "", addedHunks: [], tracked: false, sessionCreated: true }],
+  };
+  const findings = await runRules(treeRules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
+  if (!isBlocking(findings)) return null;
+  return deny(findings[0].message);
 }
 
 const WRITE_TOOLS = new Set(["edit", "write", "multiedit"]);
@@ -258,7 +302,18 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     const filePath = typeof ti.file_path === "string" ? ti.file_path : "";
     if (!filePath) return allow();
-    if (isPluginFixture(filePath)) return allow();
+    const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
+    const cwd = typeof inp.cwd === "string" ? inp.cwd : null;
+    if (isIgnoredByDefault(filePath, cwd)) return allow();
+
+    const readFile = opts.readFile ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } });
+    const pre = readFile(filePath);
+
+    // Stray-artifacts check runs for any new file (pre === null), regardless of type.
+    if (pre === null) {
+      const strayResult = await checkStray(filePath, cwd);
+      if (strayResult !== null) return strayResult;
+    }
 
     const ext = path.extname(filePath).toLowerCase();
     if (ext === ".md") return allow();
@@ -270,9 +325,6 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     if (lang === null) return allow();
 
     const getParser = opts.getParser ?? defaultGetParser;
-    const readFile = opts.readFile ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } });
-
-    const pre = readFile(filePath);
     const reconResult = reconstructPostEdit(tool, ti as Parameters<typeof reconstructPostEdit>[1], pre);
     if (!reconResult) return allow();
     const { post, changedRows } = reconResult;
@@ -289,8 +341,6 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const preFindResult = pre !== null ? await findComments(pre, lang, getParser) : null;
     const preComments = preFindResult?.ok ? preFindResult.comments : null;
 
-    const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
-    const cwd = typeof inp.cwd === "string" ? inp.cwd : null;
     const repo = cwd ?? path.dirname(filePath);
 
     let priorAddedCount = 0;

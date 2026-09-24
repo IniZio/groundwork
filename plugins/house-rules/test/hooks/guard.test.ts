@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import path2 from "node:path";
 import os from "node:os";
-import { check, buildCtx } from "../../src/hooks/comment-density-guard.js";
+import { check, buildCtx } from "../../src/hooks/guard.js";
 import { reconstructPostEdit, type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
@@ -456,7 +456,6 @@ describe("AC4 cumulative budget", () => {
 
 
 import { mkdirSync, rmSync } from "node:fs";
-import { isPluginFixture } from "../../src/hooks/lib/comment-density.js";
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, "../..");
 const OVER_CAP_SH = [
@@ -465,15 +464,15 @@ const OVER_CAP_SH = [
   "# comment A", "# comment B", "# comment C", "# comment D", "# comment E",
 ].join("\n") + "\n";
 
-describe("plugin fixture skip (isPluginFixture + guard)", () => {
-  it("plugin fixture path → guard allows (no output)", async () => {
+describe("DEFAULT_IGNORE: guard skip behavior", () => {
+  it("plugin test/fixtures path → guard allows (no output, matches DEFAULT_IGNORE)", async () => {
     const fp = path.join(PLUGIN_ROOT, "test", "fixtures", "comment-density", "tmp-probe.sh");
     const r = await check(write(fp, OVER_CAP_SH));
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });
 
-  it("end-user test/fixtures path → guard still corrects", async () => {
+  it("test/fixtures in non-git tmp dir → NOT ignored by DEFAULT_IGNORE (guard still corrects)", async () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-usr-fix-"));
     try {
       mkdirSync(path.join(tmpDir, "test", "fixtures"), { recursive: true });
@@ -486,30 +485,41 @@ describe("plugin fixture skip (isPluginFixture + guard)", () => {
   });
 });
 
-describe("isPluginFixture", () => {
-  it("true for over-cap.ts inside plugin fixtures", () => {
-    const fp = path.join(PLUGIN_ROOT, "test", "fixtures", "comment-density", "over-cap.ts");
-    expect(isPluginFixture(fp)).toBe(true);
+describe("DEFAULT_IGNORE patterns", () => {
+  it("node_modules path in git repo → guard allows (matches node_modules/**)", async () => {
+    const fp = path.join(PLUGIN_ROOT, "node_modules", "fake-pkg", "index.ts");
+    const r = await check(write(fp, OVER_CAP_25));
+    expect(r.stdout).toBe("");
+    expect(r.exit).toBe(0);
   });
 
-  it("true via opencode symlink path", () => {
-    const fp = "/home/newman/.config/opencode/plugins/groundwork/plugins/house-rules/test/fixtures/comment-density/over-cap.ts";
-    expect(isPluginFixture(fp)).toBe(true);
+  it("src file in git repo → NOT ignored (doesn't match DEFAULT_IGNORE)", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-not-ignored-"));
+    try {
+      const fp = path.join(tmpDir, "index.ts");
+      const r = await check(write(fp, OVER_CAP_25));
+      expect(getHso(r)).toHaveProperty("updatedInput");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it("false for a source file in the plugin", () => {
-    const fp = path.join(PLUGIN_ROOT, "src", "hooks", "comment-density-gate.ts");
-    expect(isPluginFixture(fp)).toBe(false);
+  it("test/fixtures in unrelated non-git tmp dir → NOT ignored (no repo root found)", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-no-repo-fix-"));
+    try {
+      mkdirSync(path.join(tmpDir, "test", "fixtures"), { recursive: true });
+      const fp = path.join(tmpDir, "test", "fixtures", "x.sh");
+      const r = await check(write(fp, OVER_CAP_SH));
+      expect(getHso(r)).toHaveProperty("updatedInput");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it("false for test/fixtures in an unrelated tmp dir", () => {
-    const fp = path.join(os.tmpdir(), "some-repo", "test", "fixtures", "x.sh");
-    expect(isPluginFixture(fp)).toBe(false);
-  });
-
-  it("false for test/fixtures-other inside the plugin", () => {
-    const fp = path.join(PLUGIN_ROOT, "test", "fixtures-other", "x");
-    expect(isPluginFixture(fp)).toBe(false);
+  it("test/fixtures-other in git repo → NOT ignored (doesn't match **/test/fixtures/**)", async () => {
+    const fp = path.join(PLUGIN_ROOT, "test", "fixtures-other", "x.ts");
+    const r = await check(write(fp, OVER_CAP_25));
+    expect(getHso(r)).toHaveProperty("updatedInput");
   });
 });
 

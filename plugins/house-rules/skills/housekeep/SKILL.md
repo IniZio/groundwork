@@ -1,6 +1,6 @@
 ---
 name: housekeep
-description: Regression-safe, deletion-first codebase hygiene — deslop (default), deps, lint-debt, docs-staleness. Triggers on: deslop, anti-slop, ai slop, cleanup, tidy, housekeep.
+description: Regression-safe codebase hygiene — deslop (default), deps, lint-debt, docs-staleness; also runs house-rules to fix automated rule violations. Triggers on: deslop, anti-slop, ai slop, cleanup, tidy, housekeep, fix violations, house-rules fix.
 disable-model-invocation: true
 ---
 
@@ -46,6 +46,32 @@ Keep diffs small, reversible, smell-focused. Never expand a scoped surface silen
 
 For large surfaces, fan out `groundwork:explore` subagents for scan; `groundwork:implementer` for cleanup.
 Collect findings via return values before any edits begin.
+
+## Automated rule-violation fixing
+
+For findings already tracked by house-rules, run:
+
+```
+house-rules housekeep
+```
+
+Default scope: files changed since merge-base with the default branch (same as `house-rules check`).
+
+Common invocations:
+- **Branch-only (default):** `house-rules housekeep`
+- **Burn down baseline debt:** `house-rules housekeep --baseline --paths 'src/api/**' --max 20`
+- **Preview without writing:** `house-rules housekeep --dry-run`
+
+Flags:
+- `--rules <a,b>` — limit to specific rule IDs
+- `--paths <glob,...>` — restrict to files matching glob(s)
+- `--since <ref>` — override the base git ref
+- `--baseline` — target entries recorded in `.house-rules/baseline.json` instead of the diff scope
+- `--max <n>` — cap the number of auto-fixes applied
+- `--dry-run` — show what would be fixed without writing
+
+After `--baseline` runs, fixed entries are automatically pruned from the baseline file.
+Untracked scratch files are reported under "Untracked strays (not blocking)" but do not affect exit code.
 
 ## Completion
 

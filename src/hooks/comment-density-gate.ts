@@ -8,8 +8,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { autoFix, detectLanguage, density, isPluginFixture, type Lang, type RowChange } from "./lib/comment-density.js";
-import { sessionBase, touchedFiles, addedRanges } from "./lib/work-scope.js";
+import { autoFix, detectLanguage, density, isPluginFixture, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
+import { sessionBase, touchedFiles, addedHunks } from "./lib/work-scope.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -67,6 +67,7 @@ interface ViolatingFile {
   commentRows: number[];
   fallback: boolean;
   rowSet: Set<number>;
+  netNewRows: Set<number>;
   lang: Lang;
 }
 
@@ -117,7 +118,7 @@ function buildRemappedRows(rowChanges: RowChange[], origRowSet: Set<number>): Se
   return remapped;
 }
 
-// Unreachable while autoFix's all-rows-added candidate filter holds (comment-density.ts:631); the autoFix property test enforces it.
+// Unreachable while autoFix's all-rows-added candidate filter holds (comment-density.ts:697); the autoFix property test enforces it.
 export function refusesPreExistingRemoval(removedLines: Array<{ preExisting: boolean }>): boolean {
   return removedLines.some(r => r.preExisting);
 }
@@ -179,25 +180,46 @@ export async function run(
 
       const base = sessionBase(relevantTranscriptPath, topLevel);
 
-      const rowArr = addedRanges(file, base, relevantTranscriptPath);
-      if (!rowArr || rowArr.length === 0) continue;
+      const hunks = addedHunks(file, base, relevantTranscriptPath);
+      if (!hunks || hunks.length === 0) continue;
 
-      // addedRanges returns 1-indexed; density uses 0-indexed rows internally
-      const rowSet = new Set(rowArr.map(n => n - 1));
+      const totalAdded = hunks.reduce((s, h) => s + h.added.length, 0);
+      if (totalAdded === 0) continue;
+
+      const rowSet = new Set(hunks.flatMap(h => h.added.map(n => n - 1)));
 
       let fileText: string;
       try { fileText = readFileSync(file, "utf8"); } catch { continue; }
 
-      const result = await density(fileText, lang, rowSet);
+      const relPath = path.relative(topLevel, file);
+      const baseShowResult = spawnSync("git", ["-C", topLevel, "show", `${base}:${relPath}`], { encoding: "utf8" });
+      const baseText = baseShowResult.status === 0 ? baseShowResult.stdout : "";
 
-      if (result.total > 0 && result.effective / result.total * 100 > CAP) {
+      const netResult = await netNewCommentRows(baseText, fileText, lang, hunks);
+      let effective: number;
+      let commentRows: number[];
+      let netNewRows: Set<number>;
+      let fallback = false;
+      if (netResult.ok) {
+        effective = netResult.rows.length;
+        commentRows = netResult.rows;
+        netNewRows = new Set(netResult.rows.map(n => n - 1));
+      } else {
+        const dr = await density(fileText, lang, rowSet);
+        effective = dr.effective;
+        commentRows = dr.commentRows.map(r => r + 1);
+        netNewRows = rowSet;
+        fallback = dr.mode === "fallback";
+      }
+      if (effective / totalAdded * 100 > CAP) {
         violations.push({
           path: file,
-          effective: result.effective,
-          total: result.total,
-          commentRows: result.commentRows.map(r => r + 1),
-          fallback: result.mode === "fallback",
+          effective,
+          total: totalAdded,
+          commentRows,
+          fallback,
           rowSet,
+          netNewRows,
           lang,
         });
       }
@@ -222,7 +244,7 @@ export async function run(
         txt = readFileSync(v.path, "utf8");
       } catch { unfixable.push(v); continue; }
 
-      const ar = await autoFix(txt, v.lang, v.rowSet);
+      const ar = await autoFix(txt, v.lang, v.rowSet, undefined, v.netNewRows);
       if (!ar.ok || ar.removed === 0) { unfixable.push(v); continue; }
 
       const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
@@ -355,7 +377,10 @@ export async function run(
       ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`
       : null;
 
-    const footer = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Then stop again.";
+    const footerBase = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
+    const footer = event === "SubagentStop"
+      ? footerBase + " Edits made after hand-back do not reach the caller."
+      : footerBase;
 
     const parts = [header, ...fileLines];
     if (fallbackNotices.length > 0) parts.push(...fallbackNotices);

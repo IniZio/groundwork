@@ -8,6 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   detectLanguage,
   findComments,
@@ -15,11 +16,14 @@ import {
   reconstructPostEdit,
   newComments as findNewComments,
   stripComments,
+  netNewCommentRows,
   type Comment,
   type GetParserFn,
 } from "./lib/comment-density.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
-import { sessionBase, addedRanges } from "./lib/work-scope.js";
+import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
+
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -55,9 +59,22 @@ function normalTool(raw: unknown): string {
 
 type EditEntry = { old_string: string; new_string: string; replace_all?: boolean };
 
+function getBaseText(filePath: string, base: string): string | null {
+  if (!base || base === EMPTY_TREE) return null;
+  const dir = path.dirname(filePath);
+  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  if (rootResult.status !== 0) return null;
+  const repoRoot = rootResult.stdout.trim();
+  const relPath = path.relative(repoRoot, filePath);
+  const showResult = spawnSync("git", ["-C", repoRoot, "show", `${base}:${relPath}`], { encoding: "utf8" });
+  if (showResult.status !== 0) return null;
+  return showResult.stdout;
+}
+
 function mapEditToInput(
   ti: Record<string, unknown>,
   pre: string,
+  post: string,
   stripped_post: string,
 ): Record<string, unknown> | null {
   const old_string = typeof ti.old_string === "string" ? ti.old_string : "";
@@ -67,11 +84,40 @@ function mapEditToInput(
   if (!replace_all) {
     const idx = pre.indexOf(old_string);
     if (idx === -1) return null;
-    const suffix_len = pre.length - idx - old_string.length;
-    const sn = suffix_len > 0
-      ? stripped_post.slice(idx, stripped_post.length - suffix_len)
-      : stripped_post.slice(idx);
-    return { ...ti, new_string: sn };
+
+    // Derive the actual changed span by comparing post vs stripped_post.
+    let sfx = 0;
+    const maxSfx = Math.min(post.length, stripped_post.length);
+    while (sfx < maxSfx && post[post.length - 1 - sfx] === stripped_post[stripped_post.length - 1 - sfx]) sfx++;
+
+    let pfx = 0;
+    const maxPfx = Math.min(post.length - sfx, stripped_post.length - sfx);
+    while (pfx < maxPfx && post[pfx] === stripped_post[pfx]) pfx++;
+
+    const changeStart = pfx;
+    const changeEnd = post.length - sfx;
+    const editStart = idx;
+    const editEnd = idx + new_string.length;
+
+    // Change must be within [editStart-1, editEnd] (allow 1 char before for whole-line \n removal)
+    if (changeStart < editStart - 1 || changeEnd > editEnd) return null;
+
+    const new_sn = sfx > 0 ? stripped_post.slice(pfx, stripped_post.length - sfx) : stripped_post.slice(pfx);
+
+    if (changeStart >= editStart) {
+      // Change is entirely within the edit span
+      const pre_in_new = changeStart - editStart;
+      const post_in_new = editEnd - changeEnd;
+      const unchanged_prefix = new_string.slice(0, pre_in_new);
+      const unchanged_suffix = post_in_new > 0 ? new_string.slice(new_string.length - post_in_new) : "";
+      return { ...ti, new_string: unchanged_prefix + new_sn + unchanged_suffix };
+    } else {
+      // changeStart == editStart - 1: a char before the edit (e.g. preceding \n) was also removed
+      const extra = pre.slice(changeStart, editStart);
+      const post_in_new = editEnd - changeEnd;
+      const unchanged_suffix = post_in_new > 0 ? new_string.slice(new_string.length - post_in_new) : "";
+      return { ...ti, old_string: extra + old_string, new_string: new_sn + unchanged_suffix };
+    }
   }
 
   const occs: number[] = [];
@@ -101,6 +147,7 @@ function mapEditToInput(
 function mapMultiEditToInput(
   ti: Record<string, unknown>,
   pre: string,
+  _post: string,
   stripped_post: string,
 ): Record<string, unknown> | null {
   const edits = Array.isArray(ti.edits) ? ti.edits as EditEntry[] : [];
@@ -138,11 +185,12 @@ function mapToInput(
   tool: string,
   ti: Record<string, unknown>,
   pre: string,
+  post: string,
   stripped_post: string,
 ): Record<string, unknown> | null {
   if (tool === "write") return { ...ti, content: stripped_post };
-  if (tool === "edit") return mapEditToInput(ti, pre, stripped_post);
-  if (tool === "multiedit") return mapMultiEditToInput(ti, pre, stripped_post);
+  if (tool === "edit") return mapEditToInput(ti, pre, post, stripped_post);
+  if (tool === "multiedit") return mapMultiEditToInput(ti, pre, post, stripped_post);
   return null;
 }
 
@@ -154,6 +202,7 @@ export function buildCtx(
   remainder: number,
   priorAddedCount: number,
   priorAddedComments: number,
+  mode: "rewrite" | "advisory" = "rewrite",
 ): string {
   const N = stripped.length;
   const displayTool = tool.charAt(0).toUpperCase() + tool.slice(1);
@@ -169,6 +218,16 @@ export function buildCtx(
   const readdLine = K === 0
     ? "No comment budget remains for this file; express intent through naming instead."
     : `You may re-add up to ${K} short comment(s) (one line, explaining why, not what), or accept the removal.`;
+
+  if (mode === "advisory") {
+    return [
+      `groundwork comment-density: ${N} comment(s) in your ${displayTool} to ${filePath} were not stripped — could not map edit automatically.`,
+      `Why: code convention — at most 5 comment lines per 100 lines added this session. This file: ${A} lines added, ${C} comments already added, budget left before this edit: ${B}.`,
+      `Would-be stripped:\n${rows}`,
+      `These comments remain in the file as written. Remove them manually before your next Edit to this region.`,
+      readdLine,
+    ].join("\n");
+  }
 
   return [
     `groundwork comment-density: removed ${N} comment(s) from your ${displayTool} to ${filePath} before it was applied.`,
@@ -236,10 +295,13 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     let priorAddedCount = 0;
     let priorAddedComments = 0;
+    let base: string | null = null;
+    let baseText: string | null = null;
 
     if (transcriptPath && pre !== null) {
-      const base = sessionBase(transcriptPath, repo);
-      const priorRows = addedRanges(filePath, base);
+      const b = sessionBase(transcriptPath, repo);
+      base = b;
+      const priorRows = addedRanges(filePath, b);
       if (priorRows) {
         priorAddedCount = priorRows.length;
         const priorRowSet = new Set(priorRows);
@@ -253,10 +315,42 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
           }).length;
         }
       }
+      baseText = getBaseText(filePath, b);
+      if (baseText !== null) {
+        const hunksBasePre = diffTextToHunks(baseText, pre);
+        const netNewPreResult = await netNewCommentRows(baseText, pre, lang, hunksBasePre, getParser);
+        if (netNewPreResult.ok) {
+          priorAddedComments = netNewPreResult.rows.length;
+        }
+      }
     }
 
     const budget = Math.floor(0.05 * (priorAddedCount + changedRows.size)) - priorAddedComments;
-    const nc = findNewComments(preComments, postFindResult.comments, changedRows);
+
+    // Base-aware new-comment detection
+    let nc: Comment[];
+    if (base !== null && pre !== null) {
+      if (baseText !== null) {
+        const hunksBasePost = diffTextToHunks(baseText, post);
+        const netNewResult = await netNewCommentRows(baseText, post, lang, hunksBasePost, getParser);
+        if (netNewResult.ok) {
+          const netNewRows = new Set(netNewResult.rows);
+          nc = postFindResult.comments.filter(c => {
+            if (c.exempt) return false;
+            for (let r = c.startRow; r <= c.endRow; r++) {
+              if (changedRows.has(r) && netNewRows.has(r + 1)) return true;
+            }
+            return false;
+          });
+        } else {
+          nc = findNewComments(preComments, postFindResult.comments, changedRows);
+        }
+      } else {
+        nc = findNewComments(preComments, postFindResult.comments, changedRows);
+      }
+    } else {
+      nc = findNewComments(preComments, postFindResult.comments, changedRows);
+    }
 
     const keep = Math.max(budget, 0);
     if (nc.length <= keep) return allow();
@@ -264,7 +358,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const to_strip = nc.slice(keep);
     const { text: stripped_post } = stripComments(post, to_strip);
 
-    const updatedTi = mapToInput(tool, ti, pre ?? "", stripped_post);
+    const updatedTi = mapToInput(tool, ti, pre ?? "", post, stripped_post);
 
     const remainder = Math.max(0, budget - keep);
 
@@ -276,7 +370,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       }
     }
 
-    const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments);
+    const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments, "advisory");
     return advisory(ctx);
   } catch {
     return allow();

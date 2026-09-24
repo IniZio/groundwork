@@ -8,9 +8,11 @@ import {
   stripComments,
   density,
   autoFix,
+  netNewCommentRows,
   type Lang,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
+import type { DiffHunk } from "../../src/hooks/lib/work-scope.js";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
 const FIXTURES = path.join(import.meta.dir, "../fixtures/comment-density");
@@ -1322,5 +1324,111 @@ describe("autoFix single-pass density compliance", () => {
     }
     const d = await density(r.fixed, "typescript", remappedRows);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
+  });
+});
+
+// ---- netNewCommentRows ----
+
+describe("netNewCommentRows", () => {
+  const ts = "typescript" as Lang;
+
+  it("reword in same hunk counts as 0 net-new", async () => {
+    const base = `function f() {\n  // old comment\n  return 1;\n}\n`;
+    const post = `function f() {\n  // new comment\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [2], removed: ["  // old comment"], removedBaseLineNos: [2] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(0);
+    expect(r.added).toBe(1);
+    expect(r.removed).toBe(1);
+  });
+
+  it("genuinely added comment counts as 1", async () => {
+    const base = `function f() {\n  return 1;\n}\n`;
+    const post = `function f() {\n  // new comment\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [2], removed: [], removedBaseLineNos: [] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(2);
+    expect(r.added).toBe(1);
+    expect(r.removed).toBe(0);
+  });
+
+  it("reword + one new comment = 1 net-new", async () => {
+    const base = `function f() {\n  // old comment\n  return 1;\n}\n`;
+    const post = `function f() {\n  // new comment\n  // extra comment\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [2, 3], removed: ["  // old comment"], removedBaseLineNos: [2] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(3);
+    expect(r.added).toBe(2);
+    expect(r.removed).toBe(1);
+  });
+
+  it("new comment ABOVE a reword → rows equals exactly [row of the new comment]", async () => {
+    const base = `function f() {\n  // why old\n  return 1;\n}\n`;
+    const post = `function f() {\n  // brand new narration\n  // why reworded\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [2, 3], removed: ["  // why old"], removedBaseLineNos: [2] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(2);
+  });
+
+  it("new comment BELOW a reword → rows equals exactly [row of the new comment]", async () => {
+    const base = `function f() {\n  // why old\n  return 1;\n}\n`;
+    const post = `function f() {\n  // why reworded\n  // brand new narration\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [2, 3], removed: ["  // why old"], removedBaseLineNos: [2] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(3);
+  });
+
+  it("two rewords + one new in a hunk, new in the middle → exactly [middle row]", async () => {
+    const base = `function f() {\n  // old narration 1\n  // old narration 2\n  return 1;\n}\n`;
+    const post = `function f() {\n  // new narration 1\n  // brand new middle\n  // new narration 2\n  return 1;\n}\n`;
+    const hunk: DiffHunk = {
+      added: [2, 3, 4],
+      removed: ["  // old narration 1", "  // old narration 2"],
+      removedBaseLineNos: [2, 3],
+    };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(3);
+  });
+
+  it("exempt comment pairing does not cancel a real added comment", async () => {
+    const base = `function f() {\n  // @ts-ignore\n  return 1;\n}\n`;
+    const post = `function f() {\n  // @ts-ignore\n  // real comment\n  return 1;\n}\n`;
+    const hunk: DiffHunk = { added: [3], removed: [], removedBaseLineNos: [] };
+    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toBe(3);
+  });
+
+  it("autoFix does not strip a reworded comment when netNewRows excludes it", async () => {
+    const codeLines = Array.from({ length: 94 }, (_, i) => `const x${i + 7} = ${i + 7};`);
+    const commentLines = Array.from({ length: 5 }, (_, i) => `// comment ${i + 2}`);
+    const text = [`// new`, ...commentLines, ...codeLines].join("\n") + "\n";
+
+    const addedRows = new Set(Array.from({ length: 100 }, (_, i) => i));
+    const netNewRows = new Set([1, 2, 3, 4, 5]);
+
+    const r = await autoFix(text, ts, addedRows, getParser, netNewRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("// new");
   });
 });

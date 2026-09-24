@@ -2,6 +2,7 @@ import path from "node:path";
 import { realpathSync } from "node:fs";
 import { getParser as defaultGetParser, type Lang } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
+import type { DiffHunk } from "./work-scope.js";
 
 export type { Lang };
 
@@ -627,21 +628,149 @@ function collectCodeText(root: Node, text: string, lang: Lang): string {
   return parts.join("");
 }
 
+export interface NetNewResult {
+  /** 1-based new-file line numbers of unpaired added comment rows */
+  rows: number[];
+  /** total added comment rows across all hunks */
+  added: number;
+  /** total removed comment rows across all hunks */
+  removed: number;
+}
+
+/** Strip comment markers and normalize line text for similarity comparison. */
+function normForPairing(raw: string): string {
+  return raw
+    .replace(/^\s*(\/\/+|#|\/\*+|\*+\/|\*)\s?/, "")
+    .replace(/\s*\*\/\s*$/, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Token-set Jaccard similarity on whitespace-split tokens. */
+function tokenSetJaccard(a: string, b: string): number {
+  const ta = new Set(a.split(/\s+/).filter(Boolean));
+  const tb = new Set(b.split(/\s+/).filter(Boolean));
+  if (ta.size === 0 && tb.size === 0) return 1;
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  return inter / (ta.size + tb.size - inter);
+}
+
+/**
+ * Greedy similarity pairing: pair each removed comment row with the most
+ * similar added comment row (descending similarity; tie-break by position
+ * distance). Returns 1-based line numbers of added rows left unpaired
+ * (i.e. net-new).
+ *
+ * Known limits: a new comment replacing a base comment in the same hunk
+ * pairs as a reword (not counted); a zero-token-overlap reword can lose its
+ * pairing to a higher-similarity new comment, flagging the reword row instead.
+ * Both keep net-new count correct and never affect rows unchanged since base.
+ */
+function greedyPairCommentRows(
+  removed: Array<{ lineNo: number; normText: string }>,
+  added: Array<{ lineNo: number; normText: string }>,
+): number[] {
+  if (removed.length === 0) return added.map(a => a.lineNo);
+
+  // Build all candidate pairs with similarity scores
+  const candidates: Array<{ ri: number; ai: number; sim: number; dist: number }> = [];
+  for (let ri = 0; ri < removed.length; ri++) {
+    for (let ai = 0; ai < added.length; ai++) {
+      const sim = tokenSetJaccard(removed[ri].normText, added[ai].normText);
+      const dist = Math.abs(removed[ri].lineNo - added[ai].lineNo);
+      candidates.push({ ri, ai, sim, dist });
+    }
+  }
+
+  // Sort: highest similarity first; tie-break by smallest position distance
+  candidates.sort((a, b) =>
+    b.sim !== a.sim ? b.sim - a.sim : a.dist - b.dist,
+  );
+
+  const pairedRemoved = new Set<number>();
+  const pairedAdded = new Set<number>();
+  for (const { ri, ai } of candidates) {
+    if (pairedRemoved.has(ri) || pairedAdded.has(ai)) continue;
+    pairedRemoved.add(ri);
+    pairedAdded.add(ai);
+  }
+
+  return added.filter((_, ai) => !pairedAdded.has(ai)).map(a => a.lineNo);
+}
+
+export async function netNewCommentRows(
+  baseText: string,
+  postText: string,
+  lang: Lang,
+  hunks: DiffHunk[],
+  getParser: GetParserFn = defaultGetParser,
+): Promise<{ ok: true } & NetNewResult | { ok: false; reason: string }> {
+  const baseParsed = await findComments(baseText, lang, getParser);
+  if (!baseParsed.ok) return { ok: false, reason: baseParsed.reason };
+  const postParsed = await findComments(postText, lang, getParser);
+  if (!postParsed.ok) return { ok: false, reason: postParsed.reason };
+
+  const baseCommentLines = new Set<number>();
+  for (const c of baseParsed.comments) {
+    if (c.exempt) continue;
+    for (let r = c.startRow; r <= c.endRow; r++) baseCommentLines.add(r + 1);
+  }
+  const postCommentLines = new Set<number>();
+  for (const c of postParsed.comments) {
+    if (c.exempt) continue;
+    for (let r = c.startRow; r <= c.endRow; r++) postCommentLines.add(r + 1);
+  }
+
+  const postLines = postText.split("\n");
+
+  const allUnpaired: number[] = [];
+  let totalAdded = 0;
+  let totalRemoved = 0;
+  for (const hunk of hunks) {
+    const addedCommentLineNos = hunk.added.filter(ln => postCommentLines.has(ln));
+
+    // Collect removed comment items (text comes from hunk.removed, parallel to removedBaseLineNos)
+    const removedItems: Array<{ lineNo: number; normText: string }> = [];
+    for (let i = 0; i < hunk.removedBaseLineNos.length; i++) {
+      const ln = hunk.removedBaseLineNos[i];
+      if (!baseCommentLines.has(ln)) continue;
+      removedItems.push({ lineNo: ln, normText: normForPairing(hunk.removed[i] ?? "") });
+    }
+
+    // Collect added comment items
+    const addedItems = addedCommentLineNos.map(ln => ({
+      lineNo: ln,
+      normText: normForPairing(postLines[ln - 1] ?? ""),
+    }));
+
+    const unpairedRows = greedyPairCommentRows(removedItems, addedItems);
+    allUnpaired.push(...unpairedRows);
+    totalAdded += addedCommentLineNos.length;
+    totalRemoved += removedItems.length;
+  }
+  return { ok: true, rows: allUnpaired, added: totalAdded, removed: totalRemoved };
+}
+
 export async function autoFix(
   text: string,
   lang: Lang,
   addedRows: Set<number>,
-  getParser: GetParserFn = defaultGetParser,
+  getParser?: GetParserFn,
+  netNewRows?: Set<number>,
 ): Promise<AutoFixResult> {
+  getParser ??= defaultGetParser;
   const origParsed = await findComments(text, lang, getParser);
   if (!origParsed.ok) return { ok: false, reason: `parse: ${origParsed.reason}` };
 
   const candidates: Comment[] = [];
   for (const c of origParsed.comments) {
     if (c.exempt) continue;
+    const rowSet = netNewRows ?? addedRows;
     let allAdded = true;
     for (let r = c.startRow; r <= c.endRow; r++) {
-      if (!addedRows.has(r)) { allAdded = false; break; }
+      if (!rowSet.has(r)) { allAdded = false; break; }
     }
     if (allAdded) candidates.push(c);
   }

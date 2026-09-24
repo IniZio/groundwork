@@ -1330,3 +1330,90 @@ describe("S1c-remap-sensitive", () => {
     expect(content).toContain("// pre 0");
   });
 });
+
+describe("S2-gate-net-growth: reword pre-existing comment", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-s2-"));
+    initGitRepo(tmpDir);
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it("reword of a committed comment → allows", async () => {
+    const lines = [
+      "const a0 = 0;", "const a1 = 1;", "const a2 = 2;", "const a3 = 3;",
+      "const a4 = 4;", "const a5 = 5;", "const a6 = 6;", "const a7 = 7;",
+      "const a8 = 8;", "// original why comment",
+      "const a10 = 10;", "const a11 = 11;", "const a12 = 12;", "const a13 = 13;",
+      "const a14 = 14;", "const a15 = 15;", "const a16 = 16;", "const a17 = 17;",
+      "const a18 = 18;", "const a19 = 19;",
+    ];
+    const fp = path.join(tmpDir, "reword.ts");
+    writeFileSync(fp, lines.join("\n") + "\n");
+    gitCommit(tmpDir, "add file");
+    const logR = spawnSync("git", ["-C", tmpDir, "log", "--format=%ct", "-1"], { encoding: "utf8" });
+    const baseEpoch = parseInt(logR.stdout.trim(), 10);
+
+    const reworded = lines.map((l, i) => i === 9 ? "// reworded why comment" : l);
+    writeFileSync(fp, reworded.join("\n") + "\n");
+
+    const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], afterTs);
+    const r = runGate({ hook_event_name: "Stop", session_id: `s2a-${Date.now()}`, transcript_path: tp });
+    const out = parseOut(r.stdout);
+    expect(out.decision).not.toBe("block");
+  });
+
+  it("reword + one genuinely new comment → blocks; rows names only new line", async () => {
+    const lines = [
+      "const b0 = 0;", "const b1 = 1;", "const b2 = 2;", "const b3 = 3;",
+      "// pre-existing comment",
+      "const b5 = 5;", "const b6 = 6;", "const b7 = 7;", "const b8 = 8;",
+      "const b9 = 9;",
+    ];
+    const fp = path.join(tmpDir, "mixed.ts");
+    writeFileSync(fp, lines.join("\n") + "\n");
+    gitCommit(tmpDir, "add file");
+    const logR = spawnSync("git", ["-C", tmpDir, "log", "--format=%ct", "-1"], { encoding: "utf8" });
+    const baseEpoch = parseInt(logR.stdout.trim(), 10);
+
+    const updated = [
+      "const b0 = 0;", "const b1 = 1;", "const b2 = 2;", "const b3 = 3;",
+      "// reworded comment",
+      "const b5 = 5;", "// genuinely new comment",
+      "const b7 = 7;", "const b8 = 8;", "const b9 = 9;",
+    ];
+    writeFileSync(fp, updated.join("\n") + "\n");
+
+    const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], afterTs);
+    const r = runGate({ hook_event_name: "Stop", session_id: `s2b-${Date.now()}`, transcript_path: tp });
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason).toContain("rows 7");
+    expect(reason).not.toMatch(/rows.*\b5\b/);
+  });
+
+  it("SubagentStop footer mentions hand-back caveat", async () => {
+    const fp = makeViolatorTs(tmpDir, "sub.ts");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const agentTp = makeTranscript(tmpDir, [fp], ts);
+    const sessionTp = path.join(tmpDir, "session.jsonl");
+    writeFileSync(sessionTp, JSON.stringify({ type: "assistant", message: { content: [] }, timestamp: ts, cwd: tmpDir }) + "\n");
+    const r = runGate({
+      hook_event_name: "SubagentStop",
+      session_id: `s2c-${Date.now()}`,
+      agent_id: "sub-001",
+      transcript_path: sessionTp,
+      agent_transcript_path: agentTp,
+    });
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason as string).toContain("hand-back");
+  });
+});

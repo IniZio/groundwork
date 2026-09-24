@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sessionBase, touchedFiles, addedRanges } from "../../src/hooks/lib/work-scope.js";
+import { sessionBase, touchedFiles, addedRanges, addedHunks, diffTextToHunks } from "../../src/hooks/lib/work-scope.js";
 
 const FIXTURES = path.join(
   import.meta.dir,
@@ -551,4 +551,45 @@ describe("C-status copy", () => {
     expect(result!.length).toBe(0);
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// unified=0 parity: addedHunks and diffTextToHunks use same context
+// ---------------------------------------------------------------------------
+describe("addedHunks / diffTextToHunks — unified=0 parity", () => {
+  it("delete comment at line 10, add comment at line 12 → both produce 2 hunks", () => {
+    const repo = tmpDir("unified-zero");
+    initRepo(repo);
+
+    // Base file: 15 lines, comment at line 10
+    const baseLines = Array.from({ length: 15 }, (_, i) => {
+      if (i === 9) return "// comment A";
+      return `const x${i + 1} = ${i + 1};`;
+    });
+    const baseContent = baseLines.join("\n") + "\n";
+
+    writeFileSync(path.join(repo, "f.ts"), baseContent);
+    const base = commit(repo, "base", "2026-01-01T00:00:00+00:00");
+
+    const postLines = baseLines.map((l, i) => {
+      if (i === 9) return `const x${i + 1} = ${i + 1};`;
+      if (i === 11) return "// comment B";
+      return l;
+    });
+    const postContent = postLines.join("\n") + "\n";
+    writeFileSync(path.join(repo, "f.ts"), postContent);
+
+    const filePath = path.join(repo, "f.ts");
+
+    const fromAddedHunks = addedHunks(filePath, base);
+    const fromDiffText = diffTextToHunks(baseContent, postContent);
+
+    expect(fromAddedHunks).not.toBeNull();
+    expect(fromAddedHunks!.length).toBe(2);
+    expect(fromDiffText.length).toBe(2);
+
+    const addedFromGit = fromAddedHunks!.flatMap(h => h.added).sort((a, b) => a - b);
+    const addedFromText = fromDiffText.flatMap(h => h.added).sort((a, b) => a - b);
+    expect(addedFromGit).toEqual(addedFromText);
+  });
 });

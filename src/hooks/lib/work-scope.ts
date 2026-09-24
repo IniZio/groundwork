@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -340,6 +342,164 @@ export function addedRanges(file: string, base: string, transcriptPath?: string)
   if (diffResult.status !== 0) return null;
 
   return parseDiffAdded(diffResult.stdout);
+}
+
+export interface DiffHunk {
+  /** New-file 1-based line numbers of added lines in this hunk */
+  added: number[];
+  /** Texts of removed lines (parallel to removedBaseLineNos) */
+  removed: string[];
+  /** Base-file 1-based line numbers of the removed lines */
+  removedBaseLineNos: number[];
+}
+
+export function parseDiffHunks(diffText: string): DiffHunk[] {
+  const result: DiffHunk[] = [];
+  let hunk: DiffHunk | null = null;
+  let oldLineNo = 0;
+  let newLineNo = 0;
+
+  for (const raw of diffText.split("\n")) {
+    if (
+      raw.startsWith("+++ ") ||
+      raw.startsWith("--- ") ||
+      raw.startsWith("diff ") ||
+      raw.startsWith("index ")
+    ) continue;
+
+    const hunkMatch = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      if (hunk && (hunk.added.length > 0 || hunk.removed.length > 0)) {
+        result.push(hunk);
+      }
+      oldLineNo = parseInt(hunkMatch[1], 10) - 1;
+      newLineNo = parseInt(hunkMatch[2], 10) - 1;
+      hunk = { added: [], removed: [], removedBaseLineNos: [] };
+      continue;
+    }
+
+    if (!hunk) continue;
+
+    if (raw.startsWith("+")) {
+      newLineNo++;
+      hunk.added.push(newLineNo);
+    } else if (raw.startsWith("-")) {
+      oldLineNo++;
+      hunk.removedBaseLineNos.push(oldLineNo);
+      hunk.removed.push(raw.slice(1));
+    } else {
+      newLineNo++;
+      oldLineNo++;
+    }
+  }
+
+  if (hunk && (hunk.added.length > 0 || hunk.removed.length > 0)) {
+    result.push(hunk);
+  }
+
+  return result;
+}
+
+export function addedHunks(file: string, base: string, transcriptPath?: string): DiffHunk[] | null {
+  const dir = path.dirname(file);
+
+  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+  if (rootResult.status !== 0) return null;
+  const repoRoot = rootResult.stdout.trim();
+
+  let exists = false;
+  try { exists = statSync(file).isFile(); } catch { /* ok */ }
+  if (!exists) return null;
+
+  const relPath = path.relative(repoRoot, file);
+
+  const isTrackedResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "ls-files", "--error-unmatch", "--", relPath],
+    { encoding: "utf8" },
+  );
+
+  if (isTrackedResult.status !== 0) {
+    if (!transcriptPath) return null;
+
+    const touch = firstTouchInfo(transcriptPath, file);
+    if (!touch) return null;
+
+    if (touch.kind === "Write") {
+      const content = readFileSync(file, "utf8");
+      const lines = content.split("\n");
+      if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+      return [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }];
+    }
+
+    if (touch.kind === "Bash") {
+      const addedLines = addedVsCommittedSource(file, touch.from, base, repoRoot);
+      if (!addedLines) return null;
+      return [{ added: addedLines, removed: [], removedBaseLineNos: [] }];
+    }
+
+    return null;
+  }
+
+  const catFileResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "cat-file", "-e", `${base}:${relPath}`],
+    { encoding: "utf8" },
+  );
+
+  if (catFileResult.status !== 0) {
+    const gitSrc = findRenameSourceFromGit(relPath, base, repoRoot);
+    const transcriptSrc =
+      !gitSrc && transcriptPath
+        ? (() => {
+            const touch = firstTouchInfo(transcriptPath, file);
+            return touch?.kind === "Bash" ? touch.from : null;
+          })()
+        : null;
+    const src = gitSrc ?? transcriptSrc;
+    if (src) {
+      const addedLines = addedVsCommittedSource(file, src, base, repoRoot);
+      if (!addedLines) return null;
+      return [{ added: addedLines, removed: [], removedBaseLineNos: [] }];
+    }
+    const content = readFileSync(file, "utf8");
+    const lines = content.split("\n");
+    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    return [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }];
+  }
+
+  const diffResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "diff", "--no-ext-diff", "--unified=0", base, "--", relPath],
+    { encoding: "utf8" },
+  );
+  if (diffResult.status !== 0) return null;
+
+  return parseDiffHunks(diffResult.stdout);
+}
+
+export function diffTextToHunks(baseText: string, postText: string): DiffHunk[] {
+  const tmpDir = os.tmpdir();
+  const id = randomUUID();
+  const baseTmpPath = path.join(tmpDir, `gw-diff-base-${id}`);
+  const postTmpPath = path.join(tmpDir, `gw-diff-post-${id}`);
+  try {
+    writeFileSync(baseTmpPath, baseText, { encoding: "utf8", mode: 0o600 });
+    writeFileSync(postTmpPath, postText, { encoding: "utf8", mode: 0o600 });
+    const diffResult = spawnSync(
+      "git",
+      ["diff", "--no-index", "--no-ext-diff", "--unified=0", "--", baseTmpPath, postTmpPath],
+      { encoding: "utf8" },
+    );
+    // exit code 1 is normal when files differ
+    if (diffResult.status !== 0 && diffResult.status !== 1) return [];
+    return parseDiffHunks(diffResult.stdout);
+  } finally {
+    try { unlinkSync(baseTmpPath); } catch { /* ok */ }
+    try { unlinkSync(postTmpPath); } catch { /* ok */ }
+  }
 }
 
 function parseDiffAdded(diffOutput: string): number[] {

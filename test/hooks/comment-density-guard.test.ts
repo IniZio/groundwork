@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync as readFS } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import path2 from "node:path";
 import os from "node:os";
 import { check, buildCtx } from "../../src/hooks/comment-density-guard.js";
-import type { GetParserFn } from "../../src/hooks/lib/comment-density.js";
+import { reconstructPostEdit, type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
 
@@ -512,8 +513,6 @@ describe("isPluginFixture", () => {
   });
 });
 
-import { readFileSync as readFS } from "node:fs";
-import path2 from "node:path";
 
 const PROBE_SH = readFS(
   path2.join(import.meta.dir, "../fixtures/comment-density/nexus-probe/probe.sh"),
@@ -538,5 +537,212 @@ describe("remainder (K) computation", () => {
     expect(ctx).toContain("re-add up to 2");
     expect(ctx).not.toContain("No comment budget remains");
     expect(ctx).toContain("budget left before this edit: 5");
+  });
+});
+
+
+describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAddedComments", () => {
+  it("A: base has comment, pre deletes it, edit rewords it → allow", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "cdg-base-aware-"));
+    gitIn(dir, ["init"]);
+    gitIn(dir, ["config", "user.email", "test@test.com"]);
+    gitIn(dir, ["config", "user.name", "Test"]);
+
+    const file = path.join(dir, "test.ts");
+    const codeLines = Array.from({ length: 10 }, (_, i) => `const c${i} = ${i};`).join("\n");
+    writeFileSync(file, `${codeLines}\n// why old\nconst z = 99;\n`);
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "base"], {
+      GIT_AUTHOR_DATE: "2024-01-01T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-01T12:00:00+00:00",
+    });
+
+    const transcript = path.join(dir, "transcript.jsonl");
+    writeFileSync(transcript, JSON.stringify({ timestamp: "2024-01-02T12:00:00.000Z" }) + "\n");
+
+    writeFileSync(file, `${codeLines}\nconst z = 99;\n`);
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "session"], {
+      GIT_AUTHOR_DATE: "2024-01-03T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-03T12:00:00+00:00",
+    });
+
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: { file_path: file, old_string: "const z = 99;", new_string: "// why reworded\nconst z = 99;" },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+
+    expect(r.stdout).toBe("");
+    expect(r.exit).toBe(0);
+  });
+
+  it("B: Edit // old → // new, budget 0 → updatedInput present, applied text equals stripped exactly", async () => {
+    const pre = "a\n// old\nb\n";
+    const r = await check(
+      { tool_name: "Edit", tool_input: { file_path: "/tmp/cdg-b-fix.ts", old_string: "// old", new_string: "// new" } },
+      { readFile: () => pre },
+    );
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const reconResult = reconstructPostEdit(
+      "edit",
+      { file_path: "/tmp/cdg-b-fix.ts", ...ui } as Parameters<typeof reconstructPostEdit>[1],
+      pre,
+    );
+    expect(reconResult).not.toBeNull();
+    expect(reconResult!.post).toBe("a\nb\n");
+  });
+
+  it("C: advisory path → context says not stripped, not before it was applied", async () => {
+    const pre = "// note A\nconst a = 1;\n// note A\nconst b = 2;";
+    const filler = Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n");
+    const manyComments = Array.from({ length: 5 }, (_, i) => `// narration ${i + 1}`).join("\n");
+    const r = await check(
+      {
+        tool_name: "Edit",
+        tool_input: {
+          file_path: "/tmp/cdg-c-adv.ts",
+          old_string: "// note A",
+          new_string: `${filler}\n${manyComments}`,
+          replace_all: true,
+        },
+      },
+      { readFile: () => pre },
+    );
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    expect(ctx!).toContain("not stripped");
+    expect(ctx!).not.toContain("before it was applied");
+  });
+
+  it("no base → pre-based fallback: over-cap edit still strips", async () => {
+    const pre = "const x = 1;";
+    const r = await check(
+      { tool_name: "Edit", tool_input: { file_path: "/tmp/cdg-d-fallback.ts", old_string: "const x = 1;", new_string: OVER_CAP_EDIT_NEW } },
+      { readFile: () => pre },
+    );
+    expect(getHso(r)).toHaveProperty("updatedInput");
+  });
+
+  it("priorAddedComments: reworded base comment not counted as session-added — boundary flip", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "cdg-prior-cmt-"));
+    gitIn(dir, ["init"]);
+    gitIn(dir, ["config", "user.email", "test@test.com"]);
+    gitIn(dir, ["config", "user.name", "Test"]);
+
+    const file = path.join(dir, "test.ts");
+    writeFileSync(file, `// why old\nconst ANCHOR = "session";\n`);
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "base"], {
+      GIT_AUTHOR_DATE: "2024-01-01T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-01T12:00:00+00:00",
+    });
+
+    const transcript = path.join(dir, "transcript.jsonl");
+    writeFileSync(transcript, JSON.stringify({ timestamp: "2024-01-02T12:00:00.000Z" }) + "\n");
+
+    writeFileSync(file, `// why new\nconst ANCHOR = "session";\n`);
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "session-reword"], {
+      GIT_AUTHOR_DATE: "2024-01-03T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-03T12:00:00+00:00",
+    });
+
+    const editLines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`).join("\n");
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: file,
+        old_string: 'const ANCHOR = "session";',
+        new_string: `${editLines}\n// genuinely new comment`,
+      },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+
+    // priorAddedComments=0 (reword is not net-new) → budget=1 ≥ nc=1 → allow
+    expect(r.stdout).toBe("");
+    expect(r.exit).toBe(0);
+  });
+});
+
+describe("guard-keeps-reword: pairing preserves reword, strips narration", () => {
+  // Repo setup: base has `// why old`, session rewrites to `// why reworded` (pre on disk).
+  // Edit inserts a new narration comment alongside the reword.
+  // greedyPairCommentRows must pair `// why old` with `// why reworded` and mark only the
+  // narration as net-new. Budget=0 → narration stripped, reword preserved in new_string.
+  function makeRewordRepo(): { dir: string; file: string; transcript: string } {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "cdg-reword-"));
+    gitIn(dir, ["init"]);
+    gitIn(dir, ["config", "user.email", "test@test.com"]);
+    gitIn(dir, ["config", "user.name", "Test"]);
+
+    const file = path.join(dir, "test.ts");
+    // Base: one code line + the original comment
+    writeFileSync(file, "// why old\nconst z = 99;\n");
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "base"], {
+      GIT_AUTHOR_DATE: "2024-01-01T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-01T12:00:00+00:00",
+    });
+
+    const transcript = path.join(dir, "transcript.jsonl");
+    writeFileSync(transcript, JSON.stringify({ timestamp: "2024-01-02T12:00:00.000Z" }) + "\n");
+
+    // Session pre-state: comment reworded (1 removed, 1 added → priorAddedComments=0 via pairing)
+    writeFileSync(file, "// why reworded\nconst z = 99;\n");
+    gitIn(dir, ["add", "test.ts"]);
+    gitIn(dir, ["commit", "-m", "session-reword"], {
+      GIT_AUTHOR_DATE: "2024-01-03T12:00:00+00:00",
+      GIT_COMMITTER_DATE: "2024-01-03T12:00:00+00:00",
+    });
+
+    return { dir, file, transcript };
+  }
+
+  it("narration ABOVE reword → narration stripped, new_string equals reword only", async () => {
+    const { dir, file, transcript } = makeRewordRepo();
+    // Edit inserts narration above the reword.
+    // post = "// brand new narration\n// why reworded\nconst z = 99;\n"
+    // base→post: removed [why old], added [brand new narration, why reworded]
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: file,
+        old_string: "// why reworded",
+        new_string: "// brand new narration\n// why reworded",
+      },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    expect(ui.new_string).toBe("// why reworded");
+  });
+
+  it("narration BELOW reword → narration stripped, new_string equals reword only", async () => {
+    const { dir, file, transcript } = makeRewordRepo();
+    const r = await check({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: file,
+        old_string: "// why reworded",
+        new_string: "// why reworded\n// brand new narration",
+      },
+      transcript_path: transcript,
+      cwd: dir,
+    });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    expect(ui.new_string).toBe("// why reworded");
   });
 });

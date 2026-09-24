@@ -15,7 +15,7 @@ import {
   type Lang,
 } from "../../src/hooks/lib/comment-density.js";
 import { addedHunks, diffTextToHunks } from "../../src/hooks/lib/work-scope.js";
-import { run } from "../../src/hooks/comment-density-gate.js";
+import { run } from "../../src/hooks/gate.js";
 import { check } from "../../src/hooks/guard.js";
 
 function gitRun(

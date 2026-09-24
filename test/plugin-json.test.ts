@@ -51,17 +51,17 @@ describe("plugin manifest parity", () => {
     expect(matchingGroup).toBeDefined();
   });
 
-  it("comment-density-gate.ts appears only in house-rules manifest, exactly twice (Stop + SubagentStop)", () => {
-    const inGw = gwCmds.filter((c) => c.includes("comment-density-gate.ts"));
+  it("hooks/gate.ts appears only in house-rules manifest, exactly twice (Stop + SubagentStop)", () => {
+    const inGw = gwCmds.filter((c) => c.includes("hooks/gate.ts"));
     expect(inGw).toHaveLength(0);
 
-    const inHr = hrCmds.filter((c) => c.includes("comment-density-gate.ts"));
+    const inHr = hrCmds.filter((c) => c.includes("hooks/gate.ts"));
     expect(inHr).toHaveLength(2);
 
     const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
       houseRulesManifest.hooks?.Stop ?? [];
     const stopHasDensityGate = stopGroups.some((g) =>
-      g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+      g.hooks.some((h) => h.command.includes("hooks/gate.ts"))
     );
     expect(stopHasDensityGate).toBe(true);
 
@@ -69,7 +69,7 @@ describe("plugin manifest parity", () => {
       hooks: Array<{ type: string; command: string }>;
     }> = houseRulesManifest.hooks?.SubagentStop ?? [];
     const subagentStopHasDensityGate = subagentStopGroups.some((g) =>
-      g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+      g.hooks.some((h) => h.command.includes("hooks/gate.ts"))
     );
     expect(subagentStopHasDensityGate).toBe(true);
   });

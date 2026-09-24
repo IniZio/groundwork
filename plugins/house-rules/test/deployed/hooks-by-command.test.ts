@@ -85,11 +85,11 @@ const STOP_EVENTS = new Set(["Stop", "SubagentStop"]);
 
 describe("event-output contract — house-rules hooks", () => {
   const triggeringPayloads: Record<string, [unknown, Record<string, string>]> = {
-    "src/hooks/comment-density-gate.ts@Stop": [
+    "src/hooks/gate.ts@Stop": [
       { hook_event_name: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
       {}
     ],
-    "src/hooks/comment-density-gate.ts@SubagentStop": [
+    "src/hooks/gate.ts@SubagentStop": [
       {
         hook_event_name: "SubagentStop",
         session_id: "parity-cdg-sub",
@@ -139,8 +139,8 @@ describe("event-output contract — house-rules hooks", () => {
   });
 });
 
-describe("deployed — comment-density-gate (Stop/SubagentStop)", () => {
-  const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-gate.ts";
+describe("deployed — gate (Stop/SubagentStop)", () => {
+  const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/gate.ts";
 
   it("Stop: produces valid decision or autoFixed output", async () => {
     const { stdout } = await spawnHook(CMD, {

@@ -15,12 +15,12 @@ describe("house-rules manifest", () => {
     expect(pluginJson.name).toBe("house-rules");
     expect(pluginJson.version).toBe("0.1.0");
 
-    // Stop has exactly one group with comment-density-gate.ts
+    // Stop has exactly one group with gate.ts
     const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
       pluginJson.hooks?.Stop ?? [];
     expect(
       stopGroups.some((g) =>
-        g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+        g.hooks.some((h) => h.command.includes("gate.ts"))
       )
     ).toBe(true);
 
@@ -29,7 +29,7 @@ describe("house-rules manifest", () => {
     }> = pluginJson.hooks?.SubagentStop ?? [];
     expect(
       subagentStopGroups.some((g) =>
-        g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+        g.hooks.some((h) => h.command.includes("gate.ts"))
       )
     ).toBe(true);
 

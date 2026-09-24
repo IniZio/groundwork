@@ -4,9 +4,9 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { run, refusesPreExistingRemoval } from "../../src/hooks/comment-density-gate.js";
+import { run, refusesPreExistingRemoval } from "../../src/hooks/gate.js";
 
-const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/comment-density-gate.ts");
+const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
 const PROBE_DIR = path.join(import.meta.dir, "../fixtures/comment-density/nexus-probe");
 const PROBE_FILES = ["probe.sh", "pod-nonroot.yaml", "pod-root.yaml", "pod-root-sysadmin.yaml", "Dockerfile", "Containerfile"];
 
@@ -182,8 +182,10 @@ describe("AC2: 1 comment per 15 lines exceeds 5/100 cap", () => {
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac2-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(sha256(fp)).toBe(hashBefore);
+    // TypeScript is stable: gate auto-fixes and allows
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore); // file was written
   });
 });
 
@@ -201,14 +203,16 @@ describe("AC3: positive controls", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("blocks TS file with dense comments over cap; file unchanged on disk", async () => {
+  it("auto-fixes TS file with dense comments over cap; file written on disk", async () => {
     const fp = makeViolatorTs(tmpDir, "dense.ts");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac3a-${Date.now()}`, transcript_path: tp });
-    expect(parseOut(r.stdout).decision).toBe("block");
-    expect(sha256(fp)).toBe(hashBefore);
+    // TypeScript stable: auto-fixed + allowed
+    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(parseOut(r.stdout).hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore); // file was written
   });
 
   it("allows TS file with no comments", async () => {
@@ -372,14 +376,15 @@ describe("AC6: fail-open", () => {
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 
-  it("fixable violation blocks; file unchanged on disk", () => {
+  it("fixable violation is auto-fixed and allowed; file written", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac6d-${Date.now()}`, transcript_path: tp });
-    expect(parseOut(r.stdout).decision).toBe("block");
-    expect(sha256(fp)).toBe(hashBefore);
+    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(parseOut(r.stdout).hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore); // file was written
   });
 });
 
@@ -397,7 +402,7 @@ describe("AC6b: stop_hook_active does not skip check", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("stop_hook_active:true does not skip the check — blocks fixable files", async () => {
+  it("stop_hook_active:true does not skip the check — auto-fixes fixable files", async () => {
     const fp = makeViolatorTs(tmpDir, "dense.ts");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
@@ -406,8 +411,10 @@ describe("AC6b: stop_hook_active does not skip check", () => {
       { hook_event_name: "Stop", session_id: `ac6b-${Date.now()}`, transcript_path: tp, stop_hook_active: true },
     );
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(sha256(fp)).toBe(hashBefore);
+    // TypeScript stable: auto-fixed + allowed
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 });
 
@@ -425,7 +432,7 @@ describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("SubagentStop blocks over-cap file; file unchanged on disk", async () => {
+  it("SubagentStop auto-fixes over-cap file; file written", async () => {
     const fp = makeViolatorTs(tmpDir, "sub-dense.ts");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
@@ -444,13 +451,13 @@ describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
       agent_transcript_path: agentTranscriptPath,
     });
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("sub-dense.ts");
-    expect(sha256(fp)).toBe(hashBefore);
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 });
 
-describe("AC8: end-user test/fixtures in other repos are blocked", () => {
+describe("AC8: end-user src/scripts files in other repos are blocked", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -464,8 +471,8 @@ describe("AC8: end-user test/fixtures in other repos are blocked", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("over-cap file at test/fixtures/ in a different repo is blocked; file unchanged", () => {
-    const fixtureDir = path.join(tmpDir, "test", "fixtures");
+  it("over-cap file at src/scripts/ in a different repo is blocked; file unchanged", () => {
+    const fixtureDir = path.join(tmpDir, "src", "scripts");
     mkdirSync(fixtureDir, { recursive: true });
     const fp = path.join(fixtureDir, "a.sh");
     const lines = [
@@ -543,7 +550,7 @@ describe("AC11: pre-existing comments preserved (no write)", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("gate blocks; file unchanged; base comments still present", async () => {
+  it("gate auto-fixes session comments; base comments still present", async () => {
     const baseLines = Array.from({ length: 10 }, (_, i) => `// base ${i}`);
     const fp = path.join(tmpDir, "mixed.ts");
     writeFileSync(fp, baseLines.join("\n") + "\n");
@@ -563,8 +570,9 @@ describe("AC11: pre-existing comments preserved (no write)", () => {
     const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], afterTs);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac11-${Date.now()}`, transcript_path: tp });
-    expect(parseOut(r.stdout).decision).toBe("block");
-    expect(sha256(fp)).toBe(hashBefore);
+    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(parseOut(r.stdout).hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore);
 
     const content = readFileSync(fp, "utf8");
     for (let i = 0; i < 10; i++) expect(content).toContain(`// base ${i}`);
@@ -607,20 +615,19 @@ describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("fixable + unfixable: blocks; reason mentions both files; neither written", () => {
+  it("unfixable file blocks; fixable file auto-fixed; unfixable unchanged", () => {
     const fixable = makeViolatorTs(tmpDir, "fix.ts");
     const unfixable = makeUnfixableViolatorTs(tmpDir, "nofix.ts");
-    const hashFix = sha256(fixable);
-    const hashNofix = sha256(unfixable);
+    const fixableHashBefore = sha256(fixable);
+    const unfixableHashBefore = sha256(unfixable);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fixable, unfixable], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac13-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     expect(out.reason as string).toContain("nofix.ts");
-    expect(out.reason as string).toContain("fix.ts");
-    expect(sha256(fixable)).toBe(hashFix);
-    expect(sha256(unfixable)).toBe(hashNofix);
+    expect(sha256(fixable)).not.toBe(fixableHashBefore);
+    expect(sha256(unfixable)).toBe(unfixableHashBefore);
   });
 });
 
@@ -724,8 +731,9 @@ describe("BugB: transcriptPath wired to addedRanges — untracked Edit-touch not
     expect(out.decision).not.toBe("block");
   });
 
-  it("bite: untracked file with Write-first-touch IS measured → gate blocks", async () => {
+  it("bite: untracked file with Write-first-touch IS measured → gate auto-fixes", async () => {
     const fp = makeViolatorTs(tmpDir, "written-by-session.ts");
+    const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = await run(
@@ -733,7 +741,9 @@ describe("BugB: transcriptPath wired to addedRanges — untracked Edit-touch not
       process.env as Record<string, string | undefined>,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
-    expect(out.decision).toBe("block");
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 });
 
@@ -835,7 +845,7 @@ describe("S1-autofix-shadow", () => {
     const r = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: shadowTmpDir } as any,
+      { testOnly_tmpDir: shadowTmpDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
@@ -881,6 +891,7 @@ describe("S1-autofix-shadow", () => {
       process.env as Record<string, string | undefined>,
       {
         testOnly_forceWrite: true,
+        testOnly_fixTableOverride: { typescript: { stability: "preview" } },
         afterTmpWrite: (_tmp: string, target: string) => {
           const origStat = statSync(target);
           writeFileSync(target, readFileSync(target, "utf8") + "// extra\n");
@@ -902,6 +913,7 @@ describe("S1-autofix-shadow", () => {
       process.env as Record<string, string | undefined>,
       {
         testOnly_forceWrite: true,
+        testOnly_fixTableOverride: { typescript: { stability: "preview" } },
         afterTmpWrite: (tmp: string, _target: string) => {
           writeFileSync(tmp, originalContent);
         },
@@ -918,7 +930,7 @@ describe("S1-autofix-shadow", () => {
     const r = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: badTmpDir } as any,
+      { testOnly_tmpDir: badTmpDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
@@ -998,7 +1010,7 @@ describe("S1b-tmp-mismatch-and-density-after-scope", () => {
       const r = await run(
         { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
         process.env as Record<string, string | undefined>,
-        { testOnly_tmpDir: shadowTmpDir } as any,
+        { testOnly_tmpDir: shadowTmpDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
       );
       const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
       expect(out.decision).toBe("block");
@@ -1067,7 +1079,7 @@ describe("AC9: dogfood — gate and test files ≤5/100", () => {
   });
 
   it("test file is ≤5/100", async () => {
-    const testPath = path.join(import.meta.dir, "comment-density-gate.test.ts");
+    const testPath = path.join(import.meta.dir, "gate.test.ts");
     expect(await checkFileDensity(testPath)).toBeLessThanOrEqual(5);
   });
 });
@@ -1110,7 +1122,7 @@ describe("S1c-trailing-comment-regression", () => {
     const r = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: shadowDir } as any,
+      { testOnly_tmpDir: shadowDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
@@ -1176,7 +1188,7 @@ describe("S1c-duplicate-comment-regression", () => {
     const r = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: shadowDir } as any,
+      { testOnly_tmpDir: shadowDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
@@ -1305,7 +1317,7 @@ describe("S1c-remap-sensitive", () => {
     const r = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: shadowDir } as any,
+      { testOnly_tmpDir: shadowDir, testOnly_fixTableOverride: { typescript: { stability: "preview" } } } as any,
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
@@ -1399,7 +1411,7 @@ describe("S2-gate-net-growth: reword pre-existing comment", () => {
     expect(reason).not.toMatch(/rows.*\b5\b/);
   });
 
-  it("SubagentStop footer mentions hand-back caveat", async () => {
+  it("SubagentStop auto-fixes over-cap TypeScript file; allows", async () => {
     const fp = makeViolatorTs(tmpDir, "sub.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const agentTp = makeTranscript(tmpDir, [fp], ts);
@@ -1413,7 +1425,7 @@ describe("S2-gate-net-growth: reword pre-existing comment", () => {
       agent_transcript_path: agentTp,
     });
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("hand-back");
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
   });
 });

@@ -1,5 +1,4 @@
 import path from "node:path";
-import { realpathSync } from "node:fs";
 import { getParser as defaultGetParser, type Lang } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
 import type { DiffHunk } from "./work-scope.js";
@@ -578,30 +577,6 @@ function countEffectiveFallback(text: string, lang?: Lang | null): { total: numb
   return { total: rows.length, effective, commentRows };
 }
 
-let _fixtureBase: string | null | undefined;
-
-function fixtureBase(): string | null {
-  if (_fixtureBase !== undefined) return _fixtureBase;
-  try {
-    const root = realpathSync(path.resolve(import.meta.dir, "../../.."));
-    _fixtureBase = root + path.sep + "test" + path.sep + "fixtures" + path.sep;
-  } catch {
-    _fixtureBase = null;
-  }
-  return _fixtureBase;
-}
-
-function realpathLoose(p: string): string {
-  try { return realpathSync(p); } catch { }
-  try { return path.join(realpathSync(path.dirname(p)), path.basename(p)); } catch { }
-  return path.resolve(p);
-}
-
-export function isPluginFixture(filePath: string): boolean {
-  const base = fixtureBase();
-  if (!base) return false;
-  return realpathLoose(filePath).startsWith(base);
-}
 
 export type RowChangeKind = "deleted" | "modified";
 export interface RowChange { origRow: number; kind: RowChangeKind; origText: string; fixedText?: string }

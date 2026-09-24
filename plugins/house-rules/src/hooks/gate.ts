@@ -3,13 +3,19 @@
  * Trigger: Stop + SubagentStop.
  * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
  */
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { autoFix, detectLanguage, density, isPluginFixture, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
-import { sessionBase, touchedFiles, addedHunks } from "./lib/work-scope.js";
+import { autoFix, detectLanguage, density, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
+import { buildContext } from '../engine/context.js';
+import { loadRules } from '../engine/registry.js';
+import { runRules } from '../engine/run.js';
+import { readBaseline, subtractBaseline } from '../engine/baseline.js';
+import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
+import { touchedFiles } from './lib/work-scope.js';
+
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -20,7 +26,7 @@ export interface FixEntry { stability: FixStability; applicability: FixApplicabi
 export const LANG_FIX_TABLE: Record<Lang, FixEntry> = {
   bash: { stability: "preview", applicability: "safe" },
   yaml: { stability: "preview", applicability: "safe" },
-  typescript: { stability: "preview", applicability: "safe" },
+  typescript: { stability: "stable", applicability: "safe" },
   tsx: { stability: "preview", applicability: "safe" },
   python: { stability: "preview", applicability: "safe" },
   dockerfile: { stability: "preview", applicability: "safe" },
@@ -37,10 +43,9 @@ function block(reason: string): HookResult {
   return { stdout: JSON.stringify({ decision: "block", reason }) + "\n", stderr: "", exit: 0 };
 }
 
-const CAP = 5;
-
-function gitTopLevel(filePath: string): string | null {
-  const dir = path.dirname(filePath);
+function gitTopLevel(fileOrDir: string): string | null {
+  const stat = (() => { try { return statSync(fileOrDir); } catch { return null; } })();
+  const dir = (stat?.isDirectory() === true) ? fileOrDir : path.dirname(fileOrDir);
   const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   return r.stdout.trim();
@@ -127,14 +132,10 @@ export async function run(
   input: unknown,
   env: Record<string, string | undefined>,
   opts?: {
-    /** Test-only: bypass the LANG_FIX_TABLE and force the write path. Never read in production. */
     testOnly_forceWrite?: boolean;
-    /** Test-only: merge these entries over LANG_FIX_TABLE for this call only. */
     testOnly_fixTableOverride?: Partial<Record<string, FixEntry>>;
-    /** Test-only: override os.tmpdir() for the shadow log. */
     testOnly_tmpDir?: string;
     afterTmpWrite?: (tmp: string, target: string) => void;
-    /** Test-only: override ar.fixed after autoFix. Never read in production. */
     testOnly_overrideFixed?: (txt: string, fixed: string, rowSet: Set<number>) => string;
   },
 ): Promise<HookResult> {
@@ -159,43 +160,62 @@ export async function run(
       ? (agentTranscriptPath ?? transcriptPath)
       : transcriptPath;
 
-    const files = touchedFiles({
-      event: event as "Stop" | "SubagentStop",
-      transcriptPath,
+    const cwdRaw = typeof inp.cwd === "string" ? inp.cwd : null;
+    const tpDir = path.dirname(transcriptPath);
+    let repoRoot: string | null =
+      (cwdRaw ? gitTopLevel(cwdRaw) : null) ??
+      gitTopLevel(tpDir);
+
+    if (!repoRoot) {
+      const tf = touchedFiles({
+        event: event as 'Stop' | 'SubagentStop',
+        transcriptPath: relevantTranscriptPath,
+        sessionId,
+        agentTranscriptPath,
+      });
+      for (const f of tf) {
+        const r = gitTopLevel(f);
+        if (r) { repoRoot = r; break; }
+      }
+    }
+    if (!repoRoot) return silentAllow();
+
+    const rulesDir = path.resolve(import.meta.dir, '../../rules');
+    const rules = await loadRules(rulesDir);
+    const ctx = buildContext({
+      repoRoot,
+      mode: 'gate',
+      transcriptPath: relevantTranscriptPath,
       sessionId,
-      agentTranscriptPath,
+      event: event as 'Stop' | 'SubagentStop',
     });
+
+    const allFindings = await runRules(rules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
+    const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
+    const baseline = await readBaseline(baselinePath);
+    const unbaselined = subtractBaseline(allFindings, baseline);
+
+    const densityErrors = unbaselined.filter(f => f.ruleId === 'comment-density' && f.severity === 'error');
+    const strayErrors = unbaselined.filter(f => f.ruleId === 'stray-artifacts' && f.severity === 'error');
+
+    const fileByRelPath = new Map((ctx.files ?? []).map(f => [f.path, f]));
 
     const violations: ViolatingFile[] = [];
 
-    for (const file of files) {
-      if (!existsSync(file)) continue;
-      if (isPluginFixture(file)) continue;
+    for (const finding of densityErrors) {
+      const sf = fileByRelPath.get(finding.path);
+      if (!sf || !sf.text || !sf.addedHunks || sf.addedHunks.length === 0) continue;
 
-      const lang = detectLanguage(file);
+      const lang = detectLanguage(finding.path) as Lang | null;
       if (!lang) continue;
 
-      const topLevel = gitTopLevel(file);
-      if (!topLevel) continue;
-
-      const base = sessionBase(relevantTranscriptPath, topLevel);
-
-      const hunks = addedHunks(file, base, relevantTranscriptPath);
-      if (!hunks || hunks.length === 0) continue;
-
-      const totalAdded = hunks.reduce((s, h) => s + h.added.length, 0);
+      const totalAdded = sf.addedHunks.reduce((s, h) => s + h.added.length, 0);
       if (totalAdded === 0) continue;
 
-      const rowSet = new Set(hunks.flatMap(h => h.added.map(n => n - 1)));
+      const rowSet = new Set(sf.addedHunks.flatMap(h => h.added.map(n => n - 1)));
 
-      let fileText: string;
-      try { fileText = readFileSync(file, "utf8"); } catch { continue; }
-
-      const relPath = path.relative(topLevel, file);
-      const baseShowResult = spawnSync("git", ["-C", topLevel, "show", `${base}:${relPath}`], { encoding: "utf8" });
-      const baseText = baseShowResult.status === 0 ? baseShowResult.stdout : "";
-
-      const netResult = await netNewCommentRows(baseText, fileText, lang, hunks);
+      const baseText = sf.baseText ?? '';
+      const netResult = await netNewCommentRows(baseText, sf.text, lang, sf.addedHunks);
       let effective: number;
       let commentRows: number[];
       let netNewRows: Set<number>;
@@ -205,27 +225,26 @@ export async function run(
         commentRows = netResult.rows;
         netNewRows = new Set(netResult.rows.map(n => n - 1));
       } else {
-        const dr = await density(fileText, lang, rowSet);
+        const dr = await density(sf.text, lang, rowSet);
         effective = dr.effective;
         commentRows = dr.commentRows.map(r => r + 1);
         netNewRows = rowSet;
-        fallback = dr.mode === "fallback";
+        fallback = dr.mode === 'fallback';
       }
-      if (effective / totalAdded * 100 > CAP) {
-        violations.push({
-          path: file,
-          effective,
-          total: totalAdded,
-          commentRows,
-          fallback,
-          rowSet,
-          netNewRows,
-          lang,
-        });
-      }
+
+      violations.push({
+        path: path.join(repoRoot, finding.path),
+        effective,
+        total: totalAdded,
+        commentRows,
+        fallback,
+        rowSet,
+        netNewRows,
+        lang,
+      });
     }
 
-    if (violations.length === 0) return allow();
+    if (violations.length === 0 && strayErrors.length === 0) return allow();
 
     interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
     const fixedFiles: FixResult[] = [];
@@ -250,7 +269,6 @@ export async function run(
       const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
 
       if (!shouldWrite) {
-        // shadow mode: log what autoFix would do
         const densityBefore = v.effective / v.total * 100;
         const remappedAfter = buildRemappedRows(ar.rowChanges, v.rowSet);
         const d2 = await density(ar.fixed, v.lang, remappedAfter);
@@ -266,13 +284,10 @@ export async function run(
         continue;
       }
 
-      // write path (stable+safe or testOnly_forceWrite)
       const trailNl = txt.endsWith("\n");
-      // arFixedNormalized: what autoFix produced with trailing-newline parity
       let arFixedNormalized = ar.fixed;
       if (trailNl && !arFixedNormalized.endsWith("\n")) arFixedNormalized += "\n";
       else if (!trailNl && arFixedNormalized.endsWith("\n")) arFixedNormalized = arFixedNormalized.slice(0, -1);
-      // content: may differ if testOnly_overrideFixed is active
       const arFixed = opts?.testOnly_overrideFixed?.(txt, ar.fixed, v.rowSet) ?? ar.fixed;
       let content = arFixed;
       if (trailNl && !content.endsWith("\n")) content += "\n";
@@ -294,7 +309,6 @@ export async function run(
           continue;
         }
 
-        // sha256 staleness check: last, synchronous, immediately before renameSync
         let currentContent: string;
         try {
           currentContent = readFileSync(v.path, "utf8");
@@ -312,38 +326,41 @@ export async function run(
         renameSync(tmp, v.path);
         wrote = true;
       } catch (e) {
-        process.stderr.write(`comment-density-gate: write failed ${v.path}: ${e}\n`);
+        process.stderr.write(`gate: write failed ${v.path}: ${e}\n`);
       }
 
       if (!wrote) { unfixable.push(v); continue; }
       fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
     }
 
-    if (unfixable.length === 0) {
+    if (unfixable.length === 0 && strayErrors.length === 0) {
       if (fixedFiles.length === 0) return allow();
       const N = fixedFiles.reduce((s, f) => s + f.removed, 0);
       const fLines = fixedFiles.map(f =>
         `  ${f.path}: removed ${f.removed} (kept ${f.kept} of ${f.total} added comments; ${f.addedCount} added lines)`
       );
-      const ctx = [
-        `groundwork comment-density: auto-removed ${N} comment(s) that this session added beyond the code convention (at most 5 comment lines per 100 added lines).`,
-        `This is groundwork's automatic correction — not another session's edit, a merge, or a bug.`,
+      const ctx2 = [
+        `house-rules comment-density: auto-removed ${N} comment(s) that this session added beyond the code convention (at most 5 comment lines per 100 added lines).`,
+        `This is house-rules automatic correction — not another session's edit, a merge, or a bug.`,
         ...fLines,
         `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
       ].join("\n");
       return {
-        stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx.slice(0, 8000) } }) + "\n",
+        stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } }) + "\n",
         stderr: "",
         exit: 0,
       };
     }
 
-    const tmpBase = path.join(os.tmpdir(), "groundwork-comment-density");
+    const tmpBase = path.join(os.tmpdir(), "house-rules-comment-density");
     try { mkdirSync(tmpBase, { recursive: true }); } catch { /* ok */ }
 
     const cPath = counterPath(tmpBase, sessionId, agentKey);
     const state = readCounter(cPath);
-    const currentSig = unfixable.map(v => v.path).sort().join(";");
+    const currentSig = [
+      ...unfixable.map(v => v.path),
+      ...strayErrors.map(f => path.join(repoRoot, f.path)),
+    ].sort().join(";");
 
     let newCount: number;
     if (state.sig !== currentSig) {
@@ -354,13 +371,16 @@ export async function run(
     writeCounter(cPath, { sig: currentSig, count: newCount });
 
     if (newCount >= 4) {
-      const fileList = unfixable.map(v => `  ${v.path}`).join("\n");
-      const stderr = `groundwork comment-density gate: 4th consecutive block — allowing; remove or move comments before continuing\n${fileList}\n`;
+      const fileList = [
+        ...unfixable.map(v => `  ${v.path}`),
+        ...strayErrors.map(f => `  ${path.join(repoRoot, f.path)}`),
+      ].join("\n");
+      const stderr = `house-rules comment-density gate: 4th consecutive block — allowing; remove or move comments before continuing\n${fileList}\n`;
       return { stdout: "", stderr, exit: 0 };
     }
 
     const header =
-      "groundwork comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
+      "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
       "This is a convention check — not a bug, a merge, or another session's edit.";
 
     const fileLines = unfixable.map(v => {
@@ -368,6 +388,8 @@ export async function run(
       const first5 = v.commentRows.slice(0, 5).join(", ");
       return `  ${v.path}: ${ratio}/100 (${v.effective} comments in ${v.total} added lines; rows ${first5})`;
     });
+
+    const strayLines = strayErrors.map(f => `  ${path.join(repoRoot, f.path)}: ${f.message}`);
 
     const fallbackNotices = unfixable
       .filter(v => v.fallback)
@@ -382,7 +404,7 @@ export async function run(
       ? footerBase + " Edits made after hand-back do not reach the caller."
       : footerBase;
 
-    const parts = [header, ...fileLines];
+    const parts = [header, ...fileLines, ...strayLines];
     if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
     if (fixedNote) parts.push(fixedNote);
     parts.push(footer);
@@ -390,7 +412,7 @@ export async function run(
     const reason = parts.join("\n");
     return block(reason.length > 2000 ? reason.slice(0, 1990) + "…" : reason);
   } catch (e) {
-    process.stderr.write(`comment-density-gate error: ${e}\n`);
+    process.stderr.write(`gate error: ${e}\n`);
     return silentAllow();
   }
 }

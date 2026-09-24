@@ -11,14 +11,14 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/gate.ts" }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/gate.ts" }
         ]
       }
     ],

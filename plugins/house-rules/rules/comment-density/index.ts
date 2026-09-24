@@ -1,6 +1,6 @@
 import type { Rule, RuleContext, Finding, FixResult } from '../../src/engine/types.js';
 import { detectLanguage, netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
-import { LANG_FIX_TABLE } from '../../src/hooks/comment-density-gate.js';
+import { LANG_FIX_TABLE } from '../../src/hooks/gate.js';
 
 const CAP = 5;
 

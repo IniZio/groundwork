@@ -431,14 +431,17 @@ export function newComments(
   return result;
 }
 
-export function stripComments(text: string, comments: Comment[]): string {
+export function stripComments(text: string, comments: Comment[]): { text: string; rowChanges: RowChange[] } {
+  const origLines = text.split("\n");
   const sorted = [...comments].sort((a, b) => b.startIndex - a.startIndex);
   let result = text;
+  const rowChanges: RowChange[] = [];
+  const touchedInlineRows = new Set<number>();
+  const deletedOrigRows = new Set<number>();
 
   for (const c of sorted) {
     const before = result.slice(0, c.startIndex);
     const after = result.slice(c.endIndex);
-
     const lineStart = before.lastIndexOf("\n") + 1;
     const beforeOnLine = before.slice(lineStart);
     const isWholeLine = !beforeOnLine.trim();
@@ -452,14 +455,31 @@ export function stripComments(text: string, comments: Comment[]): string {
       } else {
         result = lineEnd !== -1 ? after.slice(lineEnd + 1) : "";
       }
+      for (let r = c.startRow; r <= c.endRow; r++) {
+        if (!deletedOrigRows.has(r)) {
+          deletedOrigRows.add(r);
+          rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
+        }
+      }
     } else {
       const wsStart = before.search(/\s+$/);
       const codeEnd = wsStart !== -1 ? wsStart : c.startIndex;
       result = result.slice(0, codeEnd) + after;
+      touchedInlineRows.add(c.startRow);
     }
   }
 
-  return result;
+  // Emit exactly one rowChange per touched inline row, using final stripped text.
+  const finalLines = result.split("\n");
+  for (const row of touchedInlineRows) {
+    if (deletedOrigRows.has(row)) continue;
+    const deletedsBefore = rowChanges.filter(rc => rc.kind === "deleted" && rc.origRow < row).length;
+    const remappedIndex = row - deletedsBefore;
+    const fixedText = finalLines[remappedIndex] ?? "";
+    rowChanges.push({ origRow: row, kind: "modified", origText: origLines[row] ?? "", fixedText });
+  }
+
+  return { text: result, rowChanges };
 }
 
 const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
@@ -565,8 +585,11 @@ export function isPluginFixture(filePath: string): boolean {
   return realpathLoose(filePath).startsWith(base);
 }
 
+export type RowChangeKind = "deleted" | "modified";
+export interface RowChange { origRow: number; kind: RowChangeKind; origText: string; fixedText?: string }
+
 export type AutoFixResult =
-  | { ok: true; fixed: string; removed: number; kept: number; total: number }
+  | { ok: true; fixed: string; removed: number; kept: number; total: number; rowChanges: RowChange[] }
   | { ok: false; reason: string };
 
 export function commentIsWholeLine(c: Comment, text: string): boolean {
@@ -618,7 +641,7 @@ export async function autoFix(
   const maxAllowedRows = Math.floor(0.05 * addedRows.size);
 
   if (totalCandidateRows <= maxAllowedRows) {
-    return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length };
+    return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length, rowChanges: [] };
   }
 
   const candidateSet = new Set(candidates.map(c => c.startIndex));
@@ -659,7 +682,7 @@ export async function autoFix(
   if (keepCount < 0) return { ok: false, reason: "still over cap after fix" };
 
   const toRemove = candidates.slice(keepCount);
-  const fixed = stripComments(text, toRemove);
+  const { text: fixed, rowChanges } = stripComments(text, toRemove);
 
   const fp = await findComments(fixed, lang, getParser);
   if (!fp.ok) return { ok: false, reason: `post-strip parse: ${fp.reason}` };
@@ -682,7 +705,7 @@ export async function autoFix(
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
   }
 
-  return { ok: true, fixed, removed: toRemove.length, kept: keepCount, total: candidates.length };
+  return { ok: true, fixed, removed: toRemove.length, kept: keepCount, total: candidates.length, rowChanges };
 }
 
 export async function density(

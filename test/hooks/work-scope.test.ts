@@ -525,3 +525,30 @@ describe("touchedFiles — Bash heredoc file write is captured", () => {
     );
   });
 });
+
+describe("C-status copy", () => {
+  it("addedRanges resolves copy source via C-status git diff and returns empty for identical copy", () => {
+    const repo = tmpDir("c-status");
+    initRepo(repo);
+
+    writeFileSync(path.join(repo, "src.ts"), [
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+    ].join("\n") + "\n");
+    const base = commit(repo, "base", "2026-01-01T00:00:00+00:00");
+
+    const srcContent = readFileSync(path.join(repo, "src.ts"), "utf8");
+    writeFileSync(path.join(repo, "dst.ts"), srcContent);
+    writeFileSync(path.join(repo, "src.ts"), srcContent + "const d = 4;\n");
+    commit(repo, "copy-and-modify-src", "2026-01-02T00:00:00+00:00");
+
+    const transcriptPath = path.join(repo, "transcript.jsonl");
+    writeFileSync(transcriptPath, makeTranscript("2026-01-01T12:00:00Z"));
+
+    const result = addedRanges(path.join(repo, "dst.ts"), base, transcriptPath);
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(0);
+  });
+
+});

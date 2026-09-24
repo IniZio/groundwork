@@ -227,7 +227,7 @@ function findRenameSourceFromGit(relPath: string, base: string, repoRoot: string
   );
   if (result.status !== 0) return null;
   for (const line of result.stdout.split("\n")) {
-    const m = line.match(/^R\d*\t(.+)\t(.+)$/);
+    const m = line.match(/^[RC]\d*\t(.+)\t(.+)$/);
     if (m && m[2] === relPath) return m[1];
   }
   return null;

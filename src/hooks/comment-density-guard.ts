@@ -262,7 +262,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     if (nc.length <= keep) return allow();
 
     const to_strip = nc.slice(keep);
-    const stripped_post = stripComments(post, to_strip);
+    const { text: stripped_post } = stripComments(post, to_strip);
 
     const updatedTi = mapToInput(tool, ti, pre ?? "", stripped_post);
 

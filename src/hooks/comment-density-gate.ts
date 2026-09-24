@@ -3,14 +3,33 @@
  * Trigger: Stop + SubagentStop.
  * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { autoFix, detectLanguage, density, isPluginFixture, type Lang } from "./lib/comment-density.js";
+import { createHash } from "node:crypto";
+import { autoFix, detectLanguage, density, isPluginFixture, type Lang, type RowChange } from "./lib/comment-density.js";
 import { sessionBase, touchedFiles, addedRanges } from "./lib/work-scope.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
+
+export type FixStability = "preview" | "stable";
+export type FixApplicability = "safe" | "unsafe";
+export interface FixEntry { stability: FixStability; applicability: FixApplicability }
+
+export const LANG_FIX_TABLE: Record<Lang, FixEntry> = {
+  bash: { stability: "preview", applicability: "safe" },
+  yaml: { stability: "preview", applicability: "safe" },
+  typescript: { stability: "preview", applicability: "safe" },
+  tsx: { stability: "preview", applicability: "safe" },
+  python: { stability: "preview", applicability: "safe" },
+  dockerfile: { stability: "preview", applicability: "safe" },
+  go: { stability: "preview", applicability: "safe" },
+  rust: { stability: "preview", applicability: "safe" },
+  sql: { stability: "preview", applicability: "safe" },
+  make: { stability: "preview", applicability: "safe" },
+  toml: { stability: "preview", applicability: "safe" },
+};
 
 function allow(): HookResult { return { stdout: JSON.stringify({ continue: true }) + "\n", stderr: "", exit: 0 }; }
 function silentAllow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
@@ -19,7 +38,6 @@ function block(reason: string): HookResult {
 }
 
 const CAP = 5;
-const AUTO_FIX_ENABLED = false;
 
 function gitTopLevel(filePath: string): string | null {
   const dir = path.dirname(filePath);
@@ -52,10 +70,72 @@ interface ViolatingFile {
   lang: Lang;
 }
 
+function sha256(s: string): string {
+  return createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+interface ShadowLogRecord {
+  file: string;
+  lang: string;
+  removedLines: Array<{ lineNum: number; text: string; preExisting: boolean; kind: "deleted" | "modified"; fixedText?: string }>;
+  densityBefore: number;
+  densityAfter: number;
+}
+
+function writeShadowLog(tmpBase: string, sessionId: string, record: ShadowLogRecord): void {
+  try {
+    const dir = path.join(tmpBase, "groundwork-autofix-shadow");
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(path.join(dir, `${sessionId}.jsonl`), JSON.stringify(record) + "\n");
+  } catch { /* fail-open */ }
+}
+
+function buildRemovedLines(
+  rowChanges: RowChange[],
+  rowSet: Set<number>,
+): Array<{ lineNum: number; text: string; preExisting: boolean; kind: "deleted" | "modified"; fixedText?: string }> {
+  return rowChanges.map(rc => ({
+    lineNum: rc.origRow + 1,
+    text: rc.origText,
+    preExisting: !rowSet.has(rc.origRow),
+    kind: rc.kind,
+    fixedText: rc.fixedText,
+  }));
+}
+
+function buildRemappedRows(rowChanges: RowChange[], origRowSet: Set<number>): Set<number> {
+  const deletedRows = new Set(rowChanges.filter(rc => rc.kind === "deleted").map(rc => rc.origRow));
+  const remapped = new Set<number>();
+  for (const origRow of origRowSet) {
+    if (deletedRows.has(origRow)) continue;
+    let shift = 0;
+    for (const dr of deletedRows) {
+      if (dr < origRow) shift++;
+    }
+    remapped.add(origRow - shift);
+  }
+  return remapped;
+}
+
+// Unreachable while autoFix's all-rows-added candidate filter holds (comment-density.ts:631); the autoFix property test enforces it.
+export function refusesPreExistingRemoval(removedLines: Array<{ preExisting: boolean }>): boolean {
+  return removedLines.some(r => r.preExisting);
+}
+
 export async function run(
   input: unknown,
   env: Record<string, string | undefined>,
-  opts?: { autoFixEnabled?: boolean; afterTmpWrite?: (tmp: string, target: string) => void },
+  opts?: {
+    /** Test-only: bypass the LANG_FIX_TABLE and force the write path. Never read in production. */
+    testOnly_forceWrite?: boolean;
+    /** Test-only: merge these entries over LANG_FIX_TABLE for this call only. */
+    testOnly_fixTableOverride?: Partial<Record<string, FixEntry>>;
+    /** Test-only: override os.tmpdir() for the shadow log. */
+    testOnly_tmpDir?: string;
+    afterTmpWrite?: (tmp: string, target: string) => void;
+    /** Test-only: override ar.fixed after autoFix. Never read in production. */
+    testOnly_overrideFixed?: (txt: string, fixed: string, rowSet: Set<number>) => string;
+  },
 ): Promise<HookResult> {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
@@ -128,47 +208,91 @@ export async function run(
     interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
     const fixedFiles: FixResult[] = [];
     const unfixable: ViolatingFile[] = [];
-    const autoFixEnabled = opts?.autoFixEnabled ?? AUTO_FIX_ENABLED;
 
     for (const v of violations) {
-      if (!autoFixEnabled) { unfixable.push(v); continue; }
+      const tableEntry = LANG_FIX_TABLE[v.lang];
+      const override = opts?.testOnly_fixTableOverride?.[v.lang];
+      const entry: FixEntry = override ? { ...tableEntry, ...override } : tableEntry;
+      const shouldWrite = opts?.testOnly_forceWrite === true || (entry.stability === "stable" && entry.applicability === "safe");
+
       if (v.fallback) { unfixable.push(v); continue; }
+
       let txt: string;
-      let txtStat: import("node:fs").Stats;
       try {
-        txtStat = statSync(v.path);
         txt = readFileSync(v.path, "utf8");
       } catch { unfixable.push(v); continue; }
+
       const ar = await autoFix(txt, v.lang, v.rowSet);
       if (!ar.ok || ar.removed === 0) { unfixable.push(v); continue; }
+
+      const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
+
+      if (!shouldWrite) {
+        // shadow mode: log what autoFix would do
+        const densityBefore = v.effective / v.total * 100;
+        const remappedAfter = buildRemappedRows(ar.rowChanges, v.rowSet);
+        const d2 = await density(ar.fixed, v.lang, remappedAfter);
+        const densityAfter = d2.total > 0 ? d2.effective / d2.total * 100 : 0;
+        const tmpBase = opts?.testOnly_tmpDir ?? os.tmpdir();
+        writeShadowLog(tmpBase, sessionId, { file: v.path, lang: v.lang, removedLines, densityBefore, densityAfter });
+        unfixable.push(v);
+        continue;
+      }
+
+      if (refusesPreExistingRemoval(removedLines)) {
+        unfixable.push(v);
+        continue;
+      }
+
+      // write path (stable+safe or testOnly_forceWrite)
       const trailNl = txt.endsWith("\n");
-      let content = ar.fixed;
+      // arFixedNormalized: what autoFix produced with trailing-newline parity
+      let arFixedNormalized = ar.fixed;
+      if (trailNl && !arFixedNormalized.endsWith("\n")) arFixedNormalized += "\n";
+      else if (!trailNl && arFixedNormalized.endsWith("\n")) arFixedNormalized = arFixedNormalized.slice(0, -1);
+      // content: may differ if testOnly_overrideFixed is active
+      const arFixed = opts?.testOnly_overrideFixed?.(txt, ar.fixed, v.rowSet) ?? ar.fixed;
+      let content = arFixed;
       if (trailNl && !content.endsWith("\n")) content += "\n";
       else if (!trailNl && content.endsWith("\n")) content = content.slice(0, -1);
+      const origHash = sha256(txt);
+
       let wrote = false;
       try {
-        const mode = txtStat.mode & 0o7777;
+        const mode = statSync(v.path).mode & 0o7777;
         const tmp = v.path + `.cdg-${process.pid}`;
-        writeFileSync(tmp, content, { encoding: "utf8" });
+        writeFileSync(tmp, content);
         chmodSync(tmp, mode);
         opts?.afterTmpWrite?.(tmp, v.path);
+
+        const tmpContent = readFileSync(tmp, "utf8");
+        if (tmpContent !== arFixedNormalized) {
+          try { unlinkSync(tmp); } catch {}
+          unfixable.push(v);
+          continue;
+        }
+
+        // sha256 staleness check: last, synchronous, immediately before renameSync
+        let currentContent: string;
         try {
-          const nowStat = statSync(v.path);
-          if (nowStat.mtimeMs !== txtStat.mtimeMs || nowStat.size !== txtStat.size) {
-            try { unlinkSync(tmp); } catch {}
-            unfixable.push(v);
-            continue;
-          }
+          currentContent = readFileSync(v.path, "utf8");
         } catch {
           try { unlinkSync(tmp); } catch {}
           unfixable.push(v);
           continue;
         }
+        if (sha256(currentContent) !== origHash) {
+          try { unlinkSync(tmp); } catch {}
+          unfixable.push(v);
+          continue;
+        }
+
         renameSync(tmp, v.path);
         wrote = true;
       } catch (e) {
         process.stderr.write(`comment-density-gate: write failed ${v.path}: ${e}\n`);
       }
+
       if (!wrote) { unfixable.push(v); continue; }
       fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
     }

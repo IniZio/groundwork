@@ -286,7 +286,7 @@ describe("stripComments", () => {
     const r = await findComments(code, "typescript");
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
-    const stripped = stripComments(code, nonExempt);
+    const { text: stripped } = stripComments(code, nonExempt);
     expect(stripped).toBe(`const a = 1;\nconst b = 2;\n`);
   });
 
@@ -295,7 +295,7 @@ describe("stripComments", () => {
     const r = await findComments(code, "typescript");
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
-    const stripped = stripComments(code, nonExempt);
+    const { text: stripped } = stripComments(code, nonExempt);
     expect(stripped).toBe(`const x = 1;\nconst y = 2;\n`);
   });
 
@@ -304,7 +304,7 @@ describe("stripComments", () => {
     const r = await findComments(code, "typescript");
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
-    const stripped = stripComments(code, nonExempt);
+    const { text: stripped } = stripComments(code, nonExempt);
     expect(stripped).not.toContain("block");
     expect(stripped).toContain("const a = 1;");
     expect(stripped).toContain("const b = 2;");
@@ -338,7 +338,7 @@ describe("stripComments", () => {
       const r = await findComments(code, lang);
       if (!r.ok) throw new Error(r.reason);
       const nonExempt = r.comments.filter(c => !c.exempt);
-      const stripped = stripComments(code, nonExempt);
+      const { text: stripped } = stripComments(code, nonExempt);
       const before = await countErrorNodes(code, lang);
       const after = await countErrorNodes(stripped, lang);
       expect(after).toBeLessThanOrEqual(before);
@@ -354,7 +354,7 @@ describe("stripComments", () => {
     const r = await findComments(text, "bash");
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
-    const stripped = stripComments(text, nonExempt);
+    const { text: stripped } = stripComments(text, nonExempt);
     const strippedLines = stripped.split("\n");
 
     expect(strippedLines).toContain(line292);
@@ -366,7 +366,7 @@ describe("stripComments", () => {
     const r = await findComments(text, "bash");
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
-    const stripped = stripComments(text, nonExempt);
+    const { text: stripped } = stripComments(text, nonExempt);
     const before = await countErrorNodes(text, "bash");
     const after = await countErrorNodes(stripped, "bash");
     expect(after).toBeLessThanOrEqual(before);

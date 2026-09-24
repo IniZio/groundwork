@@ -76,12 +76,8 @@ function makeTempRepo(label: string): string {
   return dir;
 }
 
-function makeParityDensitySetupSubagent(parityDensityTranscript: string): { paritySubagentTranscript: string } {
-  return { paritySubagentTranscript: parityDensityTranscript };
-}
-
-function makeParityDensitySetup(): { parityDensityTranscript: string } {
-  const dir = path.join(tmpDir, "repo-cdg");
+function makeParityDensityRepo(label: string): { transcriptPath: string } {
+  const dir = path.join(tmpDir, `repo-cdg-${label}`);
   mkdirSync(dir, { recursive: true });
   execSync("git init -q", { cwd: dir });
   execSync('git config user.email "test@example.com"', { cwd: dir });
@@ -91,8 +87,8 @@ function makeParityDensitySetup(): { parityDensityTranscript: string } {
   for (const name of ["Dockerfile", "probe.sh"]) {
     writeFileSync(path.join(dir, name), readFileSync(path.join(FIXTURES, name), "utf8"));
   }
-  execSync("git add . && git commit -m 'add fixtures'", { cwd: dir });
-  const transcriptPath = path.join(tmpDir, "parity-cdg.jsonl");
+  execSync("git add . && git commit -m fixtures", { cwd: dir });
+  const transcriptPath = path.join(tmpDir, `parity-cdg-${label}.jsonl`);
   const entries = ["Dockerfile", "probe.sh"].map(name =>
     JSON.stringify({
       type: "assistant",
@@ -102,13 +98,13 @@ function makeParityDensitySetup(): { parityDensityTranscript: string } {
     })
   );
   writeFileSync(transcriptPath, entries.join("\n") + "\n");
-  return { parityDensityTranscript: transcriptPath };
+  return { transcriptPath };
 }
 
 const parityStopGateDb = makeTempDb("parity-sg");
 const parityNewCodeRepo = makeTempRepo("parity-ncg");
-const { parityDensityTranscript } = makeParityDensitySetup();
-const { paritySubagentTranscript } = makeParityDensitySetupSubagent(parityDensityTranscript);
+const { transcriptPath: parityDensityTranscript } = makeParityDensityRepo("stop");
+const { transcriptPath: paritySubagentTranscript } = makeParityDensityRepo("sub");
 
 afterAll(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ } });
 
@@ -159,7 +155,7 @@ describe("event-output contract — every (event, command) pair must produce the
         hook_event_name: "SubagentStop",
         session_id: "parity-cdg-sub",
         agent_id: "parity-subagent-001",
-        transcript_path: parityDensityTranscript,
+        transcript_path: paritySubagentTranscript,
         agent_transcript_path: paritySubagentTranscript,
       },
       {}
@@ -186,7 +182,9 @@ describe("event-output contract — every (event, command) pair must produce the
       expect(stdout.trim()).not.toBe("");
       const out = JSON.parse(stdout) as Record<string, unknown> & { hookSpecificOutput?: { hookEventName?: string } };
       if (STOP_EVENTS.has(event)) {
-        expect(out.decision).toBe("block");
+        const blocked = out.decision === "block";
+        const autoFixed = out.hookSpecificOutput?.hookEventName === event;
+        expect(blocked || autoFixed).toBe(true);
       } else {
         expect(out.hookSpecificOutput?.hookEventName).toBe(event);
       }

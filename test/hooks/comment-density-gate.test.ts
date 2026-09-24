@@ -60,6 +60,18 @@ function makeViolatorTs(dir: string, name: string): string {
   return fp;
 }
 
+function makeUnfixableViolatorTs(dir: string, name: string): string {
+  const fp = path.join(dir, name);
+  const lines = [
+    ...Array.from({ length: 20 }, (_, i) =>
+      i % 5 === 0 ? `// reason ${i}` : `const x${i} = ${i};`
+    ),
+    "const broken = ;",
+  ];
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
 describe("AC1: nexus-probe fixtures", () => {
   let tmpDir: string;
   let repoDir: string;
@@ -79,7 +91,7 @@ describe("AC1: nexus-probe fixtures", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("blocks when all 6 probe files are written in session", async () => {
+  it("auto-fixes all 6 probe files written in session", async () => {
     const copiedPaths: string[] = [];
     for (const name of PROBE_FILES) {
       const dst = path.join(repoDir, name);
@@ -95,10 +107,10 @@ describe("AC1: nexus-probe fixtures", () => {
     const r = runGate(payload);
     expect(r.status).toBe(0);
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    const reason = out.reason as string;
-    for (const name of PROBE_FILES) expect(reason).toContain(name);
-    expect(reason).toContain("/100");
+    expect(out.decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
+    const ctx = (out.hookSpecificOutput as Record<string, unknown>)?.additionalContext as string;
+    expect(ctx).toContain("auto-removed");
   });
 
   it("bite proof: base=HEAD means no added lines → gate allows", async () => {
@@ -136,7 +148,7 @@ describe("AC2: 1 comment per 15 lines exceeds 5/100 cap", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("blocks TS file with 1 effective comment in 15 added lines", async () => {
+  it("auto-fixes TS file with 1 effective comment in 15 added lines", async () => {
     const lines = [
       "const a = 1;", "const b = 2;", "const c = 3;", "const d = 4;",
       "const e = 5;", "const f = 6;", "const g = 7;",
@@ -150,8 +162,9 @@ describe("AC2: 1 comment per 15 lines exceeds 5/100 cap", () => {
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac2-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("small.ts");
+    expect(out.decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
+    expect(r.stdout).toContain("small.ts");
   });
 });
 
@@ -169,12 +182,13 @@ describe("AC3: positive controls", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("blocks TS file with dense comments over cap", async () => {
+  it("auto-fixes TS file with dense comments over cap", async () => {
     const fp = makeViolatorTs(tmpDir, "dense.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac3a-${Date.now()}`, transcript_path: tp });
-    expect(parseOut(r.stdout).decision).toBe("block");
+    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
   });
 
   it("allows TS file with no comments", async () => {
@@ -247,7 +261,7 @@ describe("AC5: block limit counter", () => {
     initGitRepo(tmpDir);
     writeFileSync(path.join(tmpDir, ".gitkeep"), "");
     gitCommit(tmpDir, "initial");
-    fp = makeViolatorTs(tmpDir, "violator.ts");
+    fp = makeUnfixableViolatorTs(tmpDir, "violator.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     tp = makeTranscript(tmpDir, [fp], ts);
   });
@@ -275,14 +289,14 @@ describe("AC5: block limit counter", () => {
     const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp };
     runGate(payload); runGate(payload); runGate(payload);
 
-    const fp2 = makeViolatorTs(tmpDir, "violator2.ts");
+    const fp2 = makeUnfixableViolatorTs(tmpDir, "violator2.ts");
     const ts2 = new Date(Date.now() - 10000).toISOString();
     const tp2 = makeTranscript(tmpDir, [fp2], ts2);
     const r = runGate({ hook_event_name: "Stop", session_id: sessionId, transcript_path: tp2 });
     expect(parseOut(r.stdout).decision).toBe("block");
   });
 
-  it("different agent_ids have independent counters", async () => {
+  it("different agent_ids have independent counters (unfixable file)", async () => {
     const agentA = `agent-a-${Date.now()}`;
     const agentB = `agent-b-${Date.now()}`;
 
@@ -324,12 +338,13 @@ describe("AC6: fail-open", () => {
     expect(r.status).toBe(0);
   });
 
-  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — gate still blocks", () => {
+  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — gate still acts on violations", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: "ac6b", transcript_path: tp }, { GROUNDWORK_COMMENT_DENSITY: "0" });
-    expect(parseOut(r.stdout).decision).toBe("block");
+    expect(r.stdout.trim()).not.toBe("");
+    expect(r.stdout.trim()).not.toBe(JSON.stringify({ continue: true }));
   });
 
   it("allows when transcript_path is missing", () => {
@@ -337,12 +352,13 @@ describe("AC6: fail-open", () => {
     expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 
-  it("output never contains hookSpecificOutput", () => {
+  it("fixable violation emits hookSpecificOutput", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac6d-${Date.now()}`, transcript_path: tp });
-    expect(r.stdout).not.toContain("hookSpecificOutput");
+    expect(r.stdout).toContain("hookSpecificOutput");
+    expect(parseOut(r.stdout).decision).not.toBe("block");
   });
 });
 
@@ -360,7 +376,7 @@ describe("AC6b: stop_hook_active does not skip check", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("stop_hook_active:true does not skip the check — still blocks on attempts 1-3", async () => {
+  it("stop_hook_active:true does not skip the check — auto-fixes fixable files", async () => {
     const fp = makeViolatorTs(tmpDir, "dense.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
@@ -368,11 +384,12 @@ describe("AC6b: stop_hook_active does not skip check", () => {
       { hook_event_name: "Stop", session_id: `ac6b-${Date.now()}`, transcript_path: tp, stop_hook_active: true },
     );
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
+    expect(out.decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
   });
 });
 
-describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
+describe("AC7: SubagentStop real payload shape auto-fixes over-cap file", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -386,7 +403,7 @@ describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("SubagentStop with over-cap file in agent transcript blocks", async () => {
+  it("SubagentStop auto-fixes over-cap file and emits SubagentStop hookEventName", async () => {
     const fp = makeViolatorTs(tmpDir, "sub-dense.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const agentTranscriptPath = makeTranscript(tmpDir, [fp], ts);
@@ -404,12 +421,15 @@ describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
       agent_transcript_path: agentTranscriptPath,
     });
     const out = parseOut(r.stdout);
-    expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("sub-dense.ts");
+    expect(out.decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
+    const hso = out.hookSpecificOutput as Record<string, unknown>;
+    expect(hso?.hookEventName).toBe("SubagentStop");
+    expect(hso?.additionalContext as string).toContain("sub-dense.ts");
   });
 });
 
-describe("AC8: end-user test/fixtures are not exempt", () => {
+describe("AC8: end-user test/fixtures in other repos are auto-fixed", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -423,7 +443,7 @@ describe("AC8: end-user test/fixtures are not exempt", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("over-cap file at test/fixtures/ in a different repo still BLOCKS", () => {
+  it("over-cap file at test/fixtures/ in a different repo is auto-fixed (not exempt)", () => {
     const fixtureDir = path.join(tmpDir, "test", "fixtures");
     mkdirSync(fixtureDir, { recursive: true });
     const fp = path.join(fixtureDir, "a.sh");
@@ -440,7 +460,165 @@ describe("AC8: end-user test/fixtures are not exempt", () => {
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac8-${Date.now()}`, transcript_path: tp });
-    expect(parseOut(r.stdout).decision).toBe("block");
+    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(r.stdout).toContain("hookSpecificOutput");
+  });
+});
+
+describe("AC10: real probe files auto-fixed and idempotent", () => {
+  let tmpDir: string;
+  let repoDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac10-"));
+    repoDir = path.join(tmpDir, "repo");
+    mkdirSync(path.join(repoDir, "deploy"), { recursive: true });
+    initGitRepo(repoDir);
+    writeFileSync(path.join(repoDir, "README.md"), "# x\n");
+    gitCommit(repoDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
+
+  it("probe.sh and pod-nonroot.yaml auto-fixed; second run allows", async () => {
+    const src = PROBE_DIR;
+    const dstSh = path.join(repoDir, "deploy", "probe.sh");
+    const dstYaml = path.join(repoDir, "deploy", "pod-nonroot.yaml");
+    copyFileSync(path.join(src, "probe.sh"), dstSh);
+    copyFileSync(path.join(src, "pod-nonroot.yaml"), dstYaml);
+    gitCommit(repoDir, "add deploy");
+
+    const ts = "2020-01-01T00:00:00.000Z";
+    const tp = makeTranscript(tmpDir, [dstSh, dstYaml], ts);
+    const sid = `ac10-${Date.now()}`;
+    const payload = { hook_event_name: "Stop", session_id: sid, transcript_path: tp };
+
+    const r1 = runGate(payload);
+    expect(r1.stdout).toContain("hookSpecificOutput");
+    expect(parseOut(r1.stdout).decision).not.toBe("block");
+
+    const bashCheck = spawnSync("bash", ["-n", dstSh], { encoding: "utf8" });
+    expect(bashCheck.status).toBe(0);
+
+    const r2 = runGate({ ...payload, session_id: `ac10b-${Date.now()}` });
+    expect(parseOut(r2.stdout).decision).not.toBe("block");
+    expect(r2.stdout).not.toContain("hookSpecificOutput");
+  });
+});
+
+describe("AC11: pre-existing comments preserved", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac11-"));
+    initGitRepo(tmpDir);
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
+
+  it("only session-added comments removed; base comments stay", async () => {
+    const baseLines = Array.from({ length: 10 }, (_, i) => `// base ${i}`);
+    const fp = path.join(tmpDir, "mixed.ts");
+    writeFileSync(fp, baseLines.join("\n") + "\n");
+    gitCommit(tmpDir, "base");
+
+    const logR = spawnSync("git", ["-C", tmpDir, "log", "--format=%ct", "-1"], { encoding: "utf8" });
+    const baseEpoch = parseInt(logR.stdout.trim(), 10);
+
+    const sessionLines = [
+      ...Array.from({ length: 34 }, (_, i) => `const z${i} = ${i};`),
+      "// session A", "// session B", "// session C",
+      "// session D", "// session E", "// session F",
+    ];
+    writeFileSync(fp, baseLines.join("\n") + "\n" + sessionLines.join("\n") + "\n");
+
+    const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], afterTs);
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac11-${Date.now()}`, transcript_path: tp });
+    expect(r.stdout).toContain("hookSpecificOutput");
+
+    const fixed = readFileSync(fp, "utf8");
+    for (let i = 0; i < 10; i++) expect(fixed).toContain(`// base ${i}`);
+    const sessionCommentCount = (fixed.match(/\/\/ session/g) ?? []).length;
+    expect(sessionCommentCount).toBeLessThan(6);
+  });
+
+  it("bite: if all rows counted, base comments would be removed too", async () => {
+    const baseLines = Array.from({ length: 10 }, (_, i) => `// base ${i}`);
+    const fp = path.join(tmpDir, "mixed2.ts");
+    writeFileSync(fp, baseLines.join("\n") + "\n");
+    gitCommit(tmpDir, "base");
+
+    const logR = spawnSync("git", ["-C", tmpDir, "log", "--format=%ct", "-1"], { encoding: "utf8" });
+    const baseEpoch = parseInt(logR.stdout.trim(), 10);
+    const sessionLines = [
+      ...Array.from({ length: 34 }, (_, i) => `const z${i} = ${i};`),
+      "// session A", "// session B", "// session C",
+      "// session D", "// session E", "// session F",
+    ];
+    writeFileSync(fp, baseLines.join("\n") + "\n" + sessionLines.join("\n") + "\n");
+
+    const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], afterTs);
+    runGate({ hook_event_name: "Stop", session_id: `ac11b-${Date.now()}`, transcript_path: tp });
+    const fixed = readFileSync(fp, "utf8");
+    for (let i = 0; i < 10; i++) {
+      expect(fixed).toContain(`// base ${i}`);
+    }
+  });
+});
+
+describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac13-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
+
+  it("fixable + unfixable: blocks unfixable; reason mentions fixed file", () => {
+    const fixable = makeViolatorTs(tmpDir, "fix.ts");
+    const unfixable = makeUnfixableViolatorTs(tmpDir, "nofix.ts");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fixable, unfixable], ts);
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac13-${Date.now()}`, transcript_path: tp });
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason as string).toContain("nofix.ts");
+    expect(out.reason as string).toContain("fix.ts");
+  });
+});
+
+describe("AC16: file mode preserved", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac16-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
+
+  it("0755 script stays 0755 after auto-fix", () => {
+    const lines = [
+      "#!/usr/bin/env bash",
+      ...Array.from({ length: 14 }, (_, i) => `echo "${i}"`),
+      "# comment A", "# comment B", "# comment C", "# comment D", "# comment E",
+    ];
+    const fp = path.join(tmpDir, "run.sh");
+    writeFileSync(fp, lines.join("\n") + "\n", { mode: 0o755 });
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    runGate({ hook_event_name: "Stop", session_id: `ac16-${Date.now()}`, transcript_path: tp });
+    const { statSync: st } = require("node:fs");
+    const mode = st(fp).mode & 0o777;
+    expect(mode).toBe(0o755);
   });
 });
 

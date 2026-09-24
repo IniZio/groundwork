@@ -7,6 +7,7 @@ import {
   newComments,
   stripComments,
   density,
+  autoFix,
   type Lang,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
@@ -515,5 +516,147 @@ describe("fallback # counting excludes TS private fields", () => {
     expect(tsR.effective).toBe(0);
     expect(bashR.effective).toBeGreaterThan(0);
     expect(tsR.effective).not.toBe(bashR.effective);
+  });
+});
+
+describe("autoFix", () => {
+  it("returns removed=0 when already within budget", async () => {
+    const text = Array.from({ length: 40 }, (_, i) =>
+      i === 0 ? `// one comment` : `const x${i} = ${i};`
+    ).join("\n") + "\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.removed).toBe(0);
+  });
+
+  it("strips over-budget session comments, preserves code", async () => {
+    const codeLines = Array.from({ length: 30 }, (_, i) => `const x${i} = ${i};`);
+    const commentLines = Array.from({ length: 8 }, (_, i) => `// session ${i}`);
+    const text = [...codeLines, ...commentLines].join("\n") + "\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    for (let i = 0; i < 30; i++) {
+      expect(r.fixed).toContain(`const x${i} = ${i};`);
+    }
+  });
+
+  it("preserves pre-existing comments (not in addedRows)", async () => {
+    const baseComments = Array.from({ length: 5 }, (_, i) => `// base ${i}`);
+    const sessionCode = Array.from({ length: 20 }, (_, i) => `const y${i} = ${i};`);
+    const sessionComments = Array.from({ length: 5 }, (_, i) => `// session ${i}`);
+    const basePart = baseComments.join("\n");
+    const sessionPart = [...sessionCode, ...sessionComments].join("\n");
+    const text = basePart + "\n" + sessionPart + "\n";
+    const baseLineCount = baseComments.length;
+    const sessionRows = new Set<number>();
+    for (let i = baseLineCount; i < text.split("\n").length; i++) sessionRows.add(i);
+    const r = await autoFix(text, "typescript", sessionRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (let i = 0; i < 5; i++) {
+      expect(r.fixed).toContain(`// base ${i}`);
+    }
+  });
+
+  it("returns ok:false when original has parse error (unfixable)", async () => {
+    const text = "// comment 1\n// comment 2\n// comment 3\nconst x = ;\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(false);
+  });
+
+  it("safety verifier (re-parse): fails if post-strip re-parse returns error", async () => {
+    let callCount = 0;
+    const mockParser: GetParserFn = async (lang) => {
+      const real = await getParser(lang);
+      if (!real.ok) return real;
+      callCount++;
+      if (callCount >= 2) {
+        return { ok: false as const, reason: "mock post-strip failure" };
+      }
+      return real;
+    };
+    const text = Array.from({ length: 30 }, (_, i) =>
+      i % 4 === 0 ? `// comment ${i}` : `const x${i} = ${i};`
+    ).join("\n") + "\n";
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows, mockParser);
+    expect(r.ok).toBe(false);
+  });
+
+  it("safety verifier (code-identity): blocks strip when origCode differs from fixedCode", async () => {
+    let gpCallCount = 0;
+    const mockParser: GetParserFn = async (lang) => {
+      const real = await getParser(lang);
+      if (!real.ok) return real;
+      gpCallCount++;
+      if (gpCallCount === 3) {
+        let parseCallCount = 0;
+        const origParse = (src: string) => real.parser.parse(src);
+        const proxyParser = {
+          parse(src: string) {
+            parseCallCount++;
+            if (parseCallCount === 1) {
+              return origParse(src + "\nconst phantom = 999;");
+            }
+            return origParse(src);
+          },
+        } as typeof real.parser;
+        return { ok: true as const, parser: proxyParser, language: real.language };
+      }
+      return real;
+    };
+    const codeLines = Array.from({ length: 30 }, (_, i) => `const x${i} = ${i};`);
+    const commentLines = Array.from({ length: 8 }, (_, i) => `// session ${i}`);
+    const text = [...codeLines, ...commentLines].join("\n") + "\n";
+    const allRows = new Set(Array.from({ length: 38 }, (_, i) => i));
+    const r = await autoFix(text, "typescript", allRows, mockParser);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("code content");
+  });
+
+  it("trailing-only: budget not over-stripped vs whole-line", async () => {
+    // Worked example — trailing vs whole-line with M=20, budget=1.
+    //
+    // Trailing (inline) comments:
+    //   M=20, candidates=2, budget=floor(0.05*20)=1
+    //   toCheck=[c1], wlRemoved=0 (trailing, line stays)
+    //   1 <= floor(0.05*(20-0))=1 → break, budget stays 1
+    //   remove 1, keep 1; after fix: still 20 lines → second run budget=1, 1 candidate → no removal (idempotent)
+    const codeLines = Array.from({ length: 18 }, (_, i) => `const x${i} = ${i};`);
+    const trailingLines = [
+      `const y0 = 0; // session trailing 0`,
+      `const y1 = 1; // session trailing 1`,
+    ];
+    const text = [...codeLines, ...trailingLines].join("\n") + "\n";
+    const allRows = new Set(Array.from({ length: 20 }, (_, i) => i));
+
+    const r = await autoFix(text, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.kept).toBe(1);
+    expect(r.removed).toBe(1);
+
+    const fixedLineCount = r.fixed.split("\n").filter(l => l !== "").length;
+    expect(fixedLineCount).toBe(20);
+
+    const r2 = await autoFix(r.fixed, "typescript", allRows);
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.removed).toBe(0);
+  });
+
+  it("bite: without safety verifier, code-changing strip would proceed", async () => {
+    const text = `const a = 1;\n// remove me\nconst b = 2;\n`.repeat(10);
+    const allRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", allRows);
+    if (!r.ok) return;
+    for (const n of ["const a = 1;", "const b = 2;"]) {
+      expect(r.fixed).toContain(n);
+    }
   });
 });

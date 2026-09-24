@@ -458,6 +458,88 @@ export function isPluginFixture(filePath: string): boolean {
   return realpathLoose(filePath).startsWith(base);
 }
 
+export type AutoFixResult =
+  | { ok: true; fixed: string; removed: number; kept: number; total: number }
+  | { ok: false; reason: string };
+
+function commentIsWholeLine(c: Comment, text: string): boolean {
+  const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+  return !text.slice(lineStart, c.startIndex).trim();
+}
+
+function collectCodeText(root: Node, text: string): string {
+  const parts: string[] = [];
+  function walk(node: Node): void {
+    if (node.type.includes("comment")) return;
+    if (node.childCount === 0) {
+      parts.push(node.text ?? text.slice(node.startIndex, node.endIndex));
+      return;
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) walk(child);
+    }
+  }
+  walk(root);
+  return parts.join("");
+}
+
+export async function autoFix(
+  text: string,
+  lang: Lang,
+  addedRows: Set<number>,
+  getParser: GetParserFn = defaultGetParser,
+): Promise<AutoFixResult> {
+  const origParsed = await findComments(text, lang, getParser);
+  if (!origParsed.ok) return { ok: false, reason: `parse: ${origParsed.reason}` };
+
+  const candidates: Comment[] = [];
+  for (const c of origParsed.comments) {
+    if (c.exempt) continue;
+    let hit = false;
+    for (let r = c.startRow; r <= c.endRow && !hit; r++) hit = addedRows.has(r);
+    if (hit) candidates.push(c);
+  }
+
+  let budget = Math.floor(0.05 * addedRows.size);
+  if (candidates.length <= budget) {
+    return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length };
+  }
+
+  while (budget > 0) {
+    const toCheck = candidates.slice(budget);
+    const wlRemoved = toCheck.filter(c => commentIsWholeLine(c, text)).length;
+    if (budget <= Math.floor(0.05 * (addedRows.size - wlRemoved))) break;
+    budget--;
+  }
+
+  const toRemove = candidates.slice(budget);
+  const fixed = stripComments(text, toRemove);
+
+  const fp = await findComments(fixed, lang, getParser);
+  if (!fp.ok) return { ok: false, reason: `post-strip parse: ${fp.reason}` };
+
+  const pr = await getParser(lang);
+  if (!pr.ok) return { ok: false, reason: `parser: ${pr.reason}` };
+  const origCode = collectCodeText(pr.parser.parse(text).rootNode, text);
+  const fixedCode = collectCodeText(pr.parser.parse(fixed).rootNode, fixed);
+  if (origCode !== fixedCode) return { ok: false, reason: "code content changed" };
+
+  const preMap = new Map<string, number>();
+  for (const c of origParsed.comments) {
+    let onAdded = false;
+    for (let r = c.startRow; r <= c.endRow && !onAdded; r++) onAdded = addedRows.has(r);
+    if (!onAdded) preMap.set(c.text, (preMap.get(c.text) ?? 0) + 1);
+  }
+  const fixedMap = new Map<string, number>();
+  for (const c of fp.comments) fixedMap.set(c.text, (fixedMap.get(c.text) ?? 0) + 1);
+  for (const [t, cnt] of preMap) {
+    if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
+  }
+
+  return { ok: true, fixed, removed: toRemove.length, kept: budget, total: candidates.length };
+}
+
 export async function density(
   text: string,
   lang: Lang | null,

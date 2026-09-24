@@ -3,11 +3,11 @@
  * Trigger: Stop + SubagentStop.
  * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { detectLanguage, density, isPluginFixture } from "./lib/comment-density.js";
+import { autoFix, detectLanguage, density, isPluginFixture, type Lang } from "./lib/comment-density.js";
 import { sessionBase, touchedFiles, addedRanges } from "./lib/work-scope.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -47,6 +47,8 @@ interface ViolatingFile {
   total: number;
   commentRows: number[];
   fallback: boolean;
+  rowSet: Set<number>;
+  lang: Lang;
 }
 
 export async function run(input: unknown, env: Record<string, string | undefined>): Promise<HookResult> {
@@ -108,21 +110,70 @@ export async function run(input: unknown, env: Record<string, string | undefined
           path: file,
           effective: result.effective,
           total: result.total,
-          // convert back to 1-indexed for display
           commentRows: result.commentRows.map(r => r + 1),
           fallback: result.mode === "fallback",
+          rowSet,
+          lang,
         });
       }
     }
 
     if (violations.length === 0) return allow();
 
+    interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
+    const fixedFiles: FixResult[] = [];
+    const unfixable: ViolatingFile[] = [];
+
+    for (const v of violations) {
+      if (v.fallback) { unfixable.push(v); continue; }
+      let txt: string;
+      try { txt = readFileSync(v.path, "utf8"); } catch { unfixable.push(v); continue; }
+      const ar = await autoFix(txt, v.lang, v.rowSet);
+      if (!ar.ok || ar.removed === 0) { unfixable.push(v); continue; }
+      const trailNl = txt.endsWith("\n");
+      let content = ar.fixed;
+      if (trailNl && !content.endsWith("\n")) content += "\n";
+      else if (!trailNl && content.endsWith("\n")) content = content.slice(0, -1);
+      let wrote = false;
+      try {
+        const mode = statSync(v.path).mode & 0o7777;
+        const tmp = v.path + `.cdg-${process.pid}`;
+        writeFileSync(tmp, content, { encoding: "utf8" });
+        chmodSync(tmp, mode);
+        renameSync(tmp, v.path);
+        wrote = true;
+      } catch (e) {
+        process.stderr.write(`comment-density-gate: write failed ${v.path}: ${e}\n`);
+      }
+      if (!wrote) { unfixable.push(v); continue; }
+      fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
+    }
+
+    if (unfixable.length === 0) {
+      if (fixedFiles.length === 0) return allow();
+      const N = fixedFiles.reduce((s, f) => s + f.removed, 0);
+      const fLines = fixedFiles.map(f =>
+        `  ${f.path}: removed ${f.removed} (kept ${f.kept} of ${f.total} added comments; ${f.addedCount} added lines)`
+      );
+      const ctx = [
+        `groundwork comment-density: auto-removed ${N} comment(s) that this session added beyond the code convention (at most 5 comment lines per 100 added lines).`,
+        `This is groundwork's automatic correction — not another session's edit, a merge, or a bug.`,
+        ...fLines,
+        `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
+      ].join("\n");
+      return {
+        stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx.slice(0, 8000) } }) + "\n",
+        stderr: "",
+        exit: 0,
+      };
+    }
+
     const tmpBase = path.join(os.tmpdir(), "groundwork-comment-density");
     try { mkdirSync(tmpBase, { recursive: true }); } catch { /* ok */ }
 
     const cPath = counterPath(tmpBase, sessionId, agentKey);
     const state = readCounter(cPath);
-    const currentSig = violations.map(v => v.path).sort().join(";");
+    const currentSig = unfixable.map(v => v.path).sort().join(";");
 
     let newCount: number;
     if (state.sig !== currentSig) {
@@ -133,7 +184,7 @@ export async function run(input: unknown, env: Record<string, string | undefined
     writeCounter(cPath, { sig: currentSig, count: newCount });
 
     if (newCount >= 4) {
-      const fileList = violations.map(v => `  ${v.path}`).join("\n");
+      const fileList = unfixable.map(v => `  ${v.path}`).join("\n");
       const stderr = `groundwork comment-density gate: 4th consecutive block — allowing; remove or move comments before continuing\n${fileList}\n`;
       return { stdout: "", stderr, exit: 0 };
     }
@@ -142,23 +193,29 @@ export async function run(input: unknown, env: Record<string, string | undefined
       "groundwork comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
       "This is a convention check — not a bug, a merge, or another session's edit.";
 
-    const fileLines = violations.map(v => {
+    const fileLines = unfixable.map(v => {
       const ratio = (v.effective / v.total * 100).toFixed(1);
       const first5 = v.commentRows.slice(0, 5).join(", ");
       return `  ${v.path}: ${ratio}/100 (${v.effective} comments in ${v.total} added lines; rows ${first5})`;
     });
 
-    const fallbackNotices = violations
+    const fallbackNotices = unfixable
       .filter(v => v.fallback)
       .map(v => `(${v.path}: tree-sitter unavailable — prefix count used)`);
+
+    const fixedNote = fixedFiles.length > 0
+      ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`
+      : null;
 
     const footer = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Then stop again.";
 
     const parts = [header, ...fileLines];
     if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
+    if (fixedNote) parts.push(fixedNote);
     parts.push(footer);
 
-    return block(parts.join("\n"));
+    const reason = parts.join("\n");
+    return block(reason.length > 2000 ? reason.slice(0, 1990) + "…" : reason);
   } catch (e) {
     process.stderr.write(`comment-density-gate error: ${e}\n`);
     return silentAllow();

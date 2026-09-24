@@ -3,6 +3,7 @@ import type { Finding } from './types.js';
 
 export interface Baseline {
   version: 1;
+  base?: string;
   entries: Array<{ rule: string; path: string; fingerprint: string }>;
 }
 
@@ -15,7 +16,7 @@ export function fingerprint(f: Finding): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
-export function toBaseline(findings: Finding[]): Baseline {
+export function toBaseline(findings: Finding[], base?: string): Baseline {
   const seen = new Set<string>();
   const entries: Array<{ rule: string; path: string; fingerprint: string }> = [];
 
@@ -35,11 +36,13 @@ export function toBaseline(findings: Finding[]): Baseline {
     return 0;
   });
 
-  return { version: 1, entries };
+  const result: Baseline = { version: 1, entries };
+  if (base !== undefined) result.base = base;
+  return result;
 }
 
-export async function writeBaseline(file: string, findings: Finding[]): Promise<void> {
-  const baseline = toBaseline(findings);
+export async function writeBaseline(file: string, findings: Finding[], base?: string): Promise<void> {
+  const baseline = toBaseline(findings, base);
   const content = JSON.stringify(baseline, null, 2) + '\n';
   await Bun.write(file, content);
 }

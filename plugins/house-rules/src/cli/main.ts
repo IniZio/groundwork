@@ -164,7 +164,10 @@ async function cmdBaseline(opts: {
   const dir = path.dirname(baselineFile);
   fs.mkdirSync(dir, { recursive: true });
 
-  await writeBaseline(baselineFile, findings);
+  const shaResult = spawnSync('git', ['-C', repoRoot, 'rev-parse', base], { encoding: 'utf8' });
+  const resolvedSha = shaResult.status === 0 ? shaResult.stdout.trim() : undefined;
+
+  await writeBaseline(baselineFile, findings, resolvedSha);
   process.stdout.write(`Baseline written to ${baselineFile} (${findings.length} entries)\n`);
 }
 

@@ -5,6 +5,7 @@ import { loadRules } from '../engine/registry.js';
 import { buildContext } from '../engine/context.js';
 import { runRules } from '../engine/run.js';
 import { readBaseline, fingerprint } from '../engine/baseline.js';
+import type { Baseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
 import { addedHunks } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
@@ -80,12 +81,18 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
 
   let ctx: RuleContext;
   let findings: Finding[];
+  let unmatchedBaselineEntries: Array<{ rule: string; path: string; fingerprint: string }> = [];
+  let effectiveSince: string | undefined;
+  let cachedBaseline: Baseline | undefined;
 
   if (opts.baselineMode) {
-    ctx = buildAllTrackedContext(repoRoot, opts.since);
+    cachedBaseline = await readBaseline(baselineFilePath);
+    effectiveSince = opts.since ?? cachedBaseline.base;
+    ctx = buildAllTrackedContext(repoRoot, effectiveSince);
     const allFindings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
-    const baseline = await readBaseline(baselineFilePath);
-    const baselineFingerprints = new Set(baseline.entries.map(e => e.fingerprint));
+    const allFingerprintSet = new Set(allFindings.map(f => fingerprint(f)));
+    unmatchedBaselineEntries = cachedBaseline.entries.filter(e => !allFingerprintSet.has(e.fingerprint));
+    const baselineFingerprints = new Set(cachedBaseline.entries.map(e => e.fingerprint));
     findings = allFindings.filter(f => baselineFingerprints.has(fingerprint(f)));
   } else {
     const base = opts.since ?? defaultBase(repoRoot);
@@ -135,10 +142,14 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     }
   }
 
-  if (needsManual.length > 0) {
-    process.stdout.write(`\nNeeds manual fix (${needsManual.length}):\n`);
+  const totalNeedsManual = needsManual.length + unmatchedBaselineEntries.length;
+  if (totalNeedsManual > 0) {
+    process.stdout.write(`\nNeeds manual fix (${totalNeedsManual}):\n`);
     for (const f of needsManual) {
       process.stdout.write(`  ${f.path} ${f.ruleId} ${f.message}\n`);
+    }
+    for (const e of unmatchedBaselineEntries) {
+      process.stdout.write(`  ${e.path} ${e.rule} (baseline entry, no matching violation found)\n`);
     }
   }
 
@@ -169,15 +180,17 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   }
 
   if (opts.baselineMode && !opts.dryRun && fixed.length > 0) {
-    const freshCtx = buildAllTrackedContext(repoRoot, opts.since);
+    const freshCtx = buildAllTrackedContext(repoRoot, effectiveSince);
     const freshFindings = await runRules(rules, freshCtx, effectivePolicy as Parameters<typeof runRules>[2]);
     const freshFingerprints = new Set(freshFindings.map(f => fingerprint(f)));
 
-    const baseline = await readBaseline(baselineFilePath);
+    const baseline = cachedBaseline ?? await readBaseline(baselineFilePath);
     const prunedEntries = baseline.entries.filter(e => freshFingerprints.has(e.fingerprint));
     const pruneCount = baseline.entries.length - prunedEntries.length;
 
-    const prunedBaseline = { version: 1 as const, entries: prunedEntries };
+    const prunedBaseline: { version: 1; base?: string; entries: typeof prunedEntries } =
+      { version: 1, entries: prunedEntries };
+    if (baseline.base !== undefined) prunedBaseline.base = baseline.base;
     const dir = path.dirname(baselineFilePath);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(baselineFilePath, JSON.stringify(prunedBaseline, null, 2) + '\n', 'utf8');
@@ -187,7 +200,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     }
   }
 
-  process.stdout.write(`\n${fixCount} fixed, ${needsManual.length} need manual fix\n`);
+  process.stdout.write(`\n${fixCount} fixed, ${totalNeedsManual} need manual fix\n`);
 
   process.exit(0);
 }

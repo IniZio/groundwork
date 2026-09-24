@@ -3,12 +3,13 @@
  * Trigger: Stop + SubagentStop.
  * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
  */
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { autoFix, detectLanguage, density, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
+import { atomicWrite, normalizeTrailingNewline } from "./lib/atomic-write.js";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
 import { runRules } from '../engine/run.js';
@@ -291,51 +292,20 @@ export async function run(
       }
 
       const trailNl = txt.endsWith("\n");
-      let arFixedNormalized = ar.fixed;
-      if (trailNl && !arFixedNormalized.endsWith("\n")) arFixedNormalized += "\n";
-      else if (!trailNl && arFixedNormalized.endsWith("\n")) arFixedNormalized = arFixedNormalized.slice(0, -1);
+      const arFixedNormalized = normalizeTrailingNewline(ar.fixed, trailNl);
       const arFixed = opts?.testOnly_overrideFixed?.(txt, ar.fixed, v.rowSet) ?? ar.fixed;
-      let content = arFixed;
-      if (trailNl && !content.endsWith("\n")) content += "\n";
-      else if (!trailNl && content.endsWith("\n")) content = content.slice(0, -1);
+      const content = normalizeTrailingNewline(arFixed, trailNl);
       const origHash = sha256(txt);
 
-      let wrote = false;
-      try {
-        const mode = statSync(v.path).mode & 0o7777;
-        const tmp = v.path + `.cdg-${process.pid}`;
-        writeFileSync(tmp, content);
-        chmodSync(tmp, mode);
-        opts?.afterTmpWrite?.(tmp, v.path);
-
-        const tmpContent = readFileSync(tmp, "utf8");
-        if (tmpContent !== arFixedNormalized) {
-          try { unlinkSync(tmp); } catch {}
-          unfixable.push(v);
-          continue;
-        }
-
-        let currentContent: string;
-        try {
-          currentContent = readFileSync(v.path, "utf8");
-        } catch {
-          try { unlinkSync(tmp); } catch {}
-          unfixable.push(v);
-          continue;
-        }
-        if (sha256(currentContent) !== origHash) {
-          try { unlinkSync(tmp); } catch {}
-          unfixable.push(v);
-          continue;
-        }
-
-        renameSync(tmp, v.path);
-        wrote = true;
-      } catch (e) {
-        process.stderr.write(`gate: write failed ${v.path}: ${e}\n`);
+      const wr = atomicWrite(v.path, content, origHash, {
+        afterTmpWrite: opts?.afterTmpWrite,
+        verifyContent: arFixedNormalized,
+      });
+      if (!wr.ok) {
+        process.stderr.write(`gate: ${wr.reason}\n`);
+        unfixable.push(v);
+        continue;
       }
-
-      if (!wrote) { unfixable.push(v); continue; }
       fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
     }
 

@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync, chmodSync, renameSync, unlinkSync, statSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import type { Rule, RuleContext, Finding, FixResult } from '../../src/engine/types.js';
 import { detectLanguage, netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
 import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
+import { atomicWrite, normalizeTrailingNewline } from '../../src/hooks/lib/atomic-write.js';
 
 function sha256(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex');
@@ -102,29 +103,16 @@ const rule: Rule = {
       let diskText: string;
       try { diskText = readFileSync(absPath, 'utf8'); } catch { skipped++; continue; }
 
-      const trailNl = diskText.endsWith('\n');
-      let content = ar.fixed;
-      if (trailNl && !content.endsWith('\n')) content += '\n';
-      else if (!trailNl && content.endsWith('\n')) content = content.slice(0, -1);
-
       const origHash = sha256(diskText);
-      let wrote = false;
-      try {
-        const mode = statSync(absPath).mode & 0o7777;
-        const tmp = absPath + `.cdg-${process.pid}`;
-        writeFileSync(tmp, content);
-        chmodSync(tmp, mode);
-        const current = readFileSync(absPath, 'utf8');
-        if (sha256(current) !== origHash) {
-          try { unlinkSync(tmp); } catch { /* ignore */ }
-          skipped++;
-          continue;
-        }
-        renameSync(tmp, absPath);
-        wrote = true;
-      } catch { skipped++; continue; }
+      const content = normalizeTrailingNewline(ar.fixed, diskText.endsWith('\n'));
 
-      if (wrote) { fixed++; } else { skipped++; }
+      const wr = atomicWrite(absPath, content, origHash);
+      if (!wr.ok) {
+        process.stderr.write(`comment-density rule: ${wr.reason}\n`);
+        skipped++;
+        continue;
+      }
+      fixed++;
     }
 
     return { fixed, skipped };

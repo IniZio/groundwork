@@ -4,9 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { generateReadme, checkAll, generateAll } from "../../scripts/gen-rule-readmes.js";
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function makeTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hr-readme-test-"));
@@ -23,7 +21,6 @@ function writeStubRule(
   const ruleDir = path.join(rulesDir, ruleId);
   fs.mkdirSync(ruleDir, { recursive: true });
 
-  // index.ts — plain object export, no cross-module imports so dynamic import works in tmp
   const indexContent = `
 const rule = {
   id: '${ruleId}',
@@ -47,9 +44,7 @@ export default rule;
   return ruleDir;
 }
 
-// ---------------------------------------------------------------------------
 // AC #1: README content structure
-// ---------------------------------------------------------------------------
 
 describe("generateReadme", () => {
   let tmpDir: string;
@@ -111,9 +106,7 @@ export default rule;
   });
 });
 
-// ---------------------------------------------------------------------------
 // AC #2: --check exit codes and printed lines
-// ---------------------------------------------------------------------------
 
 describe("checkAll", () => {
   let tmpDir: string;
@@ -128,9 +121,7 @@ describe("checkAll", () => {
 
   it("exits 1 and names rule for stale README", async () => {
     const ruleDir = writeStubRule(tmpDir, "stub-rule");
-    // Generate a fresh README first
     await generateAll(tmpDir);
-    // Edit one byte to make it stale
     const readmePath = path.join(ruleDir, "README.md");
     const content = fs.readFileSync(readmePath, "utf8");
     fs.writeFileSync(readmePath, content + " ", "utf8");

@@ -30,7 +30,6 @@ const rule: Rule = {
   check(ctx: RuleContext): Finding[] {
     const { repoRoot, files = [] } = ctx;
 
-    // Only check scoped files (tracked or sessionCreated)
     const scoped = files.filter(f => f.tracked === true || f.sessionCreated === true);
 
     const findings: Finding[] = [];
@@ -39,7 +38,6 @@ const rule: Rule = {
     // --- 1. Canonical synonyms ---
     for (const f of scoped) {
       const segments = f.path.split('/');
-      // Exclude last segment (filename)
       const dirs = segments.slice(0, -1);
       for (const seg of dirs) {
         if (seg in CANONICAL_SYNONYMS) {
@@ -49,17 +47,14 @@ const rule: Rule = {
             message: `use ${CANONICAL_SYNONYMS[seg]}/ (canonical) instead of ${seg}/`,
             fingerprintBasis: f.path,
           });
-          break; // only first offending segment per file
+          break;
         }
       }
     }
 
     // --- 2. Symmetric pairs ---
-    // Collect all directory names at each parent level
-    // Build a map: parentPath -> Set<dirName>
     const parentDirs = new Map<string, Set<string>>();
 
-    // From filesystem
     function collectDirsFromFs(dir: string, relParent: string): void {
       let entries: fs.Dirent[];
       try {
@@ -97,16 +92,13 @@ const rule: Rule = {
       }
     }
 
-    // Check pairs
     for (const [a, b] of SYMMETRIC_PAIRS) {
       for (const [parent, dirSet] of parentDirs) {
         if (dirSet.has(a) && dirSet.has(b)) {
           const parentLabel = parent === '' ? 'root' : parent;
-          // Flag all scoped files passing through either sibling at this parent level
           for (const f of scoped) {
             if (seenSymmetric.has(f.path)) continue;
             const segments = f.path.split('/');
-            // Check if any segment at depth (parent.split('/').length) matches a or b under the same parent
             const depth = parent === '' ? 0 : parent.split('/').length;
             if (segments.length > depth) {
               const fileParent = segments.slice(0, depth).join('/');
@@ -128,7 +120,6 @@ const rule: Rule = {
 
     // --- 3. Root scratch files ---
     for (const f of scoped) {
-      // Only root-level files (no slash in path)
       if (f.path.includes('/')) continue;
       const filename = f.path;
       for (const pattern of ROOT_SCRATCH_PATTERNS) {

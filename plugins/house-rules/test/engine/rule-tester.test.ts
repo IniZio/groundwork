@@ -6,10 +6,6 @@ import { spawnSync } from 'node:child_process';
 import { ruleTester } from '../../src/engine/rule-tester.js';
 import type { Rule } from '../../src/engine/types.js';
 
-// ---------------------------------------------------------------------------
-// Stub rules
-// ---------------------------------------------------------------------------
-
 /**
  * Flags files whose path matches the given name exactly.
  * All other files are clean.  Gives us both valid and invalid cases.
@@ -47,9 +43,7 @@ const docsRule: Rule = {
       })),
 };
 
-// ---------------------------------------------------------------------------
 // AC #2 — registration-time validation (throws, not a failing test)
-// ---------------------------------------------------------------------------
 
 describe('ruleTester — registration validation', () => {
   it('throws when valid cases array is empty', () => {
@@ -98,12 +92,7 @@ describe('ruleTester — registration validation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// AC #1 + AC #4 (code) — one it() per case, titles prefixed valid:/invalid:
-// ---------------------------------------------------------------------------
-
 describe('ruleTester — code cases', () => {
-  // selective-code rule: flags "bad.ts", ignores everything else
   ruleTester(makeSelectiveRule('selective-code', 'bad.ts'), {
     valid: [
       { why: 'good.ts is not flagged', code: 'export const ok = true;', filename: 'good.ts' },
@@ -125,10 +114,6 @@ describe('ruleTester — code cases', () => {
     ],
   });
 });
-
-// ---------------------------------------------------------------------------
-// AC #4 (tree) — tree cases, incl. docs/ stub rule
-// ---------------------------------------------------------------------------
 
 describe('ruleTester — tree cases', () => {
   ruleTester(docsRule, {
@@ -160,9 +145,7 @@ describe('ruleTester — tree cases', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // AC #3 — deliberately wrong finding causes a named (fail) line
-// ---------------------------------------------------------------------------
 
 describe('ruleTester — fail output for wrong finding', () => {
   let tmpFile: string | undefined;
@@ -226,22 +209,13 @@ ruleTester(rule, {
       .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')
       .replace(/✗/g, '(fail)');
 
-    // Exit code must be non-zero
     expect(result.status).not.toBe(0);
 
-    // Must contain a (fail) line that includes the case title (not a load error)
     expect(output).toMatch(/\(fail\).*wrong expected message triggers fail/);
   });
 });
 
-// ---------------------------------------------------------------------------
-// AC — code case with base: baseText and addedHunks passed through
-// ---------------------------------------------------------------------------
-
 describe('ruleTester — code case with base field', () => {
-  // Rule that checks whether baseText and addedHunks are properly populated.
-  // Returns a finding if baseText is undefined (means no base was passed),
-  // or if addedHunks is absent/empty (means diff was not computed).
   const baseCheckRule: Rule = {
     id: 'base-check-rule',
     meta: { description: 'asserts baseText and addedHunks are populated from Case.base' },
@@ -291,12 +265,7 @@ describe('ruleTester — code case with base field', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// AC — tree case sessionCreatedOverrides: sets sessionCreated on ScopedFile
-// ---------------------------------------------------------------------------
-
 describe('ruleTester — sessionCreatedOverrides', () => {
-  // Rule that only flags files where sessionCreated === true
   const sessionCreatedRule: Rule = {
     id: 'session-created-only',
     meta: { description: 'flags only session-created files' },

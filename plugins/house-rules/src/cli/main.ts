@@ -6,6 +6,7 @@ import { loadRules } from '../engine/registry.js';
 import { buildContext } from '../engine/context.js';
 import { runRules, isBlocking } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
+import { runHousekeep } from './housekeep.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -46,7 +47,8 @@ function printUsage(): void {
   process.stderr.write(
     'Usage:\n' +
       '  house-rules check [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
-      '  house-rules baseline [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
+      '  house-rules baseline [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
+      '  house-rules housekeep [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
   );
 }
 
@@ -56,15 +58,33 @@ function parseArgs(argv: string[]): {
   rulesDir?: string;
   baselineFile?: string;
   repo?: string;
+  rules?: string[];
+  paths?: string[];
+  since?: string;
+  baseline?: boolean;
+  max?: number;
+  dryRun?: boolean;
 } {
   const args = argv.slice(0);
   const subcommand = args.shift();
   const opts: Record<string, string> = {};
+  const flags: Record<string, boolean> = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--base' || arg === '--rules-dir' || arg === '--baseline-file' || arg === '--repo') {
+    if (
+      arg === '--base' ||
+      arg === '--rules-dir' ||
+      arg === '--baseline-file' ||
+      arg === '--repo' ||
+      arg === '--rules' ||
+      arg === '--paths' ||
+      arg === '--since' ||
+      arg === '--max'
+    ) {
       opts[arg.slice(2)] = args[++i] ?? '';
+    } else if (arg === '--baseline' || arg === '--dry-run') {
+      flags[arg.slice(2)] = true;
     }
   }
 
@@ -74,6 +94,12 @@ function parseArgs(argv: string[]): {
     rulesDir: opts['rules-dir'],
     baselineFile: opts['baseline-file'],
     repo: opts['repo'],
+    rules: opts['rules'] !== undefined ? opts['rules'].split(',') : undefined,
+    paths: opts['paths'] !== undefined ? opts['paths'].split(',') : undefined,
+    since: opts['since'],
+    baseline: flags['baseline'],
+    max: opts['max'] !== undefined ? parseInt(opts['max'], 10) : undefined,
+    dryRun: flags['dry-run'],
   };
 }
 
@@ -150,6 +176,19 @@ switch (parsed.subcommand) {
     break;
   case 'baseline':
     await cmdBaseline(parsed);
+    break;
+  case 'housekeep':
+    await runHousekeep({
+      rules: parsed.rules,
+      paths: parsed.paths,
+      since: parsed.since,
+      baselineMode: parsed.baseline,
+      max: parsed.max,
+      dryRun: parsed.dryRun,
+      repo: parsed.repo,
+      rulesDir: parsed.rulesDir,
+      baselineFile: parsed.baselineFile,
+    });
     break;
   default:
     printUsage();

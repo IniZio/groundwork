@@ -193,6 +193,18 @@ export function getMotiveSlugs(repoRoot) {
   }
 }
 
+function getMarketplacePluginNames(repoRoot) {
+  try {
+    const root = repoRoot ?? resolveRepoRoot()
+    const raw = readFileSync(join(root, '.claude-plugin', 'marketplace.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    const plugins = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.plugins) ? parsed.plugins : [])
+    return plugins.map((p) => p.name).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
 
@@ -229,7 +241,9 @@ export function lintMessage(text, opts) {
     }
   })
 
-  const slugs = opts?.motiveSlugs ?? getMotiveSlugs(opts?.repoRoot)
+  const allSlugs = opts?.motiveSlugs ?? getMotiveSlugs(opts?.repoRoot)
+  const pluginNames = new Set(getMarketplacePluginNames(opts?.repoRoot))
+  const slugs = allSlugs.filter((s) => !pluginNames.has(s))
   if (slugs.length > 0) {
     lines.forEach((line, idx) => {
       for (const slug of slugs) {

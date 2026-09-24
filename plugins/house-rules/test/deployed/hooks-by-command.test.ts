@@ -172,7 +172,7 @@ describe("deployed — comment-density-gate (Stop/SubagentStop)", () => {
 });
 
 describe("deployed — comment-density-guard (PreToolUse Edit|Write|MultiEdit)", () => {
-  const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/comment-density-guard.ts";
+  const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/guard.ts";
 
   it("benign Write payload: exits 0 with empty or valid JSON output", async () => {
     const { stdout, exit } = await spawnHook(CMD, {

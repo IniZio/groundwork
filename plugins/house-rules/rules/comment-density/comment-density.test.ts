@@ -7,12 +7,7 @@ import { ruleTester } from '../../src/engine/rule-tester.js';
 import { netNewCommentRows, detectLanguage } from '../../src/hooks/lib/comment-density.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
 
-// Register ruleTester suite
 ruleTester(rule, cases);
-
-// ---------------------------------------------------------------------------
-// Parity tests: rule findings must match what netNewCommentRows/density produce
-// ---------------------------------------------------------------------------
 
 const FIXTURES_DIR = path.resolve(import.meta.dir, '../../test/fixtures/comment-density');
 
@@ -37,7 +32,6 @@ describe('comment-density parity', () => {
         addedHunks: hunks,
       }],
     });
-    // clean.ts has no comments: both report 0 net-new comments
     expect(findings).toHaveLength(0);
     expect(netResult.rows.length).toBe(0);
   });
@@ -66,13 +60,11 @@ describe('comment-density parity', () => {
       }],
     });
 
-    // Both the rule and direct netNewCommentRows agree: over-cap file has findings
     const totalAdded = hunks.reduce((s, h) => s + h.added.length, 0);
     const directOver = netResult.rows.length / totalAdded * 100 > 5;
     expect(directOver).toBe(true);
     expect(findings).toHaveLength(1);
     expect(findings[0].ruleId).toBe('comment-density');
-    // finding message includes the net-new comment count
     expect(findings[0].message).toContain(`${netResult.rows.length} comments in`);
   });
 
@@ -101,7 +93,6 @@ describe('comment-density parity', () => {
       }],
     });
 
-    // Direct calculation and rule both agree: moved comment pairs → same result
     const totalAdded = hunks.reduce((s, h) => s + h.added.length, 0);
     const directOver = netResult.rows.length / Math.max(totalAdded, 1) * 100 > 5;
     const ruleFinds = findings.length > 0;

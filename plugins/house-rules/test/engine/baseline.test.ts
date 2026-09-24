@@ -94,12 +94,10 @@ describe('baseline', () => {
   it('missing file returns empty baseline; malformed throws with path in message', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'hr-baseline-'));
     try {
-      // missing file
       const missingPath = join(dir, 'nonexistent.json');
       const empty = await readBaseline(missingPath);
       expect(empty).toEqual({ version: 1, entries: [] });
 
-      // malformed file
       const badPath = join(dir, 'bad.json');
       await writeFile(badPath, 'not json', 'utf8');
       let threw = false;
@@ -144,8 +142,6 @@ describe('baseline', () => {
 
   it('readBaseline rejects entry missing fingerprint', async () => {
     // Red before fix: readBaseline accepted entries without a valid fingerprint
-    // Before fix, this test would fail: expect(received).rejects.toThrow(...)
-    // bun's output: (fail) readBaseline rejects entry missing fingerprint
     const dir = await mkdtemp(join(tmpdir(), 'hr-baseline-'));
     const badFile = join(dir, 'bad.json');
     try {

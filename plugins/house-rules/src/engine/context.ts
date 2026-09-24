@@ -147,7 +147,6 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
   for (const relPath of relPaths) {
     const absPath = path.join(repoRoot, relPath);
 
-    // text
     let text: string | undefined;
     if (mode === 'guard') {
       text = opts.postText;
@@ -159,11 +158,9 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       }
     }
 
-    // lang
     const langResult = detectLanguage(relPath);
     const lang: string | undefined = langResult ?? undefined;
 
-    // baseText
     let baseText: string;
     const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], {
       encoding: 'utf8',
@@ -174,7 +171,6 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       baseText = '';
     }
 
-    // addedHunks
     let hunks: import('./types.js').DiffHunk[] | undefined;
     if (mode === 'guard') {
       hunks = diffTextToHunks(baseText, opts.postText ?? '');
@@ -183,10 +179,8 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       hunks = h ?? undefined;
     }
 
-    // tracked
     const tracked = isTracked(repoRoot, relPath);
 
-    // sessionCreated
     let sessionCreated = false;
     if (mode === 'gate') {
       sessionCreated = opts.transcriptPath

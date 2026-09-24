@@ -4,9 +4,7 @@ import { join } from "node:path";
 
 // All paths relative to this file (import.meta.dir), never process.cwd or CLAUDE_PROJECT_DIR
 const dir = import.meta.dir;
-// plugins/house-rules/test → plugins/house-rules
 const pluginRoot = join(dir, "..");
-// repo root
 const repoRoot = join(pluginRoot, "../..");
 
 describe("house-rules manifest", () => {
@@ -26,7 +24,6 @@ describe("house-rules manifest", () => {
       )
     ).toBe(true);
 
-    // SubagentStop has exactly one group with comment-density-gate.ts
     const subagentStopGroups: Array<{
       hooks: Array<{ type: string; command: string }>;
     }> = pluginJson.hooks?.SubagentStop ?? [];
@@ -45,7 +42,7 @@ describe("house-rules manifest", () => {
       preToolUseGroups.some(
         (g) =>
           g.matcher === "Edit|Write|MultiEdit" &&
-          g.hooks.some((h) => h.command.includes("comment-density-guard.ts"))
+          g.hooks.some((h) => h.command.includes("guard.ts"))
       )
     ).toBe(true);
   });

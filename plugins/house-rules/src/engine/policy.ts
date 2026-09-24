@@ -12,6 +12,6 @@ export const BUILTIN_POLICY: Record<string, PolicyEntry> = {
 
 export const DEFAULT_IGNORE: string[] = [
   '**/test/fixtures/**',
-  'node_modules/**',
+  '**/node_modules/**',
   '.git/**',
 ];

@@ -34,13 +34,11 @@ describe("plugin manifest parity", () => {
   const gwCmds = collectHookCommands(groundworkManifest);
   const hrCmds = collectHookCommands(houseRulesManifest);
 
-  it("comment-density-guard.ts appears only in house-rules manifest, exactly once in PreToolUse Edit|Write|MultiEdit group", () => {
-    // must not appear in groundwork
-    const inGw = gwCmds.filter((c) => c.includes("comment-density-guard.ts"));
+  it("hooks/guard.ts appears only in house-rules manifest, exactly once in PreToolUse Edit|Write|MultiEdit group", () => {
+    const inGw = gwCmds.filter((c) => c.includes("hooks/guard.ts"));
     expect(inGw).toHaveLength(0);
 
-    // must appear exactly once in house-rules
-    const inHr = hrCmds.filter((c) => c.includes("comment-density-guard.ts"));
+    const inHr = hrCmds.filter((c) => c.includes("hooks/guard.ts"));
     expect(inHr).toHaveLength(1);
 
     // must be in the PreToolUse Edit|Write|MultiEdit group
@@ -48,21 +46,18 @@ describe("plugin manifest parity", () => {
     const matchingGroup = preToolUseGroups.find(
       (g: { matcher?: string; hooks: Array<{ type: string; command: string }> }) =>
         g.matcher === "Edit|Write|MultiEdit" &&
-        g.hooks.some((h) => h.command.includes("comment-density-guard.ts"))
+        g.hooks.some((h) => h.command.includes("hooks/guard.ts"))
     );
     expect(matchingGroup).toBeDefined();
   });
 
   it("comment-density-gate.ts appears only in house-rules manifest, exactly twice (Stop + SubagentStop)", () => {
-    // must not appear in groundwork
     const inGw = gwCmds.filter((c) => c.includes("comment-density-gate.ts"));
     expect(inGw).toHaveLength(0);
 
-    // must appear exactly twice in house-rules
     const inHr = hrCmds.filter((c) => c.includes("comment-density-gate.ts"));
     expect(inHr).toHaveLength(2);
 
-    // once in Stop
     const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
       houseRulesManifest.hooks?.Stop ?? [];
     const stopHasDensityGate = stopGroups.some((g) =>
@@ -70,7 +65,6 @@ describe("plugin manifest parity", () => {
     );
     expect(stopHasDensityGate).toBe(true);
 
-    // once in SubagentStop
     const subagentStopGroups: Array<{
       hooks: Array<{ type: string; command: string }>;
     }> = houseRulesManifest.hooks?.SubagentStop ?? [];

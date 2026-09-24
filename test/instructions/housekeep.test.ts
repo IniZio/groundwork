@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const SKILL_PATH = path.join(ROOT, "skills/housekeep/SKILL.md");
+const SKILL_PATH = path.join(ROOT, "plugins/house-rules/skills/housekeep/SKILL.md");
 
 describe("housekeep skill", () => {
   it("SKILL.md exists", () => {
@@ -24,7 +24,7 @@ describe("housekeep skill", () => {
 
   for (const ref of REFS) {
     it(`reference/${ref}.md exists`, () => {
-      expect(existsSync(path.join(ROOT, `skills/housekeep/reference/${ref}.md`))).toBe(true);
+      expect(existsSync(path.join(ROOT, `plugins/house-rules/skills/housekeep/reference/${ref}.md`))).toBe(true);
     });
   }
 
@@ -32,7 +32,7 @@ describe("housekeep skill", () => {
     const content = readFileSync(SKILL_PATH, "utf8");
     const linked = [...content.matchAll(/`reference\/([^`]+)`/g)].map(m => m[1]);
     for (const fname of linked) {
-      const full = path.join(ROOT, "skills/housekeep/reference", fname);
+      const full = path.join(ROOT, "plugins/house-rules/skills/housekeep/reference", fname);
       expect(existsSync(full), `linked reference/${fname} does not exist`).toBe(true);
     }
   });

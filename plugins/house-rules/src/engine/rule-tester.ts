@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Rule, RuleCases, RuleContext, ScopedFile, Finding, Case } from './types.js';
+import { diffTextToHunks } from '../hooks/lib/work-scope.js';
 
 /** Extend Case for tree cases: per-file tracked override. */
 export interface TrackedCase extends Case {
@@ -126,11 +127,26 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
   const absPath = path.join(tmp, filename);
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
   fs.writeFileSync(absPath, c.code ?? '');
+
+  const codeText = c.code ?? '';
+  let caseAddedHunks: ScopedFile['addedHunks'];
+  if (c.base !== undefined) {
+    caseAddedHunks = diffTextToHunks(c.base, codeText);
+  } else {
+    const lines = codeText.split('\n');
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    caseAddedHunks = lines.length > 0
+      ? [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }]
+      : [];
+  }
+
   const files: ScopedFile[] = [{
     path: filename,
-    text: c.code ?? '',
+    text: codeText,
     lang: extToLang(ext),
     tracked: true,
+    ...(c.base !== undefined ? { baseText: c.base } : {}),
+    addedHunks: caseAddedHunks,
   }];
   return { repoRoot: tmp, mode: 'cli', files };
 }

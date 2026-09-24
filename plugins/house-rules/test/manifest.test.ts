@@ -10,13 +10,44 @@ const pluginRoot = join(dir, "..");
 const repoRoot = join(pluginRoot, "../..");
 
 describe("house-rules manifest", () => {
-  it("plugin.json has correct name and version and no hooks key", () => {
+  it("plugin.json has correct name and version with comment-density hooks registered", () => {
     const pluginJson = JSON.parse(
       readFileSync(join(pluginRoot, ".claude-plugin/plugin.json"), "utf8")
     );
     expect(pluginJson.name).toBe("house-rules");
     expect(pluginJson.version).toBe("0.1.0");
-    expect(pluginJson.hooks).toBeUndefined();
+
+    // Stop has exactly one group with comment-density-gate.ts
+    const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
+      pluginJson.hooks?.Stop ?? [];
+    expect(
+      stopGroups.some((g) =>
+        g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+      )
+    ).toBe(true);
+
+    // SubagentStop has exactly one group with comment-density-gate.ts
+    const subagentStopGroups: Array<{
+      hooks: Array<{ type: string; command: string }>;
+    }> = pluginJson.hooks?.SubagentStop ?? [];
+    expect(
+      subagentStopGroups.some((g) =>
+        g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+      )
+    ).toBe(true);
+
+    // PreToolUse has a group with matcher Edit|Write|MultiEdit and comment-density-guard.ts
+    const preToolUseGroups: Array<{
+      matcher?: string;
+      hooks: Array<{ type: string; command: string }>;
+    }> = pluginJson.hooks?.PreToolUse ?? [];
+    expect(
+      preToolUseGroups.some(
+        (g) =>
+          g.matcher === "Edit|Write|MultiEdit" &&
+          g.hooks.some((h) => h.command.includes("comment-density-guard.ts"))
+      )
+    ).toBe(true);
   });
 
   it("marketplace.json has house-rules entry with correct source and version", () => {

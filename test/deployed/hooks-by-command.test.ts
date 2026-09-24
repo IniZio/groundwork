@@ -76,35 +76,8 @@ function makeTempRepo(label: string): string {
   return dir;
 }
 
-function makeParityDensityRepo(label: string): { transcriptPath: string } {
-  const dir = path.join(tmpDir, `repo-cdg-${label}`);
-  mkdirSync(dir, { recursive: true });
-  execSync("git init -q", { cwd: dir });
-  execSync('git config user.email "test@example.com"', { cwd: dir });
-  execSync('git config user.name "Test"', { cwd: dir });
-  execSync("git commit --allow-empty -m base", { cwd: dir });
-  const FIXTURES = path.join(ROOT, "plugins/house-rules/test/fixtures/comment-density/nexus-probe");
-  for (const name of ["Dockerfile", "probe.sh"]) {
-    writeFileSync(path.join(dir, name), readFileSync(path.join(FIXTURES, name), "utf8"));
-  }
-  execSync("git add . && git commit -m fixtures", { cwd: dir });
-  const transcriptPath = path.join(tmpDir, `parity-cdg-${label}.jsonl`);
-  const entries = ["Dockerfile", "probe.sh"].map(name =>
-    JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "tool_use", name: "Write", input: { file_path: path.join(dir, name), content: "x" } }] },
-      timestamp: "2020-01-01T00:00:00.000Z",
-      cwd: dir,
-    })
-  );
-  writeFileSync(transcriptPath, entries.join("\n") + "\n");
-  return { transcriptPath };
-}
-
 const parityStopGateDb = makeTempDb("parity-sg");
 const parityNewCodeRepo = makeTempRepo("parity-ncg");
-const { transcriptPath: parityDensityTranscript } = makeParityDensityRepo("stop");
-const { transcriptPath: paritySubagentTranscript } = makeParityDensityRepo("sub");
 
 afterAll(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ } });
 
@@ -145,20 +118,6 @@ describe("event-output contract — every (event, command) pair must produce the
     ],
     "src/hooks/new-code-gate.ts": [
       { cwd: parityNewCodeRepo }, {}
-    ],
-    "plugins/house-rules/src/hooks/comment-density-gate.ts@Stop": [
-      { hook_event_name: "Stop", session_id: "parity-cdg", transcript_path: parityDensityTranscript },
-      {}
-    ],
-    "plugins/house-rules/src/hooks/comment-density-gate.ts@SubagentStop": [
-      {
-        hook_event_name: "SubagentStop",
-        session_id: "parity-cdg-sub",
-        agent_id: "parity-subagent-001",
-        transcript_path: paritySubagentTranscript,
-        agent_transcript_path: paritySubagentTranscript,
-      },
-      {}
     ],
   };
 

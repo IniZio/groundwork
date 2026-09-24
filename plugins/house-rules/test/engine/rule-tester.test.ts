@@ -233,3 +233,60 @@ ruleTester(rule, {
     expect(output).toMatch(/\(fail\).*wrong expected message triggers fail/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC — code case with base: baseText and addedHunks passed through
+// ---------------------------------------------------------------------------
+
+describe('ruleTester — code case with base field', () => {
+  // Rule that checks whether baseText and addedHunks are properly populated.
+  // Returns a finding if baseText is undefined (means no base was passed),
+  // or if addedHunks is absent/empty (means diff was not computed).
+  const baseCheckRule: Rule = {
+    id: 'base-check-rule',
+    meta: { description: 'asserts baseText and addedHunks are populated from Case.base' },
+    vehicles: ['diff'],
+    check: (ctx) => {
+      const f = (ctx.files ?? [])[0];
+      if (!f) return [];
+      const out: import('../../src/engine/types.js').Finding[] = [];
+      if (f.baseText === undefined) {
+        out.push({
+          ruleId: 'base-check-rule',
+          path: f.path,
+          message: 'missing baseText',
+          fingerprintBasis: 'no-baseText',
+        });
+      }
+      if (!f.addedHunks || f.addedHunks.length === 0) {
+        out.push({
+          ruleId: 'base-check-rule',
+          path: f.path,
+          message: 'missing addedHunks',
+          fingerprintBasis: 'no-addedHunks',
+        });
+      }
+      return out;
+    },
+  };
+
+  ruleTester(baseCheckRule, {
+    valid: [
+      {
+        why: 'base provided: baseText is set and addedHunks shows the diff',
+        code: 'const x = 2;\n',
+        filename: 'evolving.ts',
+        base: 'const x = 1;\n',
+      },
+    ],
+    invalid: [
+      {
+        why: 'no base: baseText is absent so rule flags missing baseText',
+        code: 'const x = 1;\n',
+        filename: 'fresh.ts',
+        // no base → baseText undefined; addedHunks = all lines (present)
+        findings: [{ ruleId: 'base-check-rule', message: 'missing baseText' }],
+      },
+    ],
+  });
+});

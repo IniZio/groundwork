@@ -54,6 +54,8 @@ export interface Case {
   code?: string;
   filename?: string;
   tree?: Record<string, string>;
+  /** Base text for a code case; when present, addedHunks = diffTextToHunks(base, code) */
+  base?: string;
 }
 
 export interface RuleCases {

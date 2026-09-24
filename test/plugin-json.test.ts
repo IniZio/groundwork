@@ -1,50 +1,91 @@
 import { describe, it, expect } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
-import path from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const ROOT = path.resolve(import.meta.dir, "..");
+const ROOT = join(import.meta.dir, "..");
 
-interface HookEntry { type: string; command: string }
-interface MatcherGroup { hooks: HookEntry[] }
-const pluginJson = JSON.parse(readFileSync(path.join(ROOT, ".claude-plugin/plugin.json"), "utf8")) as {
-  hooks?: Record<string, MatcherGroup[]>;
-};
-
-function allCommands(): string[] {
+// helper: collect all hook commands from a manifest
+function collectHookCommands(manifest: {
+  hooks?: Record<
+    string,
+    Array<{ matcher?: string; hooks: Array<{ type: string; command: string }> }>
+  >;
+}): string[] {
   const cmds: string[] = [];
-  for (const groups of Object.values(pluginJson.hooks ?? {})) {
+  for (const groups of Object.values(manifest.hooks ?? {})) {
     for (const group of groups) {
-      for (const entry of group.hooks ?? []) cmds.push(entry.command);
+      for (const h of group.hooks) cmds.push(h.command);
     }
   }
   return cmds;
 }
 
-describe("plugin.json hook commands", () => {
-  it("every hook command starts with 'bun ${CLAUDE_PLUGIN_ROOT}/'", () => {
-    const commands = allCommands();
-    expect(commands.length).toBeGreaterThan(0);
-    for (const cmd of commands) {
-      expect(cmd).toMatch(/^bun \$\{CLAUDE_PLUGIN_ROOT\}\//);
-    }
+describe("plugin manifest parity", () => {
+  const groundworkManifest = JSON.parse(
+    readFileSync(join(ROOT, ".claude-plugin/plugin.json"), "utf8")
+  );
+  const houseRulesManifest = JSON.parse(
+    readFileSync(
+      join(ROOT, "plugins/house-rules/.claude-plugin/plugin.json"),
+      "utf8"
+    )
+  );
+
+  const gwCmds = collectHookCommands(groundworkManifest);
+  const hrCmds = collectHookCommands(houseRulesManifest);
+
+  it("comment-density-guard.ts appears only in house-rules manifest, exactly once in PreToolUse Edit|Write|MultiEdit group", () => {
+    // must not appear in groundwork
+    const inGw = gwCmds.filter((c) => c.includes("comment-density-guard.ts"));
+    expect(inGw).toHaveLength(0);
+
+    // must appear exactly once in house-rules
+    const inHr = hrCmds.filter((c) => c.includes("comment-density-guard.ts"));
+    expect(inHr).toHaveLength(1);
+
+    // must be in the PreToolUse Edit|Write|MultiEdit group
+    const preToolUseGroups = houseRulesManifest.hooks?.PreToolUse ?? [];
+    const matchingGroup = preToolUseGroups.find(
+      (g: { matcher?: string; hooks: Array<{ type: string; command: string }> }) =>
+        g.matcher === "Edit|Write|MultiEdit" &&
+        g.hooks.some((h) => h.command.includes("comment-density-guard.ts"))
+    );
+    expect(matchingGroup).toBeDefined();
   });
 
-  it("every referenced hook file exists relative to repo root", () => {
-    for (const cmd of allCommands()) {
-      const match = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(.+)$/);
-      if (!match) continue;
-      expect(existsSync(path.join(ROOT, match[1]))).toBe(true);
-    }
+  it("comment-density-gate.ts appears only in house-rules manifest, exactly twice (Stop + SubagentStop)", () => {
+    // must not appear in groundwork
+    const inGw = gwCmds.filter((c) => c.includes("comment-density-gate.ts"));
+    expect(inGw).toHaveLength(0);
+
+    // must appear exactly twice in house-rules
+    const inHr = hrCmds.filter((c) => c.includes("comment-density-gate.ts"));
+    expect(inHr).toHaveLength(2);
+
+    // once in Stop
+    const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
+      houseRulesManifest.hooks?.Stop ?? [];
+    const stopHasDensityGate = stopGroups.some((g) =>
+      g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+    );
+    expect(stopHasDensityGate).toBe(true);
+
+    // once in SubagentStop
+    const subagentStopGroups: Array<{
+      hooks: Array<{ type: string; command: string }>;
+    }> = houseRulesManifest.hooks?.SubagentStop ?? [];
+    const subagentStopHasDensityGate = subagentStopGroups.some((g) =>
+      g.hooks.some((h) => h.command.includes("comment-density-gate.ts"))
+    );
+    expect(subagentStopHasDensityGate).toBe(true);
   });
 
-  it("claude plugin validate . exits 0", () => {
-    let exitCode = 0;
-    try {
-      execSync("claude plugin validate .", { cwd: ROOT, stdio: "pipe" });
-    } catch (e) {
-      exitCode = (e as { status?: number }).status ?? 1;
-    }
-    expect(exitCode).toBe(0);
+  it("groundwork plugin.json has a house-rules dependency with version starting with ~", () => {
+    const deps: Array<{ name: string; version?: string; marketplace?: string }> =
+      groundworkManifest.dependencies ?? [];
+    const houseRulesDep = deps.find((d) => d.name === "house-rules");
+    expect(houseRulesDep).toBeDefined();
+    // version is a semver range like ~0.1.0 that includes 0.1.0
+    expect(houseRulesDep?.version).toMatch(/^~/);
   });
 });

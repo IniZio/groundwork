@@ -3,7 +3,8 @@
   "version": "2.5.2",
   "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
-    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }
+    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" },
+    { "name": "house-rules", "version": "~0.1.0" }
   ],
   "hooks": {
     "SessionStart": [
@@ -18,26 +19,18 @@
       {
         "hooks": [
           { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-gate.ts" }
+          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
         ]
       }
     ],
     "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/plugins/house-rules/src/hooks/comment-density-guard.ts" }
-        ]
-      },
       {
         "matcher": "Bash",
         "hooks": [

@@ -11,6 +11,7 @@ import path from "node:path";
 import {
   detectLanguage,
   findComments,
+  isPluginFixture,
   reconstructPostEdit,
   newComments as findNewComments,
   stripComments,
@@ -186,8 +187,6 @@ export interface CheckOpts {
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
   try {
-    if (process.env.GROUNDWORK_COMMENT_DENSITY === "0") return allow();
-
     if (!input || typeof input !== "object" || Array.isArray(input)) return allow();
     const inp = input as Record<string, unknown>;
 
@@ -200,6 +199,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     const filePath = typeof ti.file_path === "string" ? ti.file_path : "";
     if (!filePath) return allow();
+    if (isPluginFixture(filePath)) return allow();
 
     const ext = path.extname(filePath).toLowerCase();
     if (ext === ".md") return allow();

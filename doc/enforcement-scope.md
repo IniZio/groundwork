@@ -32,6 +32,8 @@ For PreToolUse and PostToolUse hooks, `hookSpecificOutput.hookEventName` must eq
 
 **comment-density-gate 4-attempt bound**: the gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming the over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
 
+**comment-density has no opt-out**: there is no environment variable or config knob to disable comment-density enforcement. The `CLAUDE_CODE_ENTRYPOINT=sdk-py/sdk-js` skip exists only to prevent nested-agent leakage and is not user-settable in practice. Files under the plugin's own `test/fixtures/` directory are exempt from enforcement; no such exemption exists for any other path.
+
 ## Deployed-path evidence
 
 Any claim that a hook fires in a real session must be backed by a run through `scripts/proof-harness.sh`. The `--plugin-dir` flag silently drops plugins that declare `dependencies` and must not be used as evidence; see `doc/proof-harness.md` for the differential and the required install path.

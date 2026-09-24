@@ -324,12 +324,12 @@ describe("AC6: fail-open", () => {
     expect(r.status).toBe(0);
   });
 
-  it("allows when GROUNDWORK_COMMENT_DENSITY=0", () => {
+  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — gate still blocks", () => {
     const fp = makeViolatorTs(tmpDir, "v.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: "ac6b", transcript_path: tp }, { GROUNDWORK_COMMENT_DENSITY: "0" });
-    expect(parseOut(r.stdout).decision).not.toBe("block");
+    expect(parseOut(r.stdout).decision).toBe("block");
   });
 
   it("allows when transcript_path is missing", () => {
@@ -406,6 +406,41 @@ describe("AC7: SubagentStop real payload shape blocks over-cap file", () => {
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     expect(out.reason as string).toContain("sub-dense.ts");
+  });
+});
+
+describe("AC8: end-user test/fixtures are not exempt", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-fix-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("over-cap file at test/fixtures/ in a different repo still BLOCKS", () => {
+    const fixtureDir = path.join(tmpDir, "test", "fixtures");
+    mkdirSync(fixtureDir, { recursive: true });
+    const fp = path.join(fixtureDir, "a.sh");
+    const lines = [
+      "#!/usr/bin/env bash",
+      ...Array.from({ length: 14 }, (_, i) => `echo "line ${i}"`),
+      "# comment A",
+      "# comment B",
+      "# comment C",
+      "# comment D",
+      "# comment E",
+    ];
+    writeFileSync(fp, lines.join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate({ hook_event_name: "Stop", session_id: `ac8-${Date.now()}`, transcript_path: tp });
+    expect(parseOut(r.stdout).decision).toBe("block");
   });
 });
 

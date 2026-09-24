@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { detectLanguage, density } from "./lib/comment-density.js";
+import { detectLanguage, density, isPluginFixture } from "./lib/comment-density.js";
 import { sessionBase, touchedFiles, addedRanges } from "./lib/work-scope.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -52,7 +52,6 @@ interface ViolatingFile {
 export async function run(input: unknown, env: Record<string, string | undefined>): Promise<HookResult> {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
-    if (env.GROUNDWORK_COMMENT_DENSITY === "0") return silentAllow();
 
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
 
@@ -83,6 +82,7 @@ export async function run(input: unknown, env: Record<string, string | undefined
 
     for (const file of files) {
       if (!existsSync(file)) continue;
+      if (isPluginFixture(file)) continue;
 
       const lang = detectLanguage(file);
       if (!lang) continue;

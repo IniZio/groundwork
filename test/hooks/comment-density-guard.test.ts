@@ -165,13 +165,12 @@ describe("comment-density-guard", () => {
     expect(r.exit).toBe(0);
   });
 
-  it("CLEAN: kill switch (GROUNDWORK_COMMENT_DENSITY=0) → empty stdout, exit 0", async () => {
+  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — guard still corrects", async () => {
     const orig = process.env.GROUNDWORK_COMMENT_DENSITY;
     process.env.GROUNDWORK_COMMENT_DENSITY = "0";
     try {
-      const r = await check(write("/tmp/cdg-kill.ts", OVER_CAP_25));
-      expect(r.stdout).toBe("");
-      expect(r.exit).toBe(0);
+      const r = await check(write("/tmp/cdg-kill-bite.ts", OVER_CAP_25));
+      expect(getHso(r)).toHaveProperty("updatedInput");
     } finally {
       if (orig === undefined) delete process.env.GROUNDWORK_COMMENT_DENSITY;
       else process.env.GROUNDWORK_COMMENT_DENSITY = orig;
@@ -301,8 +300,6 @@ describe("comment-density-guard", () => {
     expect(ns).toContain("existing comment B");
   });
 });
-
-// AC4: cumulative budget tests using real git repo + transcript
 
 function gitIn(dir: string, args: string[], env: Record<string, string> = {}) {
   return spawnSync("git", ["-C", dir, ...args], {
@@ -437,9 +434,6 @@ describe("AC4 cumulative budget", () => {
   });
 
   it("BITE: prior always 0 → should-strip case becomes allow (red without real prior)", async () => {
-    // This is a design-time bite proof. With prior=0:
-    // budget=floor(0.05*10)-0=0 for strippedRepo's 10-line edit.
-    // But real budget=floor(0.05*50)-2=0 too. Both zero → same result.
     // Use a repo where bite changes the outcome: 20 prior + 2 comments, 20-line edit
     const biteRepo = makeSessionRepo({ priorCodeLines: 18, priorCommentLines: 2 });
     // Real: floor(0.05*(20+20))-2=2-2=0 → strip
@@ -452,7 +446,6 @@ describe("AC4 cumulative budget", () => {
       cwd: biteRepo.dir,
     });
     const hso = getHso(r);
-    // Real budget=0 → strip → updatedInput present
     expect(hso).toHaveProperty("updatedInput");
     const ctx = safeContext(r);
     expect(ctx!).toContain("20 lines added");
@@ -460,6 +453,64 @@ describe("AC4 cumulative budget", () => {
   });
 });
 
+
+import { mkdirSync, rmSync } from "node:fs";
+import { isPluginFixture } from "../../src/hooks/lib/comment-density.js";
+
+const PLUGIN_ROOT = path.resolve(import.meta.dir, "../..");
+const OVER_CAP_SH = [
+  "#!/usr/bin/env bash",
+  ...Array.from({ length: 14 }, (_, i) => `echo "line ${i}"`),
+  "# comment A", "# comment B", "# comment C", "# comment D", "# comment E",
+].join("\n") + "\n";
+
+describe("plugin fixture skip (isPluginFixture + guard)", () => {
+  it("plugin fixture path → guard allows (no output)", async () => {
+    const fp = path.join(PLUGIN_ROOT, "test", "fixtures", "comment-density", "tmp-probe.sh");
+    const r = await check(write(fp, OVER_CAP_SH));
+    expect(r.stdout).toBe("");
+    expect(r.exit).toBe(0);
+  });
+
+  it("end-user test/fixtures path → guard still corrects", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-usr-fix-"));
+    try {
+      mkdirSync(path.join(tmpDir, "test", "fixtures"), { recursive: true });
+      const fp = path.join(tmpDir, "test", "fixtures", "a.sh");
+      const r = await check(write(fp, OVER_CAP_SH));
+      expect(getHso(r)).toHaveProperty("updatedInput");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("isPluginFixture", () => {
+  it("true for over-cap.ts inside plugin fixtures", () => {
+    const fp = path.join(PLUGIN_ROOT, "test", "fixtures", "comment-density", "over-cap.ts");
+    expect(isPluginFixture(fp)).toBe(true);
+  });
+
+  it("true via opencode symlink path", () => {
+    const fp = "/home/newman/.config/opencode/plugins/groundwork/test/fixtures/comment-density/over-cap.ts";
+    expect(isPluginFixture(fp)).toBe(true);
+  });
+
+  it("false for a source file in the plugin", () => {
+    const fp = path.join(PLUGIN_ROOT, "src", "hooks", "comment-density-gate.ts");
+    expect(isPluginFixture(fp)).toBe(false);
+  });
+
+  it("false for test/fixtures in an unrelated tmp dir", () => {
+    const fp = path.join(os.tmpdir(), "some-repo", "test", "fixtures", "x.sh");
+    expect(isPluginFixture(fp)).toBe(false);
+  });
+
+  it("false for test/fixtures-other inside the plugin", () => {
+    const fp = path.join(PLUGIN_ROOT, "test", "fixtures-other", "x");
+    expect(isPluginFixture(fp)).toBe(false);
+  });
+});
 
 import { readFileSync as readFS } from "node:fs";
 import path2 from "node:path";

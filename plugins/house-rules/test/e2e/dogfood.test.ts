@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const BIN = '/home/newman/.local/share/groundwork/plugins/house-rules/bin/house-rules';
-const REPO = '/home/newman/.local/share/groundwork';
+const PLUGIN_ROOT = resolve(import.meta.dir, '../..');
+const BIN = join(PLUGIN_ROOT, 'bin/house-rules');
+const REPO = resolve(PLUGIN_ROOT, '../..');
 
 function cloneRepo(dest: string): void {
   const r = spawnSync('git', ['clone', REPO, dest], { encoding: 'utf8' });

@@ -16,6 +16,47 @@ const FIXTURES = path.join(
 );
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
+function extractEditFilePath(fixturePath: string): string {
+  for (const line of readFileSync(fixturePath, "utf8").split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
+    if (obj.type !== "assistant") continue;
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    if (!Array.isArray(msg.content)) continue;
+    for (const blk of msg.content as Record<string, unknown>[]) {
+      if (blk.type !== "tool_use") continue;
+      if (blk.name !== "Edit" && blk.name !== "Write") continue;
+      const inp = blk.input as Record<string, unknown> | undefined;
+      if (inp && typeof inp.file_path === "string") return inp.file_path;
+    }
+  }
+  throw new Error(`No Edit/Write file_path found in ${fixturePath}`);
+}
+
+function extractBashCwdPath(fixturePath: string, filename: string): string {
+  for (const line of readFileSync(fixturePath, "utf8").split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
+    if (obj.type !== "assistant" || typeof obj.cwd !== "string") continue;
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    if (!Array.isArray(msg.content)) continue;
+    for (const blk of msg.content as Record<string, unknown>[]) {
+      if (blk.type !== "tool_use" || blk.name !== "Bash") continue;
+      const inp = blk.input as Record<string, unknown> | undefined;
+      const cmd = inp && typeof inp.command === "string" ? inp.command : "";
+      if (cmd.includes(filename)) return path.join(obj.cwd as string, filename);
+    }
+  }
+  throw new Error(`No Bash entry for ${filename} found in ${fixturePath}`);
+}
+
+const SUBAGENT_MOTIVE_MAP_PATH = extractEditFilePath(path.join(FIXTURES, "subagent.jsonl"));
+const MAIN_EVALS_JSON_PATH = extractBashCwdPath(path.join(FIXTURES, "main-session.jsonl"), "evals.json");
+
 const tmpRoots: string[] = [];
 function tmpDir(label: string): string {
   const d = path.join(os.tmpdir(), `gw-ws-${label}-${Date.now()}`);
@@ -130,9 +171,7 @@ describe("touchedFiles — Stop collects main and subagent transcripts", () => {
       sessionId,
     });
 
-    expect(files).toContain(
-      "/home/newman/.local/share/groundwork/hooks/lib/motive-map.mjs",
-    );
+    expect(files).toContain(SUBAGENT_MOTIVE_MAP_PATH);
     expect(files).toContain(
       "/tmp/claude-1003/-home-newman--local-share-groundwork/04e59890-9dba-48b8-8bbc-5406dfc81bc2/scratchpad/ledger-seed.json",
     );
@@ -153,9 +192,7 @@ describe("touchedFiles — Stop collects main and subagent transcripts", () => {
       sessionId,
     });
 
-    expect(files).not.toContain(
-      "/home/newman/.local/share/groundwork/hooks/lib/motive-map.mjs",
-    );
+    expect(files).not.toContain(SUBAGENT_MOTIVE_MAP_PATH);
   });
 
   it("SubagentStop reads only agentTranscriptPath", () => {
@@ -173,9 +210,7 @@ describe("touchedFiles — Stop collects main and subagent transcripts", () => {
       agentTranscriptPath: subFile,
     });
 
-    expect(files).toContain(
-      "/home/newman/.local/share/groundwork/hooks/lib/motive-map.mjs",
-    );
+    expect(files).toContain(SUBAGENT_MOTIVE_MAP_PATH);
   });
 });
 
@@ -499,9 +534,7 @@ describe("touchedFiles — Bash heredoc file write is captured", () => {
       sessionId,
     });
 
-    expect(files).toContain(
-      "/home/newman/.local/share/groundwork/.claude/skills/release/evals/evals.json",
-    );
+    expect(files).toContain(MAIN_EVALS_JSON_PATH);
   });
 
   it("bite: evals.json is absent when using a transcript with no Bash entries", () => {
@@ -520,9 +553,7 @@ describe("touchedFiles — Bash heredoc file write is captured", () => {
       sessionId,
     });
 
-    expect(files).not.toContain(
-      "/home/newman/.local/share/groundwork/.claude/skills/release/evals/evals.json",
-    );
+    expect(files).not.toContain(MAIN_EVALS_JSON_PATH);
   });
 });
 

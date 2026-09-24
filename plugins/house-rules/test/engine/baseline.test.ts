@@ -4,8 +4,10 @@ import type { Finding } from '../../src/engine/types.js';
 import type { FindingWithSeverity } from '../../src/engine/run.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+
+const FIXTURES_DIR = resolve(import.meta.dir, '../fixtures');
 
 describe('baseline', () => {
   it('byte-identical double write, sorted, deduplicated', async () => {
@@ -116,8 +118,7 @@ describe('baseline', () => {
   });
 
   it('fixture round-trips byte-identical', async () => {
-    const fixturePath =
-      '/home/newman/.local/share/groundwork/plugins/house-rules/test/fixtures/baseline/baseline.json';
+    const fixturePath = join(FIXTURES_DIR, 'baseline/baseline.json');
     const original = await readFile(fixturePath, 'utf8');
     const parsed = JSON.parse(original);
     const reserialized = JSON.stringify(parsed, null, 2) + '\n';

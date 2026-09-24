@@ -247,11 +247,16 @@ describe('housekeep', () => {
     expect(output).toContain('1 fixed');
   });
 
-  test('untracked strays reported, exit 0 (THIS repo positive control)', async () => {
-    const groundworkRoot = '/home/newman/.local/share/groundwork';
+  test('untracked strays reported, exit 0 (positive control)', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+
+    fs.writeFileSync(path.join(repoDir, 'test-agent-config.mjs'), 'export {};\n');
+    fs.writeFileSync(path.join(repoDir, 'test-persistence.mjs'), 'export {};\n');
 
     const output = await captureRunHousekeep({
-      repo: groundworkRoot,
+      repo: repoDir,
       dryRun: true,
     });
 

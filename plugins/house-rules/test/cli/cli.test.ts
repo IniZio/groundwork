@@ -4,9 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { describe, it, expect, afterEach } from 'bun:test';
 
-const CLI = '/home/newman/.local/share/groundwork/plugins/house-rules/src/cli/main.ts';
-const BIN = '/home/newman/.local/share/groundwork/plugins/house-rules/bin/house-rules';
-const REAL_RULES_DIR = '/home/newman/.local/share/groundwork/plugins/house-rules/rules';
+const PLUGIN_ROOT = path.resolve(import.meta.dir, '../..');
+const CLI = path.join(PLUGIN_ROOT, 'src/cli/main.ts');
+const BIN = path.join(PLUGIN_ROOT, 'bin/house-rules');
+const REAL_RULES_DIR = path.join(PLUGIN_ROOT, 'rules');
 
 const tempDirs: string[] = [];
 
@@ -36,7 +37,7 @@ function writeStubRule(rulesDir: string, ruleId: string, severity: 'error' | 'wa
   // For warn: use a custom ruleId not in BUILTIN_POLICY
   fs.writeFileSync(
     path.join(ruleDir, 'index.ts'),
-    `import type { Rule } from '/home/newman/.local/share/groundwork/plugins/house-rules/src/engine/types.js';
+    `import type { Rule } from '${path.join(PLUGIN_ROOT, 'src/engine/types.js')}';
 const rule: Rule = {
   id: '${ruleId}',
   meta: { description: 'stub' },
@@ -150,7 +151,7 @@ describe('house-rules CLI', () => {
 
   it('bun run house-rules -- check --base HEAD works from repo root', () => {
     const r = spawnSync('bun', ['run', 'house-rules', '--', 'check', '--base', 'HEAD'], {
-      cwd: '/home/newman/.local/share/groundwork',
+      cwd: path.resolve(PLUGIN_ROOT, '../..'),
       encoding: 'utf8',
     });
     // Should NOT exit 2 (usage error); 0 or 1 are both valid

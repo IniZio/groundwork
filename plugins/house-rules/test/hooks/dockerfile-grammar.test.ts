@@ -11,7 +11,7 @@ const HOOKS_DIR = path.resolve(import.meta.dir, "../../src/hooks");
 
 const DOCKERFILE_REF = "142dedaa:deploy/nexus-probe/Dockerfile";
 const CONTAINERFILE_REF = "142dedaa:deploy/nexus-probe/toolchain/.nexus/Containerfile";
-const HERDR_REPO = "/home/newman/.herdr/worktrees/agentic-artifacts/sandbox";
+const HERDR_REPO = process.env["HERDR_REPO"] ?? "";
 
 function refExists(ref: string): boolean {
   try {

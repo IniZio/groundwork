@@ -154,7 +154,7 @@ async function cmdBaseline(opts: {
     validateBase(repoRoot, opts.base);
     base = opts.base;
   } else {
-    base = 'HEAD';
+    base = defaultBase(repoRoot);
   }
 
   const ctx = buildContext({ repoRoot, mode: 'cli', base });

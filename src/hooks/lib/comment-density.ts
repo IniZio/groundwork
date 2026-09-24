@@ -161,7 +161,6 @@ function nodeIsWholeLine(node: Node, text: string): boolean {
 }
 
 function isGoDocComment(node: Node, text: string): boolean {
-  // Doc comments must start on their own line (only whitespace before them).
   if (!nodeIsWholeLine(node, text)) return false;
   let cur: Node | null = node;
   while (cur !== null) {
@@ -171,7 +170,6 @@ function isGoDocComment(node: Node, text: string): boolean {
       return next.startPosition.row === cur.endPosition.row + 1;
     }
     if (next.type === "comment" && next.startPosition.row === cur.endPosition.row + 1) {
-      // Chained comments must also be whole-line.
       if (!nodeIsWholeLine(next, text)) return false;
       cur = next;
     } else {
@@ -623,8 +621,6 @@ export async function autoFix(
     return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length };
   }
 
-  // Effective rows from non-candidate comments that land on added rows.
-  // These survive any strip and count toward post-fix density.
   const candidateSet = new Set(candidates.map(c => c.startIndex));
   let extraEffective = 0;
   for (const c of origParsed.comments) {
@@ -635,7 +631,6 @@ export async function autoFix(
     }
   }
 
-  // Greedily keep from start until initial budget estimate.
   let keptRows = 0;
   let keepCount = 0;
   for (const c of candidates) {
@@ -648,8 +643,7 @@ export async function autoFix(
     }
   }
 
-  // Refine keepCount: removed whole-line comments shrink the added-row denominator,
-  // so verify density against the remapped size and reduce further if needed.
+  // Whole-line removals shrink the added-row denominator; loop until post-fix density ≤5/100.
   while (keepCount >= 0) {
     const removedCands = candidates.slice(keepCount);
     const wlRemovedRows = removedCands.reduce(

@@ -1209,7 +1209,6 @@ describe("autoFix single-pass density compliance", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // Remap addedRows: whole-line removed comments disappear and shift rows
     const fixedLines = r.fixed.split("\n");
     const origLines = text.split("\n");
     const removedWholeLineRows = new Set<number>();
@@ -1231,7 +1230,6 @@ describe("autoFix single-pass density compliance", () => {
     const d = await density(r.fixed, "typescript", remappedRows);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
 
-    // Second autoFix with remapped rows removes 0
     const r2 = await autoFix(r.fixed, "typescript", remappedRows);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
@@ -1244,7 +1242,6 @@ describe("autoFix single-pass density compliance", () => {
       lines.push(`// note ${i}`);
       for (let j = 0; j < 3; j++) lines.push(`const w${i}_${j} = ${i * 3 + j};`);
     }
-    // pad to ~80 lines
     while (lines.length < 80) lines.push(`const pad${lines.length} = 0;`);
     const text = lines.join("\n") + "\n";
     const allRows = new Set(lines.map((_, i) => i));
@@ -1253,7 +1250,6 @@ describe("autoFix single-pass density compliance", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // Compute remapped rows naively: fixed has fewer lines; map by counting removed whole-line comments
     const origLines = text.split("\n");
     const fixedLinesArr = r.fixed.split("\n");
     const removedWholeLineRows = new Set<number>();

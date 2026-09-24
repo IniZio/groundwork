@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdirSync, cpSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
@@ -11,6 +12,20 @@ const HOOKS_DIR = path.resolve(import.meta.dir, "../../src/hooks");
 const DOCKERFILE_REF = "142dedaa:deploy/nexus-probe/Dockerfile";
 const CONTAINERFILE_REF = "142dedaa:deploy/nexus-probe/toolchain/.nexus/Containerfile";
 const HERDR_REPO = "/home/newman/.herdr/worktrees/agentic-artifacts/sandbox";
+
+function refExists(ref: string): boolean {
+  try {
+    execSync(`git -C ${HERDR_REPO} cat-file -e ${ref}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const herdrAvailable =
+  existsSync(HERDR_REPO) &&
+  refExists(DOCKERFILE_REF) &&
+  refExists(CONTAINERFILE_REF);
 
 function gitShow(ref: string): string {
   return execSync(`git -C ${HERDR_REPO} show ${ref}`, { encoding: "utf8" });
@@ -51,7 +66,7 @@ describe("dockerfile grammar", () => {
       expect(hasError(tree.rootNode)).toBe(false);
     });
 
-    it("parses real Dockerfile (177 lines) without crashing, 87 comment nodes", async () => {
+    it.skipIf(!herdrAvailable)("parses real Dockerfile (177 lines) without crashing, 87 comment nodes", async () => {
       const content = gitShow(DOCKERFILE_REF);
       const result = await getParser("dockerfile");
       expect(result.ok).toBe(true);
@@ -62,7 +77,7 @@ describe("dockerfile grammar", () => {
       expect(comments).toHaveLength(87);
     });
 
-    it("AC3: line 1 node type includes 'comment'", async () => {
+    it.skipIf(!herdrAvailable)("AC3: line 1 node type includes 'comment'", async () => {
       const content = gitShow(DOCKERFILE_REF);
       const result = await getParser("dockerfile");
       expect(result.ok).toBe(true);
@@ -93,7 +108,7 @@ describe("dockerfile grammar", () => {
     });
   });
 
-  it("AC4: Containerfile content (same syntax) parses without error", async () => {
+  it.skipIf(!herdrAvailable)("AC4: Containerfile content (same syntax) parses without error", async () => {
     const content = gitShow(CONTAINERFILE_REF);
     const result = await getParser("dockerfile");
     expect(result.ok).toBe(true);

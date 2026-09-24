@@ -18,13 +18,14 @@ export interface Comment {
 
 export type FindResult =
   | { ok: true; comments: Comment[]; errorRows: Set<number> }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; errorRows: Set<number> };
 
 export type DensityResult = {
   mode: "tree-sitter" | "fallback";
   total: number;
   effective: number;
   commentRows: number[];
+  errorRows: Set<number>;
 };
 
 export type GetParserFn = typeof defaultGetParser;
@@ -267,7 +268,7 @@ export async function findComments(
   getParser: GetParserFn = defaultGetParser,
 ): Promise<FindResult> {
   const result = await getParser(lang);
-  if (!result.ok) return { ok: false, reason: result.reason };
+  if (!result.ok) return { ok: false, reason: result.reason, errorRows: new Set() };
 
   const { parser } = result;
   const tree = parser.parse(text);
@@ -285,7 +286,7 @@ export async function findComments(
     return true;
   });
   if (safeComments.length === 0 && errorRows.size > 0) {
-    return { ok: false, reason: "parse-error" };
+    return { ok: false, reason: "parse-error", errorRows };
   }
   return { ok: true, comments: safeComments, errorRows };
 }
@@ -888,13 +889,16 @@ export async function density(
         }
       }
       const commentRows = [...commentRowSet].sort((a, b) => a - b);
-      return { mode: "tree-sitter", total, effective: commentRows.length, commentRows };
+      return { mode: "tree-sitter", total, effective: commentRows.length, commentRows, errorRows: parsed.errorRows };
     }
+    const fb = countEffectiveFallback(text, lang);
+    const commentRows = rows ? fb.commentRows.filter(r => rows.has(r)) : fb.commentRows;
+    return { mode: "fallback", total, effective: commentRows.length, commentRows, errorRows: parsed.errorRows };
   }
 
   const fb = countEffectiveFallback(text, lang);
   const commentRows = rows
     ? fb.commentRows.filter(r => rows.has(r))
     : fb.commentRows;
-  return { mode: "fallback", total, effective: commentRows.length, commentRows };
+  return { mode: "fallback", total, effective: commentRows.length, commentRows, errorRows: new Set() };
 }

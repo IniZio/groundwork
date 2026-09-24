@@ -182,10 +182,9 @@ describe("AC2: 1 comment per 15 lines exceeds 5/100 cap", () => {
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac2-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
-    // TypeScript is stable: gate auto-fixes and allows
     expect(out.decision).not.toBe("block");
     expect(out.hookSpecificOutput).toBeTruthy();
-    expect(sha256(fp)).not.toBe(hashBefore); // file was written
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 });
 
@@ -209,10 +208,9 @@ describe("AC3: positive controls", () => {
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `ac3a-${Date.now()}`, transcript_path: tp });
-    // TypeScript stable: auto-fixed + allowed
     expect(parseOut(r.stdout).decision).not.toBe("block");
     expect(parseOut(r.stdout).hookSpecificOutput).toBeTruthy();
-    expect(sha256(fp)).not.toBe(hashBefore); // file was written
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 
   it("allows TS file with no comments", async () => {
@@ -384,7 +382,7 @@ describe("AC6: fail-open", () => {
     const r = runGate({ hook_event_name: "Stop", session_id: `ac6d-${Date.now()}`, transcript_path: tp });
     expect(parseOut(r.stdout).decision).not.toBe("block");
     expect(parseOut(r.stdout).hookSpecificOutput).toBeTruthy();
-    expect(sha256(fp)).not.toBe(hashBefore); // file was written
+    expect(sha256(fp)).not.toBe(hashBefore);
   });
 });
 
@@ -411,7 +409,6 @@ describe("AC6b: stop_hook_active does not skip check", () => {
       { hook_event_name: "Stop", session_id: `ac6b-${Date.now()}`, transcript_path: tp, stop_hook_active: true },
     );
     const out = parseOut(r.stdout);
-    // TypeScript stable: auto-fixed + allowed
     expect(out.decision).not.toBe("block");
     expect(out.hookSpecificOutput).toBeTruthy();
     expect(sha256(fp)).not.toBe(hashBefore);

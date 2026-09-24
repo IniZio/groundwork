@@ -6,6 +6,7 @@ import { buildContext } from '../engine/context.js';
 import { runRules } from '../engine/run.js';
 import { readBaseline, fingerprint } from '../engine/baseline.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
+import { addedHunks } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
 import type { Finding } from '../engine/types.js';
 
@@ -30,18 +31,28 @@ function defaultBase(repoRoot: string): string {
   return 'HEAD';
 }
 
-function buildAllTrackedContext(repoRoot: string): RuleContext {
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+function buildAllTrackedContext(repoRoot: string, since?: string): RuleContext {
+  const base = since ?? EMPTY_TREE;
   const result = spawnSync('git', ['-C', repoRoot, 'ls-files'], { encoding: 'utf8' });
   const paths = result.stdout.split('\n').filter(Boolean);
-  const files: ScopedFile[] = paths.map(relPath => ({
-    path: relPath,
-    text: (() => { try { return fs.readFileSync(path.join(repoRoot, relPath), 'utf8'); } catch { return undefined; } })(),
-    lang: undefined,
-    baseText: '',
-    addedHunks: [],
-    tracked: true,
-    sessionCreated: false,
-  }));
+  const files: ScopedFile[] = paths.map(relPath => {
+    const absPath = path.join(repoRoot, relPath);
+    let text: string | undefined;
+    try { text = fs.readFileSync(absPath, 'utf8'); } catch { /* file unreadable */ }
+    const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], { encoding: 'utf8' });
+    const baseText = showResult.status === 0 ? showResult.stdout : '';
+    return {
+      path: relPath,
+      text,
+      lang: undefined,
+      baseText,
+      addedHunks: addedHunks(absPath, base) ?? [],
+      tracked: true,
+      sessionCreated: false,
+    };
+  });
   return { repoRoot, mode: 'cli', files };
 }
 
@@ -71,7 +82,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   let findings: Finding[];
 
   if (opts.baselineMode) {
-    ctx = buildAllTrackedContext(repoRoot);
+    ctx = buildAllTrackedContext(repoRoot, opts.since);
     const allFindings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
     const baseline = await readBaseline(baselineFilePath);
     const baselineFingerprints = new Set(baseline.entries.map(e => e.fingerprint));
@@ -158,7 +169,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   }
 
   if (opts.baselineMode && !opts.dryRun && fixed.length > 0) {
-    const freshCtx = buildAllTrackedContext(repoRoot);
+    const freshCtx = buildAllTrackedContext(repoRoot, opts.since);
     const freshFindings = await runRules(rules, freshCtx, effectivePolicy as Parameters<typeof runRules>[2]);
     const freshFingerprints = new Set(freshFindings.map(f => fingerprint(f)));
 

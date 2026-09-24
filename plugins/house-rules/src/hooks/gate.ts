@@ -71,6 +71,7 @@ interface ViolatingFile {
   total: number;
   commentRows: number[];
   fallback: boolean;
+  firstErrorRow?: number;
   rowSet: Set<number>;
   netNewRows: Set<number>;
   lang: Lang;
@@ -220,6 +221,7 @@ export async function run(
       let commentRows: number[];
       let netNewRows: Set<number>;
       let fallback = false;
+      let firstErrorRow: number | undefined;
       if (netResult.ok) {
         effective = netResult.rows.length;
         commentRows = netResult.rows;
@@ -230,6 +232,9 @@ export async function run(
         commentRows = dr.commentRows.map(r => r + 1);
         netNewRows = rowSet;
         fallback = dr.mode === 'fallback';
+        if (fallback && dr.errorRows.size > 0) {
+          firstErrorRow = Math.min(...dr.errorRows) + 1;
+        }
       }
 
       violations.push({
@@ -238,6 +243,7 @@ export async function run(
         total: totalAdded,
         commentRows,
         fallback,
+        firstErrorRow,
         rowSet,
         netNewRows,
         lang,
@@ -393,7 +399,10 @@ export async function run(
 
     const fallbackNotices = unfixable
       .filter(v => v.fallback)
-      .map(v => `(${v.path}: parse error — prefix count used)`);
+      .map(v => {
+        const loc = v.firstErrorRow !== undefined ? `:${v.firstErrorRow}` : '';
+        return `(${v.path}${loc}: parse error — prefix count used)`;
+      });
 
     const fixedNote = fixedFiles.length > 0
       ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`

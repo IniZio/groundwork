@@ -1,10 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {
-      "rule": "comment-density",
-      "path": "plugins/house-rules/test/hooks/gate.test.ts",
-      "fingerprint": "e1ae5e4f3ba09e758904455708c88edd62dc4273801770ad504d909673690150"
-    }
-  ]
+  "entries": []
 }

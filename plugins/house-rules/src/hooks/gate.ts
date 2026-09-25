@@ -76,6 +76,7 @@ interface ViolatingFile {
   rowSet: Set<number>;
   netNewRows: Set<number>;
   lang: Lang;
+  unfixReason?: string;
 }
 
 
@@ -265,10 +266,11 @@ export async function run(
       let txt: string;
       try {
         txt = readFileSync(v.path, "utf8");
-      } catch { unfixable.push(v); continue; }
+      } catch { unfixable.push({ ...v, unfixReason: "file read error" }); continue; }
 
       const ar = await autoFix(txt, v.lang, v.rowSet, undefined, v.netNewRows);
-      if (!ar.ok || ar.removed === 0) { unfixable.push(v); continue; }
+      if (!ar.ok) { unfixable.push({ ...v, unfixReason: "autofix failed" }); continue; }
+      if (ar.removed === 0) { unfixable.push({ ...v, unfixReason: "no comments to remove" }); continue; }
 
       const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
 
@@ -279,12 +281,15 @@ export async function run(
         const densityAfter = d2.total > 0 ? d2.effective / d2.total * 100 : 0;
         const tmpBase = opts?.testOnly_tmpDir ?? os.tmpdir();
         writeShadowLog(tmpBase, sessionId, { file: v.path, lang: v.lang, removedLines, densityBefore, densityAfter });
-        unfixable.push(v);
+        const notWrittenReason = entry.stability !== "stable"
+          ? `preview language (${v.lang})`
+          : `unsafe fix (${v.lang})`;
+        unfixable.push({ ...v, unfixReason: notWrittenReason });
         continue;
       }
 
       if (refusesPreExistingRemoval(removedLines)) {
-        unfixable.push(v);
+        unfixable.push({ ...v, unfixReason: "fix would remove pre-existing comments" });
         continue;
       }
 
@@ -300,7 +305,7 @@ export async function run(
       });
       if (!wr.ok) {
         process.stderr.write(`gate: ${wr.reason}\n`);
-        unfixable.push(v);
+        unfixable.push({ ...v, unfixReason: `write failed: ${wr.reason}` });
         continue;
       }
       fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
@@ -369,7 +374,8 @@ export async function run(
     const fileLines = unfixable.map(v => {
       const ratio = (v.effective / v.total * 100).toFixed(1);
       const first5 = v.commentRows.slice(0, 5).join(", ");
-      return `  ${v.path}: ${ratio}/100 (${v.effective} comments in ${v.total} added lines; rows ${first5})`;
+      const why = v.unfixReason ? ` — ${v.unfixReason}` : "";
+      return `  ${v.path}: ${ratio}/100 (${v.effective} comments in ${v.total} added lines; rows ${first5})${why}`;
     });
 
     const strayLines = strayErrors.map(f => `  ${path.join(repoRoot, f.path)}: ${f.message}`);

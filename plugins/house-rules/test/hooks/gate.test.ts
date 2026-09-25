@@ -600,6 +600,77 @@ describe("AC11: pre-existing comments preserved (no write)", () => {
   });
 });
 
+describe("GF-1: block message includes per-file unfixable reason", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gf1-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
+
+  it("block report includes why each file was not auto-fixed (preview lang and autofix failed)", async () => {
+    const yamlFp = path.join(tmpDir, "config.yaml");
+    writeFileSync(yamlFp,
+      Array.from({ length: 20 }, (_, i) =>
+        i % 5 === 0 ? `# comment ${i}` : `key${i}: value${i}`
+      ).join("\n") + "\n"
+    );
+
+    const tsFp = path.join(tmpDir, "broken.ts");
+    writeFileSync(tsFp, [
+      ...Array.from({ length: 20 }, (_, i) => i % 5 === 0 ? `// r${i}` : `const x${i} = ${i};`),
+      "const broken = ;",
+    ].join("\n") + "\n");
+
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [yamlFp, tsFp], ts);
+    const sessionId = "gf1testrun";
+
+    const result = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
+      process.env as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir },
+    );
+
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ decision: "block" });
+
+    const blockFilePath = path.join(tmpDir, "house-rules", sessionId, "stop-block.txt");
+    const report = readFileSync(blockFilePath, "utf8");
+
+    expect(report).toMatch(/config\.yaml[^\n]*—[^\n]*preview language/);
+    expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*(autofix failed|no comments to remove)/);
+  });
+
+  it("block report includes write-failed reason with cause when disk changes mid-write", async () => {
+    const fp = makeViolatorTs(tmpDir, "write-fail.ts");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const sessionId = "gf1writefail";
+
+    const result = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
+      process.env as Record<string, string | undefined>,
+      {
+        testOnly_tmpDir: tmpDir,
+        testOnly_forceWrite: true,
+        afterTmpWrite: (_tmp, target) => {
+          writeFileSync(target, "// modified concurrently\nconst x = 1;\n");
+        },
+      },
+    );
+
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ decision: "block" });
+
+    const blockFilePath = path.join(tmpDir, "house-rules", sessionId, "stop-block.txt");
+    const report = readFileSync(blockFilePath, "utf8");
+    expect(report).toMatch(/write-fail\.ts[^\n]*—[^\n]*write failed:/);
+  });
+});
+
 describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
   let tmpDir: string;
 

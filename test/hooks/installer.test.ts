@@ -293,3 +293,48 @@ describe("commit-msg hook runtime selection", () => {
     }
   });
 });
+
+describe("commit-msg hook: missing house-rules plugin warning", () => {
+  it("prints loud WARNING with path and exits 0 when house-rules plugin is missing", async () => {
+    const { dir, cleanup } = makeRepo();
+    const fakeLib = mkdtempSync(join(tmpdir(), "gw-fakelib-"));
+    try {
+      // Create a fake hooks lib that has commit-convention.mjs but NO plugins/ alongside it
+      // (so houseRulesPath = resolve(fakeLib, '../../plugins/...') will not exist)
+      const realHooksLib = join(resolve(import.meta.dir, "../.."), "hooks", "lib");
+      writeFileSync(
+        join(fakeLib, "commit-convention.mjs"),
+        readFileSync(join(realHooksLib, "commit-convention.mjs"), "utf8"),
+      );
+
+      // Generate and install the hook pointing to fakeLib
+      const hookContent = renderCommitMsgHook({
+        hooksLibPath: fakeLib,
+        version: "0.0.0-test",
+      });
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+      writeFileSync(hookPath, hookContent, { mode: 0o755 });
+
+      // Run the hook with a bad message
+      const msgFile = join(dir, "COMMIT_EDITMSG");
+      writeFileSync(msgFile, "bad message\n");
+
+      const r = spawnSync(hookPath, [msgFile], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: process.env.HOME ?? "/root",
+        },
+      });
+
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("WARNING");
+      expect(r.stderr).toContain("house-rules");
+    } finally {
+      rmSync(fakeLib, { recursive: true, force: true });
+      cleanup();
+    }
+  });
+});

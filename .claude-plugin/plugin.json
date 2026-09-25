@@ -1,32 +1,53 @@
 {
   "name": "groundwork",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
-    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" },
-    { "name": "house-rules", "version": "~0.1.0" }
+    {
+      "name": "mattpocock-skills",
+      "marketplace": "claude-plugins-official"
+    },
+    {
+      "name": "house-rules",
+      "version": "~0.1.0"
+    }
   ],
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-commit-msg-installer.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-commit-msg-installer.ts"
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts"
+          }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts"
+          }
         ]
       }
     ],
@@ -34,41 +55,68 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/piped-exit-code-guard.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-message-guard.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/piped-exit-code-guard.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-message-guard.ts"
+          }
         ]
       },
       {
         "matcher": "Grep|Glob|Bash",
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/search-nudge.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/search-nudge.ts"
+          }
         ]
       },
       {
         "matcher": "Read|Bash|Grep",
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-read-guard.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-read-guard.ts"
+          }
         ]
       },
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/spawn-model-guard.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/store-write-guard.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/spawn-model-guard.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/store-write-guard.ts"
+          }
         ]
       }
     ],
     "PostToolUse": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prose-quality-guard.ts" },
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-size-guard.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prose-quality-guard.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-size-guard.ts"
+          }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prompt-reminder.ts" }
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prompt-reminder.ts"
+          }
         ]
       }
     ]

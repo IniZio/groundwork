@@ -67,9 +67,6 @@ var legacyFlag = true
 //nolint:errcheck
 var _ = fmt.Sprintf("suppressed") //nolint:errcheck
 
-//lint:ignore SA1000 this is a deliberate test fixture
-var deliberate = unsafe.Pointer(nil)
-
 // ExampleDoNotInline shows how to call the function.
 func ExampleDoNotInline() {
 	fmt.Println(doNotInline())
@@ -84,4 +81,9 @@ func ExampleColor_String() {
 	// Unordered output:
 	// 0
 	// 1
+}
+
+func lintIgnoreExample() {
+	//lint:ignore SA1000 this is a deliberate test fixture
+	_ = unsafe.Pointer(nil)
 }

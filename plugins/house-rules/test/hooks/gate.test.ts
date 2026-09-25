@@ -642,7 +642,7 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
     const report = readFileSync(blockFilePath, "utf8");
 
     expect(report).toMatch(/config\.yaml[^\n]*—[^\n]*preview language/);
-    expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*(autofix failed|no comments to remove)/);
+    expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*autofix failed: post-strip parse: parse-error/);
   });
 
   it("block report includes write-failed reason with cause when disk changes mid-write", async () => {

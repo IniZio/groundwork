@@ -269,8 +269,8 @@ export async function run(
       } catch { unfixable.push({ ...v, unfixReason: "file read error" }); continue; }
 
       const ar = await autoFix(txt, v.lang, v.rowSet, undefined, v.netNewRows);
-      if (!ar.ok) { unfixable.push({ ...v, unfixReason: "autofix failed" }); continue; }
-      if (ar.removed === 0) { unfixable.push({ ...v, unfixReason: "no comments to remove" }); continue; }
+      if (!ar.ok) { unfixable.push({ ...v, unfixReason: `autofix failed: ${ar.reason}` }); continue; }
+      if (ar.removed === 0) { unfixable.push({ ...v, unfixReason: "no removable comments" }); continue; }
 
       const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
 

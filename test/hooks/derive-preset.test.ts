@@ -23,7 +23,7 @@ function decision(result: { stdout: string }): string {
   }
 }
 
-function makeRepo(kind: 'conv' | 'hb' | 'empty' | 'mixed'): { dir: string; cleanup: () => void } {
+function makeRepo(kind: 'conv' | 'hb' | 'empty' | 'mixed' | 'wip' | 'few'): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'gw-derive-test-'))
   execSync('git init', { cwd: dir, stdio: 'pipe' })
   execSync('git config user.email "t@t.com"', { cwd: dir, stdio: 'pipe' })
@@ -31,11 +31,14 @@ function makeRepo(kind: 'conv' | 'hb' | 'empty' | 'mixed'): { dir: string; clean
   execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'pipe' })
 
   if (kind !== 'empty') {
-    for (let i = 1; i <= 10; i++) {
+    const count = kind === 'few' ? 9 : 10
+    for (let i = 1; i <= count; i++) {
       let msg: string
       if (kind === 'conv') msg = `feat(core): add item ${i}`
       else if (kind === 'hb') msg = `Add item ${i}`
-      else msg = i % 2 === 0 ? `feat(core): add item ${i}` : `Add item ${i}` // mixed
+      else if (kind === 'mixed') msg = i % 2 === 0 ? `feat(core): add item ${i}` : `Add item ${i}`
+      else if (kind === 'wip') msg = i % 2 === 0 ? `WIP: item ${i}` : `Fix: item ${i}`
+      else /* few */ msg = `feat(core): add item ${i}`
       execSync(`git commit --allow-empty --no-verify -m "${msg}"`, { cwd: dir, stdio: 'pipe' })
     }
   }
@@ -118,6 +121,40 @@ describe('derive-preset: guard with -C to real repos', () => {
       cleanup()
     }
   })
+
+  it('wip repo (10 WIP:/Fix: commits): unknown types → handbook, not conventional', () => {
+    const { dir, cleanup } = makeRepo('wip')
+    try {
+      // WIP: and Fix: are not valid conventional types; derived preset must be handbook
+      // handbook-style message must be accepted
+      const r = check(bash(`git -C ${dir} commit -m "Add new thing"`))
+      expect(decision(r)).toBe('allow')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('wip repo: conventional-style denied (handbook derived, not conventional)', () => {
+    const { dir, cleanup } = makeRepo('wip')
+    try {
+      // If conventional were (wrongly) derived, feat: would be accepted; handbook rejects it
+      const r = check(bash(`git -C ${dir} commit -m "feat: add new thing"`))
+      expect(decision(r)).toBe('deny')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('few repo (9 conv commits): below min sample → handbook fallback', () => {
+    const { dir, cleanup } = makeRepo('few')
+    try {
+      // handbook-style accepted because < 10 samples → handbook fallback
+      const r = check(bash(`git -C ${dir} commit -m "Add new thing"`))
+      expect(decision(r)).toBe('allow')
+    } finally {
+      cleanup()
+    }
+  })
 })
 
 // ── hook tests ───────────────────────────────────────────────────────────────
@@ -178,6 +215,36 @@ describe('derive-preset: installed commit-msg hook in real repos', () => {
         env: { ...process.env, GROUNDWORK_HOOKS_LIB: HOOKS_LIB },
       })
       expect(r.status).not.toBe(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('wip repo: hook accepts handbook-style (WIP:/Fix: history → handbook derived)', async () => {
+    const { dir, cleanup } = makeRepo('wip')
+    try {
+      await installHook({ cwd: dir })
+      const r = spawnSync('git', ['commit', '--allow-empty', '-m', 'Add a thing'], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, GROUNDWORK_HOOKS_LIB: HOOKS_LIB },
+      })
+      expect(r.status).toBe(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('few repo: hook accepts handbook-style (9 commits → handbook fallback)', async () => {
+    const { dir, cleanup } = makeRepo('few')
+    try {
+      await installHook({ cwd: dir })
+      const r = spawnSync('git', ['commit', '--allow-empty', '-m', 'Add a thing'], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, GROUNDWORK_HOOKS_LIB: HOOKS_LIB },
+      })
+      expect(r.status).toBe(0)
     } finally {
       cleanup()
     }

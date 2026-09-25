@@ -167,7 +167,6 @@ function getMarketplacePluginNames(repoRoot) {
 
 const DERIVE_MIN_SAMPLE = 10
 const DERIVE_THRESHOLD = 0.85
-const DERIVE_CONV_RE = /^([a-zA-Z0-9_-]+)(?:\([^)]*\))?!?:\s+\S/
 
 function derivePreset(repoRoot) {
   if (!repoRoot) return PRESET_HANDBOOK
@@ -175,7 +174,7 @@ function derivePreset(repoRoot) {
     const subjects = readRecentSubjects(repoRoot)
     if (!subjects || subjects.length < DERIVE_MIN_SAMPLE) return PRESET_HANDBOOK
     const sample = subjects.slice(0, 30)
-    const n = sample.filter(s => DERIVE_CONV_RE.test(s)).length
+    const n = sample.filter(s => lintCommitMessage(s, { preset: PRESET_CONVENTIONAL }).violations.length === 0).length
     return n / sample.length >= DERIVE_THRESHOLD ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
   } catch {
     return PRESET_HANDBOOK

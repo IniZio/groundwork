@@ -136,7 +136,6 @@ export async function run(
     testOnly_tmpDir?: string;
     afterTmpWrite?: (tmp: string, target: string) => void;
     testOnly_overrideFixed?: (txt: string, fixed: string, rowSet: Set<number>) => string;
-    testOnly_blockFileWriteFailure?: boolean;
   },
 ): Promise<HookResult> {
   try {
@@ -414,17 +413,15 @@ export async function run(
       : "house-rules gate: files changed in this session violate one or more code conventions.";
     const fullReport = buildFull(reportHeader, sects, fallbackNotices, fixedPaths);
 
-    // Write full report to file; short reason points to it; fallback to old trimmed reason on failure
     const tmpBase2 = opts?.testOnly_tmpDir ?? os.tmpdir();
-    const blockFilePath = path.join(tmpBase2, "house-rules", sessionId, "stop-block.txt");
+    const safeSessionId = /^[A-Za-z0-9_-]+$/.test(sessionId) ? sessionId : "unknown";
+    const blockFilePath = path.join(tmpBase2, "house-rules", safeSessionId, "stop-block.txt");
     let writeOk = false;
-    if (opts?.testOnly_blockFileWriteFailure !== true) {
-      try {
-        mkdirSync(path.dirname(blockFilePath), { recursive: true });
-        writeFileSync(blockFilePath, fullReport + "\n");
-        writeOk = true;
-      } catch { }
-    }
+    try {
+      mkdirSync(path.dirname(blockFilePath), { recursive: true });
+      writeFileSync(blockFilePath, fullReport + "\n");
+      writeOk = true;
+    } catch { }
 
     let reason: string;
     if (writeOk) {

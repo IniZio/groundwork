@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
+
+function readBlockFile(tmpDir: string): string {
+  const hrDir = path.join(tmpDir, "house-rules");
+  try {
+    const dirs = readdirSync(hrDir);
+    if (dirs.length === 0) return "";
+    return readFileSync(path.join(hrDir, dirs[0], "stop-block.txt"), "utf8");
+  } catch { return ""; }
+}
 
 function initGitRepo(dir: string): void {
   const opts = { cwd: dir, encoding: "utf8" as const };
@@ -104,6 +113,8 @@ describe("gate-block-header: stray-only block", () => {
     expect(reason).toContain("full list:");
     expect(reason).not.toContain("comment");
     expect(reason).not.toContain("5/100");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("doc/");
   });
 });
 
@@ -135,6 +146,8 @@ describe("gate-block-header: comment-density-only block", () => {
     expect(reason).toContain("house-rules gate:");
     expect(reason).toContain("comment-density");
     expect(reason).toContain("full list:");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("5 comment lines per 100");
   });
 });
 
@@ -173,6 +186,8 @@ describe("gate-block-header: both density and stray", () => {
     expect(reason).toContain("stray-artifacts");
     expect(reason).toContain(strayFp);
     expect(reason).toContain("full list:");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("5/100");
   });
 });
 
@@ -209,6 +224,8 @@ describe("gate-block-header: SubagentStop stray-only", () => {
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).not.toContain("comment");
     expect(reason).not.toContain("5/100");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("Merge the coexisting directories or move/delete the scratch file.");
   });
 });
 
@@ -239,7 +256,7 @@ describe("gate-block-header: stray + auto-fixed .ts", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(e) stray + auto-fixed .ts: reason contains fixedNote and merge line", () => {
+  it("(e) stray + auto-fixed .ts: written file contains fixedNote and merge line", () => {
     // stray: untracked docs/ coexists with tracked doc/
     mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
     const strayFp = path.join(tmpDir, "docs", "x.md");
@@ -272,6 +289,11 @@ describe("gate-block-header: stray + auto-fixed .ts", () => {
     expect(reason).toContain("stray-artifacts");
     expect(reason).toContain(strayFp);
     expect(reason).toContain("full list:");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("auto-fixed in this run:");
+    expect(blockContent).toContain("fix.ts");
+    expect(blockContent).toContain("docs/");
+    expect(blockContent).toContain("doc/");
   });
 });
 
@@ -325,6 +347,8 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
     expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).toContain("full list:");
+    const blockContent = readBlockFile(tmpDir);
+    expect(blockContent).toContain("Merge the coexisting directories or move/delete the scratch file.");
   });
 });
 
@@ -476,5 +500,45 @@ describe("gate-block-header: (j) write-failure falls back to trimmed reason", ()
     expect(reason).toContain("house-rules comment-density gate:");
     expect(reason).toContain("5 comment lines per 100");
     expect(reason).not.toContain("full list:");
+  });
+});
+
+describe("gate-block-header: (k) sessionId path traversal sanitized", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-k-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(k) sessionId '../../evil' writes to house-rules/unknown/, not outside TMPDIR", () => {
+    const fp = makeTsxViolator(tmpDir, "widget.tsx");
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+
+    const r = spawnSync("bun", [GATE_PATH], {
+      input: JSON.stringify({
+        hook_event_name: "Stop",
+        session_id: "../../evil",
+        transcript_path: tp,
+        cwd: tmpDir,
+      }),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, TMPDIR: tmpDir },
+      encoding: "utf8",
+    });
+
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+
+    const expected = path.join(tmpDir, "house-rules", "unknown", "stop-block.txt");
+    const blockContent = (() => {
+      try { return readFileSync(expected, "utf8"); } catch { return null; }
+    })();
+    expect(blockContent).not.toBeNull();
+    expect(out.reason as string).toContain(path.join(tmpDir, "house-rules", "unknown"));
   });
 });

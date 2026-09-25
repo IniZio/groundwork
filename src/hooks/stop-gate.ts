@@ -505,9 +505,9 @@ function appendNudge(result: HookResult, nudge: string): HookResult {
 }
 
 export function run(input: unknown, env: Record<string, string | undefined>): HookResult {
+  const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   try {
     if (isEmbedded(env)) return allow();
-    const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const cwd = typeof inp.cwd === "string" ? inp.cwd : undefined;
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
@@ -632,7 +632,11 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     writeDiag(dbPath, inp, yieldResult, result);
     const nudge = escalationNudge(inp, env, dbPath);
     return nudge ? appendNudge(result, nudge) : result;
-  } catch { return allow("stop-gate: error reading store — fail-open"); }
+  } catch {
+    const base = allow("stop-gate: error reading store — fail-open");
+    const nudge = escalationNudge(inp, env, null);
+    return nudge ? appendNudge(base, nudge) : base;
+  }
 }
 
 if (import.meta.main) {

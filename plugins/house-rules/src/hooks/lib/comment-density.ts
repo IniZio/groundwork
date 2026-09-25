@@ -608,7 +608,7 @@ function countEffectiveFallback(text: string, lang?: Lang | null): { total: numb
 }
 
 
-export type RowChangeKind = "deleted" | "modified";
+type RowChangeKind = "deleted" | "modified";
 export interface RowChange { origRow: number; kind: RowChangeKind; origText: string; fixedText?: string }
 
 export type AutoFixResult =

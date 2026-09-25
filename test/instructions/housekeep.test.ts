@@ -71,4 +71,16 @@ describe("housekeep skill", () => {
     const content = readFileSync(SKILL_PATH, "utf8");
     expect(content).toContain("AskUserQuestion");
   });
+
+  const CONVENTIONS_PATH = path.join(ROOT, "plugins/house-rules/skills/housekeep/reference/conventions.md");
+
+  it("reference/conventions.md does not mention 'gw conventions'", () => {
+    const content = readFileSync(CONVENTIONS_PATH, "utf8");
+    expect(content).not.toContain("gw conventions");
+  });
+
+  it("reference/conventions.md cites src/conventions/detect.ts", () => {
+    const content = readFileSync(CONVENTIONS_PATH, "utf8");
+    expect(content).toContain("src/conventions/detect.ts");
+  });
 });

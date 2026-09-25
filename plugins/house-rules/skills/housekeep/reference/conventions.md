@@ -23,22 +23,24 @@ Do not report a Finding if the convention file already satisfies its check (the 
 
 ## Fix routing
 
-Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention writer:
+Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention scripts. The scripts live in the **groundwork plugin root** — the repo root when groundwork is the plugin under development; `$CLAUDE_PLUGIN_ROOT` from the hook environment when running inside a client repo.
 
-```
-gw conventions          # DETECT → print findings JSON
-gw conventions --apply  # CONFIRM → WRITE (apply.ts, allowed paths only)
-```
+If groundwork is not installed in the target repo, report findings only and mark every finding `auto-fix: no`.
 
-Writable paths enforced by `src/conventions/apply.ts` → `ALLOWED_PATHS`:
+When groundwork is available:
+
+1. **Detect** — `bun <groundwork-root>/src/conventions/detect.ts <repo> [--pretty]` — prints findings JSON, writes nothing (`src/conventions/detect.ts:4`)
+2. **Apply** — `bun <groundwork-root>/src/conventions/apply.ts <repo> --accept <id,id,...> [--findings <file>] [--handbook <path>]` — writes accepted findings to allowed paths only (`src/conventions/apply.ts:3`)
+
+Writable paths enforced by `src/conventions/apply.ts` → `ALLOWED_PATHS` (line 10):
 
 - `.gitmessage`
 - `.github/pull_request_template.md`
 - `Makefile`
-- Handbook paths (passed via `--handbook <path>`)
-- Fallback paths (`CLAUDE.md`, `.claude/rules/**`) when the finding carries `fallback: true`
+- Any path under the directory passed as `--handbook <path>` (`apply.ts:17`)
+- `CLAUDE.md` and `.claude/rules/**` when the finding carries `fallback: true` (`apply.ts:22–25`)
 
-Findings with no `proposed_write` (e.g. `no-formatter-config`, `test-layout`) cannot be auto-applied; mark `auto-fix` as `no` in the Finding row and suggest the manual action in the `fix` column.
+Findings with no `proposed_write` (e.g. `no-formatter-config`, `test-layout`) are skipped by the applier (`apply.ts:40`); mark `auto-fix: no` in the Finding row and suggest the manual action in the `fix` column.
 
 ## Quality gates
 

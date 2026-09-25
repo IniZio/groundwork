@@ -23,7 +23,7 @@ Do not report a Finding if the convention file already satisfies its check (the 
 
 ## Fix routing
 
-Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention scripts. The scripts live in the **groundwork plugin root** — the repo root when groundwork is the plugin under development; `$CLAUDE_PLUGIN_ROOT` from the hook environment when running inside a client repo.
+Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention scripts. The scripts live in the **groundwork plugin root**. In development (groundwork is the repo being edited), that is the repo root. In a client repo, locate it from the groundwork SessionStart header: its first line is `# groundwork vX.Y.Z (<sha>) — <root path>`; use the path after the em dash (` — `) as `<groundwork-root>`. If the SessionStart header is absent, treat groundwork as not installed.
 
 If groundwork is not installed in the target repo, report findings only and mark every finding `auto-fix: no`.
 

@@ -83,4 +83,9 @@ describe("housekeep skill", () => {
     const content = readFileSync(CONVENTIONS_PATH, "utf8");
     expect(content).toContain("src/conventions/detect.ts");
   });
+
+  it("reference/conventions.md does not mention 'CLAUDE_PLUGIN_ROOT'", () => {
+    const content = readFileSync(CONVENTIONS_PATH, "utf8");
+    expect(content).not.toContain("CLAUDE_PLUGIN_ROOT");
+  });
 });

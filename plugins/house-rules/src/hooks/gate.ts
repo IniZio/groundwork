@@ -388,25 +388,50 @@ export async function run(
       ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`
       : null;
 
+    // Trim a list of items to fit within `budget` chars (measured as the joined substring).
+    // Always appends "  … N more" when items are dropped; static frame is never touched.
+    function trimList(items: string[], budget: number): string[] {
+      if (items.length === 0) return [];
+      let used = 0, kept = 0;
+      for (const item of items) {
+        const cost = kept === 0 ? item.length : 1 + item.length;
+        if (used + cost > budget) break;
+        used += cost; kept++;
+      }
+      if (kept === items.length) return items;
+      // Back up one slot if the "… M more" suffix won't fit
+      const skippedAfterKeep = items.length - kept;
+      const suffix = `  … ${skippedAfterKeep} more`;
+      const suffixCost = kept === 0 ? suffix.length : 1 + suffix.length;
+      if (kept > 0 && used + suffixCost > budget) {
+        const last = items[kept - 1];
+        used -= kept === 1 ? last.length : 1 + last.length;
+        kept--;
+      }
+      return [...items.slice(0, kept), `  … ${items.length - kept} more`];
+    }
+
+    const DHEADER =
+      "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
+      "This is a convention check — not a bug, a merge, or another session's edit.";
+    const DFOOTERBASE = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
+    const SFOOTERBASE = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
+    const DFOOTER_BOTH = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix.";
+
     let parts: string[];
     if (hasDensity && !hasStray) {
-      const header =
-        "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
-        "This is a convention check — not a bug, a merge, or another session's edit.";
-      const footerBase = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
-      const footer = isSubagent ? footerBase + handback : footerBase;
-      parts = [header, ...fileLines];
+      const footer = isSubagent ? DFOOTERBASE + handback : DFOOTERBASE;
+      parts = [DHEADER, ...fileLines];
       if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
       if (fixedNote) parts.push(fixedNote);
       parts.push(footer);
     } else if (hasStray && !hasDensity) {
-      const strayFooterBase = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
-      const footer = isSubagent ? strayFooterBase + handback : strayFooterBase;
-      parts = ["house-rules gate:", ...strayLines, footer];
+      const footer = isSubagent ? SFOOTERBASE + handback : SFOOTERBASE;
+      parts = ["house-rules gate:", ...strayLines];
+      if (fixedNote) parts.push(fixedNote);
+      parts.push(footer);
     } else {
-      const densityFooter = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix.";
-      const strayFooterBase = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
-      const strayFooter = isSubagent ? strayFooterBase + handback : strayFooterBase;
+      const strayFooter = isSubagent ? SFOOTERBASE + handback : SFOOTERBASE;
       parts = [
         "house-rules gate: files changed in this session violate one or more code conventions.",
         "comment-density:",
@@ -414,14 +439,58 @@ export async function run(
       ];
       if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
       if (fixedNote) parts.push(fixedNote);
-      parts.push(densityFooter);
+      parts.push(DFOOTER_BOTH);
       parts.push("stray-artifacts:");
       parts.push(...strayLines);
       parts.push(strayFooter);
     }
 
-    const reason = parts.join("\n");
-    return block(reason.length > 2000 ? reason.slice(0, 1990) + "…" : reason);
+    const fullReason = parts.join("\n");
+    if (fullReason.length <= 2000) {
+      return block(fullReason);
+    }
+
+    // Budget-aware rebuild: trim file-line lists; all other parts always survive.
+    let reason: string;
+    if (hasDensity && !hasStray) {
+      const footer = isSubagent ? DFOOTERBASE + handback : DFOOTERBASE;
+      const after: string[] = [...fallbackNotices];
+      if (fixedNote) after.push(fixedNote);
+      after.push(footer);
+      const staticCost = DHEADER.length + 1 + after.join("\n").length + (fileLines.length > 0 ? 1 : 0);
+      const trimmed = trimList(fileLines, 2000 - staticCost);
+      reason = [DHEADER, ...trimmed, ...after].join("\n");
+    } else if (hasStray && !hasDensity) {
+      const footer = isSubagent ? SFOOTERBASE + handback : SFOOTERBASE;
+      const label = "house-rules gate:";
+      const after: string[] = [];
+      if (fixedNote) after.push(fixedNote);
+      after.push(footer);
+      const staticCost = label.length + 1 + after.join("\n").length + (strayLines.length > 0 ? 1 : 0);
+      const trimmed = trimList(strayLines, 2000 - staticCost);
+      reason = [label, ...trimmed, ...after].join("\n");
+    } else {
+      const strayFooter = isSubagent ? SFOOTERBASE + handback : SFOOTERBASE;
+      const mid: string[] = [...fallbackNotices];
+      if (fixedNote) mid.push(fixedNote);
+      const staticFixed = [
+        "house-rules gate: files changed in this session violate one or more code conventions.",
+        "comment-density:", ...mid, DFOOTER_BOTH, "stray-artifacts:", strayFooter,
+      ].join("\n");
+      const totalBudget = 2000 - staticFixed.length - (fileLines.length > 0 ? 1 : 0) - (strayLines.length > 0 ? 1 : 0);
+      const dShare = fileLines.length + strayLines.length > 0
+        ? Math.floor(totalBudget * fileLines.length / (fileLines.length + strayLines.length))
+        : Math.floor(totalBudget / 2);
+      const sShare = totalBudget - dShare;
+      const tDensity = trimList(fileLines, dShare);
+      const tStray = trimList(strayLines, sShare);
+      const rebuiltParts = [
+        "house-rules gate: files changed in this session violate one or more code conventions.",
+        "comment-density:", ...tDensity, ...mid, DFOOTER_BOTH, "stray-artifacts:", ...tStray, strayFooter,
+      ];
+      reason = rebuiltParts.join("\n");
+    }
+    return block(reason);
   } catch (e) {
     process.stderr.write(`gate error: ${e}\n`);
     return silentAllow();

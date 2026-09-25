@@ -207,3 +207,119 @@ describe("gate-block-header: SubagentStop stray-only", () => {
     expect(reason).not.toContain("5/100");
   });
 });
+
+// Helper: make a .ts file with over-budget comment density that autofix (stable) will fix.
+// Uses 6 comment lines per 50 code lines = 12/100 > 5/100.
+function makeTsViolatorAutoFixable(dir: string, name: string): string {
+  const fp = path.join(dir, name);
+  const code = Array.from({ length: 50 }, (_, i) => `const x${i} = ${i};`);
+  // Insert 6 comments — over the 5/100 threshold
+  const lines = [...code.slice(0, 10), "// comment one", ...code.slice(10, 20),
+    "// comment two", ...code.slice(20, 30), "// comment three", ...code.slice(30, 40),
+    "// comment four", ...code.slice(40, 45), "// comment five", "// comment six",
+    ...code.slice(45)];
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
+describe("gate-block-header: stray + auto-fixed .ts", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-e-"));
+    initGitRepo(tmpDir);
+    mkdirSync(path.join(tmpDir, "doc"), { recursive: true });
+    writeFileSync(path.join(tmpDir, "doc", "base.md"), "# base\n");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(e) stray + auto-fixed .ts: reason contains fixedNote and merge line", () => {
+    // stray: untracked docs/ coexists with tracked doc/
+    mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    const strayFp = path.join(tmpDir, "docs", "x.md");
+    writeFileSync(strayFp, "# x\n");
+
+    mkdirSync(path.join(tmpDir, "src"), { recursive: true });
+    const tsFp = makeTsViolatorAutoFixable(tmpDir, "src/fix.ts");
+
+    const ts = new Date(Date.now() - 5000).toISOString();
+    // transcript records both files as session-written
+    const tp = path.join(tmpDir, `transcript-${Date.now()}.jsonl`);
+    const lines = [strayFp, tsFp].map(fp => JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Write", input: { file_path: fp, content: readFileSync(fp, "utf8") } }] },
+      timestamp: ts,
+      cwd: tmpDir,
+    }));
+    writeFileSync(tp, lines.join("\n") + "\n");
+
+    const r = runGate({
+      hook_event_name: "Stop",
+      session_id: `gbh-e-${Date.now()}`,
+      transcript_path: tp,
+      cwd: tmpDir,
+    }, tmpDir);
+
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason).toContain("auto-fixed in this run:");
+    expect(reason).toContain("fix.ts");
+    expect(reason).toContain("docs/");
+    expect(reason).toContain("doc/");
+  });
+});
+
+describe("gate-block-header: both rules truncation on SubagentStop", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-f-"));
+    initGitRepo(tmpDir);
+    mkdirSync(path.join(tmpDir, "doc"), { recursive: true });
+    writeFileSync(path.join(tmpDir, "doc", "base.md"), "# base\n");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(f) both rules, many density files, SubagentStop → ≤2000 chars with required sections", () => {
+    const tsxFiles: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const fp = makeTsxViolator(tmpDir, `widget${i}.tsx`);
+      tsxFiles.push(fp);
+    }
+
+    mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    const strayFp = path.join(tmpDir, "docs", "x.md");
+    writeFileSync(strayFp, "# x\n");
+
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = path.join(tmpDir, `transcript-${Date.now()}.jsonl`);
+    const allFiles = [...tsxFiles, strayFp];
+    const tpLines = allFiles.map(fp => JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Write", input: { file_path: fp, content: readFileSync(fp, "utf8") } }] },
+      timestamp: ts,
+      cwd: tmpDir,
+    }));
+    writeFileSync(tp, tpLines.join("\n") + "\n");
+
+    const r = runGate({
+      hook_event_name: "SubagentStop",
+      session_id: `gbh-f-${Date.now()}`,
+      transcript_path: tp,
+      cwd: tmpDir,
+    }, tmpDir);
+
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason.length).toBeLessThanOrEqual(2000);
+    expect(reason).toContain("stray-artifacts:");
+    expect(reason).toContain("Merge the coexisting directories or move/delete the scratch file.");
+    expect(reason).toContain("Edits made after hand-back do not reach the caller.");
+  });
+});

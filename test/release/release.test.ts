@@ -246,9 +246,12 @@ describe("check dep range", () => {
 // Smoke test: real repo
 // ---------------------------------------------------------------------------
 
-test("real repo check prints 2.5.2", () => {
-  const repoDir = "/home/newman/.local/share/groundwork";
+test("real repo check prints the package.json version", () => {
+  const repoDir = join(import.meta.dir, "../..");
+  const expectedVersion = JSON.parse(
+    readFileSync(join(repoDir, "package.json"), "utf8")
+  ).version as string;
   const r = runRelease(repoDir, ["check"]);
   expect(r.exitCode).toBe(0);
-  expect(r.stdout).toBe("2.5.2");
+  expect(r.stdout).toBe(expectedVersion);
 });

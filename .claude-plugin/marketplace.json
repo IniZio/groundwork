@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Groundwork — convention adapter, enforcement hooks, SQLite work store",
-    "version": "2.8.1"
+    "version": "2.8.2"
   },
   "allowCrossMarketplaceDependenciesOn": [
     "claude-plugins-official"
@@ -16,7 +16,7 @@
       "name": "groundwork",
       "source": "./",
       "description": "Convention detection, enforcement hooks, work store, and advisor gate for Claude Code",
-      "version": "2.8.1",
+      "version": "2.8.2",
       "author": {
         "name": "Newman"
       },

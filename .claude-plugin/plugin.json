@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
     {

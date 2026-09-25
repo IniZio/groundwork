@@ -1,6 +1,6 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, afterAll } from "bun:test";
 import path from "node:path";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import {
   detectLanguage,
@@ -1804,8 +1804,16 @@ describe("Go autoFix text-level whitespace output (GO-T2b)", () => {
 // explicit env keep the original PATH even after process.env.PATH is changed.
 // So autoFix runs in a child bun whose whole environment is PATH=<empty dir>.
 describe("Go autoFix: no external formatter needed (GO-D6)", () => {
+  const _go_d6_tmpDirs: string[] = [];
+  afterAll(() => {
+    for (const d of _go_d6_tmpDirs) {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
   it("AC1: autoFix succeeds with ok:true when no go toolchain binary is on PATH", () => {
     const emptyDir = mkdtempSync(path.join(os.tmpdir(), "go-d6-"));
+    _go_d6_tmpDirs.push(emptyDir);
     expect(readdirSync(emptyDir)).toEqual([]);
     expect(Bun.which("go", { PATH: emptyDir })).toBeNull();
 
@@ -1851,6 +1859,113 @@ describe("Go autoFix: no external formatter needed (GO-D6)", () => {
     expect(r.fixed).toContain("//nolint:unused");
     expect(r.fixed).not.toContain("// narrative one");
     expect(r.fixed).not.toContain("// narrative six");
+  });
+
+  it("AC2: autoFix does not invoke gofmt or go even when they are available on PATH", () => {
+    const stubDir = mkdtempSync(path.join(os.tmpdir(), "go-d6-stub-"));
+    _go_d6_tmpDirs.push(stubDir);
+    const logFile = path.join(stubDir, "invocations.log");
+
+    // stub gofmt: log invocation, passthrough stdin via cat
+    writeFileSync(
+      path.join(stubDir, "gofmt"),
+      `#!/bin/sh\nprintf 'gofmt\\n' >> "${logFile}"\ncat\n`,
+      { mode: 0o755 },
+    );
+    // stub go: log invocation, print nothing
+    writeFileSync(
+      path.join(stubDir, "go"),
+      `#!/bin/sh\nprintf 'go\\n' >> "${logFile}"\n`,
+      { mode: 0o755 },
+    );
+
+    const code = [
+      "package main",
+      "",
+      "//go:generate echo hi",
+      "//go:build !windows",
+      "",
+      "func main() {",
+      "\t// narrative one",
+      "\t// narrative two",
+      "\t// narrative three",
+      "\t// narrative four",
+      "\t// narrative five",
+      "\t// narrative six",
+      "\tx := 1 //nolint:unused",
+      "\t_ = x",
+      "}",
+      "",
+    ].join("\n");
+
+    const lib = path.resolve(import.meta.dir, "../../src/hooks/lib/comment-density.ts");
+    const script = `
+      const { autoFix } = await import(${JSON.stringify(lib)});
+      const code = ${JSON.stringify(code)};
+      const rows = new Set(code.split("\\n").map((_, i) => i));
+      const r = await autoFix(code, "go", rows);
+      process.stdout.write(JSON.stringify(r));
+    `;
+    const child = Bun.spawnSync([process.execPath, "-e", script], {
+      env: { PATH: stubDir },
+      cwd: stubDir,
+    });
+    const stderr = child.stderr.toString();
+    expect(child.exitCode, stderr).toBe(0);
+    const r = JSON.parse(child.stdout.toString());
+    expect(r.ok, `reason: ${r.reason}`).toBe(true);
+
+    // neither gofmt nor go must have been invoked
+    expect(existsSync(logFile), "stub log must not exist — gofmt/go was invoked").toBe(false);
+  });
+});
+
+// ---- Go autoFix text-level output (GO-D6) ----
+
+describe("Go autoFix text-level output (GO-D6)", () => {
+  // narrative comment inside const block — not adjacent to any spec, not a doc-comment
+  const F_CONST_BETWEEN = `package main\n\nconst (\n\tX      = 1\n\tYYYYYY = 2\n\t// narrative comment\n)\n`;
+  // narrative standalone comment between trailing-comment stmts
+  const F_FUNC_TRAILING = `package main\n\nfunc foo() {\n\tx := 1 // first\n\t// narrative\n\tyy := 22 // second\n}\n`;
+  // narrative after last struct field — not adjacent to a field declaration
+  const F_STRUCT_NARRATIVE = `package main\n\ntype T struct {\n\tA        int    // short\n\tLongName string // long\n\t// narrative\n}\n`;
+
+  it("AC1a: const block — narrative between diff-length consts removed, exact output", async () => {
+    const r = await autoFix(F_CONST_BETWEEN, "go", allRows(F_CONST_BETWEEN));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+    expect(r.fixed).toBe("package main\n\nconst (\n\tX      = 1\n\tYYYYYY = 2\n)\n");
+  });
+
+  it("AC1b: func body — narrative between trailing-comment stmts removed, exact output", async () => {
+    const r = await autoFix(F_FUNC_TRAILING, "go", allRows(F_FUNC_TRAILING));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+    expect(r.fixed).toBe("package main\n\nfunc foo() {\n\tx := 1\n\tyy := 22\n}\n");
+  });
+
+  it("AC1c: struct fields split by narrative — narrative removed, ok and removed>0", async () => {
+    const r = await autoFix(F_STRUCT_NARRATIVE, "go", allRows(F_STRUCT_NARRATIVE));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+  });
+
+  it("AC2: gofmt-dirty input not reformatted; non-removed rows byte-identical", async () => {
+    const dirtyCode = `package main\n\nconst (\n  X = 1\n  Y = 2\n)\n\n// narrative one\n// narrative two\n// narrative three\n// narrative four\n// narrative five\n// narrative six\n\nfunc main() {}\n`;
+    const r = await autoFix(dirtyCode, "go", allRows(dirtyCode));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("  X = 1");
+    expect(r.fixed).toContain("  Y = 2");
+    expect(r.fixed).not.toContain("// narrative");
+    expect(r.fixed).toBe("package main\n\nconst (\n  X = 1\n  Y = 2\n)\n\nfunc main() {}\n");
   });
 });
 

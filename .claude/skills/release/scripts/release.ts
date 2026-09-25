@@ -12,13 +12,20 @@ import { execFileSync } from "node:child_process";
 
 type PluginName = "groundwork" | "house-rules";
 
+type JsonObject = Record<string, unknown>;
+
+interface PluginEntry {
+  name: string;
+  version: string;
+}
+
 interface FieldDef {
   /** Path relative to repo root. */
   file: string;
   /** Extract the version string from a parsed JSON object. */
-  read: (json: any) => string;
+  read: (json: JsonObject) => string;
   /** Write the new version into a parsed JSON object (mutates in place). */
-  write: (json: any, version: string) => void;
+  write: (json: JsonObject, version: string) => void;
 }
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
@@ -40,28 +47,28 @@ function getFields(plugin: PluginName): FieldDef[] {
     return [
       {
         file: "package.json",
-        read: j => j.version,
-        write: (j, v) => { j.version = v; },
+        read: j => (j as { version: string }).version,
+        write: (j, v) => { (j as { version: string }).version = v; },
       },
       {
         file: ".claude-plugin/plugin.json",
-        read: j => j.version,
-        write: (j, v) => { j.version = v; },
+        read: j => (j as { version: string }).version,
+        write: (j, v) => { (j as { version: string }).version = v; },
       },
       {
         file: ".claude-plugin/marketplace.json",
-        read: j => j.metadata.version,
-        write: (j, v) => { j.metadata.version = v; },
+        read: j => (j as { metadata: { version: string } }).metadata.version,
+        write: (j, v) => { (j as { metadata: { version: string } }).metadata.version = v; },
       },
       {
         file: ".claude-plugin/marketplace.json",
         read: j => {
-          const p = j.plugins.find((p: any) => p.name === "groundwork");
+          const p = (j as { plugins: PluginEntry[] }).plugins.find(p => p.name === "groundwork");
           if (!p) die("marketplace.json: no entry for 'groundwork' in plugins[]");
           return p.version;
         },
         write: (j, v) => {
-          const p = j.plugins.find((p: any) => p.name === "groundwork");
+          const p = (j as { plugins: PluginEntry[] }).plugins.find(p => p.name === "groundwork");
           if (!p) die("marketplace.json: no entry for 'groundwork' in plugins[]");
           p.version = v;
         },
@@ -72,18 +79,18 @@ function getFields(plugin: PluginName): FieldDef[] {
     return [
       {
         file: "plugins/house-rules/.claude-plugin/plugin.json",
-        read: j => j.version,
-        write: (j, v) => { j.version = v; },
+        read: j => (j as { version: string }).version,
+        write: (j, v) => { (j as { version: string }).version = v; },
       },
       {
         file: ".claude-plugin/marketplace.json",
         read: j => {
-          const p = j.plugins.find((p: any) => p.name === "house-rules");
+          const p = (j as { plugins: PluginEntry[] }).plugins.find(p => p.name === "house-rules");
           if (!p) die("marketplace.json: no entry for 'house-rules' in plugins[]");
           return p.version;
         },
         write: (j, v) => {
-          const p = j.plugins.find((p: any) => p.name === "house-rules");
+          const p = (j as { plugins: PluginEntry[] }).plugins.find(p => p.name === "house-rules");
           if (!p) die("marketplace.json: no entry for 'house-rules' in plugins[]");
           p.version = v;
         },
@@ -92,11 +99,11 @@ function getFields(plugin: PluginName): FieldDef[] {
   }
 }
 
-function readFileMap(fields: FieldDef[]): Map<string, any> {
-  const map = new Map<string, any>();
+function readFileMap(fields: FieldDef[]): Map<string, JsonObject> {
+  const map = new Map<string, JsonObject>();
   for (const f of fields) {
     if (!map.has(f.file)) {
-      map.set(f.file, JSON.parse(readFileSync(f.file, "utf8")));
+      map.set(f.file, JSON.parse(readFileSync(f.file, "utf8")) as JsonObject);
     }
   }
   return map;
@@ -105,7 +112,7 @@ function readFileMap(fields: FieldDef[]): Map<string, any> {
 function currentVersionFor(plugin: PluginName): string {
   const fields = getFields(plugin);
   const fileMap = readFileMap(fields);
-  const seen = fields.map(f => ({ file: f.file, v: f.read(fileMap.get(f.file)) }));
+  const seen = fields.map(f => ({ file: f.file, v: f.read(fileMap.get(f.file)!) }));
   const distinct = new Set(seen.map(s => s.v));
   if (distinct.size !== 1) {
     const rows = seen.map(s => `  ${s.file}: ${s.v}`).join("\n");
@@ -133,8 +140,8 @@ function checkDependencies(): void {
 /** Check whether version satisfies range. Supports exact, ~X.Y.Z, ^X.Y.Z. */
 function satisfiesRange(version: string, range: string): boolean {
   // Try Bun.semver if available
-  if (typeof (globalThis as any).Bun?.semver?.satisfies === "function") {
-    return (globalThis as any).Bun.semver.satisfies(version, range);
+  if (typeof Bun.semver?.satisfies === "function") {
+    return Bun.semver.satisfies(version, range);
   }
   // Manual fallback
   if (SEMVER.test(range)) return version === range;

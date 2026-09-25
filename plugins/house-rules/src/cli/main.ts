@@ -7,6 +7,7 @@ import { buildContext } from '../engine/context.js';
 import { runRules, isBlocking } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
 import { runHousekeep } from './housekeep.js';
+import { defaultBase } from './default-base.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -21,16 +22,6 @@ function getRepoRoot(repoFlag?: string): string {
     process.exit(2);
   }
   return r.stdout.trim();
-}
-
-function defaultBase(repoRoot: string): string {
-  for (const ref of ['origin/HEAD', 'main', 'master']) {
-    const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', ref], {
-      encoding: 'utf8',
-    });
-    if (r.status === 0) return ref;
-  }
-  return 'HEAD';
 }
 
 function validateBase(repoRoot: string, base: string): void {

@@ -10,6 +10,7 @@ import { BUILTIN_POLICY } from '../engine/policy.js';
 import { addedHunks } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
 import type { Finding } from '../engine/types.js';
+import { defaultBase } from './default-base.js';
 
 export interface HousekeepOpts {
   rules?: string[];
@@ -22,14 +23,6 @@ export interface HousekeepOpts {
   rulesDir?: string;
   baselineFile?: string;
   policy?: Record<string, { severity: string; autofix: boolean }>;
-}
-
-function defaultBase(repoRoot: string): string {
-  for (const ref of ['origin/HEAD', 'main', 'master']) {
-    const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', ref], { encoding: 'utf8' });
-    if (r.status === 0) return ref;
-  }
-  return 'HEAD';
 }
 
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';

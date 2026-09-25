@@ -17,7 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
-| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | strips over-budget comments before Write/Edit/MultiEdit | blocks when session-changed file is over budget; auto-trims TypeScript | `house-rules check --base <ref>` | TypeScript: stable; other langs: shadow/preview |
+| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | strips over-budget comments before Write/Edit/MultiEdit | blocks when session-changed file is over budget; auto-trims TypeScript and Go | `house-rules check --base <ref>` | TypeScript, Go: stable; other langs: preview |
 | stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
@@ -38,7 +38,9 @@ house-rules housekeep              # deslop + rule-violation fixing (or: /house-
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).
 
-**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript and Go before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+
+**Go autofix** — resolves `gofmt` via `$(go env GOROOT)/bin/gofmt`, falling back to `gofmt` on `PATH`; override with `HOUSE_RULES_GOFMT` (empty string = unavailable). gofmt runs on the output only when the input was already gofmt-clean; if gofmt is unavailable or fails, the file is not written and the gate blocks. Protected Go comments (never removed): `//go:*` pragmas, `// +build`, `//export`, `//line`, `//nolint`, `//lint:ignore`/`file-ignore`, `// +marker:` (e.g. kubebuilder), everything before the `package` clause (license, SPDX, `Code generated ... DO NOT EDIT.`), `//` and `/* */` preamble directly above `import "C"`, `// Output:`/`// Unordered output:` blocks inside Example funcs, and doc comments directly above declarations.
 
 **Supported languages**: TypeScript (ts, tsx), JavaScript (js, jsx), Python, Bash/Shell, YAML, Dockerfile, Go, Rust, SQL, Makefile, TOML. Files in other languages are not measured.
 

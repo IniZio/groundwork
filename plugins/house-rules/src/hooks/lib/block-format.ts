@@ -60,7 +60,7 @@ function trimFixedNote(files: string[], budget: number): string | null {
   return result + ", " + suffix;
 }
 
-function buildFull(
+export function buildFull(
   header: string,
   sects: Array<{ label?: string; lines: string[]; footer: string }>,
   notices: string[],
@@ -197,4 +197,46 @@ export function formatBlock(input: BlockInput, limit = 2000): string {
 
   const result = outputParts.join("\n");
   return result.length <= limit ? result : result.slice(0, limit);
+}
+
+export interface RuleSummary {
+  name: string;   // e.g. "comment-density" or "stray-artifacts"
+  paths: string[];
+}
+
+/**
+ * Produces a short ≤2000-char-by-construction summary for use as the Stop block reason
+ * when the full report has been written to filePath.
+ * Format:
+ *   house-rules gate: comment-density (N files)[, stray-artifacts (M files)].
+ *   /path1, /path2[, … K more] — full list: <filePath>[<suffix>]
+ */
+export function formatShortReason(
+  rules: RuleSummary[],
+  filePath: string,
+  suffix?: string | null,
+): string {
+  const ruleText = rules
+    .map(r => `${r.name} (${r.paths.length} file${r.paths.length !== 1 ? "s" : ""})`)
+    .join(", ");
+  const header = `house-rules gate: ${ruleText}.`;
+
+  // Show at least 1 path per rule (guaranteed), then fill remaining slots from each rule in order.
+  const MAX = 3;
+  const shown: string[] = [];
+  for (const r of rules) {
+    if (r.paths.length > 0) shown.push(r.paths[0]);
+  }
+  for (const r of rules) {
+    for (let i = 1; i < r.paths.length && shown.length < MAX; i++) {
+      shown.push(r.paths[i]);
+    }
+    if (shown.length >= MAX) break;
+  }
+  const total = rules.reduce((s, r) => s + r.paths.length, 0);
+  const rest = total - shown.length;
+  const pathList = shown.join(", ") + (rest > 0 ? `, … ${rest} more` : "");
+  const line2 = `${pathList} — full list: ${filePath}` + (suffix ?? "");
+
+  return header + "\n" + line2;
 }

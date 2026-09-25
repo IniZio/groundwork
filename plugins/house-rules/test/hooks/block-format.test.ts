@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatBlock, type BlockInput } from "../../src/hooks/lib/block-format.js";
+import { formatBlock, formatShortReason, type BlockInput, type RuleSummary } from "../../src/hooks/lib/block-format.js";
 
 const LIMIT = 2000;
 
@@ -229,12 +229,20 @@ describe("block-format: minimum-entry guarantee", () => {
   });
 
   it("no digit-growth: suffix count stable across sizes", () => {
-    // Suffix count must equal items.length minus the entries actually shown.
     const moreRegex = /… (\d+) more/g;
-    for (let n = 9; n <= 11; n++) {
-      const out = formatBlock(densityInput(n));
+    for (let n = 12; n <= 14; n++) {
+      const lines = Array.from({ length: n }, (_, i) => realisticDensityLine(i));
+      const out = formatBlock({
+        header: DHEADER,
+        sections: [{ lines, footer: DFOOTERBASE }],
+        notices: [],
+        fixedFiles: [],
+        suffix: null,
+      });
+      expect(out.length).toBeLessThanOrEqual(LIMIT);
       const matches = [...out.matchAll(moreRegex)];
-      const shown = out.split("\n").filter(l => l.includes("widget")).length;
+      expect(matches.length).toBeGreaterThan(0);
+      const shown = out.split("\n").filter(l => l.includes("component-name.tsx")).length;
       for (const m of matches) {
         expect(Number(m[1])).toBe(n - shown);
       }
@@ -257,20 +265,6 @@ function realisticNoticeLine(i: number): string {
   return `(${RROOT}src/parse${i}-component.tsx: parse error — prefix count used)`;
 }
 
-function realisticBothInput(dCount: number, sCount: number, suffix: string | null = null): BlockInput {
-  const DFOOTER_DENSITY = DFOOTERBASE.slice(0, -" Then stop again.".length);
-  return {
-    header: "house-rules gate: files changed in this session violate one or more code conventions.",
-    sections: [
-      { label: "comment-density:", lines: Array.from({ length: dCount }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
-      { label: "stray-artifacts:", lines: Array.from({ length: sCount }, (_, i) => realisticStrayLine(i)), footer: SFOOTERBASE },
-    ],
-    notices: [],
-    fixedFiles: [],
-    suffix,
-  };
-}
-
 function realisticTripleInput(dCount: number, nCount: number, sCount: number, suffix: string | null = null): BlockInput {
   const DFOOTER_DENSITY = DFOOTERBASE.slice(0, -" Then stop again.".length);
   return {
@@ -287,13 +281,13 @@ function realisticTripleInput(dCount: number, nCount: number, sCount: number, su
 
 describe("block-format: realistic paths", () => {
   it("30 density + 1 stray with HANDBACK: stray path visible, length ≤2000", () => {
-    const out = formatBlock(realisticBothInput(30, 1, HANDBACK));
+    const out = formatBlock(realisticTripleInput(30, 30, 1, HANDBACK));
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });
 
   it("30 density + 1 stray without HANDBACK: stray path visible, length ≤2000", () => {
-    const out = formatBlock(realisticBothInput(30, 1, null));
+    const out = formatBlock(realisticTripleInput(30, 30, 1, null));
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });
@@ -302,6 +296,48 @@ describe("block-format: realistic paths", () => {
     const out = formatBlock(realisticTripleInput(30, 30, 1, HANDBACK));
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
+  });
+});
+
+describe("formatShortReason", () => {
+  it("density-only: correct format", () => {
+    const rules: RuleSummary[] = [{ name: "comment-density", paths: ["/a/b.ts", "/a/c.ts"] }];
+    const out = formatShortReason(rules, "/tmp/house-rules/sid/stop-block.txt");
+    expect(out).toContain("house-rules gate:");
+    expect(out).toContain("comment-density (2 files)");
+    expect(out).toContain("/a/b.ts");
+    expect(out).toContain("full list: /tmp/house-rules/sid/stop-block.txt");
+    expect(out.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("both rules: correct format", () => {
+    const rules: RuleSummary[] = [
+      { name: "comment-density", paths: ["/a/b.ts"] },
+      { name: "stray-artifacts", paths: ["/a/docs/x.md"] },
+    ];
+    const out = formatShortReason(rules, "/tmp/house-rules/sid/stop-block.txt");
+    expect(out).toContain("comment-density (1 file)");
+    expect(out).toContain("stray-artifacts (1 file)");
+    expect(out).toContain("full list:");
+    expect(out.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("SubagentStop suffix appended", () => {
+    const rules: RuleSummary[] = [{ name: "stray-artifacts", paths: ["/a/docs/x.md"] }];
+    const out = formatShortReason(rules, "/tmp/sid/stop-block.txt", " Edits made after hand-back do not reach the caller.");
+    expect(out).toContain("Edits made after hand-back do not reach the caller.");
+    expect(out.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("huge input: 1000 files per rule stays ≤2000", () => {
+    const paths = Array.from({ length: 1000 }, (_, i) => `/very/long/path/component-name-${i}.tsx`);
+    const rules: RuleSummary[] = [
+      { name: "comment-density", paths },
+      { name: "stray-artifacts", paths },
+    ];
+    const out = formatShortReason(rules, "/tmp/house-rules/session-id/stop-block.txt");
+    expect(out.length).toBeLessThanOrEqual(2000);
+    expect(out).toContain("full list:");
   });
 });
 

@@ -322,6 +322,7 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
     expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).toContain("full list:");
   });
@@ -357,6 +358,7 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
     expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain(path.join(tmpDir, "docs", "only.md"));
     expect(reason).toContain("full list:");
   });
 });

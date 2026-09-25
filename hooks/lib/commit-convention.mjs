@@ -2,7 +2,7 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { deriveConvention } from './derive-convention.mjs'
+import { readRecentSubjects } from './derive-convention.mjs'
 import {
   lintCommitMessage,
   readConfigPreset,
@@ -164,12 +164,18 @@ function getMarketplacePluginNames(repoRoot) {
   }
 }
 
+const DERIVE_MIN_SAMPLE = 10
+const DERIVE_THRESHOLD = 0.85
+const DERIVE_CONV_RE = /^([a-zA-Z0-9_-]+)(?:\([^)]*\))?!?:\s+\S/
+
 function derivePreset(repoRoot) {
   if (!repoRoot) return PRESET_HANDBOOK
   try {
-    const result = deriveConvention(repoRoot)
-    if (!result.confident || !result.rules) return PRESET_HANDBOOK
-    return result.rules.shape === 'type-scope' ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
+    const subjects = readRecentSubjects(repoRoot)
+    if (!subjects || subjects.length < DERIVE_MIN_SAMPLE) return PRESET_HANDBOOK
+    const sample = subjects.slice(0, 30)
+    const n = sample.filter(s => DERIVE_CONV_RE.test(s)).length
+    return n / sample.length >= DERIVE_THRESHOLD ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
   } catch {
     return PRESET_HANDBOOK
   }
@@ -179,6 +185,7 @@ export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
   const repoRoot = opts?.repoRoot ?? null
 
+  // Preset resolution order: .gitmessage → body-only; .house-rules.json → explicit preset; no config → derive from subject history; fallback → handbook
   let preset
   if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
     preset = PRESET_BODY_ONLY

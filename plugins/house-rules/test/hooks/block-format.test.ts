@@ -286,8 +286,18 @@ describe("block-format: realistic paths", () => {
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });
 
-  it("30d+1s no notices: stray path visible, length ≤2000", () => {
-    const out = formatBlock(realisticTripleInput(30, 0, 1, null));
+  it("30d+1s+1fixed, no notices: stray path visible, length ≤2000 [bites 4310726]", () => {
+    const DFOOTER_DENSITY = DFOOTERBASE.slice(0, -" Then stop again.".length);
+    const out = formatBlock({
+      header: "house-rules gate: files changed in this session violate one or more code conventions.",
+      sections: [
+        { label: "comment-density:", lines: Array.from({ length: 30 }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
+        { label: "stray-artifacts:", lines: [realisticStrayLine(0)], footer: SFOOTERBASE },
+      ],
+      notices: [],
+      fixedFiles: [`${RROOT}src/fixed0.ts`],
+      suffix: null,
+    });
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });

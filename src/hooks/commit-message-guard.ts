@@ -4,7 +4,7 @@
  * message for convention violations. Deny is actionable: every violation names
  * the offending line and the rule. Kill-switch: GROUNDWORK_COMMIT_LINT=0.
  *
- * Detectable forms (all linted):
+ * Detectable forms (all linted or denied):
  *   git commit ...
  *   command git commit ...          (command/builtin shell builtins)
  *   builtin git commit ...
@@ -12,7 +12,13 @@
  *   git -C <path> commit ...        (git -C flag)
  *   git -c key=val commit ...       (git -c flag)
  *   git --git-dir=<d> commit ...    (git --git-dir flag)
- *   cmd1 && git commit ...          (after &&, ||, ;, |)
+ *   cmd1 && git commit ...          (after &&, ||, ;, |, newline)
+ *
+ * Also denied:
+ *   git commit --no-verify / -n     (skips commit-msg hook)
+ *   git -c core.hooksPath=... ...   (overrides hooks directory)
+ *   git commit-tree ... -m <msg>    (plumbing bypass; shell vars → guidance)
+ *   git update-ref refs/heads/*     (direct branch rewrite bypasses hooks)
  *
  * NOT DETECTABLE: shell function aliases (e.g. `g(){ command git "$@"; }; g commit`).
  * The git-level commit-msg hook installed by session-commit-msg-installer.ts is the
@@ -35,6 +41,10 @@ function deny(reason: string): HookResult {
   };
 }
 
+function containsShellVar(s: string): boolean {
+  return /\$[{(a-zA-Z_]/.test(s);
+}
+
 function lintAndDecide(message: string, cwd: string): HookResult {
   const result = lintMessage(message, { repoRoot: resolveRepoRoot(cwd) });
   if (result.violations.length === 0) return allow();
@@ -45,7 +55,7 @@ function lintAndDecide(message: string, cwd: string): HookResult {
 }
 
 /**
- * Split a shell command string on unquoted &&, ||, ;, | operators.
+ * Split a shell command string on unquoted &&, ||, ;, |, newline operators.
  * Single- and double-quoted regions are skipped.
  */
 function splitOnShellOps(cmd: string): string[] {
@@ -68,7 +78,7 @@ function splitOnShellOps(cmd: string): string[] {
       segments.push(current); current = ''; i += 2;
     } else if (c === '|' && i + 1 < cmd.length && cmd[i + 1] === '|') {
       segments.push(current); current = ''; i += 2;
-    } else if (c === ';' || c === '|') {
+    } else if (c === ';' || c === '|' || c === '\n') {
       segments.push(current); current = ''; i++;
     } else {
       current += c; i++;
@@ -78,13 +88,22 @@ function splitOnShellOps(cmd: string): string[] {
   return segments.filter(s => s.trim().length > 0);
 }
 
+type SegmentKind = 'commit' | 'commit-tree' | 'update-ref' | 'hash-object';
+
+interface ParsedSegment {
+  found: boolean;
+  kind?: SegmentKind;
+  cwdOverride?: string;
+  hooksPathOverride?: boolean;
+  noVerify?: boolean;
+}
+
 /**
- * Parse one shell segment (no operators) for a git commit invocation.
+ * Parse one shell segment (no operators) for a git invocation we intercept.
  * Handles: env assignments, command/builtin prefixes, git-level option flags
  * (-C, -c, --git-dir, --work-tree, --namespace, boolean flags).
- * Returns { found: true, cwdOverride } when `commit` is the git subcommand.
  */
-function parseSegmentForGitCommit(seg: string): { found: boolean; cwdOverride?: string } {
+function parseSegmentForGit(seg: string): ParsedSegment {
   let tokens = seg.trim().split(/\s+/).filter(t => t.length > 0);
 
   while (tokens.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) {
@@ -102,6 +121,7 @@ function parseSegmentForGitCommit(seg: string): { found: boolean; cwdOverride?: 
   tokens = tokens.slice(1);
 
   let cwdOverride: string | undefined;
+  let hooksPathOverride = false;
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
@@ -112,6 +132,9 @@ function parseSegmentForGitCommit(seg: string): { found: boolean; cwdOverride?: 
       continue;
     }
     if (t === '-c') {
+      if (i + 1 < tokens.length && /^core\.hookspath=/i.test(tokens[i + 1])) {
+        hooksPathOverride = true;
+      }
       i += 2; continue;
     }
     if (t === '--git-dir' || t === '--work-tree' || t === '--namespace') {
@@ -123,20 +146,39 @@ function parseSegmentForGitCommit(seg: string): { found: boolean; cwdOverride?: 
     i++;
   }
 
-  if (i < tokens.length && tokens[i] === 'commit') {
-    return { found: true, cwdOverride };
+  if (i >= tokens.length) return { found: false };
+
+  const subCmd = tokens[i];
+
+  if (subCmd === 'commit') {
+    const commitArgs = tokens.slice(i + 1);
+    const noVerify = commitArgs.some(t => t === '--no-verify' || t === '-n');
+    return { found: true, kind: 'commit', cwdOverride, hooksPathOverride, noVerify };
   }
+
+  if (subCmd === 'commit-tree') {
+    return { found: true, kind: 'commit-tree', cwdOverride, hooksPathOverride };
+  }
+
+  if (subCmd === 'update-ref') {
+    return { found: true, kind: 'update-ref', cwdOverride, hooksPathOverride };
+  }
+
+  if (subCmd === 'hash-object') {
+    return { found: true, kind: 'hash-object', cwdOverride, hooksPathOverride };
+  }
+
   return { found: false };
 }
 
 /**
- * Detect whether `command` contains a git commit invocation in any decidable form.
+ * Detect whether `command` contains a git operation we intercept.
  * Checks each shell-operator-separated segment in order; returns on first match,
  * including the matched segment text so callers can scope extraction to that segment.
  */
-function detectGitCommit(command: string): { found: boolean; cwdOverride?: string; segment?: string } {
+function detectGitOp(command: string): ParsedSegment & { segment?: string } {
   for (const seg of splitOnShellOps(command)) {
-    const result = parseSegmentForGitCommit(seg);
+    const result = parseSegmentForGit(seg);
     if (result.found) return { ...result, segment: seg };
   }
   return { found: false };
@@ -191,6 +233,43 @@ function extractFilePath(cmd: string): string | null {
   return null;
 }
 
+/**
+ * Extract the target ref and --stdin flag from an update-ref segment.
+ * Strips quoted -m "..." values before tokenizing to avoid space-splitting issues.
+ */
+function analyzeUpdateRefSegment(seg: string): { stdin: boolean; ref: string | null } {
+  const afterMatch = /\bupdate-ref\b(.*)$/s.exec(seg);
+  if (!afterMatch) return { stdin: false, ref: null };
+  let rest = afterMatch[1];
+
+  if (/(?:^|\s)--stdin(?:\s|$)/.test(rest)) return { stdin: true, ref: null };
+
+  rest = rest
+    .replace(/\s(?:-m|--message)\s+"[^"]*"/g, '')
+    .replace(/\s(?:-m|--message)\s+'[^']*'/g, '')
+    .replace(/\s(?:-m|--message)\s+\S+/g, '');
+
+  const tokens = rest.trim().split(/\s+/).filter(t => t.length > 0);
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t === '--no-deref' || t === '--create-reflog') { i++; continue; }
+    if (t === '-d' || t === '--delete') {
+      i++;
+      while (i < tokens.length && tokens[i].startsWith('-')) i++;
+      return { stdin: false, ref: tokens[i]?.replace(/^['"]|['"]$/g, '') ?? null };
+    }
+    if (!t.startsWith('-')) return { stdin: false, ref: t.replace(/^['"]|['"]$/g, '') };
+    i++;
+  }
+  return { stdin: false, ref: null };
+}
+
+function updateRefIsAllowed(ref: string | null): boolean {
+  if (ref === null) return false;
+  return ref.startsWith('refs/tags/') || ref.startsWith('refs/notes/');
+}
+
 export function check(input: unknown): HookResult {
   try {
     if (process.env['GROUNDWORK_COMMIT_LINT'] === '0') return allow();
@@ -205,31 +284,114 @@ export function check(input: unknown): HookResult {
     const command = (toolInput as Record<string, unknown>)['command'];
     if (typeof command !== 'string') return allow();
 
-    const gitMatch = detectGitCommit(command);
+    const gitMatch = detectGitOp(command);
     if (!gitMatch.found) return allow();
 
     const baseCwd =
-      typeof (toolInput as Record<string, unknown>)['cwd'] === 'string'
-        ? ((toolInput as Record<string, unknown>)['cwd'] as string)
-        : process.cwd();
+      typeof inp['cwd'] === 'string'
+        ? (inp['cwd'] as string)
+        : typeof (toolInput as Record<string, unknown>)['cwd'] === 'string'
+          ? ((toolInput as Record<string, unknown>)['cwd'] as string)
+          : process.cwd();
     const cmdCwd = gitMatch.cwdOverride ? resolve(baseCwd, gitMatch.cwdOverride) : baseCwd;
 
-    const commitSeg = gitMatch.segment ?? command;
-    const inlineMsg = extractInlineMessage(commitSeg);
-    if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
+    if (gitMatch.hooksPathOverride) {
+      return deny(
+        'git -c core.hooksPath=... overrides the hooks directory, bypassing commit-msg validation.\n' +
+        'Remove the -c core.hooksPath override.',
+      );
+    }
 
-    const rawPath = extractFilePath(commitSeg);
-    if (rawPath !== null) {
-      const filePath = resolve(cmdCwd, rawPath);
-      let fileMsg: string;
-      try {
-        const st = statSync(filePath);
-        if (!st.isFile()) return allow();
-        fileMsg = readFileSync(filePath, 'utf-8');
-      } catch {
-        return allow();
+    if (gitMatch.kind === 'commit') {
+      if (gitMatch.noVerify) {
+        return deny(
+          'git commit --no-verify (or -n) skips the commit-msg hook.\n' +
+          'Use `git commit` without --no-verify so commit message conventions are enforced.',
+        );
       }
-      return lintAndDecide(fileMsg, cmdCwd);
+
+      const commitSeg = gitMatch.segment ?? command;
+      const inlineMsg = extractInlineMessage(commitSeg);
+      if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
+
+      const rawPath = extractFilePath(commitSeg);
+      if (rawPath !== null) {
+        const filePath = resolve(cmdCwd, rawPath);
+        let fileMsg: string;
+        try {
+          const st = statSync(filePath);
+          if (!st.isFile()) return allow();
+          fileMsg = readFileSync(filePath, 'utf-8');
+        } catch {
+          return allow();
+        }
+        return lintAndDecide(fileMsg, cmdCwd);
+      }
+
+      return allow();
+    }
+
+    if (gitMatch.kind === 'commit-tree') {
+      const seg = gitMatch.segment ?? command;
+      const inlineMsg = extractInlineMessage(seg);
+      if (inlineMsg !== null) {
+        if (containsShellVar(inlineMsg)) {
+          return deny(
+            'git commit-tree -m "$var" uses a shell variable whose value cannot be linted.\n' +
+            'Use `git commit` or `git commit --amend` with a literal message instead.',
+          );
+        }
+        return lintAndDecide(inlineMsg, cmdCwd);
+      }
+
+      const rawPath = extractFilePath(seg);
+      if (rawPath !== null) {
+        const filePath = resolve(cmdCwd, rawPath);
+        let fileMsg: string;
+        try {
+          const st = statSync(filePath);
+          if (!st.isFile()) return allow();
+          fileMsg = readFileSync(filePath, 'utf-8');
+        } catch {
+          return allow();
+        }
+        return lintAndDecide(fileMsg, cmdCwd);
+      }
+
+      return deny(
+        'git commit-tree without -m or -F reads a message from stdin which cannot be linted.\n' +
+        'Use `git commit` or `git commit --amend` with a literal message instead.',
+      );
+    }
+
+    if (gitMatch.kind === 'update-ref') {
+      const seg = gitMatch.segment ?? command;
+      const { stdin, ref } = analyzeUpdateRefSegment(seg);
+      if (stdin || !updateRefIsAllowed(ref)) {
+        const target = stdin ? '--stdin' : (ref ?? 'unknown target');
+        return deny(
+          `git update-ref on '${target}' directly rewrites branch history without commit-msg hooks.\n` +
+          'Only refs/tags/* and refs/notes/* are permitted.\n' +
+          'Reword commits via `git commit --amend` or interactive rebase instead.',
+        );
+      }
+      return allow();
+    }
+
+    if (gitMatch.kind === 'hash-object') {
+      const seg = gitMatch.segment ?? command;
+      const hasWrite = /(?:^|\s)-w(?:\s|$)/.test(seg);
+      const isCommitType =
+        /(?:^|\s)-t\s+commit(?:\s|$)/.test(seg) ||
+        /(?:^|\s)--type=commit(?:\s|$)/.test(seg) ||
+        /(?:^|\s)--type\s+commit(?:\s|$)/.test(seg);
+      if (hasWrite && isCommitType) {
+        return deny(
+          'git hash-object -t commit -w creates a loose commit object without going through commit-msg hooks.\n' +
+          'Use `git commit` instead.',
+        );
+      }
+      return allow();
     }
 
     return allow();

@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { check } from "../../src/hooks/commit-message-guard.js";
 
 function bash(command: string, cwd?: string) {
@@ -9,6 +10,7 @@ function bash(command: string, cwd?: string) {
   if (cwd !== undefined) toolInput["cwd"] = cwd;
   return { tool_name: "Bash", tool_input: toolInput };
 }
+
 
 /**
  * Parse stdout. Empty stdout = allow. Returns permissionDecision string or "allow".
@@ -321,5 +323,208 @@ describe("commit-message-guard — chained command segment isolation", () => {
     const result = check(bash('git commit -m "chore: b" -m "body line"'));
     expect(decision(result)).toBe("deny");
     expect(reason(result)).toMatch(/line/);
+  });
+});
+
+describe("commit-message-guard — plumbing bypass (commit-tree, update-ref, no-verify)", () => {
+  // --- git commit-tree -m "$var" → deny with shell-var guidance ---
+  it("DENY: commit-tree with shell var in -m → denied, asks for literal message", () => {
+    const cmd = 'c1=$(GIT_AUTHOR_DATE="$ad1" git commit-tree 002e4af^{tree} -p ebe57dc -m "$m1")';
+    const result = check(bash(cmd));
+    expect(decision(result)).toBe("deny");
+    const r = reason(result);
+    expect(r).toMatch(/shell variable/);
+    expect(r).toMatch(/git commit/);
+  });
+
+  it("DENY: commit-tree with $var in double-quoted -m (full incident fixture segment)", () => {
+    const cmd = 'c2=$(GIT_AUTHOR_DATE="$ad2" git commit-tree 27d2993^{tree} -p "$c1" -m "$m2")';
+    const result = check(bash(cmd));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/shell variable/);
+  });
+
+  it("DENY: commit-tree with literal invalid message → linted, denied for format", () => {
+    const result = check(bash('git commit-tree abc123^{tree} -p def456 -m "bad message no convention"'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/line 1/);
+  });
+
+  it("ALLOW: commit-tree with valid literal message passes lint", () => {
+    const result = check(bash('git commit-tree abc123^{tree} -p def456 -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW: full incident fixture — git log lines must not false-positive (no commit-tree match on log)", () => {
+    const cmd = 'ad1=$(git log -1 --format=%ad --date=raw 002e4af); ad2=$(git log -1 --format=%ad --date=raw 27d2993)';
+    const result = check(bash(cmd));
+    // git log is not commit/commit-tree/update-ref → allow
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  // --- git update-ref refs/heads/* → deny ---
+  it("DENY: update-ref on refs/heads/* (full incident fixture line) → denied with rebase guidance", () => {
+    const cmd = 'git update-ref -m "reword: conventional commit subjects" refs/heads/develop "$c2" 27d293212b2';
+    const result = check(bash(cmd));
+    expect(decision(result)).toBe("deny");
+    const r = reason(result);
+    expect(r).toMatch(/refs\/heads/);
+    expect(r).toMatch(/amend|rebase/);
+  });
+
+  it("DENY: update-ref -d refs/heads/feature → denied", () => {
+    const result = check(bash('git update-ref -d refs/heads/feature-branch'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/refs\/heads/);
+  });
+
+  it("ALLOW: update-ref on refs/tags/* → allowed", () => {
+    const result = check(bash('git update-ref refs/tags/v1.0.0 abc123'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW: update-ref on refs/notes/* → allowed", () => {
+    const result = check(bash('git update-ref refs/notes/commits abc123'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  // --- git commit --no-verify / -n → deny ---
+  it("DENY: git commit --no-verify with valid message still denied (skips hook)", () => {
+    const result = check(bash('git commit -m "Fix token expiry check" --no-verify'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/--no-verify/);
+  });
+
+  it("DENY: git commit -n (short form) denied", () => {
+    const result = check(bash('git commit -m "Fix token expiry check" -n'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/--no-verify|-n/);
+  });
+
+  it("ALLOW: git commit without --no-verify passes (regression guard)", () => {
+    const result = check(bash('git commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  // --- git -c core.hooksPath=... → deny ---
+  it("DENY: git -c core.hooksPath=/dev/null commit → denied (overrides hooks dir)", () => {
+    const result = check(bash('git -c core.hooksPath=/dev/null commit -m "Fix token expiry check"'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/core\.hooksPath|hooks/i);
+  });
+
+  it("ALLOW: git -c core.autocrlf=true commit valid msg → allowed (non-hooksPath config)", () => {
+    const result = check(bash('git -c core.autocrlf=true commit -m "fix(auth): correct token expiry check"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("payload top-level cwd wins over tool_input.cwd for preset resolution", () => {
+    const handbookDir = mkdtempSync(join(tmpdir(), "gw-hb-cwd-"));
+    const conventionalDir = mkdtempSync(join(tmpdir(), "gw-conv-cwd-"));
+    try {
+      const gi = { cwd: conventionalDir };
+      spawnSync('git', ['init'], gi);
+      spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '--allow-empty', '-m', 'fix: initial'], gi);
+      const payload = {
+        tool_name: "Bash",
+        tool_input: { command: 'git commit -m "feat: add new thing"', cwd: conventionalDir },
+        cwd: handbookDir,
+      };
+      const result = check(payload);
+      expect(decision(result)).toBe("deny");
+      expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
+    } finally {
+      rmSync(handbookDir, { recursive: true, force: true });
+      rmSync(conventionalDir, { recursive: true, force: true });
+    }
+  });
+
+  it("DENY: multi-line command — commit-tree line caught despite git-log lines before it", () => {
+    const cmd = [
+      'ad1=$(git log -1 --format=%ad --date=raw 002e4af); ad2=$(git log -1 --format=%ad --date=raw 27d2993)',
+      'c1=$(GIT_AUTHOR_DATE="$ad1" git commit-tree 002e4af^{tree} -p ebe57dc -m "$m1")',
+      'c2=$(GIT_AUTHOR_DATE="$ad2" git commit-tree 27d2993^{tree} -p "$c1" -m "$m2")',
+      'git update-ref -m "reword: conventional commit subjects" refs/heads/develop "$c2" 27d293212b2',
+    ].join('\n');
+    const result = check(bash(cmd));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/shell variable/);
+  });
+
+  it("DENY: commit-tree with no -m/-F (stdin pipe) → denied, guidance to use git commit", () => {
+    const result = check(bash('echo "whatever" | git commit-tree HEAD^{tree} -p HEAD'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/git commit/);
+  });
+
+  it("DENY: commit-tree with no -m/-F (stdin redirect <) → denied", () => {
+    const result = check(bash('git commit-tree HEAD^{tree} -p HEAD < /tmp/msg'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/git commit/);
+  });
+
+  it("DENY: update-ref HEAD abc123 → denied (moves current branch)", () => {
+    const result = check(bash('git update-ref HEAD abc123'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/amend|rebase/);
+  });
+
+  it("DENY: update-ref bare branch name abc123 → denied", () => {
+    const result = check(bash('git update-ref develop abc123'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/amend|rebase/);
+  });
+
+  it("DENY: update-ref --stdin → denied outright", () => {
+    const result = check(bash('git update-ref --stdin'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/amend|rebase/);
+  });
+
+  it("DENY: git hash-object -t commit -w → denied (loose commit object)", () => {
+    const result = check(bash('git hash-object -t commit -w /tmp/obj'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/hash-object|commit/i);
+  });
+
+  it("DENY: git hash-object --type=commit -w → denied", () => {
+    const result = check(bash('git hash-object --type=commit -w /tmp/obj'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/hash-object|commit/i);
+  });
+
+  it("ALLOW: git hash-object -t blob -w → allowed (not a commit type)", () => {
+    const result = check(bash('git hash-object -t blob -w /tmp/file'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW: git hash-object -t commit (no -w) → allowed (read-only)", () => {
+    const result = check(bash('git hash-object -t commit /tmp/obj'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW: update-ref refs/tags/v1 abc → allowed (allowlist)", () => {
+    const result = check(bash('git update-ref refs/tags/v1 abc123'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW: commit-tree with valid literal message in handbook temp repo", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-ct-hb-"));
+    try {
+      const result = check(bash(`git commit-tree abc123^{tree} -p def456 -m "Fix typo in readme"`, dir));
+      expect(result.stdout).toBe("");
+      expect(result.exit).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

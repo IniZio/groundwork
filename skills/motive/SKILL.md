@@ -3,7 +3,7 @@ name: motive
 description: Author a motive charter — persistent intent doc with objective, decisions, and open questions.
 ---
 
-<!-- token-target: ≤407 (v1 motive skill was 1220 tokens; 1/3 = 407) -->
+<!-- token-target: ≤407 -->
 
 ## What a motive is
 

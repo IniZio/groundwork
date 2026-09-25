@@ -3,7 +3,7 @@ name: continue
 description: Resume a paused session — restore ledger state, re-inject run context, continue the fan-out.
 ---
 
-<!-- token-target: ≤301 (v1 continue skill was 903 tokens; 1/3 = 301) -->
+<!-- token-target: ≤301 -->
 
 ## Steps
 

@@ -3,7 +3,7 @@ name: vertical-slice
 description: Decompose a feature into conflict-free vertical slices and register them in the gw ledger.
 ---
 
-<!-- token-target: ≤406 (v1 vertical-slice skill was 1217 tokens; 1/3 = 406) -->
+<!-- token-target: ≤406 -->
 
 ## What is a vertical slice
 

@@ -3,7 +3,7 @@ name: pause
 description: Capture current session state so a successor session can resume exactly where this one stopped.
 ---
 
-<!-- token-target: ≤235 (v1 pause skill was 706 tokens; 1/3 = 235) -->
+<!-- token-target: ≤235 -->
 
 ## Steps
 

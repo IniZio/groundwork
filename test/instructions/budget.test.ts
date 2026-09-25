@@ -24,14 +24,14 @@ function parseDocBytes(surface: string): number | null {
     if (!line.startsWith("|")) continue;
     const cols = line.split("|").map(c => c.trim()).filter(Boolean);
     if (cols[0] === surface) {
-      const v2bytes = parseInt(cols[3], 10);
+      const v2bytes = parseInt(cols[1], 10);
       return isNaN(v2bytes) ? null : v2bytes;
     }
   }
   return null;
 }
 
-describe("instruction-budget.md — v2 byte counts match files at HEAD", () => {
+describe("instruction-budget.md — byte counts match files at HEAD", () => {
   for (const { surface, relPath } of FILE_ROWS) {
     it(`${surface} byte count is current`, () => {
       const docBytes = parseDocBytes(surface);

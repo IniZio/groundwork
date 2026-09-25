@@ -3,7 +3,7 @@ name: advisor-gate
 description: Run the advisor completion gate — evidence verification, verdict issuance, gw gate approve.
 ---
 
-<!-- token-target: ≤448 (v1 advisor-gate skill was 1345 tokens; 1/3 = 448) -->
+<!-- token-target: ≤448 -->
 
 ## When to invoke
 

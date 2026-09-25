@@ -46,12 +46,12 @@ The check parses the first `{"type":"system","subtype":"init"}` line in `stdout.
 
 - **(a)** a plugin entry named `groundwork` with `version` exactly matching the version in `package.json` is present.
 - **(b)** a plugin entry named `mattpocock-skills` is present.
-- **(c)** no `groundwork` entry exists with any version other than the version in `package.json`. (The v1 plugin at version 3.7.0 lives at `~/.config/opencode/plugins/groundwork` and has leaked into past runs via HOME inheritance.)
+- **(c)** no `groundwork` entry exists with any version other than the version in `package.json`.
 - **(d)** all four agents are listed: `groundwork:advisor`, `groundwork:implementer`, `groundwork:orchestrator`, `groundwork:qa`.
 
 The harness prints a `PASS/FAIL` block and exits non-zero on any failure before any behaviour from the run is interpreted.
 
-After the init check, the harness reports `PRESENT` or `ABSENT` for the `# groundwork v2` SessionStart marker — the text injected by `src/hooks/session-start.ts` as `additionalContext`. With `--plugin-dir`, the hook never fires; with a registry install, it appears in the verbose transcript.
+After the init check, the harness reports `PRESENT` or `ABSENT` for the groundwork SessionStart marker — the text injected by `src/hooks/session-start.ts` as `additionalContext`. With `--plugin-dir`, the hook never fires; with a registry install, it appears in the verbose transcript.
 
 ## Auth caveat
 
@@ -66,7 +66,7 @@ No other `.claude/` content is copied. The installed-plugins database, user sett
 
 `src/hooks/session-start.ts` reads `CLAUDE_PLUGIN_ROOT` at runtime and interpolates the absolute path into the injected `GW="bun <path>/src/cli/main.ts"` line.
 
-In a harness run the local marketplace points at the worktree directly (`--plugin /path/to/groundwork-v2`), so `CLAUDE_PLUGIN_ROOT` resolves to that worktree path (e.g. `/home/newman/.local/share/groundwork-v2`). **This path is not representative of a real install.**
+In a harness run the local marketplace points at the worktree directly (`--plugin /path/to/groundwork`), so `CLAUDE_PLUGIN_ROOT` resolves to that worktree path (e.g. `/home/newman/.local/share/groundwork`). **This path is not representative of a real install.**
 
 When a user installs via `claude plugin install groundwork` from the public marketplace, the plugin is extracted into a versioned install cache (e.g. `~/.claude/plugins/cache/groundwork/<version>/`). `CLAUDE_PLUGIN_ROOT` will be that cache path, and the `GW=` line will contain the correct absolute path for that install — no manual PATH step needed.
 

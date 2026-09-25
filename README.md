@@ -1,22 +1,19 @@
-# groundwork v2
+# groundwork
 
 Glue that adapts to per-repo conventions, enforces best-practice direction in new code, and builds known-from-unknown — without reinventing what upstream already ships.
 
-v1 lives on the `main` branch of this same repository.
-
 ## What it is
 
-groundwork v2 is a Claude Code plugin. It installs alongside mattpocock/skills (a peer plugin) and adds on top:
+groundwork is a Claude Code plugin. It installs alongside mattpocock/skills (a peer plugin) and adds on top:
 
 - Convention detection: DETECT → CONFIRM → WRITE to the repo's own files
 - Best-practice enforcement in new code only; existing code is left alone
-- A SQLite work store replacing the four-store model (ledger + journal + motive + tickets)
-- Five enforcement hook families rebuilt to their cheapest biting form (~587 lines, down from 2611)
+- A SQLite work store (slices, decisions, events, charter in one file)
+- Five enforcement hook families in their cheapest biting form
 
 ## What it is not
 
-- A reinvention of mattpocock/skills capabilities (debugger, arch-review, prototype — deleted, covered upstream)
-- A four-store system (ledger + journal + motive + tickets live in one SQLite file)
+- A reinvention of mattpocock/skills capabilities (debugger, arch-review, prototype — covered upstream)
 - A replacement for per-repo tooling (conventions write to `.gitmessage`, `Makefile`, etc.)
 
 ## State model (D-7, D-9)
@@ -24,13 +21,13 @@ groundwork v2 is a Claude Code plugin. It installs alongside mattpocock/skills (
 Two stores only:
 
 1. **Repository itself** — conventions in `.gitmessage`, `.github/pull_request_template.md`, `Makefile`, handbook
-2. **SQLite work store** — slices, decisions, events, charter in one `.groundwork.db` file (gitignored)
+2. **SQLite work store** — slices, decisions, events, charter in one `.groundwork/work.db` file (gitignored)
 
 ## Install
 
 ```
 claude plugin marketplace add anthropics/claude-plugins-official
-claude plugin marketplace add /path/to/groundwork-v2    # or a URL
+claude plugin marketplace add /path/to/groundwork    # or a URL
 claude plugin install groundwork
 ```
 

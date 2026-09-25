@@ -83,7 +83,7 @@ Skills run in the caller's context; these agents are being restored so each runs
 
 | Agent | Model | Decision |
 |---|---|---|
-| `groundwork:debugger` | opus | D1 — restored from v1; bug/debug route |
+| `groundwork:debugger` | opus | D1 — bug/debug route |
 | `groundwork:explore` | haiku | D2 — read-only locator, modelled on cavecrew-investigator |
 | `groundwork:junior-orchestrator` | sonnet | D4 — sub-orchestrator for multi-file slices |
 | `groundwork:planner` | opus | D7 |

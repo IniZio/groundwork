@@ -1,4 +1,4 @@
-# Authoring rules — groundwork v2 agent and skill files
+# Authoring rules — groundwork agent and skill files
 
 ## Compression rules (from caveman)
 

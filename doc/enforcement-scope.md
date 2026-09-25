@@ -1,6 +1,6 @@
-# Enforcement Scope — v2 Prose-Quality Guard
+# Enforcement Scope — Prose-Quality Guard
 
-## What v2 keeps
+## What the guard keeps
 
 Four rules in one advisory hook (never blocks):
 
@@ -35,10 +35,10 @@ Any claim that a hook fires in a real session must be backed by a run through `s
 
 ## Deliberate scope cuts
 
-**Comment-restate detection** — v1 prose-negation-guard included logic to flag new comments that merely restated adjacent code. Cut in v2. Rationale: required a separate read of the existing file's comment corpus and a cross-file similarity pass; v1 lines attributable to this: ~90 of 741 combined. Failure mode caught in v1: occasional; low signal-to-noise relative to the false-positive rate on doc comments. Reinstate if: comment restatement recurs as a measurable quality regression in agent prose output across multiple motives.
+**Comment-restate detection** — Not implemented. Rationale: requires a separate read of the existing file's comment corpus and a cross-file similarity pass; occasional failure mode, low signal-to-noise relative to the false-positive rate on doc comments. Reinstate if: comment restatement recurs as a measurable quality regression in agent prose output across multiple motives.
 
-**Slop detection narrowed to AI-fingerprint openers** — v1 deslop-guard matched a broader set of patterns including filler phrases mid-sentence and certain adverb openers. v2 narrows to comment-line openers only (regex anchored at `//`). Rationale: mid-sentence slop detection produced false positives on legitimate technical prose; narrowing to openers catches the highest-density failure class at low false-positive cost. Reinstate broader patterns if: slop audit shows mid-sentence filler surviving the current guard at a rate that affects plan or agent output quality.
+**Slop detection narrowed to AI-fingerprint openers** — The guard matches comment-line openers only (regex anchored at `//`). Rationale: mid-sentence slop detection produces false positives on legitimate technical prose; narrowing to openers catches the highest-density failure class at low false-positive cost. Reinstate broader patterns if: slop audit shows mid-sentence filler surviving the current guard at a rate that affects plan or agent output quality.
 
 **No orchestrator write-guard hook** (Decision D-21) — There is no PreToolUse hook blocking Write/Edit calls by the orchestrator agent. Structural reason: `agents/orchestrator.md` declares `tools: [Agent, Skill, Read, Bash, AskUserQuestion]`; Write, Edit, and MultiEdit are absent from that list, so the shipped invocation path cannot produce an orchestrator write at any sample size. A hook would be redundant with the allowlist rather than defence in depth.
 
-Corroborating measurement: a controlled eval (8 shipped-path runs, condition A) recorded 0 orchestrator-authored Write/Edit calls vs 1 of 8 in an unrestricted prose-only mode (condition B). The A-vs-B difference is not statistically significant (Fisher exact p ≈ 1.0) and is not the basis for this decision; the structural argument alone is sufficient. Evidence: `/home/newman/.local/share/groundwork/.groundwork/motives/groundwork-as-glue/evidence/v11/REPORT.md`.
+Corroborating measurement: a controlled eval (8 shipped-path runs, condition A) recorded 0 orchestrator-authored Write/Edit calls vs 1 of 8 in an unrestricted prose-only mode (condition B). The A-vs-B difference is not statistically significant (Fisher exact p ≈ 1.0) and is not the basis for this decision; the structural argument alone is sufficient.

@@ -1,7 +1,7 @@
 {
   "name": "groundwork",
   "version": "2.7.2",
-  "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
+  "description": "groundwork — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
     {
       "name": "mattpocock-skills",

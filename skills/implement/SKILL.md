@@ -3,7 +3,7 @@ name: implement
 description: Fan-out implementation protocol with ledger tracking. Supersedes mattpocock-skills:implement by adding gw slice ledger and stop-gate integration.
 ---
 
-<!-- token-target: ≤377 (v1 implement skill was 1131 tokens; 1/3 = 377) -->
+<!-- token-target: ≤377 -->
 
 ## When to use
 

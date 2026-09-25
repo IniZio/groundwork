@@ -5,7 +5,7 @@
     "email": "newman.kcchow@gmail.com"
   },
   "metadata": {
-    "description": "Groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
+    "description": "Groundwork — convention adapter, enforcement hooks, SQLite work store",
     "version": "2.7.2"
   },
   "allowCrossMarketplaceDependenciesOn": [

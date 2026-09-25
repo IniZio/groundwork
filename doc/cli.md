@@ -67,25 +67,6 @@ Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate ve
 Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.
 AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: slice-id, ...` rows (sorted). If no slice has `covers_ac` set, prints `ac coverage: none`. The `--json` output includes an `ac_coverage` object mapping each AC id to the list of slice ids that cover it.
 
-## v1 → v2 command mapping
-
-| Raw mentions in transcripts | v1 command | v2 equivalent |
-|----------------------------:|------------|---------------|
-| 92 | `gw-hook ledger show --motive` | `gw compile` |
-| 54 | `gw-hook ledger status --motive` | `gw slice status` |
-| 50 | `bin/journal compile <motive>` | `gw compile` |
-| 33 | `bin/journal append --motive` | `gw event append --type ...` |
-| 24 | `gw-hook ledger add --motive` | `gw slice add` |
-| 21 | `gw-hook journal append --motive` | `gw event append --type ...` |
-| 20 | `gw-hook ledger complete --motive` | `gw slice complete` |
-| 16 | `gw-hook ledger help init` | `gw init` |
-| 10 | `gw-hook ledger view --motive` | `gw compile` |
-| 10 | `gw-hook ledger gate --motive` | `gw gate approve --citation` |
-| 8 | `gw-hook ledger gate --motive` (v2 run) | `gw gate approve|correction|... --citation` |
-| 6 | `gw-hook ledger checkpoint --motive` | `gw event append --type CHECKPOINT` |
-| 5 | `bin/journal compile --json` | `gw compile --json` |
-| 4 | `gw-hook ledger abandon --motive` | `gw slice rm` |
-
 ## Multi-motive design (T11)
 
 **Structure.** A `motives` table holds slugs + status. Slices and events carry a `motive_id` column (DEFAULT `'default'`). The active motive pointer is stored in `meta['active_motive']`.

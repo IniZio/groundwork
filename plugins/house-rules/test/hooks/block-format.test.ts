@@ -229,17 +229,79 @@ describe("block-format: minimum-entry guarantee", () => {
   });
 
   it("no digit-growth: suffix count stable across sizes", () => {
-    // Ensure the trimmed suffix count equals items.length - kept (no off-by-one from backup).
+    // Suffix count must equal items.length minus the entries actually shown.
     const moreRegex = /… (\d+) more/g;
     for (let n = 9; n <= 11; n++) {
       const out = formatBlock(densityInput(n));
       const matches = [...out.matchAll(moreRegex)];
+      const shown = out.split("\n").filter(l => l.includes("widget")).length;
       for (const m of matches) {
-        const count = Number(m[1]);
-        expect(count).toBeGreaterThanOrEqual(1);
-        expect(count).toBeLessThanOrEqual(n);
+        expect(Number(m[1])).toBe(n - shown);
       }
     }
+  });
+});
+
+// Realistic long paths (110-170 char lines) — expose budget-reservation bug.
+const RROOT = "/dev/shm/claude-1003/-home-user--local-share-project/abcd1234/";
+
+function realisticDensityLine(i: number): string {
+  return `  ${RROOT}src/w${i}-component-name.tsx: ${(10 + i).toFixed(1)}/100 (2 comments in 10 added lines; rows 1, 6)`;
+}
+
+function realisticStrayLine(i: number): string {
+  return `  ${RROOT}src/w${i}-component-name.tsx: docs/ coexists with doc/`;
+}
+
+function realisticNoticeLine(i: number): string {
+  return `(${RROOT}src/parse${i}-component.tsx: parse error — prefix count used)`;
+}
+
+function realisticBothInput(dCount: number, sCount: number, suffix: string | null = null): BlockInput {
+  const DFOOTER_DENSITY = DFOOTERBASE.slice(0, -" Then stop again.".length);
+  return {
+    header: "house-rules gate: files changed in this session violate one or more code conventions.",
+    sections: [
+      { label: "comment-density:", lines: Array.from({ length: dCount }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
+      { label: "stray-artifacts:", lines: Array.from({ length: sCount }, (_, i) => realisticStrayLine(i)), footer: SFOOTERBASE },
+    ],
+    notices: [],
+    fixedFiles: [],
+    suffix,
+  };
+}
+
+function realisticTripleInput(dCount: number, nCount: number, sCount: number, suffix: string | null = null): BlockInput {
+  const DFOOTER_DENSITY = DFOOTERBASE.slice(0, -" Then stop again.".length);
+  return {
+    header: "house-rules gate: files changed in this session violate one or more code conventions.",
+    sections: [
+      { label: "comment-density:", lines: Array.from({ length: dCount }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
+      { label: "stray-artifacts:", lines: Array.from({ length: sCount }, (_, i) => realisticStrayLine(i)), footer: SFOOTERBASE },
+    ],
+    notices: Array.from({ length: nCount }, (_, i) => realisticNoticeLine(i)),
+    fixedFiles: [],
+    suffix,
+  };
+}
+
+describe("block-format: realistic paths", () => {
+  it("30 density + 1 stray with HANDBACK: stray path visible, length ≤2000", () => {
+    const out = formatBlock(realisticBothInput(30, 1, HANDBACK));
+    expect(out.length).toBeLessThanOrEqual(LIMIT);
+    expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
+  });
+
+  it("30 density + 1 stray without HANDBACK: stray path visible, length ≤2000", () => {
+    const out = formatBlock(realisticBothInput(30, 1, null));
+    expect(out.length).toBeLessThanOrEqual(LIMIT);
+    expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
+  });
+
+  it("30 notices + 30 density + 1 stray: stray path visible, length ≤2000", () => {
+    const out = formatBlock(realisticTripleInput(30, 30, 1, HANDBACK));
+    expect(out.length).toBeLessThanOrEqual(LIMIT);
+    expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });
 });
 

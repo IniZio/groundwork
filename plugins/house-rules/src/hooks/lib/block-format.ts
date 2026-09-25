@@ -140,12 +140,18 @@ export function formatBlock(input: BlockInput, limit = 2000): string {
   let naturalLeft = groups.reduce((s, g) => s + naturalCost(g), 0);
   const trimResults: Array<string[] | string | null> = [];
 
+  const suffixMin = new Array(groups.length).fill(0);
+  for (let i = groups.length - 2; i >= 0; i--) {
+    suffixMin[i] = suffixMin[i + 1] + minCost(groups[i + 1]);
+  }
+
   for (let i = 0; i < groups.length; i++) {
     const g = groups[i];
     const nat = naturalCost(g);
     const prop = naturalLeft > 0 ? Math.floor(budgetLeft * nat / naturalLeft) : 0;
+    const reserve = canGuaranteeMin ? suffixMin[i] : 0;
     const allotted = canGuaranteeMin ? Math.max(prop, minCost(g)) : prop;
-    const capped = Math.min(allotted, budgetLeft);
+    const capped = Math.min(allotted, budgetLeft - reserve);
 
     let result: string[] | string | null;
     let actualUsed: number;

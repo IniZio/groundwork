@@ -142,24 +142,21 @@ describe('lintCommitMessage – conventional preset', () => {
 describe('lintCommitMessage – conventional 72-char cap (bite proof)', () => {
   it('73-char subject fails cap — bites: would pass if cap were 720', () => {
     // Subject is exactly 73 chars: "feat: " (6) + 67 x chars = 73 total
-    const subject = 'feat: ' + 'x'.repeat(67)  // length = 73
+    const subject = 'feat: ' + 'x'.repeat(67)
     expect(subject.length).toBe(73)
     const result = lintCommitMessage(subject, { preset: PRESET_CONVENTIONAL })
-    // Must have a cap violation — if the cap were changed to 720, this test would fail
     expect(result.violations.length).toBeGreaterThan(0)
     expect(result.violations.some(v => v.reason.includes('72'))).toBe(true)
   })
 
   it('72-char subject passes cap exactly', () => {
-    // Subject is exactly 72 chars: "feat: " (6) + 66 x chars = 72 total
-    const subject = 'feat: ' + 'x'.repeat(66)  // length = 72
+    const subject = 'feat: ' + 'x'.repeat(66)
     expect(subject.length).toBe(72)
     const result = lintCommitMessage(subject, { preset: PRESET_CONVENTIONAL })
     expect(result.violations).toHaveLength(0)
   })
 })
 
-// --- body-only preset (Decision C: .gitmessage repos) ---
 
 describe('lintCommitMessage – body-only preset (Decision C: .gitmessage repos)', () => {
   it('allows any subject grammar', () => {

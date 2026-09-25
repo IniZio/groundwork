@@ -302,28 +302,27 @@ describe("AC4: removed>0 count", () => {
   );
 });
 
-// ─── AC5: corpus files are tracked by git ────────────────────────────────────
+// ─── AC5: corpus files are not gitignored ────────────────────────────────────
 
-describe("AC5: corpus files are visible to git", () => {
-  it("git add -An lists every corpus file in the fixture dir", () => {
-    const output = execSync(
-      `git add -An plugins/house-rules/test/fixtures/comment-density/go-directives`,
-      { cwd: REPO_ROOT, encoding: "utf8" },
-    );
-    const listed = output
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-
+describe("AC5: corpus files are not gitignored", () => {
+  it("fixture dir is non-empty and no corpus file is ignored", () => {
     const corpusFiles = readdirSync(FIXTURE_DIR).map((f) =>
       path.join(FIXTURE_DIR, f),
     );
     expect(corpusFiles.length).toBeGreaterThan(0);
 
     for (const f of corpusFiles) {
-      const rel = path.relative(REPO_ROOT, f);
-      const found = listed.some((l) => l.includes(rel) || l.endsWith(path.basename(f)));
-      expect(found, `${rel} not listed by git add -An`).toBe(true);
+      let exitCode: number | null = null;
+      try {
+        execSync(`git check-ignore --no-index -q "${f}"`, {
+          cwd: REPO_ROOT,
+          encoding: "utf8",
+        });
+        exitCode = 0;
+      } catch (e: unknown) {
+        exitCode = (e as { status?: number }).status ?? null;
+      }
+      expect(exitCode, `${f} is gitignored`).toBe(1);
     }
   });
 });

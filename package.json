@@ -1,7 +1,7 @@
 {
   "name": "groundwork",
   "version": "2.7.2",
-  "description": "groundwork v2 — glue that adapts to per-repo conventions and enforces best-practice direction",
+  "description": "groundwork — glue that adapts to per-repo conventions and enforces best-practice direction",
   "type": "module",
   "bin": {
     "gw": "src/cli/main.ts"
@@ -16,14 +16,14 @@
     "@derekstride/tree-sitter-sql": "0.3.11",
     "@tree-sitter-grammars/tree-sitter-toml": "0.7.0",
     "@tree-sitter-grammars/tree-sitter-yaml": "0.7.1",
-    "@types/bun": "latest",
+    "@types/bun": "1.4.2",
     "tree-sitter-bash": "0.25.1",
     "tree-sitter-go": "0.25.0",
     "tree-sitter-make": "1.1.1",
     "tree-sitter-python": "0.25.0",
     "tree-sitter-rust": "0.24.0",
     "tree-sitter-typescript": "0.23.2",
-    "typescript": "^5.5.0",
+    "typescript": "7.0.2",
     "web-tree-sitter": "0.25.0"
   },
   "engines": {

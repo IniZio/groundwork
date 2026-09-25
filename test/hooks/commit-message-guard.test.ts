@@ -189,7 +189,7 @@ describe("commit-message-guard — wrapper forms", () => {
   });
 
   it("ALLOW: git -C /some/path commit — valid handbook message passes", () => {
-    const result = check(bash('git -C /tmp commit -m "Fix: correct token expiry check"'));
+    const result = check(bash('git -C /tmp commit -m "Fix token expiry check"'));
     expect(result.stdout).toBe("");
   });
 
@@ -237,6 +237,39 @@ describe("commit-message-guard — wrapper forms", () => {
     const dir = mkdtempSync(join(tmpdir(), 'gw-cmg-cross-'));
     try {
       const result = check(bash(`git -C ${dir} commit -m "feat: add new thing"`));
+      expect(decision(result)).toBe("deny");
+      expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("DENY: Fixed … (past tense) not a valid handbook verb", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-cmg-hb-"));
+    try {
+      const result = check(bash(`git -C ${dir} commit -m "Fixed the login redirect"`));
+      expect(decision(result)).toBe("deny");
+      expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("DENY: Addressed … not a valid handbook verb", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-cmg-hb-"));
+    try {
+      const result = check(bash(`git -C ${dir} commit -m "Addressed review comments"`));
+      expect(decision(result)).toBe("deny");
+      expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("DENY: Fix: … (colon after verb) not a valid handbook verb", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gw-cmg-hb-"));
+    try {
+      const result = check(bash(`git -C ${dir} commit -m "Fix: correct the redirect"`));
       expect(decision(result)).toBe("deny");
       expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
     } finally {

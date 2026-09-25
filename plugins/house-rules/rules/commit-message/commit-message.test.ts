@@ -135,6 +135,18 @@ describe('lintCommitMessage – conventional preset', () => {
     const result = lintCommitMessage('feat: add thing\nbody text', opts)
     expect(result.violations.length).toBeGreaterThan(0)
   })
+
+  it('fails empty scope in parentheses', () => {
+    const result = lintCommitMessage('feat(): add thing', opts)
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.reason.includes('empty scope'))).toBe(true)
+  })
+
+  it('fails invalid scope token (space in scope)', () => {
+    const result = lintCommitMessage('feat(a b): add thing', opts)
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.reason.includes('valid scope token'))).toBe(true)
+  })
 })
 
 // --- conventional 72-char cap bite proof (Decision B) ---

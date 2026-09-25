@@ -8,12 +8,14 @@ const pluginRoot = join(dir, "..");
 const repoRoot = join(pluginRoot, "../..");
 
 describe("house-rules manifest", () => {
+  const pluginJson = JSON.parse(
+    readFileSync(join(pluginRoot, ".claude-plugin/plugin.json"), "utf8")
+  );
+  const expectedVersion: string = pluginJson.version;
+
   it("plugin.json has correct name and version with comment-density hooks registered", () => {
-    const pluginJson = JSON.parse(
-      readFileSync(join(pluginRoot, ".claude-plugin/plugin.json"), "utf8")
-    );
     expect(pluginJson.name).toBe("house-rules");
-    expect(pluginJson.version).toBe("0.1.0");
+    expect(expectedVersion).toMatch(/^\d+\.\d+\.\d+/);
 
     // Stop has exactly one group with gate.ts
     const stopGroups: Array<{ hooks: Array<{ type: string; command: string }> }> =
@@ -54,7 +56,7 @@ describe("house-rules manifest", () => {
     const houseRules = marketplace.plugins.find((p: { name: string }) => p.name === "house-rules");
     expect(houseRules).toBeDefined();
     expect(houseRules.source).toBe("./plugins/house-rules");
-    expect(houseRules.version).toBe("0.1.0");
+    expect(houseRules.version).toBe(expectedVersion);
   });
 
   it("marketplace.json groundwork entry is byte-unchanged in name and source", () => {

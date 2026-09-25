@@ -50,9 +50,11 @@ const DOCKERFILE_DIRECTIVE_RE = /^(?:syntax|escape)=/i;
 const GO_DIRECTIVE_RE = /^go:/;
 const GO_BUILD_CONSTRAINT_RE = /^\+build\b/;
 const GO_NOLINT_RE = /^nolint\b/;
+const GO_LINT_IGNORE_RE = /^lint:(ignore|file-ignore)\b/;
+const GO_KUBEBUILDER_MARKER_RE = /^\+[a-z][\w.-]*:/;
 const TOML_SCHEMA_RE = /^:schema\b/;
 const TSREF_RE = /^\/\s*<reference\b/;
-const GO_OUTPUT_RE = /^(?:Unordered )?Output:/;
+const GO_OUTPUT_RE = /^(?:[Uu]nordered )?[Oo]utput:/;
 const GO_EXPORT_RE = /^export\b/;
 const GO_LINE_RE = /^line\b/;
 const GW_RULE_RE = /^groundwork-rule:/;
@@ -85,7 +87,7 @@ function isExemptInner(inner: string, lang?: Lang): boolean {
     PRAGMA_RE.test(inner) ||
     YAML_LS_RE.test(inner)
   ) return true;
-  if (lang === "go" && (GO_DIRECTIVE_RE.test(inner) || GO_BUILD_CONSTRAINT_RE.test(inner) || GO_NOLINT_RE.test(inner))) return true;
+  if (lang === "go" && (GO_DIRECTIVE_RE.test(inner) || GO_BUILD_CONSTRAINT_RE.test(inner) || GO_NOLINT_RE.test(inner) || GO_LINT_IGNORE_RE.test(inner) || GO_KUBEBUILDER_MARKER_RE.test(inner))) return true;
   if (lang === "toml" && TOML_SCHEMA_RE.test(inner)) return true;
   if (TSREF_RE.test(inner)) return true;
   if (GW_RULE_RE.test(inner)) return true;

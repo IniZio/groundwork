@@ -1487,3 +1487,104 @@ describe("autoFix: skips candidates overlapping error region", () => {
     }
   });
 });
+
+// ---- Go inline-directive exemptions (GO-T1) ----
+
+describe("Go lint:ignore / lint:file-ignore exemptions", () => {
+  it("//lint:ignore SA1000 reason is present and exempt in go", async () => {
+    const code = `package main\nfunc f() {\n  _ = 1 //lint:ignore SA1000 not needed\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("lint:ignore"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("//lint:file-ignore U1000 reason is present and exempt in go", async () => {
+    // Inside func body so go-doc exemption does not apply
+    const code = `package main\nfunc f() {\n  _ = 1 //lint:file-ignore U1000 generated\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("lint:file-ignore"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("// lint ignore later is NOT exempt (near-miss, no colon)", async () => {
+    const code = `package main\nfunc f() {\n  _ = 1 // lint ignore later\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("lint ignore later"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+});
+
+describe("Go Unordered output: exemption (lowercase o)", () => {
+  it("// Unordered output: is present and exempt in go", async () => {
+    const code = `package main\nfunc ExampleF() {\n  // Unordered output:\n  // b\n  // a\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("Unordered output:"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("// Output: is still present and exempt in go", async () => {
+    const code = `package main\nfunc ExampleF() {\n  // Output:\n  // hello\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("Output:"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("// output looks fine is NOT exempt (near-miss, no colon after output)", async () => {
+    const code = `package main\nfunc f() {\n  // output looks fine\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("output looks fine"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+});
+
+describe("Go +marker: directive exemptions", () => {
+  it("// +kubebuilder:validation:Optional is present and exempt in go", async () => {
+    // Inside func body so go-doc exemption does not apply
+    const code = `package main\nfunc init() {\n  // +kubebuilder:validation:Optional\n  _ = 1\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("+kubebuilder:validation:Optional"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("// +k8s:deepcopy-gen=package is present and exempt in go", async () => {
+    // Inside func body so go-doc exemption does not apply
+    const code = `package main\nfunc init() {\n  // +k8s:deepcopy-gen=package\n  _ = 1\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("+k8s:deepcopy-gen=package"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("// +kubebuilder:validation:Optional is NOT exempt in typescript", async () => {
+    const code = `// +kubebuilder:validation:Optional\nconst x = 1;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("+kubebuilder:validation:Optional"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+
+  it("// + not a marker is NOT exempt in go (near-miss, space after +)", async () => {
+    const code = `package main\nfunc f() {\n  // + not a marker\n}\n`;
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("+ not a marker"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(false);
+  });
+});

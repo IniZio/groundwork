@@ -94,17 +94,17 @@ export function ensureSealKey(repoPath: string): Buffer {
  * Canonical field set for a gate-verdict seal.
  * Absent/null values are omitted; keys sorted alphabetically before hashing.
  */
-export interface SealFields {
+export type SealFields = {
   base_commit?: string | null;
   citation: string;
   created_at: string;
   event_type: string;
   motive_id: string;
-}
+};
 
 function canonicalize(fields: SealFields): string {
   const obj: Record<string, string> = {};
-  const f = fields as unknown as Record<string, string | null | undefined>;
+  const f: Record<string, string | null | undefined> = fields;
   for (const k of Object.keys(f).sort()) {
     const v = f[k];
     if (v != null && v !== "") obj[k] = v;

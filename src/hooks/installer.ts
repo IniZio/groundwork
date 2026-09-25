@@ -31,7 +31,7 @@ const { version: CURRENT_VERSION, hooksLibPath: HOOKS_LIB_PATH } = _findGroundwo
 
 const { renderCommitMsgHook, isGroundworkHook } = (await import(
   `file://${join(HOOKS_LIB_PATH, 'commit-msg-template.mjs')}`
-)) as unknown as {
+)) as {
   renderCommitMsgHook: (opts: { hooksLibPath: string; version: string }) => string
   isGroundworkHook: (content: string) => boolean
 }

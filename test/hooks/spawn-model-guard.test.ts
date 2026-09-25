@@ -51,7 +51,7 @@ function makeProjectDir(sliceId: string, files: string[]): string {
   tmpDirs.push(dir);
   const dbPath = path.join(gwDir, "work.db");
   const db = new Database(dbPath);
-  db.exec("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA journal_mode = WAL");
   runMigrations(db, MIGRATIONS);
   db.run(
     "INSERT INTO slices (id, wave, status, created_at, files) VALUES (?, 1, 'pending', ?, ?)",

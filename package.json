@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.7.2",
+  "version": "2.7.3",
   "description": "groundwork — glue that adapts to per-repo conventions and enforces best-practice direction",
   "type": "module",
   "bin": {

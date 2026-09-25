@@ -88,4 +88,15 @@ describe("housekeep skill", () => {
     const content = readFileSync(CONVENTIONS_PATH, "utf8");
     expect(content).not.toContain("CLAUDE_PLUGIN_ROOT");
   });
+
+  it("reference/deslop.md mentions installer.ts", () => {
+    const deslopPath = path.join(ROOT, "plugins/house-rules/skills/housekeep/reference/deslop.md");
+    const content = readFileSync(deslopPath, "utf8");
+    expect(content).toContain("installer.ts");
+  });
+
+  it("reference/conventions.md does not say 'first line'", () => {
+    const content = readFileSync(CONVENTIONS_PATH, "utf8");
+    expect(content).not.toContain("first line");
+  });
 });

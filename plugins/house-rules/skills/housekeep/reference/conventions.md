@@ -17,13 +17,13 @@ A Finding is one of:
 
 - **Missing file** — the convention file does not exist (e.g. no `.gitmessage`, no `Makefile`).
 - **Empty or stub file** — the file exists but contains no meaningful content (e.g. a `.gitmessage` with no `<type>` placeholder).
-- **Contradicts enforced behaviour** — the file's content conflicts with a guard that is already active. Example: a `.gitmessage` that encourages a multi-paragraph body while the commit-message guard rejects any body line.
+- **Contradicts enforced behaviour** — the file's content conflicts with a guard that is already active. Known contradiction: the convention writer proposes a `.gitmessage` containing `[body]` (`src/conventions/detect.ts:48`), but the commit guard enforces `bodyPermitted: false` (`hooks/lib/commit-convention.mjs:49`). The conventions lens **must report this as a Finding** — it is not a clean auto-fix. Mark `auto-fix: no` and note the contradiction in the `fix` column.
 
 Do not report a Finding if the convention file already satisfies its check (the detector returns `null` in that case).
 
 ## Fix routing
 
-Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention scripts. The scripts live in the **groundwork plugin root**. In development (groundwork is the repo being edited), that is the repo root. In a client repo, locate it from the groundwork SessionStart header: its first line is `# groundwork vX.Y.Z (<sha>) — <root path>`; use the path after the em dash (` — `) as `<groundwork-root>`. If the SessionStart header is absent, treat groundwork as not installed.
+Housekeep **does not write convention files directly.** Accepted findings are routed to groundwork's convention scripts. The scripts live in the **groundwork plugin root**. In development (groundwork is the repo being edited), that is the repo root. In a client repo, locate it from the groundwork SessionStart header: look for the line starting `# groundwork v`; its format is `# groundwork vX.Y.Z [(<sha>)] — <root path>` (the sha part is absent for cache installs); use the path after the em dash (` — `) as `<groundwork-root>`. If no such line exists, treat groundwork as not installed.
 
 If groundwork is not installed in the target repo, report findings only and mark every finding `auto-fix: no`.
 

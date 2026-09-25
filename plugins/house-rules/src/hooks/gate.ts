@@ -7,9 +7,8 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { autoFix, detectLanguage, density, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
-import { atomicWrite, normalizeTrailingNewline } from "./lib/atomic-write.js";
+import { atomicWrite, normalizeTrailingNewline, sha256 } from "./lib/atomic-write.js";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
 import { runRules } from '../engine/run.js';
@@ -79,9 +78,6 @@ interface ViolatingFile {
   lang: Lang;
 }
 
-function sha256(s: string): string {
-  return createHash("sha256").update(s, "utf8").digest("hex");
-}
 
 interface ShadowLogRecord {
   file: string;

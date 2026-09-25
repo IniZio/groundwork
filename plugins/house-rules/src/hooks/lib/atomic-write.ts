@@ -5,7 +5,7 @@ export type AtomicWriteResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-function sha256(s: string): string {
+export function sha256(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
 

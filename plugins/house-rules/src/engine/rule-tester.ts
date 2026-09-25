@@ -11,10 +11,6 @@ export interface TrackedCase extends Case {
   sessionCreatedOverrides?: Record<string, boolean>;
 }
 
-export interface RuleTesterOpts {
-  // reserved for future use
-}
-
 /**
  * Registers a describe(rule.id) block with one it() per case.
  * Throws synchronously (at registration time) if:
@@ -27,7 +23,7 @@ export interface RuleTesterOpts {
  * tree cases  → one ScopedFile per entry, all tracked=true unless trackedOverrides says otherwise;
  *               files are materialised in a temp dir so filesystem-stat rules work correctly.
  */
-export function ruleTester(rule: Rule, cases: RuleCases, _opts?: RuleTesterOpts): void {
+export function ruleTester(rule: Rule, cases: RuleCases): void {
   // ---- registration-time validation ----
   if (cases.valid.length === 0) {
     throw new Error(`ruleTester: rule "${rule.id}" has empty valid cases`);

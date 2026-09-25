@@ -70,8 +70,6 @@ function codeTokens(text: string, comments: Comment[]): string {
 // Each entry describes one protected directive comment that must never be
 // removed by autoFix.
 //
-// exemptReason: the specific reason string the implementation assigns when
-//   the directive is NOT inherently in a doc-comment or file-header slot.
 const DIRECTIVES: Array<{
   name: string;
   text: string;
@@ -208,7 +206,6 @@ describe(
               lines.map((_, i) => i).filter(() => rng() < 0.5),
             );
           } else {
-            // random hunks: pick random contiguous blocks
             addedRows = new Set<number>();
             let i = 0;
             while (i < lines.length) {
@@ -225,7 +222,6 @@ describe(
           }
 
           if (addedRows.size === 0) {
-            // ensure at least all synthetic lines are in addedRows
             for (
               let i = lines.length - numComments - 5;
               i < lines.length;

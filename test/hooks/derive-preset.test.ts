@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { execSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { installHook } from '../../src/hooks/installer.js'

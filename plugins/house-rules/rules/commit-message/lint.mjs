@@ -74,7 +74,7 @@ export function lintCommitMessage(message, opts = {}) {
         violations.push({
           line: 1,
           group: 'subject',
-          reason: 'Subject must match type(scope)?: description format',
+          reason: 'subject does not match type(scope)?: description',
         })
       } else {
         const typeMatch = subject.match(/^([a-zA-Z0-9_-]+)/)

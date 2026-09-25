@@ -1964,3 +1964,108 @@ describe("Go autoFix gofmt-integration (GO-T2c)", () => {
     expect(r.fixed).toMatch(/const x0 = 0;/);
   });
 });
+
+// ---- M6: gofmt-clean branch pin (GO-T2d) ----
+
+describe("Go autoFix gofmt-clean branch pin (GO-T2d)", () => {
+  // func body: narrative sits between two nolint trailing comments (each in its
+  // own single-line group so the original is gofmt-clean); stripping the
+  // narrative merges them into one group, so gofmt re-pads the first column.
+  // The nolint comments are exempt, so they survive autoFix — only the narrative
+  // is a candidate.
+  const F_TRAILING_ALIGN = `package main\n\nfunc foo() {\n\tx := 1 // nolint:linter1\n\t// narrative comment\n\tyy := 22 // nolint:linter2\n}\n`;
+  const F_TRAILING_STRIPPED_GOFMT = `package main\n\nfunc foo() {\n\tx := 1   // nolint:linter1\n\tyy := 22 // nolint:linter2\n}\n`;
+
+  function verifyGofmtClean(code: string, label: string): void {
+    if (!GOFMT_PATH) return;
+    const tmp = `/dev/shm/gofmt_t2d_${label}.go`;
+    require("fs").writeFileSync(tmp, code);
+    const out = execSync(`${GOFMT_PATH} -l ${tmp} 2>&1`, { encoding: "utf8" }).trim();
+    if (out) throw new Error(`${label} not gofmt-clean: ${out}`);
+  }
+
+  it.skipIf(!GOFMT_PATH)(
+    "AC1: gofmt-clean input → output equals gofmt-realigned stripped text",
+    async () => {
+      verifyGofmtClean(F_TRAILING_ALIGN, "in");
+      const r = await autoFix(F_TRAILING_ALIGN, "go", allRows(F_TRAILING_ALIGN));
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.removed).toBeGreaterThan(0);
+      expect(r.fixed).toBe(F_TRAILING_STRIPPED_GOFMT);
+      verifyGofmtClean(r.fixed, "out");
+    },
+  );
+
+  it("AC2: stub gofmt records both calls — output path (stripped) is formatted", async () => {
+    const ts = Date.now();
+    const counterFile = `/dev/shm/gofmt_stub_counter_${ts}.txt`;
+    const scriptPath = `/dev/shm/gofmt_stub_${ts}.sh`;
+    require("fs").writeFileSync(counterFile, "");
+    require("fs").writeFileSync(
+      scriptPath,
+      `#!/bin/sh\ncat\necho x >> ${counterFile}\n`,
+      { mode: 0o755 },
+    );
+    const prev = process.env.HOUSE_RULES_GOFMT;
+    process.env.HOUSE_RULES_GOFMT = scriptPath;
+    try {
+      const r = await autoFix(F_TRAILING_ALIGN, "go", allRows(F_TRAILING_ALIGN));
+      expect(r.ok).toBe(true);
+      const raw = require("fs").readFileSync(counterFile, "utf8").trim();
+      const count = raw === "" ? 0 : raw.split("\n").length;
+      expect(count, "stub must be called on both original and stripped (output) paths").toBeGreaterThanOrEqual(2);
+    } finally {
+      if (prev === undefined) delete process.env.HOUSE_RULES_GOFMT;
+      else process.env.HOUSE_RULES_GOFMT = prev;
+      try { require("fs").unlinkSync(scriptPath); } catch { }
+      try { require("fs").unlinkSync(counterFile); } catch { }
+    }
+  });
+});
+
+// ---- M3: GO_LINE_RE pin ----
+
+describe("Go //line directive exemption pin (M3)", () => {
+  const CODE_WITH_LINE = `package main\n\nfunc foo() {\n\tx := 1\n\t//line foo.go:10\n\t_ = x\n}\n`;
+
+  it("//line inside func body: present in r.comments, exempt, exemptReason='line foo.go:10'", async () => {
+    const r = await findComments(CODE_WITH_LINE, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("line foo.go:10"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+    expect(c!.exemptReason).toBe("line foo.go:10");
+  });
+
+  it("autoFix keeps //line directive when file is over budget", async () => {
+    const code = `package main\n\nfunc foo() {\n\tx := 1\n\t//line foo.go:10\n\t// c1\n\t// c2\n\t// c3\n\t// c4\n\t// c5\n\t// c6\n\t_ = x\n}\n`;
+    const r = await autoFix(code, "go", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("//line foo.go:10");
+  });
+});
+
+// ---- M4: isGoCgoComment pin ----
+
+describe("Go cgo preamble exemption pin (M4)", () => {
+  const CGO_CODE = `package main\n\n/*\n#include <stdio.h>\n*/\nimport "C"\n\nfunc main() {}\n`;
+
+  it("cgo preamble: exempt===true and exemptReason==='cgo-preamble'", async () => {
+    const r = await findComments(CGO_CODE, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(c => c.text.includes("#include"));
+    expect(c).toBeDefined();
+    expect(c!.exempt).toBe(true);
+    expect(c!.exemptReason).toBe("cgo-preamble");
+  });
+
+  it("autoFix keeps cgo preamble when file is over budget", async () => {
+    const code = `package main\n\n/*\n#include <stdio.h>\n*/\nimport "C"\n\nfunc main() {\n\t// c1\n\t// c2\n\t// c3\n\t// c4\n\t// c5\n\t// c6\n\tx := 1\n\t_ = x\n}\n`;
+    const r = await autoFix(code, "go", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("#include <stdio.h>");
+  });
+});

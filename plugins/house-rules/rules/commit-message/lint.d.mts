@@ -1,0 +1,24 @@
+export declare const PRESET_HANDBOOK: 'handbook'
+export declare const PRESET_CONVENTIONAL: 'conventional'
+export declare const CONVENTIONAL_TYPES: string[]
+
+export type CommitPreset = 'handbook' | 'conventional'
+
+export interface CommitViolation {
+  line: number
+  group: 'subject' | 'body'
+  reason: string
+}
+
+export interface CommitLintResult {
+  violations: CommitViolation[]
+  preset: CommitPreset
+}
+
+export interface CommitLintOptions {
+  preset?: CommitPreset
+  repoRoot?: string | null
+}
+
+export declare function readConfigPreset(repoRoot: string | null | undefined): CommitPreset
+export declare function lintCommitMessage(message: string, opts?: CommitLintOptions): CommitLintResult

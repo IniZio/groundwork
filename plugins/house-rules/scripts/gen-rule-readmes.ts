@@ -112,6 +112,7 @@ export async function checkAll(rulesDir: string): Promise<{ exitCode: number; li
     const casesPath = path.join(ruleDir, 'cases.ts');
 
     if (!fs.existsSync(casesPath)) {
+      problems.push(`${ruleId}: cases.ts missing`);
       continue;
     }
     checkedCount++;

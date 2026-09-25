@@ -1,6 +1,6 @@
 {
   "name": "house-rules",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "house-rules — code-quality rule engine: guard codebase health against vibe-coded bloat",
   "author": {
     "name": "Newman",

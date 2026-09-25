@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "description": "groundwork v2 — convention adapter, enforcement hooks, SQLite work store",
   "dependencies": [
     {
@@ -9,7 +9,7 @@
     },
     {
       "name": "house-rules",
-      "version": "~0.1.0"
+      "version": "~0.2.0"
     }
   ],
   "hooks": {

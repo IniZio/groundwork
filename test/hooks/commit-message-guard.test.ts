@@ -233,3 +233,49 @@ describe("commit-message-guard — wrapper forms", () => {
     expect(decision(result)).toBe("deny");
   });
 });
+
+describe("commit-message-guard — chained command segment isolation", () => {
+  // A: sibling git tag -m must not be joined into commit message
+  it("ALLOW A: git commit valid && git tag -m should not fail due to tag message", () => {
+    const result = check(bash('git commit -m "chore: b" && git tag -a v1 -m "v1"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  // B: semicolon separator
+  it("ALLOW B: git commit valid; git tag -m should not fail due to tag message", () => {
+    const result = check(bash('git commit -m "chore: b"; git tag -a v1 -m "v1"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW C: git commit valid && echo -m x should not fail due to echo flag", () => {
+    const result = check(bash('git commit -m "chore: b" && echo -m "x"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("ALLOW D: git tag -m before && git commit valid passes", () => {
+    const result = check(bash('git tag -a v1 -m "v1" && git commit -m "chore: b"'));
+    expect(result.stdout).toBe("");
+    expect(result.exit).toBe(0);
+  });
+
+  it("DENY E: git commit bad subject && grep -F must deny based on subject", () => {
+    const result = check(bash('git commit -m "bad subject" && grep -F x y'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/subject does not match/);
+  });
+
+  it("DENY F: git commit bad subject && git tag -m must deny on commit", () => {
+    const result = check(bash('git commit -m "bad subject" && git tag -a v1 -m "v1"'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/line 1/);
+  });
+
+  it("DENY G: multi -m in one commit segment is unchanged (body violation still denied)", () => {
+    const result = check(bash('git commit -m "chore: b" -m "body line"'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/line/);
+  });
+});

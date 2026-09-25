@@ -131,12 +131,13 @@ function parseSegmentForGitCommit(seg: string): { found: boolean; cwdOverride?: 
 
 /**
  * Detect whether `command` contains a git commit invocation in any decidable form.
- * Checks each shell-operator-separated segment in order; returns on first match.
+ * Checks each shell-operator-separated segment in order; returns on first match,
+ * including the matched segment text so callers can scope extraction to that segment.
  */
-function detectGitCommit(command: string): { found: boolean; cwdOverride?: string } {
+function detectGitCommit(command: string): { found: boolean; cwdOverride?: string; segment?: string } {
   for (const seg of splitOnShellOps(command)) {
     const result = parseSegmentForGitCommit(seg);
-    if (result.found) return result;
+    if (result.found) return { ...result, segment: seg };
   }
   return { found: false };
 }
@@ -213,10 +214,11 @@ export function check(input: unknown): HookResult {
         : process.cwd();
     const cmdCwd = gitMatch.cwdOverride ? resolve(baseCwd, gitMatch.cwdOverride) : baseCwd;
 
-    const inlineMsg = extractInlineMessage(command);
+    const commitSeg = gitMatch.segment ?? command;
+    const inlineMsg = extractInlineMessage(commitSeg);
     if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
 
-    const rawPath = extractFilePath(command);
+    const rawPath = extractFilePath(commitSeg);
     if (rawPath !== null) {
       const filePath = resolve(cmdCwd, rawPath);
       let fileMsg: string;

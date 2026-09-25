@@ -1,6 +1,6 @@
 /**
- * GO-T4: Stop-gate tests for Go comment-autofix path.
- * Covers preview (AC1) and forced-stable (AC2–AC5) paths.
+ * GO-T4 / GO-T7: Stop-gate tests for Go comment-autofix path.
+ * Covers preview (AC1), forced-stable (AC2–AC5), default-stable (AC6), and CLI fix (AC7) paths.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -163,7 +163,7 @@ describe("GO-T4 AC1: Go autofix preview — no write, shadow log written", () =>
     await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp, cwd: tmpDir },
       { ...process.env, CLAUDE_PROJECT_DIR: tmpDir } as Record<string, string | undefined>,
-      { testOnly_tmpDir: shadowTmpDir } as any,
+      { testOnly_tmpDir: shadowTmpDir, testOnly_fixTableOverride: { go: { stability: "preview", applicability: "safe" } } } as any,
     );
 
     // File must not be written (preview mode)
@@ -459,6 +459,122 @@ describe("GO-T4 AC5: gofmt-dirty base — writes but preserves misalignment", ()
       const content = readFileSync(fp, "utf8");
 
       expect(content).toContain("const (\nx = 1\ny = 2\n)");
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// AC6: default table (no override) — Go now stable, Stop gate writes fix
+// ---------------------------------------------------------------------------
+describe("GO-T7 AC6: Go default-stable — no override, Stop gate rewrites over-budget file", () => {
+  let tmpDir: string;
+  let shadowTmpDir: string;
+  let sessionId: string;
+  let fp: string;
+  let tp: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-go-ac6-"));
+    shadowTmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-go-ac6-sh-"));
+    sessionId = `go-ac6-${Date.now()}`;
+
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, "base.go"), BASE_GO);
+    gitCommit(tmpDir, "initial");
+
+    fp = path.join(tmpDir, "base.go");
+    writeFileSync(fp, SESSION_GO_OVER_BUDGET);
+    tp = makeTranscript(tmpDir, [fp], new Date(Date.now() - 5000).toISOString());
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+    try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
+  });
+
+  it.skipIf(!isGofmtAvailable())(
+    "default-stable: hash changed; directives survive; output gofmt-clean; no block",
+    async () => {
+      const hashBefore = sha256(fp);
+
+      const r = await run(
+        { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp, cwd: tmpDir },
+        { ...process.env, CLAUDE_PROJECT_DIR: tmpDir } as Record<string, string | undefined>,
+        { testOnly_tmpDir: shadowTmpDir } as any,
+      );
+
+      const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
+
+      // File must have been rewritten (Go is now stable by default)
+      expect(sha256(fp)).not.toBe(hashBefore);
+      expect(out.decision).not.toBe("block");
+
+      const content = readFileSync(fp, "utf8");
+
+      expect(content).toContain("//go:generate echo hello");
+
+      // Output must be gofmt-clean
+      const fmt = spawnSync("gofmt", [], { input: content, encoding: "utf8" });
+      expect(fmt.stdout).toBe(content);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// AC7: CLI rule fix path — comment-density rule fix() writes Go file
+// ---------------------------------------------------------------------------
+describe("GO-T7 AC7: CLI rule fix path — comment-density fix() handles stable Go", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-go-ac7-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, "base.go"), BASE_GO);
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+  });
+
+  it.skipIf(!isGofmtAvailable())(
+    "fix() returns fixed>=1 and writes the Go file",
+    async () => {
+      const fp2 = path.join(tmpDir, "base.go");
+      writeFileSync(fp2, SESSION_GO_OVER_BUDGET);
+
+      const sessionLines = SESSION_GO_OVER_BUDGET.split("\n");
+      const addedLineNums: number[] = [];
+      for (let i = 1; i <= sessionLines.length; i++) addedLineNums.push(i);
+
+      const { default: rule } = await import("../../rules/comment-density/index.js");
+
+      const result = await rule.fix!({
+        repoRoot: tmpDir,
+        mode: "cli",
+        files: [
+          {
+            path: "base.go",
+            text: SESSION_GO_OVER_BUDGET,
+            baseText: BASE_GO,
+            addedHunks: [
+              {
+                added: addedLineNums,
+                removed: [],
+                removedBaseLineNos: [],
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(result.fixed).toBeGreaterThanOrEqual(1);
+
+      // File must have been rewritten
+      const written = readFileSync(fp2, "utf8");
+      expect(written).not.toBe(SESSION_GO_OVER_BUDGET);
+
+      expect(written).toContain("//go:generate echo hello");
     },
   );
 });

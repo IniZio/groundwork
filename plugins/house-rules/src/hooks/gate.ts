@@ -31,7 +31,7 @@ export const LANG_FIX_TABLE: Record<Lang, FixEntry> = {
   tsx: { stability: "preview", applicability: "safe" },
   python: { stability: "preview", applicability: "safe" },
   dockerfile: { stability: "preview", applicability: "safe" },
-  go: { stability: "preview", applicability: "safe" },
+  go: { stability: "stable", applicability: "safe" },
   rust: { stability: "preview", applicability: "safe" },
   sql: { stability: "preview", applicability: "safe" },
   make: { stability: "preview", applicability: "safe" },

@@ -337,6 +337,12 @@ func Mul(a, b int) int {
       const content = readFileSync(fp, "utf8");
       expect(content).toContain("// BaseComment1 explains base behavior.");
       expect(content).toContain("// BaseComment2 more base info.");
+
+      const sessionNarratives = ["SessionC1", "SessionC2", "SessionC3", "SessionC4",
+        "SessionC5", "SessionC6", "SessionC7", "SessionC8"];
+      const remaining = sessionNarratives.filter(n => content.includes(n));
+      expect(remaining.length).toBeLessThan(sessionNarratives.length);
+      expect(content).not.toContain("SessionC1");
     },
   );
 });
@@ -391,6 +397,12 @@ describe("GO-T4 AC5: misaligned base — writes but preserves misalignment", () 
       const content = readFileSync(fp, "utf8");
 
       expect(content).toContain("const (\nx = 1\ny = 2\n)");
+
+      const dirtyNarratives = ["NarrativeA", "NarrativeB", "NarrativeC", "NarrativeD",
+        "NarrativeE", "NarrativeF", "NarrativeG", "NarrativeH"];
+      const remaining = dirtyNarratives.filter(n => content.includes(n));
+      expect(remaining.length).toBeLessThan(dirtyNarratives.length);
+      expect(content).not.toContain("NarrativeA");
     },
   );
 });
@@ -443,6 +455,12 @@ describe("GO-T7 AC6: Go default-stable — no override, Stop gate rewrites over-
       const content = readFileSync(fp, "utf8");
 
       expect(content).toContain("//go:generate echo hello");
+
+      const narratives = ["NarrativeA", "NarrativeB", "NarrativeC", "NarrativeD", "NarrativeE",
+        "NarrativeF", "NarrativeG", "NarrativeH", "NarrativeI", "NarrativeJ"];
+      const remaining = narratives.filter(n => content.includes(n));
+      expect(remaining.length).toBeLessThan(narratives.length);
+      expect(content).not.toContain("NarrativeA");
 
       const nonComment = (s: string) => s.split("\n").filter(l => !l.trimStart().startsWith("//") && l.trim() !== "");
       expect(nonComment(content)).toEqual(nonComment(BASE_GO));
@@ -505,6 +523,12 @@ describe("GO-T7 AC7: CLI rule fix path — comment-density fix() handles stable 
       expect(written).not.toBe(SESSION_GO_OVER_BUDGET);
 
       expect(written).toContain("//go:generate echo hello");
+
+      const narratives = ["NarrativeA", "NarrativeB", "NarrativeC", "NarrativeD", "NarrativeE",
+        "NarrativeF", "NarrativeG", "NarrativeH", "NarrativeI", "NarrativeJ"];
+      const remaining = narratives.filter(n => written.includes(n));
+      expect(remaining.length).toBeLessThan(narratives.length);
+      expect(written).not.toContain("NarrativeA");
     },
   );
 });

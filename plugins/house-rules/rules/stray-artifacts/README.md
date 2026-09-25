@@ -35,6 +35,12 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 **Files:**
 - `docs/readme.md`: 
 
+### node_modules synonym dirs (doc/docs) never produce a finding even with a tracked file inside
+
+**Files:**
+- `node_modules/pkg/doc/a.ts`: 
+- `node_modules/pkg/docs/b.ts`: 
+
 ### tests/ alone produces no finding; synonym rule requires sibling canonical dir
 
 **Files:**

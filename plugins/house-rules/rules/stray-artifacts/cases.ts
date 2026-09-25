@@ -26,6 +26,11 @@ const valid: TrackedCase[] = [
     tree: { 'docs/readme.md': '' },
   },
   {
+    why: 'node_modules synonym dirs (doc/docs) never produce a finding even with a tracked file inside',
+    tree: { 'node_modules/pkg/doc/a.ts': '', 'node_modules/pkg/docs/b.ts': '' },
+    trackedOverrides: { 'node_modules/pkg/docs/b.ts': false },
+  },
+  {
     why: 'tests/ alone produces no finding; synonym rule requires sibling canonical dir',
     tree: { 'tests/helper.ts': '' },
   },

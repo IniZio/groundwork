@@ -1,6 +1,4 @@
-# Dependency hygiene mode
-
-Load when user selects `deps`. Shared spine, finding format, severity rubric, triage gate, and completion gate in `SKILL.md` apply.
+# Lens `deps`: scan checklist for a Housekeep scan subagent. Return Finding rows in the SKILL.md format (`| id | lens | severity | effort | auto-fix | location | finding | fix |`); do not edit.
 
 ## Smell catalog
 
@@ -24,6 +22,8 @@ npx depcheck
 pnpm why <package>
 pnpm audit
 ```
+
+Adapt `pnpm` commands to the repo's actual package manager (npm, yarn, bun, etc.).
 
 ## Passes
 

@@ -1,6 +1,4 @@
-# Lint and type-debt mode
-
-Load when user selects `lint-debt`. Shared spine, finding format, severity rubric, triage gate, and completion gate in `SKILL.md` apply.
+# Lens `lint-debt`: scan checklist for a Housekeep scan subagent. Return Finding rows in the SKILL.md format (`| id | lens | severity | effort | auto-fix | location | finding | fix |`); do not edit.
 
 ## Smell catalog
 

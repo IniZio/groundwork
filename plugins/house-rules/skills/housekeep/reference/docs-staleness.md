@@ -1,6 +1,4 @@
-# Docs-staleness mode
-
-Load when user selects `docs-staleness`. Shared spine, finding format, severity rubric, triage gate, and completion gate in `SKILL.md` apply.
+# Lens `docs`: scan checklist for a Housekeep scan subagent. Return Finding rows in the SKILL.md format (`| id | lens | severity | effort | auto-fix | location | finding | fix |`); do not edit.
 
 Removes references to code that no longer exists, updates examples against the current API, and deletes documentation for removed features.
 

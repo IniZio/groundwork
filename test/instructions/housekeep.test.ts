@@ -36,4 +36,29 @@ describe("housekeep skill", () => {
       expect(existsSync(full), `linked reference/${fname} does not exist`).toBe(true);
     }
   });
+
+  it("HTML-REPORT.md exists", () => {
+    expect(existsSync(path.join(ROOT, "plugins/house-rules/skills/housekeep/HTML-REPORT.md"))).toBe(true);
+  });
+
+  it("SKILL.md references all 4 lens reference files", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    const lensFiles = ["reference/deslop.md", "reference/deps.md", "reference/lint-debt.md", "reference/docs-staleness.md"];
+    for (const f of lensFiles) {
+      expect(content, `SKILL.md must reference ${f}`).toContain(f);
+    }
+  });
+
+  it("SKILL.md contains no mode-selection wording", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).not.toMatch(/housekeep deps/);
+    expect(content).not.toMatch(/housekeep lint-debt/);
+    expect(content).not.toMatch(/housekeep docs/);
+    expect(content).not.toMatch(/housekeep all/);
+  });
+
+  it("SKILL.md contains AskUserQuestion", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).toContain("AskUserQuestion");
+  });
 });

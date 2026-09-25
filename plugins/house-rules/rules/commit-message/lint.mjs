@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
 export const PRESET_HANDBOOK = 'handbook'
@@ -147,4 +148,72 @@ export function lintCommitMessage(message, opts = {}) {
   }
 
   return { violations, preset }
+}
+
+// Format-only: matches known conventional types without the 72-char length cap.
+// Using a type allowlist (not \w+) prevents false positives from WIP:/Fix: history.
+const CONVENTIONAL_SUBJECT_RE =
+  /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: \S/
+
+const COMMITLINT_CONFIG_FILES = [
+  'commitlint.config.js', 'commitlint.config.cjs', 'commitlint.config.mjs',
+  'commitlint.config.ts', 'commitlint.config.mts', 'commitlint.config.cts',
+  'commitlint.config.json', 'commitlint.config.yaml', 'commitlint.config.yml',
+  '.commitlintrc', '.commitlintrc.js', '.commitlintrc.cjs', '.commitlintrc.mjs',
+  '.commitlintrc.ts', '.commitlintrc.json', '.commitlintrc.yaml', '.commitlintrc.yml',
+]
+
+function hasCommitlintConfig(repoRoot) {
+  for (const f of COMMITLINT_CONFIG_FILES) {
+    if (existsSync(join(repoRoot, f))) return true
+  }
+  const pkgPath = join(repoRoot, 'package.json')
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+      if (pkg?.commitlint != null) return true
+    } catch {
+    }
+  }
+  return false
+}
+
+function readLastSubjects(repoRoot, n = 20) {
+  try {
+    const out = execFileSync(
+      'git',
+      ['log', '--first-parent', '--no-merges', `-${n}`, '--format=%s'],
+      { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    )
+    return out.split('\n').filter(l => l.trim() !== '')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Resolve the commit-message preset for a repo, in priority order:
+ * 1. .house-rules.json explicit pin
+ * 2. Commitlint config presence → conventional
+ * 3. History: ≥50% of last 20 non-merge subjects match conventional → conventional
+ * 4. Handbook (default)
+ *
+ * @param {string | null | undefined} repoRoot
+ * @returns {'handbook' | 'conventional'}
+ */
+export function resolvePreset(repoRoot) {
+  if (!repoRoot) return PRESET_HANDBOOK
+
+  if (existsSync(join(repoRoot, '.house-rules.json'))) {
+    return readConfigPreset(repoRoot)
+  }
+
+  if (hasCommitlintConfig(repoRoot)) return PRESET_CONVENTIONAL
+
+  const subjects = readLastSubjects(repoRoot, 20)
+  if (subjects.length === 0) return PRESET_HANDBOOK
+  const matched = subjects.filter(s => CONVENTIONAL_SUBJECT_RE.test(s)).length
+  if (matched / subjects.length >= 0.5) return PRESET_CONVENTIONAL
+
+  return PRESET_HANDBOOK
 }

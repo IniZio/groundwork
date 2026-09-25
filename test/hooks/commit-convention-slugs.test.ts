@@ -7,7 +7,7 @@ import { lintMessage } from "../../hooks/lib/commit-convention.mjs";
 import { renderCommitMsgHook } from "../../hooks/lib/commit-msg-template.mjs";
 import { check } from "../../src/hooks/commit-message-guard.js";
 
-const GW_HOOKS_LIB = "/home/newman/.local/share/groundwork/hooks/lib";
+const GW_HOOKS_LIB = join(import.meta.dir, "../../hooks/lib");
 
 function makeTempRepo(opts: {
   motiveSlugs?: string[];

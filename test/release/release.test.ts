@@ -4,8 +4,10 @@ import { mkdirSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const REL =
-  "/home/newman/.local/share/groundwork/.claude/skills/release/scripts/release.ts";
+const REL = join(
+  import.meta.dir,
+  "../../.claude/skills/release/scripts/release.ts"
+);
 
 function runRelease(cwd: string, args: string[]) {
   const r = spawnSync("bun", [REL, ...args], {

@@ -188,6 +188,66 @@ describe("proof-harness.sh — version follows package.json", () => {
   });
 });
 
+describe("proof-harness.sh --check-log — session-start marker detection", () => {
+  function makeSessionStartLog(dir: string, secondLine: Record<string, unknown>): string {
+    mkdirSync(dir, { recursive: true });
+    const initEvent = JSON.stringify({
+      type: "system",
+      subtype: "init",
+      plugins: [
+        { name: "groundwork", version: EXPECTED_VERSION },
+        { name: "mattpocock-skills", version: "1.0.0" },
+      ],
+      agents: [
+        { name: "groundwork:advisor" },
+        { name: "groundwork:implementer" },
+        { name: "groundwork:orchestrator" },
+        { name: "groundwork:qa" },
+      ],
+    });
+    const logPath = path.join(dir, "stdout.log");
+    writeFileSync(logPath, initEvent + "\n" + JSON.stringify(secondLine) + "\n");
+    return logPath;
+  }
+
+  it("reports PRESENT when log contains v2.7.2 SessionStart hook_response", () => {
+    const dir = path.join(SCRATCH, "ss-v2");
+    const log = makeSessionStartLog(dir, {
+      type: "system",
+      subtype: "hook_response",
+      hook_event: "SessionStart",
+      output: "# groundwork v2.7.2 (abc1234) — /x\n",
+    });
+    const result = runCheckLog(log);
+    expect(result.exit).toBe(0);
+    expect(result.stdout).toContain("PRESENT");
+  });
+
+  it("reports PRESENT when log contains v3.0.0 SessionStart hook_response", () => {
+    const dir = path.join(SCRATCH, "ss-v3");
+    const log = makeSessionStartLog(dir, {
+      type: "system",
+      subtype: "hook_response",
+      hook_event: "SessionStart",
+      output: "# groundwork v3.0.0 (abc1234) — /x\n",
+    });
+    const result = runCheckLog(log);
+    expect(result.exit).toBe(0);
+    expect(result.stdout).toContain("PRESENT");
+  });
+
+  it("reports ABSENT when log contains only a user message mentioning 'groundwork v2'", () => {
+    const dir = path.join(SCRATCH, "ss-prose");
+    const log = makeSessionStartLog(dir, {
+      type: "user",
+      message: "groundwork v2 is great; spawn groundwork:advisor",
+    });
+    const result = runCheckLog(log);
+    expect(result.exit).toBe(0);
+    expect(result.stdout).toContain("ABSENT");
+  });
+});
+
 describe("proof-harness.sh — missing-plugin bite proof", () => {
   it("exits non-zero when plugin name is changed (simulating wrong plugin)", () => {
     const dir = path.join(SCRATCH, "wrong-name");

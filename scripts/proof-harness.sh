@@ -117,10 +117,10 @@ check_session_start() {
   local log="$1"
   echo ""
   echo "=== SESSION-START MARKER ==="
-  if grep -q "groundwork v2" "$log" 2>/dev/null; then
-    echo "  PRESENT  'groundwork v2' additionalContext found in transcript"
+  if grep -qE '# groundwork v[0-9]+(\.[0-9]+)*' "$log" 2>/dev/null; then
+    echo "  PRESENT  '# groundwork v<version>' SessionStart header found in stdout log"
   else
-    echo "  ABSENT   'groundwork v2' not found (SessionStart hook may not have fired)"
+    echo "  ABSENT   '# groundwork v<version>' SessionStart header not found (SessionStart hook may not have fired)"
   fi
 }
 
@@ -144,7 +144,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$CHECK_LOG" ]]; then
-  run_init_check "$CHECK_LOG"; exit $?
+  run_init_check "$CHECK_LOG"
+  INIT_EXIT=$?
+  [[ "$INIT_EXIT" -eq 0 ]] && check_session_start "$CHECK_LOG"
+  exit $INIT_EXIT
 fi
 
 [[ -z "$REPO" ]]   && die "--repo is required"

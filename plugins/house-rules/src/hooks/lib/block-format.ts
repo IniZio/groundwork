@@ -221,7 +221,10 @@ export function formatShortReason(
     .join(", ");
   const header = `house-rules gate: ${ruleText}.`;
 
-  // Show at least 1 path per rule (guaranteed), then fill remaining slots from each rule in order.
+  const MAX_PATH = 300;
+  const truncatePath = (p: string): string =>
+    p.length > MAX_PATH ? p.slice(0, MAX_PATH - 1) + "…" : p;
+
   const MAX = 3;
   const shown: string[] = [];
   for (const r of rules) {
@@ -233,10 +236,12 @@ export function formatShortReason(
     }
     if (shown.length >= MAX) break;
   }
+  const shownTrunc = shown.map(truncatePath);
   const total = rules.reduce((s, r) => s + r.paths.length, 0);
   const rest = total - shown.length;
-  const pathList = shown.join(", ") + (rest > 0 ? `, … ${rest} more` : "");
+  const pathList = shownTrunc.join(", ") + (rest > 0 ? `, … ${rest} more` : "");
   const line2 = `${pathList} — full list: ${filePath}` + (suffix ?? "");
 
-  return header + "\n" + line2;
+  const result = header + "\n" + line2;
+  return result.length <= 2000 ? result : result.slice(0, 1999) + "…";
 }

@@ -280,20 +280,14 @@ function realisticTripleInput(dCount: number, nCount: number, sCount: number, su
 }
 
 describe("block-format: realistic paths", () => {
-  it("30 density + 1 stray with HANDBACK: stray path visible, length ≤2000", () => {
+  it("30d+30n+1s+HANDBACK: stray path visible, length ≤2000 (bites 4310726)", () => {
     const out = formatBlock(realisticTripleInput(30, 30, 1, HANDBACK));
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });
 
-  it("30 density + 1 stray without HANDBACK: stray path visible, length ≤2000", () => {
-    const out = formatBlock(realisticTripleInput(30, 30, 1, null));
-    expect(out.length).toBeLessThanOrEqual(LIMIT);
-    expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
-  });
-
-  it("30 notices + 30 density + 1 stray: stray path visible, length ≤2000", () => {
-    const out = formatBlock(realisticTripleInput(30, 30, 1, HANDBACK));
+  it("30d+1s no notices: stray path visible, length ≤2000", () => {
+    const out = formatBlock(realisticTripleInput(30, 0, 1, null));
     expect(out.length).toBeLessThanOrEqual(LIMIT);
     expect(out).toContain(`${RROOT}src/w0-component-name.tsx: docs/ coexists with doc/`);
   });

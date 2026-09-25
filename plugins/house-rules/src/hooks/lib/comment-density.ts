@@ -54,7 +54,7 @@ const GO_LINT_IGNORE_RE = /^lint:(ignore|file-ignore)\b/;
 const GO_KUBEBUILDER_MARKER_RE = /^\+[a-z][\w.-]*:/;
 const TOML_SCHEMA_RE = /^:schema\b/;
 const TSREF_RE = /^\/\s*<reference\b/;
-const GO_OUTPUT_RE = /^(?:[Uu]nordered )?[Oo]utput:/;
+const GO_OUTPUT_RE = /^(?:unordered )?output:/i;
 const GO_EXPORT_RE = /^export\b/;
 const GO_LINE_RE = /^line\b/;
 const GW_RULE_RE = /^groundwork-rule:/;
@@ -92,7 +92,6 @@ function isExemptInner(inner: string, lang?: Lang): boolean {
   if (TSREF_RE.test(inner)) return true;
   if (GW_RULE_RE.test(inner)) return true;
   if (lang === "go") {
-    if (GO_OUTPUT_RE.test(inner)) return true;
     if (GO_EXPORT_RE.test(inner)) return true;
     if (GO_LINE_RE.test(inner)) return true;
   }
@@ -198,9 +197,117 @@ function isGoCgoComment(node: Node): boolean {
   return false;
 }
 
+function findGoPackageClauseRow(root: Node): number | null {
+  for (let i = 0; i < root.childCount; i++) {
+    const child = root.child(i);
+    if (child && child.type === "package_clause") return child.startPosition.row;
+  }
+  return null;
+}
+
+function findGoCgoPreambleSlashRows(root: Node): Set<number> {
+  const result = new Set<number>();
+  const slashByRow = new Map<number, boolean>();
+
+  function collectSlash(node: Node): void {
+    if (node.type === "comment" && node.text.startsWith("//")) {
+      slashByRow.set(node.startPosition.row, true);
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) collectSlash(child);
+    }
+  }
+  collectSlash(root);
+
+  function isCImport(node: Node): boolean {
+    let cur: Node | null = node.firstNamedChild;
+    while (cur) {
+      if (cur.type === "import_spec") {
+        const p = cur.childForFieldName ? cur.childForFieldName("path") : null;
+        if (p && (p.text === '"C"' || p.text === "`C`")) return true;
+      } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
+        return true;
+      }
+      cur = cur.nextNamedSibling;
+    }
+    return false;
+  }
+
+  function findCImports(node: Node): void {
+    if (node.type === "import_declaration" && isCImport(node)) {
+      let row = node.startPosition.row - 1;
+      while (row >= 0 && slashByRow.has(row)) {
+        result.add(row);
+        row--;
+      }
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) findCImports(child);
+    }
+  }
+  findCImports(root);
+  return result;
+}
+
+function findGoExampleOutputRows(root: Node): Set<number> {
+  const result = new Set<number>();
+  const slashByRow = new Map<number, string>();
+
+  function collectSlash(node: Node): void {
+    if (node.type === "comment" && node.text.startsWith("//")) {
+      slashByRow.set(node.startPosition.row, node.text);
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) collectSlash(child);
+    }
+  }
+  collectSlash(root);
+
+  function findExampleFuncs(node: Node): void {
+    if (node.type === "function_declaration") {
+      const nameNode = node.childForFieldName ? node.childForFieldName("name") : null;
+      if (nameNode && /^Example/.test(nameNode.text)) {
+        const bodyNode = node.childForFieldName ? node.childForFieldName("body") : null;
+        if (bodyNode) {
+          const startRow = bodyNode.startPosition.row;
+          const endRow = bodyNode.endPosition.row;
+          let outputRow: number | null = null;
+          for (let row = startRow; row <= endRow; row++) {
+            const txt = slashByRow.get(row);
+            if (txt !== undefined && GO_OUTPUT_RE.test(stripMarkers(txt))) {
+              outputRow = row;
+              break;
+            }
+          }
+          if (outputRow !== null) {
+            let row = outputRow;
+            while (row <= endRow && slashByRow.has(row)) {
+              result.add(row);
+              row++;
+            }
+          }
+        }
+      }
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) findExampleFuncs(child);
+    }
+  }
+  findExampleFuncs(root);
+  return result;
+}
+
 function collectComments(root: Node, text: string, lang: Lang): Comment[] {
   const results: Comment[] = [];
   let leadingBlockDone = false;
+
+  const goPackageClauseRow = lang === "go" ? findGoPackageClauseRow(root) : null;
+  const goCgoPreambleRows = lang === "go" ? findGoCgoPreambleSlashRows(root) : new Set<number>();
+  const goExampleOutputRows = lang === "go" ? findGoExampleOutputRows(root) : new Set<number>();
 
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) {
@@ -223,6 +330,18 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
         if (!exempt && lang === "go" && isGoDocComment(node, text)) {
           exempt = true;
           reason = "go-doc";
+        }
+        if (!exempt && lang === "go") {
+          if (goPackageClauseRow !== null && endRow < goPackageClauseRow) {
+            exempt = true;
+            reason = "go-file-header";
+          } else if (raw.startsWith("//") && goCgoPreambleRows.has(startRow)) {
+            exempt = true;
+            reason = "cgo-preamble";
+          } else if (raw.startsWith("//") && goExampleOutputRows.has(startRow)) {
+            exempt = true;
+            reason = "go-example-output";
+          }
         }
       }
       results.push({

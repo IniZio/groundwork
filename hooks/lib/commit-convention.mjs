@@ -6,12 +6,13 @@ import { readRecentSubjects } from './derive-convention.mjs'
 import {
   lintCommitMessage,
   readConfigPreset,
+  SCOPE_PATTERN,
   PRESET_BODY_ONLY,
   PRESET_CONVENTIONAL,
   PRESET_HANDBOOK,
 } from '../../plugins/house-rules/rules/commit-message/lint.mjs'
 
-export const SCOPE_PATTERN = /^[a-zA-Z0-9._,\-]+$/
+export { SCOPE_PATTERN } from '../../plugins/house-rules/rules/commit-message/lint.mjs'
 
 export const SUBJECT_CAP = 72
 
@@ -185,7 +186,6 @@ export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
   const repoRoot = opts?.repoRoot ?? null
 
-  // Preset resolution order: .gitmessage → body-only; .house-rules.json → explicit preset; no config → derive from subject history; fallback → handbook
   let preset
   if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
     preset = PRESET_BODY_ONLY

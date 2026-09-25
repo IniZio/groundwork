@@ -217,7 +217,7 @@ describe("check dep range", () => {
     const dir = makeDualPluginRepo(mkdtempSync(join(tmpdir(), "gw-test-")), {
       gwVersion: "1.0.0",
       hrVersion: "0.1.0",
-      hrDepRange: "~0.4.0",
+      hrDepRange: "~0.5.0",
     });
     const r = runRelease(dir, ["check"]);
     rmSync(dir, { recursive: true, force: true });

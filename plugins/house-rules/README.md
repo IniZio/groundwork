@@ -18,7 +18,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
 | comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | strips over-budget comments before Write/Edit/MultiEdit | blocks when session-changed file is over budget; auto-trims TypeScript | `house-rules check --base <ref>` | TypeScript: stable; other langs: shadow/preview |
-| stray-artifacts | synonym dirs (doc/docs, test/tests, scripts/script, util/utils, lib/libs siblings) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write creating a stray path | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
+| stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into synonym dir when canonical sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
 

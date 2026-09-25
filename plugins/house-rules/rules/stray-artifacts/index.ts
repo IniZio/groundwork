@@ -23,7 +23,7 @@ const ROOT_SCRATCH_PATTERNS = [
 const rule: Rule = {
   id: 'stray-artifacts',
   meta: {
-    description: 'Flags repo-shape bloat: non-canonical directory names, symmetric duplicate dirs, and root scratch files.',
+    description: 'Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate dirs, and root scratch files.',
   },
   vehicles: ['tree'],
 
@@ -33,26 +33,8 @@ const rule: Rule = {
     const scoped = files.filter(f => f.tracked === true || f.sessionCreated === true);
 
     const findings: Finding[] = [];
-    const seenSymmetric = new Set<string>();
 
-    // --- 1. Canonical synonyms ---
-    for (const f of scoped) {
-      const segments = f.path.split('/');
-      const dirs = segments.slice(0, -1);
-      for (const seg of dirs) {
-        if (seg in CANONICAL_SYNONYMS) {
-          findings.push({
-            ruleId: 'stray-artifacts',
-            path: f.path,
-            message: `use ${CANONICAL_SYNONYMS[seg]}/ (canonical) instead of ${seg}/`,
-            fingerprintBasis: f.path,
-          });
-          break;
-        }
-      }
-    }
-
-    // --- 2. Symmetric pairs ---
+    // Build parentDirs from filesystem + ctx.files
     const parentDirs = new Map<string, Set<string>>();
 
     function collectDirsFromFs(dir: string, relParent: string): void {
@@ -72,7 +54,6 @@ const rule: Rule = {
         const existing = parentDirs.get(relParent) ?? new Set<string>();
         for (const d of dirNames) existing.add(d);
         parentDirs.set(relParent, existing);
-        // Recurse
         for (const d of dirNames) {
           collectDirsFromFs(path.join(dir, d), relParent ? `${relParent}/${d}` : d);
         }
@@ -80,7 +61,6 @@ const rule: Rule = {
     }
     collectDirsFromFs(repoRoot, '');
 
-    // Also derive dirs from all ctx.files entries (regardless of scope)
     for (const f of files) {
       const segments = f.path.split('/');
       for (let i = 0; i < segments.length - 1; i++) {
@@ -92,6 +72,42 @@ const rule: Rule = {
       }
     }
 
+    const seenSynonym = new Set<string>();
+    for (const [synonym, canonical] of Object.entries(CANONICAL_SYNONYMS)) {
+      for (const [parent, dirSet] of parentDirs) {
+        if (dirSet.has(synonym) && dirSet.has(canonical)) {
+          const parentLabel = parent === '' ? 'root' : parent;
+          for (const f of scoped) {
+            if (seenSynonym.has(f.path)) continue;
+            const segments = f.path.split('/');
+            const depth = parent === '' ? 0 : parent.split('/').length;
+            if (segments.length > depth) {
+              const fileParent = segments.slice(0, depth).join('/');
+              const dirAtDepth = segments[depth];
+              if (fileParent === parent && dirAtDepth === synonym) {
+                seenSynonym.add(f.path);
+                findings.push({
+                  ruleId: 'stray-artifacts',
+                  path: f.path,
+                  message: `${synonym}/ and ${canonical}/ coexist under ${parentLabel}; merge ${synonym}/ into ${canonical}/`,
+                  fingerprintBasis: f.path,
+                });
+              } else if (fileParent === parent && dirAtDepth === canonical) {
+                seenSynonym.add(f.path);
+                findings.push({
+                  ruleId: 'stray-artifacts',
+                  path: f.path,
+                  message: `${canonical}/ and ${synonym}/ coexist under ${parentLabel}; merge ${canonical}/ into ${synonym}/`,
+                  fingerprintBasis: f.path,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const seenSymmetric = new Set<string>();
     for (const [a, b] of SYMMETRIC_PAIRS) {
       for (const [parent, dirSet] of parentDirs) {
         if (dirSet.has(a) && dirSet.has(b)) {

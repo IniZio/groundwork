@@ -51,8 +51,6 @@ describe('dogfood e2e', () => {
       // baseline against HEAD so only our additions are checked
       const bl = runCLI(['baseline', '--base', 'HEAD'], tmpDir);
       expect(bl.status).toBe(0);
-
-      // stray-artifacts: docs/ is a non-canonical synonym for doc/
       mkdirSync(join(tmpDir, 'docs'), { recursive: true });
       writeFileSync(join(tmpDir, 'docs', 'guide.md'), '# guide\n');
       gitAdd(tmpDir, 'docs/guide.md');
@@ -67,6 +65,36 @@ describe('dogfood e2e', () => {
       expect(result.status).toBe(1);
       expect(output).toContain('stray-artifacts');
       expect(output).toContain('comment-density');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('lone docs/ in a fresh repo → no stray-artifacts finding', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'hr-e2e-lone-'));
+    try {
+      const init = spawnSync('git', ['init', '-q', tmpDir], { encoding: 'utf8' });
+      if (init.status !== 0) throw new Error(`git init failed: ${init.stderr}`);
+      spawnSync('git', ['-C', tmpDir, 'config', 'user.email', 't@t.com'], { encoding: 'utf8' });
+      spawnSync('git', ['-C', tmpDir, 'config', 'user.name', 'T'], { encoding: 'utf8' });
+
+      mkdirSync(join(tmpDir, 'src'), { recursive: true });
+      writeFileSync(join(tmpDir, 'src', 'index.ts'), 'export {};\n');
+      spawnSync('git', ['-C', tmpDir, 'add', 'src/index.ts'], { encoding: 'utf8' });
+      spawnSync('git', ['-C', tmpDir, 'commit', '-m', 'init'], { encoding: 'utf8' });
+
+      const bl = runCLI(['baseline', '--base', 'HEAD'], tmpDir);
+      expect(bl.status).toBe(0);
+
+      mkdirSync(join(tmpDir, 'docs'), { recursive: true });
+      writeFileSync(join(tmpDir, 'docs', 'guide.md'), '# guide\n');
+      gitAdd(tmpDir, 'docs/guide.md');
+
+      const result = runCLI(['check', '--base', 'HEAD'], tmpDir);
+      const output = result.stdout + result.stderr;
+
+      expect(result.status).toBe(0);
+      expect(output).not.toContain('stray-artifacts');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

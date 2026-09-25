@@ -2,7 +2,7 @@
 
 # stray-artifacts
 
-Flags repo-shape bloat: non-canonical directory names, symmetric duplicate dirs, and root scratch files.
+Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate dirs, and root scratch files.
 
 **Severity**: error | **Autofix**: no
 
@@ -30,6 +30,16 @@ Flags repo-shape bloat: non-canonical directory names, symmetric duplicate dirs,
 **Files:**
 - `lib/index.ts`: 
 
+### docs/ alone produces no finding; synonym rule requires sibling canonical dir
+
+**Files:**
+- `docs/readme.md`: 
+
+### tests/ alone produces no finding; synonym rule requires sibling canonical dir
+
+**Files:**
+- `tests/helper.ts`: 
+
 ### untracked and not session-created root tmp-notes.md produces no finding
 
 **Files:**
@@ -37,13 +47,25 @@ Flags repo-shape bloat: non-canonical directory names, symmetric duplicate dirs,
 
 ## Flagged
 
-### docs/ is non-canonical; doc/ is canonical
+### docs/ and doc/ coexist; both dirs have tracked files, both flagged
 
 **Files:**
+- `doc/guide.md`: 
 - `docs/readme.md`: 
 
 **Expected findings:**
-- use doc/ (canonical) instead of docs/
+- doc/ and docs/ coexist under root; merge doc/ into docs/
+- docs/ and doc/ coexist under root; merge docs/ into doc/
+
+### tests/ and test/ coexist; both dirs have tracked files, both flagged
+
+**Files:**
+- `test/unit.ts`: 
+- `tests/helper.ts`: 
+
+**Expected findings:**
+- test/ and tests/ coexist under root; merge test/ into tests/
+- tests/ and test/ coexist under root; merge tests/ into test/
 
 ### tracked root test-agent-config.mjs matches root-scratch pattern
 
@@ -62,6 +84,24 @@ Flags repo-shape bloat: non-canonical directory names, symmetric duplicate dirs,
 **Expected findings:**
 - both util/ and utils/ exist under root; consolidate
 - both util/ and utils/ exist under root; consolidate
+
+### doc/ file in-scope while untracked docs/ sibling exists; reverse direction
+
+**Files:**
+- `docs/readme.md`: 
+- `doc/guide.md`: 
+
+**Expected findings:**
+- doc/ and docs/ coexist under root; merge doc/ into docs/
+
+### test/ file in-scope while untracked tests/ sibling exists; reverse direction
+
+**Files:**
+- `tests/helper.ts`: 
+- `test/unit.ts`: 
+
+**Expected findings:**
+- test/ and tests/ coexist under root; merge test/ into tests/
 
 ### session-created root tmp-notes.md matches scratch prefix
 

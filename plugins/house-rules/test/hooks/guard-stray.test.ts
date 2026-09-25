@@ -52,6 +52,40 @@ describe("guard stray-artifacts check", () => {
     expect(hso.permissionDecision).toBe("deny");
     const ctx = hso.additionalContext as string;
     expect(ctx).toContain("doc/");
+    expect(ctx).toContain("merge");
+  });
+
+  it("Write docs/x.md in repo WITHOUT doc/ → allow (lone docs/)", async () => {
+    const dir = makeGitRepo({ "src/index.ts": "export {};" }); // no doc/ dir
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "docs", "x.md");
+    const r = await check({ ...write(filePath, "# x"), cwd: dir });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso.permissionDecision).toBeUndefined();
+  });
+
+  it("Write tests/x.ts in repo with test/ → deny naming merge target", async () => {
+    const dir = makeGitRepo({ "test/unit.ts": "// test" });
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "tests", "x.ts");
+    const r = await check({ ...write(filePath, "export {};"), cwd: dir });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso.permissionDecision).toBe("deny");
+    const ctx = hso.additionalContext as string;
+    expect(ctx).toContain("test/");
+    expect(ctx).toContain("merge");
+  });
+
+  it("Write tests/x.ts in repo WITHOUT test/ → allow (lone tests/)", async () => {
+    const dir = makeGitRepo({ "src/index.ts": "export {};" });
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "tests", "x.ts");
+    const r = await check({ ...write(filePath, "export {};"), cwd: dir });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso.permissionDecision).toBeUndefined();
   });
 
   it("Write root test-foo.mjs → deny (root scratch file)", async () => {
@@ -74,6 +108,32 @@ describe("guard stray-artifacts check", () => {
     expect(r.exit).toBe(0);
     const hso = getHso(r);
     expect(hso.permissionDecision).toBeUndefined();
+  });
+
+  it("Write doc/x.md in repo with only docs/ → deny, message names docs/", async () => {
+    const dir = makeGitRepo({ "docs/readme.md": "# docs" });
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "doc", "x.md");
+    const r = await check({ ...write(filePath, "# x"), cwd: dir });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso.permissionDecision).toBe("deny");
+    const ctx = hso.additionalContext as string;
+    expect(ctx).toContain("docs/");
+    expect(ctx).toContain("merge");
+  });
+
+  it("Write test/x.ts in repo with only tests/ → deny", async () => {
+    const dir = makeGitRepo({ "tests/helper.ts": "// helper" });
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "test", "x.ts");
+    const r = await check({ ...write(filePath, "export {};"), cwd: dir });
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso.permissionDecision).toBe("deny");
+    const ctx = hso.additionalContext as string;
+    expect(ctx).toContain("tests/");
+    expect(ctx).toContain("merge");
   });
 
   it("Edit existing tracked docs/old.md → not denied by stray (existing file)", async () => {

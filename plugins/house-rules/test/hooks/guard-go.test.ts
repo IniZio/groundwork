@@ -7,8 +7,6 @@
  * AC3: Edit adding over-budget narrative comments next to a #cgo preamble and
  *      an Example Output: block (both in old context). Old lines survive;
  *      at least one narrative is stripped.
- * AC4: Evidence (not assertion) that guard output for a gofmt-clean input
- *      stays gofmt-clean.
  */
 
 import { describe, it, expect, beforeAll } from "bun:test";
@@ -206,4 +204,3 @@ func Placeholder() {}
   });
 });
 
-it.todo("guard output gofmt-clean for Go — follow-up (a)", () => {});

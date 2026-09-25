@@ -17,7 +17,6 @@ import {
   stripComments,
   type Comment,
 } from "../../src/hooks/lib/comment-density.js";
-import { isGofmtAvailable } from "../../src/hooks/lib/gofmt.js";
 
 const FIXTURE_DIR = path.join(
   import.meta.dir,
@@ -154,14 +153,12 @@ describe("AC2: Go directive corpus — per-directive exemption", () => {
 describe(
   "AC3: property — autoFix never removes exempt comments or corrupts code",
   () => {
-    it.skipIf(!isGofmtAvailable())(
+    it(
       "50 seeded iterations across addedRow strategies",
       async () => {
         const corpusText = readFileSync(CORPUS_FILE, "utf8");
 
         let removedGtZeroCount = 0;
-        let gofmtPathCount = 0;
-        let dirtyPathCount = 0;
 
         const SEEDS = [
           0x1, 0x2, 0x3, 0x5, 0x8, 0x13, 0x21, 0x34, 0x55, 0x89,
@@ -231,23 +228,10 @@ describe(
             }
           }
 
-          const { formatGo } = await import(
-            "../../src/hooks/lib/gofmt.js"
-          );
-          const origFmtResult = await formatGo(text);
-          const isGofmtCleanInput =
-            origFmtResult.ok && origFmtResult.out === text;
-
           const result = await autoFix(text, "go", addedRows);
 
           if (!result.ok) {
             continue;
-          }
-
-          if (isGofmtCleanInput) {
-            gofmtPathCount++;
-          } else {
-            dirtyPathCount++;
           }
 
           if (result.removed > 0) removedGtZeroCount++;
@@ -276,8 +260,7 @@ describe(
         }
 
         console.log(
-          `[AC3/AC4] iterations with removed>0: ${removedGtZeroCount}/50, ` +
-            `gofmt-path: ${gofmtPathCount}, dirty-path: ${dirtyPathCount}`,
+          `[AC3/AC4] iterations with removed>0: ${removedGtZeroCount}/50`,
         );
         expect(removedGtZeroCount).toBeGreaterThanOrEqual(25);
       },
@@ -288,7 +271,7 @@ describe(
 // ─── AC4: explicit removed>0 count assertion ─────────────────────────────────
 
 describe("AC4: removed>0 count", () => {
-  it.skipIf(!isGofmtAvailable())(
+  it(
     "at least 25 of 50 property iterations trigger removal",
     async () => {
       const corpusText = readFileSync(CORPUS_FILE, "utf8");

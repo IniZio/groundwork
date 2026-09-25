@@ -9,7 +9,6 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { run } from "../../src/hooks/gate.js";
-import { isGofmtAvailable } from "../../src/hooks/lib/gofmt.js";
 
 // ---------------------------------------------------------------------------
 // Helpers (mirrors gate.test.ts)
@@ -59,7 +58,7 @@ const CORPUS_DIRECTIVES = [
   "//nolint:errcheck",
 ];
 
-// A minimal, gofmt-clean base Go file (within budget, no comments)
+// A minimal base Go file (within budget, no comments)
 const BASE_GO = `package gotest
 
 func Add(a, b int) int {
@@ -69,7 +68,7 @@ func Add(a, b int) int {
 
 // Over-budget session file: corpus directives + many narrative comments.
 // Directive lines must survive; narrative lines may be removed.
-// This file is gofmt-clean (tabs, correct spacing).
+// This file uses correct tab-based spacing.
 const SESSION_GO_OVER_BUDGET = `package gotest
 
 //go:generate echo hello
@@ -90,8 +89,7 @@ func Add(a, b int) int {
 }
 `;
 
-// Gofmt-DIRTY base: misaligned const block (missing tabs).
-// gofmt would reformat this; committed as-is.
+// Misaligned base: misaligned const block (missing tabs).
 const DIRTY_BASE_GO = `package gotest
 
 const (
@@ -198,7 +196,7 @@ describe("GO-T4 AC1: Go autofix preview — no write, shadow log written", () =>
 
 // ---------------------------------------------------------------------------
 // AC2: forced stable — file rewritten; directives survive; narrative comments gone;
-//       gofmt-clean output; hookSpecificOutput contains "auto-removed"
+//       code tokens unchanged; hookSpecificOutput contains "auto-removed"
 // ---------------------------------------------------------------------------
 describe("GO-T4 AC2: Go autofix forced stable — writes file", () => {
   let tmpDir: string;
@@ -226,8 +224,8 @@ describe("GO-T4 AC2: Go autofix forced stable — writes file", () => {
     try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it.skipIf(!isGofmtAvailable())(
-    "hash changed; directives present; narrative comments gone; gofmt-clean; additionalContext has auto-removed",
+  it(
+    "hash changed; directives present; narrative comments gone; code tokens unchanged; additionalContext has auto-removed",
     async () => {
       const hashBefore = sha256(fp);
 
@@ -242,27 +240,21 @@ describe("GO-T4 AC2: Go autofix forced stable — writes file", () => {
 
       const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
 
-      // File must have been rewritten
       expect(sha256(fp)).not.toBe(hashBefore);
       expect(out.decision).not.toBe("block");
 
       const content = readFileSync(fp, "utf8");
 
-      // Corpus directive //go:generate must be present
       expect(content).toContain("//go:generate echo hello");
 
-      // At least one narrative comment is gone
       const narratives = ["NarrativeA", "NarrativeB", "NarrativeC", "NarrativeD", "NarrativeE",
         "NarrativeF", "NarrativeG", "NarrativeH", "NarrativeI", "NarrativeJ"];
       const remaining = narratives.filter(n => content.includes(n));
       expect(remaining.length).toBeLessThan(narratives.length);
 
-      // Output must be gofmt-clean
-      const { spawnSync: spawn } = await import("node:child_process");
-      const fmt = spawn("gofmt", [], { input: content, encoding: "utf8" });
-      expect(fmt.stdout).toBe(content);
+      const nonComment = (s: string) => s.split("\n").filter(l => !l.trimStart().startsWith("//") && l.trim() !== "");
+      expect(nonComment(content)).toEqual(nonComment(BASE_GO));
 
-      // hookSpecificOutput/additionalContext mentions "auto-removed"
       const hso = out.hookSpecificOutput as Record<string, unknown> | undefined;
       expect(hso?.additionalContext).toMatch(/auto-removed/);
     },
@@ -330,7 +322,7 @@ func Mul(a, b int) int {
     try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it.skipIf(!isGofmtAvailable())(
+  it(
     "base-committed comments stay byte-identical after stable write",
     async () => {
       await run(
@@ -351,67 +343,7 @@ func Mul(a, b int) int {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-describe("GO-T4 AC4: HOUSE_RULES_GOFMT='' — no write, gate blocks", () => {
-  let tmpDir: string;
-  let shadowTmpDir: string;
-  let sessionId: string;
-  let fp: string;
-  let tp: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-go-ac4-"));
-    shadowTmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-go-ac4-sh-"));
-    sessionId = `go-ac4-${Date.now()}`;
-
-    initGitRepo(tmpDir);
-    writeFileSync(path.join(tmpDir, "base.go"), BASE_GO);
-    gitCommit(tmpDir, "initial");
-
-    fp = path.join(tmpDir, "base.go");
-    writeFileSync(fp, SESSION_GO_OVER_BUDGET);
-    tp = makeTranscript(tmpDir, [fp], new Date(Date.now() - 5000).toISOString());
-  });
-
-  afterEach(() => {
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
-    try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
-  });
-
-  it("hash unchanged; decision=block", async () => {
-    const hashBefore = sha256(fp);
-
-    const savedGofmt = process.env.HOUSE_RULES_GOFMT;
-    process.env.HOUSE_RULES_GOFMT = "";
-    let r: Awaited<ReturnType<typeof run>>;
-    try {
-      r = await run(
-        { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp, cwd: tmpDir },
-        { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, HOUSE_RULES_GOFMT: "" } as Record<string, string | undefined>,
-        {
-          testOnly_tmpDir: shadowTmpDir,
-          testOnly_fixTableOverride: { go: { stability: "stable", applicability: "safe" } },
-        } as any,
-      );
-    } finally {
-      if (savedGofmt === undefined) {
-        delete process.env.HOUSE_RULES_GOFMT;
-      } else {
-        process.env.HOUSE_RULES_GOFMT = savedGofmt;
-      }
-    }
-
-    expect(sha256(fp)).toBe(hashBefore);
-
-    const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
-    expect(out.decision).toBe("block");
-    expect(typeof out.reason).toBe("string");
-    expect(out.reason as string).toMatch(/house-rules/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-describe("GO-T4 AC5: gofmt-dirty base — writes but preserves misalignment", () => {
+describe("GO-T4 AC5: misaligned base — writes but preserves misalignment", () => {
   let tmpDir: string;
   let shadowTmpDir: string;
   let sessionId: string;
@@ -437,7 +369,7 @@ describe("GO-T4 AC5: gofmt-dirty base — writes but preserves misalignment", ()
     try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it.skipIf(!isGofmtAvailable())(
+  it(
     "file written; misaligned const block byte-identical",
     async () => {
       const hashBefore = sha256(fp);
@@ -492,8 +424,8 @@ describe("GO-T7 AC6: Go default-stable — no override, Stop gate rewrites over-
     try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it.skipIf(!isGofmtAvailable())(
-    "default-stable: hash changed; directives survive; output gofmt-clean; no block",
+  it(
+    "default-stable: hash changed; directives survive; code tokens unchanged; no block",
     async () => {
       const hashBefore = sha256(fp);
 
@@ -505,7 +437,6 @@ describe("GO-T7 AC6: Go default-stable — no override, Stop gate rewrites over-
 
       const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
 
-      // File must have been rewritten (Go is now stable by default)
       expect(sha256(fp)).not.toBe(hashBefore);
       expect(out.decision).not.toBe("block");
 
@@ -513,9 +444,8 @@ describe("GO-T7 AC6: Go default-stable — no override, Stop gate rewrites over-
 
       expect(content).toContain("//go:generate echo hello");
 
-      // Output must be gofmt-clean
-      const fmt = spawnSync("gofmt", [], { input: content, encoding: "utf8" });
-      expect(fmt.stdout).toBe(content);
+      const nonComment = (s: string) => s.split("\n").filter(l => !l.trimStart().startsWith("//") && l.trim() !== "");
+      expect(nonComment(content)).toEqual(nonComment(BASE_GO));
     },
   );
 });
@@ -537,7 +467,7 @@ describe("GO-T7 AC7: CLI rule fix path — comment-density fix() handles stable 
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it.skipIf(!isGofmtAvailable())(
+  it(
     "fix() returns fixed>=1 and writes the Go file",
     async () => {
       const fp2 = path.join(tmpDir, "base.go");

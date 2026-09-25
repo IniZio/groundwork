@@ -2,7 +2,6 @@ import path from "node:path";
 import { getParser as defaultGetParser, type Lang } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
 import type { DiffHunk } from "./work-scope.js";
-import { formatGo, isGofmtAvailable } from "./gofmt.js";
 
 export type { Lang };
 
@@ -1033,16 +1032,7 @@ export async function autoFix(
 
   let fixed: string;
   if (lang === "go") {
-    if (!isGofmtAvailable()) return { ok: false, reason: "go-gofmt-unavailable" };
-    const origFmt = await formatGo(text);
-    if (!origFmt.ok) return { ok: false, reason: origFmt.reason };
-    if (origFmt.out === text) {
-      const strippedFmt = await formatGo(stripped.text);
-      if (!strippedFmt.ok) return { ok: false, reason: strippedFmt.reason };
-      fixed = strippedFmt.out;
-    } else {
-      fixed = normalizeGoRemovalWhitespace(text, stripped.text, rowChanges);
-    }
+    fixed = normalizeGoRemovalWhitespace(text, stripped.text, rowChanges);
   } else {
     fixed = stripped.text;
   }

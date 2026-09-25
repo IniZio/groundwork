@@ -173,7 +173,7 @@ export function normalizeSubject(subject) {
 
 // breakingMarker, scopePattern and subjectCap are inert on template-derived rules, which
 // never set them; they exist so groundwork's own convention can be expressed AS a rule set.
-export function checkSubject(subject, rules) {
+function checkSubject(subject, rules) {
   const groups = enforcedGroups(rules)
   const shapeOn = groups.includes('subjectShape')
   const capOn = groups.includes('subjectCap')
@@ -236,7 +236,7 @@ export function checkSubject(subject, rules) {
 
 // The one message-level checker. The per-rule oracle scores history through it and every
 // enforcer lints through it, so what is measured is exactly what is enforced.
-export function checkMessage(message, rules) {
+function checkMessage(message, rules) {
   const groups = enforcedGroups(rules)
   const violations = []
   const lines = String(message ?? '').split('\n')
@@ -277,11 +277,11 @@ export function checkMessage(message, rules) {
   return { violations }
 }
 
-export function describeShape(rules) {
+function describeShape(rules) {
   return rules.shape === 'type-scope' ? 'type(scope): subject' : 'scope: subject'
 }
 
-export function describeRules(rules) {
+function describeRules(rules) {
   const parts = [`subject must look like "${describeShape(rules)}"`]
   if (rules.types) parts.push(`type is one of: ${rules.types.join(', ')}`)
   if (rules.scopes) parts.push(`scope is one of: ${rules.scopes.join(', ')}`)

@@ -6,9 +6,9 @@
     "debugger":           { "claude-code": "opus" },
     "designer":           { "claude-code": "sonnet" },
     "qa":                 { "claude-code": "sonnet" },
-    "researcher":         { "claude-code": "sonnet" },
+    "researcher":         { "claude-code": "opus" },
     "implementer":        { "claude-code": "sonnet" },
-    "junior-orchestrator":{ "claude-code": "sonnet" },
+    "junior-orchestrator":{ "claude-code": "opus" },
     "git-master":         { "claude-code": "haiku" },
     "explore":            { "claude-code": "haiku" }
   }

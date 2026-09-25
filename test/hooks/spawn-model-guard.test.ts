@@ -85,7 +85,7 @@ describe("spawn-model-guard — Family 1", () => {
     const result = check(task("groundwork:junior-orchestrator"), "groundwork:orchestrator");
     const out = JSON.parse(result.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
-    expect(out.hookSpecificOutput.updatedInput.model).toBe("sonnet");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("opus");
   });
 
   it("CLEAN: explicit model set → passthrough (empty stdout + exit 0)", () => {
@@ -174,8 +174,8 @@ describe("spawn-model-guard — size-guard redirect", () => {
       projDir
     );
     const out = parseOutput(result);
-    expect(out.hookSpecificOutput.updatedInput?.model).toBe("sonnet");
-    expect(out.hookSpecificOutput.updatedInput?.model).not.toBe("opus");
+    expect(out.hookSpecificOutput.updatedInput?.model).toBe("opus");
+    expect(out.hookSpecificOutput.updatedInput?.model).not.toBe("sonnet");
   });
 
   it("REDIRECT: prompt prefix exact", () => {

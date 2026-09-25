@@ -119,8 +119,12 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
           needsManual.push(finding);
         }
       } else {
-        fixCount++;
-        fixed.push(finding);
+        if (rule.canFixPath?.(finding.path) ?? true) {
+          fixCount++;
+          fixed.push(finding);
+        } else {
+          needsManual.push(finding);
+        }
       }
     } else {
       needsManual.push(finding);

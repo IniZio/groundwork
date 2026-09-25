@@ -16,6 +16,13 @@ const rule: Rule = {
   meta: { description: 'Flags files where added comment lines exceed 5 per 100 added lines.' },
   vehicles: ['tree-sitter', 'diff'],
 
+  canFixPath(filePath: string): boolean {
+    const lang = detectLanguage(filePath);
+    if (!lang) return false;
+    const entry = LANG_FIX_TABLE[lang];
+    return !!entry && entry.stability === 'stable' && entry.applicability === 'safe';
+  },
+
   async check(ctx: RuleContext): Promise<Finding[]> {
     const findings: Finding[] = [];
     for (const file of ctx.files ?? []) {
@@ -74,14 +81,9 @@ const rule: Rule = {
     for (const file of ctx.files ?? []) {
       if (!file.addedHunks || !file.text) { skipped++; continue; }
 
-      const lang = detectLanguage(file.path);
-      if (!lang) { skipped++; continue; }
+      if (!rule.canFixPath!(file.path)) { skipped++; continue; }
 
-      const tableEntry = LANG_FIX_TABLE[lang];
-      if (!tableEntry || tableEntry.stability !== 'stable' || tableEntry.applicability !== 'safe') {
-        skipped++;
-        continue;
-      }
+      const lang = detectLanguage(file.path)!;
 
       const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
       const baseText = file.baseText ?? '';

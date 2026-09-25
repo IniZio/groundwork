@@ -247,6 +247,103 @@ describe('housekeep', () => {
     expect(output).toContain('1 fixed');
   });
 
+  test('dry-run: canFixPath=false routes to needs-manual, canFixPath=true routes to fixed', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+
+    const rulesDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-canfix-'));
+    tmpRepos.push(rulesDir2);
+    const rDir = path.join(rulesDir2, 'stub-canfix');
+    fs.mkdirSync(rDir);
+    fs.writeFileSync(path.join(rDir, 'index.js'), `
+import fs from 'node:fs'; import path from 'node:path';
+const rule = {
+  id: 'stub-canfix', meta: { description: 'stub' }, vehicles: ['diff'],
+  check(ctx) {
+    return (ctx.files ?? []).filter(f => f.text?.includes('FIX_ME'))
+      .map(f => ({ ruleId: 'stub-canfix', path: f.path, message: 'hit', fingerprintBasis: f.path }));
+  },
+  async fix(ctx) {
+    let fixed = 0;
+    for (const f of (ctx.files ?? [])) {
+      if (f.text?.includes('FIX_ME')) {
+        fs.writeFileSync(path.join(ctx.repoRoot, f.path), f.text.replace(/FIX_ME/g, 'FIXED'), 'utf8');
+        fixed++;
+      }
+    }
+    return { fixed, skipped: 0 };
+  },
+  canFixPath(p) { return !p.endsWith('blocked.ts'); },
+};
+export default rule;
+`);
+    const policy2 = { 'stub-canfix': { severity: 'error', autofix: true } };
+
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+    const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+    fs.writeFileSync(path.join(repoDir, 'fixable.ts'), 'const x = "FIX_ME";\n', 'utf8');
+    fs.writeFileSync(path.join(repoDir, 'blocked.ts'), 'const y = "FIX_ME";\n', 'utf8');
+    spawnSync('git', ['-C', repoDir, 'add', 'fixable.ts', 'blocked.ts'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
+
+    const output = await captureRunHousekeep({ repo: repoDir, rulesDir: rulesDir2, policy: policy2, since: baseSha, dryRun: true });
+
+    expect(output).toContain('[dry-run]');
+    expect(output).toContain('fixable.ts');
+    expect(output).not.toContain('[dry-run] blocked.ts');
+    expect(output).toContain('Needs manual fix');
+    expect(output).toContain('blocked.ts');
+    expect(fs.readFileSync(path.join(repoDir, 'fixable.ts'), 'utf8')).toBe('const x = "FIX_ME";\n');
+    expect(fs.readFileSync(path.join(repoDir, 'blocked.ts'), 'utf8')).toBe('const y = "FIX_ME";\n');
+  });
+
+  test('dry-run: stub rule without canFixPath on .sh file listed as fixed (no lang-table leak)', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+    const { rulesDir, policy } = makeStubRulesDir();
+    tmpRepos.push(rulesDir);
+
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+    const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+    fs.writeFileSync(path.join(repoDir, 'script.sh'), 'FIX_ME\n', 'utf8');
+    spawnSync('git', ['-C', repoDir, 'add', 'script.sh'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
+
+    const output = await captureRunHousekeep({ repo: repoDir, rulesDir, policy, since: baseSha, dryRun: true });
+
+    expect(output).toContain('[dry-run]');
+    expect(output).toContain('script.sh');
+    expect(output).not.toContain('Needs manual fix');
+  });
+
+  test('dry-run and real-run agree: comment-density preview-language file goes to needs-manual both ways', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+    const realRulesDir = path.resolve(import.meta.dir, '../../rules');
+
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+    const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+    const bashContent = '# c1\n# c2\n# c3\n# c4\n# c5\n# c6\necho a\necho b\n';
+    fs.writeFileSync(path.join(repoDir, 'over-budget.sh'), bashContent, 'utf8');
+    spawnSync('git', ['-C', repoDir, 'add', 'over-budget.sh'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
+
+    const dryOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha, dryRun: true });
+    const realOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha });
+
+    expect(dryOut).toContain('Needs manual fix');
+    expect(dryOut).toContain('over-budget.sh');
+    expect(dryOut).not.toContain('[dry-run] over-budget.sh');
+
+    expect(realOut).toContain('Needs manual fix');
+    expect(realOut).toContain('over-budget.sh');
+
+    expect(fs.readFileSync(path.join(repoDir, 'over-budget.sh'), 'utf8')).toBe(bashContent);
+  });
+
   test('untracked strays reported, exit 0 (positive control)', async () => {
     const repoDir = makeTempRepo();
     tmpRepos.push(repoDir);

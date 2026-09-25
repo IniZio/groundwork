@@ -47,6 +47,7 @@ export interface Rule {
   vehicles: Vehicle[];
   check(ctx: RuleContext): Finding[] | Promise<Finding[]>;
   fix?(ctx: RuleContext): Promise<FixResult>;
+  canFixPath?(path: string): boolean;
 }
 
 export interface Case {

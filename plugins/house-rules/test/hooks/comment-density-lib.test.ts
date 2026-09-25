@@ -2013,3 +2013,79 @@ describe("Go cgo preamble exemption pin (M4)", () => {
     expect(r.fixed).toContain("#include <stdio.h>");
   });
 });
+
+// ---- GF-2 Bug B: CRLF trailing comment ----
+
+describe("GF-2 Bug B: CRLF trailing comment preserves \\r\\n", () => {
+  it("stripComments on CRLF Go source: trailing-comment line keeps \\r", async () => {
+    const code = "package main\r\nfunc main() {\r\n\tx := 1 // note\r\n\t_ = x\r\n}\r\n";
+    const r = await findComments(code, "go");
+    if (!r.ok) throw new Error(r.reason);
+    const nonExempt = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, nonExempt);
+    const lines = stripped.split("\n");
+    const xLine = lines.find(l => l.includes("x := 1"));
+    expect(xLine).toBeDefined();
+    expect(xLine!.endsWith("\r")).toBe(true);
+  });
+
+  it("autoFix on over-budget CRLF Go file: every non-final line keeps \\r", async () => {
+    const varLines = Array.from({ length: 20 }, (_, i) => `\tvar x${i} = ${i}`);
+    const commentLines = Array.from({ length: 5 }, (_, i) => `\t// c${i}`);
+    const all = [
+      "package main",
+      "func main() {",
+      ...varLines,
+      ...commentLines,
+      "\t_ = x0 // trailing note",
+      "}",
+    ];
+    const text = all.join("\r\n") + "\r\n";
+    const addedRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "go", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    const lines = r.fixed.split("\n");
+    for (let i = 0; i < lines.length - 1; i++) {
+      expect(lines[i].endsWith("\r"), `line ${i} must end with \\r: ${JSON.stringify(lines[i])}`).toBe(true);
+    }
+  });
+});
+
+// ---- GF-2 Bug A: consecutive // paragraph partial removal ----
+
+describe("GF-2 Bug A: consecutive // paragraph removed whole-or-none", () => {
+  it("autoFix on Go file: 6-line // paragraph kept whole or removed whole", async () => {
+    const varLines = Array.from({ length: 20 }, (_, i) => `var x${i} = ${i}`);
+    const paraLines = Array.from({ length: 6 }, (_, i) => `// para line ${i + 1}`);
+    const code = ["package main", ...varLines, ...paraLines].join("\n") + "\n";
+    const addedRows = new Set(code.split("\n").map((_, i) => i));
+    const r = await autoFix(code, "go", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const remaining = paraLines.filter(l => r.fixed.includes(l)).length;
+    // Must be 0 (all removed) or 6 (all kept), never a partial group
+    expect(remaining === 0 || remaining === 6).toBe(true);
+  });
+
+  it("trailing inline comment directly before whole-line paragraph: each unit decided independently", async () => {
+    // 20 var lines + "var z = 0 // trailing" + 4 whole-line // para lines.
+    // Budget = floor(0.05 * 27) = 1.
+    const varLines = Array.from({ length: 20 }, (_, i) => `var x${i} = ${i}`);
+    const code = [
+      "package main",
+      ...varLines,
+      "var z = 0 // trailing",
+      "// para 1",
+      "// para 2",
+      "// para 3",
+      "// para 4",
+    ].join("\n") + "\n";
+    const addedRows = new Set(code.split("\n").map((_, i) => i));
+    const r = await autoFix(code, "go", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("// trailing");
+  });
+});

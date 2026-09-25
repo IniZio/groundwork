@@ -626,7 +626,8 @@ export function stripComments(text: string, comments: Comment[]): { text: string
     } else {
       const wsStart = before.search(/\s+$/);
       const codeEnd = wsStart !== -1 ? wsStart : c.startIndex;
-      result = result.slice(0, codeEnd) + after;
+      const cr = c.text.endsWith("\r") ? "\r" : "";
+      result = result.slice(0, codeEnd) + cr + after;
       touchedInlineRows.add(c.startRow);
       for (let r = c.startRow + 1; r <= c.endRow; r++) {
         if (!deletedOrigRows.has(r)) {
@@ -996,7 +997,21 @@ export async function autoFix(
     }
   }
 
-  const units = candidates.map(c => [c]);
+  const units: Comment[][] = [];
+  const wholeLineHeads = new Set<Comment>();
+  for (const c of candidates) {
+    const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+    const isWholeLine = !text.slice(lineStart, c.startIndex).trim();
+    if (isWholeLine && c.text.startsWith("//") && c.startRow === c.endRow) {
+      const last = units[units.length - 1];
+      if (last && wholeLineHeads.has(last[0]) && c.startRow === last[last.length - 1].endRow + 1) {
+        last.push(c);
+        continue;
+      }
+      wholeLineHeads.add(c);
+    }
+    units.push([c]);
+  }
   let keptRows = 0;
   let keepCount = 0;
   for (const unit of units) {

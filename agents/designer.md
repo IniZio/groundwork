@@ -1,7 +1,7 @@
 ---
 name: designer
 description: UI/UX specialist for styling, layouts, visual consistency, and component design. Delegate user-visible design and UI edits here. May edit UI files.
-model: sonnet
+model: opus
 tools: [Read, Edit, Write, Bash, Glob, Grep, Agent]
 ---
 

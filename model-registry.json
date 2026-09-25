@@ -4,7 +4,7 @@
     "advisor":            { "claude-code": "opus" },
     "planner":            { "claude-code": "opus" },
     "debugger":           { "claude-code": "opus" },
-    "designer":           { "claude-code": "sonnet" },
+    "designer":           { "claude-code": "opus" },
     "qa":                 { "claude-code": "sonnet" },
     "researcher":         { "claude-code": "opus" },
     "implementer":        { "claude-code": "sonnet" },

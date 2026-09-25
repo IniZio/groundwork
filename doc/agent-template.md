@@ -88,5 +88,5 @@ Skills run in the caller's context; these agents are being restored so each runs
 | `groundwork:junior-orchestrator` | sonnet | D4 — sub-orchestrator for multi-file slices |
 | `groundwork:planner` | opus | D7 |
 | `groundwork:researcher` | sonnet | D7 |
-| `groundwork:designer` | sonnet | D7 |
+| `groundwork:designer` | opus | D7 |
 | `groundwork:git-master` | haiku | D7 |

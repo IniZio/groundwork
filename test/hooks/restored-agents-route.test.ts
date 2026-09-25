@@ -52,9 +52,9 @@ describe("restored-agents route — T19", () => {
     expect(injectedModel(result.stdout)).toBe("opus");
   });
 
-  it("spawn guard injects sonnet for groundwork:designer", () => {
+  it("spawn guard injects opus for groundwork:designer", () => {
     const result = run("groundwork:designer");
     expect(result.exit).toBe(0);
-    expect(injectedModel(result.stdout)).toBe("sonnet");
+    expect(injectedModel(result.stdout)).toBe("opus");
   });
 });

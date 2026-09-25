@@ -2,15 +2,14 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { deriveConvention } from './derive-convention.mjs'
 import {
-  RULE_GROUPS,
-} from './derive-convention.mjs'
-import { lintCommitMessage } from '../../plugins/house-rules/rules/commit-message/lint.mjs'
-
-export const COMMIT_TYPES = [
-  'feat', 'fix', 'docs', 'style', 'refactor',
-  'perf', 'test', 'build', 'ci', 'chore', 'revert',
-]
+  lintCommitMessage,
+  readConfigPreset,
+  PRESET_BODY_ONLY,
+  PRESET_CONVENTIONAL,
+  PRESET_HANDBOOK,
+} from '../../plugins/house-rules/rules/commit-message/lint.mjs'
 
 export const SCOPE_PATTERN = /^[a-zA-Z0-9._,\-]+$/
 
@@ -53,19 +52,6 @@ export const UNIVERSAL_RULES = {
   scopePattern: null,
   subjectCap: null,
   enforce: ['body'],
-}
-
-export const GROUNDWORK_RULES = {
-  shape: 'type-scope',
-  types: COMMIT_TYPES,
-  scopes: null,
-  bodyPermitted: false,
-  bodyMaxLines: BODY_MAX_LINES,
-  bodySectionDeclared: false,
-  templatePath: null,
-  breakingMarker: true,
-  scopePattern: SCOPE_PATTERN,
-  subjectCap: SUBJECT_CAP,
 }
 
 export function stripAttribution(text) {
@@ -114,32 +100,6 @@ export function readCommitTemplate(repoRoot) {
     return { path, text: readFileSync(path, 'utf8') }
   } catch {
     return { path, text: null }
-  }
-}
-
-// The whole active ruleset, assembled rather than inferred: the project's own template
-// text plus groundwork's universal rules. Every field is present in every repository, so
-// a caller can always read WHICH rules apply instead of guessing whether any did.
-export function activeConvention(repoRoot) {
-  const host = resolveHostRules(repoRoot)
-  const own = isGroundworkOwnRepo(repoRoot)
-  const template = readCommitTemplate(repoRoot)
-  const rules = host.applies ? host.rules : (host.rules ?? GROUNDWORK_RULES)
-  return {
-    repoRoot: repoRoot ?? null,
-    scope: own ? 'groundwork-own-repo' : 'host-repo',
-    source: own
-      ? "groundwork's own hardcoded convention (its .gitmessage mirrors it)"
-      : template === null
-        ? 'groundwork convention (no project .gitmessage to concatenate)'
-        : 'project .gitmessage + groundwork universal rules',
-    projectTemplate: template === null
-      ? { path: null, text: null, note: 'no .gitmessage in this repository' }
-      : template,
-    universalRules: UNIVERSAL_RULE_STATEMENTS,
-    bodyPermitted: rules?.bodyPermitted === true,
-    enforcedGroups: Array.isArray(rules?.enforce) ? rules.enforce : RULE_GROUPS,
-    reason: host.reason,
   }
 }
 
@@ -204,13 +164,37 @@ function getMarketplacePluginNames(repoRoot) {
   }
 }
 
+function derivePreset(repoRoot) {
+  if (!repoRoot) return PRESET_HANDBOOK
+  try {
+    const result = deriveConvention(repoRoot)
+    if (!result.confident || !result.rules) return PRESET_HANDBOOK
+    // Map rule shape to preset name: type-scope → conventional, otherwise handbook
+    return result.rules.shape === 'type-scope' ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
+  } catch {
+    return PRESET_HANDBOOK
+  }
+}
+
 export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
+  const repoRoot = opts?.repoRoot ?? null
+
+  // Resolve preset:
+  //   1. .gitmessage present → body-only enforcement (no subject grammar)
+  let preset
+  if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
+    preset = PRESET_BODY_ONLY
+  } else if (repoRoot && existsSync(join(repoRoot, '.house-rules.json'))) {
+    preset = readConfigPreset(repoRoot)
+  } else {
+    preset = derivePreset(repoRoot)
+  }
 
   const violations = []
   const lines = stripped.split('\n')
 
-  const { violations: presetViolations } = lintCommitMessage(stripped, { repoRoot: opts?.repoRoot })
+  const { violations: presetViolations } = lintCommitMessage(stripped, { preset })
   for (const v of presetViolations) {
     violations.push({ line: v.line, reason: v.reason })
   }

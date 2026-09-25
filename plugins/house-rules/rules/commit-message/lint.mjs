@@ -10,7 +10,6 @@ export const CONVENTIONAL_TYPES = [
   'perf', 'test', 'build', 'ci', 'chore', 'revert',
 ]
 
-// Scope token: alphanumeric, dots, commas, underscores, hyphens — no spaces
 export const SCOPE_PATTERN = /^[a-zA-Z0-9._,\-]+$/
 
 const HANDBOOK_VERB_RE = /^(Add|Fix|Remove|Update|Refactor|Test)\b(?!:)/
@@ -89,7 +88,6 @@ export function lintCommitMessage(message, opts = {}) {
             reason: `Unknown type "${typeMatch[1]}"; allowed: ${CONVENTIONAL_TYPES.join(', ')}`,
           })
         }
-        // scope validation
         const scopeMatch = subject.match(/^[a-zA-Z0-9_-]+\(([^)]*)\)/)
         if (scopeMatch !== null) {
           const scope = scopeMatch[1]

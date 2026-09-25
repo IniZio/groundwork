@@ -216,7 +216,7 @@ export function check(input: unknown): HookResult {
 
     const commitSeg = gitMatch.segment ?? command;
     const inlineMsg = extractInlineMessage(commitSeg);
-    if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
+    if (inlineMsg !== null) return lintAndDecide(inlineMsg, baseCwd);
 
     const rawPath = extractFilePath(commitSeg);
     if (rawPath !== null) {
@@ -229,7 +229,7 @@ export function check(input: unknown): HookResult {
       } catch {
         return allow();
       }
-      return lintAndDecide(fileMsg, cmdCwd);
+      return lintAndDecide(fileMsg, baseCwd);
     }
 
     return allow();

@@ -32,6 +32,7 @@ function makeGitRepo(opts: {
   spawnSync("git", ["init", "--initial-branch=main"], { cwd: root, encoding: "utf8" });
   spawnSync("git", ["config", "user.email", "test@test.com"], { cwd: root, encoding: "utf8" });
   spawnSync("git", ["config", "user.name", "Test"], { cwd: root, encoding: "utf8" });
+  writeFileSync(join(root, ".house-rules.json"), JSON.stringify({ "commit-message": { preset: "conventional" } }));
   for (const slug of opts.motiveSlugs ?? []) {
     mkdirSync(join(root, ".groundwork", "motives", slug), { recursive: true });
   }

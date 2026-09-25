@@ -41,6 +41,13 @@ describe("session-start hook", () => {
     expect(ctx).not.toContain("Comment-density-gate");
   });
 
+  it("stray-artifacts description mentions sibling coexistence, not 'denies creation of synonym dirs'", () => {
+    const { stdout } = run({});
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toMatch(/sibling|coexist/i);
+    expect(ctx).not.toContain("denies creation of synonym dirs");
+  });
+
   it("additionalContext contains mattpocock skills", () => {
     const { stdout } = run({});
     const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };

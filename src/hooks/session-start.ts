@@ -95,7 +95,7 @@ Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <
 
 ## house-rules enforcement
 
-Comment density and stray artifacts are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before each Write/Edit/MultiEdit, and the gate blocks at Stop/SubagentStop. The stray-artifacts rule denies creation of synonym dirs and scratch files.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Comment density and stray artifacts are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before each Write/Edit/MultiEdit, and the gate blocks at Stop/SubagentStop. The stray-artifacts rule denies writing into either synonym dir (doc/docs, test/tests, script/scripts, util/utils, lib/libs) when its sibling already exists at the same parent — a lone docs/ or doc/ is fine — and denies root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*).${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

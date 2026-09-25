@@ -1927,7 +1927,6 @@ describe("Go autoFix text-level output (GO-D6)", () => {
   const F_CONST_BETWEEN = `package main\n\nconst (\n\tX      = 1\n\tYYYYYY = 2\n\t// narrative comment\n)\n`;
   // narrative standalone comment between trailing-comment stmts
   const F_FUNC_TRAILING = `package main\n\nfunc foo() {\n\tx := 1 // first\n\t// narrative\n\tyy := 22 // second\n}\n`;
-  // narrative after last struct field — not adjacent to a field declaration
   const F_STRUCT_NARRATIVE = `package main\n\ntype T struct {\n\tA        int    // short\n\tLongName string // long\n\t// narrative\n}\n`;
 
   it("AC1a: const block — narrative between diff-length consts removed, exact output", async () => {

@@ -12,6 +12,7 @@ function makeRepo(): { dir: string; cleanup: () => void } {
   execSync('git config user.email "test@test.com"', { cwd: dir, stdio: "pipe" });
   execSync('git config user.name "Test"', { cwd: dir, stdio: "pipe" });
   execSync("git config commit.gpgsign false", { cwd: dir, stdio: "pipe" });
+  writeFileSync(join(dir, '.house-rules.json'), JSON.stringify({ 'commit-message': { preset: 'conventional' } }));
   execSync('git commit --allow-empty -m "chore: initial"', { cwd: dir, stdio: "pipe" });
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
@@ -20,6 +21,7 @@ describe("commit-msg hook installer", () => {
   it("install: hook present, exec bit set, bad commit rejected", async () => {
     const { dir, cleanup } = makeRepo();
     try {
+      writeFileSync(join(dir, '.house-rules.json'), JSON.stringify({ 'commit-message': { preset: 'conventional' } }));
       const result = await installHook({ cwd: dir });
       expect(result.status).toBe("installed");
 
@@ -185,6 +187,7 @@ describe("commit-msg hook runtime selection", () => {
     const bunPath = whichBin("bun");
     const fakeBin = makeFakeBinDir({ bun: bunPath });
     try {
+      writeFileSync(join(dir, '.house-rules.json'), JSON.stringify({ 'commit-message': { preset: 'conventional' } }));
       await installHook({ cwd: dir });
       const env = minGitEnv(fakeBin);
 
@@ -212,6 +215,7 @@ describe("commit-msg hook runtime selection", () => {
     const nodePath = whichBin("node");
     const fakeBin = makeFakeBinDir({ node: nodePath });
     try {
+      writeFileSync(join(dir, '.house-rules.json'), JSON.stringify({ 'commit-message': { preset: 'conventional' } }));
       await installHook({ cwd: dir });
       const env = minGitEnv(fakeBin);
 

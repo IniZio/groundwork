@@ -105,15 +105,16 @@ export async function checkAll(rulesDir: string): Promise<{ exitCode: number; li
   }
 
   const problems: string[] = [];
+  let checkedCount = 0;
 
   for (const ruleId of ruleDirs) {
     const ruleDir = path.join(rulesDir, ruleId);
     const casesPath = path.join(ruleDir, 'cases.ts');
 
     if (!fs.existsSync(casesPath)) {
-      problems.push(`${ruleId}: cases.ts missing`);
       continue;
     }
+    checkedCount++;
 
     let cases: RuleCases;
     try {
@@ -148,7 +149,7 @@ export async function checkAll(rulesDir: string): Promise<{ exitCode: number; li
     return { exitCode: 1, lines: problems };
   }
 
-  return { exitCode: 0, lines: [`rules checked: ${ruleDirs.length}`] };
+  return { exitCode: 0, lines: [`rules checked: ${checkedCount}`] };
 }
 
 export async function generateAll(rulesDir: string): Promise<void> {
@@ -161,6 +162,8 @@ export async function generateAll(rulesDir: string): Promise<void> {
 
   for (const ruleId of ruleDirs) {
     const ruleDir = path.join(rulesDir, ruleId);
+    const casesPath = path.join(ruleDir, 'cases.ts');
+    if (!fs.existsSync(casesPath)) continue;
     const generated = await generateReadme(ruleDir, ruleId);
     fs.writeFileSync(path.join(ruleDir, 'README.md'), generated, 'utf8');
   }

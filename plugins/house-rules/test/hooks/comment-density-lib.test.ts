@@ -2053,6 +2053,77 @@ describe("GF-2 Bug B: CRLF trailing comment preserves \\r\\n", () => {
   });
 });
 
+// ---- GF-4 Defect 1: kept counts individual comments not units ----
+
+describe("GF-4 Defect 1: kept counts individual comments not units", () => {
+  it("paragraph kept: kept === comments in kept units, removed + kept === total", async () => {
+    const codeLines = Array.from({ length: 90 }, (_, i) => `const x${i} = ${i};`);
+    const text = [
+      ...codeLines,
+      "// group1 line1",
+      "// group1 line2",
+      "// group1 line3",
+      "const sep = 0;",
+      "// group2 line1",
+      "// group2 line2",
+      "// group2 line3",
+      "// group2 line4",
+      "// group2 line5",
+    ].join("\n") + "\n";
+    const addedRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.total).toBe(8);
+    expect(r.kept).toBe(3);
+    expect(r.removed).toBe(5);
+    expect(r.removed + r.kept).toBe(r.total);
+    expect(r.fixed).toContain("// group1 line1");
+    expect(r.fixed).toContain("// group1 line2");
+    expect(r.fixed).toContain("// group1 line3");
+    expect(r.fixed).not.toContain("// group2 line1");
+  });
+});
+
+// ---- GF-4 Defect 2: URL inside paragraph protects whole paragraph ----
+
+describe("GF-4 Defect 2: URL inside paragraph protects whole paragraph", () => {
+  it("URL inside paragraph: never partial removal (both prose lines kept or fix fails)", async () => {
+    const codeLines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`);
+    const text = [
+      ...codeLines,
+      "// Foo does bar per spec:",
+      "// https://example.com/spec",
+      "// and more words here",
+    ].join("\n") + "\n";
+    const addedRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "typescript", addedRows);
+    if (r.ok) {
+      expect(r.fixed).toContain("// Foo does bar per spec:");
+      expect(r.fixed).toContain("// and more words here");
+    }
+  });
+
+  it("nolint adjacent to paragraph: directive is boundary, prose paragraph still removable", async () => {
+    const varLines = Array.from({ length: 20 }, (_, i) => `var x${i} = ${i}`);
+    const text = [
+      "package main",
+      "",
+      ...varLines,
+      "//nolint:somecheck",
+      "// prose one",
+      "// prose two",
+      "// prose three",
+    ].join("\n") + "\n";
+    const addedRows = new Set(text.split("\n").map((_, i) => i));
+    const r = await autoFix(text, "go", addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("//nolint:somecheck");
+    expect(r.fixed).not.toContain("// prose one");
+  });
+});
+
 // ---- GF-2 Bug A: consecutive // paragraph partial removal ----
 
 describe("GF-2 Bug A: consecutive // paragraph removed whole-or-none", () => {

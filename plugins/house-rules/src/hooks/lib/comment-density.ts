@@ -949,6 +949,54 @@ export async function netNewCommentRows(
   return { ok: true, rows: allUnpaired, added: totalAdded, removed: totalRemoved };
 }
 
+function isExemptProse(c: Comment): boolean {
+  return c.exempt && URL_RE.test(stripMarkers(c.text));
+}
+
+function paragraphProtectedSet(
+  candidates: Comment[],
+  allComments: Comment[],
+  text: string,
+): Set<number> {
+  const allSlash: Comment[] = [];
+  for (const c of allComments) {
+    if (!c.text.startsWith("//") || c.startRow !== c.endRow) continue;
+    const ls = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+    if (text.slice(ls, c.startIndex).trim()) continue;
+    allSlash.push(c);
+  }
+  allSlash.sort((a, b) => a.startRow - b.startRow);
+
+  const paragraphs: Comment[][] = [];
+  let cur: Comment[] = [];
+  let prevRow = -2;
+  for (const c of allSlash) {
+    if (c.exempt && !isExemptProse(c)) {
+      if (cur.length > 0) { paragraphs.push(cur); cur = []; }
+      prevRow = -2;
+      continue;
+    }
+    if (c.startRow === prevRow + 1) {
+      cur.push(c);
+    } else {
+      if (cur.length > 0) paragraphs.push(cur);
+      cur = [c];
+    }
+    prevRow = c.startRow;
+  }
+  if (cur.length > 0) paragraphs.push(cur);
+
+  const candIndices = new Set(candidates.map(c => c.startIndex));
+  const result = new Set<number>();
+  for (const para of paragraphs) {
+    if (!para.some(c => isExemptProse(c))) continue;
+    for (const c of para) {
+      if (candIndices.has(c.startIndex)) result.add(c.startIndex);
+    }
+  }
+  return result;
+}
+
 export async function autoFix(
   text: string,
   lang: Lang,
@@ -997,9 +1045,14 @@ export async function autoFix(
     }
   }
 
+  const protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text);
+  const protectedCands = candidates.filter(c => protectedIndices.has(c.startIndex));
+  const removableCands = candidates.filter(c => !protectedIndices.has(c.startIndex));
+  const protectedRowCount = protectedCands.reduce((s, c) => s + commentRowCount(c), 0);
+
   const units: Comment[][] = [];
   const wholeLineHeads = new Set<Comment>();
-  for (const c of candidates) {
+  for (const c of removableCands) {
     const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
     const isWholeLine = !text.slice(lineStart, c.startIndex).trim();
     if (isWholeLine && c.text.startsWith("//") && c.startRow === c.endRow) {
@@ -1012,7 +1065,7 @@ export async function autoFix(
     }
     units.push([c]);
   }
-  let keptRows = 0;
+  let keptRows = protectedRowCount;
   let keepCount = 0;
   for (const unit of units) {
     const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
@@ -1073,7 +1126,7 @@ export async function autoFix(
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
   }
 
-  return { ok: true, fixed, removed: toRemove.length, kept: keepCount, total: candidates.length, rowChanges };
+  return { ok: true, fixed, removed: toRemove.length, kept: units.slice(0, keepCount).flat().length + protectedCands.length, total: candidates.length, rowChanges };
 }
 
 export async function density(

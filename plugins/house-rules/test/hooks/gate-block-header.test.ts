@@ -321,5 +321,118 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
     expect(reason).toContain("stray-artifacts:");
     expect(reason).toContain("Merge the coexisting directories or move/delete the scratch file.");
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
+    // Stray path must appear — the one stray file must not be hidden entirely.
+    expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
+  });
+});
+
+describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2000", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-g-"));
+    initGitRepo(tmpDir);
+    mkdirSync(path.join(tmpDir, "doc"), { recursive: true });
+    writeFileSync(path.join(tmpDir, "doc", "base.md"), "# base\n");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(g) 30 density + 1 stray → stray path shown and output ≤2000", () => {
+    const tsxFiles: string[] = [];
+    for (let i = 0; i < 30; i++) tsxFiles.push(makeTsxViolator(tmpDir, `widget${i}.tsx`));
+
+    mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    const strayFp = path.join(tmpDir, "docs", "only.md");
+    writeFileSync(strayFp, "# only\n");
+
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = makeTranscript(tmpDir, [...tsxFiles, strayFp], ts);
+
+    const r = runGate({ hook_event_name: "SubagentStop", session_id: `gbh-g-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason.length).toBeLessThanOrEqual(2000);
+    expect(reason).toContain("stray-artifacts:");
+    expect(reason).toContain(path.join(tmpDir, "docs", "only.md"));
+  });
+});
+
+describe("gate-block-header: (h) 30 parse-error fallback files → ≤2000", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-h-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(h) 1 tsx violator + 40 auto-fixed .ts (long paths) → density-only fixedNote large → ≤2000", () => {
+    // 40 long-path .ts files (auto-fixed) + 1 tsx (unfixable) → density-only path.
+    // Old gate: fixedNote not trimmed, output > 2000. New gate: trims fixedNote, ≤2000.
+    const deepDir = "src/components/deeply/nested";
+    mkdirSync(path.join(tmpDir, deepDir), { recursive: true });
+    const tsFiles: string[] = [];
+    for (let i = 0; i < 40; i++) tsFiles.push(makeTsViolatorAutoFixable(tmpDir, `${deepDir}/fix${i}.ts`));
+
+    const tsxFp = makeTsxViolator(tmpDir, "top.tsx");
+
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = makeTranscript(tmpDir, [...tsFiles, tsxFp], ts);
+
+    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-h-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason.length).toBeLessThanOrEqual(2000);
+    expect(reason).toContain("house-rules comment-density gate:");
+  });
+});
+
+describe("gate-block-header: (i) 40 auto-fixed .ts + 1 stray → ≤2000, stray shown", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-i-"));
+    initGitRepo(tmpDir);
+    mkdirSync(path.join(tmpDir, "doc"), { recursive: true });
+    writeFileSync(path.join(tmpDir, "doc", "base.md"), "# base\n");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(i) 40 auto-fixed .ts (long paths) + 1 stray → ≤2000 and stray path shown", () => {
+    // Long paths make the fixedNote huge; old gate doesn't trim it → output > 2000 + stray hidden.
+    const deepDir = "src/components/deeply/nested";
+    mkdirSync(path.join(tmpDir, deepDir), { recursive: true });
+    const tsFiles: string[] = [];
+    for (let i = 0; i < 40; i++) tsFiles.push(makeTsViolatorAutoFixable(tmpDir, `${deepDir}/fix${i}.ts`));
+
+    mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    const strayFp = path.join(tmpDir, "docs", "lone.md");
+    writeFileSync(strayFp, "# lone\n");
+
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = path.join(tmpDir, `transcript-${Date.now()}.jsonl`);
+    const lines = [...tsFiles, strayFp].map(fp => JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Write", input: { file_path: fp, content: readFileSync(fp, "utf8") } }] },
+      timestamp: ts,
+      cwd: tmpDir,
+    }));
+    writeFileSync(tp, lines.join("\n") + "\n");
+
+    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-i-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason.length).toBeLessThanOrEqual(2000);
+    expect(reason).toContain(path.join(tmpDir, "docs", "lone.md"));
   });
 });

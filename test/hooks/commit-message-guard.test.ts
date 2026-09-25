@@ -188,8 +188,8 @@ describe("commit-message-guard — wrapper forms", () => {
     expect(decision(result)).toBe("deny");
   });
 
-  it("ALLOW: git -C /some/path commit — valid message passes", () => {
-    const result = check(bash('git -C /tmp commit -m "fix(auth): correct token expiry check"'));
+  it("ALLOW: git -C /some/path commit — valid handbook message passes", () => {
+    const result = check(bash('git -C /tmp commit -m "Fix: correct token expiry check"'));
     expect(result.stdout).toBe("");
   });
 
@@ -231,6 +231,17 @@ describe("commit-message-guard — wrapper forms", () => {
   it("BITE-PROOF: reverting command-prefix handling makes command-git test fail", () => {
     const result = check(bash('command git commit -m "bad message no convention"'));
     expect(decision(result)).toBe("deny");
+  });
+
+  it("DENY: git -C to non-git-repo uses target preset (handbook), not session preset (conventional)", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gw-cmg-cross-'));
+    try {
+      const result = check(bash(`git -C ${dir} commit -m "feat: add new thing"`));
+      expect(decision(result)).toBe("deny");
+      expect(reason(result)).toMatch(/Add, Fix, Remove, Update, Refactor, Test/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

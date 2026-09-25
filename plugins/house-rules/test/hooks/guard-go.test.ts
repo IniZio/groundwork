@@ -12,13 +12,10 @@
  */
 
 import { describe, it, expect, beforeAll } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { check } from "../../src/hooks/guard.js";
-import { isGofmtAvailable } from "../../src/hooks/lib/gofmt.js";
 
 // ─── isolation ──────────────────────────────────────────────────────────────
 // Point CLAUDE_PROJECT_DIR and cwd at a temp dir (not a git repo) so the guard
@@ -183,61 +180,31 @@ func Placeholder() {}
   });
 
   it("AC3: #cgo and Output: survive (they are in old context, not stripped)", () => {
-    expect(PRE_CONTENT).toContain("// #cgo CFLAGS:");
-    expect(PRE_CONTENT).toContain("// Output:");
+    const ui = hso.updatedInput as Record<string, unknown> | undefined;
+    expect(ui).toBeDefined();
+    const newStr = typeof ui!.new_string === "string" ? ui!.new_string : "";
+    const postEdit = PRE_CONTENT.replace(OLD_STRING, newStr);
+    expect(postEdit).toContain("// #cgo CFLAGS:");
+    expect(postEdit).toContain("// Output:");
   });
 
   it("AC3: narrative filler 39 (last, over budget) is absent from updatedInput.new_string", () => {
     const ui = hso.updatedInput as Record<string, unknown> | undefined;
-    if (!ui) return;
-    const newStr = typeof ui.new_string === "string" ? ui.new_string : "";
+    expect(ui).toBeDefined();
+    const newStr = typeof ui!.new_string === "string" ? ui!.new_string : "";
     expect(NEW_STRING).toContain("ac3 narrative filler 39");
     expect(newStr).not.toContain("ac3 narrative filler 39");
   });
 
-  it("AC3 FINDING: guard sees full reconstructed post via reconstructPostEdit — #cgo and Output: exemptions CAN fire from old context", () => {
-    expect(true).toBe(true);
+  it("AC3 FINDING: #cgo and Output: byte-identical in post-edit; at least one narrative line stripped from new_string", () => {
+    const ui = hso.updatedInput as Record<string, unknown> | undefined;
+    expect(ui).toBeDefined();
+    const newStr = typeof ui!.new_string === "string" ? ui!.new_string : "";
+    const postEdit = PRE_CONTENT.replace(OLD_STRING, newStr);
+    expect(postEdit).toContain("// #cgo CFLAGS: -Wall");
+    expect(postEdit).toContain("// Output:");
+    expect(newStr).not.toContain("ac3 narrative filler 39");
   });
 });
 
-// ─── AC4: gofmt evidence (not assertion) ─────────────────────────────────────
-
-describe("AC4: guard output stays gofmt-clean (evidence, not assertion)", () => {
-  it.skipIf(!isGofmtAvailable())(
-    "gofmt -l reports no changes on updatedInput.content from AC1+AC2 Write",
-    async () => {
-      const filePath = path.join(TEMP_DIR, "corpus_gofmt.go");
-      const r = await check(writePayload(filePath, WRITE_CONTENT), {
-        readFile: () => null,
-      });
-      const hso2 = getHso(r);
-      const ui = hso2.updatedInput as Record<string, unknown> | undefined;
-      if (!ui) {
-        const gofmtPath = spawnSync("go", ["env", "GOROOT"], { encoding: "utf8" });
-        const goroot = gofmtPath.stdout.trim();
-        const gofmt = path.join(goroot, "bin", "gofmt");
-        const check2 = spawnSync(gofmt, ["-l"], {
-          input: WRITE_CONTENT,
-          encoding: "utf8",
-        });
-        expect(check2.stdout.trim()).toBe("");
-      } else {
-        const content2 = typeof ui.content === "string" ? ui.content : "";
-        const gofmtPath = spawnSync("go", ["env", "GOROOT"], { encoding: "utf8" });
-        const goroot = gofmtPath.stdout.trim();
-        const gofmt = path.join(goroot, "bin", "gofmt");
-        const check2 = spawnSync(gofmt, ["-l"], {
-          input: content2,
-          encoding: "utf8",
-          timeout: 5000,
-        });
-        const isDirty = check2.stdout.trim() !== "";
-        console.log(
-          `AC4 evidence: guard output is ${isDirty ? "NOT gofmt-clean" : "gofmt-clean"}.`,
-          `gofmt stdout: "${check2.stdout.trim()}", stderr: "${check2.stderr?.trim() ?? ""}"`
-        );
-        expect(typeof isDirty).toBe("boolean");
-      }
-    },
-  );
-});
+it.todo("guard output gofmt-clean for Go — follow-up (a)", () => {});

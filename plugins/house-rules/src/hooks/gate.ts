@@ -15,7 +15,7 @@ import { runRules } from '../engine/run.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
 import { touchedFiles } from './lib/work-scope.js';
-import { formatBlock } from './lib/block-format.js';
+import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -136,6 +136,7 @@ export async function run(
     testOnly_tmpDir?: string;
     afterTmpWrite?: (tmp: string, target: string) => void;
     testOnly_overrideFixed?: (txt: string, fixed: string, rowSet: Set<number>) => string;
+    testOnly_blockFileWriteFailure?: boolean;
   },
 ): Promise<HookResult> {
   try {
@@ -390,34 +391,73 @@ export async function run(
     const sfx = isSubagent ? handback : null;
     const fixedPaths = fixedFiles.map(f => f.path);
 
-    let reason: string;
-    if (hasDensity && !hasStray) {
-      reason = formatBlock({
-        header: DHEADER,
-        sections: [{ lines: fileLines, footer: DFOOTERBASE }],
-        notices: fallbackNotices,
-        fixedFiles: fixedPaths,
-        suffix: sfx,
-      });
-    } else if (hasStray && !hasDensity) {
-      reason = formatBlock({
-        header: "house-rules gate:",
-        sections: [{ lines: strayLines, footer: SFOOTERBASE }],
-        notices: [],
-        fixedFiles: fixedPaths,
-        suffix: sfx,
-      });
-    } else {
-      reason = formatBlock({
-        header: "house-rules gate: files changed in this session violate one or more code conventions.",
-        sections: [
+    // Build the rule summary for the short reason
+    const ruleSummaries: RuleSummary[] = [];
+    if (hasDensity) ruleSummaries.push({ name: "comment-density", paths: unfixable.map(v => v.path) });
+    if (hasStray) ruleSummaries.push({ name: "stray-artifacts", paths: strayErrors.map(f => path.join(repoRoot, f.path)) });
+
+    // Build the full untrimmed report
+    const sects = (() => {
+      if (hasDensity && !hasStray) {
+        return [{ lines: fileLines, footer: DFOOTERBASE + (sfx ?? "") }];
+      } else if (hasStray && !hasDensity) {
+        return [{ lines: strayLines, footer: SFOOTERBASE + (sfx ?? "") }];
+      } else {
+        return [
           { label: "comment-density:", lines: fileLines, footer: DFOOTER_DENSITY_BOTH },
-          { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE },
-        ],
-        notices: fallbackNotices,
-        fixedFiles: fixedPaths,
-        suffix: sfx,
-      });
+          { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE + (sfx ?? "") },
+        ];
+      }
+    })();
+    const reportHeader = hasDensity && !hasStray ? DHEADER
+      : hasStray && !hasDensity ? "house-rules gate:"
+      : "house-rules gate: files changed in this session violate one or more code conventions.";
+    const fullReport = buildFull(reportHeader, sects, fallbackNotices, fixedPaths);
+
+    // Write full report to file; short reason points to it; fallback to old trimmed reason on failure
+    const tmpBase2 = opts?.testOnly_tmpDir ?? os.tmpdir();
+    const blockFilePath = path.join(tmpBase2, "house-rules", sessionId, "stop-block.txt");
+    let writeOk = false;
+    if (opts?.testOnly_blockFileWriteFailure !== true) {
+      try {
+        mkdirSync(path.dirname(blockFilePath), { recursive: true });
+        writeFileSync(blockFilePath, fullReport + "\n");
+        writeOk = true;
+      } catch { }
+    }
+
+    let reason: string;
+    if (writeOk) {
+      reason = formatShortReason(ruleSummaries, blockFilePath, sfx);
+    } else {
+      if (hasDensity && !hasStray) {
+        reason = formatBlock({
+          header: DHEADER,
+          sections: [{ lines: fileLines, footer: DFOOTERBASE }],
+          notices: fallbackNotices,
+          fixedFiles: fixedPaths,
+          suffix: sfx,
+        });
+      } else if (hasStray && !hasDensity) {
+        reason = formatBlock({
+          header: "house-rules gate:",
+          sections: [{ lines: strayLines, footer: SFOOTERBASE }],
+          notices: [],
+          fixedFiles: fixedPaths,
+          suffix: sfx,
+        });
+      } else {
+        reason = formatBlock({
+          header: "house-rules gate: files changed in this session violate one or more code conventions.",
+          sections: [
+            { label: "comment-density:", lines: fileLines, footer: DFOOTER_DENSITY_BOTH },
+            { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE },
+          ],
+          notices: fallbackNotices,
+          fixedFiles: fixedPaths,
+          suffix: sfx,
+        });
+      }
     }
     return block(reason);
   } catch (e) {

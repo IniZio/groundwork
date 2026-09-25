@@ -1400,12 +1400,17 @@ describe("S2-gate-net-growth: reword pre-existing comment", () => {
 
     const afterTs = new Date((baseEpoch + 1) * 1000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], afterTs);
-    const r = runGate({ hook_event_name: "Stop", session_id: `s2b-${Date.now()}`, transcript_path: tp });
+    const s2bId = `s2b-${Date.now()}`;
+    const r = runGate({ hook_event_name: "Stop", session_id: s2bId, transcript_path: tp }, { TMPDIR: tmpDir });
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("rows 7");
-    expect(reason).not.toMatch(/rows.*\b5\b/);
+    expect(reason).toContain("full list:");
+    const listMatch = reason.match(/full list: (\S+)/);
+    expect(listMatch).toBeDefined();
+    const fullReport = readFileSync(listMatch![1], "utf8");
+    expect(fullReport).toContain("rows 7");
+    expect(fullReport).not.toMatch(/rows.*\b5\b/);
   });
 
   it("SubagentStop auto-fixes over-cap TypeScript file; allows", async () => {

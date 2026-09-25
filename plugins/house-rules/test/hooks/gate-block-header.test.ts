@@ -31,10 +31,14 @@ function makeTranscript(tmpDir: string, files: string[], ts: string): string {
   return tp;
 }
 
-function runGate(payload: unknown, dir: string): { stdout: string; stderr: string; status: number | null } {
+function runGate(payload: unknown, dir: string, tmpDir?: string): { stdout: string; stderr: string; status: number | null } {
   const r = spawnSync("bun", [GATE_PATH], {
     input: JSON.stringify(payload),
-    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    env: {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: dir,
+      TMPDIR: tmpDir ?? path.join(os.tmpdir(), `gbt-${process.pid}`),
+    },
     encoding: "utf8",
   });
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
@@ -91,14 +95,13 @@ describe("gate-block-header: stray-only block", () => {
       session_id: `gbh-stray-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    // Must contain the merge direction line
-    expect(reason).toContain("docs/");
-    expect(reason).toContain("doc/");
-    // Must NOT mention comments or 5/100
+    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
+    expect(reason).toContain("full list:");
     expect(reason).not.toContain("comment");
     expect(reason).not.toContain("5/100");
   });
@@ -125,12 +128,13 @@ describe("gate-block-header: comment-density-only block", () => {
       session_id: `gbh-dens-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("house-rules comment-density gate:");
-    expect(reason).toContain("5 comment lines per 100");
+    expect(reason).toContain("house-rules gate:");
+    expect(reason).toContain("comment-density");
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -161,16 +165,14 @@ describe("gate-block-header: both density and stray", () => {
       session_id: `gbh-both-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    // Must contain density section guidance
-    expect(reason).toContain("comment-density:");
-    expect(reason).toContain("5/100");
-    // Must contain stray section
-    expect(reason).toContain("stray-artifacts:");
-    expect(reason).toContain("docs/");
+    expect(reason).toContain("comment-density");
+    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain(strayFp);
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -198,10 +200,12 @@ describe("gate-block-header: SubagentStop stray-only", () => {
       session_id: `gbh-sub-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
+    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("full list:");
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).not.toContain("comment");
     expect(reason).not.toContain("5/100");
@@ -260,15 +264,14 @@ describe("gate-block-header: stray + auto-fixed .ts", () => {
       session_id: `gbh-e-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
 
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("auto-fixed in this run:");
-    expect(reason).toContain("fix.ts");
-    expect(reason).toContain("docs/");
-    expect(reason).toContain("doc/");
+    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain(strayFp);
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -312,17 +315,15 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
       session_id: `gbh-f-${Date.now()}`,
       transcript_path: tp,
       cwd: tmpDir,
-    }, tmpDir);
+    }, tmpDir, tmpDir);
 
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
-    expect(reason).toContain("stray-artifacts:");
-    expect(reason).toContain("Merge the coexisting directories or move/delete the scratch file.");
+    expect(reason).toContain("stray-artifacts");
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
-    // Stray path must appear — the one stray file must not be hidden entirely.
-    expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -350,13 +351,13 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [...tsxFiles, strayFp], ts);
 
-    const r = runGate({ hook_event_name: "SubagentStop", session_id: `gbh-g-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const r = runGate({ hook_event_name: "SubagentStop", session_id: `gbh-g-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
-    expect(reason).toContain("stray-artifacts:");
-    expect(reason).toContain(path.join(tmpDir, "docs", "only.md"));
+    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -385,12 +386,14 @@ describe("gate-block-header: (h) 30 parse-error fallback files → ≤2000", () 
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [...tsFiles, tsxFp], ts);
 
-    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-h-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-h-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
-    expect(reason).toContain("house-rules comment-density gate:");
+    expect(reason).toContain("house-rules gate:");
+    expect(reason).toContain("comment-density");
+    expect(reason).toContain("full list:");
   });
 });
 
@@ -428,11 +431,48 @@ describe("gate-block-header: (i) 40 auto-fixed .ts + 1 stray → ≤2000, stray 
     }));
     writeFileSync(tp, lines.join("\n") + "\n");
 
-    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-i-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir);
+    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-i-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
     expect(reason).toContain(path.join(tmpDir, "docs", "lone.md"));
+    expect(reason).toContain("full list:");
+  });
+});
+
+describe("gate-block-header: (j) write-failure falls back to trimmed reason", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-j-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    spawnSync("git", ["-C", tmpDir, "add", "-A"], { encoding: "utf8" });
+    spawnSync("git", ["-C", tmpDir, "commit", "--allow-empty", "-m", "base"], { encoding: "utf8" });
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("(j) when block file write fails, reason is trimmed fallback (contains density header)", () => {
+    const fp = makeTsxViolator(tmpDir, "widget.tsx");
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = spawnSync("bun", [GATE_PATH], {
+      input: JSON.stringify({
+        hook_event_name: "Stop",
+        session_id: `gbh-j-${Date.now()}`,
+        transcript_path: tp,
+        cwd: tmpDir,
+      }),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, TMPDIR: "/proc/1" },
+      encoding: "utf8",
+    });
+    const out = parseOut(r.stdout);
+    expect(out.decision).toBe("block");
+    const reason = out.reason as string;
+    expect(reason).toContain("house-rules comment-density gate:");
+    expect(reason).toContain("5 comment lines per 100");
+    expect(reason).not.toContain("full list:");
   });
 });

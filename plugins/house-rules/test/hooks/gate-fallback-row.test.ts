@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -29,10 +29,10 @@ function makeTranscript(tmpDir: string, filePath: string, content: string): stri
   return transcriptPath;
 }
 
-function runGate(payload: unknown, repoDir: string): { stdout: string; stderr: string; status: number | null } {
+function runGate(payload: unknown, repoDir: string, tmpDir?: string): { stdout: string; stderr: string; status: number | null } {
   const r = spawnSync("bun", [GATE_PATH], {
     input: JSON.stringify(payload),
-    env: { ...process.env, CLAUDE_PROJECT_DIR: repoDir },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: repoDir, TMPDIR: tmpDir ?? os.tmpdir() },
     encoding: "utf8",
   });
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
@@ -94,14 +94,19 @@ describe("gate fallback-row: parse error row in notice", () => {
             cwd: tmpDir,
           },
           tmpDir,
+          tmpDir,
         );
 
         const out = result.stdout.trim();
         const parsed = out ? (JSON.parse(out) as Record<string, unknown>) : {};
         const reason = typeof parsed.reason === "string" ? parsed.reason : "";
 
-        expect(reason, `gate should block for ${label}`).toContain("parse error — prefix count used");
-        expect(reason, `row ${expectedRow} should appear in notice for ${label}`).toContain(
+        expect(reason, `gate should block for ${label}`).toContain("comment-density");
+        expect(reason, `gate should provide full list for ${label}`).toContain("full list:");
+        const blockFilePath = path.join(tmpDir, "house-rules", `test-fbrow-${label}`, "stop-block.txt");
+        const fullReport = readFileSync(blockFilePath, "utf8");
+        expect(fullReport, `parse error notice should appear in full report for ${label}`).toContain("parse error — prefix count used");
+        expect(fullReport, `row ${expectedRow} should appear in full report notice for ${label}`).toContain(
           `target.ts:${expectedRow}: parse error — prefix count used`,
         );
       } finally {

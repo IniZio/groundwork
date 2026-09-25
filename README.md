@@ -13,7 +13,7 @@ groundwork is a Claude Code plugin. It installs alongside mattpocock/skills (a p
 
 ## What it is not
 
-- A reinvention of mattpocock/skills capabilities (debugger, arch-review, prototype — covered upstream)
+- A reinvention of mattpocock/skills capabilities (arch-review, prototype — covered upstream)
 - A replacement for per-repo tooling (conventions write to `.gitmessage`, `Makefile`, etc.)
 
 ## State model (D-7, D-9)
@@ -48,7 +48,7 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 
 ## Peer plugins
 
-**mattpocock/skills** is installed automatically as a dependency. It provides capabilities groundwork does not reinvent: debugger, arch-review, prototype, tdd, code-review, research (D-11 reuse-first). See `doc/collision-policy.md` for the skill-name collision policy.
+**mattpocock/skills** is installed automatically as a dependency. It provides capabilities groundwork does not reinvent: arch-review, prototype, tdd, code-review (D-11 reuse-first). See `doc/collision-policy.md` for the skill-name collision policy.
 
 **house-rules** is installed automatically as a dependency (requires Claude Code v2.1.193+). It provides comment-density enforcement (5/100 net-new comment cap, per-edit guard and Stop/SubagentStop gate) and stray-artifact prevention. On older Claude Code versions enforcement is silently lost; this is accepted and documented.
 

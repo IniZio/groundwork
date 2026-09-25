@@ -307,7 +307,6 @@ describe("commit-msg hook: missing house-rules plugin warning", () => {
         readFileSync(join(realHooksLib, "commit-convention.mjs"), "utf8"),
       );
 
-      // Generate and install the hook pointing to fakeLib
       const hookContent = renderCommitMsgHook({
         hooksLibPath: fakeLib,
         version: "0.0.0-test",
@@ -316,7 +315,6 @@ describe("commit-msg hook: missing house-rules plugin warning", () => {
       mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
       writeFileSync(hookPath, hookContent, { mode: 0o755 });
 
-      // Run the hook with a bad message
       const msgFile = join(dir, "COMMIT_EDITMSG");
       writeFileSync(msgFile, "bad message\n");
 

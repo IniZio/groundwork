@@ -2,6 +2,7 @@ export declare const PRESET_HANDBOOK: 'handbook'
 export declare const PRESET_CONVENTIONAL: 'conventional'
 export declare const PRESET_BODY_ONLY: 'body-only'
 export declare const CONVENTIONAL_TYPES: string[]
+export declare const SCOPE_PATTERN: RegExp
 
 export type CommitPreset = 'handbook' | 'conventional' | 'body-only'
 

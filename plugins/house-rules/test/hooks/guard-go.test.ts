@@ -175,7 +175,6 @@ func Placeholder() {}
   });
 
   it("AC3: updatedInput is present (guard triggered)", () => {
-    // If updatedInput is absent, the guard did not trigger (budget not exceeded
     expect(hso).toHaveProperty("updatedInput");
   });
 

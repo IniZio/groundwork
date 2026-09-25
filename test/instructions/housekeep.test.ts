@@ -20,7 +20,7 @@ describe("housekeep skill", () => {
     expect(content).toMatch(/^description:/m);
   });
 
-  const REFS = ["deslop", "deps", "docs-staleness", "lint-debt"] as const;
+  const REFS = ["deslop", "deps", "docs-staleness", "lint-debt", "conventions"] as const;
 
   for (const ref of REFS) {
     it(`reference/${ref}.md exists`, () => {
@@ -41,12 +41,22 @@ describe("housekeep skill", () => {
     expect(existsSync(path.join(ROOT, "plugins/house-rules/skills/housekeep/HTML-REPORT.md"))).toBe(true);
   });
 
-  it("SKILL.md references all 4 lens reference files", () => {
+  it("SKILL.md references all 5 lens reference files", () => {
     const content = readFileSync(SKILL_PATH, "utf8");
-    const lensFiles = ["reference/deslop.md", "reference/deps.md", "reference/lint-debt.md", "reference/docs-staleness.md"];
+    const lensFiles = ["reference/deslop.md", "reference/deps.md", "reference/lint-debt.md", "reference/docs-staleness.md", "reference/conventions.md"];
     for (const f of lensFiles) {
       expect(content, `SKILL.md must reference ${f}`).toContain(f);
     }
+  });
+
+  it("SKILL.md contains 'Repo conventions' option label", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).toContain("Repo conventions");
+  });
+
+  it("SKILL.md maps conventions to reference/conventions.md", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).toMatch(/`conventions`[^`]*`reference\/conventions\.md`/);
   });
 
   it("SKILL.md contains no mode-selection wording", () => {

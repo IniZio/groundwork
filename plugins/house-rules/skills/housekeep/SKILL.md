@@ -12,7 +12,7 @@ Ask "can I remove this?" before asking "what should replace it?"
 
 ## Glossary
 
-- **Lens**: one scan checklist (`slop`, `deps`, `lint-debt`, `docs`, `house-rules`)
+- **Lens**: one scan checklist (`slop`, `deps`, `lint-debt`, `docs`, `conventions`, `house-rules`)
 - **Finding** row: `| id | lens | severity | effort | auto-fix | location | finding | fix |`
 - **Severity**: SEV1 (correctness/safety), SEV2 (intent-masking/latent risk), SEV3 (maintainability), SEV4 (cosmetic)
 - **Effort**: S (<30 min), M (30–90 min), L (>90 min)
@@ -30,8 +30,9 @@ Options:
 - "Dependencies" — finds phantom deps, outdated packages, dev/prod boundary issues
 - "Lint & type suppressions" — finds @ts-ignore, eslint-disable, untyped any
 - "Stale docs" — finds dead API references, wrong paths, stale examples
+- "Repo conventions" — finds missing or empty convention files (`.gitmessage`, PR template, `.editorconfig`, etc.) and contradictions with enforced behaviour
 
-Selected options map to lenses: "Code slop & dead code" → `slop` + `house-rules`; "Dependencies" → `deps`; "Lint & type suppressions" → `lint-debt`; "Stale docs" → `docs`.
+Selected options map to lenses: "Code slop & dead code" → `slop` + `house-rules`; "Dependencies" → `deps`; "Lint & type suppressions" → `lint-debt`; "Stale docs" → `docs`; "Repo conventions" → `conventions`.
 
 Skip this step if the invocation already names aspects or says "all". If nothing is selected, scan all lenses. The `house-rules` engine lens always runs regardless of selection.
 
@@ -41,9 +42,9 @@ If the user named an area, use it. Otherwise use the branch diff since the merge
 
 ### 3. Scan
 
-Run `house-rules check` first; its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `groundwork:explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Unchosen lenses appear in the report header as "not scanned (not selected)".
+Run `house-rules check` first; its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `groundwork:explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Inventory checks (the **Orphaned entry point** smell in the `slop` lens) always run repo-wide regardless of the hot-spot scope. Unchosen lenses appear in the report header as "not scanned (not selected)".
 
-Reference files: `slop` → `reference/deslop.md`, `deps` → `reference/deps.md`, `lint-debt` → `reference/lint-debt.md`, `docs` → `reference/docs-staleness.md`.
+Reference files: `slop` → `reference/deslop.md`, `deps` → `reference/deps.md`, `lint-debt` → `reference/lint-debt.md`, `docs` → `reference/docs-staleness.md`, `conventions` → `reference/conventions.md`.
 
 ### 4. Rank
 

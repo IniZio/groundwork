@@ -1841,12 +1841,126 @@ describe("Go autoFix gofmt-safe output (GO-T2b)", () => {
     expect(out, `gofmt-dirty: ${out}`).toBe("");
   });
 
-  it("AC9: partial aligned run — unreachable budget returns go-aligned-trailing", async () => {
+  it("AC9: partial aligned run — unreachable budget returns still-over-cap", async () => {
     const codeRows = allRows(ALIGNED_STRUCT_CODE);
     const netNewWithoutGamma = new Set([...codeRows].filter(r => r !== 5));
     const r = await autoFix(ALIGNED_STRUCT_CODE, "go", codeRows, undefined, netNewWithoutGamma);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.reason).toBe("go-aligned-trailing");
+    expect(r.reason).toBe("still over cap after fix");
+  });
+});
+
+// ---- Go autoFix gofmt-integration (GO-T2c) ----
+
+describe("Go autoFix gofmt-integration (GO-T2c)", () => {
+  // narrative at end of const group — not adjacent to any spec, so not a doc-comment (exempt)
+  const F_CONST_BETWEEN = `package main\n\nconst (\n\tX      = 1\n\tYYYYYY = 2\n\t// narrative comment\n)\n`;
+  const F_FUNC_TRAILING = `package main\n\nfunc foo() {\n\tx := 1 // first\n\t// narrative\n\tyy := 22 // second\n}\n`;
+  // narrative after last struct field — not adjacent to any field declaration
+  const F_STRUCT_NARRATIVE = `package main\n\ntype T struct {\n\tA        int    // short\n\tLongName string // long\n\t// narrative\n}\n`;
+
+  function verifyGofmtClean(code: string, label: string): void {
+    if (!GOFMT_PATH) return;
+    const tmp = `/dev/shm/gofmt_verify_${label}.go`;
+    require("fs").writeFileSync(tmp, code);
+    const out = execSync(`${GOFMT_PATH} -l ${tmp} 2>&1`, { encoding: "utf8" }).trim();
+    if (out) throw new Error(`${label} not gofmt-clean: ${out}`);
+  }
+
+  it.skipIf(!GOFMT_PATH)("AC1a: const block — narrative between diff-length consts removed, output gofmt-clean", async () => {
+    verifyGofmtClean(F_CONST_BETWEEN, "ac1a_in");
+    const r = await autoFix(F_CONST_BETWEEN, "go", allRows(F_CONST_BETWEEN));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+    verifyGofmtClean(r.fixed, "ac1a_out");
+  });
+
+  it.skipIf(!GOFMT_PATH)("AC1b: func body — narrative between trailing-comment stmts removed, output gofmt-clean", async () => {
+    verifyGofmtClean(F_FUNC_TRAILING, "ac1b_in");
+    const r = await autoFix(F_FUNC_TRAILING, "go", allRows(F_FUNC_TRAILING));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+    verifyGofmtClean(r.fixed, "ac1b_out");
+  });
+
+  it.skipIf(!GOFMT_PATH)("AC1c: struct fields split by narrative — narrative removed, output gofmt-clean", async () => {
+    verifyGofmtClean(F_STRUCT_NARRATIVE, "ac1c_in");
+    const r = await autoFix(F_STRUCT_NARRATIVE, "go", allRows(F_STRUCT_NARRATIVE));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).not.toContain("narrative");
+    verifyGofmtClean(r.fixed, "ac1c_out");
+  });
+
+  it.skipIf(!GOFMT_PATH)("AC1d: all-removed struct — no trailing comments, output gofmt-clean", async () => {
+    verifyGofmtClean(ALL_REMOVED_STRUCT, "ac1d_in");
+    const r = await autoFix(ALL_REMOVED_STRUCT, "go", allRows(ALL_REMOVED_STRUCT));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBe(3);
+    expect(r.fixed).not.toContain("// alpha");
+    expect(r.fixed).not.toContain("// beta");
+    expect(r.fixed).not.toContain("// gamma");
+    verifyGofmtClean(r.fixed, "ac1d_out");
+  });
+
+  it.skipIf(!GOFMT_PATH)("AC2: gofmt-dirty input not reformatted; non-removed rows byte-identical", async () => {
+    const dirtyCode = `package main\n\nconst (\n  X = 1\n  Y = 2\n)\n\n// narrative one\n// narrative two\n// narrative three\n// narrative four\n// narrative five\n// narrative six\n\nfunc main() {}\n`;
+    const r = await autoFix(dirtyCode, "go", allRows(dirtyCode));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("  X = 1");
+    expect(r.fixed).toContain("  Y = 2");
+    expect(r.fixed).not.toContain("// narrative");
+  });
+
+  it("AC3a: HOUSE_RULES_GOFMT='' — ok:false reason go-gofmt-unavailable", async () => {
+    const prev = process.env.HOUSE_RULES_GOFMT;
+    process.env.HOUSE_RULES_GOFMT = "";
+    try {
+      const code = `package main\n\nfunc main() {\n\t// c1\n\t// c2\n\t// c3\n\t// c4\n\t// c5\n\t// c6\n\tx := 1\n\t_ = x\n}\n`;
+      const r = await autoFix(code, "go", allRows(code));
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.reason).toBe("go-gofmt-unavailable");
+    } finally {
+      if (prev === undefined) delete process.env.HOUSE_RULES_GOFMT;
+      else process.env.HOUSE_RULES_GOFMT = prev;
+    }
+  });
+
+  it("AC3b: HOUSE_RULES_GOFMT=exit-1 script — ok:false reason go-gofmt-failed", async () => {
+    const scriptPath = `/dev/shm/fake_gofmt_${Date.now()}.sh`;
+    require("fs").writeFileSync(scriptPath, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const prev = process.env.HOUSE_RULES_GOFMT;
+    process.env.HOUSE_RULES_GOFMT = scriptPath;
+    try {
+      const code = `package main\n\nfunc main() {\n\t// c1\n\t// c2\n\t// c3\n\t// c4\n\t// c5\n\t// c6\n\tx := 1\n\t_ = x\n}\n`;
+      const r = await autoFix(code, "go", allRows(code));
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.reason).toBe("go-gofmt-failed");
+    } finally {
+      if (prev === undefined) delete process.env.HOUSE_RULES_GOFMT;
+      else process.env.HOUSE_RULES_GOFMT = prev;
+      try { require("fs").unlinkSync(scriptPath); } catch { }
+    }
+  });
+
+  it("AC4: TypeScript autoFix unaffected by Go gofmt path", async () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i}; // comment ${i}`);
+    const code = lines.join("\n") + "\n";
+    const r = await autoFix(code, "typescript", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toMatch(/const x0 = 0;/);
   });
 });

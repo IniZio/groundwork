@@ -2,6 +2,7 @@ import path from "node:path";
 import { getParser as defaultGetParser, type Lang } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
 import type { DiffHunk } from "./work-scope.js";
+import { formatGo, isGofmtAvailable } from "./gofmt.js";
 
 export type { Lang };
 
@@ -708,74 +709,6 @@ function normalizeGoRemovalWhitespace(
   return result.join("\n");
 }
 
-type AlignedUnitsResult = { units: Comment[][]; protectedRows: number };
-
-function buildGoAlignedUnits(candidates: Comment[], allComments: Comment[], text: string): AlignedUnitsResult {
-  function isTrailing(c: Comment): boolean {
-    const before = text.slice(0, c.startIndex);
-    const lineStart = before.lastIndexOf("\n") + 1;
-    return before.slice(lineStart).trim() !== "";
-  }
-
-  const trailingByRow = new Map<number, Comment>();
-  for (const c of allComments) {
-    if (isTrailing(c)) trailingByRow.set(c.startRow, c);
-  }
-
-  const rowToRunId = new Map<number, number>();
-  const runs: number[][] = [];
-  const sortedRows = [...trailingByRow.keys()].sort((a, b) => a - b);
-  let i = 0;
-  while (i < sortedRows.length) {
-    let j = i + 1;
-    while (j < sortedRows.length && sortedRows[j] === sortedRows[j - 1] + 1) j++;
-    if (j - i >= 2) {
-      const runId = runs.length;
-      runs.push(sortedRows.slice(i, j));
-      for (let k = i; k < j; k++) rowToRunId.set(sortedRows[k], runId);
-    }
-    i = j;
-  }
-
-  const candidateByRow = new Map<number, Comment>();
-  for (const c of candidates) {
-    if (isTrailing(c)) candidateByRow.set(c.startRow, c);
-  }
-
-  const runFullyCovered = runs.map(runRows => runRows.every(r => candidateByRow.has(r)));
-
-  const inBundle = new Set<number>();
-  const isProtected = new Set<number>();
-  for (const c of candidates) {
-    if (!isTrailing(c)) continue;
-    const runId = rowToRunId.get(c.startRow);
-    if (runId === undefined) continue;
-    if (runFullyCovered[runId]) inBundle.add(c.startIndex);
-    else isProtected.add(c.startIndex);
-  }
-
-  const processedRuns = new Set<number>();
-  const units: Comment[][] = [];
-  let protectedRows = 0;
-
-  for (const c of candidates) {
-    if (isProtected.has(c.startIndex)) {
-      protectedRows += c.endRow - c.startRow + 1;
-      continue;
-    }
-    if (inBundle.has(c.startIndex)) {
-      const runId = rowToRunId.get(c.startRow)!;
-      if (processedRuns.has(runId)) continue;
-      processedRuns.add(runId);
-      const bundle = runs[runId].filter(r => candidateByRow.has(r)).map(r => candidateByRow.get(r)!);
-      units.push(bundle);
-    } else {
-      units.push([c]);
-    }
-  }
-
-  return { units, protectedRows };
-}
 
 const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
 const FALLBACK_URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
@@ -1064,11 +997,8 @@ export async function autoFix(
     }
   }
 
-  const { units, protectedRows } = lang === "go"
-    ? buildGoAlignedUnits(candidates, origParsed.comments, text)
-    : { units: candidates.map(c => [c]), protectedRows: 0 };
-
-  let keptRows = protectedRows;
+  const units = candidates.map(c => [c]);
+  let keptRows = 0;
   let keepCount = 0;
   for (const unit of units) {
     const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
@@ -1088,21 +1018,34 @@ export async function autoFix(
     const remappedSize = addedRows.size - wlRemovedRows;
     if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
     if (keepCount === 0) {
-      const reason = lang === "go" && protectedRows > 0 ? "go-aligned-trailing" : "still over cap after fix";
-      return { ok: false, reason };
+      return { ok: false, reason: "still over cap after fix" };
     }
     keptRows -= units[keepCount - 1].reduce((s, c) => s + commentRowCount(c), 0);
     keepCount--;
   }
   if (keepCount < 0) {
-    const reason = lang === "go" && protectedRows > 0 ? "go-aligned-trailing" : "still over cap after fix";
-    return { ok: false, reason };
+    return { ok: false, reason: "still over cap after fix" };
   }
 
   const toRemove = units.slice(keepCount).flat();
   const stripped = stripComments(text, toRemove);
-  const fixed = lang === "go" ? normalizeGoRemovalWhitespace(text, stripped.text, stripped.rowChanges) : stripped.text;
   const { rowChanges } = stripped;
+
+  let fixed: string;
+  if (lang === "go") {
+    if (!isGofmtAvailable()) return { ok: false, reason: "go-gofmt-unavailable" };
+    const origFmt = await formatGo(text);
+    if (!origFmt.ok) return { ok: false, reason: origFmt.reason };
+    if (origFmt.out === text) {
+      const strippedFmt = await formatGo(stripped.text);
+      if (!strippedFmt.ok) return { ok: false, reason: strippedFmt.reason };
+      fixed = strippedFmt.out;
+    } else {
+      fixed = normalizeGoRemovalWhitespace(text, stripped.text, rowChanges);
+    }
+  } else {
+    fixed = stripped.text;
+  }
 
   const fp = await findComments(fixed, lang, getParser);
   if (!fp.ok) return { ok: false, reason: `post-strip parse: ${fp.reason}` };

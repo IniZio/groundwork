@@ -416,6 +416,94 @@ function writeDiag(
   } catch { /* never throw */ }
 }
 
+// ---------------------------------------------------------------------------
+// Escalation nudge — warn when a groundwork:implementer has run too long
+// ---------------------------------------------------------------------------
+
+interface EscalateState {
+  firstSeen: Record<string, string>; // taskId → ISO timestamp
+  nudged: string[];                  // taskIds already nudged
+}
+
+export function escalateStateFile(
+  inp: Record<string, unknown>,
+  env: Record<string, string | undefined>,
+  dbPath: string | null,
+): string {
+  const rawId = typeof inp.session_id === "string" ? inp.session_id : "default";
+  const safeId = rawId.replace(/[^a-zA-Z0-9-]/g, "_").slice(0, 64);
+  if (dbPath !== null) {
+    return path.join(path.dirname(dbPath), `stop-gate.${safeId}.escalate.json`);
+  }
+  const base = (typeof inp.cwd === "string" ? inp.cwd : undefined) ?? env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  return path.join(base, ".groundwork", `stop-gate.${safeId}.escalate.json`);
+}
+
+export function escalationNudge(
+  inp: Record<string, unknown>,
+  env: Record<string, string | undefined>,
+  dbPath: string | null,
+): string | null {
+  try {
+    const tasks = inp.background_tasks;
+    if (!Array.isArray(tasks)) return null;
+    const matching = (tasks as Record<string, unknown>[]).filter(
+      t => t.status === "running" && t.agent_type === "groundwork:implementer" && typeof t.id === "string" && (t.id as string).length > 0
+    );
+    if (matching.length === 0) return null;
+
+    const stateFile = escalateStateFile(inp, env, dbPath);
+    let state: EscalateState = { firstSeen: {}, nudged: [] };
+    try {
+      const raw = readFileSync(stateFile, "utf8");
+      const parsed = JSON.parse(raw) as EscalateState;
+      if (parsed && typeof parsed === "object") state = parsed;
+    } catch { /* absent or corrupt — use default */ }
+
+    const now = Date.now();
+    const threshold = 15 * 60 * 1000;
+    const nudgeLines: string[] = [];
+    let stateChanged = false;
+
+    for (const task of matching) {
+      const id = task.id as string;
+      if (state.nudged.includes(id)) continue;
+      if (!(id in state.firstSeen)) {
+        state.firstSeen[id] = new Date().toISOString();
+        stateChanged = true;
+      }
+      const elapsedMs = now - Date.parse(state.firstSeen[id]);
+      if (elapsedMs >= threshold) {
+        const elapsedMin = Math.floor(elapsedMs / 60000);
+        const desc = typeof task.description === "string" ? task.description : id;
+        nudgeLines.push(`implementer-escalation: task "${desc}" has run for ${elapsedMin} min — split further or re-route to groundwork:junior-orchestrator`);
+        state.nudged.push(id);
+        stateChanged = true;
+      }
+    }
+
+    if (stateChanged) {
+      try {
+        mkdirSync(path.dirname(stateFile), { recursive: true });
+        writeFileSync(stateFile, JSON.stringify(state));
+      } catch { }
+    }
+
+    if (nudgeLines.length === 0) return null;
+    return nudgeLines.join("\n");
+  } catch { return null; }
+}
+
+function appendNudge(result: HookResult, nudge: string): HookResult {
+  try {
+    const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+    parsed.hookSpecificOutput = { hookEventName: "Stop", additionalContext: nudge };
+    return { ...result, stdout: JSON.stringify(parsed) + "\n" };
+  } catch {
+    return result;
+  }
+}
+
 export function run(input: unknown, env: Record<string, string | undefined>): HookResult {
   try {
     if (isEmbedded(env)) return allow();
@@ -423,7 +511,11 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     const cwd = typeof inp.cwd === "string" ? inp.cwd : undefined;
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
-    if (!dbPath) return allow("stop-gate: no active work store — session may end");
+    if (!dbPath) {
+      const base = allow("stop-gate: no active work store — session may end");
+      const nudge = escalationNudge(inp, env, null);
+      return nudge ? appendNudge(base, nudge) : base;
+    }
 
     const compute = (): { result: HookResult; yieldResult: string | null } => {
       const { sliceCount, incomplete, incompleteIds, approved, holdActive, motiveDetails } = checkStore(dbPath);
@@ -538,7 +630,8 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
 
     const { result, yieldResult } = compute();
     writeDiag(dbPath, inp, yieldResult, result);
-    return result;
+    const nudge = escalationNudge(inp, env, dbPath);
+    return nudge ? appendNudge(result, nudge) : result;
   } catch { return allow("stop-gate: error reading store — fail-open"); }
 }
 

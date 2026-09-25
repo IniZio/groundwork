@@ -169,7 +169,6 @@ function derivePreset(repoRoot) {
   try {
     const result = deriveConvention(repoRoot)
     if (!result.confident || !result.rules) return PRESET_HANDBOOK
-    // Map rule shape to preset name: type-scope → conventional, otherwise handbook
     return result.rules.shape === 'type-scope' ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
   } catch {
     return PRESET_HANDBOOK
@@ -180,8 +179,6 @@ export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
   const repoRoot = opts?.repoRoot ?? null
 
-  // Resolve preset:
-  //   1. .gitmessage present → body-only enforcement (no subject grammar)
   let preset
   if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
     preset = PRESET_BODY_ONLY

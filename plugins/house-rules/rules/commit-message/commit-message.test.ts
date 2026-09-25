@@ -7,6 +7,7 @@ import {
   readConfigPreset,
   PRESET_HANDBOOK,
   PRESET_CONVENTIONAL,
+  PRESET_BODY_ONLY,
 } from './lint.mjs'
 
 // --- readConfigPreset ---
@@ -133,6 +134,59 @@ describe('lintCommitMessage – conventional preset', () => {
   it('fails when line 2 is not blank (missing blank separator)', () => {
     const result = lintCommitMessage('feat: add thing\nbody text', opts)
     expect(result.violations.length).toBeGreaterThan(0)
+  })
+})
+
+// --- conventional 72-char cap bite proof (Decision B) ---
+
+describe('lintCommitMessage – conventional 72-char cap (bite proof)', () => {
+  it('73-char subject fails cap — bites: would pass if cap were 720', () => {
+    // Subject is exactly 73 chars: "feat: " (6) + 67 x chars = 73 total
+    const subject = 'feat: ' + 'x'.repeat(67)  // length = 73
+    expect(subject.length).toBe(73)
+    const result = lintCommitMessage(subject, { preset: PRESET_CONVENTIONAL })
+    // Must have a cap violation — if the cap were changed to 720, this test would fail
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.reason.includes('72'))).toBe(true)
+  })
+
+  it('72-char subject passes cap exactly', () => {
+    // Subject is exactly 72 chars: "feat: " (6) + 66 x chars = 72 total
+    const subject = 'feat: ' + 'x'.repeat(66)  // length = 72
+    expect(subject.length).toBe(72)
+    const result = lintCommitMessage(subject, { preset: PRESET_CONVENTIONAL })
+    expect(result.violations).toHaveLength(0)
+  })
+})
+
+// --- body-only preset (Decision C: .gitmessage repos) ---
+
+describe('lintCommitMessage – body-only preset (Decision C: .gitmessage repos)', () => {
+  it('allows any subject grammar', () => {
+    const result = lintCommitMessage('anything goes for subject', { preset: PRESET_BODY_ONLY })
+    expect(result.violations).toHaveLength(0)
+  })
+
+  it('allows conventional-style subject too', () => {
+    const result = lintCommitMessage('feat: add thing', { preset: PRESET_BODY_ONLY })
+    expect(result.violations).toHaveLength(0)
+  })
+
+  it('denies body (no body allowed)', () => {
+    const result = lintCommitMessage('any subject\n\nbody text here', { preset: PRESET_BODY_ONLY })
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.group === 'body')).toBe(true)
+  })
+
+  it('denies body bullet markers', () => {
+    const result = lintCommitMessage('any subject\n\n- a bullet point', { preset: PRESET_BODY_ONLY })
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.reason.includes('bullet'))).toBe(true)
+  })
+
+  it('allows subject-only message', () => {
+    const result = lintCommitMessage('subject only no body', { preset: PRESET_BODY_ONLY })
+    expect(result.violations).toHaveLength(0)
   })
 })
 

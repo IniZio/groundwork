@@ -650,6 +650,133 @@ export function stripComments(text: string, comments: Comment[]): { text: string
   return { text: result, rowChanges };
 }
 
+function normalizeGoRemovalWhitespace(
+  origText: string,
+  fixed: string,
+  rowChanges: RowChange[],
+): string {
+  const deletedOrigRows = rowChanges
+    .filter(rc => rc.kind === "deleted")
+    .map(rc => rc.origRow)
+    .sort((a, b) => a - b);
+  if (deletedOrigRows.length === 0) return fixed;
+
+  const origLines = origText.split("\n");
+  const isBlank = (s: string | undefined) => (s ?? "").trim() === "";
+
+  function deletedBefore(origRow: number): number {
+    let lo = 0, hi = deletedOrigRows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (deletedOrigRows[mid] < origRow) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  const collapseSites = new Set<number>();
+
+  let i = 0;
+  while (i < deletedOrigRows.length) {
+    const lo = deletedOrigRows[i];
+    let hi = lo;
+    while (i + 1 < deletedOrigRows.length && deletedOrigRows[i + 1] === hi + 1) {
+      i++;
+      hi = deletedOrigRows[i];
+    }
+    const beforeBlank = lo > 0 && isBlank(origLines[lo - 1]);
+    const afterBlank = isBlank(origLines[hi + 1]);
+    if (beforeBlank && afterBlank) {
+      const db = deletedBefore(lo);
+      const clusterSize = hi - lo + 1;
+      const finalAfter = hi + 1 - (db + clusterSize);
+      collapseSites.add(finalAfter);
+    }
+    i++;
+  }
+
+  if (collapseSites.size === 0) return fixed;
+
+  const fixedLines = fixed.split("\n");
+  const result: string[] = [];
+  for (let j = 0; j < fixedLines.length; j++) {
+    const blank = fixedLines[j].trim() === "";
+    const prevBlank = result.length > 0 && result[result.length - 1].trim() === "";
+    if (blank && prevBlank && collapseSites.has(j)) continue;
+    result.push(fixedLines[j]);
+  }
+  return result.join("\n");
+}
+
+type AlignedUnitsResult = { units: Comment[][]; protectedRows: number };
+
+function buildGoAlignedUnits(candidates: Comment[], allComments: Comment[], text: string): AlignedUnitsResult {
+  function isTrailing(c: Comment): boolean {
+    const before = text.slice(0, c.startIndex);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    return before.slice(lineStart).trim() !== "";
+  }
+
+  const trailingByRow = new Map<number, Comment>();
+  for (const c of allComments) {
+    if (isTrailing(c)) trailingByRow.set(c.startRow, c);
+  }
+
+  const rowToRunId = new Map<number, number>();
+  const runs: number[][] = [];
+  const sortedRows = [...trailingByRow.keys()].sort((a, b) => a - b);
+  let i = 0;
+  while (i < sortedRows.length) {
+    let j = i + 1;
+    while (j < sortedRows.length && sortedRows[j] === sortedRows[j - 1] + 1) j++;
+    if (j - i >= 2) {
+      const runId = runs.length;
+      runs.push(sortedRows.slice(i, j));
+      for (let k = i; k < j; k++) rowToRunId.set(sortedRows[k], runId);
+    }
+    i = j;
+  }
+
+  const candidateByRow = new Map<number, Comment>();
+  for (const c of candidates) {
+    if (isTrailing(c)) candidateByRow.set(c.startRow, c);
+  }
+
+  const runFullyCovered = runs.map(runRows => runRows.every(r => candidateByRow.has(r)));
+
+  const inBundle = new Set<number>();
+  const isProtected = new Set<number>();
+  for (const c of candidates) {
+    if (!isTrailing(c)) continue;
+    const runId = rowToRunId.get(c.startRow);
+    if (runId === undefined) continue;
+    if (runFullyCovered[runId]) inBundle.add(c.startIndex);
+    else isProtected.add(c.startIndex);
+  }
+
+  const processedRuns = new Set<number>();
+  const units: Comment[][] = [];
+  let protectedRows = 0;
+
+  for (const c of candidates) {
+    if (isProtected.has(c.startIndex)) {
+      protectedRows += c.endRow - c.startRow + 1;
+      continue;
+    }
+    if (inBundle.has(c.startIndex)) {
+      const runId = rowToRunId.get(c.startRow)!;
+      if (processedRuns.has(runId)) continue;
+      processedRuns.add(runId);
+      const bundle = runs[runId].filter(r => candidateByRow.has(r)).map(r => candidateByRow.get(r)!);
+      units.push(bundle);
+    } else {
+      units.push([c]);
+    }
+  }
+
+  return { units, protectedRows };
+}
+
 const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
 const FALLBACK_URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
 const FALLBACK_SECTION_DIV_RE = /^\s*\/\/[ \t]*(?:[─-╿]{2,}|[-=]{4,})/u;
@@ -937,10 +1064,14 @@ export async function autoFix(
     }
   }
 
-  let keptRows = 0;
+  const { units, protectedRows } = lang === "go"
+    ? buildGoAlignedUnits(candidates, origParsed.comments, text)
+    : { units: candidates.map(c => [c]), protectedRows: 0 };
+
+  let keptRows = protectedRows;
   let keepCount = 0;
-  for (const c of candidates) {
-    const rows = commentRowCount(c);
+  for (const unit of units) {
+    const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
     if (keptRows + rows <= maxAllowedRows) {
       keptRows += rows;
       keepCount++;
@@ -949,22 +1080,29 @@ export async function autoFix(
     }
   }
 
-  // Whole-line removals shrink the added-row denominator; loop until post-fix density ≤5/100.
   while (keepCount >= 0) {
-    const removedCands = candidates.slice(keepCount);
+    const removedCands = units.slice(keepCount).flat();
     const wlRemovedRows = stripComments(text, removedCands).rowChanges.filter(
       rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
     ).length;
     const remappedSize = addedRows.size - wlRemovedRows;
     if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
-    if (keepCount === 0) return { ok: false, reason: "still over cap after fix" };
-    keptRows -= commentRowCount(candidates[keepCount - 1]);
+    if (keepCount === 0) {
+      const reason = lang === "go" && protectedRows > 0 ? "go-aligned-trailing" : "still over cap after fix";
+      return { ok: false, reason };
+    }
+    keptRows -= units[keepCount - 1].reduce((s, c) => s + commentRowCount(c), 0);
     keepCount--;
   }
-  if (keepCount < 0) return { ok: false, reason: "still over cap after fix" };
+  if (keepCount < 0) {
+    const reason = lang === "go" && protectedRows > 0 ? "go-aligned-trailing" : "still over cap after fix";
+    return { ok: false, reason };
+  }
 
-  const toRemove = candidates.slice(keepCount);
-  const { text: fixed, rowChanges } = stripComments(text, toRemove);
+  const toRemove = units.slice(keepCount).flat();
+  const stripped = stripComments(text, toRemove);
+  const fixed = lang === "go" ? normalizeGoRemovalWhitespace(text, stripped.text, stripped.rowChanges) : stripped.text;
+  const { rowChanges } = stripped;
 
   const fp = await findComments(fixed, lang, getParser);
   if (!fp.ok) return { ok: false, reason: `post-strip parse: ${fp.reason}` };

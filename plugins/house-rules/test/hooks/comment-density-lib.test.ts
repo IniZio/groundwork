@@ -1,5 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import path from "node:path";
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   detectLanguage,
   findComments,
@@ -1694,5 +1696,157 @@ describe("Go +marker: directive exemptions", () => {
     const c = r.comments.find(c => c.text.includes("+ not a marker"));
     expect(c).toBeDefined();
     expect(c!.exempt).toBe(false);
+  });
+});
+
+let _gofmtPath: string | null = null;
+try {
+  const goroot = execSync("go env GOROOT 2>/dev/null", { encoding: "utf8" }).trim();
+  const candidate = path.join(goroot, "bin", "gofmt");
+  if (existsSync(candidate)) _gofmtPath = candidate;
+} catch { /* go not on PATH */ }
+const GOFMT_PATH = _gofmtPath;
+
+function allRows(code: string): Set<number> {
+  return new Set(code.split("\n").map((_, i) => i));
+}
+
+const GO_FIXTURES = {
+  F1_between_blanks: `package main\n\nfunc main() {\n\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n\n\tx := 1\n\t_ = x\n}\n`,
+  F2_comment_at_eof: `package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n\n// comment one\n// comment two\n// comment three\n// comment four\n// comment five\n// comment six\n`,
+  F3_trailing_single: `package main\n\nfunc main() {\n\tx := 1 // comment one\n\ty := 2 // comment two\n\tz := 3 // comment three\n\ta := 4 // comment four\n\tb := 5 // comment five\n\tc := 6 // comment six\n\t_ = x + y + z + a + b + c\n}\n`,
+  F4_start_of_func: `package main\n\nfunc main() {\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n\tx := 1\n\t_ = x\n}\n`,
+  F5_before_brace: `package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n}\n`,
+  F6_aligned_struct: `package main\n\ntype Foo struct {\n\tA int     // comment one\n\tB string  // comment two\n\tC float64 // comment three\n\tD bool    // comment four\n\tE int64   // comment five\n\tF uint    // comment six\n}\n`,
+  F7_blank_comment_brace: `package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n\t// comment seven\n}\n`,
+  F8_comment_before_blank: `package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n\n\ty := 2\n\t_ = y\n}\n`,
+};
+
+const KNOWN_GOFMT_FAILING: Array<keyof typeof GO_FIXTURES> = [];
+
+const ALIGNED_STRUCT_CODE = `package main\n\ntype Foo struct {\n\tA        int     // alpha\n\tB        string  // beta\n\tLongName float64 // gamma\n}\n`;
+
+const f9VarLines = Array.from({ length: 47 }, (_, i) => `\tvar x${i} = ${i}`).join("\n");
+const ALIGNED_WITH_NARRATIVE = `package main\n\ntype Foo struct {\n\tA        int     // alpha\n\tB        string  // beta\n\tLongName float64 // gamma\n}\n\n// narrative\n\nfunc main() {\n${f9VarLines}\n\t_ = x0\n}\n`;
+
+const ALL_REMOVED_STRUCT = `package main\n\ntype Foo struct {\n\tA        int     // alpha\n\tB        string  // beta\n\tLongName float64 // gamma\n}\n\nfunc main() {\n\tvar x0, x1, x2, x3, x4, x5, x6, x7, x8, x9 int\n\t_ = x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9\n}\n`;
+
+describe("Go autoFix gofmt-safe output (GO-T2b)", () => {
+  it("AC1: comment between two blank lines collapses to a single blank line", async () => {
+    const code = GO_FIXTURES.F1_between_blanks;
+    const r = await autoFix(code, "go", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).not.toMatch(/\n\n\n/);
+    expect(r.fixed).toContain("func main() {\n\n\t");
+  });
+
+  it("AC2: comment block at EOF leaves no trailing blank line", async () => {
+    const code = GO_FIXTURES.F2_comment_at_eof;
+    const r = await autoFix(code, "go", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).not.toMatch(/\n\n$/);
+    expect(r.fixed).toMatch(/\}\n$/);
+  });
+
+  it("AC3: pre-existing double blank elsewhere is preserved byte-identical", async () => {
+    const code = `package main\n\n\nfunc main() {\n\tx := 1\n\t// comment one\n\t// comment two\n\t// comment three\n\t// comment four\n\t// comment five\n\t// comment six\n\t_ = x\n}\n`;
+    const r = await autoFix(code, "go", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).toContain("package main\n\n\nfunc main()");
+  });
+
+  it.skipIf(!GOFMT_PATH)(
+    "AC4: gofmt oracle — all gofmt-clean fixtures remain gofmt-clean after autoFix (known-failing list must be empty)",
+    async () => {
+      const EXPECTED_FAILING = new Set<string>(KNOWN_GOFMT_FAILING);
+      const actualFailing: string[] = [];
+      const actualPassing: string[] = [];
+
+      for (const [name, code] of Object.entries(GO_FIXTURES)) {
+        const inputFile = `/dev/shm/gofmt_input_${name}.go`;
+        require("fs").writeFileSync(inputFile, code);
+        const inputOut = execSync(`${GOFMT_PATH} -l ${inputFile} 2>&1`, { encoding: "utf8" }).trim();
+        if (inputOut) { actualFailing.push(`${name}(input not gofmt-clean)`); continue; }
+
+        const r = await autoFix(code, "go", allRows(code));
+        if (!r.ok) { actualFailing.push(`${name}(autoFix failed: ${r.reason})`); continue; }
+
+        const tmpFile = `/dev/shm/gofmt_oracle_${name}.go`;
+        require("fs").writeFileSync(tmpFile, r.fixed);
+        const out = execSync(`${GOFMT_PATH} -l ${tmpFile} 2>&1`, { encoding: "utf8" }).trim();
+        if (out) actualFailing.push(name);
+        else actualPassing.push(name);
+      }
+
+      const unexpectedFail = actualFailing.filter(n => !EXPECTED_FAILING.has(n));
+      const unexpectedPass = actualPassing.filter(n => EXPECTED_FAILING.has(n));
+
+      expect(unexpectedFail, `unexpected gofmt failures: ${unexpectedFail.join(", ")}`).toEqual([]);
+      expect(unexpectedPass, `expected-failing now passes (update list): ${unexpectedPass.join(", ")}`).toEqual([]);
+    },
+  );
+
+  it("AC5: TypeScript autoFix output is unaffected by Go normalisation path", async () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i}; // comment ${i}`);
+    const code = lines.join("\n") + "\n";
+    const r = await autoFix(code, "typescript", allRows(code));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toMatch(/const x0 = 0;/);
+  });
+
+  it("AC6: autoFix returns ok and removed>0 for each Go fixture", async () => {
+    for (const [name, code] of Object.entries(GO_FIXTURES)) {
+      const r = await autoFix(code, "go", allRows(code));
+      expect(r.ok, `${name}: expected ok`).toBe(true);
+      if (!r.ok) continue;
+      expect(r.removed, `${name}: expected removed>0`).toBeGreaterThan(0);
+    }
+  });
+
+  it("AC7: aligned trailing run — narrative removed, all aligned comments kept, gofmt-clean", async () => {
+    const r = await autoFix(ALIGNED_WITH_NARRATIVE, "go", allRows(ALIGNED_WITH_NARRATIVE));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("// alpha");
+    expect(r.fixed).toContain("// beta");
+    expect(r.fixed).toContain("// gamma");
+    expect(r.fixed).not.toContain("// narrative");
+
+    if (!GOFMT_PATH) return;
+    const tmp = `/dev/shm/gofmt_ac7.go`;
+    require("fs").writeFileSync(tmp, r.fixed);
+    const out = execSync(`${GOFMT_PATH} -l ${tmp} 2>&1`, { encoding: "utf8" }).trim();
+    expect(out, `gofmt-dirty: ${out}`).toBe("");
+  });
+
+  it("AC8: aligned trailing run — all-removed variant is gofmt-clean", async () => {
+    const r = await autoFix(ALL_REMOVED_STRUCT, "go", allRows(ALL_REMOVED_STRUCT));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBe(3);
+    expect(r.fixed).not.toContain("// alpha");
+    expect(r.fixed).not.toContain("// beta");
+    expect(r.fixed).not.toContain("// gamma");
+
+    if (!GOFMT_PATH) return;
+    const tmp = `/dev/shm/gofmt_ac8.go`;
+    require("fs").writeFileSync(tmp, r.fixed);
+    const out = execSync(`${GOFMT_PATH} -l ${tmp} 2>&1`, { encoding: "utf8" }).trim();
+    expect(out, `gofmt-dirty: ${out}`).toBe("");
+  });
+
+  it("AC9: partial aligned run — unreachable budget returns go-aligned-trailing", async () => {
+    const codeRows = allRows(ALIGNED_STRUCT_CODE);
+    const netNewWithoutGamma = new Set([...codeRows].filter(r => r !== 5));
+    const r = await autoFix(ALIGNED_STRUCT_CODE, "go", codeRows, undefined, netNewWithoutGamma);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toBe("go-aligned-trailing");
   });
 });

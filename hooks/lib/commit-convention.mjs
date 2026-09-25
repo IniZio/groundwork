@@ -2,17 +2,15 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { readRecentSubjects } from './derive-convention.mjs'
 import {
   lintCommitMessage,
-  readConfigPreset,
+  resolvePreset,
   SCOPE_PATTERN,
   PRESET_BODY_ONLY,
-  PRESET_CONVENTIONAL,
   PRESET_HANDBOOK,
-} from '../../plugins/house-rules/rules/commit-message/lint.mjs'
+} from './house-rules-lint.mjs'
 
-export { SCOPE_PATTERN } from '../../plugins/house-rules/rules/commit-message/lint.mjs'
+export { SCOPE_PATTERN } from './house-rules-lint.mjs'
 
 export const SUBJECT_CAP = 72
 
@@ -165,22 +163,6 @@ function getMarketplacePluginNames(repoRoot) {
   }
 }
 
-const DERIVE_MIN_SAMPLE = 10
-const DERIVE_THRESHOLD = 0.85
-
-function derivePreset(repoRoot) {
-  if (!repoRoot) return PRESET_HANDBOOK
-  try {
-    const subjects = readRecentSubjects(repoRoot)
-    if (!subjects || subjects.length < DERIVE_MIN_SAMPLE) return PRESET_HANDBOOK
-    const sample = subjects.slice(0, 30)
-    const n = sample.filter(s => lintCommitMessage(s, { preset: PRESET_CONVENTIONAL }).violations.length === 0).length
-    return n / sample.length >= DERIVE_THRESHOLD ? PRESET_CONVENTIONAL : PRESET_HANDBOOK
-  } catch {
-    return PRESET_HANDBOOK
-  }
-}
-
 export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
   const repoRoot = opts?.repoRoot ?? null
@@ -188,10 +170,8 @@ export function lintMessage(text, opts) {
   let preset
   if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
     preset = PRESET_BODY_ONLY
-  } else if (repoRoot && existsSync(join(repoRoot, '.house-rules.json'))) {
-    preset = readConfigPreset(repoRoot)
   } else {
-    preset = derivePreset(repoRoot)
+    preset = resolvePreset(repoRoot)
   }
 
   const violations = []

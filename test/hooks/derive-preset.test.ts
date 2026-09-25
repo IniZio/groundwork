@@ -111,12 +111,12 @@ describe('derive-preset: guard with -C to real repos', () => {
     }
   })
 
-  it('mixed repo (5 conv + 5 hb): below threshold → handbook', () => {
+  it('mixed repo (5 conv + 5 hb): at 50% threshold → conventional', () => {
     const { dir, cleanup } = makeRepo('mixed')
     try {
-      // handbook allowed in mixed
+      // 5/10 = 50% >= 0.5 threshold → conventional; handbook-style denied
       const r = check(bash(`git -C ${dir} commit -m "Add new thing"`))
-      expect(decision(r)).toBe('allow')
+      expect(decision(r)).toBe('deny')
     } finally {
       cleanup()
     }
@@ -145,12 +145,12 @@ describe('derive-preset: guard with -C to real repos', () => {
     }
   })
 
-  it('few repo (9 conv commits): below min sample → handbook fallback', () => {
+  it('few repo (9 conv commits): 9/9 = 100% → conventional (no min-sample gate)', () => {
     const { dir, cleanup } = makeRepo('few')
     try {
-      // handbook-style accepted because < 10 samples → handbook fallback
+      // 9/9 = 100% >= 0.5 threshold → conventional; handbook-style denied
       const r = check(bash(`git -C ${dir} commit -m "Add new thing"`))
-      expect(decision(r)).toBe('allow')
+      expect(decision(r)).toBe('deny')
     } finally {
       cleanup()
     }
@@ -235,7 +235,7 @@ describe('derive-preset: installed commit-msg hook in real repos', () => {
     }
   })
 
-  it('few repo: hook accepts handbook-style (9 commits → handbook fallback)', async () => {
+  it('few repo: hook rejects handbook-style (9 conv commits → conventional)', async () => {
     const { dir, cleanup } = makeRepo('few')
     try {
       await installHook({ cwd: dir })
@@ -244,7 +244,7 @@ describe('derive-preset: installed commit-msg hook in real repos', () => {
         encoding: 'utf8',
         env: { ...process.env, GROUNDWORK_HOOKS_LIB: HOOKS_LIB },
       })
-      expect(r.status).toBe(0)
+      expect(r.status).not.toBe(0)
     } finally {
       cleanup()
     }

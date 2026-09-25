@@ -13,21 +13,38 @@ import { spawnSync } from 'node:child_process'
 
 const _dir = dirname(fileURLToPath(import.meta.url))
 
-function _findGroundworkRoot(): { version: string; hooksLibPath: string } {
-  const candidates = [
-    resolve(_dir, '..', '..'),
-    resolve(_dir, '..'),
-  ]
-  for (const root of candidates) {
-    try {
-      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }
-      return { version: pkg.version, hooksLibPath: join(root, 'hooks', 'lib') }
-    } catch { /* try next */ }
+/**
+ * Exported for testing: resolve plugin root from a given base dir.
+ * In production, baseDir === _dir (the module's own directory).
+ * Pass a temp dir's src/hooks path in tests to exercise the layout without
+ * touching the real package.json.
+ */
+export function _findGroundworkRoot(baseDir?: string): { version: string; hooksLibPath: string } {
+  const dir = baseDir ?? _dir
+  // Module lives at <root>/src/hooks/installer.ts; root is two levels up.
+  const repoRoot = resolve(dir, '..', '..')
+  const hooksLibPath = join(repoRoot, 'hooks', 'lib')
+  try {
+    const pluginJson = JSON.parse(
+      readFileSync(join(repoRoot, '.claude-plugin', 'plugin.json'), 'utf8'),
+    ) as { version: string }
+    if (typeof pluginJson.version !== 'string' || !pluginJson.version) {
+      throw new Error('version field missing or empty')
+    }
+    return { version: pluginJson.version, hooksLibPath }
+  } catch (err) {
+    process.stderr.write(
+      `[groundwork installer] ERROR: cannot read .claude-plugin/plugin.json` +
+        ` (${(err as Error).message}) — version unknown; hook will not be marked current\n`,
+    )
+    // Sentinel: never equals a real semver, so idempotency check always misses → hook rewritten.
+    return { version: '0.0.0-UNREADABLE', hooksLibPath }
   }
-  return { version: '0.0.0', hooksLibPath: join(_dir, '..', '..', 'hooks', 'lib') }
 }
 
-const { version: CURRENT_VERSION, hooksLibPath: HOOKS_LIB_PATH } = _findGroundworkRoot()
+const _root = _findGroundworkRoot()
+export const CURRENT_VERSION = _root.version
+const HOOKS_LIB_PATH = _root.hooksLibPath
 
 const { renderCommitMsgHook, isGroundworkHook } = (await import(
   `file://${join(HOOKS_LIB_PATH, 'commit-msg-template.mjs')}`

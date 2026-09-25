@@ -347,17 +347,27 @@ export async function run(
     writeCounter(cPath, { sig: currentSig, count: newCount });
 
     if (newCount >= 4) {
+      const ruleNames = [
+        ...(unfixable.length > 0 ? ["comment-density"] : []),
+        ...(strayErrors.length > 0 ? ["stray-artifacts"] : []),
+      ].join(" + ");
+      const action4 = unfixable.length > 0 && strayErrors.length === 0
+        ? "remove or move comments before continuing"
+        : strayErrors.length > 0 && unfixable.length === 0
+          ? "merge or delete stray files before continuing"
+          : "remove or move comments and merge or delete stray files before continuing";
       const fileList = [
         ...unfixable.map(v => `  ${v.path}`),
         ...strayErrors.map(f => `  ${path.join(repoRoot, f.path)}`),
       ].join("\n");
-      const stderr = `house-rules comment-density gate: 4th consecutive block — allowing; remove or move comments before continuing\n${fileList}\n`;
+      const stderr = `house-rules ${ruleNames} gate: 4th consecutive block — allowing; ${action4}\n${fileList}\n`;
       return { stdout: "", stderr, exit: 0 };
     }
 
-    const header =
-      "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
-      "This is a convention check — not a bug, a merge, or another session's edit.";
+    const hasDensity = unfixable.length > 0;
+    const hasStray = strayErrors.length > 0;
+    const isSubagent = event === "SubagentStop";
+    const handback = " Edits made after hand-back do not reach the caller.";
 
     const fileLines = unfixable.map(v => {
       const ratio = (v.effective / v.total * 100).toFixed(1);
@@ -378,15 +388,37 @@ export async function run(
       ? `auto-fixed in this run: ${fixedFiles.map(f => f.path).join(", ")}`
       : null;
 
-    const footerBase = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
-    const footer = event === "SubagentStop"
-      ? footerBase + " Edits made after hand-back do not reach the caller."
-      : footerBase;
-
-    const parts = [header, ...fileLines, ...strayLines];
-    if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
-    if (fixedNote) parts.push(fixedNote);
-    parts.push(footer);
+    let parts: string[];
+    if (hasDensity && !hasStray) {
+      const header =
+        "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
+        "This is a convention check — not a bug, a merge, or another session's edit.";
+      const footerBase = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
+      const footer = isSubagent ? footerBase + handback : footerBase;
+      parts = [header, ...fileLines];
+      if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
+      if (fixedNote) parts.push(fixedNote);
+      parts.push(footer);
+    } else if (hasStray && !hasDensity) {
+      const strayFooterBase = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
+      const footer = isSubagent ? strayFooterBase + handback : strayFooterBase;
+      parts = ["house-rules gate:", ...strayLines, footer];
+    } else {
+      const densityFooter = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix.";
+      const strayFooterBase = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
+      const strayFooter = isSubagent ? strayFooterBase + handback : strayFooterBase;
+      parts = [
+        "house-rules gate: files changed in this session violate one or more code conventions.",
+        "comment-density:",
+        ...fileLines,
+      ];
+      if (fallbackNotices.length > 0) parts.push(...fallbackNotices);
+      if (fixedNote) parts.push(fixedNote);
+      parts.push(densityFooter);
+      parts.push("stray-artifacts:");
+      parts.push(...strayLines);
+      parts.push(strayFooter);
+    }
 
     const reason = parts.join("\n");
     return block(reason.length > 2000 ? reason.slice(0, 1990) + "…" : reason);

@@ -19,6 +19,8 @@ export interface BuildContextOpts {
   sessionId?: string;
   /** gate: default 'Stop' */
   event?: 'Stop' | 'SubagentStop';
+  /** gate: agent ids still running; their touched files are excluded from scope */
+  runningAgentIds?: string[];
 }
 
 function isTracked(repoRoot: string, relPath: string): boolean {
@@ -77,6 +79,7 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
       transcriptPath: opts.transcriptPath ?? '',
       sessionId: opts.sessionId ?? '',
       agentTranscriptPath: undefined,
+      runningAgentIds: opts.runningAgentIds,
     });
 
     const result: string[] = [];

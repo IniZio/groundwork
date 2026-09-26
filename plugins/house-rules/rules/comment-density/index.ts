@@ -4,6 +4,7 @@ import type { Rule, RuleContext, Finding, FixResult } from '../../src/engine/typ
 import { detectLanguage, netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
 import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
+import { appendFix } from '../../src/hooks/lib/autofix-ledger.js';
 
 const CAP = 5;
 
@@ -111,6 +112,27 @@ const rule: Rule = {
         skipped++;
         continue;
       }
+
+      const removed = ar.rowChanges.flatMap(rc => {
+        if (rc.kind === 'deleted') return [rc.origText.trim()];
+        if (rc.kind === 'modified') {
+          const fe = (rc.fixedText ?? '').trimEnd();
+          const stripped = rc.origText.startsWith(fe)
+            ? rc.origText.slice(fe.length).trim()
+            : rc.origText.trim();
+          return stripped ? [stripped] : [];
+        }
+        return [];
+      });
+      const n = removed.length;
+      appendFix({
+        file: absPath,
+        fixedContent: content,
+        removed,
+        reason: `comment-density: housekeep --fix removed ${n} over-budget comment(s)`,
+        source: 'housekeep',
+      });
+
       fixed++;
     }
 

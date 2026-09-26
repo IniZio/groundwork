@@ -140,11 +140,25 @@ export interface TouchedFilesOpts {
   transcriptPath: string;
   sessionId: string;
   agentTranscriptPath?: string;
+  runningAgentIds?: string[];
+}
+
+export function runningAgentIds(backgroundTasks: unknown): string[] {
+  if (!Array.isArray(backgroundTasks)) return [];
+  const ids: string[] = [];
+  for (const entry of backgroundTasks) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (e.status !== "running") continue;
+    if (e.type !== undefined && e.type !== "subagent") continue;
+    if (typeof e.id === "string" && e.id) ids.push(e.id);
+  }
+  return ids;
 }
 
 export function touchedFiles(opts: TouchedFilesOpts): string[] {
   const files = new Set<string>();
-  const { event, transcriptPath, sessionId, agentTranscriptPath } = opts;
+  const { event, transcriptPath, sessionId, agentTranscriptPath, runningAgentIds: runningIds } = opts;
 
   if (event === "SubagentStop") {
     const tp = agentTranscriptPath ?? transcriptPath;
@@ -160,16 +174,31 @@ export function touchedFiles(opts: TouchedFilesOpts): string[] {
     extractFilesFromContent(raw, "", files);
   } catch { /* fail-open */ }
 
+  const runningSet = new Set(runningIds ?? []);
+  const runningFiles = new Set<string>();
+
   const subDir = path.join(path.dirname(transcriptPath), sessionId, "subagents");
   try {
     for (const entry of readdirSync(subDir)) {
       if (!entry.endsWith(".jsonl")) continue;
+      // entry name: agent-<id>.jsonl → extract id
+      const idMatch = entry.match(/^agent-(.+)\.jsonl$/);
+      const agentId = idMatch ? idMatch[1] : null;
+      const isRunning = agentId !== null && runningSet.has(agentId);
       try {
         const raw = readFileSync(path.join(subDir, entry), "utf8");
-        extractFilesFromContent(raw, "", files);
+        if (isRunning) {
+          extractFilesFromContent(raw, "", runningFiles);
+        } else {
+          extractFilesFromContent(raw, "", files);
+        }
       } catch { continue; }
     }
   } catch { /* no subagents dir */ }
+
+  for (const f of runningFiles) {
+    files.delete(f);
+  }
 
   return [...files];
 }

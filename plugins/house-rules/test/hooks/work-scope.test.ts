@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sessionBase, touchedFiles, addedRanges, addedHunks, diffTextToHunks } from "../../src/hooks/lib/work-scope.js";
+import { sessionBase, touchedFiles, addedRanges, addedHunks, diffTextToHunks, runningAgentIds } from "../../src/hooks/lib/work-scope.js";
 
 const FIXTURES = path.join(
   import.meta.dir,
@@ -587,6 +587,170 @@ describe("C-status copy", () => {
 // ---------------------------------------------------------------------------
 // unified=0 parity: addedHunks and diffTextToHunks use same context
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// runningAgentIds — parsing background_tasks field
+// ---------------------------------------------------------------------------
+describe("runningAgentIds — parses Stop payload background_tasks", () => {
+  it("returns ids where status is running and type is subagent", () => {
+    const tasks = [
+      { id: "abc123", type: "subagent", status: "running", description: "impl" },
+      { id: "def456", type: "subagent", status: "completed", description: "done" },
+    ];
+    expect(runningAgentIds(tasks)).toEqual(["abc123"]);
+  });
+
+  it("includes entry missing type field (type absent treated as subagent)", () => {
+    const tasks = [
+      { id: "notype1", status: "running", description: "no type" },
+      { id: "notype2", status: "completed" },
+    ];
+    expect(runningAgentIds(tasks)).toEqual(["notype1"]);
+  });
+
+  it("includes entry missing agent_type (agent_type is optional doc field)", () => {
+    const tasks = [
+      { id: "noagenttype", type: "subagent", status: "running" },
+    ];
+    expect(runningAgentIds(tasks)).toEqual(["noagenttype"]);
+  });
+
+  it("excludes entry with status completed", () => {
+    const tasks = [
+      { id: "done1", type: "subagent", status: "completed" },
+    ];
+    expect(runningAgentIds(tasks)).toEqual([]);
+  });
+
+  it("returns empty array for non-array input", () => {
+    expect(runningAgentIds(null)).toEqual([]);
+    expect(runningAgentIds(undefined)).toEqual([]);
+    expect(runningAgentIds("string")).toEqual([]);
+    expect(runningAgentIds(42)).toEqual([]);
+    expect(runningAgentIds({})).toEqual([]);
+  });
+
+  it("ignores malformed entries without throwing", () => {
+    const tasks = [null, undefined, 42, "string", { id: "ok", status: "running" }];
+    expect(() => runningAgentIds(tasks)).not.toThrow();
+    expect(runningAgentIds(tasks)).toEqual(["ok"]);
+  });
+
+  it("handles real payload shape with type and agent_type fields", () => {
+    const tasks = [
+      { id: "a7c6723ff77026843", type: "subagent", status: "running", description: "impl", agent_type: "groundwork:implementer" },
+      { id: "b8d9012ff88137954", type: "subagent", status: "completed", description: "done", agent_type: "groundwork:implementer" },
+    ];
+    expect(runningAgentIds(tasks)).toEqual(["a7c6723ff77026843"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// touchedFiles — Stop with runningAgentIds exclusion
+// ---------------------------------------------------------------------------
+describe("touchedFiles — Stop excludes files from running agents", () => {
+  function makeAgentLine(filePath: string): string {
+    return JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-09-26T00:00:00Z",
+      message: {
+        content: [{ type: "tool_use", name: "Edit", input: { file_path: filePath } }],
+      },
+    }) + "\n";
+  }
+
+  it("running agent file excluded even when main transcript also touched it", () => {
+    const projDir = tmpDir("running-excl-shared");
+    const sessionId = "run-excl-sess-1";
+    const sharedFile = "/repo/shared/both-touched.ts";
+    const runningOnlyFile = "/repo/running/only-running.ts";
+
+    writeFileSync(
+      path.join(projDir, `${sessionId}.jsonl`),
+      makeAgentLine(sharedFile),
+    );
+
+    const subDir = path.join(projDir, sessionId, "subagents");
+    mkdirSync(subDir, { recursive: true });
+    writeFileSync(
+      path.join(subDir, "agent-runagent001.jsonl"),
+      makeAgentLine(sharedFile) + makeAgentLine(runningOnlyFile),
+    );
+
+    const files = touchedFiles({
+      event: "Stop",
+      transcriptPath: path.join(projDir, `${sessionId}.jsonl`),
+      sessionId,
+      runningAgentIds: ["runagent001"],
+    });
+
+    expect(files).not.toContain(sharedFile);
+    expect(files).not.toContain(runningOnlyFile);
+  });
+
+  it("same fixture with runningAgentIds empty returns file included", () => {
+    const projDir = tmpDir("running-empty-ids");
+    const sessionId = "run-excl-sess-2";
+    const sharedFile = "/repo/shared/included-when-empty.ts";
+
+    writeFileSync(
+      path.join(projDir, `${sessionId}.jsonl`),
+      makeAgentLine(sharedFile),
+    );
+
+    const subDir = path.join(projDir, sessionId, "subagents");
+    mkdirSync(subDir, { recursive: true });
+    writeFileSync(
+      path.join(subDir, "agent-runagent002.jsonl"),
+      makeAgentLine(sharedFile),
+    );
+
+    const filesEmpty = touchedFiles({
+      event: "Stop",
+      transcriptPath: path.join(projDir, `${sessionId}.jsonl`),
+      sessionId,
+      runningAgentIds: [],
+    });
+    expect(filesEmpty).toContain(sharedFile);
+
+    const filesOmitted = touchedFiles({
+      event: "Stop",
+      transcriptPath: path.join(projDir, `${sessionId}.jsonl`),
+      sessionId,
+    });
+    expect(filesOmitted).toContain(sharedFile);
+  });
+
+  it("finished agent files included while running agent files excluded", () => {
+    const projDir = tmpDir("running-mixed-agents");
+    const sessionId = "run-excl-sess-3";
+    const finishedFile = "/repo/finished/agent-done.ts";
+    const runningFile = "/repo/running/agent-still-going.ts";
+
+    writeFileSync(path.join(projDir, `${sessionId}.jsonl`), "");
+
+    const subDir = path.join(projDir, sessionId, "subagents");
+    mkdirSync(subDir, { recursive: true });
+    writeFileSync(
+      path.join(subDir, "agent-finishedagent01.jsonl"),
+      makeAgentLine(finishedFile),
+    );
+    writeFileSync(
+      path.join(subDir, "agent-runningagent01.jsonl"),
+      makeAgentLine(runningFile),
+    );
+
+    const files = touchedFiles({
+      event: "Stop",
+      transcriptPath: path.join(projDir, `${sessionId}.jsonl`),
+      sessionId,
+      runningAgentIds: ["runningagent01"],
+    });
+
+    expect(files).toContain(finishedFile);
+    expect(files).not.toContain(runningFile);
+  });
+});
+
 describe("addedHunks / diffTextToHunks — unified=0 parity", () => {
   it("delete comment at line 10, add comment at line 12 → both produce 2 hunks", () => {
     const repo = tmpDir("unified-zero");

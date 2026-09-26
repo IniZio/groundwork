@@ -14,8 +14,9 @@ import { loadRules } from '../engine/registry.js';
 import { runRules } from '../engine/run.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
-import { touchedFiles } from './lib/work-scope.js';
+import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
+import { appendFix } from './lib/autofix-ledger.js';
 
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -161,6 +162,7 @@ export async function run(
       : transcriptPath;
 
     const cwdRaw = typeof inp.cwd === "string" ? inp.cwd : null;
+    const running = event === "Stop" ? runningAgentIds(inp.background_tasks) : [];
     const tpDir = path.dirname(transcriptPath);
     let repoRoot: string | null =
       (cwdRaw ? gitTopLevel(cwdRaw) : null) ??
@@ -172,6 +174,7 @@ export async function run(
         transcriptPath: relevantTranscriptPath,
         sessionId,
         agentTranscriptPath,
+        runningAgentIds: running,
       });
       for (const f of tf) {
         const r = gitTopLevel(f);
@@ -188,6 +191,7 @@ export async function run(
       transcriptPath: relevantTranscriptPath,
       sessionId,
       event: event as 'Stop' | 'SubagentStop',
+      runningAgentIds: running,
     });
 
     const allFindings = await runRules(rules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
@@ -307,6 +311,24 @@ export async function run(
         process.stderr.write(`gate: ${wr.reason}\n`);
         unfixable.push({ ...v, unfixReason: `write failed: ${wr.reason}` });
         continue;
+      }
+      {
+        const removedTexts = removedLines.map(rl => {
+          if (rl.kind === "deleted") return rl.text.trim();
+          const ft = rl.fixedText?.trimEnd() ?? "";
+          if (ft && rl.text.startsWith(ft)) return rl.text.slice(ft.length).trim();
+          return rl.text.trim();
+        });
+        const ledgerOpts = opts?.testOnly_tmpDir
+          ? { dir: path.join(opts.testOnly_tmpDir, "autofix-ledger") }
+          : undefined;
+        appendFix({
+          file: v.path,
+          fixedContent: content,
+          removed: removedTexts,
+          reason: `comment-density over budget at ${event}: removed ${ar.removed} comment(s)`,
+          source: "gate",
+        }, ledgerOpts);
       }
       fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
     }

@@ -29,6 +29,18 @@ export function atomicWrite(
 ): AtomicWriteResult {
   const tmp = absPath + `.cdg-${process.pid}`;
   try {
+    let fileBytes: Buffer;
+    try {
+      fileBytes = readFileSync(absPath);
+    } catch (e) {
+      return { ok: false, reason: `could not read ${absPath}: ${e}` };
+    }
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
+    } catch {
+      return { ok: false, reason: `${absPath} contains bytes that are not valid UTF-8; skipping autofix to avoid data corruption` };
+    }
+
     const mode = statSync(absPath).mode & 0o7777;
     writeFileSync(tmp, normalizedContent);
     chmodSync(tmp, mode);

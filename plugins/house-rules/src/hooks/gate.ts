@@ -313,12 +313,7 @@ export async function run(
         continue;
       }
       {
-        const removedTexts = removedLines.map(rl => {
-          if (rl.kind === "deleted") return rl.text.trim();
-          const ft = rl.fixedText?.trimEnd() ?? "";
-          if (ft && rl.text.startsWith(ft)) return rl.text.slice(ft.length).trim();
-          return rl.text.trim();
-        });
+        const removedTexts = ar.removedTexts;
         const ledgerOpts = opts?.testOnly_tmpDir
           ? { dir: path.join(opts.testOnly_tmpDir, "autofix-ledger") }
           : undefined;

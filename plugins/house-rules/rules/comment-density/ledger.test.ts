@@ -105,6 +105,61 @@ describe('comment-density housekeep fix ledger', () => {
     expect(rec.removed.sort()).toEqual(expectedRemoved.sort());
   });
 
+  it('housekeep fix with trailing and inline block comments: removed[] contains only comment texts, count matches', () => {
+    const repoDir = mktemp();
+    const ledgerDir = mktemp();
+    const baseSha = initRepo(repoDir);
+
+    const MIXED_FILE = [
+      'export const v0 = 0;',
+      '// whole 1',
+      'export const v2 = 2;',
+      '// whole 2',
+      'export const v4 = 4;',
+      '// whole 3',
+      'export const v6 = 6;',
+      '// whole 4',
+      'export const v8 = 8;',
+      'export const v9 = 9; // trailing comment',
+      'export const v10 = /* inline note */ 10;',
+      'export const v11 = 11;',
+      'export const v12 = 12;',
+      'export const v13 = 13;',
+      'export const v14 = 14;',
+      'export const v15 = 15;',
+      'export const v16 = 16;',
+      'export const v17 = 17;',
+      'export const v18 = 18;',
+      'export const v19 = 19;',
+    ].join('\n') + '\n';
+
+    const filePath = path.join(repoDir, 'mixed.ts');
+    fs.writeFileSync(filePath, MIXED_FILE);
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'add', 'mixed.ts'], { cwd: repoDir });
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'add mixed'], { cwd: repoDir });
+
+    spawnSync(BIN, ['housekeep', '--since', baseSha, '--repo', repoDir], {
+      encoding: 'utf8',
+      env: childEnv(ledgerDir),
+    });
+
+    const records = readFixRecords(ledgerDir);
+    expect(records.length).toBe(1);
+
+    const rec = records[0];
+    const countMatch = rec.reason.match(/removed (\d+) over-budget comment\(s\)/);
+    expect(countMatch).not.toBeNull();
+    const reportedCount = parseInt(countMatch![1], 10);
+
+    expect(rec.removed).toHaveLength(reportedCount);
+    for (const r of rec.removed) {
+      const t = r.trim();
+      const isComment = t.startsWith('//') || (t.startsWith('/*') && t.endsWith('*/'));
+      expect(isComment).toBe(true);
+      expect(t.includes(' = ') && !t.startsWith('//') && !t.startsWith('/*')).toBe(false);
+    }
+  });
+
   it('records nothing when file has no violations', () => {
     const repoDir = mktemp();
     const ledgerDir = mktemp();

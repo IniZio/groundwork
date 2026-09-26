@@ -113,17 +113,7 @@ const rule: Rule = {
         continue;
       }
 
-      const removed = ar.rowChanges.flatMap(rc => {
-        if (rc.kind === 'deleted') return [rc.origText.trim()];
-        if (rc.kind === 'modified') {
-          const fe = (rc.fixedText ?? '').trimEnd();
-          const stripped = rc.origText.startsWith(fe)
-            ? rc.origText.slice(fe.length).trim()
-            : rc.origText.trim();
-          return stripped ? [stripped] : [];
-        }
-        return [];
-      });
+      const removed = ar.removedTexts;
       const n = removed.length;
       appendFix({
         file: absPath,

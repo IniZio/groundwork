@@ -58,6 +58,35 @@ function makeViolatorTs(dir: string, name: string): string {
   return fp;
 }
 
+function makeViolatorTsMixed(dir: string, name: string): string {
+  // 20 lines: 4 whole-line, 1 trailing, 1 inline block = 6 comments → over 5/100 budget
+  const lines = [
+    "const v0 = 0;",
+    "// whole 1",
+    "const v2 = 2;",
+    "// whole 3",
+    "const v4 = 4;",
+    "// whole 5",
+    "const v6 = 6;",
+    "// whole 7",
+    "const v8 = 8;",
+    "const v9 = 9; // trailing",
+    "const v10 = /* inline note */ 10;",
+    "const v11 = 11;",
+    "const v12 = 12;",
+    "const v13 = 13;",
+    "const v14 = 14;",
+    "const v15 = 15;",
+    "const v16 = 16;",
+    "const v17 = 17;",
+    "const v18 = 18;",
+    "const v19 = 19;",
+  ];
+  const fp = path.join(dir, name);
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
 describe("gate ledger: autofix writes recorded", () => {
   let tmpDir: string;
   let repoDir: string;
@@ -106,6 +135,38 @@ describe("gate ledger: autofix writes recorded", () => {
     for (const r of rec.removed) {
       expect(typeof r).toBe("string");
       expect(r.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("over-budget TS with trailing and inline block comments: removed[] contains only comment texts, count matches gate report", async () => {
+    const fp = makeViolatorTsMixed(repoDir, "mixed.ts");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const transcriptPath = makeTranscript(tmpDir, [fp], ts);
+    const sessionId = `ledger-mixed-${Date.now()}`;
+    const ledgerDir = path.join(tmpDir, "autofix-ledger");
+
+    const result = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: transcriptPath },
+      process.env as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir },
+    );
+
+    expect(result.exit).toBe(0);
+
+    const fixes = readLedgerFixes(ledgerDir);
+    expect(fixes).toHaveLength(1);
+
+    const rec = fixes[0];
+    const countMatch = rec.reason.match(/removed (\d+) comment\(s\)/);
+    expect(countMatch).not.toBeNull();
+    const gateRemovedCount = parseInt(countMatch![1], 10);
+
+    expect(rec.removed).toHaveLength(gateRemovedCount);
+    for (const r of rec.removed) {
+      const t = r.trim();
+      const isComment = t.startsWith("//") || (t.startsWith("/*") && t.endsWith("*/"));
+      expect(isComment).toBe(true);
+      expect(t.includes(" = ") && !t.startsWith("//") && !t.startsWith("/*")).toBe(false);
     }
   });
 

@@ -752,6 +752,28 @@ describe("TRAILING-COMMENT-N (blocker RS-2)", () => {
       }
     }
   });
+
+  it("DUPLICATE-TEXT-N: TS Write 20 inline trailing // same comments, budget keeps 1, reported N equals actual removed, Removed list has exactly that many entries", async () => {
+    const tmpDir = mkdtempSync(path2.join(os.tmpdir(), "cdg-dup-"));
+    const tsContent = [
+      ...Array.from({ length: 14 }, (_, i) => `const v${i} = ${i};`),
+      ...Array.from({ length: 20 }, (_, i) => `const w${i} = ${i}; // same`),
+    ].join("\n");
+    const r = await check(write(path2.join(tmpDir, "dup.ts"), tsContent));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = ui.content as string;
+    const inputCount = tsContent.split("\n").filter(l => /\/\/ same$/.test(l)).length;
+    const outputCount = content.split("\n").filter(l => /\/\/ same$/.test(l)).length;
+    expect(outputCount).toBeGreaterThanOrEqual(1);
+    const actuallyRemoved = inputCount - outputCount;
+    expect(actuallyRemoved).toBeGreaterThan(0);
+    const ctx = safeContext(r);
+    expect(ctx!).toContain(`removed ${actuallyRemoved} comment(s)`);
+    const removedListMatches = (ctx!.match(/L\d+: \/\/ same/g) ?? []).length;
+    expect(removedListMatches).toBe(actuallyRemoved);
+  });
 });
 
 describe("REFUSED-UNDER-OVERRIDE: autoFix ok:false with budget override → advisory", () => {

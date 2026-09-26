@@ -465,8 +465,15 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
     }
 
-    const removedTextSet = new Set(ar.removedTexts);
-    const stripped_comments = nc.filter(c => removedTextSet.has(c.text));
+    const remaining = [...nc];
+    const stripped_comments: Comment[] = [];
+    for (const text of ar.removedTexts) {
+      const idx = remaining.findIndex(c => c.text === text);
+      if (idx !== -1) {
+        stripped_comments.push(remaining[idx]);
+        remaining.splice(idx, 1);
+      }
+    }
     const stripped_post = ar.fixed;
     const updatedTi = mapToInput(tool, ti, pre ?? "", post, stripped_post);
 

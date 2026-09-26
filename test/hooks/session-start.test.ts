@@ -116,6 +116,13 @@ describe("session-start hook", () => {
     expect(ctx).toContain("groundwork:advisor");
   });
 
+  it("additionalContext contains house-rules autofix and do-not-re-add sentences", () => {
+    const { stdout } = run({});
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("autofix, not another agent");
+    expect(ctx).toContain("do not re-add the removed comments");
+  });
+
   it("additionalContext injects authoring rules from rules/authoring-rules.md", () => {
     const { stdout } = run({});
     const out = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };

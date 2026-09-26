@@ -626,8 +626,14 @@ export function stripComments(text: string, comments: Comment[]): { text: string
     } else {
       const wsStart = before.search(/\s+$/);
       const codeEnd = wsStart !== -1 ? wsStart : c.startIndex;
-      const cr = c.text.endsWith("\r") ? "\r" : "";
-      result = result.slice(0, codeEnd) + cr + after;
+      let sep: string;
+      if (c.startRow !== c.endRow) {
+        sep = (after.length > 0 && after[0] === "\n") ? "" : "\n";
+      } else {
+        const cr = c.text.endsWith("\r") ? "\r" : "";
+        sep = (cr === "" && after.length > 0 && !/^\s/.test(after[0])) ? " " : cr;
+      }
+      result = result.slice(0, codeEnd) + sep + after;
       touchedInlineRows.add(c.startRow);
       for (let r = c.startRow + 1; r <= c.endRow; r++) {
         if (!deletedOrigRows.has(r)) {
@@ -789,6 +795,15 @@ function countEffectiveFallback(text: string, lang?: Lang | null): { total: numb
 }
 
 
+function hasAstErrors(node: Node): boolean {
+  if (node.isError || node.isMissing) return true;
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (child && hasAstErrors(child)) return true;
+  }
+  return false;
+}
+
 type RowChangeKind = "deleted" | "modified";
 export interface RowChange { origRow: number; kind: RowChangeKind; origText: string; fixedText?: string }
 
@@ -797,7 +812,7 @@ export type AutoFixResult =
   | { ok: false; reason: string };
 
 
-function collectCodeText(root: Node, text: string, lang: Lang): string {
+export function collectCodeText(root: Node, text: string, lang: Lang): string {
   const parts: string[] = [];
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) return;
@@ -811,7 +826,7 @@ function collectCodeText(root: Node, text: string, lang: Lang): string {
     }
   }
   walk(root);
-  return parts.join("");
+  return parts.join(" ");
 }
 
 export interface NetNewResult {
@@ -1110,8 +1125,13 @@ export async function autoFix(
 
   const pr = await getParser(lang);
   if (!pr.ok) return { ok: false, reason: `parser: ${pr.reason}` };
-  const origCode = collectCodeText(pr.parser.parse(text).rootNode, text, lang);
-  const fixedCode = collectCodeText(pr.parser.parse(fixed).rootNode, fixed, lang);
+  const origTree = pr.parser.parse(text);
+  const fixedTree = pr.parser.parse(fixed);
+  if (!hasAstErrors(origTree.rootNode) && hasAstErrors(fixedTree.rootNode)) {
+    return { ok: false, reason: "fix introduced parse errors" };
+  }
+  const origCode = collectCodeText(origTree.rootNode, text, lang);
+  const fixedCode = collectCodeText(fixedTree.rootNode, fixed, lang);
   if (origCode !== fixedCode) return { ok: false, reason: "code content changed" };
 
   const preMap = new Map<string, number>();

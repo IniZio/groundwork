@@ -11,6 +11,7 @@ import {
   density,
   autoFix,
   netNewCommentRows,
+  collectCodeText,
   type Lang,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
@@ -2158,5 +2159,93 @@ describe("GF-2 Bug A: consecutive // paragraph removed whole-or-none", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).toContain("// trailing");
+  });
+});
+
+// ---- GF-6: comment-between-tokens correctness ----
+
+describe("GF-6: comment between tokens — no fusion, correct separator", () => {
+  function overBudgetGo(inline: string): string {
+    const body = Array.from({ length: 12 }, (_, i) => `\tx${i} := ${i}\n\t_ = x${i}`).join("\n");
+    return `package p\n\nfunc f() error {\n${body}\n\t${inline}\n}\n\nfunc g() error {\n\t${inline}\n}\n\nfunc h() error {\n\t${inline}\n}\n`;
+  }
+
+  it("Go autoFix: inline comment between return and nil must not produce returnnil", async () => {
+    const go = overBudgetGo("return/* c1 */nil");
+    const rows = new Set(go.split("\n").map((_, i) => i));
+    const r = await autoFix(go, "go", rows, undefined, rows);
+    if (!r.ok) return;
+    expect(r.fixed).not.toContain("returnnil");
+  });
+
+  it("stripComments: typeof/* c */x does not fuse tokens", async () => {
+    const code = `const t = typeof/* c */x;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, comments);
+    expect(stripped).not.toContain("typeofx");
+    expect(stripped).toContain("typeof x");
+  });
+
+  it("stripComments: multiline block comment between return and value — not same-line collapse", async () => {
+    const code = `function f() {\n  return /*\n  */ 1;\n}\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, comments);
+    const lines = stripped.split("\n");
+    const returnLine = lines.find(l => l.includes("return"));
+    expect(returnLine).toBeDefined();
+    expect(returnLine!).not.toContain("1");
+  });
+
+  it("collectCodeText: space separator distinguishes fused tokens from separate tokens", async () => {
+    const pr = await getParser("go");
+    if (!pr.ok) throw new Error(pr.reason);
+    const srcSep = `package p\nfunc f()error{return nil}`;
+    const srcFused = `package p\nfunc f()error{returnnil}`;
+    const sepTokens = collectCodeText(pr.parser.parse(srcSep).rootNode, srcSep, "go");
+    const fusedTokens = collectCodeText(pr.parser.parse(srcFused).rootNode, srcFused, "go");
+    expect(sepTokens).not.toBe(fusedTokens);
+  });
+
+  it("autoFix: Fix-3 parse-error guard fires before code-identity check (mock parser)", async () => {
+    let gpCalls = 0;
+    const mockGetParser: GetParserFn = async (lang) => {
+      const real = await getParser(lang);
+      if (!real.ok) return real;
+      gpCalls++;
+      if (gpCalls === 3) {
+        let parseCalls = 0;
+        const proxy = {
+          parse(src: string) {
+            parseCalls++;
+            if (parseCalls === 2) {
+              return real.parser.parse("class Fooextends Bar{}");
+            }
+            return real.parser.parse(src);
+          },
+        } as typeof real.parser;
+        return { ok: true as const, parser: proxy, language: real.language };
+      }
+      return real;
+    };
+    const lines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`);
+    const cLines = Array.from({ length: 8 }, (_, i) => `// comment ${i}`);
+    const code = [...lines, ...cLines].join("\n") + "\n";
+    const allRows = new Set(code.split("\n").map((_, i) => i));
+    const r = await autoFix(code, "typescript", allRows, mockGetParser);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("parse error");
+  });
+
+  it("stripComments: whole-line and trailing removals byte-identical (regression guard)", async () => {
+    const code = `const a = 1; // trailing\n// whole line\nconst b = 2;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, comments);
+    expect(stripped).toBe(`const a = 1;\nconst b = 2;\n`);
   });
 });

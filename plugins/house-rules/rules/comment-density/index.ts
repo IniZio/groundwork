@@ -100,6 +100,8 @@ const rule: Rule = {
       let diskText: string;
       try { diskText = readFileSync(absPath, 'utf8'); } catch { skipped++; continue; }
 
+      if (diskText !== file.text) { skipped++; continue; }
+
       const origHash = sha256(diskText);
       const content = normalizeTrailingNewline(ar.fixed, diskText.endsWith('\n'));
 

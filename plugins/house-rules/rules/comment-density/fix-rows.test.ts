@@ -98,6 +98,40 @@ describe('fix-rows: rule fix() with real git repo', () => {
   });
 });
 
+describe('fix-rows: stale snapshot vs disk', () => {
+  it('skips file when disk content differs from snapshot text', async () => {
+    const dir = makeTmpDir();
+    initGitRepo(dir);
+
+    const baseText = '';
+    const addedCode = Array.from({ length: 10 }, (_, i) => `export const v${i} = ${i};`).join('\n') + '\n';
+    const addedComments = Array.from({ length: 10 }, (_, i) => `// comment ${i}`).join('\n') + '\n';
+    const snapshotText = addedCode + addedComments;
+
+    const fname = 'stale.ts';
+    const fp = path.join(dir, fname);
+    writeFileSync(fp, baseText);
+    gitCommit(dir, 'base');
+
+    const hunks = diffTextToHunks(baseText, snapshotText);
+    expect(hunks.length).toBeGreaterThan(0);
+
+    // simulate file changed on disk after context snapshot was built
+    const newerDiskText = snapshotText + 'export function added() {}\n';
+    writeFileSync(fp, newerDiskText);
+
+    const result = await rule.fix!({
+      repoRoot: dir,
+      mode: 'cli',
+      files: [{ path: fname, text: snapshotText, baseText, addedHunks: hunks }],
+    });
+
+    expect(result.skipped).toBe(1);
+    expect(result.fixed).toBe(0);
+    expect(readFileSync(fp, 'utf8')).toBe(newerDiskText);
+  });
+});
+
 describe('fix-rows: atomicWrite helper', () => {
   it('write succeeds and file contains expected content', async () => {
     const dir = makeTmpDir();

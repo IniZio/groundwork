@@ -626,20 +626,37 @@ export function stripComments(text: string, comments: Comment[]): { text: string
     } else {
       const wsStart = before.search(/\s+$/);
       const codeEnd = wsStart !== -1 ? wsStart : c.startIndex;
-      let sep: string;
       if (c.startRow !== c.endRow) {
-        sep = (after.length > 0 && after[0] === "\n") ? "" : "\n";
+        const lineEndOffset = after.indexOf("\n");
+        const restOfEndRow = lineEndOffset !== -1 ? after.slice(0, lineEndOffset) : after;
+        if (!restOfEndRow.trim()) {
+          const crLen = restOfEndRow.endsWith("\r") ? 1 : 0;
+          const afterTrimmed = lineEndOffset !== -1 ? after.slice(restOfEndRow.length - crLen) : "";
+          result = result.slice(0, codeEnd) + afterTrimmed;
+          touchedInlineRows.add(c.startRow);
+          for (let r = c.startRow + 1; r <= c.endRow; r++) {
+            if (!deletedOrigRows.has(r)) {
+              deletedOrigRows.add(r);
+              rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
+            }
+          }
+        } else {
+          const eol = c.text.includes("\r\n") ? "\r\n" : "\n";
+          result = result.slice(0, codeEnd) + eol + after;
+          touchedInlineRows.add(c.startRow);
+          touchedInlineRows.add(c.endRow);
+          for (let r = c.startRow + 1; r <= c.endRow - 1; r++) {
+            if (!deletedOrigRows.has(r)) {
+              deletedOrigRows.add(r);
+              rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
+            }
+          }
+        }
       } else {
         const cr = c.text.endsWith("\r") ? "\r" : "";
-        sep = (cr === "" && after.length > 0 && !/^\s/.test(after[0])) ? " " : cr;
-      }
-      result = result.slice(0, codeEnd) + sep + after;
-      touchedInlineRows.add(c.startRow);
-      for (let r = c.startRow + 1; r <= c.endRow; r++) {
-        if (!deletedOrigRows.has(r)) {
-          deletedOrigRows.add(r);
-          rowChanges.push({ origRow: r, kind: "deleted", origText: origLines[r] ?? "" });
-        }
+        const sep = (cr === "" && after.length > 0 && !/^\s/.test(after[0])) ? " " : cr;
+        result = result.slice(0, codeEnd) + sep + after;
+        touchedInlineRows.add(c.startRow);
       }
     }
   }

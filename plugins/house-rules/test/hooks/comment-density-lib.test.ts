@@ -2174,6 +2174,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
     const go = overBudgetGo("return/* c1 */nil");
     const rows = new Set(go.split("\n").map((_, i) => i));
     const r = await autoFix(go, "go", rows, undefined, rows);
+    expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).not.toContain("returnnil");
   });
@@ -2247,5 +2248,80 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
     expect(stripped).toBe(`const a = 1;\nconst b = 2;\n`);
+  });
+
+  it("stripComments: multiline block comment — endRow recorded as modified not deleted", async () => {
+    // comment spans row 0-1; row 1 has "1;" after comment close → must be "modified"
+    const code = `return /*\n  */ 1;\n`;
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { rowChanges } = stripComments(code, comments);
+    const deletedEntry = rowChanges.find(rc => rc.kind === "deleted" && rc.origRow === 1);
+    const modifiedEntry = rowChanges.find(rc => rc.kind === "modified" && rc.origRow === 1);
+    expect(deletedEntry).toBeUndefined();
+    expect(modifiedEntry).toBeDefined();
+  });
+
+  it("autoFix: CRLF TS over-budget with multiline block comment — no bare LF", async () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) lines.push(`const x${i} = ${i};`);
+    lines.push("function f() {");
+    lines.push("  return /*\r\n  */ 1;");
+    lines.push("}");
+    for (let i = 0; i < 8; i++) lines.push(`// comment ${i}`);
+    const code = lines.join("\r\n") + "\r\n";
+    const allRows = new Set(code.split("\n").map((_, i) => i));
+    const r = await autoFix(code, "typescript", allRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).not.toMatch(/(?<!\r)\n/);
+  });
+
+  it("stripComments: whitespace-only endRow tail — exact output, no spaces-only line", async () => {
+    const code = "const a = 1; /* x\n y */   \nconst b = 2;\n";
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, comments);
+    expect(stripped).toBe("const a = 1;\nconst b = 2;\n");
+  });
+
+  it("stripComments: CRLF whitespace-only endRow tail — no bare LF", async () => {
+    const code = "const a = 1; /* x\r\n y */   \r\nconst b = 2;\r\n";
+    const r = await findComments(code, "typescript");
+    if (!r.ok) throw new Error(r.reason);
+    const comments = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(code, comments);
+    expect(stripped).not.toMatch(/(?<!\r)\n/);
+    expect(stripped).toContain("const a = 1;");
+    expect(stripped).toContain("const b = 2;");
+  });
+
+  it("Go autoFix: multiline inline block above drop-comment blocks — no double blank lines", async () => {
+    const body = Array.from({ length: 12 }, (_, i) => `\tx${i} := ${i}\n\t_ = x${i}`).join("\n");
+    const code = [
+      "package p",
+      "",
+      "func f() error {",
+      body,
+      "\ty := 1 + /* a",
+      "\t\tb */ 2",
+      "",
+      "\t// drop",
+      "",
+      "\tz := 3",
+      "",
+      "\t// drop",
+      "",
+      "\treturn z",
+      "}",
+      "",
+    ].join("\n");
+    const rows = new Set(code.split("\n").map((_, i) => i));
+    const r = await autoFix(code, "go", rows, undefined, rows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).not.toMatch(/\n\n\n/);
   });
 });

@@ -38,7 +38,8 @@ const BIOME_RE = /^biome-ignore/;
 const REGION_RE = /^#?(?:region|endregion)/i;
 const URL_RE = /^https?:\/\/\S+$/;
 const DIVIDER_RE = /^(?:[─-╿]{2,}|[-=#*]{4,})/u;
-const TODO_OWNER_RE = /^TODO\([^)]+\)/;
+// go/doc treats any [A-Z]{2,}(uid): as a note marker (TODO, BUG, FIXME, NOTE, XXX, HACK…)
+const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
 const SHELLCHECK_RE = /^shellcheck\b/;
 const NOQA_RE = /^noqa\b/;
 const TYPE_IGNORE_RE = /^type:\s*ignore/;
@@ -57,6 +58,10 @@ const TSREF_RE = /^\/\s*<reference\b/;
 const GO_OUTPUT_RE = /^(?:unordered )?output:/i;
 const GO_EXPORT_RE = /^export\b/;
 const GO_LINE_RE = /^line\b/;
+// gccgo external function declaration (no space after //)
+const GO_EXTERN_RE = /^extern\b/;
+// generic Go tool directive: //toolname:directive (no space after //); matches go/doc isDirective
+const GO_TOOL_DIRECTIVE_RE = /^[a-z][a-z0-9]*:[a-z0-9]/;
 const GW_RULE_RE = /^groundwork-rule:/;
 
 function stripMarkers(raw: string): string {
@@ -70,7 +75,8 @@ function stripMarkers(raw: string): string {
   return t.trim();
 }
 
-function isExemptInner(inner: string, lang?: Lang): boolean {
+// rawLine: the raw comment line before stripping (used to check space-after-// for Go directives)
+function isExemptInner(inner: string, lang?: Lang, rawLine?: string): boolean {
   if (
     ANNOT_TAG_RE.test(inner) ||
     ESLINT_RE.test(inner) ||
@@ -79,7 +85,7 @@ function isExemptInner(inner: string, lang?: Lang): boolean {
     REGION_RE.test(inner) ||
     URL_RE.test(inner) ||
     DIVIDER_RE.test(inner) ||
-    TODO_OWNER_RE.test(inner) ||
+    NOTE_MARKER_RE.test(inner) ||
     SHELLCHECK_RE.test(inner) ||
     NOQA_RE.test(inner) ||
     TYPE_IGNORE_RE.test(inner) ||
@@ -92,8 +98,11 @@ function isExemptInner(inner: string, lang?: Lang): boolean {
   if (TSREF_RE.test(inner)) return true;
   if (GW_RULE_RE.test(inner)) return true;
   if (lang === "go") {
-    if (GO_EXPORT_RE.test(inner)) return true;
-    if (GO_LINE_RE.test(inner)) return true;
+    const noSpaceAfterSlash = !rawLine || /^\/\/[^ ]/.test(rawLine.trimStart());
+    if (noSpaceAfterSlash && GO_EXPORT_RE.test(inner)) return true;
+    if (noSpaceAfterSlash && GO_LINE_RE.test(inner)) return true;
+    if (noSpaceAfterSlash && GO_EXTERN_RE.test(inner)) return true;
+    if (noSpaceAfterSlash && GO_TOOL_DIRECTIVE_RE.test(inner)) return true;
   }
   return false;
 }
@@ -132,7 +141,7 @@ function checkExempt(
     if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
       return { exempt: true, reason: "dockerfile-directive" };
     }
-    if (isExemptInner(inner, lang)) {
+    if (isExemptInner(inner, lang, line)) {
       return { exempt: true, reason: inner.slice(0, 30) };
     }
   }
@@ -155,6 +164,7 @@ const GO_DOC_DECL_TYPES = new Set([
   "var_declaration",
   "var_spec",
   "field_declaration",
+  "method_elem",
 ]);
 
 function nodeIsWholeLine(node: Node, text: string): boolean {
@@ -181,10 +191,8 @@ function isGoDocComment(node: Node, text: string): boolean {
   return false;
 }
 
-function isGoCgoComment(node: Node): boolean {
-  const next = node.nextNamedSibling;
-  if (!next || next.type !== "import_declaration") return false;
-  let cur: Node | null = next.firstNamedChild;
+function importDeclHasCImport(decl: Node): boolean {
+  let cur: Node | null = decl.firstNamedChild;
   while (cur) {
     if (cur.type === "import_spec") {
       const pathNode = cur.childForFieldName ? cur.childForFieldName("path") : null;
@@ -192,7 +200,24 @@ function isGoCgoComment(node: Node): boolean {
     } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
       return true;
     }
+    if (cur.type === "import_spec_list") {
+      if (importDeclHasCImport(cur)) return true;
+    }
     cur = cur.nextNamedSibling;
+  }
+  return false;
+}
+
+function isGoCgoComment(node: Node): boolean {
+  let next: Node | null = node.nextNamedSibling;
+  while (next && next.type === "comment") next = next.nextNamedSibling;
+  if (!next) return false;
+  if (next.type === "import_declaration") {
+    return importDeclHasCImport(next);
+  }
+  if (next.type === "import_spec") {
+    const pathNode = next.childForFieldName ? next.childForFieldName("path") : null;
+    return pathNode !== null && (pathNode.text === '"C"' || pathNode.text === "`C`");
   }
   return false;
 }
@@ -220,26 +245,54 @@ function findGoCgoPreambleSlashRows(root: Node): Set<number> {
   }
   collectSlash(root);
 
-  function isCImport(node: Node): boolean {
+  function findCSpecRowInList(list: Node): number | null {
+    let cur: Node | null = list.firstNamedChild;
+    while (cur) {
+      if (cur.type === "import_spec") {
+        const p = cur.childForFieldName ? cur.childForFieldName("path") : null;
+        if (p && (p.text === '"C"' || p.text === "`C`")) return cur.startPosition.row;
+      }
+      cur = cur.nextNamedSibling;
+    }
+    return null;
+  }
+
+  function isCImport(node: Node): { found: boolean; specListNode?: Node } {
     let cur: Node | null = node.firstNamedChild;
     while (cur) {
       if (cur.type === "import_spec") {
         const p = cur.childForFieldName ? cur.childForFieldName("path") : null;
-        if (p && (p.text === '"C"' || p.text === "`C`")) return true;
+        if (p && (p.text === '"C"' || p.text === "`C`")) return { found: true };
       } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
-        return true;
+        return { found: true };
+      } else if (cur.type === "import_spec_list") {
+        const specRow = findCSpecRowInList(cur);
+        if (specRow !== null) return { found: true, specListNode: cur };
       }
       cur = cur.nextNamedSibling;
     }
-    return false;
+    return { found: false };
   }
 
   function findCImports(node: Node): void {
-    if (node.type === "import_declaration" && isCImport(node)) {
-      let row = node.startPosition.row - 1;
-      while (row >= 0 && slashByRow.has(row)) {
-        result.add(row);
-        row--;
+    if (node.type === "import_declaration") {
+      const check = isCImport(node);
+      if (check.found) {
+        let row = node.startPosition.row - 1;
+        while (row >= 0 && slashByRow.has(row)) {
+          result.add(row);
+          row--;
+        }
+        if (check.specListNode) {
+          const cSpecRow = findCSpecRowInList(check.specListNode);
+          if (cSpecRow !== null) {
+            let r = cSpecRow - 1;
+            while (r > node.startPosition.row && slashByRow.has(r)) {
+              result.add(r);
+              r--;
+            }
+          }
+        }
       }
     }
     for (let i = 0; i < node.childCount; i++) {
@@ -253,18 +306,18 @@ function findGoCgoPreambleSlashRows(root: Node): Set<number> {
 
 function findGoExampleOutputRows(root: Node): Set<number> {
   const result = new Set<number>();
-  const slashByRow = new Map<number, string>();
+  const allCommentsByRow = new Map<number, { text: string; endRow: number }>();
 
-  function collectSlash(node: Node): void {
-    if (node.type === "comment" && node.text.startsWith("//")) {
-      slashByRow.set(node.startPosition.row, node.text);
+  function collectAll(node: Node): void {
+    if (node.type === "comment") {
+      allCommentsByRow.set(node.startPosition.row, { text: node.text, endRow: node.endPosition.row });
     }
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
-      if (child) collectSlash(child);
+      if (child) collectAll(child);
     }
   }
-  collectSlash(root);
+  collectAll(root);
 
   function findExampleFuncs(node: Node): void {
     if (node.type === "function_declaration") {
@@ -275,16 +328,19 @@ function findGoExampleOutputRows(root: Node): Set<number> {
           const startRow = bodyNode.startPosition.row;
           const endRow = bodyNode.endPosition.row;
           let outputRow: number | null = null;
+          let outputEndRow = 0;
           for (let row = startRow; row <= endRow; row++) {
-            const txt = slashByRow.get(row);
-            if (txt !== undefined && GO_OUTPUT_RE.test(stripMarkers(txt))) {
+            const entry = allCommentsByRow.get(row);
+            if (entry !== undefined && GO_OUTPUT_RE.test(stripMarkers(entry.text))) {
               outputRow = row;
+              outputEndRow = entry.endRow;
               break;
             }
           }
           if (outputRow !== null) {
-            let row = outputRow;
-            while (row <= endRow && slashByRow.has(row)) {
+            for (let r = outputRow; r <= outputEndRow; r++) result.add(r);
+            let row = outputEndRow + 1;
+            while (row <= endRow && allCommentsByRow.has(row) && allCommentsByRow.get(row)!.text.startsWith("//")) {
               result.add(row);
               row++;
             }
@@ -338,7 +394,7 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
           } else if (raw.startsWith("//") && goCgoPreambleRows.has(startRow)) {
             exempt = true;
             reason = "cgo-preamble";
-          } else if (raw.startsWith("//") && goExampleOutputRows.has(startRow)) {
+          } else if (goExampleOutputRows.has(startRow)) {
             exempt = true;
             reason = "go-example-output";
           }

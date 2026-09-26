@@ -211,13 +211,15 @@ func Placeholder() {}
 const OVER_BUDGET_GO = [
   "package main",
   ...Array.from({ length: 100 }, (_, i) => `var v${i} = ${i}`),
+  "func F() int {",
   "// narr 1",
   "// narr 2",
   "// narr 3",
   "// narr 4",
   "// narr 5",
   "// narr 6",
-  "func F() int { return /* c */ 1 }",
+  "return /* c */ 1",
+  "}",
 ].join("\n");
 
 describe("Guard: autoFix refuses → input unmodified (return/* c */nil style)", () => {
@@ -240,6 +242,7 @@ describe("Guard: autoFix refuses → input unmodified (return/* c */nil style)",
 
   it("Guard does not strip when autoFix refuses: no updatedInput", () => {
     expect(hso).not.toHaveProperty("updatedInput");
+    expect(typeof hso.additionalContext).toBe("string");
   });
 
   it("Guard output has no fused tokens from return/* c */ pattern", () => {
@@ -257,6 +260,7 @@ const PARAGRAPH_GO = [
   "package main",
   ...Array.from({ length: 100 }, (_, i) => `var p${i} = ${i}`),
   ...PARA_LINES,
+  "",
   "// other comment one",
   "// other comment two",
   "func G() {}",

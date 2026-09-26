@@ -22,6 +22,7 @@ import {
 } from "./lib/comment-density.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
+import { removedTextsFor, normalizeCommentText } from "./lib/autofix-ledger.js";
 import { loadRules } from "../engine/registry.js";
 import { runRules, isBlocking } from "../engine/run.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
@@ -288,6 +289,28 @@ export function buildCtx(
 export interface CheckOpts {
   getParser?: GetParserFn;
   readFile?: (p: string) => string | null;
+  ledgerDir?: string;
+}
+
+function buildReaddLines(nc: Comment[], filePath: string, ledgerDir?: string): string[] {
+  try {
+    const ledgerOpts = ledgerDir !== undefined ? { dir: ledgerDir } : undefined;
+    const removed = removedTextsFor(filePath, ledgerOpts);
+    if (removed.length === 0) return [];
+    const lines: string[] = [];
+    for (const c of nc) {
+      const norm = normalizeCommentText(c.text);
+      const match = removed.find(r => normalizeCommentText(r.text) === norm);
+      if (match) {
+        lines.push(
+          `L${c.startRow + 1}: this comment was removed from ${filePath} by house-rules autofix at ${match.ts} (${match.reason}). Fold the information into names or drop it — don't re-add it.`,
+        );
+      }
+    }
+    return lines;
+  } catch {
+    return [];
+  }
 }
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
@@ -406,17 +429,26 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     if (nc.length === 0) return allow();
 
+    const readdLines = buildReaddLines(nc, filePath, opts.ledgerDir);
+    const readdCtx = readdLines.length > 0 ? readdLines.join("\n") : null;
+
     // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
     const fixEntry = LANG_FIX_TABLE[lang as Lang];
     const isStableAndSafe = !!fixEntry && fixEntry.stability === "stable" && fixEntry.applicability === "safe";
-    if (!isStableAndSafe) return allow();
+    if (!isStableAndSafe) {
+      if (readdCtx) return advisory(readdCtx);
+      return allow();
+    }
 
     const ncRowSet = new Set<number>();
     for (const c of nc) {
       for (let r = c.startRow; r <= c.endRow; r++) ncRowSet.add(r);
     }
 
-    if (ncRowSet.size <= Math.max(0, budget)) return allow();
+    if (ncRowSet.size <= Math.max(0, budget)) {
+      if (readdCtx) return advisory(readdCtx);
+      return allow();
+    }
 
     const ncSet = new Set(nc.map(c => c.startIndex));
     const autoFixRows = new Set<number>(changedRows);
@@ -429,7 +461,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const ar = await autoFix(post, lang, autoFixRows, getParser, ncRowSet);
     if (!ar.ok || ar.removed === 0) {
       const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
-      return advisory(ctx);
+      return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
     }
 
     const removedOrigRows = new Set(ar.rowChanges.filter(rc => rc.kind === "deleted").map(rc => rc.origRow));
@@ -441,12 +473,12 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       const verified = reconstructPostEdit(tool, updatedTi as Parameters<typeof reconstructPostEdit>[1], pre);
       if (verified && verified.post === stripped_post) {
         const ctx = buildCtx(tool, filePath, stripped_comments, budget, 0, priorAddedCount, priorAddedComments);
-        return rewrite(updatedTi, ctx);
+        return rewrite(updatedTi, readdCtx ? ctx + "\n" + readdCtx : ctx);
       }
     }
 
     const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
-    return advisory(ctx);
+    return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
   } catch {
     return allow();
   }

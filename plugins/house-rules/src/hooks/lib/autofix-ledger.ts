@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import {
-  appendFileSync,
-  existsSync,
+  closeSync,
+  constants,
+  lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -54,9 +57,70 @@ export function deliveryKey(
   return `${sessionId || "nosession"}:${agentId || "main"}`;
 }
 
-function readRecords(lp: string): LedgerRecord[] {
-  if (!existsSync(lp)) return [];
+// O_NOFOLLOW is available on Linux and macOS; falls back to 0 on Windows.
+const O_NOFOLLOW_FLAG: number = (constants as Record<string, number>).O_NOFOLLOW ?? 0;
+
+// Validate (and if absent, create) the ledger directory.
+// Returns false if the dir is unsafe; callers must treat false as a no-op signal.
+function ensureDir(dir: string): boolean {
   try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  } catch {
+    return false;
+  }
+  try {
+    const st = lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) return false;
+    const uid = process.getuid?.();
+    if (uid !== undefined && st.uid !== uid) return false;
+    if (st.mode & 0o022) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeAppend(lp: string, data: string): void {
+  if (O_NOFOLLOW_FLAG !== 0) {
+    try {
+      const flags =
+        constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | O_NOFOLLOW_FLAG;
+      const fd = openSync(lp, flags, 0o600);
+      try {
+        writeSync(fd, data);
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+    }
+  } else {
+    try {
+      const st = lstatSync(lp);
+      if (st.isSymbolicLink()) return;
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") return;
+    }
+    try {
+      const fd = openSync(lp, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT, 0o600);
+      try {
+        writeSync(fd, data);
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+    }
+  }
+}
+
+function readRecords(lp: string): LedgerRecord[] {
+  try {
+    let st: ReturnType<typeof lstatSync>;
+    try {
+      st = lstatSync(lp);
+    } catch {
+      return [];
+    }
+    if (st.isSymbolicLink() || !st.isFile()) return [];
     const raw = readFileSync(lp, "utf8");
     const records: LedgerRecord[] = [];
     for (const line of raw.split("\n")) {
@@ -81,6 +145,14 @@ const KEEP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function maybeBound(lp: string, _dir: string, now: () => number): void {
   try {
+    let st: ReturnType<typeof lstatSync>;
+    try {
+      st = lstatSync(lp);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink() || !st.isFile()) return;
+
     const raw = readFileSync(lp, "utf8");
     const allLines = raw.split("\n").filter(l => l.trim());
     if (allLines.length <= MAX_LINES) return;
@@ -119,7 +191,7 @@ function maybeBound(lp: string, _dir: string, now: () => number): void {
     }
 
     const tmp = lp + `.tmp-${process.pid}`;
-    writeFileSync(tmp, finalLines.join("\n") + (finalLines.length ? "\n" : ""));
+    writeFileSync(tmp, finalLines.join("\n") + (finalLines.length ? "\n" : ""), { mode: 0o600 });
     renameSync(tmp, lp);
   } catch {
     // never throws
@@ -133,7 +205,7 @@ export function appendFix(
   try {
     const lp = ledgerPath(opts);
     const dir = path.dirname(lp);
-    mkdirSync(dir, { recursive: true });
+    if (!ensureDir(dir)) return;
     const ts = new Date((opts?.now ?? Date.now)()).toISOString();
     const entry: FixRecord = {
       kind: "fix",
@@ -144,7 +216,7 @@ export function appendFix(
       source: rec.source,
       ts,
     };
-    appendFileSync(lp, JSON.stringify(entry) + "\n");
+    safeAppend(lp, JSON.stringify(entry) + "\n");
     maybeBound(lp, dir, opts?.now ?? Date.now);
   } catch {
     // never throws
@@ -197,7 +269,7 @@ export function markDelivered(
   try {
     const lp = ledgerPath(opts);
     const dir = path.dirname(lp);
-    mkdirSync(dir, { recursive: true });
+    if (!ensureDir(dir)) return;
     const resolvedFile = path.resolve(file);
     const ts = new Date((opts?.now ?? Date.now)()).toISOString();
     for (const fixedHash of fixedHashes) {
@@ -208,7 +280,7 @@ export function markDelivered(
         key: deliveryKey,
         ts,
       };
-      appendFileSync(lp, JSON.stringify(entry) + "\n");
+      safeAppend(lp, JSON.stringify(entry) + "\n");
     }
     maybeBound(lp, dir, opts?.now ?? Date.now);
   } catch {
@@ -240,16 +312,13 @@ export function removedTextsFor(
 
 export function normalizeCommentText(s: string): string {
   let t = s.trim();
-  // strip block comment markers first
   if (t.startsWith("/*") && t.endsWith("*/")) {
     t = t.slice(2, -2).trim();
   }
-  // strip line prefixes
   if (t.startsWith("///")) t = t.slice(3);
   else if (t.startsWith("//")) t = t.slice(2);
   else if (t.startsWith("#")) t = t.slice(1);
   else if (t.startsWith("--")) t = t.slice(2);
-  // strip leading * on block lines (e.g. " * text")
   else if (/^\*/.test(t.trimStart())) t = t.trimStart().slice(1);
   return t.trim().replace(/\s+/g, " ");
 }

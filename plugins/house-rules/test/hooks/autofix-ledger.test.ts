@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -381,5 +389,94 @@ describe("pendingNotices — missing ledger", () => {
   it("returns empty array when ledger file does not exist", () => {
     const recs = pendingNotices("/nope.ts", deliveryKey("s", "a"), { dir: path.join(tmpDir, "no-such-dir") });
     expect(recs).toEqual([]);
+  });
+});
+
+describe("security hardening", () => {
+  it("creates ledger dir with mode 0700", () => {
+    const newDir = path.join(tmpDir, "fresh-ledger-dir");
+    appendFix(
+      { file: "/f.ts", fixedContent: "c", removed: ["// a"], reason: "r", source: "gate" },
+      { dir: newDir }
+    );
+    const st = lstatSync(newDir);
+    expect(st.isDirectory()).toBe(true);
+    expect(st.mode & 0o777).toBe(0o700);
+  });
+
+  it("does not write through a symlinked ledger dir, does not throw", () => {
+    const realDir = mkdtempSync(path.join(os.tmpdir(), "autofix-real-"));
+    const symlinkDir = path.join(tmpDir, "symlink-dir");
+    symlinkSync(realDir, symlinkDir);
+    try {
+      let threw = false;
+      try {
+        appendFix(
+          { file: "/f.ts", fixedContent: "c", removed: ["// a"], reason: "r", source: "gate" },
+          { dir: symlinkDir }
+        );
+      } catch {
+        threw = true;
+      }
+      expect(threw).toBe(false);
+      // ledger.jsonl must not exist inside the real target dir
+      let ledgerExists = false;
+      try { lstatSync(path.join(realDir, "ledger.jsonl")); ledgerExists = true; } catch { /* expected */ }
+      expect(ledgerExists).toBe(false);
+    } finally {
+      rmSync(realDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not write to a symlinked ledger.jsonl, victim file unchanged, does not throw", () => {
+    const victim = path.join(tmpDir, "victim.txt");
+    writeFileSync(victim, "original-content");
+    const lp = path.join(tmpDir, "ledger.jsonl");
+    symlinkSync(victim, lp);
+
+    let threw = false;
+    try {
+      appendFix(
+        { file: "/f.ts", fixedContent: "c", removed: ["// a"], reason: "r", source: "gate" },
+        { dir: tmpDir }
+      );
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+    expect(readFileSync(victim, "utf8")).toBe("original-content");
+  });
+
+  it("does not write in a world-writable ledger dir, does not throw", () => {
+    const wwDir = mkdtempSync(path.join(os.tmpdir(), "autofix-ww-"));
+    chmodSync(wwDir, 0o777);
+    try {
+      let threw = false;
+      try {
+        appendFix(
+          { file: "/f.ts", fixedContent: "c", removed: ["// a"], reason: "r", source: "gate" },
+          { dir: wwDir }
+        );
+      } catch {
+        threw = true;
+      }
+      expect(threw).toBe(false);
+      let ledgerExists = false;
+      try { lstatSync(path.join(wwDir, "ledger.jsonl")); ledgerExists = true; } catch { /* expected */ }
+      expect(ledgerExists).toBe(false);
+    } finally {
+      rmSync(wwDir, { recursive: true, force: true });
+    }
+  });
+
+  it("normal path records and reads correctly", () => {
+    const file = "/sec/test.ts";
+    appendFix(
+      { file, fixedContent: "secure-content", removed: ["// x"], reason: "r", source: "gate" },
+      opts()
+    );
+    const recs = pendingNotices(file, deliveryKey("s", "a"), opts());
+    expect(recs).toHaveLength(1);
+    expect(recs[0].fixedHash).toBe(sha256("secure-content"));
   });
 });

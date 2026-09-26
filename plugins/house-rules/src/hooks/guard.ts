@@ -1,5 +1,6 @@
 /**
- * PreToolUse autocorrect guard — strips over-budget comments before the edit lands.
+ * PreToolUse autocorrect guard — strips over-budget comments (TypeScript and Go only)
+ * before the edit lands; other languages are passed through (Stop gate enforces them).
  * Trigger: Edit | Write | MultiEdit.
  * Budget: 5 effective comment lines per 100 lines added this session for each file.
  * Returns updatedInput when stripping succeeds; falls back to advisory when ambiguous.
@@ -458,14 +459,14 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       for (let r = c.startRow; r <= c.endRow; r++) autoFixRows.delete(r);
     }
 
-    const ar = await autoFix(post, lang, autoFixRows, getParser, ncRowSet);
+    const ar = await autoFix(post, lang, autoFixRows, getParser, ncRowSet, { maxAllowedRows: Math.max(0, budget) });
     if (!ar.ok || ar.removed === 0) {
       const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
       return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
     }
 
-    const removedOrigRows = new Set(ar.rowChanges.filter(rc => rc.kind === "deleted").map(rc => rc.origRow));
-    const stripped_comments = nc.filter(c => removedOrigRows.has(c.startRow));
+    const removedTextSet = new Set(ar.removedTexts);
+    const stripped_comments = nc.filter(c => removedTextSet.has(c.text));
     const stripped_post = ar.fixed;
     const updatedTi = mapToInput(tool, ti, pre ?? "", post, stripped_post);
 

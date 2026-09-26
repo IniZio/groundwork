@@ -1162,6 +1162,7 @@ export async function autoFix(
   addedRows: Set<number>,
   getParser?: GetParserFn,
   netNewRows?: Set<number>,
+  opts?: { maxAllowedRows?: number },
 ): Promise<AutoFixResult> {
   getParser ??= defaultGetParser;
   const origParsed = await findComments(text, lang, getParser);
@@ -1188,7 +1189,7 @@ export async function autoFix(
   }
 
   const totalCandidateRows = candidates.reduce((sum, c) => sum + commentRowCount(c), 0);
-  const maxAllowedRows = Math.floor(0.05 * addedRows.size);
+  const maxAllowedRows = opts?.maxAllowedRows ?? Math.floor(0.05 * addedRows.size);
 
   if (totalCandidateRows <= maxAllowedRows) {
     return { ok: true, fixed: text, removed: 0, removedTexts: [], kept: candidates.length, total: candidates.length, rowChanges: [] };
@@ -1282,7 +1283,10 @@ export async function autoFix(
         rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
       ).length;
       const remappedSize = addedRows.size - wlRemovedRows;
-      if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
+      const densityOkGo = opts?.maxAllowedRows !== undefined
+        ? keptRows + extraEffective <= maxAllowedRows
+        : (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5);
+      if (densityOkGo) break;
       if (keptUnitIndices.length === 0) {
         return { ok: false, reason: "still over cap after fix" };
       }
@@ -1331,7 +1335,10 @@ export async function autoFix(
       rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
     ).length;
     const remappedSize = addedRows.size - wlRemovedRows;
-    if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
+    const densityOk = opts?.maxAllowedRows !== undefined
+      ? keptRows + extraEffective <= maxAllowedRows
+      : (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5);
+    if (densityOk) break;
     if (keepCount === 0) {
       return { ok: false, reason: "still over cap after fix" };
     }

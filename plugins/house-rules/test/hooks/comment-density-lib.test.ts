@@ -2325,3 +2325,18 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
     expect(r.fixed).not.toMatch(/\n\n\n/);
   });
 });
+
+describe("autoFix opts.maxAllowedRows override", () => {
+  it("maxAllowedRows=0 strips comment that local budget would keep", async () => {
+    const text = [
+      ...Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`),
+      "// should be stripped",
+    ].join("\n");
+    const rows = new Set(Array.from({ length: 21 }, (_, i) => i));
+    const r = await autoFix(text, "typescript", rows, undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBe(1);
+    expect(r.removedTexts).toEqual(["// should be stripped"]);
+  });
+});

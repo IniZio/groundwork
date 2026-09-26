@@ -462,10 +462,14 @@ describe("AC4 cumulative budget", () => {
       transcript_path: biteRepo.transcript,
       cwd: biteRepo.dir,
     });
-    expect(r.stdout).not.toBe("");
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
     const ctx = safeContext(r);
     expect(ctx!).toContain("20 lines added");
     expect(ctx!).toContain("2 comments already added");
+    expect(ctx!).toContain("budget left before this edit: 0");
+    expect(ctx!).toContain("No comment budget remains");
+    expect(hso).not.toHaveProperty("permissionDecision");
   });
 });
 
@@ -551,6 +555,16 @@ describe("remainder (K) computation", () => {
     expect(r.stdout).toBe("");
     const hso = getHso(r);
     expect(hso).not.toHaveProperty("updatedInput");
+  });
+
+  it("TS Write over-cap: ctx contains budget-left and No-comment-budget-remains text", async () => {
+    // OVER_CAP_25: 20 code + 5 comments = 25 lines, no transcript
+    // budget = floor(0.05*25)-0 = 1, 5 nc > 1 → strip; B=1, K=0
+    const r = await check(write("/tmp/cdg-k-ts-budget.ts", OVER_CAP_25));
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    expect(ctx!).toContain("budget left before this edit: 1");
+    expect(ctx!).toContain("No comment budget remains");
   });
 
   it("buildCtx K>0: remainder=2 shows re-add count", () => {
@@ -690,6 +704,71 @@ describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAdde
     // priorAddedComments=0 (reword is not net-new) → budget=1 ≥ nc=1 → allow
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
+  });
+});
+
+describe("TRAILING-COMMENT-N (blocker RS-2)", () => {
+  it("GO-TRAILING-N: Go Write 18 trailing-comment lines → reported N equals actually removed, Removed list populated", async () => {
+    const goContent = [
+      "package main",
+      ...Array.from({ length: 18 }, (_, i) => `\tx${i} := ${i} // trailing note ${i}`),
+    ].join("\n");
+    const r = await check(write("/tmp/cdg-go-trailing-n.go", goContent));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = ui.content as string;
+    const inputCount = goContent.split("\n").filter(l => /\/\/ trailing note/.test(l)).length;
+    const outputCount = content.split("\n").filter(l => /\/\/ trailing note/.test(l)).length;
+    const actuallyRemoved = inputCount - outputCount;
+    expect(actuallyRemoved).toBeGreaterThan(0);
+    const ctx = safeContext(r);
+    expect(ctx!).toContain(`removed ${actuallyRemoved} comment(s)`);
+    for (let i = 0; i < 18; i++) {
+      const t = `// trailing note ${i}`;
+      if (!content.includes(t)) {
+        expect(ctx!).toContain(t);
+      }
+    }
+  });
+
+  it("TS-INLINE-N: TS Write 20 inline-comment lines → reported N equals actually removed, Removed list populated", async () => {
+    const tsContent = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i}; // inline note ${i}`).join("\n");
+    const r = await check(write("/tmp/cdg-ts-inline-n.ts", tsContent));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = ui.content as string;
+    const inputCount = tsContent.split("\n").filter(l => /\/\/ inline note/.test(l)).length;
+    const outputCount = content.split("\n").filter(l => /\/\/ inline note/.test(l)).length;
+    const actuallyRemoved = inputCount - outputCount;
+    expect(actuallyRemoved).toBeGreaterThan(0);
+    const ctx = safeContext(r);
+    expect(ctx!).toContain(`removed ${actuallyRemoved} comment(s)`);
+    for (let i = 0; i < 20; i++) {
+      const t = `// inline note ${i}`;
+      if (!content.includes(t)) {
+        expect(ctx!).toContain(t);
+      }
+    }
+  });
+});
+
+describe("REFUSED-UNDER-OVERRIDE: autoFix ok:false with budget override → advisory", () => {
+  it("nc comment in URL-paragraph protected → no updatedInput (Stop gate handles)", async () => {
+    const pre = [
+      ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
+      "// https://example.com/spec",
+    ].join("\n");
+    const r = await check(
+      edit("/tmp/cdg-refused-override.ts", "// https://example.com/spec", "// nc narration\n// https://example.com/spec"),
+      { readFile: () => pre },
+    );
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    expect(hso).not.toHaveProperty("permissionDecision");
   });
 });
 

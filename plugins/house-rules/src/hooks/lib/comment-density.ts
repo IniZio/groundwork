@@ -1041,11 +1041,74 @@ function isExemptProse(c: Comment): boolean {
   return c.exempt && URL_RE.test(stripMarkers(c.text));
 }
 
-function paragraphProtectedSet(
+function buildGoCommentGroups(comments: Comment[], text: string): Comment[][] {
+  const wholeLine: Comment[] = [];
+  for (const c of comments) {
+    const ls = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+    if (!text.slice(ls, c.startIndex).trim()) wholeLine.push(c);
+  }
+  wholeLine.sort((a, b) => a.startRow - b.startRow);
+  const groups: Comment[][] = [];
+  let cur: Comment[] = [];
+  for (const c of wholeLine) {
+    if (cur.length === 0 || c.startRow !== cur[cur.length - 1].endRow + 1) {
+      if (cur.length > 0) groups.push(cur);
+      cur = [c];
+    } else {
+      cur.push(c);
+    }
+  }
+  if (cur.length > 0) groups.push(cur);
+  return groups;
+}
+
+function goNoteContSet(
   candidates: Comment[],
   allComments: Comment[],
   text: string,
 ): Set<number> {
+  const groups = buildGoCommentGroups(allComments, text);
+  const candSet = new Set(candidates.map(c => c.startIndex));
+  const result = new Set<number>();
+  for (const group of groups) {
+    let inNote = false;
+    for (const c of group) {
+      if (c.exempt && NOTE_MARKER_RE.test(stripMarkers(c.text))) {
+        inNote = true;
+        continue;
+      }
+      if (c.exempt) {
+        inNote = false;
+        continue;
+      }
+      if (inNote && candSet.has(c.startIndex)) {
+        result.add(c.startIndex);
+      }
+    }
+  }
+  return result;
+}
+
+function paragraphProtectedSet(
+  candidates: Comment[],
+  allComments: Comment[],
+  text: string,
+  lang?: Lang,
+): Set<number> {
+  const candIndices = new Set(candidates.map(c => c.startIndex));
+  const result = new Set<number>();
+
+  if (lang === "go") {
+    const groups = buildGoCommentGroups(allComments, text);
+    for (const group of groups) {
+      if (!group.some(c => isExemptProse(c))) continue;
+      for (const c of group) {
+        if (candIndices.has(c.startIndex)) result.add(c.startIndex);
+      }
+    }
+    return result;
+  }
+
   const allSlash: Comment[] = [];
   for (const c of allComments) {
     if (!c.text.startsWith("//") || c.startRow !== c.endRow) continue;
@@ -1074,8 +1137,6 @@ function paragraphProtectedSet(
   }
   if (cur.length > 0) paragraphs.push(cur);
 
-  const candIndices = new Set(candidates.map(c => c.startIndex));
-  const result = new Set<number>();
   for (const para of paragraphs) {
     if (!para.some(c => isExemptProse(c))) continue;
     for (const c of para) {
@@ -1133,36 +1194,121 @@ export async function autoFix(
     }
   }
 
-  const protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text);
+  let protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text, lang);
+  if (lang === "go") {
+    const noteCont = goNoteContSet(candidates, origParsed.comments, text);
+    if (noteCont.size > 0) protectedIndices = new Set([...protectedIndices, ...noteCont]);
+  }
   const protectedCands = candidates.filter(c => protectedIndices.has(c.startIndex));
   const removableCands = candidates.filter(c => !protectedIndices.has(c.startIndex));
   const protectedRowCount = protectedCands.reduce((s, c) => s + commentRowCount(c), 0);
 
   const units: Comment[][] = [];
-  const wholeLineHeads = new Set<Comment>();
-  for (const c of removableCands) {
-    const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
-    const isWholeLine = !text.slice(lineStart, c.startIndex).trim();
-    if (isWholeLine && c.text.startsWith("//") && c.startRow === c.endRow) {
-      const last = units[units.length - 1];
-      if (last && wholeLineHeads.has(last[0]) && c.startRow === last[last.length - 1].endRow + 1) {
-        last.push(c);
-        continue;
+  if (lang === "go") {
+    const groups = buildGoCommentGroups(origParsed.comments, text);
+    const removableSet = new Set(removableCands.map(c => c.startIndex));
+    const inGoGroup = new Set<number>();
+    const orderedUnits: Array<{ startRow: number; comments: Comment[] }> = [];
+    for (const group of groups) {
+      const groupCands = group.filter(c => removableSet.has(c.startIndex));
+      if (groupCands.length > 0) {
+        orderedUnits.push({ startRow: groupCands[0].startRow, comments: groupCands });
+        for (const c of groupCands) inGoGroup.add(c.startIndex);
       }
-      wholeLineHeads.add(c);
     }
-    units.push([c]);
+    for (const c of removableCands) {
+      if (!inGoGroup.has(c.startIndex)) {
+        orderedUnits.push({ startRow: c.startRow, comments: [c] });
+      }
+    }
+    orderedUnits.sort((a, b) => a.startRow - b.startRow);
+    for (const u of orderedUnits) units.push(u.comments);
+  } else {
+    const wholeLineHeads = new Set<Comment>();
+    for (const c of removableCands) {
+      const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+      const isWholeLine = !text.slice(lineStart, c.startIndex).trim();
+      if (isWholeLine && c.text.startsWith("//") && c.startRow === c.endRow) {
+        const last = units[units.length - 1];
+        if (last && wholeLineHeads.has(last[0]) && c.startRow === last[last.length - 1].endRow + 1) {
+          last.push(c);
+          continue;
+        }
+        wholeLineHeads.add(c);
+      }
+      units.push([c]);
+    }
   }
+
   let keptRows = protectedRowCount;
   let keepCount = 0;
-  for (const unit of units) {
-    const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
-    if (keptRows + rows <= maxAllowedRows) {
-      keptRows += rows;
-      keepCount++;
-    } else {
-      break;
+  let keptUnitIndices: number[] | null = null;
+  if (lang === "go") {
+    keptUnitIndices = [];
+    for (let i = 0; i < units.length; i++) {
+      const rows = units[i].reduce((s, c) => s + commentRowCount(c), 0);
+      if (keptRows + rows <= maxAllowedRows) {
+        keptRows += rows;
+        keptUnitIndices.push(i);
+      }
     }
+  } else {
+    for (const unit of units) {
+      const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
+      if (keptRows + rows <= maxAllowedRows) {
+        keptRows += rows;
+        keepCount++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  if (keptUnitIndices !== null) {
+    const keptSet = new Set(keptUnitIndices);
+    while (true) {
+      const removedCands = units.filter((_, i) => !keptSet.has(i)).flat();
+      const wlRemovedRows = stripComments(text, removedCands).rowChanges.filter(
+        rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
+      ).length;
+      const remappedSize = addedRows.size - wlRemovedRows;
+      if (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5) break;
+      if (keptUnitIndices.length === 0) {
+        return { ok: false, reason: "still over cap after fix" };
+      }
+      const lastKept = keptUnitIndices.pop()!;
+      keptSet.delete(lastKept);
+      keptRows -= units[lastKept].reduce((s, c) => s + commentRowCount(c), 0);
+    }
+    const toRemoveGo = units.filter((_, i) => !keptSet.has(i)).flat();
+    const strippedGo = stripComments(text, toRemoveGo);
+    const { rowChanges } = strippedGo;
+    const fixedGo = normalizeGoRemovalWhitespace(text, strippedGo.text, rowChanges);
+    const fpGo = await findComments(fixedGo, lang, getParser);
+    if (!fpGo.ok) return { ok: false, reason: `post-strip parse: ${fpGo.reason}` };
+    const prGo = await getParser(lang);
+    if (!prGo.ok) return { ok: false, reason: `parser: ${prGo.reason}` };
+    const origTreeGo = prGo.parser.parse(text);
+    const fixedTreeGo = prGo.parser.parse(fixedGo);
+    if (!hasAstErrors(origTreeGo.rootNode) && hasAstErrors(fixedTreeGo.rootNode)) {
+      return { ok: false, reason: "fix introduced parse errors" };
+    }
+    const origCodeGo = collectCodeText(origTreeGo.rootNode, text, lang);
+    const fixedCodeGo = collectCodeText(fixedTreeGo.rootNode, fixedGo, lang);
+    if (origCodeGo !== fixedCodeGo) return { ok: false, reason: "code content changed" };
+    const preMapGo = new Map<string, number>();
+    for (const c of origParsed.comments) {
+      let onAdded = false;
+      for (let r = c.startRow; r <= c.endRow && !onAdded; r++) onAdded = addedRows.has(r);
+      if (!onAdded) preMapGo.set(c.text, (preMapGo.get(c.text) ?? 0) + 1);
+    }
+    const fixedMapGo = new Map<string, number>();
+    for (const c of fpGo.comments) fixedMapGo.set(c.text, (fixedMapGo.get(c.text) ?? 0) + 1);
+    for (const [t, cnt] of preMapGo) {
+      if ((fixedMapGo.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
+    }
+    const keptUnits = units.filter((_, i) => keptSet.has(i)).flat().length;
+    return { ok: true, fixed: fixedGo, removed: toRemoveGo.length, kept: keptUnits + protectedCands.length, total: candidates.length, rowChanges };
   }
 
   while (keepCount >= 0) {

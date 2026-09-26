@@ -47,6 +47,15 @@ describe("house-rules manifest", () => {
           g.hooks.some((h) => h.command.includes("guard.ts"))
       )
     ).toBe(true);
+
+    expect(
+      preToolUseGroups.some(
+        (g) =>
+          typeof g.matcher === "string" &&
+          g.matcher.split("|").includes("Read") &&
+          g.hooks.some((h) => h.command.includes("autofix-notice.ts"))
+      )
+    ).toBe(true);
   });
 
   it("marketplace.json has house-rules entry with correct source and version", () => {

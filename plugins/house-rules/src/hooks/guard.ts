@@ -14,16 +14,18 @@ import {
   findComments,
   reconstructPostEdit,
   newComments as findNewComments,
-  stripComments,
   netNewCommentRows,
+  autoFix,
   type Comment,
   type GetParserFn,
+  type Lang,
 } from "./lib/comment-density.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
 import { runRules, isBlocking } from "../engine/run.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
+import { LANG_FIX_TABLE } from "./gate.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -402,25 +404,48 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       nc = findNewComments(preComments, postFindResult.comments, changedRows);
     }
 
-    const keep = Math.max(budget, 0);
-    if (nc.length <= keep) return allow();
+    if (nc.length === 0) return allow();
 
-    const to_strip = nc.slice(keep);
-    const { text: stripped_post } = stripComments(post, to_strip);
+    // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
+    const fixEntry = LANG_FIX_TABLE[lang as Lang];
+    const isStableAndSafe = !!fixEntry && fixEntry.stability === "stable" && fixEntry.applicability === "safe";
+    if (!isStableAndSafe) return allow();
 
+    const ncRowSet = new Set<number>();
+    for (const c of nc) {
+      for (let r = c.startRow; r <= c.endRow; r++) ncRowSet.add(r);
+    }
+
+    if (ncRowSet.size <= Math.max(0, budget)) return allow();
+
+    const ncSet = new Set(nc.map(c => c.startIndex));
+    const autoFixRows = new Set<number>(changedRows);
+    for (const c of postFindResult.comments) {
+      if (c.exempt) continue;
+      if (ncSet.has(c.startIndex)) continue;
+      for (let r = c.startRow; r <= c.endRow; r++) autoFixRows.delete(r);
+    }
+
+    const ar = await autoFix(post, lang, autoFixRows, getParser, ncRowSet);
+    if (!ar.ok || ar.removed === 0) {
+      const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
+      return advisory(ctx);
+    }
+
+    const removedOrigRows = new Set(ar.rowChanges.filter(rc => rc.kind === "deleted").map(rc => rc.origRow));
+    const stripped_comments = nc.filter(c => removedOrigRows.has(c.startRow));
+    const stripped_post = ar.fixed;
     const updatedTi = mapToInput(tool, ti, pre ?? "", post, stripped_post);
-
-    const remainder = Math.max(0, budget - keep);
 
     if (updatedTi !== null) {
       const verified = reconstructPostEdit(tool, updatedTi as Parameters<typeof reconstructPostEdit>[1], pre);
       if (verified && verified.post === stripped_post) {
-        const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments);
+        const ctx = buildCtx(tool, filePath, stripped_comments, budget, 0, priorAddedCount, priorAddedComments);
         return rewrite(updatedTi, ctx);
       }
     }
 
-    const ctx = buildCtx(tool, filePath, to_strip, budget, remainder, priorAddedCount, priorAddedComments, "advisory");
+    const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
     return advisory(ctx);
   } catch {
     return allow();

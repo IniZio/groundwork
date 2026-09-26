@@ -29,15 +29,36 @@ async function spawnGuard(payload: unknown, tmpDir: string): Promise<{ stdout: s
   return { stdout, stderr, exit };
 }
 
+const OVER_CAP_TS = [
+  ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
+  "// comment one",
+  "// comment two",
+  "// comment three",
+  "// comment four",
+  "// comment five",
+].join("\n");
+
 describe("comment-density-guard deployed path (probe.sh Write)", () => {
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-deployed-"));
   const targetPath = path.join(tmpDir, "probe-copy.sh");
+  const tsTmpPath = path.join(tmpDir, "probe-copy.ts");
 
-  it("AC8: updatedInput.content has fewer comment lines, ctx says not another session's edit, no permissionDecision", async () => {
+  it("AC8: bash is preview lang → guard passes through (no updatedInput)", async () => {
     const content = await Bun.file(PROBE_SH).text();
     const payload = {
       tool_name: "Write",
       tool_input: { file_path: targetPath, content },
+    };
+
+    const { stdout, exit } = await spawnGuard(payload, tmpDir);
+    expect(exit).toBe(0);
+    expect(stdout.trim()).toBe("");
+  });
+
+  it("AC8b: TypeScript over-budget Write → updatedInput.content has fewer comments", async () => {
+    const payload = {
+      tool_name: "Write",
+      tool_input: { file_path: tsTmpPath, content: OVER_CAP_TS },
     };
 
     const { stdout, exit } = await spawnGuard(payload, tmpDir);
@@ -52,8 +73,8 @@ describe("comment-density-guard deployed path (probe.sh Write)", () => {
 
     const ui = hso.updatedInput as Record<string, unknown>;
     const updatedContent = ui.content as string;
-    const originalLines = content.split("\n").filter(l => l.trim().match(/^#[^!]/));
-    const updatedLines = updatedContent.split("\n").filter(l => l.trim().match(/^#[^!]/));
+    const originalLines = OVER_CAP_TS.split("\n").filter(l => l.trim().startsWith("//"));
+    const updatedLines = updatedContent.split("\n").filter(l => l.trim().startsWith("//"));
     expect(updatedLines.length).toBeLessThan(originalLines.length);
 
     const ctx = hso.additionalContext as string;

@@ -90,7 +90,7 @@ describe("comment-density-guard", () => {
     expect(ctx!).toContain("not another session's edit");
   });
 
-  it("AUTOCORRECT: Write over-cap keeps first comment, strips rest from content", async () => {
+  it("AUTOCORRECT: Write over-cap strips whole paragraph (autoFix groups consecutive // as one unit)", async () => {
     const r = await check(write("/tmp/cdg-over2.ts", OVER_CAP_25));
     const hso = getHso(r);
     expect(hso).toHaveProperty("updatedInput");
@@ -98,9 +98,9 @@ describe("comment-density-guard", () => {
     expect(typeof ui.content).toBe("string");
     const content = ui.content as string;
     const commentCount = content.split("\n").filter(l => l.trim().startsWith("//")).length;
-    expect(commentCount).toBe(1);
+    expect(commentCount).toBe(0);
     const ctx = safeContext(r);
-    expect(ctx!).toContain("removed 4 comment(s)");
+    expect(ctx!).toContain("removed 5 comment(s)");
   });
 
   it("WHITELIST: @-tagged annotations and TODO(owner) — stays clean", async () => {
@@ -195,7 +195,7 @@ describe("comment-density-guard", () => {
     expect(commentCount).toBeLessThan(5);
   });
 
-  it("AC1: Write .sh with 5 # comments → keeps first, strips 4, no permissionDecision", async () => {
+  it("AC1: Write .sh with 5 # comments → guard passes through (bash is preview; Stop gate enforces)", async () => {
     const lines = [
       "#!/usr/bin/env bash",
       ...Array.from({ length: 19 }, (_, i) => `echo "line ${i}"`),
@@ -209,18 +209,11 @@ describe("comment-density-guard", () => {
     const r = await check(write("/tmp/cdg-ac1.sh", content));
     expect(r.exit).toBe(0);
     const hso = getHso(r);
-    expect(hso).toHaveProperty("updatedInput");
-    expect(hso).not.toHaveProperty("permissionDecision");
-    const parsed = parseOut(r);
-    expect(parsed).not.toHaveProperty("permissionDecision");
-    const ui = hso.updatedInput as Record<string, unknown>;
-    const commentLines = (ui.content as string).split("\n").filter(l => l.match(/^#(?!!)/));
-    expect(commentLines.length).toBe(1);
-    const ctx = safeContext(r);
-    expect(ctx!).toContain("removed 4 comment(s)");
+    expect(hso).not.toHaveProperty("updatedInput");
+    expect(r.stdout).toBe("");
   });
 
-  it("AC3: trailing YAML comment stripped, code value preserved", async () => {
+  it("AC3: YAML over-budget → guard passes through (yaml is preview; Stop gate enforces)", async () => {
     const yamlBase = [
       "apiVersion: v1",
       ...Array.from({ length: 14 }, (_, i) => `key${i}: value${i}`),
@@ -232,12 +225,8 @@ describe("comment-density-guard", () => {
     ].join("\n");
     const r = await check(write("/tmp/cdg-ac3.yaml", yamlBase));
     const hso = getHso(r);
-    expect(hso).toHaveProperty("updatedInput");
-    const content = (hso.updatedInput as Record<string, unknown>).content as string;
-    expect(content).toContain("x: 1");
-    expect(content).toContain("y: 2");
-    expect(content).not.toContain("# more");
-    expect(content).not.toContain("# extra");
+    expect(hso).not.toHaveProperty("updatedInput");
+    expect(r.stdout).toBe("");
   });
 
   it("AC5: ambiguous replace_all (occurrences differ) → advisory only, no updatedInput", async () => {
@@ -274,7 +263,7 @@ describe("comment-density-guard", () => {
     expect(r.stderr.trim().length).toBeGreaterThan(0);
   });
 
-  it("AC2: Edit YAML — only new comments stripped, carried-over survive, old_string unchanged", async () => {
+  it("AC2: Edit YAML over-budget → guard passes through (yaml is preview; Stop gate enforces)", async () => {
     const pre = [
       "apiVersion: v1",
       "# existing comment A",
@@ -294,11 +283,38 @@ describe("comment-density-guard", () => {
     );
     expect(r.exit).toBe(0);
     const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    expect(r.stdout).toBe("");
+  });
+
+  it("PYTHON-PASSTHROUGH: Python over-budget Write → input unmodified (preview lang)", async () => {
+    const pyContent = [
+      ...Array.from({ length: 100 }, (_, i) => `x_${i} = ${i}`),
+      "# comment one",
+      "# comment two",
+      "# comment three",
+      "# comment four",
+      "# comment five",
+      "# comment six",
+    ].join("\n");
+    const r = await check(write("/tmp/cdg-py-passthrough.py", pyContent));
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    expect(r.stdout).toBe("");
+  });
+
+  it("ROWS-VS-COUNT: block comment spanning 6 rows in 100-line edit → stripped (rows, not count)", async () => {
+    const blockComment = "/*\n * doc line 1\n * doc line 2\n * doc line 3\n * doc line 4\n */";
+    const tsContent = [
+      ...Array.from({ length: 100 }, (_, i) => `const z${i} = ${i};`),
+      blockComment,
+    ].join("\n");
+    const r = await check(write("/tmp/cdg-rows-count.ts", tsContent));
+    const hso = getHso(r);
     expect(hso).toHaveProperty("updatedInput");
     const ui = hso.updatedInput as Record<string, unknown>;
-    expect(ui.old_string).toBe(old_string);
-    const ns = ui.new_string as string;
-    expect(ns).toContain("existing comment B");
+    const content = typeof ui.content === "string" ? ui.content : "";
+    expect(content).not.toContain("doc line 1");
   });
 });
 
@@ -437,8 +453,8 @@ describe("AC4 cumulative budget", () => {
   it("BITE: prior always 0 → should-strip case becomes allow (red without real prior)", async () => {
     // Use a repo where bite changes the outcome: 20 prior + 2 comments, 20-line edit
     const biteRepo = makeSessionRepo({ priorCodeLines: 18, priorCommentLines: 2 });
-    // Real: floor(0.05*(20+20))-2=2-2=0 → strip
-    // Bite (prior=0): floor(0.05*20)-0=1 → allow
+    // Real: floor(0.05*(20+20))-2=2-2=0 → over budget (nc.size=1 > 0)
+    // Bite (prior=0): floor(0.05*20)-0=1 → nc.size=1 ≤ 1 → allow (empty stdout)
     const new_string = makeNewString(19, true); // 20 lines: 19 code + 1 comment
     const r = await check({
       tool_name: "Edit",
@@ -446,8 +462,7 @@ describe("AC4 cumulative budget", () => {
       transcript_path: biteRepo.transcript,
       cwd: biteRepo.dir,
     });
-    const hso = getHso(r);
-    expect(hso).toHaveProperty("updatedInput");
+    expect(r.stdout).not.toBe("");
     const ctx = safeContext(r);
     expect(ctx!).toContain("20 lines added");
     expect(ctx!).toContain("2 comments already added");
@@ -472,12 +487,12 @@ describe("DEFAULT_IGNORE: guard skip behavior", () => {
     expect(r.exit).toBe(0);
   });
 
-  it("test/fixtures in non-git tmp dir → NOT ignored by DEFAULT_IGNORE (guard still corrects)", async () => {
+  it("test/fixtures in non-git tmp dir → NOT ignored by DEFAULT_IGNORE (guard reaches lang check)", async () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-usr-fix-"));
     try {
       mkdirSync(path.join(tmpDir, "test", "fixtures"), { recursive: true });
-      const fp = path.join(tmpDir, "test", "fixtures", "a.sh");
-      const r = await check(write(fp, OVER_CAP_SH));
+      const fp = path.join(tmpDir, "test", "fixtures", "a.ts");
+      const r = await check(write(fp, OVER_CAP_25));
       expect(getHso(r)).toHaveProperty("updatedInput");
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -508,8 +523,8 @@ describe("DEFAULT_IGNORE patterns", () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-no-repo-fix-"));
     try {
       mkdirSync(path.join(tmpDir, "test", "fixtures"), { recursive: true });
-      const fp = path.join(tmpDir, "test", "fixtures", "x.sh");
-      const r = await check(write(fp, OVER_CAP_SH));
+      const fp = path.join(tmpDir, "test", "fixtures", "x.ts");
+      const r = await check(write(fp, OVER_CAP_25));
       expect(getHso(r)).toHaveProperty("updatedInput");
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -530,15 +545,12 @@ const PROBE_SH = readFS(
 );
 
 describe("remainder (K) computation", () => {
-  it("probe.sh Write: strips 121, K=0, B=37 (bite: old code said re-add 37)", async () => {
+  it("probe.sh Write: bash is preview lang → guard passes through (no stripping, Stop gate enforces)", async () => {
     const r = await check(write("/tmp/cdg-probe.sh", PROBE_SH));
     expect(r.exit).toBe(0);
-    const ctx = safeContext(r);
-    expect(ctx).not.toBeNull();
-    expect(ctx!).toContain("removed 121 comment(s)");
-    expect(ctx!).toContain("budget left before this edit: 37");
-    expect(ctx!).toContain("No comment budget remains");
-    expect(ctx!).not.toContain("re-add up to 37");
+    expect(r.stdout).toBe("");
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
   });
 
   it("buildCtx K>0: remainder=2 shows re-add count", () => {

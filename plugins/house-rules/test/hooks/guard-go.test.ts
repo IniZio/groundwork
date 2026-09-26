@@ -14,6 +14,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { check } from "../../src/hooks/guard.js";
+import type { GetParserFn } from "../../src/hooks/lib/comment-density.js";
+import { getParser as realGetParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
 // ─── isolation ──────────────────────────────────────────────────────────────
 // Point CLAUDE_PROJECT_DIR and cwd at a temp dir (not a git repo) so the guard
@@ -201,6 +203,80 @@ func Placeholder() {}
     expect(postEdit).toContain("// #cgo CFLAGS: -Wall");
     expect(postEdit).toContain("// Output:");
     expect(newStr).not.toContain("ac3 narrative filler 39");
+  });
+});
+
+// ─── Safety: autoFix-refuses → guard must not strip ──────────────────────────
+
+const OVER_BUDGET_GO = [
+  "package main",
+  ...Array.from({ length: 100 }, (_, i) => `var v${i} = ${i}`),
+  "// narr 1",
+  "// narr 2",
+  "// narr 3",
+  "// narr 4",
+  "// narr 5",
+  "// narr 6",
+  "func F() int { return /* c */ 1 }",
+].join("\n");
+
+describe("Guard: autoFix refuses → input unmodified (return/* c */nil style)", () => {
+  let hso: Record<string, unknown>;
+
+  beforeAll(async () => {
+    let callN = 0;
+    const mockGetParser: GetParserFn = async (lang) => {
+      callN++;
+      if (callN >= 2) return { ok: false as const, reason: "test-refuse" };
+      return realGetParser(lang);
+    };
+    const filePath = path.join(TEMP_DIR, "autofix_refuse.go");
+    const r = await check(writePayload(filePath, OVER_BUDGET_GO), {
+      readFile: () => null,
+      getParser: mockGetParser,
+    });
+    hso = getHso(r);
+  });
+
+  it("Guard does not strip when autoFix refuses: no updatedInput", () => {
+    expect(hso).not.toHaveProperty("updatedInput");
+  });
+
+  it("Guard output has no fused tokens from return/* c */ pattern", () => {
+    const ctx = typeof hso.additionalContext === "string" ? hso.additionalContext : "";
+    expect(ctx).not.toContain("return1");
+    expect(ctx).not.toContain("returnnil");
+  });
+});
+
+// ─── Safety: 6-line paragraph removed whole or kept whole ────────────────────
+
+const PARA_MARKER = "// PARAGRAPH_LINE_";
+const PARA_LINES = Array.from({ length: 6 }, (_, i) => `${PARA_MARKER}${i}`);
+const PARAGRAPH_GO = [
+  "package main",
+  ...Array.from({ length: 100 }, (_, i) => `var p${i} = ${i}`),
+  ...PARA_LINES,
+  "// other comment one",
+  "// other comment two",
+  "func G() {}",
+].join("\n");
+
+describe("Guard: 6-line paragraph removed whole or kept whole", () => {
+  let content: string;
+
+  beforeAll(async () => {
+    const filePath = path.join(TEMP_DIR, "paragraph_whole.go");
+    const r = await check(writePayload(filePath, PARAGRAPH_GO), {
+      readFile: () => null,
+    });
+    const ui = (getHso(r).updatedInput as Record<string, unknown> | undefined);
+    content = typeof ui?.content === "string" ? ui.content : PARAGRAPH_GO;
+  });
+
+  it("Paragraph not half-stripped: paragraph line count is 0 or 6", () => {
+    const present = PARA_LINES.filter(line => content.includes(line)).length;
+    expect(present === 0 || present === 6).toBe(true);
   });
 });
 

@@ -99,8 +99,9 @@ function isExemptInner(inner: string, lang?: Lang, rawLine?: string): boolean {
   if (GW_RULE_RE.test(inner)) return true;
   if (lang === "go") {
     const noSpaceAfterSlash = !rawLine || /^\/\/[^ ]/.test(rawLine.trimStart());
+    const isBlockLine = rawLine ? /^\/\*line\b/.test(rawLine.trimStart()) : false;
     if (noSpaceAfterSlash && GO_EXPORT_RE.test(inner)) return true;
-    if (noSpaceAfterSlash && GO_LINE_RE.test(inner)) return true;
+    if ((noSpaceAfterSlash || isBlockLine) && GO_LINE_RE.test(inner)) return true;
     if (noSpaceAfterSlash && GO_EXTERN_RE.test(inner)) return true;
     if (noSpaceAfterSlash && GO_TOOL_DIRECTIVE_RE.test(inner)) return true;
   }
@@ -165,6 +166,7 @@ const GO_DOC_DECL_TYPES = new Set([
   "var_spec",
   "field_declaration",
   "method_elem",
+  "type_elem",
 ]);
 
 function nodeIsWholeLine(node: Node, text: string): boolean {
@@ -209,9 +211,15 @@ function importDeclHasCImport(decl: Node): boolean {
 }
 
 function isGoCgoComment(node: Node): boolean {
+  let cur: Node = node;
   let next: Node | null = node.nextNamedSibling;
-  while (next && next.type === "comment") next = next.nextNamedSibling;
+  while (next && next.type === "comment") {
+    if (next.startPosition.row !== cur.endPosition.row + 1) return false;
+    cur = next;
+    next = next.nextNamedSibling;
+  }
   if (!next) return false;
+  if (next.startPosition.row !== cur.endPosition.row + 1) return false;
   if (next.type === "import_declaration") {
     return importDeclHasCImport(next);
   }
@@ -376,7 +384,7 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
 
       let exempt: boolean;
       let reason: string | undefined;
-      if (lang === "go" && raw.startsWith("/*") && isGoCgoComment(node)) {
+      if (lang === "go" && (raw.startsWith("/*") || raw.startsWith("//")) && isGoCgoComment(node)) {
         exempt = true;
         reason = "cgo-preamble";
       } else {
@@ -451,11 +459,13 @@ export async function findComments(
   const tree = parser.parse(text);
   if (!tree.rootNode.hasError) {
     const comments = collectComments(tree.rootNode, text, lang);
+    tree.delete();
     return { ok: true, comments, errorRows: new Set() };
   }
 
   const errorRows = collectErrorRows(tree.rootNode);
   const allComments = collectComments(tree.rootNode, text, lang);
+  tree.delete();
   const safeComments = allComments.filter(c => {
     for (let r = c.startRow; r <= c.endRow; r++) {
       if (errorRows.has(r)) return false;
@@ -881,7 +891,7 @@ type RowChangeKind = "deleted" | "modified";
 export interface RowChange { origRow: number; kind: RowChangeKind; origText: string; fixedText?: string }
 
 export type AutoFixResult =
-  | { ok: true; fixed: string; removed: number; kept: number; total: number; rowChanges: RowChange[] }
+  | { ok: true; fixed: string; removed: number; removedTexts: string[]; kept: number; total: number; rowChanges: RowChange[] }
   | { ok: false; reason: string };
 
 
@@ -1181,7 +1191,7 @@ export async function autoFix(
   const maxAllowedRows = Math.floor(0.05 * addedRows.size);
 
   if (totalCandidateRows <= maxAllowedRows) {
-    return { ok: true, fixed: text, removed: 0, kept: candidates.length, total: candidates.length, rowChanges: [] };
+    return { ok: true, fixed: text, removed: 0, removedTexts: [], kept: candidates.length, total: candidates.length, rowChanges: [] };
   }
 
   const candidateSet = new Set(candidates.map(c => c.startIndex));
@@ -1290,11 +1300,15 @@ export async function autoFix(
     if (!prGo.ok) return { ok: false, reason: `parser: ${prGo.reason}` };
     const origTreeGo = prGo.parser.parse(text);
     const fixedTreeGo = prGo.parser.parse(fixedGo);
-    if (!hasAstErrors(origTreeGo.rootNode) && hasAstErrors(fixedTreeGo.rootNode)) {
-      return { ok: false, reason: "fix introduced parse errors" };
-    }
+    const origHasErrGo = hasAstErrors(origTreeGo.rootNode);
+    const fixedHasErrGo = hasAstErrors(fixedTreeGo.rootNode);
     const origCodeGo = collectCodeText(origTreeGo.rootNode, text, lang);
     const fixedCodeGo = collectCodeText(fixedTreeGo.rootNode, fixedGo, lang);
+    origTreeGo.delete();
+    fixedTreeGo.delete();
+    if (!origHasErrGo && fixedHasErrGo) {
+      return { ok: false, reason: "fix introduced parse errors" };
+    }
     if (origCodeGo !== fixedCodeGo) return { ok: false, reason: "code content changed" };
     const preMapGo = new Map<string, number>();
     for (const c of origParsed.comments) {
@@ -1308,7 +1322,7 @@ export async function autoFix(
       if ((fixedMapGo.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
     }
     const keptUnits = units.filter((_, i) => keptSet.has(i)).flat().length;
-    return { ok: true, fixed: fixedGo, removed: toRemoveGo.length, kept: keptUnits + protectedCands.length, total: candidates.length, rowChanges };
+    return { ok: true, fixed: fixedGo, removed: toRemoveGo.length, removedTexts: toRemoveGo.map(c => c.text), kept: keptUnits + protectedCands.length, total: candidates.length, rowChanges };
   }
 
   while (keepCount >= 0) {
@@ -1346,11 +1360,15 @@ export async function autoFix(
   if (!pr.ok) return { ok: false, reason: `parser: ${pr.reason}` };
   const origTree = pr.parser.parse(text);
   const fixedTree = pr.parser.parse(fixed);
-  if (!hasAstErrors(origTree.rootNode) && hasAstErrors(fixedTree.rootNode)) {
-    return { ok: false, reason: "fix introduced parse errors" };
-  }
+  const origHasErr = hasAstErrors(origTree.rootNode);
+  const fixedHasErr = hasAstErrors(fixedTree.rootNode);
   const origCode = collectCodeText(origTree.rootNode, text, lang);
   const fixedCode = collectCodeText(fixedTree.rootNode, fixed, lang);
+  origTree.delete();
+  fixedTree.delete();
+  if (!origHasErr && fixedHasErr) {
+    return { ok: false, reason: "fix introduced parse errors" };
+  }
   if (origCode !== fixedCode) return { ok: false, reason: "code content changed" };
 
   const preMap = new Map<string, number>();
@@ -1365,7 +1383,7 @@ export async function autoFix(
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
   }
 
-  return { ok: true, fixed, removed: toRemove.length, kept: units.slice(0, keepCount).flat().length + protectedCands.length, total: candidates.length, rowChanges };
+  return { ok: true, fixed, removed: toRemove.length, removedTexts: toRemove.map(c => c.text), kept: units.slice(0, keepCount).flat().length + protectedCands.length, total: candidates.length, rowChanges };
 }
 
 export async function density(

@@ -49,8 +49,151 @@ ${removableBlock(30)}
     const lines = src.split("\n");
     const addedRows = new Set(lines.map((_, i) => i));
     const r = await runFix(src, addedRows);
-    if (!r.ok) return;
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
     expect(r.fixed).toContain(BLOCK);
+  });
+});
+
+describe("case 1c: mixed //-then-block preamble top-level import", () => {
+  const SLASH_LINE = "// #define WIDTH 3";
+  const BLOCK_BODY = "static int width(void) { return WIDTH; }";
+  const src = `package p
+
+${SLASH_LINE}
+/*
+${BLOCK_BODY}
+*/
+import "C"
+
+func pad() {
+${removableBlock(30)}
+}
+`;
+
+  it("slash line in mixed preamble survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(SLASH_LINE);
+  });
+
+  it("block body in mixed preamble survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(BLOCK_BODY);
+  });
+});
+
+describe("case 1d: mixed block-then-// preamble inside grouped import", () => {
+  const BLOCK_HEADER = "/* block header */";
+  const SLASH_INCLUDE = "// #include <sys/types.h>";
+  const src = `package p
+
+import (
+\t${BLOCK_HEADER}
+\t${SLASH_INCLUDE}
+\t"C"
+\t"fmt"
+)
+
+func pad() {
+${removableBlock(30)}
+}
+`;
+
+  it("block header in grouped mixed preamble survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(BLOCK_HEADER);
+  });
+
+  it("slash include in grouped mixed preamble survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(SLASH_INCLUDE);
+  });
+});
+
+describe("case 1e: type_elem doc comment survives autoFix", () => {
+  const TYPE_ELEM_DOC = "// Read reads more output from the hash.";
+  const src = `package p
+
+import "io"
+
+type XOF interface {
+\t${TYPE_ELEM_DOC}
+\tio.Reader
+}
+
+func pad() {
+${removableBlock(30)}
+}
+`;
+
+  it("type_elem doc comment survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(TYPE_ELEM_DOC);
+  });
+});
+
+describe("case 1f: /*line */ directive survives autoFix", () => {
+  const LINE_DIR = "/*line x.go:1*/";
+  const src = `package p
+
+func F() int {
+\tx := ${LINE_DIR} 1
+${removableBlock(30)}
+\treturn x
+}
+`;
+
+  it("block line directive survives autoFix", async () => {
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.fixed).toContain(LINE_DIR);
+  });
+});
+
+describe("case 1g: removedTexts field", () => {
+  it("removedTexts contains exact text of each removed comment", async () => {
+    const C1 = "// whole line one";
+    const C2 = "// whole line two";
+    const src = `package p
+
+func pad() {
+\t${C1}
+\t${C2}
+${removableBlock(30)}
+}
+`;
+    const lines = src.split("\n");
+    const addedRows = new Set(lines.map((_, i) => i));
+    const r = await runFix(src, addedRows);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.removed).toBe(r.removedTexts.length);
+    for (const txt of [C1, C2]) {
+      expect(r.removedTexts).toContain(txt);
+    }
   });
 });
 

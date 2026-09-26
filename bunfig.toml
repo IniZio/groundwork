@@ -1,0 +1,2 @@
+[test]
+preload = ["./plugins/house-rules/test/preload.ts"]

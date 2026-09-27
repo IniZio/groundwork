@@ -28,6 +28,32 @@ describe("notCheckedFiles — real rules", () => {
     expect(result).not.toContain("a.ts");
   });
 
+  it("PRESENT: App.kt and Main.java listed; ABSENT: non-source files (LA-D3)", async () => {
+    await rulesReady;
+    const files: ScopedFile[] = [
+      { path: "src/App.kt", text: "fun main(){}" },
+      { path: "src/Main.java", text: "class Main {}" },
+      { path: "README.md", text: "# docs" },
+      { path: "package.json", text: "{}" },
+      { path: "notes.txt", text: "notes" },
+      { path: "bun.lock", text: "" },
+      { path: "logo.png", text: "binary" },
+      { path: "CMakeLists.txt.bak", text: "backup" },
+      { path: "a.ts", text: "x", lang: "typescript" },
+    ];
+    const result = notCheckedFiles(rules, files);
+    // source-code files with no adapter → listed
+    expect(result).toContain("src/App.kt");
+    expect(result).toContain("src/Main.java");
+    expect(result).not.toContain("README.md");
+    expect(result).not.toContain("package.json");
+    expect(result).not.toContain("notes.txt");
+    expect(result).not.toContain("bun.lock");
+    expect(result).not.toContain("logo.png");
+    expect(result).not.toContain("CMakeLists.txt.bak");
+    expect(result).not.toContain("a.ts");
+  });
+
   it("only recognised files -> []", async () => {
     await rulesReady;
     const files: ScopedFile[] = [

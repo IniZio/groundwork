@@ -55,6 +55,16 @@ function runCLI(args: string[], cwd: string) {
   return spawnSync('bun', [CLI, ...args], { cwd, encoding: 'utf8' });
 }
 
+function runBIN(args: string[], cwd: string) {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k !== 'CLAUDE_PROJECT_DIR' && v !== undefined) env[k] = v;
+  }
+  return spawnSync(BIN, args, { cwd, encoding: 'utf8', env });
+}
+
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
 describe('house-rules CLI', () => {
   it('check exits 1 on unbaselined error finding', () => {
     const repoDir = mktemp('hr-repo-');
@@ -166,5 +176,91 @@ describe('house-rules CLI', () => {
     const r = runCLI(['check', '--base', 'HEAD', '--rules-dir', REAL_RULES_DIR, '--baseline-file', '/tmp/nonexistent-baseline-xyz.json'], repoDir);
     // 0–2 rules; exit 0 or 1 are both valid
     expect(r.status === 0 || r.status === 1).toBe(true);
+  });
+
+  // AC2: real rules dir, committed .ts file with heavy comment density, check from empty tree
+  it('AC2: check exits 1 with comment-density finding for comment-heavy committed file', () => {
+    const repoDir = mktemp('hr-repo-ac2-');
+    spawnSync('git', ['init'], { cwd: repoDir });
+    // Write a .ts file with heavy comment density (>5 comments per 100 lines)
+    fs.writeFileSync(
+      path.join(repoDir, 'heavy.ts'),
+      [
+        '// comment one',
+        '// comment two',
+        '// comment three',
+        '// comment four',
+        '// comment five',
+        '// comment six',
+        'const x = 1;',
+      ].join('\n') + '\n',
+    );
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'add', '.'], { cwd: repoDir });
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'init'], { cwd: repoDir });
+
+    const r = runBIN(
+      ['check', '--base', EMPTY_TREE, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR, '--baseline-file', '/tmp/nonexistent-baseline-ac2-xyz.json'],
+      repoDir,
+    );
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/heavy\.ts.*comment-density/);
+  });
+
+  // AC3: baseline from empty tree on same fixture, expect ≥1 entries
+  it('AC3: baseline from empty tree records ≥1 entries', () => {
+    const repoDir = mktemp('hr-repo-ac3-');
+    const blFile = path.join(mktemp('hr-bl-ac3-'), 'baseline.json');
+    spawnSync('git', ['init'], { cwd: repoDir });
+    fs.writeFileSync(
+      path.join(repoDir, 'heavy.ts'),
+      [
+        '// comment one',
+        '// comment two',
+        '// comment three',
+        '// comment four',
+        '// comment five',
+        '// comment six',
+        'const x = 1;',
+      ].join('\n') + '\n',
+    );
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'add', '.'], { cwd: repoDir });
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'init'], { cwd: repoDir });
+
+    const r = runBIN(
+      ['baseline', '--base', EMPTY_TREE, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR, '--baseline-file', blFile],
+      repoDir,
+    );
+    expect(r.status).toBe(0);
+    const m = r.stdout.match(/\((\d+) entries\)/);
+    expect(m).not.toBeNull();
+    const count = parseInt(m![1], 10);
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  // AC4: housekeep --since with invalid ref exits 2 with error
+  it('AC4: housekeep --since nosuchref exits 2 with invalid-since error', () => {
+    const repoDir = mktemp('hr-repo-ac4-');
+    initRepo(repoDir);
+
+    const r = runBIN(['housekeep', '--since', 'nosuchref', '--repo', repoDir], repoDir);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('Error: invalid --since ref: nosuchref');
+  });
+
+  it('AC5: corrupt baseline.json causes exit 2 with error message', () => {
+    const repoDir = mktemp('hr-repo-ac5-');
+    initRepo(repoDir);
+
+    const blDir = path.join(repoDir, '.house-rules');
+    fs.mkdirSync(blDir, { recursive: true });
+    fs.writeFileSync(path.join(blDir, 'baseline.json'), '{not json');
+
+    const r = runBIN(
+      ['check', '--base', 'HEAD', '--repo', repoDir, '--rules-dir', REAL_RULES_DIR],
+      repoDir,
+    );
+    expect(r.status).toBe(2);
+    expect(r.stderr.startsWith('Error: ')).toBe(true);
+    expect(r.stderr).toContain('Invalid or unrecognised baseline format');
   });
 });

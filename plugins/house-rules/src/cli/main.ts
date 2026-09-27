@@ -24,14 +24,18 @@ function getRepoRoot(repoFlag?: string): string {
   return r.stdout.trim();
 }
 
-function validateBase(repoRoot: string, base: string): void {
-  const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', base], {
+function validateRef(repoRoot: string, ref: string, flagName: string): void {
+  const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', ref], {
     encoding: 'utf8',
   });
   if (r.status !== 0) {
-    process.stderr.write(`Error: invalid --base ref: ${base}\n`);
+    process.stderr.write(`Error: invalid --${flagName} ref: ${ref}\n`);
     process.exit(2);
   }
+}
+
+function validateBase(repoRoot: string, base: string): void {
+  validateRef(repoRoot, base, 'base');
 }
 
 function printUsage(): void {
@@ -164,27 +168,38 @@ async function cmdBaseline(opts: {
 
 const parsed = parseArgs(process.argv.slice(2));
 
-switch (parsed.subcommand) {
-  case 'check':
-    await cmdCheck(parsed);
-    break;
-  case 'baseline':
-    await cmdBaseline(parsed);
-    break;
-  case 'housekeep':
-    await runHousekeep({
-      rules: parsed.rules,
-      paths: parsed.paths,
-      since: parsed.since,
-      baselineMode: parsed.baseline,
-      max: parsed.max,
-      dryRun: parsed.dryRun,
-      repo: parsed.repo,
-      rulesDir: parsed.rulesDir,
-      baselineFile: parsed.baselineFile,
-    });
-    break;
-  default:
-    printUsage();
-    process.exit(2);
+try {
+  switch (parsed.subcommand) {
+    case 'check':
+      await cmdCheck(parsed);
+      break;
+    case 'baseline':
+      await cmdBaseline(parsed);
+      break;
+    case 'housekeep': {
+      if (parsed.since !== undefined) {
+        const repoRoot = getRepoRoot(parsed.repo);
+        validateRef(repoRoot, parsed.since, 'since');
+      }
+      await runHousekeep({
+        rules: parsed.rules,
+        paths: parsed.paths,
+        since: parsed.since,
+        baselineMode: parsed.baseline,
+        max: parsed.max,
+        dryRun: parsed.dryRun,
+        repo: parsed.repo,
+        rulesDir: parsed.rulesDir,
+        baselineFile: parsed.baselineFile,
+      });
+      break;
+    }
+    default:
+      printUsage();
+      process.exit(2);
+  }
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`Error: ${msg}\n`);
+  process.exit(2);
 }

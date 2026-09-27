@@ -99,25 +99,71 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
   }
 
   // cli mode
-  const committed = spawnSync(
-    'git',
-    ['-C', repoRoot, 'diff', '--name-only', `${opts.base ?? ''}...HEAD`],
-    { encoding: 'utf8' },
-  );
+  const rawBase = opts.base ?? '';
+
+  // Resolve the base ref to determine the correct diff form.
+  let committedDiffArgs: string[];
+  if (rawBase === '') {
+    // No base provided; fall back to legacy behaviour (three-dot with empty LHS).
+    committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', '...HEAD'];
+  } else {
+    const catFile = spawnSync('git', ['-C', repoRoot, 'cat-file', '-t', rawBase], {
+      encoding: 'utf8',
+    });
+    if (catFile.status !== 0) {
+      throw new Error(
+        `house-rules: base ref "${rawBase}" is not a valid git object: ${catFile.stderr.trim()}`,
+      );
+    }
+    const objType = catFile.stdout.trim();
+    if (objType === 'tree') {
+      committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', rawBase, 'HEAD'];
+    } else if (objType === 'commit') {
+      const mb = spawnSync('git', ['-C', repoRoot, 'merge-base', rawBase, 'HEAD'], {
+        encoding: 'utf8',
+      });
+      if (mb.status === 0) {
+        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', `${rawBase}...HEAD`];
+      } else {
+        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', rawBase, 'HEAD'];
+      }
+    } else {
+      throw new Error(
+        `house-rules: base ref "${rawBase}" has unsupported object type "${objType}" (expected commit or tree)`,
+      );
+    }
+  }
+
+  const committed = spawnSync('git', committedDiffArgs, { encoding: 'utf8' });
+  if (committed.status !== 0) {
+    throw new Error(
+      `house-rules: git diff --name-only (committed) failed: ${committed.stderr.trim()}`,
+    );
+  }
+
   const staged = spawnSync('git', ['-C', repoRoot, 'diff', '--name-only', 'HEAD'], {
     encoding: 'utf8',
   });
+  if (staged.status !== 0) {
+    throw new Error(
+      `house-rules: git diff --name-only HEAD (staged) failed: ${staged.stderr.trim()}`,
+    );
+  }
+
   const unstaged = spawnSync('git', ['-C', repoRoot, 'diff', '--name-only'], {
     encoding: 'utf8',
   });
+  if (unstaged.status !== 0) {
+    throw new Error(
+      `house-rules: git diff --name-only (unstaged) failed: ${unstaged.stderr.trim()}`,
+    );
+  }
 
   const allFiles = new Set<string>();
-  for (const result of [committed, staged, unstaged]) {
-    if (result.status === 0) {
-      for (const line of result.stdout.split('\n')) {
-        const f = line.trim();
-        if (f) allFiles.add(f);
-      }
+  for (const r of [committed, staged, unstaged]) {
+    for (const line of r.stdout.split('\n')) {
+      const f = line.trim();
+      if (f) allFiles.add(f);
     }
   }
 

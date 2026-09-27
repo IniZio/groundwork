@@ -1,6 +1,7 @@
 import type { Node, Tree } from "../lib/tree-sitter.js";
 import { type LoadResult } from "../lib/tree-sitter-loader.js";
 import { type Language, LANGUAGE_ADAPTERS } from "./registry.js";
+import { defaultClassifyComments, type ClassifiedComment } from "./comments.js";
 
 export type ParserFactory = (lang: Language) => Promise<LoadResult>;
 
@@ -60,6 +61,12 @@ export function collectRawComments(root: Node, text: string, lang: Language): Ra
 
   walk(root);
   return results;
+}
+
+export function classifyComments(root: Node, text: string, lang: Language): ClassifiedComment[] {
+  const raw = collectRawComments(root, text, lang);
+  const classify = LANGUAGE_ADAPTERS[lang].classifyComments ?? defaultClassifyComments;
+  return classify(raw, root, text);
 }
 
 export type ParseResult =

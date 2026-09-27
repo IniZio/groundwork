@@ -2,7 +2,9 @@ import { getParser as defaultGetParser } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
 import type { DiffHunk } from "./work-scope.js";
 import type { Language } from "../languages/registry.js";
-import { isCommentNode, parseText } from "../languages/parse.js";
+import { isCommentNode, parseText, classifyComments } from "../languages/parse.js";
+import type { ClassifiedComment } from "../languages/comments.js";
+import { commentInnerText as stripMarkers, isWholeLine } from "../languages/comments.js";
 
 export interface Comment {
   startIndex: number;
@@ -46,36 +48,12 @@ const PYLINT_RE = /^pylint:/;
 const PRAGMA_RE = /^pragma:/i;
 const YAML_LS_RE = /^yaml-language-server:/;
 const DOCKERFILE_DIRECTIVE_RE = /^(?:syntax|escape)=/i;
-// Go directive exemptions (matched against stripped inner text after removing "//")
-const GO_DIRECTIVE_RE = /^go:/;
-const GO_BUILD_CONSTRAINT_RE = /^\+build\b/;
-const GO_NOLINT_RE = /^nolint\b/;
-const GO_LINT_IGNORE_RE = /^lint:(ignore|file-ignore)\b/;
-const GO_KUBEBUILDER_MARKER_RE = /^\+[a-z][\w.-]*:/;
 const TOML_SCHEMA_RE = /^:schema\b/;
 const TSREF_RE = /^\/\s*<reference\b/;
 const GO_OUTPUT_RE = /^(?:unordered )?output:/i;
-const GO_EXPORT_RE = /^export\b/;
-const GO_LINE_RE = /^line\b/;
-// gccgo external function declaration (no space after //)
-const GO_EXTERN_RE = /^extern\b/;
-// generic Go tool directive: //toolname:directive (no space after //); matches go/doc isDirective
-const GO_TOOL_DIRECTIVE_RE = /^[a-z][a-z0-9]*:[a-z0-9]/;
 const GW_RULE_RE = /^groundwork-rule:/;
 
-function stripMarkers(raw: string): string {
-  let t = raw.trim();
-  if (t.startsWith("/**")) t = t.slice(3);
-  else if (t.startsWith("/*")) t = t.slice(2);
-  else if (t.startsWith("//")) t = t.slice(2);
-  else if (t.startsWith("#")) t = t.slice(1);
-  if (t.endsWith("*/")) t = t.slice(0, -2);
-  t = t.replace(/^\s*\*\s?/, "");
-  return t.trim();
-}
-
-// rawLine: the raw comment line before stripping (used to check space-after-// for Go directives)
-function isExemptInner(inner: string, lang?: Language, rawLine?: string): boolean {
+function isExemptInner(inner: string, lang?: Language): boolean {
   if (
     ANNOT_TAG_RE.test(inner) ||
     ESLINT_RE.test(inner) ||
@@ -92,18 +70,9 @@ function isExemptInner(inner: string, lang?: Language, rawLine?: string): boolea
     PRAGMA_RE.test(inner) ||
     YAML_LS_RE.test(inner)
   ) return true;
-  if (lang === "go" && (GO_DIRECTIVE_RE.test(inner) || GO_BUILD_CONSTRAINT_RE.test(inner) || GO_NOLINT_RE.test(inner) || GO_LINT_IGNORE_RE.test(inner) || GO_KUBEBUILDER_MARKER_RE.test(inner))) return true;
   if (lang === "toml" && TOML_SCHEMA_RE.test(inner)) return true;
   if (TSREF_RE.test(inner)) return true;
   if (GW_RULE_RE.test(inner)) return true;
-  if (lang === "go") {
-    const noSpaceAfterSlash = !rawLine || /^\/\/[^ ]/.test(rawLine.trimStart());
-    const isBlockLine = rawLine ? /^\/\*line\b/.test(rawLine.trimStart()) : false;
-    if (noSpaceAfterSlash && GO_EXPORT_RE.test(inner)) return true;
-    if ((noSpaceAfterSlash || isBlockLine) && GO_LINE_RE.test(inner)) return true;
-    if (noSpaceAfterSlash && GO_EXTERN_RE.test(inner)) return true;
-    if (noSpaceAfterSlash && GO_TOOL_DIRECTIVE_RE.test(inner)) return true;
-  }
   return false;
 }
 
@@ -113,6 +82,7 @@ function checkExempt(
   startRow: number,
   lang: Language,
   inLeadingBlock: boolean,
+  directive: boolean,
 ): { exempt: boolean; reason?: string } {
   if (startRow === 0 && SHEBANG_RE.test(raw.trim())) {
     return { exempt: true, reason: "shebang" };
@@ -149,7 +119,8 @@ function checkExempt(
       if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
         firstReason ??= "dockerfile-directive"; continue;
       }
-      if (isExemptInner(inner, lang, line)) { firstReason ??= inner.slice(0, 30); continue; }
+      if (isExemptInner(inner, lang)) { firstReason ??= inner.slice(0, 30); continue; }
+      if (directive) { firstReason ??= inner.slice(0, 30); continue; }
       return { exempt: false };
     }
     if (!hasNonBlank) return { exempt: false };
@@ -166,49 +137,10 @@ function checkExempt(
     if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
       return { exempt: true, reason: "dockerfile-directive" };
     }
-    if (isExemptInner(inner, lang, line)) return { exempt: true, reason: inner.slice(0, 30) };
+    if (isExemptInner(inner, lang) || directive) return { exempt: true, reason: inner.slice(0, 30) };
   }
 
   return { exempt: false };
-}
-
-const GO_DOC_DECL_TYPES = new Set([
-  "package_clause",
-  "function_declaration",
-  "method_declaration",
-  "type_declaration",
-  "type_spec",
-  "const_declaration",
-  "const_spec",
-  "var_declaration",
-  "var_spec",
-  "field_declaration",
-  "method_elem",
-  "type_elem",
-]);
-
-function nodeIsWholeLine(node: Node, text: string): boolean {
-  const lineStart = text.lastIndexOf("\n", node.startIndex - 1) + 1;
-  return !text.slice(lineStart, node.startIndex).trim();
-}
-
-function isGoDocComment(node: Node, text: string): boolean {
-  if (!nodeIsWholeLine(node, text)) return false;
-  let cur: Node | null = node;
-  while (cur !== null) {
-    const next: Node | null = cur.nextNamedSibling;
-    if (!next) return false;
-    if (GO_DOC_DECL_TYPES.has(next.type)) {
-      return next.startPosition.row === cur.endPosition.row + 1;
-    }
-    if (next.type === "comment" && next.startPosition.row === cur.endPosition.row + 1) {
-      if (!nodeIsWholeLine(next, text)) return false;
-      cur = next;
-    } else {
-      return false;
-    }
-  }
-  return false;
 }
 
 function importDeclHasCImport(decl: Node): boolean {
@@ -246,14 +178,6 @@ function isGoCgoComment(node: Node): boolean {
     return pathNode !== null && (pathNode.text === '"C"' || pathNode.text === "`C`");
   }
   return false;
-}
-
-function findGoPackageClauseRow(root: Node): number | null {
-  for (let i = 0; i < root.childCount; i++) {
-    const child = root.child(i);
-    if (child && child.type === "package_clause") return child.startPosition.row;
-  }
-  return null;
 }
 
 function findGoCgoPreambleSlashRows(root: Node): Set<number> {
@@ -383,11 +307,10 @@ function findGoExampleOutputRows(root: Node): Set<number> {
   return result;
 }
 
-function collectComments(root: Node, text: string, lang: Language): Comment[] {
+function collectComments(root: Node, text: string, lang: Language, classified: Map<number, ClassifiedComment>): Comment[] {
   const results: Comment[] = [];
   let leadingBlockDone = false;
 
-  const goPackageClauseRow = lang === "go" ? findGoPackageClauseRow(root) : null;
   const goCgoPreambleRows = lang === "go" ? findGoCgoPreambleSlashRows(root) : new Set<number>();
   const goExampleOutputRows = lang === "go" ? findGoExampleOutputRows(root) : new Set<number>();
 
@@ -400,24 +323,26 @@ function collectComments(root: Node, text: string, lang: Language): Comment[] {
       if (!leadingBlockDone && startRow > 0) leadingBlockDone = true;
       const inLeadingBlock = !leadingBlockDone || startRow === 0;
 
+      const cls = classified.get(node.startIndex)!;
       let exempt: boolean;
       let reason: string | undefined;
       if (lang === "go" && (raw.startsWith("/*") || raw.startsWith("//")) && isGoCgoComment(node)) {
         exempt = true;
         reason = "cgo-preamble";
       } else {
-        const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock);
+        const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock, cls.directive);
         exempt = rawExempt;
         reason = rawReason;
-        if (!exempt && lang === "go" && isGoDocComment(node, text)) {
+        if (!exempt && cls.kind === "doc") {
           exempt = true;
-          reason = "go-doc";
+          reason = `${lang}-doc`;
+        }
+        if (!exempt && cls.header) {
+          exempt = true;
+          reason = `${lang}-file-header`;
         }
         if (!exempt && lang === "go") {
-          if (goPackageClauseRow !== null && endRow < goPackageClauseRow) {
-            exempt = true;
-            reason = "go-file-header";
-          } else if (raw.startsWith("//") && goCgoPreambleRows.has(startRow)) {
+          if (raw.startsWith("//") && goCgoPreambleRows.has(startRow)) {
             exempt = true;
             reason = "cgo-preamble";
           } else if (goExampleOutputRows.has(startRow)) {
@@ -448,22 +373,29 @@ function collectComments(root: Node, text: string, lang: Language): Comment[] {
   return results;
 }
 
-export async function findComments(
+async function findClassifiedComments(
   text: string,
   lang: Language,
-  getParser: GetParserFn = defaultGetParser,
-): Promise<FindResult> {
+  getParser: GetParserFn,
+): Promise<
+  | { ok: true; comments: Comment[]; errorRows: Set<number>; groupOf: Map<number, number | null> }
+  | { ok: false; reason: string; errorRows: Set<number> }
+> {
   const pr = await parseText(text, lang, getParser);
   if (!pr.ok) return { ok: false, reason: pr.reason, errorRows: new Set() };
 
   const { tree, errorRows } = pr;
+  const allClassified = classifyComments(tree.rootNode, text, lang);
+  const groupOf = new Map<number, number | null>(allClassified.map(c => [c.startIndex, c.group]));
+  const classified = new Map(allClassified.map(c => [c.startIndex, c]));
+
   if (!tree.rootNode.hasError) {
-    const comments = collectComments(tree.rootNode, text, lang);
+    const comments = collectComments(tree.rootNode, text, lang, classified);
     tree.delete();
-    return { ok: true, comments, errorRows: new Set() };
+    return { ok: true, comments, errorRows: new Set(), groupOf };
   }
 
-  const allComments = collectComments(tree.rootNode, text, lang);
+  const allComments = collectComments(tree.rootNode, text, lang, classified);
   tree.delete();
   const safeComments = allComments.filter(c => {
     for (let r = c.startRow; r <= c.endRow; r++) {
@@ -474,7 +406,17 @@ export async function findComments(
   if (safeComments.length === 0 && errorRows.size > 0) {
     return { ok: false, reason: "parse-error", errorRows };
   }
-  return { ok: true, comments: safeComments, errorRows };
+  return { ok: true, comments: safeComments, errorRows, groupOf };
+}
+
+export async function findComments(
+  text: string,
+  lang: Language,
+  getParser: GetParserFn = defaultGetParser,
+): Promise<FindResult> {
+  const r = await findClassifiedComments(text, lang, getParser);
+  if (!r.ok) return r;
+  return { ok: true, comments: r.comments, errorRows: r.errorRows };
 }
 
 interface EditInput {
@@ -1087,11 +1029,11 @@ function isExemptProse(c: Comment): boolean {
   return c.exempt && URL_RE.test(stripMarkers(c.text));
 }
 
-function buildGoCommentGroups(comments: Comment[], text: string): Comment[][] {
+// Non-Go languages keep whole-line runs until ticket 12 moves default removal grouping onto comment groups.
+function wholeLineRuns(comments: Comment[], text: string): Comment[][] {
   const wholeLine: Comment[] = [];
   for (const c of comments) {
-    const ls = text.lastIndexOf("\n", c.startIndex - 1) + 1;
-    if (!text.slice(ls, c.startIndex).trim()) wholeLine.push(c);
+    if (isWholeLine(text, c.startIndex)) wholeLine.push(c);
   }
   wholeLine.sort((a, b) => a.startRow - b.startRow);
   const groups: Comment[][] = [];
@@ -1108,12 +1050,32 @@ function buildGoCommentGroups(comments: Comment[], text: string): Comment[][] {
   return groups;
 }
 
+function commentGroups(comments: Comment[], groupOf: Map<number, number | null>): Comment[][] {
+  const withGroup = comments
+    .filter(c => (groupOf.get(c.startIndex) ?? null) !== null)
+    .sort((a, b) => a.startRow - b.startRow);
+  const groups: Comment[][] = [];
+  let cur: Comment[] = [];
+  let curGroupId: number | null = null;
+  for (const c of withGroup) {
+    const gid = groupOf.get(c.startIndex) ?? null;
+    const prev = cur.length > 0 ? cur[cur.length - 1] : null;
+    if (cur.length === 0 || gid !== curGroupId || (prev !== null && c.startRow !== prev.endRow + 1)) {
+      if (cur.length > 0) groups.push(cur);
+      cur = [c];
+      curGroupId = gid;
+    } else {
+      cur.push(c);
+    }
+  }
+  if (cur.length > 0) groups.push(cur);
+  return groups;
+}
+
 function goNoteContSet(
   candidates: Comment[],
-  allComments: Comment[],
-  text: string,
+  groups: Comment[][],
 ): Set<number> {
-  const groups = buildGoCommentGroups(allComments, text);
   const candSet = new Set(candidates.map(c => c.startIndex));
   const result = new Set<number>();
   for (const group of groups) {
@@ -1140,13 +1102,13 @@ function paragraphProtectedSet(
   allComments: Comment[],
   text: string,
   lang?: Language,
+  goGroups?: Comment[][],
 ): Set<number> {
   const candIndices = new Set(candidates.map(c => c.startIndex));
   const result = new Set<number>();
 
   if (lang === "go") {
-    const groups = buildGoCommentGroups(allComments, text);
-    for (const group of groups) {
+    for (const group of (goGroups ?? [])) {
       if (!group.some(c => isExemptProse(c))) continue;
       for (const c of group) {
         if (candIndices.has(c.startIndex)) result.add(c.startIndex);
@@ -1207,11 +1169,12 @@ function isOnAddedRows(c: Comment, addedRows: Set<number>): boolean {
 function extendRemovalWithDividers(
   toRemove: Comment[],
   allComments: Comment[],
-  text: string,
+  groups: Comment[][],
   addedRows: Set<number>,
+  text: string,
 ): Comment[] {
   if (toRemove.length === 0) return toRemove;
-  const allGroups = buildGoCommentGroups(allComments, text);
+  const allGroups = groups;
   const removeSet = new Set(toRemove.map(c => c.startIndex));
 
   for (const group of allGroups) {
@@ -1266,8 +1229,9 @@ export async function autoFix(
   opts?: { maxAllowedRows?: number },
 ): Promise<AutoFixResult> {
   getParser ??= defaultGetParser;
-  const origParsed = await findComments(text, lang, getParser);
+  const origParsed = await findClassifiedComments(text, lang, getParser);
   if (!origParsed.ok) return { ok: false, reason: `parse: ${origParsed.reason}` };
+  const { groupOf } = origParsed;
 
   const candidates: Comment[] = [];
   for (const c of origParsed.comments) {
@@ -1306,9 +1270,10 @@ export async function autoFix(
     }
   }
 
-  let protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text, lang);
+  const goGroups = lang === "go" ? commentGroups(origParsed.comments, groupOf) : [];
+  let protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text, lang, goGroups);
   if (lang === "go") {
-    const noteCont = goNoteContSet(candidates, origParsed.comments, text);
+    const noteCont = goNoteContSet(candidates, goGroups);
     if (noteCont.size > 0) protectedIndices = new Set([...protectedIndices, ...noteCont]);
   }
   const protectedCands = candidates.filter(c => protectedIndices.has(c.startIndex));
@@ -1317,7 +1282,7 @@ export async function autoFix(
 
   const units: Comment[][] = [];
   if (lang === "go") {
-    const groups = buildGoCommentGroups(origParsed.comments, text);
+    const groups = goGroups;
     const removableSet = new Set(removableCands.map(c => c.startIndex));
     const inGoGroup = new Set<number>();
     const orderedUnits: Array<{ startRow: number; comments: Comment[] }> = [];
@@ -1389,7 +1354,13 @@ export async function autoFix(
   }
 
   const toRemove = units.filter((_, i) => !keptSet.has(i)).flat();
-  const toRemoveFinal = extendRemovalWithDividers(toRemove, origParsed.comments, text, addedRows);
+  const toRemoveFinal = extendRemovalWithDividers(
+    toRemove,
+    origParsed.comments,
+    lang === "go" ? goGroups : wholeLineRuns(origParsed.comments, text),
+    addedRows,
+    text,
+  );
   const stripped = stripComments(text, toRemoveFinal);
   const { rowChanges } = stripped;
 

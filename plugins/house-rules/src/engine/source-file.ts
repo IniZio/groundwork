@@ -1,18 +1,18 @@
 import type { Tree } from "../hooks/lib/tree-sitter.js";
 import { getParser } from "../hooks/lib/tree-sitter-loader.js";
 import type { Language } from "../hooks/languages/registry.js";
+import type { ClassifiedComment } from "../hooks/languages/comments.js";
 import {
   parseText,
-  collectRawComments,
+  classifyComments,
   type ParserFactory,
-  type RawComment,
 } from "../hooks/languages/parse.js";
 
 export interface SourceFile {
   language: Language;
   text: string;
   tree: Tree;
-  comments: RawComment[];
+  comments: ClassifiedComment[];
   errorRows: Set<number>;
 }
 
@@ -37,7 +37,7 @@ export function createSourceFiles(factory: ParserFactory = getParser): SourceFil
       const promise = parseText(text, lang, factory).then(
         (result): SourceFileResult => {
           if (!result.ok) return { ok: false, reason: result.reason };
-          const comments = collectRawComments(result.tree.rootNode, text, lang);
+          const comments = classifyComments(result.tree.rootNode, text, lang);
           const source: SourceFile = {
             language: lang,
             text,

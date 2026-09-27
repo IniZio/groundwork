@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { CommentClassifier } from "./comments.js";
+import { classifyGoComments } from "./go.js";
 
 export interface LanguageDetection {
   /** lower-case, with leading dot, compared to path.extname(p).toLowerCase() */
@@ -26,6 +28,8 @@ export interface LanguageAdapter {
   readonly grammar: LanguageGrammar;
   /** node types that are comments besides any type containing "comment" */
   readonly extraCommentNodeTypes?: readonly string[];
+  /** when absent, the default classifier applies: adjacent whole-line comments of the same kind form a group */
+  readonly classifyComments?: CommentClassifier;
 }
 
 const bash = {
@@ -106,6 +110,7 @@ const go = {
     wasm: "tree-sitter-go.wasm",
     vendor: { package: "tree-sitter-go", file: "tree-sitter-go.wasm" },
   },
+  classifyComments: classifyGoComments,
 } satisfies LanguageAdapter;
 
 const rust = {

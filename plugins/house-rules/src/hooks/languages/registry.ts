@@ -1,6 +1,10 @@
 import path from "node:path";
 import type { CommentClassifier } from "./comments.js";
 import { classifyGoComments } from "./go.js";
+import { classifyRustComments } from "./rust.js";
+import { classifyDockerfileComments } from "./dockerfile.js";
+import { classifyTomlComments } from "./toml.js";
+import { isSqlCommentNodeType } from "./sql.js";
 
 export interface LanguageDetection {
   /** lower-case, with leading dot, compared to path.extname(p).toLowerCase() */
@@ -26,8 +30,8 @@ export interface LanguageAdapter {
   readonly id: string;
   readonly detect: LanguageDetection;
   readonly grammar: LanguageGrammar;
-  /** node types that are comments besides any type containing "comment" */
-  readonly extraCommentNodeTypes?: readonly string[];
+  /** which grammar node types are comments; absent = any type whose name contains "comment" */
+  readonly isCommentNodeType?: (type: string) => boolean;
   /** when absent, the default classifier applies: adjacent whole-line comments of the same kind form a group */
   readonly classifyComments?: CommentClassifier;
 }
@@ -99,6 +103,7 @@ const dockerfile = {
     wasm: "tree-sitter-dockerfile.wasm",
     build: "scripts/build-dockerfile-grammar.sh",
   },
+  classifyComments: classifyDockerfileComments,
 } satisfies LanguageAdapter;
 
 const go = {
@@ -122,6 +127,7 @@ const rust = {
     wasm: "tree-sitter-rust.wasm",
     vendor: { package: "tree-sitter-rust", file: "tree-sitter-rust.wasm" },
   },
+  classifyComments: classifyRustComments,
 } satisfies LanguageAdapter;
 
 const sql = {
@@ -133,7 +139,7 @@ const sql = {
     wasm: "tree-sitter-sql.wasm",
     build: "scripts/build-sql-grammar.sh",
   },
-  extraCommentNodeTypes: ["marginalia"],
+  isCommentNodeType: isSqlCommentNodeType,
 } satisfies LanguageAdapter;
 
 const make = {
@@ -157,6 +163,7 @@ const toml = {
     wasm: "tree-sitter-toml.wasm",
     vendor: { package: "@tree-sitter-grammars/tree-sitter-toml", file: "tree-sitter-toml.wasm" },
   },
+  classifyComments: classifyTomlComments,
 } satisfies LanguageAdapter;
 
 const ADAPTERS = { bash, yaml, typescript, tsx, python, dockerfile, go, rust, sql, make, toml };

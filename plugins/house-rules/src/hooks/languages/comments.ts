@@ -12,6 +12,8 @@ export interface ClassifiedComment extends RawComment {
   header: boolean;
   /** comment-group id; null = trailing comment (shares its line with code), in no group */
   group: number | null;
+  /** names why kind is "doc" or directive is true (e.g. "rust-doc", "shebang"); comment-density reports it as the exemption reason */
+  label?: string;
 }
 
 /** Returns one entry per raw comment, same order and same length as `raw`. */
@@ -81,6 +83,32 @@ export function groupWholeLineComments(
     }
   }
   return result;
+}
+
+export function isShebangComment(c: RawComment): boolean {
+  return c.startRow === 0 && c.text.trim().startsWith("#!");
+}
+
+export function isJsDocBlock(text: string): boolean {
+  const t = text.trimStart();
+  return t.startsWith("/**") && !t.startsWith("/***");
+}
+
+export function defaultIsCommentNodeType(type: string): boolean {
+  return type.includes("comment");
+}
+
+/**
+ * Cross-language conventions applied after every adapter's classifier
+ * (today they apply to every language; scoping them is later work).
+ */
+export function applyCommonConventions(cs: readonly ClassifiedComment[]): ClassifiedComment[] {
+  return cs.map((c) => {
+    if (isShebangComment(c)) return { ...c, directive: true, label: "shebang" };
+    if (c.nodeType.includes("doc")) return { ...c, kind: "doc", label: "doc-comment" };
+    if (isJsDocBlock(c.text)) return { ...c, kind: "doc", label: "jsdoc" };
+    return c;
+  });
 }
 
 export const defaultClassifyComments: CommentClassifier = (

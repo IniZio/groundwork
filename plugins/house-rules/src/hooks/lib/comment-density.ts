@@ -31,7 +31,6 @@ export type DensityResult = {
 
 export type GetParserFn = typeof defaultGetParser;
 
-const SHEBANG_RE = /^#!/;
 const ANNOT_TAG_RE = /^@\w/;
 const ESLINT_RE = /^eslint-(?:disable|enable)/;
 const PRETTIER_RE = /^prettier-ignore/;
@@ -47,13 +46,11 @@ const TYPE_IGNORE_RE = /^type:\s*ignore/;
 const PYLINT_RE = /^pylint:/;
 const PRAGMA_RE = /^pragma:/i;
 const YAML_LS_RE = /^yaml-language-server:/;
-const DOCKERFILE_DIRECTIVE_RE = /^(?:syntax|escape)=/i;
-const TOML_SCHEMA_RE = /^:schema\b/;
 const TSREF_RE = /^\/\s*<reference\b/;
 const GO_OUTPUT_RE = /^(?:unordered )?output:/i;
 const GW_RULE_RE = /^groundwork-rule:/;
 
-function isExemptInner(inner: string, lang?: Language): boolean {
+function isExemptInner(inner: string): boolean {
   if (
     ANNOT_TAG_RE.test(inner) ||
     ESLINT_RE.test(inner) ||
@@ -70,41 +67,19 @@ function isExemptInner(inner: string, lang?: Language): boolean {
     PRAGMA_RE.test(inner) ||
     YAML_LS_RE.test(inner)
   ) return true;
-  if (lang === "toml" && TOML_SCHEMA_RE.test(inner)) return true;
   if (TSREF_RE.test(inner)) return true;
   if (GW_RULE_RE.test(inner)) return true;
   return false;
 }
 
 function checkExempt(
-  nodeType: string,
   raw: string,
-  startRow: number,
-  lang: Language,
-  inLeadingBlock: boolean,
+  label: string | undefined,
   directive: boolean,
 ): { exempt: boolean; reason?: string } {
-  if (startRow === 0 && SHEBANG_RE.test(raw.trim())) {
-    return { exempt: true, reason: "shebang" };
-  }
+  if (label !== undefined) return { exempt: true, reason: label };
 
-  if (nodeType.includes("doc")) {
-    return { exempt: true, reason: "doc-comment" };
-  }
   const trimmed0 = raw.trimStart();
-  if (trimmed0.startsWith("/**") && !trimmed0.startsWith("/***")) {
-    return { exempt: true, reason: "jsdoc" };
-  }
-
-  if (lang === "rust") {
-    const trimmed = raw.trimStart();
-    const isRustDoc =
-      (trimmed.startsWith("///") && (trimmed.length === 3 || trimmed[3] !== "/")) ||
-      trimmed.startsWith("//!") ||
-      (trimmed.startsWith("/*!") && !trimmed.startsWith("/***"));
-    if (isRustDoc) return { exempt: true, reason: "rust-doc" };
-  }
-
   const lines = raw.split("\n");
 
   if (trimmed0.startsWith("/*")) {
@@ -116,10 +91,7 @@ function checkExempt(
       if (!inner) continue;
       hasNonBlank = true;
       if (DIVIDER_RE.test(inner)) { firstReason ??= "divider"; continue; }
-      if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
-        firstReason ??= "dockerfile-directive"; continue;
-      }
-      if (isExemptInner(inner, lang)) { firstReason ??= inner.slice(0, 30); continue; }
+      if (isExemptInner(inner)) { firstReason ??= inner.slice(0, 30); continue; }
       if (directive) { firstReason ??= inner.slice(0, 30); continue; }
       return { exempt: false };
     }
@@ -134,10 +106,7 @@ function checkExempt(
       continue;
     }
     if (DIVIDER_RE.test(inner)) return { exempt: true, reason: "divider" };
-    if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
-      return { exempt: true, reason: "dockerfile-directive" };
-    }
-    if (isExemptInner(inner, lang) || directive) return { exempt: true, reason: inner.slice(0, 30) };
+    if (isExemptInner(inner) || directive) return { exempt: true, reason: inner.slice(0, 30) };
   }
 
   return { exempt: false };
@@ -309,7 +278,6 @@ function findGoExampleOutputRows(root: Node): Set<number> {
 
 function collectComments(root: Node, text: string, lang: Language, classified: Map<number, ClassifiedComment>): Comment[] {
   const results: Comment[] = [];
-  let leadingBlockDone = false;
 
   const goCgoPreambleRows = lang === "go" ? findGoCgoPreambleSlashRows(root) : new Set<number>();
   const goExampleOutputRows = lang === "go" ? findGoExampleOutputRows(root) : new Set<number>();
@@ -320,9 +288,6 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
       const startRow = node.startPosition.row;
       const endRow = node.endPosition.row;
 
-      if (!leadingBlockDone && startRow > 0) leadingBlockDone = true;
-      const inLeadingBlock = !leadingBlockDone || startRow === 0;
-
       const cls = classified.get(node.startIndex)!;
       let exempt: boolean;
       let reason: string | undefined;
@@ -330,7 +295,7 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
         exempt = true;
         reason = "cgo-preamble";
       } else {
-        const { exempt: rawExempt, reason: rawReason } = checkExempt(node.type, raw, startRow, lang, inLeadingBlock, cls.directive);
+        const { exempt: rawExempt, reason: rawReason } = checkExempt(raw, cls.label, cls.directive);
         exempt = rawExempt;
         reason = rawReason;
         if (!exempt && cls.kind === "doc") {

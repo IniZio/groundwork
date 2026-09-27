@@ -1,15 +1,12 @@
 import type { Node, Tree } from "../lib/tree-sitter.js";
 import { type LoadResult } from "../lib/tree-sitter-loader.js";
 import { type Language, LANGUAGE_ADAPTERS } from "./registry.js";
-import { defaultClassifyComments, type ClassifiedComment } from "./comments.js";
+import { defaultClassifyComments, defaultIsCommentNodeType, applyCommonConventions, type ClassifiedComment } from "./comments.js";
 
 export type ParserFactory = (lang: Language) => Promise<LoadResult>;
 
 export function isCommentNode(node: Node, lang: Language): boolean {
-  return (
-    node.type.includes("comment") ||
-    (LANGUAGE_ADAPTERS[lang].extraCommentNodeTypes?.includes(node.type) ?? false)
-  );
+  return (LANGUAGE_ADAPTERS[lang].isCommentNodeType ?? defaultIsCommentNodeType)(node.type);
 }
 
 export function collectErrorRows(root: Node): Set<number> {
@@ -66,7 +63,7 @@ export function collectRawComments(root: Node, text: string, lang: Language): Ra
 export function classifyComments(root: Node, text: string, lang: Language): ClassifiedComment[] {
   const raw = collectRawComments(root, text, lang);
   const classify = LANGUAGE_ADAPTERS[lang].classifyComments ?? defaultClassifyComments;
-  return classify(raw, root, text);
+  return applyCommonConventions(classify(raw, root, text));
 }
 
 export type ParseResult =

@@ -4,8 +4,8 @@ import type { DiffHunk } from "./work-scope.js";
 import type { Language } from "../languages/registry.js";
 import { isCommentNode, parseText, classifyComments } from "../languages/parse.js";
 import type { ClassifiedComment } from "../languages/comments.js";
-import { commentInnerText as stripMarkers, isWholeLine } from "../languages/comments.js";
-import { languageHookFor } from "../../../rules/comment-density/languages.js";
+import { commentInnerText as stripMarkers } from "../languages/comments.js";
+import { languageHookFor, type RemovalGrouping } from "../../../rules/comment-density/languages.js";
 
 export interface Comment {
   startIndex: number;
@@ -595,72 +595,61 @@ export function isExemptProse(c: Comment): boolean {
   return c.exempt && URL_RE.test(stripMarkers(c.text));
 }
 
-// Non-Go languages keep whole-line runs until ticket 12 moves default removal grouping onto comment groups.
-function wholeLineRuns(comments: Comment[], text: string): Comment[][] {
-  const wholeLine: Comment[] = [];
-  for (const c of comments) {
-    if (isWholeLine(text, c.startIndex)) wholeLine.push(c);
-  }
-  wholeLine.sort((a, b) => a.startRow - b.startRow);
-  const groups: Comment[][] = [];
-  let cur: Comment[] = [];
-  for (const c of wholeLine) {
-    if (cur.length === 0 || c.startRow !== cur[cur.length - 1].endRow + 1) {
-      if (cur.length > 0) groups.push(cur);
-      cur = [c];
-    } else {
-      cur.push(c);
+const defaultRemovalGrouping: RemovalGrouping = {
+  groups(comments, groupOf, _text): Comment[][] {
+    const withGroup = comments
+      .filter(c => (groupOf.get(c.startIndex) ?? null) !== null)
+      .sort((a, b) => a.startRow - b.startRow);
+    const groups: Comment[][] = [];
+    let cur: Comment[] = [];
+    let curGroupId: number | null = null;
+    for (const c of withGroup) {
+      const gid = groupOf.get(c.startIndex) ?? null;
+      const prev = cur.length > 0 ? cur[cur.length - 1] : null;
+      if (cur.length === 0 || gid !== curGroupId || (prev !== null && c.startRow !== prev.endRow + 1)) {
+        if (cur.length > 0) groups.push(cur);
+        cur = [c];
+        curGroupId = gid;
+      } else {
+        cur.push(c);
+      }
     }
-  }
-  if (cur.length > 0) groups.push(cur);
-  return groups;
-}
+    if (cur.length > 0) groups.push(cur);
+    return groups;
+  },
 
-function paragraphProtectedSet(
-  candidates: Comment[],
-  allComments: Comment[],
-  text: string,
-): Set<number> {
-  const candIndices = new Set(candidates.map(c => c.startIndex));
-  const result = new Set<number>();
-
-  const allSlash: Comment[] = [];
-  for (const c of allComments) {
-    if (!c.text.startsWith("//") || c.startRow !== c.endRow) continue;
-    const ls = text.lastIndexOf("\n", c.startIndex - 1) + 1;
-    if (text.slice(ls, c.startIndex).trim()) continue;
-    allSlash.push(c);
-  }
-  allSlash.sort((a, b) => a.startRow - b.startRow);
-
-  const paragraphs: Comment[][] = [];
-  let cur: Comment[] = [];
-  let prevRow = -2;
-  for (const c of allSlash) {
-    const decoration = c.exemptReason === "divider" || c.exemptReason === "spacer";
-    if (c.exempt && !isExemptProse(c) && !decoration) {
-      if (cur.length > 0) { paragraphs.push(cur); cur = []; }
-      prevRow = -2;
-      continue;
+  protectedCandidates(candidates, groups, _comments, _text): Set<number> {
+    const candIndices = new Set(candidates.map(c => c.startIndex));
+    const result = new Set<number>();
+    for (const group of groups) {
+      if (!group.some(c => isExemptProse(c))) continue;
+      for (const c of group) {
+        if (candIndices.has(c.startIndex)) result.add(c.startIndex);
+      }
     }
-    if (c.startRow === prevRow + 1) {
-      cur.push(c);
-    } else {
-      if (cur.length > 0) paragraphs.push(cur);
-      cur = [c];
-    }
-    prevRow = c.startRow;
-  }
-  if (cur.length > 0) paragraphs.push(cur);
+    return result;
+  },
 
-  for (const para of paragraphs) {
-    if (!para.some(c => isExemptProse(c))) continue;
-    for (const c of para) {
-      if (candIndices.has(c.startIndex)) result.add(c.startIndex);
+  units(removable, groups, _text): Comment[][] {
+    const removableSet = new Set(removable.map(c => c.startIndex));
+    const inGroup = new Set<number>();
+    const orderedUnits: Array<{ startRow: number; comments: Comment[] }> = [];
+    for (const group of groups) {
+      const groupCands = group.filter(c => removableSet.has(c.startIndex));
+      if (groupCands.length > 0) {
+        orderedUnits.push({ startRow: groupCands[0].startRow, comments: groupCands });
+        for (const c of groupCands) inGroup.add(c.startIndex);
+      }
     }
-  }
-  return result;
-}
+    for (const c of removable) {
+      if (!inGroup.has(c.startIndex)) {
+        orderedUnits.push({ startRow: c.startRow, comments: [c] });
+      }
+    }
+    orderedUnits.sort((a, b) => a.startRow - b.startRow);
+    return orderedUnits.map(u => u.comments);
+  },
+};
 
 function isDividerOrSpacer(c: Comment): boolean {
   return c.exempt && (c.exemptReason === "divider" || c.exemptReason === "spacer");
@@ -778,34 +767,14 @@ export async function autoFix(
   }
 
   const hook = languageHookFor(lang);
-  const grouping = hook.removalGrouping;
-  const groups = grouping ? grouping.groups(origParsed.comments, groupOf, text) : wholeLineRuns(origParsed.comments, text);
-  const protectedIndices = grouping
-    ? grouping.protectedCandidates(candidates, groups)
-    : paragraphProtectedSet(candidates, origParsed.comments, text);
+  const grouping = hook.removalGrouping ?? defaultRemovalGrouping;
+  const groups = grouping.groups(origParsed.comments, groupOf, text);
+  const protectedIndices = grouping.protectedCandidates(candidates, groups, origParsed.comments, text);
   const protectedCands = candidates.filter(c => protectedIndices.has(c.startIndex));
   const removableCands = candidates.filter(c => !protectedIndices.has(c.startIndex));
   const protectedRowCount = protectedCands.reduce((s, c) => s + commentRowCount(c), 0);
 
-  const units: Comment[][] = [];
-  if (grouping) {
-    units.push(...grouping.units(removableCands, groups));
-  } else {
-    const wholeLineHeads = new Set<Comment>();
-    for (const c of removableCands) {
-      const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
-      const isWholeLine = !text.slice(lineStart, c.startIndex).trim();
-      if (isWholeLine && c.text.startsWith("//") && c.startRow === c.endRow) {
-        const last = units[units.length - 1];
-        if (last && wholeLineHeads.has(last[0]) && c.startRow === last[last.length - 1].endRow + 1) {
-          last.push(c);
-          continue;
-        }
-        wholeLineHeads.add(c);
-      }
-      units.push([c]);
-    }
-  }
+  const units: Comment[][] = [...grouping.units(removableCands, groups, text)];
 
   units.sort((a, b) => {
     const ra = a.reduce((s, c) => s + commentRowCount(c), 0);

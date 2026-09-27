@@ -18,7 +18,7 @@ import type { Language } from "../../src/hooks/languages/registry.js";
 import type { Comment, RowChange } from "../../src/hooks/lib/comment-density.js";
 // Cycle-safe: only reference these inside function bodies, never at top level.
 import { isExemptProse, NOTE_MARKER_RE } from "../../src/hooks/lib/comment-density.js";
-import { commentInnerText as stripMarkers } from "../../src/hooks/languages/comments.js";
+import { commentInnerText as stripMarkers, isWholeLine } from "../../src/hooks/languages/comments.js";
 
 export type FixStability = "preview" | "stable";
 export type FixApplicability = "safe" | "unsafe";
@@ -30,8 +30,8 @@ export interface FixEntry {
 
 export interface RemovalGrouping {
   groups(comments: Comment[], groupOf: Map<number, number | null>, text: string): Comment[][];
-  protectedCandidates(candidates: Comment[], groups: Comment[][]): Set<number>;
-  units(removable: Comment[], groups: Comment[][]): Comment[][];
+  protectedCandidates(candidates: Comment[], groups: Comment[][], comments: Comment[], text: string): Set<number>;
+  units(removable: Comment[], groups: Comment[][], text: string): Comment[][];
 }
 
 export interface CommentDensityLanguageHook {
@@ -198,7 +198,7 @@ const goRemovalGrouping: RemovalGrouping = {
     return groups;
   },
 
-  protectedCandidates(candidates, groups): Set<number> {
+  protectedCandidates(candidates, groups, _comments, _text): Set<number> {
     // isExemptProse and NOTE_MARKER_RE are referenced here (function body),
     // not at module top level — cycle-safe per ESM live-binding semantics.
     const candIndices = new Set(candidates.map(c => c.startIndex));
@@ -234,7 +234,7 @@ const goRemovalGrouping: RemovalGrouping = {
     return result;
   },
 
-  units(removable, groups): Comment[][] {
+  units(removable, groups, _text): Comment[][] {
     const removableSet = new Set(removable.map(c => c.startIndex));
     const inGoGroup = new Set<number>();
     const orderedUnits: Array<{ startRow: number; comments: Comment[] }> = [];
@@ -256,8 +256,98 @@ const goRemovalGrouping: RemovalGrouping = {
 };
 
 
+// ---------------------------------------------------------------------------
+// TypeScript removal grouping (pins pre-ticket-12 behaviour)
+// ---------------------------------------------------------------------------
+
+const typescriptRemovalGrouping: RemovalGrouping = {
+  groups(comments, _groupOf, text): Comment[][] {
+    // isWholeLine is from src/hooks/languages/comments.ts — referenced inside
+    // function body (cycle-safe per ESM live-binding semantics).
+    const wholeLine: Comment[] = [];
+    for (const c of comments) {
+      if (isWholeLine(text, c.startIndex)) wholeLine.push(c);
+    }
+    wholeLine.sort((a, b) => a.startRow - b.startRow);
+    const groups: Comment[][] = [];
+    let cur: Comment[] = [];
+    for (const c of wholeLine) {
+      if (cur.length === 0 || c.startRow !== cur[cur.length - 1].endRow + 1) {
+        if (cur.length > 0) groups.push(cur);
+        cur = [c];
+      } else {
+        cur.push(c);
+      }
+    }
+    if (cur.length > 0) groups.push(cur);
+    return groups;
+  },
+
+  protectedCandidates(candidates, _groups, comments, text): Set<number> {
+    // isExemptProse referenced inside function body — cycle-safe.
+    const candIndices = new Set(candidates.map(c => c.startIndex));
+    const result = new Set<number>();
+
+    const allSlash: Comment[] = [];
+    for (const c of comments) {
+      if (!c.text.startsWith("//") || c.startRow !== c.endRow) continue;
+      const ls = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+      if (text.slice(ls, c.startIndex).trim()) continue;
+      allSlash.push(c);
+    }
+    allSlash.sort((a, b) => a.startRow - b.startRow);
+
+    const paragraphs: Comment[][] = [];
+    let cur: Comment[] = [];
+    let prevRow = -2;
+    for (const c of allSlash) {
+      const decoration = c.exemptReason === "divider" || c.exemptReason === "spacer";
+      if (c.exempt && !isExemptProse(c) && !decoration) {
+        if (cur.length > 0) { paragraphs.push(cur); cur = []; }
+        prevRow = -2;
+        continue;
+      }
+      if (c.startRow === prevRow + 1) {
+        cur.push(c);
+      } else {
+        if (cur.length > 0) paragraphs.push(cur);
+        cur = [c];
+      }
+      prevRow = c.startRow;
+    }
+    if (cur.length > 0) paragraphs.push(cur);
+
+    for (const para of paragraphs) {
+      if (!para.some(c => isExemptProse(c))) continue;
+      for (const c of para) {
+        if (candIndices.has(c.startIndex)) result.add(c.startIndex);
+      }
+    }
+    return result;
+  },
+
+  units(removable, _groups, text): Comment[][] {
+    const units: Comment[][] = [];
+    const wholeLineHeads = new Set<Comment>();
+    for (const c of removable) {
+      const lineStart = text.lastIndexOf("\n", c.startIndex - 1) + 1;
+      const isWL = !text.slice(lineStart, c.startIndex).trim();
+      if (isWL && c.text.startsWith("//") && c.startRow === c.endRow) {
+        const last = units[units.length - 1];
+        if (last && wholeLineHeads.has(last[0]) && c.startRow === last[last.length - 1].endRow + 1) {
+          last.push(c);
+          continue;
+        }
+        wholeLineHeads.add(c);
+      }
+      units.push([c]);
+    }
+    return units;
+  },
+};
+
 export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDensityLanguageHook>> = {
-  typescript: { stability: "stable" },
+  typescript: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   go: {
     stability: "stable",
     removalGrouping: goRemovalGrouping,

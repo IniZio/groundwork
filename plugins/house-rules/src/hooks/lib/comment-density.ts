@@ -47,7 +47,6 @@ const PYLINT_RE = /^pylint:/;
 const PRAGMA_RE = /^pragma:/i;
 const YAML_LS_RE = /^yaml-language-server:/;
 const TSREF_RE = /^\/\s*<reference\b/;
-const GO_OUTPUT_RE = /^(?:unordered )?output:/i;
 const GW_RULE_RE = /^groundwork-rule:/;
 
 function isExemptInner(inner: string): boolean {
@@ -112,175 +111,8 @@ function checkExempt(
   return { exempt: false };
 }
 
-function importDeclHasCImport(decl: Node): boolean {
-  let cur: Node | null = decl.firstNamedChild;
-  while (cur) {
-    if (cur.type === "import_spec") {
-      const pathNode = cur.childForFieldName ? cur.childForFieldName("path") : null;
-      if (pathNode && (pathNode.text === '"C"' || pathNode.text === "`C`")) return true;
-    } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
-      return true;
-    }
-    if (cur.type === "import_spec_list") {
-      if (importDeclHasCImport(cur)) return true;
-    }
-    cur = cur.nextNamedSibling;
-  }
-  return false;
-}
-
-function isGoCgoComment(node: Node): boolean {
-  let cur: Node = node;
-  let next: Node | null = node.nextNamedSibling;
-  while (next && next.type === "comment") {
-    if (next.startPosition.row !== cur.endPosition.row + 1) return false;
-    cur = next;
-    next = next.nextNamedSibling;
-  }
-  if (!next) return false;
-  if (next.startPosition.row !== cur.endPosition.row + 1) return false;
-  if (next.type === "import_declaration") {
-    return importDeclHasCImport(next);
-  }
-  if (next.type === "import_spec") {
-    const pathNode = next.childForFieldName ? next.childForFieldName("path") : null;
-    return pathNode !== null && (pathNode.text === '"C"' || pathNode.text === "`C`");
-  }
-  return false;
-}
-
-function findGoCgoPreambleSlashRows(root: Node): Set<number> {
-  const result = new Set<number>();
-  const slashByRow = new Map<number, boolean>();
-
-  function collectSlash(node: Node): void {
-    if (node.type === "comment" && node.text.startsWith("//")) {
-      slashByRow.set(node.startPosition.row, true);
-    }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) collectSlash(child);
-    }
-  }
-  collectSlash(root);
-
-  function findCSpecRowInList(list: Node): number | null {
-    let cur: Node | null = list.firstNamedChild;
-    while (cur) {
-      if (cur.type === "import_spec") {
-        const p = cur.childForFieldName ? cur.childForFieldName("path") : null;
-        if (p && (p.text === '"C"' || p.text === "`C`")) return cur.startPosition.row;
-      }
-      cur = cur.nextNamedSibling;
-    }
-    return null;
-  }
-
-  function isCImport(node: Node): { found: boolean; specListNode?: Node } {
-    let cur: Node | null = node.firstNamedChild;
-    while (cur) {
-      if (cur.type === "import_spec") {
-        const p = cur.childForFieldName ? cur.childForFieldName("path") : null;
-        if (p && (p.text === '"C"' || p.text === "`C`")) return { found: true };
-      } else if (cur.type === "interpreted_string_literal" && cur.text === '"C"') {
-        return { found: true };
-      } else if (cur.type === "import_spec_list") {
-        const specRow = findCSpecRowInList(cur);
-        if (specRow !== null) return { found: true, specListNode: cur };
-      }
-      cur = cur.nextNamedSibling;
-    }
-    return { found: false };
-  }
-
-  function findCImports(node: Node): void {
-    if (node.type === "import_declaration") {
-      const check = isCImport(node);
-      if (check.found) {
-        let row = node.startPosition.row - 1;
-        while (row >= 0 && slashByRow.has(row)) {
-          result.add(row);
-          row--;
-        }
-        if (check.specListNode) {
-          const cSpecRow = findCSpecRowInList(check.specListNode);
-          if (cSpecRow !== null) {
-            let r = cSpecRow - 1;
-            while (r > node.startPosition.row && slashByRow.has(r)) {
-              result.add(r);
-              r--;
-            }
-          }
-        }
-      }
-    }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) findCImports(child);
-    }
-  }
-  findCImports(root);
-  return result;
-}
-
-function findGoExampleOutputRows(root: Node): Set<number> {
-  const result = new Set<number>();
-  const allCommentsByRow = new Map<number, { text: string; endRow: number }>();
-
-  function collectAll(node: Node): void {
-    if (node.type === "comment") {
-      allCommentsByRow.set(node.startPosition.row, { text: node.text, endRow: node.endPosition.row });
-    }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) collectAll(child);
-    }
-  }
-  collectAll(root);
-
-  function findExampleFuncs(node: Node): void {
-    if (node.type === "function_declaration") {
-      const nameNode = node.childForFieldName ? node.childForFieldName("name") : null;
-      if (nameNode && /^Example/.test(nameNode.text)) {
-        const bodyNode = node.childForFieldName ? node.childForFieldName("body") : null;
-        if (bodyNode) {
-          const startRow = bodyNode.startPosition.row;
-          const endRow = bodyNode.endPosition.row;
-          let outputRow: number | null = null;
-          let outputEndRow = 0;
-          for (let row = startRow; row <= endRow; row++) {
-            const entry = allCommentsByRow.get(row);
-            if (entry !== undefined && GO_OUTPUT_RE.test(stripMarkers(entry.text))) {
-              outputRow = row;
-              outputEndRow = entry.endRow;
-              break;
-            }
-          }
-          if (outputRow !== null) {
-            for (let r = outputRow; r <= outputEndRow; r++) result.add(r);
-            let row = outputEndRow + 1;
-            while (row <= endRow && allCommentsByRow.has(row) && allCommentsByRow.get(row)!.text.startsWith("//")) {
-              result.add(row);
-              row++;
-            }
-          }
-        }
-      }
-    }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) findExampleFuncs(child);
-    }
-  }
-  findExampleFuncs(root);
-  return result;
-}
-
 function collectComments(root: Node, text: string, lang: Language, classified: Map<number, ClassifiedComment>): Comment[] {
   const results: Comment[] = [];
-
-  const goCgoPreambleRows = lang === "go" ? findGoCgoPreambleSlashRows(root) : new Set<number>();
-  const goExampleOutputRows = lang === "go" ? findGoExampleOutputRows(root) : new Set<number>();
 
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) {
@@ -289,33 +121,10 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
       const endRow = node.endPosition.row;
 
       const cls = classified.get(node.startIndex)!;
-      let exempt: boolean;
-      let reason: string | undefined;
-      if (lang === "go" && (raw.startsWith("/*") || raw.startsWith("//")) && isGoCgoComment(node)) {
-        exempt = true;
-        reason = "cgo-preamble";
-      } else {
-        const { exempt: rawExempt, reason: rawReason } = checkExempt(raw, cls.label, cls.directive);
-        exempt = rawExempt;
-        reason = rawReason;
-        if (!exempt && cls.kind === "doc") {
-          exempt = true;
-          reason = `${lang}-doc`;
-        }
-        if (!exempt && cls.header) {
-          exempt = true;
-          reason = `${lang}-file-header`;
-        }
-        if (!exempt && lang === "go") {
-          if (raw.startsWith("//") && goCgoPreambleRows.has(startRow)) {
-            exempt = true;
-            reason = "cgo-preamble";
-          } else if (goExampleOutputRows.has(startRow)) {
-            exempt = true;
-            reason = "go-example-output";
-          }
-        }
-      }
+      let { exempt, reason } = checkExempt(raw, cls.label, cls.fallbackLabel === undefined ? cls.directive : false);
+      if (!exempt && cls.kind === "doc") { exempt = true; reason = `${lang}-doc`; }
+      if (!exempt && cls.header) { exempt = true; reason = `${lang}-file-header`; }
+      if (!exempt && cls.fallbackLabel !== undefined) { exempt = true; reason = cls.fallbackLabel; }
       results.push({
         startIndex: node.startIndex,
         endIndex: node.endIndex,

@@ -14,6 +14,12 @@ export interface ClassifiedComment extends RawComment {
   group: number | null;
   /** names why kind is "doc" or directive is true (e.g. "rust-doc", "shebang"); comment-density reports it as the exemption reason */
   label?: string;
+  /**
+   * directive reason used only when nothing else exempts the comment (label, lint/URL markers, doc,
+   * header); set together with directive: true. comment-density checks it last and ignores `directive`
+   * for such comments.
+   */
+  fallbackLabel?: string;
 }
 
 /** Returns one entry per raw comment, same order and same length as `raw`. */
@@ -104,6 +110,7 @@ export function defaultIsCommentNodeType(type: string): boolean {
  */
 export function applyCommonConventions(cs: readonly ClassifiedComment[]): ClassifiedComment[] {
   return cs.map((c) => {
+    if (c.directive && c.label !== undefined) return c;
     if (isShebangComment(c)) return { ...c, directive: true, label: "shebang" };
     if (c.nodeType.includes("doc")) return { ...c, kind: "doc", label: "doc-comment" };
     if (isJsDocBlock(c.text)) return { ...c, kind: "doc", label: "jsdoc" };

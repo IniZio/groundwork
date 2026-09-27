@@ -142,7 +142,53 @@ describe('context-base: normal ancestor base (case c)', () => {
   });
 });
 
-describe('context-base: bad base throws (case d)', () => {
+describe('context-base: annotated tag base (case d)', () => {
+  const bin = new URL('../../bin/house-rules', import.meta.url).pathname;
+
+  it('buildContext returns changed file when base is an annotated tag', () => {
+    const dir = makeTmpDir();
+    initRepo(dir);
+    git(dir, ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'tag', '-a', 'v1', '-m', 'v1']);
+    writeCommit(dir, { 'b.ts': '// c1\n// c2\n// c3\n// c4\n// c5\n// c6\nconst x = 1;\nconst y = 2;\n' });
+
+    const ctx = withoutProjectDir(() =>
+      buildContext({ repoRoot: dir, mode: 'cli', base: 'v1' }),
+    );
+
+    const paths = (ctx.files ?? []).map(f => f.path);
+    expect(paths).toContain('b.ts');
+  });
+
+  it('CLI check --base annotated-tag exits 1 with finding', () => {
+    const dir = makeTmpDir();
+    initRepo(dir);
+    git(dir, ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'tag', '-a', 'v1', '-m', 'v1']);
+    writeCommit(dir, { 'b.ts': '// c1\n// c2\n// c3\n// c4\n// c5\n// c6\nconst x = 1;\nconst y = 2;\n' });
+
+    const r = spawnSync(bin, ['check', '--base', 'v1', '--repo', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: undefined as unknown as string },
+    });
+
+    expect(r.status).toBe(1);
+  });
+
+  it('CLI housekeep --dry-run --since annotated-tag does not exit 2', () => {
+    const dir = makeTmpDir();
+    initRepo(dir);
+    git(dir, ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'tag', '-a', 'v1', '-m', 'v1']);
+    writeCommit(dir, { 'b.ts': '// c1\n// c2\n// c3\n// c4\n// c5\n// c6\nconst x = 1;\nconst y = 2;\n' });
+
+    const r = spawnSync(bin, ['housekeep', '--dry-run', '--since', 'v1', '--repo', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: undefined as unknown as string },
+    });
+
+    expect(r.status).not.toBe(2);
+  });
+});
+
+describe('context-base: bad base throws (case e)', () => {
   it('throws when base is a non-existent ref', () => {
     const dir = makeTmpDir();
     initRepo(dir);

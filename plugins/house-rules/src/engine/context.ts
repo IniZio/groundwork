@@ -107,30 +107,35 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
     // No base provided; fall back to legacy behaviour (three-dot with empty LHS).
     committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', '...HEAD'];
   } else {
-    const catFile = spawnSync('git', ['-C', repoRoot, 'cat-file', '-t', rawBase], {
-      encoding: 'utf8',
-    });
-    if (catFile.status !== 0) {
-      throw new Error(
-        `house-rules: base ref "${rawBase}" is not a valid git object: ${catFile.stderr.trim()}`,
-      );
-    }
-    const objType = catFile.stdout.trim();
-    if (objType === 'tree') {
-      committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', rawBase, 'HEAD'];
-    } else if (objType === 'commit') {
-      const mb = spawnSync('git', ['-C', repoRoot, 'merge-base', rawBase, 'HEAD'], {
+    // Peel to commit first; annotated tags and commits both succeed here.
+    const peelCommit = spawnSync(
+      'git',
+      ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${rawBase}^{commit}`],
+      { encoding: 'utf8' },
+    );
+    if (peelCommit.status === 0) {
+      const sha = peelCommit.stdout.trim();
+      const mb = spawnSync('git', ['-C', repoRoot, 'merge-base', sha, 'HEAD'], {
         encoding: 'utf8',
       });
       if (mb.status === 0) {
-        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', `${rawBase}...HEAD`];
+        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', `${sha}...HEAD`];
       } else {
-        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', rawBase, 'HEAD'];
+        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', sha, 'HEAD'];
       }
     } else {
-      throw new Error(
-        `house-rules: base ref "${rawBase}" has unsupported object type "${objType}" (expected commit or tree)`,
+      const peelTree = spawnSync(
+        'git',
+        ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${rawBase}^{tree}`],
+        { encoding: 'utf8' },
       );
+      if (peelTree.status === 0) {
+        committedDiffArgs = ['-C', repoRoot, 'diff', '--name-only', rawBase, 'HEAD'];
+      } else {
+        throw new Error(
+          `house-rules: base ref "${rawBase}" is not a valid git object or has unsupported type`,
+        );
+      }
     }
   }
 

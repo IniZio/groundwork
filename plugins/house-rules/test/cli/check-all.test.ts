@@ -148,7 +148,6 @@ describe('check --all', () => {
       expect(afterContent).not.toBe(VIOLATION_CONTENT);
       expect(afterContent).not.toContain('// comment one');
 
-      // No new commits created by housekeep
       const countAfter = spawnSync('git', ['-C', dir, 'rev-list', '--count', 'HEAD'], {
         encoding: 'utf8',
       }).stdout.trim();

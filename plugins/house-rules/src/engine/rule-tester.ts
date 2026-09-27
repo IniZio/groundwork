@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Rule, RuleCases, RuleContext, ScopedFile, Finding, Case } from './types.js';
 import { diffTextToHunks } from '../hooks/lib/work-scope.js';
+import { languageForPath } from '../hooks/languages/registry.js';
 
 /** Extend Case for tree cases: per-file tracked and sessionCreated overrides. */
 export interface TrackedCase extends Case {
@@ -83,14 +84,6 @@ export function ruleTester(rule: Rule, cases: RuleCases): void {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function extToLang(ext: string): string | undefined {
-  const map: Record<string, string> = {
-    ts: 'typescript', js: 'javascript', tsx: 'typescript', jsx: 'javascript',
-    py: 'python', go: 'go', rs: 'rust', sh: 'bash', sql: 'sql',
-    dockerfile: 'dockerfile', md: 'markdown', json: 'json', yaml: 'yaml', yml: 'yaml',
-  };
-  return map[ext.toLowerCase()];
-}
 
 function makeTmpDir(tmpDirs: string[]): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'house-rules-tester-'));
@@ -106,11 +99,10 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
       const absPath = path.join(tmp, filePath);
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
       fs.writeFileSync(absPath, text);
-      const ext = path.extname(filePath).replace('.', '');
       files.push({
         path: filePath,
         text,
-        lang: extToLang(ext),
+        lang: languageForPath(filePath) ?? undefined,
         tracked: c.trackedOverrides?.[filePath] ?? true,
         sessionCreated: c.sessionCreatedOverrides?.[filePath] ?? false,
       });
@@ -120,7 +112,6 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
 
   // code case (or bare case with no code/tree)
   const filename = c.filename ?? `${rule.id}.ts`;
-  const ext = path.extname(filename).replace('.', '');
   const tmp = makeTmpDir(tmpDirs);
   const absPath = path.join(tmp, filename);
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
@@ -141,7 +132,7 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
   const files: ScopedFile[] = [{
     path: filename,
     text: codeText,
-    lang: extToLang(ext),
+    lang: languageForPath(filename) ?? undefined,
     tracked: true,
     ...(c.base !== undefined ? { baseText: c.base } : {}),
     addedHunks: caseAddedHunks,

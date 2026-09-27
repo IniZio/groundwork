@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks/lib/work-scope.js';
-import { detectLanguage } from '../hooks/lib/comment-density.js';
+import { languageForPath } from '../hooks/languages/registry.js';
+import type { ParserFactory } from '../hooks/languages/parse.js';
+import { createSourceFiles } from './source-file.js';
 import type { RuleContext, ScopedFile } from './types.js';
 
 export interface BuildContextOpts {
@@ -21,6 +23,8 @@ export interface BuildContextOpts {
   event?: 'Stop' | 'SubagentStop';
   /** gate: agent ids still running; their touched files are excluded from scope */
   runningAgentIds?: string[];
+  /** Injected once; defaults to the tree-sitter loader's getParser. */
+  parserFactory?: ParserFactory;
 }
 
 function isTracked(repoRoot: string, relPath: string): boolean {
@@ -185,6 +189,7 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
 export function buildContext(opts: BuildContextOpts): RuleContext {
   const { repoRoot, mode } = opts;
   const relPaths = scopeFiles(opts);
+  const sources = createSourceFiles(opts.parserFactory);
 
   // Compute base once
   let base: string;
@@ -212,8 +217,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       }
     }
 
-    const langResult = detectLanguage(relPath);
-    const lang: string | undefined = langResult ?? undefined;
+    const lang = languageForPath(relPath) ?? undefined;
 
     let baseText: string;
     const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], {
@@ -257,5 +261,9 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
     repoRoot,
     mode,
     files,
+    sourceFile(file: ScopedFile) {
+      if (!file.lang || file.text === undefined) return Promise.resolve(null);
+      return sources.get(file.lang, file.text);
+    },
   };
 }

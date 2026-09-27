@@ -1,3 +1,6 @@
+import type { Language } from '../hooks/languages/registry.js';
+import type { SourceFileResult } from './source-file.js';
+
 export type Severity = 'off' | 'warn' | 'error';
 export type Vehicle = 'tree-sitter' | 'diff' | 'tree';
 
@@ -24,7 +27,7 @@ export interface ScopedFile {
   text?: string;
   /** Base-commit text used by comment-density to pair against the session base */
   baseText?: string;
-  lang?: string;
+  lang?: Language;
   addedHunks?: DiffHunk[];
   tracked?: boolean;
   sessionCreated?: boolean;
@@ -34,6 +37,12 @@ export interface RuleContext {
   repoRoot: string;
   mode: 'guard' | 'gate' | 'cli';
   files?: ScopedFile[];
+  /**
+   * Resolves null when the file has no registered language or no text;
+   * parses at most once per (language, text) per context.
+   * Optional so hand-built contexts in rule-tester/tests keep compiling.
+   */
+  sourceFile?(file: ScopedFile): Promise<SourceFileResult | null>;
 }
 
 export interface FixFileResult {

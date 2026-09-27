@@ -11,7 +11,6 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  detectLanguage,
   findComments,
   reconstructPostEdit,
   newComments as findNewComments,
@@ -19,8 +18,8 @@ import {
   autoFix,
   type Comment,
   type GetParserFn,
-  type Lang,
 } from "./lib/comment-density.js";
+import { languageForPath, type Language } from "./languages/registry.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { removedTextsFor, normalizeCommentText } from "./lib/autofix-ledger.js";
@@ -347,7 +346,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const firstLine = tool === "write" && typeof ti.content === "string"
       ? ti.content.split("\n")[0]
       : undefined;
-    const lang = detectLanguage(filePath, firstLine);
+    const lang = languageForPath(filePath, firstLine);
     if (lang === null) return allow();
 
     const getParser = opts.getParser ?? defaultGetParser;
@@ -434,7 +433,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const readdCtx = readdLines.length > 0 ? readdLines.join("\n") : null;
 
     // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
-    const fixEntry = LANG_FIX_TABLE[lang as Lang];
+    const fixEntry = LANG_FIX_TABLE[lang as Language];
     const isStableAndSafe = !!fixEntry && fixEntry.stability === "stable" && fixEntry.applicability === "safe";
     if (!isStableAndSafe) {
       if (readdCtx) return advisory(readdCtx);

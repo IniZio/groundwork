@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll } from "bun:test";
 import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, cpSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getParser, type Lang } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { type Language } from "../../src/hooks/languages/registry.js";
 
 const GRAMMARS_DIR = path.resolve(import.meta.dir, "../../src/hooks/grammars");
 const HOOKS_DIR = path.resolve(import.meta.dir, "../../src/hooks");
@@ -17,7 +18,7 @@ function walkComments(node: import("../../src/hooks/lib/tree-sitter.js").Node): 
 }
 
 describe("AC1: loadLanguage loads grammars from buffer", () => {
-  const CASES: { lang: Lang; sample: string }[] = [
+  const CASES: { lang: Language; sample: string }[] = [
     { lang: "bash", sample: "#!/bin/bash\n# a comment\necho 'hi'" },
     { lang: "yaml", sample: "# yaml comment\nkey: value\n" },
     { lang: "typescript", sample: "// ts comment\nconst x = 1;\n" },

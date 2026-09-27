@@ -4,7 +4,8 @@ import path from 'node:path';
 import rule from './index.js';
 import { cases } from './cases.js';
 import { ruleTester } from '../../src/engine/rule-tester.js';
-import { netNewCommentRows, detectLanguage } from '../../src/hooks/lib/comment-density.js';
+import { netNewCommentRows } from '../../src/hooks/lib/comment-density.js';
+import { languageForPath } from '../../src/hooks/languages/registry.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
 
 ruleTester(rule, cases);
@@ -14,7 +15,7 @@ const FIXTURES_DIR = path.resolve(import.meta.dir, '../../test/fixtures/comment-
 describe('comment-density parity', () => {
   it('clean.ts: no findings', async () => {
     const text = readFileSync(path.join(FIXTURES_DIR, 'clean.ts'), 'utf8');
-    const lang = detectLanguage('clean.ts');
+    const lang = languageForPath('clean.ts');
     expect(lang).not.toBeNull();
     const allLines = text.split('\n').map((_, i) => i + 1);
     const hunks = [{ added: allLines, removed: [], removedBaseLineNos: [] }];
@@ -38,7 +39,7 @@ describe('comment-density parity', () => {
 
   it('over-cap.ts: findings match net-new comment count', async () => {
     const text = readFileSync(path.join(FIXTURES_DIR, 'over-cap.ts'), 'utf8');
-    const lang = detectLanguage('over-cap.ts');
+    const lang = languageForPath('over-cap.ts');
     expect(lang).not.toBeNull();
     const rawLines = text.split('\n');
     // exclude trailing empty line
@@ -74,7 +75,7 @@ describe('comment-density parity', () => {
     const baseText = `// moved comment\nexport const a = 1;\nexport const b = 2;\n${Array.from({ length: 30 }, (_, i) => `export const c${i} = ${i};`).join('\n')}`;
     const postText = `export const a = 1;\nexport const b = 2;\n// moved comment\n${Array.from({ length: 30 }, (_, i) => `export const c${i} = ${i};`).join('\n')}`;
 
-    const lang = detectLanguage('moved.ts');
+    const lang = languageForPath('moved.ts');
     expect(lang).not.toBeNull();
 
     const hunks = diffTextToHunks(baseText, postText);

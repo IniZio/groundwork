@@ -7,7 +7,8 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { autoFix, detectLanguage, density, netNewCommentRows, type Lang, type RowChange } from "./lib/comment-density.js";
+import { autoFix, density, netNewCommentRows, type RowChange } from "./lib/comment-density.js";
+import { languageForPath, type Language } from "./languages/registry.js";
 import { atomicWrite, normalizeTrailingNewline, sha256 } from "./lib/atomic-write.js";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
@@ -25,7 +26,7 @@ export type FixStability = "preview" | "stable";
 export type FixApplicability = "safe" | "unsafe";
 export interface FixEntry { stability: FixStability; applicability: FixApplicability }
 
-export const LANG_FIX_TABLE: Record<Lang, FixEntry> = {
+export const LANG_FIX_TABLE: Record<Language, FixEntry> = {
   bash: { stability: "preview", applicability: "safe" },
   yaml: { stability: "preview", applicability: "safe" },
   typescript: { stability: "stable", applicability: "safe" },
@@ -76,7 +77,7 @@ interface ViolatingFile {
   firstErrorRow?: number;
   rowSet: Set<number>;
   netNewRows: Set<number>;
-  lang: Lang;
+  lang: Language;
   unfixReason?: string;
 }
 
@@ -210,7 +211,7 @@ export async function run(
       const sf = fileByRelPath.get(finding.path);
       if (!sf || !sf.text || !sf.addedHunks || sf.addedHunks.length === 0) continue;
 
-      const lang = detectLanguage(finding.path) as Lang | null;
+      const lang = languageForPath(finding.path);
       if (!lang) continue;
 
       const totalAdded = sf.addedHunks.reduce((s, h) => s + h.added.length, 0);

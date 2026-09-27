@@ -1133,9 +1133,10 @@ describe("S1b-tmp-mismatch-and-density-after-scope", () => {
 
 describe("AC9: dogfood — gate and test files ≤5/100", () => {
   async function checkFileDensity(filePath: string): Promise<number> {
-    const { density, detectLanguage } = await import("../../src/hooks/lib/comment-density.js");
+    const { density } = await import("../../src/hooks/lib/comment-density.js");
+    const { languageForPath } = await import("../../src/hooks/languages/registry.js");
     const text = readFileSync(filePath, "utf8");
-    const lang = detectLanguage(filePath);
+    const lang = languageForPath(filePath);
     if (!lang) return 0;
     const allRows = new Set(text.split("\n").map((_, i) => i));
     const result = await density(text, lang, allRows);

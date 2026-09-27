@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Rule, RuleContext, Finding, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
-import { detectLanguage, netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
+import { netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
+import { languageForPath } from '../../src/hooks/languages/registry.js';
 import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
 import { appendFix } from '../../src/hooks/lib/autofix-ledger.js';
@@ -18,7 +19,7 @@ const rule: Rule = {
   vehicles: ['tree-sitter', 'diff'],
 
   canFixPath(filePath: string): boolean {
-    const lang = detectLanguage(filePath);
+    const lang = languageForPath(filePath);
     if (!lang) return false;
     const entry = LANG_FIX_TABLE[lang];
     return !!entry && entry.stability === 'stable' && entry.applicability === 'safe';
@@ -29,7 +30,7 @@ const rule: Rule = {
     for (const file of ctx.files ?? []) {
       if (!file.addedHunks || !file.text) continue;
 
-      const lang = detectLanguage(file.path);
+      const lang = languageForPath(file.path);
       if (!lang) continue;
 
       const totalAdded = file.addedHunks.reduce((s, h) => s + h.added.length, 0);
@@ -90,7 +91,7 @@ const rule: Rule = {
     for (const file of ctx.files ?? []) {
       if (!file.addedHunks || !file.text) { decline(file.path, 'no added lines'); continue; }
 
-      const lang = detectLanguage(file.path);
+      const lang = languageForPath(file.path);
       if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
       if (!rule.canFixPath!(file.path)) {

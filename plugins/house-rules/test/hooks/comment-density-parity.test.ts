@@ -12,8 +12,8 @@ import os from "node:os";
 import { spawnSync } from "node:child_process";
 import {
   netNewCommentRows,
-  type Lang,
 } from "../../src/hooks/lib/comment-density.js";
+import { type Language } from "../../src/hooks/languages/registry.js";
 import { addedHunks, diffTextToHunks } from "../../src/hooks/lib/work-scope.js";
 import { run } from "../../src/hooks/gate.js";
 import { check } from "../../src/hooks/guard.js";
@@ -58,7 +58,7 @@ function parseOut(stdout: string): Record<string, unknown> {
 async function assertParity(
   base: string,
   post: string,
-  lang: Lang,
+  lang: Language,
   expected: number,
   label: string,
 ): Promise<void> {

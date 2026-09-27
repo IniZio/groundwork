@@ -1,7 +1,6 @@
 import path from "node:path";
 import { Parser, Language } from "./tree-sitter.js";
-
-export type Lang = "bash" | "yaml" | "typescript" | "tsx" | "python" | "dockerfile" | "go" | "rust" | "sql" | "make" | "toml";
+import { type Language as RegistryLanguage, LANGUAGE_ADAPTERS } from "../languages/registry.js";
 
 export type LoadResult =
   | { ok: true; parser: Parser; language: Language }
@@ -10,22 +9,8 @@ export type LoadResult =
 const GRAMMARS_DIR = path.join(import.meta.dir, "../grammars");
 const LIB_DIR = import.meta.dir;
 
-const WASM_FILES: Record<Lang, string> = {
-  bash: "tree-sitter-bash.wasm",
-  yaml: "tree-sitter-yaml.wasm",
-  typescript: "tree-sitter-typescript.wasm",
-  tsx: "tree-sitter-tsx.wasm",
-  python: "tree-sitter-python.wasm",
-  dockerfile: "tree-sitter-dockerfile.wasm",
-  go: "tree-sitter-go.wasm",
-  rust: "tree-sitter-rust.wasm",
-  sql: "tree-sitter-sql.wasm",
-  make: "tree-sitter-make.wasm",
-  toml: "tree-sitter-toml.wasm",
-};
-
 let initPromise: Promise<void> | null = null;
-const cache = new Map<Lang, LoadResult>();
+const cache = new Map<RegistryLanguage, LoadResult>();
 
 async function ensureInit(): Promise<void> {
   if (!initPromise) {
@@ -37,7 +22,7 @@ async function ensureInit(): Promise<void> {
   return initPromise;
 }
 
-export async function getParser(lang: Lang): Promise<LoadResult> {
+export async function getParser(lang: RegistryLanguage): Promise<LoadResult> {
   const cached = cache.get(lang);
   if (cached) return cached;
 
@@ -48,7 +33,7 @@ export async function getParser(lang: Lang): Promise<LoadResult> {
     return result;
   }
 
-  const wasmFile = WASM_FILES[lang];
+  const wasmFile = LANGUAGE_ADAPTERS[lang].grammar.wasm;
   const wasmPath = path.join(GRAMMARS_DIR, wasmFile);
 
   let buf: Uint8Array;

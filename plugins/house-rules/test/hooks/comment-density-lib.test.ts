@@ -3,7 +3,6 @@ import path from "node:path";
 import { mkdtempSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import {
-  detectLanguage,
   findComments,
   reconstructPostEdit,
   newComments,
@@ -12,9 +11,9 @@ import {
   autoFix,
   netNewCommentRows,
   collectCodeText,
-  type Lang,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
+import { languageForPath, type Language } from "../../src/hooks/languages/registry.js";
 import type { DiffHunk } from "../../src/hooks/lib/work-scope.js";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
@@ -23,8 +22,8 @@ const PROBE_DIR = path.join(FIXTURES, "nexus-probe");
 
 // ---- AC1: Language detection ----
 
-describe("detectLanguage", () => {
-  const cases: [string, string | undefined, Lang | null][] = [
+describe("languageForPath", () => {
+  const cases: [string, string | undefined, Language | null][] = [
     ["/foo/bar.ts", undefined, "typescript"],
     ["/foo/bar.mts", undefined, "typescript"],
     ["/foo/bar.cts", undefined, "typescript"],
@@ -51,8 +50,8 @@ describe("detectLanguage", () => {
     ["/foo/bar.txt", undefined, null],
   ];
 
-  it.each(cases)("detectLanguage(%s, %s) → %s", (fp, first, expected) => {
-    expect(detectLanguage(fp, first)).toBe(expected);
+  it.each(cases)("languageForPath(%s, %s) → %s", (fp, first, expected) => {
+    expect(languageForPath(fp, first)).toBe(expected);
   });
 });
 
@@ -670,8 +669,8 @@ describe("autoFix", () => {
 
 // ---- AC-wave-a: New language fixtures ----
 
-describe("detectLanguage — new languages", () => {
-  const cases: [string, string | undefined, import("../../src/hooks/lib/comment-density.js").Lang | null][] = [
+describe("languageForPath — new languages", () => {
+  const cases: [string, string | undefined, import("../../src/hooks/languages/registry.js").Language | null][] = [
     ["/foo/main.go", undefined, "go"],
     ["/foo/lib.rs", undefined, "rust"],
     ["/foo/schema.sql", undefined, "sql"],
@@ -683,8 +682,8 @@ describe("detectLanguage — new languages", () => {
     ["/foo/Cargo.toml", undefined, "toml"],
   ];
 
-  it.each(cases)("detectLanguage(%s, %s) → %s", (fp, first, expected) => {
-    expect(detectLanguage(fp, first)).toBe(expected);
+  it.each(cases)("languageForPath(%s, %s) → %s", (fp, first, expected) => {
+    expect(languageForPath(fp, first)).toBe(expected);
   });
 });
 
@@ -1335,7 +1334,7 @@ describe("autoFix single-pass density compliance", () => {
 // ---- netNewCommentRows ----
 
 describe("netNewCommentRows", () => {
-  const ts = "typescript" as Lang;
+  const ts = "typescript" as Language;
 
   it("reword in same hunk counts as 0 net-new", async () => {
     const base = `function f() {\n  // old comment\n  return 1;\n}\n`;
@@ -1455,7 +1454,7 @@ describe("findComments: partial-error tree yields safe comments", () => {
 });
 
 describe("netNewCommentRows: partial parse errors", () => {
-  const ts = "typescript" as Lang;
+  const ts = "typescript" as Language;
 
   it("parse error line outside added hunk: AST counting, reword pairing works", async () => {
     const errLine = "\nlet x: import('a').B[];";

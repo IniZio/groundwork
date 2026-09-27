@@ -1,9 +1,8 @@
-import path from "node:path";
-import { getParser as defaultGetParser, type Lang } from "./tree-sitter-loader.js";
+import { getParser as defaultGetParser } from "./tree-sitter-loader.js";
 import type { Node } from "./tree-sitter.js";
 import type { DiffHunk } from "./work-scope.js";
-
-export type { Lang };
+import type { Language } from "../languages/registry.js";
+import { isCommentNode, parseText } from "../languages/parse.js";
 
 export interface Comment {
   startIndex: number;
@@ -76,7 +75,7 @@ function stripMarkers(raw: string): string {
 }
 
 // rawLine: the raw comment line before stripping (used to check space-after-// for Go directives)
-function isExemptInner(inner: string, lang?: Lang, rawLine?: string): boolean {
+function isExemptInner(inner: string, lang?: Language, rawLine?: string): boolean {
   if (
     ANNOT_TAG_RE.test(inner) ||
     ESLINT_RE.test(inner) ||
@@ -112,7 +111,7 @@ function checkExempt(
   nodeType: string,
   raw: string,
   startRow: number,
-  lang: Lang,
+  lang: Language,
   inLeadingBlock: boolean,
 ): { exempt: boolean; reason?: string } {
   if (startRow === 0 && SHEBANG_RE.test(raw.trim())) {
@@ -171,10 +170,6 @@ function checkExempt(
   }
 
   return { exempt: false };
-}
-
-function isCommentNode(node: Node, lang: Lang): boolean {
-  return node.type.includes("comment") || (lang === "sql" && node.type === "marginalia");
 }
 
 const GO_DOC_DECL_TYPES = new Set([
@@ -388,7 +383,7 @@ function findGoExampleOutputRows(root: Node): Set<number> {
   return result;
 }
 
-function collectComments(root: Node, text: string, lang: Lang): Comment[] {
+function collectComments(root: Node, text: string, lang: Language): Comment[] {
   const results: Comment[] = [];
   let leadingBlockDone = false;
 
@@ -453,40 +448,21 @@ function collectComments(root: Node, text: string, lang: Lang): Comment[] {
   return results;
 }
 
-function collectErrorRows(root: Node): Set<number> {
-  const result = new Set<number>();
-  function walk(node: Node): void {
-    if (node.type === "ERROR" || node.isMissing) {
-      for (let r = node.startPosition.row; r <= node.endPosition.row; r++) {
-        result.add(r);
-      }
-    }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) walk(child);
-    }
-  }
-  walk(root);
-  return result;
-}
-
 export async function findComments(
   text: string,
-  lang: Lang,
+  lang: Language,
   getParser: GetParserFn = defaultGetParser,
 ): Promise<FindResult> {
-  const result = await getParser(lang);
-  if (!result.ok) return { ok: false, reason: result.reason, errorRows: new Set() };
+  const pr = await parseText(text, lang, getParser);
+  if (!pr.ok) return { ok: false, reason: pr.reason, errorRows: new Set() };
 
-  const { parser } = result;
-  const tree = parser.parse(text);
+  const { tree, errorRows } = pr;
   if (!tree.rootNode.hasError) {
     const comments = collectComments(tree.rootNode, text, lang);
     tree.delete();
     return { ok: true, comments, errorRows: new Set() };
   }
 
-  const errorRows = collectErrorRows(tree.rootNode);
   const allComments = collectComments(tree.rootNode, text, lang);
   tree.delete();
   const safeComments = allComments.filter(c => {
@@ -499,35 +475,6 @@ export async function findComments(
     return { ok: false, reason: "parse-error", errorRows };
   }
   return { ok: true, comments: safeComments, errorRows };
-}
-
-export function detectLanguage(filePath: string, firstLine?: string): Lang | null {
-  const base = path.basename(filePath);
-  const ext = path.extname(filePath).toLowerCase();
-
-  if (base === "Dockerfile" || base === "Containerfile") return "dockerfile";
-  if (/^Dockerfile\.|^Containerfile\./i.test(base)) return "dockerfile";
-  if (ext === ".dockerfile") return "dockerfile";
-
-  if (ext === ".ts" || ext === ".mts" || ext === ".cts") return "typescript";
-  if (ext === ".tsx" || ext === ".jsx" || ext === ".js" || ext === ".mjs" || ext === ".cjs") return "tsx";
-  if (ext === ".py") return "python";
-  if (ext === ".sh" || ext === ".bash") return "bash";
-  if (ext === ".yml" || ext === ".yaml") return "yaml";
-
-  if (ext === ".go") return "go";
-  if (ext === ".rs") return "rust";
-  if (ext === ".sql") return "sql";
-  if (ext === ".mk") return "make";
-  if (base === "Makefile" || base === "GNUmakefile" || base === "makefile") return "make";
-  if (ext === ".toml") return "toml";
-
-  if (!ext && firstLine) {
-    const m = firstLine.match(/^#!.*?\b(ba?sh|sh|zsh)\b/);
-    if (m) return "bash";
-  }
-
-  return null;
 }
 
 interface EditInput {
@@ -906,9 +853,9 @@ function isFallbackExempt(raw: string): boolean {
   );
 }
 
-const HASH_COMMENT_LANGS = new Set<Lang>(["bash", "yaml", "python", "dockerfile", "make", "toml"]);
+const HASH_COMMENT_LANGS = new Set<Language>(["bash", "yaml", "python", "dockerfile", "make", "toml"]);
 
-function countEffectiveFallback(text: string, lang?: Lang | null): { total: number; effective: number; commentRows: number[] } {
+function countEffectiveFallback(text: string, lang?: Language | null): { total: number; effective: number; commentRows: number[] } {
   const rows = text.split("\n");
   let effective = 0;
   const commentRows: number[] = [];
@@ -984,7 +931,7 @@ export type AutoFixResult =
   | { ok: false; reason: string };
 
 
-export function collectCodeText(root: Node, text: string, lang: Lang): string {
+export function collectCodeText(root: Node, text: string, lang: Language): string {
   const parts: string[] = [];
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) return;
@@ -1076,7 +1023,7 @@ function greedyPairCommentRows(
 export async function netNewCommentRows(
   baseText: string,
   postText: string,
-  lang: Lang,
+  lang: Language,
   hunks: DiffHunk[],
   getParser: GetParserFn = defaultGetParser,
 ): Promise<{ ok: true } & NetNewResult | { ok: false; reason: string }> {
@@ -1192,7 +1139,7 @@ function paragraphProtectedSet(
   candidates: Comment[],
   allComments: Comment[],
   text: string,
-  lang?: Lang,
+  lang?: Language,
 ): Set<number> {
   const candIndices = new Set(candidates.map(c => c.startIndex));
   const result = new Set<number>();
@@ -1312,7 +1259,7 @@ function extendRemovalWithDividers(
 
 export async function autoFix(
   text: string,
-  lang: Lang,
+  lang: Language,
   addedRows: Set<number>,
   getParser?: GetParserFn,
   netNewRows?: Set<number>,
@@ -1459,14 +1406,17 @@ export async function autoFix(
 
   const pr = await getParser(lang);
   if (!pr.ok) return { ok: false, reason: `parser: ${pr.reason}` };
-  const origTree = pr.parser.parse(text);
-  const fixedTree = pr.parser.parse(fixed);
-  const origHasErr = hasAstErrors(origTree.rootNode);
-  const fixedHasErr = hasAstErrors(fixedTree.rootNode);
-  const origCode = collectCodeText(origTree.rootNode, text, lang);
-  const fixedCode = collectCodeText(fixedTree.rootNode, fixed, lang);
-  origTree.delete();
-  fixedTree.delete();
+  const loaded = async () => pr;
+  const o = await parseText(text, lang, loaded);
+  if (!o.ok) return { ok: false, reason: `parser: ${o.reason}` };
+  const f = await parseText(fixed, lang, loaded);
+  if (!f.ok) { o.tree.delete(); return { ok: false, reason: `parser: ${f.reason}` }; }
+  const origHasErr = hasAstErrors(o.tree.rootNode);
+  const fixedHasErr = hasAstErrors(f.tree.rootNode);
+  const origCode = collectCodeText(o.tree.rootNode, text, lang);
+  const fixedCode = collectCodeText(f.tree.rootNode, fixed, lang);
+  o.tree.delete();
+  f.tree.delete();
   if (!origHasErr && fixedHasErr) {
     return { ok: false, reason: "fix introduced parse errors" };
   }
@@ -1490,7 +1440,7 @@ export async function autoFix(
 
 export async function density(
   text: string,
-  lang: Lang | null,
+  lang: Language | null,
   rows?: Set<number>,
   getParser: GetParserFn = defaultGetParser,
 ): Promise<DensityResult> {

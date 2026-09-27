@@ -4,12 +4,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { loadRules } from '../engine/registry.js';
 import { runRules } from '../engine/run.js';
+import type { FindingWithSeverity } from '../engine/run.js';
 import { readBaseline, fingerprint } from '../engine/baseline.js';
 import type { Baseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
-import type { RuleContext, ScopedFile } from '../engine/types.js';
-import type { Finding } from '../engine/types.js';
+import type { Rule, RuleContext, ScopedFile } from '../engine/types.js';
 import { resolveScope } from './scope.js';
+import type { Scope } from './scope.js';
+import {
+  type OutputFormat,
+  writeScopeHeader,
+  toReportFinding,
+  buildReport,
+  writeJsonReport,
+  exitCodeFor,
+} from './report.js';
 
 export interface HousekeepOpts {
   rules?: string[];
@@ -25,14 +34,73 @@ export interface HousekeepOpts {
   rulesDir?: string;
   baselineFile?: string;
   policy?: Record<string, { severity: string; autofix: boolean }>;
+  format?: OutputFormat;
 }
 
-function subsetContext(ctx: RuleContext, relPath: string): RuleContext {
-  return { ...ctx, files: (ctx.files ?? []).filter(f => f.path === relPath) };
+export interface FixOutcome {
+  fixed: Array<{ finding: FindingWithSeverity; before?: string; after?: string }>;
+  manual: Array<{ finding: FindingWithSeverity; reason: string }>;
+}
+
+/** Run the fix loop over a set of findings. Writes to disk only when write:true. */
+export async function fixFindings(args: {
+  rules: Rule[];
+  ctx: RuleContext;
+  findings: FindingWithSeverity[];
+  policy: Record<string, { severity: string; autofix: boolean }>;
+  write: boolean;
+  max?: number;
+}): Promise<FixOutcome> {
+  const { rules, ctx, findings, policy, write, max } = args;
+  const fixed: Array<{ finding: FindingWithSeverity; before?: string; after?: string }> = [];
+  const manual: Array<{ finding: FindingWithSeverity; reason: string }> = [];
+  let fixCount = 0;
+
+  for (const finding of findings) {
+    const rule = rules.find(r => r.id === finding.ruleId);
+    const policyEntry = policy[finding.ruleId];
+    const canFix = rule?.fix !== undefined && policyEntry?.autofix === true;
+
+    if (!canFix) {
+      const reason = policyEntry?.autofix !== true
+        ? 'autofix disabled by policy'
+        : 'rule has no autofix';
+      manual.push({ finding, reason });
+      continue;
+    }
+
+    if (max !== undefined && fixCount >= max) {
+      manual.push({ finding, reason: '--max limit reached' });
+      continue;
+    }
+
+    const subCtx: RuleContext = { ...ctx, files: (ctx.files ?? []).filter(f => f.path === finding.path) };
+    // Both dry-run and real mode run the actual fix; write:false suppresses disk writes and ledger appends.
+    const result = await rule!.fix!(subCtx, { write });
+
+    const fileResult = result.files?.find(f => f.path === finding.path);
+    if (fileResult) {
+      if (fileResult.status === 'fixed') {
+        fixCount++;
+        fixed.push({ finding, before: fileResult.before, after: fileResult.after });
+      } else {
+        manual.push({ finding, reason: fileResult.reason ?? 'rule declined (no reason reported)' });
+      }
+    } else {
+      if (result.fixed > 0) {
+        fixCount++;
+        fixed.push({ finding });
+      } else {
+        manual.push({ finding, reason: 'rule declined (no reason reported)' });
+      }
+    }
+  }
+
+  return { fixed, manual };
 }
 
 /** Print a git-style unified diff for fixed entries that have before/after content. */
-function printDiff(fixed: Array<{ finding: Finding; before?: string; after?: string }>): void {
+function printDiff(fixed: Array<{ finding: { path: string }; before?: string; after?: string }>): void {
   const entries = fixed.filter(e => e.before !== undefined && e.after !== undefined && e.before !== e.after);
   if (entries.length === 0) return;
 
@@ -94,23 +162,23 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   };
 
   let ctx: RuleContext;
-  let findings: Finding[];
+  let findings: FindingWithSeverity[];
   let unmatchedBaselineEntries: Array<{ rule: string; path: string; fingerprint: string }> = [];
   let effectiveSince: string | undefined;
   let cachedBaseline: Baseline | undefined;
+  let scope: Scope;
 
   if (opts.baselineMode) {
     cachedBaseline = await readBaseline(baselineFilePath);
     effectiveSince = opts.since ?? cachedBaseline.base;
-    ({ ctx } = resolveScope({ repoRoot, all: true, since: effectiveSince, paths: opts.pathspec }));
+    ({ ctx, scope } = resolveScope({ repoRoot, all: true, since: effectiveSince, paths: opts.pathspec }));
     const allFindings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
     const allFingerprintSet = new Set(allFindings.map(f => fingerprint(f)));
     unmatchedBaselineEntries = cachedBaseline.entries.filter(e => !allFingerprintSet.has(e.fingerprint));
     const baselineFingerprints = new Set(cachedBaseline.entries.map(e => e.fingerprint));
     findings = allFindings.filter(f => baselineFingerprints.has(fingerprint(f)));
   } else {
-    const { ctx: resolved } = resolveScope({ repoRoot, all: opts.all, since: opts.all ? undefined : opts.since, paths: opts.pathspec });
-    ctx = resolved;
+    ({ ctx, scope } = resolveScope({ repoRoot, all: opts.all, since: opts.all ? undefined : opts.since, paths: opts.pathspec }));
     findings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
   }
 
@@ -120,64 +188,42 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     );
   }
 
-  const fixed: Array<{ finding: Finding; before?: string; after?: string }> = [];
-  const needsManual: Array<{ finding: Finding; reason: string }> = [];
-  let fixCount = 0;
+  const outcome = await fixFindings({
+    rules,
+    ctx,
+    findings,
+    policy: effectivePolicy,
+    write: !opts.dryRun,
+    max: opts.max,
+  });
 
-  for (const finding of findings) {
-    const rule = rules.find(r => r.id === finding.ruleId);
-    const policyEntry = effectivePolicy[finding.ruleId];
-    const canFix = rule?.fix !== undefined && policyEntry?.autofix === true;
+  const { fixed, manual: needsManual } = outcome;
+  const fixCount = fixed.length;
 
-    if (!canFix) {
-      const reason = policyEntry?.autofix !== true
-        ? 'autofix disabled by policy'
-        : 'rule has no autofix';
-      needsManual.push({ finding, reason });
-      continue;
-    }
+  const isJson = opts.format === 'json';
 
-    if (opts.max !== undefined && fixCount >= opts.max) {
-      needsManual.push({ finding, reason: '--max limit reached' });
-      continue;
-    }
-
-    const subCtx = subsetContext(ctx, finding.path);
-    // Both dry-run and real mode run the actual fix; write:false suppresses disk writes and ledger appends.
-    const result = await rule!.fix!(subCtx, { write: !opts.dryRun });
-
-    const fileResult = result.files?.find(f => f.path === finding.path);
-    if (fileResult) {
-      if (fileResult.status === 'fixed') {
-        fixCount++;
-        fixed.push({ finding, before: fileResult.before, after: fileResult.after });
-      } else {
-        needsManual.push({ finding, reason: fileResult.reason ?? 'rule declined (no reason reported)' });
-      }
-    } else {
-      if (result.fixed > 0) {
-        fixCount++;
-        fixed.push({ finding });
-      } else {
-        needsManual.push({ finding, reason: 'rule declined (no reason reported)' });
-      }
-    }
+  // Write scope header to stderr in text mode, after all fallible work, before first stdout write.
+  if (!isJson) {
+    writeScopeHeader(scope);
   }
 
-  if (fixed.length > 0) {
-    process.stdout.write(`\nFixed (${fixed.length}):\n`);
-    for (const { finding } of fixed) {
-      const prefix = opts.dryRun ? '  [dry-run] ' : '  ';
-      process.stdout.write(`${prefix}${finding.path} ${finding.ruleId} ${finding.message}\n`);
+  if (!isJson) {
+    if (fixed.length > 0) {
+      process.stdout.write(`\nFixed (${fixed.length}):\n`);
+      for (const { finding } of fixed) {
+        const prefix = opts.dryRun ? '  [dry-run] ' : '  ';
+        process.stdout.write(`${prefix}${finding.path} ${finding.ruleId} ${finding.message}\n`);
+      }
     }
-  }
 
-  if (opts.diff) {
-    printDiff(fixed);
+    if (opts.diff) {
+      printDiff(fixed);
+    }
   }
 
   const totalNeedsManual = needsManual.length + unmatchedBaselineEntries.length;
-  if (totalNeedsManual > 0) {
+
+  if (!isJson && totalNeedsManual > 0) {
     process.stdout.write(`\nNeeds manual fix (${totalNeedsManual}):\n`);
     for (const { finding, reason } of needsManual) {
       process.stdout.write(`  ${finding.path} ${finding.ruleId} ${finding.message} — ${reason}\n`);
@@ -191,7 +237,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   const untrackedPaths = untrackedResult.stdout.split('\n').filter(Boolean);
   const strayRule = allRules.find(r => r.id === 'stray-artifacts');
 
-  if (strayRule && untrackedPaths.length > 0) {
+  if (!isJson && strayRule && untrackedPaths.length > 0) {
     const synthFiles: ScopedFile[] = untrackedPaths.map(p => ({
       path: p,
       text: undefined,
@@ -229,12 +275,34 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(baselineFilePath, JSON.stringify(prunedBaseline, null, 2) + '\n', 'utf8');
 
-    if (pruneCount > 0) {
+    // Baseline prune message is text-only; suppress in JSON mode.
+    if (!isJson && pruneCount > 0) {
       process.stdout.write(`\nPruned ${pruneCount} baseline entries\n`);
     }
   }
 
-  process.stdout.write(`\n${fixCount} fixed, ${totalNeedsManual} need manual fix\n`);
+  if (isJson) {
+    const fixedFindings = fixed.map(({ finding }) => toReportFinding(finding));
+    const manualEntries = needsManual.map(({ finding, reason }) => ({
+      ...toReportFinding(finding),
+      reason,
+    }));
+    const unmatchedEntries = unmatchedBaselineEntries.map(e => ({
+      ruleId: e.rule,
+      path: e.path,
+      line: null as null,
+      severity: 'warn' as const,
+      message: 'baseline entry, no matching violation found',
+      reason: 'baseline entry, no matching violation found',
+    }));
+    writeJsonReport(buildReport(scope, {
+      findings: [],
+      fixed: fixedFindings,
+      manual: [...manualEntries, ...unmatchedEntries],
+    }));
+  } else {
+    process.stdout.write(`\n${fixCount} fixed, ${totalNeedsManual} need manual fix\n`);
+  }
 
-  process.exit(0);
+  process.exit(exitCodeFor(needsManual.map(m => m.finding)));
 }

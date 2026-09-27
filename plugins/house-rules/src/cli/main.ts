@@ -3,12 +3,25 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { loadRules } from '../engine/registry.js';
-import { runRules, isBlocking } from '../engine/run.js';
+import { runRules } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
-import { runHousekeep } from './housekeep.js';
+import { runHousekeep, fixFindings } from './housekeep.js';
 import { resolveScope, ScopeUsageError } from './scope.js';
+import { BUILTIN_POLICY } from '../engine/policy.js';
+import {
+  type OutputFormat,
+  writeScopeHeader,
+  toReportFinding,
+  buildReport,
+  writeJsonReport,
+  formatFindingLine,
+  exitCodeFor,
+} from './report.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
+
+/** Thrown by parseArgs on unknown flags or bad --format; caught at the exit-2 handler. */
+class UsageError extends Error {}
 
 function getRepoRoot(repoFlag?: string): string {
   if (repoFlag) return repoFlag;
@@ -37,12 +50,34 @@ function validateBase(repoRoot: string, base: string): void {
   validateRef(repoRoot, base, 'base');
 }
 
-function printUsage(): void {
-  process.stderr.write(
+function printUsage(toStdout = false): void {
+  const out = toStdout ? process.stdout : process.stderr;
+  out.write(
     'Usage:\n' +
-      '  house-rules check [--all] [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
-      '  house-rules baseline [--all] [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
-      '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n',
+      '  house-rules check [--all] [--base <ref>] [--fix] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules baseline [--all] [--base <ref>] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '\n' +
+      'Flags:\n' +
+      '  --all               scan all tracked files (mutually exclusive with --base/--since)\n' +
+      '  --base <ref>        git ref to diff against\n' +
+      '  --baseline-file <f> path to baseline JSON\n' +
+      '  --baseline          housekeep baseline mode\n' +
+      '  --diff              show unified diff of fixes\n' +
+      '  --dry-run           simulate fixes without writing\n' +
+      '  --fix               auto-fix findings (check subcommand only)\n' +
+      '  --format <text|json>  output format (default: text)\n' +
+      '  --max <n>           maximum fixes to apply\n' +
+      '  --paths <glob,...>  filter by glob patterns\n' +
+      '  --repo <dir>        git repository root\n' +
+      '  --rules <a,b>       comma-separated rule IDs\n' +
+      '  --rules-dir <dir>   path to rules directory\n' +
+      '  --since <ref>       housekeep since ref\n' +
+      '\n' +
+      'Exit codes:\n' +
+      '  0  no error-severity findings remain\n' +
+      '  1  error-severity findings remain (after fixing, for --fix and housekeep)\n' +
+      '  2  usage error, unknown flag, or runtime error\n',
   );
 }
 
@@ -60,6 +95,8 @@ function parseArgs(argv: string[]): {
   dryRun?: boolean;
   diff?: boolean;
   all?: boolean;
+  fix?: boolean;
+  format: OutputFormat;
   pathspec?: string[];
 } {
   const args = argv.slice(0);
@@ -78,15 +115,30 @@ function parseArgs(argv: string[]): {
       arg === '--rules' ||
       arg === '--paths' ||
       arg === '--since' ||
-      arg === '--max'
+      arg === '--max' ||
+      arg === '--format'
     ) {
       opts[arg.slice(2)] = args[++i] ?? '';
-    } else if (arg === '--baseline' || arg === '--dry-run' || arg === '--diff' || arg === '--all') {
+    } else if (
+      arg === '--baseline' ||
+      arg === '--dry-run' ||
+      arg === '--diff' ||
+      arg === '--all' ||
+      arg === '--fix'
+    ) {
       flags[arg.slice(2)] = true;
-    } else if (!arg.startsWith('--')) {
+    } else if (!arg.startsWith('-')) {
       positionals.push(arg);
+    } else {
+      throw new UsageError(`unknown flag: ${arg}`);
     }
   }
+
+  const rawFormat = opts['format'] ?? 'text';
+  if (rawFormat !== 'text' && rawFormat !== 'json') {
+    throw new UsageError(`--format must be "text" or "json", got: ${rawFormat}`);
+  }
+  const format = rawFormat as OutputFormat;
 
   return {
     subcommand,
@@ -102,6 +154,8 @@ function parseArgs(argv: string[]): {
     dryRun: flags['dry-run'],
     diff: flags['diff'],
     all: flags['all'],
+    fix: flags['fix'],
+    format,
     pathspec: positionals.length > 0 ? positionals : undefined,
   };
 }
@@ -112,6 +166,8 @@ async function cmdCheck(opts: {
   baselineFile?: string;
   repo?: string;
   all?: boolean;
+  fix?: boolean;
+  format: OutputFormat;
   pathspec?: string[];
 }): Promise<void> {
   const repoRoot = getRepoRoot(opts.repo);
@@ -123,22 +179,54 @@ async function cmdCheck(opts: {
   }
 
   const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
-  void scope; // used by a later slice
   const rules = await loadRules(rulesDirResolved);
   const allFindings = await runRules(rules, ctx);
   const baseline = await readBaseline(baselineFile);
   const findings = subtractBaseline(allFindings, baseline);
 
-  for (const f of findings) {
-    if (f.line !== undefined) {
-      process.stdout.write(`${f.path}:${f.line} ${f.ruleId} ${f.message}\n`);
+  if (opts.fix) {
+    // Apply autofixes, then re-evaluate to determine remaining findings.
+    const outcome = await fixFindings({
+      rules,
+      ctx,
+      findings,
+      policy: BUILTIN_POLICY,
+      write: true,
+    });
+
+    const { ctx: freshCtx } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
+    const freshAll = await runRules(rules, freshCtx);
+    const freshBaseline = await readBaseline(baselineFile);
+    const remaining = subtractBaseline(freshAll, freshBaseline);
+
+    if (opts.format === 'json') {
+      writeJsonReport(buildReport(scope, {
+        findings: remaining.map(toReportFinding),
+        fixed: outcome.fixed.map(e => toReportFinding(e.finding)),
+        manual: outcome.manual.map(m => ({ ...toReportFinding(m.finding), reason: m.reason })),
+      }));
     } else {
-      process.stdout.write(`${f.path} ${f.ruleId} ${f.message}\n`);
+      writeScopeHeader(scope);
+      for (const f of remaining) {
+        process.stdout.write(formatFindingLine(f) + '\n');
+      }
+      process.stdout.write(`${remaining.length} finding(s)\n`);
+      process.stdout.write(`${outcome.fixed.length} fixed\n`);
     }
+    process.exit(exitCodeFor(remaining));
   }
 
-  process.stdout.write(`${findings.length} finding(s)\n`);
-  process.exit(isBlocking(findings) ? 1 : 0);
+  if (opts.format === 'json') {
+    writeJsonReport(buildReport(scope, { findings: findings.map(toReportFinding) }));
+  } else {
+    // Header after readBaseline succeeds (a corrupt baseline throws before we reach here).
+    writeScopeHeader(scope);
+    for (const f of findings) {
+      process.stdout.write(formatFindingLine(f) + '\n');
+    }
+    process.stdout.write(`${findings.length} finding(s)\n`);
+  }
+  process.exit(exitCodeFor(findings));
 }
 
 async function cmdBaseline(opts: {
@@ -158,7 +246,6 @@ async function cmdBaseline(opts: {
   }
 
   const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
-  void scope;
   const rules = await loadRules(rulesDirResolved);
   const findings = await runRules(rules, ctx);
 
@@ -172,15 +259,26 @@ async function cmdBaseline(opts: {
   process.stdout.write(`Baseline written to ${baselineFile} (${findings.length} entries)\n`);
 }
 
-const parsed = parseArgs(process.argv.slice(2));
-
-if (parsed.all && (parsed.base !== undefined || parsed.since !== undefined)) {
-  process.stderr.write('Error: --all cannot be combined with --base or --since\n');
-  printUsage();
-  process.exit(2);
+// Check --help / -h anywhere in raw argv before full parsing.
+const rawArgv = process.argv.slice(2);
+if (rawArgv.includes('--help') || rawArgv.includes('-h') || rawArgv[0] === 'help') {
+  printUsage(true);
+  process.exit(0);
 }
 
 try {
+  const parsed = parseArgs(rawArgv);
+
+  if (parsed.all && (parsed.base !== undefined || parsed.since !== undefined)) {
+    process.stderr.write('Error: --all cannot be combined with --base or --since\n');
+    printUsage();
+    process.exit(2);
+  }
+
+  if (parsed.fix && parsed.subcommand !== 'check') {
+    throw new UsageError('--fix is only valid for the check subcommand');
+  }
+
   switch (parsed.subcommand) {
     case 'check':
       await cmdCheck(parsed);
@@ -206,6 +304,7 @@ try {
         baselineFile: parsed.baselineFile,
         all: parsed.all,
         pathspec: parsed.pathspec,
+        format: parsed.format,
       });
       break;
     }
@@ -214,7 +313,7 @@ try {
       process.exit(2);
   }
 } catch (err) {
-  if (err instanceof ScopeUsageError) {
+  if (err instanceof UsageError || err instanceof ScopeUsageError) {
     process.stderr.write(`Error: ${err.message}\n`);
     printUsage();
     process.exit(2);

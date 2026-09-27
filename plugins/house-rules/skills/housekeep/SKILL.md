@@ -42,7 +42,7 @@ If the user named an area, use it. Otherwise use the branch diff since the merge
 
 ### 3. Scan
 
-Run `house-rules check` first; its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `groundwork:explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Inventory checks (the **Orphaned entry point** smell in the `slop` lens) always run repo-wide regardless of the hot-spot scope. Unchosen lenses appear in the report header as "not scanned (not selected)".
+Run `house-rules check --all --format json` (or scoped: `--base <ref>` or positional pathspecs matching step 2's scope) first; exit 1 means findings exist (not a crash), exit 2 means a usage or runtime error. Its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `groundwork:explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Inventory checks (the **Orphaned entry point** smell in the `slop` lens) always run repo-wide regardless of the hot-spot scope. Unchosen lenses appear in the report header as "not scanned (not selected)".
 
 Reference files: `slop` → `reference/deslop.md`, `deps` → `reference/deps.md`, `lint-debt` → `reference/lint-debt.md`, `docs` → `reference/docs-staleness.md`, `conventions` → `reference/conventions.md`.
 
@@ -56,18 +56,22 @@ Write a self-contained HTML file to `<tmpdir>/housekeep-<timestamp>.html` (`$TMP
 
 ### 6. Fix
 
-Accepted findings only. Lock behaviour with the narrowest regression tests before editing. Send auto-fix findings to `house-rules housekeep --rules <ids> --paths <globs>`. For the rest, write a cleanup plan ordered from safest deletion to riskiest consolidation, using each lens file's pass guidance. For large sets, fan out `groundwork:implementer` (≤2 files each). After each pass, run that lens's quality gate.
+Accepted findings only. Lock behaviour with the narrowest regression tests before editing. Preview with `house-rules housekeep --dry-run --diff` before applying. Send auto-fix findings to `house-rules housekeep --rules <ids> --paths <globs>`. Exit 1 means error findings remain unfixed; report those as deferred, not a crash. For the rest, write a cleanup plan ordered from safest deletion to riskiest consolidation, using each lens file's pass guidance. For large sets, fan out `groundwork:implementer` (≤2 files each). After each pass, run that lens's quality gate.
 
 #### Automated fix flags
 
 - `--rules <a,b>` — limit to specific rule IDs
 - `--paths <glob,...>` — restrict to files matching glob(s)
 - `--since <ref>` — override the base git ref
-- `--baseline` — target entries in `.house-rules/baseline.json` instead of the diff scope
-- `--max <n>` — cap auto-fixes applied
-- `--dry-run` — show what would be fixed without writing
+- `--baseline` — target entries in `.house-rules/baseline.json` instead of the diff scope; fixed entries pruned from the file after a real (non-`--dry-run`) run
+- `--max <n>` — cap auto-fixes applied; unfixed findings are reported with `--max limit reached`
+- `--dry-run` — run the fix in memory, write nothing; each entry shows a `[dry-run]` prefix (text mode)
+- `--diff` — print a unified diff of each fixed file (text mode)
+- `--all` — scan all repo files, not just the diff
+- positional pathspecs — scope check / baseline / housekeep to listed files or dirs
+- `--format json` — machine-readable output
 
-After `--baseline` runs, fixed entries are automatically pruned from the baseline file. Untracked scratch files are reported under "Untracked strays (not blocking)" but do not affect exit code.
+Untracked scratch files are listed under "Untracked strays (not blocking)" in text mode and do not affect exit code.
 
 ### 7. Close
 

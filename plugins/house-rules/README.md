@@ -25,14 +25,49 @@ Per-rule READMEs are generated under `rules/<id>/`.
 ## CLI
 
 ```
-house-rules check --base <ref>    # report violations introduced since <ref>; exits non-zero if any
-house-rules baseline               # write .house-rules/baseline.json ratchet for current violations
-house-rules housekeep              # deslop + rule-violation fixing (or: /house-rules:housekeep)
+house-rules check [--all | --base <ref>] [--fix] [--format <text|json>] [<pathspec>...]
+house-rules baseline [--all | --base <ref>] [--format <text|json>] [<pathspec>...]
+house-rules housekeep [--all | --since <ref>] [--rules <a,b>] [--paths <glob,...>] [--baseline] [--max <n>] [--dry-run] [--diff] [--format <text|json>] [<pathspec>...]
 ```
+
+**Scope**: pass `--base <ref>` to diff against a commit; `--all` to scan all tracked files. `--all` cannot be combined with `--base` or `--since` (exit 2). Positional arguments are pathspecs that narrow the file set.
+
+**Exit codes** — same meaning for `check`, `check --fix`, and `housekeep`:
+
+| Code | Meaning |
+|---|---|
+| 0 | No error-severity findings remain |
+| 1 | Error-severity findings remain |
+| 2 | Usage error, unknown flag, or runtime error |
+
+`--fix` is valid only for the `check` subcommand; using it on another subcommand is a usage error (exit 2).
+
+**JSON output**: `--format json` emits one JSON line to stdout; no scope header is written. Text mode prints the scope header to stderr: `house-rules: base=<ref|all> files=<N>`.
+
+```
+{"scope":{"base":"HEAD","mode":"diff","files":1},"findings":[{"ruleId":"comment-density","path":"demo.ts","line":2,"severity":"error","message":"100.0/100 (5 comments in 5 added lines; rows 2, 3, 4, 5, 6)"}],"fixed":[],"manual":[],"summary":{"fixed":0,"manual":0,"findings":1}}
+```
+
+Shape: `scope.base` is the ref or `"all"`; `scope.mode` is `"diff"` or `"all"`; `scope.files` is a count. `findings`, `fixed`, and `manual` are arrays of `{ruleId, path, line, severity, message}`; `manual` entries also carry `reason`. `summary` mirrors array lengths.
+
+**Housekeep options**: `--dry-run` runs the fix in memory — no files written, no ledger entries appended. `--diff` (text mode) prints a unified diff of what would change. `--baseline` targets entries in `.house-rules/baseline.json`; after a real (non-dry-run) run, fixed entries are pruned from the baseline. `--max <n>` caps the number of fixes applied; findings beyond the cap appear in the manual-fix list with reason `--max limit reached`. Manual-fix lines end with ` — <reason>`.
 
 ## Baseline
 
 `.house-rules/baseline.json` records known violations at a point in time. `house-rules check` subtracts baseline entries so that violations at or below baseline are not errors. Run `house-rules baseline` to ratchet the baseline to current state. Use this to introduce enforcement to an existing codebase without blocking on pre-existing violations.
+
+## Keep policy
+
+When trimming a file to meet the density cap, comment groups are sorted shortest-first (fewest rows; ties broken by source order). The density trim drops the longest kept group first until the file is within budget.
+
+## Divider and spacer exemptions
+
+Dividers and spacers are exempt from the comment count and do not count toward density.
+
+- **Divider**: a comment whose entire stripped content is either 2+ box-drawing characters (U+2500–U+257F, i.e. `─` through `╿`) or 4+ of `-=#*~_`. Exempt reason: `divider`.
+- **Spacer**: a `//` comment with no content after stripping. Exempt reason: `spacer`.
+
+A `/* */` block is exempt only if every non-blank inner line is individually exempt. Dividers and spacers on added rows are removed together with the comment group they frame, or when left orphaned next to a removal; pre-existing ones stay.
 
 ## Enforcement scope — comment-density
 
@@ -42,7 +77,7 @@ house-rules housekeep              # deslop + rule-violation fixing (or: /house-
 
 When the gate auto-trims a file, the next Read/Edit/Write of that file emits a one-time note giving a count of the removed comments. A "file changed since last Read" message on a file you were editing is expected if the gate ran autofix at turn end — it is not another agent; re-read the file before editing and do not re-add the removed comments (a comment that must stay should explain a non-obvious why). On Stop, files being actively edited by still-running background subagents are left alone.
 
-**Go autofix** — removes comments as text and does not run gofmt, so column alignment may need `gofmt -w`. Protected Go comments (never removed): `//go:*` pragmas, `// +build`, `//export`, `//line` and `/*line` directives, `//nolint`, `//lint:ignore`/`file-ignore`, `// +marker:` (e.g. kubebuilder), everything before the `package` clause (license, SPDX, `Code generated ... DO NOT EDIT.`), the whole comment group (any mix of `//` and `/* */`) directly above `import "C"` (top-level or grouped import spec), `// Output:`/`// Unordered output:`/`/* Output: */` blocks inside Example funcs, go/doc `MARKER(uid)` notes with continuations, and doc comments on declarations including interface methods and embedded interface elements.
+**Go autofix** — removes comments as text; spacing at comment-removal join points (` ,`, ` )`, `{ }`) is repaired natively; string literals are never touched. No gofmt is run. Aligned trailing-comment columns are left to your formatter. Protected Go comments (never removed): `//go:*` pragmas, `// +build`, `//export`, `//line` and `/*line` directives, `//nolint`, `//lint:ignore`/`file-ignore`, `// +marker:` (e.g. kubebuilder), everything before the `package` clause (license, SPDX, `Code generated ... DO NOT EDIT.`), the whole comment group (any mix of `//` and `/* */`) directly above `import "C"` (top-level or grouped import spec), `// Output:`/`// Unordered output:`/`/* Output: */` blocks inside Example funcs, go/doc `MARKER(uid)` notes with continuations, and doc comments on declarations including interface methods and embedded interface elements.
 
 **Supported languages**: TypeScript (ts, tsx), JavaScript (js, jsx), Python, Bash/Shell, YAML, Dockerfile, Go, Rust, SQL, Makefile, TOML. Files in other languages are not measured.
 

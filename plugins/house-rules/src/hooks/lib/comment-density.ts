@@ -153,7 +153,6 @@ function checkExempt(
       if (isExemptInner(inner, lang, line)) { firstReason ??= inner.slice(0, 30); continue; }
       return { exempt: false };
     }
-    // All-blank block is not exempt (preserves existing behavior).
     if (!hasNonBlank) return { exempt: false };
     return { exempt: true, reason: firstReason };
   }
@@ -1274,86 +1273,25 @@ export async function autoFix(
     }
   }
 
+  units.sort((a, b) => {
+    const ra = a.reduce((s, c) => s + commentRowCount(c), 0);
+    const rb = b.reduce((s, c) => s + commentRowCount(c), 0);
+    return ra !== rb ? ra - rb : a[0].startRow - b[0].startRow;
+  });
+
   let keptRows = protectedRowCount;
-  let keepCount = 0;
-  let keptUnitIndices: number[] | null = null;
-  if (lang === "go") {
-    keptUnitIndices = [];
-    for (let i = 0; i < units.length; i++) {
-      const rows = units[i].reduce((s, c) => s + commentRowCount(c), 0);
-      if (keptRows + rows <= maxAllowedRows) {
-        keptRows += rows;
-        keptUnitIndices.push(i);
-      }
-    }
-  } else {
-    for (const unit of units) {
-      const rows = unit.reduce((s, c) => s + commentRowCount(c), 0);
-      if (keptRows + rows <= maxAllowedRows) {
-        keptRows += rows;
-        keepCount++;
-      } else {
-        break;
-      }
+  const keptUnitIndices: number[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const rows = units[i].reduce((s, c) => s + commentRowCount(c), 0);
+    if (keptRows + rows <= maxAllowedRows) {
+      keptRows += rows;
+      keptUnitIndices.push(i);
     }
   }
 
-  if (keptUnitIndices !== null) {
-    const keptSet = new Set(keptUnitIndices);
-    while (true) {
-      const removedCands = units.filter((_, i) => !keptSet.has(i)).flat();
-      const wlRemovedRows = stripComments(text, removedCands).rowChanges.filter(
-        rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
-      ).length;
-      const remappedSize = addedRows.size - wlRemovedRows;
-      const densityOkGo = opts?.maxAllowedRows !== undefined
-        ? keptRows + extraEffective <= maxAllowedRows
-        : (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5);
-      if (densityOkGo) break;
-      if (keptUnitIndices.length === 0) {
-        return { ok: false, reason: "still over cap after fix" };
-      }
-      const lastKept = keptUnitIndices.pop()!;
-      keptSet.delete(lastKept);
-      keptRows -= units[lastKept].reduce((s, c) => s + commentRowCount(c), 0);
-    }
-    const toRemoveGo = units.filter((_, i) => !keptSet.has(i)).flat();
-    const strippedGo = stripComments(text, toRemoveGo);
-    const { rowChanges } = strippedGo;
-    const fixedGo = normalizeGoRemovalWhitespace(text, strippedGo.text, rowChanges);
-    const fpGo = await findComments(fixedGo, lang, getParser);
-    if (!fpGo.ok) return { ok: false, reason: `post-strip parse: ${fpGo.reason}` };
-    const prGo = await getParser(lang);
-    if (!prGo.ok) return { ok: false, reason: `parser: ${prGo.reason}` };
-    const origTreeGo = prGo.parser.parse(text);
-    const fixedTreeGo = prGo.parser.parse(fixedGo);
-    const origHasErrGo = hasAstErrors(origTreeGo.rootNode);
-    const fixedHasErrGo = hasAstErrors(fixedTreeGo.rootNode);
-    const origCodeGo = collectCodeText(origTreeGo.rootNode, text, lang);
-    const fixedCodeGo = collectCodeText(fixedTreeGo.rootNode, fixedGo, lang);
-    origTreeGo.delete();
-    fixedTreeGo.delete();
-    if (!origHasErrGo && fixedHasErrGo) {
-      return { ok: false, reason: "fix introduced parse errors" };
-    }
-    if (origCodeGo !== fixedCodeGo) return { ok: false, reason: "code content changed" };
-    const preMapGo = new Map<string, number>();
-    for (const c of origParsed.comments) {
-      let onAdded = false;
-      for (let r = c.startRow; r <= c.endRow && !onAdded; r++) onAdded = addedRows.has(r);
-      if (!onAdded) preMapGo.set(c.text, (preMapGo.get(c.text) ?? 0) + 1);
-    }
-    const fixedMapGo = new Map<string, number>();
-    for (const c of fpGo.comments) fixedMapGo.set(c.text, (fixedMapGo.get(c.text) ?? 0) + 1);
-    for (const [t, cnt] of preMapGo) {
-      if ((fixedMapGo.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
-    }
-    const keptUnits = units.filter((_, i) => keptSet.has(i)).flat().length;
-    return { ok: true, fixed: fixedGo, removed: toRemoveGo.length, removedTexts: toRemoveGo.map(c => c.text), kept: keptUnits + protectedCands.length, total: candidates.length, rowChanges };
-  }
-
-  while (keepCount >= 0) {
-    const removedCands = units.slice(keepCount).flat();
+  const keptSet = new Set(keptUnitIndices);
+  while (true) {
+    const removedCands = units.filter((_, i) => !keptSet.has(i)).flat();
     const wlRemovedRows = stripComments(text, removedCands).rowChanges.filter(
       rc => rc.kind === "deleted" && addedRows.has(rc.origRow),
     ).length;
@@ -1362,17 +1300,16 @@ export async function autoFix(
       ? keptRows + extraEffective <= maxAllowedRows
       : (remappedSize <= 0 || (keptRows + extraEffective) / remappedSize * 100 <= 5);
     if (densityOk) break;
-    if (keepCount === 0) {
+    if (keptUnitIndices.length === 0) {
       return { ok: false, reason: "still over cap after fix" };
     }
-    keptRows -= units[keepCount - 1].reduce((s, c) => s + commentRowCount(c), 0);
-    keepCount--;
-  }
-  if (keepCount < 0) {
-    return { ok: false, reason: "still over cap after fix" };
+    // Drop the longest kept group first (last in shortest-first order).
+    const lastKept = keptUnitIndices.pop()!;
+    keptSet.delete(lastKept);
+    keptRows -= units[lastKept].reduce((s, c) => s + commentRowCount(c), 0);
   }
 
-  const toRemove = units.slice(keepCount).flat();
+  const toRemove = units.filter((_, i) => !keptSet.has(i)).flat();
   const stripped = stripComments(text, toRemove);
   const { rowChanges } = stripped;
 
@@ -1413,7 +1350,8 @@ export async function autoFix(
     if ((fixedMap.get(t) ?? 0) < cnt) return { ok: false, reason: "pre-existing comment removed" };
   }
 
-  return { ok: true, fixed, removed: toRemove.length, removedTexts: toRemove.map(c => c.text), kept: units.slice(0, keepCount).flat().length + protectedCands.length, total: candidates.length, rowChanges };
+  const keptUnits = units.filter((_, i) => keptSet.has(i)).flat().length;
+  return { ok: true, fixed, removed: toRemove.length, removedTexts: toRemove.map(c => c.text), kept: keptUnits + protectedCands.length, total: candidates.length, rowChanges };
 }
 
 export async function density(

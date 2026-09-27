@@ -93,3 +93,57 @@ _Avoid_: Allowlist, ignore list
 **Stray artifact**:
 A file written where it does not belong, such as a root scratch file or a synonym directory beside its sibling.
 _Avoid_: Junk file, leftover
+
+**Edit guard**:
+The house-rules check that runs on each edit before it is written, and may rewrite the edit.
+_Avoid_: Guard (unqualified), pre-hook
+
+**house-rules gate**:
+The house-rules check at turn end that reports violations in the turn's changed files and applies autofixes.
+_Avoid_: Gate (unqualified), stop-gate
+
+**Autofix**:
+A change a rule makes to bring a file back within that rule.
+_Avoid_: Auto-strip, repair
+
+**Fix stability**:
+Whether a rule's autofix for a given language is stable (applied) or preview (recorded but not applied).
+_Avoid_: Fix level, maturity
+
+**Coverage report**:
+The list of changed files a rule did not check (no language), checked only partly (parse errors), or failed on (the language could not load).
+_Avoid_: Skipped list, pass-through
+
+### house-rules languages
+
+**Language**:
+A programming or configuration language house-rules can read, recognised from a file's name or shebang.
+_Avoid_: Lang, file type, grammar
+
+**Language adapter**:
+The one place holding everything house-rules knows about a language independent of any rule: how to recognise its files, how to parse them, and which of its comments carry meaning.
+_Avoid_: Language plugin, language handler, language support
+
+**Source file**:
+A file as rules see it after parsing: its language, text, syntax tree, classified comments, and the rows that failed to parse.
+_Avoid_: AST, parsed file
+
+**Directive comment**:
+A comment that a compiler, runtime or tool reads, such as a build constraint, shebang or lint suppression; no rule removes one.
+_Avoid_: Pragma, magic comment, exempt comment
+
+**Doc comment**:
+A comment the language attaches to a declaration as its documentation.
+_Avoid_: Docstring, jsdoc (unless TypeScript-specific)
+
+**Comment group**:
+A run of adjacent comments the language treats as one unit, kept or removed as a whole.
+_Avoid_: Comment block, paragraph
+
+**Rule languages**:
+The languages a rule declares it checks; declaring a language with no adapter is an error.
+_Avoid_: Supported languages, language list
+
+**Rule language hook**:
+Behaviour one rule adds for one language, owned by that rule rather than by the language adapter.
+_Avoid_: Language override, per-language config

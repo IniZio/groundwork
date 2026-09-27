@@ -206,6 +206,42 @@ describe("Go autoFix spacing artifacts (GF-8)", () => {
     expect(r.fixed).toContain("fmt.Sprint(\"a ,\", v3, v4)");
   });
 
+  it("AC1: greedy-resync bug — string arg after comment not corrupted", async () => {
+    const code = [
+      "package main",
+      "",
+      "import \"fmt\"",
+      "",
+      "func f() {",
+      '\t_ = fmt.Sprint(v1/* c */, " )", v2 /* d */, " ,")',
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain('\t_ = fmt.Sprint(v1, " )", v2, " ,")');
+  });
+
+  it("AC2: ambiguous join — repair abandoned, line equals plain strip", async () => {
+    const code = [
+      "package main",
+      "",
+      "import \"fmt\"",
+      "",
+      "func f() {",
+      // strip removes the comment but the space artifact before , is benign to AST
+      "\t_ = fmt.Sprint(v1 /* a */, v2)",
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.fixed).not.toContain("/* a */");
+  });
+
   it("pre-existing space before ) away from removal is not touched", async () => {
     const code = [
       "package main",

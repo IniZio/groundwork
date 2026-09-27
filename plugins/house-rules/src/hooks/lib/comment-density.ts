@@ -784,31 +784,40 @@ function normalizeGoInlineArtifacts(fixed: string, rowChanges: RowChange[]): str
 
   function repairLine(orig: string, fix: string): string {
     const out: string[] = [];
-    let oi = 0, fi = 0, inResync = false;
+    let oi = 0, fi = 0;
     while (fi < fix.length) {
       if (oi < orig.length && orig[oi] === fix[fi]) {
-        out.push(fix[fi]); oi++; fi++; inResync = false; continue;
+        out.push(fix[fi]); oi++; fi++; continue;
       }
       if (oi >= orig.length) { out.push(fix[fi]); fi++; continue; }
 
-      if (!inResync) {
-        const jc = fix[fi];
-        if (out.length > 0 && out[out.length - 1] === " " && (jc === "," || jc === ")")) out.pop();
-        if (jc === "}") {
-          let k = out.length - 1;
-          while (k >= 0 && out[k] === " ") k--;
-          if (k >= 0 && out[k] === "{") out.splice(k + 1);
-        }
-      }
+      // At a divergence: only advance orig past whitespace or comment spans.
+      if (orig[oi] === " " || orig[oi] === "\t") { oi++; continue; }
 
       if (orig[oi] === "/" && oi + 1 < orig.length && orig[oi + 1] === "*") {
         oi += 2;
         while (oi + 1 < orig.length && !(orig[oi] === "*" && orig[oi + 1] === "/")) oi++;
         oi = Math.min(oi + 2, orig.length);
-      } else {
-        oi++;
+        let peek = fi;
+        while (peek < fix.length && (fix[peek] === " " || fix[peek] === "\t")) peek++;
+        const nxt = peek < fix.length ? fix[peek] : "";
+        if (nxt === "," || nxt === ")") {
+          fi = peek;
+          while (out.length > 0 && out[out.length - 1] === " ") out.pop();
+        } else if (nxt === "}") {
+          fi = peek;
+          let k = out.length - 1;
+          while (k >= 0 && out[k] === " ") k--;
+          if (k >= 0 && out[k] === "{") out.splice(k + 1);
+        }
+        continue;
       }
-      inResync = true;
+
+      if (orig[oi] === "/" && oi + 1 < orig.length && orig[oi + 1] === "/") {
+        oi = orig.length; continue;
+      }
+
+      return fix.replace(/\s+$/, "");
     }
     return out.join("").replace(/\s+$/, "");
   }

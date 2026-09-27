@@ -1178,6 +1178,70 @@ function paragraphProtectedSet(
   return result;
 }
 
+function isDividerOrSpacer(c: Comment): boolean {
+  return c.exempt && (c.exemptReason === "divider" || c.exemptReason === "spacer");
+}
+
+function isOnAddedRows(c: Comment, addedRows: Set<number>): boolean {
+  for (let r = c.startRow; r <= c.endRow; r++) {
+    if (!addedRows.has(r)) return false;
+  }
+  return true;
+}
+
+function extendRemovalWithDividers(
+  toRemove: Comment[],
+  allComments: Comment[],
+  text: string,
+  addedRows: Set<number>,
+): Comment[] {
+  if (toRemove.length === 0) return toRemove;
+  const allGroups = buildGoCommentGroups(allComments, text);
+  const removeSet = new Set(toRemove.map(c => c.startIndex));
+
+  for (const group of allGroups) {
+    if (!group.some(c => removeSet.has(c.startIndex))) continue;
+    const remaining = group.filter(c => !removeSet.has(c.startIndex));
+    if (remaining.length === 0) continue;
+    if (remaining.every(c => isDividerOrSpacer(c) && isOnAddedRows(c, addedRows))) {
+      for (const c of remaining) removeSet.add(c.startIndex);
+    }
+  }
+
+  const textLines = text.split("\n");
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const removedRows = new Set<number>();
+    for (const c of allComments) {
+      if (removeSet.has(c.startIndex)) {
+        for (let r = c.startRow; r <= c.endRow; r++) removedRows.add(r);
+      }
+    }
+    for (const group of allGroups) {
+      if (group.some(c => removeSet.has(c.startIndex))) continue;
+      if (!group.every(c => isDividerOrSpacer(c) && isOnAddedRows(c, addedRows))) continue;
+      const firstRow = group[0].startRow;
+      const lastRow = group[group.length - 1].endRow;
+      let adjacent = false;
+      let r = lastRow + 1;
+      while (r < textLines.length && textLines[r].trim() === "") r++;
+      if (r < textLines.length && removedRows.has(r)) adjacent = true;
+      if (!adjacent) {
+        r = firstRow - 1;
+        while (r >= 0 && textLines[r].trim() === "") r--;
+        if (r >= 0 && removedRows.has(r)) adjacent = true;
+      }
+      if (adjacent) {
+        for (const c of group) removeSet.add(c.startIndex);
+        changed = true;
+      }
+    }
+  }
+
+  return allComments.filter(c => removeSet.has(c.startIndex));
+}
+
 export async function autoFix(
   text: string,
   lang: Lang,
@@ -1310,7 +1374,8 @@ export async function autoFix(
   }
 
   const toRemove = units.filter((_, i) => !keptSet.has(i)).flat();
-  const stripped = stripComments(text, toRemove);
+  const toRemoveFinal = extendRemovalWithDividers(toRemove, origParsed.comments, text, addedRows);
+  const stripped = stripComments(text, toRemoveFinal);
   const { rowChanges } = stripped;
 
   let fixed: string;

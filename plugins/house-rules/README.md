@@ -69,6 +69,12 @@ Dividers and spacers are exempt from the comment count and do not count toward d
 
 A `/* */` block is exempt only if every non-blank inner line is individually exempt. Dividers and spacers on added rows are removed together with the comment group they frame, or when left orphaned next to a removal; pre-existing ones stay.
 
+## Lint-tool marker exemptions
+
+Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript and TSX (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), and YAML (`yaml-language-server:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
+
+Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the same as dividers, URLs, note markers, spacers, regions, and groundwork rule markers — they are a comment-density policy exemption, not a TypeScript-specific one. Assigning `pragma:` to Python (coverage.py's `# pragma: no cover`) is a deliberate choice beyond ticket 11's list; `// pragma:` in TypeScript is therefore counted.
+
 ## Enforcement scope — comment-density
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).

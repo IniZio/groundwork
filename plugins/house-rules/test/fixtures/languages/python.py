@@ -1,4 +1,4 @@
-# conformance: comments=4 directive=0 doc=0 groups=1
+# conformance: comments=4 directive=1 doc=0 groups=1
 # source: /home/newman/.cache/uv/archive-v0/xuexhLf8ApDqJC_3/jwt/help.py (PyJWT@2.15.0) lines 1-66
 # license: MIT — José Padilla (PyJWT@2.15.0)
 import json

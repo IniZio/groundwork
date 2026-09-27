@@ -1,17 +1,25 @@
 /**
- * Pins lint-tool marker exemptions (AC5 of LA-05).
+ * Pins per-language lint-tool marker scoping (LA-11 / ticket 11).
  *
- * The shared isExemptInner list in src/hooks/lib/comment-density.ts applies to
- * every language. Ticket 11 will scope markers per language; this file must
- * produce a visible diff when that happens.
+ * Markers are recognised only in the language that owns them:
+ *   typescript+tsx  eslint-disable/enable, prettier-ignore, biome-ignore,
+ *                   triple-slash /// <reference
+ *   python          noqa, type: ignore, pylint:, pragma: (coverage.py)
+ *   bash            shellcheck
+ *   yaml            yaml-language-server:
+ * A marker from another toolchain is ordinary prose (counted, not exempt).
  *
- * Each case: one snippet per marker, containing real parseable code, with the
- * marker comment at a non-zero row and a plain narrative comment in the same
- * snippet that must NOT be exempt.
+ * Annotation tags (/^@\w/) are a comment-density policy exemption for every
+ * language — they are not scoped to TypeScript.
+ *
+ * Each case: one snippet per marker, real parseable code, marker at a non-zero
+ * row, and a plain narrative comment in the same snippet that must NOT be exempt.
  */
 import { describe, it, expect } from "bun:test";
 import { findComments } from "../../src/hooks/lib/comment-density.js";
 import type { Language } from "../../src/hooks/languages/registry.js";
+import { classifyComments, parseText } from "../../src/hooks/languages/parse.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,32 +52,52 @@ type Row = [
 ];
 
 const CASES: Row[] = [
-  // ---- Go (C-style // comments; noqa is "foreign" to Go but shared list applies) ----
+  // ---- Go (C-style // comments; noqa/eslint/pylint are foreign, counted) ----
   [
     "go",
-    "go // noqa",
+    "go // noqa — foreign marker, counted",
     `package main\n\nfunc main() {\n\t// plain narrative\n\tx := 1 // noqa\n\t_ = x\n}`,
     "// noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "// plain narrative",
   ],
   [
     "go",
-    "go // eslint-disable-line",
+    "go // eslint-disable-line — foreign marker, counted",
     `package main\n\nfunc main() {\n\t// plain narrative\n\tx := 1 // eslint-disable-line\n\t_ = x\n}`,
     "// eslint-disable-line",
-    true,
-    "eslint-disable-line",
+    false,
+    undefined,
     "// plain narrative",
   ],
   [
     "go",
-    "go // pylint: disable=x",
+    "go // eslint-disable-next-line — foreign marker, counted",
+    `package main\n\nfunc main() {\n\t// plain narrative\n\t// eslint-disable-next-line\n\tx := 1\n\t_ = x\n}`,
+    "// eslint-disable-next-line",
+    false,
+    undefined,
+    "// plain narrative",
+  ],
+  [
+    "go",
+    "go // pylint: disable=x — foreign marker, counted",
     `package main\n\nfunc main() {\n\t// plain narrative\n\tx := 1 // pylint: disable=x\n\t_ = x\n}`,
     "// pylint: disable=x",
+    false,
+    undefined,
+    "// plain narrative",
+  ],
+
+  // ---- Go annotation tag (cross-language policy exemption) ----
+  [
+    "go",
+    "go // @Summary x — annotation tag, policy-exempt in every language",
+    `package main\n\nfunc main() {\n\t// plain narrative\n\tx := 1 // @Summary x\n\t_ = x\n}`,
+    "// @Summary x",
     true,
-    "pylint: disable=x",
+    "@Summary x",
     "// plain narrative",
   ],
 
@@ -112,11 +140,11 @@ const CASES: Row[] = [
   ],
   [
     "typescript",
-    "ts // pragma: x",
+    "ts // pragma: x — foreign marker, counted",
     `// plain narrative\n// pragma: x\nconst b = 2;`,
     "// pragma: x",
-    true,
-    "pragma: x",
+    false,
+    undefined,
     "// plain narrative",
   ],
 
@@ -161,11 +189,11 @@ const CASES: Row[] = [
   ],
   [
     "bash",
-    "bash # noqa (foreign marker, shared list applies)",
+    "bash # noqa — foreign marker, counted",
     `#!/bin/bash\n# plain narrative\ny=2 # noqa`,
     "# noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "# plain narrative",
   ],
 
@@ -181,82 +209,82 @@ const CASES: Row[] = [
     "# plain narrative",
   ],
 
-  // ---- TOML (noqa is foreign; shared list applies) ----
+  // ---- TOML (noqa is foreign, counted) ----
   [
     "toml",
-    "toml # noqa",
+    "toml # noqa — foreign marker, counted",
     `[section]\n# noqa\n# plain narrative\nkey = "value"`,
     "# noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "# plain narrative",
   ],
 
-  // ---- Dockerfile (noqa is foreign; shared list applies) ----
+  // ---- Dockerfile (noqa is foreign, counted) ----
   [
     "dockerfile",
-    "dockerfile # noqa (after FROM line)",
+    "dockerfile # noqa — foreign marker, counted",
     `FROM ubuntu:20.04\n# plain narrative\n# noqa\nRUN echo hello`,
     "# noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "# plain narrative",
   ],
 
-  // ---- Make (noqa is foreign; shared list applies) ----
+  // ---- Make (noqa is foreign, counted) ----
   [
     "make",
-    "make # noqa",
+    "make # noqa — foreign marker, counted",
     `# plain narrative\n# noqa\nall:\n\techo hello`,
     "# noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "# plain narrative",
   ],
 
-  // ---- Rust (eslint-disable-next-line, noqa are both foreign; shared list applies) ----
+  // ---- Rust (eslint-disable-next-line and noqa are both foreign, counted) ----
   [
     "rust",
-    "rust // noqa",
+    "rust // noqa — foreign marker, counted",
     `fn main() {\n    // plain narrative\n    let x = 1; // noqa\n    let _ = x;\n}`,
     "// noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "// plain narrative",
   ],
   [
     "rust",
-    "rust // eslint-disable-next-line x",
+    "rust // eslint-disable-next-line x — foreign marker, counted",
     `fn main() {\n    // plain narrative\n    // eslint-disable-next-line x\n    let x = 1;\n    let _ = x;\n}`,
     "// eslint-disable-next-line x",
-    true,
-    "eslint-disable-next-line x",
+    false,
+    undefined,
     "// plain narrative",
   ],
 
-  // ---- TSX (noqa is foreign; shared list applies) ----
+  // ---- TSX (noqa is foreign, counted) ----
   [
     "tsx",
-    "tsx // noqa",
+    "tsx // noqa — foreign marker, counted",
     `// plain narrative\nconst a = 1; // noqa\nexport default a;`,
     "// noqa",
-    true,
-    "noqa",
+    false,
+    undefined,
     "// plain narrative",
   ],
 
   [
     "sql",
-    "sql /* eslint-disable */",
+    "sql /* eslint-disable */ — foreign marker, counted",
     `-- plain narrative\n/* eslint-disable */\nSELECT 1; -- noqa`,
     "/* eslint-disable */",
-    true,
-    "eslint-disable",
+    false,
+    undefined,
     "-- plain narrative",
   ],
   [
     "sql",
-    "sql -- noqa (NOT exempt: -- prefix not stripped by commentInnerText)",
+    "sql -- noqa — noqa is python-only, -- prefix not stripped",
     `-- plain narrative\n/* eslint-disable */\nSELECT 1; -- noqa`,
     "-- noqa",
     false,
@@ -269,7 +297,7 @@ const CASES: Row[] = [
 // Main marker assertion suite
 // ---------------------------------------------------------------------------
 
-describe("lint-tool marker exemptions (LA-05 AC5 pin)", () => {
+describe("lint-tool marker exemptions — per-language scoping (LA-11 pin)", () => {
   it.each(CASES)(
     "%s %s — marker exempt=%s reason=%s",
     async (lang, _label, snippet, markerText, expectedExempt, expectedReason) => {
@@ -288,4 +316,56 @@ describe("lint-tool marker exemptions (LA-05 AC5 pin)", () => {
       expect(plain.exempt).toBe(false);
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// AC2 directive classification
+// ---------------------------------------------------------------------------
+
+async function getClassified(text: string, lang: Language) {
+  const r = await parseText(text, lang, getParser);
+  if (!r.ok) throw new Error(`parseText failed: ${r.reason}`);
+  return classifyComments(r.tree.rootNode, text, lang);
+}
+
+function byClassifiedText(comments: ReturnType<typeof classifyComments>, text: string) {
+  const found = comments.find(c => c.text === text);
+  if (!found) {
+    const all = comments.map(c => JSON.stringify(c.text)).join(", ");
+    throw new Error(`Comment ${JSON.stringify(text)} not found in classified output. Have: [${all}]`);
+  }
+  return found;
+}
+
+describe("AC2 directive classification (LA-11)", () => {
+  it("python # noqa is a directive with label noqa", async () => {
+    const text = `x = 1  # plain narrative\ny = x + 1  # noqa\nz = y`;
+    const comments = await getClassified(text, "python");
+    const c = byClassifiedText(comments, "# noqa");
+    expect(c.directive).toBe(true);
+    expect(c.label).toBe("noqa");
+  });
+
+  it("typescript // eslint-disable-next-line no-x is a directive", async () => {
+    const text = `// plain narrative\n// eslint-disable-next-line no-x\nconst b = 2;`;
+    const comments = await getClassified(text, "typescript");
+    const c = byClassifiedText(comments, "// eslint-disable-next-line no-x");
+    expect(c.directive).toBe(true);
+    expect(c.label).toBe("eslint-disable-next-line no-x");
+  });
+
+  it("go // eslint-disable-next-line is not a directive (foreign marker)", async () => {
+    const text = `package main\n\nfunc main() {\n\t// plain narrative\n\t// eslint-disable-next-line\n\tx := 1\n\t_ = x\n}`;
+    const comments = await getClassified(text, "go");
+    const c = byClassifiedText(comments, "// eslint-disable-next-line");
+    expect(c.directive).toBe(false);
+    expect(c.label).toBeUndefined();
+  });
+
+  it("go // noqa is not a directive (foreign marker)", async () => {
+    const text = `package main\n\nfunc main() {\n\t// plain narrative\n\tx := 1 // noqa\n\t_ = x\n}`;
+    const comments = await getClassified(text, "go");
+    const c = byClassifiedText(comments, "// noqa");
+    expect(c.directive).toBe(false);
+  });
 });

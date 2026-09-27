@@ -29,42 +29,22 @@ export type DensityResult =
 export type GetParserFn = typeof defaultGetParser;
 
 const ANNOT_TAG_RE = /^@\w/;
-const ESLINT_RE = /^eslint-(?:disable|enable)/;
-const PRETTIER_RE = /^prettier-ignore/;
-const BIOME_RE = /^biome-ignore/;
 const REGION_RE = /^#?(?:region|endregion)/i;
 export const URL_RE = /^https?:\/\/\S+$/;
 const DIVIDER_RE = /^(?:[─-╿━═]{2,}|[-=#*~_]{4,})$/u;
 // go/doc treats any [A-Z]{2,}(uid): as a note marker (TODO, BUG, FIXME, NOTE, XXX, HACK…)
 export const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
-const SHELLCHECK_RE = /^shellcheck\b/;
-const NOQA_RE = /^noqa\b/;
-const TYPE_IGNORE_RE = /^type:\s*ignore/;
-const PYLINT_RE = /^pylint:/;
-const PRAGMA_RE = /^pragma:/i;
-const YAML_LS_RE = /^yaml-language-server:/;
-const TSREF_RE = /^\/\s*<reference\b/;
 const GW_RULE_RE = /^groundwork-rule:/;
 
 function isExemptInner(inner: string): boolean {
   if (
     ANNOT_TAG_RE.test(inner) ||
-    ESLINT_RE.test(inner) ||
-    PRETTIER_RE.test(inner) ||
-    BIOME_RE.test(inner) ||
     REGION_RE.test(inner) ||
     URL_RE.test(inner) ||
     DIVIDER_RE.test(inner) ||
     NOTE_MARKER_RE.test(inner) ||
-    SHELLCHECK_RE.test(inner) ||
-    NOQA_RE.test(inner) ||
-    TYPE_IGNORE_RE.test(inner) ||
-    PYLINT_RE.test(inner) ||
-    PRAGMA_RE.test(inner) ||
-    YAML_LS_RE.test(inner)
+    GW_RULE_RE.test(inner)
   ) return true;
-  if (TSREF_RE.test(inner)) return true;
-  if (GW_RULE_RE.test(inner)) return true;
   return false;
 }
 

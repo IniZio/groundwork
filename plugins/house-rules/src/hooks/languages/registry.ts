@@ -5,6 +5,13 @@ import { classifyRustComments } from "./rust.js";
 import { classifyDockerfileComments } from "./dockerfile.js";
 import { classifyTomlComments } from "./toml.js";
 import { isSqlCommentNodeType } from "./sql.js";
+import {
+  withToolMarkers,
+  TYPESCRIPT_TOOL_MARKERS,
+  PYTHON_TOOL_MARKERS,
+  BASH_TOOL_MARKERS,
+  YAML_TOOL_MARKERS,
+} from "./tool-markers.js";
 
 export interface LanguageDetection {
   /** lower-case, with leading dot, compared to path.extname(p).toLowerCase() */
@@ -46,6 +53,7 @@ const bash = {
     wasm: "tree-sitter-bash.wasm",
     vendor: { package: "tree-sitter-bash", file: "tree-sitter-bash.wasm" },
   },
+  classifyComments: withToolMarkers(BASH_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const yaml = {
@@ -57,6 +65,7 @@ const yaml = {
     wasm: "tree-sitter-yaml.wasm",
     vendor: { package: "@tree-sitter-grammars/tree-sitter-yaml", file: "tree-sitter-yaml.wasm" },
   },
+  classifyComments: withToolMarkers(YAML_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const typescript = {
@@ -68,6 +77,7 @@ const typescript = {
     wasm: "tree-sitter-typescript.wasm",
     vendor: { package: "tree-sitter-typescript", file: "tree-sitter-typescript.wasm" },
   },
+  classifyComments: withToolMarkers(TYPESCRIPT_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const tsx = {
@@ -79,6 +89,7 @@ const tsx = {
     wasm: "tree-sitter-tsx.wasm",
     vendor: { package: "tree-sitter-typescript", file: "tree-sitter-tsx.wasm" },
   },
+  classifyComments: withToolMarkers(TYPESCRIPT_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const python = {
@@ -90,6 +101,7 @@ const python = {
     wasm: "tree-sitter-python.wasm",
     vendor: { package: "tree-sitter-python", file: "tree-sitter-python.wasm" },
   },
+  classifyComments: withToolMarkers(PYTHON_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const dockerfile = {

@@ -3,11 +3,10 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { loadRules } from '../engine/registry.js';
-import { buildContext } from '../engine/context.js';
 import { runRules, isBlocking } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
 import { runHousekeep } from './housekeep.js';
-import { defaultBase } from './default-base.js';
+import { resolveScope, ScopeUsageError } from './scope.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -41,9 +40,9 @@ function validateBase(repoRoot: string, base: string): void {
 function printUsage(): void {
   process.stderr.write(
     'Usage:\n' +
-      '  house-rules check [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
-      '  house-rules baseline [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
-      '  house-rules housekeep [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
+      '  house-rules check [--all] [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules baseline [--all] [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n',
   );
 }
 
@@ -60,11 +59,14 @@ function parseArgs(argv: string[]): {
   max?: number;
   dryRun?: boolean;
   diff?: boolean;
+  all?: boolean;
+  pathspec?: string[];
 } {
   const args = argv.slice(0);
   const subcommand = args.shift();
   const opts: Record<string, string> = {};
   const flags: Record<string, boolean> = {};
+  const positionals: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -79,8 +81,10 @@ function parseArgs(argv: string[]): {
       arg === '--max'
     ) {
       opts[arg.slice(2)] = args[++i] ?? '';
-    } else if (arg === '--baseline' || arg === '--dry-run' || arg === '--diff') {
+    } else if (arg === '--baseline' || arg === '--dry-run' || arg === '--diff' || arg === '--all') {
       flags[arg.slice(2)] = true;
+    } else if (!arg.startsWith('--')) {
+      positionals.push(arg);
     }
   }
 
@@ -97,6 +101,8 @@ function parseArgs(argv: string[]): {
     max: opts['max'] !== undefined ? parseInt(opts['max'], 10) : undefined,
     dryRun: flags['dry-run'],
     diff: flags['diff'],
+    all: flags['all'],
+    pathspec: positionals.length > 0 ? positionals : undefined,
   };
 }
 
@@ -105,20 +111,19 @@ async function cmdCheck(opts: {
   rulesDir?: string;
   baselineFile?: string;
   repo?: string;
+  all?: boolean;
+  pathspec?: string[];
 }): Promise<void> {
   const repoRoot = getRepoRoot(opts.repo);
   const baselineFile = opts.baselineFile ?? path.join(repoRoot, '.house-rules', 'baseline.json');
   const rulesDirResolved = opts.rulesDir ?? rulesDir;
 
-  let base: string;
   if (opts.base !== undefined) {
     validateBase(repoRoot, opts.base);
-    base = opts.base;
-  } else {
-    base = defaultBase(repoRoot);
   }
 
-  const ctx = buildContext({ repoRoot, mode: 'cli', base });
+  const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
+  void scope; // used by a later slice
   const rules = await loadRules(rulesDirResolved);
   const allFindings = await runRules(rules, ctx);
   const baseline = await readBaseline(baselineFile);
@@ -141,27 +146,26 @@ async function cmdBaseline(opts: {
   rulesDir?: string;
   baselineFile?: string;
   repo?: string;
+  all?: boolean;
+  pathspec?: string[];
 }): Promise<void> {
   const repoRoot = getRepoRoot(opts.repo);
   const baselineFile = opts.baselineFile ?? path.join(repoRoot, '.house-rules', 'baseline.json');
   const rulesDirResolved = opts.rulesDir ?? rulesDir;
 
-  let base: string;
   if (opts.base !== undefined) {
     validateBase(repoRoot, opts.base);
-    base = opts.base;
-  } else {
-    base = defaultBase(repoRoot);
   }
 
-  const ctx = buildContext({ repoRoot, mode: 'cli', base });
+  const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
+  void scope;
   const rules = await loadRules(rulesDirResolved);
   const findings = await runRules(rules, ctx);
 
   const dir = path.dirname(baselineFile);
   fs.mkdirSync(dir, { recursive: true });
 
-  const shaResult = spawnSync('git', ['-C', repoRoot, 'rev-parse', base], { encoding: 'utf8' });
+  const shaResult = spawnSync('git', ['-C', repoRoot, 'rev-parse', scope.base], { encoding: 'utf8' });
   const resolvedSha = shaResult.status === 0 ? shaResult.stdout.trim() : undefined;
 
   await writeBaseline(baselineFile, findings, resolvedSha);
@@ -169,6 +173,12 @@ async function cmdBaseline(opts: {
 }
 
 const parsed = parseArgs(process.argv.slice(2));
+
+if (parsed.all && (parsed.base !== undefined || parsed.since !== undefined)) {
+  process.stderr.write('Error: --all cannot be combined with --base or --since\n');
+  printUsage();
+  process.exit(2);
+}
 
 try {
   switch (parsed.subcommand) {
@@ -194,6 +204,8 @@ try {
         repo: parsed.repo,
         rulesDir: parsed.rulesDir,
         baselineFile: parsed.baselineFile,
+        all: parsed.all,
+        pathspec: parsed.pathspec,
       });
       break;
     }
@@ -202,6 +214,11 @@ try {
       process.exit(2);
   }
 } catch (err) {
+  if (err instanceof ScopeUsageError) {
+    process.stderr.write(`Error: ${err.message}\n`);
+    printUsage();
+    process.exit(2);
+  }
   const msg = err instanceof Error ? err.message : String(err);
   process.stderr.write(`Error: ${msg}\n`);
   process.exit(2);

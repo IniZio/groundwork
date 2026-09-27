@@ -3,20 +3,20 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { loadRules } from '../engine/registry.js';
-import { buildContext } from '../engine/context.js';
 import { runRules } from '../engine/run.js';
 import { readBaseline, fingerprint } from '../engine/baseline.js';
 import type { Baseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
-import { addedHunks } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
 import type { Finding } from '../engine/types.js';
-import { defaultBase } from './default-base.js';
+import { resolveScope } from './scope.js';
 
 export interface HousekeepOpts {
   rules?: string[];
   paths?: string[];
+  pathspec?: string[];
   since?: string;
+  all?: boolean;
   baselineMode?: boolean;
   max?: number;
   dryRun?: boolean;
@@ -25,31 +25,6 @@ export interface HousekeepOpts {
   rulesDir?: string;
   baselineFile?: string;
   policy?: Record<string, { severity: string; autofix: boolean }>;
-}
-
-const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-
-function buildAllTrackedContext(repoRoot: string, since?: string): RuleContext {
-  const base = since ?? EMPTY_TREE;
-  const result = spawnSync('git', ['-C', repoRoot, 'ls-files'], { encoding: 'utf8' });
-  const paths = result.stdout.split('\n').filter(Boolean);
-  const files: ScopedFile[] = paths.map(relPath => {
-    const absPath = path.join(repoRoot, relPath);
-    let text: string | undefined;
-    try { text = fs.readFileSync(absPath, 'utf8'); } catch { /* file unreadable */ }
-    const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], { encoding: 'utf8' });
-    const baseText = showResult.status === 0 ? showResult.stdout : '';
-    return {
-      path: relPath,
-      text,
-      lang: undefined,
-      baseText,
-      addedHunks: addedHunks(absPath, base) ?? [],
-      tracked: true,
-      sessionCreated: false,
-    };
-  });
-  return { repoRoot, mode: 'cli', files };
 }
 
 function subsetContext(ctx: RuleContext, relPath: string): RuleContext {
@@ -127,15 +102,15 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   if (opts.baselineMode) {
     cachedBaseline = await readBaseline(baselineFilePath);
     effectiveSince = opts.since ?? cachedBaseline.base;
-    ctx = buildAllTrackedContext(repoRoot, effectiveSince);
+    ({ ctx } = resolveScope({ repoRoot, all: true, since: effectiveSince, paths: opts.pathspec }));
     const allFindings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
     const allFingerprintSet = new Set(allFindings.map(f => fingerprint(f)));
     unmatchedBaselineEntries = cachedBaseline.entries.filter(e => !allFingerprintSet.has(e.fingerprint));
     const baselineFingerprints = new Set(cachedBaseline.entries.map(e => e.fingerprint));
     findings = allFindings.filter(f => baselineFingerprints.has(fingerprint(f)));
   } else {
-    const base = opts.since ?? defaultBase(repoRoot);
-    ctx = buildContext({ repoRoot, mode: 'cli', base });
+    const { ctx: resolved } = resolveScope({ repoRoot, all: opts.all, since: opts.all ? undefined : opts.since, paths: opts.pathspec });
+    ctx = resolved;
     findings = await runRules(rules, ctx, effectivePolicy as Parameters<typeof runRules>[2]);
   }
 
@@ -239,7 +214,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   }
 
   if (opts.baselineMode && !opts.dryRun && fixed.length > 0) {
-    const freshCtx = buildAllTrackedContext(repoRoot, effectiveSince);
+    const { ctx: freshCtx } = resolveScope({ repoRoot, all: true, since: effectiveSince, paths: opts.pathspec });
     const freshFindings = await runRules(rules, freshCtx, effectivePolicy as Parameters<typeof runRules>[2]);
     const freshFingerprints = new Set(freshFindings.map(f => fingerprint(f)));
 

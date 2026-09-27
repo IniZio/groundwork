@@ -230,6 +230,7 @@ describe("autoFix property — rowChanges fidelity", () => {
       }
       if (remappedAdded.size > 0) {
         const dr = await density(ar.fixed, "typescript", remappedAdded);
+        if (!dr.ok) throw new Error(dr.reason);
         if (dr.total > 0 && dr.effective / dr.total * 100 > 5) {
           throw new Error(`I2 failed iter ${iter}: density ${dr.effective}/${dr.total}\nfixed:\n${ar.fixed}`);
         }

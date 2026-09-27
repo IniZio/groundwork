@@ -22,13 +22,9 @@ export type FindResult =
   | { ok: true; comments: Comment[]; errorRows: Set<number> }
   | { ok: false; reason: string; errorRows: Set<number> };
 
-export type DensityResult = {
-  mode: "tree-sitter" | "fallback";
-  total: number;
-  effective: number;
-  commentRows: number[];
-  errorRows: Set<number>;
-};
+export type DensityResult =
+  | { ok: true; total: number; effective: number; commentRows: number[]; errorRows: Set<number> }
+  | { ok: false; reason: string };
 
 export type GetParserFn = typeof defaultGetParser;
 
@@ -178,9 +174,6 @@ async function findClassifiedComments(
     }
     return true;
   });
-  if (safeComments.length === 0 && errorRows.size > 0) {
-    return { ok: false, reason: "parse-error", errorRows };
-  }
   return { ok: true, comments: safeComments, errorRows, groupOf };
 }
 
@@ -427,81 +420,6 @@ export function stripComments(text: string, comments: Comment[]): { text: string
   return { text: result, rowChanges };
 }
 
-const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
-const FALLBACK_URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
-const FALLBACK_ESLINT_RE = /^\s*\/\/\s*eslint-(?:disable|enable)/;
-const FALLBACK_REGION_RE = /^\s*\/\/\s*#(?:region|endregion)/;
-const FALLBACK_TODO_OWNER_RE = /^\s*\/\/\s*TODO\([^)]+\)/;
-
-function isFallbackExempt(raw: string): boolean {
-  return (
-    FALLBACK_ANNOT_TAG_RE.test(raw) ||
-    FALLBACK_URL_LINE_RE.test(raw) ||
-    FALLBACK_ESLINT_RE.test(raw) ||
-    FALLBACK_REGION_RE.test(raw) ||
-    FALLBACK_TODO_OWNER_RE.test(raw)
-  );
-}
-
-const HASH_COMMENT_LANGS = new Set<Language>(["bash", "yaml", "python", "dockerfile", "make", "toml"]);
-
-function countEffectiveFallback(text: string, lang?: Language | null): { total: number; effective: number; commentRows: number[] } {
-  const rows = text.split("\n");
-  let effective = 0;
-  const commentRows: number[] = [];
-  let inJsDoc = false;
-  let inBlock = false;
-
-  for (let i = 0; i < rows.length; i++) {
-    const raw = rows[i];
-    const trimmed = raw.trim();
-
-    if (inJsDoc) {
-      if (trimmed.includes("*/")) inJsDoc = false;
-      continue;
-    }
-
-    if (inBlock) {
-      effective++;
-      commentRows.push(i);
-      if (trimmed.includes("*/")) inBlock = false;
-      continue;
-    }
-
-    if (trimmed.startsWith("/**")) {
-      if (!trimmed.slice(3).includes("*/")) inJsDoc = true;
-      continue;
-    }
-
-    if (trimmed.startsWith("/*")) {
-      effective++;
-      commentRows.push(i);
-      if (!trimmed.slice(2).includes("*/")) inBlock = true;
-      continue;
-    }
-
-    if (trimmed.startsWith("//")) {
-      const slashInner = trimmed.slice(2).trim();
-      if (!slashInner || DIVIDER_RE.test(slashInner) || isFallbackExempt(raw)) continue;
-      effective++;
-      commentRows.push(i);
-      continue;
-    }
-
-    if (trimmed.startsWith("#")) {
-      if (!lang || !HASH_COMMENT_LANGS.has(lang)) continue;
-      if (i === 0 && trimmed.startsWith("#!")) continue;
-      const inner = trimmed.slice(1).trim();
-      if (!isExemptInner(inner)) {
-        effective++;
-        commentRows.push(i);
-      }
-      continue;
-    }
-  }
-
-  return { total: rows.length, effective, commentRows };
-}
 
 
 function hasAstErrors(node: Node): boolean {
@@ -622,7 +540,7 @@ export async function netNewCommentRows(
   const postParsed = await findComments(postText, lang, getParser);
   if (!postParsed.ok) return { ok: false, reason: postParsed.reason };
 
-  // If errors overlap any hunk rows, refuse: caller falls back to density()
+  // If errors overlap any hunk rows, refuse: caller uses density()
   for (const hunk of hunks) {
     if (hunk.added.some(ln => postParsed.errorRows.has(ln - 1))) {
       return { ok: false, reason: "parse-error-in-hunk" };
@@ -979,34 +897,23 @@ export async function autoFix(
 
 export async function density(
   text: string,
-  lang: Language | null,
+  lang: Language,
   rows?: Set<number>,
   getParser: GetParserFn = defaultGetParser,
 ): Promise<DensityResult> {
   const lines = text.split("\n");
   const total = rows ? rows.size : lines.length;
 
-  if (lang !== null) {
-    const parsed = await findComments(text, lang, getParser);
-    if (parsed.ok) {
-      const commentRowSet = new Set<number>();
-      for (const c of parsed.comments) {
-        if (c.exempt) continue;
-        for (let r = c.startRow; r <= c.endRow; r++) {
-          if (!rows || rows.has(r)) commentRowSet.add(r);
-        }
-      }
-      const commentRows = [...commentRowSet].sort((a, b) => a - b);
-      return { mode: "tree-sitter", total, effective: commentRows.length, commentRows, errorRows: parsed.errorRows };
-    }
-    const fb = countEffectiveFallback(text, lang);
-    const commentRows = rows ? fb.commentRows.filter(r => rows.has(r)) : fb.commentRows;
-    return { mode: "fallback", total, effective: commentRows.length, commentRows, errorRows: parsed.errorRows };
-  }
+  const parsed = await findComments(text, lang, getParser);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
 
-  const fb = countEffectiveFallback(text, lang);
-  const commentRows = rows
-    ? fb.commentRows.filter(r => rows.has(r))
-    : fb.commentRows;
-  return { mode: "fallback", total, effective: commentRows.length, commentRows, errorRows: new Set() };
+  const commentRowSet = new Set<number>();
+  for (const c of parsed.comments) {
+    if (c.exempt) continue;
+    for (let r = c.startRow; r <= c.endRow; r++) {
+      if (!rows || rows.has(r)) commentRowSet.add(r);
+    }
+  }
+  const commentRows = [...commentRowSet].sort((a, b) => a - b);
+  return { ok: true, total, effective: commentRows.length, commentRows, errorRows: parsed.errorRows };
 }

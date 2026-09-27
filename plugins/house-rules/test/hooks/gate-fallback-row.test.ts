@@ -4,8 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { findComments } from "../../src/hooks/lib/comment-density.js";
-
-const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
+import { run } from "../../src/hooks/gate.js";
 
 function initGitRepo(dir: string): void {
   const opts = { cwd: dir, encoding: "utf8" as const };
@@ -29,97 +28,108 @@ function makeTranscript(tmpDir: string, filePath: string, content: string): stri
   return transcriptPath;
 }
 
-function runGate(payload: unknown, repoDir: string, tmpDir?: string): { stdout: string; stderr: string; status: number | null } {
-  const r = spawnSync("bun", [GATE_PATH], {
-    input: JSON.stringify(payload),
-    env: { ...process.env, CLAUDE_PROJECT_DIR: repoDir, TMPDIR: tmpDir ?? os.tmpdir() },
-    encoding: "utf8",
-  });
-  return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
-}
-
-async function firstErrorRowFor(content: string, lang: "typescript" | "yaml"): Promise<number | undefined> {
+async function firstErrorRowFor(content: string, lang: "typescript"): Promise<number | undefined> {
   const result = await findComments(content, lang);
-  if (result.ok || result.errorRows.size === 0) return undefined;
+  if (result.errorRows.size === 0) return undefined;
   return Math.min(...result.errorRows) + 1;
 }
 
-// Case A: unclosed brace at row 0 — error zone covers the whole file
-const CONTENT_A =
-  "const x = {\n" +
-  "// ca1\n" +
-  "// ca2\n" +
-  "// ca3\n" +
-  "// ca4\n" +
-  "// ca5\n" +
-  "const y = 1;\n";
+// Case A: valid section rows 0-9 (3 comments at rows 2,5,8), then unclosed brace at row 10.
+// Non-error-row comments: 3 in 15 total added rows = 20% density → violates 5/100 cap.
+const CONTENT_A = [
+  "const a0 = 0;",
+  "const a1 = 1;",
+  "// va2",
+  "const a3 = 3;",
+  "const a4 = 4;",
+  "// va5",
+  "const a6 = 6;",
+  "const a7 = 7;",
+  "// va8",
+  "const a9 = 9;",
+  "const x = {",
+  "// ea11",
+  "// ea12",
+  "// ea13",
+  "const y = 1;",
+].join("\n") + "\n";
 
-// Case B: valid preamble (rows 0-2) then unclosed brace at row 3 — error starts at row 3
-const CONTENT_B =
-  "const a = 1;\n" +
-  "const b = 2;\n" +
-  "const c = 3;\n" +
-  "const x = {\n" +
-  "// cb4\n" +
-  "// cb5\n" +
-  "// cb6\n" +
-  "// cb7\n" +
-  "// cb8\n" +
-  "// cb9\n" +
-  "const y = 1;\n";
+// Case B: valid section rows 0-4 (2 comments at rows 1,3), then unclosed brace at row 5.
+const CONTENT_B = [
+  "const b0 = 0;",
+  "// vb1",
+  "const b2 = 2;",
+  "// vb3",
+  "const b4 = 4;",
+  "const x = {",
+  "// eb6",
+  "// eb7",
+  "// eb8",
+  "// eb9",
+  "const y = 1;",
+].join("\n") + "\n";
 
 const cases: Array<{ label: string; content: string }> = [
-  { label: "error-at-row-0", content: CONTENT_A },
-  { label: "error-at-row-3", content: CONTENT_B },
+  { label: "error-at-row-10", content: CONTENT_A },
+  { label: "error-at-row-5", content: CONTENT_B },
 ];
 
-describe("gate fallback-row: parse error row in notice", () => {
+describe("gate partial-row: parse error row in coverage", () => {
   for (const { label, content } of cases) {
-    it(`emits :<row>: in fallback notice (${label})`, async () => {
+    it(`gate blocks; coverage lists partially-checked file with error rows (${label})`, async () => {
       const expectedRow = await firstErrorRowFor(content, "typescript");
       expect(expectedRow, `expected an error row for ${label}`).toBeDefined();
 
-      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "hr-fbrow-"));
+      const tmpDir = mkdtempSync(path.join(os.tmpdir(), "hr-partial-"));
       try {
         initGitRepo(tmpDir);
         const filePath = path.join(tmpDir, "target.ts");
         writeFileSync(filePath, content);
 
         const transcriptPath = makeTranscript(tmpDir, filePath, content);
-        const result = runGate(
+        const sessionId = `test-partial-${label}`;
+
+        const result = await run(
           {
             hook_event_name: "Stop",
-            session_id: `test-fbrow-${label}`,
+            session_id: sessionId,
             transcript_path: transcriptPath,
             cwd: tmpDir,
           },
-          tmpDir,
-          tmpDir,
+          process.env as Record<string, string | undefined>,
+          {
+            testOnly_tmpDir: tmpDir,
+            testOnly_fixTableOverride: { typescript: { stability: "preview" } },
+          } as any,
         );
 
-        const out = result.stdout.trim();
-        const parsed = out ? (JSON.parse(out) as Record<string, unknown>) : {};
-        const reason = typeof parsed.reason === "string" ? parsed.reason : "";
+        const out = JSON.parse(result.stdout.trim() || "{}") as Record<string, unknown>;
+        expect(out.decision, `gate should block for ${label}`).toBe("block");
 
-        expect(reason, `gate should block for ${label}`).toContain("comment-density");
-        expect(reason, `gate should provide full list for ${label}`).toContain("full list:");
-        const blockFilePath = path.join(tmpDir, "house-rules", `test-fbrow-${label}`, "stop-block.txt");
+        const blockFilePath = path.join(tmpDir, "house-rules", sessionId, "stop-block.txt");
         const fullReport = readFileSync(blockFilePath, "utf8");
-        expect(fullReport, `parse error notice should appear in full report for ${label}`).toContain("parse error — prefix count used");
-        expect(fullReport, `row ${expectedRow} should appear in full report notice for ${label}`).toContain(
-          `target.ts:${expectedRow}: parse error — prefix count used`,
-        );
+
+        expect(fullReport, `partially-checked line must appear for ${label}`)
+          .toContain("partially checked:");
+        expect(fullReport, `file name must appear in coverage for ${label}`)
+          .toContain("target.ts");
+        expect(fullReport, `error row ${expectedRow} must appear in coverage for ${label}`)
+          .toContain(`${expectedRow}`);
+        expect(fullReport, `old prefix-count notice must be absent for ${label}`)
+          .not.toContain("prefix count used");
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });
       }
     });
   }
 
-  it("two cases have different first error rows (hardcoded value cannot pass both)", async () => {
-    const rowA = await firstErrorRowFor(CONTENT_A, "typescript");
-    const rowB = await firstErrorRowFor(CONTENT_B, "typescript");
-    expect(rowA).toBeDefined();
-    expect(rowB).toBeDefined();
-    expect(rowA).not.toBe(rowB);
+  it("two cases have different min error rows (hardcoded value cannot pass both)", async () => {
+    const resultA = await findComments(CONTENT_A, "typescript");
+    const resultB = await findComments(CONTENT_B, "typescript");
+    expect(resultA.errorRows.size, "case A must have error rows").toBeGreaterThan(0);
+    expect(resultB.errorRows.size, "case B must have error rows").toBeGreaterThan(0);
+    const rowA = Math.min(...resultA.errorRows);
+    const rowB = Math.min(...resultB.errorRows);
+    expect(rowA, "case A and B must have different min error rows").not.toBe(rowB);
   });
 });

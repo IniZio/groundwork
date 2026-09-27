@@ -22,8 +22,9 @@ afterEach(() => {
   }
 });
 
-function runCLI(args: string[], cwd: string) {
-  return spawnSync('bun', [CLI, ...args], { cwd, encoding: 'utf8' });
+function runCLI(args: string[], cwd: string, extraEnv?: Record<string, string>) {
+  const env = extraEnv ? { ...process.env, ...extraEnv } : undefined;
+  return spawnSync('bun', [CLI, ...args], { cwd, encoding: 'utf8', ...(env ? { env } : {}) });
 }
 
 /**
@@ -136,5 +137,118 @@ export default rule;
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('bad-rule');
     expect(r.stderr).toContain('kotlin');
+  });
+});
+
+const FAIL_TS_ENV = { HOUSE_RULES_TEST_FAIL_GRAMMARS: 'typescript' };
+const BASELINE_FILE = '/tmp/nonexistent-coverage-test-baseline.json';
+
+describe('coverage report — failed grammar (check, text)', () => {
+  it('exit 1, stderr has warning naming typescript, stdout has failed line for src/a.ts', () => {
+    const { repoDir, baseSha } = makeRepoWithBase({ 'src/a.ts': 'export const x = 1;\n' });
+
+    const r = runCLI(
+      ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE],
+      repoDir,
+      FAIL_TS_ENV,
+    );
+
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('typescript');
+    expect(r.stderr).toContain('forced by HOUSE_RULES_TEST_FAIL_GRAMMARS');
+    expect(r.stdout).toContain('failed: src/a.ts (typescript grammar did not load: forced by HOUSE_RULES_TEST_FAIL_GRAMMARS)');
+  });
+
+  it('same repo without env exits 0 with no failed line', () => {
+    const { repoDir, baseSha } = makeRepoWithBase({ 'src/a.ts': 'export const x = 1;\n' });
+
+    const r = runCLI(
+      ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE],
+      repoDir,
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain('failed:');
+  });
+});
+
+describe('coverage report — failed grammar (check, json)', () => {
+  it('exit 1, coverage.failed has entry for src/a.ts with typescript language', () => {
+    const { repoDir, baseSha } = makeRepoWithBase({ 'src/a.ts': 'export const x = 1;\n' });
+
+    const r = runCLI(
+      ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE, '--format', 'json'],
+      repoDir,
+      FAIL_TS_ENV,
+    );
+
+    expect(r.status).toBe(1);
+    const report = JSON.parse(r.stdout);
+    expect(report.coverage.failed).toEqual([
+      { path: 'src/a.ts', language: 'typescript', reason: 'forced by HOUSE_RULES_TEST_FAIL_GRAMMARS' },
+    ]);
+  });
+});
+
+describe('coverage report — partially checked (check, text and json)', () => {
+  it('text has partially checked line with rows 2; json partiallyChecked entry; exit 0', () => {
+    const { repoDir, baseSha } = makeRepoWithBase({
+      'src/b.ts': 'const x = 1;\nconst y = ;\nconst z = 3;\n',
+    });
+
+    const textR = runCLI(
+      ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE],
+      repoDir,
+    );
+
+    expect(textR.status).toBe(0);
+    expect(textR.stdout).toContain('partially checked: src/b.ts (rows 2)');
+
+    const jsonR = runCLI(
+      ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE, '--format', 'json'],
+      repoDir,
+    );
+
+    const report = JSON.parse(jsonR.stdout);
+    expect(report.coverage.partiallyChecked).toEqual([{ path: 'src/b.ts', rows: [2] }]);
+  });
+});
+
+describe('coverage report — housekeep text and json', () => {
+  it('exit 1, text has failed and not-checked lines, json coverage matches check output', () => {
+    const { repoDir, baseSha } = makeRepoWithBase({
+      'src/a.ts': 'export const x = 1;\n',
+      'src/App.kt': 'fun main() {}\n',
+    });
+
+    const textR = runCLI(
+      ['housekeep', '--since', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE],
+      repoDir,
+      FAIL_TS_ENV,
+    );
+
+    expect(textR.status).toBe(1);
+    expect(textR.stdout).toContain('failed: src/a.ts (typescript grammar did not load: forced by HOUSE_RULES_TEST_FAIL_GRAMMARS)');
+    expect(textR.stdout).toContain('not checked: src/App.kt');
+
+    const jsonR = runCLI(
+      ['housekeep', '--since', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
+       '--baseline-file', BASELINE_FILE, '--format', 'json'],
+      repoDir,
+      FAIL_TS_ENV,
+    );
+
+    expect(jsonR.status).toBe(1);
+    const report = JSON.parse(jsonR.stdout);
+    expect(report.coverage.failed).toEqual([
+      { path: 'src/a.ts', language: 'typescript', reason: 'forced by HOUSE_RULES_TEST_FAIL_GRAMMARS' },
+    ]);
+    expect(report.coverage.notChecked).toContain('src/App.kt');
   });
 });

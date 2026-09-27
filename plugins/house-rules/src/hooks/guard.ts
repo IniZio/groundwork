@@ -10,11 +10,11 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
 import { languageForPath } from "./languages/registry.js";
-import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
-import { createSourceFiles } from "../engine/source-file.js";
+import { createSourceFiles, envParserFactory } from "../engine/source-file.js";
+import { grammarFailureWarning } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
 import type { ParserFactory } from "./languages/parse.js";
 
@@ -220,7 +220,8 @@ export interface CheckOpts {
 }
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
-  const sourceFiles = createSourceFiles(opts.getParser ?? defaultGetParser);
+  const factory = opts.getParser ?? envParserFactory();
+  const sourceFiles = createSourceFiles(factory);
   try {
     if (!input || typeof input !== "object" || Array.isArray(input)) return allow();
     const inp = input as Record<string, unknown>;
@@ -278,7 +279,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     // Load and filter rules: keep those with editCheck, non-off severity, matching language
     const rulesDir = path.join(import.meta.dir, "../../rules");
     const allRules = opts.rules ?? await loadRules(rulesDir);
-    const activeRules = allRules.filter(r => {
+    let activeRules = allRules.filter(r => {
       if (!r.editCheck) return false;
       const severity = BUILTIN_POLICY[r.id]?.severity ?? "warn";
       if (severity === "off") return false;
@@ -289,10 +290,20 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
     let text = originalPost;
-    // Each item tracks normal context text and fallback text (for mapping-failure advisory).
-    const contextItems: Array<{ normal: string; fallback: string }> = [];
+    // Each item tracks normal context text and advisory text (for mapping-failure advisory).
+    const contextItems: Array<{ normal: string; advisory: string }> = [];
     const stderrLines: string[] = [];
     let blockingFinding: Finding | null = null;
+
+    if (lang !== null && activeRules.some(r => r.languages && r.languages.length > 0)) {
+      const sf = await sourceFiles.get(lang, originalPost);
+      if (!sf.ok) {
+        const W = grammarFailureWarning(filePath, lang, sf.reason);
+        contextItems.push({ normal: W, advisory: W });
+        stderrLines.push(W);
+        activeRules = activeRules.filter(r => !(r.languages && r.languages.length > 0));
+      }
+    }
 
     for (const rule of activeRules) {
       // Recompute postHunks for this rule's current text
@@ -325,7 +336,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
         const capturedText = text;
         const env: EditCheckEnv = {
           sourceFile: () => lang !== null ? sourceFiles.get(lang, capturedText) : Promise.resolve(null),
-          parserFactory: opts.getParser ?? defaultGetParser,
+          parserFactory: factory,
           ledgerDir: opts.ledgerDir,
         };
         result = await rule.editCheck!(pendingEdit, env);
@@ -399,29 +410,29 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
         if (result.notice !== undefined) {
           contextItems.push({
             normal: result.notice,
-            fallback: result.refusedNotice ?? result.notice,
+            advisory: result.refusedNotice ?? result.notice,
           });
         } else if (result.refusedNotice !== undefined) {
-          contextItems.push({ normal: "", fallback: result.refusedNotice });
+          contextItems.push({ normal: "", advisory: result.refusedNotice });
         }
       } else if (editsRefused) {
         const noticeText = result.refusedNotice ?? result.notice;
         if (noticeText !== undefined) {
-          contextItems.push({ normal: noticeText, fallback: noticeText });
+          contextItems.push({ normal: noticeText, advisory: noticeText });
         }
         if (refusalLine) {
-          contextItems.push({ normal: refusalLine, fallback: refusalLine });
+          contextItems.push({ normal: refusalLine, advisory: refusalLine });
         }
       } else {
         if (result.notice !== undefined) {
-          contextItems.push({ normal: result.notice, fallback: result.notice });
+          contextItems.push({ normal: result.notice, advisory: result.notice });
         }
       }
 
       if (!isErrorSeverity) {
         for (const f of findings) {
           const line = `house-rules ${f.ruleId}: ${f.message}`;
-          contextItems.push({ normal: line, fallback: line });
+          contextItems.push({ normal: line, advisory: line });
         }
       }
 
@@ -442,7 +453,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
         }
       }
       // Mapping/verification failed — fallback advisory
-      const ctxStr = contextItems.map(c => c.fallback).filter(s => s.length > 0).join("\n");
+      const ctxStr = contextItems.map(c => c.advisory).filter(s => s.length > 0).join("\n");
       if (ctxStr) {
         return advisory(ctxStr, stderrLines.length > 0 ? stderrLines.join("\n") : undefined);
       }

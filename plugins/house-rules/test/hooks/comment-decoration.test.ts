@@ -14,8 +14,8 @@ import {
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
 
-// Stub that forces density() into fallback mode.
-const failParser: GetParserFn = async (_lang) => ({ ok: false, reason: "forced-fallback-for-decoration-test" });
+// Stub that forces density() to return ok:false (grammar-load failure).
+const failParser: GetParserFn = async (_lang) => ({ ok: false, reason: "forced-load-failure-for-decoration-test" });
 
 // ── AC1: findComments decoration reasons ─────────────────────────────────────
 
@@ -134,38 +134,46 @@ describe("AC2: density invariance — inserting dividers and spacers changes not
   it("AC2 TS tree-sitter: F.effective === F'.effective", async () => {
     const rF = await density(F_ts, "typescript");
     const rF2 = await density(F_ts_prime, "typescript");
-    expect(rF.mode).toBe("tree-sitter");
-    expect(rF2.mode).toBe("tree-sitter");
+    expect(rF.ok).toBe(true);
+    expect(rF2.ok).toBe(true);
+    if (!rF.ok) throw new Error(rF.reason);
+    if (!rF2.ok) throw new Error(rF2.reason);
     // Prose rows must count (not vacuous)
     expect(rF.effective).toBeGreaterThan(0);
     expect(rF.effective).toBe(rF2.effective);
   });
 
-  it("AC2 TS fallback: F.effective === F'.effective (stub forces fallback mode)", async () => {
+  it("AC2 TS grammar-load failure: density reports ok:false for F and F'", async () => {
     const rF = await density(F_ts, "typescript", undefined, failParser);
     const rF2 = await density(F_ts_prime, "typescript", undefined, failParser);
-    expect(rF.mode).toBe("fallback");
-    expect(rF2.mode).toBe("fallback");
-    expect(rF.effective).toBeGreaterThan(0);
-    expect(rF.effective).toBe(rF2.effective);
+    expect(rF.ok).toBe(false);
+    expect(rF2.ok).toBe(false);
+    if (rF.ok) throw new Error("expected ok:false");
+    if (rF2.ok) throw new Error("expected ok:false");
+    expect(rF.reason).toBe("forced-load-failure-for-decoration-test");
+    expect(rF2.reason).toBe("forced-load-failure-for-decoration-test");
   });
 
   it("AC2 Go tree-sitter: F.effective === F'.effective", async () => {
     const rF = await density(F_go, "go");
     const rF2 = await density(F_go_prime, "go");
-    expect(rF.mode).toBe("tree-sitter");
-    expect(rF2.mode).toBe("tree-sitter");
+    expect(rF.ok).toBe(true);
+    expect(rF2.ok).toBe(true);
+    if (!rF.ok) throw new Error(rF.reason);
+    if (!rF2.ok) throw new Error(rF2.reason);
     expect(rF.effective).toBeGreaterThan(0);
     expect(rF.effective).toBe(rF2.effective);
   });
 
-  it("AC2 Go fallback: F.effective === F'.effective (stub forces fallback mode)", async () => {
+  it("AC2 Go grammar-load failure: density reports ok:false for F and F'", async () => {
     const rF = await density(F_go, "go", undefined, failParser);
     const rF2 = await density(F_go_prime, "go", undefined, failParser);
-    expect(rF.mode).toBe("fallback");
-    expect(rF2.mode).toBe("fallback");
-    expect(rF.effective).toBeGreaterThan(0);
-    expect(rF.effective).toBe(rF2.effective);
+    expect(rF.ok).toBe(false);
+    expect(rF2.ok).toBe(false);
+    if (rF.ok) throw new Error("expected ok:false");
+    if (rF2.ok) throw new Error("expected ok:false");
+    expect(rF.reason).toBe("forced-load-failure-for-decoration-test");
+    expect(rF2.reason).toBe("forced-load-failure-for-decoration-test");
   });
 });
 
@@ -312,7 +320,8 @@ describe("AC5: real-data fixture — nexus boot_sequence_test.go mutation-proof 
 
   it("AC5: density reports prose rows in commentRows by identity", async () => {
     const d = await density(fixture, "go");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) throw new Error(d.reason);
 
     const commentRowSet = new Set(d.commentRows);
 

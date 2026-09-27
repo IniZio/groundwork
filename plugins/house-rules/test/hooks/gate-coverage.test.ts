@@ -117,18 +117,14 @@ describe("COV-4: outside-repo file excluded from block reason; inside .kt presen
   });
 
   it("block path: inside notes.kt in 'not checked', outside memory.kt absent", async () => {
-    const tsFp = path.join(tmpDir, "bad.ts");
-    writeFileSync(tsFp, [
-      ...Array.from({ length: 20 }, (_, i) => i % 5 === 0 ? `// r${i}` : `const x${i} = ${i};`),
-      "const broken = ;",
-    ].join("\n") + "\n");
+    const tsxFp = makeTsxViolator(tmpDir, "bad.tsx");
     const insideKt = path.join(tmpDir, "notes.kt");
     writeFileSync(insideKt, "fun main() {}\n");
     const outsideDir = mkdtempSync(path.join(os.tmpdir(), "cov4-outside-"));
     const outsideFp = path.join(outsideDir, "memory.kt");
     writeFileSync(outsideFp, "fun outside() {}\n");
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsFp, insideKt, outsideFp], ts);
+    const tp = makeTranscript(tmpDir, [tsxFp, insideKt, outsideFp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov4-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
@@ -137,6 +133,228 @@ describe("COV-4: outside-repo file excluded from block reason; inside .kt presen
     expect(reason).toContain(insideKt);
     expect(reason).not.toContain(outsideFp);
     try { rmSync(outsideDir, { recursive: true, force: true }); } catch { }
+  });
+});
+
+// TSX with >5/100 comment density — tsx is "preview" so never auto-fixed (stays unfixable).
+function makeTsxViolator(dir: string, name: string): string {
+  const fp = path.join(dir, name);
+  const lines = [
+    "// first narration comment",
+    "const a = 1;",
+    "const b = 2;",
+    "const c = 3;",
+    "const d = 4;",
+    "// second narration comment",
+    "const e = 5;",
+    "const f = 6;",
+    "const g = 7;",
+    "const h = 8;",
+  ];
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
+function makeTsxViolatorWithSyntaxError(dir: string, name: string): string {
+  const fp = path.join(dir, name);
+  const lines = [
+    "// first narration comment",
+    "const a = 1;",
+    "const b = 2;",
+    "const c = 3;",
+    "const d = 4;",
+    "// second narration comment",
+    "const e = 5;",
+    "const f = 6;",
+    "const g = 7;",
+    "const broken = ;",
+  ];
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
+describe("GRAM-1: LOOP-SAFETY — grammar failure on allow path emits only systemMessage, no additionalContext", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gram1-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("clean .ts with FAIL_GRAMMARS=typescript → {continue:true, systemMessage} only; no hookSpecificOutput, no additionalContext, no decision", async () => {
+    const fp = path.join(tmpDir, "clean.ts");
+    writeFileSync(fp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate(
+      { hook_event_name: "Stop", session_id: `gram1-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
+      { HOUSE_RULES_TEST_FAIL_GRAMMARS: "typescript" },
+    );
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    // Must be exactly {continue:true, systemMessage:...}
+    expect(parsed.continue).toBe(true);
+    expect(typeof parsed.systemMessage).toBe("string");
+    expect(parsed.decision).toBeUndefined();
+    // No hookSpecificOutput or additionalContext anywhere
+    expect(parsed.hookSpecificOutput).toBeUndefined();
+    expect(r.stdout).not.toContain("additionalContext");
+    // systemMessage must name the grammar and reason
+    const msg = parsed.systemMessage as string;
+    expect(msg).toContain("typescript");
+    expect(msg).toContain("forced by HOUSE_RULES_TEST_FAIL_GRAMMARS");
+  });
+});
+
+describe("GRAM-2: grammar failure suppresses block on that file", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gram2-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("over-budget .tsx violator + FAIL_GRAMMARS=tsx → allow (no block)", async () => {
+    const fp = path.join(tmpDir, "bad.tsx");
+    const lines = [
+      "// first narration comment",
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+      "const d = 4;",
+      "// second narration comment",
+      "const e = 5;",
+      "const f = 6;",
+      "const g = 7;",
+      "const h = 8;",
+    ];
+    writeFileSync(fp, lines.join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate(
+      { hook_event_name: "Stop", session_id: `gram2a-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
+      { HOUSE_RULES_TEST_FAIL_GRAMMARS: "tsx" },
+    );
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).not.toBe("block");
+    expect(parsed.continue).toBe(true);
+  });
+
+  it("over-budget .tsx violator without FAIL_GRAMMARS → blocks (control: proves fixture is a real violator)", async () => {
+    // tsx is "preview" (unfixable); without grammar failure, the violation is found and cannot be autofixed → block
+    const fp = path.join(tmpDir, "bad.tsx");
+    const lines = [
+      "// first narration comment",
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+      "const d = 4;",
+      "// second narration comment",
+      "const e = 5;",
+      "const f = 6;",
+      "const g = 7;",
+      "const h = 8;",
+    ];
+    writeFileSync(fp, lines.join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate(
+      { hook_event_name: "Stop", session_id: `gram2b-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
+    );
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+  });
+});
+
+describe("GRAM-3: BLOCK carries grammar-failure warning + failed entry in reason", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gram3-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("ts grammar fails + tsx unfixable violator → block with failed entry and warning in reason", async () => {
+    // .ts file: grammar will fail (typescript env)
+    const tsFp = path.join(tmpDir, "skip.ts");
+    writeFileSync(tsFp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
+    // .tsx file: unfixable violator (preview language)
+    const tsxFp = path.join(tmpDir, "violator.tsx");
+    const tsxLines = [
+      "// first narration comment",
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+      "const d = 4;",
+      "// second narration comment",
+      "const e = 5;",
+      "const f = 6;",
+      "const g = 7;",
+      "const h = 8;",
+    ];
+    writeFileSync(tsxFp, tsxLines.join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [tsFp, tsxFp], ts);
+    const r = runGate(
+      { hook_event_name: "Stop", session_id: `gram3-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
+      { HOUSE_RULES_TEST_FAIL_GRAMMARS: "typescript" },
+    );
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    const reason = parsed.reason as string;
+    expect(reason).toContain(`failed: ${tsFp} (typescript grammar did not load: forced by HOUSE_RULES_TEST_FAIL_GRAMMARS)`);
+    expect(reason).toContain("house-rules warning: the typescript grammar did not load (forced by HOUSE_RULES_TEST_FAIL_GRAMMARS)");
+    expect(reason).toContain(tsFp);
+  });
+});
+
+describe("GRAM-4: BLOCK shows partially-checked entry for file with syntax errors", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gram4-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+  });
+
+  it("tsx violator with syntax error → block reason contains partially checked entry with row numbers", async () => {
+    const tsxFp = makeTsxViolatorWithSyntaxError(tmpDir, "violator-err.tsx");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [tsxFp], ts);
+    const r = runGate(
+      { hook_event_name: "Stop", session_id: `gram4-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
+    );
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    const reason = parsed.reason as string;
+    expect(reason).toContain(`partially checked: ${tsxFp} (rows `);
   });
 });
 
@@ -154,19 +372,15 @@ describe("COV-3: notes.kt + comment-density violator → block message names not
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("notes.kt + unfixable violator .ts → block reason contains notes.kt as not checked", async () => {
-    // unfixable violator (parse error prevents autofix)
-    const tsFp = path.join(tmpDir, "bad.ts");
-    writeFileSync(tsFp, [
-      ...Array.from({ length: 20 }, (_, i) => i % 5 === 0 ? `// r${i}` : `const x${i} = ${i};`),
-      "const broken = ;",
-    ].join("\n") + "\n");
+  it("notes.kt + unfixable violator .tsx → block reason contains notes.kt as not checked", async () => {
+    // unfixable violator (preview language prevents autofix)
+    const tsxFp = makeTsxViolator(tmpDir, "bad.tsx");
 
     const ktFp = path.join(tmpDir, "notes.kt");
     writeFileSync(ktFp, "fun main() {\n    println(\"hello\")\n}\n");
 
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsFp, ktFp], ts);
+    const tp = makeTranscript(tmpDir, [tsxFp, ktFp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov3-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;

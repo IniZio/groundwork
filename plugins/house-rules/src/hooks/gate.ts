@@ -9,7 +9,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
-import { runRules, notCheckedFiles, type FindingWithSeverity } from '../engine/run.js';
+import { runRules, coverageReport, formatCoverage, grammarWarnings, type FindingWithSeverity } from '../engine/run.js';
+import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
@@ -25,13 +26,6 @@ function block(reason: string): HookResult {
   return { stdout: JSON.stringify({ decision: "block", reason }) + "\n", stderr: "", exit: 0 };
 }
 
-function buildCoverageText(notChecked: string[]): string {
-  if (notChecked.length === 0) return "";
-  return [
-    "house-rules coverage: files no language adapter recognises were not checked.",
-    ...notChecked.map(p => `  not checked: ${p}`),
-  ].join("\n");
-}
 
 function gitTopLevel(fileOrDir: string): string | null {
   const stat = (() => { try { return statSync(fileOrDir); } catch { return null; } })();
@@ -65,6 +59,7 @@ export async function run(
     testOnly_tmpDir?: string;
     testOnly_rules?: Rule[];
     testOnly_policy?: Record<string, PolicyEntry>;
+    testOnly_parserFactory?: ParserFactory;
     [testHook: string]: unknown;
   },
 ): Promise<HookResult> {
@@ -121,14 +116,24 @@ export async function run(
       sessionId,
       event: event as 'Stop' | 'SubagentStop',
       runningAgentIds: running,
+      parserFactory: opts?.testOnly_parserFactory,
     });
 
     const allFindings = await runRules(rules, ctx, policy, DEFAULT_IGNORE);
     const repoRootPrefix = repoRoot + path.sep;
-    const notChecked = notCheckedFiles(rules, ctx.files ?? [])
-      .map(p => path.resolve(repoRoot, p))
-      .filter(p => p === repoRoot || p.startsWith(repoRootPrefix));
-    const coverageText = buildCoverageText(notChecked);
+    const inRepo = (p: string) => p === repoRoot || p.startsWith(repoRootPrefix);
+    const cov = await coverageReport(rules, ctx);
+    const absCov = {
+      notChecked: cov.notChecked.map(p => path.resolve(repoRoot, p)).filter(inRepo),
+      partiallyChecked: cov.partiallyChecked
+        .map(e => ({ ...e, path: path.resolve(repoRoot, e.path) }))
+        .filter(e => inRepo(e.path)),
+      failed: cov.failed
+        .map(e => ({ ...e, path: path.resolve(repoRoot, e.path) }))
+        .filter(e => inRepo(e.path)),
+    };
+    const coverageText = formatCoverage(absCov, "house-rules coverage:", "  ").join("\n");
+    const warnings = grammarWarnings(absCov);
     const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
     const baseline = await readBaseline(baselinePath);
     const unbaselined = subtractBaseline(allFindings, baseline);
@@ -141,6 +146,9 @@ export async function run(
     const strayErrors = unbaselined.filter(f => f.ruleId === 'stray-artifacts' && f.severity === 'error');
 
     if (fixableFindings.length === 0 && strayErrors.length === 0) {
+      if (warnings.length > 0) {
+        return { stdout: JSON.stringify({ continue: true, systemMessage: warnings.join("\n") }) + "\n", stderr: "", exit: 0 };
+      }
       return allow();
     }
 
@@ -151,7 +159,7 @@ export async function run(
     }
 
     // Every opts key the gate does not consume is a rule's test hook; forward it unread.
-    const { testOnly_tmpDir, testOnly_rules, testOnly_policy, ...testOnly } = opts ?? {};
+    const { testOnly_tmpDir, testOnly_rules, testOnly_policy, testOnly_parserFactory, ...testOnly } = opts ?? {};
     const testOnlyArg = Object.keys(testOnly).length > 0
       ? testOnly as Record<string, unknown>
       : undefined;
@@ -215,6 +223,9 @@ export async function run(
 
     if (unfixable.length === 0 && strayErrors.length === 0) {
       if (fixedFiles.length === 0) {
+        if (warnings.length > 0) {
+          return { stdout: JSON.stringify({ continue: true, systemMessage: warnings.join("\n") }) + "\n", stderr: "", exit: 0 };
+        }
         return allow();
       }
       const N = fixedFiles.reduce((s, f) => s + f.removed, 0);
@@ -228,8 +239,10 @@ export async function run(
         `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
       ];
       const ctx2 = ctx2Lines.join("\n");
+      const autofixOut: Record<string, unknown> = { hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } };
+      if (warnings.length > 0) autofixOut.systemMessage = warnings.join("\n");
       return {
-        stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } }) + "\n",
+        stdout: JSON.stringify(autofixOut) + "\n",
         stderr: "",
         exit: 0,
       };
@@ -270,7 +283,10 @@ export async function run(
         ...strayErrors.map(f => `  ${path.join(repoRoot, f.path)}`),
       ].join("\n");
       const stderrBase = `house-rules ${ruleNames} gate: 4th consecutive block — allowing; ${action4}\n${fileList}\n`;
-      const stderr = coverageText ? stderrBase + coverageText + "\n" : stderrBase;
+      const warningsText = warnings.length > 0 ? warnings.join("\n") + "\n" : "";
+      const stderr = coverageText
+        ? stderrBase + coverageText + "\n" + warningsText
+        : warningsText ? stderrBase + warningsText : stderrBase;
       return { stdout: "", stderr, exit: 0 };
     }
 
@@ -286,7 +302,7 @@ export async function run(
 
     const strayLines = strayErrors.map(f => `  ${path.join(repoRoot, f.path)}: ${f.message}`);
 
-    const fallbackNotices = unfixable
+    const notices = unfixable
       .filter(u => u.notice != null)
       .map(u => u.notice!);
 
@@ -324,8 +340,11 @@ export async function run(
     const reportHeader = hasDensity && !hasStray ? DHEADER
       : hasStray && !hasDensity ? "house-rules gate:"
       : "house-rules gate: files changed in this session violate one or more code conventions.";
-    const fullReport = buildFull(reportHeader, sects, fallbackNotices, fixedPaths);
-    const fullReportWithCoverage = coverageText ? fullReport + "\n" + coverageText : fullReport;
+    const fullReport = buildFull(reportHeader, sects, notices, fixedPaths);
+    const warningsSuffix = warnings.length > 0 ? "\n" + warnings.join("\n") : "";
+    const fullReportWithCoverage = coverageText
+      ? fullReport + "\n" + coverageText + warningsSuffix
+      : warningsSuffix ? fullReport + warningsSuffix : fullReport;
 
     const tmpBase2 = opts?.testOnly_tmpDir ?? os.tmpdir();
     const safeSessionId = /^[A-Za-z0-9_-]+$/.test(sessionId) ? sessionId : "unknown";
@@ -341,12 +360,13 @@ export async function run(
     if (writeOk) {
       reason = formatShortReason(ruleSummaries, blockFilePath, sfx);
       if (coverageText) reason = reason + "\n" + coverageText;
+      if (warnings.length > 0) reason = reason + "\n" + warnings.join("\n");
     } else {
       if (hasDensity && !hasStray) {
         reason = formatBlock({
           header: DHEADER,
           sections: [{ lines: fileLines, footer: DFOOTERBASE }],
-          notices: fallbackNotices,
+          notices,
           fixedFiles: fixedPaths,
           suffix: sfx,
         });
@@ -365,12 +385,13 @@ export async function run(
             { label: "comment-density:", lines: fileLines, footer: DFOOTER_DENSITY_BOTH },
             { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE },
           ],
-          notices: fallbackNotices,
+          notices,
           fixedFiles: fixedPaths,
           suffix: sfx,
         });
       }
       if (coverageText) reason = reason + "\n" + coverageText;
+      if (warnings.length > 0) reason = reason + "\n" + warnings.join("\n");
     }
     return block(reason);
   } catch (e) {

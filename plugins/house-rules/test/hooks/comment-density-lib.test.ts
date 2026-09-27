@@ -119,6 +119,7 @@ describe("probe.sh fixture", () => {
   it("probe.sh density is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "probe.sh")).text();
     const r = await density(text, "bash");
+    if (!r.ok) throw new Error(r.reason);
     const per100 = (r.effective / r.total) * 100;
     expect(per100).toBeGreaterThan(5);
   });
@@ -379,21 +380,22 @@ describe("stripComments", () => {
   });
 });
 
-// ---- AC6: Fallback ----
+// ---- AC6: Parser failure ----
 
 const failingGetParser: GetParserFn = async (_lang) => ({
   ok: false,
   reason: "injected failure",
 });
 
-describe("density fallback", () => {
-  it("uses fallback mode when getParser fails", async () => {
+describe("density without working parser", () => {
+  it("density returns ok:false with the factory reason when getParser fails", async () => {
     const code = `// comment one\n// comment two\nconst x = 1;\n`;
     const r = await density(code, "typescript", undefined, failingGetParser);
-    expect(r.mode).toBe("fallback");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("injected failure");
   });
 
-  it("fallback gives same numbers as legacy countEffective for simple TS input", async () => {
+  it("failing parser yields ok:false; real parser on same TS input yields effective 2", async () => {
     const code = [
       "const a = 1;",
       "// plain comment",
@@ -408,11 +410,15 @@ describe("density fallback", () => {
       "eval('x');",
     ].join("\n") + "\n";
 
-    const r = await density(code, "typescript", undefined, failingGetParser);
-    expect(r.mode).toBe("fallback");
-    // Legacy countEffective: "plain comment" and "another" are effective (2)
-    // jsdoc is not counted; @ts-expect-error and eslint-disable are exempt
-    expect(r.effective).toBe(2);
+    const failed = await density(code, "typescript", undefined, failingGetParser);
+    expect(failed.ok).toBe(false);
+
+    // With real tree-sitter: "plain comment" and "another" are effective (2).
+    // jsdoc is not counted; @ts-expect-error and eslint-disable are exempt.
+    const real = await density(code, "typescript");
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    expect(real.effective).toBe(2);
   });
 });
 
@@ -422,77 +428,118 @@ describe("whole-file density over cap", () => {
   it("probe.sh is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "probe.sh")).text();
     const r = await density(text, "bash");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("pod-nonroot.yaml is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "pod-nonroot.yaml")).text();
     const r = await density(text, "yaml");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("pod-root.yaml is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "pod-root.yaml")).text();
     const r = await density(text, "yaml");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("pod-root-sysadmin.yaml is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "pod-root-sysadmin.yaml")).text();
     const r = await density(text, "yaml");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("Dockerfile is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "Dockerfile")).text();
     const r = await density(text, "dockerfile");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("Containerfile is over 5/100", async () => {
     const text = await Bun.file(path.join(PROBE_DIR, "Containerfile")).text();
     const r = await density(text, "dockerfile");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("TS fixture with many comments is over cap", async () => {
     const text = await Bun.file(path.join(FIXTURES, "over-cap.ts")).text();
     const r = await density(text, "typescript");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("clean TS fixture is under or equal to cap", async () => {
     const text = await Bun.file(path.join(FIXTURES, "clean.ts")).text();
     const r = await density(text, "typescript");
+    if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeLessThanOrEqual(5);
   });
 });
 
-// ---- Parse-error fallback ----
+// ---- Parse-error tree handling ----
 
-describe("parse-error fallback", () => {
+describe("parse-error tree handling", () => {
   const INVALID_YAML = 'key: "v # no"\nb: |\n  # in scalar\n- 994  # kvm group\n';
 
-  it("invalid YAML does not silently yield 0 effective (fallback fires)", async () => {
+  it("invalid YAML density ok:true with errorRows; commentRows excludes error rows", async () => {
     const r = await density(INVALID_YAML, "yaml");
-    expect(r.mode).toBe("fallback");
-    expect(r.effective).toBeGreaterThan(0);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.errorRows.size).toBeGreaterThan(0);
+    for (const row of r.commentRows) {
+      expect(r.errorRows.has(row)).toBe(false);
+    }
   });
 
-  it("findComments returns ok:false with reason 'parse-error' for invalid YAML", async () => {
+  it("findComments returns ok:true for invalid YAML with errorRows non-empty and no comment on an error row", async () => {
     const r = await findComments(INVALID_YAML, "yaml");
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("parse-error");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.errorRows.size).toBeGreaterThan(0);
+    for (const c of r.comments) {
+      for (let row = c.startRow; row <= c.endRow; row++) {
+        expect(r.errorRows.has(row)).toBe(false);
+      }
+    }
   });
 
-  it("bite: old behavior (no hasError check) silently returns 0", async () => {
-    const realResult = await findComments(INVALID_YAML, "yaml");
-    expect(realResult.ok).toBe(false);
+  it("bite: errorRows carried and excluded from commentRows (not silently 0 with no errorRows)", async () => {
+    // Old behavior: safeComments.length===0 && errorRows.size>0 → ok:false with no errorRows exposed.
+    // New behavior: ok:true, errorRows non-empty, any comments on error rows excluded.
+    const r = await findComments(INVALID_YAML, "yaml");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.errorRows.size).toBeGreaterThan(0);
+    for (const c of r.comments) {
+      for (let row = c.startRow; row <= c.endRow; row++) {
+        expect(r.errorRows.has(row)).toBe(false);
+      }
+    }
+  });
 
-    const oldBehaviorCount = realResult.ok ? realResult.comments.filter(c => !c.exempt).length : 0;
-    expect(oldBehaviorCount).toBe(0);
-    const withFix = await density(INVALID_YAML, "yaml");
-    expect(withFix.effective).toBeGreaterThan(oldBehaviorCount);
+  it("density does not count comments on error rows", async () => {
+    // TS: comment on a row with parse error + clean comment elsewhere.
+    // Error row comment must not appear in commentRows; clean comment must.
+    const code = [
+      "// clean comment",
+      "const x = 1;",
+      "let y: import('a').B[]; // error-row comment",
+      "const z = 2;",
+    ].join("\n") + "\n";
+    const r = await density(code, "typescript");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.errorRows.size).toBeGreaterThan(0);
+    for (const row of r.errorRows) {
+      expect(r.commentRows).not.toContain(row);
+    }
+    expect(r.commentRows).toContain(0);
   });
 });
 
@@ -500,25 +547,34 @@ describe("parse-error fallback", () => {
 
 const failParser6: GetParserFn = async () => ({ ok: false, reason: "forced-fallback-for-hash-test" });
 
-describe("fallback # counting excludes TS private fields", () => {
-  it("TS private field #field counts as 0 in fallback (lang=typescript)", async () => {
+describe("tree-sitter distinguishes TS private fields from bash # comments", () => {
+  it("failParser6 yields ok:false for typescript; real parser TS #field counts 0", async () => {
     const code = `class Foo {\n  #count = 0;\n  #name = '';\n}\n`;
-    const r = await density(code, "typescript", undefined, failParser6);
-    expect(r.mode).toBe("fallback");
-    expect(r.effective).toBe(0);
+    const failed = await density(code, "typescript", undefined, failParser6);
+    expect(failed.ok).toBe(false);
+    const real = await density(code, "typescript");
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    expect(real.effective).toBe(0);
   });
 
-  it("bash: same # prefix IS a comment in fallback", async () => {
+  it("failParser6 yields ok:false for bash; real parser bash # counts > 0", async () => {
     const code = `echo hi\n#count=0\n#name=foo\n`;
-    const r = await density(code, "bash", undefined, failParser6);
-    expect(r.mode).toBe("fallback");
-    expect(r.effective).toBeGreaterThan(0);
+    const failed = await density(code, "bash", undefined, failParser6);
+    expect(failed.ok).toBe(false);
+    const real = await density(code, "bash");
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    expect(real.effective).toBeGreaterThan(0);
   });
 
-  it("bite: TS #field counted differently than bash # (proves fix is lang-gated)", async () => {
+  it("bite: real tree-sitter counts TS #field as 0 and bash # as >0 (no fallback lexer needed)", async () => {
     const code = `class Foo {\n  #count = 0;\n}\n`;
-    const tsR = await density(code, "typescript", undefined, failParser6);
-    const bashR = await density(code, "bash", undefined, failParser6);
+    const tsR = await density(code, "typescript");
+    const bashR = await density(code, "bash");
+    expect(tsR.ok).toBe(true);
+    expect(bashR.ok).toBe(true);
+    if (!tsR.ok || !bashR.ok) return;
     expect(tsR.effective).toBe(0);
     expect(bashR.effective).toBeGreaterThan(0);
     expect(tsR.effective).not.toBe(bashR.effective);
@@ -568,11 +624,16 @@ describe("autoFix", () => {
     }
   });
 
-  it("returns ok:false when original has parse error (unfixable)", async () => {
-    const text = "// comment 1\n// comment 2\n// comment 3\nconst x = ;\n";
+  it("autoFix on syntax-error file ok:true; comments on error rows not stripped", async () => {
+    const text = [
+      ...Array.from({ length: 40 }, (_, i) => `const x${i} = ${i};`),
+      "// narrative",
+      "const bad = ; // error-row-comment",
+    ].join("\n") + "\n";
     const allRows = new Set(text.split("\n").map((_, i) => i));
     const r = await autoFix(text, "typescript", allRows);
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.fixed).toContain("// error-row-comment");
   });
 
   it("safety verifier (re-parse): fails if post-strip re-parse returns error", async () => {
@@ -688,53 +749,58 @@ describe("languageForPath — new languages", () => {
 });
 
 describe("findComments + density — fixture files", () => {
-  it("go/main.go: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+  it("go/main.go: findComments finds ≥10 comments, density ok:true with effective>0", async () => {
     const text = await Bun.file(path.join(FIXTURES, "go/main.go")).text();
     const r = await findComments(text, "go");
     if (!r.ok) throw new Error(r.reason);
     expect(r.comments.length).toBeGreaterThanOrEqual(10);
     const d = await density(text, "go");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
     expect(d.effective).toBeGreaterThan(0);
   });
 
-  it("rust/lib.rs: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+  it("rust/lib.rs: findComments finds ≥10 comments, density ok:true with effective>0", async () => {
     const text = await Bun.file(path.join(FIXTURES, "rust/lib.rs")).text();
     const r = await findComments(text, "rust");
     if (!r.ok) throw new Error(r.reason);
     expect(r.comments.length).toBeGreaterThanOrEqual(10);
     const d = await density(text, "rust");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
     expect(d.effective).toBeGreaterThan(0);
   });
 
-  it("sql/schema.sql: findComments finds ≥10 comments (including marginalia), density uses tree-sitter", async () => {
+  it("sql/schema.sql: findComments finds ≥10 comments (including marginalia), density ok:true with effective>0", async () => {
     const text = await Bun.file(path.join(FIXTURES, "sql/schema.sql")).text();
     const r = await findComments(text, "sql");
     if (!r.ok) throw new Error(r.reason);
     expect(r.comments.length).toBeGreaterThanOrEqual(10);
     const d = await density(text, "sql");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
     expect(d.effective).toBeGreaterThan(0);
   });
 
-  it("make/Makefile: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+  it("make/Makefile: findComments finds ≥10 comments, density ok:true with effective>0", async () => {
     const text = await Bun.file(path.join(FIXTURES, "make/Makefile")).text();
     const r = await findComments(text, "make");
     if (!r.ok) throw new Error(r.reason);
     expect(r.comments.length).toBeGreaterThanOrEqual(10);
     const d = await density(text, "make");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
     expect(d.effective).toBeGreaterThan(0);
   });
 
-  it("toml/config.toml: findComments finds ≥10 comments, density uses tree-sitter", async () => {
+  it("toml/config.toml: findComments finds ≥10 comments, density ok:true with effective>0", async () => {
     const text = await Bun.file(path.join(FIXTURES, "toml/config.toml")).text();
     const r = await findComments(text, "toml");
     if (!r.ok) throw new Error(r.reason);
     expect(r.comments.length).toBeGreaterThanOrEqual(10);
     const d = await density(text, "toml");
-    expect(d.mode).toBe("tree-sitter");
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
     expect(d.effective).toBeGreaterThan(0);
   });
 });
@@ -1234,6 +1300,7 @@ describe("autoFix single-pass density compliance", () => {
     }
 
     const d = await density(r.fixed, "typescript", remappedRows);
+    if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
 
     const r2 = await autoFix(r.fixed, "typescript", remappedRows);
@@ -1275,6 +1342,7 @@ describe("autoFix single-pass density compliance", () => {
     }
 
     const d = await density(r.fixed, "typescript", remappedRows);
+    if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
 
     const r2 = await autoFix(r.fixed, "typescript", remappedRows);
@@ -1327,6 +1395,7 @@ describe("autoFix single-pass density compliance", () => {
       remappedRows.add(row - offset);
     }
     const d = await density(r.fixed, "typescript", remappedRows);
+    if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
   });
 });

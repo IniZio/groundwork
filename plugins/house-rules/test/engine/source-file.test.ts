@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createSourceFiles } from '../../src/engine/source-file.js';
+import { createSourceFiles, envParserFactory, FAIL_GRAMMARS_ENV } from '../../src/engine/source-file.js';
 import { buildContext } from '../../src/engine/context.js';
 import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
 import type { ParserFactory } from '../../src/hooks/languages/parse.js';
@@ -207,6 +207,96 @@ describe('createSourceFiles — memoization', () => {
       expect(result.reason).toBe('x');
     } finally {
       sf.dispose();
+    }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// envParserFactory — test seam
+// ---------------------------------------------------------------------------
+
+describe('envParserFactory', () => {
+  it('env unset returns base factory itself (identity)', () => {
+    const base: ParserFactory = async () => ({ ok: false, reason: 'stub' });
+    const result = envParserFactory({}, base);
+    expect(result).toBe(base);
+  });
+
+  it('env empty string returns base factory itself (identity)', () => {
+    const base: ParserFactory = async () => ({ ok: false, reason: 'stub' });
+    const result = envParserFactory({ [FAIL_GRAMMARS_ENV]: '' }, base);
+    expect(result).toBe(base);
+  });
+
+  it('env "typescript" forces typescript to fail, go delegates to base', async () => {
+    let baseCalled = false;
+    let baseCalledWith: string | undefined;
+    const base: ParserFactory = async (lang) => {
+      baseCalled = true;
+      baseCalledWith = lang;
+      return { ok: false, reason: 'base-stub' };
+    };
+
+    const factory = envParserFactory({ [FAIL_GRAMMARS_ENV]: 'typescript' }, base);
+
+    const tsResult = await factory('typescript');
+    expect(tsResult.ok).toBe(false);
+    if (tsResult.ok) throw new Error('unexpected ok');
+    expect(tsResult.reason).toBe('forced by HOUSE_RULES_TEST_FAIL_GRAMMARS');
+    expect(baseCalled).toBe(false);
+
+    const goResult = await factory('go');
+    expect(baseCalled).toBe(true);
+    expect(baseCalledWith).toBe('go');
+    // go delegated; result is from base
+    expect(goResult.ok).toBe(false);
+    if (goResult.ok) throw new Error('unexpected ok');
+    expect(goResult.reason).toBe('base-stub');
+  });
+
+  it('env "typescript,go" forces both languages to fail', async () => {
+    let baseCalled = false;
+    const base: ParserFactory = async () => {
+      baseCalled = true;
+      return { ok: false, reason: 'base-stub' };
+    };
+
+    const factory = envParserFactory({ [FAIL_GRAMMARS_ENV]: 'typescript,go' }, base);
+
+    const tsResult = await factory('typescript');
+    expect(tsResult.ok).toBe(false);
+    if (tsResult.ok) throw new Error('unexpected ok');
+    expect(tsResult.reason).toBe('forced by HOUSE_RULES_TEST_FAIL_GRAMMARS');
+
+    const goResult = await factory('go');
+    expect(goResult.ok).toBe(false);
+    if (goResult.ok) throw new Error('unexpected ok');
+    expect(goResult.reason).toBe('forced by HOUSE_RULES_TEST_FAIL_GRAMMARS');
+
+    expect(baseCalled).toBe(false);
+  });
+
+  it('createSourceFiles() with FAIL_GRAMMARS_ENV set returns ok:false for typescript', async () => {
+    const prior = process.env[FAIL_GRAMMARS_ENV];
+    process.env[FAIL_GRAMMARS_ENV] = 'typescript';
+    try {
+      // createSourceFiles() with no arg picks up env at call time
+      const sf = createSourceFiles();
+      try {
+        const result = await sf.get('typescript', 'const x = 1;\n');
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('unexpected ok');
+        expect(result.reason).toBe('forced by HOUSE_RULES_TEST_FAIL_GRAMMARS');
+      } finally {
+        sf.dispose();
+      }
+    } finally {
+      if (prior === undefined) {
+        delete process.env[FAIL_GRAMMARS_ENV];
+      } else {
+        process.env[FAIL_GRAMMARS_ENV] = prior;
+      }
     }
   });
 });

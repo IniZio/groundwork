@@ -79,6 +79,9 @@ async function housekeepFix(ctx: RuleContext, opts?: FixOptions): Promise<FixRes
     const lang = languageForPath(file.path);
     if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
+    const sfHK = ctx.sourceFile ? await ctx.sourceFile(file) : null;
+    if (sfHK && !sfHK.ok) continue;
+
     if (!canFixPathHelper(file.path)) {
       const reason = `autofix not enabled for ${lang} (${fixEntryFor(lang).stability})`;
       decline(file.path, reason);
@@ -146,28 +149,14 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
     const lang = languageForPath(file.path);
     if (!lang) continue;
 
+    const sfGF = ctx.sourceFile ? await ctx.sourceFile(file) : null;
+    if (sfGF && !sfGF.ok) continue;
+
     const totalAdded = file.addedHunks.reduce((s, h) => s + h.added.length, 0);
     if (totalAdded === 0) continue;
 
     const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
     const baseText = file.baseText ?? '';
-    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
-    let effective: number;
-    let netNewRows: Set<number>;
-    let fallback = false;
-    let firstErrorRow: number | undefined;
-    if (netResult.ok) {
-      effective = netResult.rows.length;
-      netNewRows = new Set(netResult.rows.map(n => n - 1));
-    } else {
-      const dr = await density(file.text, lang, rowSet);
-      effective = dr.effective;
-      netNewRows = rowSet;
-      fallback = dr.mode === 'fallback';
-      if (fallback && dr.errorRows.size > 0) {
-        firstErrorRow = Math.min(...dr.errorRows) + 1;
-      }
-    }
 
     const absPath = path.join(ctx.repoRoot, file.path);
 
@@ -178,19 +167,21 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
     const applicability = entry.applicability;
     const shouldWrite = (opts.testOnly?.testOnly_forceWrite as boolean | undefined) === true || (stability === 'stable' && applicability === 'safe');
 
-    // A parse-fallback count is a prefix estimate, so the gate never fixes from it.
-    if (fallback) {
-      const loc = firstErrorRow !== undefined ? `:${firstErrorRow}` : '';
-      files.push({
-        path: file.path,
-        status: 'declined',
-        reason: undefined,
-        stability,
-        applicability,
-        notice: `(${absPath}${loc}: parse error — prefix count used)`,
-      });
-      skipped++;
-      continue;
+    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
+    let effective: number;
+    let netNewRows: Set<number>;
+    if (netResult.ok) {
+      effective = netResult.rows.length;
+      netNewRows = new Set(netResult.rows.map(n => n - 1));
+    } else {
+      const dr = await density(file.text, lang, rowSet);
+      if (!dr.ok) {
+        files.push({ path: file.path, status: 'declined', reason: `grammar did not load: ${dr.reason}`, stability, applicability });
+        skipped++;
+        continue;
+      }
+      effective = dr.effective;
+      netNewRows = rowSet;
     }
 
     let txt: string;
@@ -220,7 +211,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
       const densityBefore = effective / totalAdded * 100;
       const remappedAfter = buildRemappedRows(ar.rowChanges, rowSet);
       const d2 = await density(ar.fixed, lang, remappedAfter);
-      const densityAfter = d2.total > 0 ? d2.effective / d2.total * 100 : 0;
+      const densityAfter = d2.ok && d2.total > 0 ? d2.effective / d2.total * 100 : 0;
       const shadowBase = caller.shadowDir ?? os.tmpdir();
       try {
         const dir = path.join(shadowBase, 'groundwork-autofix-shadow');

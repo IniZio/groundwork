@@ -226,11 +226,19 @@ describe("Guard: autoFix refuses → input unmodified (return/* c */nil style)",
   let hso: Record<string, unknown>;
 
   beforeAll(async () => {
-    let callN = 0;
     const mockGetParser: GetParserFn = async (lang) => {
-      callN++;
-      if (callN >= 2) return { ok: false as const, reason: "test-refuse" };
-      return realGetParser(lang);
+      const real = await realGetParser(lang);
+      if (!real.ok) return real;
+      const wrappedParser = new Proxy(real.parser, {
+        get(target, prop, receiver) {
+          if (prop === "parse") {
+            return (text: string) =>
+              text === OVER_BUDGET_GO ? target.parse(text) : null;
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      return { ...real, parser: wrappedParser };
     };
     const filePath = path.join(TEMP_DIR, "autofix_refuse.go");
     const r = await check(writePayload(filePath, OVER_BUDGET_GO), {
@@ -243,6 +251,10 @@ describe("Guard: autoFix refuses → input unmodified (return/* c */nil style)",
   it("Guard does not strip when autoFix refuses: no updatedInput", () => {
     expect(hso).not.toHaveProperty("updatedInput");
     expect(typeof hso.additionalContext).toBe("string");
+    expect(hso.additionalContext as string).toContain(
+      "were not stripped — could not map edit automatically",
+    );
+    expect(hso.additionalContext as string).not.toContain("tree-sitter unavailable");
   });
 
   it("Guard output has no fused tokens from return/* c */ pattern", () => {

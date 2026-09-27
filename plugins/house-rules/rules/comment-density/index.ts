@@ -31,6 +31,9 @@ const rule: Rule = {
       const totalAdded = file.addedHunks.reduce((s, h) => s + h.added.length, 0);
       if (totalAdded === 0) continue;
 
+      const sf = ctx.sourceFile ? await ctx.sourceFile(file) : null;
+      if (sf && !sf.ok) continue;
+
       const baseText = file.baseText ?? '';
 
       let effective: number;
@@ -43,6 +46,7 @@ const rule: Rule = {
       } else {
         const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
         const dr = await density(file.text, lang, rowSet);
+        if (!dr.ok) continue;
         effective = dr.effective;
         commentRows = dr.commentRows.map(r => r + 1);
       }

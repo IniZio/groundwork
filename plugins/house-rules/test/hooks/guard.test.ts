@@ -7,6 +7,8 @@ import os from "node:os";
 import { check } from "../../src/hooks/guard.js";
 import { buildCtx } from "../../rules/comment-density/edit-check.js";
 import { reconstructPostEdit, type GetParserFn } from "../../src/hooks/lib/comment-density.js";
+import { grammarFailureWarning } from "../../src/engine/run.js";
+import { getParser as realGetParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
 
@@ -64,6 +66,11 @@ function safeContext(r: { stdout: string }): string | null {
 }
 
 const failParser: GetParserFn = async () => ({ ok: false, reason: "test-loader-failure" });
+
+const failTsFactory: GetParserFn = async (lang) =>
+  lang === "typescript"
+    ? { ok: false as const, reason: "grammar-load-test-stub" }
+    : realGetParser(lang as Parameters<typeof realGetParser>[0]);
 
 describe("comment-density-guard", () => {
 
@@ -250,7 +257,7 @@ describe("comment-density-guard", () => {
     expect(hso).not.toHaveProperty("updatedInput");
   });
 
-  it("AC7: loader unavailable → no updatedInput, advisory contains 'advisory only', stderr line", async () => {
+  it("AC7: loader unavailable → no updatedInput, warning names language and reason, stderr line", async () => {
     const r = await check(
       write("/tmp/cdg-ac7.ts", OVER_CAP_25),
       { getParser: failParser },
@@ -258,10 +265,12 @@ describe("comment-density-guard", () => {
     expect(r.exit).toBe(0);
     const hso = getHso(r);
     expect(hso).not.toHaveProperty("updatedInput");
+    expect(hso).not.toHaveProperty("permissionDecision");
     const ctx = safeContext(r);
     expect(ctx).not.toBeNull();
-    expect(ctx!).toContain("advisory only");
-    expect(r.stderr.trim().length).toBeGreaterThan(0);
+    const expectedWarning = grammarFailureWarning("/tmp/cdg-ac7.ts", "typescript", "test-loader-failure");
+    expect(ctx!).toContain(expectedWarning);
+    expect(r.stderr.trim()).toContain(expectedWarning);
   });
 
   it("AC2: Edit YAML over-budget → guard passes through (yaml is preview; Stop gate enforces)", async () => {
@@ -316,6 +325,41 @@ describe("comment-density-guard", () => {
     const ui = hso.updatedInput as Record<string, unknown>;
     const content = typeof ui.content === "string" ? ui.content : "";
     expect(content).not.toContain("doc line 1");
+  });
+});
+
+describe("grammar-failure-warning", () => {
+  it("ts-only failing factory, over-budget .ts Write → allowed, additionalContext names typescript and reason", async () => {
+    const r = await check(
+      write("/tmp/cdg-gfw-ts.ts", OVER_CAP_25),
+      { getParser: failTsFactory },
+    );
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).not.toHaveProperty("updatedInput");
+    expect(hso).not.toHaveProperty("permissionDecision");
+    const ctx = safeContext(r);
+    expect(ctx).not.toBeNull();
+    const expectedWarning = grammarFailureWarning("/tmp/cdg-gfw-ts.ts", "typescript", "grammar-load-test-stub");
+    expect(ctx!).toContain(expectedWarning);
+    expect(r.stderr.trim()).toContain("typescript");
+    expect(r.stderr.trim()).toContain("grammar-load-test-stub");
+  });
+
+  it("ts-only failing factory, over-budget .go Write → guard rewrites (no warning, density rule ran)", async () => {
+    const goOverCap = [
+      "package main",
+      ...Array.from({ length: 18 }, (_, i) => `\tx${i} := ${i} // note ${i}`),
+    ].join("\n");
+    const r = await check(
+      write("/tmp/cdg-gfw-go.go", goOverCap),
+      { getParser: failTsFactory },
+    );
+    expect(r.exit).toBe(0);
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ctx = safeContext(r);
+    expect(ctx ?? "").not.toContain("grammar did not load");
   });
 });
 

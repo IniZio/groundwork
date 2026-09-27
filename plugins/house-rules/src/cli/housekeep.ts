@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { loadRules } from '../engine/registry.js';
-import { runRules } from '../engine/run.js';
+import { runRules, coverageReport, formatCoverage, grammarWarnings } from '../engine/run.js';
 import type { FindingWithSeverity } from '../engine/run.js';
 import { readBaseline, fingerprint } from '../engine/baseline.js';
 import type { Baseline } from '../engine/baseline.js';
@@ -200,6 +200,12 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
   const { fixed, manual: needsManual } = outcome;
   const fixCount = fixed.length;
 
+  const coverage = await coverageReport(rules, ctx);
+
+  for (const w of grammarWarnings(coverage)) {
+    process.stderr.write(w + '\n');
+  }
+
   const isJson = opts.format === 'json';
 
   // Write scope header to stderr in text mode, after all fallible work, before first stdout write.
@@ -299,10 +305,15 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
       findings: [],
       fixed: fixedFindings,
       manual: [...manualEntries, ...unmatchedEntries],
+      coverage,
     }));
   } else {
+    const coverageLines = formatCoverage(coverage, 'coverage:', '');
+    if (coverageLines.length > 0) {
+      process.stdout.write('\n' + coverageLines.join('\n') + '\n');
+    }
     process.stdout.write(`\n${fixCount} fixed, ${totalNeedsManual} need manual fix\n`);
   }
 
-  process.exit(exitCodeFor(needsManual.map(m => m.finding)));
+  process.exit(exitCodeFor(needsManual.map(m => m.finding), coverage));
 }

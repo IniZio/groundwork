@@ -1,8 +1,26 @@
 import { describe, it, expect } from "bun:test";
 import path from "node:path";
-import { runRules, notCheckedFiles } from "../../src/engine/run.js";
+import {
+  runRules,
+  notCheckedFiles,
+  coverageReport,
+  formatCoverage,
+  grammarFailureWarning,
+  grammarWarnings,
+  EMPTY_COVERAGE,
+} from "../../src/engine/run.js";
 import { loadRules } from "../../src/engine/registry.js";
+import { createSourceFiles } from "../../src/engine/source-file.js";
 import type { Rule, RuleContext, ScopedFile } from "../../src/engine/types.js";
+
+const RULES_DIR = path.resolve(import.meta.dir, "../../rules");
+
+// TypeScript text with a syntax error on row 1 (0-based) = row 2 (1-based)
+const TS_WITH_ERROR = `const x = 1;
+const y = ;
+const z = 3;`;
+
+const TS_CLEAN = `const x = 1;\nconst y = 2;\n`;
 
 // ---------------------------------------------------------------------------
 // notCheckedFiles — with real rules loaded from the rules directory
@@ -11,9 +29,7 @@ import type { Rule, RuleContext, ScopedFile } from "../../src/engine/types.js";
 describe("notCheckedFiles — real rules", () => {
   let rules: Rule[];
 
-  const rulesReady = loadRules(
-    path.resolve(import.meta.dir, "../../rules"),
-  ).then((r) => {
+  const rulesReady = loadRules(RULES_DIR).then((r) => {
     rules = r;
   });
 
@@ -122,5 +138,145 @@ describe("runRules — sourceFile availability by languages", () => {
     };
     await runRules([rule], CTX, {}, []);
     expect(seen).toBe("function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// coverageReport — notChecked
+// ---------------------------------------------------------------------------
+
+describe("coverageReport — notChecked", () => {
+  let rules: Rule[];
+  const rulesReady = loadRules(RULES_DIR).then((r) => { rules = r; });
+
+  it("PRESENT: .kt file with no lang goes to notChecked", async () => {
+    await rulesReady;
+    const ctx: RuleContext = {
+      repoRoot: "/repo",
+      mode: "gate",
+      files: [{ path: "src/App.kt", text: "fun main(){}" }],
+      sourceFile: async () => null,
+    };
+    const cov = await coverageReport(rules, ctx);
+    expect(cov.notChecked).toContain("src/App.kt");
+    expect(cov.partiallyChecked).toEqual([]);
+    expect(cov.failed).toEqual([]);
+  });
+});
+
+describe("coverageReport — partiallyChecked", () => {
+  let rules: Rule[];
+  const rulesReady = loadRules(RULES_DIR).then((r) => { rules = r; });
+
+  it("PRESENT: TS file with syntax error appears in partiallyChecked with 1-based rows", async () => {
+    await rulesReady;
+    const sources = createSourceFiles();
+    const ctx: RuleContext = {
+      repoRoot: "/repo",
+      mode: "gate",
+      files: [{ path: "src/a.ts", lang: "typescript", text: TS_WITH_ERROR }],
+      sourceFile: (f) =>
+        f.lang && f.text !== undefined
+          ? sources.get(f.lang, f.text)
+          : Promise.resolve(null),
+    };
+    const cov = await coverageReport(rules, ctx);
+    // row 1 (0-based) -> 2 (1-based) is the only error row in TS_WITH_ERROR
+    expect(cov.partiallyChecked).toEqual([{ path: "src/a.ts", rows: [2] }]);
+    expect(cov.failed).toEqual([]);
+    sources.dispose();
+  });
+});
+
+describe("coverageReport — failed", () => {
+  let rules: Rule[];
+  const rulesReady = loadRules(RULES_DIR).then((r) => { rules = r; });
+
+  it("PRESENT: factory failing for typescript -> failed entry, no partiallyChecked", async () => {
+    await rulesReady;
+    const ctx: RuleContext = {
+      repoRoot: "/repo",
+      mode: "gate",
+      files: [{ path: "src/a.ts", lang: "typescript", text: TS_WITH_ERROR }],
+      sourceFile: async () => ({ ok: false, reason: "boom" }),
+    };
+    const cov = await coverageReport(rules, ctx);
+    expect(cov.failed).toEqual([
+      { path: "src/a.ts", language: "typescript", reason: "boom" },
+    ]);
+    expect(cov.partiallyChecked).toEqual([]);
+  });
+});
+
+describe("coverageReport — clean file is absent from all lists", () => {
+  let rules: Rule[];
+  const rulesReady = loadRules(RULES_DIR).then((r) => { rules = r; });
+
+  it("ABSENT: clean TS file -> all lists empty", async () => {
+    await rulesReady;
+    const sources = createSourceFiles();
+    const ctx: RuleContext = {
+      repoRoot: "/repo",
+      mode: "gate",
+      files: [{ path: "src/a.ts", lang: "typescript", text: TS_CLEAN }],
+      sourceFile: (f) =>
+        f.lang && f.text !== undefined
+          ? sources.get(f.lang, f.text)
+          : Promise.resolve(null),
+    };
+    const cov = await coverageReport(rules, ctx);
+    expect(cov.notChecked).toEqual([]);
+    expect(cov.partiallyChecked).toEqual([]);
+    expect(cov.failed).toEqual([]);
+    sources.dispose();
+  });
+
+  it("ABSENT: formatCoverage(EMPTY_COVERAGE, ...) returns []", () => {
+    expect(formatCoverage(EMPTY_COVERAGE, "house-rules coverage:", "  ")).toEqual([]);
+  });
+});
+
+describe("formatCoverage — exact strings", () => {
+  it("notChecked-only header is byte-identical to spec", () => {
+    const cov = { notChecked: ["src/App.kt"], partiallyChecked: [], failed: [] };
+    const lines = formatCoverage(cov, "house-rules coverage:", "  ");
+    expect(lines[0]).toBe(
+      "house-rules coverage: files no language adapter recognises were not checked.",
+    );
+    expect(lines[1]).toBe("  not checked: src/App.kt");
+  });
+
+  it("mixed coverage renders three line shapes in order with given indent", () => {
+    const cov = {
+      notChecked: ["src/App.kt"],
+      partiallyChecked: [{ path: "src/a.ts", rows: [2] }],
+      failed: [{ path: "src/b.ts", language: "typescript" as const, reason: "boom" }],
+    };
+    const lines = formatCoverage(cov, "house-rules coverage:", "  ");
+    expect(lines[0]).toBe("house-rules coverage: some changed files were not fully checked.");
+    expect(lines[1]).toBe("  not checked: src/App.kt");
+    expect(lines[2]).toBe("  partially checked: src/a.ts (rows 2)");
+    expect(lines[3]).toBe("  failed: src/b.ts (typescript grammar did not load: boom)");
+  });
+
+  it("grammarFailureWarning exact string", () => {
+    expect(grammarFailureWarning("src/b.ts", "typescript", "boom")).toBe(
+      "house-rules warning: the typescript grammar did not load (boom); src/b.ts was not checked.",
+    );
+  });
+
+  it("grammarWarnings delegates to grammarFailureWarning for each failed entry", () => {
+    const cov = {
+      notChecked: [],
+      partiallyChecked: [],
+      failed: [
+        { path: "src/a.ts", language: "typescript" as const, reason: "boom" },
+        { path: "src/b.go", language: "go" as const, reason: "missing wasm" },
+      ],
+    };
+    expect(grammarWarnings(cov)).toEqual([
+      "house-rules warning: the typescript grammar did not load (boom); src/a.ts was not checked.",
+      "house-rules warning: the go grammar did not load (missing wasm); src/b.go was not checked.",
+    ]);
   });
 });

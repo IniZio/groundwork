@@ -79,15 +79,12 @@ function makeViolatorTs(dir: string, name: string): string {
   return fp;
 }
 
-function makeUnfixableViolatorTs(dir: string, name: string): string {
+
+function makeUnfixableViolatorYaml(dir: string, name: string): string {
   const fp = path.join(dir, name);
-  const lines = [
-    ...Array.from({ length: 20 }, (_, i) =>
-      i % 5 === 0 ? `// reason ${i}` : `const x${i} = ${i};`
-    ),
-    "const broken = ;",
-  ];
-  writeFileSync(fp, lines.join("\n") + "\n");
+  writeFileSync(fp, Array.from({ length: 20 }, (_, i) =>
+    i % 5 === 0 ? `# reason ${i}` : `key${i}: value${i}`
+  ).join("\n") + "\n");
   return fp;
 }
 
@@ -284,7 +281,7 @@ describe("AC5: block limit counter", () => {
     initGitRepo(tmpDir);
     writeFileSync(path.join(tmpDir, ".gitkeep"), "");
     gitCommit(tmpDir, "initial");
-    fp = makeUnfixableViolatorTs(tmpDir, "violator.ts");
+    fp = makeUnfixableViolatorYaml(tmpDir, "violator.yaml");
     const ts = new Date(Date.now() - 10000).toISOString();
     tp = makeTranscript(tmpDir, [fp], ts);
   });
@@ -312,7 +309,7 @@ describe("AC5: block limit counter", () => {
     const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp };
     runGate(payload); runGate(payload); runGate(payload);
 
-    const fp2 = makeUnfixableViolatorTs(tmpDir, "violator2.ts");
+    const fp2 = makeUnfixableViolatorYaml(tmpDir, "violator2.yaml");
     const ts2 = new Date(Date.now() - 10000).toISOString();
     const tp2 = makeTranscript(tmpDir, [fp2], ts2);
     const r = runGate({ hook_event_name: "Stop", session_id: sessionId, transcript_path: tp2 });
@@ -613,7 +610,7 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("block report includes why each file was not auto-fixed (preview lang and autofix failed)", async () => {
+  it("block report includes why each file was not auto-fixed; partially-checked file in coverage", async () => {
     const yamlFp = path.join(tmpDir, "config.yaml");
     writeFileSync(yamlFp,
       Array.from({ length: 20 }, (_, i) =>
@@ -643,7 +640,9 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
     const report = readFileSync(blockFilePath, "utf8");
 
     expect(report).toMatch(/config\.yaml[^\n]*—[^\n]*preview language/);
-    expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*autofix failed: post-strip parse: parse-error/);
+    expect(report).not.toMatch(/broken\.ts[^\n]*—[^\n]*autofix failed/);
+    expect(report).toContain("partially checked:");
+    expect(report).toContain("broken.ts");
   });
 
   it("block report includes write-failed reason with cause when disk changes mid-write", async () => {
@@ -686,7 +685,7 @@ describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
 
   it("unfixable file blocks; fixable file auto-fixed; unfixable unchanged", () => {
     const fixable = makeViolatorTs(tmpDir, "fix.ts");
-    const unfixable = makeUnfixableViolatorTs(tmpDir, "nofix.ts");
+    const unfixable = makeUnfixableViolatorYaml(tmpDir, "nofix.yaml");
     const fixableHashBefore = sha256(fixable);
     const unfixableHashBefore = sha256(unfixable);
     const ts = new Date(Date.now() - 10000).toISOString();
@@ -694,7 +693,7 @@ describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
     const r = runGate({ hook_event_name: "Stop", session_id: `ac13-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("nofix.ts");
+    expect(out.reason as string).toContain("nofix.yaml");
     expect(sha256(fixable)).not.toBe(fixableHashBefore);
     expect(sha256(unfixable)).toBe(unfixableHashBefore);
   });
@@ -856,7 +855,7 @@ describe("ConcurrentWrite: concurrent modification aborts rename; gate blocks; n
   });
 });
 
-describe("AutoFixOkFalse: ok:false from autoFix → unfixable → block path", () => {
+describe("AutoFixOkFalse: preview-lang violator → gate blocks; file unchanged", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -868,8 +867,8 @@ describe("AutoFixOkFalse: ok:false from autoFix → unfixable → block path", (
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("unfixable violator with autoFixEnabled=true → gate blocks; file unchanged", async () => {
-    const fp = makeUnfixableViolatorTs(tmpDir, "badparse.ts");
+  it("preview-lang violator → gate declines write → blocks; file unchanged", async () => {
+    const fp = makeUnfixableViolatorYaml(tmpDir, "badparse.yaml");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
@@ -877,7 +876,7 @@ describe("AutoFixOkFalse: ok:false from autoFix → unfixable → block path", (
     const r = await run(
       { hook_event_name: "Stop", session_id: `okfalse-${Date.now()}`, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_forceWrite: true },
+      {},
     );
 
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
@@ -1141,7 +1140,7 @@ describe("AC9: dogfood — gate and test files ≤5/100", () => {
     if (!lang) return 0;
     const allRows = new Set(text.split("\n").map((_, i) => i));
     const result = await density(text, lang, allRows);
-    return result.total > 0 ? result.effective / result.total * 100 : 0;
+    return result.ok && result.total > 0 ? result.effective / result.total * 100 : 0;
   }
 
   it("gate file is ≤5/100", async () => {

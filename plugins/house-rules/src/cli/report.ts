@@ -1,5 +1,7 @@
 import type { Scope } from './scope.js';
 import { EMPTY_TREE } from './scope.js';
+import type { Coverage } from '../engine/run.js';
+import { EMPTY_COVERAGE } from '../engine/run.js';
 
 export type OutputFormat = 'text' | 'json';
 
@@ -21,7 +23,7 @@ export interface Report {
   fixed: ReportFinding[];
   manual: ManualEntry[];
   summary: { fixed: number; manual: number; findings: number };
-  coverage: { notChecked: string[] };
+  coverage: Coverage;
 }
 
 /** Returns 'all' when scope is all-mode against the empty tree, else the commit ref. */
@@ -59,25 +61,20 @@ export function toReportFinding(f: {
 /** Assemble a Report; missing arrays default to []; scope.base shows display form. */
 export function buildReport(
   scope: Scope,
-  parts: { findings?: ReportFinding[]; fixed?: ReportFinding[]; manual?: ManualEntry[]; notChecked?: string[] },
+  parts: { findings?: ReportFinding[]; fixed?: ReportFinding[]; manual?: ManualEntry[]; coverage?: Coverage },
 ): Report {
   const findings = parts.findings ?? [];
   const fixed = parts.fixed ?? [];
   const manual = parts.manual ?? [];
-  const notChecked = parts.notChecked ?? [];
+  const coverage = parts.coverage ?? EMPTY_COVERAGE;
   return {
     scope: { base: displayBase(scope), mode: scope.mode, files: scope.files.length },
     findings,
     fixed,
     manual,
     summary: { fixed: fixed.length, manual: manual.length, findings: findings.length },
-    coverage: { notChecked },
+    coverage,
   };
-}
-
-/** Returns `not checked: <path>` per path; empty array when paths is empty. */
-export function formatNotCheckedLines(paths: string[]): string[] {
-  return paths.map(p => `not checked: ${p}`);
 }
 
 /** Write exactly one JSON line to stdout. */
@@ -97,7 +94,7 @@ export function formatFindingLine(f: {
     : `${f.path} ${f.ruleId} ${f.message}`;
 }
 
-/** Exit code 1 iff any remaining finding has severity 'error'. */
-export function exitCodeFor(remaining: Array<{ severity: string }>): 0 | 1 {
-  return remaining.some(r => r.severity === 'error') ? 1 : 0;
+/** Exit code 1 iff any remaining finding has severity 'error' or coverage has failed grammars. */
+export function exitCodeFor(remaining: Array<{ severity: string }>, coverage?: Coverage): 0 | 1 {
+  return remaining.some(r => r.severity === 'error') || (coverage != null && coverage.failed.length > 0) ? 1 : 0;
 }

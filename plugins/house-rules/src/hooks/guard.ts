@@ -26,7 +26,7 @@ import { removedTextsFor, normalizeCommentText } from "./lib/autofix-ledger.js";
 import { loadRules } from "../engine/registry.js";
 import { runRules, isBlocking } from "../engine/run.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
-import { LANG_FIX_TABLE } from "./gate.js";
+import { fixEntryFor } from "../../rules/comment-density/languages.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -433,8 +433,8 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const readdCtx = readdLines.length > 0 ? readdLines.join("\n") : null;
 
     // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
-    const fixEntry = LANG_FIX_TABLE[lang as Language];
-    const isStableAndSafe = !!fixEntry && fixEntry.stability === "stable" && fixEntry.applicability === "safe";
+    const fixEntry = fixEntryFor(lang as Language);
+    const isStableAndSafe = fixEntry.stability === "stable" && fixEntry.applicability === "safe";
     if (!isStableAndSafe) {
       if (readdCtx) return advisory(readdCtx);
       return allow();

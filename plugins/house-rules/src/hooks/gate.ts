@@ -18,27 +18,10 @@ import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 import { appendFix } from './lib/autofix-ledger.js';
+import { fixEntryFor, type FixEntry } from '../../rules/comment-density/languages.js';
 
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
-
-export type FixStability = "preview" | "stable";
-export type FixApplicability = "safe" | "unsafe";
-export interface FixEntry { stability: FixStability; applicability: FixApplicability }
-
-export const LANG_FIX_TABLE: Record<Language, FixEntry> = {
-  bash: { stability: "preview", applicability: "safe" },
-  yaml: { stability: "preview", applicability: "safe" },
-  typescript: { stability: "stable", applicability: "safe" },
-  tsx: { stability: "preview", applicability: "safe" },
-  python: { stability: "preview", applicability: "safe" },
-  dockerfile: { stability: "preview", applicability: "safe" },
-  go: { stability: "stable", applicability: "safe" },
-  rust: { stability: "preview", applicability: "safe" },
-  sql: { stability: "preview", applicability: "safe" },
-  make: { stability: "preview", applicability: "safe" },
-  toml: { stability: "preview", applicability: "safe" },
-};
 
 function allow(): HookResult { return { stdout: JSON.stringify({ continue: true }) + "\n", stderr: "", exit: 0 }; }
 function silentAllow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
@@ -276,7 +259,7 @@ export async function run(
     const unfixable: ViolatingFile[] = [];
 
     for (const v of violations) {
-      const tableEntry = LANG_FIX_TABLE[v.lang];
+      const tableEntry = fixEntryFor(v.lang);
       const override = opts?.testOnly_fixTableOverride?.[v.lang];
       const entry: FixEntry = override ? { ...tableEntry, ...override } : tableEntry;
       const shouldWrite = opts?.testOnly_forceWrite === true || (entry.stability === "stable" && entry.applicability === "safe");

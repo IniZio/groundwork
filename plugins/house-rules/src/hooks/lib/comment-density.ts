@@ -5,6 +5,7 @@ import type { Language } from "../languages/registry.js";
 import { isCommentNode, parseText, classifyComments } from "../languages/parse.js";
 import type { ClassifiedComment } from "../languages/comments.js";
 import { commentInnerText as stripMarkers, isWholeLine } from "../languages/comments.js";
+import { languageHookFor } from "../../../rules/comment-density/languages.js";
 
 export interface Comment {
   startIndex: number;
@@ -36,10 +37,10 @@ const ESLINT_RE = /^eslint-(?:disable|enable)/;
 const PRETTIER_RE = /^prettier-ignore/;
 const BIOME_RE = /^biome-ignore/;
 const REGION_RE = /^#?(?:region|endregion)/i;
-const URL_RE = /^https?:\/\/\S+$/;
+export const URL_RE = /^https?:\/\/\S+$/;
 const DIVIDER_RE = /^(?:[─-╿━═]{2,}|[-=#*~_]{4,})$/u;
 // go/doc treats any [A-Z]{2,}(uid): as a note marker (TODO, BUG, FIXME, NOTE, XXX, HACK…)
-const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
+export const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
 const SHELLCHECK_RE = /^shellcheck\b/;
 const NOQA_RE = /^noqa\b/;
 const TYPE_IGNORE_RE = /^type:\s*ignore/;
@@ -426,133 +427,6 @@ export function stripComments(text: string, comments: Comment[]): { text: string
   return { text: result, rowChanges };
 }
 
-function normalizeGoInlineArtifacts(fixed: string, rowChanges: RowChange[]): string {
-  const modifiedRows = rowChanges.filter(rc => rc.kind === "modified");
-  if (modifiedRows.length === 0) return fixed;
-
-  const deletedOrigRows = rowChanges
-    .filter(rc => rc.kind === "deleted")
-    .map(rc => rc.origRow)
-    .sort((a, b) => a - b);
-
-  function deletedBefore(origRow: number): number {
-    let lo = 0, hi = deletedOrigRows.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (deletedOrigRows[mid] < origRow) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  function repairLine(orig: string, fix: string): string {
-    const out: string[] = [];
-    let oi = 0, fi = 0;
-    while (fi < fix.length) {
-      if (oi < orig.length && orig[oi] === fix[fi]) {
-        out.push(fix[fi]); oi++; fi++; continue;
-      }
-      if (oi >= orig.length) { out.push(fix[fi]); fi++; continue; }
-
-      // At a divergence: only advance orig past whitespace or comment spans.
-      if (orig[oi] === " " || orig[oi] === "\t") { oi++; continue; }
-
-      if (orig[oi] === "/" && oi + 1 < orig.length && orig[oi + 1] === "*") {
-        oi += 2;
-        while (oi + 1 < orig.length && !(orig[oi] === "*" && orig[oi + 1] === "/")) oi++;
-        oi = Math.min(oi + 2, orig.length);
-        let peek = fi;
-        while (peek < fix.length && (fix[peek] === " " || fix[peek] === "\t")) peek++;
-        const nxt = peek < fix.length ? fix[peek] : "";
-        if (nxt === "," || nxt === ")") {
-          fi = peek;
-          while (out.length > 0 && out[out.length - 1] === " ") out.pop();
-        } else if (nxt === "}") {
-          let k = out.length - 1;
-          while (k >= 0 && out[k] === " ") k--;
-          if (k >= 0 && out[k] === "{") { out.splice(k + 1); fi = peek; }
-        }
-        continue;
-      }
-
-      if (orig[oi] === "/" && oi + 1 < orig.length && orig[oi + 1] === "/") {
-        oi = orig.length; continue;
-      }
-
-      return fix.replace(/\s+$/, "");
-    }
-    return out.join("").replace(/\s+$/, "");
-  }
-
-  const lines = fixed.split("\n");
-  for (const rc of modifiedRows) {
-    const newIdx = rc.origRow - deletedBefore(rc.origRow);
-    if (newIdx < 0 || newIdx >= lines.length) continue;
-    lines[newIdx] = repairLine(rc.origText ?? "", lines[newIdx]);
-  }
-
-  return lines.join("\n");
-}
-
-function normalizeGoRemovalWhitespace(
-  origText: string,
-  fixed: string,
-  rowChanges: RowChange[],
-): string {
-  const deletedOrigRows = rowChanges
-    .filter(rc => rc.kind === "deleted")
-    .map(rc => rc.origRow)
-    .sort((a, b) => a - b);
-  if (deletedOrigRows.length === 0) return fixed;
-
-  const origLines = origText.split("\n");
-  const isBlank = (s: string | undefined) => (s ?? "").trim() === "";
-
-  function deletedBefore(origRow: number): number {
-    let lo = 0, hi = deletedOrigRows.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (deletedOrigRows[mid] < origRow) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  const collapseSites = new Set<number>();
-
-  let i = 0;
-  while (i < deletedOrigRows.length) {
-    const lo = deletedOrigRows[i];
-    let hi = lo;
-    while (i + 1 < deletedOrigRows.length && deletedOrigRows[i + 1] === hi + 1) {
-      i++;
-      hi = deletedOrigRows[i];
-    }
-    const beforeBlank = lo > 0 && isBlank(origLines[lo - 1]);
-    const afterBlank = isBlank(origLines[hi + 1]);
-    if (beforeBlank && afterBlank) {
-      const db = deletedBefore(lo);
-      const clusterSize = hi - lo + 1;
-      const finalAfter = hi + 1 - (db + clusterSize);
-      collapseSites.add(finalAfter);
-    }
-    i++;
-  }
-
-  if (collapseSites.size === 0) return fixed;
-
-  const fixedLines = fixed.split("\n");
-  const result: string[] = [];
-  for (let j = 0; j < fixedLines.length; j++) {
-    const blank = fixedLines[j].trim() === "";
-    const prevBlank = result.length > 0 && result[result.length - 1].trim() === "";
-    if (blank && prevBlank && collapseSites.has(j)) continue;
-    result.push(fixedLines[j]);
-  }
-  return result.join("\n");
-}
-
-
 const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
 const FALLBACK_URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
 const FALLBACK_ESLINT_RE = /^\s*\/\/\s*eslint-(?:disable|enable)/;
@@ -799,7 +673,7 @@ export async function netNewCommentRows(
   return { ok: true, rows: allUnpaired, added: totalAdded, removed: totalRemoved };
 }
 
-function isExemptProse(c: Comment): boolean {
+export function isExemptProse(c: Comment): boolean {
   return c.exempt && URL_RE.test(stripMarkers(c.text));
 }
 
@@ -824,72 +698,13 @@ function wholeLineRuns(comments: Comment[], text: string): Comment[][] {
   return groups;
 }
 
-function commentGroups(comments: Comment[], groupOf: Map<number, number | null>): Comment[][] {
-  const withGroup = comments
-    .filter(c => (groupOf.get(c.startIndex) ?? null) !== null)
-    .sort((a, b) => a.startRow - b.startRow);
-  const groups: Comment[][] = [];
-  let cur: Comment[] = [];
-  let curGroupId: number | null = null;
-  for (const c of withGroup) {
-    const gid = groupOf.get(c.startIndex) ?? null;
-    const prev = cur.length > 0 ? cur[cur.length - 1] : null;
-    if (cur.length === 0 || gid !== curGroupId || (prev !== null && c.startRow !== prev.endRow + 1)) {
-      if (cur.length > 0) groups.push(cur);
-      cur = [c];
-      curGroupId = gid;
-    } else {
-      cur.push(c);
-    }
-  }
-  if (cur.length > 0) groups.push(cur);
-  return groups;
-}
-
-function goNoteContSet(
-  candidates: Comment[],
-  groups: Comment[][],
-): Set<number> {
-  const candSet = new Set(candidates.map(c => c.startIndex));
-  const result = new Set<number>();
-  for (const group of groups) {
-    let inNote = false;
-    for (const c of group) {
-      if (c.exempt && NOTE_MARKER_RE.test(stripMarkers(c.text))) {
-        inNote = true;
-        continue;
-      }
-      if (c.exempt) {
-        if (c.exemptReason !== "divider" && c.exemptReason !== "spacer") inNote = false;
-        continue;
-      }
-      if (inNote && candSet.has(c.startIndex)) {
-        result.add(c.startIndex);
-      }
-    }
-  }
-  return result;
-}
-
 function paragraphProtectedSet(
   candidates: Comment[],
   allComments: Comment[],
   text: string,
-  lang?: Language,
-  goGroups?: Comment[][],
 ): Set<number> {
   const candIndices = new Set(candidates.map(c => c.startIndex));
   const result = new Set<number>();
-
-  if (lang === "go") {
-    for (const group of (goGroups ?? [])) {
-      if (!group.some(c => isExemptProse(c))) continue;
-      for (const c of group) {
-        if (candIndices.has(c.startIndex)) result.add(c.startIndex);
-      }
-    }
-    return result;
-  }
 
   const allSlash: Comment[] = [];
   for (const c of allComments) {
@@ -1044,36 +859,19 @@ export async function autoFix(
     }
   }
 
-  const goGroups = lang === "go" ? commentGroups(origParsed.comments, groupOf) : [];
-  let protectedIndices = paragraphProtectedSet(candidates, origParsed.comments, text, lang, goGroups);
-  if (lang === "go") {
-    const noteCont = goNoteContSet(candidates, goGroups);
-    if (noteCont.size > 0) protectedIndices = new Set([...protectedIndices, ...noteCont]);
-  }
+  const hook = languageHookFor(lang);
+  const grouping = hook.removalGrouping;
+  const groups = grouping ? grouping.groups(origParsed.comments, groupOf, text) : wholeLineRuns(origParsed.comments, text);
+  const protectedIndices = grouping
+    ? grouping.protectedCandidates(candidates, groups)
+    : paragraphProtectedSet(candidates, origParsed.comments, text);
   const protectedCands = candidates.filter(c => protectedIndices.has(c.startIndex));
   const removableCands = candidates.filter(c => !protectedIndices.has(c.startIndex));
   const protectedRowCount = protectedCands.reduce((s, c) => s + commentRowCount(c), 0);
 
   const units: Comment[][] = [];
-  if (lang === "go") {
-    const groups = goGroups;
-    const removableSet = new Set(removableCands.map(c => c.startIndex));
-    const inGoGroup = new Set<number>();
-    const orderedUnits: Array<{ startRow: number; comments: Comment[] }> = [];
-    for (const group of groups) {
-      const groupCands = group.filter(c => removableSet.has(c.startIndex));
-      if (groupCands.length > 0) {
-        orderedUnits.push({ startRow: groupCands[0].startRow, comments: groupCands });
-        for (const c of groupCands) inGoGroup.add(c.startIndex);
-      }
-    }
-    for (const c of removableCands) {
-      if (!inGoGroup.has(c.startIndex)) {
-        orderedUnits.push({ startRow: c.startRow, comments: [c] });
-      }
-    }
-    orderedUnits.sort((a, b) => a.startRow - b.startRow);
-    for (const u of orderedUnits) units.push(u.comments);
+  if (grouping) {
+    units.push(...grouping.units(removableCands, groups));
   } else {
     const wholeLineHeads = new Set<Comment>();
     for (const c of removableCands) {
@@ -1131,20 +929,16 @@ export async function autoFix(
   const toRemoveFinal = extendRemovalWithDividers(
     toRemove,
     origParsed.comments,
-    lang === "go" ? goGroups : wholeLineRuns(origParsed.comments, text),
+    groups,
     addedRows,
     text,
   );
   const stripped = stripComments(text, toRemoveFinal);
   const { rowChanges } = stripped;
 
-  let fixed: string;
-  if (lang === "go") {
-    const afterArtifacts = normalizeGoInlineArtifacts(stripped.text, rowChanges);
-    fixed = normalizeGoRemovalWhitespace(text, afterArtifacts, rowChanges);
-  } else {
-    fixed = stripped.text;
-  }
+  const fixed = hook.repairAfterStrip
+    ? hook.repairAfterStrip(text, stripped.text, rowChanges)
+    : stripped.text;
 
   const fp = await findComments(fixed, lang, getParser);
   if (!fp.ok) return { ok: false, reason: `post-strip parse: ${fp.reason}` };

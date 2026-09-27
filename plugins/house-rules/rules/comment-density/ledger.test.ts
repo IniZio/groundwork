@@ -233,7 +233,7 @@ describe('comment-density housekeep fix ledger', () => {
   });
 
   it('records nothing for a file type not eligible for stable autofix (canFixPath=false)', () => {
-    // Python has stability:preview in LANG_FIX_TABLE → canFixPath returns false → fix skips
+    // Python has no entry in the comment-density hook table → preview → canFixPath returns false → fix skips
     const repoDir = mktemp();
     const ledgerDir = mktemp();
     const baseSha = initRepo(repoDir);

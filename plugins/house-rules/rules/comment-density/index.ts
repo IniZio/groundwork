@@ -3,7 +3,8 @@ import path from 'node:path';
 import type { Rule, RuleContext, Finding, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
 import { netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
 import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.js';
-import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
+import { refusesPreExistingRemoval } from '../../src/hooks/gate.js';
+import { fixEntryFor } from './languages.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
 import { appendFix } from '../../src/hooks/lib/autofix-ledger.js';
 
@@ -22,8 +23,8 @@ const rule: Rule = {
   canFixPath(filePath: string): boolean {
     const lang = languageForPath(filePath);
     if (!lang) return false;
-    const entry = LANG_FIX_TABLE[lang];
-    return !!entry && entry.stability === 'stable' && entry.applicability === 'safe';
+    const entry = fixEntryFor(lang);
+    return entry.stability === 'stable' && entry.applicability === 'safe';
   },
 
   async check(ctx: RuleContext): Promise<Finding[]> {
@@ -96,10 +97,7 @@ const rule: Rule = {
       if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
       if (!rule.canFixPath!(file.path)) {
-        const entry = LANG_FIX_TABLE[lang as keyof typeof LANG_FIX_TABLE];
-        const reason = entry
-          ? `autofix not enabled for ${lang} (${entry.stability})`
-          : `autofix not enabled for ${lang}`;
+        const reason = `autofix not enabled for ${lang} (${fixEntryFor(lang).stability})`;
         decline(file.path, reason);
         continue;
       }

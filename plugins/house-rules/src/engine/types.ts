@@ -36,17 +36,22 @@ export interface RuleContext {
   files?: ScopedFile[];
 }
 
-export interface FixResult {
-  fixed: number;
-  skipped: number;
+export interface FixFileResult {
+  path: string;
+  status: 'fixed' | 'declined';
+  reason?: string;
+  before?: string;
+  after?: string;
 }
+export interface FixOptions { write?: boolean }
+export interface FixResult { fixed: number; skipped: number; files: FixFileResult[] }
 
 export interface Rule {
   id: string;
   meta: { description: string };
   vehicles: Vehicle[];
   check(ctx: RuleContext): Finding[] | Promise<Finding[]>;
-  fix?(ctx: RuleContext): Promise<FixResult>;
+  fix?(ctx: RuleContext, opts?: FixOptions): Promise<FixResult>;
   canFixPath?(path: string): boolean;
 }
 

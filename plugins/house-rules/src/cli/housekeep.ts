@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { loadRules } from '../engine/registry.js';
 import { buildContext } from '../engine/context.js';
 import { runRules } from '../engine/run.js';
@@ -19,6 +20,7 @@ export interface HousekeepOpts {
   baselineMode?: boolean;
   max?: number;
   dryRun?: boolean;
+  diff?: boolean;
   repo?: string;
   rulesDir?: string;
   baselineFile?: string;
@@ -52,6 +54,50 @@ function buildAllTrackedContext(repoRoot: string, since?: string): RuleContext {
 
 function subsetContext(ctx: RuleContext, relPath: string): RuleContext {
   return { ...ctx, files: (ctx.files ?? []).filter(f => f.path === relPath) };
+}
+
+/** Print a git-style unified diff for fixed entries that have before/after content. */
+function printDiff(fixed: Array<{ finding: Finding; before?: string; after?: string }>): void {
+  const entries = fixed.filter(e => e.before !== undefined && e.after !== undefined && e.before !== e.after);
+  if (entries.length === 0) return;
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hr-diff-'));
+  try {
+    for (const { finding, before, after } of entries) {
+      const beforeFile = path.join(tmpDir, 'before');
+      const afterFile = path.join(tmpDir, 'after');
+      fs.writeFileSync(beforeFile, before!, 'utf8');
+      fs.writeFileSync(afterFile, after!, 'utf8');
+
+      const diffResult = spawnSync('git', [
+        'diff', '--no-index', '--no-color', '--no-ext-diff',
+        beforeFile, afterFile,
+      ], { encoding: 'utf8' });
+
+      const p = finding.path;
+      const lines = diffResult.stdout.split('\n');
+      const rewritten: string[] = [];
+      let inHeader = true;
+      for (const line of lines) {
+        if (line.startsWith('@@')) inHeader = false;
+        // Only header lines are rewritten: a removed "-- x" SQL comment appears as "--- x" inside a hunk.
+        if (!inHeader) { rewritten.push(line); continue; }
+        if (line.startsWith('index ')) continue;
+        if (line.startsWith('diff --git ')) {
+          rewritten.push(`diff --git a/${p} b/${p}`);
+        } else if (line.startsWith('--- ')) {
+          rewritten.push(`--- a/${p}`);
+        } else if (line.startsWith('+++ ')) {
+          rewritten.push(`+++ b/${p}`);
+        } else {
+          rewritten.push(line);
+        }
+      }
+      process.stdout.write(rewritten.join('\n'));
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
@@ -99,8 +145,8 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     );
   }
 
-  const fixed: Finding[] = [];
-  const needsManual: Finding[] = [];
+  const fixed: Array<{ finding: Finding; before?: string; after?: string }> = [];
+  const needsManual: Array<{ finding: Finding; reason: string }> = [];
   let fixCount = 0;
 
   for (const finding of findings) {
@@ -108,45 +154,61 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     const policyEntry = effectivePolicy[finding.ruleId];
     const canFix = rule?.fix !== undefined && policyEntry?.autofix === true;
 
-    if (canFix && (opts.max === undefined || fixCount < opts.max)) {
-      if (!opts.dryRun) {
-        const subCtx = subsetContext(ctx, finding.path);
-        const result = await rule!.fix!(subCtx);
-        if (result.fixed > 0) {
-          fixCount++;
-          fixed.push(finding);
-        } else {
-          needsManual.push(finding);
-        }
+    if (!canFix) {
+      const reason = policyEntry?.autofix !== true
+        ? 'autofix disabled by policy'
+        : 'rule has no autofix';
+      needsManual.push({ finding, reason });
+      continue;
+    }
+
+    if (opts.max !== undefined && fixCount >= opts.max) {
+      needsManual.push({ finding, reason: '--max limit reached' });
+      continue;
+    }
+
+    const subCtx = subsetContext(ctx, finding.path);
+    // Both dry-run and real mode run the actual fix; write:false suppresses disk writes and ledger appends.
+    const result = await rule!.fix!(subCtx, { write: !opts.dryRun });
+
+    const fileResult = result.files?.find(f => f.path === finding.path);
+    if (fileResult) {
+      if (fileResult.status === 'fixed') {
+        fixCount++;
+        fixed.push({ finding, before: fileResult.before, after: fileResult.after });
       } else {
-        if (rule.canFixPath?.(finding.path) ?? true) {
-          fixCount++;
-          fixed.push(finding);
-        } else {
-          needsManual.push(finding);
-        }
+        needsManual.push({ finding, reason: fileResult.reason ?? 'rule declined (no reason reported)' });
       }
     } else {
-      needsManual.push(finding);
+      if (result.fixed > 0) {
+        fixCount++;
+        fixed.push({ finding });
+      } else {
+        needsManual.push({ finding, reason: 'rule declined (no reason reported)' });
+      }
     }
   }
 
   if (fixed.length > 0) {
     process.stdout.write(`\nFixed (${fixed.length}):\n`);
-    for (const f of fixed) {
+    for (const { finding } of fixed) {
       const prefix = opts.dryRun ? '  [dry-run] ' : '  ';
-      process.stdout.write(`${prefix}${f.path} ${f.ruleId} ${f.message}\n`);
+      process.stdout.write(`${prefix}${finding.path} ${finding.ruleId} ${finding.message}\n`);
     }
+  }
+
+  if (opts.diff) {
+    printDiff(fixed);
   }
 
   const totalNeedsManual = needsManual.length + unmatchedBaselineEntries.length;
   if (totalNeedsManual > 0) {
     process.stdout.write(`\nNeeds manual fix (${totalNeedsManual}):\n`);
-    for (const f of needsManual) {
-      process.stdout.write(`  ${f.path} ${f.ruleId} ${f.message}\n`);
+    for (const { finding, reason } of needsManual) {
+      process.stdout.write(`  ${finding.path} ${finding.ruleId} ${finding.message} — ${reason}\n`);
     }
     for (const e of unmatchedBaselineEntries) {
-      process.stdout.write(`  ${e.path} ${e.rule} (baseline entry, no matching violation found)\n`);
+      process.stdout.write(`  ${e.path} ${e.rule} — baseline entry, no matching violation found\n`);
     }
   }
 

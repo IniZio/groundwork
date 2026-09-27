@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Rule, RuleContext, Finding, FixResult } from '../../src/engine/types.js';
+import type { Rule, RuleContext, Finding, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
 import { detectLanguage, netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
 import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
@@ -75,16 +75,32 @@ const rule: Rule = {
     return findings;
   },
 
-  async fix(ctx: RuleContext): Promise<FixResult> {
+  async fix(ctx: RuleContext, opts?: FixOptions): Promise<FixResult> {
     let fixed = 0;
     let skipped = 0;
+    const files: FixFileResult[] = [];
+
+    const doWrite = opts?.write !== false;
+
+    function decline(filePath: string, reason: string): void {
+      files.push({ path: filePath, status: 'declined', reason });
+      skipped++;
+    }
 
     for (const file of ctx.files ?? []) {
-      if (!file.addedHunks || !file.text) { skipped++; continue; }
+      if (!file.addedHunks || !file.text) { decline(file.path, 'no added lines'); continue; }
 
-      if (!rule.canFixPath!(file.path)) { skipped++; continue; }
+      const lang = detectLanguage(file.path);
+      if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
-      const lang = detectLanguage(file.path)!;
+      if (!rule.canFixPath!(file.path)) {
+        const entry = LANG_FIX_TABLE[lang as keyof typeof LANG_FIX_TABLE];
+        const reason = entry
+          ? `autofix not enabled for ${lang} (${entry.stability})`
+          : `autofix not enabled for ${lang}`;
+        decline(file.path, reason);
+        continue;
+      }
 
       const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
       const baseText = file.baseText ?? '';
@@ -92,41 +108,45 @@ const rule: Rule = {
       const netNewRows0 = netResult.ok ? new Set(netResult.rows.map(n => n - 1)) : rowSet;
 
       const ar = await autoFix(file.text, lang, rowSet, undefined, netNewRows0);
-      if (!ar.ok || ar.removed === 0) { skipped++; continue; }
+      if (!ar.ok) { decline(file.path, `autofix failed: ${ar.reason}`); continue; }
+      if (ar.removed === 0) { decline(file.path, 'no removable comments'); continue; }
 
       const removedCheck = ar.rowChanges.map(rc => ({ preExisting: !rowSet.has(rc.origRow) }));
-      if (refusesPreExistingRemoval(removedCheck)) { skipped++; continue; }
+      if (refusesPreExistingRemoval(removedCheck)) { decline(file.path, 'fix would remove pre-existing comments'); continue; }
 
       const absPath = path.join(ctx.repoRoot, file.path);
       let diskText: string;
-      try { diskText = readFileSync(absPath, 'utf8'); } catch { skipped++; continue; }
+      try { diskText = readFileSync(absPath, 'utf8'); } catch { decline(file.path, 'file read error'); continue; }
 
-      if (diskText !== file.text) { skipped++; continue; }
+      if (diskText !== file.text) { decline(file.path, 'file changed on disk since scan'); continue; }
 
       const origHash = sha256(diskText);
       const content = normalizeTrailingNewline(ar.fixed, diskText.endsWith('\n'));
 
-      const wr = atomicWrite(absPath, content, origHash);
-      if (!wr.ok) {
-        process.stderr.write(`comment-density rule: ${wr.reason}\n`);
-        skipped++;
-        continue;
+      if (doWrite) {
+        const wr = atomicWrite(absPath, content, origHash);
+        if (!wr.ok) {
+          process.stderr.write(`comment-density rule: ${wr.reason}\n`);
+          decline(file.path, `write failed: ${wr.reason}`);
+          continue;
+        }
+
+        const removed = ar.removedTexts;
+        const n = removed.length;
+        appendFix({
+          file: absPath,
+          fixedContent: content,
+          removed,
+          reason: `comment-density: housekeep --fix removed ${n} over-budget comment(s)`,
+          source: 'housekeep',
+        });
       }
 
-      const removed = ar.removedTexts;
-      const n = removed.length;
-      appendFix({
-        file: absPath,
-        fixedContent: content,
-        removed,
-        reason: `comment-density: housekeep --fix removed ${n} over-budget comment(s)`,
-        source: 'housekeep',
-      });
-
+      files.push({ path: file.path, status: 'fixed', before: diskText, after: content });
       fixed++;
     }
 
-    return { fixed, skipped };
+    return { fixed, skipped, files };
   },
 };
 

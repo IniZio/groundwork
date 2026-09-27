@@ -37,16 +37,21 @@ const rule = {
     }
     return findings;
   },
-  async fix(ctx) {
+  async fix(ctx, opts) {
     let fixed = 0;
+    const files = [];
     for (const f of (ctx.files ?? [])) {
       if (f.text && f.text.includes('FIX_ME')) {
-        const newText = f.text.replace(/FIX_ME/g, 'FIXED');
-        fs.writeFileSync(path.join(ctx.repoRoot, f.path), newText, 'utf8');
+        const before = f.text;
+        const after = f.text.replace(/FIX_ME/g, 'FIXED');
+        if (opts?.write !== false) {
+          fs.writeFileSync(path.join(ctx.repoRoot, f.path), after, 'utf8');
+        }
+        files.push({ path: f.path, status: 'fixed', before, after });
         fixed++;
       }
     }
-    return { fixed, skipped: 0 };
+    return { fixed, skipped: 0, files };
   }
 };
 
@@ -153,6 +158,7 @@ describe('housekeep', () => {
 
     expect(output).toContain('Fixed (1)');
     expect(output).toContain('Needs manual fix (1)');
+    expect(output).toContain('nonfixable.ts stub-nonfixable contains NO_FIX — autofix disabled by policy');
     expect(output).toContain('1 fixed, 1 need manual fix');
   });
 
@@ -247,37 +253,46 @@ describe('housekeep', () => {
     expect(output).toContain('1 fixed');
   });
 
-  test('dry-run: canFixPath=false routes to needs-manual, canFixPath=true routes to fixed', async () => {
+  test('dry-run: fix declining blocked.ts routes to needs-manual, fix accepting fixable.ts routes to fixed', async () => {
     const repoDir = makeTempRepo();
     tmpRepos.push(repoDir);
 
-    const rulesDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-canfix-'));
+    const rulesDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-decline-'));
     tmpRepos.push(rulesDir2);
-    const rDir = path.join(rulesDir2, 'stub-canfix');
+    const rDir = path.join(rulesDir2, 'stub-decline');
     fs.mkdirSync(rDir);
     fs.writeFileSync(path.join(rDir, 'index.js'), `
 import fs from 'node:fs'; import path from 'node:path';
 const rule = {
-  id: 'stub-canfix', meta: { description: 'stub' }, vehicles: ['diff'],
+  id: 'stub-decline', meta: { description: 'stub' }, vehicles: ['diff'],
   check(ctx) {
     return (ctx.files ?? []).filter(f => f.text?.includes('FIX_ME'))
-      .map(f => ({ ruleId: 'stub-canfix', path: f.path, message: 'hit', fingerprintBasis: f.path }));
+      .map(f => ({ ruleId: 'stub-decline', path: f.path, message: 'hit', fingerprintBasis: f.path }));
   },
-  async fix(ctx) {
+  async fix(ctx, opts) {
+    const files = [];
     let fixed = 0;
     for (const f of (ctx.files ?? [])) {
       if (f.text?.includes('FIX_ME')) {
-        fs.writeFileSync(path.join(ctx.repoRoot, f.path), f.text.replace(/FIX_ME/g, 'FIXED'), 'utf8');
-        fixed++;
+        if (f.path.endsWith('blocked.ts')) {
+          files.push({ path: f.path, status: 'declined', reason: 'blocked by stub' });
+        } else {
+          const before = f.text;
+          const after = f.text.replace(/FIX_ME/g, 'FIXED');
+          if (opts?.write !== false) {
+            fs.writeFileSync(path.join(ctx.repoRoot, f.path), after, 'utf8');
+          }
+          files.push({ path: f.path, status: 'fixed', before, after });
+          fixed++;
+        }
       }
     }
-    return { fixed, skipped: 0 };
+    return { fixed, skipped: 0, files };
   },
-  canFixPath(p) { return !p.endsWith('blocked.ts'); },
 };
 export default rule;
 `);
-    const policy2 = { 'stub-canfix': { severity: 'error', autofix: true } };
+    const policy2 = { 'stub-decline': { severity: 'error', autofix: true } };
 
     spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
     const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
@@ -294,6 +309,7 @@ export default rule;
     expect(output).not.toContain('[dry-run] blocked.ts');
     expect(output).toContain('Needs manual fix');
     expect(output).toContain('blocked.ts');
+    expect(output).toContain('blocked.ts stub-decline hit — blocked by stub');
     expect(fs.readFileSync(path.join(repoDir, 'fixable.ts'), 'utf8')).toBe('const x = "FIX_ME";\n');
     expect(fs.readFileSync(path.join(repoDir, 'blocked.ts'), 'utf8')).toBe('const y = "FIX_ME";\n');
   });
@@ -316,6 +332,7 @@ export default rule;
     expect(output).toContain('[dry-run]');
     expect(output).toContain('script.sh');
     expect(output).not.toContain('Needs manual fix');
+    expect(fs.readFileSync(path.join(repoDir, 'script.sh'), 'utf8')).toBe('FIX_ME\n');
   });
 
   test('dry-run and real-run agree: comment-density preview-language file goes to needs-manual both ways', async () => {
@@ -337,11 +354,53 @@ export default rule;
     expect(dryOut).toContain('Needs manual fix');
     expect(dryOut).toContain('over-budget.sh');
     expect(dryOut).not.toContain('[dry-run] over-budget.sh');
+    expect(dryOut).toContain('over-budget.sh comment-density');
+    expect(dryOut).toMatch(/over-budget\.sh comment-density.*— autofix not enabled for bash \(preview\)/);
 
     expect(realOut).toContain('Needs manual fix');
     expect(realOut).toContain('over-budget.sh');
+    expect(realOut).toMatch(/over-budget\.sh comment-density.*— autofix not enabled for bash \(preview\)/);
+
+    const summaryLine = (out: string) => out.split('\n').find(l => /\d+ fixed, \d+ need manual fix/.test(l)) ?? '';
+    expect(summaryLine(dryOut)).toBe(summaryLine(realOut));
 
     expect(fs.readFileSync(path.join(repoDir, 'over-budget.sh'), 'utf8')).toBe(bashContent);
+  });
+
+  test('legacy fix (no files array) routes to needs-manual with fallback reason', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+
+    const rulesDir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-legacy-'));
+    tmpRepos.push(rulesDir3);
+    const rDir = path.join(rulesDir3, 'stub-legacy');
+    fs.mkdirSync(rDir);
+    fs.writeFileSync(path.join(rDir, 'index.js'), `
+const rule = {
+  id: 'stub-legacy', meta: { description: 'stub' }, vehicles: ['diff'],
+  check(ctx) {
+    return (ctx.files ?? []).filter(f => f.text?.includes('LEGACY'))
+      .map(f => ({ ruleId: 'stub-legacy', path: f.path, message: 'legacy hit', fingerprintBasis: f.path }));
+  },
+  async fix(_ctx) {
+    return { fixed: 0, skipped: 1 };
+  },
+};
+export default rule;
+`);
+    const policy3 = { 'stub-legacy': { severity: 'error', autofix: true } };
+
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+    const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+    fs.writeFileSync(path.join(repoDir, 'old.ts'), 'const x = "LEGACY";\n', 'utf8');
+    spawnSync('git', ['-C', repoDir, 'add', 'old.ts'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
+
+    const output = await captureRunHousekeep({ repo: repoDir, rulesDir: rulesDir3, policy: policy3, since: baseSha });
+
+    expect(output).toContain('Needs manual fix');
+    expect(output).toContain('old.ts stub-legacy legacy hit — rule declined (no reason reported)');
   });
 
   test('untracked strays reported, exit 0 (positive control)', async () => {

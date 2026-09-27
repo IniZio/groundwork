@@ -43,7 +43,7 @@ function printUsage(): void {
     'Usage:\n' +
       '  house-rules check [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
       '  house-rules baseline [--base <ref>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n' +
-      '  house-rules housekeep [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
+      '  house-rules housekeep [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>]\n',
   );
 }
 
@@ -59,6 +59,7 @@ function parseArgs(argv: string[]): {
   baseline?: boolean;
   max?: number;
   dryRun?: boolean;
+  diff?: boolean;
 } {
   const args = argv.slice(0);
   const subcommand = args.shift();
@@ -78,7 +79,7 @@ function parseArgs(argv: string[]): {
       arg === '--max'
     ) {
       opts[arg.slice(2)] = args[++i] ?? '';
-    } else if (arg === '--baseline' || arg === '--dry-run') {
+    } else if (arg === '--baseline' || arg === '--dry-run' || arg === '--diff') {
       flags[arg.slice(2)] = true;
     }
   }
@@ -95,6 +96,7 @@ function parseArgs(argv: string[]): {
     baseline: flags['baseline'],
     max: opts['max'] !== undefined ? parseInt(opts['max'], 10) : undefined,
     dryRun: flags['dry-run'],
+    diff: flags['diff'],
   };
 }
 
@@ -188,6 +190,7 @@ try {
         baselineMode: parsed.baseline,
         max: parsed.max,
         dryRun: parsed.dryRun,
+        diff: parsed.diff,
         repo: parsed.repo,
         rulesDir: parsed.rulesDir,
         baselineFile: parsed.baselineFile,

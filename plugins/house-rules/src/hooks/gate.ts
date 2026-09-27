@@ -204,7 +204,10 @@ export async function run(
     });
 
     const allFindings = await runRules(rules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
-    const notChecked = notCheckedFiles(rules, ctx.files ?? []).map(p => path.join(repoRoot, p));
+    const repoRootPrefix = repoRoot + path.sep;
+    const notChecked = notCheckedFiles(rules, ctx.files ?? [])
+      .map(p => path.resolve(repoRoot, p))
+      .filter(p => p === repoRoot || p.startsWith(repoRootPrefix));
     const coverageText = buildCoverageText(notChecked);
     const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
     const baseline = await readBaseline(baselinePath);
@@ -265,9 +268,6 @@ export async function run(
     }
 
     if (violations.length === 0 && strayErrors.length === 0) {
-      if (coverageText) {
-        return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: coverageText } }) + "\n", stderr: "", exit: 0 };
-      }
       return allow();
     }
 
@@ -346,9 +346,6 @@ export async function run(
 
     if (unfixable.length === 0 && strayErrors.length === 0) {
       if (fixedFiles.length === 0) {
-        if (coverageText) {
-          return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: coverageText } }) + "\n", stderr: "", exit: 0 };
-        }
         return allow();
       }
       const N = fixedFiles.reduce((s, f) => s + f.removed, 0);
@@ -361,7 +358,6 @@ export async function run(
         ...fLines,
         `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
       ];
-      if (coverageText) ctx2Lines.push(coverageText);
       const ctx2 = ctx2Lines.join("\n");
       return {
         stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } }) + "\n",

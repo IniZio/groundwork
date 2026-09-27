@@ -58,24 +58,20 @@ describe("COV-1: unrecognised extension appears in coverage report", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("session writes notes.kt → output contains 'not checked:' with absolute path", async () => {
+  it("session writes notes.kt → allow path emits {continue:true} with no additionalContext", async () => {
     const fp = path.join(tmpDir, "notes.kt");
     writeFileSync(fp, "fun main() {\n    println(\"hello\")\n}\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov1-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
     expect(r.status).toBe(0);
-    const stdout = r.stdout.trim();
-    expect(stdout).not.toBe("");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
     // must NOT be a block
     expect(parsed.decision).not.toBe("block");
-    // must carry hookSpecificOutput with coverage info
+    // allow path must not carry hookSpecificOutput.additionalContext (coverage-only re-prompts the model)
     const hso = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
-    expect(hso).toBeTruthy();
-    const ctx = hso!.additionalContext as string;
-    expect(ctx).toContain("not checked:");
-    expect(ctx).toContain(fp);
+    expect(hso?.additionalContext).toBeUndefined();
+    expect(r.stdout).not.toContain("not checked");
   });
 });
 
@@ -103,6 +99,44 @@ describe("COV-2: recognised .ts file produces no coverage output", () => {
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
     expect(parsed).toEqual({ continue: true });
     expect(r.stdout).not.toContain("not checked");
+  });
+});
+
+describe("COV-4: outside-repo file excluded from block reason; inside .kt present", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cov4-test-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("block path: inside notes.kt in 'not checked', outside memory.kt absent", async () => {
+    const tsFp = path.join(tmpDir, "bad.ts");
+    writeFileSync(tsFp, [
+      ...Array.from({ length: 20 }, (_, i) => i % 5 === 0 ? `// r${i}` : `const x${i} = ${i};`),
+      "const broken = ;",
+    ].join("\n") + "\n");
+    const insideKt = path.join(tmpDir, "notes.kt");
+    writeFileSync(insideKt, "fun main() {}\n");
+    const outsideDir = mkdtempSync(path.join(os.tmpdir(), "cov4-outside-"));
+    const outsideFp = path.join(outsideDir, "memory.kt");
+    writeFileSync(outsideFp, "fun outside() {}\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [tsFp, insideKt, outsideFp], ts);
+    const r = runGate({ hook_event_name: "Stop", session_id: `cov4-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).toBe("block");
+    const reason = parsed.reason as string;
+    expect(reason).toContain(insideKt);
+    expect(reason).not.toContain(outsideFp);
+    try { rmSync(outsideDir, { recursive: true, force: true }); } catch { }
   });
 });
 

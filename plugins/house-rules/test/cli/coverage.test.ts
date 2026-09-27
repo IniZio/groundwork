@@ -115,7 +115,6 @@ describe('coverage report — not-checked files', () => {
 const rule: Rule = {
   id: 'bad-rule',
   meta: { description: 'x' },
-  vehicles: [],
   languages: ['kotlin' as any],
   check: () => [],
 };

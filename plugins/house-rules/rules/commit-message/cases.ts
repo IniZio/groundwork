@@ -2,7 +2,7 @@ import type { RuleCases } from '../../src/engine/types.js';
 
 /**
  * Illustrative cases for the commit-message rule.
- * This rule is not a file-tree rule (vehicles: []); enforcement happens via the
+ * This rule is not a file-tree rule (it has no edit-time check and declares no languages); enforcement happens via the
  * PreToolUse guard and the git commit-msg hook, both of which call lintCommitMessage().
  * Cases here document what the linter accepts and rejects.
  */

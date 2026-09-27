@@ -6,7 +6,7 @@ Enforces commit-message style. Default preset: handbook (imperative verb ≤50 c
 
 > Not in policy.
 
-**Vehicles**: 
+**Edit-time check**: no | **Languages**: none
 
 ## Allowed
 

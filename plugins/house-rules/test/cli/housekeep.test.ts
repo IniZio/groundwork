@@ -27,7 +27,6 @@ import path from 'node:path';
 const rule = {
   id: 'stub-fixable',
   meta: { description: 'stub fixable rule' },
-  vehicles: ['diff'],
   check(ctx) {
     const findings = [];
     for (const f of (ctx.files ?? [])) {
@@ -64,7 +63,6 @@ export default rule;
 const rule = {
   id: 'stub-nonfixable',
   meta: { description: 'stub non-fixable rule' },
-  vehicles: ['diff'],
   check(ctx) {
     const findings = [];
     for (const f of (ctx.files ?? [])) {
@@ -264,7 +262,7 @@ describe('housekeep', () => {
     fs.writeFileSync(path.join(rDir, 'index.js'), `
 import fs from 'node:fs'; import path from 'node:path';
 const rule = {
-  id: 'stub-decline', meta: { description: 'stub' }, vehicles: ['diff'],
+  id: 'stub-decline', meta: { description: 'stub' },
   check(ctx) {
     return (ctx.files ?? []).filter(f => f.text?.includes('FIX_ME'))
       .map(f => ({ ruleId: 'stub-decline', path: f.path, message: 'hit', fingerprintBasis: f.path }));
@@ -377,7 +375,7 @@ export default rule;
     fs.mkdirSync(rDir);
     fs.writeFileSync(path.join(rDir, 'index.js'), `
 const rule = {
-  id: 'stub-legacy', meta: { description: 'stub' }, vehicles: ['diff'],
+  id: 'stub-legacy', meta: { description: 'stub' },
   check(ctx) {
     return (ctx.files ?? []).filter(f => f.text?.includes('LEGACY'))
       .map(f => ({ ruleId: 'stub-legacy', path: f.path, message: 'legacy hit', fingerprintBasis: f.path }));

@@ -103,7 +103,6 @@ function writeStub(rulesDir: string, id: string, opts: {
 const rule = {
   id: ${qid},
   meta: { description: 'stub' },
-  vehicles: ['tree'],
   check(ctx) { ${checkBody}
   }${fixMethod}
 };

@@ -1,4 +1,4 @@
-import type { Rule, RuleContext, Finding } from '../../src/engine/types.js';
+import type { Rule, RuleContext, Finding, PendingEdit, EditCheckEnv, EditCheckResult } from '../../src/engine/types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -26,7 +26,17 @@ const rule: Rule = {
   meta: {
     description: 'Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate dirs, and root scratch files.',
   },
-  vehicles: ['tree'],
+  async editCheck(edit: PendingEdit, _env: EditCheckEnv): Promise<EditCheckResult> {
+    if (edit.pre !== null) return { findings: [] };
+    const repoRoot = edit.repoRoot;
+    if (repoRoot === null) return { findings: [] };
+    const ctx: RuleContext = {
+      repoRoot,
+      mode: 'guard',
+      files: [{ path: path.relative(repoRoot, edit.path), baseText: '', addedHunks: [], tracked: false, sessionCreated: true }],
+    };
+    return { findings: await rule.check(ctx) };
+  },
 
   check(ctx: RuleContext): Finding[] {
     const { repoRoot, files = [] } = ctx;

@@ -19,7 +19,6 @@ const rule: Rule = {
       'Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars). ' +
       'Configure via .house-rules.json: { "commit-message": { "preset": "conventional" } }.',
   },
-  vehicles: [],
   async check(_ctx: RuleContext): Promise<Finding[]> {
     return []
   },

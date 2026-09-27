@@ -1,32 +1,22 @@
 /**
- * PreToolUse autocorrect guard — strips over-budget comments (TypeScript and Go only)
- * before the edit lands; other languages are passed through (Stop gate enforces them).
+ * PreToolUse edit guard — runs each rule's editCheck in rule-id order.
  * Trigger: Edit | Write | MultiEdit.
- * Budget: 5 effective comment lines per 100 lines added this session for each file.
- * Returns updatedInput when stripping succeeds; falls back to advisory when ambiguous.
- * Never emits permissionDecision.
+ * Runs every rule's editCheck generically; imports nothing from comment-density
+ * or the house-rules gate.
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import {
-  findComments,
-  reconstructPostEdit,
-  newComments as findNewComments,
-  netNewCommentRows,
-  autoFix,
-  type Comment,
-  type GetParserFn,
-} from "./lib/comment-density.js";
-import { languageForPath, type Language } from "./languages/registry.js";
+import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
+import { languageForPath } from "./languages/registry.js";
 import { getParser as defaultGetParser } from "./lib/tree-sitter-loader.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
-import { removedTextsFor, normalizeCommentText } from "./lib/autofix-ledger.js";
 import { loadRules } from "../engine/registry.js";
-import { runRules, isBlocking } from "../engine/run.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
-import { fixEntryFor } from "../../rules/comment-density/languages.js";
+import { createSourceFiles } from "../engine/source-file.js";
+import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
+import type { ParserFactory } from "./languages/parse.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -75,25 +65,6 @@ function isIgnoredByDefault(filePath: string, cwd: string | null): boolean {
   const repoRoot = r.stdout.trim();
   const relPath = path.relative(repoRoot, filePath);
   return DEFAULT_IGNORE.some((pattern) => new Bun.Glob(pattern).match(relPath));
-}
-
-async function checkStray(filePath: string, cwd: string | null): Promise<HookResult | null> {
-  const dir = cwd ?? path.dirname(filePath);
-  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
-  if (rootResult.status !== 0) return null;
-  const repoRoot = rootResult.stdout.trim();
-  const relPath = path.relative(repoRoot, filePath);
-  const rulesDir = path.join(import.meta.dir, "../../rules");
-  const allRules = await loadRules(rulesDir);
-  const treeRules = allRules.filter((r) => r.vehicles.includes("tree"));
-  const ctx: import("../engine/types.js").RuleContext = {
-    repoRoot,
-    mode: "guard",
-    files: [{ path: relPath, baseText: "", addedHunks: [], tracked: false, sessionCreated: true }],
-  };
-  const findings = await runRules(treeRules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
-  if (!isBlocking(findings)) return null;
-  return deny(findings[0].message);
 }
 
 const WRITE_TOOLS = new Set(["edit", "write", "multiedit"]);
@@ -241,79 +212,15 @@ function mapToInput(
   return null;
 }
 
-export function buildCtx(
-  tool: string,
-  filePath: string,
-  stripped: Comment[],
-  budgetBefore: number,
-  remainder: number,
-  priorAddedCount: number,
-  priorAddedComments: number,
-  mode: "rewrite" | "advisory" = "rewrite",
-): string {
-  const N = stripped.length;
-  const displayTool = tool.charAt(0).toUpperCase() + tool.slice(1);
-  const A = priorAddedCount;
-  const C = priorAddedComments;
-  const B = Math.max(0, budgetBefore);
-  const K = Math.max(0, remainder);
-
-  const rows = stripped
-    .map(c => `  L${c.startRow + 1}: ${c.text.split("\n")[0].slice(0, 80)}`)
-    .join("\n");
-
-  const readdLine = K === 0
-    ? "No comment budget remains for this file; express intent through naming instead."
-    : `You may re-add up to ${K} short comment(s) (one line, explaining why, not what), or accept the removal.`;
-
-  if (mode === "advisory") {
-    return [
-      `groundwork comment-density: ${N} comment(s) in your ${displayTool} to ${filePath} were not stripped — could not map edit automatically.`,
-      `Why: code convention — at most 5 comment lines per 100 lines added this session. This file: ${A} lines added, ${C} comments already added, budget left before this edit: ${B}.`,
-      `Would-be stripped:\n${rows}`,
-      `These comments remain in the file as written. Remove them manually before your next Edit to this region.`,
-      readdLine,
-    ].join("\n");
-  }
-
-  return [
-    `groundwork comment-density: removed ${N} comment(s) from your ${displayTool} to ${filePath} before it was applied.`,
-    `Why: code convention — at most 5 comment lines per 100 lines added this session. This file: ${A} lines added, ${C} comments already added, budget left before this edit: ${B}.`,
-    `This is groundwork's automatic correction — not another session's edit, a merge, or a bug.`,
-    `Removed:\n${rows}`,
-    `The file will not contain these comments. Re-Read the file before your next Edit to this region; your old_string must match the corrected text.`,
-    readdLine,
-  ].join("\n");
-}
-
 export interface CheckOpts {
-  getParser?: GetParserFn;
+  getParser?: ParserFactory;
   readFile?: (p: string) => string | null;
   ledgerDir?: string;
-}
-
-function buildReaddLines(nc: Comment[], filePath: string, ledgerDir?: string): string[] {
-  try {
-    const ledgerOpts = ledgerDir !== undefined ? { dir: ledgerDir } : undefined;
-    const removed = removedTextsFor(filePath, ledgerOpts);
-    if (removed.length === 0) return [];
-    const lines: string[] = [];
-    for (const c of nc) {
-      const norm = normalizeCommentText(c.text);
-      const match = removed.find(r => normalizeCommentText(r.text) === norm);
-      if (match) {
-        lines.push(
-          `L${c.startRow + 1}: this comment was removed from ${filePath} by house-rules autofix at ${match.ts} (${match.reason}). Fold the information into names or drop it — don't re-add it.`,
-        );
-      }
-    }
-    return lines;
-  } catch {
-    return [];
-  }
+  rules?: Rule[];
 }
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
+  const sourceFiles = createSourceFiles(opts.getParser ?? defaultGetParser);
   try {
     if (!input || typeof input !== "object" || Array.isArray(input)) return allow();
     const inp = input as Record<string, unknown>;
@@ -334,160 +241,224 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const readFile = opts.readFile ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } });
     const pre = readFile(filePath);
 
-    // Stray-artifacts check runs for any new file (pre === null), regardless of type.
-    if (pre === null) {
-      const strayResult = await checkStray(filePath, cwd);
-      if (strayResult !== null) return strayResult;
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === ".md") return allow();
-
     const firstLine = tool === "write" && typeof ti.content === "string"
       ? ti.content.split("\n")[0]
       : undefined;
     const lang = languageForPath(filePath, firstLine);
-    if (lang === null) return allow();
 
-    const getParser = opts.getParser ?? defaultGetParser;
-    const reconResult = reconstructPostEdit(tool, ti as Parameters<typeof reconstructPostEdit>[1], pre);
-    if (!reconResult) return allow();
-    const { post, changedRows } = reconResult;
+    const recon = reconstructPostEdit(tool, ti as EditInput, pre);
+    if (!recon) return allow();
+    const { post: originalPost, changedRows } = recon;
 
-    const postFindResult = await findComments(post, lang, getParser);
-    if (!postFindResult.ok) {
-      const reason = postFindResult.reason;
-      return advisory(
-        `groundwork comment-density: tree-sitter unavailable (${reason}) — advisory only`,
-        `[comment-density-guard] tree-sitter unavailable: ${reason}`,
-      );
-    }
+    // Resolve repoRoot
+    const repoRoot: string | null = (() => {
+      let dir = cwd ?? path.dirname(filePath);
+      while (dir !== path.dirname(dir) && !existsSync(dir)) dir = path.dirname(dir);
+      const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+      return r.status === 0 ? r.stdout.trim() : null;
+    })();
 
-    const preFindResult = pre !== null ? await findComments(pre, lang, getParser) : null;
-    const preComments = preFindResult?.ok ? preFindResult.comments : null;
-
-    const repo = cwd ?? path.dirname(filePath);
-
-    let priorAddedCount = 0;
-    let priorAddedComments = 0;
-    let base: string | null = null;
-    let baseText: string | null = null;
-
+    // Build session base info (shared; postHunks recomputed per rule below)
+    type SessionBase_ = {
+      commit: string;
+      addedRows: number[] | null;
+      baseText: string | null;
+      preHunks: SessionBaseInfo["preHunks"];
+    };
+    let sessionBase_: SessionBase_ | null = null;
     if (transcriptPath && pre !== null) {
-      const b = sessionBase(transcriptPath, repo);
-      base = b;
-      const priorRows = addedRanges(filePath, b);
-      if (priorRows) {
-        priorAddedCount = priorRows.length;
-        const priorRowSet = new Set(priorRows);
-        if (preComments) {
-          priorAddedComments = preComments.filter(c => {
-            if (c.exempt) return false;
-            for (let r = c.startRow; r <= c.endRow; r++) {
-              if (priorRowSet.has(r + 1)) return true;
-            }
-            return false;
-          }).length;
-        }
-      }
-      baseText = getBaseText(filePath, b);
-      if (baseText !== null) {
-        const hunksBasePre = diffTextToHunks(baseText, pre);
-        const netNewPreResult = await netNewCommentRows(baseText, pre, lang, hunksBasePre, getParser);
-        if (netNewPreResult.ok) {
-          priorAddedComments = netNewPreResult.rows.length;
-        }
-      }
+      const repo = cwd ?? path.dirname(filePath);
+      const commit = sessionBase(transcriptPath, repo);
+      const addedRowsVal = addedRanges(filePath, commit);
+      const baseText = getBaseText(filePath, commit);
+      const preHunks = baseText !== null ? diffTextToHunks(baseText, pre) : null;
+      sessionBase_ = { commit, addedRows: addedRowsVal, baseText, preHunks };
     }
 
-    const budget = Math.floor(0.05 * (priorAddedCount + changedRows.size)) - priorAddedComments;
+    // Load and filter rules: keep those with editCheck, non-off severity, matching language
+    const rulesDir = path.join(import.meta.dir, "../../rules");
+    const allRules = opts.rules ?? await loadRules(rulesDir);
+    const activeRules = allRules.filter(r => {
+      if (!r.editCheck) return false;
+      const severity = BUILTIN_POLICY[r.id]?.severity ?? "warn";
+      if (severity === "off") return false;
+      if (r.languages && r.languages.length > 0) {
+        if (lang === null || !r.languages.includes(lang)) return false;
+      }
+      return true;
+    }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-    // Base-aware new-comment detection
-    let nc: Comment[];
-    if (base !== null && pre !== null) {
-      if (baseText !== null) {
-        const hunksBasePost = diffTextToHunks(baseText, post);
-        const netNewResult = await netNewCommentRows(baseText, post, lang, hunksBasePost, getParser);
-        if (netNewResult.ok) {
-          const netNewRows = new Set(netNewResult.rows);
-          nc = postFindResult.comments.filter(c => {
-            if (c.exempt) return false;
-            for (let r = c.startRow; r <= c.endRow; r++) {
-              if (changedRows.has(r) && netNewRows.has(r + 1)) return true;
-            }
-            return false;
-          });
+    let text = originalPost;
+    // Each item tracks normal context text and fallback text (for mapping-failure advisory).
+    const contextItems: Array<{ normal: string; fallback: string }> = [];
+    const stderrLines: string[] = [];
+    let blockingFinding: Finding | null = null;
+
+    for (const rule of activeRules) {
+      // Recompute postHunks for this rule's current text
+      let session: SessionBaseInfo | null = null;
+      if (sessionBase_ !== null) {
+        const postHunks = sessionBase_.baseText !== null ? diffTextToHunks(sessionBase_.baseText, text) : null;
+        session = {
+          commit: sessionBase_.commit,
+          addedRows: sessionBase_.addedRows,
+          baseText: sessionBase_.baseText,
+          preHunks: sessionBase_.preHunks,
+          postHunks,
+        };
+      }
+
+      const pendingEdit: PendingEdit = {
+        path: filePath,
+        tool: tool as "write" | "edit" | "multiedit",
+        lang,
+        pre,
+        post: text,
+        changedRows,
+        session,
+        repoRoot,
+        cwd,
+      };
+
+      let result: import("../engine/types.js").EditCheckResult;
+      try {
+        const capturedText = text;
+        const env: EditCheckEnv = {
+          sourceFile: () => lang !== null ? sourceFiles.get(lang, capturedText) : Promise.resolve(null),
+          parserFactory: opts.getParser ?? defaultGetParser,
+          ledgerDir: opts.ledgerDir,
+        };
+        result = await rule.editCheck!(pendingEdit, env);
+      } catch {
+        continue;
+      }
+
+      // Drop findings for ignored paths
+      const findings = result.findings.filter(f =>
+        !DEFAULT_IGNORE.some(pattern => new Bun.Glob(pattern).match(f.path)),
+      );
+
+      const severity = BUILTIN_POLICY[rule.id]?.severity ?? "warn";
+      const isErrorSeverity = severity === "error";
+
+      if (isErrorSeverity && findings.length > 0) {
+        blockingFinding = findings[0];
+        break;
+      }
+
+      // Handle edits
+      let editsApplied = false;
+      let editsRefused = false;
+      let refusalLine: string | undefined;
+
+      if (result.edits && result.edits.length > 0) {
+        const sortedEdits = [...result.edits].sort((a, b) => a.start - b.start);
+        let valid = true;
+        let cursor = 0;
+        for (const e of sortedEdits) {
+          if (e.start < cursor || e.end < e.start || e.end > text.length) { valid = false; break; }
+          cursor = e.end;
+        }
+
+        if (!valid) {
+          editsRefused = true;
+          refusalLine = `house-rules edit guard: ${rule.id} rewrite refused — the rewritten file does not parse; the edit passes through as written.`;
         } else {
-          nc = findNewComments(preComments, postFindResult.comments, changedRows);
+          // Apply edits to build candidate text
+          let newText = "";
+          let pos = 0;
+          for (const e of sortedEdits) {
+            newText += text.slice(pos, e.start) + e.text;
+            pos = e.end;
+          }
+          newText += text.slice(pos);
+
+          // Parse-safety check
+          let refuse = false;
+          if (lang !== null) {
+            const oldParse = await sourceFiles.get(lang, text);
+            const newParse = await sourceFiles.get(lang, newText);
+            if (!newParse.ok) {
+              refuse = true;
+            } else if (oldParse.ok && newParse.ok && newParse.source.errorRows.size > oldParse.source.errorRows.size) {
+              refuse = true;
+            }
+          }
+
+          if (refuse) {
+            editsRefused = true;
+            refusalLine = `house-rules edit guard: ${rule.id} rewrite refused — the rewritten file does not parse; the edit passes through as written.`;
+          } else if (newText !== text) {
+            text = newText;
+            editsApplied = true;
+          }
+        }
+      }
+
+      if (editsApplied) {
+        if (result.notice !== undefined) {
+          contextItems.push({
+            normal: result.notice,
+            fallback: result.refusedNotice ?? result.notice,
+          });
+        } else if (result.refusedNotice !== undefined) {
+          contextItems.push({ normal: "", fallback: result.refusedNotice });
+        }
+      } else if (editsRefused) {
+        const noticeText = result.refusedNotice ?? result.notice;
+        if (noticeText !== undefined) {
+          contextItems.push({ normal: noticeText, fallback: noticeText });
+        }
+        if (refusalLine) {
+          contextItems.push({ normal: refusalLine, fallback: refusalLine });
         }
       } else {
-        nc = findNewComments(preComments, postFindResult.comments, changedRows);
+        if (result.notice !== undefined) {
+          contextItems.push({ normal: result.notice, fallback: result.notice });
+        }
       }
-    } else {
-      nc = findNewComments(preComments, postFindResult.comments, changedRows);
+
+      if (!isErrorSeverity) {
+        for (const f of findings) {
+          const line = `house-rules ${f.ruleId}: ${f.message}`;
+          contextItems.push({ normal: line, fallback: line });
+        }
+      }
+
+      if (result.stderr !== undefined) stderrLines.push(result.stderr);
     }
 
-    if (nc.length === 0) return allow();
+    if (blockingFinding !== null) {
+      return deny(blockingFinding.message);
+    }
 
-    const readdLines = buildReaddLines(nc, filePath, opts.ledgerDir);
-    const readdCtx = readdLines.length > 0 ? readdLines.join("\n") : null;
-
-    // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
-    const fixEntry = fixEntryFor(lang as Language);
-    const isStableAndSafe = fixEntry.stability === "stable" && fixEntry.applicability === "safe";
-    if (!isStableAndSafe) {
-      if (readdCtx) return advisory(readdCtx);
+    if (text !== originalPost) {
+      const updatedTi = mapToInput(tool, ti, pre ?? "", originalPost, text);
+      if (updatedTi !== null) {
+        const verified = reconstructPostEdit(tool, updatedTi as EditInput, pre);
+        if (verified && verified.post === text) {
+          const ctxStr = contextItems.map(c => c.normal).filter(s => s.length > 0).join("\n");
+          return rewrite(updatedTi, ctxStr);
+        }
+      }
+      // Mapping/verification failed — fallback advisory
+      const ctxStr = contextItems.map(c => c.fallback).filter(s => s.length > 0).join("\n");
+      if (ctxStr) {
+        return advisory(ctxStr, stderrLines.length > 0 ? stderrLines.join("\n") : undefined);
+      }
       return allow();
     }
 
-    const ncRowSet = new Set<number>();
-    for (const c of nc) {
-      for (let r = c.startRow; r <= c.endRow; r++) ncRowSet.add(r);
+    const ctxStr = contextItems.map(c => c.normal).filter(s => s.length > 0).join("\n");
+    if (ctxStr) {
+      return advisory(ctxStr, stderrLines.length > 0 ? stderrLines.join("\n") : undefined);
     }
 
-    if (ncRowSet.size <= Math.max(0, budget)) {
-      if (readdCtx) return advisory(readdCtx);
-      return allow();
-    }
-
-    const ncSet = new Set(nc.map(c => c.startIndex));
-    const autoFixRows = new Set<number>(changedRows);
-    for (const c of postFindResult.comments) {
-      if (c.exempt) continue;
-      if (ncSet.has(c.startIndex)) continue;
-      for (let r = c.startRow; r <= c.endRow; r++) autoFixRows.delete(r);
-    }
-
-    const ar = await autoFix(post, lang, autoFixRows, getParser, ncRowSet, { maxAllowedRows: Math.max(0, budget) });
-    if (!ar.ok || ar.removed === 0) {
-      const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
-      return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
-    }
-
-    const remaining = [...nc];
-    const stripped_comments: Comment[] = [];
-    for (const text of ar.removedTexts) {
-      const idx = remaining.findIndex(c => c.text === text);
-      if (idx !== -1) {
-        stripped_comments.push(remaining[idx]);
-        remaining.splice(idx, 1);
-      }
-    }
-    const stripped_post = ar.fixed;
-    const updatedTi = mapToInput(tool, ti, pre ?? "", post, stripped_post);
-
-    if (updatedTi !== null) {
-      const verified = reconstructPostEdit(tool, updatedTi as Parameters<typeof reconstructPostEdit>[1], pre);
-      if (verified && verified.post === stripped_post) {
-        const ctx = buildCtx(tool, filePath, stripped_comments, budget, 0, priorAddedCount, priorAddedComments);
-        return rewrite(updatedTi, readdCtx ? ctx + "\n" + readdCtx : ctx);
-      }
-    }
-
-    const ctx = buildCtx(tool, filePath, nc, budget, 0, priorAddedCount, priorAddedComments, "advisory");
-    return advisory(readdCtx ? ctx + "\n" + readdCtx : ctx);
+    return allow();
   } catch {
     return allow();
+  } finally {
+    sourceFiles.dispose();
   }
 }
 

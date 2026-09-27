@@ -25,7 +25,6 @@ function writeStubRule(
 const rule = {
   id: '${ruleId}',
   meta: { description: 'A stub rule for testing.' },
-  vehicles: ['diff'],
   check: () => [],
 };
 export default rule;
@@ -79,7 +78,6 @@ describe("generateReadme", () => {
 const rule = {
   id: 'comment-density',
   meta: { description: 'Checks comment density.' },
-  vehicles: ['tree-sitter'],
   check: () => [],
 };
 export default rule;
@@ -103,6 +101,36 @@ export default rule;
     });
     const readme = await generateReadme(ruleDir, "stub-rule");
     expect(readme).toContain("```ts");
+  });
+
+  it("renders edit-time check yes and languages for rule with editCheck and languages", async () => {
+    const ruleDir = path.join(tmpDir, "stub-edit-rule");
+    fs.mkdirSync(ruleDir, { recursive: true });
+    const indexContent = `
+const rule = {
+  id: 'stub-edit-rule',
+  meta: { description: 'A stub rule with editCheck.' },
+  languages: ['typescript', 'go'],
+  check: () => [],
+  editCheck: () => ({ findings: [] }),
+};
+export default rule;
+`;
+    fs.writeFileSync(path.join(ruleDir, "index.ts"), indexContent, "utf8");
+    const casesContent = `export const cases = ${JSON.stringify({
+      valid: [{ why: "ok", code: "const x = 1;", filename: "a.ts" }],
+      invalid: [{ why: "bad", code: "let y;", filename: "b.ts", findings: [{ message: "bad" }] }],
+    })};\n`;
+    fs.writeFileSync(path.join(ruleDir, "cases.ts"), casesContent, "utf8");
+
+    const readme = await generateReadme(ruleDir, "stub-edit-rule");
+    expect(readme).toContain("**Edit-time check**: yes | **Languages**: typescript, go");
+  });
+
+  it("renders edit-time check no and languages none for rule without editCheck or languages", async () => {
+    const ruleDir = writeStubRule(tmpDir, "stub-rule");
+    const readme = await generateReadme(ruleDir, "stub-rule");
+    expect(readme).toContain("**Edit-time check**: no | **Languages**: none");
   });
 });
 

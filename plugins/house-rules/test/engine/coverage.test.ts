@@ -100,7 +100,6 @@ describe("runRules — sourceFile availability by languages", () => {
     const rule: Rule = {
       id: "no-lang-stub",
       meta: { description: "stub without languages" },
-      vehicles: ["diff"],
       check(ctx) {
         seen = typeof ctx.sourceFile;
         return [];
@@ -115,7 +114,6 @@ describe("runRules — sourceFile availability by languages", () => {
     const rule: Rule = {
       id: "with-lang-stub",
       meta: { description: "stub with languages" },
-      vehicles: ["tree-sitter"],
       languages: ["typescript"],
       check(ctx) {
         seen = typeof ctx.sourceFile;

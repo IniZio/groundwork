@@ -4,7 +4,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import path2 from "node:path";
 import os from "node:os";
-import { check, buildCtx } from "../../src/hooks/guard.js";
+import { check } from "../../src/hooks/guard.js";
+import { buildCtx } from "../../rules/comment-density/edit-check.js";
 import { reconstructPostEdit, type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 
 const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");

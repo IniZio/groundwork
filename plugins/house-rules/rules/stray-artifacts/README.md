@@ -6,7 +6,7 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 
 **Severity**: error | **Autofix**: no
 
-**Vehicles**: tree
+**Edit-time check**: yes | **Languages**: none
 
 ## Allowed
 

@@ -43,7 +43,7 @@ function renderInvalidCase(c: Case & { findings: Partial<{ ruleId: string; path:
 }
 
 export async function generateReadme(ruleDir: string, ruleId: string): Promise<string> {
-  // Load rule for meta + vehicles
+  // Load rule for meta, edit-time check and languages
   const indexTs = path.join(ruleDir, 'index.ts');
   const indexJs = path.join(ruleDir, 'index.js');
   const entryPath = fs.existsSync(indexTs) ? indexTs : indexJs;
@@ -72,7 +72,7 @@ export async function generateReadme(ruleDir: string, ruleId: string): Promise<s
   }
 
   lines.push('');
-  lines.push(`**Vehicles**: ${(rule.vehicles as string[]).join(', ')}`);
+  lines.push(`**Edit-time check**: ${typeof rule.editCheck === 'function' ? 'yes' : 'no'} | **Languages**: ${Array.isArray(rule.languages) && rule.languages.length > 0 ? rule.languages.join(', ') : 'none'}`);
 
   if (cases.valid.length > 0) {
     lines.push('');

@@ -14,7 +14,6 @@ function makeSelectiveRule(id: string, flaggedFilename: string): Rule {
   return {
     id,
     meta: { description: `flags ${flaggedFilename}` },
-    vehicles: ['tree'],
     check: (ctx) =>
       (ctx.files ?? [])
         .filter((f) => f.path === flaggedFilename)
@@ -31,7 +30,6 @@ function makeSelectiveRule(id: string, flaggedFilename: string): Rule {
 const docsRule: Rule = {
   id: 'no-docs-dir',
   meta: { description: 'Disallow a docs/ directory in the tree' },
-  vehicles: ['tree'],
   check: (ctx) =>
     (ctx.files ?? [])
       .filter((f) => f.path.startsWith('docs/'))
@@ -169,7 +167,6 @@ import type { Rule } from ${JSON.stringify(typesPath)};
 const rule: Rule = {
   id: 'wrong-msg-rule',
   meta: { description: 'produces a finding on bad.ts' },
-  vehicles: ['tree'],
   check: (ctx) =>
     (ctx.files ?? [])
       .filter((f) => f.path === 'bad.ts')
@@ -219,7 +216,6 @@ describe('ruleTester — code case with base field', () => {
   const baseCheckRule: Rule = {
     id: 'base-check-rule',
     meta: { description: 'asserts baseText and addedHunks are populated from Case.base' },
-    vehicles: ['diff'],
     check: (ctx) => {
       const f = (ctx.files ?? [])[0];
       if (!f) return [];
@@ -269,7 +265,6 @@ describe('ruleTester — sessionCreatedOverrides', () => {
   const sessionCreatedRule: Rule = {
     id: 'session-created-only',
     meta: { description: 'flags only session-created files' },
-    vehicles: ['tree'],
     check: (ctx) =>
       (ctx.files ?? [])
         .filter((f) => f.sessionCreated === true)

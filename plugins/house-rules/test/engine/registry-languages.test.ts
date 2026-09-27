@@ -31,7 +31,6 @@ describe('loadRules language validation', () => {
 export default {
   id: 'bad-rule',
   meta: { description: 'x' },
-  vehicles: [],
   languages: ['kotlin'],
   check: () => [],
 };
@@ -46,7 +45,6 @@ export default {
 export default {
   id: 'good-rule',
   meta: { description: 'reads go and ts' },
-  vehicles: [],
   languages: ['go', 'typescript'],
   check: () => [],
 };
@@ -62,7 +60,6 @@ export default {
 export default {
   id: 'no-lang-rule',
   meta: { description: 'no langs' },
-  vehicles: [],
   check: () => [],
 };
 `);

@@ -41,7 +41,6 @@ function writeStubRule(rulesDir: string, ruleId: string, severity: 'error' | 'wa
 const rule: Rule = {
   id: '${ruleId}',
   meta: { description: 'stub' },
-  vehicles: ['tree'],
   check(_ctx) {
     return [{ ruleId: '${ruleId}', path: 'README.md', line: ${line}, message: 'stub finding', fingerprintBasis: 'stub' }];
   }

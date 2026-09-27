@@ -28,7 +28,6 @@ function makeRule(id: string, findings: Finding[]): Rule {
   return {
     id,
     meta: { description: `stub rule ${id}` },
-    vehicles: ["diff"],
     check: () => findings,
   };
 }
@@ -198,11 +197,11 @@ describe("loadRules — directory loading", () => {
 
     fs.writeFileSync(
       path.join(rule1Dir, "index.ts"),
-      `export default { id: "rule-alpha", meta: { description: "alpha" }, vehicles: [], check: () => [] };`,
+      `export default { id: "rule-alpha", meta: { description: "alpha" }, check: () => [] };`,
     );
     fs.writeFileSync(
       path.join(rule2Dir, "index.ts"),
-      `export default { id: "rule-beta", meta: { description: "beta" }, vehicles: [], check: () => [] };`,
+      `export default { id: "rule-beta", meta: { description: "beta" }, check: () => [] };`,
     );
 
     const rules = await loadRules(tmpDir);
@@ -217,7 +216,7 @@ describe("loadRules — directory loading", () => {
 
     fs.writeFileSync(
       path.join(badDir, "index.ts"),
-      `export default { id: "wrong-id", meta: { description: "bad" }, vehicles: [], check: () => [] };`,
+      `export default { id: "wrong-id", meta: { description: "bad" }, check: () => [] };`,
     );
 
     await expect(loadRules(tmpDir)).rejects.toThrow("wrong-id");

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Rule, RuleContext, Finding, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
+import { commentDensityEditCheck } from './edit-check.js';
 import { netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
 import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.js';
 import { refusesPreExistingRemoval } from '../../src/hooks/gate.js';
@@ -17,8 +18,8 @@ function normForFingerprint(row: string): string {
 const rule: Rule = {
   id: 'comment-density',
   meta: { description: 'Flags files where added comment lines exceed 5 per 100 added lines.' },
-  vehicles: ['tree-sitter', 'diff'],
   languages: LANGUAGES,
+  editCheck: commentDensityEditCheck,
 
   canFixPath(filePath: string): boolean {
     const lang = languageForPath(filePath);

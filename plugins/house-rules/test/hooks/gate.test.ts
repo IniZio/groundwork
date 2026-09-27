@@ -88,6 +88,18 @@ function makeUnfixableViolatorYaml(dir: string, name: string): string {
   return fp;
 }
 
+function makeUnfixableViolatorTs(dir: string, name: string): string {
+  const fp = path.join(dir, name);
+  const lines = [
+    ...Array.from({ length: 20 }, (_, i) =>
+      i % 5 === 0 ? `// r${i}` : `const x${i} = ${i};`
+    ),
+    "const broken = ;",
+  ];
+  writeFileSync(fp, lines.join("\n") + "\n");
+  return fp;
+}
+
 describe("AC1: nexus-probe fixtures", () => {
   let tmpDir: string;
   let repoDir: string;
@@ -642,7 +654,8 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
     expect(report).toMatch(/config\.yaml[^\n]*—[^\n]*preview language/);
     expect(report).not.toMatch(/broken\.ts[^\n]*—[^\n]*autofix failed/);
     expect(report).toContain("partially checked:");
-    expect(report).toContain("broken.ts");
+    expect(report).toContain(`partially checked: ${tsFp} (rows `);
+    expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*syntax errors on rows 21; not autofixed/);
   });
 
   it("block report includes write-failed reason with cause when disk changes mid-write", async () => {
@@ -882,6 +895,62 @@ describe("AutoFixOkFalse: preview-lang violator → gate blocks; file unchanged"
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
     expect(sha256(fp)).toBe(hashBefore);
+  });
+});
+
+describe("SyntaxErrorTs: TS file with syntax error declined; no write; blocks", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-synerr-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("over-budget TS with syntax error → block; file unchanged; reason matches coverage rows", async () => {
+    const fp = makeUnfixableViolatorTs(tmpDir, "broken.ts");
+    const hashBefore = sha256(fp);
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const sessionId = "synerr-ts-1";
+
+    const result = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
+      process.env as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir },
+    );
+
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({ decision: "block" });
+    expect(sha256(fp)).toBe(hashBefore);
+
+    const blockFilePath = path.join(tmpDir, "house-rules", sessionId, "stop-block.txt");
+    const report = readFileSync(blockFilePath, "utf8");
+
+    const covMatch = report.match(/partially checked: [^\n(]+ \(rows ([^)]+)\)/);
+    expect(covMatch).not.toBeNull();
+    const R = covMatch![1];
+    expect(report).toMatch(new RegExp(`broken\\.ts[^\\n]*—[^\\n]*syntax errors on rows ${R}; not autofixed`));
+    expect(R).toBe("21");
+  });
+
+  it("over-budget TS without syntax error → autofixed; file changes; no syntax-error text", async () => {
+    const fp = makeViolatorTs(tmpDir, "clean.ts");
+    const hashBefore = sha256(fp);
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const sessionId = `synerr-ctrl-${Date.now()}`;
+
+    const result = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
+      process.env as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir },
+    );
+
+    expect(sha256(fp)).not.toBe(hashBefore);
+    expect(result.stdout).not.toContain("syntax errors");
   });
 });
 

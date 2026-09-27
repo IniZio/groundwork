@@ -46,6 +46,11 @@ function buildRemappedRows(rowChanges: RowChange[], origRowSet: Set<number>): Se
   return remapped;
 }
 
+function syntaxErrorReason(errorRows: Set<number>): string {
+  const rows = [...errorRows].map(r => r + 1).sort((a, b) => a - b);
+  return `syntax errors on rows ${rows.join(', ')}; not autofixed`;
+}
+
 /** Shared canFixPath logic — stable + safe entries only. */
 export function canFixPathHelper(filePath: string): boolean {
   const lang = languageForPath(filePath);
@@ -81,6 +86,11 @@ async function housekeepFix(ctx: RuleContext, opts?: FixOptions): Promise<FixRes
 
     const sfHK = ctx.sourceFile ? await ctx.sourceFile(file) : null;
     if (sfHK && !sfHK.ok) continue;
+
+    if (sfHK?.ok && sfHK.source.errorRows.size > 0) {
+      decline(file.path, syntaxErrorReason(sfHK.source.errorRows));
+      continue;
+    }
 
     if (!canFixPathHelper(file.path)) {
       const reason = `autofix not enabled for ${lang} (${fixEntryFor(lang).stability})`;
@@ -166,6 +176,12 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
     const stability = entry.stability;
     const applicability = entry.applicability;
     const shouldWrite = (opts.testOnly?.testOnly_forceWrite as boolean | undefined) === true || (stability === 'stable' && applicability === 'safe');
+
+    if (sfGF?.ok && sfGF.source.errorRows.size > 0) {
+      files.push({ path: file.path, status: 'declined', reason: syntaxErrorReason(sfGF.source.errorRows), stability, applicability });
+      skipped++;
+      continue;
+    }
 
     const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
     let effective: number;

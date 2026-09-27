@@ -12,7 +12,7 @@ import { languageForPath, type Language } from "./languages/registry.js";
 import { atomicWrite, normalizeTrailingNewline, sha256 } from "./lib/atomic-write.js";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
-import { runRules } from '../engine/run.js';
+import { runRules, notCheckedFiles } from '../engine/run.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
@@ -44,6 +44,14 @@ function allow(): HookResult { return { stdout: JSON.stringify({ continue: true 
 function silentAllow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 function block(reason: string): HookResult {
   return { stdout: JSON.stringify({ decision: "block", reason }) + "\n", stderr: "", exit: 0 };
+}
+
+function buildCoverageText(notChecked: string[]): string {
+  if (notChecked.length === 0) return "";
+  return [
+    "house-rules coverage: files no language adapter recognises were not checked.",
+    ...notChecked.map(p => `  not checked: ${p}`),
+  ].join("\n");
 }
 
 function gitTopLevel(fileOrDir: string): string | null {
@@ -196,6 +204,8 @@ export async function run(
     });
 
     const allFindings = await runRules(rules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
+    const notChecked = notCheckedFiles(rules, ctx.files ?? []).map(p => path.join(repoRoot, p));
+    const coverageText = buildCoverageText(notChecked);
     const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
     const baseline = await readBaseline(baselinePath);
     const unbaselined = subtractBaseline(allFindings, baseline);
@@ -254,7 +264,12 @@ export async function run(
       });
     }
 
-    if (violations.length === 0 && strayErrors.length === 0) return allow();
+    if (violations.length === 0 && strayErrors.length === 0) {
+      if (coverageText) {
+        return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: coverageText } }) + "\n", stderr: "", exit: 0 };
+      }
+      return allow();
+    }
 
     interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
     const fixedFiles: FixResult[] = [];
@@ -330,17 +345,24 @@ export async function run(
     }
 
     if (unfixable.length === 0 && strayErrors.length === 0) {
-      if (fixedFiles.length === 0) return allow();
+      if (fixedFiles.length === 0) {
+        if (coverageText) {
+          return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: coverageText } }) + "\n", stderr: "", exit: 0 };
+        }
+        return allow();
+      }
       const N = fixedFiles.reduce((s, f) => s + f.removed, 0);
       const fLines = fixedFiles.map(f =>
         `  ${f.path}: removed ${f.removed} (kept ${f.kept} of ${f.total} added comments; ${f.addedCount} added lines)`
       );
-      const ctx2 = [
+      const ctx2Lines = [
         `house-rules comment-density: auto-removed ${N} comment(s) that this session added beyond the code convention (at most 5 comment lines per 100 added lines).`,
         `This is house-rules automatic correction — not another session's edit, a merge, or a bug.`,
         ...fLines,
         `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
-      ].join("\n");
+      ];
+      if (coverageText) ctx2Lines.push(coverageText);
+      const ctx2 = ctx2Lines.join("\n");
       return {
         stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } }) + "\n",
         stderr: "",
@@ -380,7 +402,8 @@ export async function run(
         ...unfixable.map(v => `  ${v.path}`),
         ...strayErrors.map(f => `  ${path.join(repoRoot, f.path)}`),
       ].join("\n");
-      const stderr = `house-rules ${ruleNames} gate: 4th consecutive block — allowing; ${action4}\n${fileList}\n`;
+      const stderrBase = `house-rules ${ruleNames} gate: 4th consecutive block — allowing; ${action4}\n${fileList}\n`;
+      const stderr = coverageText ? stderrBase + coverageText + "\n" : stderrBase;
       return { stdout: "", stderr, exit: 0 };
     }
 
@@ -436,6 +459,7 @@ export async function run(
       : hasStray && !hasDensity ? "house-rules gate:"
       : "house-rules gate: files changed in this session violate one or more code conventions.";
     const fullReport = buildFull(reportHeader, sects, fallbackNotices, fixedPaths);
+    const fullReportWithCoverage = coverageText ? fullReport + "\n" + coverageText : fullReport;
 
     const tmpBase2 = opts?.testOnly_tmpDir ?? os.tmpdir();
     const safeSessionId = /^[A-Za-z0-9_-]+$/.test(sessionId) ? sessionId : "unknown";
@@ -443,13 +467,14 @@ export async function run(
     let writeOk = false;
     try {
       mkdirSync(path.dirname(blockFilePath), { recursive: true });
-      writeFileSync(blockFilePath, fullReport + "\n");
+      writeFileSync(blockFilePath, fullReportWithCoverage + "\n");
       writeOk = true;
     } catch { }
 
     let reason: string;
     if (writeOk) {
       reason = formatShortReason(ruleSummaries, blockFilePath, sfx);
+      if (coverageText) reason = reason + "\n" + coverageText;
     } else {
       if (hasDensity && !hasStray) {
         reason = formatBlock({
@@ -479,6 +504,7 @@ export async function run(
           suffix: sfx,
         });
       }
+      if (coverageText) reason = reason + "\n" + coverageText;
     }
     return block(reason);
   } catch (e) {

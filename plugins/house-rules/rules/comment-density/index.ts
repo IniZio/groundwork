@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Rule, RuleContext, Finding, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
 import { netNewCommentRows, density, autoFix } from '../../src/hooks/lib/comment-density.js';
-import { languageForPath } from '../../src/hooks/languages/registry.js';
+import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.js';
 import { LANG_FIX_TABLE, refusesPreExistingRemoval } from '../../src/hooks/gate.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
 import { appendFix } from '../../src/hooks/lib/autofix-ledger.js';
@@ -17,6 +17,7 @@ const rule: Rule = {
   id: 'comment-density',
   meta: { description: 'Flags files where added comment lines exceed 5 per 100 added lines.' },
   vehicles: ['tree-sitter', 'diff'],
+  languages: LANGUAGES,
 
   canFixPath(filePath: string): boolean {
     const lang = languageForPath(filePath);

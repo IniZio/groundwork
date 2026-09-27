@@ -21,6 +21,7 @@ export interface Report {
   fixed: ReportFinding[];
   manual: ManualEntry[];
   summary: { fixed: number; manual: number; findings: number };
+  coverage: { notChecked: string[] };
 }
 
 /** Returns 'all' when scope is all-mode against the empty tree, else the commit ref. */
@@ -58,18 +59,25 @@ export function toReportFinding(f: {
 /** Assemble a Report; missing arrays default to []; scope.base shows display form. */
 export function buildReport(
   scope: Scope,
-  parts: { findings?: ReportFinding[]; fixed?: ReportFinding[]; manual?: ManualEntry[] },
+  parts: { findings?: ReportFinding[]; fixed?: ReportFinding[]; manual?: ManualEntry[]; notChecked?: string[] },
 ): Report {
   const findings = parts.findings ?? [];
   const fixed = parts.fixed ?? [];
   const manual = parts.manual ?? [];
+  const notChecked = parts.notChecked ?? [];
   return {
     scope: { base: displayBase(scope), mode: scope.mode, files: scope.files.length },
     findings,
     fixed,
     manual,
     summary: { fixed: fixed.length, manual: manual.length, findings: findings.length },
+    coverage: { notChecked },
   };
+}
+
+/** Returns `not checked: <path>` per path; empty array when paths is empty. */
+export function formatNotCheckedLines(paths: string[]): string[] {
+  return paths.map(p => `not checked: ${p}`);
 }
 
 /** Write exactly one JSON line to stdout. */

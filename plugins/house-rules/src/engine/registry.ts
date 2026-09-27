@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Rule } from './types.js';
+import { LANGUAGES } from '../hooks/languages/registry.js';
 
 /**
  * Load rules from a directory.
@@ -35,6 +36,12 @@ export async function loadRules(rulesDir: string): Promise<Rule[]> {
 
     if (rule.id !== basename) {
       throw new Error(`Rule id "${rule.id}" does not match directory name "${basename}"`);
+    }
+
+    for (const lang of rule.languages ?? []) {
+      if (!LANGUAGES.includes(lang as typeof LANGUAGES[number])) {
+        throw new Error(`Rule "${rule.id}" declares unknown language "${lang}"`);
+      }
     }
 
     rules.push(rule);

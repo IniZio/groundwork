@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { loadRules } from '../engine/registry.js';
-import { runRules } from '../engine/run.js';
+import { runRules, notCheckedFiles } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
 import { runHousekeep, fixFindings } from './housekeep.js';
 import { resolveScope, ScopeUsageError } from './scope.js';
@@ -15,6 +15,7 @@ import {
   buildReport,
   writeJsonReport,
   formatFindingLine,
+  formatNotCheckedLines,
   exitCodeFor,
 } from './report.js';
 
@@ -183,6 +184,7 @@ async function cmdCheck(opts: {
   const allFindings = await runRules(rules, ctx);
   const baseline = await readBaseline(baselineFile);
   const findings = subtractBaseline(allFindings, baseline);
+  const notChecked = notCheckedFiles(rules, ctx.files ?? []);
 
   if (opts.fix) {
     // Apply autofixes, then re-evaluate to determine remaining findings.
@@ -204,6 +206,7 @@ async function cmdCheck(opts: {
         findings: remaining.map(toReportFinding),
         fixed: outcome.fixed.map(e => toReportFinding(e.finding)),
         manual: outcome.manual.map(m => ({ ...toReportFinding(m.finding), reason: m.reason })),
+        notChecked,
       }));
     } else {
       writeScopeHeader(scope);
@@ -212,12 +215,18 @@ async function cmdCheck(opts: {
       }
       process.stdout.write(`${remaining.length} finding(s)\n`);
       process.stdout.write(`${outcome.fixed.length} fixed\n`);
+      if (notChecked.length > 0) {
+        process.stdout.write('coverage: files no language adapter recognises were not checked.\n');
+        for (const line of formatNotCheckedLines(notChecked)) {
+          process.stdout.write(line + '\n');
+        }
+      }
     }
     process.exit(exitCodeFor(remaining));
   }
 
   if (opts.format === 'json') {
-    writeJsonReport(buildReport(scope, { findings: findings.map(toReportFinding) }));
+    writeJsonReport(buildReport(scope, { findings: findings.map(toReportFinding), notChecked }));
   } else {
     // Header after readBaseline succeeds (a corrupt baseline throws before we reach here).
     writeScopeHeader(scope);
@@ -225,6 +234,12 @@ async function cmdCheck(opts: {
       process.stdout.write(formatFindingLine(f) + '\n');
     }
     process.stdout.write(`${findings.length} finding(s)\n`);
+    if (notChecked.length > 0) {
+      process.stdout.write('coverage: files no language adapter recognises were not checked.\n');
+      for (const line of formatNotCheckedLines(notChecked)) {
+        process.stdout.write(line + '\n');
+      }
+    }
   }
   process.exit(exitCodeFor(findings));
 }

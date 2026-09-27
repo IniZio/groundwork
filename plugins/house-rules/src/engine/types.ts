@@ -59,6 +59,8 @@ export interface Rule {
   id: string;
   meta: { description: string };
   vehicles: Vehicle[];
+  /** Languages whose source files this rule reads. Absent/empty = reads no source; excluded from the coverage report. */
+  languages?: readonly Language[];
   check(ctx: RuleContext): Finding[] | Promise<Finding[]>;
   fix?(ctx: RuleContext, opts?: FixOptions): Promise<FixResult>;
   canFixPath?(path: string): boolean;

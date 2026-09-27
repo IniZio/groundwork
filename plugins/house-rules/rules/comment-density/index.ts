@@ -137,7 +137,7 @@ const rule: Rule = {
           file: absPath,
           fixedContent: content,
           removed,
-          reason: `comment-density: housekeep --fix removed ${n} over-budget comment(s)`,
+          reason: `comment-density: autofix removed ${n} over-budget comment(s)`,
           source: 'housekeep',
         });
       }

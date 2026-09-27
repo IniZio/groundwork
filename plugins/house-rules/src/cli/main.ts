@@ -76,7 +76,7 @@ function printUsage(toStdout = false): void {
       '\n' +
       'Exit codes:\n' +
       '  0  no error-severity findings remain\n' +
-      '  1  error-severity findings remain (after fixing, for --fix and housekeep)\n' +
+      '  1  error-severity findings remain (for --fix and housekeep: after fixing)\n' +
       '  2  usage error, unknown flag, or runtime error\n',
   );
 }

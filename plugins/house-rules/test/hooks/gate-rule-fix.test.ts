@@ -300,7 +300,6 @@ describe("gate-rule-fix AC4b: autofix:false policy — fix not called, gate bloc
     try { rmSync(gateTmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  // Before LA-08 the gate acted only on comment-density and stray-artifacts, so an error from a rule the policy does not autofix still allows.
   it("fix never called, stdout is continue, file unchanged, no stop-block written", async () => {
     const r = await run(
       {

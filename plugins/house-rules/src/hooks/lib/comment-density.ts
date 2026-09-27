@@ -805,10 +805,9 @@ function normalizeGoInlineArtifacts(fixed: string, rowChanges: RowChange[]): str
           fi = peek;
           while (out.length > 0 && out[out.length - 1] === " ") out.pop();
         } else if (nxt === "}") {
-          fi = peek;
           let k = out.length - 1;
           while (k >= 0 && out[k] === " ") k--;
-          if (k >= 0 && out[k] === "{") out.splice(k + 1);
+          if (k >= 0 && out[k] === "{") { out.splice(k + 1); fi = peek; }
         }
         continue;
       }

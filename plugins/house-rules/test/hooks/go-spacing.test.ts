@@ -231,7 +231,6 @@ describe("Go autoFix spacing artifacts (GF-8)", () => {
       "import \"fmt\"",
       "",
       "func f() {",
-      // strip removes the comment but the space artifact before , is benign to AST
       "\t_ = fmt.Sprint(v1 /* a */, v2)",
       "}",
       "",
@@ -240,6 +239,7 @@ describe("Go autoFix spacing artifacts (GF-8)", () => {
     expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).not.toContain("/* a */");
+    expect(r.fixed).toContain("\t_ = fmt.Sprint(v1, v2)");
   });
 
   it("pre-existing space before ) away from removal is not touched", async () => {
@@ -259,5 +259,78 @@ describe("Go autoFix spacing artifacts (GF-8)", () => {
     if (r.removed > 0) {
       expect(r.fixed).toContain("g(a )");
     }
+  });
+});
+
+describe("Go autoFix join-point brace repair (HC-13)", () => {
+  it("close-no-space: space before } preserved when out does not end with {", async () => {
+    const code = [
+      "package main",
+      "",
+      "func f() {",
+      "\t_ = func() int { return v1/* c */ }",
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("\t_ = func() int { return v1 }");
+  });
+
+  it("brace-empty: { } collapsed to {} when comment empties the block", async () => {
+    const code = [
+      "package main",
+      "",
+      "func f() {",
+      "\t_ = []int{ /* none */ }",
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("\t_ = []int{}");
+  });
+
+  it("rune-space: space before , removed after rune literal comment", async () => {
+    const code = [
+      "package main",
+      "",
+      "import \"fmt\"",
+      "",
+      "func f() {",
+      "\t_ = fmt.Sprint(' '/* c */, v1)",
+      "\tv1 := 1",
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("\t_ = fmt.Sprint(' ', v1)");
+  });
+
+  it("str-slash-slash: space before , removed; string literal with // intact", async () => {
+    const code = [
+      "package main",
+      "",
+      "import \"fmt\"",
+      "",
+      "func f() {",
+      "\t_ = fmt.Sprint(v1 /* c */ , \"//x ,\", v2)",
+      "\tv1 := 1",
+      "\tv2 := 2",
+      "}",
+      "",
+    ].join("\n");
+    const r = await autoFix(code, "go", allRows(code), undefined, undefined, { maxAllowedRows: 0 });
+    expect(r.ok, `reason: ${!r.ok ? r.reason : ""}`).toBe(true);
+    if (!r.ok) return;
+    expect(r.removed).toBeGreaterThan(0);
+    expect(r.fixed).toContain("\t_ = fmt.Sprint(v1, \"//x ,\", v2)");
   });
 });

@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { run, refusesPreExistingRemoval } from "../../src/hooks/gate.js";
+import { run } from "../../src/hooks/gate.js";
+import { refusesPreExistingRemoval } from "../../rules/comment-density/fix.js";
 
 const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
 const PROBE_DIR = path.join(import.meta.dir, "../fixtures/comment-density/nexus-probe");
@@ -657,7 +658,7 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
       {
         testOnly_tmpDir: tmpDir,
         testOnly_forceWrite: true,
-        afterTmpWrite: (_tmp, target) => {
+        afterTmpWrite: (_tmp: string, target: string) => {
           writeFileSync(target, "// modified concurrently\nconst x = 1;\n");
         },
       },
@@ -839,7 +840,7 @@ describe("ConcurrentWrite: concurrent modification aborts rename; gate blocks; n
       process.env as Record<string, string | undefined>,
       {
         testOnly_forceWrite: true,
-        afterTmpWrite: (_tmp, target) => {
+        afterTmpWrite: (_tmp: string, target: string) => {
           seamCalled = true;
           writeFileSync(target, markerContent, { encoding: "utf8" });
         },

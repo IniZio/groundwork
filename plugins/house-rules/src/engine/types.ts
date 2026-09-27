@@ -48,11 +48,41 @@ export interface RuleContext {
 export interface FixFileResult {
   path: string;
   status: 'fixed' | 'declined';
+  /** Why the file was declined; the gate prints it after the finding message in its block text. */
   reason?: string;
   before?: string;
   after?: string;
+  /** Rollout stage of this file's fix: 'preview' fixes are computed but not written. */
+  stability?: 'stable' | 'preview';
+  applicability?: 'safe' | 'unsafe';
+  /** Counts for the caller's success message; set on 'fixed'. */
+  removed?: number;
+  kept?: number;
+  total?: number;
+  addedLines?: number;
+  /** One line the gate adds to its block notices for this file. */
+  notice?: string;
 }
-export interface FixOptions { write?: boolean }
+
+/** Who calls fix, so the rule can write its own ledger and shadow logs. */
+export interface FixCaller {
+  source: 'gate' | 'housekeep';
+  sessionId?: string;
+  event?: 'Stop' | 'SubagentStop';
+  /** Autofix-ledger dir; undefined = the ledger's default. */
+  ledgerDir?: string;
+  /** Base dir for preview shadow logs; undefined = os.tmpdir(). */
+  shadowDir?: string;
+}
+
+export interface FixOptions {
+  /** false = compute but write no file and no ledger entry. */
+  write?: boolean;
+  /** Absent = housekeep. */
+  caller?: FixCaller;
+  /** Opaque test hooks the caller forwards unchanged; only the rule reads them. */
+  testOnly?: Record<string, unknown>;
+}
 export interface FixResult { fixed: number; skipped: number; files: FixFileResult[] }
 
 /** Replace input[start, end) with `text`. Offsets are UTF-16 indexes into PendingEdit.post. */

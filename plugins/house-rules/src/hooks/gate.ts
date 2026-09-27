@@ -1,24 +1,20 @@
 /**
- * Family: Comment-density enforcement on session-added lines only.
- * Trigger: Stop + SubagentStop.
- * Blocks when any touched file exceeds 5 effective comment lines per 100 added lines.
+ * Generic autofix gate: Stop/SubagentStop hook.
+ * Autofixes findings where the rule has `fix` and policy.autofix is true.
+ * Blocks when unfixed errors remain.
  */
-import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { autoFix, density, netNewCommentRows, type RowChange } from "./lib/comment-density.js";
-import { languageForPath, type Language } from "./languages/registry.js";
-import { atomicWrite, normalizeTrailingNewline, sha256 } from "./lib/atomic-write.js";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
-import { runRules, notCheckedFiles } from '../engine/run.js';
+import { runRules, notCheckedFiles, type FindingWithSeverity } from '../engine/run.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
-import { BUILTIN_POLICY, DEFAULT_IGNORE } from '../engine/policy.js';
+import { BUILTIN_POLICY, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
-import { appendFix } from './lib/autofix-ledger.js';
-import { fixEntryFor, type FixEntry } from '../../rules/comment-density/languages.js';
+import type { Rule, ScopedFile } from '../engine/types.js';
 
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -59,77 +55,17 @@ function writeCounter(p: string, state: CounterState): void {
   try { writeFileSync(p, JSON.stringify(state)); } catch { /* fail-open */ }
 }
 
-interface ViolatingFile {
-  path: string;
-  effective: number;
-  total: number;
-  commentRows: number[];
-  fallback: boolean;
-  firstErrorRow?: number;
-  rowSet: Set<number>;
-  netNewRows: Set<number>;
-  lang: Language;
-  unfixReason?: string;
-}
-
-
-interface ShadowLogRecord {
-  file: string;
-  lang: string;
-  removedLines: Array<{ lineNum: number; text: string; preExisting: boolean; kind: "deleted" | "modified"; fixedText?: string }>;
-  densityBefore: number;
-  densityAfter: number;
-}
-
-function writeShadowLog(tmpBase: string, sessionId: string, record: ShadowLogRecord): void {
-  try {
-    const dir = path.join(tmpBase, "groundwork-autofix-shadow");
-    mkdirSync(dir, { recursive: true });
-    appendFileSync(path.join(dir, `${sessionId}.jsonl`), JSON.stringify(record) + "\n");
-  } catch { /* fail-open */ }
-}
-
-function buildRemovedLines(
-  rowChanges: RowChange[],
-  rowSet: Set<number>,
-): Array<{ lineNum: number; text: string; preExisting: boolean; kind: "deleted" | "modified"; fixedText?: string }> {
-  return rowChanges.map(rc => ({
-    lineNum: rc.origRow + 1,
-    text: rc.origText,
-    preExisting: !rowSet.has(rc.origRow),
-    kind: rc.kind,
-    fixedText: rc.fixedText,
-  }));
-}
-
-function buildRemappedRows(rowChanges: RowChange[], origRowSet: Set<number>): Set<number> {
-  const deletedRows = new Set(rowChanges.filter(rc => rc.kind === "deleted").map(rc => rc.origRow));
-  const remapped = new Set<number>();
-  for (const origRow of origRowSet) {
-    if (deletedRows.has(origRow)) continue;
-    let shift = 0;
-    for (const dr of deletedRows) {
-      if (dr < origRow) shift++;
-    }
-    remapped.add(origRow - shift);
-  }
-  return remapped;
-}
-
-// Unreachable while autoFix's all-rows-added candidate filter holds (comment-density.ts:697); the autoFix property test enforces it.
-export function refusesPreExistingRemoval(removedLines: Array<{ preExisting: boolean }>): boolean {
-  return removedLines.some(r => r.preExisting);
-}
+interface FixedFile { path: string; removed: number; kept: number; total: number; addedCount: number }
+interface UnfixableEntry { path: string; ruleId: string; message: string; reason?: string; notice?: string }
 
 export async function run(
   input: unknown,
   env: Record<string, string | undefined>,
   opts?: {
-    testOnly_forceWrite?: boolean;
-    testOnly_fixTableOverride?: Partial<Record<string, FixEntry>>;
     testOnly_tmpDir?: string;
-    afterTmpWrite?: (tmp: string, target: string) => void;
-    testOnly_overrideFixed?: (txt: string, fixed: string, rowSet: Set<number>) => string;
+    testOnly_rules?: Rule[];
+    testOnly_policy?: Record<string, PolicyEntry>;
+    [testHook: string]: unknown;
   },
 ): Promise<HookResult> {
   try {
@@ -176,7 +112,8 @@ export async function run(
     if (!repoRoot) return silentAllow();
 
     const rulesDir = path.resolve(import.meta.dir, '../../rules');
-    const rules = await loadRules(rulesDir);
+    const rules = opts?.testOnly_rules ?? await loadRules(rulesDir);
+    const policy: Record<string, PolicyEntry> = { ...BUILTIN_POLICY, ...(opts?.testOnly_policy ?? {}) };
     const ctx = buildContext({
       repoRoot,
       mode: 'gate',
@@ -186,7 +123,7 @@ export async function run(
       runningAgentIds: running,
     });
 
-    const allFindings = await runRules(rules, ctx, BUILTIN_POLICY, DEFAULT_IGNORE);
+    const allFindings = await runRules(rules, ctx, policy, DEFAULT_IGNORE);
     const repoRootPrefix = repoRoot + path.sep;
     const notChecked = notCheckedFiles(rules, ctx.files ?? [])
       .map(p => path.resolve(repoRoot, p))
@@ -196,135 +133,84 @@ export async function run(
     const baseline = await readBaseline(baselinePath);
     const unbaselined = subtractBaseline(allFindings, baseline);
 
-    const densityErrors = unbaselined.filter(f => f.ruleId === 'comment-density' && f.severity === 'error');
+    const fixableFindings = unbaselined.filter(f =>
+      f.severity === 'error' &&
+      rules.find(r => r.id === f.ruleId)?.fix != null &&
+      policy[f.ruleId]?.autofix === true
+    );
     const strayErrors = unbaselined.filter(f => f.ruleId === 'stray-artifacts' && f.severity === 'error');
 
-    const fileByRelPath = new Map((ctx.files ?? []).map(f => [f.path, f]));
-
-    const violations: ViolatingFile[] = [];
-
-    for (const finding of densityErrors) {
-      const sf = fileByRelPath.get(finding.path);
-      if (!sf || !sf.text || !sf.addedHunks || sf.addedHunks.length === 0) continue;
-
-      const lang = languageForPath(finding.path);
-      if (!lang) continue;
-
-      const totalAdded = sf.addedHunks.reduce((s, h) => s + h.added.length, 0);
-      if (totalAdded === 0) continue;
-
-      const rowSet = new Set(sf.addedHunks.flatMap(h => h.added.map(n => n - 1)));
-
-      const baseText = sf.baseText ?? '';
-      const netResult = await netNewCommentRows(baseText, sf.text, lang, sf.addedHunks);
-      let effective: number;
-      let commentRows: number[];
-      let netNewRows: Set<number>;
-      let fallback = false;
-      let firstErrorRow: number | undefined;
-      if (netResult.ok) {
-        effective = netResult.rows.length;
-        commentRows = netResult.rows;
-        netNewRows = new Set(netResult.rows.map(n => n - 1));
-      } else {
-        const dr = await density(sf.text, lang, rowSet);
-        effective = dr.effective;
-        commentRows = dr.commentRows.map(r => r + 1);
-        netNewRows = rowSet;
-        fallback = dr.mode === 'fallback';
-        if (fallback && dr.errorRows.size > 0) {
-          firstErrorRow = Math.min(...dr.errorRows) + 1;
-        }
-      }
-
-      violations.push({
-        path: path.join(repoRoot, finding.path),
-        effective,
-        total: totalAdded,
-        commentRows,
-        fallback,
-        firstErrorRow,
-        rowSet,
-        netNewRows,
-        lang,
-      });
-    }
-
-    if (violations.length === 0 && strayErrors.length === 0) {
+    if (fixableFindings.length === 0 && strayErrors.length === 0) {
       return allow();
     }
 
-    interface FixResult { path: string; removed: number; kept: number; total: number; addedCount: number }
-    const fixedFiles: FixResult[] = [];
-    const unfixable: ViolatingFile[] = [];
+    const fileByRelPath = new Map((ctx.files ?? []).map(f => [f.path, f]));
+    const fixableFindingMap = new Map<string, FindingWithSeverity>();
+    for (const f of fixableFindings) {
+      fixableFindingMap.set(`${f.ruleId}::${f.path}`, f);
+    }
 
-    for (const v of violations) {
-      const tableEntry = fixEntryFor(v.lang);
-      const override = opts?.testOnly_fixTableOverride?.[v.lang];
-      const entry: FixEntry = override ? { ...tableEntry, ...override } : tableEntry;
-      const shouldWrite = opts?.testOnly_forceWrite === true || (entry.stability === "stable" && entry.applicability === "safe");
+    // Every opts key the gate does not consume is a rule's test hook; forward it unread.
+    const { testOnly_tmpDir, testOnly_rules, testOnly_policy, ...testOnly } = opts ?? {};
+    const testOnlyArg = Object.keys(testOnly).length > 0
+      ? testOnly as Record<string, unknown>
+      : undefined;
 
-      if (v.fallback) { unfixable.push(v); continue; }
+    const fixedFiles: FixedFile[] = [];
+    const unfixable: UnfixableEntry[] = [];
 
-      let txt: string;
-      try {
-        txt = readFileSync(v.path, "utf8");
-      } catch { unfixable.push({ ...v, unfixReason: "file read error" }); continue; }
+    for (const rule of rules) {
+      if (!rule.fix) continue;
+      const ruleFindings = fixableFindings.filter(f => f.ruleId === rule.id);
+      if (ruleFindings.length === 0) continue;
 
-      const ar = await autoFix(txt, v.lang, v.rowSet, undefined, v.netNewRows);
-      if (!ar.ok) { unfixable.push({ ...v, unfixReason: `autofix failed: ${ar.reason}` }); continue; }
-      if (ar.removed === 0) { unfixable.push({ ...v, unfixReason: "no removable comments" }); continue; }
-
-      const removedLines = buildRemovedLines(ar.rowChanges, v.rowSet);
-
-      if (!shouldWrite) {
-        const densityBefore = v.effective / v.total * 100;
-        const remappedAfter = buildRemappedRows(ar.rowChanges, v.rowSet);
-        const d2 = await density(ar.fixed, v.lang, remappedAfter);
-        const densityAfter = d2.total > 0 ? d2.effective / d2.total * 100 : 0;
-        const tmpBase = opts?.testOnly_tmpDir ?? os.tmpdir();
-        writeShadowLog(tmpBase, sessionId, { file: v.path, lang: v.lang, removedLines, densityBefore, densityAfter });
-        const notWrittenReason = entry.stability !== "stable"
-          ? `preview language (${v.lang})`
-          : `unsafe fix (${v.lang})`;
-        unfixable.push({ ...v, unfixReason: notWrittenReason });
-        continue;
+      const seenPaths = new Set<string>();
+      const fixFiles: ScopedFile[] = [];
+      for (const finding of ruleFindings) {
+        if (!seenPaths.has(finding.path)) {
+          seenPaths.add(finding.path);
+          const sf = fileByRelPath.get(finding.path);
+          if (sf) fixFiles.push(sf);
+        }
       }
 
-      if (refusesPreExistingRemoval(removedLines)) {
-        unfixable.push({ ...v, unfixReason: "fix would remove pre-existing comments" });
-        continue;
-      }
+      const result = await rule.fix!(
+        { ...ctx, files: fixFiles },
+        {
+          caller: {
+            source: 'gate',
+            sessionId,
+            event: event as 'Stop' | 'SubagentStop',
+            ledgerDir: opts?.testOnly_tmpDir
+              ? path.join(opts.testOnly_tmpDir, 'autofix-ledger')
+              : undefined,
+            shadowDir: opts?.testOnly_tmpDir ?? os.tmpdir(),
+          },
+          testOnly: testOnlyArg,
+        },
+      );
 
-      const trailNl = txt.endsWith("\n");
-      const arFixedNormalized = normalizeTrailingNewline(ar.fixed, trailNl);
-      const arFixed = opts?.testOnly_overrideFixed?.(txt, ar.fixed, v.rowSet) ?? ar.fixed;
-      const content = normalizeTrailingNewline(arFixed, trailNl);
-      const origHash = sha256(txt);
-
-      const wr = atomicWrite(v.path, content, origHash, {
-        afterTmpWrite: opts?.afterTmpWrite,
-        verifyContent: arFixedNormalized,
-      });
-      if (!wr.ok) {
-        process.stderr.write(`gate: ${wr.reason}\n`);
-        unfixable.push({ ...v, unfixReason: `write failed: ${wr.reason}` });
-        continue;
+      for (const r of result.files) {
+        const abs = path.join(repoRoot, r.path);
+        const finding = fixableFindingMap.get(`${rule.id}::${r.path}`);
+        if (r.status === 'fixed') {
+          fixedFiles.push({
+            path: abs,
+            removed: r.removed ?? 0,
+            kept: r.kept ?? 0,
+            total: r.total ?? 0,
+            addedCount: r.addedLines ?? 0,
+          });
+        } else {
+          unfixable.push({
+            path: abs,
+            ruleId: rule.id,
+            message: finding?.message ?? '',
+            reason: r.reason,
+            notice: r.notice,
+          });
+        }
       }
-      {
-        const removedTexts = ar.removedTexts;
-        const ledgerOpts = opts?.testOnly_tmpDir
-          ? { dir: path.join(opts.testOnly_tmpDir, "autofix-ledger") }
-          : undefined;
-        appendFix({
-          file: v.path,
-          fixedContent: content,
-          removed: removedTexts,
-          reason: `comment-density over budget at ${event}: removed ${ar.removed} comment(s)`,
-          source: "gate",
-        }, ledgerOpts);
-      }
-      fixedFiles.push({ path: v.path, removed: ar.removed, kept: ar.kept, total: ar.total, addedCount: v.rowSet.size });
     }
 
     if (unfixable.length === 0 && strayErrors.length === 0) {
@@ -355,7 +241,7 @@ export async function run(
     const cPath = counterPath(tmpBase, sessionId, agentKey);
     const state = readCounter(cPath);
     const currentSig = [
-      ...unfixable.map(v => v.path),
+      ...unfixable.map(u => u.path),
       ...strayErrors.map(f => path.join(repoRoot, f.path)),
     ].sort().join(";");
 
@@ -367,9 +253,11 @@ export async function run(
     }
     writeCounter(cPath, { sig: currentSig, count: newCount });
 
+    const ruleNamesFromUnfixable = [...new Set(unfixable.map(u => u.ruleId))];
+
     if (newCount >= 4) {
       const ruleNames = [
-        ...(unfixable.length > 0 ? ["comment-density"] : []),
+        ...(unfixable.length > 0 ? ruleNamesFromUnfixable : []),
         ...(strayErrors.length > 0 ? ["stray-artifacts"] : []),
       ].join(" + ");
       const action4 = unfixable.length > 0 && strayErrors.length === 0
@@ -378,7 +266,7 @@ export async function run(
           ? "merge or delete stray files before continuing"
           : "remove or move comments and merge or delete stray files before continuing";
       const fileList = [
-        ...unfixable.map(v => `  ${v.path}`),
+        ...unfixable.map(u => `  ${u.path}`),
         ...strayErrors.map(f => `  ${path.join(repoRoot, f.path)}`),
       ].join("\n");
       const stderrBase = `house-rules ${ruleNames} gate: 4th consecutive block — allowing; ${action4}\n${fileList}\n`;
@@ -391,21 +279,16 @@ export async function run(
     const isSubagent = event === "SubagentStop";
     const handback = " Edits made after hand-back do not reach the caller.";
 
-    const fileLines = unfixable.map(v => {
-      const ratio = (v.effective / v.total * 100).toFixed(1);
-      const first5 = v.commentRows.slice(0, 5).join(", ");
-      const why = v.unfixReason ? ` — ${v.unfixReason}` : "";
-      return `  ${v.path}: ${ratio}/100 (${v.effective} comments in ${v.total} added lines; rows ${first5})${why}`;
+    const fileLines = unfixable.map(u => {
+      const reason = u.reason;
+      return `  ${u.path}: ${u.message}${reason ? ` — ${reason}` : ""}`;
     });
 
     const strayLines = strayErrors.map(f => `  ${path.join(repoRoot, f.path)}: ${f.message}`);
 
     const fallbackNotices = unfixable
-      .filter(v => v.fallback)
-      .map(v => {
-        const loc = v.firstErrorRow !== undefined ? `:${v.firstErrorRow}` : '';
-        return `(${v.path}${loc}: parse error — prefix count used)`;
-      });
+      .filter(u => u.notice != null)
+      .map(u => u.notice!);
 
     const DHEADER =
       "house-rules comment-density gate: files changed in this session exceed the code convention (at most 5 comment lines per 100 added lines).\n" +
@@ -418,7 +301,11 @@ export async function run(
 
     // Build the rule summary for the short reason
     const ruleSummaries: RuleSummary[] = [];
-    if (hasDensity) ruleSummaries.push({ name: "comment-density", paths: unfixable.map(v => v.path) });
+    if (hasDensity) {
+      for (const ruleId of ruleNamesFromUnfixable) {
+        ruleSummaries.push({ name: ruleId, paths: unfixable.filter(u => u.ruleId === ruleId).map(u => u.path) });
+      }
+    }
     if (hasStray) ruleSummaries.push({ name: "stray-artifacts", paths: strayErrors.map(f => path.join(repoRoot, f.path)) });
 
     // Build the full untrimmed report

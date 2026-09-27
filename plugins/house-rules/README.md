@@ -79,6 +79,65 @@ When the gate auto-trims a file, the next Read/Edit/Write of that file emits a o
 
 **Go autofix** — removes comments as text; spacing at comment-removal join points (` ,`, ` )`, `{ }`) is repaired natively; string literals are never touched. No gofmt is run. Aligned trailing-comment columns are left to your formatter. Protected Go comments (never removed): `//go:*` pragmas, `// +build`, `//export`, `//line` and `/*line` directives, `//nolint`, `//lint:ignore`/`file-ignore`, `// +marker:` (e.g. kubebuilder), everything before the `package` clause (license, SPDX, `Code generated ... DO NOT EDIT.`), the whole comment group (any mix of `//` and `/* */`) directly above `import "C"` (top-level or grouped import spec), `// Output:`/`// Unordered output:`/`/* Output: */` blocks inside Example funcs, go/doc `MARKER(uid)` notes with continuations, and doc comments on declarations including interface methods and embedded interface elements.
 
-**Supported languages**: TypeScript (ts, tsx), JavaScript (js, jsx), Python, Bash/Shell, YAML, Dockerfile, Go, Rust, SQL, Makefile, TOML. Files in other languages are not measured.
+**Supported languages** — all languages house-rules can parse are listed below.
+
+<!-- languages:start -->
+| Language | Detected by | Grammar source |
+|---|---|---|
+| bash | `.sh`, `.bash`; shebang: `bash`, `bsh`, `sh`, `zsh` | vendored from `tree-sitter-bash` |
+| yaml | `.yml`, `.yaml` | vendored from `@tree-sitter-grammars/tree-sitter-yaml` |
+| typescript | `.ts`, `.mts`, `.cts` | vendored from `tree-sitter-typescript` |
+| tsx | `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` | vendored from `tree-sitter-typescript` |
+| python | `.py` | vendored from `tree-sitter-python` |
+| dockerfile | `.dockerfile`; basenames: `Dockerfile`, `Containerfile`; prefixes: `Dockerfile.`, `Containerfile.` | built from source by `scripts/build-dockerfile-grammar.sh` |
+| go | `.go` | vendored from `tree-sitter-go` |
+| rust | `.rs` | vendored from `tree-sitter-rust` |
+| sql | `.sql` | built from source by `scripts/build-sql-grammar.sh` |
+| make | `.mk`; basenames: `Makefile`, `GNUmakefile`, `makefile` | vendored from `tree-sitter-make` |
+| toml | `.toml` | vendored from `@tree-sitter-grammars/tree-sitter-toml` |
+
+Files in other languages are not measured.
+<!-- languages:end -->
 
 **No opt-out**: there is no environment variable or config knob to disable comment-density enforcement. The `CLAUDE_CODE_ENTRYPOINT=sdk-py/sdk-js` skip exists only to prevent nested-agent leakage.
+
+## Adding a language
+
+Adding a language requires three steps and one optional step.
+
+**1. One language adapter in `src/hooks/languages/registry.ts`.**
+
+Add an entry to the `ADAPTERS` object. The adapter must set:
+
+- `id` — a short lowercase identifier (e.g. `"rust"`).
+- `detect` — at least one of `extensions`, `basenames`, `basenamePrefixes`, or `shebangInterpreters` (shebang is checked only when the file has no extension).
+- `grammar` — the wasm filename under `src/hooks/grammars/` plus either:
+  - `vendor: { package, file }` — copy the wasm from the npm package by running `bun scripts/vendor-grammars.ts`; the script writes the wasm and records the provenance in `src/hooks/grammars/SOURCES.json`.
+  - `build` — plugin-relative path to a build script (e.g. `"scripts/build-dockerfile-grammar.sh"`); place a `<wasm-stem>.source.json` beside the wasm recording its `sha256` and `bytes`.
+
+**ABI trap**: never use `tree-sitter-wasms` to source wasm files — its scanner grammars crash at runtime (ABI mismatch). Use each grammar's own npm package (e.g. `tree-sitter-rust`, `@tree-sitter-grammars/tree-sitter-toml`).
+
+Optionally add:
+
+- `isCommentNodeType` — a predicate on tree-sitter node type names; omit to accept any type containing `"comment"`.
+- `classifyComments` — a classifier that sets `kind`, `directive`, `header`, and `group` on each comment; omit to use the default (shebang → directive, `/**` → doc, adjacent whole-line comments form a group).
+
+**2. One conformance fixture `test/fixtures/languages/<id>.<ext>`.**
+
+The fixture is real-world source content with exactly one line matching the pattern:
+
+```
+conformance: comments=N directive=N doc=N groups=N
+```
+
+written inside a normal comment of the language (e.g. `# conformance: ...` for Bash). Also include a `source: <provenance path/URL/commit>` line. Count all comments — including the header and source lines — by hand to fill in the numbers. `languageForPath(<fixture-path>, <first-line>)` must return the language id.
+
+The conformance suite (`test/languages/conformance.test.ts`) fails until this fixture exists.
+
+**3. Update the README languages table.**
+
+Add the language's row to the section between `<!-- languages:start -->` and `<!-- languages:end -->` in this file (the check does not rewrite it), then run `bun test test/languages/readme-languages.test.ts` to confirm the table matches the registry. The test names any missing or extra language ids.
+
+**4. (Optional) A rule language hook.**
+
+If a rule needs language-specific behaviour (e.g. a protected-comment list), add a branch inside that rule's code and list the new language in the rule's `languages` array. This is a rule language hook — owned by the rule, not the language adapter.

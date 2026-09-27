@@ -763,6 +763,66 @@ export function stripComments(text: string, comments: Comment[]): { text: string
   return { text: result, rowChanges };
 }
 
+function normalizeGoInlineArtifacts(fixed: string, rowChanges: RowChange[]): string {
+  const modifiedRows = rowChanges.filter(rc => rc.kind === "modified");
+  if (modifiedRows.length === 0) return fixed;
+
+  const deletedOrigRows = rowChanges
+    .filter(rc => rc.kind === "deleted")
+    .map(rc => rc.origRow)
+    .sort((a, b) => a - b);
+
+  function deletedBefore(origRow: number): number {
+    let lo = 0, hi = deletedOrigRows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (deletedOrigRows[mid] < origRow) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function repairLine(orig: string, fix: string): string {
+    const out: string[] = [];
+    let oi = 0, fi = 0, inResync = false;
+    while (fi < fix.length) {
+      if (oi < orig.length && orig[oi] === fix[fi]) {
+        out.push(fix[fi]); oi++; fi++; inResync = false; continue;
+      }
+      if (oi >= orig.length) { out.push(fix[fi]); fi++; continue; }
+
+      if (!inResync) {
+        const jc = fix[fi];
+        if (out.length > 0 && out[out.length - 1] === " " && (jc === "," || jc === ")")) out.pop();
+        if (jc === "}") {
+          let k = out.length - 1;
+          while (k >= 0 && out[k] === " ") k--;
+          if (k >= 0 && out[k] === "{") out.splice(k + 1);
+        }
+      }
+
+      if (orig[oi] === "/" && oi + 1 < orig.length && orig[oi + 1] === "*") {
+        oi += 2;
+        while (oi + 1 < orig.length && !(orig[oi] === "*" && orig[oi + 1] === "/")) oi++;
+        oi = Math.min(oi + 2, orig.length);
+      } else {
+        oi++;
+      }
+      inResync = true;
+    }
+    return out.join("").replace(/\s+$/, "");
+  }
+
+  const lines = fixed.split("\n");
+  for (const rc of modifiedRows) {
+    const newIdx = rc.origRow - deletedBefore(rc.origRow);
+    if (newIdx < 0 || newIdx >= lines.length) continue;
+    lines[newIdx] = repairLine(rc.origText ?? "", lines[newIdx]);
+  }
+
+  return lines.join("\n");
+}
+
 function normalizeGoRemovalWhitespace(
   origText: string,
   fixed: string,
@@ -1380,7 +1440,8 @@ export async function autoFix(
 
   let fixed: string;
   if (lang === "go") {
-    fixed = normalizeGoRemovalWhitespace(text, stripped.text, rowChanges);
+    const afterArtifacts = normalizeGoInlineArtifacts(stripped.text, rowChanges);
+    fixed = normalizeGoRemovalWhitespace(text, afterArtifacts, rowChanges);
   } else {
     fixed = stripped.text;
   }

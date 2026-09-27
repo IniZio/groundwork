@@ -144,6 +144,8 @@ const EXEMPT_CASES: ExemptCase[] = [
   ["non-URL", "typescript", "// see https://example.com for details", false, "URL in prose not exempt"],
   ["divider ---", "typescript", "// ---------\nconst x = 1;", true, "divider is exempt"],
   ["non-divider", "typescript", "// -- partial", false, "short -- not a divider"],
+  ["divider with prose", "typescript", "// ---- Section prose\nconst x = 1;", false, "divider with trailing prose is not exempt"],
+  ["spacer bare //", "typescript", "//\nconst x = 1;", true, "bare // spacer is exempt"],
   ["TODO(owner)", "typescript", "// TODO(alice): fix this", true, "TODO(owner) is exempt"],
   ["plain TODO", "typescript", "// TODO: fix this", false, "plain TODO not exempt"],
   ["shellcheck", "bash", "# shellcheck disable=SC2034\nfoo=bar", true, "shellcheck is exempt"],

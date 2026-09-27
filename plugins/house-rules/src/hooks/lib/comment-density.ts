@@ -37,7 +37,7 @@ const PRETTIER_RE = /^prettier-ignore/;
 const BIOME_RE = /^biome-ignore/;
 const REGION_RE = /^#?(?:region|endregion)/i;
 const URL_RE = /^https?:\/\/\S+$/;
-const DIVIDER_RE = /^(?:[─-╿]{2,}|[-=#*]{4,})/u;
+const DIVIDER_RE = /^(?:[─-╿━═]{2,}|[-=#*~_]{4,})$/u;
 // go/doc treats any [A-Z]{2,}(uid): as a note marker (TODO, BUG, FIXME, NOTE, XXX, HACK…)
 const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
 const SHELLCHECK_RE = /^shellcheck\b/;
@@ -136,15 +136,39 @@ function checkExempt(
     if (isRustDoc) return { exempt: true, reason: "rust-doc" };
   }
 
-  for (const line of raw.split("\n")) {
+  const lines = raw.split("\n");
+
+  if (trimmed0.startsWith("/*")) {
+    // Block comment: exempt only when every non-blank inner line is exempt.
+    let firstReason: string | undefined;
+    let hasNonBlank = false;
+    for (const line of lines) {
+      const inner = stripMarkers(line);
+      if (!inner) continue;
+      hasNonBlank = true;
+      if (DIVIDER_RE.test(inner)) { firstReason ??= "divider"; continue; }
+      if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
+        firstReason ??= "dockerfile-directive"; continue;
+      }
+      if (isExemptInner(inner, lang, line)) { firstReason ??= inner.slice(0, 30); continue; }
+      return { exempt: false };
+    }
+    // All-blank block is not exempt (preserves existing behavior).
+    if (!hasNonBlank) return { exempt: false };
+    return { exempt: true, reason: firstReason };
+  }
+
+  for (const line of lines) {
     const inner = stripMarkers(line);
-    if (!inner) continue;
+    if (!inner) {
+      if (line.trim().startsWith("//")) return { exempt: true, reason: "spacer" };
+      continue;
+    }
+    if (DIVIDER_RE.test(inner)) return { exempt: true, reason: "divider" };
     if (lang === "dockerfile" && inLeadingBlock && DOCKERFILE_DIRECTIVE_RE.test(inner)) {
       return { exempt: true, reason: "dockerfile-directive" };
     }
-    if (isExemptInner(inner, lang, line)) {
-      return { exempt: true, reason: inner.slice(0, 30) };
-    }
+    if (isExemptInner(inner, lang, line)) return { exempt: true, reason: inner.slice(0, 30) };
   }
 
   return { exempt: false };
@@ -801,7 +825,6 @@ function normalizeGoRemovalWhitespace(
 
 const FALLBACK_ANNOT_TAG_RE = /^\s*\/\/\s*@\w/;
 const FALLBACK_URL_LINE_RE = /^\s*\/\/\s*https?:\/\//;
-const FALLBACK_SECTION_DIV_RE = /^\s*\/\/[ \t]*(?:[─-╿]{2,}|[-=]{4,})/u;
 const FALLBACK_ESLINT_RE = /^\s*\/\/\s*eslint-(?:disable|enable)/;
 const FALLBACK_REGION_RE = /^\s*\/\/\s*#(?:region|endregion)/;
 const FALLBACK_TODO_OWNER_RE = /^\s*\/\/\s*TODO\([^)]+\)/;
@@ -810,7 +833,6 @@ function isFallbackExempt(raw: string): boolean {
   return (
     FALLBACK_ANNOT_TAG_RE.test(raw) ||
     FALLBACK_URL_LINE_RE.test(raw) ||
-    FALLBACK_SECTION_DIV_RE.test(raw) ||
     FALLBACK_ESLINT_RE.test(raw) ||
     FALLBACK_REGION_RE.test(raw) ||
     FALLBACK_TODO_OWNER_RE.test(raw)
@@ -855,10 +877,10 @@ function countEffectiveFallback(text: string, lang?: Lang | null): { total: numb
     }
 
     if (trimmed.startsWith("//")) {
-      if (!isFallbackExempt(raw)) {
-        effective++;
-        commentRows.push(i);
-      }
+      const slashInner = trimmed.slice(2).trim();
+      if (!slashInner || DIVIDER_RE.test(slashInner) || isFallbackExempt(raw)) continue;
+      effective++;
+      commentRows.push(i);
       continue;
     }
 
@@ -1088,7 +1110,7 @@ function goNoteContSet(
         continue;
       }
       if (c.exempt) {
-        inNote = false;
+        if (c.exemptReason !== "divider" && c.exemptReason !== "spacer") inNote = false;
         continue;
       }
       if (inNote && candSet.has(c.startIndex)) {
@@ -1132,7 +1154,8 @@ function paragraphProtectedSet(
   let cur: Comment[] = [];
   let prevRow = -2;
   for (const c of allSlash) {
-    if (c.exempt && !isExemptProse(c)) {
+    const decoration = c.exemptReason === "divider" || c.exemptReason === "spacer";
+    if (c.exempt && !isExemptProse(c) && !decoration) {
       if (cur.length > 0) { paragraphs.push(cur); cur = []; }
       prevRow = -2;
       continue;

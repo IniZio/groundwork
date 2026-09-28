@@ -5,6 +5,8 @@ import { buildContext } from '../engine/context.js';
 import { addedHunks, allLinesHunk } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
 import { defaultBase } from './default-base.js';
+import { languageForPath } from '../hooks/languages/registry.js';
+import { createSourceFiles } from '../engine/source-file.js';
 
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
@@ -38,6 +40,8 @@ export function buildAllTrackedContext(
   const result = _spawnFn('git', lsArgs, { encoding: 'utf8' });
   const filePaths = result.stdout.split('\n').filter(Boolean);
 
+  const sources = createSourceFiles();
+
   if (effectiveBase === EMPTY_TREE) {
     const files: ScopedFile[] = filePaths.map(relPath => {
       const absPath = path.join(repoRoot, relPath);
@@ -46,14 +50,22 @@ export function buildAllTrackedContext(
       return {
         path: relPath,
         text,
-        lang: undefined,
+        lang: languageForPath(relPath) ?? undefined,
         baseText: '',
         addedHunks: text !== undefined ? allLinesHunk(text) : [],
         tracked: true,
         sessionCreated: false,
       };
     });
-    return { repoRoot, mode: 'cli', files };
+    return {
+      repoRoot,
+      mode: 'cli',
+      files,
+      sourceFile(file: ScopedFile) {
+        if (!file.lang || file.text === undefined) return Promise.resolve(null);
+        return sources.get(file.lang, file.text, file.path);
+      },
+    };
   }
 
   const files: ScopedFile[] = filePaths.map(relPath => {
@@ -65,14 +77,22 @@ export function buildAllTrackedContext(
     return {
       path: relPath,
       text,
-      lang: undefined,
+      lang: languageForPath(relPath) ?? undefined,
       baseText,
       addedHunks: addedHunks(absPath, effectiveBase) ?? [],
       tracked: true,
       sessionCreated: false,
     };
   });
-  return { repoRoot, mode: 'cli', files };
+  return {
+    repoRoot,
+    mode: 'cli',
+    files,
+    sourceFile(file: ScopedFile) {
+      if (!file.lang || file.text === undefined) return Promise.resolve(null);
+      return sources.get(file.lang, file.text, file.path);
+    },
+  };
 }
 
 export function resolveScope(opts: ResolveScopeOpts): { ctx: RuleContext; scope: Scope } {

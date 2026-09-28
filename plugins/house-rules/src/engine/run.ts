@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { Rule, Finding, RuleContext, Severity, ScopedFile } from './types.js';
 import type { Language } from '../hooks/languages/registry.js';
+import { languageForPath } from '../hooks/languages/registry.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE, type PolicyEntry } from './policy.js';
 
 const SOURCE_CODE_EXTENSIONS = new Set([
@@ -100,13 +101,15 @@ export async function coverageReport(rules: Rule[], ctx: RuleContext): Promise<C
     if (file.text === undefined) continue;
     if (seenPaths.has(file.path)) continue;
     seenPaths.add(file.path);
-    if (file.lang === undefined || !covered.has(file.lang)) continue;
+    const lang = file.lang ?? languageForPath(file.path) ?? undefined;
+    if (lang === undefined || !covered.has(lang)) continue;
 
-    const r = await ctx.sourceFile?.(file);
+    const fileForSource = file.lang === undefined ? { ...file, lang } : file;
+    const r = await ctx.sourceFile?.(fileForSource);
     if (r == null) continue;
 
     if (!r.ok) {
-      failed.push({ path: file.path, language: file.lang, reason: r.reason });
+      failed.push({ path: file.path, language: lang, reason: r.reason });
     } else if (r.source.errorRows.size > 0) {
       const rows = [...r.source.errorRows].map(row => row + 1).sort((a, b) => a - b);
       partiallyChecked.push({ path: file.path, rows });
@@ -171,7 +174,8 @@ export function notCheckedFiles(rules: Rule[], files: ScopedFile[]): string[] {
     if (file.text === undefined) continue;
     if (seen.has(file.path)) continue;
     seen.add(file.path);
-    if ((file.lang === undefined || !covered.has(file.lang)) && isSourceCodeFile(file.path)) {
+    const lang = file.lang ?? languageForPath(file.path) ?? undefined;
+    if ((lang === undefined || !covered.has(lang)) && isSourceCodeFile(file.path)) {
       result.push(file.path);
     }
   }

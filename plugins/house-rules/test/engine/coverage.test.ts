@@ -33,22 +33,25 @@ describe("notCheckedFiles — real rules", () => {
     rules = r;
   });
 
-  it("PRESENT: .kt file with lang undefined is listed (not checked by any rule)", async () => {
+  it("PRESENT: .rb file with lang undefined is listed (not checked by any rule)", async () => {
     await rulesReady;
     const files: ScopedFile[] = [
+      { path: "src/app.rb", text: "puts 'hello'" },
       { path: "src/App.kt", text: "fun main(){}" },
       { path: "a.ts", text: "x", lang: "typescript" },
     ];
     const result = notCheckedFiles(rules, files);
-    expect(result).toContain("src/App.kt");
+    expect(result).toContain("src/app.rb");
+    expect(result).not.toContain("src/App.kt");
     expect(result).not.toContain("a.ts");
   });
 
-  it("PRESENT: App.kt and Main.java listed; ABSENT: non-source files (LA-D3)", async () => {
+  it("PRESENT: app.rb and main.lua listed; ABSENT: non-source files (LA-D3)", async () => {
     await rulesReady;
     const files: ScopedFile[] = [
+      { path: "src/app.rb", text: "puts 'hello'" },
+      { path: "src/main.lua", text: "print('hi')" },
       { path: "src/App.kt", text: "fun main(){}" },
-      { path: "src/Main.java", text: "class Main {}" },
       { path: "README.md", text: "# docs" },
       { path: "package.json", text: "{}" },
       { path: "notes.txt", text: "notes" },
@@ -59,8 +62,9 @@ describe("notCheckedFiles — real rules", () => {
     ];
     const result = notCheckedFiles(rules, files);
     // source-code files with no adapter → listed
-    expect(result).toContain("src/App.kt");
-    expect(result).toContain("src/Main.java");
+    expect(result).toContain("src/app.rb");
+    expect(result).toContain("src/main.lua");
+    expect(result).not.toContain("src/App.kt");
     expect(result).not.toContain("README.md");
     expect(result).not.toContain("package.json");
     expect(result).not.toContain("notes.txt");
@@ -149,16 +153,20 @@ describe("coverageReport — notChecked", () => {
   let rules: Rule[];
   const rulesReady = loadRules(RULES_DIR).then((r) => { rules = r; });
 
-  it("PRESENT: .kt file with no lang goes to notChecked", async () => {
+  it("PRESENT: .rb file with no lang goes to notChecked", async () => {
     await rulesReady;
     const ctx: RuleContext = {
       repoRoot: "/repo",
       mode: "gate",
-      files: [{ path: "src/App.kt", text: "fun main(){}" }],
+      files: [
+        { path: "src/app.rb", text: "puts 'hello'" },
+        { path: "src/App.kt", text: "fun main(){}" },
+      ],
       sourceFile: async () => null,
     };
     const cov = await coverageReport(rules, ctx);
-    expect(cov.notChecked).toContain("src/App.kt");
+    expect(cov.notChecked).toContain("src/app.rb");
+    expect(cov.notChecked).not.toContain("src/App.kt");
     expect(cov.partiallyChecked).toEqual([]);
     expect(cov.failed).toEqual([]);
   });

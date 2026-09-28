@@ -353,11 +353,11 @@ export default rule;
     expect(dryOut).toContain('over-budget.sh');
     expect(dryOut).not.toContain('[dry-run] over-budget.sh');
     expect(dryOut).toContain('over-budget.sh comment-density');
-    expect(dryOut).toMatch(/over-budget\.sh comment-density.*— autofix not enabled for bash \(preview\)/);
+    expect(dryOut).toMatch(/over-budget\.sh comment-density.*— autofix not supported for bash/);
 
     expect(realOut).toContain('Needs manual fix');
     expect(realOut).toContain('over-budget.sh');
-    expect(realOut).toMatch(/over-budget\.sh comment-density.*— autofix not enabled for bash \(preview\)/);
+    expect(realOut).toMatch(/over-budget\.sh comment-density.*— autofix not supported for bash/);
 
     const summaryLine = (out: string) => out.split('\n').find(l => /\d+ fixed, \d+ need manual fix/.test(l)) ?? '';
     expect(summaryLine(dryOut)).toBe(summaryLine(realOut));

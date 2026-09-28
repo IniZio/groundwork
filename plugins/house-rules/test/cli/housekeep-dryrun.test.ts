@@ -151,7 +151,7 @@ function buildFixture(): { repoDir: string; baseSha: string } {
 
 const SUMMARY = '1 fixed, 2 need manual fix';
 const MANUAL_SVC = '  svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19) — autofix failed: still over cap after fix';
-const MANUAL_SH  = '  tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1, 2, 3, 4, 5) — autofix not enabled for bash (preview)';
+const MANUAL_SH  = '  tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1, 2, 3, 4, 5) — autofix not supported for bash';
 
 describe('housekeep --dry-run parity', () => {
 

@@ -86,17 +86,16 @@ async function housekeepFix(ctx: RuleContext, opts?: FixOptions): Promise<FixRes
     const lang = languageForPath(file.path);
     if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
+    if (!canFixPathHelper(file.path)) {
+      decline(file.path, `autofix not supported for ${lang}`);
+      continue;
+    }
+
     const sfHK = ctx.sourceFile ? await ctx.sourceFile(file) : null;
     if (sfHK && !sfHK.ok) continue;
 
     if (sfHK?.ok && sfHK.source.errorRows.size > 0) {
       decline(file.path, syntaxErrorReason(sfHK.source.errorRows));
-      continue;
-    }
-
-    if (!canFixPathHelper(file.path)) {
-      const reason = `autofix not enabled for ${lang} (${fixEntryFor(lang).stability})`;
-      decline(file.path, reason);
       continue;
     }
 

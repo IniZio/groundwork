@@ -177,7 +177,7 @@ describe('comment-density language-hooks: go entry removed', () => {
     expect(result.fixed).toBe(0);
     const file = result.files[0];
     expect(file.status).toBe('declined');
-    expect(file.reason).toBe('autofix not enabled for go (preview)');
+    expect(file.reason).toBe('autofix not supported for go');
   });
 
   it('autoFix without Go hook resolves ok:true with default behaviour', async () => {
@@ -258,7 +258,7 @@ describe('comment-density language-hooks: typescript entry removed', () => {
       expect(result.fixed).toBe(0);
       const file = result.files[0];
       expect(file.status).toBe('declined');
-      expect(file.reason).toBe('autofix not enabled for typescript (preview)');
+      expect(file.reason).toBe('autofix not supported for typescript');
     } finally {
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
     }

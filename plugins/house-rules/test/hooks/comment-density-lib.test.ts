@@ -36,6 +36,7 @@ describe("languageForPath", () => {
     ["/foo/bar.mjs", undefined, "typescript"],
     ["/foo/bar.cjs", undefined, "typescript"],
     ["/foo/bar.py", undefined, "python"],
+    ["/foo/bar.pyi", undefined, "python"],
     ["/foo/bar.sh", undefined, "bash"],
     ["/foo/bar.bash", undefined, "bash"],
     ["/foo/bar.yml", undefined, "yaml"],
@@ -48,7 +49,8 @@ describe("languageForPath", () => {
     ["/foo/script", "#!/usr/bin/env bash", "bash"],
     ["/foo/script", "#!/bin/sh", "bash"],
     ["/foo/script", "#!/usr/bin/env zsh", "bash"],
-    ["/foo/script", "#!/usr/bin/env python3", null],
+    ["/foo/script", "#!/usr/bin/env python3", "python"],
+    ["/foo/script", "#!/usr/bin/env ruby", null],
     ["/foo/bar.md", undefined, null],
     ["/foo/bar.txt", undefined, null],
   ];

@@ -95,7 +95,7 @@ When the gate auto-trims a file, the next Read/Edit/Write of that file emits a o
 | bash | `.sh`, `.bash`; shebang: `bash`, `bsh`, `sh`, `zsh` | vendored from `tree-sitter-bash` |
 | yaml | `.yml`, `.yaml` | vendored from `@tree-sitter-grammars/tree-sitter-yaml` |
 | typescript | `.ts`, `.mts`, `.cts`, `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` | vendored from `tree-sitter-typescript` |
-| python | `.py` | vendored from `tree-sitter-python` |
+| python | `.py`, `.pyi`; shebang: `python`, `python2`, `python3` | vendored from `tree-sitter-python` |
 | dockerfile | `.dockerfile`; basenames: `Dockerfile`, `Containerfile`; prefixes: `Dockerfile.`, `Containerfile.` | built from source by `scripts/build-dockerfile-grammar.sh` |
 | go | `.go` | vendored from `tree-sitter-go` |
 | rust | `.rs` | vendored from `tree-sitter-rust` |

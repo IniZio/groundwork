@@ -22,8 +22,17 @@ export const TYPESCRIPT_TOOL_MARKERS: readonly RegExp[] = [
 ];
 
 export const PYTHON_TOOL_MARKERS: readonly RegExp[] = [
-  /^noqa\b/,
-  /^type:\s*ignore/,
+  /^noqa\b/i,
+  /^type:/,
+  /coding[:=]\s*[-\w.]+/,
+  /^nosec\b/,
+  /^fmt:\s*(?:off|on|skip)\b/,
+  /^isort:\s*(?:skip(?:_file)?|off|on)\b/,
+  /^mypy:/,
+  /^pyright:/,
+  /^flake8:\s*noqa\b/,
+  /^ruff:\s*noqa\b/,
+  /^pyre-(?:ignore|fixme|strict)\b/,
   /^pylint:/,
   /^pragma:/i,
 ];

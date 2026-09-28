@@ -108,7 +108,8 @@ const typescript = {
 const python = {
   id: "python",
   detect: {
-    extensions: [".py"],
+    extensions: [".py", ".pyi"],
+    shebangInterpreters: ["python", "python2", "python3"],
   },
   grammar: {
     wasm: "tree-sitter-python.wasm",

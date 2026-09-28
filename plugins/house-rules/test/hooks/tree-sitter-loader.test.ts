@@ -20,6 +20,7 @@ const LANG_SAMPLES: Record<string, string> = {
   sql: "-- sql comment\nSELECT 1;\n",
   make: "# make comment\nall:\n\techo hi\n",
   toml: "# toml comment\n[package]\nname = \"test\"\n",
+  swift: "// swift comment\nlet x = 1\n",
 };
 
 // Override samples per grammar variant id

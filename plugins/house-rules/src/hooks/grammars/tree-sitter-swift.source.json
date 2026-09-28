@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/alex-pinkus/tree-sitter-swift",
+  "commit": "187fd4d3e55e2088da9cb31e414a2bac866292e8",
+  "cli_version": "0.25.3",
+  "build_command": "tree-sitter generate && tree-sitter build --wasm --docker",
+  "sha256": "f1868982fc4f6a1a049129342034168a2a23db249687a74a3b6e0a17c58a7a2e",
+  "bytes": 3842272,
+  "rebuild_byte_identical": "not verified; Docker+emscripten builds are not guaranteed byte-identical across runs"
+}

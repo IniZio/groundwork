@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { TYPESCRIPT_TOOL_MARKERS, SWIFT_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -104,6 +104,17 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
   ],
   go: [
     /^\/\/go:/, /^\/\/\s*\+build\b/, /^\/\/nolint\b/, /^\/\/export\b/,
+  ],
+  swift: [
+    /^\/\/\s*swift-tools-version\s*:/i,
+    /^\/\/\s*MARK:/,
+    /^\/\/\s*swiftlint:(?:disable|enable)\b/,
+    /^\/\/\s*swift-format-ignore\b/,
+    /^\/\/\s*swiftformat:(?:disable|enable|options|sort)\b/,
+    /^\/\/\s*periphery:ignore\b/,
+    /^\/\/\s*sourcery:/,
+    /^\/\/\//,
+    /^\/\*\*/,
   ],
 };
 
@@ -351,6 +362,56 @@ describe("strip-safety marker↔MUST_KEEP parity (typescript)", () => {
         TYPESCRIPT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
       );
       expect(covered, `MUST_KEEP ${keepRe}: no TYPESCRIPT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+describe("strip-safety marker↔MUST_KEEP parity (swift)", () => {
+  const mustKeepSwift = MUST_KEEP.swift ?? [];
+
+  const allSwiftRawComments: string[] = [];
+  for (const f of allFixtures.filter((f) => f.lang === "swift")) {
+    const src = readFileSync(f.fixturePath, "utf8");
+    for (const m of src.matchAll(/\/\/[^\n]*/g)) allSwiftRawComments.push(m[0]);
+    for (const m of src.matchAll(/\/\*[\s\S]*?\*\//g)) allSwiftRawComments.push(m[0]);
+  }
+
+  it("positive control: swift-tools-version covered, NONEXISTENT_SWIFT_MARKER_XYZ not covered", () => {
+    const toolsRe = /swift-tools-version/i;
+    const toolsCovered = allSwiftRawComments.some(
+      (raw) => toolsRe.test(commentInnerText(raw)) && mustKeepSwift.some((re) => re.test(raw)),
+    );
+    expect(toolsCovered, "swift-tools-version must be covered by a MUST_KEEP pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_SWIFT_MARKER_XYZ_FAKE/;
+    const fakeCovered = allSwiftRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepSwift.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_SWIFT_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of SWIFT_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allSwiftRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepSwift.some((re) => re.test(raw));
+      });
+      expect(covered, `no swift fixture comment covers SWIFT_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepSwift) {
+    const matchingRaws = allSwiftRawComments.filter((raw) => keepRe.test(raw));
+    const toolMarkerRaws = matchingRaws.filter((raw) => {
+      const t = raw.trimStart();
+      return !t.startsWith("/**") && !t.startsWith("///");
+    });
+    if (toolMarkerRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → SWIFT_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = toolMarkerRaws.some((raw) =>
+        SWIFT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no SWIFT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
     });
   }
 });

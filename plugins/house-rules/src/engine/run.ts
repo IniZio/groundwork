@@ -182,7 +182,7 @@ export function formatCoverage(cov: Coverage, prefix: string, indent: string): s
     lines.push(`${indent}not checked: ${p}`);
   }
   for (const e of partiallyChecked) {
-    lines.push(`${indent}partially checked: ${e.path} (rows ${formatRowList(e.rows)})`);
+    lines.push(`${indent}partially checked: ${e.path} (parse errors: rows ${formatRowList(e.rows)})`);
   }
   for (const e of failed) {
     lines.push(`${indent}failed: ${e.path} (${e.language} grammar did not load: ${e.reason})`);

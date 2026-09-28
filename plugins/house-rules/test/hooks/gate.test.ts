@@ -654,7 +654,7 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
     expect(report).toMatch(/config\.yaml[^\n]*—[^\n]*preview language/);
     expect(report).not.toMatch(/broken\.ts[^\n]*—[^\n]*autofix failed/);
     expect(report).toContain("partially checked:");
-    expect(report).toContain(`partially checked: ${tsFp} (rows `);
+    expect(report).toContain(`partially checked: ${tsFp} (parse errors: rows `);
     expect(report).toMatch(/broken\.ts[^\n]*—[^\n]*syntax errors on rows 21; not autofixed/);
   });
 
@@ -929,7 +929,7 @@ describe("SyntaxErrorTs: TS file with syntax error declined; no write; blocks", 
     const blockFilePath = path.join(tmpDir, "house-rules", sessionId, "stop-block.txt");
     const report = readFileSync(blockFilePath, "utf8");
 
-    const covMatch = report.match(/partially checked: [^\n(]+ \(rows ([^)]+)\)/);
+    const covMatch = report.match(/partially checked: [^\n(]+ \(parse errors: rows ([^)]+)\)/);
     expect(covMatch).not.toBeNull();
     const R = covMatch![1];
     expect(report).toMatch(new RegExp(`broken\\.ts[^\\n]*—[^\\n]*syntax errors on rows ${R}; not autofixed`));

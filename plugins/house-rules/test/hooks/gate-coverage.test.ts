@@ -314,7 +314,7 @@ describe("GRAM-4: BLOCK shows partially-checked entry for file with syntax error
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
     expect(parsed.decision).toBe("block");
     const reason = parsed.reason as string;
-    expect(reason).toContain(`partially checked: ${violatorFp} (rows `);
+    expect(reason).toContain(`partially checked: ${violatorFp} (parse errors: rows `);
   });
 });
 

@@ -263,7 +263,7 @@ describe("formatCoverage — exact strings", () => {
     const lines = formatCoverage(cov, "house-rules coverage:", "  ");
     expect(lines[0]).toBe("house-rules coverage: some changed files were not fully checked.");
     expect(lines[1]).toBe("  not checked: src/App.kt");
-    expect(lines[2]).toBe("  partially checked: src/a.ts (rows 2)");
+    expect(lines[2]).toBe("  partially checked: src/a.ts (parse errors: rows 2)");
     expect(lines[3]).toBe("  failed: src/b.ts (typescript grammar did not load: boom)");
   });
 
@@ -275,7 +275,7 @@ describe("formatCoverage — exact strings", () => {
     };
     const lines = formatCoverage(cov, "coverage:", "");
     // 230 consecutive rows collapse into one segment "3-232"
-    expect(lines[1]).toBe("partially checked: foo.yaml (rows 3-232)");
+    expect(lines[1]).toBe("partially checked: foo.yaml (parse errors: rows 3-232)");
   });
 
   it("partially checked with gap renders ranges and singles", () => {
@@ -285,7 +285,7 @@ describe("formatCoverage — exact strings", () => {
       failed: [],
     };
     const lines = formatCoverage(cov, "coverage:", "");
-    expect(lines[1]).toBe("partially checked: com/example/Query.sql (rows 14-17, 42, 61, 78)");
+    expect(lines[1]).toBe("partially checked: com/example/Query.sql (parse errors: rows 14-17, 42, 61, 78)");
   });
 
   it("grammarFailureWarning exact string", () => {

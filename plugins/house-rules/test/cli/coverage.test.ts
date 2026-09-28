@@ -206,7 +206,7 @@ describe('coverage report — partially checked (check, text and json)', () => {
     );
 
     expect(textR.status).toBe(0);
-    expect(textR.stdout).toContain('partially checked: src/b.ts (rows 2)');
+    expect(textR.stdout).toContain('partially checked: src/b.ts (parse errors: rows 2)');
 
     const jsonR = runCLI(
       ['check', '--base', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,

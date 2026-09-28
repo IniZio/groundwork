@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# strip-safety: removed=18
+# source: deploy/nexus-probe/pod-nonroot.yaml lines 1-116 @ herdr commit 142dedaa
+# SPIKE ONLY — not production.
+#
+# Non-root variant of the pod spec verified on this cluster to open /dev/kvm.
+# What this pod answers: does nexus TAP networking work for a non-root UID
+# with only NET_ADMIN (not SYS_ADMIN)? See probe.sh "TAP device create" section.
+#
+# Run AFTER pod-root.yaml — see README.md "run order".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nexus-probe-nonroot
+  namespace: artifacts
+  labels:
+    app: nexus-probe
+    variant: nonroot # identifies the security-context variant being tested
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 1000 # unprivileged uid; no /etc/passwd entry needed
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+      - 994 # kvm group gid — /dev/kvm is 0660 root:994 on cluster nodes
+    # fsGroup lets kubelet chown emptyDir volumes so UID 1000 can write to them.
+    fsGroup: 1000
+  containers:
+    - name: nexus-probe
+      image: registry.example.dev/nexus-probe:TAG
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_ADMIN"] # minimal: TAP device needs NET_ADMIN, not SYS_ADMIN
+      env:
+        # HOME drives Go os.UserHomeDir() without a /etc/passwd entry for UID 1000.
+        - name: HOME
+          value: /home/nexus
+        # XDG_RUNTIME_DIR takes precedence over TMPDIR in both CLI and CHDriver.
+        - name: XDG_RUNTIME_DIR
+          value: /work/rt
+        - name: TMPDIR
+          value: /work/tmp
+        # TOOLCHAIN_REF substituted by CI; points at the image built by buildx.
+        - name: TOOLCHAIN_REF
+          value: registry.example.dev/nexus-probe-toolchain:TAG
+      command: ["/usr/local/bin/probe.sh"]
+      volumeMounts:
+        # nexus on-disk state: images, disks, caches, volumes, snapshots.
+        - name: nexus-state
+          mountPath: /home/nexus/.local/state/nexus
+        # TMPDIR and the context workspace must share a device (gotcha #2).
+        - name: work
+          mountPath: /work
+        # /dev/net/tun is absent by default; hostPath CharDevice mount works.
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          # Sized for one CH VM plus host nexus/buildkitd/virtiofsd processes.
+          cpu: "4"
+          memory: 6Gi
+          devices.dev/kvm: 1
+  volumes:
+    - name: nexus-state
+      emptyDir:
+        sizeLimit: 8Gi
+    - name: work
+      emptyDir:
+        sizeLimit: 4Gi
+    - name: dev-net-tun
+      hostPath:
+        path: /dev/net/tun
+        type: CharDevice

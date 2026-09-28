@@ -1,0 +1,95 @@
+#:schema https://json.schemastore.org/pyproject.json
+# source: test/fixtures/languages/toml.toml (extended with strip-safety corpus)
+# strip-safety: removed=15
+
+[package]
+name = "groundwork-agent"
+version = "2.8.5" # semantic version — bump for every release
+description = "Agentic harness for the groundwork project management system"
+edition = "2021"
+license = "MIT"
+
+# Build configuration — controls the output artifact layout
+[build]
+target = "bun"
+entry = "src/main.ts"
+output_dir = "dist" # build artefacts land here; gitignored
+minify = true
+source_maps = true
+
+# Paths excluded from the build step to keep the bundle small
+exclude = [
+  "node_modules",
+  ".git",
+  "dist",
+  "*.test.ts",
+  "test/fixtures",
+]
+
+# Environment variables injected at build time
+[build.env]
+NODE_ENV = "production"
+LOG_LEVEL = "info" # change to "debug" for verbose output
+DATABASE_URL = "postgres://localhost/groundwork"
+
+# Runtime dependencies — all pinned to avoid drift between environments
+[dependencies]
+typescript = "^5.0.0"
+bun-types = "latest"
+tree-sitter = "^0.21.0" # must match the wasm grammar versions
+
+[dev_dependencies]
+"@types/node" = "^20.0.0"
+eslint = "^8.0.0"
+prettier = "^3.0.0"
+
+# Test runner settings
+[test]
+runner = "bun"
+pattern = "test/**/*.test.ts"
+timeout = 30000
+# coverage thresholds must be met before any merge to main
+coverage_threshold = 80
+
+[test.reporters]
+default = "spec"
+ci = "junit"
+output = "test-results/junit.xml" # relative to repo root
+
+# Static analysis — rules applied on every commit
+[lint]
+extends = ["eslint:recommended"]
+ignore_patterns = ["dist/", "*.generated.ts"]
+
+[[plugins]]
+name = "comment-density"
+enabled = true
+# minimum comment ratio per added file
+min_ratio = 0.05
+
+[[plugins]]
+name = "tree-sitter"
+enabled = true
+languages = ["typescript", "rust", "go", "toml"]
+wasm_dir = "src/hooks/grammars" # relative path from repo root
+
+[[deploy.targets]]
+name = "staging"
+host = "staging.example.com"
+# credentials stored in vault — never commit secrets here
+vault_path = "secret/staging/deploy"
+
+[[deploy.targets]]
+name = "production"
+host = "prod.example.com"
+vault_path = "secret/prod/deploy"
+
+# Connection limits for the HTTP server
+[server]
+address = { host = "0.0.0.0", port = 8080 }
+
+[limits]
+max_connections = 1000 # tune based on observed peak load
+request_timeout_ms = 5000
+enable_compression = true
+enable_metrics = false

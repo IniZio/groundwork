@@ -52,9 +52,9 @@ function makeRepoWithBase(files: Record<string, string>): { repoDir: string; bas
 }
 
 describe('coverage report — not-checked files', () => {
-  it('text stdout contains not checked: src/App.kt when .kt file added', () => {
+  it('text stdout contains not checked: src/App.scala when .scala file added', () => {
     const { repoDir, baseSha } = makeRepoWithBase({
-      'src/App.kt': 'fun main() {}\n',
+      'src/App.scala': 'fun main() {}\n',
       'a.ts': 'export const x = 1;\n',
     });
 
@@ -64,12 +64,12 @@ describe('coverage report — not-checked files', () => {
       repoDir,
     );
 
-    expect(r.stdout).toContain('not checked: src/App.kt');
+    expect(r.stdout).toContain('not checked: src/App.scala');
   });
 
-  it('--format json -> report.coverage.notChecked equals [src/App.kt]', () => {
+  it('--format json -> report.coverage.notChecked equals [src/App.scala]', () => {
     const { repoDir, baseSha } = makeRepoWithBase({
-      'src/App.kt': 'fun main() {}\n',
+      'src/App.scala': 'fun main() {}\n',
       'a.ts': 'export const x = 1;\n',
     });
 
@@ -81,7 +81,7 @@ describe('coverage report — not-checked files', () => {
     );
 
     const report = JSON.parse(r.stdout);
-    expect(report.coverage.notChecked).toEqual(['src/App.kt']);
+    expect(report.coverage.notChecked).toEqual(['src/App.scala']);
   });
 
   it('text stdout has no not checked when only .ts changed', () => {
@@ -106,7 +106,7 @@ describe('coverage report — not-checked files', () => {
     expect(report.coverage.notChecked).toEqual([]);
   });
 
-  it('bad rule declaring unknown language kotlin -> exit 2, stderr names rule and language', () => {
+  it('bad rule declaring unknown language scala -> exit 2, stderr names rule and language', () => {
     const rulesDir = mktemp('hr-bad-rules-');
     const ruleDir = path.join(rulesDir, 'bad-rule');
     fs.mkdirSync(ruleDir, { recursive: true });
@@ -116,7 +116,7 @@ describe('coverage report — not-checked files', () => {
 const rule: Rule = {
   id: 'bad-rule',
   meta: { description: 'x' },
-  languages: ['kotlin' as any],
+  languages: ['scala' as any],
   check: () => [],
 };
 export default rule;
@@ -136,7 +136,7 @@ export default rule;
 
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('bad-rule');
-    expect(r.stderr).toContain('kotlin');
+    expect(r.stderr).toContain('scala');
   });
 });
 
@@ -223,7 +223,7 @@ describe('coverage report — housekeep text and json', () => {
   it('exit 1, text has failed and not-checked lines, json coverage matches check output', () => {
     const { repoDir, baseSha } = makeRepoWithBase({
       'src/a.ts': 'export const x = 1;\n',
-      'src/App.kt': 'fun main() {}\n',
+      'src/App.scala': 'fun main() {}\n',
     });
 
     const textR = runCLI(
@@ -235,7 +235,7 @@ describe('coverage report — housekeep text and json', () => {
 
     expect(textR.status).toBe(1);
     expect(textR.stdout).toContain('failed: src/a.ts (typescript grammar did not load: forced by HOUSE_RULES_TEST_FAIL_GRAMMARS)');
-    expect(textR.stdout).toContain('not checked: src/App.kt');
+    expect(textR.stdout).toContain('not checked: src/App.scala');
 
     const jsonR = runCLI(
       ['housekeep', '--since', baseSha, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR,
@@ -249,6 +249,6 @@ describe('coverage report — housekeep text and json', () => {
     expect(report.coverage.failed).toEqual([
       { path: 'src/a.ts', language: 'typescript', reason: 'forced by HOUSE_RULES_TEST_FAIL_GRAMMARS' },
     ]);
-    expect(report.coverage.notChecked).toContain('src/App.kt');
+    expect(report.coverage.notChecked).toContain('src/App.scala');
   });
 });

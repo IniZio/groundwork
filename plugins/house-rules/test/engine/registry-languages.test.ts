@@ -31,12 +31,12 @@ describe('loadRules language validation', () => {
 export default {
   id: 'bad-rule',
   meta: { description: 'x' },
-  languages: ['kotlin'],
+  languages: ['scala'],
   check: () => [],
 };
 `);
     await expect(loadRules(dir)).rejects.toThrow(/bad-rule/);
-    await expect(loadRules(dir)).rejects.toThrow(/kotlin/);
+    await expect(loadRules(dir)).rejects.toThrow(/scala/);
   });
 
   it('loads a rule with known languages and exposes them', async () => {

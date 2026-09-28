@@ -17,7 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
-| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript, Go, Kotlin, and Swift: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript, Go, Kotlin, and Swift | `house-rules check --base <ref>` | TypeScript/JavaScript, Go, Kotlin, Swift: stable; other langs: preview |
+| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript, Go, Kotlin, Swift, and Java: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, and Java | `house-rules check --base <ref>` | TypeScript/JavaScript, Go, Kotlin, Swift, Java: stable; other langs: preview |
 | stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
@@ -79,7 +79,7 @@ Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the sa
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).
 
-**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript, Go, Kotlin, and Swift before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, and Java before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
 
 TypeScript/JavaScript covers `.ts`, `.mts`, `.cts`, `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` — one `typescript` language parsed with two grammars (see Grammar variants below).
 
@@ -144,9 +144,13 @@ written inside a normal comment of the language (e.g. `# conformance: ...` for B
 
 The conformance suite (`test/languages/conformance.test.ts`) fails until this fixture exists.
 
+Also add a strip-safety fixture at `test/fixtures/strip-safety/<id>.<ext>` (the format is described in step 6.1). The parity check `parity: language "<id>" has a strip-safety fixture` (in `test/languages/strip-safety.test.ts`) requires one for every registered language, not only for stable ones — the suite fails at registration time if the fixture is absent.
+
 **3. Update the README languages table.**
 
 Add the language's row to the section between `<!-- languages:start -->` and `<!-- languages:end -->` in this file (the check does not rewrite it), then run `bun test test/languages/readme-languages.test.ts` to confirm the table matches the registry. The test names any missing or extra language ids.
+
+Also re-run `bun plugins/house-rules/scripts/gen-rule-readmes.ts` (no flags) to regenerate `rules/comment-density/README.md`. The generated README's language list is derived from the registry (`LANGUAGES`), so `gen-rule-readmes --check` (the `rules-fresh` test) fails if the on-disk README is stale.
 
 **4. (Optional) A rule language hook.**
 

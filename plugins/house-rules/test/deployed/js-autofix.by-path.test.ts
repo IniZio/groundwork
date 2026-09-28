@@ -315,6 +315,6 @@ describe("AC7-JSX-BLOCK: gate Stop blocks unfixable over-budget .jsx; density fi
 
     expect(parsed.decision).toBe("block");
     expect(parsed.reason as string).toContain("component.jsx");
-    expect(parsed.reason as string).toContain("10.0/100 (1 comments in 10 added lines; rows 8)");
+    expect(parsed.reason as string).toContain("10.0/100 (1 comment in 10 added lines; rows 8)");
   });
 });

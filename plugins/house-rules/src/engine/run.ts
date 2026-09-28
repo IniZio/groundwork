@@ -123,6 +123,49 @@ export function grammarFailureWarning(path: string, language: string, reason: st
   return `house-rules warning: the ${language} grammar did not load (${reason}); ${path} was not checked.`;
 }
 
+/**
+ * Format a sorted list of 1-based row numbers as compact ranges.
+ * Consecutive rows collapse into "start-end" ranges.
+ * Shows at most 8 segments; if more exist, appends "+N more" where N is the
+ * remaining row count (not segment count).
+ *
+ * Examples:
+ *   [3,4,5,6,...,232]      → "3-232"
+ *   [14,15,16,17,42,61]    → "14-17, 42, 61"
+ *   [1,2,...,+many more]   → "1-5, 7, 9, ..., +N more"
+ */
+export function formatRowList(rows: number[]): string {
+  if (rows.length === 0) return '';
+
+  // Build segments (runs of consecutive numbers)
+  const segments: Array<[number, number]> = [];
+  let start = rows[0];
+  let prev = rows[0];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i] === prev + 1) {
+      prev = rows[i];
+    } else {
+      segments.push([start, prev]);
+      start = rows[i];
+      prev = rows[i];
+    }
+  }
+  segments.push([start, prev]);
+
+  const MAX_SEGMENTS = 8;
+  const fmt = ([s, e]: [number, number]) => s === e ? `${s}` : `${s}-${e}`;
+
+  if (segments.length <= MAX_SEGMENTS) {
+    return segments.map(fmt).join(', ');
+  }
+
+  const shown = segments.slice(0, MAX_SEGMENTS);
+  const remaining = segments.slice(MAX_SEGMENTS);
+  const remainingCount = remaining.reduce((sum, [s, e]) => sum + (e - s + 1), 0);
+  return `${shown.map(fmt).join(', ')}, +${remainingCount} more`;
+}
+
 export function formatCoverage(cov: Coverage, prefix: string, indent: string): string[] {
   const { notChecked, partiallyChecked, failed } = cov;
   if (notChecked.length === 0 && partiallyChecked.length === 0 && failed.length === 0) return [];
@@ -139,7 +182,7 @@ export function formatCoverage(cov: Coverage, prefix: string, indent: string): s
     lines.push(`${indent}not checked: ${p}`);
   }
   for (const e of partiallyChecked) {
-    lines.push(`${indent}partially checked: ${e.path} (rows ${e.rows.join(", ")})`);
+    lines.push(`${indent}partially checked: ${e.path} (rows ${formatRowList(e.rows)})`);
   }
   for (const e of failed) {
     lines.push(`${indent}failed: ${e.path} (${e.language} grammar did not load: ${e.reason})`);

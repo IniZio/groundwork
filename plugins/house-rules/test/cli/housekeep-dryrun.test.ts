@@ -61,7 +61,13 @@ function manualLines(stdout: string): string[] {
   const lines = stdout.split('\n');
   const hdrIdx = lines.findIndex(l => l.startsWith('Needs manual fix'));
   if (hdrIdx === -1) return [];
-  return lines.slice(hdrIdx + 1).filter(l => l.startsWith('  ') && !l.trimStart().startsWith('['));
+  const section: string[] = [];
+  for (let i = hdrIdx + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.length > 0 && !l.startsWith(' ')) break;
+    if (l.startsWith('    ')) section.push(l);
+  }
+  return section;
 }
 
 function extractDiff(stdout: string): string {
@@ -150,8 +156,8 @@ function buildFixture(): { repoDir: string; baseSha: string } {
 }
 
 const SUMMARY = '1 fixed, 2 need manual fix';
-const MANUAL_SVC = '  svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19) — autofix failed: still over cap after fix';
-const MANUAL_SH  = '  tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1, 2, 3, 4, 5) — autofix not supported for bash';
+const MANUAL_SVC = '    svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19)';
+const MANUAL_SH  = '    tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1-6)';
 
 describe('housekeep --dry-run parity', () => {
 
@@ -190,7 +196,7 @@ describe('housekeep --dry-run parity', () => {
     expect(Buffer.compare(before, afterReal)).not.toBe(0);
   });
 
-  it('AC3: needs-manual lines have exact identity and all match em-dash pattern', () => {
+  it('AC3: needs-manual finding lines have exact identity; grouped by reason with header', () => {
     const { repoDir, baseSha } = buildFixture();
     const ledger = mktemp('hr-ldg-');
     const stdout = run(['--repo', repoDir, '--since', baseSha, '--dry-run'], ledger);
@@ -203,9 +209,8 @@ describe('housekeep --dry-run parity', () => {
     expect(svcLine).toBe(MANUAL_SVC);
     expect(shLine).toBe(MANUAL_SH);
 
-    for (const line of manual) {
-      expect(line).toMatch(/ — \S/);
-    }
+    expect(stdout).toContain('  autofix failed: still over cap after fix (1):');
+    expect(stdout).toContain('  autofix not supported for bash (1):');
   });
 
   it('AC4: --diff output is git-apply-able; applied fix.ts matches real-run fix.ts', () => {
@@ -274,7 +279,7 @@ describe('housekeep --dry-run parity', () => {
 
     const dryManual = manualLines(dryOut);
     expect(dryManual).toHaveLength(1);
-    expect(dryManual[0]).toMatch(/ — --max limit reached$/);
+    expect(dryOut).toContain('  --max limit reached (1):');
 
     const realOut = run(args, ledgerReal);
     const realSummary = lastNonEmptyLine(realOut);
@@ -282,7 +287,7 @@ describe('housekeep --dry-run parity', () => {
 
     const realManual = manualLines(realOut);
     expect(realManual).toHaveLength(1);
-    expect(realManual[0]).toMatch(/ — --max limit reached$/);
+    expect(realOut).toContain('  --max limit reached (1):');
   });
 
 });

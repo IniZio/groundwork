@@ -156,7 +156,8 @@ describe('housekeep', () => {
 
     expect(output).toContain('Fixed (1)');
     expect(output).toContain('Needs manual fix (1)');
-    expect(output).toContain('nonfixable.ts stub-nonfixable contains NO_FIX — autofix disabled by policy');
+    expect(output).toContain('autofix disabled by policy (1):');
+    expect(output).toContain('    nonfixable.ts stub-nonfixable contains NO_FIX');
     expect(output).toContain('1 fixed, 1 need manual fix');
   });
 
@@ -307,7 +308,8 @@ export default rule;
     expect(output).not.toContain('[dry-run] blocked.ts');
     expect(output).toContain('Needs manual fix');
     expect(output).toContain('blocked.ts');
-    expect(output).toContain('blocked.ts stub-decline hit — blocked by stub');
+    expect(output).toContain('blocked by stub (1):');
+    expect(output).toContain('    blocked.ts stub-decline hit');
     expect(fs.readFileSync(path.join(repoDir, 'fixable.ts'), 'utf8')).toBe('const x = "FIX_ME";\n');
     expect(fs.readFileSync(path.join(repoDir, 'blocked.ts'), 'utf8')).toBe('const y = "FIX_ME";\n');
   });
@@ -353,11 +355,13 @@ export default rule;
     expect(dryOut).toContain('over-budget.sh');
     expect(dryOut).not.toContain('[dry-run] over-budget.sh');
     expect(dryOut).toContain('over-budget.sh comment-density');
-    expect(dryOut).toMatch(/over-budget\.sh comment-density.*— autofix not supported for bash/);
+    expect(dryOut).toContain('autofix not supported for bash (1):');
+    expect(dryOut).toContain('    over-budget.sh comment-density');
 
     expect(realOut).toContain('Needs manual fix');
     expect(realOut).toContain('over-budget.sh');
-    expect(realOut).toMatch(/over-budget\.sh comment-density.*— autofix not supported for bash/);
+    expect(realOut).toContain('autofix not supported for bash (1):');
+    expect(realOut).toContain('    over-budget.sh comment-density');
 
     const summaryLine = (out: string) => out.split('\n').find(l => /\d+ fixed, \d+ need manual fix/.test(l)) ?? '';
     expect(summaryLine(dryOut)).toBe(summaryLine(realOut));
@@ -398,7 +402,62 @@ export default rule;
     const output = await captureRunHousekeep({ repo: repoDir, rulesDir: rulesDir3, policy: policy3, since: baseSha });
 
     expect(output).toContain('Needs manual fix');
-    expect(output).toContain('old.ts stub-legacy legacy hit — rule declined (no reason reported)');
+    expect(output).toContain('rule declined (no reason reported) (1):');
+    expect(output).toContain('    old.ts stub-legacy legacy hit');
+  });
+
+  test('needs-manual grouped by reason: two different reasons produce two headers', async () => {
+    const repoDir = makeTempRepo();
+    tmpRepos.push(repoDir);
+
+    const rulesDir4 = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-two-reasons-'));
+    tmpRepos.push(rulesDir4);
+    const rDirA = path.join(rulesDir4, 'stub-reason-a');
+    const rDirB = path.join(rulesDir4, 'stub-reason-b');
+    fs.mkdirSync(rDirA);
+    fs.mkdirSync(rDirB);
+
+    fs.writeFileSync(path.join(rDirA, 'index.js'), `
+const rule = {
+  id: 'stub-reason-a', meta: { description: 'stub a' },
+  check(ctx) {
+    return (ctx.files ?? []).filter(f => f.text?.includes('HIT_A'))
+      .map(f => ({ ruleId: 'stub-reason-a', path: f.path, message: 'hit-a', fingerprintBasis: f.path }));
+  },
+};
+export default rule;
+`);
+    fs.writeFileSync(path.join(rDirB, 'index.js'), `
+const rule = {
+  id: 'stub-reason-b', meta: { description: 'stub b' },
+  check(ctx) {
+    return (ctx.files ?? []).filter(f => f.text?.includes('HIT_B'))
+      .map(f => ({ ruleId: 'stub-reason-b', path: f.path, message: 'hit-b', fingerprintBasis: f.path }));
+  },
+};
+export default rule;
+`);
+
+    const policy4 = {
+      'stub-reason-a': { severity: 'error', autofix: false },
+      'stub-reason-b': { severity: 'error', autofix: true },
+    };
+
+    spawnSync('git', ['-C', repoDir, 'commit', '--allow-empty', '-m', 'init'], { encoding: 'utf8' });
+    const baseSha = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+    fs.writeFileSync(path.join(repoDir, 'alpha.ts'), 'const x = "HIT_A";\n', 'utf8');
+    fs.writeFileSync(path.join(repoDir, 'beta.ts'), 'const y = "HIT_B";\n', 'utf8');
+    spawnSync('git', ['-C', repoDir, 'add', 'alpha.ts', 'beta.ts'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
+
+    const output = await captureRunHousekeep({ repo: repoDir, rulesDir: rulesDir4, policy: policy4, since: baseSha });
+
+    expect(output).toContain('Needs manual fix (2)');
+    expect(output).toContain('  autofix disabled by policy (1):');
+    expect(output).toContain('    alpha.ts stub-reason-a hit-a');
+    expect(output).toContain('  rule has no autofix (1):');
+    expect(output).toContain('    beta.ts stub-reason-b hit-b');
   });
 
   test('untracked strays reported, exit 0 (positive control)', async () => {

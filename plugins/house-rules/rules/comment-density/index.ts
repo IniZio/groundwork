@@ -5,6 +5,7 @@ import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.j
 import { commentDensityFix, canFixPathHelper } from './fix.js';
 import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
 import { parserForPath } from '../../src/hooks/languages/parse.js';
+import { formatRowList } from '../../src/engine/run.js';
 
 const CAP = 5;
 
@@ -56,8 +57,9 @@ const rule: Rule = {
 
       if (effective / totalAdded * 100 > CAP) {
         const ratio = (effective / totalAdded * 100).toFixed(1);
-        const first5 = commentRows.slice(0, 5).join(', ');
-        const message = `${ratio}/100 (${effective} comments in ${totalAdded} added lines; rows ${first5})`;
+        const commentWord = effective === 1 ? 'comment' : 'comments';
+        const lineWord = totalAdded === 1 ? 'added line' : 'added lines';
+        const message = `${ratio}/100 (${effective} ${commentWord} in ${totalAdded} ${lineWord}; rows ${formatRowList(commentRows)})`;
         const line = commentRows[0];
 
         const postLines = file.text.split('\n');

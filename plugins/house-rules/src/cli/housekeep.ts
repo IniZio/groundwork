@@ -231,11 +231,24 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
 
   if (!isJson && totalNeedsManual > 0) {
     process.stdout.write(`\nNeeds manual fix (${totalNeedsManual}):\n`);
+
+    const reasonGroups = new Map<string, Array<{ finding: FindingWithSeverity }>>();
     for (const { finding, reason } of needsManual) {
-      process.stdout.write(`  ${finding.path} ${finding.ruleId} ${finding.message} — ${reason}\n`);
+      if (!reasonGroups.has(reason)) reasonGroups.set(reason, []);
+      reasonGroups.get(reason)!.push({ finding });
     }
-    for (const e of unmatchedBaselineEntries) {
-      process.stdout.write(`  ${e.path} ${e.rule} — baseline entry, no matching violation found\n`);
+    for (const [reason, entries] of reasonGroups) {
+      process.stdout.write(`  ${reason} (${entries.length}):\n`);
+      for (const { finding } of entries) {
+        process.stdout.write(`    ${finding.path} ${finding.ruleId} ${finding.message}\n`);
+      }
+    }
+
+    if (unmatchedBaselineEntries.length > 0) {
+      process.stdout.write(`  baseline entry, no matching violation found (${unmatchedBaselineEntries.length}):\n`);
+      for (const e of unmatchedBaselineEntries) {
+        process.stdout.write(`    ${e.path} ${e.rule}\n`);
+      }
     }
   }
 

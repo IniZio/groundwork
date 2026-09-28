@@ -17,7 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
-| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript, Go, Kotlin, Swift, and Java: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, and Java | `house-rules check --base <ref>` | TypeScript/JavaScript, Go, Kotlin, Swift, Java: stable; other langs: preview |
+| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript, Go, Kotlin, Swift, Java, and Python (.py, .pyi): strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, Java, and Python | `house-rules check --base <ref>` | TypeScript/JavaScript, Go, Kotlin, Swift, Java, Python: stable; other langs: preview |
 | stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
@@ -79,7 +79,7 @@ Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the sa
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).
 
-**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, and Java before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript, Go, Kotlin, Swift, Java, and Python before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
 
 TypeScript/JavaScript covers `.ts`, `.mts`, `.cts`, `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` — one `typescript` language parsed with two grammars (see Grammar variants below).
 
@@ -171,6 +171,5 @@ A language that needs more than one grammar declares `grammarVariants` (each var
 
 **Known preview gaps** (found in JS-01; the next promotion starts here):
 
-- python: `# -*- coding: ... -*-` (PEP 263) is stripped. It must be classified as a directive.
 - sql: `--` comments are never exempt, because `commentInnerText` keeps the `--` prefix.
 - make: there is no directive category, so check (c) cannot pass.

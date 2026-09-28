@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS, PYTHON_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -135,6 +135,21 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
     /^\/\/\s*(?:file )?deepcode ignore\b/,
     /^\/\/\s*nosemgrep\b/,
     /^\/\/\s*falls?[ -]?thr(?:u|ough)\b/,
+  ],
+  python: [
+    /^#\s*noqa\b/i,
+    /^#\s*type:/,
+    /coding[:=]\s*[-\w.]+/,
+    /^#\s*nosec\b/,
+    /^#\s*fmt:\s*(?:off|on|skip)\b/,
+    /^#\s*isort:\s*(?:skip(?:_file)?|off|on)\b/,
+    /^#\s*mypy:/,
+    /^#\s*pyright:/,
+    /^#\s*flake8:\s*noqa\b/,
+    /^#\s*ruff:\s*noqa\b/,
+    /^#\s*pyre-(?:ignore|fixme|strict)\b/,
+    /^#\s*pylint:/,
+    /^#\s*pragma:/i,
   ],
 };
 
@@ -588,6 +603,111 @@ describe("strip-safety identity (java)", () => {
 
       // String literals with comment-like content must survive.
       const commentLikeStrings = ['"// not a comment"'];
+      for (const s of commentLikeStrings) {
+        if (text.includes(s)) {
+          expect(fixed, `string literal missing after strip: ${s}`).toContain(s);
+        }
+      }
+    });
+  }
+});
+
+// Extracts raw Python #-style comments (may include false positives from inside strings;
+// MUST_KEEP patterns are specific enough that those do not trigger parity failures).
+function extractPyRawComments(src: string): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(/#[^\n]*/g)) out.push(m[0]);
+  return out;
+}
+
+const allPyRawComments: string[] = [];
+for (const f of allFixtures.filter((f) => f.lang === "python")) {
+  allPyRawComments.push(...extractPyRawComments(readFileSync(f.fixturePath, "utf8")));
+}
+
+describe("strip-safety marker↔MUST_KEEP parity (python)", () => {
+  const mustKeepPy = MUST_KEEP.python ?? [];
+
+  it("python fixture list is non-empty", () => {
+    expect(allPyRawComments.length, "python fixture must contain at least one raw comment").toBeGreaterThan(0);
+  });
+
+  it("positive control: nosec covered, NONEXISTENT_PYTHON_MARKER_XYZ not covered", () => {
+    const nosecRe = /^nosec\b/;
+    const nosecCovered = allPyRawComments.some(
+      (raw) => nosecRe.test(commentInnerText(raw)) && mustKeepPy.some((re) => re.test(raw)),
+    );
+    expect(nosecCovered, "nosec marker must be covered by a MUST_KEEP.python pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_PYTHON_MARKER_XYZ_FAKE_99999/;
+    const fakeCovered = allPyRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepPy.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_PYTHON_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of PYTHON_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allPyRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepPy.some((re) => re.test(raw));
+      });
+      expect(covered, `no python fixture comment covers PYTHON_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepPy) {
+    const matchingRaws = allPyRawComments.filter((raw) => keepRe.test(raw));
+    if (matchingRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → PYTHON_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = matchingRaws.some((raw) =>
+        PYTHON_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no PYTHON_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+describe("strip-safety identity (python)", () => {
+  const pythonFixtures = allFixtures.filter((f) => f.lang === "python");
+
+  for (const f of pythonFixtures) {
+    const base = path.basename(f.fixturePath);
+
+    it(`identity: ${base} docstrings and tool-marker comments survive strip`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const lang = "python" as Language;
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, lang, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      const fixed = ar.fixed;
+
+      // Every tool-marker comment must survive by exact text.
+      const toolMarkerTexts: string[] = [];
+      for (const raw of extractPyRawComments(text)) {
+        if ((MUST_KEEP.python ?? []).some((re) => re.test(raw))) {
+          toolMarkerTexts.push(raw);
+        }
+      }
+      for (const marker of toolMarkerTexts) {
+        expect(fixed, `tool-marker comment missing after strip: "${marker}"`).toContain(marker);
+      }
+    });
+
+    it(`identity: ${base} strings containing # survive strip unchanged`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const lang = "python" as Language;
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, lang, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      const fixed = ar.fixed;
+
+      // String literals with comment-like content must survive.
+      const commentLikeStrings = ['"items: # not a comment here"', '"total=2 # still not a real comment"'];
       for (const s of commentLikeStrings) {
         if (text.includes(s)) {
           expect(fixed, `string literal missing after strip: ${s}`).toContain(s);

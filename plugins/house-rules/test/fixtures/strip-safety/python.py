@@ -1,77 +1,70 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# strip-safety: removed=6
-# source: derived from test/fixtures/languages/python.py (PyJWT@2.15.0, MIT) lines 1-69
-import json
-import platform
+# strip-safety: removed=8
+# isort: skip_file
+# ruff: noqa
+# flake8: noqa
+# mypy: ignore-errors
+# pyright: basic
+"""Neutral strip-safety fixture for the com.example autofix pipeline."""
+
+import os  # noqa: F401
+import re  # noqa: F401
 import sys
 
-from . import __version__ as pyjwt_version  # noqa: E402
 
-try:
-    import cryptography
-
-    cryptography_version = cryptography.__version__
-except ModuleNotFoundError:
-    # If cryptography is not installed, fall back to an empty version string.
-    cryptography_version = ""
+_HASH_IN_STR: str = "items: # not a comment here"
+_HASH_IN_FSTR: str = f"total={1 + 1} # still not a real comment"
 
 
-def info() -> dict[str, dict[str, str]]:
+# fmt: off
+LOOKUP: dict = {
+    "alpha": 1,
+    "beta":  2,
+}
+# fmt: on
+
+
+def compute_score(x: int, scale: int = 1) -> int:  # type: ignore[return-value]
+    """Return x multiplied by scale."""
+    # This prose comment sits between the function signature and first logic.
+    # Another prose line to push density above the five-percent cap.
+    # Yet another prose line so the count is unambiguous and easy to verify.
+    # Final prose line for the removable group in compute_score.
+    if scale < 0:
+        # This whole-line prose comment sits between the if: and its body.
+        raise ValueError("scale must be non-negative")
+    total = x * scale
+    return total  # nosec
+
+
+class DataHandler:
     """
-    Generate information for a bug report.
-    Based on the requests package help utility module.
+    Handler class for sample data processing.
+
+    This docstring spans multiple lines for the fixture.
     """
-    # Gather OS-level platform fields; guard against rare OSError on restricted systems.
-    try:
-        platform_info = {
-            "system": platform.system(),
-            "release": platform.release(),
-        }
-    except OSError:
-        platform_info = {"system": "Unknown", "release": "Unknown"}
 
-    # python_implementation returns CPython, PyPy, Jython, etc.
-    implementation = platform.python_implementation()
+    # pylint: disable=too-few-public-methods
 
-    if implementation == "CPython":
-        # CPython exposes a simple dotted version string.
-        implementation_version = platform.python_version()
-    elif implementation == "PyPy":
-        pypy_version_info = sys.pypy_version_info  # type: ignore[attr-defined]
-        implementation_version = (
-            f"{pypy_version_info.major}."
-            f"{pypy_version_info.minor}."
-            f"{pypy_version_info.micro}"
-        )
-        if pypy_version_info.releaselevel != "final":
-            # Append the pre-release level label so callers can distinguish stable builds.
-            implementation_version = "".join(
-                [
-                    implementation_version,
-                    pypy_version_info.releaselevel,
-                ]
-            )
-    else:
-        # pylint: disable=invalid-name
-        implementation_version = "Unknown"
-
-    return {
-        "platform": platform_info,
-        "implementation": {
-            "name": implementation,
-            "version": implementation_version,
-        },
-        "cryptography": {"version": cryptography_version},
-        "pyjwt": {"version": pyjwt_version},
-    }
+    # @apiParam {List} items  list of items to process
+    # @apiParam {str}  mode   processing mode, one of strict or lax
+    def process(self, items: list, mode: str = "strict") -> list:
+        """Process items according to mode."""
+        # pyre-ignore[16]
+        result = []
+        for item in items:
+            result.append(str(item))
+            # This prose comment is the last line of the for-loop block.
+        return result  # pragma: no cover
 
 
-def main() -> None:  # pragma: no cover
-    """Pretty-print the bug information as JSON."""
-    # Dump the info dict as pretty-printed JSON so maintainers can paste it into issues.
-    print(json.dumps(info(), sort_keys=True, indent=2))
-
-
-if __name__ == "__main__":
-    main()
+def validate(
+    value: object,  # type: ignore[misc]
+) -> bool:
+    """Return True if value is not None."""
+    # Extra prose line A to be absolutely sure we exceed the density threshold.
+    # Extra prose line B to make the group larger and ensure it is removable.
+    # Extra prose line C so the count is unambiguous and easy to confirm.
+    # Extra prose line D — final line in validate, included for good measure.
+    return value is not None  # noqa: E714

@@ -126,14 +126,14 @@ export const a = 1;
 export const b = 2;
 `;
 
-const TOOL_PY = `# c1
+const TOOL_SH = `# c1
 # c2
 # c3
 # c4
 # c5
 # c6
-a = 1
-b = 2
+a=1
+b=2
 `;
 
 function buildFixture(): { repoDir: string; baseSha: string } {
@@ -144,14 +144,14 @@ function buildFixture(): { repoDir: string; baseSha: string } {
   const baseSha = git(repoDir, ['rev-parse', 'HEAD']);
   fs.writeFileSync(path.join(repoDir, 'svc.go'), SVC_NEW);
   fs.writeFileSync(path.join(repoDir, 'fix.ts'), FIX_TS);
-  fs.writeFileSync(path.join(repoDir, 'tool.py'), TOOL_PY);
-  addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.py'], 'add files');
+  fs.writeFileSync(path.join(repoDir, 'tool.sh'), TOOL_SH);
+  addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.sh'], 'add files');
   return { repoDir, baseSha };
 }
 
 const SUMMARY = '1 fixed, 2 need manual fix';
 const MANUAL_SVC = '  svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19) — autofix failed: still over cap after fix';
-const MANUAL_PY  = '  tool.py comment-density 75.0/100 (6 comments in 8 added lines; rows 1, 2, 3, 4, 5) — autofix not enabled for python (preview)';
+const MANUAL_SH  = '  tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1, 2, 3, 4, 5) — autofix not enabled for bash (preview)';
 
 describe('housekeep --dry-run parity', () => {
 
@@ -199,9 +199,9 @@ describe('housekeep --dry-run parity', () => {
     expect(manual).toHaveLength(2);
 
     const svcLine = manual.find(l => l.includes('svc.go'));
-    const pyLine  = manual.find(l => l.includes('tool.py'));
+    const shLine  = manual.find(l => l.includes('tool.sh'));
     expect(svcLine).toBe(MANUAL_SVC);
-    expect(pyLine).toBe(MANUAL_PY);
+    expect(shLine).toBe(MANUAL_SH);
 
     for (const line of manual) {
       expect(line).toMatch(/ — \S/);
@@ -225,8 +225,8 @@ describe('housekeep --dry-run parity', () => {
     for (const repoDir of [repoA, repoB]) {
       fs.writeFileSync(path.join(repoDir, 'svc.go'), SVC_NEW);
       fs.writeFileSync(path.join(repoDir, 'fix.ts'), FIX_TS);
-      fs.writeFileSync(path.join(repoDir, 'tool.py'), TOOL_PY);
-      addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.py'], 'add files');
+      fs.writeFileSync(path.join(repoDir, 'tool.sh'), TOOL_SH);
+      addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.sh'], 'add files');
     }
 
     const dryOut = run(['--repo', repoA, '--since', baseShaA, '--dry-run', '--diff'], ledgerA);

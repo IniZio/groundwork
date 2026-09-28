@@ -297,9 +297,13 @@ describe("comment-density-guard", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("PYTHON-PASSTHROUGH: Python over-budget Write → input unmodified (preview lang)", async () => {
+  it("PYTHON-AUTOFIX-PY: Python over-budget .py Write → guard autofixes, strips prose, keeps shebang/noqa/type markers", async () => {
+    const codeLines = Array.from({ length: 100 }, (_, i) => `x_${i} = ${i}`);
     const pyContent = [
-      ...Array.from({ length: 100 }, (_, i) => `x_${i} = ${i}`),
+      "#!/usr/bin/env python3",
+      ...codeLines,
+      `result = sum(x_0, x_1)  # noqa: E501`,
+      `value = result + 1  # type: ignore`,
       "# comment one",
       "# comment two",
       "# comment three",
@@ -307,10 +311,60 @@ describe("comment-density-guard", () => {
       "# comment five",
       "# comment six",
     ].join("\n");
-    const r = await check(write("/tmp/cdg-py-passthrough.py", pyContent));
+    const r = await check(write("/tmp/cdg-py-autofix.py", pyContent));
     const hso = getHso(r);
-    expect(hso).not.toHaveProperty("updatedInput");
-    expect(r.stdout).toBe("");
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = typeof ui.content === "string" ? ui.content : "";
+    const lines = content.split("\n");
+    // prose comments stripped
+    expect(content).not.toContain("# comment one");
+    expect(content).not.toContain("# comment two");
+    expect(content).not.toContain("# comment three");
+    expect(content).not.toContain("# comment four");
+    expect(content).not.toContain("# comment five");
+    expect(content).not.toContain("# comment six");
+    // shebang kept verbatim and still on line 1
+    expect(content).toContain("#!/usr/bin/env python3");
+    expect(lines[0]).toBe("#!/usr/bin/env python3");
+    expect(lines).toContain("result = sum(x_0, x_1)  # noqa: E501");
+    expect(lines).toContain("value = result + 1  # type: ignore");
+    const codeLineCount = lines.filter(l => /^x_\d+ = \d+$/.test(l)).length;
+    expect(codeLineCount).toBe(100);
+  });
+
+  it("PYTHON-AUTOFIX-PYI: Python over-budget .pyi Write → guard autofixes, strips prose, keeps shebang/noqa/type markers", async () => {
+    const codeLines = Array.from({ length: 100 }, (_, i) => `y_${i}: int = ${i}`);
+    const pyiContent = [
+      "#!/usr/bin/env python3",
+      ...codeLines,
+      `stub_val: str = "x"  # noqa: E501`,
+      `other_val: int = 0  # type: int`,
+      "# stub comment one",
+      "# stub comment two",
+      "# stub comment three",
+      "# stub comment four",
+      "# stub comment five",
+      "# stub comment six",
+    ].join("\n");
+    const r = await check(write("/tmp/cdg-pyi-autofix.pyi", pyiContent));
+    const hso = getHso(r);
+    expect(hso).toHaveProperty("updatedInput");
+    const ui = hso.updatedInput as Record<string, unknown>;
+    const content = typeof ui.content === "string" ? ui.content : "";
+    const lines = content.split("\n");
+    expect(content).not.toContain("# stub comment one");
+    expect(content).not.toContain("# stub comment two");
+    expect(content).not.toContain("# stub comment three");
+    expect(content).not.toContain("# stub comment four");
+    expect(content).not.toContain("# stub comment five");
+    expect(content).not.toContain("# stub comment six");
+    expect(content).toContain("#!/usr/bin/env python3");
+    expect(lines[0]).toBe("#!/usr/bin/env python3");
+    expect(lines).toContain(`stub_val: str = "x"  # noqa: E501`);
+    expect(lines).toContain("other_val: int = 0  # type: int");
+    const codeLineCount = lines.filter(l => /^y_\d+: int = \d+$/.test(l)).length;
+    expect(codeLineCount).toBe(100);
   });
 
   it("ROWS-VS-COUNT: block comment spanning 6 rows in 100-line edit → stripped (rows, not count)", async () => {

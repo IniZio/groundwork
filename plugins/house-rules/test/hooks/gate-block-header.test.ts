@@ -59,21 +59,19 @@ function parseOut(stdout: string): Record<string, unknown> {
   return JSON.parse(t) as Record<string, unknown>;
 }
 
-// Python with >5/100 comment density — python is "preview" so never auto-fixed (stays unfixable).
 function makePreviewViolator(dir: string, name: string): string {
   const fp = path.join(dir, name);
-  // 8 code lines, 2 comment lines = 2/10 = 20% > 5%
   const lines = [
     "# first narration comment",
-    "x = 1",
-    "y = 2",
-    "z = 3",
-    "w = 4",
+    "x_1=1",
+    "y_2=2",
+    "z_3=3",
+    "w_4=4",
     "# second narration comment",
-    "a = 5",
-    "b = 6",
-    "c = 7",
-    "h = 8",
+    "a_5=5",
+    "b_6=6",
+    "c_7=7",
+    "h_8=8",
   ];
   writeFileSync(fp, lines.join("\n") + "\n");
   return fp;
@@ -131,7 +129,7 @@ describe("gate-block-header: comment-density-only block", () => {
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
   it("(b) density-only: reason contains existing comment-density header", () => {
-    const fp = makePreviewViolator(tmpDir, "widget.py");
+    const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({
@@ -166,7 +164,7 @@ describe("gate-block-header: both density and stray", () => {
 
   it("(c) both: reason contains density section and stray section", () => {
     // density violator
-    const violatorFp = makePreviewViolator(tmpDir, "widget.py");
+    const violatorFp = makePreviewViolator(tmpDir, "widget.sh");
     // stray: docs/ coexists with doc/
     mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
     const strayFp = path.join(tmpDir, "docs", "x.md");
@@ -313,7 +311,7 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
   it("(f) both rules, many density files, SubagentStop → ≤2000 chars with required sections", () => {
     const violatorFiles: string[] = [];
     for (let i = 0; i < 30; i++) {
-      const fp = makePreviewViolator(tmpDir, `widget${i}.py`);
+      const fp = makePreviewViolator(tmpDir, `widget${i}.sh`);
       violatorFiles.push(fp);
     }
 
@@ -367,7 +365,7 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
 
   it("(g) 30 density + 1 stray → stray path shown and output ≤2000", () => {
     const violatorFiles: string[] = [];
-    for (let i = 0; i < 30; i++) violatorFiles.push(makePreviewViolator(tmpDir, `widget${i}.py`));
+    for (let i = 0; i < 30; i++) violatorFiles.push(makePreviewViolator(tmpDir, `widget${i}.sh`));
 
     mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
     const strayFp = path.join(tmpDir, "docs", "only.md");
@@ -400,14 +398,12 @@ describe("gate-block-header: (h) 30 parse-error fallback files → ≤2000", () 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
   it("(h) 1 preview violator + 40 auto-fixed .ts (long paths) → density-only fixedNote large → ≤2000", () => {
-    // 40 long-path .ts files (auto-fixed) + 1 python (unfixable, preview) → density-only path.
-    // Old gate: fixedNote not trimmed, output > 2000. New gate: trims fixedNote, ≤2000.
     const deepDir = "src/components/deeply/nested";
     mkdirSync(path.join(tmpDir, deepDir), { recursive: true });
     const tsFiles: string[] = [];
     for (let i = 0; i < 40; i++) tsFiles.push(makeTsViolatorAutoFixable(tmpDir, `${deepDir}/fix${i}.ts`));
 
-    const violatorFp = makePreviewViolator(tmpDir, "top.py");
+    const violatorFp = makePreviewViolator(tmpDir, "top.sh");
 
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [...tsFiles, violatorFp], ts);
@@ -481,7 +477,7 @@ describe("gate-block-header: (j) write-failure falls back to trimmed reason", ()
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
   it("(j) when block file write fails, reason is trimmed fallback (contains density header)", () => {
-    const fp = makePreviewViolator(tmpDir, "widget.py");
+    const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = spawnSync("bun", [GATE_PATH], {
@@ -516,7 +512,7 @@ describe("gate-block-header: (k) sessionId path traversal sanitized", () => {
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
   it("(k) sessionId '../../evil' writes to house-rules/unknown/, not outside TMPDIR", () => {
-    const fp = makePreviewViolator(tmpDir, "widget.py");
+    const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
 

@@ -233,29 +233,29 @@ describe('comment-density housekeep fix ledger', () => {
   });
 
   it('records nothing for a file type not eligible for stable autofix (canFixPath=false)', () => {
-    // Python has no entry in the comment-density hook table → preview → canFixPath returns false → fix skips
+    // bash has no entry in the comment-density hook table → preview → canFixPath returns false → fix skips
     const repoDir = mktemp();
     const ledgerDir = mktemp();
     const baseSha = initRepo(repoDir);
 
-    const pyContent = [
+    const shContent = [
       '# remove me 1',
       '# remove me 2',
       '# remove me 3',
       '# remove me 4',
       '# remove me 5',
       '# remove me 6',
-      'a = 1',
-      'b = 2',
-      'c = 3',
-      'd = 4',
-      'e = 5',
+      'a_1=1',
+      'b_2=2',
+      'c_3=3',
+      'd_4=4',
+      'e_5=5',
     ].join('\n') + '\n';
 
-    const filePath = path.join(repoDir, 'dense.py');
-    fs.writeFileSync(filePath, pyContent);
-    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'add', 'dense.py'], { cwd: repoDir });
-    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'add dense py'], { cwd: repoDir });
+    const filePath = path.join(repoDir, 'dense.sh');
+    fs.writeFileSync(filePath, shContent);
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'add', 'dense.sh'], { cwd: repoDir });
+    spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'add dense sh'], { cwd: repoDir });
 
     spawnSync(BIN, ['housekeep', '--since', baseSha, '--repo', repoDir], {
       encoding: 'utf8',

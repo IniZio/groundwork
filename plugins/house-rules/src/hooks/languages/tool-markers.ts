@@ -32,6 +32,14 @@ export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
 
 export const YAML_TOOL_MARKERS: readonly RegExp[] = [/^yaml-language-server:/];
 
+export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
+  /^noinspection\b/,
+  /^<\/?editor-fold\b/,
+  /^language=\S/,
+  /^spotless:(?:off|on)\b/,
+  /^ktlint-(?:disable|enable)\b/,
+];
+
 export function withToolMarkers(
   markers: readonly RegExp[],
   base: CommentClassifier = defaultClassifyComments,

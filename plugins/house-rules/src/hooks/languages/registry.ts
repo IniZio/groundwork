@@ -4,6 +4,7 @@ import { classifyGoComments } from "./go.js";
 import { classifyRustComments } from "./rust.js";
 import { classifyDockerfileComments } from "./dockerfile.js";
 import { classifyTomlComments } from "./toml.js";
+import { classifyKotlinComments } from "./kotlin.js";
 import { isSqlCommentNodeType } from "./sql.js";
 import {
   withToolMarkers,
@@ -11,6 +12,7 @@ import {
   PYTHON_TOOL_MARKERS,
   BASH_TOOL_MARKERS,
   YAML_TOOL_MARKERS,
+  KOTLIN_TOOL_MARKERS,
 } from "./tool-markers.js";
 
 export interface LanguageDetection {
@@ -186,7 +188,19 @@ const toml = {
   classifyComments: classifyTomlComments,
 } satisfies LanguageAdapter;
 
-const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml };
+const kotlin = {
+  id: "kotlin",
+  detect: {
+    extensions: [".kt", ".kts"],
+  },
+  grammar: {
+    wasm: "tree-sitter-kotlin.wasm",
+    vendor: { package: "@tree-sitter-grammars/tree-sitter-kotlin", file: "tree-sitter-kotlin.wasm" },
+  },
+  classifyComments: withToolMarkers(KOTLIN_TOOL_MARKERS, classifyKotlinComments),
+} satisfies LanguageAdapter;
+
+const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, kotlin };
 
 export type Language = keyof typeof ADAPTERS;
 

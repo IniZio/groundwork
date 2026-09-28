@@ -58,8 +58,8 @@ describe("COV-1: unrecognised extension appears in coverage report", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("session writes notes.kt → allow path emits {continue:true} with no additionalContext", async () => {
-    const fp = path.join(tmpDir, "notes.kt");
+  it("session writes notes.scala → allow path emits {continue:true} with no additionalContext", async () => {
+    const fp = path.join(tmpDir, "notes.scala");
     writeFileSync(fp, "fun main() {\n    println(\"hello\")\n}\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
@@ -102,7 +102,7 @@ describe("COV-2: recognised .ts file produces no coverage output", () => {
   });
 });
 
-describe("COV-4: outside-repo file excluded from block reason; inside .kt present", () => {
+describe("COV-4: outside-repo file excluded from block reason; inside .scala present", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -116,12 +116,12 @@ describe("COV-4: outside-repo file excluded from block reason; inside .kt presen
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("block path: inside notes.kt in 'not checked', outside memory.kt absent", async () => {
+  it("block path: inside notes.scala in 'not checked', outside memory.scala absent", async () => {
     const violatorFp = makePreviewViolator(tmpDir, "bad.py");
-    const insideKt = path.join(tmpDir, "notes.kt");
+    const insideKt = path.join(tmpDir, "notes.scala");
     writeFileSync(insideKt, "fun main() {}\n");
     const outsideDir = mkdtempSync(path.join(os.tmpdir(), "cov4-outside-"));
-    const outsideFp = path.join(outsideDir, "memory.kt");
+    const outsideFp = path.join(outsideDir, "memory.scala");
     writeFileSync(outsideFp, "fun outside() {}\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [violatorFp, insideKt, outsideFp], ts);
@@ -366,7 +366,7 @@ describe("COV-TSX-AUTOFIX: .tsx over-budget violator is autofixed by gate (tsx i
   });
 });
 
-describe("COV-3: notes.kt + comment-density violator → block message names notes.kt as not checked", () => {
+describe("COV-3: notes.scala + comment-density violator → block message names notes.scala as not checked", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -380,11 +380,11 @@ describe("COV-3: notes.kt + comment-density violator → block message names not
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("notes.kt + unfixable violator .py → block reason contains notes.kt as not checked", async () => {
+  it("notes.scala + unfixable violator .py → block reason contains notes.scala as not checked", async () => {
     // unfixable violator (python is preview, prevents autofix)
     const violatorFp = makePreviewViolator(tmpDir, "bad.py");
 
-    const ktFp = path.join(tmpDir, "notes.kt");
+    const ktFp = path.join(tmpDir, "notes.scala");
     writeFileSync(ktFp, "fun main() {\n    println(\"hello\")\n}\n");
 
     const ts = new Date(Date.now() - 10000).toISOString();
@@ -393,7 +393,7 @@ describe("COV-3: notes.kt + comment-density violator → block message names not
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
     expect(parsed.decision).toBe("block");
-    // reason must mention notes.kt as not checked
+    // reason must mention notes.scala as not checked
     const reason = parsed.reason as string;
     expect(reason).toContain("not checked:");
     expect(reason).toContain(ktFp);

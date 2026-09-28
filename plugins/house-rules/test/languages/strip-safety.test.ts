@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -104,6 +104,13 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
   ],
   go: [
     /^\/\/go:/, /^\/\/\s*\+build\b/, /^\/\/nolint\b/, /^\/\/export\b/,
+  ],
+  kotlin: [
+    /^\/\/\s*noinspection\b/,
+    /^\/\/\s*<\/?editor-fold\b/,
+    /^\/\/\s*language=\S/,
+    /^\/\/\s*spotless:(?:off|on)\b/,
+    /^\/\/\s*ktlint-(?:disable|enable)\b/,
   ],
 };
 
@@ -351,6 +358,54 @@ describe("strip-safety marker↔MUST_KEEP parity (typescript)", () => {
         TYPESCRIPT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
       );
       expect(covered, `MUST_KEEP ${keepRe}: no TYPESCRIPT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+const allKtRawComments: string[] = [];
+for (const f of allFixtures.filter((f) => f.lang === "kotlin")) {
+  allKtRawComments.push(...extractRawComments(readFileSync(f.fixturePath, "utf8")));
+}
+
+describe("strip-safety marker↔MUST_KEEP parity (kotlin)", () => {
+  const mustKeepKt = MUST_KEEP.kotlin ?? [];
+
+  it("kotlin fixture list is non-empty", () => {
+    expect(allKtRawComments.length, "kotlin fixture must contain at least one raw comment").toBeGreaterThan(0);
+  });
+
+  it("positive control: noinspection covered, NONEXISTENT_KOTLIN_MARKER_XYZ not covered", () => {
+    const noinspRe = /^noinspection\b/;
+    const noinspCovered = allKtRawComments.some(
+      (raw) => noinspRe.test(commentInnerText(raw)) && mustKeepKt.some((re) => re.test(raw)),
+    );
+    expect(noinspCovered, "noinspection marker must be covered by a MUST_KEEP.kotlin pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_KOTLIN_MARKER_XYZ_FAKE_99999/;
+    const fakeCovered = allKtRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepKt.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_KOTLIN_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of KOTLIN_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allKtRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepKt.some((re) => re.test(raw));
+      });
+      expect(covered, `no kotlin fixture comment covers KOTLIN_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepKt) {
+    const matchingRaws = allKtRawComments.filter((raw) => keepRe.test(raw));
+    if (matchingRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → KOTLIN_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = matchingRaws.some((raw) =>
+        KOTLIN_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no KOTLIN_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
     });
   }
 });

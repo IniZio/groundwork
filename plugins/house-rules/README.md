@@ -102,6 +102,7 @@ When the gate auto-trims a file, the next Read/Edit/Write of that file emits a o
 | sql | `.sql` | built from source by `scripts/build-sql-grammar.sh` |
 | make | `.mk`; basenames: `Makefile`, `GNUmakefile`, `makefile` | vendored from `tree-sitter-make` |
 | toml | `.toml` | vendored from `@tree-sitter-grammars/tree-sitter-toml` |
+| kotlin | `.kt`, `.kts` | vendored from `@tree-sitter-grammars/tree-sitter-kotlin` |
 
 Files in other languages are not measured.
 <!-- languages:end -->

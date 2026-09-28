@@ -75,5 +75,12 @@
     "file": "tree-sitter-toml.wasm",
     "sha256": "1ac6a83826c35a68857f8325e00c78f6bcbef4eb6db3931a6cf3041f76e5e09f",
     "bytes": 24040
+  },
+  "tree-sitter-kotlin.wasm": {
+    "package": "@tree-sitter-grammars/tree-sitter-kotlin",
+    "version": "1.1.0",
+    "file": "tree-sitter-kotlin.wasm",
+    "sha256": "7009d69453bc8735e438b2818a633efb21c88f99782769abba60dffedfab73f7",
+    "bytes": 3441042
   }
 }

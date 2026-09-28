@@ -124,8 +124,8 @@ describe("prose negatives — directive false", () => {
     { title: "plain prose comment", src: markerSrc("# compute the total"), marker: "# compute the total" },
     { title: "TODO comment", src: markerSrc("# TODO fix this"), marker: "# TODO fix this" },
     { title: "trailing explain (not noqa)", src: markerSrcTrailing("x = 1", "# explain"), marker: "# explain" },
-    { title: "@apiParam — prose not directive", src: markerSrc("# @apiParam {String} id The record ID."), marker: "# @apiParam {String} id The record ID." },
-    { title: "@apiSuccess — prose not directive", src: markerSrc("# @apiSuccess {Object} data The payload."), marker: "# @apiSuccess {Object} data The payload." },
+    { title: "@apiParam — exempt via annotation rule, not a tool marker", src: markerSrc("# @apiParam {String} id The record ID."), marker: "# @apiParam {String} id The record ID." },
+    { title: "@apiSuccess — exempt via annotation rule, not a tool marker", src: markerSrc("# @apiSuccess {Object} data The payload."), marker: "# @apiSuccess {Object} data The payload." },
     { title: "noquax — not a marker", src: markerSrc("# noquax"), marker: "# noquax" },
     { title: "pyre-unknown prefix — not a marker", src: markerSrc("# pyre-unknown"), marker: "# pyre-unknown" },
   ];
@@ -148,6 +148,85 @@ describe("prose negatives — directive false", () => {
   });
 });
 
+describe("@apiParam — exempt via annotation rule, not a tool marker", () => {
+  // @apiParam matches ANNOT_TAG_RE (/^@\w/) in comment-density.ts, which exempts it from
+  // density counting. It is NOT a tool marker (directive=false), but it is exempt=true.
+  const API_PARAM = "# @apiParam {String} id The record ID.";
+  const apiSrc = markerSrc(API_PARAM);
+
+  it("directive false (not a tool marker)", async () => {
+    const cs = await classify(apiSrc);
+    const c = cs.find(x => x.text === API_PARAM);
+    expect(c, `"${API_PARAM}" not found`).toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("exempt true via annotation rule (findComments)", async () => {
+    const r = await comments(apiSrc);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    const c = r.comments.find(x => x.text === API_PARAM);
+    expect(c, `"${API_PARAM}" not found in findComments`).toBeDefined();
+    expect(c!.exempt).toBe(true);
+  });
+
+  it("survives stripComments in an over-budget sample", async () => {
+    const prose = "# removable prose line";
+    const fullSrc = apiSrc + prose + "\n";
+    const r = await comments(fullSrc);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.reason);
+    const nonExempt = r.comments.filter(c => !c.exempt);
+    const { text: stripped } = stripComments(fullSrc, nonExempt);
+    expect(stripped).toContain(API_PARAM);
+    expect(stripped).not.toContain("removable prose line");
+  });
+});
+
+describe("PEP 263 encoding declarations — row 0/1 only", () => {
+
+  it("coding=utf-8 on row 0 — directive true", async () => {
+    const src = "# coding=utf-8\nx = 1\n";
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# coding=utf-8");
+    expect(c, '"# coding=utf-8" on row 0 not found').toBeDefined();
+    expect(c!.directive).toBe(true);
+  });
+
+  // Prose examples that the unanchored regex falsely matched (row >= 2):
+  it("'Response encoding: latin-1 because legacy' on row 2 — directive false", async () => {
+    const src = "x = 0\ny = 1\n# Response encoding: latin-1 because legacy\nz = 2\n";
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# Response encoding: latin-1 because legacy");
+    expect(c, "comment not found").toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("'Note on coding: use snake_case' on row 2 — directive false", async () => {
+    const src = "x = 0\ny = 1\n# Note on coding: use snake_case\nz = 2\n";
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# Note on coding: use snake_case");
+    expect(c, "comment not found").toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("'The decoding=utf8 step' on row 2 — directive false", async () => {
+    const src = "x = 0\ny = 1\n# The decoding=utf8 step\nz = 2\n";
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# The decoding=utf8 step");
+    expect(c, "comment not found").toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("coding=utf-8 on row 5 — directive false", async () => {
+    const src = "a = 0\nb = 1\nc = 2\nd = 3\ne = 4\n# coding=utf-8\nz = 2\n";
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# coding=utf-8");
+    expect(c, "comment not found").toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+});
+
 describe("chained-marker directives — prose  # marker → directive true", () => {
 
   const CHAINED_CASES: Array<{ title: string; stmt: string; prose: string; marker: string }> = [
@@ -157,6 +236,11 @@ describe("chained-marker directives — prose  # marker → directive true", () 
     { title: "pragma: no cover chained", stmt: "def helper():", prose: "# internal",   marker: "# pragma: no cover" },
     { title: "pylint: chained", stmt: "name = get_id()",       prose: "# api result",  marker: "# pylint: disable=invalid-name" },
     { title: "pyright: chained", stmt: "obj = fetch()",        prose: "# may be None", marker: "# pyright: ignore[reportOptionalMemberAccess]" },
+    { title: "isort:skip chained",  stmt: "import os",    prose: "# stdlib import",  marker: "# isort:skip" },
+    { title: "isort: skip chained", stmt: "import sys",   prose: "# needed",         marker: "# isort: skip" },
+    // black 24.10.0 comments.py _contains_fmt_skip_comment splits on _COMMENT_PREFIX="# "
+    // then checks any segment in FMT_SKIP — no Preview gate; stable in 24.1.0+.
+    { title: "fmt: skip chained",  stmt: "result = [1, 2]", prose: "# sort order", marker: "# fmt: skip" },
   ];
 
   for (const { title, stmt, prose, marker } of CHAINED_CASES) {
@@ -192,12 +276,19 @@ describe("chained-marker directives — prose  # marker → directive true", () 
     expect(c!.directive).toBe(false);
   });
 
-  it("fmt: skip chained after prose → directive false (anchored; black does not honour chained fmt:)", async () => {
-    // black only recognises `# fmt: skip` when it IS the comment (not after other comment text)
-    const src = `x = 0\nresult = [1, 2]  # sort order  # fmt: skip\ny = 1\n`;
+  it("fmt: off chained after prose → directive false (black uses exact-match for off/on, not segment-split)", async () => {
+    const src = `x = 0\nx = 1  # explain  # fmt: off\ny = 1\n`;
     const cs = await classify(src);
-    const c = cs.find(x => x.text === "# sort order  # fmt: skip");
-    expect(c, `comment "# sort order  # fmt: skip" not found`).toBeDefined();
+    const c = cs.find(x => x.text === "# explain  # fmt: off");
+    expect(c, `comment "# explain  # fmt: off" not found`).toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("fmt: on chained after prose → directive false", async () => {
+    const src = `x = 0\nx = 1  # explain  # fmt: on\ny = 1\n`;
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# explain  # fmt: on");
+    expect(c, `comment "# explain  # fmt: on" not found`).toBeDefined();
     expect(c!.directive).toBe(false);
   });
 });

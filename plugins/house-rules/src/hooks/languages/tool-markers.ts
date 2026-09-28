@@ -28,14 +28,24 @@ export const PYTHON_TOOL_MARKERS: readonly RegExp[] = [
   /(?:^|#\s*)pragma:/i,
   /(?:^|#\s*)pylint:/,
   /(?:^|#\s*)pyright:/,
-  /coding[:=]\s*[-\w.]+/,
-  /^fmt:\s*(?:off|on|skip)\b/,
-  /^isort:\s*(?:skip(?:_file)?|off|on)\b/,
+  /^fmt:\s*(?:off|on)\b/,
+  /(?:^|#\s*)fmt:\s*skip\b/,
+  /(?:^|#\s*)isort:\s*(?:skip(?:_file)?|off|on)\b/,
   /^mypy:/,
   /^flake8:\s*noqa\b/,
   /^ruff:\s*noqa\b/,
   /^pyre-(?:ignore|fixme|strict)\b/,
 ];
+
+/**
+ * PEP 263 encoding declaration pattern.
+ * Only honoured by CPython on lines 1–2 of the file (rows 0–1, 0-indexed).
+ * Kept separate from PYTHON_TOOL_MARKERS so it can be applied with a row guard.
+ * https://peps.python.org/pep-0263/
+ */
+export const PEP263_CODING_RE = /coding[:=]\s*[-\w.]+/;
+
+const _pythonBase = withToolMarkers(PYTHON_TOOL_MARKERS);
 
 export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
 
@@ -110,3 +120,16 @@ export function withToolMarkers(
     });
   };
 }
+
+export const classifyPythonComments: CommentClassifier = (raw, root, text) => {
+  const classified = _pythonBase(raw, root, text);
+  return classified.map((c) => {
+    if (c.directive) return c;
+    if (c.startRow > 1) return c;
+    const inner = commentInnerText(c.text.split("\n")[0]);
+    if (PEP263_CODING_RE.test(inner)) {
+      return { ...c, directive: true, label: inner.slice(0, 30) };
+    }
+    return c;
+  });
+};

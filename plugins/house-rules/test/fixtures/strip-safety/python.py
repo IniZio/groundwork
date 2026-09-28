@@ -52,7 +52,7 @@ class DataHandler:
     def process(self, items: list, mode: str = "strict") -> list:
         """Process items according to mode."""
         # pyre-ignore[16]
-        result = []
+        result = []  # fmt: skip
         for item in items:
             result.append(str(item))
             # This prose comment is the last line of the for-loop block.

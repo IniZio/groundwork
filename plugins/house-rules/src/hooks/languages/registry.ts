@@ -11,7 +11,7 @@ import { isSqlCommentNodeType } from "./sql.js";
 import {
   withToolMarkers,
   TYPESCRIPT_TOOL_MARKERS,
-  PYTHON_TOOL_MARKERS,
+  classifyPythonComments,
   BASH_TOOL_MARKERS,
   YAML_TOOL_MARKERS,
   KOTLIN_TOOL_MARKERS,
@@ -115,7 +115,7 @@ const python = {
     wasm: "tree-sitter-python.wasm",
     vendor: { package: "tree-sitter-python", file: "tree-sitter-python.wasm" },
   },
-  classifyComments: withToolMarkers(PYTHON_TOOL_MARKERS),
+  classifyComments: classifyPythonComments,
 } satisfies LanguageAdapter;
 
 const dockerfile = {

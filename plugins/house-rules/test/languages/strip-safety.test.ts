@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS, PYTHON_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS, PYTHON_TOOL_MARKERS, PEP263_CODING_RE } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -660,9 +660,10 @@ describe("strip-safety marker↔MUST_KEEP parity (python)", () => {
     const matchingRaws = allPyRawComments.filter((raw) => keepRe.test(raw));
     if (matchingRaws.length === 0) continue;
     it(`MUST_KEEP ${keepRe} → PYTHON_TOOL_MARKERS covers its fixture comments`, () => {
-      const covered = matchingRaws.some((raw) =>
-        PYTHON_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
-      );
+      const covered = matchingRaws.some((raw) => {
+        const inner = commentInnerText(raw);
+        return PYTHON_TOOL_MARKERS.some((re) => re.test(inner)) || PEP263_CODING_RE.test(inner);
+      });
       expect(covered, `MUST_KEEP ${keepRe}: no PYTHON_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
     });
   }

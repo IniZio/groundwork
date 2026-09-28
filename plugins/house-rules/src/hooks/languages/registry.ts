@@ -4,6 +4,7 @@ import { classifyGoComments } from "./go.js";
 import { classifyRustComments } from "./rust.js";
 import { classifyDockerfileComments } from "./dockerfile.js";
 import { classifyTomlComments } from "./toml.js";
+import { classifySwiftComments } from "./swift.js";
 import { isSqlCommentNodeType } from "./sql.js";
 import {
   withToolMarkers,
@@ -186,7 +187,14 @@ const toml = {
   classifyComments: classifyTomlComments,
 } satisfies LanguageAdapter;
 
-const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml };
+const swift = {
+  id: "swift",
+  detect: { extensions: [".swift"] },
+  grammar: { wasm: "tree-sitter-swift.wasm", build: "scripts/build-swift-grammar.sh" },
+  classifyComments: classifySwiftComments,
+} satisfies LanguageAdapter;
+
+const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, swift };
 
 export type Language = keyof typeof ADAPTERS;
 

@@ -32,6 +32,16 @@ export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
 
 export const YAML_TOOL_MARKERS: readonly RegExp[] = [/^yaml-language-server:/];
 
+export const SWIFT_TOOL_MARKERS: readonly RegExp[] = [
+  /^swift-tools-version\s*:/i,
+  /^swiftlint:(?:disable|enable)\b/,
+  /^swift-format-ignore(?:-file)?\b/,
+  /^swiftformat:(?:disable|enable|options|sort)\b/,
+  /^periphery:ignore\b/,
+  /^sourcery:/,
+  /^MARK:/,
+];
+
 export function withToolMarkers(
   markers: readonly RegExp[],
   base: CommentClassifier = defaultClassifyComments,

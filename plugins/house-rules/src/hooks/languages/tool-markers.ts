@@ -40,6 +40,16 @@ export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
   /^ktlint-(?:disable|enable)\b/,
 ];
 
+export const SWIFT_TOOL_MARKERS: readonly RegExp[] = [
+  /^swift-tools-version\s*:/i,
+  /^swiftlint:(?:disable|enable)\b/,
+  /^swift-format-ignore(?:-file)?\b/,
+  /^swiftformat:(?:disable|enable|options|sort)\b/,
+  /^periphery:ignore\b/,
+  /^sourcery:/,
+  /^MARK:/,
+];
+
 export function withToolMarkers(
   markers: readonly RegExp[],
   base: CommentClassifier = defaultClassifyComments,

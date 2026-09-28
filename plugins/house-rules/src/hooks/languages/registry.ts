@@ -5,6 +5,7 @@ import { classifyRustComments } from "./rust.js";
 import { classifyDockerfileComments } from "./dockerfile.js";
 import { classifyTomlComments } from "./toml.js";
 import { classifyKotlinComments } from "./kotlin.js";
+import { classifySwiftComments } from "./swift.js";
 import { isSqlCommentNodeType } from "./sql.js";
 import {
   withToolMarkers,
@@ -13,6 +14,7 @@ import {
   BASH_TOOL_MARKERS,
   YAML_TOOL_MARKERS,
   KOTLIN_TOOL_MARKERS,
+  SWIFT_TOOL_MARKERS,
 } from "./tool-markers.js";
 
 export interface LanguageDetection {
@@ -200,7 +202,14 @@ const kotlin = {
   classifyComments: withToolMarkers(KOTLIN_TOOL_MARKERS, classifyKotlinComments),
 } satisfies LanguageAdapter;
 
-const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, kotlin };
+const swift = {
+  id: "swift",
+  detect: { extensions: [".swift"] },
+  grammar: { wasm: "tree-sitter-swift.wasm", build: "scripts/build-swift-grammar.sh" },
+  classifyComments: classifySwiftComments,
+} satisfies LanguageAdapter;
+
+const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, kotlin, swift };
 
 export type Language = keyof typeof ADAPTERS;
 

@@ -348,6 +348,7 @@ const typescriptRemovalGrouping: RemovalGrouping = {
 
 export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDensityLanguageHook>> = {
   typescript: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
+  swift: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   go: {
     stability: "stable",
     removalGrouping: goRemovalGrouping,

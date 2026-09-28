@@ -10,6 +10,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { check } from "../../src/hooks/guard.js";
 import { run } from "../../src/hooks/gate.js";
+import { classifyComments, parseText } from "../../src/hooks/languages/parse.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -473,5 +475,120 @@ describe("Swift gate case 14: Package.swift — swift-tools-version:5.9 on line 
 
     expect(content).toContain("// swiftlint:disable:next line_length");
     expect(content).toContain("// MARK: - Package Definition");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case F15: Package.swift — non-header swift-tools-version protected by marker only
+//
+// ---------------------------------------------------------------------------
+
+// Fixture: row 0 blank, row 1 = tools-version (with space variant), then narrative flood.
+const F15_BASE_PACKAGE_SWIFT = `
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "F15Package",
+    targets: [
+        .target(name: "F15Target"),
+    ]
+)
+`;
+
+const F15_OVER_BUDGET = `
+// swift-tools-version: 5.9
+import PackageDescription
+
+// F15NarrativeA this is a plain narrative comment with no tool value
+// F15NarrativeB this is a plain narrative comment with no tool value
+// F15NarrativeC this is a plain narrative comment with no tool value
+// F15NarrativeD this is a plain narrative comment with no tool value
+// F15NarrativeE this is a plain narrative comment with no tool value
+// F15NarrativeF this is a plain narrative comment with no tool value
+// F15NarrativeG this is a plain narrative comment with no tool value
+// F15NarrativeH this is a plain narrative comment with no tool value
+// F15NarrativeI this is a plain narrative comment with no tool value
+// F15NarrativeJ this is a plain narrative comment with no tool value
+// F15NarrativeK this is a plain narrative comment with no tool value
+// F15NarrativeL this is a plain narrative comment with no tool value
+
+let package = Package(
+    name: "F15Package",
+    targets: [
+        .target(name: "F15Target"),
+    ]
+)
+`;
+
+const F15_NARRATIVE_SENTINEL = "// F15NarrativeL this is a plain narrative comment with no tool value";
+const F15_TOOLS_LINE = "// swift-tools-version: 5.9";
+
+describe("(F15) swift-tools-version on row 1 (row 0 blank): header===false, directive===true", () => {
+  it("// swift-tools-version: 5.9 on row 1 has header=false", async () => {
+    const r = await parseText(F15_OVER_BUDGET, "swift", getParser);
+    if (!r.ok) throw new Error(`parseText failed: ${r.reason}`);
+    const cls = classifyComments(r.tree.rootNode, F15_OVER_BUDGET, "swift");
+    const c = cls.find((x) => x.text === F15_TOOLS_LINE);
+    if (!c) throw new Error(`Comment not found: ${JSON.stringify(F15_TOOLS_LINE)}`);
+    expect(c.header).toBe(false);
+  });
+
+  it("// swift-tools-version: 5.9 on row 1 has directive=true (marker-only)", async () => {
+    const r = await parseText(F15_OVER_BUDGET, "swift", getParser);
+    if (!r.ok) throw new Error(`parseText failed: ${r.reason}`);
+    const cls = classifyComments(r.tree.rootNode, F15_OVER_BUDGET, "swift");
+    const c = cls.find((x) => x.text === F15_TOOLS_LINE);
+    if (!c) throw new Error(`Comment not found: ${JSON.stringify(F15_TOOLS_LINE)}`);
+    expect(c.directive).toBe(true);
+  });
+});
+
+describe("(F15) gate autofix: non-header swift-tools-version: 5.9 (with space) preserved byte-identical; narrative stripped", () => {
+  let tmpDir: string;
+  let shadowTmpDir: string;
+  let sessionId: string;
+  let fp: string;
+  let tp: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-f15-pkg-"));
+    shadowTmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-f15-sh-"));
+    sessionId = `swift-f15-${Date.now()}`;
+
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, "Package.swift"), F15_BASE_PACKAGE_SWIFT);
+    gitCommit(tmpDir, "initial");
+
+    fp = path.join(tmpDir, "Package.swift");
+    writeFileSync(fp, F15_OVER_BUDGET);
+    tp = makeTranscript(tmpDir, [fp], new Date(Date.now() - 5000).toISOString());
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+    try { rmSync(shadowTmpDir, { recursive: true, force: true }); } catch { }
+  });
+
+  it("line index 1 is byte-identical '// swift-tools-version: 5.9' after autofix; at least one narrative removed", async () => {
+    // Non-vacuous pre-check: sentinel is present before autofix.
+    expect(F15_OVER_BUDGET).toContain(F15_NARRATIVE_SENTINEL);
+
+    const r = await run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp, cwd: tmpDir },
+      { ...process.env, CLAUDE_PROJECT_DIR: tmpDir } as Record<string, string | undefined>,
+      { testOnly_tmpDir: shadowTmpDir } as any,
+    );
+
+    const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
+    expect(out.decision).not.toBe("block");
+
+    const content = readFileSync(fp, "utf8");
+    const lines = content.split("\n");
+    // Row 0 blank → lines[0] is empty; tools-version is at lines[1].
+    expect(lines[1]).toBe(F15_TOOLS_LINE);
+
+    // Non-vacuous: at least one narrative stripped.
+    expect(content).not.toContain(F15_NARRATIVE_SENTINEL);
   });
 });

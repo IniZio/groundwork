@@ -276,3 +276,93 @@ describe("Swift by-path gate: Package.swift — swift-tools-version:5.9 byte-ide
     expect(diskContent).toContain("// swiftlint:disable:next line_length");
   });
 });
+
+
+const BASE_PACKAGE_NOHEADER = [
+  "",
+  "// swift-tools-version: 5.9",
+  "import PackageDescription",
+  "",
+  "let package = Package(",
+  '    name: "MyPackage",',
+  "    targets: [",
+  '        .target(name: "MyTarget"),',
+  "    ]",
+  ")",
+].join("\n");
+
+const PACKAGE_NOHEADER_OVER_BUDGET = [
+  "",
+  "// swift-tools-version: 5.9",
+  "import PackageDescription",
+  "",
+  "// MARK: - Package Setup",
+  "// swiftlint:disable:next line_length",
+  "",
+  "// narrative noheader comment one: the blank first line is legal SwiftPM syntax",
+  "// narrative noheader comment two: SwiftPM accepts blank lines before the directive",
+  "// narrative noheader comment three: this tests the marker-only protection path",
+  "// narrative noheader comment four: the header classifier sees row 0 as blank",
+  "// narrative noheader comment five: so the tools-version line is NOT in the header group",
+  "// narrative noheader comment six: only SWIFT_TOOL_MARKERS can keep it alive",
+  "",
+  "let package = Package(",
+  '    name: "MyPackage",',
+  "    targets: [",
+  '        .target(name: "MyTarget"),',
+  "    ]",
+  ")",
+].join("\n");
+
+const NOHEADER_SENTINEL = "// narrative noheader comment six: only SWIFT_TOOL_MARKERS can keep it alive";
+
+describe("Swift by-path gate: Package.swift — non-header swift-tools-version line protected by SWIFT_TOOL_MARKERS", () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), "ac-swift-nohdr-"));
+  const pkgPath = path.join(tmpDir, "Package.swift");
+
+  it("line 0 is '' and line 1 is '// swift-tools-version: 5.9' byte-identical; at least one narrative comment stripped", () => {
+    initGitRepo(tmpDir);
+    writeFileSync(pkgPath, BASE_PACKAGE_NOHEADER);
+    gitCommit(tmpDir, "initial");
+
+    writeFileSync(pkgPath, PACKAGE_NOHEADER_OVER_BUDGET);
+    expect(PACKAGE_NOHEADER_OVER_BUDGET).toContain(NOHEADER_SENTINEL);
+
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [pkgPath], ts);
+
+    const r = spawnGate({
+      hook_event_name: "Stop",
+      session_id: `ac-swift-nohdr-${Date.now()}`,
+      transcript_path: tp,
+      cwd: tmpDir,
+      stop_hook_active: false,
+    });
+
+    expect(r.status).toBe(0);
+
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed.decision).not.toBe("block");
+
+    const hso = parsed.hookSpecificOutput as Record<string, unknown>;
+    expect(hso).toBeDefined();
+    const ctx = hso.additionalContext as string;
+    expect(ctx).toContain("auto-removed");
+
+    const diskContent = readFileSync(pkgPath, "utf8");
+    const lines = diskContent.split("\n");
+
+    // Line 0 must still be blank
+    expect(lines[0]).toBe("");
+
+    // Line 1 must be byte-identical — protected only by SWIFT_TOOL_MARKERS (not header)
+    expect(lines[1]).toBe("// swift-tools-version: 5.9");
+
+    // At least one narrative comment must have been removed (non-vacuous)
+    expect(diskContent).not.toContain(NOHEADER_SENTINEL);
+
+    // Tool directives survive
+    expect(diskContent).toContain("// MARK: - Package Setup");
+    expect(diskContent).toContain("// swiftlint:disable:next line_length");
+  });
+});

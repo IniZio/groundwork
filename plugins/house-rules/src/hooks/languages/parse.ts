@@ -13,19 +13,74 @@ export function isCommentNode(node: Node, lang: Language): boolean {
   return (LANGUAGE_ADAPTERS[lang].isCommentNodeType ?? defaultIsCommentNodeType)(node.type);
 }
 
-export function collectErrorRows(root: Node): Set<number> {
+export function collectErrorRows(root: Node, lang?: Language): Set<number> {
   const result = new Set<number>();
+
+  function effectiveEndRow(node: Node): number {
+    if (node.endPosition.column === 0 && node.endPosition.row > node.startPosition.row) {
+      return node.endPosition.row - 1;
+    }
+    return node.endPosition.row;
+  }
+
+  function isComment(node: Node): boolean {
+    return lang !== undefined ? isCommentNode(node, lang) : node.type.includes("comment");
+  }
+
   function walk(node: Node): void {
-    if (node.type === "ERROR" || node.isMissing) {
-      for (let r = node.startPosition.row; r <= node.endPosition.row; r++) {
-        result.add(r);
+    if (node.isMissing) {
+      result.add(node.startPosition.row);
+      return;
+    }
+
+    if (node.type !== "ERROR") {
+      // Non-ERROR node: just recurse into children to find nested ERROR/MISSING.
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) walk(child);
+      }
+      return;
+    }
+
+    const nodeEffEnd = effectiveEndRow(node);
+
+    // ERROR node with no children: mark every row in its span.
+    if (node.childCount === 0) {
+      for (let r = node.startPosition.row; r <= nodeEffEnd; r++) result.add(r);
+      return;
+    }
+
+    const sizeBefore = result.size;
+
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i)!;
+      if (isComment(child)) continue;
+      if (!child.isNamed || child.childCount === 0) {
+        const end = effectiveEndRow(child);
+        for (let r = child.startPosition.row; r <= end; r++) result.add(r);
       }
     }
+
+    const childCoverage = new Set<number>();
     for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) walk(child);
+      const child = node.child(i)!;
+      const end = effectiveEndRow(child);
+      for (let r = child.startPosition.row; r <= end; r++) childCoverage.add(r);
+    }
+    for (let r = node.startPosition.row; r <= nodeEffEnd; r++) {
+      if (!childCoverage.has(r)) result.add(r);
+    }
+
+    if (result.size === sizeBefore) {
+      for (let r = node.startPosition.row; r <= nodeEffEnd; r++) result.add(r);
+    }
+
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i)!;
+      if (child.hasError) walk(child);
     }
   }
+
   walk(root);
   return result;
 }
@@ -85,6 +140,6 @@ export async function parseText(
   const tree: Tree | null = r.parser.parse(text);
   if (!tree) return { ok: false, reason: "parse returned null" };
 
-  const errorRows = tree.rootNode.hasError ? collectErrorRows(tree.rootNode) : new Set<number>();
+  const errorRows = tree.rootNode.hasError ? collectErrorRows(tree.rootNode, lang) : new Set<number>();
   return { ok: true, tree, errorRows };
 }

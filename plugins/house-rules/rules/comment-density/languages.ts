@@ -357,6 +357,7 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
     },
   },
   kotlin: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
+  java: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
 };
 
 /** Look up the hook entry at call time (never cached). */

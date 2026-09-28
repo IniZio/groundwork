@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -122,6 +122,19 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
     /^\/\/\s*sourcery:/,
     /^\/\/\//,
     /^\/\*\*/,
+  ],
+  java: [
+    /^\/\/\s*NOSONAR\b/,
+    /^\/\/\s*NOPMD\b/,
+    /^\/\/\s*CHECKSTYLE(?::(?:OFF|ON)\b|\.(?:OFF|ON):)/,
+    /^\/\/\s*@formatter:(?:off|on)\b/,
+    /^\/\/\s*noinspection\b/,
+    /^\/\/\s*\$NON-NLS-\d+\$/,
+    /^\/\/\s*spotless:(?:off|on)\b/,
+    /^\/\/\s*CPD-(?:OFF|ON)\b/,
+    /^\/\/\s*(?:file )?deepcode ignore\b/,
+    /^\/\/\s*nosemgrep\b/,
+    /^\/\/\s*falls?[ -]?thr(?:u|ough)\b/,
   ],
 };
 
@@ -467,6 +480,119 @@ describe("strip-safety marker↔MUST_KEEP parity (swift)", () => {
         SWIFT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
       );
       expect(covered, `MUST_KEEP ${keepRe}: no SWIFT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+const allJavaRawComments: string[] = [];
+for (const f of allFixtures.filter((f) => f.lang === "java")) {
+  allJavaRawComments.push(...extractRawComments(readFileSync(f.fixturePath, "utf8")));
+}
+
+describe("strip-safety marker↔MUST_KEEP parity (java)", () => {
+  const mustKeepJava = MUST_KEEP.java ?? [];
+
+  it("java fixture list is non-empty", () => {
+    expect(allJavaRawComments.length, "java fixture must contain at least one raw comment").toBeGreaterThan(0);
+  });
+
+  it("positive control: NOSONAR covered, NONEXISTENT_JAVA_MARKER_XYZ not covered", () => {
+    const nosonarRe = /^NOSONAR\b/;
+    const nosonarCovered = allJavaRawComments.some(
+      (raw) => nosonarRe.test(commentInnerText(raw)) && mustKeepJava.some((re) => re.test(raw)),
+    );
+    expect(nosonarCovered, "NOSONAR marker must be covered by a MUST_KEEP.java pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_JAVA_MARKER_XYZ_FAKE_99999/;
+    const fakeCovered = allJavaRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepJava.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_JAVA_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of JAVA_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allJavaRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepJava.some((re) => re.test(raw));
+      });
+      expect(covered, `no java fixture comment covers JAVA_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepJava) {
+    const matchingRaws = allJavaRawComments.filter((raw) => keepRe.test(raw));
+    if (matchingRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → JAVA_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = matchingRaws.some((raw) =>
+        JAVA_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no JAVA_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+describe("strip-safety identity (java)", () => {
+  const javaFixtures = allFixtures.filter((f) => f.lang === "java");
+
+  for (const f of javaFixtures) {
+    const base = path.basename(f.fixturePath);
+
+    it(`identity: ${base} Javadoc and tool-marker comments survive strip`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const lang = "java" as Language;
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, lang, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      const fixed = ar.fixed;
+
+      // Javadoc block must survive byte-identical.
+      for (const m of text.matchAll(/\/\*\*[\s\S]*?\*\//g)) {
+        expect(fixed, `Javadoc block missing after strip: "${m[0].slice(0, 60)}"`).toContain(m[0]);
+      }
+
+      // License header block must survive byte-identical.
+      const headerMatch = text.match(/^\/\*[\s\S]*?\*\//);
+      if (headerMatch) {
+        expect(fixed, "license header block missing after strip").toContain(headerMatch[0]);
+      }
+
+      // Every tool-marker comment must survive by exact text.
+      const toolMarkerTexts: string[] = [];
+      for (const raw of extractRawComments(text)) {
+        if ((MUST_KEEP.java ?? []).some((re) => re.test(raw))) {
+          toolMarkerTexts.push(raw);
+        }
+      }
+      for (const marker of toolMarkerTexts) {
+        expect(fixed, `tool-marker comment missing after strip: "${marker}"`).toContain(marker);
+      }
+    });
+
+    it(`identity: ${base} text block and string literals survive strip unchanged`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const lang = "java" as Language;
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, lang, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      const fixed = ar.fixed;
+
+      // Text blocks must survive byte-identical.
+      for (const m of text.matchAll(/"""[\s\S]*?"""/g)) {
+        expect(fixed, `text block changed or missing after strip: "${m[0].slice(0, 60)}"`).toContain(m[0]);
+      }
+
+      // String literals with comment-like content must survive.
+      const commentLikeStrings = ['"// not a comment"'];
+      for (const s of commentLikeStrings) {
+        if (text.includes(s)) {
+          expect(fixed, `string literal missing after strip: ${s}`).toContain(s);
+        }
+      }
     });
   }
 });

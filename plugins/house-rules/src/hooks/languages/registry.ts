@@ -14,7 +14,6 @@ import {
   BASH_TOOL_MARKERS,
   YAML_TOOL_MARKERS,
   KOTLIN_TOOL_MARKERS,
-  SWIFT_TOOL_MARKERS,
 } from "./tool-markers.js";
 
 export interface LanguageDetection {

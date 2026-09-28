@@ -6,7 +6,7 @@ Flags files where added comment lines exceed 5 per 100 added lines.
 
 **Severity**: error | **Autofix**: yes
 
-**Edit-time check**: yes | **Languages**: bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, kotlin
+**Edit-time check**: yes | **Languages**: bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml, kotlin, swift
 
 ## Allowed
 

@@ -355,6 +355,7 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
       return normalizeGoRemovalWhitespace(original, normalizeGoInlineArtifacts(stripped, rowChanges), rowChanges);
     },
   },
+  kotlin: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
 };
 
 /** Look up the hook entry at call time (never cached). */

@@ -135,18 +135,18 @@ describe("spawn-model-guard — Family 1", () => {
     expect(safeDecision(result)).toBe("deny");
   });
 
-  it("CLEAN: groundwork:explore → inject haiku", () => {
+  it("CLEAN: groundwork:explore → inject sonnet", () => {
     const result = check(task("groundwork:explore"));
     const out = JSON.parse(result.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
-    expect(out.hookSpecificOutput.updatedInput.model).toBe("haiku");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("sonnet");
   });
 
-  it("CLEAN: groundwork:Explore (mixed case) → inject haiku (case-insensitive registry)", () => {
+  it("CLEAN: groundwork:Explore (mixed case) → inject sonnet (case-insensitive registry)", () => {
     const result = check(task("groundwork:Explore"));
     const out = JSON.parse(result.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
-    expect(out.hookSpecificOutput.updatedInput.model).toBe("haiku");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("sonnet");
   });
 
   it("CLEAN: unknown agent → no crash, allow", () => {

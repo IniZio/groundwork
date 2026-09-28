@@ -10,6 +10,6 @@
     "implementer":        { "claude-code": "sonnet" },
     "junior-orchestrator":{ "claude-code": "opus" },
     "git-master":         { "claude-code": "haiku" },
-    "explore":            { "claude-code": "haiku" }
+    "explore":            { "claude-code": "sonnet" }
   }
 }

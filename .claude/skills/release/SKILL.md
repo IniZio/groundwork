@@ -1,6 +1,7 @@
 ---
 name: release
 description: Bump the groundwork or house-rules plugin version and push it so installs pick up the latest changes. Use whenever the user wants to release, publish, ship, cut a version, bump the version, or "push the latest changes for the plugin" in this repo — even if they only say "push it" after plugin work, because pushing without a bump leaves every install on the old cached copy.
+model: haiku
 ---
 
 # Release the groundwork plugin

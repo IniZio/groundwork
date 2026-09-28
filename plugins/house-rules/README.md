@@ -17,7 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
-| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript and Go: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript and Go | `house-rules check --base <ref>` | TypeScript, Go: stable; other langs: preview |
+| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript and Go: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript and Go | `house-rules check --base <ref>` | TypeScript/JavaScript, Go: stable; other langs: preview |
 | stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
@@ -71,7 +71,7 @@ A `/* */` block is exempt only if every non-blank inner line is individually exe
 
 ## Lint-tool marker exemptions
 
-Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript and TSX (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), and YAML (`yaml-language-server:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
+Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript/JavaScript (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), and YAML (`yaml-language-server:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
 
 Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the same as dividers, URLs, note markers, spacers, regions, and groundwork rule markers — they are a comment-density policy exemption, not a TypeScript-specific one. Assigning `pragma:` to Python (coverage.py's `# pragma: no cover`) is a deliberate choice beyond ticket 11's list; `// pragma:` in TypeScript is therefore counted.
 
@@ -79,7 +79,9 @@ Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the sa
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).
 
-**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript and Go before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript and Go before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+
+TypeScript/JavaScript covers `.ts`, `.mts`, `.cts`, `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` — one `typescript` language parsed with two grammars (see Grammar variants below).
 
 When the gate auto-trims a file, the next Read/Edit/Write of that file emits a one-time note giving a count of the removed comments. A "file changed since last Read" message on a file you were editing is expected if the gate ran autofix at turn end — it is not another agent; re-read the file before editing and do not re-add the removed comments (a comment that must stay should explain a non-obvious why). On Stop, files being actively edited by still-running background subagents are left alone.
 
@@ -108,7 +110,7 @@ Files in other languages are not measured.
 
 ## Adding a language
 
-Adding a language requires three steps and one optional step.
+Adding a language requires three steps, one optional step, and two reference sections below (grammar variants and promoting autofix to stable).
 
 **1. One language adapter in `src/hooks/languages/registry.ts`.**
 
@@ -146,3 +148,22 @@ Add the language's row to the section between `<!-- languages:start -->` and `<!
 **4. (Optional) A rule language hook.**
 
 If a rule needs language-specific behaviour (e.g. a protected-comment list), add a branch inside that rule's code and list the new language in the rule's `languages` array. This is a rule language hook — owned by the rule, not the language adapter.
+
+**5. Grammar variants (multi-grammar languages).**
+
+A language that needs more than one grammar declares `grammarVariants` (each variant has `extensions` + `grammar`) and `defaultGrammarVariant` in its adapter. `grammarVariantForPath` picks the variant from the file extension. For a language with variants, `grammarFor(lang)` with no variant throws — "has grammar variants; bind the file path with parserForPath" — so bind the file path with `parserForPath` (`src/hooks/languages/parse.ts`) instead. `grammarsOf(lang)` lists every grammar, and the vendoring and strip-safety suites iterate it. Example: `typescript` uses `tree-sitter-typescript.wasm` (default `ts`) and `tree-sitter-tsx.wasm` (`jsx`: `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs`).
+
+**6. Promote a language's autofix from preview to stable.**
+
+1. Add one strip-safety fixture per grammar at `test/fixtures/strip-safety/<id>.<ext>`, with a `strip-safety: removed=N` header. It must contain over-budget comments plus that language's directives.
+2. Run `bun test test/languages/strip-safety.test.ts`. All four checks (a parse, b code preserved, c directives/doc kept, d removed count) pass, and no preview todo remains for the language.
+3. Classify the language's directives in its adapter (`classifyComments`) or `src/hooks/languages/tool-markers.ts`. Fix the classifier. Do not shape the fixture to fit it.
+4. Add a `COMMENT_DENSITY_LANGUAGE_HOOKS` entry in `rules/comment-density/languages.ts` with `stability: "stable"`, plus `removalGrouping` / `repairAfterStrip` if needed.
+5. Add a deployed-path e2e `test/deployed/<id>-autofix.by-path.test.ts` that spawns the hook by path (see `js-autofix.by-path.test.ts`).
+6. Update the autofix-language text surfaces: `plugins/house-rules/README.md` (Rules table comment-density row; the Enforcement scope gate paragraph; the TypeScript/JavaScript coverage sentence) and `src/hooks/session-start.ts` (the house-rules paragraph injected at SessionStart; then update its measured byte/token row in `doc/instruction-budget.md`, which a test pins).
+
+**Known preview gaps** (found in JS-01; the next promotion starts here):
+
+- python: `# -*- coding: ... -*-` (PEP 263) is stripped. It must be classified as a directive.
+- sql: `--` comments are never exempt, because `commentInnerText` keeps the `--` prefix.
+- make: there is no directive category, so check (c) cannot pass.

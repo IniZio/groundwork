@@ -1208,8 +1208,11 @@ describe("AC9: dogfood — gate and test files ≤5/100", () => {
     const lang = languageForPath(filePath);
     if (!lang) return 0;
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const result = await density(text, lang, allRows);
-    return result.ok && result.total > 0 ? result.effective / result.total * 100 : 0;
+    const { parserForPath } = await import("../../src/hooks/languages/parse.js");
+    const { getParser } = await import("../../src/hooks/lib/tree-sitter-loader.js");
+    const result = await density(text, lang, allRows, parserForPath(getParser, filePath));
+    if (!result.ok) throw new Error(`density parse failed for ${filePath}: ${result.reason}`);
+    return result.total > 0 ? result.effective / result.total * 100 : 0;
   }
 
   it("gate file is ≤5/100", async () => {

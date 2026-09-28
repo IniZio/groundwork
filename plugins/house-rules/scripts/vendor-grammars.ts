@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { LANGUAGE_ADAPTERS, LANGUAGES } from "../src/hooks/languages/registry.js";
+import { LANGUAGES, grammarsOf } from "../src/hooks/languages/registry.js";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
@@ -37,11 +37,12 @@ record("web-tree-sitter", tsVer, path.join(NM, "web-tree-sitter/tree-sitter.js")
 record("web-tree-sitter", tsVer, path.join(NM, "web-tree-sitter/tree-sitter.wasm"), path.join(LIB_DIR, "tree-sitter.wasm"));
 
 for (const lang of LANGUAGES) {
-  const { grammar } = LANGUAGE_ADAPTERS[lang];
-  if (!grammar.vendor) continue;
-  const { package: pkg, file } = grammar.vendor;
-  const version = JSON.parse(readFileSync(path.join(NM, pkg, "package.json"), "utf8")).version as string;
-  record(pkg, version, path.join(NM, pkg, file), path.join(GRAMMARS_DIR, grammar.wasm));
+  for (const grammar of grammarsOf(lang)) {
+    if (!grammar.vendor) continue;
+    const { package: pkg, file } = grammar.vendor;
+    const version = JSON.parse(readFileSync(path.join(NM, pkg, "package.json"), "utf8")).version as string;
+    record(pkg, version, path.join(NM, pkg, file), path.join(GRAMMARS_DIR, grammar.wasm));
+  }
 }
 
 const sourcesPath = path.join(GRAMMARS_DIR, "SOURCES.json");

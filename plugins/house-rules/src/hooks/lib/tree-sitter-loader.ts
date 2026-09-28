@@ -1,6 +1,6 @@
 import path from "node:path";
 import { Parser, Language } from "./tree-sitter.js";
-import { type Language as RegistryLanguage, LANGUAGE_ADAPTERS } from "../languages/registry.js";
+import { type Language as RegistryLanguage, type GrammarVariantId, grammarFor } from "../languages/registry.js";
 
 export type LoadResult =
   | { ok: true; parser: Parser; language: Language }
@@ -10,7 +10,7 @@ const GRAMMARS_DIR = path.join(import.meta.dir, "../grammars");
 const LIB_DIR = import.meta.dir;
 
 let initPromise: Promise<void> | null = null;
-const cache = new Map<RegistryLanguage, LoadResult>();
+const cache = new Map<string, LoadResult>();
 
 async function ensureInit(): Promise<void> {
   if (!initPromise) {
@@ -22,8 +22,10 @@ async function ensureInit(): Promise<void> {
   return initPromise;
 }
 
-export async function getParser(lang: RegistryLanguage): Promise<LoadResult> {
-  const cached = cache.get(lang);
+export async function getParser(lang: RegistryLanguage, variant?: GrammarVariantId): Promise<LoadResult> {
+  const wasmFile = grammarFor(lang, variant).wasm;
+
+  const cached = cache.get(wasmFile);
   if (cached) return cached;
 
   try {
@@ -33,7 +35,6 @@ export async function getParser(lang: RegistryLanguage): Promise<LoadResult> {
     return result;
   }
 
-  const wasmFile = LANGUAGE_ADAPTERS[lang].grammar.wasm;
   const wasmPath = path.join(GRAMMARS_DIR, wasmFile);
 
   let buf: Uint8Array;
@@ -41,13 +42,13 @@ export async function getParser(lang: RegistryLanguage): Promise<LoadResult> {
     buf = new Uint8Array(await Bun.file(wasmPath).arrayBuffer());
   } catch (e) {
     const result: LoadResult = { ok: false, reason: `Grammar not found: ${wasmPath}` };
-    cache.set(lang, result);
+    cache.set(wasmFile, result);
     return result;
   }
 
   if (buf.length < 8) {
     const result: LoadResult = { ok: false, reason: `Corrupt wasm: ${wasmPath}` };
-    cache.set(lang, result);
+    cache.set(wasmFile, result);
     return result;
   }
 
@@ -56,11 +57,11 @@ export async function getParser(lang: RegistryLanguage): Promise<LoadResult> {
     const parser = new Parser();
     parser.setLanguage(language);
     const result: LoadResult = { ok: true, parser, language };
-    cache.set(lang, result);
+    cache.set(wasmFile, result);
     return result;
   } catch (e) {
     const result: LoadResult = { ok: false, reason: `Language load failed: ${e}` };
-    cache.set(lang, result);
+    cache.set(wasmFile, result);
     return result;
   }
 }

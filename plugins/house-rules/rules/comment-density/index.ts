@@ -3,6 +3,8 @@ import { commentDensityEditCheck } from './edit-check.js';
 import { netNewCommentRows, density } from '../../src/hooks/lib/comment-density.js';
 import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.js';
 import { commentDensityFix, canFixPathHelper } from './fix.js';
+import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
+import { parserForPath } from '../../src/hooks/languages/parse.js';
 
 const CAP = 5;
 
@@ -35,17 +37,18 @@ const rule: Rule = {
       if (sf && !sf.ok) continue;
 
       const baseText = file.baseText ?? '';
+      const gp = parserForPath(getParser, file.path);
 
       let effective: number;
       let commentRows: number[]; // 1-based
 
-      const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
+      const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks, gp);
       if (netResult.ok) {
         effective = netResult.rows.length;
         commentRows = netResult.rows;
       } else {
         const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
-        const dr = await density(file.text, lang, rowSet);
+        const dr = await density(file.text, lang, rowSet, gp);
         if (!dr.ok) continue;
         effective = dr.effective;
         commentRows = dr.commentRows.map(r => r + 1);

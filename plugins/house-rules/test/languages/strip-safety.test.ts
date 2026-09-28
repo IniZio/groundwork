@@ -1,11 +1,12 @@
 import { describe, it, expect, afterAll } from "bun:test";
 import path from "node:path";
 import { readFileSync, readdirSync } from "node:fs";
-import { LANGUAGES, LANGUAGE_ADAPTERS, languageForPath } from "../../src/hooks/languages/registry.js";
+import { LANGUAGES, languageForPath, grammarsOf, grammarFor, grammarVariantForPath } from "../../src/hooks/languages/registry.js";
 import type { Language } from "../../src/hooks/languages/registry.js";
 import { createSourceFiles } from "../../src/engine/source-file.js";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -15,15 +16,16 @@ const sf = createSourceFiles(getParser);
 
 afterAll(() => sf.dispose());
 
-// Returns the wasm names the language uses (one today; may grow post-merge).
+// Returns the wasm names for all grammars a language uses (default + variants).
 function grammarsFor(lang: Language): string[] {
-  return [LANGUAGE_ADAPTERS[lang].grammar.wasm];
+  return grammarsOf(lang).map(g => g.wasm);
 }
 
-// Returns the wasm that parses this fixture.
+// Returns the wasm that parses this specific fixture (variant-aware).
 function grammarOfFixture(fixturePath: string): string {
   const lang = languageForPath(fixturePath)!;
-  return LANGUAGE_ADAPTERS[lang].grammar.wasm;
+  const variant = grammarVariantForPath(lang, fixturePath);
+  return grammarFor(lang, variant).wasm;
 }
 
 interface Fixture {
@@ -43,7 +45,8 @@ function loadFixtures(): Fixture[] {
     const stem = ext ? e.slice(0, -ext.length) : e;
     const lang = languageForPath(fixturePath) as Language | null;
     if (!lang) continue;
-    const wasm = LANGUAGE_ADAPTERS[lang].grammar.wasm;
+    const variant = grammarVariantForPath(lang, fixturePath);
+    const wasm = grammarFor(lang, variant).wasm;
     result.push({ fixturePath, lang, wasm, stemOk: stem === lang });
   }
   return result;
@@ -83,6 +86,16 @@ interface LangCheckResults {
   d: CheckResult;
 }
 
+// Independent of the classifier under test, so dropping a marker turns (c) red.
+const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
+  typescript: [
+    /^\/\/\s*eslint-(?:disable|enable)/, /^\/\*\s*eslint-(?:disable|enable)/, /^\{?\/\*\s*eslint-disable/,
+    /^\/\/\s*@ts-(?:ignore|expect-error|nocheck|check)\b/, /__PURE__/, /^\/\*!/, /@license\b/, /@preserve\b/,
+    /^#!/, /(?:istanbul|c8) ignore/, /prettier-ignore/, /webpackChunkName/, /^\/\/# sourceMappingURL=/,
+    /^\/\*\*\s*@jsx(?:ImportSource)?\b/,
+  ],
+};
+
 async function runChecks(fixturePath: string, lang: Language): Promise<LangCheckResults> {
   const text = readFileSync(fixturePath, "utf8");
   const allMatches = [...text.matchAll(new RegExp(HEADER_RE.source, "g"))];
@@ -93,13 +106,15 @@ async function runChecks(fixturePath: string, lang: Language): Promise<LangCheck
   const headerN = parseInt(allMatches[0][1], 10);
 
   const rows = new Set(text.split("\n").map((_, i) => i));
+  const pfp = parserForPath(getParser, fixturePath);
   const [preResult, ar, fc] = await Promise.all([
-    sf.get(lang, text),
-    autoFix(text, lang, rows, undefined, rows),
-    findComments(text, lang),
+    sf.get(lang, text, fixturePath),
+    autoFix(text, lang, rows, pfp, rows),
+    findComments(text, lang, pfp),
   ]);
 
-  const postResult = ar.ok ? await sf.get(lang, ar.fixed) : null;
+  const postResult = ar.ok ? await sf.get(lang, ar.fixed, fixturePath) : null;
+  const postFc = ar.ok ? await findComments(ar.fixed, lang, pfp) : null;
 
   const a: CheckResult = (() => {
     if (!preResult.ok) return { ok: false, reason: `pre parse failed: ${preResult.reason}` };
@@ -115,8 +130,14 @@ async function runChecks(fixturePath: string, lang: Language): Promise<LangCheck
   const b: CheckResult = (() => {
     if (!preResult.ok) return { ok: false, reason: "pre parse failed" };
     if (!ar.ok || !postResult?.ok) return { ok: false, reason: "autoFix or post parse failed" };
-    const preKeys = new Set(preResult.source.comments.map(c => `${c.startIndex}:${c.endIndex}`));
-    const postKeys = new Set(postResult.source.comments.map(c => `${c.startIndex}:${c.endIndex}`));
+    const preKeys = new Set([
+      ...preResult.source.comments.map(c => `${c.startIndex}:${c.endIndex}`),
+      ...(fc.ok ? fc.comments.map(c => `${c.startIndex}:${c.endIndex}`) : []),
+    ]);
+    const postKeys = new Set([
+      ...postResult.source.comments.map(c => `${c.startIndex}:${c.endIndex}`),
+      ...(postFc?.ok ? postFc.comments.map(c => `${c.startIndex}:${c.endIndex}`) : []),
+    ]);
     const preTypes = namedNonCommentTypes(preResult.source.tree.rootNode as WalkNode, preKeys);
     const postTypes = namedNonCommentTypes(postResult.source.tree.rootNode as WalkNode, postKeys);
     if (JSON.stringify(preTypes) !== JSON.stringify(postTypes))
@@ -129,14 +150,17 @@ async function runChecks(fixturePath: string, lang: Language): Promise<LangCheck
 
   const c: CheckResult = (() => {
     if (!preResult.ok || !ar.ok || !postResult?.ok) return { ok: false, reason: "pre/fix/post parse failed" };
-    const keptByIndex = new Map<number, string>();
+    const keptByIndex = new Map<string, string>();
     for (const cm of preResult.source.comments) {
-      if (cm.directive) keptByIndex.set(cm.startIndex, cm.text);
+      if (cm.directive) keptByIndex.set(`${cm.startRow}:${cm.text}`, cm.text);
     }
     if (fc.ok) {
       for (const cm of fc.comments) {
-        if (cm.exempt) keptByIndex.set(cm.startIndex, cm.text);
+        if (cm.exempt) keptByIndex.set(`${cm.startRow}:${cm.text}`, cm.text);
       }
+    }
+    for (const cm of preResult.source.comments) {
+      if ((MUST_KEEP[lang] ?? []).some((re) => re.test(cm.text))) keptByIndex.set(`${cm.startRow}:${cm.text}`, cm.text);
     }
     if (keptByIndex.size === 0)
       return { ok: false, reason: "kept set is empty (AC1: fixture must contain directive/kept comments)" };
@@ -195,7 +219,7 @@ describe("strip-safety", () => {
 
   for (const f of allFixtures.filter((f) => isStable(f.lang))) {
     for (const [key, name] of CHECKS) {
-      const title = `strip-safety: ${f.lang} [${f.wasm}] (${key}) ${name}`;
+      const title = `strip-safety: ${f.lang} [${f.wasm}] ${path.basename(f.fixturePath)} (${key}) ${name}`;
       it(title, () => {
         const r = allResults.get(f.fixturePath)!;
         const check = r[key];
@@ -209,7 +233,7 @@ describe("strip-safety (preview, report-only)", () => {
   for (const f of allFixtures.filter((f) => !isStable(f.lang))) {
     const r = allResults.get(f.fixturePath)!;
     for (const [key, name] of CHECKS) {
-      const title = `strip-safety: ${f.lang} [${f.wasm}] (${key}) ${name}`;
+      const title = `strip-safety: ${f.lang} [${f.wasm}] ${path.basename(f.fixturePath)} (${key}) ${name}`;
       const check = r[key];
       if (check.ok) {
         it(title, () => { expect(check.ok).toBe(true); });
@@ -260,6 +284,33 @@ describe("strip-safety parity", () => {
   for (const lang of LANGUAGES) {
     it(`parity: language "${lang}" has a strip-safety fixture`, () => {
       expect(fixturesForLang(lang).length, `no strip-safety fixture for language "${lang}"`).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe("strip-safety JSX expression container cleanup", () => {
+  const tsxGrammarFixtures = allFixtures.filter(
+    (f) => f.lang === "typescript" && f.wasm === "tree-sitter-tsx.wasm",
+  );
+
+  for (const f of tsxGrammarFixtures) {
+    const base = path.basename(f.fixturePath);
+    it(`strip-safety: ${base} [tree-sitter-tsx.wasm] (AC5) no empty {} after strip, no new errorRows`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const lang = "typescript" as Language;
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, lang, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      expect(ar.fixed, "empty {} container remaining after strip").not.toMatch(/\{\s*\}/);
+      const preResult = await sf.get(lang, text, f.fixturePath);
+      const postResult = await sf.get(lang, ar.fixed, f.fixturePath);
+      expect(postResult.ok, "post-strip parse failed").toBe(true);
+      if (postResult.ok && preResult.ok) {
+        const newErrors = [...postResult.source.errorRows].filter(r => !preResult.source.errorRows.has(r));
+        expect(newErrors, "errorRows introduced by strip").toHaveLength(0);
+      }
     });
   }
 });

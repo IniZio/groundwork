@@ -1,6 +1,12 @@
+#!/usr/bin/env node
 // @ts-nocheck
-// strip-safety: removed=10
+// strip-safety: removed=12
 // source: derived from test/fixtures/languages/tsx.tsx (oh-my-pi/omp-stats@17.3.4, MIT) lines 1-116
+/*! Copyright 2024 Acme Corp. All rights reserved. MIT License */
+// @license MIT
+// @preserve build-id:abc123
+/** @jsxImportSource preact */
+/** @jsx h */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { useCallback, useRef, useState } from "react";
 import { AppLayout } from "./app/AppLayout";
@@ -20,12 +26,21 @@ import {
 	ToolsRoute,
 } from "./routes";
 import { RequestDrawer } from "./ui/RequestDrawer";
-
+// @ts-ignore route types may not align at runtime
+const _tsIgnoreTarget = null;
+// @ts-expect-error intentional: remove once types are finalized
+const _tsExpectTarget = null;
+// @ts-check
 // prettier-ignore
 const SECTION_ORDER = ["overview","requests","errors","models","providers","tools","costs","behavior","projects","gain"];
 
 // biome-ignore lint/style/useExportType: keep value export for legacy interop
 export type ActiveSection = (typeof SECTION_ORDER)[number];
+
+/* #__PURE__ */
+/* @__PURE__ */
+// istanbul ignore next
+// c8 ignore next
 
 /**
  * Root application component.
@@ -35,12 +50,12 @@ export default function App() {
 	// Destructure hash-driven route state; setSection drives the sidebar highlight.
 	const { section, setSection, range, setRange } = useHashRoute();
 	const [refreshTrigger, setRefreshTrigger] = useState(0);
-	const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+	const [selectedRequestId, setSelectedRequestId] = useState(null);
 	// updatedAt tracks the last successful sync so the toolbar can show a relative timestamp.
-	const [updatedAt, setUpdatedAt] = useState<number | null>(() => Date.now());
+	const [updatedAt, setUpdatedAt] = useState(() => Date.now());
 
 	// Increment the refresh counter whenever a sync completes successfully.
-	const handleSyncComplete = useCallback((result: { success: boolean }) => {
+	const handleSyncComplete = useCallback((result) => {
 		if (result.success) {
 			setRefreshTrigger(prev => prev + 1);
 			setUpdatedAt(Date.now());
@@ -57,55 +72,20 @@ export default function App() {
 	// flicker); keeping it alive makes revisits instant while the live chart
 	// instances still animate in place on data/range updates. Only the active
 	// route fetches/polls (enabled), so hidden routes don't keep hitting the API.
-	const mountedRef = useRef<Set<DashboardSection>>(new Set());
+	const mountedRef = useRef(new Set());
 	mountedRef.current.add(active);
 
 	// renderRoute returns the route element for a given target section.
-	const renderRoute = (target: DashboardSection) => {
+	const renderRoute = (target) => {
 		const isActive = target === active;
 		switch (target) {
 			case "overview":
-				return (
-					<OverviewRoute
-						active={isActive}
-						range={range}
-						refreshTrigger={refreshTrigger}
-						onRequestClick={setSelectedRequestId}
-					/>
-				);
-			case "requests":
-				return (
-					<RequestsRoute
-						active={isActive}
-						range={range}
-						refreshTrigger={refreshTrigger}
-						onRequestClick={setSelectedRequestId}
-					/>
-				);
-			case "errors":
-				return (
-					<ErrorsRoute
-						active={isActive}
-						range={range}
-						refreshTrigger={refreshTrigger}
-						onRequestClick={setSelectedRequestId}
-					/>
-				);
+				return <OverviewRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
 			case "models":
 				// ModelsRoute does not surface individual request clicks.
 				return <ModelsRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "providers":
-				return <ProvidersRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "tools":
-				return <ToolsRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "costs":
-				return <CostsRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "behavior":
-				return <BehaviorRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "projects":
-				return <ProjectsRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
-			case "gain":
-				return <GainRoute active={isActive} range={range} refreshTrigger={refreshTrigger} />;
+			default:
+				return null;
 		}
 	};
 
@@ -120,6 +100,10 @@ export default function App() {
 				updatedAt={updatedAt}
 				onSyncComplete={handleSyncComplete}
 			>
+				{/*
+				  Multi-line JSX expression comment; the container {} is removed after strip.
+				  Tests that no empty {} container is left behind after autoFix.
+				*/}
 				{[...mountedRef.current].map(target => (
 					// Each section is always mounted; hidden attr keeps it out of the a11y tree.
 					<div key={target} hidden={target !== active}>
@@ -132,3 +116,6 @@ export default function App() {
 		</>
 	);
 }
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozfQ==
+const _lazy = import(/* webpackChunkName: "routes" */ "./routes");

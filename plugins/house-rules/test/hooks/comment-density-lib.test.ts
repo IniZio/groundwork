@@ -13,9 +13,12 @@ import {
   collectCodeText,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
-import { languageForPath, type Language } from "../../src/hooks/languages/registry.js";
+import { languageForPath, grammarFor, grammarVariantForPath, LANGUAGES, type Language } from "../../src/hooks/languages/registry.js";
 import type { DiffHunk } from "../../src/hooks/lib/work-scope.js";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+
+const tsParser = parserForPath(getParser, "sample.ts");
 
 const FIXTURES = path.join(import.meta.dir, "../fixtures/comment-density");
 const PROBE_DIR = path.join(FIXTURES, "nexus-probe");
@@ -27,11 +30,11 @@ describe("languageForPath", () => {
     ["/foo/bar.ts", undefined, "typescript"],
     ["/foo/bar.mts", undefined, "typescript"],
     ["/foo/bar.cts", undefined, "typescript"],
-    ["/foo/bar.tsx", undefined, "tsx"],
-    ["/foo/bar.jsx", undefined, "tsx"],
-    ["/foo/bar.js", undefined, "tsx"],
-    ["/foo/bar.mjs", undefined, "tsx"],
-    ["/foo/bar.cjs", undefined, "tsx"],
+    ["/foo/bar.tsx", undefined, "typescript"],
+    ["/foo/bar.jsx", undefined, "typescript"],
+    ["/foo/bar.js", undefined, "typescript"],
+    ["/foo/bar.mjs", undefined, "typescript"],
+    ["/foo/bar.cjs", undefined, "typescript"],
     ["/foo/bar.py", undefined, "python"],
     ["/foo/bar.sh", undefined, "bash"],
     ["/foo/bar.bash", undefined, "bash"],
@@ -52,6 +55,30 @@ describe("languageForPath", () => {
 
   it.each(cases)("languageForPath(%s, %s) → %s", (fp, first, expected) => {
     expect(languageForPath(fp, first)).toBe(expected);
+  });
+});
+
+// ---- AC1b: Grammar wasm selection and LANGUAGES invariant ----
+
+describe("grammarVariantForPath — wasm selection", () => {
+  const cases: [string, string][] = [
+    ["/foo/bar.ts", "tree-sitter-typescript.wasm"],
+    ["/foo/bar.mts", "tree-sitter-typescript.wasm"],
+    ["/foo/bar.cts", "tree-sitter-typescript.wasm"],
+    ["/foo/bar.tsx", "tree-sitter-tsx.wasm"],
+    ["/foo/bar.jsx", "tree-sitter-tsx.wasm"],
+    ["/foo/bar.js", "tree-sitter-tsx.wasm"],
+    ["/foo/bar.mjs", "tree-sitter-tsx.wasm"],
+    ["/foo/bar.cjs", "tree-sitter-tsx.wasm"],
+  ];
+
+  it.each(cases)("grammarFor('typescript', grammarVariantForPath('typescript', %s)).wasm → %s", (p, expected) => {
+    const variant = grammarVariantForPath("typescript", p);
+    expect(grammarFor("typescript", variant).wasm).toBe(expected);
+  });
+
+  it('"tsx" is not in LANGUAGES', () => {
+    expect(LANGUAGES).not.toContain("tsx");
   });
 });
 
@@ -159,7 +186,7 @@ const EXEMPT_CASES: ExemptCase[] = [
 describe("exemptions", () => {
   for (const [label, lang, code, shouldBeExempt, msg] of EXEMPT_CASES) {
     it(`${label} (${lang}) — ${msg}`, async () => {
-      const r = await findComments(code, lang);
+      const r = await findComments(code, lang, tsParser);
       if (!r.ok) throw new Error(r.reason);
       const hasExempt = r.comments.some(c => c.exempt);
       const hasNonExempt = r.comments.some(c => !c.exempt);
@@ -232,8 +259,8 @@ describe("reconstructPostEdit", () => {
     const r = reconstructPostEdit("Edit", { old_string: oldStr, new_string: newStr }, pre);
     expect(r).not.toBeNull();
 
-    const preComments = await findComments(pre, "typescript");
-    const postComments = await findComments(r!.post, "typescript");
+    const preComments = await findComments(pre, "typescript", tsParser);
+    const postComments = await findComments(r!.post, "typescript", tsParser);
     if (!preComments.ok) throw new Error(preComments.reason);
     if (!postComments.ok) throw new Error(postComments.reason);
 
@@ -248,8 +275,8 @@ describe("reconstructPostEdit", () => {
     const r = reconstructPostEdit("Write", { content: post }, pre);
     expect(r).not.toBeNull();
 
-    const preComments = await findComments(pre, "typescript");
-    const postComments = await findComments(post, "typescript");
+    const preComments = await findComments(pre, "typescript", tsParser);
+    const postComments = await findComments(post, "typescript", tsParser);
     if (!preComments.ok) throw new Error(preComments.reason);
     if (!postComments.ok) throw new Error(postComments.reason);
 
@@ -264,8 +291,8 @@ describe("reconstructPostEdit", () => {
     const r = reconstructPostEdit("Edit", { old_string: oldStr, new_string: newStr }, pre);
     expect(r).not.toBeNull();
 
-    const preComments = await findComments(pre, "typescript");
-    const postComments = await findComments(r!.post, "typescript");
+    const preComments = await findComments(pre, "typescript", tsParser);
+    const postComments = await findComments(r!.post, "typescript", tsParser);
     if (!preComments.ok) throw new Error(preComments.reason);
     if (!postComments.ok) throw new Error(postComments.reason);
 
@@ -290,7 +317,7 @@ describe("reconstructPostEdit", () => {
 describe("stripComments", () => {
   it("removes whole-line comment including newline", async () => {
     const code = `const a = 1;\n// whole line\nconst b = 2;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, nonExempt);
@@ -299,7 +326,7 @@ describe("stripComments", () => {
 
   it("removes trailing comment, keeps code byte-exact", async () => {
     const code = `const x = 1; // trailing comment\nconst y = 2;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, nonExempt);
@@ -308,7 +335,7 @@ describe("stripComments", () => {
 
   it("removes block comment (multi-line)", async () => {
     const code = `const a = 1;\n/* block\n   comment */\nconst b = 2;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const nonExempt = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, nonExempt);
@@ -318,7 +345,7 @@ describe("stripComments", () => {
   });
 
   async function countErrorNodes(text: string, lang: Parameters<typeof findComments>[1]): Promise<number> {
-    const r = await getParser(lang);
+    const r = await tsParser(lang);
     if (!r.ok) throw new Error(r.reason);
     const tree = r.parser.parse(text);
     let count = 0;
@@ -342,7 +369,7 @@ describe("stripComments", () => {
 
   for (const [label, lang, code] of REPARSE_CASES) {
     it(`re-parse after strip has no new ERROR nodes: ${label}`, async () => {
-      const r = await findComments(code, lang);
+      const r = await findComments(code, lang, tsParser);
       if (!r.ok) throw new Error(r.reason);
       const nonExempt = r.comments.filter(c => !c.exempt);
       const { text: stripped } = stripComments(code, nonExempt);
@@ -415,7 +442,7 @@ describe("density without working parser", () => {
 
     // With real tree-sitter: "plain comment" and "another" are effective (2).
     // jsdoc is not counted; @ts-expect-error and eslint-disable are exempt.
-    const real = await density(code, "typescript");
+    const real = await density(code, "typescript", undefined, tsParser);
     expect(real.ok).toBe(true);
     if (!real.ok) return;
     expect(real.effective).toBe(2);
@@ -469,14 +496,14 @@ describe("whole-file density over cap", () => {
 
   it("TS fixture with many comments is over cap", async () => {
     const text = await Bun.file(path.join(FIXTURES, "over-cap.ts")).text();
-    const r = await density(text, "typescript");
+    const r = await density(text, "typescript", undefined, tsParser);
     if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeGreaterThan(5);
   });
 
   it("clean TS fixture is under or equal to cap", async () => {
     const text = await Bun.file(path.join(FIXTURES, "clean.ts")).text();
-    const r = await density(text, "typescript");
+    const r = await density(text, "typescript", undefined, tsParser);
     if (!r.ok) throw new Error(r.reason);
     expect((r.effective / r.total) * 100).toBeLessThanOrEqual(5);
   });
@@ -532,7 +559,7 @@ describe("parse-error tree handling", () => {
       "let y: import('a').B[]; // error-row comment",
       "const z = 2;",
     ].join("\n") + "\n";
-    const r = await density(code, "typescript");
+    const r = await density(code, "typescript", undefined, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.errorRows.size).toBeGreaterThan(0);
@@ -552,7 +579,7 @@ describe("tree-sitter distinguishes TS private fields from bash # comments", () 
     const code = `class Foo {\n  #count = 0;\n  #name = '';\n}\n`;
     const failed = await density(code, "typescript", undefined, failParser6);
     expect(failed.ok).toBe(false);
-    const real = await density(code, "typescript");
+    const real = await density(code, "typescript", undefined, tsParser);
     expect(real.ok).toBe(true);
     if (!real.ok) return;
     expect(real.effective).toBe(0);
@@ -570,7 +597,7 @@ describe("tree-sitter distinguishes TS private fields from bash # comments", () 
 
   it("bite: real tree-sitter counts TS #field as 0 and bash # as >0 (no fallback lexer needed)", async () => {
     const code = `class Foo {\n  #count = 0;\n}\n`;
-    const tsR = await density(code, "typescript");
+    const tsR = await density(code, "typescript", undefined, tsParser);
     const bashR = await density(code, "bash");
     expect(tsR.ok).toBe(true);
     expect(bashR.ok).toBe(true);
@@ -587,7 +614,7 @@ describe("autoFix", () => {
       i === 0 ? `// one comment` : `const x${i} = ${i};`
     ).join("\n") + "\n";
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.removed).toBe(0);
   });
@@ -597,7 +624,7 @@ describe("autoFix", () => {
     const commentLines = Array.from({ length: 8 }, (_, i) => `// session ${i}`);
     const text = [...codeLines, ...commentLines].join("\n") + "\n";
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.removed).toBeGreaterThan(0);
@@ -616,7 +643,7 @@ describe("autoFix", () => {
     const baseLineCount = baseComments.length;
     const sessionRows = new Set<number>();
     for (let i = baseLineCount; i < text.split("\n").length; i++) sessionRows.add(i);
-    const r = await autoFix(text, "typescript", sessionRows);
+    const r = await autoFix(text, "typescript", sessionRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     for (let i = 0; i < 5; i++) {
@@ -631,15 +658,15 @@ describe("autoFix", () => {
       "const bad = ; // error-row-comment",
     ].join("\n") + "\n";
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.fixed).toContain("// error-row-comment");
   });
 
   it("safety verifier (re-parse): fails if post-strip re-parse returns error", async () => {
     let callCount = 0;
-    const mockParser: GetParserFn = async (lang) => {
-      const real = await getParser(lang);
+    const mockParser: GetParserFn = async (lang, variant) => {
+      const real = await tsParser(lang, variant);
       if (!real.ok) return real;
       callCount++;
       if (callCount >= 2) {
@@ -657,8 +684,8 @@ describe("autoFix", () => {
 
   it("safety verifier (code-identity): blocks strip when origCode differs from fixedCode", async () => {
     let gpCallCount = 0;
-    const mockParser: GetParserFn = async (lang) => {
-      const real = await getParser(lang);
+    const mockParser: GetParserFn = async (lang, variant) => {
+      const real = await tsParser(lang, variant);
       if (!real.ok) return real;
       gpCallCount++;
       if (gpCallCount === 3) {
@@ -702,7 +729,7 @@ describe("autoFix", () => {
     const text = [...codeLines, ...trailingLines].join("\n") + "\n";
     const allRows = new Set(Array.from({ length: 20 }, (_, i) => i));
 
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.kept).toBe(1);
@@ -711,7 +738,7 @@ describe("autoFix", () => {
     const fixedLineCount = r.fixed.split("\n").filter(l => l !== "").length;
     expect(fixedLineCount).toBe(20);
 
-    const r2 = await autoFix(r.fixed, "typescript", allRows);
+    const r2 = await autoFix(r.fixed, "typescript", allRows, tsParser);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.removed).toBe(0);
@@ -720,7 +747,7 @@ describe("autoFix", () => {
   it("bite: without safety verifier, code-changing strip would proceed", async () => {
     const text = `const a = 1;\n// remove me\nconst b = 2;\n`.repeat(10);
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     if (!r.ok) return;
     for (const n of ["const a = 1;", "const b = 2;"]) {
       expect(r.fixed).toContain(n);
@@ -1050,7 +1077,7 @@ describe("autoFix Bug D: multi-row block spanning pre-existing rows is not a can
     addedRows.add(10);
     for (let i = 21; i < textLines.length; i++) addedRows.add(i);
 
-    const r = await autoFix(text, "typescript", addedRows);
+    const r = await autoFix(text, "typescript", addedRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).toContain("* line 0");
@@ -1087,7 +1114,7 @@ describe("autoFix Bug A: row-based budget prevents partial-fix over cap", () => 
     const addedRows = new Set<number>();
     for (let i = 0; i < Math.min(100, textLines.length); i++) addedRows.add(i);
 
-    const r = await autoFix(text, "typescript", addedRows);
+    const r = await autoFix(text, "typescript", addedRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.total).toBe(10);
@@ -1109,7 +1136,7 @@ describe("autoFix Bug A: row-based budget prevents partial-fix over cap", () => 
 describe("TS triple-slash reference directive is exempt", () => {
   it("/// <reference types='foo' /> is exempt in typescript", async () => {
     const code = `/// <reference types="foo" />\nconst x = 1;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const ref = r.comments.find(c => c.text.includes("<reference"));
     expect(ref).toBeDefined();
@@ -1122,7 +1149,7 @@ describe("TS triple-slash reference directive is exempt", () => {
     const ref = `/// <reference types="bun-types" />`;
     const text = [ref, ...codeLines, ...commentLines].join("\n") + "\n";
     const allRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).toContain('<reference types="bun-types"');
@@ -1130,7 +1157,7 @@ describe("TS triple-slash reference directive is exempt", () => {
 
   it("bite: without TSREF_RE exemption, reference directive would be a non-exempt candidate", async () => {
     const code = `/// <reference types="foo" />\nconst x = 1;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const ref = r.comments.find(c => c.text.includes("<reference"));
     expect(ref).toBeDefined();
@@ -1150,7 +1177,7 @@ describe("Rust doc comment exact matching", () => {
 
   it("/*** three-star block is NOT exempt (not a JSDoc or Rust doc)", async () => {
     const code = `/*** this is a divider-style block */\nconst x = 1;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const c = r.comments.find(c => c.text.startsWith("/***"));
     expect(c).toBeDefined();
@@ -1277,7 +1304,7 @@ describe("autoFix single-pass density compliance", () => {
     const text = lines.join("\n") + "\n";
     const allRows = new Set(lines.map((_, i) => i));
 
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
@@ -1299,11 +1326,11 @@ describe("autoFix single-pass density compliance", () => {
       remappedRows.add(row - offset);
     }
 
-    const d = await density(r.fixed, "typescript", remappedRows);
+    const d = await density(r.fixed, "typescript", remappedRows, tsParser);
     if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
 
-    const r2 = await autoFix(r.fixed, "typescript", remappedRows);
+    const r2 = await autoFix(r.fixed, "typescript", remappedRows, tsParser);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.removed).toBe(0);
@@ -1319,7 +1346,7 @@ describe("autoFix single-pass density compliance", () => {
     const text = lines.join("\n") + "\n";
     const allRows = new Set(lines.map((_, i) => i));
 
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
@@ -1341,11 +1368,11 @@ describe("autoFix single-pass density compliance", () => {
       remappedRows.add(row - offset);
     }
 
-    const d = await density(r.fixed, "typescript", remappedRows);
+    const d = await density(r.fixed, "typescript", remappedRows, tsParser);
     if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
 
-    const r2 = await autoFix(r.fixed, "typescript", remappedRows);
+    const r2 = await autoFix(r.fixed, "typescript", remappedRows, tsParser);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.removed).toBe(0);
@@ -1374,7 +1401,7 @@ describe("autoFix single-pass density compliance", () => {
     expect(realDensity).toBeGreaterThan(5);  // actual density is over cap
 
     // The new autoFix should reach compliant state (fixed text density ≤5/100)
-    const r = await autoFix(text, "typescript", allRows);
+    const r = await autoFix(text, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     // Compute remapped rows for verification
@@ -1394,7 +1421,7 @@ describe("autoFix single-pass density compliance", () => {
       const offset = sortedRemoved.filter(rr => rr < row).length;
       remappedRows.add(row - offset);
     }
-    const d = await density(r.fixed, "typescript", remappedRows);
+    const d = await density(r.fixed, "typescript", remappedRows, tsParser);
     if (!d.ok) throw new Error(d.reason);
     expect(d.effective / remappedRows.size * 100).toBeLessThanOrEqual(5);
   });
@@ -1409,7 +1436,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  // old comment\n  return 1;\n}\n`;
     const post = `function f() {\n  // new comment\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [2], removed: ["  // old comment"], removedBaseLineNos: [2] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(0);
@@ -1421,7 +1448,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  return 1;\n}\n`;
     const post = `function f() {\n  // new comment\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [2], removed: [], removedBaseLineNos: [] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1434,7 +1461,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  // old comment\n  return 1;\n}\n`;
     const post = `function f() {\n  // new comment\n  // extra comment\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [2, 3], removed: ["  // old comment"], removedBaseLineNos: [2] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1447,7 +1474,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  // why old\n  return 1;\n}\n`;
     const post = `function f() {\n  // brand new narration\n  // why reworded\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [2, 3], removed: ["  // why old"], removedBaseLineNos: [2] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1458,7 +1485,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  // why old\n  return 1;\n}\n`;
     const post = `function f() {\n  // why reworded\n  // brand new narration\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [2, 3], removed: ["  // why old"], removedBaseLineNos: [2] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1473,7 +1500,7 @@ describe("netNewCommentRows", () => {
       removed: ["  // old narration 1", "  // old narration 2"],
       removedBaseLineNos: [2, 3],
     };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1484,7 +1511,7 @@ describe("netNewCommentRows", () => {
     const base = `function f() {\n  // @ts-ignore\n  return 1;\n}\n`;
     const post = `function f() {\n  // @ts-ignore\n  // real comment\n  return 1;\n}\n`;
     const hunk: DiffHunk = { added: [3], removed: [], removedBaseLineNos: [] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(1);
@@ -1499,7 +1526,7 @@ describe("netNewCommentRows", () => {
     const addedRows = new Set(Array.from({ length: 100 }, (_, i) => i));
     const netNewRows = new Set([1, 2, 3, 4, 5]);
 
-    const r = await autoFix(text, ts, addedRows, getParser, netNewRows);
+    const r = await autoFix(text, ts, addedRows, tsParser, netNewRows);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).toContain("// new");
@@ -1511,7 +1538,7 @@ describe("netNewCommentRows", () => {
 describe("findComments: partial-error tree yields safe comments", () => {
   it("TypeScript inline-import array suffix: ok:true with both trailing and inline comments", async () => {
     const code = "const a = 1; // trailing restating\nlet x: import('a').B[];\nfoo(); /* inline */\n";
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const effective = r.comments.filter(c => !c.exempt);
@@ -1530,7 +1557,7 @@ describe("netNewCommentRows: partial parse errors", () => {
     const base = `function f() {\n  // old comment\n  return 1;\n}${errLine}\n`;
     const post = `function f() {\n  // new comment\n  return 1;\n}${errLine}\n`;
     const hunk: DiffHunk = { added: [2], removed: ["  // old comment"], removedBaseLineNos: [2] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows).toHaveLength(0);
@@ -1540,7 +1567,7 @@ describe("netNewCommentRows: partial parse errors", () => {
     const base = `function f() {\n  // existing comment\n  return 1;\n}\n`;
     const post = `function f() {\n  // existing comment\n  return 1;\n}\nlet x: import('a').B[];\n`;
     const hunk: DiffHunk = { added: [5], removed: [], removedBaseLineNos: [] };
-    const r = await netNewCommentRows(base, post, ts, [hunk], getParser);
+    const r = await netNewCommentRows(base, post, ts, [hunk], tsParser);
     expect(r.ok).toBe(false);
   });
 });
@@ -1554,7 +1581,7 @@ describe("autoFix: skips candidates overlapping error region", () => {
     ];
     const text = lines.join("\n") + "\n";
     const addedRows = new Set(Array.from({ length: lines.length }, (_, i) => i));
-    const r = await autoFix(text, "typescript", addedRows);
+    const r = await autoFix(text, "typescript", addedRows, tsParser);
     if (r.ok && r.removed > 0) {
       expect(r.fixed).toContain("// error-row-comment");
     }
@@ -1753,7 +1780,7 @@ describe("Go +marker: directive exemptions", () => {
 
   it("// +kubebuilder:validation:Optional is NOT exempt in typescript", async () => {
     const code = `// +kubebuilder:validation:Optional\nconst x = 1;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const c = r.comments.find(c => c.text.includes("+kubebuilder:validation:Optional"));
     expect(c).toBeDefined();
@@ -1822,7 +1849,7 @@ describe("Go autoFix text-level whitespace output (GO-T2b)", () => {
   it("AC5: TypeScript autoFix output is unaffected by Go normalisation path", async () => {
     const lines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i}; // comment ${i}`);
     const code = lines.join("\n") + "\n";
-    const r = await autoFix(code, "typescript", allRows(code));
+    const r = await autoFix(code, "typescript", allRows(code), tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.removed).toBeGreaterThan(0);
@@ -2142,7 +2169,7 @@ describe("GF-4 Defect 1: kept counts individual comments not units", () => {
       "// group2 line5",
     ].join("\n") + "\n";
     const addedRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", addedRows);
+    const r = await autoFix(text, "typescript", addedRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.total).toBe(8);
@@ -2168,7 +2195,7 @@ describe("GF-4 Defect 2: URL inside paragraph protects whole paragraph", () => {
       "// and more words here",
     ].join("\n") + "\n";
     const addedRows = new Set(text.split("\n").map((_, i) => i));
-    const r = await autoFix(text, "typescript", addedRows);
+    const r = await autoFix(text, "typescript", addedRows, tsParser);
     if (r.ok) {
       expect(r.fixed).toContain("// Foo does bar per spec:");
       expect(r.fixed).toContain("// and more words here");
@@ -2251,7 +2278,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("stripComments: typeof/* c */x does not fuse tokens", async () => {
     const code = `const t = typeof/* c */x;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
@@ -2261,7 +2288,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("stripComments: multiline block comment between return and value — not same-line collapse", async () => {
     const code = `function f() {\n  return /*\n  */ 1;\n}\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
@@ -2283,8 +2310,8 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("autoFix: Fix-3 parse-error guard fires before code-identity check (mock parser)", async () => {
     let gpCalls = 0;
-    const mockGetParser: GetParserFn = async (lang) => {
-      const real = await getParser(lang);
+    const mockGetParser: GetParserFn = async (lang, variant) => {
+      const real = await tsParser(lang, variant);
       if (!real.ok) return real;
       gpCalls++;
       if (gpCalls === 3) {
@@ -2313,7 +2340,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("stripComments: whole-line and trailing removals byte-identical (regression guard)", async () => {
     const code = `const a = 1; // trailing\n// whole line\nconst b = 2;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
@@ -2323,7 +2350,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
   it("stripComments: multiline block comment — endRow recorded as modified not deleted", async () => {
     // comment spans row 0-1; row 1 has "1;" after comment close → must be "modified"
     const code = `return /*\n  */ 1;\n`;
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { rowChanges } = stripComments(code, comments);
@@ -2342,7 +2369,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
     for (let i = 0; i < 8; i++) lines.push(`// comment ${i}`);
     const code = lines.join("\r\n") + "\r\n";
     const allRows = new Set(code.split("\n").map((_, i) => i));
-    const r = await autoFix(code, "typescript", allRows);
+    const r = await autoFix(code, "typescript", allRows, tsParser);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.fixed).not.toMatch(/(?<!\r)\n/);
@@ -2350,7 +2377,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("stripComments: whitespace-only endRow tail — exact output, no spaces-only line", async () => {
     const code = "const a = 1; /* x\n y */   \nconst b = 2;\n";
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
@@ -2359,7 +2386,7 @@ describe("GF-6: comment between tokens — no fusion, correct separator", () => 
 
   it("stripComments: CRLF whitespace-only endRow tail — no bare LF", async () => {
     const code = "const a = 1; /* x\r\n y */   \r\nconst b = 2;\r\n";
-    const r = await findComments(code, "typescript");
+    const r = await findComments(code, "typescript", tsParser);
     if (!r.ok) throw new Error(r.reason);
     const comments = r.comments.filter(c => !c.exempt);
     const { text: stripped } = stripComments(code, comments);
@@ -2403,7 +2430,7 @@ describe("autoFix opts.maxAllowedRows override", () => {
       "// should be stripped",
     ].join("\n");
     const rows = new Set(Array.from({ length: 21 }, (_, i) => i));
-    const r = await autoFix(text, "typescript", rows, undefined, undefined, { maxAllowedRows: 0 });
+    const r = await autoFix(text, "typescript", rows, tsParser, undefined, { maxAllowedRows: 0 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.removed).toBe(1);

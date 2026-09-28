@@ -7,6 +7,10 @@ import { ruleTester } from '../../src/engine/rule-tester.js';
 import { netNewCommentRows } from '../../src/hooks/lib/comment-density.js';
 import { languageForPath } from '../../src/hooks/languages/registry.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
+import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
+import { parserForPath } from '../../src/hooks/languages/parse.js';
+
+const TS = parserForPath(getParser, 'clean.ts');
 
 ruleTester(rule, cases);
 
@@ -20,7 +24,7 @@ describe('comment-density parity', () => {
     const allLines = text.split('\n').map((_, i) => i + 1);
     const hunks = [{ added: allLines, removed: [], removedBaseLineNos: [] }];
 
-    const netResult = await netNewCommentRows('', text, lang!, hunks);
+    const netResult = await netNewCommentRows('', text, lang!, hunks, TS);
     expect(netResult.ok).toBe(true);
     if (!netResult.ok) return;
 
@@ -47,7 +51,7 @@ describe('comment-density parity', () => {
     const allLines = Array.from({ length: lineCount }, (_, i) => i + 1);
     const hunks = [{ added: allLines, removed: [], removedBaseLineNos: [] }];
 
-    const netResult = await netNewCommentRows('', text, lang!, hunks);
+    const netResult = await netNewCommentRows('', text, lang!, hunks, TS);
     expect(netResult.ok).toBe(true);
     if (!netResult.ok) return;
 
@@ -79,7 +83,7 @@ describe('comment-density parity', () => {
     expect(lang).not.toBeNull();
 
     const hunks = diffTextToHunks(baseText, postText);
-    const netResult = await netNewCommentRows(baseText, postText, lang!, hunks);
+    const netResult = await netNewCommentRows(baseText, postText, lang!, hunks, TS);
     expect(netResult.ok).toBe(true);
     if (!netResult.ok) return;
 

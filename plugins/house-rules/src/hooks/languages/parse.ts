@@ -1,9 +1,13 @@
 import type { Node, Tree } from "../lib/tree-sitter.js";
 import { type LoadResult } from "../lib/tree-sitter-loader.js";
-import { type Language, LANGUAGE_ADAPTERS } from "./registry.js";
+import { type Language, type GrammarVariantId, LANGUAGE_ADAPTERS, grammarVariantForPath } from "./registry.js";
 import { defaultClassifyComments, defaultIsCommentNodeType, applyCommonConventions, type ClassifiedComment } from "./comments.js";
 
-export type ParserFactory = (lang: Language) => Promise<LoadResult>;
+export type ParserFactory = (lang: Language, variant?: GrammarVariantId) => Promise<LoadResult>;
+
+export function parserForPath(factory: ParserFactory, filePath: string): ParserFactory {
+  return (lang, v) => factory(lang, v ?? grammarVariantForPath(lang, filePath));
+}
 
 export function isCommentNode(node: Node, lang: Language): boolean {
   return (LANGUAGE_ADAPTERS[lang].isCommentNodeType ?? defaultIsCommentNodeType)(node.type);

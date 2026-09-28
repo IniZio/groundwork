@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { LANGUAGE_ADAPTERS, LANGUAGES } from "../../src/hooks/languages/registry.js";
+import { LANGUAGE_ADAPTERS, LANGUAGES, grammarsOf } from "../../src/hooks/languages/registry.js";
 import type { LanguageDetection, LanguageGrammar } from "../../src/hooks/languages/registry.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dir, "../..");
@@ -24,8 +24,9 @@ function renderGrammarSource(grammar: LanguageGrammar): string {
 
 function renderLanguagesTable(): string {
   const rows = LANGUAGES.map((id) => {
-    const { detect, grammar } = LANGUAGE_ADAPTERS[id];
-    return `| ${id} | ${renderDetectedBy(detect)} | ${renderGrammarSource(grammar)} |`;
+    const { detect } = LANGUAGE_ADAPTERS[id];
+    const grammarSources = [...new Set(grammarsOf(id).map(renderGrammarSource))].join(", ");
+    return `| ${id} | ${renderDetectedBy(detect)} | ${grammarSources} |`;
   });
   return [
     "| Language | Detected by | Grammar source |",

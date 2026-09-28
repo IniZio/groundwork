@@ -15,6 +15,10 @@ import {
 } from "../../src/hooks/lib/comment-density.js";
 import { type Language } from "../../src/hooks/languages/registry.js";
 import { addedHunks, diffTextToHunks } from "../../src/hooks/lib/work-scope.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+
+const tsParser = parserForPath(getParser, "subject.ts");
 import { run } from "../../src/hooks/gate.js";
 import { check } from "../../src/hooks/guard.js";
 
@@ -83,8 +87,8 @@ async function assertParity(
     // Guard path: diffTextToHunks writes temp files and runs git diff --unified=0
     const guardHunks = diffTextToHunks(base, post);
 
-    const gateResult = await netNewCommentRows(base, post, lang, gateHunks!);
-    const guardResult = await netNewCommentRows(base, post, lang, guardHunks);
+    const gateResult = await netNewCommentRows(base, post, lang, gateHunks!, tsParser);
+    const guardResult = await netNewCommentRows(base, post, lang, guardHunks, tsParser);
 
     const gateOk = gateResult.ok;
     const guardOk = guardResult.ok;

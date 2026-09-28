@@ -11,6 +11,8 @@ import type { FixEntry } from './languages.js';
 import { fixEntryFor } from './languages.js';
 import { languageForPath } from '../../src/hooks/languages/registry.js';
 import { autoFix, density, netNewCommentRows, type RowChange } from '../../src/hooks/lib/comment-density.js';
+import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
+import { parserForPath } from '../../src/hooks/languages/parse.js';
 import { atomicWrite, normalizeTrailingNewline, sha256 } from '../../src/hooks/lib/atomic-write.js';
 import { appendFix } from '../../src/hooks/lib/autofix-ledger.js';
 
@@ -100,10 +102,11 @@ async function housekeepFix(ctx: RuleContext, opts?: FixOptions): Promise<FixRes
 
     const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
     const baseText = file.baseText ?? '';
-    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
+    const gp = parserForPath(getParser, file.path);
+    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks, gp);
     const netNewRows0 = netResult.ok ? new Set(netResult.rows.map(n => n - 1)) : rowSet;
 
-    const ar = await autoFix(file.text, lang, rowSet, undefined, netNewRows0);
+    const ar = await autoFix(file.text, lang, rowSet, gp, netNewRows0);
     if (!ar.ok) { decline(file.path, `autofix failed: ${ar.reason}`); continue; }
     if (ar.removed === 0) { decline(file.path, 'no removable comments'); continue; }
 
@@ -167,6 +170,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
 
     const rowSet = new Set(file.addedHunks.flatMap(h => h.added.map(n => n - 1)));
     const baseText = file.baseText ?? '';
+    const gp = parserForPath(getParser, file.path);
 
     const absPath = path.join(ctx.repoRoot, file.path);
 
@@ -183,14 +187,14 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
       continue;
     }
 
-    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks);
+    const netResult = await netNewCommentRows(baseText, file.text, lang, file.addedHunks, gp);
     let effective: number;
     let netNewRows: Set<number>;
     if (netResult.ok) {
       effective = netResult.rows.length;
       netNewRows = new Set(netResult.rows.map(n => n - 1));
     } else {
-      const dr = await density(file.text, lang, rowSet);
+      const dr = await density(file.text, lang, rowSet, gp);
       if (!dr.ok) {
         files.push({ path: file.path, status: 'declined', reason: `grammar did not load: ${dr.reason}`, stability, applicability });
         skipped++;
@@ -209,7 +213,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
       continue;
     }
 
-    const ar = await autoFix(txt, lang, rowSet, undefined, netNewRows);
+    const ar = await autoFix(txt, lang, rowSet, gp, netNewRows);
     if (!ar.ok) {
       files.push({ path: file.path, status: 'declined', reason: `autofix failed: ${ar.reason}`, stability, applicability });
       skipped++;
@@ -226,7 +230,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
     if (!shouldWrite) {
       const densityBefore = effective / totalAdded * 100;
       const remappedAfter = buildRemappedRows(ar.rowChanges, rowSet);
-      const d2 = await density(ar.fixed, lang, remappedAfter);
+      const d2 = await density(ar.fixed, lang, remappedAfter, gp);
       const densityAfter = d2.ok && d2.total > 0 ? d2.effective / d2.total * 100 : 0;
       const shadowBase = caller.shadowDir ?? os.tmpdir();
       try {

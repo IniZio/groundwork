@@ -1,6 +1,7 @@
 import type { Tree } from "../hooks/lib/tree-sitter.js";
 import { getParser } from "../hooks/lib/tree-sitter-loader.js";
 import type { Language } from "../hooks/languages/registry.js";
+import { grammarVariantForPath } from "../hooks/languages/registry.js";
 import type { ClassifiedComment } from "../hooks/languages/comments.js";
 import {
   parseText,
@@ -26,11 +27,11 @@ export function envParserFactory(
   const raw = env[FAIL_GRAMMARS_ENV];
   if (!raw) return base;
   const forced = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  return async (lang) => {
+  return async (lang, variant) => {
     if (forced.has(lang)) {
       return { ok: false, reason: "forced by HOUSE_RULES_TEST_FAIL_GRAMMARS" };
     }
-    return base(lang);
+    return base(lang, variant);
   };
 }
 
@@ -47,7 +48,7 @@ export type SourceFileResult =
   | { ok: false; reason: string };
 
 export interface SourceFiles {
-  get(lang: Language, text: string): Promise<SourceFileResult>;
+  get(lang: Language, text: string, filePath?: string): Promise<SourceFileResult>;
   dispose(): void;
 }
 
@@ -55,12 +56,13 @@ export function createSourceFiles(factory: ParserFactory = envParserFactory()): 
   const cache = new Map<string, Promise<SourceFileResult>>();
 
   return {
-    get(lang: Language, text: string): Promise<SourceFileResult> {
-      const key = `${lang}\u0000${text}`;
+    get(lang: Language, text: string, filePath?: string): Promise<SourceFileResult> {
+      const variant = filePath ? grammarVariantForPath(lang, filePath) : undefined;
+      const key = `${lang}\u0000${variant ?? ""}\u0000${text}`;
       const existing = cache.get(key);
       if (existing) return existing;
 
-      const promise = parseText(text, lang, factory).then(
+      const promise = parseText(text, lang, (l) => factory(l, variant)).then(
         (result): SourceFileResult => {
           if (!result.ok) return { ok: false, reason: result.reason };
           const comments = classifyComments(result.tree.rootNode, text, lang);
@@ -81,9 +83,10 @@ export function createSourceFiles(factory: ParserFactory = envParserFactory()): 
 
     dispose(): void {
       for (const promise of cache.values()) {
-        promise.then((result) => {
-          if (result.ok) result.source.tree.delete();
-        });
+        promise.then(
+          (result) => { if (result.ok) result.source.tree.delete(); },
+          () => {},
+        );
       }
       cache.clear();
     },

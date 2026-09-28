@@ -13,6 +13,10 @@ import {
   autoFix,
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+
+const TS = parserForPath(getParser, "sample.ts");
 
 // Stub that forces density() to return ok:false (grammar-load failure).
 const failParser: GetParserFn = async (_lang) => ({ ok: false, reason: "forced-load-failure-for-decoration-test" });
@@ -23,7 +27,7 @@ describe("AC1: findComments decoration reasons", () => {
   describe("TypeScript", () => {
     it("AC1: // ---------- is exempt with reason 'divider'", async () => {
       const text = "// ----------\nconst x = 1;";
-      const r = await findComments(text, "typescript");
+      const r = await findComments(text, "typescript", TS);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       const c = r.comments.find(c => c.startRow === 0);
@@ -34,7 +38,7 @@ describe("AC1: findComments decoration reasons", () => {
 
     it("AC1: // ───── (box-drawing dashes) is exempt with reason 'divider'", async () => {
       const text = "// ─────\nconst x = 1;";
-      const r = await findComments(text, "typescript");
+      const r = await findComments(text, "typescript", TS);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       const c = r.comments.find(c => c.startRow === 0);
@@ -45,7 +49,7 @@ describe("AC1: findComments decoration reasons", () => {
 
     it("AC1: // ---- Section prose is NOT exempt (prose follows dashes, not whole-line divider)", async () => {
       const text = "// ---- Section prose\nconst x = 1;";
-      const r = await findComments(text, "typescript");
+      const r = await findComments(text, "typescript", TS);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       const c = r.comments.find(c => c.startRow === 0);
@@ -55,7 +59,7 @@ describe("AC1: findComments decoration reasons", () => {
 
     it("AC1: // (bare spacer) is exempt with reason 'spacer'", async () => {
       const text = "//\nconst x = 1;";
-      const r = await findComments(text, "typescript");
+      const r = await findComments(text, "typescript", TS);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       const c = r.comments.find(c => c.startRow === 0);
@@ -132,8 +136,8 @@ describe("AC2: density invariance — inserting dividers and spacers changes not
   ].join("\n");
 
   it("AC2 TS tree-sitter: F.effective === F'.effective", async () => {
-    const rF = await density(F_ts, "typescript");
-    const rF2 = await density(F_ts_prime, "typescript");
+    const rF = await density(F_ts, "typescript", undefined, TS);
+    const rF2 = await density(F_ts_prime, "typescript", undefined, TS);
     expect(rF.ok).toBe(true);
     expect(rF2.ok).toBe(true);
     if (!rF.ok) throw new Error(rF.reason);
@@ -236,7 +240,7 @@ describe("AC3: regression — note-continuation protection (Go, HEAD literal)", 
 describe("AC4: block comment exemption — all-non-blank-exempt rule", () => {
   it("AC4: multi-line block with prose after URL is NOT exempt", async () => {
     const text = "/* see https://x.y\n  prose\n  prose */\nconst x = 1;";
-    const r = await findComments(text, "typescript");
+    const r = await findComments(text, "typescript", TS);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const c = r.comments.find(c => c.startRow === 0);
@@ -246,7 +250,7 @@ describe("AC4: block comment exemption — all-non-blank-exempt rule", () => {
 
   it("AC4: single-line block comment that is just a URL IS exempt", async () => {
     const text = "/* https://x.y */\nconst x = 1;";
-    const r = await findComments(text, "typescript");
+    const r = await findComments(text, "typescript", TS);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const c = r.comments.find(c => c.startRow === 0);

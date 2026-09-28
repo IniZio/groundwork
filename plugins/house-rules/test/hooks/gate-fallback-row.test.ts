@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { findComments } from "../../src/hooks/lib/comment-density.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { run } from "../../src/hooks/gate.js";
+
+const TS = parserForPath(getParser, "sample.ts");
 
 function initGitRepo(dir: string): void {
   const opts = { cwd: dir, encoding: "utf8" as const };
@@ -29,7 +33,7 @@ function makeTranscript(tmpDir: string, filePath: string, content: string): stri
 }
 
 async function firstErrorRowFor(content: string, lang: "typescript"): Promise<number | undefined> {
-  const result = await findComments(content, lang);
+  const result = await findComments(content, lang, TS);
   if (result.errorRows.size === 0) return undefined;
   return Math.min(...result.errorRows) + 1;
 }
@@ -124,8 +128,8 @@ describe("gate partial-row: parse error row in coverage", () => {
   }
 
   it("two cases have different min error rows (hardcoded value cannot pass both)", async () => {
-    const resultA = await findComments(CONTENT_A, "typescript");
-    const resultB = await findComments(CONTENT_B, "typescript");
+    const resultA = await findComments(CONTENT_A, "typescript", TS);
+    const resultB = await findComments(CONTENT_B, "typescript", TS);
     expect(resultA.errorRows.size, "case A must have error rows").toBeGreaterThan(0);
     expect(resultB.errorRows.size, "case B must have error rows").toBeGreaterThan(0);
     const rowA = Math.min(...resultA.errorRows);

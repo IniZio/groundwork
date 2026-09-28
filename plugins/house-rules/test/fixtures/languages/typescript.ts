@@ -1,5 +1,5 @@
 // @ts-nocheck
-// conformance: comments=18 directive=0 doc=8 groups=13
+// conformance: comments=18 directive=1 doc=8 groups=13
 // source: plugins/house-rules/src/hooks/languages/comments.ts (HEAD 9a8ab9b) lines 1-139
 // source: plugins/house-rules/src/hooks/gate.ts (HEAD 9a8ab9b) lines 44-50
 import type { Node } from "../lib/tree-sitter.js";

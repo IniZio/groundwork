@@ -1,10 +1,14 @@
 import { describe, it, expect } from "bun:test";
 import { stripComments, autoFix, findComments, density } from "../../src/hooks/lib/comment-density.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+
+const TS = parserForPath(getParser, "sample.ts");
 
 describe("stripComments rowChanges — whole-line comment", () => {
   it("single whole-line comment produces deleted rowChange", async () => {
     const text = "// whole\nconst x = 1;\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -19,7 +23,7 @@ describe("stripComments rowChanges — whole-line comment", () => {
 describe("stripComments rowChanges — multi-row block comment", () => {
   it("block spanning 3 rows produces 3 deleted entries", async () => {
     const text = "/* line1\n   line2\n*/\nconst x = 1;\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -34,7 +38,7 @@ describe("stripComments rowChanges — multi-row block comment", () => {
 describe("stripComments rowChanges — inline trailing comment", () => {
   it("inline comment on a code line produces modified rowChange", async () => {
     const text = "const x = 1; // inline\nconst y = 2;\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -54,7 +58,7 @@ describe("autoFix rowChanges — whole-line removal propagated", () => {
     );
     const text = lines.join("\n") + "\n";
     const rowSet = new Set(Array.from({ length: 20 }, (_, i) => i));
-    const ar = await autoFix(text, "typescript", rowSet);
+    const ar = await autoFix(text, "typescript", rowSet, TS);
     expect(ar.ok).toBe(true);
     if (!ar.ok) return;
     const deleted = ar.rowChanges.filter(rc => rc.kind === "deleted");
@@ -72,7 +76,7 @@ describe("autoFix rowChanges — no removal returns empty rowChanges", () => {
     ];
     const text = lines.join("\n") + "\n";
     const rowSet = new Set(Array.from({ length: 20 }, (_, i) => i));
-    const ar = await autoFix(text, "typescript", rowSet);
+    const ar = await autoFix(text, "typescript", rowSet, TS);
     expect(ar.ok).toBe(true);
     if (!ar.ok) return;
     expect(ar.removed).toBe(0);
@@ -83,7 +87,7 @@ describe("autoFix rowChanges — no removal returns empty rowChanges", () => {
 describe("stripComments rowChanges — mid-line and multi-comment rows", () => {
   it("mid-line block comment produces one modified rowChange with code preserved", async () => {
     const text = "const w4 = /* mid 4 */ 4;\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -96,7 +100,7 @@ describe("stripComments rowChanges — mid-line and multi-comment rows", () => {
 
   it("two trailing comments on one row produce one modified rowChange", async () => {
     const text = "const z14 = 14; /* p14 */ // q14\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -108,7 +112,7 @@ describe("stripComments rowChanges — mid-line and multi-comment rows", () => {
 
   it("row with only two block comments produces one rowChange entry", async () => {
     const text = "/* a */ /* b */\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const nonExempt = fr.comments.filter(c => !c.exempt);
@@ -120,7 +124,7 @@ describe("stripComments rowChanges — mid-line and multi-comment rows", () => {
 
 describe("stripComments rowChanges — multi-line leading block parity", () => {
   async function parityCheck(text: string, lang: "typescript" | "go") {
-    const fr = await findComments(text, lang);
+    const fr = await findComments(text, lang, TS);
     if (!fr.ok) throw new Error(fr.reason);
     const toStrip = fr.comments.filter(c => !c.exempt);
     const { text: fixed, rowChanges } = stripComments(text, toStrip);
@@ -197,7 +201,7 @@ describe("autoFix property — rowChanges fidelity", () => {
       }
       if (addedRows.size === 0) continue;
 
-      const ar = await autoFix(text, "typescript", addedRows);
+      const ar = await autoFix(text, "typescript", addedRows, TS);
       if (!ar.ok) {
         if (ar.reason === "pre-existing comment removed") {
           throw new Error(`I1 (pre-existing) failed iter ${iter}: ${ar.reason}\ntext:\n${text}`);
@@ -229,7 +233,7 @@ describe("autoFix property — rowChanges fidelity", () => {
         if (remap.has(r)) remappedAdded.add(remap.get(r)!);
       }
       if (remappedAdded.size > 0) {
-        const dr = await density(ar.fixed, "typescript", remappedAdded);
+        const dr = await density(ar.fixed, "typescript", remappedAdded, TS);
         if (!dr.ok) throw new Error(dr.reason);
         if (dr.total > 0 && dr.effective / dr.total * 100 > 5) {
           throw new Error(`I2 failed iter ${iter}: density ${dr.effective}/${dr.total}\nfixed:\n${ar.fixed}`);
@@ -261,7 +265,7 @@ describe("stripComments — whole-line block comment before exempt directive", (
       "/* a */ // @ts-ignore",
       "const b = 2;",
     ].join("\n") + "\n";
-    const fr = await findComments(text, "typescript");
+    const fr = await findComments(text, "typescript", TS);
     expect(fr.ok).toBe(true);
     if (!fr.ok) return;
     const toStrip = fr.comments.filter(c => !c.exempt);
@@ -340,12 +344,12 @@ describe("autoFix property — exempt directive preservation (seeded, 500 iters)
       }
       if (addedRows.size === 0) continue;
 
-      const ar = await autoFix(text, "typescript", addedRows);
+      const ar = await autoFix(text, "typescript", addedRows, TS);
       if (!ar.ok) continue;
       if (ar.removed === 0) continue;
 
-      const origParsed = await findComments(text, "typescript");
-      const fixedParsed = await findComments(ar.fixed, "typescript");
+      const origParsed = await findComments(text, "typescript", TS);
+      const fixedParsed = await findComments(ar.fixed, "typescript", TS);
       if (!origParsed.ok || !fixedParsed.ok) continue;
 
       const origExemptMap = new Map<string, number>();

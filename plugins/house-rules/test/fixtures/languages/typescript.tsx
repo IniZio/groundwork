@@ -1,5 +1,5 @@
 // @ts-nocheck
-// conformance: comments=10 directive=0 doc=0 groups=3
+// conformance: comments=10 directive=1 doc=0 groups=3
 // source: /home/newman/.bun/install/global/node_modules/@oh-my-pi/omp-stats/src/client/App.tsx (@oh-my-pi/omp-stats@17.3.4) lines 1-112
 // license: MIT — Can Boluk (@oh-my-pi/omp-stats@17.3.4)
 import { useCallback, useRef, useState } from "react";

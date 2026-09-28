@@ -175,7 +175,7 @@ const TS_DOC_SNIPPET = "/** jsdoc */\n/* block */\nconst x = 1;\n";
 
 describe("Secondary — TypeScript jsdoc vs block kind", () => {
   it("/** jsdoc */ has kind doc", async () => {
-    const r = await sf.get("typescript", TS_DOC_SNIPPET);
+    const r = await sf.get("typescript", TS_DOC_SNIPPET, "x.ts");
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("parse failed");
     const c = r.source.comments.find((x) => x.text === "/** jsdoc */");
@@ -184,7 +184,7 @@ describe("Secondary — TypeScript jsdoc vs block kind", () => {
   });
 
   it("/* block */ has kind block", async () => {
-    const r = await sf.get("typescript", TS_DOC_SNIPPET);
+    const r = await sf.get("typescript", TS_DOC_SNIPPET, "x.ts");
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("parse failed");
     const c = r.source.comments.find((x) => x.text === "/* block */");

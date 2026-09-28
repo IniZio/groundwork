@@ -33,10 +33,20 @@ export interface LanguageGrammar {
   readonly build?: string;
 }
 
+export type GrammarVariantId = string;
+
+export interface GrammarVariant {
+  readonly extensions: readonly string[];
+  readonly grammar: LanguageGrammar;
+}
+
 export interface LanguageAdapter {
   readonly id: string;
   readonly detect: LanguageDetection;
   readonly grammar: LanguageGrammar;
+  readonly grammarVariants?: Readonly<Record<GrammarVariantId, GrammarVariant>>;
+  /** names adapter.grammar; required when grammarVariants is set */
+  readonly defaultGrammarVariant?: GrammarVariantId;
   /** which grammar node types are comments; absent = any type whose name contains "comment" */
   readonly isCommentNodeType?: (type: string) => boolean;
   /** when absent, the default classifier applies: adjacent whole-line comments of the same kind form a group */
@@ -71,24 +81,22 @@ const yaml = {
 const typescript = {
   id: "typescript",
   detect: {
-    extensions: [".ts", ".mts", ".cts"],
+    extensions: [".ts", ".mts", ".cts", ".tsx", ".jsx", ".js", ".mjs", ".cjs"],
   },
   grammar: {
     wasm: "tree-sitter-typescript.wasm",
     vendor: { package: "tree-sitter-typescript", file: "tree-sitter-typescript.wasm" },
   },
-  classifyComments: withToolMarkers(TYPESCRIPT_TOOL_MARKERS),
-} satisfies LanguageAdapter;
-
-const tsx = {
-  id: "tsx",
-  detect: {
-    extensions: [".tsx", ".jsx", ".js", ".mjs", ".cjs"],
+  grammarVariants: {
+    jsx: {
+      extensions: [".tsx", ".jsx", ".js", ".mjs", ".cjs"],
+      grammar: {
+        wasm: "tree-sitter-tsx.wasm",
+        vendor: { package: "tree-sitter-typescript", file: "tree-sitter-tsx.wasm" },
+      },
+    },
   },
-  grammar: {
-    wasm: "tree-sitter-tsx.wasm",
-    vendor: { package: "tree-sitter-typescript", file: "tree-sitter-tsx.wasm" },
-  },
+  defaultGrammarVariant: "ts",
   classifyComments: withToolMarkers(TYPESCRIPT_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
@@ -178,13 +186,50 @@ const toml = {
   classifyComments: classifyTomlComments,
 } satisfies LanguageAdapter;
 
-const ADAPTERS = { bash, yaml, typescript, tsx, python, dockerfile, go, rust, sql, make, toml };
+const ADAPTERS = { bash, yaml, typescript, python, dockerfile, go, rust, sql, make, toml };
 
 export type Language = keyof typeof ADAPTERS;
 
 export const LANGUAGE_ADAPTERS: Readonly<Record<Language, LanguageAdapter>> = ADAPTERS;
 
 export const LANGUAGES: readonly Language[] = Object.keys(ADAPTERS) as Language[];
+
+export function grammarVariantForPath(lang: Language, filePath: string): GrammarVariantId | undefined {
+  const ext = path.extname(filePath).toLowerCase();
+  const adapter = LANGUAGE_ADAPTERS[lang];
+  const variants = adapter.grammarVariants;
+  if (!variants) return undefined;
+  for (const [id, variant] of Object.entries(variants)) {
+    if (variant.extensions.includes(ext)) return id;
+  }
+  return adapter.defaultGrammarVariant;
+}
+
+export function grammarFor(lang: Language, variant?: GrammarVariantId): LanguageGrammar {
+  const adapter = LANGUAGE_ADAPTERS[lang];
+  const variants = adapter.grammarVariants;
+  if (!variants) {
+    // language has no variants
+    if (variant === undefined || variant === adapter.defaultGrammarVariant) return adapter.grammar;
+    throw new Error(`Language "${lang}" has no grammar variants; got variant "${variant}"`);
+  }
+  // language has variants — caller must be explicit
+  if (variant === undefined) {
+    throw new Error(
+      `${lang} has grammar variants; bind the file path with parserForPath (src/hooks/languages/parse.ts) or pass a variant`,
+    );
+  }
+  if (variant === adapter.defaultGrammarVariant) return adapter.grammar;
+  const v = variants[variant];
+  if (!v) throw new Error(`Unknown grammar variant "${variant}" for language "${lang}"`);
+  return v.grammar;
+}
+
+export function grammarsOf(lang: Language): readonly LanguageGrammar[] {
+  const adapter = LANGUAGE_ADAPTERS[lang];
+  const variants = adapter.grammarVariants ? Object.values(adapter.grammarVariants).map(v => v.grammar) : [];
+  return [adapter.grammar, ...variants];
+}
 
 export function languageForPath(filePath: string, firstLine?: string): Language | null {
   const base = path.basename(filePath);

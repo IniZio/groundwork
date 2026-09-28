@@ -263,7 +263,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
     files,
     sourceFile(file: ScopedFile) {
       if (!file.lang || file.text === undefined) return Promise.resolve(null);
-      return sources.get(file.lang, file.text);
+      return sources.get(file.lang, file.text, file.path);
     },
   };
 }

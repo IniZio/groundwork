@@ -1,5 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import { autoFix } from "../../src/hooks/lib/comment-density.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+
+const TS = parserForPath(getParser, "sample.ts");
 
 function countAdjacentPairs(text: string): number {
   const DIV = /^\s*\/\/\s*(?:[-=#*~_]{4,}|[─-╿]{2,})\s*$/u;
@@ -136,7 +140,7 @@ describe("orphan dividers — TypeScript ride-along removal", () => {
       "const x = 1;",
     ].join("\n");
     const addedRows = new Set([0, 1, 2, 3]);
-    const r = await autoFix(text, "typescript", addedRows, undefined, undefined, { maxAllowedRows: 0 });
+    const r = await autoFix(text, "typescript", addedRows, TS, undefined, { maxAllowedRows: 0 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(countAdjacentPairs(r.fixed)).toBe(0);

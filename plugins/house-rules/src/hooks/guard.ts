@@ -16,7 +16,7 @@ import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
 import { createSourceFiles, envParserFactory } from "../engine/source-file.js";
 import { grammarFailureWarning } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
-import type { ParserFactory } from "./languages/parse.js";
+import { parserForPath, type ParserFactory } from "./languages/parse.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -296,7 +296,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     let blockingFinding: Finding | null = null;
 
     if (lang !== null && activeRules.some(r => r.languages && r.languages.length > 0)) {
-      const sf = await sourceFiles.get(lang, originalPost);
+      const sf = await sourceFiles.get(lang, originalPost, filePath);
       if (!sf.ok) {
         const W = grammarFailureWarning(filePath, lang, sf.reason);
         contextItems.push({ normal: W, advisory: W });
@@ -335,8 +335,8 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       try {
         const capturedText = text;
         const env: EditCheckEnv = {
-          sourceFile: () => lang !== null ? sourceFiles.get(lang, capturedText) : Promise.resolve(null),
-          parserFactory: factory,
+          sourceFile: () => lang !== null ? sourceFiles.get(lang, capturedText, filePath) : Promise.resolve(null),
+          parserFactory: parserForPath(factory, filePath),
           ledgerDir: opts.ledgerDir,
         };
         result = await rule.editCheck!(pendingEdit, env);
@@ -387,8 +387,8 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
           // Parse-safety check
           let refuse = false;
           if (lang !== null) {
-            const oldParse = await sourceFiles.get(lang, text);
-            const newParse = await sourceFiles.get(lang, newText);
+            const oldParse = await sourceFiles.get(lang, text, filePath);
+            const newParse = await sourceFiles.get(lang, newText, filePath);
             if (!newParse.ok) {
               refuse = true;
             } else if (oldParse.ok && newParse.ok && newParse.source.errorRows.size > oldParse.source.errorRows.size) {

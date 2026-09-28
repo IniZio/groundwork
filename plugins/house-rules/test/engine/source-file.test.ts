@@ -16,14 +16,16 @@ import type { LoadResult } from '../../src/hooks/lib/tree-sitter-loader.js';
 interface Counts {
   factory: number;
   parse: number;
+  variantCalls: (string | undefined)[];
 }
 
 function makeCountingFactory(base: ParserFactory = getParser): { factory: ParserFactory; counts: Counts } {
-  const counts: Counts = { factory: 0, parse: 0 };
+  const counts: Counts = { factory: 0, parse: 0, variantCalls: [] };
 
-  const factory: ParserFactory = async (lang) => {
+  const factory: ParserFactory = async (lang, variant) => {
     counts.factory++;
-    const result: LoadResult = await base(lang);
+    counts.variantCalls.push(variant);
+    const result: LoadResult = await base(lang, variant);
     if (!result.ok) return result;
     const realParser = result.parser;
     const realParse = realParser.parse.bind(realParser);
@@ -97,8 +99,8 @@ describe('createSourceFiles — memoization', () => {
     const sf = createSourceFiles(factory);
 
     try {
-      const r1 = await sf.get('typescript', TS_TWO_COMMENTS);
-      const r2 = await sf.get('typescript', TS_TWO_COMMENTS);
+      const r1 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.ts');
+      const r2 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.ts');
 
       expect(r1.ok).toBe(true);
       expect(r2.ok).toBe(true);
@@ -133,8 +135,8 @@ describe('createSourceFiles — memoization', () => {
     const sf = createSourceFiles(factory);
 
     try {
-      const r1 = await sf.get('typescript', TS_TWO_COMMENTS);
-      const r2 = await sf.get('typescript', 'const z = 42;\n');
+      const r1 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.ts');
+      const r2 = await sf.get('typescript', 'const z = 42;\n', 'a.ts');
 
       expect(r1.ok).toBe(true);
       expect(r2.ok).toBe(true);
@@ -150,13 +152,14 @@ describe('createSourceFiles — memoization', () => {
   });
 
 
-  it('same text under a different language produces a separate parse (parse count 2)', async () => {
+  it('same text, same language, different path variant → separate parse (parse count 2)', async () => {
+    // cache key includes the grammar variant (undefined for .ts, "jsx" for .tsx)
     const { factory, counts } = makeCountingFactory();
     const sf = createSourceFiles(factory);
 
     try {
-      const r1 = await sf.get('typescript', TS_TWO_COMMENTS);
-      const r2 = await sf.get('tsx', TS_TWO_COMMENTS);
+      const r1 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.ts');
+      const r2 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.tsx');
 
       expect(r1.ok).toBe(true);
       expect(r2.ok).toBe(true);
@@ -164,11 +167,59 @@ describe('createSourceFiles — memoization', () => {
       if (!r1.ok || !r2.ok) throw new Error('unexpected fail');
 
       expect(r1.source).not.toBe(r2.source);
+      expect(counts.parse).toBe(2);
 
+      // factory received "ts" variant for .ts (defaultGrammarVariant), "jsx" for .tsx
+      expect(counts.variantCalls).toContain("ts");
+      expect(counts.variantCalls).toContain('jsx');
+
+      expect(r1.source.language).toBe('typescript');
+      expect(r2.source.language).toBe('typescript');
+    } finally {
+      sf.dispose();
+    }
+  });
+
+
+  it('different language, same text → separate parse (parse count 2)', async () => {
+    const { factory, counts } = makeCountingFactory();
+    const sf = createSourceFiles(factory);
+
+    try {
+      const r1 = await sf.get('typescript', 'const x = 1;\n', 'a.ts');
+      const r2 = await sf.get('bash', 'const x = 1;\n');
+
+      expect(r1.ok).toBe(true);
+      expect(r2.ok).toBe(true);
+
+      if (!r1.ok || !r2.ok) throw new Error('unexpected fail');
+
+      expect(r1.source).not.toBe(r2.source);
       expect(counts.parse).toBe(2);
 
       expect(r1.source.language).toBe('typescript');
-      expect(r2.source.language).toBe('tsx');
+      expect(r2.source.language).toBe('bash');
+    } finally {
+      sf.dispose();
+    }
+  });
+
+
+  it('same text and same path twice returns cached result (parse count 1)', async () => {
+    const { factory, counts } = makeCountingFactory();
+    const sf = createSourceFiles(factory);
+
+    try {
+      const r1 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.tsx');
+      const r2 = await sf.get('typescript', TS_TWO_COMMENTS, 'a.tsx');
+
+      expect(r1.ok).toBe(true);
+      expect(r2.ok).toBe(true);
+
+      if (!r1.ok || !r2.ok) throw new Error('unexpected fail');
+
+      expect(r1.source).toBe(r2.source);
+      expect(counts.parse).toBe(1);
     } finally {
       sf.dispose();
     }
@@ -180,7 +231,7 @@ describe('createSourceFiles — memoization', () => {
     const sf = createSourceFiles(factory);
 
     try {
-      const result = await sf.get('typescript', TS_SYNTAX_ERROR);
+      const result = await sf.get('typescript', TS_SYNTAX_ERROR, 'a.ts');
 
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error('unexpected fail');
@@ -208,6 +259,22 @@ describe('createSourceFiles — memoization', () => {
     } finally {
       sf.dispose();
     }
+  });
+
+  it('get(typescript) with no path rejects — error message names parserForPath', async () => {
+    const sf = createSourceFiles();
+    let caught: unknown;
+    let threw = false;
+    try {
+      await sf.get('typescript', 'const a = 1;\n');
+    } catch (e) {
+      threw = true;
+      caught = e;
+    }
+    expect(threw).toBe(true);
+    expect(caught instanceof Error ? caught.message : String(caught)).toContain('parserForPath');
+    sf.dispose();
+    await new Promise((r) => setTimeout(r, 0));
   });
 });
 

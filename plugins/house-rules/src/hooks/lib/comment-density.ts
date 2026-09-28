@@ -94,8 +94,18 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) {
       const raw = node.text ?? text.slice(node.startIndex, node.endIndex);
-      const startRow = node.startPosition.row;
-      const endRow = node.endPosition.row;
+      let startIndex = node.startIndex;
+      let endIndex = node.endIndex;
+      let startRow = node.startPosition.row;
+      let endRow = node.endPosition.row;
+
+      const parent = node.parent;
+      if (parent?.type === "jsx_expression" && parent.namedChildCount === 1) {
+        startIndex = parent.startIndex;
+        endIndex = parent.endIndex;
+        startRow = parent.startPosition.row;
+        endRow = parent.endPosition.row;
+      }
 
       const cls = classified.get(node.startIndex)!;
       let { exempt, reason } = checkExempt(raw, cls.label, cls.fallbackLabel === undefined ? cls.directive : false);
@@ -103,8 +113,8 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
       if (!exempt && cls.header) { exempt = true; reason = `${lang}-file-header`; }
       if (!exempt && cls.fallbackLabel !== undefined) { exempt = true; reason = cls.fallbackLabel; }
       results.push({
-        startIndex: node.startIndex,
-        endIndex: node.endIndex,
+        startIndex,
+        endIndex,
         startRow,
         endRow,
         text: raw,
@@ -423,6 +433,10 @@ export function collectCodeText(root: Node, text: string, lang: Language): strin
   const parts: string[] = [];
   function walk(node: Node): void {
     if (isCommentNode(node, lang)) return;
+    if (node.type === "jsx_expression" && node.namedChildCount === 1) {
+      const nc = node.namedChild(0);
+      if (nc && isCommentNode(nc, lang)) return;
+    }
     if (node.childCount === 0) {
       parts.push(node.text ?? text.slice(node.startIndex, node.endIndex));
       return;

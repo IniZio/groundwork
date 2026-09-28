@@ -125,7 +125,7 @@ describe("SourceFile classification — Go directives and kinds", () => {
 
 describe("SourceFile classification — default classifier (TypeScript)", () => {
   it("AC4-7: adjacent // share group; adjacent /* gets different group; no directive/header", async () => {
-    const r = await sf.get("typescript", TS_MIXED);
+    const r = await sf.get("typescript", TS_MIXED, "x.ts");
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("parse failed");
     const { comments } = r.source;

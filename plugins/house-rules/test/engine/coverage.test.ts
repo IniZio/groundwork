@@ -177,7 +177,7 @@ describe("coverageReport — partiallyChecked", () => {
       files: [{ path: "src/a.ts", lang: "typescript", text: TS_WITH_ERROR }],
       sourceFile: (f) =>
         f.lang && f.text !== undefined
-          ? sources.get(f.lang, f.text)
+          ? sources.get(f.lang, f.text, f.path)
           : Promise.resolve(null),
     };
     const cov = await coverageReport(rules, ctx);
@@ -221,7 +221,7 @@ describe("coverageReport — clean file is absent from all lists", () => {
       files: [{ path: "src/a.ts", lang: "typescript", text: TS_CLEAN }],
       sourceFile: (f) =>
         f.lang && f.text !== undefined
-          ? sources.get(f.lang, f.text)
+          ? sources.get(f.lang, f.text, f.path)
           : Promise.resolve(null),
     };
     const cov = await coverageReport(rules, ctx);

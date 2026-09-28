@@ -4,6 +4,10 @@
  */
 import { describe, it, expect } from "bun:test";
 import { autoFix } from "../../src/hooks/lib/comment-density.js";
+import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
+import { parserForPath } from "../../src/hooks/languages/parse.js";
+
+const tsParser = parserForPath(getParser, "sample.ts");
 
 
 // ---------------------------------------------------------------------------
@@ -451,7 +455,7 @@ describe("HC-4 keep-policy: TypeScript, shortest-group-first (AC3)", () => {
   it("prose near top: six one-liners kept, 5-row prose removed", async () => {
     const text = TS_PROSE_NEAR_TOP;
     const rows = allRows(text);
-    const r = await autoFix(text, "typescript", rows, undefined, undefined, { maxAllowedRows: 6 });
+    const r = await autoFix(text, "typescript", rows, tsParser, undefined, { maxAllowedRows: 6 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     for (const oneliner of TS_ONELINERS) {
@@ -466,7 +470,7 @@ describe("HC-4 keep-policy: TypeScript, shortest-group-first (AC3)", () => {
   it("prose near bottom: same kept-text set regardless of prose position (AC3 AC2-parity)", async () => {
     const text = TS_PROSE_NEAR_BOTTOM;
     const rows = allRows(text);
-    const r = await autoFix(text, "typescript", rows, undefined, undefined, { maxAllowedRows: 6 });
+    const r = await autoFix(text, "typescript", rows, tsParser, undefined, { maxAllowedRows: 6 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     for (const oneliner of TS_ONELINERS) {
@@ -536,7 +540,7 @@ func f4() {
       `const d0 = 0;`,
     ].join("\n") + "\n";
     const rows = allRows(text);
-    const r = await autoFix(text, "typescript", rows, undefined, undefined, { maxAllowedRows: 2 });
+    const r = await autoFix(text, "typescript", rows, tsParser, undefined, { maxAllowedRows: 2 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.removedTexts).not.toContain("// comment alpha");

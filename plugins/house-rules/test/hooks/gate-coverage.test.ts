@@ -117,14 +117,14 @@ describe("COV-4: outside-repo file excluded from block reason; inside .kt presen
   });
 
   it("block path: inside notes.kt in 'not checked', outside memory.kt absent", async () => {
-    const tsxFp = makeTsxViolator(tmpDir, "bad.tsx");
+    const violatorFp = makePreviewViolator(tmpDir, "bad.py");
     const insideKt = path.join(tmpDir, "notes.kt");
     writeFileSync(insideKt, "fun main() {}\n");
     const outsideDir = mkdtempSync(path.join(os.tmpdir(), "cov4-outside-"));
     const outsideFp = path.join(outsideDir, "memory.kt");
     writeFileSync(outsideFp, "fun outside() {}\n");
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsxFp, insideKt, outsideFp], ts);
+    const tp = makeTranscript(tmpDir, [violatorFp, insideKt, outsideFp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov4-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
@@ -136,38 +136,38 @@ describe("COV-4: outside-repo file excluded from block reason; inside .kt presen
   });
 });
 
-// TSX with >5/100 comment density — tsx is "preview" so never auto-fixed (stays unfixable).
-function makeTsxViolator(dir: string, name: string): string {
+// Python with >5/100 comment density — python is "preview" so never auto-fixed (stays unfixable).
+function makePreviewViolator(dir: string, name: string): string {
   const fp = path.join(dir, name);
   const lines = [
-    "// first narration comment",
-    "const a = 1;",
-    "const b = 2;",
-    "const c = 3;",
-    "const d = 4;",
-    "// second narration comment",
-    "const e = 5;",
-    "const f = 6;",
-    "const g = 7;",
-    "const h = 8;",
+    "# first narration comment",
+    "x = 1",
+    "y = 2",
+    "z = 3",
+    "w = 4",
+    "# second narration comment",
+    "a = 5",
+    "b = 6",
+    "c = 7",
+    "h = 8",
   ];
   writeFileSync(fp, lines.join("\n") + "\n");
   return fp;
 }
 
-function makeTsxViolatorWithSyntaxError(dir: string, name: string): string {
+function makePreviewViolatorWithSyntaxError(dir: string, name: string): string {
   const fp = path.join(dir, name);
   const lines = [
-    "// first narration comment",
-    "const a = 1;",
-    "const b = 2;",
-    "const c = 3;",
-    "const d = 4;",
-    "// second narration comment",
-    "const e = 5;",
-    "const f = 6;",
-    "const g = 7;",
-    "const broken = ;",
+    "# first narration comment",
+    "x = 1",
+    "y = 2",
+    "z = 3",
+    "w = 4",
+    "# second narration comment",
+    "a = 5",
+    "b = 6",
+    "c = 7",
+    "broken = )",
   ];
   writeFileSync(fp, lines.join("\n") + "\n");
   return fp;
@@ -226,26 +226,13 @@ describe("GRAM-2: grammar failure suppresses block on that file", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("over-budget .tsx violator + FAIL_GRAMMARS=tsx → allow (no block)", async () => {
-    const fp = path.join(tmpDir, "bad.tsx");
-    const lines = [
-      "// first narration comment",
-      "const a = 1;",
-      "const b = 2;",
-      "const c = 3;",
-      "const d = 4;",
-      "// second narration comment",
-      "const e = 5;",
-      "const f = 6;",
-      "const g = 7;",
-      "const h = 8;",
-    ];
-    writeFileSync(fp, lines.join("\n") + "\n");
+  it("over-budget .py violator + FAIL_GRAMMARS=python → allow (no block)", async () => {
+    const fp = makePreviewViolator(tmpDir, "bad.py");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate(
       { hook_event_name: "Stop", session_id: `gram2a-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
-      { HOUSE_RULES_TEST_FAIL_GRAMMARS: "tsx" },
+      { HOUSE_RULES_TEST_FAIL_GRAMMARS: "python" },
     );
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
@@ -253,22 +240,9 @@ describe("GRAM-2: grammar failure suppresses block on that file", () => {
     expect(parsed.continue).toBe(true);
   });
 
-  it("over-budget .tsx violator without FAIL_GRAMMARS → blocks (control: proves fixture is a real violator)", async () => {
-    // tsx is "preview" (unfixable); without grammar failure, the violation is found and cannot be autofixed → block
-    const fp = path.join(tmpDir, "bad.tsx");
-    const lines = [
-      "// first narration comment",
-      "const a = 1;",
-      "const b = 2;",
-      "const c = 3;",
-      "const d = 4;",
-      "// second narration comment",
-      "const e = 5;",
-      "const f = 6;",
-      "const g = 7;",
-      "const h = 8;",
-    ];
-    writeFileSync(fp, lines.join("\n") + "\n");
+  it("over-budget .py violator without FAIL_GRAMMARS → blocks (control: proves fixture is a real violator)", async () => {
+    // python is preview (unfixable); without grammar failure, the violation is found and cannot be autofixed → block
+    const fp = makePreviewViolator(tmpDir, "bad.py");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate(
@@ -294,27 +268,14 @@ describe("GRAM-3: BLOCK carries grammar-failure warning + failed entry in reason
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("ts grammar fails + tsx unfixable violator → block with failed entry and warning in reason", async () => {
+  it("ts grammar fails + preview-language unfixable violator → block with failed entry and warning in reason", async () => {
     // .ts file: grammar will fail (typescript env)
     const tsFp = path.join(tmpDir, "skip.ts");
     writeFileSync(tsFp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
-    // .tsx file: unfixable violator (preview language)
-    const tsxFp = path.join(tmpDir, "violator.tsx");
-    const tsxLines = [
-      "// first narration comment",
-      "const a = 1;",
-      "const b = 2;",
-      "const c = 3;",
-      "const d = 4;",
-      "// second narration comment",
-      "const e = 5;",
-      "const f = 6;",
-      "const g = 7;",
-      "const h = 8;",
-    ];
-    writeFileSync(tsxFp, tsxLines.join("\n") + "\n");
+    // .py file: unfixable violator (python is preview)
+    const violatorFp = makePreviewViolator(tmpDir, "violator.py");
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsFp, tsxFp], ts);
+    const tp = makeTranscript(tmpDir, [tsFp, violatorFp], ts);
     const r = runGate(
       { hook_event_name: "Stop", session_id: `gram3-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
       { HOUSE_RULES_TEST_FAIL_GRAMMARS: "typescript" },
@@ -343,10 +304,10 @@ describe("GRAM-4: BLOCK shows partially-checked entry for file with syntax error
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it("tsx violator with syntax error → block reason contains partially checked entry with row numbers", async () => {
-    const tsxFp = makeTsxViolatorWithSyntaxError(tmpDir, "violator-err.tsx");
+  it("preview violator with syntax error → block reason contains partially checked entry with row numbers", async () => {
+    const violatorFp = makePreviewViolatorWithSyntaxError(tmpDir, "violator-err.py");
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsxFp], ts);
+    const tp = makeTranscript(tmpDir, [violatorFp], ts);
     const r = runGate(
       { hook_event_name: "Stop", session_id: `gram4-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false },
     );
@@ -354,7 +315,54 @@ describe("GRAM-4: BLOCK shows partially-checked entry for file with syntax error
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
     expect(parsed.decision).toBe("block");
     const reason = parsed.reason as string;
-    expect(reason).toContain(`partially checked: ${tsxFp} (rows `);
+    expect(reason).toContain(`partially checked: ${violatorFp} (rows `);
+  });
+});
+
+describe("COV-TSX-AUTOFIX: .tsx over-budget violator is autofixed by gate (tsx is now typescript/stable)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cov-tsx-af-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".gitkeep"), "");
+    gitCommit(tmpDir, "initial");
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+  });
+
+  it("over-budget .tsx violator → gate autofixes file (comments removed), no block, additionalContext names the fix", async () => {
+    const fp = path.join(tmpDir, "widget.tsx");
+    const lines = [
+      "// first narration comment",
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 3;",
+      "const d = 4;",
+      "// second narration comment",
+      "const e = 5;",
+      "const f = 6;",
+      "const g = 7;",
+      "const h = 8;",
+    ];
+    writeFileSync(fp, lines.join("\n") + "\n");
+    const ts = new Date(Date.now() - 10000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate({ hook_event_name: "Stop", session_id: `tsx-af-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
+    expect(r.status).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    // tsx is typescript (stable+safe): autofix resolves the violation — no block
+    expect(parsed.decision).not.toBe("block");
+    // gate reports the autofix via hookSpecificOutput.additionalContext
+    const hso = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
+    const ctx = hso?.additionalContext as string | undefined;
+    expect(ctx).toBeDefined();
+    expect(ctx).toContain("auto-removed");
+    const content = readFileSync(fp, "utf8");
+    expect(content).not.toContain("// first narration comment");
+    expect(content).not.toContain("// second narration comment");
   });
 });
 
@@ -372,15 +380,15 @@ describe("COV-3: notes.kt + comment-density violator → block message names not
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("notes.kt + unfixable violator .tsx → block reason contains notes.kt as not checked", async () => {
-    // unfixable violator (preview language prevents autofix)
-    const tsxFp = makeTsxViolator(tmpDir, "bad.tsx");
+  it("notes.kt + unfixable violator .py → block reason contains notes.kt as not checked", async () => {
+    // unfixable violator (python is preview, prevents autofix)
+    const violatorFp = makePreviewViolator(tmpDir, "bad.py");
 
     const ktFp = path.join(tmpDir, "notes.kt");
     writeFileSync(ktFp, "fun main() {\n    println(\"hello\")\n}\n");
 
     const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [tsxFp, ktFp], ts);
+    const tp = makeTranscript(tmpDir, [violatorFp, ktFp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov3-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });
     expect(r.status).toBe(0);
     const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;

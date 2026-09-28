@@ -3,10 +3,29 @@ import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, cpSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
-import { type Language } from "../../src/hooks/languages/registry.js";
+import { LANGUAGE_ADAPTERS, LANGUAGES } from "../../src/hooks/languages/registry.js";
 
 const GRAMMARS_DIR = path.resolve(import.meta.dir, "../../src/hooks/grammars");
 const HOOKS_DIR = path.resolve(import.meta.dir, "../../src/hooks");
+
+// Default samples per language (each contains at least one comment)
+const LANG_SAMPLES: Record<string, string> = {
+  bash: "#!/bin/bash\n# a comment\necho 'hi'",
+  yaml: "# yaml comment\nkey: value\n",
+  typescript: "// ts comment\nconst x = 1;\n",
+  python: "# python comment\ndef foo(): pass\n",
+  dockerfile: "# dockerfile comment\nFROM ubuntu:22.04\n",
+  go: "// go comment\npackage main\nfunc main() {}\n",
+  rust: "// rust comment\nfn main() {}\n",
+  sql: "-- sql comment\nSELECT 1;\n",
+  make: "# make comment\nall:\n\techo hi\n",
+  toml: "# toml comment\n[package]\nname = \"test\"\n",
+};
+
+// Override samples per grammar variant id
+const VARIANT_SAMPLES: Record<string, string> = {
+  jsx: "// tsx comment\nconst el = <div/>;\n",
+};
 
 function walkComments(node: import("../../src/hooks/lib/tree-sitter.js").Node): string[] {
   const found: string[] = [];
@@ -18,23 +37,33 @@ function walkComments(node: import("../../src/hooks/lib/tree-sitter.js").Node): 
 }
 
 describe("AC1: loadLanguage loads grammars from buffer", () => {
-  const CASES: { lang: Language; sample: string }[] = [
-    { lang: "bash", sample: "#!/bin/bash\n# a comment\necho 'hi'" },
-    { lang: "yaml", sample: "# yaml comment\nkey: value\n" },
-    { lang: "typescript", sample: "// ts comment\nconst x = 1;\n" },
-    { lang: "tsx", sample: "// tsx comment\nconst el = <div/>;\n" },
-    { lang: "python", sample: "# python comment\ndef foo(): pass\n" },
-  ];
+  for (const lang of LANGUAGES) {
+    const adapter = LANGUAGE_ADAPTERS[lang];
+    const defaultSample = LANG_SAMPLES[lang] ?? "# comment\n";
 
-  for (const { lang, sample } of CASES) {
-    it(`${lang}: parses sample and finds a comment node`, async () => {
-      const result = await getParser(lang);
+    it(`${lang} (default): parses sample and finds a comment node`, async () => {
+      const defaultVariant = adapter.grammarVariants ? adapter.defaultGrammarVariant : undefined;
+      const result = await getParser(lang, defaultVariant);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      const tree = result.parser.parse(sample);
+      const tree = result.parser.parse(defaultSample);
       const comments = walkComments(tree.rootNode);
       expect(comments.length).toBeGreaterThanOrEqual(1);
     });
+
+    if (adapter.grammarVariants) {
+      for (const variantId of Object.keys(adapter.grammarVariants)) {
+        const variantSample = VARIANT_SAMPLES[variantId] ?? defaultSample;
+        it(`${lang} (${variantId}): parses sample and finds a comment node`, async () => {
+          const result = await getParser(lang, variantId);
+          expect(result.ok).toBe(true);
+          if (!result.ok) return;
+          const tree = result.parser.parse(variantSample);
+          const comments = walkComments(tree.rootNode);
+          expect(comments.length).toBeGreaterThanOrEqual(1);
+        });
+      }
+    }
   }
 });
 
@@ -134,7 +163,7 @@ describe("AC5: package.json pins exact versions, no tree-sitter-wasms", () => {
   });
 });
 
-describe("AC6: getParser is memoised; dockerfile loads; Lang type includes all 6", () => {
+describe("AC6: getParser is memoised; dockerfile loads; typescript variants", () => {
   it("second call for bash returns cached result (same object reference)", async () => {
     const r1 = await getParser("bash");
     const r2 = await getParser("bash");
@@ -144,6 +173,34 @@ describe("AC6: getParser is memoised; dockerfile loads; Lang type includes all 6
   it("dockerfile grammar loads with ok:true", async () => {
     const r = await getParser("dockerfile");
     expect(r.ok).toBe(true);
+  });
+
+  it("getParser(typescript, ts) and getParser(typescript, jsx) return different parser objects", async () => {
+    const rTs = await getParser("typescript", "ts");
+    const rJsx = await getParser("typescript", "jsx");
+    expect(rTs.ok).toBe(true);
+    expect(rJsx.ok).toBe(true);
+    expect(rTs).not.toBe(rJsx);
+  });
+
+  it("getParser(typescript, ts) is memoised — same object reference on second call", async () => {
+    const r1 = await getParser("typescript", "ts");
+    const r2 = await getParser("typescript", "ts");
+    expect(r1).toBe(r2);
+  });
+
+  it("getParser(typescript, jsx) is memoised — same object reference on second call", async () => {
+    const r1 = await getParser("typescript", "jsx");
+    const r2 = await getParser("typescript", "jsx");
+    expect(r1).toBe(r2);
+  });
+
+  it("getParser with unknown variant throws", async () => {
+    await expect(getParser("typescript", "nonexistent-variant")).rejects.toThrow();
+  });
+
+  it("getParser(typescript) with no variant throws — error names parserForPath", async () => {
+    await expect(getParser("typescript")).rejects.toThrow("parserForPath");
   });
 });
 

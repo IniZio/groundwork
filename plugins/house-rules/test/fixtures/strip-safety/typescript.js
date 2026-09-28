@@ -5,6 +5,8 @@
 /** @jsx h */
 /* eslint-disable no-console */
 // @ts-nocheck
+/// <reference path="./types.d.ts" />
+// biome-ignore lint/style/useConst: synthetic fixture
 
 // This standalone narrative comment will be kept; it is the first 1-row unit that fits the 5 % budget.
 
@@ -55,4 +57,9 @@ function Widget({ label }) {
 }
 
 const _lazy = import(/* webpackChunkName: "x" */ "./x");
+/* @vite-ignore */
+const _lazyVite = import("./lazy");
+/* #__NO_SIDE_EFFECTS__ */
+export const noSideEffects = () => "no-side-effects";
+const _webpackPrefetch = import(/* webpackPrefetch: true */ "./prefetched");
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozfQ==

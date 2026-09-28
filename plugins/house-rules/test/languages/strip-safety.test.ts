@@ -8,6 +8,8 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
+import { TYPESCRIPT_TOOL_MARKERS } from "../../src/hooks/languages/tool-markers.js";
+import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
 const HEADER_RE = /strip-safety: removed=(\d+)/;
@@ -91,8 +93,17 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
   typescript: [
     /^\/\/\s*eslint-(?:disable|enable)/, /^\/\*\s*eslint-(?:disable|enable)/, /^\{?\/\*\s*eslint-disable/,
     /^\/\/\s*@ts-(?:ignore|expect-error|nocheck|check)\b/, /__PURE__/, /^\/\*!/, /@license\b/, /@preserve\b/,
-    /^#!/, /(?:istanbul|c8) ignore/, /prettier-ignore/, /webpackChunkName/, /^\/\/# sourceMappingURL=/,
+    /^#!/, /(?:istanbul|c8) ignore/, /prettier-ignore/, /webpackChunkName/,
+    /webpack(?:Prefetch|Preload|Mode|Ignore|Exports)\b/,
+    /^\/\/[#@]\s*source(?:Mapping)?URL=/,
     /^\/\*\*\s*@jsx(?:ImportSource)?\b/,
+    /^\/\/\s*biome-ignore\b/,
+    /^\/\/\/\s*<reference\b/,
+    /\/\*\s*@vite-ignore\b/,
+    /#__NO_SIDE_EFFECTS__/,
+  ],
+  go: [
+    /^\/\/go:/, /^\/\/\s*\+build\b/, /^\/\/nolint\b/, /^\/\/export\b/,
   ],
 };
 
@@ -200,6 +211,19 @@ for (const f of allFixtures) {
   allResults.set(f.fixturePath, await runChecks(f.fixturePath, f.lang));
 }
 
+// Raw comment texts extracted from typescript fixtures for marker↔MUST_KEEP parity.
+function extractRawComments(src: string): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(/\/\/[^\n]*/g)) out.push(m[0]);
+  for (const m of src.matchAll(/\/\*[\s\S]*?\*\//g)) out.push(m[0]);
+  return out;
+}
+
+const allTsRawComments: string[] = [];
+for (const f of allFixtures.filter((f) => f.lang === "typescript")) {
+  allTsRawComments.push(...extractRawComments(readFileSync(f.fixturePath, "utf8")));
+}
+
 const CHECKS: Array<["a" | "b" | "c" | "d", string]> = [
   ["a", "parse"],
   ["b", "code"],
@@ -284,6 +308,49 @@ describe("strip-safety parity", () => {
   for (const lang of LANGUAGES) {
     it(`parity: language "${lang}" has a strip-safety fixture`, () => {
       expect(fixturesForLang(lang).length, `no strip-safety fixture for language "${lang}"`).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe("strip-safety marker↔MUST_KEEP parity (typescript)", () => {
+  const mustKeepTs = MUST_KEEP.typescript ?? [];
+
+  it("positive control: eslint-disable covered, NONEXISTENT_MARKER_XYZ not covered", () => {
+    const eslintRe = /^eslint-(?:disable|enable)/;
+    const eslintCovered = allTsRawComments.some(
+      (raw) => eslintRe.test(commentInnerText(raw)) && mustKeepTs.some((re) => re.test(raw)),
+    );
+    expect(eslintCovered, "eslint-disable marker must be covered by a MUST_KEEP pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_MARKER_XYZ_FAKE_12345/;
+    const fakeCovered = allTsRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepTs.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of TYPESCRIPT_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allTsRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepTs.some((re) => re.test(raw));
+      });
+      expect(covered, `no typescript fixture comment covers TYPESCRIPT_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepTs) {
+    const matchingRaws = allTsRawComments.filter((raw) => keepRe.test(raw));
+    const toolMarkerRaws = matchingRaws.filter((raw) => {
+      const t = raw.trimStart();
+      return !raw.startsWith("#!") && !t.startsWith("/**") && !t.startsWith("/*!");
+    });
+    if (toolMarkerRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → TYPESCRIPT_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = toolMarkerRaws.some((raw) =>
+        TYPESCRIPT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no TYPESCRIPT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
     });
   }
 });

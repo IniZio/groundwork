@@ -148,6 +148,60 @@ describe("prose negatives — directive false", () => {
   });
 });
 
+describe("chained-marker directives — prose  # marker → directive true", () => {
+
+  const CHAINED_CASES: Array<{ title: string; stmt: string; prose: string; marker: string }> = [
+    { title: "noqa chained",    stmt: "return compute()",       prose: "# see docs",    marker: "# noqa: E501" },
+    { title: "nosec chained",   stmt: "result = query(uid)",    prose: "# db call",     marker: "# nosec" },
+    { title: "type: ignore chained", stmt: "x = cast_val()",   prose: "# unchecked",   marker: "# type: ignore[return-value]" },
+    { title: "pragma: no cover chained", stmt: "def helper():", prose: "# internal",   marker: "# pragma: no cover" },
+    { title: "pylint: chained", stmt: "name = get_id()",       prose: "# api result",  marker: "# pylint: disable=invalid-name" },
+    { title: "pyright: chained", stmt: "obj = fetch()",        prose: "# may be None", marker: "# pyright: ignore[reportOptionalMemberAccess]" },
+  ];
+
+  for (const { title, stmt, prose, marker } of CHAINED_CASES) {
+    const commentText = `${prose}  ${marker}`;
+    const src = `x = 0\n${stmt}  ${commentText}\ny = 1\n`;
+
+    it(`${title} — directive true`, async () => {
+      const cs = await classify(src);
+      const c = cs.find(x => x.text === commentText);
+      expect(c, `comment "${commentText}" not found in classified`).toBeDefined();
+      expect(c!.directive).toBe(true);
+    });
+
+    it(`${title} — survives stripComments`, async () => {
+      const proseLine = "# removable prose line";
+      const fullSrc = src + proseLine + "\n";
+      const r = await comments(fullSrc);
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error(r.reason);
+      const nonExempt = r.comments.filter(c => !c.exempt);
+      const { text: stripped } = stripComments(fullSrc, nonExempt);
+      expect(stripped).toContain(commentText);
+      expect(stripped).not.toContain("removable prose line");
+    });
+  }
+
+  it("prose mentions noqa without chained # → directive false", async () => {
+    // `# we removed the noqa annotation here` — noqa appears in plain prose, not after a `# `
+    const src = markerSrc("# we removed the noqa annotation here");
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# we removed the noqa annotation here");
+    expect(c, `comment not found`).toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+
+  it("fmt: skip chained after prose → directive false (anchored; black does not honour chained fmt:)", async () => {
+    // black only recognises `# fmt: skip` when it IS the comment (not after other comment text)
+    const src = `x = 0\nresult = [1, 2]  # sort order  # fmt: skip\ny = 1\n`;
+    const cs = await classify(src);
+    const c = cs.find(x => x.text === "# sort order  # fmt: skip");
+    expect(c, `comment "# sort order  # fmt: skip" not found`).toBeDefined();
+    expect(c!.directive).toBe(false);
+  });
+});
+
 describe("shebang — kept as directive", () => {
   it("#!/usr/bin/env python3 on line 0 → directive true", async () => {
     const src = "#!/usr/bin/env python3\nx = 1\n";

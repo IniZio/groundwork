@@ -67,4 +67,5 @@ def validate(
     # Extra prose line B to make the group larger and ensure it is removable.
     # Extra prose line C so the count is unambiguous and easy to confirm.
     # Extra prose line D — final line in validate, included for good measure.
+    _ = repr(value)  # normalise repr  # noqa: E501
     return value is not None  # noqa: E714

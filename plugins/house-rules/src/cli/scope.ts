@@ -1,8 +1,8 @@
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { buildContext } from '../engine/context.js';
-import { addedHunks } from '../hooks/lib/work-scope.js';
+import { addedHunks, allLinesHunk } from '../hooks/lib/work-scope.js';
 import type { RuleContext, ScopedFile } from '../engine/types.js';
 import { defaultBase } from './default-base.js';
 
@@ -24,17 +24,43 @@ export interface ResolveScopeOpts {
 
 export class ScopeUsageError extends Error {}
 
-export function buildAllTrackedContext(repoRoot: string, base?: string, paths?: string[]): RuleContext {
+type SpawnFn = (cmd: string, args: string[], opts: { encoding: 'utf8' }) => SpawnSyncReturns<string>;
+
+export function buildAllTrackedContext(
+  repoRoot: string,
+  base?: string,
+  paths?: string[],
+  _spawnFn: SpawnFn = spawnSync,
+): RuleContext {
   const effectiveBase = base ?? EMPTY_TREE;
   const lsArgs = ['-C', repoRoot, 'ls-files'];
   if (paths && paths.length > 0) lsArgs.push('--', ...paths);
-  const result = spawnSync('git', lsArgs, { encoding: 'utf8' });
+  const result = _spawnFn('git', lsArgs, { encoding: 'utf8' });
   const filePaths = result.stdout.split('\n').filter(Boolean);
+
+  if (effectiveBase === EMPTY_TREE) {
+    const files: ScopedFile[] = filePaths.map(relPath => {
+      const absPath = path.join(repoRoot, relPath);
+      let text: string | undefined;
+      try { text = fs.readFileSync(absPath, 'utf8'); } catch { }
+      return {
+        path: relPath,
+        text,
+        lang: undefined,
+        baseText: '',
+        addedHunks: text !== undefined ? allLinesHunk(text) : [],
+        tracked: true,
+        sessionCreated: false,
+      };
+    });
+    return { repoRoot, mode: 'cli', files };
+  }
+
   const files: ScopedFile[] = filePaths.map(relPath => {
     const absPath = path.join(repoRoot, relPath);
     let text: string | undefined;
     try { text = fs.readFileSync(absPath, 'utf8'); } catch { /* file unreadable */ }
-    const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${effectiveBase}:${relPath}`], { encoding: 'utf8' });
+    const showResult = _spawnFn('git', ['-C', repoRoot, 'show', `${effectiveBase}:${relPath}`], { encoding: 'utf8' });
     const baseText = showResult.status === 0 ? showResult.stdout : '';
     return {
       path: relPath,

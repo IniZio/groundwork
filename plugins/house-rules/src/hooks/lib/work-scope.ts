@@ -429,6 +429,13 @@ export function parseDiffHunks(diffText: string): DiffHunk[] {
   return result;
 }
 
+/** Pure helper: given the full text of a newly-added file, return the single DiffHunk that marks every line as added. */
+export function allLinesHunk(content: string): DiffHunk[] {
+  const lines = content.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }];
+}
+
 export function addedHunks(file: string, base: string, transcriptPath?: string): DiffHunk[] | null {
   const dir = path.dirname(file);
 
@@ -457,10 +464,7 @@ export function addedHunks(file: string, base: string, transcriptPath?: string):
     if (!touch) return null;
 
     if (touch.kind === "Write") {
-      const content = readFileSync(file, "utf8");
-      const lines = content.split("\n");
-      if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-      return [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }];
+      return allLinesHunk(readFileSync(file, "utf8"));
     }
 
     if (touch.kind === "Bash") {
@@ -493,10 +497,7 @@ export function addedHunks(file: string, base: string, transcriptPath?: string):
       if (!addedLines) return null;
       return [{ added: addedLines, removed: [], removedBaseLineNos: [] }];
     }
-    const content = readFileSync(file, "utf8");
-    const lines = content.split("\n");
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    return [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }];
+    return allLinesHunk(readFileSync(file, "utf8"));
   }
 
   const diffResult = spawnSync(

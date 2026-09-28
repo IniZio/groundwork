@@ -17,7 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
-| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript and Go: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript and Go | `house-rules check --base <ref>` | TypeScript/JavaScript, Go: stable; other langs: preview |
+| comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | TypeScript/JavaScript, Go, Kotlin, and Swift: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims TypeScript/JavaScript, Go, Kotlin, and Swift | `house-rules check --base <ref>` | TypeScript/JavaScript, Go, Kotlin, Swift: stable; other langs: preview |
 | stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
@@ -71,7 +71,7 @@ A `/* */` block is exempt only if every non-blank inner line is individually exe
 
 ## Lint-tool marker exemptions
 
-Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript/JavaScript (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), and YAML (`yaml-language-server:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
+Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript/JavaScript (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), YAML (`yaml-language-server:`), Kotlin (`noinspection`, `editor-fold`, `language=`, `spotless:off`/`on`, `ktlint-disable`/`enable`), and Swift (`swift-tools-version:`, `swiftlint:disable`/`enable`, `swift-format-ignore`, `swiftformat:disable`/`enable`/`options`/`sort`, `periphery:ignore`, `sourcery:`, `MARK:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
 
 Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the same as dividers, URLs, note markers, spacers, regions, and groundwork rule markers — they are a comment-density policy exemption, not a TypeScript-specific one. Assigning `pragma:` to Python (coverage.py's `# pragma: no cover`) is a deliberate choice beyond ticket 11's list; `// pragma:` in TypeScript is therefore counted.
 
@@ -79,7 +79,7 @@ Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the sa
 
 **comment-density guard** (PreToolUse Write/Edit/MultiEdit) — emits `updatedInput` + `additionalContext`; never emits `permissionDecision` (Claude Code runs its normal permission check on the rewritten input).
 
-**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript and Go before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
+**comment-density gate** (Stop, SubagentStop) — emits `decision: "block"` + `reason`; or `continue: true`; auto-trims TypeScript/JavaScript, Go, Kotlin, and Swift before the block decision. 4-attempt bound: gate tracks consecutive blocks per session and agent in `os.tmpdir()/groundwork-comment-density/`. Attempts 1–3: block naming over-limit files. Attempt 4: allow with a stderr warning. A changed set of violating files resets the counter. SubagentStop and Stop have independent counters (keyed by agent_id vs "main").
 
 TypeScript/JavaScript covers `.ts`, `.mts`, `.cts`, `.tsx`, `.jsx`, `.js`, `.mjs`, `.cjs` — one `typescript` language parsed with two grammars (see Grammar variants below).
 

@@ -71,7 +71,7 @@ A `/* */` block is exempt only if every non-blank inner line is individually exe
 
 ## Lint-tool marker exemptions
 
-Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript/JavaScript (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), YAML (`yaml-language-server:`), Kotlin (`noinspection`, `editor-fold`, `language=`, `spotless:off`/`on`, `ktlint-disable`/`enable`), and Swift (`swift-tools-version:`, `swiftlint:disable`/`enable`, `swift-format-ignore`, `swiftformat:disable`/`enable`/`options`/`sort`, `periphery:ignore`, `sourcery:`, `MARK:`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
+Lint-tool markers and toolchain directives are recognised only in the language that uses them: TypeScript/JavaScript (`eslint-disable`/`enable`, `prettier-ignore`, `biome-ignore`, `/// <reference`), Python (`noqa`, `type: ignore`, `pylint:`, `pragma:`), Bash (`shellcheck`), YAML (`yaml-language-server:`), Kotlin (`noinspection`, `editor-fold`, `language=`, `spotless:off`/`on`, `ktlint-disable`/`enable`), Swift (`swift-tools-version:`, `swiftlint:disable`/`enable`, `swift-format-ignore`, `swiftformat:disable`/`enable`/`options`/`sort`, `periphery:ignore`, `sourcery:`, `MARK:`), and Java (`NOSONAR`, `NOPMD`, `CHECKSTYLE:OFF`/`ON`, `@formatter:off`/`on`, `noinspection`, `$NON-NLS-n$`, `spotless:off`/`on`, `CPD-OFF`/`ON`, `deepcode ignore`, `nosemgrep`, `falls through`). A marker from another toolchain — for example `// noqa` in Go or Rust, or `// eslint-disable-next-line` in Rust — is ordinary prose and counts toward density. In-language markers are directive comments and are never removed by the autofix.
 
 Annotation tags (`@…`, matching `/^@\w/`) are exempt in every language, the same as dividers, URLs, note markers, spacers, regions, and groundwork rule markers — they are a comment-density policy exemption, not a TypeScript-specific one. Assigning `pragma:` to Python (coverage.py's `# pragma: no cover`) is a deliberate choice beyond ticket 11's list; `// pragma:` in TypeScript is therefore counted.
 
@@ -104,6 +104,7 @@ When the gate auto-trims a file, the next Read/Edit/Write of that file emits a o
 | toml | `.toml` | vendored from `@tree-sitter-grammars/tree-sitter-toml` |
 | kotlin | `.kt`, `.kts` | vendored from `@tree-sitter-grammars/tree-sitter-kotlin` |
 | swift | `.swift` | built from source by `scripts/build-swift-grammar.sh` |
+| java | `.java` | vendored from `tree-sitter-java` |
 
 Files in other languages are not measured.
 <!-- languages:end -->

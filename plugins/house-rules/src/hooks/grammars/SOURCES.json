@@ -82,5 +82,12 @@
     "file": "tree-sitter-kotlin.wasm",
     "sha256": "7009d69453bc8735e438b2818a633efb21c88f99782769abba60dffedfab73f7",
     "bytes": 3441042
+  },
+  "tree-sitter-java.wasm": {
+    "package": "tree-sitter-java",
+    "version": "0.23.5",
+    "file": "tree-sitter-java.wasm",
+    "sha256": "4fdeac4ca6ca089f06c6f7e562abcac1733cd465728cc7031ebb73c2019122c4",
+    "bytes": 414641
   }
 }

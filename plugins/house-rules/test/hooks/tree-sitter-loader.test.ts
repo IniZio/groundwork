@@ -22,6 +22,7 @@ const LANG_SAMPLES: Record<string, string> = {
   toml: "# toml comment\n[package]\nname = \"test\"\n",
   kotlin: "// kotlin comment\nfun main() {}\n",
   swift: "// swift comment\nlet x = 1\n",
+  java: "// java comment\nclass A {}\n",
 };
 
 // Override samples per grammar variant id

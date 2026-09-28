@@ -50,6 +50,20 @@ export const SWIFT_TOOL_MARKERS: readonly RegExp[] = [
   /^MARK:/,
 ];
 
+export const JAVA_TOOL_MARKERS: readonly RegExp[] = [
+  /^NOSONAR\b/,
+  /^NOPMD\b/,
+  /^CHECKSTYLE(?::(?:OFF|ON)\b|\.(?:OFF|ON):)/,
+  /^@formatter:(?:off|on)\b/,
+  /^noinspection\b/,
+  /^\$NON-NLS-\d+\$/,
+  /^spotless:(?:off|on)\b/,
+  /^CPD-(?:OFF|ON)\b/,
+  /^(?:file )?deepcode ignore\b/,
+  /^nosemgrep\b/,
+  /^falls?[ -]?thr(?:u|ough)\b/,
+];
+
 export function withToolMarkers(
   markers: readonly RegExp[],
   base: CommentClassifier = defaultClassifyComments,

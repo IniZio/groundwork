@@ -47,7 +47,11 @@ export const PEP263_CODING_RE = /coding[:=]\s*[-\w.]+/;
 
 const _pythonBase = withToolMarkers(PYTHON_TOOL_MARKERS);
 
-export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
+export const BASH_TOOL_MARKERS: readonly RegExp[] = [
+  /^shellcheck\b/,
+  /^(?:vim?|ex):/,
+  /^-\*-.*-\*-$/,
+];
 
 export const YAML_TOOL_MARKERS: readonly RegExp[] = [/^yaml-language-server:/];
 

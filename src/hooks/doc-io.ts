@@ -6,9 +6,9 @@
  * Doc-class table:
  *   root-doc    {CLAUDE,AGENTS,README}.md at repo root   budget 12 000
  *   skill       skills/ ** /SKILL.md                       budget  6 000
- *   plan        .groundwork/plans/ ** /*.md                budget  3 000
- *   rfc-index   .groundwork/rfcs/ ** /rfc.md               budget 12 000
- *   rfc-section .groundwork/rfcs/ ** /sections/ ** /*.md    budget  6 000
+ *   plan        .groundwork/work/<slug>/plan.md            budget  3 000
+ *   rfc-index   .groundwork/work/<slug>/rfcs/<name>/rfc.md budget 12 000
+ *   rfc-section .groundwork/work/<slug>/rfcs/<name>/sections/ ** /*.md  budget 6 000
  *   narrative   doc/*.md  (top-level only)                budget  2 000
  */
 
@@ -32,17 +32,17 @@ const CLASSES: Array<DocClass & { match: Matcher }> = [
   {
     name: "plan",
     budget: 3000,
-    match: (rel) => /^\.groundwork[/\\]plans[/\\]/.test(rel) && rel.endsWith(".md"),
+    match: (rel) => /^\.groundwork[/\\]work[/\\][^/\\]+[/\\]plan\.md$/.test(rel),
   },
   {
     name: "rfc-index",
     budget: 12000,
-    match: (rel) => /^\.groundwork[/\\]rfcs[/\\][^/\\]+[/\\]rfc\.md$/.test(rel),
+    match: (rel) => /^\.groundwork[/\\]work[/\\][^/\\]+[/\\]rfcs[/\\][^/\\]+[/\\]rfc\.md$/.test(rel),
   },
   {
     name: "rfc-section",
     budget: 6000,
-    match: (rel) => /^\.groundwork[/\\]rfcs[/\\][^/\\]+[/\\]sections[/\\].+\.md$/.test(rel),
+    match: (rel) => /^\.groundwork[/\\]work[/\\][^/\\]+[/\\]rfcs[/\\][^/\\]+[/\\]sections[/\\].+\.md$/.test(rel),
   },
   {
     name: "narrative",

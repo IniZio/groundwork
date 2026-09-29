@@ -25,7 +25,7 @@ let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(tmpdir(), "doc-read-guard-"));
-  mkdirSync(path.join(tmpDir, ".groundwork", "plans"), { recursive: true });
+  mkdirSync(path.join(tmpDir, ".groundwork", "work"), { recursive: true });
   // NOTE: no process.chdir() — rootDir passed explicitly to check()
 });
 
@@ -33,8 +33,11 @@ afterEach(() => {
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
+/** Plan doc lives at .groundwork/work/<slug>/plan.md; the file name is fixed, so `name` picks the slug. */
 function prdPath(name: string): string {
-  return path.join(tmpDir, ".groundwork", "plans", name);
+  const dir = path.join(tmpDir, ".groundwork", "work", name.replace(/\.md$/, ""));
+  mkdirSync(dir, { recursive: true });
+  return path.join(dir, "plan.md");
 }
 
 /** plan budget = 3000 tokens. 11000 ASCII bytes ≈ 3143 tokens — over budget. */
@@ -94,10 +97,19 @@ describe("doc-read-guard — allow", () => {
     expect(decision(r)).not.toBe("deny");
   });
 
-  it("ALLOW: Read of unclassified file (outside plan dir)", () => {
+  it("ALLOW: Read of unclassified file (outside work/<slug>/plan.md)", () => {
     const fp = path.join(tmpDir, "random.md");
     writeFileSync(fp, bigContent());
     const r = check({ tool_name: "Read", tool_input: { file_path: fp } }, tmpDir);
+    expect(decision(r)).not.toBe("deny");
+  });
+
+  it("ALLOW: AC2 legacy .groundwork/plans/p.md over-budget is unclassified, not denied", () => {
+    const dir = path.join(tmpDir, ".groundwork", "plans");
+    mkdirSync(dir, { recursive: true });
+    const fp = path.join(dir, "p.md");
+    writeFileSync(fp, bigContent());
+    const r = check({ tool_name: "Read", tool_input: { file_path: fp }, session_id: sid() }, tmpDir);
     expect(decision(r)).not.toBe("deny");
   });
 

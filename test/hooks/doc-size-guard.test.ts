@@ -13,24 +13,30 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { check } from "../../src/hooks/doc-size-guard.js";
+import { classifyDoc, DOC_CLASSES } from "../../src/hooks/doc-io.js";
+import { WORKING_TYPES, resolveDocPath } from "../../src/hooks/doc-registry.js";
+
+const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
 
 let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(tmpdir(), "doc-size-guard-"));
-  mkdirSync(path.join(tmpDir, ".groundwork", "plans"), { recursive: true });
+  mkdirSync(path.join(tmpDir, ".groundwork", "work", "s"), { recursive: true });
 });
 
 afterEach(() => {
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-function prdPath(name: string): string {
-  return path.join(tmpDir, ".groundwork", "plans", name);
+// The plan class matches only work/<slug>/plan.md, so every fixture is that file (tmpDir is fresh per test).
+function prdPath(_name: string): string {
+  return path.join(tmpDir, ".groundwork", "work", "s", "plan.md");
 }
 
 function bigContent(): string { return "x".repeat(11000); }
@@ -174,6 +180,88 @@ describe("doc-size-guard — fail-open (AC 6)", () => {
     } finally {
       if (orig === undefined) delete process.env.CLAUDE_CODE_ENTRYPOINT;
       else process.env.CLAUDE_CODE_ENTRYPOINT = orig;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-unit layout: AC1-AC4
+// ---------------------------------------------------------------------------
+
+describe("doc-size-guard — per-unit layout", () => {
+  const cls = (rel: string) => classifyDoc(path.join(tmpDir, rel), tmpDir);
+
+  it("AC1: work/<slug>/plan.md is plan/3000; rfc index and section keep their budgets", () => {
+    expect(cls(".groundwork/work/s/plan.md")).toEqual({ name: "plan", budget: 3000 });
+    expect(cls(".groundwork/work/s/rfcs/r/rfc.md")).toEqual({ name: "rfc-index", budget: 12000 });
+    expect(cls(".groundwork/work/s/rfcs/r/sections/a/b.md")).toEqual({ name: "rfc-section", budget: 6000 });
+  });
+
+  it("AC2: legacy plans/ and rfcs/ layouts classify as null", () => {
+    expect(cls(".groundwork/plans/p.md")).toBeNull();
+    expect(cls(".groundwork/rfcs/r/rfc.md")).toBeNull();
+    expect(cls(".groundwork/rfcs/r/sections/a.md")).toBeNull();
+  });
+
+  describe("AC3: deployed hook command", () => {
+    const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+    const cmds: string[] = [];
+    const walk = (n: unknown): void => {
+      if (typeof n === "string") { if (n.includes("doc-size-guard.ts")) cmds.push(n); }
+      else if (n && typeof n === "object") Object.values(n).forEach(walk);
+    };
+    walk(manifest);
+
+    const run = (content: string) => {
+      const fp = path.join(tmpDir, ".groundwork", "work", "s", "plan.md");
+      writeFileSync(fp, content);
+      const command = cmds[0]!.replaceAll("${CLAUDE_PLUGIN_ROOT}", REPO_ROOT);
+      const r = spawnSync(command, {
+        shell: true,
+        cwd: tmpDir,
+        input: JSON.stringify({ tool_name: "Write", tool_input: { file_path: fp } }),
+        env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, CLAUDE_CODE_ENTRYPOINT: "cli" },
+        encoding: "utf8",
+      });
+      return { r, fp };
+    };
+
+    it("AC3: plugin.json registers exactly the documented command", () => {
+      expect(cmds).toEqual(["bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-size-guard.ts"]);
+    });
+
+    it("AC3: over-budget work plan prints advisory on stdout, exit 0", () => {
+      const { r, fp } = run(bigContent());
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("doc-size-guard: violation");
+      expect(r.stdout).toContain(fp);
+      expect(r.stdout).toContain("class:   plan");
+    });
+
+    it("AC3: under-budget work plan prints nothing, exit 0", () => {
+      const { r } = run("# Doc\n\n## Section\n\nShort.\n");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe("");
+    });
+  });
+
+  it("AC4: working-tier classes match the registry's generated path or are explicitly exempt", () => {
+    const EXEMPT: Record<string, string> = {
+      "rfc-index": "registry has no rfc type; rfcs are a doc-io-only class",
+      "rfc-section": "registry has no rfc type; rfcs are a doc-io-only class",
+    };
+    const REGISTRY: Record<string, keyof typeof WORKING_TYPES> = { plan: "plan" };
+
+    const working = DOC_CLASSES.map((c) => c.name).filter((n) => /^(plan|rfc)/.test(n));
+    expect(working.length).toBeGreaterThan(0);
+    for (const name of working) {
+      expect(name in REGISTRY || name in EXEMPT).toBe(true);
+      expect(name in REGISTRY && name in EXEMPT).toBe(false);
+    }
+    for (const [name, id] of Object.entries(REGISTRY)) {
+      const rel = resolveDocPath(id, { slug: "some-slug" });
+      expect(rel).toContain("some-slug");
+      expect(classifyDoc(path.join(tmpDir, rel), tmpDir)?.name).toBe(name);
     }
   });
 });

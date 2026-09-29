@@ -6,6 +6,7 @@ import { loadRules } from '../engine/registry.js';
 import { runRules, coverageReport, formatCoverage, grammarWarnings } from '../engine/run.js';
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
 import { runHousekeep, fixFindings } from './housekeep.js';
+import { runConfig } from './config.js';
 import { resolveScope, ScopeUsageError } from './scope.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
 import {
@@ -57,6 +58,7 @@ function printUsage(toStdout = false): void {
       '  house-rules check [--all] [--base <ref>] [--fix] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules baseline [--all] [--base <ref>] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules config [--format <text|json>] [--repo <dir>]\n' +
       '\n' +
       'Flags:\n' +
       '  --all               scan all tracked files (mutually exclusive with --base/--since)\n' +
@@ -322,6 +324,8 @@ try {
       });
       break;
     }
+    case 'config':
+      process.exit(runConfig({ repoRoot: getRepoRoot(parsed.repo), format: parsed.format }));
     default:
       printUsage();
       process.exit(2);

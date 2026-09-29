@@ -118,6 +118,23 @@ describe('comment-density language-hooks positive controls (entry present)', () 
   it('canFixPath x.ts returns true when entry present', () => {
     expect(rule.canFixPath!('x.ts')).toBe(true);
   });
+
+  it('fixEntryFor sql is stable and safe when entry present', () => {
+    expect(fixEntryFor('sql')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath x.sql returns true when entry present', () => {
+    expect(rule.canFixPath!('x.sql')).toBe(true);
+  });
+
+  it('fixEntryFor make is stable and safe when entry present', () => {
+    expect(fixEntryFor('make')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath Makefile and x.mk return true when entry present', () => {
+    expect(rule.canFixPath!('Makefile')).toBe(true);
+    expect(rule.canFixPath!('x.mk')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,9 @@
 # Makefile for a small C project — strip-safety fixture.
 # Demonstrates variables, phony targets, pattern rules, and recipe comments.
 
+# groundwork-rule: no-console-log
+# groundwork-rule: no-ts-any
+
 # Project identity
 PROJECT = myapp
 VERSION = 1.0.0
@@ -81,3 +84,10 @@ help:
 
 # Variable whose value happens to contain a hash character — not a comment.
 CHANGELOG_HEADING = "## v$(VERSION)"
+
+HASH_CHAR = \#
+
+define BUILD_STEP
+# this hash line is body text handed to the shell, not a Makefile comment
+echo building $(1) # shell comment inside the define body
+endef

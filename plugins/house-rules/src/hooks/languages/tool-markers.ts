@@ -64,6 +64,13 @@ export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
   /^ktlint-(?:disable|enable)\b/,
 ];
 
+export const SQL_TOOL_MARKERS: readonly RegExp[] = [
+  /^migrate:(?:up|down)\b/,
+  /^\+goose\s+(?:Up|Down|StatementBegin|StatementEnd|NO TRANSACTION|ENVSUB\s+(?:ON|OFF))\b/i,
+  /^name:\s*\w+\s+:(?:one|many|exec|execrows|execresult|execlastid|copyfrom|batchexec|batchone|batchmany)\b/,
+  /^\+(?!goose\b)\s*\w/,
+];
+
 export const SWIFT_TOOL_MARKERS: readonly RegExp[] = [
   /^swift-tools-version\s*:/i,
   /^swiftlint:(?:disable|enable)\b/,
@@ -92,6 +99,13 @@ export const JAVA_TOOL_MARKERS: readonly RegExp[] = [
 export const RUST_TOOL_MARKERS: readonly RegExp[] = [
   /^SAFETY:/i,
   /^@generated\b/,
+];
+
+export const MAKE_TOOL_MARKERS: readonly RegExp[] = [
+  /^groundwork-rule:/,
+  /^-\*-.*-\*-$/,
+  /^vim?:/,
+];
 ];
 
 export function withToolMarkers(

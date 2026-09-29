@@ -362,6 +362,8 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
   python: { stability: "stable" },
   yaml: { stability: "stable" },
   toml: { stability: "stable" },
+  make: { stability: "stable" },
+  sql: { stability: "stable" },
 };
 
 /** Look up the hook entry at call time (never cached). */

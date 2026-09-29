@@ -7,6 +7,7 @@ import { classifyTomlComments } from "./toml.js";
 import { classifyKotlinComments } from "./kotlin.js";
 import { classifySwiftComments } from "./swift.js";
 import { classifyJavaComments } from "./java.js";
+import { classifyMakeComments } from "./make.js";
 import { isSqlCommentNodeType } from "./sql.js";
 import {
   withToolMarkers,
@@ -16,6 +17,8 @@ import {
   YAML_TOOL_MARKERS,
   KOTLIN_TOOL_MARKERS,
   JAVA_TOOL_MARKERS,
+  MAKE_TOOL_MARKERS,
+  SQL_TOOL_MARKERS,
 } from "./tool-markers.js";
 
 export interface LanguageDetection {
@@ -166,6 +169,7 @@ const sql = {
     build: "scripts/build-sql-grammar.sh",
   },
   isCommentNodeType: isSqlCommentNodeType,
+  classifyComments: withToolMarkers(SQL_TOOL_MARKERS),
 } satisfies LanguageAdapter;
 
 const make = {
@@ -178,6 +182,7 @@ const make = {
     wasm: "tree-sitter-make.wasm",
     vendor: { package: "tree-sitter-make", file: "tree-sitter-make.wasm" },
   },
+  classifyComments: withToolMarkers(MAKE_TOOL_MARKERS, classifyMakeComments),
 } satisfies LanguageAdapter;
 
 const toml = {

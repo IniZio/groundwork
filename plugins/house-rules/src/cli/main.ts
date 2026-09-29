@@ -7,6 +7,7 @@ import { runRules, coverageReport, formatCoverage, grammarWarnings } from '../en
 import { readBaseline, writeBaseline, subtractBaseline } from '../engine/baseline.js';
 import { runHousekeep, fixFindings } from './housekeep.js';
 import { runConfig } from './config.js';
+import { runStructure, runWhere, runNew } from './structure.js';
 import { resolveScope, ScopeUsageError } from './scope.js';
 import { BUILTIN_POLICY } from '../engine/policy.js';
 import {
@@ -59,6 +60,9 @@ function printUsage(toStdout = false): void {
       '  house-rules baseline [--all] [--base <ref>] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules config [--format <text|json>] [--repo <dir>]\n' +
+      '  house-rules structure [--repo <dir>]\n' +
+      '  house-rules where <type|free text...> [--repo <dir>]\n' +
+      '  house-rules new <type> key=value... [--repo <dir>]\n' +
       '\n' +
       'Flags:\n' +
       '  --all               scan all tracked files (mutually exclusive with --base/--since)\n' +
@@ -326,6 +330,22 @@ try {
     }
     case 'config':
       process.exit(runConfig({ repoRoot: getRepoRoot(parsed.repo), format: parsed.format }));
+    case 'structure':
+      process.exit(runStructure({ repoRoot: getRepoRoot(parsed.repo) }));
+    case 'where':
+      if (!parsed.pathspec) throw new UsageError('where needs a type or free text');
+      process.exit(runWhere({ repoRoot: getRepoRoot(parsed.repo), query: parsed.pathspec.join(' ') }));
+    case 'new': {
+      const [type, ...kv] = parsed.pathspec ?? [];
+      if (!type) throw new UsageError('new needs a type');
+      const params: Record<string, string> = {};
+      for (const a of kv) {
+        const eq = a.indexOf('=');
+        if (eq < 1) throw new UsageError(`expected key=value, got: ${a}`);
+        params[a.slice(0, eq)] = a.slice(eq + 1);
+      }
+      process.exit(runNew({ repoRoot: getRepoRoot(parsed.repo), type, params }));
+    }
     default:
       printUsage();
       process.exit(2);

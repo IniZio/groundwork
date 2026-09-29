@@ -405,3 +405,38 @@ describe('AC6: diff-mode pathspec filters by file identity', () => {
     expect(r.stdout).not.toContain('src/b.ts');
   });
 });
+
+describe('placement commands: help and exit codes', () => {
+  const structureRepo = () => {
+    const repoDir = makeRepo();
+    fs.writeFileSync(
+      path.join(repoDir, '.house-rules.json'),
+      JSON.stringify({ rules: { 'artifact-structure': ['error', {
+        types: { note: { tier: 'working', generates: 'notes/{name:kebab}.md', template: '# {{title}}\n' } },
+      }] } }),
+    );
+    return repoDir;
+  };
+
+  it('--help lists structure, where and new', () => {
+    const r = runBIN(['--help'], makeRepo());
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('house-rules structure');
+    expect(r.stdout).toContain('house-rules where');
+    expect(r.stdout).toContain('house-rules new');
+  });
+
+  it('structure exits 0, where unknown exits 1, new success exits 0', () => {
+    const repoDir = structureRepo();
+    expect(runBIN(['structure'], repoDir).status).toBe(0);
+    expect(runBIN(['where', 'nosuchtype'], repoDir).status).toBe(1);
+    expect(runBIN(['new', 'note', 'name=Hi'], repoDir).status).toBe(0);
+    expect(runBIN(['new', 'note', 'name=Hi'], repoDir).status).toBe(1);
+  });
+
+  it('where and new without arguments exit 2 (usage)', () => {
+    const repoDir = structureRepo();
+    expect(runBIN(['where'], repoDir).status).toBe(2);
+    expect(runBIN(['new'], repoDir).status).toBe(2);
+  });
+});

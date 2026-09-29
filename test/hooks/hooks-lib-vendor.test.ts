@@ -39,7 +39,7 @@ const CONFIG_SOURCE_DIR = join(ROOT, 'plugins/house-rules/src/config')
 const VENDORED: Array<[string, string]> = [
   ['hooks/lib/house-rules-lint.mjs', 'plugins/house-rules/rules/commit-message/lint.mjs'],
   ['hooks/lib/house-rules-lint.d.mts', 'plugins/house-rules/rules/commit-message/lint.d.mts'],
-  ...['schema', 'detect', 'resolve', 'manifest'].flatMap((n): Array<[string, string]> =>
+  ...['schema', 'detect', 'resolve', 'manifest', 'structure'].flatMap((n): Array<[string, string]> =>
     ['mjs', 'd.mts'].map((ext): [string, string] => [
       `hooks/lib/house-rules-config/${n}.${ext}`,
       `plugins/house-rules/src/config/${n}.${ext}`,

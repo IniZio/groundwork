@@ -21,7 +21,7 @@ groundwork is a Claude Code plugin. It installs alongside mattpocock/skills (a p
 Two stores only:
 
 1. **Repository itself** — conventions in `.gitmessage`, `.github/pull_request_template.md`, `Makefile`, handbook
-2. **SQLite work store** — slices, decisions, events, charter in one `.groundwork/work.db` file (gitignored)
+2. **SQLite work store** — slices, decisions, events, charter in one `.groundwork/work.db` file (the repo's `.gitignore` ignores `*.db`; `$GW init` also adds `.groundwork/` to the clone's `.git/info/exclude` and never edits `.gitignore`)
 
 ## Install
 
@@ -41,7 +41,7 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 
 - **Intent routing** — classifies requests and fans out to the right agent type
 - **Work store + stop-gate** — SQLite slice/decision/event store with a stop-gate that blocks when work is open
-- **Enforcement hooks** — five hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate); comment-density and stray-artifact enforcement is provided by the `house-rules` plugin dependency (auto-installed)
+- **Enforcement hooks** — five hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate); comment-density and document-placement (`artifact-structure`) enforcement is provided by the `house-rules` plugin dependency (auto-installed)
 - **Convention adaptation** — DETECT → CONFIRM → WRITE to per-repo convention files
 - **Advisor gate** — evidence-graded APPROVE/CORRECTION/STOP verdicts before completion
 - **Session continuity** — SessionStart hook restores context across sessions
@@ -50,7 +50,7 @@ Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `cl
 
 **mattpocock/skills** is installed automatically as a dependency. It provides capabilities groundwork does not reinvent: arch-review, prototype, tdd, code-review (D-11 reuse-first). See `doc/collision-policy.md` for the skill-name collision policy.
 
-**house-rules** is installed automatically as a dependency (requires Claude Code v2.1.193+). It provides comment-density enforcement (5/100 net-new comment cap, per-edit guard and Stop/SubagentStop gate) and stray-artifact prevention. On older Claude Code versions enforcement is silently lost; this is accepted and documented.
+**house-rules** is installed automatically as a dependency (requires Claude Code v2.1.193+). It provides comment-density enforcement (5/100 net-new comment cap, per-edit guard and Stop/SubagentStop gate) and document-placement enforcement (`artifact-structure`, formerly `stray-artifacts`). Work documents live under `.groundwork/work/<slug>/`; `$GW archive`, `$GW migrate` and `$GW recipe` manage them. On older Claude Code versions enforcement is silently lost; this is accepted and documented.
 
 ## Conventions layer
 

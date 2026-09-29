@@ -28,7 +28,7 @@ All paths are relative to the target repo root:
 - `<handbook_path>/**` (when `--handbook <path>` is passed to `apply`; the handbook may be outside the repo, e.g. a sibling clone)
 - `CLAUDE.md` and `.claude/rules/*` — **last resort only**, when `fallback: true` on the finding (D-17)
 
-Writing to `.groundwork.db` or `.groundwork/` via apply is always FORBIDDEN. The `.groundwork/` directory holds only D-4 run artifacts, never convention rules.
+Writing to `.groundwork.db` or `.groundwork/` via apply is always FORBIDDEN. `.groundwork/` is the working tier: D-4 run artifacts, the store, and per-unit documents under `.groundwork/work/<slug>/`. It never holds convention rules. `$GW init` adds `.groundwork/` to `.git/info/exclude`, not to `.gitignore`.
 
 ## Convention source of truth
 

@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as local markdown files under `.scratch/<feature>/`. See `doc/agents/issue-tracker.md`.
+Issues live as local markdown files under `.groundwork/work/<slug>/`. See `doc/agents/issue-tracker.md`.
 
 ### Triage labels
 

@@ -23,7 +23,7 @@ bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"ra
 - The token comes from `bun src/cli/main.ts token`. Only the main session may run it; the `store-write-guard` hook denies subagents. A subagent that resolves a decision must hand the text back to the main session to record.
 - After appending, run `bun src/cli/main.ts compile` and confirm the decision appears. A successful append alone does not prove the decision is visible.
 
-Decisions live in `.groundwork/work.db`, which is gitignored, so they are durable only on this machine.
+Decisions live in `.groundwork/work.db`. `*.db` is ignored via `.gitignore`, so they are durable only on this machine.
 
 ## File structure
 
@@ -31,7 +31,8 @@ Decisions live in `.groundwork/work.db`, which is gitignored, so they are durabl
 /
 ├── CONTEXT.md                ← glossary (committed)
 ├── doc/                      ← only committed doc root; never create docs/
-├── .groundwork/work.db       ← DECISION events (gitignored)
+├── .groundwork/              ← working tier, excluded per clone by `gw init` via .git/info/exclude
+│   └── work.db               ← DECISION events (`*.db` ignored via .gitignore)
 └── src/
 ```
 

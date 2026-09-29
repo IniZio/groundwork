@@ -15,6 +15,7 @@ The write token and gate-seal key live in `~/.config/groundwork/repos/<hash>/` (
 ### `gw init [--objective TEXT]`
 Creates the work store and prints the write token **once** (first run only). Idempotent on re-run — prints `already initialized` without revealing the token.
 If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
+Also adds `.groundwork/` to the repository's `.git/info/exclude` so the working tier stays out of git. `gw init` never touches `.gitignore`. Outside a git repository it prints a note and excludes nothing.
 
 ### `gw token`
 Prints the current write token for the store. Use this on session resume — the main session only; subagents are denied this command by the `store-write-guard` hook.
@@ -66,6 +67,25 @@ Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate ve
 ### `gw compile [--json]`
 Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.
 AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: slice-id, ...` rows (sorted). If no slice has `covers_ac` set, prints `ac coverage: none`. The `--json` output includes an `ac_coverage` object mapping each AC id to the list of slice ids that cover it.
+Idle units line: `idle units (≥14d): slug (Nd), ...` lists each unit under `.groundwork/work/` whose newest file change is 14 or more days old, or `idle units: none`. The `--json` output includes an `idle_units` array of `{slug, idle_days}`.
+
+### `gw archive <slug> --token T`
+Moves `.groundwork/work/<slug>` to `.groundwork/archive/<yyyy-mm>/<slug>`, drops its `evidence/` directory, and marks the motive complete. Nothing changes if a check fails (exit 1). Checks:
+- `motive.md` must have a `created: YYYY-MM-DD` date.
+- If the unit has a `spec.md`, its frontmatter must have `folds_into:`. The named living spec must have a git commit after the `created` date, or a staged change. To skip this check, set `folds_into: none` and add a `reason:`; `folds_into: none` without `reason:` is refused.
+- The archive target must not already exist.
+
+### `gw migrate [--apply --token T]`
+Plans the move of older layouts into the current one. Default is a dry run that prints one `<from> → <to>` line per move and changes nothing. `--apply` performs the moves and requires `--token`.
+- `.groundwork/motives/<slug>` goes to `work/<slug>`, or to `archive/<yyyy-mm>/<slug>` when its `status:` is complete, completed, archived, or done. A motive with no `status:` is flagged `[unclassified]`. A missing `created:` date is inferred from file times, flagged `[created inferred]`, and written into `motive.md` on apply.
+- `.scratch/<feature>` directories go to `work/<feature>`.
+- Loose v1 directories (`handoffs`, `research`, `journal`, `compiled`, `gates`, `runs`, `specs`, `learnings`, `archive/motives`) and `pause-state*.md` files go to `archive/legacy/`.
+- A move whose destination exists is skipped with `[collision: skipped]`, and the command exits 1.
+- Symlinks are never moved. Symlinks and unrecognised entries under `.groundwork/` are listed as `left in place: <name>`.
+- Prints `nothing to migrate` when no move is planned.
+
+### `gw recipe`
+Prints the working-tier `artifact-structure` rule as JSON for a host's `.house-rules.json`. It only prints; it does not write any file. The printed `govern` list covers only `.groundwork/**/*.md`, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own product types. The `forbidden` patterns apply repo-wide.
 
 ## Multi-motive design (T11)
 

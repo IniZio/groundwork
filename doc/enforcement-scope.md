@@ -27,7 +27,19 @@ For PreToolUse and PostToolUse hooks, `hookSpecificOutput.hookEventName` must eq
 
 **new-code-gate has no consecutive-block bound**: if new-code-gate keeps blocking (e.g. a rule violation cannot be fixed in the session), stop-gate's 4-attempt release does not bound the session — new-code-gate will continue to fire after stop-gate releases.
 
-Comment-density and stray-artifact enforcement is provided by the `house-rules` plugin dependency; see `plugins/house-rules/README.md`.
+Comment-density and document-placement enforcement is provided by the `house-rules` plugin dependency; see `plugins/house-rules/README.md`.
+
+## Document placement
+
+The `house-rules` `artifact-structure` rule (formerly `stray-artifacts`, still accepted as an alias) enforces where documents go from a doc-type manifest in `.house-rules.json`. `$GW recipe` prints the working-tier block, which places units under `.groundwork/work/<slug>/`. Without `types` or `forbidden` in the manifest, placement is not enforced and only the legacy synonym-directory and root-scratch checks run.
+
+- **Edit time** (PreToolUse on Write, Edit and MultiEdit, for new files only): a path that matches a `forbidden` pattern, or a governed path that matches no type, is denied and the message names the correct location. A path that matches a type passes, because a fresh write is a draft.
+- **Stop and SubagentStop**: path, frontmatter and heading checks run on new files, including files created through Bash.
+- **Ignore semantics**: `forbidden` patterns and type-matched paths are enforced even when the file is git-ignored or excluded, so the `.groundwork/` exclusion that `$GW init` writes to `.git/info/exclude` does not exempt working-tier files. Only a governed path that matches no type is exempt when it is ignored.
+- **Commit messages**: commit-lint rejects motive slugs and a fixed list of process vocabulary ("gate cycle", "dogfood cleanup", "advisor APPROVE", slice ids such as T4, decision ids such as D-7) on any line of a commit message. It also rejects violations of the commit-message preset.
+- **Session start**: the "Where docs go" table lists the doc types, from the manifest or, when none is configured, from groundwork's built-in registry marked as not enforced.
+
+Layer 2 (hints injected when a skill loads) is not shipped: user-typed skills bypass PreToolUse, so a hook cannot cover them reliably.
 
 ## Deployed-path evidence
 

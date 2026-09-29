@@ -88,6 +88,12 @@ export const JAVA_TOOL_MARKERS: readonly RegExp[] = [
   /^falls?[ -]?thr(?:u|ough)\b/,
 ];
 
+/** SAFETY: justifications are required by clippy::undocumented_unsafe_blocks; @generated marks tool output. */
+export const RUST_TOOL_MARKERS: readonly RegExp[] = [
+  /^SAFETY:/i,
+  /^@generated\b/,
+];
+
 export function withToolMarkers(
   markers: readonly RegExp[],
   base: CommentClassifier = defaultClassifyComments,

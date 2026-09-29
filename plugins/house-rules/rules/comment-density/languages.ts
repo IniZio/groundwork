@@ -358,6 +358,7 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
   },
   kotlin: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   java: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
+  rust: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   python: { stability: "stable" },
   yaml: { stability: "stable" },
   toml: { stability: "stable" },

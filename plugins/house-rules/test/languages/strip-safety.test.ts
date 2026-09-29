@@ -8,7 +8,7 @@ import { getParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 import { autoFix, findComments, collectCodeText } from "../../src/hooks/lib/comment-density.js";
 import { parserForPath } from "../../src/hooks/languages/parse.js";
 import { COMMENT_DENSITY_LANGUAGE_HOOKS, fixEntryFor } from "../../rules/comment-density/languages.js";
-import { TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS, PYTHON_TOOL_MARKERS, PEP263_CODING_RE } from "../../src/hooks/languages/tool-markers.js";
+import { RUST_TOOL_MARKERS, TYPESCRIPT_TOOL_MARKERS, KOTLIN_TOOL_MARKERS, SWIFT_TOOL_MARKERS, JAVA_TOOL_MARKERS, PYTHON_TOOL_MARKERS, PEP263_CODING_RE } from "../../src/hooks/languages/tool-markers.js";
 import { commentInnerText } from "../../src/hooks/languages/comments.js";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures/strip-safety");
@@ -122,6 +122,14 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
     /^\/\/\s*sourcery:/,
     /^\/\/\//,
     /^\/\*\*/,
+  ],
+  rust: [
+    /^\/\/\/(?!\/)/,
+    /^\/\/!/,
+    /^\/\*\*(?![*\/])/,
+    /^\/\*!/,
+    /^\/\/\s*SAFETY:/i,
+    /^\/\/\s*@generated\b/,
   ],
   java: [
     /^\/\/\s*NOSONAR\b/,
@@ -495,6 +503,90 @@ describe("strip-safety marker↔MUST_KEEP parity (swift)", () => {
         SWIFT_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
       );
       expect(covered, `MUST_KEEP ${keepRe}: no SWIFT_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+const allRustRawComments: string[] = [];
+for (const f of allFixtures.filter((f) => f.lang === "rust")) {
+  allRustRawComments.push(...extractRawComments(readFileSync(f.fixturePath, "utf8")));
+}
+
+describe("strip-safety marker↔MUST_KEEP parity (rust)", () => {
+  const mustKeepRust = MUST_KEEP.rust ?? [];
+
+  it("rust fixture list is non-empty", () => {
+    expect(allRustRawComments.length, "rust fixture must contain at least one raw comment").toBeGreaterThan(0);
+  });
+
+  it("positive control: SAFETY covered, NONEXISTENT_RUST_MARKER_XYZ not covered", () => {
+    const safetyRe = /^SAFETY:/i;
+    const safetyCovered = allRustRawComments.some(
+      (raw) => safetyRe.test(commentInnerText(raw)) && mustKeepRust.some((re) => re.test(raw)),
+    );
+    expect(safetyCovered, "SAFETY marker must be covered by a MUST_KEEP.rust pattern").toBe(true);
+
+    const fakeRe = /^NONEXISTENT_RUST_MARKER_XYZ_FAKE_99999/;
+    const fakeCovered = allRustRawComments.some(
+      (raw) => fakeRe.test(commentInnerText(raw)) && mustKeepRust.some((re) => re.test(raw)),
+    );
+    expect(fakeCovered, "NONEXISTENT_RUST_MARKER must NOT be covered (verifying the test can detect a miss)").toBe(false);
+  });
+
+  for (const markerRe of RUST_TOOL_MARKERS) {
+    it(`marker↔MUST_KEEP: ${markerRe} covered by fixture+MUST_KEEP`, () => {
+      const covered = allRustRawComments.some((raw) => {
+        const inner = commentInnerText(raw);
+        return markerRe.test(inner) && mustKeepRust.some((re) => re.test(raw));
+      });
+      expect(covered, `no rust fixture comment covers RUST_TOOL_MARKERS ${markerRe}`).toBe(true);
+    });
+  }
+
+  for (const keepRe of mustKeepRust) {
+    const matchingRaws = allRustRawComments.filter((raw) => keepRe.test(raw));
+    const toolMarkerRaws = matchingRaws.filter((raw) => {
+      const t = raw.trimStart();
+      return !/^\/\/[\/!]/.test(t) && !/^\/\*[*!]/.test(t);
+    });
+    if (toolMarkerRaws.length === 0) continue;
+    it(`MUST_KEEP ${keepRe} → RUST_TOOL_MARKERS covers its fixture comments`, () => {
+      const covered = toolMarkerRaws.some((raw) =>
+        RUST_TOOL_MARKERS.some((markerRe) => markerRe.test(commentInnerText(raw))),
+      );
+      expect(covered, `MUST_KEEP ${keepRe}: no RUST_TOOL_MARKERS regex matches fixture comments (marker deleted?)`).toBe(true);
+    });
+  }
+});
+
+describe("strip-safety identity (rust)", () => {
+  for (const f of allFixtures.filter((f) => f.lang === "rust")) {
+    const base = path.basename(f.fixturePath);
+
+    it(`identity: ${base} doc and SAFETY comments survive strip; ordinary //// and /*** may go`, async () => {
+      const text = readFileSync(f.fixturePath, "utf8");
+      const rows = new Set(text.split("\n").map((_, i) => i));
+      const pfp = parserForPath(getParser, f.fixturePath);
+      const ar = await autoFix(text, "rust" as Language, rows, pfp, rows);
+      expect(ar.ok, `autoFix failed: ${!ar.ok ? (ar as { reason: string }).reason : ""}`).toBe(true);
+      if (!ar.ok) return;
+      const fixed = ar.fixed;
+
+      const keep: string[] = [];
+      for (const line of text.split("\n")) {
+        const t = line.trim();
+        if (/^\/\/\/(?!\/)/.test(t) || /^\/\/!/.test(t) || /^\/\/\s*(?:SAFETY:|@generated\b)/i.test(t)) keep.push(t);
+      }
+      for (const m of text.matchAll(/\/\*[*!](?![*\/])[\s\S]*?\*\//g)) keep.push(m[0]);
+      expect(keep.length, "fixture must contain doc/marker comments").toBeGreaterThan(0);
+      for (const k of keep) {
+        expect(fixed, `doc/marker comment missing after strip: "${k.slice(0, 60)}"`).toContain(k);
+      }
+
+      // Comment-lookalike literals must survive byte-identical.
+      for (const s of ['"http://example.com // not a comment"', '"/* not a block comment */"', "'/'", 'r#"// still not a comment, and "quotes" too"#']) {
+        expect(fixed, `literal changed after strip: ${s}`).toContain(s);
+      }
     });
   }
 });

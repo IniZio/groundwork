@@ -136,6 +136,12 @@ const MUST_KEEP: Partial<Record<Language, readonly RegExp[]>> = {
     /^\/\/\s*nosemgrep\b/,
     /^\/\/\s*falls?[ -]?thr(?:u|ough)\b/,
   ],
+  sql: [
+    /^--\s*migrate:(?:up|down)\b/,
+    /^--\s*\+goose\s+(?:Up|Down|StatementBegin|StatementEnd)\b/,
+    /^--\s*name:\s*\w+\s+:\w+/,
+    /^\/\*\+/,
+  ],
   python: [
     /#\s*noqa\b/i,
     /#\s*type:/,

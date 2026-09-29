@@ -359,6 +359,8 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
   kotlin: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   java: { stability: "stable", removalGrouping: typescriptRemovalGrouping },
   python: { stability: "stable" },
+  make: { stability: "stable" },
+  sql: { stability: "stable" },
 };
 
 /** Look up the hook entry at call time (never cached). */

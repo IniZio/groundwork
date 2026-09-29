@@ -3,6 +3,7 @@ import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
 import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { runArchive } from "./archive.js";
 import {
   readWriteToken,
   ensureWriteToken,
@@ -463,7 +464,24 @@ function cmdMotiveComplete(args: string[], motiveSlug?: string): void {
   process.stdout.write(`motive ${slug} marked complete\n`);
   store.close();
 }
-
+function cmdArchive(args: string[], motiveSlug?: string): void {
+  const slug = args[0];
+  if (!slug || slug.startsWith("-")) {
+    process.stderr.write(`usage: ${gw} archive <slug> --token T\n`);
+    process.exit(1);
+  }
+  const store = requireDb(motiveSlug);
+  checkToken(store, args);
+  const r = runArchive(repoDir(), slug);
+  if (!r.ok) {
+    process.stderr.write(`error: ${r.err}\n`);
+    store.close();
+    process.exit(1);
+  }
+  store.completeMotive(slug);
+  process.stdout.write(`archived: ${slug} → ${r.dest}\n`);
+  store.close();
+}
 
 // ---------------------------------------------------------------------------
 // Entry point — parse global --motive flag before subcommand dispatch
@@ -518,6 +536,8 @@ if (cmd === "init") {
   else { process.stderr.write(`unknown event subcommand: ${sub}\n`); process.exit(1); }
 } else if (cmd === "compile") {
   cmdCompile(argv.slice(1), globalMotive);
+} else if (cmd === "archive") {
+  cmdArchive(argv.slice(1), globalMotive);
 } else if (cmd === "motive") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -527,6 +547,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete, archive\n`);
   process.exit(1);
 }

@@ -85,7 +85,7 @@ Plans the move of older layouts into the current one. Default is a dry run that 
 - Prints `nothing to migrate` when no move is planned.
 
 ### `gw recipe`
-Prints the working-tier `artifact-structure` rule as JSON for a host's `.house-rules.json`. It only prints; it does not write any file. The printed `govern` list covers only `.groundwork/**/*.md`, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own product types. The `forbidden` patterns apply repo-wide.
+Prints the working-tier `artifact-structure` rule as JSON for a host's `.house-rules.json`. It only prints; it does not write any file. The printed `govern` list covers only `.groundwork/**/*.md`, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own product types. The `forbidden` patterns apply repo-wide and are: `**/adr/**`, `.scratch/**`, `.out-of-scope/**`, `lessons/**`, `learning-records/**`, `to-questionnaire-*.md` and `**/to-questionnaire-*.md`. Each carries a redirect to the correct location, for example `learning-records/**` redirects to `.groundwork/work/{slug}/lessons.md`. A stray document inside `.groundwork/work/` is denied with the nearest matching types named. Paths outside `.groundwork/` are still not governed unless the host widens `govern`. When a stop-time manifest finding is blocked, the gate footer tells the agent to move the file to the path named, fix its frontmatter or headings, or record decisions with `$GW event append --type DECISION`.
 
 ## Multi-motive design (T11)
 

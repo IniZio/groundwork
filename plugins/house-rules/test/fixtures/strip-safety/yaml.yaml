@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-# strip-safety: removed=18
+# strip-safety: removed=20
 # source: deploy/nexus-probe/pod-nonroot.yaml lines 1-116 @ herdr commit 142dedaa
 # SPIKE ONLY — not production.
 #
@@ -79,3 +79,29 @@ spec:
       hostPath:
         path: /dev/net/tun
         type: CharDevice
+---
+# Second document: ConfigMap carrying a shell script and quoted '#' values.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexus-probe-script # mounted next to the pod above
+  annotations:
+    example.dev/url: "https://registry.example.dev/probe#readme # not a comment"
+    example.dev/note: 'issue #42 stays'
+    example.dev/tag: build#7
+data:
+  # yamllint disable-line rule:line-length
+  long-key: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  # prettier-ignore
+  matrix: [ 1,   2,   3 ]
+  image: registry.example.dev/nexus-probe:TAG # renovate: datasource=docker depName=nexus-probe
+  probe.sh: |
+    #!/bin/sh
+    # this hash line belongs to the script body, not to YAML
+    echo "TAP # create"
+    ip tuntap add dev tap0 mode tap # inline shell comment in scalar
+  folded: >
+    text with # hash
+    # another body line
+  # comment between keys, indented under data
+  after: value

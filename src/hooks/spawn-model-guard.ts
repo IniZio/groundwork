@@ -134,7 +134,7 @@ export function loadRegistry(): Record<string, string> {
   } catch { return {}; }
 }
 
-export function check(input: unknown, callerType?: string, projectDir?: string): HookResult {
+export function check(input: unknown, callerType?: string, projectDir?: string, registryOverride?: Record<string, string>): HookResult {
   try {
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const tool = typeof inp.tool_name === "string" ? inp.tool_name : "";
@@ -178,12 +178,12 @@ export function check(input: unknown, callerType?: string, projectDir?: string):
                   if (briefFiles !== null && briefFiles.length >= 1 && briefFiles.length <= 2) {
                     const outside = briefFiles.filter(f => !isWithinSlice(f, sliceFiles));
                     if (outside.length > 0) {
-                      const reg = loadRegistry();
+                      const reg = registryOverride ?? loadRegistry();
                       const joModel = reg["junior-orchestrator"] ?? "sonnet";
                       return redirect(ti, sliceId, sliceFiles.length, joModel, outside);
                     }
                   } else {
-                    const reg = loadRegistry();
+                    const reg = registryOverride ?? loadRegistry();
                     const joModel = reg["junior-orchestrator"] ?? "sonnet";
                     return redirect(ti, sliceId, sliceFiles.length, joModel);
                   }
@@ -209,7 +209,7 @@ export function check(input: unknown, callerType?: string, projectDir?: string):
 
     if (typeof ti.model === "string" && ti.model.trim()) return allow();
 
-    const registry = loadRegistry();
+    const registry = registryOverride ?? loadRegistry();
     const rawKey = subType.startsWith("groundwork:") ? subType.slice(11) : subType;
     const key = rawKey.toLowerCase();
     const model = registry[key] ?? registry[rawKey] ?? "sonnet";

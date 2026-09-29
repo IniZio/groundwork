@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, unlinkSync, rmdirSync } from "node:fs";
+import { readFileSync, mkdirSync, unlinkSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import { check, loadRegistry, parseBriefFiles, isWithinSlice } from "../../src/hooks/spawn-model-guard.js";
 import { runMigrations } from "../../src/store/migrations.js";
@@ -82,10 +82,16 @@ describe("spawn-model-guard — Family 1", () => {
   });
 
   it("CLEAN: primary orchestrator spawning junior-orchestrator → inject model (allow)", () => {
-    const result = check(task("groundwork:junior-orchestrator"), "groundwork:orchestrator");
+    const result = check(task("groundwork:junior-orchestrator"), "groundwork:orchestrator", undefined, { "junior-orchestrator": "opus" });
     const out = JSON.parse(result.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
-    expect(out.hookSpecificOutput.updatedInput.model).toBe("sonnet");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("opus");
+  });
+
+  it("real registry: junior-orchestrator defined and equals agent frontmatter model", () => {
+    const fm = /^model:\s*(\S+)/m.exec(readFileSync(path.join(import.meta.dir, "..", "..", "agents", "junior-orchestrator.md"), "utf8"));
+    expect(loadRegistry()["junior-orchestrator"]).toBeDefined();
+    expect(loadRegistry()["junior-orchestrator"]).toBe(fm![1]);
   });
 
   it("CLEAN: explicit model set → passthrough (empty stdout + exit 0)", () => {
@@ -171,10 +177,11 @@ describe("spawn-model-guard — size-guard redirect", () => {
     const result = check(
       { tool_name: "Agent", tool_input: { subagent_type: "groundwork:implementer", prompt, model: "haiku" } },
       undefined,
-      projDir
+      projDir,
+      { "junior-orchestrator": "opus" }
     );
     const out = parseOutput(result);
-    expect(out.hookSpecificOutput.updatedInput?.model).toBe("sonnet");
+    expect(out.hookSpecificOutput.updatedInput?.model).toBe("opus");
     expect(out.hookSpecificOutput.updatedInput?.model).not.toBe("haiku");
   });
 

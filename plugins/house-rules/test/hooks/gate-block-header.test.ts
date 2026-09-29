@@ -239,6 +239,55 @@ describe("gate-block-header: SubagentStop stray-only", () => {
   });
 });
 
+describe("gate-block-header: manifest finding guidance", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gbh-man-"));
+    initGitRepo(tmpDir);
+    writeFileSync(path.join(tmpDir, ".house-rules.json"), JSON.stringify({
+      rules: { "artifact-structure": ["error", {
+        govern: ["**/*.md"],
+        types: { spec: { tier: "working", generates: "doc/spec/{name:kebab}.md", frontmatter: { type: "object", required: ["folds_into"] } } },
+      }] },
+    }));
+    mkdirSync(path.join(tmpDir, "doc"), { recursive: true });
+    writeFileSync(path.join(tmpDir, "doc", "base.md"), "# base\n");
+    gitCommit(tmpDir, "base");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  function gateBlock(fp: string): string {
+    const ts = new Date(Date.now() - 5000).toISOString();
+    const tp = makeTranscript(tmpDir, [fp], ts);
+    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-man-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
+    expect(parseOut(r.stdout).decision).toBe("block");
+    return readBlockFile(tmpDir);
+  }
+
+  it("manifest-only block gives manifest guidance, not merge guidance", () => {
+    mkdirSync(path.join(tmpDir, "doc", "spec"), { recursive: true });
+    const fp = path.join(tmpDir, "doc", "spec", "a.md");
+    writeFileSync(fp, "# a\n");
+    const block = gateBlock(fp);
+    expect(block).toContain("frontmatter invalid for type spec");
+    expect(block).not.toContain("Merge the coexisting");
+    expect(block).toContain("fix its frontmatter/headings");
+    expect(block).toContain("$GW event append --type DECISION");
+  });
+
+  it("control: synonym-dir finding still gets merge guidance", () => {
+    writeFileSync(path.join(tmpDir, ".house-rules.json"), "{}");
+    mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    const fp = path.join(tmpDir, "docs", "x.md");
+    writeFileSync(fp, "# x\n");
+    const block = gateBlock(fp);
+    expect(block).toContain("Merge the coexisting directories or move/delete the scratch file.");
+    expect(block).not.toContain("fix its frontmatter/headings");
+  });
+});
+
 // Helper: make a .ts file with over-budget comment density that autofix (stable) will fix.
 // Uses 6 comment lines per 50 code lines = 12/100 > 5/100.
 function makeTsViolatorAutoFixable(dir: string, name: string): string {

@@ -311,7 +311,12 @@ export async function run(
       "This is a convention check — not a bug, a merge, or another session's edit.";
     const DFOOTERBASE = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
     const DFOOTER_DENSITY_BOTH = DFOOTERBASE.slice(0, -" Then stop again.".length);
-    const SFOOTERBASE = "Merge the coexisting directories or move/delete the scratch file. Then stop again.";
+    const MERGE_ADVICE = "Merge the coexisting directories or move/delete the scratch file.";
+    const MANIFEST_ADVICE = "Move the file to the path named above, fix its frontmatter/headings, or record decisions with $GW event append --type DECISION.";
+    const isManifest = (m: string) => m.startsWith("artifact-structure:");
+    const hasManifest = strayErrors.some(f => isManifest(f.message));
+    const hasLegacy = strayErrors.some(f => !isManifest(f.message));
+    const SFOOTERBASE = [hasLegacy || !hasManifest ? MERGE_ADVICE : "", hasManifest ? MANIFEST_ADVICE : ""].filter(Boolean).join(" ") + " Then stop again.";
     const sfx = isSubagent ? handback : null;
     const fixedPaths = fixedFiles.map(f => f.path);
 

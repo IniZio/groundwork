@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # source: deploy/nexus-probe/probe.sh lines 1-101 @ herdr commit 142dedaa
-# strip-safety: removed=12
+# strip-safety: removed=13
 # probe.sh — verifies nexus (Cloud Hypervisor microVM sandbox) runs inside
 # this k8s pod and measures cold-start latency.
 # shellcheck disable=SC2086
@@ -91,3 +91,35 @@ if (( (eff_dec & 0x1000) != 0 )); then
 else
     echo "NET_ADMIN: absent"
 fi
+
+# hazards below derive from scripts/proof-harness.sh, hooks/commit-msg and scripts/build-sql-grammar.sh
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            '#') echo "literal hash" ;;
+            \#*) echo "escaped hash" ;;
+            --keep-home) KEEP_HOME=1; shift ;;
+            *) break ;;
+        esac
+        shift
+    done
+    [[ ${#CRITICAL_FAILED[@]} -eq 0 ]] && echo "argc=$#"
+}
+
+# Heredoc bodies are data: a '#' line inside must never be stripped.
+emit_config() {
+    cat > "$1/tree-sitter.json" <<'EOF'
+# not a shell comment, heredoc data line one
+{
+  "scope": "source.sql"
+}
+# not a shell comment, heredoc data line two
+EOF
+    cat <<-'EOT'
+	# tab-indented heredoc data line
+	value=1
+	EOT
+    cat <<UNQUOTED
+# unquoted heredoc data line ${1:-x}
+UNQUOTED
+}

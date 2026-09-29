@@ -43,7 +43,7 @@ describe("comment-density-guard deployed path (probe.sh Write)", () => {
   const targetPath = path.join(tmpDir, "probe-copy.sh");
   const tsTmpPath = path.join(tmpDir, "probe-copy.ts");
 
-  it("AC8: bash is preview lang → guard passes through (no updatedInput)", async () => {
+  it("AC8: bash is stable lang → guard strips over-budget probe.sh (updatedInput has fewer comments)", async () => {
     const content = await Bun.file(PROBE_SH).text();
     const payload = {
       tool_name: "Write",
@@ -52,7 +52,13 @@ describe("comment-density-guard deployed path (probe.sh Write)", () => {
 
     const { stdout, exit } = await spawnGuard(payload, tmpDir);
     expect(exit).toBe(0);
-    expect(stdout.trim()).toBe("");
+
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
+    const hso = parsed.hookSpecificOutput as Record<string, unknown>;
+    const updated = (hso.updatedInput as Record<string, unknown>).content as string;
+    const hashLines = (s: string) => s.split("\n").filter((l) => l.trimStart().startsWith("#")).length;
+    expect(hashLines(updated)).toBeLessThan(hashLines(content));
+    expect(updated.startsWith("#!")).toBe(true);
   });
 
   it("AC8b: TypeScript over-budget Write → updatedInput.content has fewer comments", async () => {

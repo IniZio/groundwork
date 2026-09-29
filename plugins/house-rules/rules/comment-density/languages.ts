@@ -19,6 +19,7 @@ import type { Comment, RowChange } from "../../src/hooks/lib/comment-density.js"
 // Cycle-safe: only reference these inside function bodies, never at top level.
 import { isExemptProse, NOTE_MARKER_RE } from "../../src/hooks/lib/comment-density.js";
 import { commentInnerText as stripMarkers, isWholeLine } from "../../src/hooks/languages/comments.js";
+import { dropBlankAfterRemovedRun } from "../../src/hooks/languages/dockerfile.js";
 
 export type FixStability = "preview" | "stable";
 export type FixApplicability = "safe" | "unsafe";
@@ -364,6 +365,8 @@ export const COMMENT_DENSITY_LANGUAGE_HOOKS: Partial<Record<Language, CommentDen
   toml: { stability: "stable" },
   make: { stability: "stable" },
   sql: { stability: "stable" },
+  bash: { stability: "stable" },
+  dockerfile: { stability: "stable", repairAfterStrip: dropBlankAfterRemovedRun },
 };
 
 /** Look up the hook entry at call time (never cached). */

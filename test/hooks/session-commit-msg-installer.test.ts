@@ -80,7 +80,7 @@ describe("session-commit-msg-installer — by-path (entrypoint test)", () => {
       const bad = spawnSync("git", ["commit", "--allow-empty", "-m", "bad message"], {
         cwd: dir,
         encoding: "utf8",
-        env: { ...process.env, GROUNDWORK_COMMIT_LINT: undefined as unknown as string },
+        env: { ...process.env },
       });
       expect(bad.status).not.toBe(0);
     } finally {
@@ -116,14 +116,13 @@ describe("session-commit-msg-installer — by-path (entrypoint test)", () => {
     }
   });
 
-  it("kill-switch GROUNDWORK_COMMIT_MSG_HOOK=0: nothing written, nothing announced", () => {
+  it("GROUNDWORK_COMMIT_MSG_HOOK=0 in env: hook still installed", () => {
     const { dir, cleanup } = makeRepo();
     try {
       const hookPath = join(dir, ".git", "hooks", "commit-msg");
-      const { stdout, exit } = run(dir, { GROUNDWORK_COMMIT_MSG_HOOK: "0" });
+      const { exit } = run(dir, { GROUNDWORK_COMMIT_MSG_HOOK: "0" });
       expect(exit).toBe(0);
-      expect(additionalContext(stdout)).toBe("");
-      expect(existsSync(hookPath)).toBe(false);
+      expect(existsSync(hookPath)).toBe(true);
     } finally {
       cleanup();
     }

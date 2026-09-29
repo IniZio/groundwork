@@ -4,8 +4,8 @@
  * that direct-import tests cannot see.
  */
 
-import { describe, it, expect } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { describe, it, expect, afterAll } from "bun:test";
+import { spawnSync, execFileSync } from "node:child_process";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,14 +14,27 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dir, "../..");
 const HOOK = path.join(ROOT, "src/hooks/commit-message-guard.ts");
 
+function makeRepo(): string {
+  const d = mkdtempSync(join(tmpdir(), "gw-cmg-bp-repo-"));
+  execFileSync("git", ["init", "-q"], { cwd: d });
+  return d;
+}
+
+const REPO = makeRepo();
+const extraRepos: string[] = [];
+afterAll(() => {
+  for (const d of [REPO, ...extraRepos]) rmSync(d, { recursive: true, force: true });
+});
+
 function run(
   payload: unknown,
   env: Record<string, string> = {},
 ): { stdout: string; stderr: string; exit: number } {
+  const { CLAUDE_PROJECT_DIR: _drop, ...base } = process.env;
   const r = spawnSync("bun", [HOOK], {
     input: JSON.stringify(payload),
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, ...env },
-    cwd: ROOT,
+    env: { ...base, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: REPO, ...env },
+    cwd: REPO,
     timeout: 15_000,
   });
   return {
@@ -31,10 +44,20 @@ function run(
   };
 }
 
-function bash(command: string, cwd?: string) {
-  const ti: Record<string, string> = { command };
-  if (cwd) ti["cwd"] = cwd;
-  return { tool_name: "Bash", tool_input: ti };
+function repoWith(config: unknown): string {
+  const repo = makeRepo();
+  extraRepos.push(repo);
+  writeFileSync(join(repo, ".house-rules.json"), JSON.stringify(config));
+  return repo;
+}
+
+function bash(command: string, cwd: string = REPO) {
+  return {
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command },
+    cwd,
+  };
 }
 
 function decision(stdout: string): string {
@@ -66,14 +89,17 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
   });
 
   it("ALLOW: valid message — empty stdout, exit 0", () => {
-    const { stdout, exit } = run(bash('git commit -m "fix(auth): correct token expiry check"'));
+    const { stdout, exit } = run(bash('git commit -m "Fix token expiry check"'));
     expect(exit).toBe(0);
     expect(stdout.trim()).toBe("");
   });
 
   it("DENY: message with body — stdout contains deny decision", () => {
     const { stdout, exit } = run(
-      bash('git commit -m "fix(auth): correct token expiry check" -m "body text here"'),
+      bash(
+        'git commit -m "Fix token expiry check" -m "body text here"',
+        repoWith({ rules: { "commit-message": ["error", { preset: "subject-only" }] } }),
+      ),
     );
     expect(exit).toBe(0);
     expect(decision(stdout)).toBe("deny");
@@ -89,13 +115,29 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
     expect(r).toMatch(/process vocabulary/);
   });
 
-  it("ALLOW: kill-switch GROUNDWORK_COMMIT_LINT=0 — empty stdout even on bad message", () => {
+  it("DENY: GROUNDWORK_COMMIT_LINT=0 is ignored — bad message still denied", () => {
     const { stdout, exit } = run(
       bash('git commit -m "fix(auth): correct token expiry" -m "body here"'),
       { GROUNDWORK_COMMIT_LINT: "0" },
     );
     expect(exit).toBe(0);
-    expect(stdout.trim()).toBe("");
+    expect(decision(stdout)).toBe("deny");
+  });
+
+  it("DENY: no .house-rules.json — last reason line is the config pointer", () => {
+    const { stdout } = run(bash('git commit -m "fix(auth): correct token expiry" -m "body here"'));
+    expect(decision(stdout)).toBe("deny");
+    const last = reason(stdout).split("\n").at(-1);
+    expect(last).toBe(
+      'Commit style is set by .house-rules.json: rules["commit-message"].preset (active: handbook, source: default)',
+    );
+  });
+
+  it("DENY: invalid .house-rules.json — reason names the offending key path", () => {
+    const repo = repoWith({ rules: { "commit-message": ["error", { preset: "nonesuch" }] } });
+    const { stdout } = run(bash('git commit -m "fix(auth): correct token expiry"', repo));
+    expect(decision(stdout)).toBe("deny");
+    expect(reason(stdout)).toContain('rules["commit-message"][1].preset');
   });
 
   it("ALLOW: non-git-commit Bash command — empty stdout", () => {
@@ -128,7 +170,7 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
     const dir = mkdtempSync(join(tmpdir(), "gw-cmg-bp-test-"));
     try {
       const msgFile = join(dir, "msg.txt");
-      writeFileSync(msgFile, "fix(auth): correct token expiry check\n");
+      writeFileSync(msgFile, "Fix token expiry check\n");
       const { stdout, exit } = run(bash(`git commit -F ${msgFile}`));
       expect(exit).toBe(0);
       expect(stdout.trim()).toBe("");

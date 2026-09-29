@@ -8,7 +8,7 @@ import { check } from "../../src/hooks/commit-message-guard.js";
 function bash(command: string, cwd?: string) {
   const toolInput: Record<string, string> = { command };
   if (cwd !== undefined) toolInput["cwd"] = cwd;
-  return { tool_name: "Bash", tool_input: toolInput };
+  return { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: toolInput };
 }
 
 
@@ -63,26 +63,63 @@ describe("commit-message-guard — Family 6", () => {
     expect(r).toMatch(/process vocabulary/);
   });
 
-  it("ALLOW: GROUNDWORK_COMMIT_LINT=0 suppresses denial (kill-switch)", () => {
+  it("DENY: GROUNDWORK_COMMIT_LINT=0 no longer suppresses denial", () => {
     const badPayload = bash(
       'git commit -m "fix(auth): correct token expiry check" -m "This explains the why"',
     );
-
-    // Positive control: without kill-switch, denied
-    const withoutKillSwitch = check(badPayload);
-    expect(decision(withoutKillSwitch)).toBe("deny");
-
-    // With kill-switch, allowed
     const origVal = process.env["GROUNDWORK_COMMIT_LINT"];
     process.env["GROUNDWORK_COMMIT_LINT"] = "0";
     try {
-      const withKillSwitch = check(badPayload);
-      expect(withKillSwitch.stdout).toBe("");
-      expect(withKillSwitch.exit).toBe(0);
+      expect(decision(check(badPayload))).toBe("deny");
     } finally {
       if (origVal === undefined) delete process.env["GROUNDWORK_COMMIT_LINT"];
       else process.env["GROUNDWORK_COMMIT_LINT"] = origVal;
     }
+  });
+
+  describe("config pointer", () => {
+    function withTmpRepo(fn: (dir: string) => void) {
+      const dir = mkdtempSync(join(tmpdir(), "cmg-"));
+      const origProj = process.env["CLAUDE_PROJECT_DIR"];
+      process.env["CLAUDE_PROJECT_DIR"] = dir;
+      try {
+        spawnSync("git", ["init", "-q"], { cwd: dir });
+        fn(dir);
+      } finally {
+        if (origProj === undefined) delete process.env["CLAUDE_PROJECT_DIR"];
+        else process.env["CLAUDE_PROJECT_DIR"] = origProj;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    const payload = (cwd: string) => ({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: 'git commit -m "bad message"' },
+      cwd,
+    });
+
+    it("DENY: reason ends with the house-rules pointer line", () => {
+      withTmpRepo((dir) => {
+        const result = check(payload(dir));
+        expect(decision(result)).toBe("deny");
+        const lines = reason(result).split("\n");
+        expect(lines[lines.length - 1]).toBe(
+          'Commit style is set by .house-rules.json: rules["commit-message"].preset (active: handbook, source: default)',
+        );
+      });
+    });
+
+    it("DENY: invalid .house-rules.json reason names the key path", () => {
+      withTmpRepo((dir) => {
+        writeFileSync(
+          join(dir, ".house-rules.json"),
+          JSON.stringify({ rules: { "commit-message": ["error", { preset: "bogus" }] } }),
+        );
+        const result = check(payload(dir));
+        expect(decision(result)).toBe("deny");
+        expect(reason(result)).toContain('rules["commit-message"][1].preset: invalid preset');
+      });
+    });
   });
 
   it("ALLOW: non-git-commit Bash command passes through", () => {

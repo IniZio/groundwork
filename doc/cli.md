@@ -105,7 +105,7 @@ Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event appe
 
 ## Commit-message lint guard (Family 6)
 
-The `commit-message-guard` PreToolUse hook intercepts `git commit` calls and lints the message before the commit runs. Kill-switch: `GROUNDWORK_COMMIT_LINT=0`.
+The `commit-message-guard` PreToolUse hook intercepts `git commit` calls and lints the message before the commit runs. The style comes from `.house-rules.json`; run `house-rules config` to see the active preset.
 
 **Detectable forms** (all linted): bare `git commit`, `command git commit`, `builtin git commit`, env-prefixed `FOO=1 git commit`, `git -C <path> commit`, `git -c key=val commit`, `git --git-dir=<dir> commit`, and any of these appearing after `&&`, `||`, `;`, or `|`.
 

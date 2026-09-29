@@ -3,7 +3,6 @@
  * host project's .git/hooks/commit-msg.
  * Silent on success, no-op, or any error condition.
  * Announce on install or upgrade only.
- * Kill-switch: GROUNDWORK_COMMIT_MSG_HOOK=0
  * Skip for embedded agents (CLAUDE_CODE_ENTRYPOINT=sdk-py|sdk-js).
  * Skip when core.hooksPath is set (the host already has a hooks mechanism).
  */
@@ -34,11 +33,6 @@ async function main() {
 
   // Skip embedded agents
   if (env['CLAUDE_CODE_ENTRYPOINT'] === 'sdk-py' || env['CLAUDE_CODE_ENTRYPOINT'] === 'sdk-js') {
-    silent()
-  }
-
-  // Kill-switch
-  if (env['GROUNDWORK_COMMIT_MSG_HOOK'] === '0') {
     silent()
   }
 

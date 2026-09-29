@@ -17,6 +17,38 @@ function makeRepo(): { dir: string; cleanup: () => void } {
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
+function envWithout(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env = { ...process.env, ...extra };
+  delete env.CLAUDE_PROJECT_DIR;
+  return env;
+}
+
+describe("commit-msg hook: legacy env var", () => {
+  it("legacy env var is ignored and violations print the config pointer", () => {
+    const { dir, cleanup } = makeRepo();
+    try {
+      writeFileSync(join(dir, ".house-rules.json"), JSON.stringify({ rules: { "commit-message": ["error", { preset: "handbook" }] } }));
+      const hookPath = join(dir, ".git", "hooks", "commit-msg");
+      mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+      writeFileSync(
+        hookPath,
+        renderCommitMsgHook({ hooksLibPath: resolve(import.meta.dir, "../../hooks/lib"), version: "0.0.0-test" }),
+        { mode: 0o755 },
+      );
+      const msgFile = join(dir, "COMMIT_EDITMSG");
+      writeFileSync(msgFile, "feat: x\n");
+      const legacy = "GROUNDWORK_COMMIT_LINT";
+      const r = spawnSync(hookPath, [msgFile], { cwd: dir, encoding: "utf8", env: envWithout({ [legacy]: "0" }) });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(
+        'commit-msg: Commit style is set by .house-rules.json: rules["commit-message"].preset (active: handbook, source: explicit)',
+      );
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("commit-msg hook installer", () => {
   it("install: hook present, exec bit set, bad commit rejected", async () => {
     const { dir, cleanup } = makeRepo();
@@ -32,7 +64,7 @@ describe("commit-msg hook installer", () => {
       const bad = spawnSync("git", ["commit", "--allow-empty", "-m", "bad message"], {
         cwd: dir,
         encoding: "utf8",
-        env: { ...process.env, GROUNDWORK_COMMIT_LINT: undefined as unknown as string },
+        env: envWithout(),
       });
       expect(bad.status).not.toBe(0);
 

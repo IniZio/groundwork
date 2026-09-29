@@ -2,7 +2,7 @@
  * Family 6: Commit-message lint guard.
  * PreToolUse on Bash — intercepts `git commit` before it runs and checks the
  * message for convention violations. Deny is actionable: every violation names
- * the offending line and the rule. Kill-switch: GROUNDWORK_COMMIT_LINT=0.
+ * the offending line and the rule.
  *
  * Detectable forms (all linted or denied):
  *   git commit ...
@@ -51,6 +51,7 @@ function lintAndDecide(message: string, cwd: string): HookResult {
   const lines = [...result.violations]
     .sort((a: { line: number }, b: { line: number }) => a.line - b.line)
     .map((v: { line: number; reason: string }) => `  line ${v.line}: ${v.reason}`);
+  if (result.pointer) lines.push(`Commit style is set by .house-rules.json: ${result.pointer}`);
   return deny(`Commit message lint violations:\n${lines.join('\n')}`);
 }
 
@@ -272,8 +273,6 @@ function updateRefIsAllowed(ref: string | null): boolean {
 
 export function check(input: unknown): HookResult {
   try {
-    if (process.env['GROUNDWORK_COMMIT_LINT'] === '0') return allow();
-
     if (typeof input !== 'object' || input === null) return allow();
     const inp = input as Record<string, unknown>;
     if (inp['tool_name'] !== 'Bash') return allow();

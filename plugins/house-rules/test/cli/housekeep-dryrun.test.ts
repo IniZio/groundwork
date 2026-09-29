@@ -23,7 +23,7 @@ function childEnv(ledgerDir: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.CLAUDE_PROJECT_DIR;
   delete env.CLAUDE_PLUGIN_ROOT;
-  env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = ledgerDir;
+  env.TMPDIR = ledgerDir;
   return env;
 }
 
@@ -182,7 +182,9 @@ describe('housekeep --dry-run parity', () => {
   it('AC2: ledger byte-identical after dry-run; differs after real run', () => {
     const { repoDir, baseSha } = buildFixture();
     const ledger = mktemp('hr-ldg-');
-    const ledgerFile = path.join(ledger, 'ledger.jsonl');
+    const ledgerDir = path.join(ledger, `house-rules-autofix-ledger-${process.getuid?.() ?? 'u'}`);
+    fs.mkdirSync(ledgerDir, { recursive: true, mode: 0o700 });
+    const ledgerFile = path.join(ledgerDir, 'ledger.jsonl');
     const seed = '{"kind":"fix","file":"/tmp/old.ts","fixedHash":"abc","removed":["// seed"],"reason":"test","source":"housekeep","ts":"2024-01-01T00:00:00.000Z"}\n';
     fs.writeFileSync(ledgerFile, seed);
     const before = fs.readFileSync(ledgerFile);

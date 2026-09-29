@@ -19,6 +19,8 @@ import path from 'node:path';
 import os from 'node:os';
 
 const BIN = path.resolve(import.meta.dir, '../../bin/house-rules');
+const CLI_MAIN = path.resolve(import.meta.dir, '../../src/cli/main.ts');
+const FAIL_GRAMMARS_PRELOAD = path.resolve(import.meta.dir, '../seams/fail-grammars.preload.ts');
 const REAL_RULES_DIR = path.resolve(import.meta.dir, '../../rules');
 
 // ---------------------------------------------------------------------------
@@ -136,7 +138,10 @@ function runBIN(
   cwd: string,
   extraEnv: Record<string, string> = {},
 ): { stdout: string; stderr: string; status: number | null } {
-  const r = spawnSync(BIN, args, {
+  const [cmd, cmdArgs] = extraEnv.HOUSE_RULES_TEST_FAIL_GRAMMARS
+    ? ['bun', ['--preload', FAIL_GRAMMARS_PRELOAD, CLI_MAIN, ...args]]
+    : [BIN, args];
+  const r = spawnSync(cmd as string, cmdArgs as string[], {
     cwd,
     encoding: 'utf8',
     env: childEnv(extraEnv),

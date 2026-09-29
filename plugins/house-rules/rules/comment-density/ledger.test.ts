@@ -35,12 +35,12 @@ function childEnv(ledgerDir: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.CLAUDE_PROJECT_DIR;
   delete env.CLAUDE_PLUGIN_ROOT;
-  env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = ledgerDir;
+  env.TMPDIR = ledgerDir;
   return env;
 }
 
 function readFixRecords(ledgerDir: string): FixRecord[] {
-  const lp = path.join(ledgerDir, 'ledger.jsonl');
+  const lp = path.join(ledgerDir, `house-rules-autofix-ledger-${process.getuid?.() ?? 'u'}`, 'ledger.jsonl');
   if (!fs.existsSync(lp)) return [];
   const raw = fs.readFileSync(lp, 'utf8');
   const out: FixRecord[] = [];
@@ -211,13 +211,13 @@ describe('comment-density housekeep fix ledger', () => {
       ],
     };
 
-    const prev = process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR;
-    process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = ledgerDir;
+    const prev = process.env.TMPDIR;
+    process.env.TMPDIR = ledgerDir;
     try {
       await rule.fix!(ctx);
     } finally {
-      if (prev === undefined) delete process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR;
-      else process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = prev;
+      if (prev === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = prev;
     }
 
     const staleOnDisk = fs.readFileSync(staleAbsPath, 'utf8');

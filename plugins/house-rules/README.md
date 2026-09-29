@@ -140,7 +140,7 @@ When the gate auto-trims a file, the next Read/Edit/Write of that file emits a o
 Files in other languages are not measured.
 <!-- languages:end -->
 
-**No opt-out**: there is no environment variable or config knob to disable comment-density enforcement. The `CLAUDE_CODE_ENTRYPOINT=sdk-py/sdk-js` skip exists only to prevent nested-agent leakage.
+**No opt-out**: no config knob or environment variable disables comment-density enforcement in an interactive session. The Stop/SubagentStop gate does not run for SDK-launched sessions (`CLAUDE_CODE_ENTRYPOINT` set to `sdk-py` or `sdk-js`), so embedded agents are not blocked; the edit guard and config guard still run there.
 
 ## Adding a language
 

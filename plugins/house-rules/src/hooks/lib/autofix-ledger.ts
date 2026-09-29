@@ -45,7 +45,6 @@ export function sha256(text: string): string {
 export function ledgerPath(opts?: LedgerOpts): string {
   const dir =
     opts?.dir ??
-    process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR ??
     path.join(os.tmpdir(), `house-rules-autofix-ledger-${process.getuid?.() ?? "u"}`);
   return path.join(dir, "ledger.jsonl");
 }

@@ -134,7 +134,11 @@ describe("autofix-notice run()", () => {
 
   it("(6) deployed-path: bun spawn exits 0, emits hookSpecificOutput, no permissionDecision", async () => {
     const file = "/tmp/deployed-test.ts";
-    seedFix(file);
+    const ledgerDir = path.join(tmpDir, `house-rules-autofix-ledger-${process.getuid?.() ?? "u"}`);
+    appendFix(
+      { file, fixedContent: "content here", removed: ["// old comment"], reason: "over-budget", source: "housekeep" },
+      { dir: ledgerDir }
+    );
 
     const hookPath = path.join(
       import.meta.dir,
@@ -146,7 +150,7 @@ describe("autofix-notice run()", () => {
 
     const result = Bun.spawnSync(["bun", hookPath], {
       stdin: Buffer.from(payload),
-      env: { ...process.env, HOUSE_RULES_AUTOFIX_LEDGER_DIR: tmpDir },
+      env: { ...process.env, TMPDIR: tmpDir },
     });
 
     expect(result.exitCode).toBe(0);

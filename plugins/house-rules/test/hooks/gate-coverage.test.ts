@@ -5,9 +5,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
+const FAIL_GRAMMARS_PRELOAD = path.join(import.meta.dir, "../seams/fail-grammars.preload.ts");
 
 function runGate(payload: unknown, extraEnv: Record<string, string> = {}): { stdout: string; stderr: string; status: number | null } {
-  const r = spawnSync("bun", [GATE_PATH], {
+  const bunArgs = extraEnv.HOUSE_RULES_TEST_FAIL_GRAMMARS
+    ? ["--preload", FAIL_GRAMMARS_PRELOAD, GATE_PATH]
+    : [GATE_PATH];
+  const r = spawnSync("bun", bunArgs, {
     input: JSON.stringify(payload),
     env: { ...process.env, ...extraEnv },
     encoding: "utf8",

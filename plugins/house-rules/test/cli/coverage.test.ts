@@ -6,6 +6,7 @@ import { describe, it, expect, afterEach } from 'bun:test';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '../..');
 const CLI = path.join(PLUGIN_ROOT, 'src/cli/main.ts');
+const FAIL_PRELOAD = path.join(PLUGIN_ROOT, 'test/seams/fail-grammars.preload.ts');
 const REAL_RULES_DIR = path.join(PLUGIN_ROOT, 'rules');
 
 const tempDirs: string[] = [];
@@ -24,7 +25,8 @@ afterEach(() => {
 
 function runCLI(args: string[], cwd: string, extraEnv?: Record<string, string>) {
   const env = extraEnv ? { ...process.env, ...extraEnv } : undefined;
-  return spawnSync('bun', [CLI, ...args], { cwd, encoding: 'utf8', ...(env ? { env } : {}) });
+  const preload = extraEnv?.HOUSE_RULES_TEST_FAIL_GRAMMARS ? ['--preload', FAIL_PRELOAD] : [];
+  return spawnSync('bun', [...preload, CLI, ...args], { cwd, encoding: 'utf8', ...(env ? { env } : {}) });
 }
 
 /**

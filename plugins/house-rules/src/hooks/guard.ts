@@ -13,7 +13,7 @@ import { languageForPath } from "./languages/registry.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
 import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
-import { createSourceFiles, envParserFactory } from "../engine/source-file.js";
+import { createSourceFiles, getDefaultParserFactory } from "../engine/source-file.js";
 import { grammarFailureWarning } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
 import { parserForPath, type ParserFactory } from "./languages/parse.js";
@@ -220,7 +220,7 @@ export interface CheckOpts {
 }
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
-  const factory = opts.getParser ?? envParserFactory();
+  const factory = opts.getParser ?? getDefaultParserFactory();
   const sourceFiles = createSourceFiles(factory);
   try {
     if (!input || typeof input !== "object" || Array.isArray(input)) return allow();

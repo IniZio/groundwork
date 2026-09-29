@@ -43,15 +43,17 @@ describe("ledgerPath", () => {
     expect(p).toBe(path.join(tmpDir, "ledger.jsonl"));
   });
 
-  it("uses HOUSE_RULES_AUTOFIX_LEDGER_DIR env when no opts.dir", () => {
-    const orig = process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR;
-    process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = tmpDir;
+  it("defaults to os.tmpdir()-based dir when no opts.dir", () => {
+    const orig = process.env.TMPDIR;
+    process.env.TMPDIR = tmpDir;
     try {
       const p = ledgerPath();
-      expect(p).toBe(path.join(tmpDir, "ledger.jsonl"));
+      expect(p).toBe(
+        path.join(tmpDir, `house-rules-autofix-ledger-${process.getuid?.() ?? "u"}`, "ledger.jsonl"),
+      );
     } finally {
-      if (orig === undefined) delete process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR;
-      else process.env.HOUSE_RULES_AUTOFIX_LEDGER_DIR = orig;
+      if (orig === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = orig;
     }
   });
 });

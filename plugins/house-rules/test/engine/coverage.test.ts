@@ -84,7 +84,7 @@ describe("notCheckedFiles — real rules", () => {
     expect(result).toEqual([]);
   });
 
-  it("rules without languages (commit-message, stray-artifacts) -> [] even with .kt file", async () => {
+  it("rules without languages (commit-message, artifact-structure) -> [] even with .kt file", async () => {
     await rulesReady;
     const noLangRules = rules.filter(
       (r) => !r.languages || r.languages.length === 0,

@@ -258,7 +258,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
 
   const untrackedResult = spawnSync('git', ['-C', repoRoot, 'ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' });
   const untrackedPaths = untrackedResult.stdout.split('\n').filter(Boolean);
-  const strayRule = allRules.find(r => r.id === 'stray-artifacts');
+  const strayRule = allRules.find(r => r.id === 'artifact-structure');
 
   if (!isJson && strayRule && untrackedPaths.length > 0) {
     const synthFiles: ScopedFile[] = untrackedPaths.map(p => ({

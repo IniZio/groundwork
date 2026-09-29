@@ -13,7 +13,8 @@ import { detectPreset } from "../config/detect.mjs";
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
 const CONFIG_NAME = ".house-rules.json";
-const RULE_IDS = ["commit-message", "comment-density", "stray-artifacts"] as const;
+// The legacy stray-artifacts key is canonicalised by resolveConfigText, so only canonical ids appear in resolved rules.
+const RULE_IDS = ["commit-message", "comment-density", "artifact-structure"] as const;
 const RANK: Record<string, number> = { off: 0, warn: 1, error: 2 };
 const ASK = "Loosening house-rules config is a human decision. Ask the user to make this change.";
 

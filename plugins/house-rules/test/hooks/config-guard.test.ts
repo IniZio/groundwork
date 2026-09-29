@@ -119,19 +119,21 @@ describe("allow: tightening or neutral changes", () => {
     await expectAllow(write(cfg({ "comment-density": "error" })));
   });
 
-  test("repair legacy warn to error (Edit)", async () => {
-    setFile(cfg({ "stray-artifacts": "warn" }));
-    await expectAllow(edit('"warn"', '"error"'));
-  });
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    test(`repair legacy warn to error (Edit): ${id}`, async () => {
+      setFile(cfg({ [id]: "warn" }));
+      await expectAllow(edit('"warn"', '"error"'));
+    });
+
+    test(`repair legacy off to error (Write): ${id}`, async () => {
+      setFile(cfg({ [id]: "off" }));
+      await expectAllow(write(cfg({ [id]: "error" })));
+    });
+  }
 
   test("repair legacy off to error (MultiEdit)", async () => {
     setFile(cfg({ "comment-density": "off" }));
     await expectAllow(multi('"off"', '"error"'));
-  });
-
-  test("repair legacy off to error (Write)", async () => {
-    setFile(cfg({ "stray-artifacts": "off" }));
-    await expectAllow(write(cfg({ "stray-artifacts": "error" })));
   });
 
   test("explicit rule at default into empty file (Write)", async () => {
@@ -213,17 +215,19 @@ describe("deny: invalid content", () => {
     expect(res.reason).toContain(`${KEY_SEV}: invalid severity`);
   });
 
-  test("stray-artifacts off is invalid (Write)", async () => {
-    setFile(cfg({ "stray-artifacts": "error" }));
-    const res = await expectDeny(write(cfg({ "stray-artifacts": "off" })), "is invalid", "Ask the user");
-    expect(res.reason).toContain('rules["stray-artifacts"]: invalid severity');
-  });
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    test(`${id} off is invalid (Write)`, async () => {
+      setFile(cfg({ [id]: "error" }));
+      const res = await expectDeny(write(cfg({ [id]: "off" })), "is invalid", "Ask the user");
+      expect(res.reason).toContain(`rules["${id}"]: invalid severity`);
+    });
 
-  test("stray-artifacts off is invalid (MultiEdit)", async () => {
-    setFile(cfg({ "stray-artifacts": "error" }));
-    const res = await expectDeny(multi('"error"', '"off"'), "is invalid", "Ask the user");
-    expect(res.reason).toContain('rules["stray-artifacts"]: invalid severity');
-  });
+    test(`${id} off is invalid (MultiEdit)`, async () => {
+      setFile(cfg({ [id]: "error" }));
+      const res = await expectDeny(multi('"error"', '"off"'), "is invalid", "Ask the user");
+      expect(res.reason).toContain(`rules["${id}"]: invalid severity`);
+    });
+  }
 
   test("comment-density option max_per_100 is invalid (Write)", async () => {
     setFile(cfg({ "comment-density": "error" }));

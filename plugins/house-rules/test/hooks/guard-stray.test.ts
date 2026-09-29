@@ -41,7 +41,7 @@ afterAll(() => {
   }
 });
 
-describe("guard stray-artifacts check", () => {
+describe("guard artifact-structure check", () => {
   it("Write docs/x.md in repo with doc/ → deny naming doc/", async () => {
     const dir = makeGitRepo({ "doc/readme.md": "# doc" });
     tmpDirs.push(dir);

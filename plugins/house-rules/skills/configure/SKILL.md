@@ -41,7 +41,7 @@ File lives at the repo root. Keep `$schema` so editors validate it:
   "rules": {
     "commit-message": ["error", { "preset": "conventional" }],
     "comment-density": "error",
-    "stray-artifacts": "error"
+    "artifact-structure": "error"
   }
 }
 ```
@@ -49,7 +49,8 @@ File lives at the repo root. Keep `$schema` so editors validate it:
 Rules:
 - `commit-message`: severity `error` only; option `preset` = `handbook` | `conventional` | `subject-only`.
 - `comment-density`: `"error"` only; no options; not configurable.
-- `stray-artifacts`: `"error"` only; no options; not configurable.
+- `artifact-structure`: `"error"` only; no options; not configurable.
+- The former id `stray-artifacts` remains accepted as a config alias for `artifact-structure`.
 
 Unknown keys and values are errors. Change only the key at hand.
 

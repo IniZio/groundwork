@@ -5,6 +5,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import {
   ConfigError,
   PRESETS,
+  RULE_ALIASES,
   RULE_IDS,
   RULE_OPTION_KEYS,
   RULE_SEVERITIES,
@@ -29,7 +30,17 @@ describe("schema constants parity", () => {
   });
 
   it("rule ids match RULE_IDS", () => {
-    expect(sorted(Object.keys(ruleNodes))).toEqual(sorted(RULE_IDS));
+    const aliases = Object.keys(RULE_ALIASES);
+    expect(sorted(Object.keys(ruleNodes))).toEqual(sorted([...RULE_IDS, ...aliases]));
+  });
+
+  it("aliases point at canonical ids and mirror the canonical node", () => {
+    expect(Object.keys(RULE_ALIASES).length).toBeGreaterThan(0);
+    for (const [alias, canon] of Object.entries(RULE_ALIASES)) {
+      expect(RULE_IDS).toContain(canon);
+      expect(RULE_IDS).not.toContain(alias);
+      expect(ruleNodes[alias]).toEqual(ruleNodes[canon]);
+    }
   });
 
   it("additionalProperties is false at root and rules", () => {
@@ -76,28 +87,32 @@ const fixtures: [string, unknown, boolean][] = [
   ["$schema string", { $schema: "x" }, true],
   ["empty rules", { rules: {} }, true],
   ["comment-density error string", { rules: { "comment-density": "error" } }, true],
-  ["stray-artifacts error string", { rules: { "stray-artifacts": "error" } }, true],
+  ["artifact-structure error string", { rules: { "artifact-structure": "error" } }, true],
+  ["stray-artifacts alias error string", { rules: { "stray-artifacts": "error" } }, true],
+  ["stray-artifacts alias [error, {}]", { rules: { "stray-artifacts": ["error", {}] } }, true],
+  ["stray-artifacts alias warn", { rules: { "stray-artifacts": "warn" } }, false],
+  ["stray-artifacts alias unknown option", { rules: { "stray-artifacts": ["error", { x: 1 }] } }, false],
   ["commit-message error string", { rules: { "commit-message": "error" } }, true],
   ["comment-density [error]", { rules: { "comment-density": ["error"] } }, true],
-  ["stray-artifacts [error]", { rules: { "stray-artifacts": ["error"] } }, true],
+  ["artifact-structure [error]", { rules: { "artifact-structure": ["error"] } }, true],
   ["commit-message [error]", { rules: { "commit-message": ["error"] } }, true],
   ["preset handbook", { rules: { "commit-message": ["error", { preset: "handbook" }] } }, true],
   ["preset conventional", { rules: { "commit-message": ["error", { preset: "conventional" }] } }, true],
   ["preset subject-only", { rules: { "commit-message": ["error", { preset: "subject-only" }] } }, true],
   ["comment-density empty options", { rules: { "comment-density": ["error", {}] } }, true],
-  ["stray-artifacts empty options", { rules: { "stray-artifacts": ["error", {}] } }, true],
+  ["artifact-structure empty options", { rules: { "artifact-structure": ["error", {}] } }, true],
   ["comment-density warn", { rules: { "comment-density": "warn" } }, false],
   ["comment-density off", { rules: { "comment-density": "off" } }, false],
   ["comment-density [warn]", { rules: { "comment-density": ["warn"] } }, false],
-  ["stray-artifacts warn", { rules: { "stray-artifacts": "warn" } }, false],
-  ["stray-artifacts off", { rules: { "stray-artifacts": "off" } }, false],
-  ["stray-artifacts [warn, {}]", { rules: { "stray-artifacts": ["warn", {}] } }, false],
+  ["artifact-structure warn", { rules: { "artifact-structure": "warn" } }, false],
+  ["artifact-structure off", { rules: { "artifact-structure": "off" } }, false],
+  ["artifact-structure [warn, {}]", { rules: { "artifact-structure": ["warn", {}] } }, false],
   ["comment-density max_per_100", { rules: { "comment-density": ["error", { max_per_100: 5 }] } }, false],
   ["comment-density max_per_100 empty-ish", { rules: { "comment-density": ["error", { max_per_100: 0 }] } }, false],
   ["unknown top-level key", { extra: 1 }, false],
   ["unknown rule", { rules: { nope: "warn" } }, false],
   ["comment-density preset option", { rules: { "comment-density": ["error", { preset: "handbook" }] } }, false],
-  ["stray-artifacts unknown option", { rules: { "stray-artifacts": ["error", { x: 1 }] } }, false],
+  ["artifact-structure unknown option", { rules: { "artifact-structure": ["error", { x: 1 }] } }, false],
   ["bad severity fatal", { rules: { "comment-density": "fatal" } }, false],
   ["commit-message warn", { rules: { "commit-message": "warn" } }, false],
   ["commit-message off", { rules: { "commit-message": "off" } }, false],

@@ -7,7 +7,7 @@ export interface PolicyEntry {
 
 export const BUILTIN_POLICY: Record<string, PolicyEntry> = {
   'comment-density': { severity: 'error', autofix: true },
-  'stray-artifacts': { severity: 'error', autofix: false },
+  'artifact-structure': { severity: 'error', autofix: false },
 };
 
 export const DEFAULT_IGNORE: string[] = [

@@ -3,11 +3,11 @@ import path from 'node:path';
 import { resolveConfig, pointer } from '../config/resolve.mjs';
 import { RULE_SEVERITIES } from '../config/schema.mjs';
 
-const RULE_ORDER = ['commit-message', 'comment-density', 'stray-artifacts'] as const;
+const RULE_ORDER = ['commit-message', 'comment-density', 'artifact-structure'] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
   'comment-density': [],
-  'stray-artifacts': [],
+  'artifact-structure': [],
 };
 
 function schemaUrl(): string {
@@ -49,9 +49,10 @@ export function runConfig(opts: { repoRoot: string; format: 'text' | 'json' }): 
       : `config: ${resolved.file}`,
     `schema: ${schema}`,
   ];
+  const idWidth = Math.max(...RULE_ORDER.map((id) => id.length)) + 1;
   for (const id of RULE_ORDER) {
     const r = resolved.rules[id] as any;
-    let line = id.padEnd(16) + 'severity=' + r.severity + ' (' + r.sources.severity + ')';
+    let line = id.padEnd(idWidth) + 'severity=' + r.severity + ' (' + r.sources.severity + ')';
     for (const key of OPTION_KEYS[id]) {
       line += '  ' + key + '=' + r.options[key] + ' (' + r.sources[key] + ')';
     }

@@ -51,10 +51,10 @@ describe("configure skill", () => {
     expect(content).not.toMatch(/\b(loosen|tighten)/i);
   });
 
-  it("SKILL.md states comment-density and stray-artifacts accept error only", () => {
+  it("SKILL.md states comment-density and artifact-structure accept error only", () => {
     const content = readFileSync(SKILL_PATH, "utf8");
     expect(content).toMatch(/`comment-density`: `"error"` only.*not configurable/);
-    expect(content).toMatch(/`stray-artifacts`: `"error"` only.*not configurable/);
+    expect(content).toMatch(/`artifact-structure`: `"error"` only.*not configurable/);
   });
 
   it("SKILL.md teaches no escape route", () => {

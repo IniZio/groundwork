@@ -1,6 +1,6 @@
 <!-- This file is generated. Do not edit manually. -->
 
-# stray-artifacts
+# artifact-structure
 
 Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate dirs, and root scratch files.
 

@@ -43,7 +43,7 @@ function bothInput(dCount: number, sCount: number, suffix: string | null = null)
     header: "house-rules gate: files changed in this session violate one or more code conventions.",
     sections: [
       { label: "comment-density:", lines: dLines, footer: DFOOTER_DENSITY },
-      { label: "stray-artifacts:", lines: sLines, footer: SFOOTERBASE },
+      { label: "artifact-structure:", lines: sLines, footer: SFOOTERBASE },
     ],
     notices: [],
     fixedFiles: [],
@@ -149,7 +149,7 @@ describe("block-format: length invariant", () => {
       header: "house-rules gate: files changed in this session violate one or more code conventions.",
       sections: [
         { label: "comment-density:", lines: [], footer: DFOOTER_DENSITY },
-        { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE },
+        { label: "artifact-structure:", lines: strayLines, footer: SFOOTERBASE },
       ],
       notices: [],
       fixedFiles,
@@ -193,7 +193,7 @@ describe("block-format: mandatory parts", () => {
     for (let n = 1; n <= 30; n++) {
       const out = formatBlock(bothInput(n, n, HANDBACK));
       expect(out).toContain("comment-density:");
-      expect(out).toContain("stray-artifacts:");
+      expect(out).toContain("artifact-structure:");
     }
   });
 });
@@ -207,7 +207,7 @@ describe("block-format: minimum-entry guarantee", () => {
 
   it("density: 30 density + 1 stray — stray entry visible", () => {
     const out = formatBlock(bothInput(30, 1, HANDBACK));
-    expect(out).toContain("stray-artifacts:");
+    expect(out).toContain("artifact-structure:");
     // Stray section must show the one real entry (not just a suffix)
     expect(out).toContain("docs/file0.md");
   });
@@ -271,7 +271,7 @@ function realisticTripleInput(dCount: number, nCount: number, sCount: number, su
     header: "house-rules gate: files changed in this session violate one or more code conventions.",
     sections: [
       { label: "comment-density:", lines: Array.from({ length: dCount }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
-      { label: "stray-artifacts:", lines: Array.from({ length: sCount }, (_, i) => realisticStrayLine(i)), footer: SFOOTERBASE },
+      { label: "artifact-structure:", lines: Array.from({ length: sCount }, (_, i) => realisticStrayLine(i)), footer: SFOOTERBASE },
     ],
     notices: Array.from({ length: nCount }, (_, i) => realisticNoticeLine(i)),
     fixedFiles: [],
@@ -292,7 +292,7 @@ describe("block-format: realistic paths", () => {
       header: "house-rules gate: files changed in this session violate one or more code conventions.",
       sections: [
         { label: "comment-density:", lines: Array.from({ length: 30 }, (_, i) => realisticDensityLine(i)), footer: DFOOTER_DENSITY },
-        { label: "stray-artifacts:", lines: [realisticStrayLine(0)], footer: SFOOTERBASE },
+        { label: "artifact-structure:", lines: [realisticStrayLine(0)], footer: SFOOTERBASE },
       ],
       notices: [],
       fixedFiles: [`${RROOT}src/fixed0.ts`],
@@ -317,17 +317,17 @@ describe("formatShortReason", () => {
   it("both rules: correct format", () => {
     const rules: RuleSummary[] = [
       { name: "comment-density", paths: ["/a/b.ts"] },
-      { name: "stray-artifacts", paths: ["/a/docs/x.md"] },
+      { name: "artifact-structure", paths: ["/a/docs/x.md"] },
     ];
     const out = formatShortReason(rules, "/tmp/house-rules/sid/stop-block.txt");
     expect(out).toContain("comment-density (1 file)");
-    expect(out).toContain("stray-artifacts (1 file)");
+    expect(out).toContain("artifact-structure (1 file)");
     expect(out).toContain("full list:");
     expect(out.length).toBeLessThanOrEqual(2000);
   });
 
   it("SubagentStop suffix appended", () => {
-    const rules: RuleSummary[] = [{ name: "stray-artifacts", paths: ["/a/docs/x.md"] }];
+    const rules: RuleSummary[] = [{ name: "artifact-structure", paths: ["/a/docs/x.md"] }];
     const out = formatShortReason(rules, "/tmp/sid/stop-block.txt", " Edits made after hand-back do not reach the caller.");
     expect(out).toContain("Edits made after hand-back do not reach the caller.");
     expect(out.length).toBeLessThanOrEqual(2000);
@@ -337,7 +337,7 @@ describe("formatShortReason", () => {
     const paths = Array.from({ length: 1000 }, (_, i) => `/very/long/path/component-name-${i}.tsx`);
     const rules: RuleSummary[] = [
       { name: "comment-density", paths },
-      { name: "stray-artifacts", paths },
+      { name: "artifact-structure", paths },
     ];
     const out = formatShortReason(rules, "/tmp/house-rules/session-id/stop-block.txt");
     expect(out.length).toBeLessThanOrEqual(2000);

@@ -46,7 +46,7 @@ const SEV = ["error"];
 const SHAPE = ["severity string", "[severity]", "[severity, options]"];
 const CD = 'rules["comment-density"]';
 const CM = 'rules["commit-message"]';
-const SA = 'rules["stray-artifacts"]';
+const SA = 'rules["artifact-structure"]';
 
 describe("parseConfig valid input", () => {
   it("normalizes the full shape", () => {
@@ -55,14 +55,14 @@ describe("parseConfig valid input", () => {
       rules: {
         "commit-message": ["error", { preset: "conventional" }],
         "comment-density": "error",
-        "stray-artifacts": "error",
+        "artifact-structure": "error",
       },
     });
     expect(parseConfig(text)).toEqual({
       rules: {
         "commit-message": { severity: "error", options: { preset: "conventional" } },
         "comment-density": { severity: "error", options: {} },
-        "stray-artifacts": { severity: "error", options: {} },
+        "artifact-structure": { severity: "error", options: {} },
       },
     });
   });
@@ -75,9 +75,26 @@ describe("parseConfig valid input", () => {
   });
 
   it("accepts the single-element array form", () => {
-    expect(parseConfig('{"rules":{"stray-artifacts":["error"]}}')).toEqual({
+    expect(parseConfig('{"rules":{"artifact-structure":["error"]}}')).toEqual({
+      rules: { "artifact-structure": { severity: "error", options: {} } },
+    });
+  });
+
+  it("accepts the old stray-artifacts id as an alias key", () => {
+    expect(parseConfig('{"rules":{"stray-artifacts":"error"}}')).toEqual({
       rules: { "stray-artifacts": { severity: "error", options: {} } },
     });
+  });
+
+  it("accepts the new artifact-structure id alone", () => {
+    expect(parseConfig('{"rules":{"artifact-structure":"error"}}')).toEqual({
+      rules: { "artifact-structure": { severity: "error", options: {} } },
+    });
+  });
+
+  it("accepts both alias and canonical keys at parse level", () => {
+    const out = parseConfig('{"rules":{"stray-artifacts":"error","artifact-structure":"error"}}');
+    expect(Object.keys(out.rules).sort()).toEqual(["artifact-structure", "stray-artifacts"]);
   });
 
   it("accepts an empty object", () => {
@@ -129,12 +146,12 @@ describe("parseConfig invalid input", () => {
 
   it("rejects a bad value shape", () => {
     for (const v of ["1", "[]", '["error",{},1]']) {
-      expectConfigError(`{"rules":{"stray-artifacts":${v}}}`, SA, SHAPE);
+      expectConfigError(`{"rules":{"artifact-structure":${v}}}`, SA, SHAPE);
     }
   });
 
   it("rejects a bad severity string", () => {
-    expectConfigError('{"rules":{"stray-artifacts":"fatal"}}', SA, SEV);
+    expectConfigError('{"rules":{"artifact-structure":"fatal"}}', SA, SEV);
   });
 
   it("rejects off and warn severities for every rule", () => {
@@ -148,7 +165,7 @@ describe("parseConfig invalid input", () => {
         expect(arr.message).toContain("invalid severity; allowed: error");
       }
     }
-    const off = capture('{"rules":{"stray-artifacts":"off"}}');
+    const off = capture('{"rules":{"artifact-structure":"off"}}');
     expect(off.path).toBe(SA);
     expect(off.message).toContain("allowed: error");
   });
@@ -175,7 +192,7 @@ describe("parseConfig invalid input", () => {
       [],
       "unknown option",
     );
-    expectConfigError('{"rules":{"stray-artifacts":["error",{"x":1}]}}', `${SA}[1].x`, []);
+    expectConfigError('{"rules":{"artifact-structure":["error",{"x":1}]}}', `${SA}[1].x`, []);
   });
 
   it("rejects a bad preset", () => {
@@ -204,8 +221,8 @@ describe("parseConfig invalid input", () => {
       '{"rules":[]}',
       '{"commit-message":{"preset":"handbook"}}',
       '{"rules":{"foo":"error"}}',
-      '{"rules":{"stray-artifacts":1}}',
-      '{"rules":{"stray-artifacts":"fatal"}}',
+      '{"rules":{"artifact-structure":1}}',
+      '{"rules":{"artifact-structure":"fatal"}}',
       '{"rules":{"comment-density":["loud"]}}',
       '{"rules":{"commit-message":"off"}}',
       '{"rules":{"comment-density":["error","x"]}}',
@@ -222,18 +239,18 @@ describe("parseConfig invalid input", () => {
 
 describe("exported constants", () => {
   it("pins exact values", () => {
-    expect(RULE_IDS).toEqual(["commit-message", "comment-density", "stray-artifacts"]);
+    expect(RULE_IDS).toEqual(["commit-message", "comment-density", "artifact-structure"]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
       "commit-message": ["error"],
       "comment-density": ["error"],
-      "stray-artifacts": ["error"],
+      "artifact-structure": ["error"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
       "commit-message": ["preset"],
       "comment-density": [],
-      "stray-artifacts": [],
+      "artifact-structure": [],
     });
     expect(TOP_LEVEL_KEYS).toEqual(["$schema", "rules"]);
   });

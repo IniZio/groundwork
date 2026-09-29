@@ -46,16 +46,16 @@ const invalid: InvalidTrackedCase[] = [
     why: 'docs/ and doc/ coexist; both dirs have tracked files, both flagged',
     tree: { 'doc/guide.md': '', 'docs/readme.md': '' },
     findings: [
-      { ruleId: 'stray-artifacts', path: 'doc/guide.md', message: 'doc/ and docs/ coexist under root; merge doc/ into docs/', fingerprintBasis: 'doc/guide.md' },
-      { ruleId: 'stray-artifacts', path: 'docs/readme.md', message: 'docs/ and doc/ coexist under root; merge docs/ into doc/', fingerprintBasis: 'docs/readme.md' },
+      { ruleId: 'artifact-structure', path: 'doc/guide.md', message: 'doc/ and docs/ coexist under root; merge doc/ into docs/', fingerprintBasis: 'doc/guide.md' },
+      { ruleId: 'artifact-structure', path: 'docs/readme.md', message: 'docs/ and doc/ coexist under root; merge docs/ into doc/', fingerprintBasis: 'docs/readme.md' },
     ],
   },
   {
     why: 'tests/ and test/ coexist; both dirs have tracked files, both flagged',
     tree: { 'test/unit.ts': '', 'tests/helper.ts': '' },
     findings: [
-      { ruleId: 'stray-artifacts', path: 'test/unit.ts', message: 'test/ and tests/ coexist under root; merge test/ into tests/', fingerprintBasis: 'test/unit.ts' },
-      { ruleId: 'stray-artifacts', path: 'tests/helper.ts', message: 'tests/ and test/ coexist under root; merge tests/ into test/', fingerprintBasis: 'tests/helper.ts' },
+      { ruleId: 'artifact-structure', path: 'test/unit.ts', message: 'test/ and tests/ coexist under root; merge test/ into tests/', fingerprintBasis: 'test/unit.ts' },
+      { ruleId: 'artifact-structure', path: 'tests/helper.ts', message: 'tests/ and test/ coexist under root; merge tests/ into test/', fingerprintBasis: 'tests/helper.ts' },
     ],
   },
   {
@@ -63,7 +63,7 @@ const invalid: InvalidTrackedCase[] = [
     tree: { 'test-agent-config.mjs': '' },
     findings: [
       {
-        ruleId: 'stray-artifacts',
+        ruleId: 'artifact-structure',
         path: 'test-agent-config.mjs',
         message: 'root scratch file: test-agent-config.mjs',
         fingerprintBasis: 'test-agent-config.mjs',
@@ -75,13 +75,13 @@ const invalid: InvalidTrackedCase[] = [
     tree: { 'util/helpers.ts': '', 'utils/tools.ts': '' },
     findings: [
       {
-        ruleId: 'stray-artifacts',
+        ruleId: 'artifact-structure',
         path: 'util/helpers.ts',
         message: 'both util/ and utils/ exist under root; consolidate',
         fingerprintBasis: 'util/helpers.ts',
       },
       {
-        ruleId: 'stray-artifacts',
+        ruleId: 'artifact-structure',
         path: 'utils/tools.ts',
         message: 'both util/ and utils/ exist under root; consolidate',
         fingerprintBasis: 'utils/tools.ts',
@@ -93,7 +93,7 @@ const invalid: InvalidTrackedCase[] = [
     tree: { 'docs/readme.md': '', 'doc/guide.md': '' },
     trackedOverrides: { 'docs/readme.md': false },
     findings: [
-      { ruleId: 'stray-artifacts', path: 'doc/guide.md', message: 'doc/ and docs/ coexist under root; merge doc/ into docs/', fingerprintBasis: 'doc/guide.md' },
+      { ruleId: 'artifact-structure', path: 'doc/guide.md', message: 'doc/ and docs/ coexist under root; merge doc/ into docs/', fingerprintBasis: 'doc/guide.md' },
     ],
   },
   {
@@ -101,7 +101,7 @@ const invalid: InvalidTrackedCase[] = [
     tree: { 'tests/helper.ts': '', 'test/unit.ts': '' },
     trackedOverrides: { 'tests/helper.ts': false },
     findings: [
-      { ruleId: 'stray-artifacts', path: 'test/unit.ts', message: 'test/ and tests/ coexist under root; merge test/ into tests/', fingerprintBasis: 'test/unit.ts' },
+      { ruleId: 'artifact-structure', path: 'test/unit.ts', message: 'test/ and tests/ coexist under root; merge test/ into tests/', fingerprintBasis: 'test/unit.ts' },
     ],
   },
   {
@@ -111,7 +111,7 @@ const invalid: InvalidTrackedCase[] = [
     sessionCreatedOverrides: { 'tmp-notes.md': true },
     findings: [
       {
-        ruleId: 'stray-artifacts',
+        ruleId: 'artifact-structure',
         path: 'tmp-notes.md',
         message: 'root scratch file: tmp-notes.md',
         fingerprintBasis: 'tmp-notes.md',

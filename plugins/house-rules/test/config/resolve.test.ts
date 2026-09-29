@@ -62,7 +62,7 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
-    'stray-artifacts': {
+    'artifact-structure': {
       severity: 'error',
       options: {},
       sources: { severity: 'default' },
@@ -92,7 +92,7 @@ describe('resolveConfig defaults', () => {
   it('default severities match BUILTIN_POLICY', () => {
     const { rules } = resolveConfig(makeRepo());
     expect<string>(rules['comment-density'].severity).toEqual(BUILTIN_POLICY['comment-density'].severity);
-    expect<string>(rules['stray-artifacts'].severity).toEqual(BUILTIN_POLICY['stray-artifacts'].severity);
+    expect<string>(rules['artifact-structure'].severity).toEqual(BUILTIN_POLICY['artifact-structure'].severity);
     expect(rules['commit-message'].severity).toEqual('error');
   });
 });
@@ -175,8 +175,8 @@ describe('pointer', () => {
 
   it('describes default severity', () => {
     const resolved = resolveConfig(makeRepo());
-    expect(pointer(resolved, 'stray-artifacts', 'severity')).toBe(
-      'rules["stray-artifacts"] (active: error, source: default)',
+    expect(pointer(resolved, 'artifact-structure', 'severity')).toBe(
+      'rules["artifact-structure"] (active: error, source: default)',
     );
   });
 
@@ -186,6 +186,37 @@ describe('pointer', () => {
     expect(pointer(resolveConfig(repo), 'commit-message', 'preset')).toBe(
       'rules["commit-message"].preset (active: conventional, source: explicit)',
     );
+  });
+});
+
+describe('resolveConfig rule aliases', () => {
+  it('old stray-artifacts key resolves to artifact-structure with explicit source', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'stray-artifacts': 'error' } });
+    const resolved = resolveConfig(repo);
+    expect(resolved.rules['artifact-structure']).toEqual({
+      severity: 'error',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
+    expect('stray-artifacts' in resolved.rules).toBe(false);
+  });
+
+  it('both keys set throws ConfigError naming both ids', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'stray-artifacts': 'error', 'artifact-structure': 'error' } });
+    const err = caught(() => resolveConfig(repo));
+    expect(err).toBeInstanceOf(ConfigError);
+    const msg = (err as ConfigError).message;
+    expect(msg).toContain('stray-artifacts');
+    expect(msg).toContain('artifact-structure');
+  });
+
+  it('control: new id alone is accepted with explicit source', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'artifact-structure': 'error' } });
+    const resolved = resolveConfig(repo);
+    expect(resolved.rules['artifact-structure'].sources).toEqual({ severity: 'explicit' });
   });
 });
 
@@ -251,12 +282,12 @@ describe('resolveConfigText', () => {
     const repo = makeRepo();
     commits(repo, CONVENTIONAL_HISTORY);
     const file = writeConfig(repo, {
-      rules: { 'comment-density': 'error', 'stray-artifacts': ['error'] },
+      rules: { 'comment-density': 'error', 'artifact-structure': ['error'] },
     });
     const resolved = resolveConfigText(repo, fs.readFileSync(file, 'utf8'));
     expect(resolved).toEqual(resolveConfig(repo));
     expect(resolved.rules['comment-density'].sources).toEqual({ severity: 'explicit' });
-    expect(resolved.rules['stray-artifacts'].sources).toEqual({ severity: 'explicit' });
+    expect(resolved.rules['artifact-structure'].sources).toEqual({ severity: 'explicit' });
   });
 
   it('uses the given text, not disk content', () => {

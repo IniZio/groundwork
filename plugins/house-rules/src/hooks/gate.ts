@@ -143,7 +143,7 @@ export async function run(
       rules.find(r => r.id === f.ruleId)?.fix != null &&
       policy[f.ruleId]?.autofix === true
     );
-    const strayErrors = unbaselined.filter(f => f.ruleId === 'stray-artifacts' && f.severity === 'error');
+    const strayErrors = unbaselined.filter(f => f.ruleId === 'artifact-structure' && f.severity === 'error');
 
     if (fixableFindings.length === 0 && strayErrors.length === 0) {
       if (warnings.length > 0) {
@@ -271,7 +271,7 @@ export async function run(
     if (newCount >= 4) {
       const ruleNames = [
         ...(unfixable.length > 0 ? ruleNamesFromUnfixable : []),
-        ...(strayErrors.length > 0 ? ["stray-artifacts"] : []),
+        ...(strayErrors.length > 0 ? ["artifact-structure"] : []),
       ].join(" + ");
       const action4 = unfixable.length > 0 && strayErrors.length === 0
         ? "remove or move comments before continuing"
@@ -322,7 +322,7 @@ export async function run(
         ruleSummaries.push({ name: ruleId, paths: unfixable.filter(u => u.ruleId === ruleId).map(u => u.path) });
       }
     }
-    if (hasStray) ruleSummaries.push({ name: "stray-artifacts", paths: strayErrors.map(f => path.join(repoRoot, f.path)) });
+    if (hasStray) ruleSummaries.push({ name: "artifact-structure", paths: strayErrors.map(f => path.join(repoRoot, f.path)) });
 
     // Build the full untrimmed report
     const sects = (() => {
@@ -333,7 +333,7 @@ export async function run(
       } else {
         return [
           { label: "comment-density:", lines: fileLines, footer: DFOOTER_DENSITY_BOTH },
-          { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE + (sfx ?? "") },
+          { label: "artifact-structure:", lines: strayLines, footer: SFOOTERBASE + (sfx ?? "") },
         ];
       }
     })();
@@ -383,7 +383,7 @@ export async function run(
           header: "house-rules gate: files changed in this session violate one or more code conventions.",
           sections: [
             { label: "comment-density:", lines: fileLines, footer: DFOOTER_DENSITY_BOTH },
-            { label: "stray-artifacts:", lines: strayLines, footer: SFOOTERBASE },
+            { label: "artifact-structure:", lines: strayLines, footer: SFOOTERBASE },
           ],
           notices,
           fixedFiles: fixedPaths,

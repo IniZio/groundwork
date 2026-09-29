@@ -1,9 +1,24 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ConfigError, parseConfig } from './schema.mjs'
+import { ConfigError, RULE_ALIASES, parseConfig } from './schema.mjs'
 import { detectPreset } from './detect.mjs'
 
 export const DEFAULT_SEVERITY = 'error'
+
+function applyAliases(file, rules) {
+  const out = { ...rules }
+  for (const [old, next] of Object.entries(RULE_ALIASES)) {
+    if (!(old in out)) continue
+    if (next in out) {
+      const err = new ConfigError(`rules.${old}`, `"${old}" and "${next}" both set; "${old}" is the old name of "${next}"`, [next])
+      err.message = `${file}: ${err.message}`
+      throw err
+    }
+    out[next] = out[old]
+    delete out[old]
+  }
+  return out
+}
 
 function parseText(file, text) {
   if (text === null) return { rules: {} }
@@ -27,7 +42,7 @@ export function resolveConfigText(repoRoot, text) {
   const file = join(repoRoot, '.house-rules.json')
   const present = text !== null
   const parsed = parseText(file, text)
-  const rules = parsed.rules ?? {}
+  const rules = applyAliases(file, parsed.rules ?? {})
 
   const severityOf = (id) =>
     rules[id]?.severity !== undefined
@@ -36,7 +51,7 @@ export function resolveConfigText(repoRoot, text) {
 
   const commit = severityOf('commit-message')
   const density = severityOf('comment-density')
-  const stray = severityOf('stray-artifacts')
+  const stray = severityOf('artifact-structure')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -57,7 +72,7 @@ export function resolveConfigText(repoRoot, text) {
         options: {},
         sources: { severity: density.source },
       },
-      'stray-artifacts': {
+      'artifact-structure': {
         severity: stray.value,
         options: {},
         sources: { severity: stray.source },

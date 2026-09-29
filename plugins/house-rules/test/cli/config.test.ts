@@ -49,10 +49,10 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
   [
     'config: none (all values default or detected)',
     `schema: ${SCHEMA_URL}`,
-    `commit-message  severity=error (default)  preset=${preset} (${why})`,
+    `commit-message     severity=error (default)  preset=${preset} (${why})`,
     `  change with: rules["commit-message"].preset (active: ${preset}, source: ${why})`,
-    'comment-density severity=error (default)',
-    'stray-artifacts severity=error (default)',
+    'comment-density    severity=error (default)',
+    'artifact-structure severity=error (default)',
     '',
   ].join('\n');
 
@@ -60,7 +60,7 @@ const EXPLICIT_FILE = {
   rules: {
     'commit-message': ['error', { preset: 'handbook' }],
     'comment-density': 'error',
-    'stray-artifacts': 'error',
+    'artifact-structure': 'error',
   },
 };
 
@@ -68,10 +68,10 @@ function explicitText(file: string) {
   return [
     `config: ${file}`,
     `schema: ${SCHEMA_URL}`,
-    'commit-message  severity=error (explicit)  preset=handbook (explicit)',
+    'commit-message     severity=error (explicit)  preset=handbook (explicit)',
     '  change with: rules["commit-message"].preset (active: handbook, source: explicit)',
-    'comment-density severity=error (explicit)',
-    'stray-artifacts severity=error (explicit)',
+    'comment-density    severity=error (explicit)',
+    'artifact-structure severity=error (explicit)',
     '',
   ].join('\n');
 }
@@ -118,13 +118,23 @@ describe('house-rules config', () => {
   });
 
   it('rejects a non-error severity with the allowed set', () => {
-    const bad = { rules: { 'stray-artifacts': 'off' } };
+    const bad = { rules: { 'artifact-structure': 'off' } };
     const repo = makeRepo(CONVENTIONAL, { '.house-rules.json': JSON.stringify(bad) });
     const r = runConfig(['--repo', repo], repo);
     expect(r.status).toBe(2);
     expect(r.stdout).toBe('');
-    expect(r.stderr).toContain('rules["stray-artifacts"]');
+    expect(r.stderr).toContain('rules["artifact-structure"]');
     expect(r.stderr).toContain('allowed: error');
+  });
+
+  it('accepts the legacy stray-artifacts id as an alias and prints artifact-structure', () => {
+    const legacy = { rules: { 'stray-artifacts': 'error' } };
+    const repo = makeRepo(CONVENTIONAL, { '.house-rules.json': JSON.stringify(legacy) });
+    const r = runConfig(['--repo', repo], repo);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    expect(r.stdout).toContain('artifact-structure');
+    expect(r.stdout).not.toContain('stray-artifacts');
   });
 
   it('emits JSON with ordered keys under --format json', () => {
@@ -147,11 +157,11 @@ describe('house-rules config', () => {
           options: {},
           sources: { severity: 'explicit' },
         },
-        'stray-artifacts': { severity: 'error', options: {}, sources: { severity: 'explicit' } },
+        'artifact-structure': { severity: 'error', options: {}, sources: { severity: 'explicit' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);
-    expect(Object.keys(out.rules)).toEqual(['commit-message', 'comment-density', 'stray-artifacts']);
+    expect(Object.keys(out.rules)).toEqual(['commit-message', 'comment-density', 'artifact-structure']);
     expect(r.stdout).toBe(JSON.stringify(out, null, 2) + '\n');
   });
 

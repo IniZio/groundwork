@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import rule from '../rules/stray-artifacts/index.js';
+import rule from '../rules/artifact-structure/index.js';
 import type { RuleContext } from '../src/engine/types.js';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
@@ -37,7 +37,7 @@ function gitCommit(dir: string, msg = 'init'): void {
   spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', msg, '--allow-empty'], { cwd: dir });
 }
 
-describe('stray-artifacts gitignore integration', () => {
+describe('artifact-structure gitignore integration', () => {
   it('(a) tracked doc/ + gitignored docs/ → no finding', async () => {
     const repo = mktemp();
     initRepo(repo);
@@ -84,7 +84,7 @@ describe('stray-artifacts gitignore integration', () => {
   });
 });
 
-describe('stray-artifacts real-path probe (AC3)', () => {
+describe('artifact-structure real-path probe (AC3)', () => {
   it('check exits 0: tracked doc/ + gitignored docs/ with modified file in scope', () => {
     const repo = mktemp();
     initRepo(repo);

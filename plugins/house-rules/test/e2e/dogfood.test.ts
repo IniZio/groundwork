@@ -43,7 +43,7 @@ const DENSE_SRC = [
 ].join('\n') + '\n';
 
 describe('dogfood e2e', () => {
-  it('check exits 1 and names both stray-artifacts and comment-density', () => {
+  it('check exits 1 and names both artifact-structure and comment-density', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'hr-e2e-'));
     try {
       cloneRepo(tmpDir);
@@ -63,14 +63,14 @@ describe('dogfood e2e', () => {
       const output = result.stdout + result.stderr;
 
       expect(result.status).toBe(1);
-      expect(output).toContain('stray-artifacts');
+      expect(output).toContain('artifact-structure');
       expect(output).toContain('comment-density');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it('lone docs/ in a fresh repo → no stray-artifacts finding', () => {
+  it('lone docs/ in a fresh repo → no artifact-structure finding', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'hr-e2e-lone-'));
     try {
       const init = spawnSync('git', ['init', '-q', tmpDir], { encoding: 'utf8' });
@@ -94,7 +94,7 @@ describe('dogfood e2e', () => {
       const output = result.stdout + result.stderr;
 
       expect(result.status).toBe(0);
-      expect(output).not.toContain('stray-artifacts');
+      expect(output).not.toContain('artifact-structure');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

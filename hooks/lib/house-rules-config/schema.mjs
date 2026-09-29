@@ -1,15 +1,16 @@
-export const RULE_IDS = Object.freeze(["commit-message", "comment-density", "stray-artifacts"]);
+export const RULE_IDS = Object.freeze(["commit-message", "comment-density", "artifact-structure"]);
+export const RULE_ALIASES = Object.freeze({ "stray-artifacts": "artifact-structure" });
 export const SEVERITIES = Object.freeze(["error"]);
 export const RULE_SEVERITIES = Object.freeze({
   "commit-message": SEVERITIES,
   "comment-density": SEVERITIES,
-  "stray-artifacts": SEVERITIES,
+  "artifact-structure": SEVERITIES,
 });
 export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"]);
 export const RULE_OPTION_KEYS = Object.freeze({
   "commit-message": Object.freeze(["preset"]),
   "comment-density": Object.freeze([]),
-  "stray-artifacts": Object.freeze([]),
+  "artifact-structure": Object.freeze([]),
 });
 export const TOP_LEVEL_KEYS = Object.freeze(["$schema", "rules"]);
 
@@ -25,6 +26,9 @@ export class ConfigError extends Error {
   }
 }
 
+const canonical = (id) => RULE_ALIASES[id] ?? id;
+const isKnownRule = (id) => RULE_IDS.includes(canonical(id));
+
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 function oldShapeProblem(id, value) {
@@ -37,7 +41,7 @@ function oldShapeProblem(id, value) {
 }
 
 function checkSeverity(id, value, path) {
-  const allowed = RULE_SEVERITIES[id];
+  const allowed = RULE_SEVERITIES[canonical(id)];
   if (typeof value !== "string" || !allowed.includes(value)) {
     throw new ConfigError(path, "invalid severity", allowed);
   }
@@ -46,7 +50,7 @@ function checkSeverity(id, value, path) {
 
 function checkOptions(id, options, path) {
   if (!isObject(options)) throw new ConfigError(path, "options must be an object", ["object"]);
-  const known = RULE_OPTION_KEYS[id];
+  const known = RULE_OPTION_KEYS[canonical(id)];
   for (const key of Object.keys(options)) {
     if (!known.includes(key)) throw new ConfigError(`${path}.${key}`, "unknown option", known);
   }
@@ -79,7 +83,7 @@ export function parseConfig(text) {
   if (!isObject(root)) throw new ConfigError("", "config must be an object", ["object"]);
 
   for (const key of Object.keys(root)) {
-    if (RULE_IDS.includes(key)) {
+    if (isKnownRule(key)) {
       throw new ConfigError(key, oldShapeProblem(key, root[key]), TOP_LEVEL_KEYS);
     }
     if (!TOP_LEVEL_KEYS.includes(key)) throw new ConfigError(key, "unknown key", TOP_LEVEL_KEYS);
@@ -92,7 +96,7 @@ export function parseConfig(text) {
   if (Object.hasOwn(root, "rules")) {
     if (!isObject(root.rules)) throw new ConfigError("rules", "must be an object", ["object"]);
     for (const id of Object.keys(root.rules)) {
-      if (!RULE_IDS.includes(id)) {
+      if (!isKnownRule(id)) {
         throw new ConfigError(`rules["${id}"]`, "unknown rule", RULE_IDS);
       }
       rules[id] = parseRule(id, root.rules[id]);

@@ -18,7 +18,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
 | comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | every language in the Supported languages table below: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims every language in the Supported languages table | `house-rules check --base <ref>` | all supported languages: stable |
-| stray-artifacts | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
+| artifact-structure | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 
 Per-rule READMEs are generated under `rules/<id>/`.
 
@@ -32,7 +32,7 @@ Repo-level config lives in `.house-rules.json` at the repo root:
   "rules": {
     "commit-message": ["error", {"preset": "conventional"}],
     "comment-density": "error",
-    "stray-artifacts": "error"
+    "artifact-structure": "error"
   }
 }
 ```
@@ -41,7 +41,9 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 |---|---|
 | commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
 | comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
-| stray-artifacts | severity `error` only; no options |
+| artifact-structure | severity `error` only; no options |
+
+The former id `stray-artifacts` remains accepted as a config alias for `artifact-structure`.
 
 The only configurable knob is the commit-message `preset`.
 

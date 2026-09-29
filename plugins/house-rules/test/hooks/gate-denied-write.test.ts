@@ -43,7 +43,7 @@ function runGate(repo: string, tp: string) {
 }
 
 describe("gate: denied Write never reaches disk", () => {
-  it("does not block on a stray-artifacts path that does not exist", () => {
+  it("does not block on a artifact-structure path that does not exist", () => {
     const { repo, tp, target } = setup("docs/x/a.md", false);
     expect(existsSync(target)).toBe(false);
     const { r, out } = runGate(repo, tp);

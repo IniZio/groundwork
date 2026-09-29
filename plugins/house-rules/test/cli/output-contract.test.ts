@@ -174,8 +174,8 @@ describe('AC2: housekeep dry-run vs real summaries equal', () => {
     const rulesDir = mktemp('hr-rules-');
     // comment-density → error+autofix: goes to fixed
     writeStub(rulesDir, 'comment-density', { withFix: true });
-    // stray-artifacts → error+no autofix: goes to manual
-    writeStub(rulesDir, 'stray-artifacts');
+    // artifact-structure → error+no autofix: goes to manual
+    writeStub(rulesDir, 'artifact-structure');
 
     function makeFixture(): string {
       const dir = mktemp();
@@ -272,8 +272,8 @@ describe('AC3: exit code matrix', () => {
 
   it('check --fix with an unfixable error finding exits 1', () => {
     const rulesDir = mktemp('hr-rules-');
-    // stray-artifacts → error, no autofix → finding remains → exit 1
-    writeStub(rulesDir, 'stray-artifacts');
+    // artifact-structure → error, no autofix → finding remains → exit 1
+    writeStub(rulesDir, 'artifact-structure');
     const repoDir = makeRepo();
 
     const r = runBIN(
@@ -305,8 +305,8 @@ describe('AC3: exit code matrix', () => {
 
   it('housekeep with unfixable error in manual exits 1', () => {
     const rulesDir = mktemp('hr-rules-');
-    // stray-artifacts → error, no autofix → manual entry, error severity → exit 1
-    writeStub(rulesDir, 'stray-artifacts');
+    // artifact-structure → error, no autofix → manual entry, error severity → exit 1
+    writeStub(rulesDir, 'artifact-structure');
     const repoDir = makeRepo();
 
     const r = runBIN(

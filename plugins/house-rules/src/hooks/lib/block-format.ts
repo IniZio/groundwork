@@ -200,7 +200,7 @@ export function formatBlock(input: BlockInput, limit = 2000): string {
 }
 
 export interface RuleSummary {
-  name: string;   // e.g. "comment-density" or "stray-artifacts"
+  name: string;   // e.g. "comment-density" or "artifact-structure"
   paths: string[];
 }
 
@@ -208,7 +208,7 @@ export interface RuleSummary {
  * Produces a short ≤2000-char-by-construction summary for use as the Stop block reason
  * when the full report has been written to filePath.
  * Format:
- *   house-rules gate: comment-density (N files)[, stray-artifacts (M files)].
+ *   house-rules gate: comment-density (N files)[, artifact-structure (M files)].
  *   /path1, /path2[, … K more] — full list: <filePath>[<suffix>]
  */
 export function formatShortReason(

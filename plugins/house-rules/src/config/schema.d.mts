@@ -1,19 +1,21 @@
-export type RuleId = "commit-message" | "comment-density" | "stray-artifacts";
+export type RuleId = "commit-message" | "comment-density" | "artifact-structure";
+export type RuleAlias = "stray-artifacts";
 export type Severity = "error";
 export type Preset = "handbook" | "conventional" | "subject-only";
 
-export const RULE_IDS: readonly ["commit-message", "comment-density", "stray-artifacts"];
+export const RULE_IDS: readonly ["commit-message", "comment-density", "artifact-structure"];
+export const RULE_ALIASES: { readonly "stray-artifacts": "artifact-structure" };
 export const SEVERITIES: readonly ["error"];
 export const RULE_SEVERITIES: {
   readonly "commit-message": readonly ["error"];
   readonly "comment-density": readonly ["error"];
-  readonly "stray-artifacts": readonly ["error"];
+  readonly "artifact-structure": readonly ["error"];
 };
 export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
 export const RULE_OPTION_KEYS: {
   readonly "commit-message": readonly ["preset"];
   readonly "comment-density": readonly [];
-  readonly "stray-artifacts": readonly [];
+  readonly "artifact-structure": readonly [];
 };
 export const TOP_LEVEL_KEYS: readonly ["$schema", "rules"];
 
@@ -30,7 +32,7 @@ export interface ParsedRule {
 }
 
 export interface ParsedConfig {
-  rules: { [id in RuleId]?: ParsedRule };
+  rules: { [id in RuleId | RuleAlias]?: ParsedRule };
 }
 
 export function parseConfig(text: string): ParsedConfig;

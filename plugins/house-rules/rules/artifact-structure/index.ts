@@ -22,7 +22,7 @@ const ROOT_SCRATCH_PATTERNS = [
 ];
 
 const rule: Rule = {
-  id: 'stray-artifacts',
+  id: 'artifact-structure',
   meta: {
     description: 'Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate dirs, and root scratch files.',
   },
@@ -111,7 +111,7 @@ const rule: Rule = {
               if (fileParent === parent && dirAtDepth === synonym) {
                 seenSynonym.add(f.path);
                 findings.push({
-                  ruleId: 'stray-artifacts',
+                  ruleId: 'artifact-structure',
                   path: f.path,
                   message: `${synonym}/ and ${canonical}/ coexist under ${parentLabel}; merge ${synonym}/ into ${canonical}/`,
                   fingerprintBasis: f.path,
@@ -119,7 +119,7 @@ const rule: Rule = {
               } else if (fileParent === parent && dirAtDepth === canonical) {
                 seenSynonym.add(f.path);
                 findings.push({
-                  ruleId: 'stray-artifacts',
+                  ruleId: 'artifact-structure',
                   path: f.path,
                   message: `${canonical}/ and ${synonym}/ coexist under ${parentLabel}; merge ${canonical}/ into ${synonym}/`,
                   fingerprintBasis: f.path,
@@ -146,7 +146,7 @@ const rule: Rule = {
               if (fileParent === parent && (dirAtDepth === a || dirAtDepth === b)) {
                 seenSymmetric.add(f.path);
                 findings.push({
-                  ruleId: 'stray-artifacts',
+                  ruleId: 'artifact-structure',
                   path: f.path,
                   message: `both ${a}/ and ${b}/ exist under ${parentLabel}; consolidate`,
                   fingerprintBasis: f.path,
@@ -165,7 +165,7 @@ const rule: Rule = {
       for (const pattern of ROOT_SCRATCH_PATTERNS) {
         if (pattern.test(filename)) {
           findings.push({
-            ruleId: 'stray-artifacts',
+            ruleId: 'artifact-structure',
             path: f.path,
             message: `root scratch file: ${filename}`,
             fingerprintBasis: f.path,

@@ -16,7 +16,7 @@ export interface ResolvedConfig {
       options: Record<string, never>
       sources: { severity: Source }
     }
-    'stray-artifacts': {
+    'artifact-structure': {
       severity: Severity
       options: Record<string, never>
       sources: { severity: Source }

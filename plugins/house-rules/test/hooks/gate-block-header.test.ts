@@ -118,7 +118,7 @@ describe("gate-block-header: stray-only block", () => {
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
     expect(reason).toContain("full list:");
     expect(reason).not.toContain("comment");
@@ -193,7 +193,7 @@ describe("gate-block-header: both density and stray", () => {
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason).toContain("comment-density");
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain(strayFp);
     expect(reason).toContain("full list:");
     const blockContent = readBlockFile(tmpDir);
@@ -229,7 +229,7 @@ describe("gate-block-header: SubagentStop stray-only", () => {
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain("full list:");
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).not.toContain("comment");
@@ -296,7 +296,7 @@ describe("gate-block-header: stray + auto-fixed .ts", () => {
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain(strayFp);
     expect(reason).toContain("full list:");
     const blockContent = readBlockFile(tmpDir);
@@ -353,7 +353,7 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain(path.join(tmpDir, "docs", "x.md"));
     expect(reason).toContain("Edits made after hand-back do not reach the caller.");
     expect(reason).toContain("full list:");
@@ -391,7 +391,7 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
     expect(reason.length).toBeLessThanOrEqual(2000);
-    expect(reason).toContain("stray-artifacts");
+    expect(reason).toContain("artifact-structure");
     expect(reason).toContain(path.join(tmpDir, "docs", "only.md"));
     expect(reason).toContain("full list:");
   });

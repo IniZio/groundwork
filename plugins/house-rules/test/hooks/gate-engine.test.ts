@@ -47,11 +47,11 @@ function makeWriteTranscript(tmpDir: string, files: string[], ts: string, cwd: s
 }
 
 function strayFingerprint(relPath: string): string {
-  const input = "stray-artifacts\0" + relPath + "\0" + relPath.trim().replace(/\s+/g, " ");
+  const input = "artifact-structure\0" + relPath + "\0" + relPath.trim().replace(/\s+/g, " ");
   return createHash("sha256").update(input).digest("hex");
 }
 
-describe("engine-stray-artifacts: blocks session-created root scratch file", () => {
+describe("engine-artifact-structure: blocks session-created root scratch file", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -89,7 +89,7 @@ describe("engine-stray-artifacts: blocks session-created root scratch file", () 
     const baseline = {
       version: 1,
       entries: [{
-        rule: "stray-artifacts",
+        rule: "artifact-structure",
         path: "tmp-notes.md",
         fingerprint: strayFingerprint("tmp-notes.md"),
       }],

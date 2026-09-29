@@ -13,7 +13,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Map of rule id to rule setting. Rules you omit keep their defaults. Known rules: commit-message, comment-density, stray-artifacts.",
+      "description": "Map of rule id to rule setting. Rules you omit keep their defaults. Known rules: commit-message, comment-density, artifact-structure. The id stray-artifacts is a deprecated alias for artifact-structure.",
       "properties": {
         "commit-message": {
           "description": "Checks commit messages against a style preset. Severity can only be \"error\": a commit that violates the preset is rejected. Use options to choose the preset; the default preset is handbook.",
@@ -79,6 +79,35 @@
             }
           ]
         },
+        "artifact-structure": {
+          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Takes no options.",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["error"],
+              "description": "Severity. \"error\" rejects a change that leaves stray artifacts. No other severity is accepted for this rule."
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "enum": ["error"],
+                  "description": "Severity. \"error\" rejects a change that leaves stray artifacts. No other severity is accepted for this rule."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Options for artifact-structure. This rule has no options; the object must be empty.",
+                  "properties": {}
+                }
+              ]
+            }
+          ]
+        },
         "stray-artifacts": {
           "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Takes no options.",
           "oneOf": [
@@ -101,7 +130,7 @@
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Options for stray-artifacts. This rule has no options; the object must be empty.",
+                  "description": "Options for artifact-structure. This rule has no options; the object must be empty.",
                   "properties": {}
                 }
               ]

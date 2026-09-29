@@ -101,8 +101,8 @@ const edit = (o: string, n: string) =>
 const multi = (o: string, n: string) =>
   runHook(repo, "MultiEdit", { file_path: file, edits: [{ old_string: o, new_string: n }] });
 
-const KEY_SEV = 'rules["comment-density"].severity';
-const KEY_MAX = 'rules["comment-density"].options.max_per_100';
+const KEY_SEV = 'rules["comment-density"]';
+const KEY_MAX = 'rules["comment-density"].max_per_100';
 
 describe("allow: tightening or neutral changes", () => {
   test("pin preset equal to detection (Write)", async () => {
@@ -222,14 +222,14 @@ describe("deny: loosening", () => {
     setFile(cfg({ "stray-artifacts": "error" }));
     await expectDeny(
       write(cfg({ "stray-artifacts": "off" })),
-      '  rules["stray-artifacts"].severity: error → off',
+      '  rules["stray-artifacts"]: error → off',
       LOOSEN_MSG,
     );
   });
 
   test("stray-artifacts error to off (MultiEdit)", async () => {
     setFile(cfg({ "stray-artifacts": "error" }));
-    await expectDeny(multi('"error"', '"off"'), '  rules["stray-artifacts"].severity: error → off');
+    await expectDeny(multi('"error"', '"off"'), '  rules["stray-artifacts"]: error → off');
   });
 
   test("max_per_100 5 to 10 (Write)", async () => {
@@ -250,7 +250,7 @@ describe("deny: loosening", () => {
     setFile(null);
     await expectDeny(
       write(cfg({ "commit-message": ["error", { preset: "conventional" }] })),
-      '  rules["commit-message"].options.preset: handbook → conventional',
+      '  rules["commit-message"].preset: handbook → conventional',
       LOOSEN_MSG,
     );
   });
@@ -259,7 +259,7 @@ describe("deny: loosening", () => {
     setFile(cfg({ "commit-message": ["error", { preset: "handbook" }] }));
     await expectDeny(
       multi('"handbook"', '"subject-only"'),
-      '  rules["commit-message"].options.preset: handbook → subject-only',
+      '  rules["commit-message"].preset: handbook → subject-only',
     );
   });
 
@@ -338,6 +338,55 @@ describe("bash", () => {
   test.each(BASH_ALLOW)("allow: %s", async (command) => {
     setFile(cfg({ "comment-density": "error" }));
     await expectAllow(runHook(repo, "Bash", { command }));
+  });
+});
+
+describe("preset guard in a conventional-history repo", () => {
+  const KEY_PRESET = 'rules["commit-message"].preset';
+
+  function makeConventionalRepo(gitmessage = false): { dir: string; cfgPath: string } {
+    const dir = makeRepo();
+    repos.push(dir);
+    for (const m of ["feat: a", "fix: b", "chore: c", "docs: d"]) {
+      execSync(`git commit -q --allow-empty -m '${m}'`, { cwd: dir });
+    }
+    if (gitmessage) writeFileSync(join(dir, ".gitmessage"), "subject\n");
+    return { dir, cfgPath: join(dir, ".house-rules.json") };
+  }
+
+  const pin = (preset: string) => cfg({ "commit-message": ["error", { preset }] });
+  const writeTo = (r: { dir: string; cfgPath: string }, content: string) =>
+    runHook(r.dir, "Write", { file_path: r.cfgPath, content });
+
+  test("pin conventional (matches history detection) is allowed", async () => {
+    const r = makeConventionalRepo();
+    await expectAllow(writeTo(r, pin("conventional")));
+  });
+
+  test("pin handbook is denied when history detects conventional", async () => {
+    const r = makeConventionalRepo();
+    await expectDeny(writeTo(r, pin("handbook")), KEY_PRESET, "handbook", "Ask the user");
+  });
+
+  test("pin subject-only is denied when history detects conventional", async () => {
+    const r = makeConventionalRepo();
+    await expectDeny(writeTo(r, pin("subject-only")), KEY_PRESET, "subject-only", "Ask the user");
+  });
+
+  test(".gitmessage repo: pin subject-only allowed", async () => {
+    const r = makeConventionalRepo(true);
+    await expectAllow(writeTo(r, pin("subject-only")));
+  });
+
+  test(".gitmessage repo: pin conventional denied", async () => {
+    const r = makeConventionalRepo(true);
+    await expectDeny(writeTo(r, pin("conventional")), KEY_PRESET, "Ask the user");
+  });
+
+  test("removing a conventional pin in a conventional repo is allowed", async () => {
+    const r = makeConventionalRepo();
+    writeFileSync(r.cfgPath, pin("conventional"));
+    await expectAllow(writeTo(r, cfg({})));
   });
 });
 

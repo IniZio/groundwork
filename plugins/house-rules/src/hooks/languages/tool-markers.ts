@@ -110,7 +110,6 @@ export const MAKE_TOOL_MARKERS: readonly RegExp[] = [
   /^-\*-.*-\*-$/,
   /^vim?:/,
 ];
-];
 
 export function withToolMarkers(
   markers: readonly RegExp[],

@@ -9,6 +9,7 @@ import {
   pointer,
   DEFAULT_SEVERITY,
 } from '../../src/config/resolve.mjs';
+import type { ManifestOptions } from '../../src/config/resolve.mjs';
 import { ConfigError } from '../../src/config/schema.mjs';
 import { BUILTIN_POLICY } from '../../src/engine/policy.js';
 
@@ -336,5 +337,83 @@ describe('resolveConfigText', () => {
     expect(e.file).toEqual(file);
     expect(e.message.startsWith(file)).toBe(true);
     expect(e.message).toContain('rules["comment-density"]');
+  });
+});
+
+describe('AC2 legacy artifact-structure configs', () => {
+  const legacy: [string, unknown][] = [
+    ['"artifact-structure":"error"', { rules: { 'artifact-structure': 'error' } }],
+    ['"stray-artifacts":"error"', { rules: { 'stray-artifacts': 'error' } }],
+    ['"artifact-structure":["error",{}]', { rules: { 'artifact-structure': ['error', {}] } }],
+    ['"stray-artifacts":["error",{}]', { rules: { 'stray-artifacts': ['error', {}] } }],
+  ];
+  for (const [label, body] of legacy) {
+    it(`AC2: legacy ${label} resolves with options {} and no types`, () => {
+      const repo = makeRepo();
+      writeConfig(repo, body);
+      const rule = resolveConfig(repo).rules['artifact-structure'];
+      expect(rule.options).toEqual({});
+      expect('types' in rule.options).toBe(false);
+      expect(rule.severity).toBe('error');
+    });
+  }
+
+  it('AC2: 0.14-style config resolves to pinned snapshot (stray-artifacts key mapped to artifact-structure)', () => {
+    const repo = makeRepo();
+    const file = writeConfig(repo, {
+      $schema: './house-rules.schema.json',
+      rules: {
+        'commit-message': ['error', { preset: 'conventional' }],
+        'comment-density': 'error',
+        'stray-artifacts': ['error'],
+      },
+    });
+    const resolved = resolveConfig(repo);
+    const pinned = {
+      file,
+      rules: {
+        'commit-message': {
+          severity: 'error',
+          options: { preset: 'conventional' },
+          sources: { severity: 'explicit', preset: 'explicit' },
+        },
+        'comment-density': {
+          severity: 'error',
+          options: {},
+          sources: { severity: 'explicit' },
+        },
+        'stray-artifacts': {
+          severity: 'error',
+          options: {},
+          sources: { severity: 'explicit' },
+        },
+      },
+    } as const;
+    const { 'artifact-structure': moved, ...rest } = resolved.rules;
+    expect({ file: resolved.file, rules: { ...rest, 'stray-artifacts': moved } }).toEqual(pinned);
+  });
+
+  it('AC2: manifest config passes through resolve into artifact-structure options unchanged', () => {
+    const repo = makeRepo();
+    const options: ManifestOptions = {
+      govern: ['doc/**'],
+      types: {
+        research: {
+          tier: 'working',
+          generates: 'doc/research/{name:kebab}.md',
+          description: 'Research notes',
+          instruction: 'Write findings.',
+          template: '# {name}\n',
+          frontmatter: { type: 'object', properties: { title: { type: 'string' } } },
+          headings: ['Summary', 'Sources'],
+        },
+        spec: { tier: 'product', generates: 'doc/spec/{name:kebab}.md' },
+      },
+      forbidden: [{ pattern: '**/scratch/**', redirect: 'doc/research/{slug}.md' }],
+    };
+    writeConfig(repo, { rules: { 'artifact-structure': ['error', options] } });
+    const rule = resolveConfig(repo).rules['artifact-structure'];
+    expect(rule.options).toEqual(options);
+    expect(rule.sources).toEqual({ severity: 'explicit' });
   });
 });

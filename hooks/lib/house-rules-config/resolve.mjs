@@ -74,7 +74,7 @@ export function resolveConfigText(repoRoot, text) {
       },
       'artifact-structure': {
         severity: stray.value,
-        options: {},
+        options: { ...(rules['artifact-structure']?.options ?? {}) },
         sources: { severity: stray.source },
       },
     },

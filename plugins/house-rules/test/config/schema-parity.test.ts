@@ -82,6 +82,30 @@ describe("schema constants parity", () => {
   });
 });
 
+const goodType = { tier: "working", generates: "{dir}/research/{name:kebab}.md", headings: ["A"] };
+
+function manifestFixtures(): [string, unknown, boolean][] {
+  const out: [string, unknown, boolean][] = [];
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    const mk = (opts: unknown) => ({ rules: { [id]: ["error", opts] } });
+    out.push(
+      [`${id} valid manifest`, mk({
+        govern: ["docs/**"],
+        types: { research: { ...goodType, description: "d", instruction: "i", template: null, frontmatter: {} } },
+        forbidden: [{ pattern: "**/scratch/**", redirect: "docs/{slug}.md" }],
+      }), true],
+      [`${id} unknown type key`, mk({ types: { research: { ...goodType, bogus: 1 } } }), false],
+      [`${id} bad tier`, mk({ types: { research: { ...goodType, tier: "x" } } }), false],
+      [`${id} type missing generates`, mk({ types: { research: { tier: "product" } } }), false],
+      [`${id} headings not array`, mk({ types: { research: { ...goodType, headings: "A" } } }), false],
+      [`${id} forbidden missing redirect`, mk({ forbidden: [{ pattern: "a" }] }), false],
+      [`${id} forbidden unknown key`, mk({ forbidden: [{ pattern: "a", redirect: "b", x: 1 }] }), false],
+      [`${id} manifest unknown option`, mk({ types: {}, bogus: 1 }), false],
+    );
+  }
+  return out;
+}
+
 const fixtures: [string, unknown, boolean][] = [
   ["empty object", {}, true],
   ["$schema string", { $schema: "x" }, true],
@@ -113,6 +137,7 @@ const fixtures: [string, unknown, boolean][] = [
   ["unknown rule", { rules: { nope: "warn" } }, false],
   ["comment-density preset option", { rules: { "comment-density": ["error", { preset: "handbook" }] } }, false],
   ["artifact-structure unknown option", { rules: { "artifact-structure": ["error", { x: 1 }] } }, false],
+  ...manifestFixtures(),
   ["bad severity fatal", { rules: { "comment-density": "fatal" } }, false],
   ["commit-message warn", { rules: { "commit-message": "warn" } }, false],
   ["commit-message off", { rules: { "commit-message": "off" } }, false],

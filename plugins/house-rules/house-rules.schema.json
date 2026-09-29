@@ -80,7 +80,7 @@
           ]
         },
         "artifact-structure": {
-          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Takes no options.",
+          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Options hold a doc-type manifest (govern, types, forbidden); with no types the rule keeps the legacy stray-file check.",
           "oneOf": [
             {
               "type": "string",
@@ -101,15 +101,82 @@
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Options for artifact-structure. This rule has no options; the object must be empty.",
-                  "properties": {}
+                  "description": "Options for artifact-structure: the doc-type manifest. All keys are optional; with no types the rule keeps the legacy stray-file check.",
+                  "properties": {
+                    "govern": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Glob patterns for the paths the doc-type manifest governs."
+                    },
+                    "types": {
+                      "type": "object",
+                      "description": "Doc types keyed by type id. A file whose path matches a type's generates template is a document of that type.",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["tier", "generates"],
+                        "description": "One doc type.",
+                        "properties": {
+                          "tier": {
+                            "type": "string",
+                            "enum": ["product", "working", "ephemeral"],
+                            "description": "Lifecycle tier of documents of this type."
+                          },
+                          "generates": {
+                            "type": "string",
+                            "description": "Path template for documents of this type, for example docs/research/{name:kebab}.md. Placeholders are {name} or {name:kebab|camel|pascal}."
+                          },
+                          "description": {
+                            "type": "string",
+                            "description": "What documents of this type are for."
+                          },
+                          "instruction": {
+                            "type": "string",
+                            "description": "Instruction shown to the author when the type applies."
+                          },
+                          "template": {
+                            "type": ["string", "null"],
+                            "description": "Inline starter text for new documents of this type, or null for none."
+                          },
+                          "frontmatter": {
+                            "type": "object",
+                            "description": "JSON Schema for the document frontmatter. Stored, not validated."
+                          },
+                          "headings": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Headings documents of this type carry."
+                          }
+                        }
+                      }
+                    },
+                    "forbidden": {
+                      "type": "array",
+                      "description": "Path patterns that must not be created, each with the place to put the file instead.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["pattern", "redirect"],
+                        "properties": {
+                          "pattern": {
+                            "type": "string",
+                            "description": "Glob for forbidden paths. ** matches any depth, * one path segment, ? one character."
+                          },
+                          "redirect": {
+                            "type": "string",
+                            "description": "Where the file belongs instead. May contain {slug}."
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               ]
             }
           ]
         },
         "stray-artifacts": {
-          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Takes no options.",
+          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Options hold a doc-type manifest (govern, types, forbidden); with no types the rule keeps the legacy stray-file check.",
           "oneOf": [
             {
               "type": "string",
@@ -130,8 +197,75 @@
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Options for artifact-structure. This rule has no options; the object must be empty.",
-                  "properties": {}
+                  "description": "Options for artifact-structure: the doc-type manifest. All keys are optional; with no types the rule keeps the legacy stray-file check.",
+                  "properties": {
+                    "govern": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Glob patterns for the paths the doc-type manifest governs."
+                    },
+                    "types": {
+                      "type": "object",
+                      "description": "Doc types keyed by type id. A file whose path matches a type's generates template is a document of that type.",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["tier", "generates"],
+                        "description": "One doc type.",
+                        "properties": {
+                          "tier": {
+                            "type": "string",
+                            "enum": ["product", "working", "ephemeral"],
+                            "description": "Lifecycle tier of documents of this type."
+                          },
+                          "generates": {
+                            "type": "string",
+                            "description": "Path template for documents of this type, for example docs/research/{name:kebab}.md. Placeholders are {name} or {name:kebab|camel|pascal}."
+                          },
+                          "description": {
+                            "type": "string",
+                            "description": "What documents of this type are for."
+                          },
+                          "instruction": {
+                            "type": "string",
+                            "description": "Instruction shown to the author when the type applies."
+                          },
+                          "template": {
+                            "type": ["string", "null"],
+                            "description": "Inline starter text for new documents of this type, or null for none."
+                          },
+                          "frontmatter": {
+                            "type": "object",
+                            "description": "JSON Schema for the document frontmatter. Stored, not validated."
+                          },
+                          "headings": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Headings documents of this type carry."
+                          }
+                        }
+                      }
+                    },
+                    "forbidden": {
+                      "type": "array",
+                      "description": "Path patterns that must not be created, each with the place to put the file instead.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["pattern", "redirect"],
+                        "properties": {
+                          "pattern": {
+                            "type": "string",
+                            "description": "Glob for forbidden paths. ** matches any depth, * one path segment, ? one character."
+                          },
+                          "redirect": {
+                            "type": "string",
+                            "description": "Where the file belongs instead. May contain {slug}."
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               ]
             }

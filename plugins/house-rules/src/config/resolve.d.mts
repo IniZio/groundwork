@@ -18,10 +18,26 @@ export interface ResolvedConfig {
     }
     'artifact-structure': {
       severity: Severity
-      options: Record<string, never>
+      options: ManifestOptions
       sources: { severity: Source }
     }
   }
+}
+
+export interface ManifestType {
+  tier: 'product' | 'working' | 'ephemeral'
+  generates: string
+  description?: string
+  instruction?: string
+  template?: string | null
+  frontmatter?: Record<string, unknown>
+  headings?: string[]
+}
+
+export interface ManifestOptions {
+  govern?: string[]
+  types?: Record<string, ManifestType>
+  forbidden?: { pattern: string; redirect: string }[]
 }
 
 export declare const DEFAULT_SEVERITY: 'error'

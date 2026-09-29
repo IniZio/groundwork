@@ -10,8 +10,21 @@ export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"
 export const RULE_OPTION_KEYS = Object.freeze({
   "commit-message": Object.freeze(["preset"]),
   "comment-density": Object.freeze([]),
-  "artifact-structure": Object.freeze([]),
+  "artifact-structure": Object.freeze(["govern", "types", "forbidden"]),
 });
+export const TIERS = Object.freeze(["product", "working", "ephemeral"]);
+export const TYPE_KEYS = Object.freeze([
+  "tier",
+  "generates",
+  "description",
+  "instruction",
+  "template",
+  "frontmatter",
+  "headings",
+]);
+export const FORBIDDEN_KEYS = Object.freeze(["pattern", "redirect"]);
+const TYPE_REQUIRED_KEYS = Object.freeze(["tier", "generates"]);
+const TYPE_SHAPES = Object.freeze({ tier: TIERS.join("|"), generates: "string" });
 export const TOP_LEVEL_KEYS = Object.freeze(["$schema", "rules"]);
 
 const SHAPES = Object.freeze(["severity string", "[severity]", "[severity, options]"]);
@@ -48,6 +61,61 @@ function checkSeverity(id, value, path) {
   return value;
 }
 
+const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
+
+function checkKeys(obj, known, path) {
+  for (const key of Object.keys(obj)) {
+    if (!known.includes(key)) throw new ConfigError(`${path}.${key}`, "unknown key", known);
+  }
+}
+
+function checkType(type, path) {
+  if (!isObject(type)) throw new ConfigError(path, "type must be an object", ["object"]);
+  checkKeys(type, TYPE_KEYS, path);
+  for (const key of TYPE_REQUIRED_KEYS) {
+    if (!Object.hasOwn(type, key)) throw new ConfigError(`${path}.${key}`, "required", [TYPE_SHAPES[key]]);
+  }
+  if (!TIERS.includes(type.tier)) throw new ConfigError(`${path}.tier`, "invalid tier", TIERS);
+  for (const key of ["generates", "description", "instruction"]) {
+    if (Object.hasOwn(type, key) && typeof type[key] !== "string") {
+      throw new ConfigError(`${path}.${key}`, "must be a string", ["string"]);
+    }
+  }
+  if (Object.hasOwn(type, "template") && type.template !== null && typeof type.template !== "string") {
+    throw new ConfigError(`${path}.template`, "must be a string or null", ["string", "null"]);
+  }
+  if (Object.hasOwn(type, "frontmatter") && !isObject(type.frontmatter)) {
+    throw new ConfigError(`${path}.frontmatter`, "must be an object", ["object"]);
+  }
+  if (Object.hasOwn(type, "headings") && !isStringArray(type.headings)) {
+    throw new ConfigError(`${path}.headings`, "must be an array of strings", ["string[]"]);
+  }
+  return structuredClone(type);
+}
+
+function checkManifestOptions(options, path) {
+  if (Object.hasOwn(options, "govern") && !isStringArray(options.govern)) {
+    throw new ConfigError(`${path}.govern`, "must be an array of strings", ["string[]"]);
+  }
+  if (Object.hasOwn(options, "types")) {
+    const types = options.types;
+    if (!isObject(types)) throw new ConfigError(`${path}.types`, "must be an object", ["object"]);
+    for (const typeId of Object.keys(types)) checkType(types[typeId], `${path}.types.${typeId}`);
+  }
+  if (Object.hasOwn(options, "forbidden")) {
+    const list = options.forbidden;
+    if (!Array.isArray(list)) throw new ConfigError(`${path}.forbidden`, "must be an array", ["array"]);
+    list.forEach((entry, i) => {
+      const p = `${path}.forbidden[${i}]`;
+      if (!isObject(entry)) throw new ConfigError(p, "must be an object", ["object"]);
+      checkKeys(entry, FORBIDDEN_KEYS, p);
+      for (const key of FORBIDDEN_KEYS) {
+        if (typeof entry[key] !== "string") throw new ConfigError(`${p}.${key}`, "must be a string", ["string"]);
+      }
+    });
+  }
+}
+
 function checkOptions(id, options, path) {
   if (!isObject(options)) throw new ConfigError(path, "options must be an object", ["object"]);
   const known = RULE_OPTION_KEYS[canonical(id)];
@@ -56,6 +124,10 @@ function checkOptions(id, options, path) {
   }
   if (Object.hasOwn(options, "preset") && !PRESETS.includes(options.preset)) {
     throw new ConfigError(`${path}.preset`, "invalid preset", PRESETS);
+  }
+  if (canonical(id) === "artifact-structure") {
+    checkManifestOptions(options, path);
+    return structuredClone(options);
   }
   return { ...options };
 }

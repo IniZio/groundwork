@@ -6,7 +6,10 @@ import {
   RULE_OPTION_KEYS,
   RULE_SEVERITIES,
   SEVERITIES,
+  TIERS,
   TOP_LEVEL_KEYS,
+  TYPE_KEYS,
+  FORBIDDEN_KEYS,
   parseConfig,
 } from "../../src/config/schema.mjs";
 
@@ -192,7 +195,11 @@ describe("parseConfig invalid input", () => {
       [],
       "unknown option",
     );
-    expectConfigError('{"rules":{"artifact-structure":["error",{"x":1}]}}', `${SA}[1].x`, []);
+    expectConfigError('{"rules":{"artifact-structure":["error",{"x":1}]}}', `${SA}[1].x`, [
+      "govern",
+      "types",
+      "forbidden",
+    ]);
   });
 
   it("rejects a bad preset", () => {
@@ -250,8 +257,110 @@ describe("exported constants", () => {
     expect(RULE_OPTION_KEYS).toEqual({
       "commit-message": ["preset"],
       "comment-density": [],
-      "artifact-structure": [],
+      "artifact-structure": ["govern", "types", "forbidden"],
     });
+    expect(TIERS).toEqual(["product", "working", "ephemeral"]);
+    expect(TYPE_KEYS).toEqual([
+      "tier",
+      "generates",
+      "description",
+      "instruction",
+      "template",
+      "frontmatter",
+      "headings",
+    ]);
+    expect(FORBIDDEN_KEYS).toEqual(["pattern", "redirect"]);
     expect(TOP_LEVEL_KEYS).toEqual(["$schema", "rules"]);
   });
+});
+
+const fullType: any = {
+  tier: "working",
+  generates: "{dir}/research/{name:kebab}.md",
+  description: "Research note",
+  instruction: "Write findings",
+  template: "# {title}\n",
+  frontmatter: { type: "object", properties: { title: { type: "string" } } },
+  headings: ["Summary", "Sources"],
+};
+const manifest: any = {
+  govern: ["docs/**"],
+  types: { research: fullType, plain: { tier: "product", generates: "docs/{name}.md" } },
+  forbidden: [{ pattern: "**/scratch/**", redirect: "docs/{slug}.md" }],
+};
+const withOpts = (id: string, opts: unknown) =>
+  JSON.stringify({ rules: { [id]: ["error", opts] } });
+
+describe("AC1 artifact-structure manifest options", () => {
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    it(`AC1: accepts ["error",{govern,types,forbidden}] with every type key (${id})`, () => {
+      expect(TYPE_KEYS.every((k: string) => k in fullType)).toBe(true);
+      const out: any = parseConfig(withOpts(id, manifest));
+      expect(out.rules[id]).toEqual({ severity: "error", options: manifest });
+    });
+
+    it(`AC1: unknown type key throws ConfigError with exact path (${id})`, () => {
+      const bad = { types: { research: { ...fullType, bogus: 1 } } };
+      const err = capture(withOpts(id, bad));
+      expect(err instanceof ConfigError).toBe(true);
+      expect(err.path).toBe(`rules["${id}"][1].types.research.bogus`);
+      expect(err.allowed).toEqual([...TYPE_KEYS]);
+    });
+  }
+
+  it('AC1: unknown type key path is exactly rules["artifact-structure"][1].types.research.bogus', () => {
+    const err = capture(withOpts("artifact-structure", { types: { research: { ...fullType, bogus: 1 } } }));
+    expect(err.path).toBe('rules["artifact-structure"][1].types.research.bogus');
+  });
+
+  it("AC1: forbidden entry unknown key throws with path", () => {
+    const err = capture(
+      withOpts("artifact-structure", { forbidden: [{ pattern: "a", redirect: "b", bogus: 1 }] }),
+    );
+    expect(err instanceof ConfigError).toBe(true);
+    expect(err.path).toBe(`${SA}[1].forbidden[0].bogus`);
+    expect(err.allowed).toEqual([...FORBIDDEN_KEYS]);
+  });
+
+  it("AC1: forbidden entry missing redirect throws", () => {
+    const err = capture(withOpts("artifact-structure", { forbidden: [{ pattern: "a" }] }));
+    expect(err.path).toBe(`${SA}[1].forbidden[0].redirect`);
+  });
+
+  it("AC1: rejects a bad tier", () => {
+    const err = capture(withOpts("artifact-structure", { types: { r: { tier: "x", generates: "a" } } }));
+    expect(err.path).toBe(`${SA}[1].types.r.tier`);
+    expect(err.allowed).toEqual([...TIERS]);
+  });
+
+  it("AC1: rejects headings that is not an array", () => {
+    const err = capture(
+      withOpts("artifact-structure", { types: { r: { tier: "product", generates: "a", headings: "H" } } }),
+    );
+    expect(err.path).toBe(`${SA}[1].types.r.headings`);
+    expect(err.allowed).toEqual(["string[]"]);
+  });
+
+  it("AC1: rejects a type missing generates", () => {
+    const err = capture(withOpts("artifact-structure", { types: { r: { tier: "product" } } }));
+    expect(err.path).toBe(`${SA}[1].types.r.generates`);
+    expect(err.message).toContain("required");
+  });
+
+  it("AC1: rejects a type missing tier", () => {
+    const err = capture(withOpts("artifact-structure", { types: { r: { generates: "a" } } }));
+    expect(err.path).toBe(`${SA}[1].types.r.tier`);
+  });
+});
+
+describe("AC2 legacy shapes keep options empty", () => {
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    for (const v of ['"error"', '["error"]', '["error",{}]']) {
+      it(`AC2: ${id} ${v} parses with options {} and no types key`, () => {
+        const rule = (parseConfig(`{"rules":{"${id}":${v}}}`) as any).rules[id];
+        expect(rule).toEqual({ severity: "error", options: {} });
+        expect(Object.hasOwn(rule.options, "types")).toBe(false);
+      });
+    }
+  }
 });

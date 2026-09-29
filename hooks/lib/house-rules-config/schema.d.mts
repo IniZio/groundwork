@@ -15,8 +15,41 @@ export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
 export const RULE_OPTION_KEYS: {
   readonly "commit-message": readonly ["preset"];
   readonly "comment-density": readonly [];
-  readonly "artifact-structure": readonly [];
+  readonly "artifact-structure": readonly ["govern", "types", "forbidden"];
 };
+export type Tier = "product" | "working" | "ephemeral";
+export const TIERS: readonly ["product", "working", "ephemeral"];
+export const TYPE_KEYS: readonly [
+  "tier",
+  "generates",
+  "description",
+  "instruction",
+  "template",
+  "frontmatter",
+  "headings",
+];
+export const FORBIDDEN_KEYS: readonly ["pattern", "redirect"];
+
+export interface ManifestType {
+  tier: Tier;
+  generates: string;
+  description?: string;
+  instruction?: string;
+  template?: string | null;
+  frontmatter?: Record<string, unknown>;
+  headings?: string[];
+}
+
+export interface ManifestForbidden {
+  pattern: string;
+  redirect: string;
+}
+
+export interface ManifestOptions {
+  govern?: string[];
+  types?: { [typeId: string]: ManifestType };
+  forbidden?: ManifestForbidden[];
+}
 export const TOP_LEVEL_KEYS: readonly ["$schema", "rules"];
 
 export class ConfigError extends Error {

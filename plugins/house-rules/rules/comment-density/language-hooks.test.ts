@@ -96,6 +96,17 @@ describe('comment-density language-hooks positive controls (entry present)', () 
     expect(rule.canFixPath!('x.go')).toBe(true);
   });
 
+  it('fixEntryFor yaml and toml are stable and safe', () => {
+    expect(fixEntryFor('yaml')).toEqual({ stability: 'stable', applicability: 'safe' });
+    expect(fixEntryFor('toml')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath accepts .yml, .yaml and .toml', () => {
+    expect(rule.canFixPath!('x.yml')).toBe(true);
+    expect(rule.canFixPath!('x.yaml')).toBe(true);
+    expect(rule.canFixPath!('x.toml')).toBe(true);
+  });
+
   it('fixEntryFor typescript is stable when entry present', () => {
     expect(fixEntryFor('typescript').stability).toBe('stable');
   });

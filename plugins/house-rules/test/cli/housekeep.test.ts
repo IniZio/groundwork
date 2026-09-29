@@ -348,8 +348,9 @@ export default rule;
     spawnSync('git', ['-C', repoDir, 'add', 'over-budget.sh'], { encoding: 'utf8' });
     spawnSync('git', ['-C', repoDir, 'commit', '-m', 'add'], { encoding: 'utf8' });
 
-    const dryOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha, dryRun: true });
-    const realOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha });
+    const testOnly = { testOnly_fixTableOverride: { bash: { stability: 'preview', applicability: 'safe' } } };
+    const dryOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha, dryRun: true, testOnly });
+    const realOut = await captureRunHousekeep({ repo: repoDir, rulesDir: realRulesDir, since: baseSha, testOnly });
 
     expect(dryOut).toContain('Needs manual fix');
     expect(dryOut).toContain('over-budget.sh');

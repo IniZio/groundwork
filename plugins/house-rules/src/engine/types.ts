@@ -127,6 +127,8 @@ export interface EditCheckEnv {
   parserFactory: ParserFactory;
   /** Autofix-ledger dir override (tests); undefined = default location. */
   ledgerDir?: string;
+  /** Test seam (e.g. testOnly_fixTableOverride); production callers omit it. */
+  testOnly?: Record<string, unknown>;
 }
 
 export interface EditCheckResult {

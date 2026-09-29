@@ -143,6 +143,7 @@ describe("deployed — gate (Stop/SubagentStop)", () => {
   const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/gate.ts";
 
   it("Stop: produces valid decision or autoFixed output", async () => {
+    const { transcriptPath: parityDensityTranscript } = makeParityDensityRepo("stop-direct");
     const { stdout } = await spawnHook(CMD, {
       hook_event_name: "Stop",
       session_id: "gate-stop-test",
@@ -156,6 +157,7 @@ describe("deployed — gate (Stop/SubagentStop)", () => {
   });
 
   it("SubagentStop: produces valid decision or autoFixed output", async () => {
+    const { transcriptPath: paritySubagentTranscript } = makeParityDensityRepo("sub-direct");
     const { stdout } = await spawnHook(CMD, {
       hook_event_name: "SubagentStop",
       session_id: "gate-sub-test",

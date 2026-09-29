@@ -72,6 +72,9 @@ const failTsFactory: GetParserFn = async (lang) =>
     ? { ok: false as const, reason: "grammar-load-test-stub" }
     : realGetParser(lang as Parameters<typeof realGetParser>[0]);
 
+const PREVIEW_BASH = { testOnly_fixTableOverride: { bash: { stability: "preview" } } };
+const PREVIEW_YAML = { testOnly_fixTableOverride: { yaml: { stability: "preview" } } };
+
 describe("comment-density-guard", () => {
 
   it("CLEAN: Write with no comments → empty stdout, exit 0", async () => {
@@ -203,7 +206,7 @@ describe("comment-density-guard", () => {
     expect(commentCount).toBeLessThan(5);
   });
 
-  it("AC1: Write .sh with 5 # comments → guard passes through (bash is preview; Stop gate enforces)", async () => {
+  it("AC1: Write .sh with 5 # comments, bash forced to preview → guard passes through (Stop gate enforces)", async () => {
     const lines = [
       "#!/usr/bin/env bash",
       ...Array.from({ length: 19 }, (_, i) => `echo "line ${i}"`),
@@ -214,14 +217,14 @@ describe("comment-density-guard", () => {
       "# comment E",
     ];
     const content = lines.join("\n");
-    const r = await check(write("/tmp/cdg-ac1.sh", content));
+    const r = await check(write("/tmp/cdg-ac1.sh", content), { testOnly: PREVIEW_BASH });
     expect(r.exit).toBe(0);
     const hso = getHso(r);
     expect(hso).not.toHaveProperty("updatedInput");
     expect(r.stdout).toBe("");
   });
 
-  it("AC3: YAML over-budget → guard passes through (yaml is preview; Stop gate enforces)", async () => {
+  it("AC3: YAML over-budget, yaml forced to preview → guard passes through (Stop gate enforces)", async () => {
     const yamlBase = [
       "apiVersion: v1",
       ...Array.from({ length: 14 }, (_, i) => `key${i}: value${i}`),
@@ -231,7 +234,7 @@ describe("comment-density-guard", () => {
       "a: 4  # extra",
       "b: 5  # more",
     ].join("\n");
-    const r = await check(write("/tmp/cdg-ac3.yaml", yamlBase));
+    const r = await check(write("/tmp/cdg-ac3.yaml", yamlBase), { testOnly: PREVIEW_YAML });
     const hso = getHso(r);
     expect(hso).not.toHaveProperty("updatedInput");
     expect(r.stdout).toBe("");
@@ -273,7 +276,7 @@ describe("comment-density-guard", () => {
     expect(r.stderr.trim()).toContain(expectedWarning);
   });
 
-  it("AC2: Edit YAML over-budget → guard passes through (yaml is preview; Stop gate enforces)", async () => {
+  it("AC2: Edit YAML over-budget, yaml forced to preview → guard passes through (Stop gate enforces)", async () => {
     const pre = [
       "apiVersion: v1",
       "# existing comment A",
@@ -289,7 +292,7 @@ describe("comment-density-guard", () => {
     ].join("\n");
     const r = await check(
       edit("/tmp/cdg-ac2.yaml", old_string, new_string),
-      { readFile: () => pre },
+      { readFile: () => pre, testOnly: PREVIEW_YAML },
     );
     expect(r.exit).toBe(0);
     const hso = getHso(r);
@@ -648,8 +651,8 @@ const PROBE_SH = readFS(
 );
 
 describe("remainder (K) computation", () => {
-  it("probe.sh Write: bash is preview lang → guard passes through (no stripping, Stop gate enforces)", async () => {
-    const r = await check(write("/tmp/cdg-probe.sh", PROBE_SH));
+  it("probe.sh Write: bash forced to preview → guard passes through (no stripping, Stop gate enforces)", async () => {
+    const r = await check(write("/tmp/cdg-probe.sh", PROBE_SH), { testOnly: PREVIEW_BASH });
     expect(r.exit).toBe(0);
     expect(r.stdout).toBe("");
     const hso = getHso(r);

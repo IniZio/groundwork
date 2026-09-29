@@ -121,7 +121,7 @@ describe("COV-4: outside-repo file excluded from block reason; inside .scala pre
   });
 
   it("block path: inside notes.scala in 'not checked', outside memory.scala absent", async () => {
-    const violatorFp = makePreviewViolator(tmpDir, "bad.sh");
+    const violatorFp = makeUnfixableViolator(tmpDir, "bad.sh");
     const insideKt = path.join(tmpDir, "notes.scala");
     writeFileSync(insideKt, "fun main() {}\n");
     const outsideDir = mkdtempSync(path.join(os.tmpdir(), "cov4-outside-"));
@@ -140,27 +140,9 @@ describe("COV-4: outside-repo file excluded from block reason; inside .scala pre
   });
 });
 
-// Bash with >5/100 comment density — bash has no entry in COMMENT_DENSITY_LANGUAGE_HOOKS so it
-// defaults to "preview" and is never auto-fixed (stays unfixable).
-function makePreviewViolator(dir: string, name: string): string {
-  const fp = path.join(dir, name);
-  const lines = [
-    "# first narration comment",
-    "x_1=1",
-    "y_2=2",
-    "z_3=3",
-    "w_4=4",
-    "# second narration comment",
-    "a_5=5",
-    "b_6=6",
-    "c_7=7",
-    "h_8=8",
-  ];
-  writeFileSync(fp, lines.join("\n") + "\n");
-  return fp;
-}
-
-function makePreviewViolatorWithSyntaxError(dir: string, name: string): string {
+// Bash with >5/100 comment density AND a parse error. Bash is stable autofix, but the fixer
+// declines files with syntax errors, so this stays a genuine unfixable violator.
+function makeUnfixableViolator(dir: string, name: string): string {
   const fp = path.join(dir, name);
   const lines = [
     "# first narration comment",
@@ -232,7 +214,7 @@ describe("GRAM-2: grammar failure suppresses block on that file", () => {
   });
 
   it("over-budget .sh violator + FAIL_GRAMMARS=bash → allow (no block)", async () => {
-    const fp = makePreviewViolator(tmpDir, "bad.sh");
+    const fp = makeUnfixableViolator(tmpDir, "bad.sh");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate(
@@ -246,7 +228,7 @@ describe("GRAM-2: grammar failure suppresses block on that file", () => {
   });
 
   it("over-budget .sh violator without FAIL_GRAMMARS → blocks (control: proves fixture is a real violator)", async () => {
-    const fp = makePreviewViolator(tmpDir, "bad.sh");
+    const fp = makeUnfixableViolator(tmpDir, "bad.sh");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate(
@@ -272,11 +254,11 @@ describe("GRAM-3: BLOCK carries grammar-failure warning + failed entry in reason
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("ts grammar fails + preview-language unfixable violator → block with failed entry and warning in reason", async () => {
+  it("ts grammar fails + unfixable (syntax-error) violator → block with failed entry and warning in reason", async () => {
     // .ts file: grammar will fail (typescript env)
     const tsFp = path.join(tmpDir, "skip.ts");
     writeFileSync(tsFp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
-    const violatorFp = makePreviewViolator(tmpDir, "violator.sh");
+    const violatorFp = makeUnfixableViolator(tmpDir, "violator.sh");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [tsFp, violatorFp], ts);
     const r = runGate(
@@ -307,8 +289,8 @@ describe("GRAM-4: BLOCK shows partially-checked entry for file with syntax error
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
   });
 
-  it("preview violator with syntax error → block reason contains partially checked entry with row numbers", async () => {
-    const violatorFp = makePreviewViolatorWithSyntaxError(tmpDir, "violator-err.sh");
+  it("unfixable violator with syntax error → block reason contains partially checked entry with row numbers", async () => {
+    const violatorFp = makeUnfixableViolator(tmpDir, "violator-err.sh");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [violatorFp], ts);
     const r = runGate(
@@ -384,7 +366,7 @@ describe("COV-3: notes.scala + comment-density violator → block message names 
   });
 
   it("notes.scala + unfixable violator .sh → block reason contains notes.scala as not checked", async () => {
-    const violatorFp = makePreviewViolator(tmpDir, "bad.sh");
+    const violatorFp = makeUnfixableViolator(tmpDir, "bad.sh");
 
     const ktFp = path.join(tmpDir, "notes.scala");
     writeFileSync(ktFp, "fun main() {\n    println(\"hello\")\n}\n");

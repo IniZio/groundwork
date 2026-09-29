@@ -1,13 +1,15 @@
 /**
- * MSG-01: preview-language files with syntax errors must get "autofix not supported for <lang>"
- * (not the syntax-error reason). Languages with autofix (python, kotlin) keep the syntax-error
- * reason unchanged.
+ * MSG-01: every registry language is now stable autofix, so files with syntax errors get the
+ * syntax-error reason through the CLI. The "autofix not supported for <lang>" precedence branch
+ * (preview language wins over syntax-error text) is covered in-process by forcing rust to preview
+ * via runHousekeep's testOnly_fixTableOverride.
  */
 import { describe, it, expect, afterEach } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { runHousekeep } from '../../src/cli/housekeep.js';
 
 const BIN = path.resolve(import.meta.dir, '../../bin/house-rules');
 
@@ -61,8 +63,37 @@ const PY_OVER_BUDGET_WITH_ERROR = [
   'def broken(:',
 ].join('\n') + '\n';
 
-describe('preview-lang syntax-error precedence (MSG-01)', () => {
-  it('diff mode: rust file with syntax errors gets "autofix not supported for rust", no syntax-error text', () => {
+function captureRunHousekeep(opts: Parameters<typeof runHousekeep>[0]): Promise<string> {
+  return new Promise(async (resolve) => {
+    let output = '';
+    const origWrite = process.stdout.write.bind(process.stdout);
+    const origExit = process.exit.bind(process);
+    const restore = () => {
+      process.stdout.write = origWrite;
+      (process as unknown as Record<string, unknown>).exit = origExit;
+    };
+    process.stdout.write = (chunk: string | Uint8Array) => {
+      output += typeof chunk === 'string' ? chunk : chunk.toString();
+      return true;
+    };
+    (process as unknown as Record<string, unknown>).exit = () => {
+      restore();
+      resolve(output);
+    };
+    try {
+      await runHousekeep(opts);
+    } catch {
+      // fall through: output captured so far is the observable result
+    }
+    restore();
+    resolve(output);
+  });
+}
+
+const RUST_PREVIEW_OVERRIDE = { testOnly_fixTableOverride: { rust: { stability: 'preview', applicability: 'safe' } } };
+
+describe('syntax-error reason for autofix languages (MSG-01)', () => {
+  it('diff mode: rust (stable autofix) file with syntax errors gets the syntax-error reason, not "autofix not supported"', () => {
     const repoDir = mktemp('hr-msg01-rust-diff-');
     const baseSha = initRepo(repoDir);
 
@@ -74,13 +105,13 @@ describe('preview-lang syntax-error precedence (MSG-01)', () => {
       env: childEnv(),
     });
 
-    expect(r.stdout).toContain('autofix not supported for rust');
-    expect(r.stdout).not.toContain('syntax errors on rows');
+    expect(r.stdout).toContain('syntax errors on rows');
+    expect(r.stdout).not.toContain('autofix not supported for rust');
     // file must not be rewritten
     expect(fs.readFileSync(path.join(repoDir, 'query.rs'), 'utf8')).toBe(RUST_OVER_BUDGET_WITH_ERROR);
   });
 
-  it('--all mode: rust file with syntax errors gets "autofix not supported for rust", no syntax-error text', () => {
+  it('--all mode: rust (stable autofix) file with syntax errors gets the syntax-error reason, not "autofix not supported"', () => {
     const repoDir = mktemp('hr-msg01-rust-all-');
     initRepo(repoDir);
 
@@ -92,8 +123,8 @@ describe('preview-lang syntax-error precedence (MSG-01)', () => {
       env: childEnv(),
     });
 
-    expect(r.stdout).toContain('autofix not supported for rust');
-    expect(r.stdout).not.toContain('syntax errors on rows');
+    expect(r.stdout).toContain('syntax errors on rows');
+    expect(r.stdout).not.toContain('autofix not supported for rust');
     expect(fs.readFileSync(path.join(repoDir, 'query.rs'), 'utf8')).toBe(RUST_OVER_BUDGET_WITH_ERROR);
   });
 
@@ -112,5 +143,33 @@ describe('preview-lang syntax-error precedence (MSG-01)', () => {
     expect(r.stdout).toContain('syntax errors on rows');
     expect(r.stdout).not.toContain('autofix not supported for python');
     expect(fs.readFileSync(path.join(repoDir, 'bad.py'), 'utf8')).toBe(PY_OVER_BUDGET_WITH_ERROR);
+  });
+});
+
+describe('preview language precedence over syntax-error reason (MSG-01, in-process)', () => {
+  it('diff mode: rust forced to preview via override with syntax errors gets "autofix not supported for rust", not the syntax-error reason', async () => {
+    const repoDir = mktemp('hr-msg01-rust-preview-diff-');
+    const baseSha = initRepo(repoDir);
+    fs.writeFileSync(path.join(repoDir, 'query.rs'), RUST_OVER_BUDGET_WITH_ERROR);
+    addAndCommit(repoDir, ['query.rs'], 'add over-budget rust with syntax error');
+
+    const out = await captureRunHousekeep({ repo: repoDir, since: baseSha, testOnly: RUST_PREVIEW_OVERRIDE });
+
+    expect(out).toContain('autofix not supported for rust');
+    expect(out).not.toContain('syntax errors on rows');
+    expect(fs.readFileSync(path.join(repoDir, 'query.rs'), 'utf8')).toBe(RUST_OVER_BUDGET_WITH_ERROR);
+  });
+
+  it('--all mode: rust forced to preview via override with syntax errors gets "autofix not supported for rust", not the syntax-error reason', async () => {
+    const repoDir = mktemp('hr-msg01-rust-preview-all-');
+    initRepo(repoDir);
+    fs.writeFileSync(path.join(repoDir, 'query.rs'), RUST_OVER_BUDGET_WITH_ERROR);
+    addAndCommit(repoDir, ['query.rs'], 'add over-budget rust with syntax error');
+
+    const out = await captureRunHousekeep({ repo: repoDir, all: true, testOnly: RUST_PREVIEW_OVERRIDE });
+
+    expect(out).toContain('autofix not supported for rust');
+    expect(out).not.toContain('syntax errors on rows');
+    expect(fs.readFileSync(path.join(repoDir, 'query.rs'), 'utf8')).toBe(RUST_OVER_BUDGET_WITH_ERROR);
   });
 });

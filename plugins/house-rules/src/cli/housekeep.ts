@@ -35,6 +35,8 @@ export interface HousekeepOpts {
   baselineFile?: string;
   policy?: Record<string, { severity: string; autofix: boolean }>;
   format?: OutputFormat;
+  /** Opaque rule test hooks; in-process callers only, never set by the CLI parser. */
+  testOnly?: Record<string, unknown>;
 }
 
 export interface FixOutcome {
@@ -50,8 +52,9 @@ export async function fixFindings(args: {
   policy: Record<string, { severity: string; autofix: boolean }>;
   write: boolean;
   max?: number;
+  testOnly?: Record<string, unknown>;
 }): Promise<FixOutcome> {
-  const { rules, ctx, findings, policy, write, max } = args;
+  const { rules, ctx, findings, policy, write, max, testOnly } = args;
   const fixed: Array<{ finding: FindingWithSeverity; before?: string; after?: string }> = [];
   const manual: Array<{ finding: FindingWithSeverity; reason: string }> = [];
   let fixCount = 0;
@@ -76,7 +79,7 @@ export async function fixFindings(args: {
 
     const subCtx: RuleContext = { ...ctx, files: (ctx.files ?? []).filter(f => f.path === finding.path) };
     // Both dry-run and real mode run the actual fix; write:false suppresses disk writes and ledger appends.
-    const result = await rule!.fix!(subCtx, { write });
+    const result = await rule!.fix!(subCtx, { write, testOnly });
 
     const fileResult = result.files?.find(f => f.path === finding.path);
     if (fileResult) {
@@ -195,6 +198,7 @@ export async function runHousekeep(opts: HousekeepOpts): Promise<void> {
     policy: effectivePolicy,
     write: !opts.dryRun,
     max: opts.max,
+    testOnly: opts.testOnly,
   });
 
   const { fixed, manual: needsManual } = outcome;

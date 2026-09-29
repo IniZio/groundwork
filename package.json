@@ -18,6 +18,7 @@
     "@tree-sitter-grammars/tree-sitter-toml": "0.7.0",
     "@tree-sitter-grammars/tree-sitter-yaml": "0.7.1",
     "@types/bun": "1.4.2",
+    "ajv": "8.20.0",
     "tree-sitter-bash": "0.25.1",
     "tree-sitter-go": "0.25.0",
     "tree-sitter-java": "0.23.5",

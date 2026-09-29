@@ -102,7 +102,6 @@ const multi = (o: string, n: string) =>
   runHook(repo, "MultiEdit", { file_path: file, edits: [{ old_string: o, new_string: n }] });
 
 const KEY_SEV = 'rules["comment-density"]';
-const KEY_MAX = 'rules["comment-density"].max_per_100';
 
 describe("allow: tightening or neutral changes", () => {
   test("pin preset equal to detection (Write)", async () => {
@@ -115,37 +114,22 @@ describe("allow: tightening or neutral changes", () => {
     await expectAllow(edit('"commit-message": "error"', '"commit-message": ["error", {"preset": "handbook"}]'));
   });
 
-  test("lower max_per_100 5 to 3 (Write)", async () => {
-    setFile(null);
-    await expectAllow(write(cfg({ "comment-density": ["error", { max_per_100: 3 }] })));
-  });
-
-  test("lower max_per_100 (MultiEdit)", async () => {
-    setFile(cfg({ "comment-density": ["error", { max_per_100: 8 }] }));
-    await expectAllow(multi('"max_per_100": 8', '"max_per_100": 3'));
-  });
-
-  test("warn to error (Write)", async () => {
+  test("repair legacy warn to error (Write)", async () => {
     setFile(cfg({ "comment-density": "warn" }));
     await expectAllow(write(cfg({ "comment-density": "error" })));
   });
 
-  test("warn to error (Edit)", async () => {
+  test("repair legacy warn to error (Edit)", async () => {
     setFile(cfg({ "stray-artifacts": "warn" }));
     await expectAllow(edit('"warn"', '"error"'));
   });
 
-  test("off to warn (Write)", async () => {
-    setFile(cfg({ "comment-density": "off" }));
-    await expectAllow(write(cfg({ "comment-density": "warn" })));
-  });
-
-  test("off to error (MultiEdit)", async () => {
+  test("repair legacy off to error (MultiEdit)", async () => {
     setFile(cfg({ "comment-density": "off" }));
     await expectAllow(multi('"off"', '"error"'));
   });
 
-  test("off to error (Write)", async () => {
+  test("repair legacy off to error (Write)", async () => {
     setFile(cfg({ "stray-artifacts": "off" }));
     await expectAllow(write(cfg({ "stray-artifacts": "error" })));
   });
@@ -161,10 +145,8 @@ describe("allow: tightening or neutral changes", () => {
   });
 
   test("whitespace-only reformat (Write)", async () => {
-    setFile(cfg({ "comment-density": ["error", { max_per_100: 3 }] }));
-    await expectAllow(
-      write('{"rules":{"comment-density":["error",{"max_per_100":3}]}}'),
-    );
+    setFile(cfg({ "comment-density": "error" }));
+    await expectAllow(write('{"rules":{"comment-density":"error"}}'));
   });
 
   test("adding $schema (Write)", async () => {
@@ -179,73 +161,9 @@ describe("allow: tightening or neutral changes", () => {
     await expectAllow(runHook(repo, "Write", { file_path: other, content: '{"rules":{"comment-density":"off"}}' }));
     await expectAllow(runHook(repo, "Write", { file_path: other, content: "not json" }));
   });
-
-  test("creating missing file with tighter values (Write)", async () => {
-    setFile(null);
-    await expectAllow(
-      write(cfg({ "comment-density": ["error", { max_per_100: 2 }], "stray-artifacts": "error" })),
-    );
-  });
 });
 
 describe("deny: loosening", () => {
-  test("comment-density to off (Write)", async () => {
-    setFile(cfg({ "comment-density": "error" }));
-    await expectDeny(
-      write(cfg({ "comment-density": "off" })),
-      `  ${KEY_SEV}: error → off`,
-      LOOSEN_MSG,
-    );
-  });
-
-  test("comment-density to off (Edit)", async () => {
-    setFile(cfg({ "comment-density": "error" }));
-    await expectDeny(edit('"error"', '"off"'), `  ${KEY_SEV}: error → off`, LOOSEN_MSG);
-  });
-
-  test("comment-density to off (MultiEdit)", async () => {
-    setFile(cfg({ "comment-density": "error" }));
-    await expectDeny(multi('"error"', '"off"'), `  ${KEY_SEV}: error → off`, LOOSEN_MSG);
-  });
-
-  test("error to warn (Write)", async () => {
-    setFile(cfg({ "comment-density": "error" }));
-    await expectDeny(write(cfg({ "comment-density": "warn" })), `  ${KEY_SEV}: error → warn`, LOOSEN_MSG);
-  });
-
-  test("error to warn (Edit)", async () => {
-    setFile(cfg({ "comment-density": "error" }));
-    await expectDeny(edit('"error"', '"warn"'), `  ${KEY_SEV}: error → warn`);
-  });
-
-  test("stray-artifacts error to off (Write)", async () => {
-    setFile(cfg({ "stray-artifacts": "error" }));
-    await expectDeny(
-      write(cfg({ "stray-artifacts": "off" })),
-      '  rules["stray-artifacts"]: error → off',
-      LOOSEN_MSG,
-    );
-  });
-
-  test("stray-artifacts error to off (MultiEdit)", async () => {
-    setFile(cfg({ "stray-artifacts": "error" }));
-    await expectDeny(multi('"error"', '"off"'), '  rules["stray-artifacts"]: error → off');
-  });
-
-  test("max_per_100 5 to 10 (Write)", async () => {
-    setFile(cfg({ "comment-density": ["error", { max_per_100: 5 }] }));
-    await expectDeny(
-      write(cfg({ "comment-density": ["error", { max_per_100: 10 }] })),
-      `  ${KEY_MAX}: 5 → 10`,
-      LOOSEN_MSG,
-    );
-  });
-
-  test("max_per_100 5 to 10 (Edit)", async () => {
-    setFile(cfg({ "comment-density": ["error", { max_per_100: 5 }] }));
-    await expectDeny(edit('"max_per_100": 5', '"max_per_100": 10'), `  ${KEY_MAX}: 5 → 10`);
-  });
-
   test("preset differs from detection (Write)", async () => {
     setFile(null);
     await expectDeny(
@@ -262,14 +180,67 @@ describe("deny: loosening", () => {
       '  rules["commit-message"].preset: handbook → subject-only',
     );
   });
-
-  test("removing explicit tighter rule (Write {})", async () => {
-    setFile(cfg({ "comment-density": ["error", { max_per_100: 3 }] }));
-    await expectDeny(write("{}"), `  ${KEY_MAX}: 3 → 5`, LOOSEN_MSG);
-  });
 });
 
 describe("deny: invalid content", () => {
+  test("comment-density off is invalid (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(write(cfg({ "comment-density": "off" })), "is invalid", "Ask the user");
+    expect(res.reason).toContain(`${KEY_SEV}: invalid severity; allowed: error`);
+  });
+
+  test("comment-density off is invalid (Edit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(edit('"error"', '"off"'), "is invalid", "Ask the user");
+    expect(res.reason).toContain(`${KEY_SEV}: invalid severity`);
+  });
+
+  test("comment-density off is invalid (MultiEdit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(multi('"error"', '"off"'), "is invalid", "Ask the user");
+    expect(res.reason).toContain(`${KEY_SEV}: invalid severity`);
+  });
+
+  test("comment-density warn is invalid (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(write(cfg({ "comment-density": "warn" })), "is invalid", "Ask the user");
+    expect(res.reason).toContain(`${KEY_SEV}: invalid severity`);
+  });
+
+  test("comment-density warn is invalid (Edit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(edit('"error"', '"warn"'), "is invalid", "Ask the user");
+    expect(res.reason).toContain(`${KEY_SEV}: invalid severity`);
+  });
+
+  test("stray-artifacts off is invalid (Write)", async () => {
+    setFile(cfg({ "stray-artifacts": "error" }));
+    const res = await expectDeny(write(cfg({ "stray-artifacts": "off" })), "is invalid", "Ask the user");
+    expect(res.reason).toContain('rules["stray-artifacts"]: invalid severity');
+  });
+
+  test("stray-artifacts off is invalid (MultiEdit)", async () => {
+    setFile(cfg({ "stray-artifacts": "error" }));
+    const res = await expectDeny(multi('"error"', '"off"'), "is invalid", "Ask the user");
+    expect(res.reason).toContain('rules["stray-artifacts"]: invalid severity');
+  });
+
+  test("comment-density option max_per_100 is invalid (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(
+      write(cfg({ "comment-density": ["error", { max_per_100: 10 }] })),
+      "is invalid",
+      "Ask the user",
+    );
+    expect(res.reason).toContain(`${KEY_SEV}[1].max_per_100: unknown option; allowed: no options`);
+  });
+
+  test("comment-density option max_per_100 is invalid (Edit)", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 5 }] }));
+    const res = await expectDeny(edit('"max_per_100": 5', '"max_per_100": 10'), "is invalid", "Ask the user");
+    expect(res.reason).toContain("max_per_100");
+  });
+
   test("bad severity value (Write)", async () => {
     setFile(cfg({ "comment-density": "error" }));
     const res = await expectDeny(write(cfg({ "comment-density": "loud" })), "is invalid", "Ask the user");

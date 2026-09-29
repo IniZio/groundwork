@@ -1,15 +1,14 @@
 export const RULE_IDS = Object.freeze(["commit-message", "comment-density", "stray-artifacts"]);
-export const SEVERITIES = Object.freeze(["off", "warn", "error"]);
+export const SEVERITIES = Object.freeze(["error"]);
 export const RULE_SEVERITIES = Object.freeze({
-  "commit-message": Object.freeze(["error"]),
+  "commit-message": SEVERITIES,
   "comment-density": SEVERITIES,
   "stray-artifacts": SEVERITIES,
 });
 export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"]);
-export const MAX_PER_100_RANGE = Object.freeze({ min: 0, max: 100 });
 export const RULE_OPTION_KEYS = Object.freeze({
   "commit-message": Object.freeze(["preset"]),
-  "comment-density": Object.freeze(["max_per_100"]),
+  "comment-density": Object.freeze([]),
   "stray-artifacts": Object.freeze([]),
 });
 export const TOP_LEVEL_KEYS = Object.freeze(["$schema", "rules"]);
@@ -18,9 +17,7 @@ const SHAPES = Object.freeze(["severity string", "[severity]", "[severity, optio
 
 export class ConfigError extends Error {
   constructor(path, problem, allowed) {
-    const allowedText = Array.isArray(allowed)
-      ? allowed.join(", ")
-      : `integer ${allowed.min}..${allowed.max}`;
+    const allowedText = allowed.length === 0 ? "no options" : allowed.join(", ");
     super(`${path || "config"}: ${problem}; allowed: ${allowedText}`);
     this.name = "ConfigError";
     this.path = path;
@@ -55,13 +52,6 @@ function checkOptions(id, options, path) {
   }
   if (Object.hasOwn(options, "preset") && !PRESETS.includes(options.preset)) {
     throw new ConfigError(`${path}.preset`, "invalid preset", PRESETS);
-  }
-  if (Object.hasOwn(options, "max_per_100")) {
-    const v = options.max_per_100;
-    const { min, max } = MAX_PER_100_RANGE;
-    if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) {
-      throw new ConfigError(`${path}.max_per_100`, "invalid max_per_100", MAX_PER_100_RANGE);
-    }
   }
   return { ...options };
 }

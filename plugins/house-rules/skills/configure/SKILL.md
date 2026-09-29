@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Reads and changes house-rules config so a rejected commit passes the right way. Triggers on: commit message rejected, commit style, conventional commits, handbook, .house-rules.json, comment density cap, house-rules config.
+description: Reads and changes house-rules config so a rejected commit passes the right way. Triggers on: commit message rejected, commit style, conventional commits, handbook, .house-rules.json, house-rules config.
 ---
 
 ## Process
@@ -28,8 +28,8 @@ Source precedence: explicit config, then `.gitmessage` (subject-only), then comm
 
 - Repo's real convention matches the active preset: rewrite the commit message to it.
 - Repo's real convention differs (history is conventional, active preset is the default): pin the matching preset.
-- Want a tighter rule (lower `max_per_100`, `warn` to `error`): edit it in.
-- Want a looser rule (off, warn from error, higher `max_per_100`, a preset that history and config do not show, removing rules or the file): stop and ask the user. This is a human decision, and the config guard denies the edit.
+- Want a preset that history and config do not show, or to remove rules or the file: stop and ask the user. This is a human decision, and the config guard denies the edit.
+- The comment-density cap (5 per 100 added lines) is fixed, not configurable. Trim the comments instead.
 
 ### 4. Edit `.house-rules.json`
 
@@ -40,7 +40,7 @@ File lives at the repo root. Keep `$schema` so editors validate it:
   "$schema": "https://raw.githubusercontent.com/IniZio/groundwork/main/plugins/house-rules/house-rules.schema.json",
   "rules": {
     "commit-message": ["error", { "preset": "conventional" }],
-    "comment-density": ["error", { "max_per_100": 5 }],
+    "comment-density": "error",
     "stray-artifacts": "error"
   }
 }
@@ -48,8 +48,8 @@ File lives at the repo root. Keep `$schema` so editors validate it:
 
 Rules:
 - `commit-message`: severity `error` only; option `preset` = `handbook` | `conventional` | `subject-only`.
-- `comment-density`: `off` | `warn` | `error`; option `max_per_100` integer 0 to 100.
-- `stray-artifacts`: `off` | `warn` | `error`; no options.
+- `comment-density`: `"error"` only; no options; not configurable.
+- `stray-artifacts`: `"error"` only; no options; not configurable.
 
 Unknown keys and values are errors. Change only the key at hand.
 

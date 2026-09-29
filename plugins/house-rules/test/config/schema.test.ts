@@ -1,7 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
   ConfigError,
-  MAX_PER_100_RANGE,
   PRESETS,
   RULE_IDS,
   RULE_OPTION_KEYS,
@@ -11,12 +10,10 @@ import {
   parseConfig,
 } from "../../src/config/schema.mjs";
 
-type Allowed = string[] | { min: number; max: number };
+type Allowed = string[];
 
 function allowedText(allowed: Allowed): string {
-  return Array.isArray(allowed)
-    ? allowed.join(", ")
-    : `integer ${allowed.min}..${allowed.max}`;
+  return allowed.length === 0 ? "no options" : allowed.join(", ");
 }
 
 function capture(text: string): any {
@@ -40,14 +37,12 @@ function expectConfigError(
   expect(err.path).toBe(path);
   expect(err.allowed).toEqual(allowed);
   if (path !== "") expect(err.message).toContain(path);
-  if (Array.isArray(allowed)) {
-    for (const a of allowed) expect(err.message).toContain(a);
-  }
+  for (const a of allowed) expect(err.message).toContain(a);
   expect(err.message).toContain(`allowed: ${allowedText(allowed)}`);
   for (const s of substrings) expect(err.message).toContain(s);
 }
 
-const SEV = ["off", "warn", "error"];
+const SEV = ["error"];
 const SHAPE = ["severity string", "[severity]", "[severity, options]"];
 const CD = 'rules["comment-density"]';
 const CM = 'rules["commit-message"]';
@@ -59,43 +54,34 @@ describe("parseConfig valid input", () => {
       $schema: "https://x",
       rules: {
         "commit-message": ["error", { preset: "conventional" }],
-        "comment-density": ["error", { max_per_100: 5 }],
+        "comment-density": "error",
         "stray-artifacts": "error",
       },
     });
     expect(parseConfig(text)).toEqual({
       rules: {
         "commit-message": { severity: "error", options: { preset: "conventional" } },
-        "comment-density": { severity: "error", options: { max_per_100: 5 } },
+        "comment-density": { severity: "error", options: {} },
         "stray-artifacts": { severity: "error", options: {} },
       },
     });
   });
 
   it("leaves absent rules absent", () => {
-    const out = parseConfig('{"rules":{"comment-density":"warn"}}');
+    const out = parseConfig('{"rules":{"comment-density":"error"}}');
     expect(out).toEqual({
-      rules: { "comment-density": { severity: "warn", options: {} } },
+      rules: { "comment-density": { severity: "error", options: {} } },
     });
   });
 
   it("accepts the single-element array form", () => {
-    expect(parseConfig('{"rules":{"stray-artifacts":["off"]}}')).toEqual({
-      rules: { "stray-artifacts": { severity: "off", options: {} } },
+    expect(parseConfig('{"rules":{"stray-artifacts":["error"]}}')).toEqual({
+      rules: { "stray-artifacts": { severity: "error", options: {} } },
     });
   });
 
   it("accepts an empty object", () => {
     expect(parseConfig("{}")).toEqual({ rules: {} });
-  });
-
-  it("accepts max_per_100 boundaries", () => {
-    for (const n of [0, 100]) {
-      const out = parseConfig(`{"rules":{"comment-density":["error",{"max_per_100":${n}}]}}`);
-      expect(out).toEqual({
-        rules: { "comment-density": { severity: "error", options: { max_per_100: n } } },
-      });
-    }
   });
 
   it("accepts every preset", () => {
@@ -151,6 +137,22 @@ describe("parseConfig invalid input", () => {
     expectConfigError('{"rules":{"stray-artifacts":"fatal"}}', SA, SEV);
   });
 
+  it("rejects off and warn severities for every rule", () => {
+    for (const rule of [CM, CD, SA]) {
+      for (const sev of ["off", "warn"]) {
+        const err = capture(`{"rules":{${JSON.stringify(rule.slice(7, -2))}:"${sev}"}}`);
+        expect(err.path).toBe(rule);
+        expect(err.message).toContain("invalid severity; allowed: error");
+        const arr = capture(`{"rules":{${JSON.stringify(rule.slice(7, -2))}:["${sev}"]}}`);
+        expect(arr.path).toBe(`${rule}[0]`);
+        expect(arr.message).toContain("invalid severity; allowed: error");
+      }
+    }
+    const off = capture('{"rules":{"stray-artifacts":"off"}}');
+    expect(off.path).toBe(SA);
+    expect(off.message).toContain("allowed: error");
+  });
+
   it("rejects a bad severity in array form", () => {
     expectConfigError('{"rules":{"comment-density":["loud"]}}', `${CD}[0]`, SEV);
   });
@@ -170,7 +172,7 @@ describe("parseConfig invalid input", () => {
     expectConfigError(
       '{"rules":{"comment-density":["error",{"foo":1}]}}',
       `${CD}[1].foo`,
-      ["max_per_100"],
+      [],
       "unknown option",
     );
     expectConfigError('{"rules":{"stray-artifacts":["error",{"x":1}]}}', `${SA}[1].x`, []);
@@ -184,14 +186,12 @@ describe("parseConfig invalid input", () => {
     );
   });
 
-  it("rejects out-of-range or non-integer max_per_100", () => {
-    for (const v of ["5.5", "-1", "101", '"5"']) {
-      expectConfigError(
-        `{"rules":{"comment-density":["error",{"max_per_100":${v}}]}}`,
-        `${CD}[1].max_per_100`,
-        { min: 0, max: 100 },
-        "0..100",
-      );
+  it("rejects max_per_100 as an unknown option", () => {
+    for (const v of ["5", "0", "100", "101", "5.5", '"5"']) {
+      const err = capture(`{"rules":{"comment-density":["error",{"max_per_100":${v}}]}}`);
+      expect(err.path).toBe(`${CD}[1].max_per_100`);
+      expect(err.allowed).toEqual([]);
+      expect(err.message).toContain("unknown option; allowed: no options");
     }
   });
 
@@ -223,17 +223,16 @@ describe("parseConfig invalid input", () => {
 describe("exported constants", () => {
   it("pins exact values", () => {
     expect(RULE_IDS).toEqual(["commit-message", "comment-density", "stray-artifacts"]);
-    expect(SEVERITIES).toEqual(["off", "warn", "error"]);
+    expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
       "commit-message": ["error"],
-      "comment-density": ["off", "warn", "error"],
-      "stray-artifacts": ["off", "warn", "error"],
+      "comment-density": ["error"],
+      "stray-artifacts": ["error"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
-    expect(MAX_PER_100_RANGE).toEqual({ min: 0, max: 100 });
     expect(RULE_OPTION_KEYS).toEqual({
       "commit-message": ["preset"],
-      "comment-density": ["max_per_100"],
+      "comment-density": [],
       "stray-artifacts": [],
     });
     expect(TOP_LEVEL_KEYS).toEqual(["$schema", "rules"]);

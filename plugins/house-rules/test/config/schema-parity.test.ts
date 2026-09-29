@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import {
   ConfigError,
-  MAX_PER_100_RANGE,
   PRESETS,
   RULE_IDS,
   RULE_OPTION_KEYS,
@@ -70,44 +69,40 @@ describe("schema constants parity", () => {
     expect(preset.type).toBe("string");
     expect(sorted(preset.enum)).toEqual(sorted(PRESETS));
   });
-
-  it("max_per_100 range matches MAX_PER_100_RANGE", () => {
-    const n = optionsNode("comment-density").properties.max_per_100;
-    expect(n.type).toBe("integer");
-    expect(n.minimum).toBe(MAX_PER_100_RANGE.min);
-    expect(n.maximum).toBe(MAX_PER_100_RANGE.max);
-  });
 });
 
 const fixtures: [string, unknown, boolean][] = [
   ["empty object", {}, true],
   ["$schema string", { $schema: "x" }, true],
   ["empty rules", { rules: {} }, true],
-  ["comment-density string", { rules: { "comment-density": "warn" } }, true],
-  ["comment-density off", { rules: { "comment-density": "off" } }, true],
-  ["stray-artifacts string", { rules: { "stray-artifacts": "error" } }, true],
+  ["comment-density error string", { rules: { "comment-density": "error" } }, true],
+  ["stray-artifacts error string", { rules: { "stray-artifacts": "error" } }, true],
   ["commit-message error string", { rules: { "commit-message": "error" } }, true],
-  ["comment-density [sev]", { rules: { "comment-density": ["warn"] } }, true],
+  ["comment-density [error]", { rules: { "comment-density": ["error"] } }, true],
+  ["stray-artifacts [error]", { rules: { "stray-artifacts": ["error"] } }, true],
   ["commit-message [error]", { rules: { "commit-message": ["error"] } }, true],
   ["preset handbook", { rules: { "commit-message": ["error", { preset: "handbook" }] } }, true],
   ["preset conventional", { rules: { "commit-message": ["error", { preset: "conventional" }] } }, true],
   ["preset subject-only", { rules: { "commit-message": ["error", { preset: "subject-only" }] } }, true],
-  ["max_per_100 0", { rules: { "comment-density": ["warn", { max_per_100: 0 }] } }, true],
-  ["max_per_100 100", { rules: { "comment-density": ["error", { max_per_100: 100 }] } }, true],
-  ["stray-artifacts empty options", { rules: { "stray-artifacts": ["warn", {}] } }, true],
+  ["comment-density empty options", { rules: { "comment-density": ["error", {}] } }, true],
+  ["stray-artifacts empty options", { rules: { "stray-artifacts": ["error", {}] } }, true],
+  ["comment-density warn", { rules: { "comment-density": "warn" } }, false],
+  ["comment-density off", { rules: { "comment-density": "off" } }, false],
+  ["comment-density [warn]", { rules: { "comment-density": ["warn"] } }, false],
+  ["stray-artifacts warn", { rules: { "stray-artifacts": "warn" } }, false],
+  ["stray-artifacts off", { rules: { "stray-artifacts": "off" } }, false],
+  ["stray-artifacts [warn, {}]", { rules: { "stray-artifacts": ["warn", {}] } }, false],
+  ["comment-density max_per_100", { rules: { "comment-density": ["error", { max_per_100: 5 }] } }, false],
+  ["comment-density max_per_100 empty-ish", { rules: { "comment-density": ["error", { max_per_100: 0 }] } }, false],
   ["unknown top-level key", { extra: 1 }, false],
   ["unknown rule", { rules: { nope: "warn" } }, false],
-  ["comment-density preset option", { rules: { "comment-density": ["warn", { preset: "handbook" }] } }, false],
-  ["stray-artifacts unknown option", { rules: { "stray-artifacts": ["warn", { x: 1 }] } }, false],
+  ["comment-density preset option", { rules: { "comment-density": ["error", { preset: "handbook" }] } }, false],
+  ["stray-artifacts unknown option", { rules: { "stray-artifacts": ["error", { x: 1 }] } }, false],
   ["bad severity fatal", { rules: { "comment-density": "fatal" } }, false],
   ["commit-message warn", { rules: { "commit-message": "warn" } }, false],
   ["commit-message off", { rules: { "commit-message": "off" } }, false],
   ["commit-message [warn]", { rules: { "commit-message": ["warn"] } }, false],
   ["bad preset", { rules: { "commit-message": ["error", { preset: "bogus" }] } }, false],
-  ["max_per_100 1.5", { rules: { "comment-density": ["warn", { max_per_100: 1.5 }] } }, false],
-  ["max_per_100 -1", { rules: { "comment-density": ["warn", { max_per_100: -1 }] } }, false],
-  ["max_per_100 101", { rules: { "comment-density": ["warn", { max_per_100: 101 }] } }, false],
-  ["max_per_100 string", { rules: { "comment-density": ["warn", { max_per_100: "5" }] } }, false],
   ["empty tuple", { rules: { "comment-density": [] } }, false],
   ["three-element tuple", { rules: { "comment-density": ["error", {}, {}] } }, false],
   ["tuple string options", { rules: { "comment-density": ["error", "x"] } }, false],

@@ -8,7 +8,6 @@ import {
   resolveConfigText,
   pointer,
   DEFAULT_SEVERITY,
-  DEFAULT_MAX_PER_100,
 } from '../../src/config/resolve.mjs';
 import { ConfigError } from '../../src/config/schema.mjs';
 import { BUILTIN_POLICY } from '../../src/engine/policy.js';
@@ -60,8 +59,8 @@ const ALL_DEFAULTS = {
     },
     'comment-density': {
       severity: 'error',
-      options: { max_per_100: 5 },
-      sources: { severity: 'default', max_per_100: 'default' },
+      options: {},
+      sources: { severity: 'default' },
     },
     'stray-artifacts': {
       severity: 'error',
@@ -88,13 +87,12 @@ describe('resolveConfig defaults', () => {
 
   it('default constants match documented values', () => {
     expect(DEFAULT_SEVERITY).toBe('error');
-    expect(DEFAULT_MAX_PER_100).toBe(5);
   });
 
   it('default severities match BUILTIN_POLICY', () => {
     const { rules } = resolveConfig(makeRepo());
-    expect(rules['comment-density'].severity).toEqual(BUILTIN_POLICY['comment-density'].severity);
-    expect(rules['stray-artifacts'].severity).toEqual(BUILTIN_POLICY['stray-artifacts'].severity);
+    expect<string>(rules['comment-density'].severity).toEqual(BUILTIN_POLICY['comment-density'].severity);
+    expect<string>(rules['stray-artifacts'].severity).toEqual(BUILTIN_POLICY['stray-artifacts'].severity);
     expect(rules['commit-message'].severity).toEqual('error');
   });
 });
@@ -147,24 +145,23 @@ describe('resolveConfig preset precedence', () => {
 });
 
 describe('resolveConfig comment-density', () => {
-  it('explicit severity and max_per_100', () => {
+  it('explicit severity has no options', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 8 }] } });
+    writeConfig(repo, { rules: { 'comment-density': 'error' } });
     expect(resolveConfig(repo).rules['comment-density']).toEqual({
-      severity: 'warn',
-      options: { max_per_100: 8 },
-      sources: { severity: 'explicit', max_per_100: 'explicit' },
+      severity: 'error',
+      options: {},
+      sources: { severity: 'explicit' },
     });
   });
 
-  it('off alone leaves max_per_100 at default', () => {
+  it('off severity is rejected', () => {
     const repo = makeRepo();
     writeConfig(repo, { rules: { 'comment-density': 'off' } });
-    expect(resolveConfig(repo).rules['comment-density']).toEqual({
-      severity: 'off',
-      options: { max_per_100: 5 },
-      sources: { severity: 'explicit', max_per_100: 'default' },
-    });
+    const e = caught(() => resolveConfig(repo)) as ConfigError;
+    expect(e).toBeInstanceOf(ConfigError);
+    expect(e.path).toEqual('rules["comment-density"]');
+    expect(e.message).toContain('invalid severity; allowed: error');
   });
 });
 
@@ -185,18 +182,18 @@ describe('pointer', () => {
 
   it('describes explicit option', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 8 }] } });
-    expect(pointer(resolveConfig(repo), 'comment-density', 'max_per_100')).toBe(
-      'rules["comment-density"].max_per_100 (active: 8, source: explicit)',
+    writeConfig(repo, { rules: { 'commit-message': ['error', { preset: 'conventional' }] } });
+    expect(pointer(resolveConfig(repo), 'commit-message', 'preset')).toBe(
+      'rules["commit-message"].preset (active: conventional, source: explicit)',
     );
   });
 });
 
 describe('resolveConfig invalid files', () => {
-  it('out-of-range option throws ConfigError naming file and key', () => {
+  it('max_per_100 option throws ConfigError naming file and key', () => {
     const repo = makeRepo();
     const file = writeConfig(repo, {
-      rules: { 'comment-density': ['warn', { max_per_100: 999 }] },
+      rules: { 'comment-density': ['error', { max_per_100: 999 }] },
     });
     const err = caught(() => resolveConfig(repo));
     expect(err).toBeInstanceOf(ConfigError);
@@ -205,6 +202,7 @@ describe('resolveConfig invalid files', () => {
     expect(e.message).toContain(file);
     expect(e.path).toEqual('rules["comment-density"][1].max_per_100');
     expect(e.message).toContain('rules["comment-density"][1].max_per_100');
+    expect(e.message).toContain('unknown option; allowed: no options');
   });
 
   it('malformed JSON throws ConfigError with file', () => {
@@ -223,7 +221,7 @@ describe('resolveConfigText', () => {
     expect(resolved).toEqual(resolveConfig(repo));
     expect(resolved).toEqual(ALL_DEFAULTS);
     expect(resolved.file).toBeNull();
-    expect(resolved.rules['comment-density'].options.max_per_100).toBe(5);
+    expect(resolved.rules['comment-density'].options).toEqual({});
   });
 
   it('explicit text reports the would-be file path with no file on disk', () => {
@@ -231,7 +229,7 @@ describe('resolveConfigText', () => {
     const text = JSON.stringify({
       rules: {
         'commit-message': ['error', { preset: 'conventional' }],
-        'comment-density': ['off', { max_per_100: 7 }],
+        'comment-density': 'error',
       },
     });
     const resolved = resolveConfigText(repo, text);
@@ -243,9 +241,9 @@ describe('resolveConfigText', () => {
       sources: { severity: 'explicit', preset: 'explicit' },
     });
     expect(resolved.rules['comment-density']).toEqual({
-      severity: 'off',
-      options: { max_per_100: 7 },
-      sources: { severity: 'explicit', max_per_100: 'explicit' },
+      severity: 'error',
+      options: {},
+      sources: { severity: 'explicit' },
     });
   });
 
@@ -253,25 +251,25 @@ describe('resolveConfigText', () => {
     const repo = makeRepo();
     commits(repo, CONVENTIONAL_HISTORY);
     const file = writeConfig(repo, {
-      rules: { 'comment-density': ['warn', { max_per_100: 8 }], 'stray-artifacts': 'off' },
+      rules: { 'comment-density': 'error', 'stray-artifacts': ['error'] },
     });
     const resolved = resolveConfigText(repo, fs.readFileSync(file, 'utf8'));
     expect(resolved).toEqual(resolveConfig(repo));
-    expect(resolved.rules['comment-density'].options.max_per_100).toBe(8);
-    expect(resolved.rules['stray-artifacts'].severity).toBe('off');
+    expect(resolved.rules['comment-density'].sources).toEqual({ severity: 'explicit' });
+    expect(resolved.rules['stray-artifacts'].sources).toEqual({ severity: 'explicit' });
   });
 
   it('uses the given text, not disk content', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 3 }] } });
-    const text = JSON.stringify({ rules: { 'comment-density': ['warn', { max_per_100: 4 }] } });
-    expect(resolveConfigText(repo, text).rules['comment-density'].options.max_per_100).toBe(4);
-    expect(resolveConfig(repo).rules['comment-density'].options.max_per_100).toBe(3);
+    writeConfig(repo, { rules: { 'commit-message': ['error', { preset: 'handbook' }] } });
+    const text = JSON.stringify({ rules: { 'commit-message': ['error', { preset: 'conventional' }] } });
+    expect(resolveConfigText(repo, text).rules['commit-message'].options.preset).toBe('conventional');
+    expect(resolveConfig(repo).rules['commit-message'].options.preset).toBe('handbook');
   });
 
   it('null text ignores a config on disk', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 3 }] } });
+    writeConfig(repo, { rules: { 'commit-message': ['error', { preset: 'conventional' }] } });
     expect(resolveConfigText(repo, null)).toEqual(ALL_DEFAULTS);
   });
 

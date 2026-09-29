@@ -41,6 +41,22 @@ describe("configure skill", () => {
     expect(content).toMatch(/ask the user/i);
   });
 
+  it("SKILL.md drops the removed max_per_100 option", () => {
+    expect(readFileSync(SKILL_PATH, "utf8")).not.toContain("max_per_100");
+  });
+
+  it("SKILL.md advertises no off/warn severity", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).not.toMatch(/["`]off["`]|["`]warn["`]/);
+    expect(content).not.toMatch(/\b(loosen|tighten)/i);
+  });
+
+  it("SKILL.md states comment-density and stray-artifacts accept error only", () => {
+    const content = readFileSync(SKILL_PATH, "utf8");
+    expect(content).toMatch(/`comment-density`: `"error"` only.*not configurable/);
+    expect(content).toMatch(/`stray-artifacts`: `"error"` only.*not configurable/);
+  });
+
   it("SKILL.md teaches no escape route", () => {
     expect(readFileSync(SKILL_PATH, "utf8")).not.toMatch(FORBIDDEN);
   });

@@ -142,7 +142,10 @@ describe("session-start hook", () => {
     const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
     expect(ctx).toContain("house-rules config");
     expect(ctx).toContain("house-rules:configure");
-    expect(ctx).toContain("default 5 per 100");
+    expect(ctx).toContain("5 per 100");
+    expect(ctx).not.toContain("default 5 per 100");
+    expect(ctx).not.toContain("comment cap and stray-artifact rules come from");
+    expect(ctx).toContain("Commit style comes from `.house-rules.json`");
   });
 
   it("additionalContext mentions no bypass route", () => {

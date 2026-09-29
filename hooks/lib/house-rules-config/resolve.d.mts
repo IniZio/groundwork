@@ -13,8 +13,8 @@ export interface ResolvedConfig {
     }
     'comment-density': {
       severity: Severity
-      options: { max_per_100: number }
-      sources: { severity: Source; max_per_100: Source }
+      options: Record<string, never>
+      sources: { severity: Source }
     }
     'stray-artifacts': {
       severity: Severity
@@ -25,7 +25,6 @@ export interface ResolvedConfig {
 }
 
 export declare const DEFAULT_SEVERITY: 'error'
-export declare const DEFAULT_MAX_PER_100: 5
 
 export declare function resolveConfig(repoRoot: string): ResolvedConfig
 export declare function resolveConfigText(repoRoot: string, text: string | null): ResolvedConfig

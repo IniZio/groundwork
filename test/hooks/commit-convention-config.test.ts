@@ -59,7 +59,7 @@ describe("lintMessage config resolution", () => {
     for (let i = 0; i < 12; i++) subjects.push(`feat: change ${i}`);
     for (let i = 0; i < 8; i++) subjects.push(`Change number ${i}`);
     const root = makeRepo({
-      files: { ".house-rules.json": JSON.stringify({ rules: { "comment-density": ["warn"] } }) },
+      files: { ".house-rules.json": JSON.stringify({ rules: { "comment-density": ["error"] } }) },
       subjects,
     });
     const r = lintMessage("Add thing", { repoRoot: root, motiveSlugs: [] });

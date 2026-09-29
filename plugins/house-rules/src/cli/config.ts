@@ -6,7 +6,7 @@ import { RULE_SEVERITIES } from '../config/schema.mjs';
 const RULE_ORDER = ['commit-message', 'comment-density', 'stray-artifacts'] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
-  'comment-density': ['max_per_100'],
+  'comment-density': [],
   'stray-artifacts': [],
 };
 

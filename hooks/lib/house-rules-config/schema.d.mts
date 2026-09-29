@@ -1,28 +1,27 @@
 export type RuleId = "commit-message" | "comment-density" | "stray-artifacts";
-export type Severity = "off" | "warn" | "error";
+export type Severity = "error";
 export type Preset = "handbook" | "conventional" | "subject-only";
 
 export const RULE_IDS: readonly ["commit-message", "comment-density", "stray-artifacts"];
-export const SEVERITIES: readonly ["off", "warn", "error"];
+export const SEVERITIES: readonly ["error"];
 export const RULE_SEVERITIES: {
   readonly "commit-message": readonly ["error"];
-  readonly "comment-density": readonly ["off", "warn", "error"];
-  readonly "stray-artifacts": readonly ["off", "warn", "error"];
+  readonly "comment-density": readonly ["error"];
+  readonly "stray-artifacts": readonly ["error"];
 };
 export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
-export const MAX_PER_100_RANGE: { readonly min: number; readonly max: number };
 export const RULE_OPTION_KEYS: {
   readonly "commit-message": readonly ["preset"];
-  readonly "comment-density": readonly ["max_per_100"];
+  readonly "comment-density": readonly [];
   readonly "stray-artifacts": readonly [];
 };
 export const TOP_LEVEL_KEYS: readonly ["$schema", "rules"];
 
 export class ConfigError extends Error {
-  constructor(path: string, problem: string, allowed: readonly string[] | { min: number; max: number });
+  constructor(path: string, problem: string, allowed: readonly string[]);
   path: string;
   file?: string;
-  allowed: readonly string[] | { min: number; max: number };
+  allowed: readonly string[];
 }
 
 export interface ParsedRule {

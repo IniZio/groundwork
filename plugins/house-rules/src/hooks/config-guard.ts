@@ -64,9 +64,6 @@ function findLoosenings(repoRoot: string, oldText: string | null, newText: strin
     const n = newCfg.rules[id].severity;
     if (RANK[n] < RANK[o]) out.push(`  rules["${id}"]: ${o} → ${n}`);
   }
-  const oMax = oldCfg.rules["comment-density"].options.max_per_100;
-  const nMax = newCfg.rules["comment-density"].options.max_per_100;
-  if (nMax > oMax) out.push(`  rules["comment-density"].max_per_100: ${oMax} → ${nMax}`);
   const oPre = oldCfg.rules["commit-message"].options.preset;
   const nPre = newCfg.rules["commit-message"].options.preset;
   const pinned = oldCfg.rules["commit-message"].sources.preset === "explicit";

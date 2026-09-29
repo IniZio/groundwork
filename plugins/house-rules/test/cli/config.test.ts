@@ -51,19 +51,16 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
     `schema: ${SCHEMA_URL}`,
     `commit-message  severity=error (default)  preset=${preset} (${why})`,
     `  change with: rules["commit-message"].preset (active: ${preset}, source: ${why})`,
-    'comment-density severity=error (default)  max_per_100=5 (default)',
-    '  change with: rules["comment-density"] (active: error, source: default)',
-    '  change with: rules["comment-density"].max_per_100 (active: 5, source: default)',
+    'comment-density severity=error (default)',
     'stray-artifacts severity=error (default)',
-    '  change with: rules["stray-artifacts"] (active: error, source: default)',
     '',
   ].join('\n');
 
 const EXPLICIT_FILE = {
   rules: {
     'commit-message': ['error', { preset: 'handbook' }],
-    'comment-density': ['warn', { max_per_100: 10 }],
-    'stray-artifacts': 'off',
+    'comment-density': 'error',
+    'stray-artifacts': 'error',
   },
 };
 
@@ -73,11 +70,8 @@ function explicitText(file: string) {
     `schema: ${SCHEMA_URL}`,
     'commit-message  severity=error (explicit)  preset=handbook (explicit)',
     '  change with: rules["commit-message"].preset (active: handbook, source: explicit)',
-    'comment-density severity=warn (explicit)  max_per_100=10 (explicit)',
-    '  change with: rules["comment-density"] (active: warn, source: explicit)',
-    '  change with: rules["comment-density"].max_per_100 (active: 10, source: explicit)',
-    'stray-artifacts severity=off (explicit)',
-    '  change with: rules["stray-artifacts"] (active: off, source: explicit)',
+    'comment-density severity=error (explicit)',
+    'stray-artifacts severity=error (explicit)',
     '',
   ].join('\n');
 }
@@ -120,7 +114,17 @@ describe('house-rules config', () => {
     expect(r.stderr).toContain('Error: ');
     expect(r.stderr).toContain(path.join(repo, '.house-rules.json'));
     expect(r.stderr).toContain('rules["comment-density"][1].max_per_100');
-    expect(r.stderr).toContain('allowed: integer 0..100');
+    expect(r.stderr).toContain('allowed: no options');
+  });
+
+  it('rejects a non-error severity with the allowed set', () => {
+    const bad = { rules: { 'stray-artifacts': 'off' } };
+    const repo = makeRepo(CONVENTIONAL, { '.house-rules.json': JSON.stringify(bad) });
+    const r = runConfig(['--repo', repo], repo);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toContain('rules["stray-artifacts"]');
+    expect(r.stderr).toContain('allowed: error');
   });
 
   it('emits JSON with ordered keys under --format json', () => {
@@ -139,11 +143,11 @@ describe('house-rules config', () => {
           sources: { severity: 'explicit', preset: 'explicit' },
         },
         'comment-density': {
-          severity: 'warn',
-          options: { max_per_100: 10 },
-          sources: { severity: 'explicit', max_per_100: 'explicit' },
+          severity: 'error',
+          options: {},
+          sources: { severity: 'explicit' },
         },
-        'stray-artifacts': { severity: 'off', options: {}, sources: { severity: 'explicit' } },
+        'stray-artifacts': { severity: 'error', options: {}, sources: { severity: 'explicit' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);

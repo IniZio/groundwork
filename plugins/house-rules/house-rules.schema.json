@@ -51,12 +51,12 @@
           ]
         },
         "comment-density": {
-          "description": "Limits how many comment lines a change adds relative to the code lines it adds. Use it to keep code free of narrating or redundant comments.",
+          "description": "Limits how many comment lines a change adds relative to the code lines it adds. The cap is fixed at 5 comment lines per 100 added lines. Severity can only be \"error\". Use it to keep code free of narrating or redundant comments.",
           "oneOf": [
             {
               "type": "string",
-              "enum": ["off", "warn", "error"],
-              "description": "Severity. \"off\": rule does not run. \"warn\": report violations but do not block. \"error\": report violations and block."
+              "enum": ["error"],
+              "description": "Severity. \"error\" rejects a change that adds too many comment lines. No other severity is accepted for this rule."
             },
             {
               "type": "array",
@@ -66,33 +66,26 @@
               "prefixItems": [
                 {
                   "type": "string",
-                  "enum": ["off", "warn", "error"],
-                  "description": "Severity. \"off\": rule does not run. \"warn\": report violations but do not block. \"error\": report violations and block."
+                  "enum": ["error"],
+                  "description": "Severity. \"error\" rejects a change that adds too many comment lines. No other severity is accepted for this rule."
                 },
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Options for comment-density. Only \"max_per_100\" is supported.",
-                  "properties": {
-                    "max_per_100": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 100,
-                      "description": "Highest allowed number of added comment lines per 100 added lines, as a whole number from 0 to 100. Lower is stricter: 0 allows no added comments, 100 allows any amount."
-                    }
-                  }
+                  "description": "Options for comment-density. This rule has no options; the object must be empty.",
+                  "properties": {}
                 }
               ]
             }
           ]
         },
         "stray-artifacts": {
-          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Takes no options.",
+          "description": "Flags stray files a change leaves behind: coexisting synonym directory pairs (doc and docs, test and tests, script and scripts, util and utils, lib and libs) and root scratch files (test-*.js, *.bak, tmp*, scratch*). Severity can only be \"error\". Takes no options.",
           "oneOf": [
             {
               "type": "string",
-              "enum": ["off", "warn", "error"],
-              "description": "Severity. \"off\": rule does not run. \"warn\": report stray artifacts but do not block. \"error\": report stray artifacts and block."
+              "enum": ["error"],
+              "description": "Severity. \"error\" rejects a change that leaves stray artifacts. No other severity is accepted for this rule."
             },
             {
               "type": "array",
@@ -102,8 +95,8 @@
               "prefixItems": [
                 {
                   "type": "string",
-                  "enum": ["off", "warn", "error"],
-                  "description": "Severity. \"off\": rule does not run. \"warn\": report stray artifacts but do not block. \"error\": report stray artifacts and block."
+                  "enum": ["error"],
+                  "description": "Severity. \"error\" rejects a change that leaves stray artifacts. No other severity is accepted for this rule."
                 },
                 {
                   "type": "object",

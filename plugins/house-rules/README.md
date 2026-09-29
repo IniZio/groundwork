@@ -31,7 +31,7 @@ Repo-level config lives in `.house-rules.json` at the repo root:
   "$schema": "https://raw.githubusercontent.com/IniZio/groundwork/main/plugins/house-rules/house-rules.schema.json",
   "rules": {
     "commit-message": ["error", {"preset": "conventional"}],
-    "comment-density": ["error", {"max_per_100": 5}],
+    "comment-density": "error",
     "stray-artifacts": "error"
   }
 }
@@ -40,8 +40,10 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 | Rule | Allowed values |
 |---|---|
 | commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
-| comment-density | severity `off`, `warn`, or `error`; `max_per_100` 0 to 100 (validated and shown; the density cap is currently fixed at 5) |
-| stray-artifacts | severity `off`, `warn`, or `error` |
+| comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
+| stray-artifacts | severity `error` only; no options |
+
+The only configurable knob is the commit-message `preset`.
 
 Commit preset precedence: explicit config, then `.gitmessage`, then commitlint config, then git history, then the `handbook` default.
 

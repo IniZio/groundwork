@@ -4,7 +4,6 @@ import { ConfigError, parseConfig } from './schema.mjs'
 import { detectPreset } from './detect.mjs'
 
 export const DEFAULT_SEVERITY = 'error'
-export const DEFAULT_MAX_PER_100 = 5
 
 function parseText(file, text) {
   if (text === null) return { rules: {} }
@@ -45,12 +44,6 @@ export function resolveConfigText(repoRoot, text) {
       ? { value: explicitPreset, source: 'explicit' }
       : detectPreset(repoRoot)
 
-  const explicitMax = rules['comment-density']?.options?.max_per_100
-  const max =
-    explicitMax !== undefined
-      ? { value: explicitMax, source: 'explicit' }
-      : { value: DEFAULT_MAX_PER_100, source: 'default' }
-
   return {
     file: present ? file : null,
     rules: {
@@ -61,8 +54,8 @@ export function resolveConfigText(repoRoot, text) {
       },
       'comment-density': {
         severity: density.value,
-        options: { max_per_100: max.value },
-        sources: { severity: density.source, max_per_100: max.source },
+        options: {},
+        sources: { severity: density.source },
       },
       'stray-artifacts': {
         severity: stray.value,

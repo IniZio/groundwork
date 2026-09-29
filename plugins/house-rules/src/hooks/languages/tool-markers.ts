@@ -49,7 +49,12 @@ const _pythonBase = withToolMarkers(PYTHON_TOOL_MARKERS);
 
 export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
 
-export const YAML_TOOL_MARKERS: readonly RegExp[] = [/^yaml-language-server:/];
+export const YAML_TOOL_MARKERS: readonly RegExp[] = [
+  /^yaml-language-server:/,
+  /^yamllint\s+(?:disable(?:-line|-file)?|enable(?:-line)?)\b/,
+  /^prettier-ignore(?:-start|-end)?\b/,
+  /^renovate:/,
+];
 
 export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
   /^noinspection\b/,

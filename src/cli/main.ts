@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -69,10 +69,25 @@ function checkToken(store: WorkStore, args: string[]): void {
   }
 }
 
+function excludeWorkingTier(root: string): void {
+  const r = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd: root, encoding: "utf8", timeout: 3000 });
+  const rel = r.status === 0 ? (r.stdout ?? "").trim() : "";
+  if (!rel) {
+    process.stdout.write("note: not a git repository — .groundwork/ not excluded from git\n");
+    return;
+  }
+  const file = path.resolve(root, rel);
+  const cur = existsSync(file) ? readFileSync(file, "utf8") : "";
+  if (cur.split(/\r?\n/).some(l => l.trim() === ".groundwork/")) return;
+  mkdirSync(path.dirname(file), { recursive: true });
+  appendFileSync(file, (cur === "" || cur.endsWith("\n") ? "" : "\n") + ".groundwork/\n");
+}
+
 function cmdInit(args: string[]): void {
   const p = dbPath();
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  excludeWorkingTier(repoDir());
   const store = new WorkStore(p);
 
   const metaTok = store.getMeta("token");

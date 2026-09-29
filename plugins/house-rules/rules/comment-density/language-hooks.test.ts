@@ -92,6 +92,10 @@ describe('comment-density language-hooks positive controls (entry present)', () 
     expect(fixEntryFor('go').stability).toBe('stable');
   });
 
+  it('fixEntryFor rust is stable and safe when entry present', () => {
+    expect(fixEntryFor('rust')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
   it('canFixPath x.go returns true when entry present', () => {
     expect(rule.canFixPath!('x.go')).toBe(true);
   });

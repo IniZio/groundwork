@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveConfig } from '../../src/config/resolve.mjs';
 import type { ManifestOptions } from '../../src/config/resolve.mjs';
-import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, words } from '../../src/config/manifest.mjs';
+import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, inTypedArea, words } from '../../src/config/manifest.mjs';
 import { parseFrontmatter, validateFrontmatter, missingHeadings } from '../../src/engine/frontmatter.js';
 
 export const CANONICAL_SYNONYMS: Record<string, string> = {
@@ -96,7 +96,7 @@ function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: Manif
     }
     const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
     if (!governed) continue;
-    if (isIgnored(repoRoot, f.path)) continue;
+    if (isIgnored(repoRoot, f.path) && !inTypedArea(f.path, options)) continue;
     const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
     const lines = nearestTypes(f.path, options, 2).flatMap(n => {
       const def = options.types?.[n.type];

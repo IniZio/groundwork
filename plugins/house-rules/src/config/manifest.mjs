@@ -146,6 +146,17 @@ function globToRe(glob) {
   return re;
 }
 
+export function inTypedArea(path, manifest) {
+  const norm = normalise(path);
+  for (const def of Object.values(manifest?.types ?? {})) {
+    const cut = def.generates.indexOf("{");
+    const literal = cut === -1 ? def.generates : def.generates.slice(0, cut);
+    const area = literal.slice(0, literal.lastIndexOf("/") + 1);
+    if (area !== "" && norm.startsWith(area)) return true;
+  }
+  return false;
+}
+
 export function forbiddenRedirect(path, manifest) {
   const norm = normalise(path);
   for (const e of manifest?.forbidden ?? []) {

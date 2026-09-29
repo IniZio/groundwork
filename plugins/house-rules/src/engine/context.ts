@@ -5,7 +5,7 @@ import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { resolveConfig } from '../config/resolve.mjs';
-import { forbiddenRedirect, matchPath } from '../config/manifest.mjs';
+import { forbiddenRedirect, inTypedArea, matchPath } from '../config/manifest.mjs';
 import { createSourceFiles } from './source-file.js';
 import type { RuleContext, ScopedFile } from './types.js';
 
@@ -78,18 +78,15 @@ export function detectBashCreatedDocs(
       return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
     };
     const untracked = deps.listUntracked?.() ?? list([]);
-    // Ignored files (e.g. .groundwork/, .scratch/) are scoped only when they hit a forbidden pattern or a type.
+    // Forbidden or typed: kept whatever the ignore status. Governed-only: kept unless ignored outside every typed area.
     const ignored = deps.listUntracked ? [] : list(['--ignored']);
     const forbidden = opts.forbidden ?? [];
-    const governed = new Set(untracked);
-    const candidates = [...untracked, ...ignored.filter((p) => !governed.has(p))];
+    const seen = new Set(untracked);
+    const candidates = [...untracked, ...ignored.filter((p) => !seen.has(p))];
 
     return candidates.filter((p) => {
-      if (governed.has(p)) {
-        if (!govern.some((g) => forbiddenRedirect(p, { forbidden: [{ pattern: g, redirect: '' }] }) !== null)) {
-          return false;
-        }
-      } else if (forbiddenRedirect(p, { forbidden }) === null && matchPath(p, opts) === null) {
+      const isGoverned = (seen.has(p) || inTypedArea(p, opts)) && govern.some((g) => forbiddenRedirect(p, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
+      if (!isGoverned && forbiddenRedirect(p, { forbidden }) === null && matchPath(p, opts) === null) {
         return false;
       }
       try {

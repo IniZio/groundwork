@@ -32,4 +32,5 @@ export function compileGenerates(template: string): CompiledGenerates;
 export function matchPath(path: string, manifest: Manifest): { type: string; params: Record<string, string> } | null;
 export function renderType(typeId: string, params: Record<string, string>, manifest: Manifest): string;
 export function nearestTypes(path: string, manifest: Manifest, n: number): NearestType[];
+export function inTypedArea(path: string, manifest: Manifest): boolean;
 export function forbiddenRedirect(path: string, manifest: Manifest): string | null;

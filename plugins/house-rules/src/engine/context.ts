@@ -5,7 +5,7 @@ import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { resolveConfig } from '../config/resolve.mjs';
-import { forbiddenRedirect } from '../config/manifest.mjs';
+import { forbiddenRedirect, matchPath } from '../config/manifest.mjs';
 import { createSourceFiles } from './source-file.js';
 import type { RuleContext, ScopedFile } from './types.js';
 
@@ -69,18 +69,27 @@ export function detectBashCreatedDocs(
     }
     if (Number.isNaN(start)) return [];
 
-    const untracked =
-      deps.listUntracked?.() ??
-      (() => {
-        const r = spawnSync('git', ['-C', repoRoot, 'ls-files', '--others', '--exclude-standard'], {
-          encoding: 'utf8',
-        });
-        if (r.status !== 0) throw new Error('git ls-files failed');
-        return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-      })();
+    const list = (extra: string[]): string[] => {
+      const r = spawnSync('git', ['-C', repoRoot, 'ls-files', '--others', '--exclude-standard', ...extra], {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      if (r.status !== 0) throw new Error('git ls-files failed');
+      return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    };
+    const untracked = deps.listUntracked?.() ?? list([]);
+    // Ignored files (e.g. .groundwork/, .scratch/) are scoped only when they hit a forbidden pattern or a type.
+    const ignored = deps.listUntracked ? [] : list(['--ignored']);
+    const forbidden = opts.forbidden ?? [];
+    const governed = new Set(untracked);
+    const candidates = [...untracked, ...ignored.filter((p) => !governed.has(p))];
 
-    return untracked.filter((p) => {
-      if (!govern.some((g) => forbiddenRedirect(p, { forbidden: [{ pattern: g, redirect: '' }] }) !== null)) {
+    return candidates.filter((p) => {
+      if (governed.has(p)) {
+        if (!govern.some((g) => forbiddenRedirect(p, { forbidden: [{ pattern: g, redirect: '' }] }) !== null)) {
+          return false;
+        }
+      } else if (forbiddenRedirect(p, { forbidden }) === null && matchPath(p, opts) === null) {
         return false;
       }
       try {

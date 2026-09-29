@@ -40,9 +40,11 @@ function resolveManifest(repoRoot: string): ManifestOptions | null {
 
 function isNewFile(repoRoot: string, relPath: string): boolean {
   const inHead = spawnSync('git', ['cat-file', '-e', `HEAD:${relPath}`], { cwd: repoRoot, stdio: 'ignore' });
-  if (inHead.status === 0) return false;
-  const ignored = spawnSync('git', ['check-ignore', '-q', '--', relPath], { cwd: repoRoot, stdio: 'ignore' });
-  return ignored.status !== 0;
+  return inHead.status !== 0;
+}
+
+function isIgnored(repoRoot: string, relPath: string): boolean {
+  return spawnSync('git', ['check-ignore', '-q', '--', relPath], { cwd: repoRoot, stdio: 'ignore' }).status === 0;
 }
 
 function contentFindings(repoRoot: string, relPath: string, typeId: string, def: NonNullable<ManifestOptions['types']>[string]): string[] {
@@ -94,6 +96,7 @@ function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: Manif
     }
     const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
     if (!governed) continue;
+    if (isIgnored(repoRoot, f.path)) continue;
     const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
     const lines = nearestTypes(f.path, options, 2).flatMap(n => {
       const def = options.types?.[n.type];

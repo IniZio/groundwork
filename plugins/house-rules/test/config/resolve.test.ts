@@ -199,10 +199,11 @@ describe('resolveConfig invalid files', () => {
     });
     const err = caught(() => resolveConfig(repo));
     expect(err).toBeInstanceOf(ConfigError);
-    const e = err as ConfigError & { file: string };
+    const e = err as ConfigError;
     expect(e.file).toEqual(file);
     expect(e.message).toContain(file);
-    expect(e.message).toContain('max_per_100');
+    expect(e.path).toEqual('rules["comment-density"][1].max_per_100');
+    expect(e.message).toContain('rules["comment-density"][1].max_per_100');
   });
 
   it('malformed JSON throws ConfigError with file', () => {
@@ -210,6 +211,6 @@ describe('resolveConfig invalid files', () => {
     const file = writeConfig(repo, '{ not json');
     const err = caught(() => resolveConfig(repo));
     expect(err).toBeInstanceOf(ConfigError);
-    expect((err as ConfigError & { file: string }).file).toEqual(file);
+    expect((err as ConfigError).file).toEqual(file);
   });
 });

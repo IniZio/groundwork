@@ -71,6 +71,7 @@ export interface LintViolation {
 export interface LintResult {
   stripped: string
   violations: LintViolation[]
+  pointer?: string
 }
 
 export declare function lintMessage(

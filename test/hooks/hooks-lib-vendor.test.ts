@@ -1,7 +1,10 @@
 /**
  * Tests for the vendored house-rules lint in hooks/lib.
  *
- * (a) parity    — hooks/lib/house-rules-lint.{mjs,d.mts} byte-equal to plugin sources
+ * (a) parity    — hooks/lib/house-rules-lint.{mjs,d.mts} and
+ *                 hooks/lib/house-rules-config/{schema,detect,resolve}.{mjs,d.mts}
+ *                 byte-equal to plugin sources (table-driven, completeness-checked,
+ *                 with a one-byte-flip negative control)
  * (b) layout    — commit-message-guard.ts works from a cache-like tmpdir that has no
  *                 plugins/, test/, or package.json
  * (c) git-hook  — rendered commit-msg hook rejects a bad message with nonzero exit
@@ -18,40 +21,75 @@ import {
   mkdirSync,
   chmodSync,
   cpSync,
+  readdirSync,
 } from 'node:fs'
 import { execSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const HOOKS_LIB = join(ROOT, 'hooks/lib')
-const PLUGIN_LINT_DIR = join(ROOT, 'plugins/house-rules/rules/commit-message')
 
 // ─── (a) parity ─────────────────────────────────────────────────────────────
 
+const CONFIG_VENDOR_DIR = join(HOOKS_LIB, 'house-rules-config')
+const CONFIG_SOURCE_DIR = join(ROOT, 'plugins/house-rules/src/config')
+
+// [vendoredRel, sourceRel] — both relative to ROOT
+const VENDORED: Array<[string, string]> = [
+  ['hooks/lib/house-rules-lint.mjs', 'plugins/house-rules/rules/commit-message/lint.mjs'],
+  ['hooks/lib/house-rules-lint.d.mts', 'plugins/house-rules/rules/commit-message/lint.d.mts'],
+  ...['schema', 'detect', 'resolve'].flatMap((n): Array<[string, string]> =>
+    ['mjs', 'd.mts'].map((ext): [string, string] => [
+      `hooks/lib/house-rules-config/${n}.${ext}`,
+      `plugins/house-rules/src/config/${n}.${ext}`,
+    ]),
+  ),
+]
+
+function assertByteParity(vendoredAbs: string, sourceAbs: string): void {
+  const vendored = readFileSync(vendoredAbs)
+  const source = readFileSync(sourceAbs)
+  if (!vendored.equals(source)) {
+    throw new Error(
+      `${vendoredAbs} is out of sync with ${sourceAbs}.\n` +
+        `Run: cp ${sourceAbs} ${vendoredAbs}`,
+    )
+  }
+}
+
 describe('hooks/lib vendor parity', () => {
-  it('house-rules-lint.mjs is byte-equal to plugins/house-rules source', () => {
-    const vendored = readFileSync(join(HOOKS_LIB, 'house-rules-lint.mjs'))
-    const source = readFileSync(join(PLUGIN_LINT_DIR, 'lint.mjs'))
-    if (!vendored.equals(source)) {
-      throw new Error(
-        'hooks/lib/house-rules-lint.mjs is out of sync.\n' +
-          'Run: cp plugins/house-rules/rules/commit-message/lint.mjs hooks/lib/house-rules-lint.mjs',
-      )
-    }
-    expect(vendored.equals(source)).toBe(true)
+  for (const [vendoredRel, sourceRel] of VENDORED) {
+    it(`${vendoredRel} is byte-equal to ${sourceRel}`, () => {
+      assertByteParity(join(ROOT, vendoredRel), join(ROOT, sourceRel))
+    })
+  }
+
+  it('VENDORED covers every file in house-rules-config/ and every source config file', () => {
+    const vendoredSet = new Set(VENDORED.map(([v]) => v))
+    const sourceSet = new Set(VENDORED.map(([, s]) => s))
+    const unlisted = readdirSync(CONFIG_VENDOR_DIR)
+      .map((f) => `hooks/lib/house-rules-config/${f}`)
+      .filter((rel) => !vendoredSet.has(rel))
+    const unvendored = readdirSync(CONFIG_SOURCE_DIR)
+      .map((f) => `plugins/house-rules/src/config/${f}`)
+      .filter((rel) => !sourceSet.has(rel))
+    expect({ unlisted, unvendored }).toEqual({ unlisted: [], unvendored: [] })
   })
 
-  it('house-rules-lint.d.mts is byte-equal to plugins/house-rules source', () => {
-    const vendored = readFileSync(join(HOOKS_LIB, 'house-rules-lint.d.mts'))
-    const source = readFileSync(join(PLUGIN_LINT_DIR, 'lint.d.mts'))
-    if (!vendored.equals(source)) {
-      throw new Error(
-        'hooks/lib/house-rules-lint.d.mts is out of sync.\n' +
-          'Run: cp plugins/house-rules/rules/commit-message/lint.d.mts hooks/lib/house-rules-lint.d.mts',
-      )
+  it('negative control — a one-byte flip is reported with the file name and cp fix', () => {
+    const [, sourceRel] = VENDORED[0]
+    const source = join(ROOT, sourceRel)
+    const dir = mkdtempSync(join(tmpdir(), 'gw-vendor-neg-'))
+    try {
+      const tmp = join(dir, 'flipped-lint.mjs')
+      const bytes = Buffer.from(readFileSync(source))
+      bytes[0] = bytes[0] ^ 0x01
+      writeFileSync(tmp, bytes)
+      expect(() => assertByteParity(tmp, source)).toThrow(/flipped-lint\.mjs.*out of sync[\s\S]*cp /)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
-    expect(vendored.equals(source)).toBe(true)
   })
 })
 
@@ -77,7 +115,11 @@ describe('commit-message-guard — installed-cache layout (no plugins/, no test/
         'derive-convention.d.mts',
         'house-rules-lint.mjs',
         'house-rules-lint.d.mts',
+        ...VENDORED.map(([v]) => v)
+          .filter((v) => v.startsWith('hooks/lib/house-rules-config/'))
+          .map((v) => v.slice('hooks/lib/'.length)),
       ]) {
+        mkdirSync(dirname(join(dstHooksLib, f)), { recursive: true })
         cpSync(join(srcHooksLib, f), join(dstHooksLib, f))
       }
 
@@ -142,7 +184,7 @@ describe('rendered commit-msg hook — installed-cache layout', () => {
       // conventional preset → "bad message no type" fails
       writeFileSync(
         join(gitRepo, '.house-rules.json'),
-        JSON.stringify({ 'commit-message': { preset: 'conventional' } }),
+        JSON.stringify({ rules: { 'commit-message': ['error', { preset: 'conventional' }] } }),
       )
 
       const hookContent = renderCommitMsgHook({ hooksLibPath: HOOKS_LIB, version: '0.0.0-test' })

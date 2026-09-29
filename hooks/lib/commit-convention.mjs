@@ -4,11 +4,10 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import {
   lintCommitMessage,
-  resolvePreset,
   SCOPE_PATTERN,
-  PRESET_BODY_ONLY,
-  PRESET_HANDBOOK,
 } from './house-rules-lint.mjs'
+import { resolveConfig, pointer } from './house-rules-config/resolve.mjs'
+import { ConfigError } from './house-rules-config/schema.mjs'
 
 export { SCOPE_PATTERN } from './house-rules-lint.mjs'
 
@@ -167,17 +166,24 @@ export function lintMessage(text, opts) {
   const stripped = stripAttribution(text)
   const repoRoot = opts?.repoRoot ?? null
 
-  let preset
-  if (repoRoot && hasOwnCommitTemplate(repoRoot)) {
-    preset = PRESET_BODY_ONLY
-  } else {
-    preset = resolvePreset(repoRoot)
+  let resolved = null
+  if (repoRoot) {
+    try {
+      resolved = resolveConfig(repoRoot)
+    } catch (err) {
+      if (err instanceof ConfigError) {
+        return { stripped, violations: [{ line: 1, reason: err.message }] }
+      }
+      throw err
+    }
   }
 
   const violations = []
   const lines = stripped.split('\n')
 
-  const { violations: presetViolations } = lintCommitMessage(stripped, { preset })
+  const { violations: presetViolations } = resolved
+    ? lintCommitMessage(stripped, { preset: resolved.rules['commit-message'].options.preset })
+    : lintCommitMessage(stripped)
   for (const v of presetViolations) {
     violations.push({ line: v.line, reason: v.reason })
   }
@@ -207,5 +213,8 @@ export function lintMessage(text, opts) {
     })
   }
 
+  if (resolved && presetViolations.length > 0) {
+    return { stripped, violations, pointer: pointer(resolved, 'commit-message', 'preset') }
+  }
   return { stripped, violations }
 }

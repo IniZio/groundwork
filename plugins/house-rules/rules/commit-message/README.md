@@ -2,7 +2,7 @@
 
 # commit-message
 
-Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars). Configure via .house-rules.json: { "commit-message": { "preset": "conventional" } }.
+Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars). Configure via .house-rules.json: {"rules":{"commit-message":["error",{"preset":"conventional"}]}}. Presets: handbook, conventional, subject-only; without an explicit preset it is detected from .gitmessage, commitlint config, then commit history.
 
 > Not in policy.
 

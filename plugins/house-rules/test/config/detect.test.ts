@@ -142,6 +142,43 @@ describe('detectPreset', () => {
   });
 });
 
+describe('detectPreset migrated cases', () => {
+  it('undefined repoRoot yields handbook default', () => {
+    expect(detectPreset(undefined as unknown as string)).toEqual(HANDBOOK);
+  });
+
+  it('non-git directory yields handbook default', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hr-detect-nogit-'));
+    tmpDirs.push(dir);
+    expect(detectPreset(dir)).toEqual(HANDBOOK);
+  });
+
+  it('extensionless .commitlintrc yields conventional from commitlint', () => {
+    const repo = makeRepo();
+    fs.writeFileSync(path.join(repo, '.commitlintrc'), '{}\n');
+    expect(detectPreset(repo)).toEqual({ value: 'conventional', source: 'commitlint' });
+  });
+
+  it('all-conventional history of 12 yields conventional from history', () => {
+    const repo = makeRepo();
+    commitMany(repo, (i) => `feat(m${i}): add thing`, 12);
+    expect(detectPreset(repo)).toEqual({ value: 'conventional', source: 'history' });
+  });
+
+  it('all-handbook history of 12 yields handbook default', () => {
+    const repo = makeRepo();
+    commitMany(repo, (i) => `Add thing ${i}`, 12);
+    expect(detectPreset(repo)).toEqual(HANDBOOK);
+  });
+
+  it('long conventional subjects (>72 chars) still detect conventional', () => {
+    const repo = makeRepo();
+    const pad = ' with a very long description that pushes this past seventy-two chars easily';
+    commitMany(repo, (i) => `feat(module-${i}): add feature implementation${i < 15 ? pad : ''}`, 20);
+    expect(detectPreset(repo)).toEqual({ value: 'conventional', source: 'history' });
+  });
+});
+
 describe('readLastSubjects', () => {
   it('excludes merge commits', () => {
     const repo = makeRepo();

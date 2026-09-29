@@ -1,51 +1,10 @@
-import { describe, it, expect, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect } from 'bun:test'
 import {
   lintCommitMessage,
-  readConfigPreset,
   PRESET_HANDBOOK,
   PRESET_CONVENTIONAL,
-  PRESET_BODY_ONLY,
+  PRESET_SUBJECT_ONLY,
 } from './lint.mjs'
-
-// --- readConfigPreset ---
-
-describe('readConfigPreset', () => {
-  let tmpDir: string
-
-  afterEach(() => {
-    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  it('returns handbook when null passed', () => {
-    expect(readConfigPreset(null)).toBe(PRESET_HANDBOOK)
-  })
-
-  it('returns handbook when no .house-rules.json exists', () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'hr-test-'))
-    expect(readConfigPreset(tmpDir)).toBe(PRESET_HANDBOOK)
-  })
-
-  it('returns conventional when config says conventional', () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'hr-test-'))
-    writeFileSync(
-      join(tmpDir, '.house-rules.json'),
-      JSON.stringify({ 'commit-message': { preset: 'conventional' } }),
-    )
-    expect(readConfigPreset(tmpDir)).toBe(PRESET_CONVENTIONAL)
-  })
-
-  it('returns handbook for unknown preset value', () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'hr-test-'))
-    writeFileSync(
-      join(tmpDir, '.house-rules.json'),
-      JSON.stringify({ 'commit-message': { preset: 'unknown-preset' } }),
-    )
-    expect(readConfigPreset(tmpDir)).toBe(PRESET_HANDBOOK)
-  })
-})
 
 // --- handbook preset ---
 
@@ -170,61 +129,44 @@ describe('lintCommitMessage – conventional 72-char cap (bite proof)', () => {
 })
 
 
-describe('lintCommitMessage – body-only preset (Decision C: .gitmessage repos)', () => {
+describe('lintCommitMessage – subject-only preset (Decision C: .gitmessage repos)', () => {
   it('allows any subject grammar', () => {
-    const result = lintCommitMessage('anything goes for subject', { preset: PRESET_BODY_ONLY })
+    const result = lintCommitMessage('anything goes for subject', { preset: PRESET_SUBJECT_ONLY })
     expect(result.violations).toHaveLength(0)
   })
 
   it('allows conventional-style subject too', () => {
-    const result = lintCommitMessage('feat: add thing', { preset: PRESET_BODY_ONLY })
+    const result = lintCommitMessage('feat: add thing', { preset: PRESET_SUBJECT_ONLY })
     expect(result.violations).toHaveLength(0)
   })
 
   it('denies body (no body allowed)', () => {
-    const result = lintCommitMessage('any subject\n\nbody text here', { preset: PRESET_BODY_ONLY })
+    const result = lintCommitMessage('any subject\n\nbody text here', { preset: PRESET_SUBJECT_ONLY })
     expect(result.violations.length).toBeGreaterThan(0)
     expect(result.violations.some(v => v.group === 'body')).toBe(true)
   })
 
   it('denies body bullet markers', () => {
-    const result = lintCommitMessage('any subject\n\n- a bullet point', { preset: PRESET_BODY_ONLY })
+    const result = lintCommitMessage('any subject\n\n- a bullet point', { preset: PRESET_SUBJECT_ONLY })
     expect(result.violations.length).toBeGreaterThan(0)
     expect(result.violations.some(v => v.reason.includes('bullet'))).toBe(true)
   })
 
   it('allows subject-only message', () => {
-    const result = lintCommitMessage('subject only no body', { preset: PRESET_BODY_ONLY })
+    const result = lintCommitMessage('subject only no body', { preset: PRESET_SUBJECT_ONLY })
     expect(result.violations).toHaveLength(0)
   })
 })
 
-// --- config-driven ---
-
-describe('config-driven preset', () => {
-  let tmpDir: string
-
-  afterEach(() => {
-    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
+describe('preset defaults and constants', () => {
+  it('absent preset falls back to handbook', () => {
+    const result = lintCommitMessage('bad message no type')
+    expect(result.preset).toBe(PRESET_HANDBOOK)
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.violations.some(v => v.group === 'subject')).toBe(true)
   })
 
-  it('reads conventional from .house-rules.json and applies it', () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'hr-test-'))
-    writeFileSync(
-      join(tmpDir, '.house-rules.json'),
-      JSON.stringify({ 'commit-message': { preset: 'conventional' } }),
-    )
-    const preset = readConfigPreset(tmpDir)
-    expect(preset).toBe(PRESET_CONVENTIONAL)
-    const result = lintCommitMessage('feat: add something', { preset })
-    expect(result.violations).toHaveLength(0)
-  })
-
-  it('defaults to handbook without config', () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'hr-test-'))
-    const preset = readConfigPreset(tmpDir)
-    expect(preset).toBe(PRESET_HANDBOOK)
-    const result = lintCommitMessage('Add something useful', { preset })
-    expect(result.violations).toHaveLength(0)
+  it('PRESET_SUBJECT_ONLY is subject-only', () => {
+    expect(PRESET_SUBJECT_ONLY).toBe('subject-only')
   })
 })

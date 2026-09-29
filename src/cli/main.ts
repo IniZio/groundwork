@@ -4,6 +4,7 @@ import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { runArchive } from "./archive.js";
+import { listUnits, idleDays } from "../store/work-units.js";
 import {
   readWriteToken,
   ensureWriteToken,
@@ -358,6 +359,16 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const pausePayload = lastPause ? JSON.parse(lastPause.payload) as Record<string, unknown> : null;
   const acCoverage = buildAcCoverage(slices);
   const acCoverageObj = Object.fromEntries([...acCoverage.entries()]);
+  const unitRoot = repoDir();
+  const idleUnits: { slug: string; idle_days: number }[] = [];
+  for (const slug of listUnits(unitRoot)) {
+    try {
+      const d = idleDays(path.join(unitRoot, ".groundwork", "work", slug));
+      if (d >= 14) idleUnits.push({ slug, idle_days: d });
+    } catch {
+      // Unit vanished or is unreadable mid-scan; the resume view must not crash.
+    }
+  }
 
   if (asJson) {
     process.stdout.write(JSON.stringify({
@@ -369,6 +380,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       gate: gateOk ? "APPROVED" : "pending",
       hold: hold ?? null,
       ac_coverage: acCoverageObj,
+      idle_units: idleUnits,
     }, null, 2) + "\n");
   } else {
     process.stdout.write(`motive: ${motive}\n`);
@@ -398,6 +410,9 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       if (pausePayload.summary) process.stdout.write(`  summary: ${String(pausePayload.summary)}\n`);
       if (pausePayload.next_actions) process.stdout.write(`  next_actions: ${String(pausePayload.next_actions)}\n`);
     }
+    process.stdout.write(idleUnits.length > 0
+      ? `idle units (≥14d): ${idleUnits.map(u => `${u.slug} (${u.idle_days}d)`).join(", ")}\n`
+      : `idle units: none\n`);
   }
   store.close();
 }

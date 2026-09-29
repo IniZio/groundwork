@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
@@ -88,6 +88,7 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
 
     const result: string[] = [];
     for (const absPath of absPaths) {
+      if (!existsSync(absPath)) continue;
       const relPath = path.relative(repoRoot, absPath);
       const tracked = isTracked(repoRoot, relPath);
       if (!tracked) {

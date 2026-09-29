@@ -103,6 +103,24 @@ describe('comment-density language-hooks positive controls (entry present)', () 
   it('canFixPath x.ts returns true when entry present', () => {
     expect(rule.canFixPath!('x.ts')).toBe(true);
   });
+
+  it('fixEntryFor bash is stable when entry present', () => {
+    expect(fixEntryFor('bash').stability).toBe('stable');
+  });
+
+  it('canFixPath x.sh returns true when entry present', () => {
+    expect(rule.canFixPath!('x.sh')).toBe(true);
+  });
+
+  it('fixEntryFor dockerfile is stable when entry present', () => {
+    expect(fixEntryFor('dockerfile').stability).toBe('stable');
+  });
+
+  it('canFixPath Dockerfile, Containerfile and x.dockerfile return true when entry present', () => {
+    expect(rule.canFixPath!('Dockerfile')).toBe(true);
+    expect(rule.canFixPath!('Containerfile')).toBe(true);
+    expect(rule.canFixPath!('x.dockerfile')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -99,6 +99,11 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return allow();
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const cwd = typeof inp.cwd === "string" ? inp.cwd : (env.CLAUDE_PROJECT_DIR ?? process.cwd());
+    const unknown = [...readActiveRules(cwd)].filter(r => !(r in RULES));
+    if (unknown.length > 0) {
+      const allowed = Object.keys(RULES).join(", ");
+      return block(`new-code-gate: unknown rule ${unknown.map(u => `"${u}"`).join(", ")} in Makefile "# groundwork-rule:" line. Allowed rules: ${allowed}. Fix or remove that line in ${path.join(cwd, "Makefile")}.`);
+    }
     const violations = check(cwd);
     if (violations.length === 0) return allow();
     const msg = violations.map(v => `new-code-gate: ${v.rule} ${v.file}:${v.line}`).join("; ");

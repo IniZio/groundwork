@@ -161,3 +161,20 @@ describe("new-code-gate — untracked file with violation → blocks", () => {
     expect(violations.some(v => v.rule === "no-console-log")).toBe(true);
   });
 });
+
+describe("new-code-gate — unknown rule marker", () => {
+  it("unknown name → blocks naming it and the allowed set", () => {
+    const repo = makeRepo("unknown-rule");
+    writeFileSync(path.join(repo, "Makefile"), "# groundwork-rule: no-such-rule\n");
+    const out = JSON.parse(run({ cwd: repo, hook_event_name: "Stop" }, {}).stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toContain("no-such-rule");
+    expect(out.reason).toContain("no-console-log, no-ts-any");
+  });
+
+  it("Makefile without marker → allows", () => {
+    const repo = makeRepo("no-marker");
+    writeFileSync(path.join(repo, "Makefile"), "all:\n\ttrue\n");
+    expect(JSON.parse(run({ cwd: repo, hook_event_name: "Stop" }, {}).stdout).continue).toBe(true);
+  });
+});

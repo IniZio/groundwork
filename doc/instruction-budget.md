@@ -12,13 +12,13 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | orchestrator.md | 1145 | 286 |
 | general-purpose / implementer.md | 1463 | 366 |
 | advisor.md | 1504 | 376 |
-| qa.md | 1251 | 313 |
+| qa.md | 1347 | 337 |
 | implement/SKILL.md | 2327 | 582 |
 | vertical-slice/SKILL.md | 2170 | 543 |
 | advisor-gate/SKILL.md | 1231 | 308 |
-| pause/SKILL.md | 843 | 211 |
-| continue/SKILL.md | 980 | 245 |
-| motive/SKILL.md | 1428 | 357 |
+| pause/SKILL.md | 936 | 234 |
+| continue/SKILL.md | 1064 | 266 |
+| motive/SKILL.md | 1538 | 385 |
 
 Recompute bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size is measured on the normalised output — root path replaced with `/GROUNDWORK_ROOT`, sha replaced with `(XXXXXXX)` — to stay environment-independent: `ROOT=$(pwd) && echo '{}' | CLAUDE_PLUGIN_ROOT="$ROOT" bun src/hooks/session-start.ts | bun -e "const d=await Bun.stdin.json();const c=d.hookSpecificOutput.additionalContext;const n=c.replace(new RegExp('$ROOT'.replace(/[.*+?^\${}()|[\]\\\\\\\\]/g,'\\\\\\\\$&'),'g'),'/GROUNDWORK_ROOT').replace(/\\([0-9a-f]{7,40}\\)/g,'(XXXXXXX)');console.log(Buffer.byteLength(n,'utf8'))"`).
 

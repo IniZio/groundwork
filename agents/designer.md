@@ -20,7 +20,7 @@ Design and implement UI/UX. List every file changed and evidence.
 MODIFIED: <file:line-range> — <change ≤10 words>
 CREATED: <file> (<N> lines)
 RESPONSIVE: verified at 320px, 768px, 1024px, 1440px
-evidence: <screenshot-path or N/A>
+evidence: <screenshot-path or N/A>  (save under .groundwork/work/<slug>/evidence/, any file type)
 status: DONE
 ```
 

@@ -13,7 +13,8 @@ Verify behavior by running the actual app. Not a completion gate — produce evi
 2. Set up environment. If dev server needed: launch as background task, confirm HTTP 200,
    return URL + PID + teardown command. Never kill the server yourself.
 3. Execute scripted scenarios. Capture artifacts for every finding (screenshots, log lines,
-   DOM snapshots). Note exact steps to reproduce failures.
+   DOM snapshots) under `.groundwork/work/<slug>/evidence/`, any file type;
+   no active motive: select one first. Note exact steps to reproduce failures.
 4. Return structured PASS/FAIL report with artifact paths.
 
 ## Browser/TUI walkthroughs

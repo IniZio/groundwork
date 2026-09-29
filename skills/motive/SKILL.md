@@ -8,16 +8,15 @@ description: Author a motive charter — persistent intent doc with objective, d
 ## What a motive is
 
 Durable record of intent for a significant effort.
-Lives at `.groundwork/motives/<slug>/motive.md`. Survives session boundaries.
+Lives at `.groundwork/work/<slug>/motive.md`. Survives session boundaries.
 Grounding for advisor and reviewer to verify work stayed on course.
 
 ## Charter structure
 
 ```markdown
 ---
-id: <slug>
-title: <one line>
-status: active | complete | abandoned
+created: YYYY-MM-DD
+status: active
 ---
 # <title>
 
@@ -34,9 +33,11 @@ status: active | complete | abandoned
 ## Authoring steps
 
 1. Use `mattpocock-skills:grilling` to capture intent if the objective is unclear.
-2. Write the charter at `.groundwork/motives/<slug>/motive.md`.
-3. Run `$GW init` to create the work store.
-4. Tell user to run `/to-tickets` (or `/wayfinder` for large work) to decompose into tickets.
+2. Write the charter at `.groundwork/work/<slug>/motive.md`.
+3. Create `.groundwork/work/<slug>/spec.md`; set `folds_into:` to a living spec path
+   like `doc/spec/<area>.md`, or `none` plus a `reason:` line.
+4. Run `$GW init` to create the work store.
+5. Tell user to run `/to-tickets` (or `/wayfinder` for large work) to decompose into tickets.
    Load `/vertical-slice` yourself without asking — no confirmation prompt.
 
 ## Recording decisions

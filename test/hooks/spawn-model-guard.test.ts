@@ -249,10 +249,11 @@ describe("spawn-model-guard — size-guard redirect", () => {
   it("NOT-SUBSET: brief file outside slice → redirect listing stray file", () => {
     const projDir = makeProjectDir("S9", ["src/a.ts", "src/b.ts", "src/c.ts"]);
     const prompt = "SLICE: S9\nFiles owned: src/a.ts, outside/z.ts\nDo the work.";
-    const result = check(agentWithPrompt("groundwork:implementer", prompt), undefined, projDir);
+    const result = check(agentWithPrompt("groundwork:implementer", prompt), undefined, projDir, { "junior-orchestrator": "opus" });
     const out = parseOutput(result);
     expect(out.hookSpecificOutput.updatedInput?.subagent_type).toBe("groundwork:junior-orchestrator");
     expect(out.hookSpecificOutput.permissionDecisionReason).toContain("outside/z.ts");
+    expect(out.hookSpecificOutput.updatedInput?.model).toBe("opus");
   });
 
   it("3 ENTRIES: brief with 3 files → redirect even if all within slice", () => {

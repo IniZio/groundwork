@@ -1,7 +1,10 @@
--- strip-safety: removed=10
+-- strip-safety: removed=9
 -- source: plugins/house-rules/test/fixtures/languages/sql.sql + Postgres migration idioms
 -- Groundwork schema extension: adds the audit_log table and supporting indexes.
--- SQL line comments (--) are never exempt; only block comments can carry exempt markers.
+-- migrate:up
+-- +goose Up
+-- +goose StatementBegin
+-- name: ListAuditLog :many
 
 /* https://www.postgresql.org/docs/current/indexes-partial.html */
 /* NOTE(dba): partition audit_log by month once row count exceeds 10 million. */
@@ -49,3 +52,10 @@ FROM audit_log al
 LEFT JOIN users u ON u.id = al.changed_by
 WHERE al.changed_at > NOW() - INTERVAL '30 days'
 ORDER BY al.changed_at DESC;
+
+SELECT /*+ INDEX(al idx_audit_log_recent) */ al.id FROM audit_log al;
+
+-- +goose StatementEnd
+-- +goose Down
+-- migrate:down
+DROP TABLE audit_log;

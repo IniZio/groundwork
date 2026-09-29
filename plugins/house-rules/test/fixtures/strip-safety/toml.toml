@@ -1,6 +1,6 @@
 #:schema https://json.schemastore.org/pyproject.json
 # source: test/fixtures/languages/toml.toml (extended with strip-safety corpus)
-# strip-safety: removed=15
+# strip-safety: removed=24
 
 [package]
 name = "groundwork-agent"
@@ -93,3 +93,33 @@ max_connections = 1000 # tune based on observed peak load
 request_timeout_ms = 5000
 enable_compression = true
 enable_metrics = false
+
+# Hazard shapes: hash characters that are data, not comments
+[hazards]
+basic = "a # not a comment"
+literal = 'b # not a comment either'
+ml_basic = """
+# looks like a comment
+line two # still text
+"""
+ml_literal = '''
+# also text
+  # indented text
+'''
+trailing = 1 # strip me
+trailing_str = "x" # strip me too
+list = [
+  # interleaved before the first item
+  1, # after one
+  # between items
+  2,
+  # after the last item
+]
+#:schema https://example.com/late.json
+# schema notes for the next table
+# comment before a table header
+[hazards.sub]
+k = "v"
+# comment before an array-of-tables header
+[[hazards.arr]]
+n = 1

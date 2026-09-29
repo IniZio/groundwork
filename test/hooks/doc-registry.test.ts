@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { Ajv } from "ajv";
 import { WORKING_TYPES, FORBIDDEN, resolveDocPath, type DocTypeId } from "../../src/hooks/doc-registry.js";
 
+import { forbiddenRedirect } from "../../hooks/lib/house-rules-config/manifest.mjs";
+
 delete process.env.CLAUDE_PROJECT_DIR;
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -114,13 +116,36 @@ describe("AC4 motive and spec schemas", () => {
 });
 
 describe("AC5 forbidden patterns", () => {
-  it("lists the four patterns with redirects", () => {
-    expect(FORBIDDEN.map((f) => f.pattern)).toEqual(["**/adr/**", ".scratch/**", ".out-of-scope/**", "lessons/**"]);
+  it("lists the patterns with redirects", () => {
+    expect(FORBIDDEN.map((f) => f.pattern)).toEqual([
+      "**/adr/**",
+      ".scratch/**",
+      ".out-of-scope/**",
+      "lessons/**",
+      "learning-records/**",
+      "to-questionnaire-*.md",
+      "**/to-questionnaire-*.md",
+    ]);
     for (const f of FORBIDDEN) expect(f.redirect.length).toBeGreaterThan(0);
     expect(FORBIDDEN[0].redirect).toContain("$GW event append --type DECISION");
     expect(FORBIDDEN[1].redirect).toContain(".groundwork/work/{slug}/");
     expect(FORBIDDEN[2].redirect).toContain(".groundwork/work/{slug}/out-of-scope.md");
     expect(FORBIDDEN[3].redirect).toContain(".groundwork/work/{slug}/lessons.md");
+  });
+});
+
+describe("forbidden globs via vendored house-rules matcher", () => {
+  const manifest = { forbidden: FORBIDDEN };
+  const W = "Use `.groundwork/work/{slug}/";
+  it("redirects mattpocock working-doc paths", () => {
+    expect(forbiddenRedirect("learning-records/0001-x.md", manifest)).toBe(`${W}lessons.md\``);
+    expect(forbiddenRedirect("to-questionnaire-foo.md", manifest)).toBe(`${W}\``);
+    expect(forbiddenRedirect("sub/to-questionnaire-foo.md", manifest)).toBe(`${W}\``);
+    expect(forbiddenRedirect("src/billing/docs/adr/0001-x.md", manifest)).toContain("$GW event append");
+  });
+  it("controls return null", () => {
+    expect(forbiddenRedirect("docs/learning.md", manifest)).toBeNull();
+    expect(forbiddenRedirect("questionnaire.md", manifest)).toBeNull();
   });
 });
 

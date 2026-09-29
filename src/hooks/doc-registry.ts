@@ -171,6 +171,9 @@ export const FORBIDDEN: ForbiddenPattern[] = [
   { pattern: ".scratch/**", redirect: "Use `.groundwork/work/{slug}/`" },
   { pattern: ".out-of-scope/**", redirect: "Use `.groundwork/work/{slug}/out-of-scope.md`" },
   { pattern: "lessons/**", redirect: "Use `.groundwork/work/{slug}/lessons.md`" },
+  { pattern: "learning-records/**", redirect: "Use `.groundwork/work/{slug}/lessons.md`" },
+  { pattern: "to-questionnaire-*.md", redirect: "Use `.groundwork/work/{slug}/`" },
+  { pattern: "**/to-questionnaire-*.md", redirect: "Use `.groundwork/work/{slug}/`" },
 ];
 
 const words = (s: string) => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/).filter(Boolean).map((w) => w.toLowerCase());

@@ -73,7 +73,8 @@ describe("instruction-budget.md — byte counts match files at HEAD", () => {
     const rootEscaped = ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const norm = raw
       .replace(new RegExp(rootEscaped, "g"), "/GROUNDWORK_ROOT")
-      .replace(/\([0-9a-f]{7,40}\)/g, "(XXXXXXX)");
+      .replace(/\([0-9a-f]{7,40}\)/g, "(XXXXXXX)")
+      .replace(/(?<=^# groundwork v)\d+\.\d+\.\d+/m, "X.Y.Z");
     const actualBytes = Buffer.byteLength(norm, "utf8");
     expect(
       actualBytes,

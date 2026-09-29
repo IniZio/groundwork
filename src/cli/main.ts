@@ -4,6 +4,7 @@ import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { runArchive } from "./archive.js";
+import { runMigrate } from "./migrate.js";
 import { listUnits, idleDays } from "../store/work-units.js";
 import {
   readWriteToken,
@@ -479,6 +480,21 @@ function cmdMotiveComplete(args: string[], motiveSlug?: string): void {
   process.stdout.write(`motive ${slug} marked complete\n`);
   store.close();
 }
+function cmdMigrate(args: string[]): void {
+  const apply = args.includes("--apply");
+  if (apply) {
+    if (!flag(args, "--token")) {
+      process.stderr.write(`usage: ${gw} migrate [--apply --token T]\n`);
+      process.exit(1);
+    }
+    const store = requireDb();
+    checkToken(store, args);
+    store.close();
+  }
+  const r = runMigrate(repoDir(), apply);
+  process.stdout.write(r.lines.join("\n") + "\n");
+  process.exit(r.code);
+}
 function cmdArchive(args: string[], motiveSlug?: string): void {
   const slug = args[0];
   if (!slug || slug.startsWith("-")) {
@@ -553,6 +569,8 @@ if (cmd === "init") {
   cmdCompile(argv.slice(1), globalMotive);
 } else if (cmd === "archive") {
   cmdArchive(argv.slice(1), globalMotive);
+} else if (cmd === "migrate") {
+  cmdMigrate(argv.slice(1));
 } else if (cmd === "motive") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -562,6 +580,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete, archive\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate\n`);
   process.exit(1);
 }

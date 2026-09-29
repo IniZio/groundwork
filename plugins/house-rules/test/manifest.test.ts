@@ -58,6 +58,24 @@ describe("house-rules manifest", () => {
     ).toBe(true);
   });
 
+  it("config-guard is registered as its own PreToolUse group covering Bash", () => {
+    const groups: Array<{
+      matcher?: string;
+      hooks: Array<{ type: string; command: string }>;
+    }> = pluginJson.hooks?.PreToolUse ?? [];
+    const configGuard = groups.find((g) => g.matcher === "Edit|Write|MultiEdit|Bash");
+    expect(configGuard).toBeDefined();
+    expect(configGuard!.hooks).toContainEqual({
+      type: "command",
+      command: "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/config-guard.ts",
+    });
+    const guard = groups.find((g) =>
+      g.hooks.some((h) => h.command === "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/guard.ts")
+    );
+    expect(guard?.matcher).toBe("Edit|Write|MultiEdit");
+    expect(guard).not.toBe(configGuard);
+  });
+
   it("marketplace.json has house-rules entry with correct source and version", () => {
     const marketplace = JSON.parse(
       readFileSync(join(repoRoot, ".claude-plugin/marketplace.json"), "utf8")

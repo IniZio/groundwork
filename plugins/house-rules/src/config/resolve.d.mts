@@ -28,4 +28,5 @@ export declare const DEFAULT_SEVERITY: 'error'
 export declare const DEFAULT_MAX_PER_100: 5
 
 export declare function resolveConfig(repoRoot: string): ResolvedConfig
+export declare function resolveConfigText(repoRoot: string, text: string | null): ResolvedConfig
 export declare function pointer(resolved: ResolvedConfig, ruleId: RuleId, key: string): string

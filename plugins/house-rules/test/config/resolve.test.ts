@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   resolveConfig,
+  resolveConfigText,
   pointer,
   DEFAULT_SEVERITY,
   DEFAULT_MAX_PER_100,
@@ -212,5 +213,99 @@ describe('resolveConfig invalid files', () => {
     const err = caught(() => resolveConfig(repo));
     expect(err).toBeInstanceOf(ConfigError);
     expect((err as ConfigError).file).toEqual(file);
+  });
+});
+
+describe('resolveConfigText', () => {
+  it('null text equals resolveConfig with no file', () => {
+    const repo = makeRepo();
+    const resolved = resolveConfigText(repo, null);
+    expect(resolved).toEqual(resolveConfig(repo));
+    expect(resolved).toEqual(ALL_DEFAULTS);
+    expect(resolved.file).toBeNull();
+    expect(resolved.rules['comment-density'].options.max_per_100).toBe(5);
+  });
+
+  it('explicit text reports the would-be file path with no file on disk', () => {
+    const repo = makeRepo();
+    const text = JSON.stringify({
+      rules: {
+        'commit-message': ['error', { preset: 'conventional' }],
+        'comment-density': ['off', { max_per_100: 7 }],
+      },
+    });
+    const resolved = resolveConfigText(repo, text);
+    expect(fs.existsSync(path.join(repo, '.house-rules.json'))).toBe(false);
+    expect(resolved.file).toEqual(path.join(repo, '.house-rules.json'));
+    expect(resolved.rules['commit-message']).toEqual({
+      severity: 'error',
+      options: { preset: 'conventional' },
+      sources: { severity: 'explicit', preset: 'explicit' },
+    });
+    expect(resolved.rules['comment-density']).toEqual({
+      severity: 'off',
+      options: { max_per_100: 7 },
+      sources: { severity: 'explicit', max_per_100: 'explicit' },
+    });
+  });
+
+  it('matches resolveConfig when text is the on-disk file', () => {
+    const repo = makeRepo();
+    commits(repo, CONVENTIONAL_HISTORY);
+    const file = writeConfig(repo, {
+      rules: { 'comment-density': ['warn', { max_per_100: 8 }], 'stray-artifacts': 'off' },
+    });
+    const resolved = resolveConfigText(repo, fs.readFileSync(file, 'utf8'));
+    expect(resolved).toEqual(resolveConfig(repo));
+    expect(resolved.rules['comment-density'].options.max_per_100).toBe(8);
+    expect(resolved.rules['stray-artifacts'].severity).toBe('off');
+  });
+
+  it('uses the given text, not disk content', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 3 }] } });
+    const text = JSON.stringify({ rules: { 'comment-density': ['warn', { max_per_100: 4 }] } });
+    expect(resolveConfigText(repo, text).rules['comment-density'].options.max_per_100).toBe(4);
+    expect(resolveConfig(repo).rules['comment-density'].options.max_per_100).toBe(3);
+  });
+
+  it('null text ignores a config on disk', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'comment-density': ['warn', { max_per_100: 3 }] } });
+    expect(resolveConfigText(repo, null)).toEqual(ALL_DEFAULTS);
+  });
+
+  it('detects preset from history when not explicit', () => {
+    const repo = makeRepo();
+    commits(repo, CONVENTIONAL_HISTORY);
+    expect(resolveConfigText(repo, '{"rules":{}}').rules['commit-message']).toEqual({
+      severity: 'error',
+      options: { preset: 'conventional' },
+      sources: { severity: 'default', preset: 'history' },
+    });
+  });
+
+  it('explicit preset overrides history detection', () => {
+    const repo = makeRepo();
+    commits(repo, CONVENTIONAL_HISTORY);
+    const text = JSON.stringify({ rules: { 'commit-message': ['error', { preset: 'handbook' }] } });
+    expect(resolveConfigText(repo, text).rules['commit-message']).toEqual({
+      severity: 'error',
+      options: { preset: 'handbook' },
+      sources: { severity: 'explicit', preset: 'explicit' },
+    });
+  });
+
+  it('invalid text throws ConfigError naming file and key path', () => {
+    const repo = makeRepo();
+    const file = path.join(repo, '.house-rules.json');
+    const err = caught(() =>
+      resolveConfigText(repo, '{"rules":{"comment-density":{"severity":"loud"}}}'),
+    );
+    expect(err).toBeInstanceOf(ConfigError);
+    const e = err as ConfigError;
+    expect(e.file).toEqual(file);
+    expect(e.message.startsWith(file)).toBe(true);
+    expect(e.message).toContain('rules["comment-density"]');
   });
 });

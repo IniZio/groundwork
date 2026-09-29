@@ -1,0 +1,358 @@
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+const PLUGIN_ROOT = resolve(import.meta.dir, "../..");
+const FALLBACK_CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/config-guard.ts";
+const BYPASS_RE =
+  /env(ironment)?\s*var|CLAUDE_[A-Z_]+|HOUSE_RULES_[A-Z_]+|kill[- ]?switch|disabl|bypass|skip|--no-verify|override/i;
+const LOOSEN_MSG =
+  "Loosening house-rules config is a human decision. Ask the user to make this change.";
+
+function hookCommand(): string {
+  try {
+    const manifest = JSON.parse(readFileSync(join(PLUGIN_ROOT, ".claude-plugin/plugin.json"), "utf8"));
+    for (const group of manifest.hooks?.PreToolUse ?? []) {
+      for (const h of group.hooks ?? []) {
+        if (typeof h.command === "string" && h.command.includes("config-guard.ts")) return h.command;
+      }
+    }
+  } catch {
+    // fall through to literal command
+  }
+  return FALLBACK_CMD;
+}
+
+type Result = { stdout: string; exit: number; reason: string | null; decision: string | null };
+const denyReasons: string[] = [];
+
+async function runHook(repo: string, toolName: string, toolInput: Record<string, unknown>): Promise<Result> {
+  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  delete env.CLAUDE_PROJECT_DIR;
+  env.CLAUDE_PROJECT_DIR = repo;
+  env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
+  const parts = hookCommand().replaceAll("${CLAUDE_PLUGIN_ROOT}", PLUGIN_ROOT).split(" ");
+  const proc = Bun.spawn(parts, { stdin: "pipe", stdout: "pipe", stderr: "pipe", env, cwd: repo });
+  proc.stdin.write(
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: toolName, tool_input: toolInput, cwd: repo }),
+  );
+  proc.stdin.end();
+  const stdout = await new Response(proc.stdout).text();
+  const exit = await proc.exited;
+  let reason: string | null = null;
+  let decision: string | null = null;
+  if (stdout.trim() !== "") {
+    const out = JSON.parse(stdout).hookSpecificOutput;
+    decision = out.permissionDecision;
+    reason = out.permissionDecisionReason;
+    if (decision === "deny") denyReasons.push(reason as string);
+  }
+  return { stdout, exit, reason, decision };
+}
+
+function makeRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "hr-config-guard-"));
+  execSync("git init -q", { cwd: dir });
+  execSync('git config user.email "t@example.com"', { cwd: dir });
+  execSync('git config user.name "T"', { cwd: dir });
+  execSync("git commit -q --allow-empty -m 'initial work'", { cwd: dir });
+  return dir;
+}
+
+const repos: string[] = [];
+let repo: string;
+let file: string;
+
+beforeAll(() => {
+  repo = makeRepo();
+  repos.push(repo);
+  file = join(repo, ".house-rules.json");
+});
+afterAll(() => {
+  for (const r of repos) rmSync(r, { recursive: true, force: true });
+});
+
+function setFile(content: string | null): void {
+  if (content === null) rmSync(file, { force: true });
+  else writeFileSync(file, content);
+}
+
+const cfg = (rules: Record<string, unknown>) => JSON.stringify({ rules }, null, 2) + "\n";
+
+async function expectAllow(r: Promise<Result>): Promise<void> {
+  const res = await r;
+  expect(res.stdout.trim()).toBe("");
+  expect(res.exit).toBe(0);
+}
+
+async function expectDeny(r: Promise<Result>, ...needles: string[]): Promise<Result> {
+  const res = await r;
+  expect(res.exit).toBe(0);
+  expect(res.decision).toBe("deny");
+  for (const n of needles) expect(res.reason).toContain(n);
+  return res;
+}
+
+const write = (content: string) => runHook(repo, "Write", { file_path: file, content });
+const edit = (o: string, n: string) =>
+  runHook(repo, "Edit", { file_path: file, old_string: o, new_string: n });
+const multi = (o: string, n: string) =>
+  runHook(repo, "MultiEdit", { file_path: file, edits: [{ old_string: o, new_string: n }] });
+
+const KEY_SEV = 'rules["comment-density"].severity';
+const KEY_MAX = 'rules["comment-density"].options.max_per_100';
+
+describe("allow: tightening or neutral changes", () => {
+  test("pin preset equal to detection (Write)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ "commit-message": ["error", { preset: "handbook" }] })));
+  });
+
+  test("pin preset equal to detection (Edit)", async () => {
+    setFile(cfg({ "commit-message": "error" }));
+    await expectAllow(edit('"commit-message": "error"', '"commit-message": ["error", {"preset": "handbook"}]'));
+  });
+
+  test("lower max_per_100 5 to 3 (Write)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ "comment-density": ["error", { max_per_100: 3 }] })));
+  });
+
+  test("lower max_per_100 (MultiEdit)", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 8 }] }));
+    await expectAllow(multi('"max_per_100": 8', '"max_per_100": 3'));
+  });
+
+  test("warn to error (Write)", async () => {
+    setFile(cfg({ "comment-density": "warn" }));
+    await expectAllow(write(cfg({ "comment-density": "error" })));
+  });
+
+  test("warn to error (Edit)", async () => {
+    setFile(cfg({ "stray-artifacts": "warn" }));
+    await expectAllow(edit('"warn"', '"error"'));
+  });
+
+  test("off to warn (Write)", async () => {
+    setFile(cfg({ "comment-density": "off" }));
+    await expectAllow(write(cfg({ "comment-density": "warn" })));
+  });
+
+  test("off to error (MultiEdit)", async () => {
+    setFile(cfg({ "comment-density": "off" }));
+    await expectAllow(multi('"off"', '"error"'));
+  });
+
+  test("off to error (Write)", async () => {
+    setFile(cfg({ "stray-artifacts": "off" }));
+    await expectAllow(write(cfg({ "stray-artifacts": "error" })));
+  });
+
+  test("explicit rule at default into empty file (Write)", async () => {
+    setFile("");
+    await expectAllow(write(cfg({ "comment-density": "error" })));
+  });
+
+  test("explicit rule at default into missing file (Write)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ "comment-density": "error" })));
+  });
+
+  test("whitespace-only reformat (Write)", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 3 }] }));
+    await expectAllow(
+      write('{"rules":{"comment-density":["error",{"max_per_100":3}]}}'),
+    );
+  });
+
+  test("adding $schema (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectAllow(
+      write(JSON.stringify({ $schema: "./schema.json", rules: { "comment-density": "error" } })),
+    );
+  });
+
+  test("non-target file with any content", async () => {
+    const other = join(repo, "other.json");
+    await expectAllow(runHook(repo, "Write", { file_path: other, content: '{"rules":{"comment-density":"off"}}' }));
+    await expectAllow(runHook(repo, "Write", { file_path: other, content: "not json" }));
+  });
+
+  test("creating missing file with tighter values (Write)", async () => {
+    setFile(null);
+    await expectAllow(
+      write(cfg({ "comment-density": ["error", { max_per_100: 2 }], "stray-artifacts": "error" })),
+    );
+  });
+});
+
+describe("deny: loosening", () => {
+  test("comment-density to off (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(
+      write(cfg({ "comment-density": "off" })),
+      `  ${KEY_SEV}: error → off`,
+      LOOSEN_MSG,
+    );
+  });
+
+  test("comment-density to off (Edit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(edit('"error"', '"off"'), `  ${KEY_SEV}: error → off`, LOOSEN_MSG);
+  });
+
+  test("comment-density to off (MultiEdit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(multi('"error"', '"off"'), `  ${KEY_SEV}: error → off`, LOOSEN_MSG);
+  });
+
+  test("error to warn (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(write(cfg({ "comment-density": "warn" })), `  ${KEY_SEV}: error → warn`, LOOSEN_MSG);
+  });
+
+  test("error to warn (Edit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(edit('"error"', '"warn"'), `  ${KEY_SEV}: error → warn`);
+  });
+
+  test("stray-artifacts error to off (Write)", async () => {
+    setFile(cfg({ "stray-artifacts": "error" }));
+    await expectDeny(
+      write(cfg({ "stray-artifacts": "off" })),
+      '  rules["stray-artifacts"].severity: error → off',
+      LOOSEN_MSG,
+    );
+  });
+
+  test("stray-artifacts error to off (MultiEdit)", async () => {
+    setFile(cfg({ "stray-artifacts": "error" }));
+    await expectDeny(multi('"error"', '"off"'), '  rules["stray-artifacts"].severity: error → off');
+  });
+
+  test("max_per_100 5 to 10 (Write)", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 5 }] }));
+    await expectDeny(
+      write(cfg({ "comment-density": ["error", { max_per_100: 10 }] })),
+      `  ${KEY_MAX}: 5 → 10`,
+      LOOSEN_MSG,
+    );
+  });
+
+  test("max_per_100 5 to 10 (Edit)", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 5 }] }));
+    await expectDeny(edit('"max_per_100": 5', '"max_per_100": 10'), `  ${KEY_MAX}: 5 → 10`);
+  });
+
+  test("preset differs from detection (Write)", async () => {
+    setFile(null);
+    await expectDeny(
+      write(cfg({ "commit-message": ["error", { preset: "conventional" }] })),
+      '  rules["commit-message"].options.preset: handbook → conventional',
+      LOOSEN_MSG,
+    );
+  });
+
+  test("preset differs from detection (MultiEdit)", async () => {
+    setFile(cfg({ "commit-message": ["error", { preset: "handbook" }] }));
+    await expectDeny(
+      multi('"handbook"', '"subject-only"'),
+      '  rules["commit-message"].options.preset: handbook → subject-only',
+    );
+  });
+
+  test("removing explicit tighter rule (Write {})", async () => {
+    setFile(cfg({ "comment-density": ["error", { max_per_100: 3 }] }));
+    await expectDeny(write("{}"), `  ${KEY_MAX}: 3 → 5`, LOOSEN_MSG);
+  });
+});
+
+describe("deny: invalid content", () => {
+  test("bad severity value (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(write(cfg({ "comment-density": "loud" })), "is invalid", "Ask the user");
+    expect(res.reason).toContain("comment-density");
+    expect(res.reason).toContain("severity");
+  });
+
+  test("bad severity value (Edit)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    const res = await expectDeny(edit('"error"', '"loud"'), "is invalid", "Ask the user");
+    expect(res.reason).toContain("comment-density");
+  });
+
+  test("commit-message severity warn is invalid (Write)", async () => {
+    setFile(null);
+    const res = await expectDeny(write(cfg({ "commit-message": "warn" })), "is invalid", "Ask the user");
+    expect(res.reason).toContain("severity");
+  });
+
+  test("malformed JSON (Write)", async () => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(write('{"rules": {'), "is invalid", "Ask the user");
+  });
+});
+
+const BASH_DENY = [
+  `echo '{}' > .house-rules.json`,
+  `echo x >> ./.house-rules.json`,
+  `jq '.rules={}' .house-rules.json > .house-rules.json`,
+  `tee .house-rules.json < /tmp/x`,
+  `sed -i 's/error/off/' .house-rules.json`,
+  `perl -pi -e 's/error/off/' .house-rules.json`,
+  `rm .house-rules.json`,
+  `mv .house-rules.json old.json`,
+  `cp /tmp/loose.json .house-rules.json`,
+  `truncate -s0 .house-rules.json`,
+  `git checkout HEAD~1 -- .house-rules.json`,
+  `git restore .house-rules.json`,
+  `git rm .house-rules.json`,
+];
+
+const BASH_ALLOW = [
+  `cat .house-rules.json`,
+  `less .house-rules.json`,
+  `head -n5 .house-rules.json`,
+  `jq . .house-rules.json`,
+  `git diff .house-rules.json`,
+  `git log -- .house-rules.json`,
+  `git show HEAD:.house-rules.json`,
+  `house-rules config`,
+  `cat .house-rules.json > /tmp/copy.json`,
+  `cp .house-rules.json /tmp/backup.json`,
+  `ls -la`,
+];
+
+describe("bash", () => {
+  test.each(BASH_DENY)("deny: %s", async (command) => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectDeny(
+      runHook(repo, "Bash", { command }),
+      "would modify .house-rules.json",
+      "Ask the user",
+    );
+  });
+
+  test.each(BASH_ALLOW)("allow: %s", async (command) => {
+    setFile(cfg({ "comment-density": "error" }));
+    await expectAllow(runHook(repo, "Bash", { command }));
+  });
+});
+
+describe("no bypass hints", () => {
+  test("positive control: BYPASS_RE matches bypass hints", () => {
+    expect("set HOUSE_RULES_DISABLE=1 to bypass the hook").toMatch(BYPASS_RE);
+    expect("use --no-verify").toMatch(BYPASS_RE);
+  });
+
+  test("no deny reason mentions a bypass", () => {
+    expect(denyReasons.length).toBeGreaterThanOrEqual(10);
+    for (const reason of denyReasons) expect(reason).not.toMatch(BYPASS_RE);
+  });
+});
+
+test("hook file exists", () => {
+  expect(existsSync(join(PLUGIN_ROOT, "src/hooks/config-guard.ts"))).toBe(true);
+});

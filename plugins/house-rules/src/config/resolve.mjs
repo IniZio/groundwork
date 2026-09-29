@@ -6,10 +6,10 @@ import { detectPreset } from './detect.mjs'
 export const DEFAULT_SEVERITY = 'error'
 export const DEFAULT_MAX_PER_100 = 5
 
-function loadParsed(file) {
-  if (!existsSync(file)) return { rules: {} }
+function parseText(file, text) {
+  if (text === null) return { rules: {} }
   try {
-    return parseConfig(readFileSync(file, 'utf8'))
+    return parseConfig(text)
   } catch (err) {
     if (err instanceof ConfigError) {
       err.file = file
@@ -21,8 +21,13 @@ function loadParsed(file) {
 
 export function resolveConfig(repoRoot) {
   const file = join(repoRoot, '.house-rules.json')
-  const present = existsSync(file)
-  const parsed = loadParsed(file)
+  return resolveConfigText(repoRoot, existsSync(file) ? readFileSync(file, 'utf8') : null)
+}
+
+export function resolveConfigText(repoRoot, text) {
+  const file = join(repoRoot, '.house-rules.json')
+  const present = text !== null
+  const parsed = parseText(file, text)
   const rules = parsed.rules ?? {}
 
   const severityOf = (id) =>

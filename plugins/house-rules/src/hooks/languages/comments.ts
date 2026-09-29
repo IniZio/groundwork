@@ -35,6 +35,7 @@ export function commentInnerText(line: string): string {
   else if (t.startsWith("/*")) t = t.slice(2);
   else if (t.startsWith("//")) t = t.slice(2);
   else if (t.startsWith("#")) t = t.slice(1);
+  else if (t.startsWith("--")) t = t.slice(2);
   if (t.endsWith("*/")) t = t.slice(0, -2);
   t = t.replace(/^\s*\*\s?/, "");
   return t.trim();

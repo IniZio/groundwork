@@ -80,12 +80,18 @@ function makeViolatorTs(dir: string, name: string): string {
 }
 
 
-function makeUnfixableViolatorYaml(dir: string, name: string): string {
-  const fp = path.join(dir, name);
-  writeFileSync(fp, Array.from({ length: 20 }, (_, i) =>
-    i % 5 === 0 ? `# reason ${i}` : `key${i}: value${i}`
-  ).join("\n") + "\n");
-  return fp;
+const PREVIEW_PROBE_LANGS = {
+  bash: { stability: "preview" },
+  yaml: { stability: "preview" },
+  dockerfile: { stability: "preview" },
+};
+
+function runGatePreview(payload: unknown): ReturnType<typeof run> {
+  return run(
+    payload as Parameters<typeof run>[0],
+    process.env as Record<string, string | undefined>,
+    { testOnly_fixTableOverride: PREVIEW_PROBE_LANGS } as any,
+  );
 }
 
 function makeUnfixableViolatorTs(dir: string, name: string): string {
@@ -119,7 +125,29 @@ describe("AC1: nexus-probe fixtures", () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  it("blocks all 6 probe files written in session; files unchanged on disk", async () => {
+  it("stable languages: all 6 probe files auto-stripped in place; gate does not block", async () => {
+    const copiedPaths: string[] = [];
+    for (const name of PROBE_FILES) {
+      const dst = path.join(repoDir, name);
+      copyFileSync(path.join(PROBE_DIR, name), dst);
+      copiedPaths.push(dst);
+    }
+    gitCommit(repoDir, "add fixtures");
+
+    const hashBefore = copiedPaths.map(fp => sha256(fp));
+    const transcriptPath = makeTranscript(tmpDir, copiedPaths, "2020-01-01T00:00:00.000Z");
+    const r = runGate({ hook_event_name: "Stop", session_id: sessionId, transcript_path: transcriptPath });
+    expect(r.status).toBe(0);
+    const out = parseOut(r.stdout);
+    expect(out.decision).not.toBe("block");
+    expect(JSON.stringify(out)).toContain("auto-removed");
+    for (let i = 0; i < copiedPaths.length; i++) {
+      expect(sha256(copiedPaths[i])).not.toBe(hashBefore[i]);
+    }
+    expect(spawnSync("bash", ["-n", copiedPaths[0]], { encoding: "utf8" }).status).toBe(0);
+  });
+
+  it("preview (fix-table override): blocks all 6 probe files written in session; files unchanged on disk", async () => {
     const copiedPaths: string[] = [];
     for (const name of PROBE_FILES) {
       const dst = path.join(repoDir, name);
@@ -133,8 +161,7 @@ describe("AC1: nexus-probe fixtures", () => {
     const transcriptPath = makeTranscript(tmpDir, copiedPaths, timestamp);
     const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: transcriptPath };
 
-    const r = runGate(payload);
-    expect(r.status).toBe(0);
+    const r = await runGatePreview(payload);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     for (let i = 0; i < copiedPaths.length; i++) {
@@ -293,7 +320,7 @@ describe("AC5: block limit counter", () => {
     initGitRepo(tmpDir);
     writeFileSync(path.join(tmpDir, ".gitkeep"), "");
     gitCommit(tmpDir, "initial");
-    fp = makeUnfixableViolatorYaml(tmpDir, "violator.yaml");
+    fp = makeUnfixableViolatorTs(tmpDir, "violator.ts");
     const ts = new Date(Date.now() - 10000).toISOString();
     tp = makeTranscript(tmpDir, [fp], ts);
   });
@@ -321,7 +348,7 @@ describe("AC5: block limit counter", () => {
     const payload = { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp };
     runGate(payload); runGate(payload); runGate(payload);
 
-    const fp2 = makeUnfixableViolatorYaml(tmpDir, "violator2.yaml");
+    const fp2 = makeUnfixableViolatorTs(tmpDir, "violator2.ts");
     const ts2 = new Date(Date.now() - 10000).toISOString();
     const tp2 = makeTranscript(tmpDir, [fp2], ts2);
     const r = runGate({ hook_event_name: "Stop", session_id: sessionId, transcript_path: tp2 });
@@ -485,6 +512,7 @@ describe("AC8: end-user src/scripts files in other repos are blocked", () => {
     const lines = [
       "#!/usr/bin/env bash",
       ...Array.from({ length: 14 }, (_, i) => `echo "line ${i}"`),
+      "fi )",
       "# comment A",
       "# comment B",
       "# comment C",
@@ -516,7 +544,7 @@ describe("AC10: real probe files block and stay on disk unchanged", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("probe.sh and pod-nonroot.yaml block; sha256 unchanged; second run also blocks", async () => {
+  it("preview (fix-table override): probe.sh and pod-nonroot.yaml block; sha256 unchanged; second run also blocks", async () => {
     const src = PROBE_DIR;
     const dstSh = path.join(repoDir, "deploy", "probe.sh");
     const dstYaml = path.join(repoDir, "deploy", "pod-nonroot.yaml");
@@ -532,7 +560,7 @@ describe("AC10: real probe files block and stay on disk unchanged", () => {
     const sid = `ac10-${Date.now()}`;
     const payload = { hook_event_name: "Stop", session_id: sid, transcript_path: tp };
 
-    const r1 = runGate(payload);
+    const r1 = await runGatePreview(payload);
     expect(parseOut(r1.stdout).decision).toBe("block");
     expect(sha256(dstSh)).toBe(hashShBefore);
     expect(sha256(dstYaml)).toBe(hashYamlBefore);
@@ -540,7 +568,7 @@ describe("AC10: real probe files block and stay on disk unchanged", () => {
     const bashCheck = spawnSync("bash", ["-n", dstSh], { encoding: "utf8" });
     expect(bashCheck.status).toBe(0);
 
-    const r2 = runGate({ ...payload, session_id: `ac10b-${Date.now()}` });
+    const r2 = await runGatePreview({ ...payload, session_id: `ac10b-${Date.now()}` });
     expect(parseOut(r2.stdout).decision).toBe("block");
     expect(sha256(dstSh)).toBe(hashShBefore);
     expect(sha256(dstYaml)).toBe(hashYamlBefore);
@@ -643,7 +671,7 @@ describe("GF-1: block message includes per-file unfixable reason", () => {
     const result = await run(
       { hook_event_name: "Stop", session_id: sessionId, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: tmpDir },
+      { testOnly_tmpDir: tmpDir, testOnly_fixTableOverride: { yaml: { stability: "preview" } } } as any,
     );
 
     expect(JSON.parse(result.stdout.trim())).toMatchObject({ decision: "block" });
@@ -698,7 +726,7 @@ describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
 
   it("unfixable file blocks; fixable file auto-fixed; unfixable unchanged", () => {
     const fixable = makeViolatorTs(tmpDir, "fix.ts");
-    const unfixable = makeUnfixableViolatorYaml(tmpDir, "nofix.yaml");
+    const unfixable = makeUnfixableViolatorTs(tmpDir, "nofix.ts");
     const fixableHashBefore = sha256(fixable);
     const unfixableHashBefore = sha256(unfixable);
     const ts = new Date(Date.now() - 10000).toISOString();
@@ -706,7 +734,7 @@ describe("AC13: unfixable file blocks; fixed files mentioned in reason", () => {
     const r = runGate({ hook_event_name: "Stop", session_id: `ac13-${Date.now()}`, transcript_path: tp });
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
-    expect(out.reason as string).toContain("nofix.yaml");
+    expect(out.reason as string).toContain("nofix.ts");
     expect(sha256(fixable)).not.toBe(fixableHashBefore);
     expect(sha256(unfixable)).toBe(unfixableHashBefore);
   });
@@ -728,6 +756,7 @@ describe("AC16: file mode preserved (no write)", () => {
     const lines = [
       "#!/usr/bin/env bash",
       ...Array.from({ length: 14 }, (_, i) => `echo "${i}"`),
+      "fi )",
       "# comment A", "# comment B", "# comment C", "# comment D", "# comment E",
     ];
     const fp = path.join(tmpDir, "run.sh");
@@ -756,7 +785,7 @@ describe("AC17: no-write invariant — over-cap files committed after base stay 
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("over-cap fixtures committed after base → block; every file sha256 unchanged", async () => {
+  it("preview (fix-table override): over-cap fixtures committed after base → block; every file sha256 unchanged", async () => {
     const src = PROBE_DIR;
     const dstSh = path.join(tmpDir, "probe.sh");
     copyFileSync(path.join(src, "probe.sh"), dstSh);
@@ -766,7 +795,7 @@ describe("AC17: no-write invariant — over-cap files committed after base stay 
 
     const ts = "2020-01-01T00:00:00.000Z";
     const tp = makeTranscript(tmpDir, [dstSh], ts);
-    const r = runGate({ hook_event_name: "Stop", session_id: `ac17-${Date.now()}`, transcript_path: tp });
+    const r = await runGatePreview({ hook_event_name: "Stop", session_id: `ac17-${Date.now()}`, transcript_path: tp });
 
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
@@ -881,7 +910,10 @@ describe("AutoFixOkFalse: preview-lang violator → gate blocks; file unchanged"
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
   it("preview-lang violator → gate declines write → blocks; file unchanged", async () => {
-    const fp = makeUnfixableViolatorYaml(tmpDir, "badparse.yaml");
+    const fp = path.join(tmpDir, "badparse.yaml");
+    writeFileSync(fp, Array.from({ length: 20 }, (_, i) =>
+      i % 5 === 0 ? `# reason ${i}` : `key${i}: value${i}`
+    ).join("\n") + "\n");
     const hashBefore = sha256(fp);
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
@@ -889,7 +921,7 @@ describe("AutoFixOkFalse: preview-lang violator → gate blocks; file unchanged"
     const r = await run(
       { hook_event_name: "Stop", session_id: `okfalse-${Date.now()}`, transcript_path: tp },
       process.env as Record<string, string | undefined>,
-      {},
+      { testOnly_fixTableOverride: { yaml: { stability: "preview" } } } as any,
     );
 
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;

@@ -1,7 +1,7 @@
 import type { Rule, RuleContext, Finding } from '../../src/engine/types.js';
 import { commentDensityEditCheck } from './edit-check.js';
 import { netNewCommentRows, density } from '../../src/hooks/lib/comment-density.js';
-import { languageForPath, LANGUAGES } from '../../src/hooks/languages/registry.js';
+import { languageForPath, LANGUAGES, type Language } from '../../src/hooks/languages/registry.js';
 import { commentDensityFix, canFixPathHelper } from './fix.js';
 import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
 import { parserForPath } from '../../src/hooks/languages/parse.js';
@@ -19,8 +19,8 @@ const rule: Rule = {
   languages: LANGUAGES,
   editCheck: commentDensityEditCheck,
 
-  canFixPath(filePath: string): boolean {
-    return canFixPathHelper(filePath);
+  canFixPath(filePath: string, lang?: Language | null): boolean {
+    return canFixPathHelper(filePath, lang);
   },
 
   async check(ctx: RuleContext): Promise<Finding[]> {
@@ -28,7 +28,7 @@ const rule: Rule = {
     for (const file of ctx.files ?? []) {
       if (!file.addedHunks || !file.text) continue;
 
-      const lang = languageForPath(file.path);
+      const lang = file.lang ?? languageForPath(file.path);
       if (!lang) continue;
 
       const totalAdded = file.addedHunks.reduce((s, h) => s + h.added.length, 0);

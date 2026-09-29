@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSyn
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { run } from "../../src/hooks/gate.js";
 
 const GATE_PATH = path.join(import.meta.dir, "../../src/hooks/gate.ts");
 
@@ -57,6 +58,17 @@ function parseOut(stdout: string): Record<string, unknown> {
   const t = stdout.trim();
   if (!t) return {};
   return JSON.parse(t) as Record<string, unknown>;
+}
+
+// Bash is stable autofix now; force it to report-only via the fix-table seam so a real
+// density violator still blocks. In-process because the seam is an opts key, not env.
+async function runGatePreview(payload: unknown, dir: string, tmpDir: string): Promise<{ stdout: string; stderr: string; status: number | null }> {
+  const r = await run(
+    payload as Parameters<typeof run>[0],
+    { ...process.env, CLAUDE_PROJECT_DIR: dir } as Record<string, string | undefined>,
+    { testOnly_tmpDir: tmpDir, testOnly_fixTableOverride: { bash: { stability: "preview" } } },
+  );
+  return { stdout: r.stdout, stderr: r.stderr, status: r.exit };
 }
 
 function makePreviewViolator(dir: string, name: string): string {
@@ -128,11 +140,11 @@ describe("gate-block-header: comment-density-only block", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(b) density-only: reason contains existing comment-density header", () => {
+  it("(b) density-only: reason contains existing comment-density header", async () => {
     const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({
+    const r = await runGatePreview({
       hook_event_name: "Stop",
       session_id: `gbh-dens-${Date.now()}`,
       transcript_path: tp,
@@ -162,7 +174,7 @@ describe("gate-block-header: both density and stray", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(c) both: reason contains density section and stray section", () => {
+  it("(c) both: reason contains density section and stray section", async () => {
     // density violator
     const violatorFp = makePreviewViolator(tmpDir, "widget.sh");
     // stray: docs/ coexists with doc/
@@ -171,7 +183,7 @@ describe("gate-block-header: both density and stray", () => {
     writeFileSync(strayFp, "# x\n");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [violatorFp, strayFp], ts);
-    const r = runGate({
+    const r = await runGatePreview({
       hook_event_name: "Stop",
       session_id: `gbh-both-${Date.now()}`,
       transcript_path: tp,
@@ -308,7 +320,7 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(f) both rules, many density files, SubagentStop → ≤2000 chars with required sections", () => {
+  it("(f) both rules, many density files, SubagentStop → ≤2000 chars with required sections", async () => {
     const violatorFiles: string[] = [];
     for (let i = 0; i < 30; i++) {
       const fp = makePreviewViolator(tmpDir, `widget${i}.sh`);
@@ -330,7 +342,7 @@ describe("gate-block-header: both rules truncation on SubagentStop", () => {
     }));
     writeFileSync(tp, tpLines.join("\n") + "\n");
 
-    const r = runGate({
+    const r = await runGatePreview({
       hook_event_name: "SubagentStop",
       session_id: `gbh-f-${Date.now()}`,
       transcript_path: tp,
@@ -363,7 +375,7 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(g) 30 density + 1 stray → stray path shown and output ≤2000", () => {
+  it("(g) 30 density + 1 stray → stray path shown and output ≤2000", async () => {
     const violatorFiles: string[] = [];
     for (let i = 0; i < 30; i++) violatorFiles.push(makePreviewViolator(tmpDir, `widget${i}.sh`));
 
@@ -374,7 +386,7 @@ describe("gate-block-header: (g) 30 density + 1 stray → stray path shown, ≤2
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [...violatorFiles, strayFp], ts);
 
-    const r = runGate({ hook_event_name: "SubagentStop", session_id: `gbh-g-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
+    const r = await runGatePreview({ hook_event_name: "SubagentStop", session_id: `gbh-g-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
@@ -397,7 +409,7 @@ describe("gate-block-header: (h) 30 parse-error fallback files → ≤2000", () 
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(h) 1 preview violator + 40 auto-fixed .ts (long paths) → density-only fixedNote large → ≤2000", () => {
+  it("(h) 1 preview violator + 40 auto-fixed .ts (long paths) → density-only fixedNote large → ≤2000", async () => {
     const deepDir = "src/components/deeply/nested";
     mkdirSync(path.join(tmpDir, deepDir), { recursive: true });
     const tsFiles: string[] = [];
@@ -408,7 +420,7 @@ describe("gate-block-header: (h) 30 parse-error fallback files → ≤2000", () 
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [...tsFiles, violatorFp], ts);
 
-    const r = runGate({ hook_event_name: "Stop", session_id: `gbh-h-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
+    const r = await runGatePreview({ hook_event_name: "Stop", session_id: `gbh-h-${Date.now()}`, transcript_path: tp, cwd: tmpDir }, tmpDir, tmpDir);
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
@@ -476,20 +488,15 @@ describe("gate-block-header: (j) write-failure falls back to trimmed reason", ()
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(j) when block file write fails, reason is trimmed fallback (contains density header)", () => {
+  it("(j) when block file write fails, reason is trimmed fallback (contains density header)", async () => {
     const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = spawnSync("bun", [GATE_PATH], {
-      input: JSON.stringify({
-        hook_event_name: "Stop",
-        session_id: `gbh-j-${Date.now()}`,
-        transcript_path: tp,
-        cwd: tmpDir,
-      }),
-      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, TMPDIR: "/proc/1" },
-      encoding: "utf8",
-    });
+    const r = await run(
+      { hook_event_name: "Stop", session_id: `gbh-j-${Date.now()}`, transcript_path: tp, cwd: tmpDir },
+      { ...process.env, CLAUDE_PROJECT_DIR: tmpDir } as Record<string, string | undefined>,
+      { testOnly_tmpDir: "/proc/1", testOnly_fixTableOverride: { bash: { stability: "preview" } } },
+    );
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");
     const reason = out.reason as string;
@@ -511,21 +518,16 @@ describe("gate-block-header: (k) sessionId path traversal sanitized", () => {
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
-  it("(k) sessionId '../../evil' writes to house-rules/unknown/, not outside TMPDIR", () => {
+  it("(k) sessionId '../../evil' writes to house-rules/unknown/, not outside TMPDIR", async () => {
     const fp = makePreviewViolator(tmpDir, "widget.sh");
     const ts = new Date(Date.now() - 5000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
 
-    const r = spawnSync("bun", [GATE_PATH], {
-      input: JSON.stringify({
-        hook_event_name: "Stop",
-        session_id: "../../evil",
-        transcript_path: tp,
-        cwd: tmpDir,
-      }),
-      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, TMPDIR: tmpDir },
-      encoding: "utf8",
-    });
+    const r = await run(
+      { hook_event_name: "Stop", session_id: "../../evil", transcript_path: tp, cwd: tmpDir },
+      { ...process.env, CLAUDE_PROJECT_DIR: tmpDir } as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir, testOnly_fixTableOverride: { bash: { stability: "preview" } } },
+    );
 
     const out = parseOut(r.stdout);
     expect(out.decision).toBe("block");

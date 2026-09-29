@@ -217,6 +217,7 @@ export interface CheckOpts {
   readFile?: (p: string) => string | null;
   ledgerDir?: string;
   rules?: Rule[];
+  testOnly?: Record<string, unknown>;
 }
 
 export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
@@ -244,7 +245,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
     const firstLine = tool === "write" && typeof ti.content === "string"
       ? ti.content.split("\n")[0]
-      : undefined;
+      : tool !== "write" ? pre?.split("\n")[0] : undefined;
     const lang = languageForPath(filePath, firstLine);
 
     const recon = reconstructPostEdit(tool, ti as EditInput, pre);
@@ -338,6 +339,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
           sourceFile: () => lang !== null ? sourceFiles.get(lang, capturedText, filePath) : Promise.resolve(null),
           parserFactory: parserForPath(factory, filePath),
           ledgerDir: opts.ledgerDir,
+          testOnly: opts.testOnly,
         };
         result = await rule.editCheck!(pendingEdit, env);
       } catch {

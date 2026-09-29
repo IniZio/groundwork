@@ -187,7 +187,7 @@ describe("gate ledger: autofix writes recorded", () => {
   });
 
   it("preview language (bash) over-budget: shadow only, no ledger record", async () => {
-    // bash stability = "preview" → no disk write → no ledger entry
+    // bash is stable now; force the preview path via the fix-table override → no disk write → no ledger entry
     const fp = path.join(repoDir, "script.sh");
     writeFileSync(fp, Array.from({ length: 20 }, (_, i) =>
       i % 5 === 0 ? `# reason ${i}` : `echo line${i}`
@@ -199,7 +199,7 @@ describe("gate ledger: autofix writes recorded", () => {
     await run(
       { hook_event_name: "Stop", session_id: `ledger-bash-${Date.now()}`, transcript_path: transcriptPath },
       process.env as Record<string, string | undefined>,
-      { testOnly_tmpDir: tmpDir },
+      { testOnly_tmpDir: tmpDir, testOnly_fixTableOverride: { bash: { stability: "preview" } } } as any,
     );
 
     expect(readLedgerFixes(ledgerDir)).toHaveLength(0);

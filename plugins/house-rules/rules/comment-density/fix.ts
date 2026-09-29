@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { RuleContext, FixResult, FixFileResult, FixOptions } from '../../src/engine/types.js';
 import type { FixEntry } from './languages.js';
 import { fixEntryFor } from './languages.js';
-import { languageForPath } from '../../src/hooks/languages/registry.js';
+import { languageForPath, type Language } from '../../src/hooks/languages/registry.js';
 import { autoFix, density, netNewCommentRows, type RowChange } from '../../src/hooks/lib/comment-density.js';
 import { getParser } from '../../src/hooks/lib/tree-sitter-loader.js';
 import { parserForPath } from '../../src/hooks/languages/parse.js';
@@ -54,8 +54,8 @@ function syntaxErrorReason(errorRows: Set<number>): string {
 }
 
 /** Shared canFixPath logic — stable + safe entries only. */
-export function canFixPathHelper(filePath: string): boolean {
-  const lang = languageForPath(filePath);
+export function canFixPathHelper(filePath: string, knownLang?: Language | null): boolean {
+  const lang = knownLang ?? languageForPath(filePath);
   if (!lang) return false;
   const entry = fixEntryFor(lang);
   return entry.stability === 'stable' && entry.applicability === 'safe';
@@ -83,10 +83,13 @@ async function housekeepFix(ctx: RuleContext, opts?: FixOptions): Promise<FixRes
   for (const file of ctx.files ?? []) {
     if (!file.addedHunks || !file.text) { decline(file.path, 'no added lines'); continue; }
 
-    const lang = languageForPath(file.path);
+    const lang = file.lang ?? languageForPath(file.path);
     if (!lang) { decline(file.path, 'unsupported language'); continue; }
 
-    if (!canFixPathHelper(file.path)) {
+    const hkOverride = (opts?.testOnly?.testOnly_fixTableOverride as Partial<Record<string, FixEntry>> | undefined)?.[lang];
+    const hkEntry: FixEntry = hkOverride ? { ...fixEntryFor(lang), ...hkOverride } : fixEntryFor(lang);
+    const hkOk = hkOverride ? hkEntry.stability === 'stable' && hkEntry.applicability === 'safe' : canFixPathHelper(file.path, lang);
+    if (!hkOk) {
       decline(file.path, `autofix not supported for ${lang}`);
       continue;
     }
@@ -158,7 +161,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
   for (const file of ctx.files ?? []) {
     if (!file.text || !file.addedHunks || file.addedHunks.length === 0) continue;
 
-    const lang = languageForPath(file.path);
+    const lang = file.lang ?? languageForPath(file.path);
     if (!lang) continue;
 
     const sfGF = ctx.sourceFile ? await ctx.sourceFile(file) : null;

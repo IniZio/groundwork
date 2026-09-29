@@ -232,8 +232,8 @@ describe('comment-density housekeep fix ledger', () => {
     expect(freshRecords.length).toBe(1);
   });
 
-  it('records nothing for a file type not eligible for stable autofix (canFixPath=false)', () => {
-    // bash has no entry in the comment-density hook table → preview → canFixPath returns false → fix skips
+  it('records nothing for a file with syntax errors (declined, file unchanged)', () => {
+    // every registry language is stable; a parse error is the real condition that makes housekeep decline
     const repoDir = mktemp();
     const ledgerDir = mktemp();
     const baseSha = initRepo(repoDir);
@@ -248,6 +248,7 @@ describe('comment-density housekeep fix ledger', () => {
       'a_1=1',
       'b_2=2',
       'c_3=3',
+      'if then fi fi ]] ;;',
       'd_4=4',
       'e_5=5',
     ].join('\n') + '\n';
@@ -264,5 +265,6 @@ describe('comment-density housekeep fix ledger', () => {
 
     const records = readFixRecords(ledgerDir);
     expect(records.length).toBe(0);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(shContent);
   });
 });

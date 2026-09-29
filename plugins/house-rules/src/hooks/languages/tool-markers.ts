@@ -47,9 +47,18 @@ export const PEP263_CODING_RE = /coding[:=]\s*[-\w.]+/;
 
 const _pythonBase = withToolMarkers(PYTHON_TOOL_MARKERS);
 
-export const BASH_TOOL_MARKERS: readonly RegExp[] = [/^shellcheck\b/];
+export const BASH_TOOL_MARKERS: readonly RegExp[] = [
+  /^shellcheck\b/,
+  /^(?:vim?|ex):/,
+  /^-\*-.*-\*-$/,
+];
 
-export const YAML_TOOL_MARKERS: readonly RegExp[] = [/^yaml-language-server:/];
+export const YAML_TOOL_MARKERS: readonly RegExp[] = [
+  /^yaml-language-server:/,
+  /^yamllint\s+(?:disable(?:-line|-file)?|enable(?:-line)?)\b/,
+  /^prettier-ignore(?:-start|-end)?\b/,
+  /^renovate:/,
+];
 
 export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
   /^noinspection\b/,
@@ -57,6 +66,13 @@ export const KOTLIN_TOOL_MARKERS: readonly RegExp[] = [
   /^language=\S/,
   /^spotless:(?:off|on)\b/,
   /^ktlint-(?:disable|enable)\b/,
+];
+
+export const SQL_TOOL_MARKERS: readonly RegExp[] = [
+  /^migrate:(?:up|down)\b/,
+  /^\+goose\s+(?:Up|Down|StatementBegin|StatementEnd|NO TRANSACTION|ENVSUB\s+(?:ON|OFF))\b/i,
+  /^name:\s*\w+\s+:(?:one|many|exec|execrows|execresult|execlastid|copyfrom|batchexec|batchone|batchmany)\b/,
+  /^\+(?!goose\b)\s*\w/,
 ];
 
 export const SWIFT_TOOL_MARKERS: readonly RegExp[] = [
@@ -81,6 +97,18 @@ export const JAVA_TOOL_MARKERS: readonly RegExp[] = [
   /^(?:file )?deepcode ignore\b/,
   /^nosemgrep\b/,
   /^falls?[ -]?thr(?:u|ough)\b/,
+];
+
+/** SAFETY: justifications are required by clippy::undocumented_unsafe_blocks; @generated marks tool output. */
+export const RUST_TOOL_MARKERS: readonly RegExp[] = [
+  /^SAFETY:/i,
+  /^@generated\b/,
+];
+
+export const MAKE_TOOL_MARKERS: readonly RegExp[] = [
+  /^groundwork-rule:/,
+  /^-\*-.*-\*-$/,
+  /^vim?:/,
 ];
 
 export function withToolMarkers(

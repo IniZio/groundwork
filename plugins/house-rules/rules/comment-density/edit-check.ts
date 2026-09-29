@@ -8,7 +8,7 @@ import {
   type GetParserFn,
 } from "../../src/hooks/lib/comment-density.js";
 import { removedTextsFor, normalizeCommentText } from "../../src/hooks/lib/autofix-ledger.js";
-import { fixEntryFor } from "./languages.js";
+import { fixEntryFor, type FixEntry } from "./languages.js";
 import type { Language } from "../../src/hooks/languages/registry.js";
 import type { PendingEdit, EditCheckEnv, EditCheckResult } from "../../src/engine/types.js";
 
@@ -160,7 +160,9 @@ export async function commentDensityEditCheck(edit: PendingEdit, env: EditCheckE
   const readdCtx = readdLines.length > 0 ? readdLines.join("\n") : null;
 
   // Only stable+safe langs get in-flight stripping; preview langs defer to Stop gate.
-  const fixEntry = fixEntryFor(lang as Language);
+  const tableEntry = fixEntryFor(lang as Language);
+  const override = (env.testOnly?.testOnly_fixTableOverride as Partial<Record<string, FixEntry>> | undefined)?.[lang as string];
+  const fixEntry: FixEntry = override ? { ...tableEntry, ...override } : tableEntry;
   const isStableAndSafe = fixEntry.stability === "stable" && fixEntry.applicability === "safe";
   if (!isStableAndSafe) {
     if (readdCtx) return { findings: [], notice: readdCtx };

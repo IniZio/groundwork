@@ -132,14 +132,14 @@ export const a = 1;
 export const b = 2;
 `;
 
-const TOOL_SH = `# c1
-# c2
-# c3
-# c4
-# c5
-# c6
-a=1
-b=2
+const BAD_TS = `// c1
+// c2
+// c3
+// c4
+// c5
+// c6
+export const a = (;
+export const b = 2;
 `;
 
 function buildFixture(): { repoDir: string; baseSha: string } {
@@ -150,14 +150,14 @@ function buildFixture(): { repoDir: string; baseSha: string } {
   const baseSha = git(repoDir, ['rev-parse', 'HEAD']);
   fs.writeFileSync(path.join(repoDir, 'svc.go'), SVC_NEW);
   fs.writeFileSync(path.join(repoDir, 'fix.ts'), FIX_TS);
-  fs.writeFileSync(path.join(repoDir, 'tool.sh'), TOOL_SH);
-  addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.sh'], 'add files');
+  fs.writeFileSync(path.join(repoDir, 'bad.ts'), BAD_TS);
+  addAndCommit(repoDir, ['svc.go', 'fix.ts', 'bad.ts'], 'add files');
   return { repoDir, baseSha };
 }
 
 const SUMMARY = '1 fixed, 2 need manual fix';
 const MANUAL_SVC = '    svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19)';
-const MANUAL_SH  = '    tool.sh comment-density 75.0/100 (6 comments in 8 added lines; rows 1-6)';
+const MANUAL_BAD = '    bad.ts comment-density 75.0/100 (6 comments in 8 added lines; rows 1-6)';
 
 describe('housekeep --dry-run parity', () => {
 
@@ -207,12 +207,12 @@ describe('housekeep --dry-run parity', () => {
     expect(manual).toHaveLength(2);
 
     const svcLine = manual.find(l => l.includes('svc.go'));
-    const shLine  = manual.find(l => l.includes('tool.sh'));
+    const badLine = manual.find(l => l.includes('bad.ts'));
     expect(svcLine).toBe(MANUAL_SVC);
-    expect(shLine).toBe(MANUAL_SH);
+    expect(badLine).toBe(MANUAL_BAD);
 
     expect(stdout).toContain('  autofix failed: still over cap after fix (1):');
-    expect(stdout).toContain('  autofix not supported for bash (1):');
+    expect(stdout).toContain('  syntax errors on rows 7; not autofixed (1):');
   });
 
   it('AC4: --diff output is git-apply-able; applied fix.ts matches real-run fix.ts', () => {
@@ -232,8 +232,8 @@ describe('housekeep --dry-run parity', () => {
     for (const repoDir of [repoA, repoB]) {
       fs.writeFileSync(path.join(repoDir, 'svc.go'), SVC_NEW);
       fs.writeFileSync(path.join(repoDir, 'fix.ts'), FIX_TS);
-      fs.writeFileSync(path.join(repoDir, 'tool.sh'), TOOL_SH);
-      addAndCommit(repoDir, ['svc.go', 'fix.ts', 'tool.sh'], 'add files');
+      fs.writeFileSync(path.join(repoDir, 'bad.ts'), BAD_TS);
+      addAndCommit(repoDir, ['svc.go', 'fix.ts', 'bad.ts'], 'add files');
     }
 
     const dryOut = run(['--repo', repoA, '--since', baseShaA, '--dry-run', '--diff'], ledgerA);

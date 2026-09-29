@@ -92,8 +92,23 @@ describe('comment-density language-hooks positive controls (entry present)', () 
     expect(fixEntryFor('go').stability).toBe('stable');
   });
 
+  it('fixEntryFor rust is stable and safe when entry present', () => {
+    expect(fixEntryFor('rust')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
   it('canFixPath x.go returns true when entry present', () => {
     expect(rule.canFixPath!('x.go')).toBe(true);
+  });
+
+  it('fixEntryFor yaml and toml are stable and safe', () => {
+    expect(fixEntryFor('yaml')).toEqual({ stability: 'stable', applicability: 'safe' });
+    expect(fixEntryFor('toml')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath accepts .yml, .yaml and .toml', () => {
+    expect(rule.canFixPath!('x.yml')).toBe(true);
+    expect(rule.canFixPath!('x.yaml')).toBe(true);
+    expect(rule.canFixPath!('x.toml')).toBe(true);
   });
 
   it('fixEntryFor typescript is stable when entry present', () => {
@@ -102,6 +117,41 @@ describe('comment-density language-hooks positive controls (entry present)', () 
 
   it('canFixPath x.ts returns true when entry present', () => {
     expect(rule.canFixPath!('x.ts')).toBe(true);
+  });
+
+  it('fixEntryFor sql is stable and safe when entry present', () => {
+    expect(fixEntryFor('sql')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath x.sql returns true when entry present', () => {
+    expect(rule.canFixPath!('x.sql')).toBe(true);
+  });
+
+  it('fixEntryFor make is stable and safe when entry present', () => {
+    expect(fixEntryFor('make')).toEqual({ stability: 'stable', applicability: 'safe' });
+  });
+
+  it('canFixPath Makefile and x.mk return true when entry present', () => {
+    expect(rule.canFixPath!('Makefile')).toBe(true);
+    expect(rule.canFixPath!('x.mk')).toBe(true);
+  });
+
+  it('fixEntryFor bash is stable when entry present', () => {
+    expect(fixEntryFor('bash').stability).toBe('stable');
+  });
+
+  it('canFixPath x.sh returns true when entry present', () => {
+    expect(rule.canFixPath!('x.sh')).toBe(true);
+  });
+
+  it('fixEntryFor dockerfile is stable when entry present', () => {
+    expect(fixEntryFor('dockerfile').stability).toBe('stable');
+  });
+
+  it('canFixPath Dockerfile, Containerfile and x.dockerfile return true when entry present', () => {
+    expect(rule.canFixPath!('Dockerfile')).toBe(true);
+    expect(rule.canFixPath!('Containerfile')).toBe(true);
+    expect(rule.canFixPath!('x.dockerfile')).toBe(true);
   });
 });
 

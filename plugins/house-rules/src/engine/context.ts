@@ -218,7 +218,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       }
     }
 
-    const lang = languageForPath(relPath) ?? undefined;
+    const lang = languageForPath(relPath, text?.split('\n')[0]) ?? undefined;
 
     let baseText: string;
     const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], {

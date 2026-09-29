@@ -10,6 +10,19 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 
 ## Allowed
 
+### content: frontmatter satisfies schema and required heading present
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+status: open
+---
+
+## Decisions
+
+none
+
+
 ### no types configured: notes/x.md is not flagged (legacy behaviour)
 
 **Files:**
@@ -63,6 +76,48 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 - `tmp-notes.md`: 
 
 ## Flagged
+
+### content: missing required frontmatter key is flagged
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+title: x
+---
+
+## Decisions
+
+
+**Expected findings:**
+- artifact-structure: .groundwork/work/a/research/x.md frontmatter invalid for type research: (root): missing required key "status"
+
+### content: missing required heading is flagged
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+status: open
+---
+
+## Notes
+
+
+**Expected findings:**
+- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "## Decisions"
+
+### content: unsupported schema keyword surfaces as a finding, not a silent pass
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","patternProperties":{}},"headings":["## Decisions"]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+status: open
+---
+
+## Decisions
+
+
+**Expected findings:**
+- artifact-structure: .groundwork/work/a/research/x.md frontmatter invalid for type research: (root): unsupported schema keyword "patternProperties"
 
 ### manifest: new governed md outside every doc type is flagged with nearest type
 

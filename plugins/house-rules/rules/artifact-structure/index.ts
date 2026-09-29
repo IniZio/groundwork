@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { resolveConfig } from '../../src/config/resolve.mjs';
 import type { ManifestOptions } from '../../src/config/resolve.mjs';
 import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, words } from '../../src/config/manifest.mjs';
+import { parseFrontmatter, validateFrontmatter, missingHeadings } from '../../src/engine/frontmatter.js';
 
 export const CANONICAL_SYNONYMS: Record<string, string> = {
   docs: 'doc',
@@ -44,7 +45,28 @@ function isNewFile(repoRoot: string, relPath: string): boolean {
   return ignored.status !== 0;
 }
 
-function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: ManifestOptions): Finding[] {
+function contentFindings(repoRoot: string, relPath: string, typeId: string, def: NonNullable<ManifestOptions['types']>[string]): string[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+  } catch (e) {
+    return [`artifact-structure: ${relPath} could not be read for content checks: ${(e as Error).message}`];
+  }
+  const parsed = parseFrontmatter(text);
+  if (!parsed.ok) return [`artifact-structure: ${relPath} frontmatter could not be parsed for type ${typeId}: ${parsed.error}`];
+  const messages: string[] = [];
+  if (def.frontmatter !== undefined) {
+    const errors = validateFrontmatter(def.frontmatter, parsed.data ?? {});
+    const prefix = parsed.data === null ? 'has no frontmatter block; ' : '';
+    for (const err of errors) messages.push(`artifact-structure: ${relPath} frontmatter invalid for type ${typeId}: ${prefix}${err}`);
+  }
+  if (def.headings !== undefined) {
+    for (const h of missingHeadings(parsed.body, def.headings)) messages.push(`artifact-structure: ${relPath} is missing required heading "${h}"`);
+  }
+  return messages;
+}
+
+function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: ManifestOptions, contentChecks: boolean): Finding[] {
   const findings: Finding[] = [];
   const globs = options.govern ?? [];
   for (const f of scoped) {
@@ -59,7 +81,17 @@ function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: Manif
       });
       continue;
     }
-    if (matchPath(f.path, options) !== null) continue;
+    const matched = matchPath(f.path, options);
+    if (matched !== null) {
+      const def = options.types?.[matched.type];
+      // Edit-time writes are drafts; only the gate content-checks.
+      if (contentChecks && def && (def.frontmatter !== undefined || def.headings !== undefined)) {
+        for (const message of contentFindings(repoRoot, f.path, matched.type, def)) {
+          findings.push({ ruleId: 'artifact-structure', path: f.path, message, fingerprintBasis: `${f.path}:${message}` });
+        }
+      }
+      continue;
+    }
     const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
     if (!governed) continue;
     const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
@@ -240,7 +272,7 @@ const rule: Rule = {
     }
 
     const manifest = resolveManifest(repoRoot);
-    if (manifest !== null) findings.push(...manifestFindings(repoRoot, scoped, manifest));
+    if (manifest !== null) findings.push(...manifestFindings(repoRoot, scoped, manifest, ctx.mode !== 'guard'));
 
     return findings;
   },

@@ -8,7 +8,19 @@ const MANIFEST_CFG = JSON.stringify({ rules: { 'artifact-structure': ['error', {
   types: { research: { tier: 'working', description: 'Research notes', generates: '.groundwork/work/{slug}/research/{name:kebab}.md' } },
 }] } });
 
+const SCHEMA = { type: 'object', required: ['status'], properties: { status: { type: 'string' } } };
+const CONTENT_CFG = (schema: unknown = SCHEMA) => JSON.stringify({ rules: { 'artifact-structure': ['error', {
+  govern: ['notes/**'],
+  types: { research: { tier: 'working', generates: '.groundwork/work/{slug}/research/{name:kebab}.md', frontmatter: schema, headings: ['## Decisions'] } },
+}] } });
+const RESEARCH = '.groundwork/work/a/research/x.md';
+
 const valid: TrackedCase[] = [
+  {
+    why: 'content: frontmatter satisfies schema and required heading present',
+    tree: { '.house-rules.json': CONTENT_CFG(), [RESEARCH]: '---\nstatus: open\n---\n\n## Decisions\n\nnone\n' },
+    sessionCreatedOverrides: { [RESEARCH]: true },
+  },
   {
     why: 'no types configured: notes/x.md is not flagged (legacy behaviour)',
     tree: { 'notes/x.md': '' },
@@ -55,6 +67,21 @@ const valid: TrackedCase[] = [
 ];
 
 const invalid: InvalidTrackedCase[] = [
+  {
+    why: 'content: missing required frontmatter key is flagged',
+    tree: { '.house-rules.json': CONTENT_CFG(), [RESEARCH]: '---\ntitle: x\n---\n\n## Decisions\n' },
+    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} frontmatter invalid for type research: (root): missing required key "status"` }],
+  },
+  {
+    why: 'content: missing required heading is flagged',
+    tree: { '.house-rules.json': CONTENT_CFG(), [RESEARCH]: '---\nstatus: open\n---\n\n## Notes\n' },
+    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} is missing required heading "## Decisions"` }],
+  },
+  {
+    why: 'content: unsupported schema keyword surfaces as a finding, not a silent pass',
+    tree: { '.house-rules.json': CONTENT_CFG({ type: 'object', patternProperties: {} }), [RESEARCH]: '---\nstatus: open\n---\n\n## Decisions\n' },
+    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} frontmatter invalid for type research: (root): unsupported schema keyword "patternProperties"` }],
+  },
   {
     why: 'manifest: new governed md outside every doc type is flagged with nearest type',
     tree: { '.house-rules.json': MANIFEST_CFG, 'notes/research-notes.md': '' },

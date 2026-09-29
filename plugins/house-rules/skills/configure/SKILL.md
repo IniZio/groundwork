@@ -49,10 +49,32 @@ File lives at the repo root. Keep `$schema` so editors validate it:
 Rules:
 - `commit-message`: severity `error` only; option `preset` = `handbook` | `conventional` | `subject-only`.
 - `comment-density`: `"error"` only; no options; not configurable.
-- `artifact-structure`: `"error"` only; no options; not configurable.
+- `artifact-structure`: `"error"` only; options `govern` (globs), `types` (doc types, each with `tier` and `generates`, optional `description`, `instruction`, `template`, `frontmatter`, `headings`) and `forbidden` (`{pattern, redirect}` entries). Without `types` and `forbidden` only the built-in synonym-directory and root-scratch checks run.
 - The former id `stray-artifacts` remains accepted as a config alias for `artifact-structure`.
 
 Unknown keys and values are errors. Change only the key at hand.
+
+Example `artifact-structure` manifest (`{slug:kebab}` is a path placeholder; `{{title}}` is a template body placeholder):
+
+```json
+{
+  "rules": {
+    "artifact-structure": ["error", {
+      "govern": ["doc/**"],
+      "types": {
+        "decision": {
+          "tier": "product",
+          "generates": "doc/decisions/{slug:kebab}.md",
+          "template": "# {{title}}\n"
+        }
+      },
+      "forbidden": [{"pattern": "docs/**", "redirect": "Documents live under doc/."}]
+    }]
+  }
+}
+```
+
+Read the manifest with `house-rules structure`, `house-rules where <type|text>` and `house-rules new <type> key=value...`. Frontmatter and heading content is checked at Stop; a file written mid-session is a draft. Forbidden patterns and type-matched paths are enforced even when gitignored; only an unmatched governed path is exempt when ignored. See the plugin README for the full schema.
 
 ### 5. Verify
 

@@ -41,11 +41,11 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 |---|---|
 | commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
 | comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
-| artifact-structure | severity `error` only; no options |
+| artifact-structure | severity `error` only; options `govern`, `types`, `forbidden` (see Doc-type manifest below) |
 
 The former id `stray-artifacts` remains accepted as a config alias for `artifact-structure`.
 
-The only configurable knob is the commit-message `preset`.
+The only configurable options are the commit-message `preset` and the artifact-structure manifest options `govern`, `types` and `forbidden`.
 
 Commit preset precedence: explicit config, then `.gitmessage`, then commitlint config, then git history, then the `handbook` default.
 
@@ -54,6 +54,78 @@ Commit preset precedence: explicit config, then `.gitmessage`, then commitlint c
 A PreToolUse config guard denies edits to `.house-rules.json` that loosen a rule. Loosening is a human decision; tightening edits pass.
 
 The `house-rules:configure` skill walks an agent through a rejected commit message: read the active config, then rewrite the message or pin the matching preset.
+
+## Doc-type manifest (artifact-structure)
+
+The `artifact-structure` rule accepts three options that describe where documents go. They live in the rule's options object: `["error", {...}]`.
+
+- `govern`: array of globs. A new file that matches a glob but no type and no forbidden pattern is reported as outside every doc type path, with the nearest types. Files outside every glob are not reported. `govern` has an effect only when `types` or `forbidden` is also set.
+- `types`: object of doc type id to definition. Each definition takes these keys; `tier` and `generates` are required, the other five are optional:
+  - `tier`: `product`, `working` or `ephemeral`. A label shown by `house-rules structure`.
+  - `generates`: the path template for files of this type, for example `doc/decisions/{slug:kebab}.md`. A path matches a type when it equals the template with every placeholder filled.
+  - `description`: one line shown by `structure` and in findings.
+  - `instruction`: guidance shown by `where`.
+  - `template`: inline text (not a file path) that `house-rules new` writes. `{{key}}` body placeholders are filled from the `key=value` arguments; `{{created}}` defaults to today (YYYY-MM-DD); any other missing key is an error. `null` is accepted and writes an empty file.
+  - `frontmatter`: a JSON Schema checked against the file's YAML frontmatter (see the keyword subset below).
+  - `headings`: array of required headings. `"Context"` matches a heading of any level; `"## Context"` matches only that level. Headings inside code fences are ignored.
+- `forbidden`: array of `{pattern, redirect}`. A new file matching `pattern` (a glob: `*` within one segment, `**` across segments, `?` one character) is rejected with the `redirect` text.
+
+Path placeholders in `generates`: `{name}` matches one path segment (no `/`); `{name:kebab}`, `{name:camel}` and `{name:pascal}` also require that case. When a value is rendered (`house-rules new`), it is converted to that case. A repeated name must have the same value everywhere. Other case names are errors.
+
+Frontmatter schema keywords: `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`, `null`, or an array of them), `required`, `properties`, `enum`, `const`, `pattern`, `format` (only `date`, meaning YYYY-MM-DD), `if` with `then`, and `oneOf`. The annotations `$schema`, `description` and `title` are ignored. Any other keyword is reported as unsupported.
+
+With no `types` and no `forbidden` (the legacy shape), only the built-in synonym-directory and root-scratch checks run. The old id `stray-artifacts` is the same rule under its former name.
+
+Checks by moment. Manifest checks apply to new files only; a path already in HEAD is not checked. At edit time (PreToolUse on Write) a forbidden pattern or an unmatched governed path is denied; a file that matches a type passes, because a fresh write is a draft. Frontmatter and heading content is checked at Stop (and by `house-rules check`).
+
+Ignore semantics: forbidden patterns and type-matched paths are enforced even when the file is gitignored or excluded. Only an unmatched governed path is exempt when it is ignored.
+
+Complete example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/IniZio/groundwork/main/plugins/house-rules/house-rules.schema.json",
+  "rules": {
+    "commit-message": ["error", {"preset": "conventional"}],
+    "comment-density": "error",
+    "artifact-structure": ["error", {
+      "govern": ["doc/**", "notes/**"],
+      "types": {
+        "decision": {
+          "tier": "product",
+          "generates": "doc/decisions/{slug:kebab}.md",
+          "description": "An architecture decision record",
+          "instruction": "One decision per file; name the slug after the choice.",
+          "template": "---\ntitle: {{title}}\nstatus: proposed\ncreated: {{created}}\n---\n\n# {{title}}\n\n## Context\n\n## Decision\n",
+          "frontmatter": {
+            "type": "object",
+            "required": ["title", "status"],
+            "properties": {
+              "status": {"enum": ["proposed", "accepted", "superseded"]},
+              "created": {"type": "string", "format": "date"}
+            }
+          },
+          "headings": ["Context", "Decision"]
+        },
+        "scratch-note": {
+          "tier": "ephemeral",
+          "generates": "notes/{slug:kebab}.md",
+          "description": "A throwaway working note"
+        }
+      },
+      "forbidden": [
+        {"pattern": "docs/**", "redirect": "Documents live under doc/; run `house-rules structure`."}
+      ]
+    }]
+  }
+}
+```
+
+Commands that read the manifest (all accept `--repo <dir>`):
+
+- `house-rules structure` lists every type as `id (tier): generates — description`, then each `forbidden: pattern → redirect`. With no `types` it prints `artifact-structure: legacy (no types)`.
+- `house-rules where <type|text>` with a type id prints `id: generates` and the instruction. With free text (contains whitespace) it prints up to 3 best-matching types. A single word that is not a type id exits 1 and lists the types.
+- `house-rules new <type> key=value...` writes a new file from the type's `template` and prints its path, for example `house-rules new decision slug=use-bun title="Use Bun"`. `title` defaults to `name` when only `name` is given. It exits 1 when the target exists or the rendered path does not match the type.
 
 ## CLI
 

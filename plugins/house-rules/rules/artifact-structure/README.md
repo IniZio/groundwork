@@ -10,6 +10,17 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 
 ## Allowed
 
+### no types configured: notes/x.md is not flagged (legacy behaviour)
+
+**Files:**
+- `notes/x.md`: 
+
+### manifest: conforming path is clean
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":".groundwork/work/{slug}/research/{name:kebab}.md"}}}]}}
+- `.groundwork/work/a/research/x.md`: 
+
 ### doc/ is canonical; no finding
 
 **Files:**
@@ -52,6 +63,16 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 - `tmp-notes.md`: 
 
 ## Flagged
+
+### manifest: new governed md outside every doc type is flagged with nearest type
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":".groundwork/work/{slug}/research/{name:kebab}.md"}}}]}}
+- `notes/research-notes.md`: 
+
+**Expected findings:**
+- artifact-structure: notes/research-notes.md is outside every doc type path. Nearest types:
+- research: Research notes -> .groundwork/work/<slug>/research/research-notes.md
 
 ### docs/ and doc/ coexist; both dirs have tracked files, both flagged
 

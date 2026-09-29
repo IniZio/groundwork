@@ -3,7 +3,20 @@ import type { TrackedCase } from '../../src/engine/rule-tester.js';
 
 type InvalidTrackedCase = TrackedCase & { findings: Partial<Finding>[] };
 
+const MANIFEST_CFG = JSON.stringify({ rules: { 'artifact-structure': ['error', {
+  govern: ['notes/**'],
+  types: { research: { tier: 'working', description: 'Research notes', generates: '.groundwork/work/{slug}/research/{name:kebab}.md' } },
+}] } });
+
 const valid: TrackedCase[] = [
+  {
+    why: 'no types configured: notes/x.md is not flagged (legacy behaviour)',
+    tree: { 'notes/x.md': '' },
+  },
+  {
+    why: 'manifest: conforming path is clean',
+    tree: { '.house-rules.json': MANIFEST_CFG, '.groundwork/work/a/research/x.md': '' },
+  },
   {
     why: 'doc/ is canonical; no finding',
     tree: { 'doc/guide.md': '' },
@@ -42,6 +55,17 @@ const valid: TrackedCase[] = [
 ];
 
 const invalid: InvalidTrackedCase[] = [
+  {
+    why: 'manifest: new governed md outside every doc type is flagged with nearest type',
+    tree: { '.house-rules.json': MANIFEST_CFG, 'notes/research-notes.md': '' },
+    findings: [
+      {
+        ruleId: 'artifact-structure',
+        path: 'notes/research-notes.md',
+        message: 'artifact-structure: notes/research-notes.md is outside every doc type path. Nearest types:\n- research: Research notes -> .groundwork/work/<slug>/research/research-notes.md',
+      },
+    ],
+  },
   {
     why: 'docs/ and doc/ coexist; both dirs have tracked files, both flagged',
     tree: { 'doc/guide.md': '', 'docs/readme.md': '' },

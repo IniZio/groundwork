@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
+import { resolveConfig } from '../config/resolve.mjs';
+import { forbiddenRedirect } from '../config/manifest.mjs';
 import { createSourceFiles } from './source-file.js';
 import type { RuleContext, ScopedFile } from './types.js';
 
@@ -25,6 +27,71 @@ export interface BuildContextOpts {
   runningAgentIds?: string[];
   /** Injected once; defaults to the tree-sitter loader's getParser. */
   parserFactory?: ParserFactory;
+  /** gate: test seam for Bash-created doc detection */
+  detectDeps?: DetectDeps;
+}
+
+export interface DetectDeps {
+  listUntracked?: () => string[];
+}
+
+/**
+ * Session start = timestamp of the first transcript entry carrying a parseable
+ * ISO `timestamp`: the earliest observable moment of the session, so a file
+ * older than it cannot have been created by it. Older untracked files from
+ * other sessions are excluded on purpose. Fails open: any error, or no
+ * timestamp, yields [].
+ */
+export function detectBashCreatedDocs(
+  repoRoot: string,
+  transcriptPath: string | undefined,
+  deps: DetectDeps = {},
+): string[] {
+  try {
+    if (!transcriptPath) return [];
+    const opts = resolveConfig(repoRoot).rules['artifact-structure'].options;
+    const govern = opts.govern ?? [];
+    if (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0) return [];
+
+    let start = NaN;
+    for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      try {
+        const ts = (JSON.parse(t) as Record<string, unknown>).timestamp;
+        if (typeof ts === 'string' && !Number.isNaN(Date.parse(ts))) {
+          start = Date.parse(ts);
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+    if (Number.isNaN(start)) return [];
+
+    const untracked =
+      deps.listUntracked?.() ??
+      (() => {
+        const r = spawnSync('git', ['-C', repoRoot, 'ls-files', '--others', '--exclude-standard'], {
+          encoding: 'utf8',
+        });
+        if (r.status !== 0) throw new Error('git ls-files failed');
+        return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+      })();
+
+    return untracked.filter((p) => {
+      if (!govern.some((g) => forbiddenRedirect(p, { forbidden: [{ pattern: g, redirect: '' }] }) !== null)) {
+        return false;
+      }
+      try {
+        return statSync(path.join(repoRoot, p)).mtimeMs >= start;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return [];
+  }
 }
 
 function isTracked(repoRoot: string, relPath: string): boolean {
@@ -71,10 +138,15 @@ function isSessionCreated(transcriptPath: string, absPath: string): boolean {
 }
 
 export function scopeFiles(opts: BuildContextOpts): string[] {
+  return scopeWithBash(opts).files;
+}
+
+function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: Set<string> } {
+  const bashCreated = new Set<string>();
   const { repoRoot, mode } = opts;
 
   if (mode === 'guard') {
-    return opts.files ?? [];
+    return { files: opts.files ?? [], bashCreated };
   }
 
   if (mode === 'gate') {
@@ -100,7 +172,12 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
       }
       result.push(relPath);
     }
-    return result;
+    for (const rel of detectBashCreatedDocs(repoRoot, opts.transcriptPath, opts.detectDeps)) {
+      if (result.includes(rel) || !existsSync(path.join(repoRoot, rel))) continue;
+      result.push(rel);
+      bashCreated.add(rel);
+    }
+    return { files: result, bashCreated };
   }
 
   // cli mode
@@ -184,12 +261,12 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
       result.push(relPath);
     }
   }
-  return result;
+  return { files: result, bashCreated };
 }
 
 export function buildContext(opts: BuildContextOpts): RuleContext {
   const { repoRoot, mode } = opts;
-  const relPaths = scopeFiles(opts);
+  const { files: relPaths, bashCreated } = scopeWithBash(opts);
   const sources = createSourceFiles(opts.parserFactory);
 
   // Compute base once
@@ -245,6 +322,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       sessionCreated = opts.transcriptPath
         ? isSessionCreated(opts.transcriptPath, absPath)
         : false;
+      if (bashCreated.has(relPath)) sessionCreated = true;
     }
 
     files.push({

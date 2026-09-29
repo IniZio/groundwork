@@ -1,7 +1,10 @@
-import type { Rule, RuleContext, Finding, PendingEdit, EditCheckEnv, EditCheckResult } from '../../src/engine/types.js';
+import type { Rule, RuleContext, Finding, ScopedFile, PendingEdit, EditCheckEnv, EditCheckResult } from '../../src/engine/types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveConfig } from '../../src/config/resolve.mjs';
+import type { ManifestOptions } from '../../src/config/resolve.mjs';
+import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, words } from '../../src/config/manifest.mjs';
 
 export const CANONICAL_SYNONYMS: Record<string, string> = {
   docs: 'doc',
@@ -20,6 +23,67 @@ const ROOT_SCRATCH_PATTERNS = [
   /^tmp/,
   /^scratch/,
 ];
+
+const SLUG_SENTINEL = 'slugplaceholder';
+
+function resolveManifest(repoRoot: string): ManifestOptions | null {
+  try {
+    const options = resolveConfig(repoRoot).rules['artifact-structure'].options;
+    const hasTypes = options.types !== undefined && Object.keys(options.types).length > 0;
+    const hasForbidden = options.forbidden !== undefined && options.forbidden.length > 0;
+    return hasTypes || hasForbidden ? options : null;
+  } catch {
+    return null;
+  }
+}
+
+function isNewFile(repoRoot: string, relPath: string): boolean {
+  const inHead = spawnSync('git', ['cat-file', '-e', `HEAD:${relPath}`], { cwd: repoRoot, stdio: 'ignore' });
+  if (inHead.status === 0) return false;
+  const ignored = spawnSync('git', ['check-ignore', '-q', '--', relPath], { cwd: repoRoot, stdio: 'ignore' });
+  return ignored.status !== 0;
+}
+
+function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: ManifestOptions): Finding[] {
+  const findings: Finding[] = [];
+  const globs = options.govern ?? [];
+  for (const f of scoped) {
+    if (!isNewFile(repoRoot, f.path)) continue;
+    const redirect = forbiddenRedirect(f.path, { forbidden: options.forbidden ?? [] });
+    if (redirect !== null) {
+      findings.push({
+        ruleId: 'artifact-structure',
+        path: f.path,
+        message: `artifact-structure: ${f.path} is not allowed here. ${redirect}`,
+        fingerprintBasis: f.path,
+      });
+      continue;
+    }
+    if (matchPath(f.path, options) !== null) continue;
+    const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
+    if (!governed) continue;
+    const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
+    const lines = nearestTypes(f.path, options, 2).flatMap(n => {
+      const def = options.types?.[n.type];
+      if (!def) return [];
+      try {
+        const params: Record<string, string> = {};
+        for (const p of compileGenerates(def.generates).params) params[p.name] = p.name === 'slug' ? SLUG_SENTINEL : stem;
+        const resolved = renderPath(def.generates, params).split(SLUG_SENTINEL).join('<slug>');
+        return [`- ${n.type}: ${def.description ? `${def.description} ` : ''}-> ${resolved}`];
+      } catch {
+        return [];
+      }
+    });
+    findings.push({
+      ruleId: 'artifact-structure',
+      path: f.path,
+      message: [`artifact-structure: ${f.path} is outside every doc type path. Nearest types:`, ...lines].join('\n'),
+      fingerprintBasis: f.path,
+    });
+  }
+  return findings;
+}
 
 const rule: Rule = {
   id: 'artifact-structure',
@@ -174,6 +238,9 @@ const rule: Rule = {
         }
       }
     }
+
+    const manifest = resolveManifest(repoRoot);
+    if (manifest !== null) findings.push(...manifestFindings(repoRoot, scoped, manifest));
 
     return findings;
   },

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveConfig, pointer } from '../config/resolve.mjs';
+import { RULE_SEVERITIES } from '../config/schema.mjs';
 
 const RULE_ORDER = ['commit-message', 'comment-density', 'stray-artifacts'] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
@@ -55,7 +56,9 @@ export function runConfig(opts: { repoRoot: string; format: 'text' | 'json' }): 
       line += '  ' + key + '=' + r.options[key] + ' (' + r.sources[key] + ')';
     }
     lines.push(line);
-    lines.push('  change with: ' + pointer(resolved, id, 'severity'));
+    if (RULE_SEVERITIES[id].length > 1) {
+      lines.push('  change with: ' + pointer(resolved, id, 'severity'));
+    }
     for (const key of OPTION_KEYS[id]) {
       lines.push('  change with: ' + pointer(resolved, id, key));
     }

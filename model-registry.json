@@ -8,7 +8,7 @@
     "qa":                 { "claude-code": "sonnet" },
     "researcher":         { "claude-code": "opus" },
     "implementer":        { "claude-code": "sonnet" },
-    "junior-orchestrator":{ "claude-code": "opus" },
+    "junior-orchestrator":{ "claude-code": "sonnet" },
     "git-master":         { "claude-code": "haiku" },
     "explore":            { "claude-code": "sonnet" }
   }

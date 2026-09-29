@@ -85,7 +85,7 @@ describe("spawn-model-guard — Family 1", () => {
     const result = check(task("groundwork:junior-orchestrator"), "groundwork:orchestrator");
     const out = JSON.parse(result.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("allow");
-    expect(out.hookSpecificOutput.updatedInput.model).toBe("opus");
+    expect(out.hookSpecificOutput.updatedInput.model).toBe("sonnet");
   });
 
   it("CLEAN: explicit model set → passthrough (empty stdout + exit 0)", () => {
@@ -169,13 +169,13 @@ describe("spawn-model-guard — size-guard redirect", () => {
     const projDir = makeProjectDir("S2", ["a.ts", "b.ts", "c.ts"]);
     const prompt = "SLICE: S2\nDo the work.";
     const result = check(
-      { tool_name: "Agent", tool_input: { subagent_type: "groundwork:implementer", prompt, model: "opus" } },
+      { tool_name: "Agent", tool_input: { subagent_type: "groundwork:implementer", prompt, model: "haiku" } },
       undefined,
       projDir
     );
     const out = parseOutput(result);
-    expect(out.hookSpecificOutput.updatedInput?.model).toBe("opus");
-    expect(out.hookSpecificOutput.updatedInput?.model).not.toBe("sonnet");
+    expect(out.hookSpecificOutput.updatedInput?.model).toBe("sonnet");
+    expect(out.hookSpecificOutput.updatedInput?.model).not.toBe("haiku");
   });
 
   it("REDIRECT: prompt prefix exact", () => {

@@ -1,7 +1,7 @@
 ---
 name: junior-orchestrator
 description: Sub-domain orchestrator (depth 1) — DEFAULT for multi-file slices. Splits into leaf work (≤2 files each), fans out groundwork:implementer in ONE message. MUST NOT forward whole slice to one child.
-model: opus
+model: sonnet
 tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 ---
 

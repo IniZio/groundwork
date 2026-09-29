@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -52,13 +53,22 @@ describe("instruction-budget.md — byte counts match files at HEAD", () => {
     //   - actual repo path → /GROUNDWORK_ROOT
     //   - git sha → (XXXXXXX)
     // This keeps the test a real drift detector while being checkout/commit agnostic.
-    const result = spawnSync("bun", ["src/hooks/session-start.ts"], {
-      input: "{}",
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT },
-      cwd: ROOT,
-    });
-    if (result.status !== 0) throw new Error(`session-start hook exited ${result.status}: ${result.stderr.toString()}`);
-    const out = JSON.parse(result.stdout.toString("utf8")) as { hookSpecificOutput: { additionalContext: string } };
+    const empty = mkdtempSync(path.join(tmpdir(), "budget-empty-"));
+    const saved = process.env.CLAUDE_PROJECT_DIR;
+    delete process.env.CLAUDE_PROJECT_DIR;
+    let result: ReturnType<typeof spawnSync>;
+    try {
+      result = spawnSync("bun", [path.join(ROOT, "src/hooks/session-start.ts")], {
+        input: "{}",
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: empty },
+        cwd: empty,
+      });
+    } finally {
+      if (saved !== undefined) process.env.CLAUDE_PROJECT_DIR = saved;
+      rmSync(empty, { recursive: true, force: true });
+    }
+    if (result.status !== 0) throw new Error(`session-start hook exited ${result.status}: ${String(result.stderr)}`);
+    const out = JSON.parse(String(result.stdout)) as { hookSpecificOutput: { additionalContext: string } };
     const raw = out.hookSpecificOutput.additionalContext;
     const rootEscaped = ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const norm = raw

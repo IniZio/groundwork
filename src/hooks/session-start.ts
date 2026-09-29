@@ -4,6 +4,41 @@ function isEmbedded(env: Record<string, string | undefined>): boolean {
   return env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js";
 }
 
+const DOCS_MAX_LINES = 8;
+
+// Fails open: any error omits the table, never the rest of the context.
+async function whereDocsGoBlock(env: Record<string, string | undefined>): Promise<string> {
+  try {
+    const root = env.CLAUDE_PROJECT_DIR || process.cwd();
+    const { resolveConfig } = await import("../../hooks/lib/house-rules-config/resolve.mjs");
+    const { renderStructure } = await import("../../hooks/lib/house-rules-config/structure.mjs");
+    const { activeSlug } = await import("../store/work-units.js");
+
+    const slug = activeSlug(root);
+    const extra: string[] = [];
+    if (!slug) extra.push("no active motive — select one with `$GW motive use <slug> --token T` before writing docs");
+
+    let manifest = resolveConfig(root).rules["artifact-structure"].options as Record<string, unknown>;
+    if (!Object.keys((manifest.types as object | undefined) ?? {}).length) {
+      const { WORKING_TYPES, FORBIDDEN } = await import("./doc-registry.js");
+      const types: Record<string, { tier: string; generates: string; description: string }> = {};
+      for (const [id, t] of Object.entries(WORKING_TYPES) as [string, { tier: string; generates: string; description: string }][]) {
+        types[id] = { tier: t.tier, generates: t.generates, description: t.description };
+      }
+      manifest = { types, forbidden: FORBIDDEN };
+      extra.push("not enforced — $GW recipe prints the .house-rules.json block");
+    }
+
+    const lines = (renderStructure(manifest, { maxLines: DOCS_MAX_LINES - extra.length }) as string[])
+      .map(l => l.replaceAll("{slug}", slug ?? "<slug>"));
+    const noteFirst = extra.filter(l => l.startsWith("no active"));
+    const noteLast = extra.filter(l => l.startsWith("not enforced"));
+    return `\n\n## Where docs go\n${[...noteFirst, ...lines, ...noteLast].join("\n")}`;
+  } catch {
+    return "";
+  }
+}
+
 async function main() {
   if (isEmbedded(process.env as Record<string, string | undefined>)) {
     process.exit(0);
@@ -75,6 +110,8 @@ async function main() {
     ? `\n\n${routingRules.trim()}`
     : "";
 
+  const docsBlock = await whereDocsGoBlock(env);
+
   const additionalContext = `${rootMismatchLine}# groundwork ${version}${shaLabel} — ${pluginRoot}
 
 Classify, delegate, review. Never implement directly.
@@ -95,7 +132,7 @@ Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <
 
 ## house-rules enforcement
 
-Comment density and stray artifacts are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before Write/Edit/MultiEdit for every language house-rules registers (see its README) — other languages pass through — and the gate blocks at Stop/SubagentStop. The stray-artifacts rule denies writing into either synonym dir (doc/docs, test/tests, script/scripts, util/utils, lib/libs) when its sibling already exists at the same parent — a lone docs/ or doc/ is fine — and denies root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*). The gate may auto-trim over-budget comments at turn end, so a later "file changed since last Read" on such a file is expected — it is autofix, not another agent. Re-read the file before editing and do not re-add the removed comments; a comment that must stay should explain a non-obvious why.\n\nCommit style comes from \`.house-rules.json\`; run \`house-rules config\` to see active values and their source, and load \`house-rules:configure\` to change it. Loosening a rule is a human decision.${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Comment density and artifact structure are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before Write/Edit/MultiEdit for every language house-rules registers (see its README) — other languages pass through — and the gate blocks at Stop/SubagentStop. The artifact-structure rule denies writing into either synonym dir (doc/docs, test/tests, script/scripts, util/utils, lib/libs) when its sibling already exists at the same parent — a lone docs/ or doc/ is fine — and denies root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*). The gate may auto-trim over-budget comments at turn end, so a later "file changed since last Read" on such a file is expected — it is autofix, not another agent. Re-read the file before editing and do not re-add the removed comments; a comment that must stay should explain a non-obvious why.\n\nCommit style comes from \`.house-rules.json\`; run \`house-rules config\` to see active values and their source, and load \`house-rules:configure\` to change it. Loosening a rule is a human decision.${docsBlock}${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

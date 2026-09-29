@@ -1,6 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { WorkStore } from "../../src/store/store.js";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const HOOK = path.join(ROOT, "src/hooks/session-start.ts");
@@ -41,9 +44,11 @@ describe("session-start hook", () => {
     expect(ctx).not.toContain("Comment-density-gate");
   });
 
-  it("stray-artifacts description mentions sibling coexistence, not 'denies creation of synonym dirs'", () => {
+  it("house-rules paragraph names artifact-structure, sibling coexistence, not 'denies creation of synonym dirs'", () => {
     const { stdout } = run({});
     const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("artifact-structure");
+    expect(ctx).not.toContain("stray-artifacts");
     expect(ctx).toMatch(/sibling|coexist/i);
     expect(ctx).not.toContain("denies creation of synonym dirs");
   });
@@ -154,5 +159,136 @@ describe("session-start hook", () => {
     const { stdout } = run({});
     const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
     expect(ctx).not.toMatch(bypass);
+  });
+});
+
+describe("session-start Where docs go", () => {
+  const dirs: string[] = [];
+  const NOTE = "not enforced — $GW recipe prints the .house-rules.json block";
+  const HOST = {
+    rules: {
+      "artifact-structure": [
+        "error",
+        {
+          types: {
+            note: { tier: "working", generates: "notes/{slug}/note.md", description: "A note" },
+          },
+          forbidden: [{ pattern: "tmp/**", redirect: "Use notes/{slug}/" }],
+        },
+      ],
+    },
+  };
+
+  function repo(seed?: string, houseRules?: unknown | string): string {
+    const d = mkdtempSync(path.join(tmpdir(), "ss-docs-"));
+    dirs.push(d);
+    if (seed !== undefined) {
+      mkdirSync(path.join(d, ".groundwork"), { recursive: true });
+      const store = new WorkStore(path.join(d, ".groundwork", "work.db"));
+      store.setActiveMotive(seed);
+      store.close();
+    }
+    if (houseRules !== undefined) {
+      writeFileSync(path.join(d, ".house-rules.json"), typeof houseRules === "string" ? houseRules : JSON.stringify(houseRules));
+    }
+    return d;
+  }
+
+  function spawnHook(dir: string): { ctx: string; exit: number } {
+    const cmd = (JSON.parse(require("node:fs").readFileSync(path.join(ROOT, ".claude-plugin/plugin.json"), "utf8")) as {
+      hooks: { SessionStart: { hooks: { command: string }[] }[] };
+    }).hooks.SessionStart.flatMap(g => g.hooks.map(h => h.command)).find(c => c.includes("session-start.ts"))!;
+    const env: Record<string, string | undefined> = { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: dir };
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    const r = spawnSync("sh", ["-c", cmd], { input: "{}", env: env as NodeJS.ProcessEnv, cwd: dir });
+    const out = r.stdout?.toString() ?? "";
+    const ctx = out ? (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext : "";
+    return { ctx, exit: r.status ?? 1 };
+  }
+
+  function section(ctx: string): string[] {
+    const after = ctx.split("## Where docs go\n")[1];
+    if (after === undefined) return [];
+    const lines: string[] = [];
+    for (const l of after.split("\n")) {
+      if (l.startsWith("#")) break;
+      if (l.trim()) lines.push(l);
+    }
+    return lines;
+  }
+
+  const cleanup = () => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); };
+
+  it("AC1 registered command emits Where docs go with <=8 lines and registry fallback note", () => {
+    const d = repo("foo");
+    const { ctx, exit } = spawnHook(d);
+    expect(exit).toBe(0);
+    const lines = section(ctx);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.length).toBeLessThanOrEqual(8);
+    expect(lines).toContain(NOTE);
+    expect(lines.join("\n")).toContain("motive (working)");
+    cleanup();
+  });
+
+  it("AC1 host manifest with types is used and no fallback note appears", () => {
+    const d = repo("foo", HOST);
+    const lines = section(spawnHook(d).ctx);
+    expect(lines).toContain("note (working): notes/foo/note.md — A note");
+    expect(lines.join("\n")).not.toContain("not enforced");
+    cleanup();
+  });
+
+  it("AC2 parity with house-rules structure output capped at 8 lines, {slug} substituted", () => {
+    const many: Record<string, unknown> = {};
+    for (let i = 0; i < 10; i++) many[`t${i}`] = { tier: "working", generates: `d${i}/{slug}/x.md`, description: `type ${i}` };
+    const d = repo("foo", { rules: { "artifact-structure": ["error", { types: many }] } });
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    const cli = spawnSync(path.join(ROOT, "plugins/house-rules/bin/house-rules"), ["structure"], { cwd: d, env: { ...process.env, CLAUDE_PROJECT_DIR: d } });
+    expect(cli.status).toBe(0);
+    let expected = cli.stdout.toString().trimEnd().split("\n");
+    if (expected.length > 8) expected = [...expected.slice(0, 7), `… ${expected.length - 7} more; run \`house-rules structure\` for all`];
+    expected = expected.map(l => l.replaceAll("{slug}", "foo"));
+    expect(section(spawnHook(d).ctx)).toEqual(expected);
+    cleanup();
+  });
+
+  it("AC3 active motive slug appears per repo, no ambient leak", () => {
+    const a = repo("foo");
+    const b = repo("bar");
+    const ca = spawnHook(a).ctx;
+    const cb = spawnHook(b).ctx;
+    expect(section(ca).join("\n")).toContain(".groundwork/work/foo/");
+    expect(section(cb).join("\n")).toContain(".groundwork/work/bar/");
+    expect(section(cb).join("\n")).not.toContain("foo");
+    expect(section(ca).join("\n")).not.toContain("bar");
+    cleanup();
+  });
+
+  it("AC4 unseeded repo tells agent to select a motive, never work/default/", () => {
+    const d = repo();
+    const s = section(spawnHook(d).ctx);
+    expect(s.length).toBeLessThanOrEqual(8);
+    expect(s.join("\n")).toContain("$GW motive use <slug>");
+    expect(s.join("\n")).not.toContain("work/default/");
+    cleanup();
+  });
+
+  it("AC4 repo seeded default tells agent to select a motive, never work/default/", () => {
+    const d = repo("default");
+    const s = section(spawnHook(d).ctx);
+    expect(s.length).toBeLessThanOrEqual(8);
+    expect(s.join("\n")).toContain("$GW motive use <slug>");
+    expect(s.join("\n")).not.toContain("work/default/");
+    cleanup();
+  });
+
+  it("AC6 invalid host config omits the table but exits 0 with the rest of the context", () => {
+    const d = repo("foo", "{ not json");
+    const { ctx, exit } = spawnHook(d);
+    expect(exit).toBe(0);
+    expect(ctx).not.toContain("## Where docs go");
+    expect(ctx).toContain("## Stop-gate");
+    cleanup();
   });
 });

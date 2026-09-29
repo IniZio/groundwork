@@ -205,3 +205,70 @@ describe("commit-convention — PreToolUse guard (check()) with marketplace plug
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
   });
 });
+
+// ── Slug sources: work/, archive/<yyyy-mm>/, archive/legacy/motives/, motives/ ──
+
+describe("commit-convention — slug sources across the work/archive layout", () => {
+  const GUARD = join(import.meta.dir, "../../src/hooks/commit-message-guard.ts");
+  const PLUGIN_ROOT = join(import.meta.dir, "../..");
+
+  function layoutRepo(): string {
+    const root = mkdtempSync(join(tmpdir(), "cc-layout-"));
+    tempDirs.push(root);
+    spawnSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    writeFileSync(join(root, ".house-rules.json"), JSON.stringify({ rules: { "commit-message": ["error", { preset: "conventional" }] } }));
+    const gw = join(root, ".groundwork");
+    for (const p of [
+      "work/alpha-unit",
+      "archive/2026-09/bravo-unit",
+      "archive/legacy/motives/charlie-unit",
+      "motives/delta-unit",
+      "archive/legacy/handoffs/echo-unit",
+      "archive/misc/foxtrot-unit",
+    ]) mkdirSync(join(gw, p), { recursive: true });
+    mkdirSync(join(root, ".claude-plugin"), { recursive: true });
+    writeFileSync(join(root, ".claude-plugin", "marketplace.json"), JSON.stringify({ plugins: [{ name: "golf-unit" }] }));
+    mkdirSync(join(gw, "work", "golf-unit"), { recursive: true });
+    return root;
+  }
+
+  function runGuard(root: string, subject: string) {
+    const { CLAUDE_PROJECT_DIR: _drop, ...base } = process.env;
+    const r = spawnSync("bun", [GUARD], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "${subject}"`, cwd: root }, cwd: root }),
+      env: { ...base, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      cwd: root,
+      timeout: 15_000,
+    });
+    return { stdout: r.stdout?.toString() ?? "", exit: r.status ?? 1 };
+  }
+
+  const rejected: [string, string][] = [
+    ["work/alpha-unit", "alpha-unit"],
+    ["archive/2026-09/bravo-unit", "bravo-unit"],
+    ["archive/legacy/motives/charlie-unit", "charlie-unit"],
+    ["motives/delta-unit", "delta-unit"],
+  ];
+  for (const [src, slug] of rejected) {
+    it(`slug from ${src} is rejected by the deployed guard and named`, () => {
+      const r = runGuard(layoutRepo(), `feat: tune ${slug} flow`);
+      expect(r.stdout).toContain(`contains motive slug \\"${slug}\\"`);
+    });
+  }
+
+  for (const [src, slug] of [["archive/legacy/handoffs/echo-unit", "echo-unit"], ["archive/misc/foxtrot-unit", "foxtrot-unit"]]) {
+    it(`control: ${src} is not a slug and is accepted`, () => {
+      const r = runGuard(layoutRepo(), `feat: tune ${slug} flow`);
+      expect(r.stdout).toBe("");
+      expect(r.exit).toBe(0);
+    });
+  }
+
+  it("subject with no slug is accepted", () => {
+    expect(runGuard(layoutRepo(), "feat: tune the flow").stdout).toBe("");
+  });
+
+  it("plugin-name exclusion still applies to work/ slugs", () => {
+    expect(runGuard(layoutRepo(), "feat: tune golf-unit flow").stdout).toBe("");
+  });
+});

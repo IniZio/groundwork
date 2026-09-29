@@ -139,15 +139,36 @@ export function clearHostRulesCache() {
   hostRulesCache.clear()
 }
 
-export function getMotiveSlugs(repoRoot) {
+function listDirs(dir) {
   try {
-    const root = repoRoot ?? resolveRepoRoot()
-    return readdirSync(join(root, '.groundwork', 'motives'), { withFileTypes: true })
+    return readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
   } catch {
     return []
   }
+}
+
+export function getMotiveSlugs(repoRoot) {
+  let root
+  try {
+    root = repoRoot ?? resolveRepoRoot()
+  } catch {
+    return []
+  }
+  const gw = join(root, '.groundwork')
+  // Only yyyy-mm buckets hold slugs; archive/legacy/handoffs and other siblings do not.
+  const archived = listDirs(join(gw, 'archive'))
+    .filter((d) => /^\d{4}-\d{2}$/.test(d))
+    .flatMap((d) => listDirs(join(gw, 'archive', d)))
+  return [
+    ...new Set([
+      ...listDirs(join(gw, 'work')),
+      ...archived,
+      ...listDirs(join(gw, 'archive', 'legacy', 'motives')),
+      ...listDirs(join(gw, 'motives')),
+    ]),
+  ]
 }
 
 function getMarketplacePluginNames(repoRoot) {

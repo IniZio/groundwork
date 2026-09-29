@@ -69,7 +69,8 @@ function findLoosenings(repoRoot: string, oldText: string | null, newText: strin
   if (nMax > oMax) out.push(`  rules["comment-density"].max_per_100: ${oMax} → ${nMax}`);
   const oPre = oldCfg.rules["commit-message"].options.preset;
   const nPre = newCfg.rules["commit-message"].options.preset;
-  if (nPre !== oPre && nPre !== detectPreset(repoRoot).value) {
+  const pinned = oldCfg.rules["commit-message"].sources.preset === "explicit";
+  if (nPre !== oPre && (pinned || nPre !== detectPreset(repoRoot).value)) {
     out.push(`  rules["commit-message"].preset: ${oPre} → ${nPre}`);
   }
   return out;

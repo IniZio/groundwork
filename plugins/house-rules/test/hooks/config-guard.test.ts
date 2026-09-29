@@ -390,6 +390,48 @@ describe("preset guard in a conventional-history repo", () => {
   });
 });
 
+describe("explicit preset pin is a human decision", () => {
+  const REASON = '  rules["commit-message"].preset: ';
+  function makeRepoWith(msgs: string[], pinned: string) {
+    const dir = makeRepo();
+    repos.push(dir);
+    for (const m of msgs) execSync(`git commit -q --allow-empty -m '${m}'`, { cwd: dir });
+    const cfgPath = join(dir, ".house-rules.json");
+    writeFileSync(cfgPath, cfg({ "commit-message": ["error", { preset: pinned }] }));
+    return { dir, cfgPath };
+  }
+  const handbookRepo = (pinned: string) => makeRepoWith(["Add x", "Add y"], pinned);
+  const put = (r: { dir: string; cfgPath: string }, content: string) =>
+    runHook(r.dir, "Write", { file_path: r.cfgPath, content });
+  const pinTo = (preset: string) => cfg({ "commit-message": ["error", { preset }] });
+
+  test("conventional pin in handbook repo: Write {} denied", async () => {
+    const r = handbookRepo("conventional");
+    await expectDeny(put(r, "{}"), REASON + "conventional → handbook", "Ask the user");
+  });
+
+  test("conventional pin in handbook repo: revert to handbook denied", async () => {
+    const r = handbookRepo("conventional");
+    await expectDeny(put(r, pinTo("handbook")), REASON + "conventional → handbook");
+  });
+
+  test("conventional pin in handbook repo: rm denied", async () => {
+    const r = handbookRepo("conventional");
+    await expectDeny(runHook(r.dir, "Bash", { command: "rm .house-rules.json" }));
+  });
+
+  test("handbook pin in conventional repo: switch to conventional denied", async () => {
+    const r = makeRepoWith(["feat: a", "fix: b", "chore: c", "docs: d"], "handbook");
+    await expectDeny(put(r, pinTo("conventional")), REASON + "handbook → conventional");
+  });
+
+  test("invalid old file treated as defaults: valid pin != detection still denied", async () => {
+    const r = makeRepoWith(["Add x", "Add y"], "conventional");
+    writeFileSync(r.cfgPath, "{not json");
+    await expectDeny(put(r, pinTo("conventional")), REASON);
+  });
+});
+
 describe("no bypass hints", () => {
   test("positive control: BYPASS_RE matches bypass hints", () => {
     expect("set HOUSE_RULES_DISABLE=1 to bypass the hook").toMatch(BYPASS_RE);

@@ -15,6 +15,7 @@
 | Grilling | `mattpocock-skills:grilling` |
 | Verify/gate | `groundwork:qa`, `groundwork:advisor` |
 | Hygiene/deslop | `house-rules:housekeep` |
+| Config / commit style rejected | `house-rules:configure` |
 | Motive | /motive, /pause, /continue |
 
 Unknown location → `groundwork:explore`; never Read/Grep/Glob or run grep/rg/find/git-grep/ag yourself.

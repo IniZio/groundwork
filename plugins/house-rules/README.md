@@ -22,6 +22,35 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 Per-rule READMEs are generated under `rules/<id>/`.
 
+## Configuration
+
+Repo-level config lives in `.house-rules.json` at the repo root:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/IniZio/groundwork/main/plugins/house-rules/house-rules.schema.json",
+  "rules": {
+    "commit-message": ["error", {"preset": "conventional"}],
+    "comment-density": ["error", {"max_per_100": 5}],
+    "stray-artifacts": "error"
+  }
+}
+```
+
+| Rule | Allowed values |
+|---|---|
+| commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
+| comment-density | severity `off`, `warn`, or `error`; `max_per_100` 0 to 100 (validated and shown; the density cap is currently fixed at 5) |
+| stray-artifacts | severity `off`, `warn`, or `error` |
+
+Commit preset precedence: explicit config, then `.gitmessage`, then commitlint config, then git history, then the `handbook` default.
+
+`house-rules config [--repo <dir>] [--format json]` prints the active values, the source of each, and `change with:` lines. Invalid config exits 2 with the key path and allowed values.
+
+A PreToolUse config guard denies edits to `.house-rules.json` that loosen a rule. Loosening is a human decision; tightening edits pass.
+
+The `house-rules:configure` skill walks an agent through a rejected commit message: read the active config, then rewrite the message or pin the matching preset.
+
 ## CLI
 
 ```

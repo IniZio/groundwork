@@ -136,4 +136,20 @@ describe("session-start hook", () => {
     expect(ctx).toMatch(/Sequencing prose/i);
     expect(ctx).toMatch(/invented abbreviations/i);
   });
+
+  it("additionalContext points at house-rules config and configure skill", () => {
+    const { stdout } = run({});
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("house-rules config");
+    expect(ctx).toContain("house-rules:configure");
+    expect(ctx).toContain("default 5 per 100");
+  });
+
+  it("additionalContext mentions no bypass route", () => {
+    const bypass = /kill.?switch|bypass|GROUNDWORK_COMMIT|no-verify/i;
+    expect(bypass.test("Set a kill-switch or use --no-verify to bypass the hook")).toBe(true);
+    const { stdout } = run({});
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).not.toMatch(bypass);
+  });
 });

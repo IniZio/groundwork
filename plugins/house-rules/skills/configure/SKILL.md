@@ -20,7 +20,7 @@ Take the rule, the active value, and the source from it. Step 1's output confirm
 ### 3. Decide: rewrite or pin
 
 Presets:
-- `handbook`: subject starts with Add, Fix, Remove, Update, Refactor or Test; at most 50 chars.
+- `handbook`: subject starts with Add, Fix, Remove, Update, Refactor or Test; at most 50 chars; no body.
 - `conventional`: `type(scope)!: subject`; at most 72 chars; types feat fix docs style refactor perf test build ci chore revert.
 - `subject-only`: subject format unchecked; no body.
 

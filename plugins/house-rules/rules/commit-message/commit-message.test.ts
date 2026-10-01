@@ -41,9 +41,22 @@ describe('lintCommitMessage – handbook preset', () => {
     expect(result.violations).toHaveLength(0)
   })
 
-  it('passes with body separated by blank line', () => {
-    const result = lintCommitMessage('Add feature\n\nThis is the body.', opts)
-    expect(result.violations).toHaveLength(0)
+  it('denies a body after a blank line', () => {
+    const result = lintCommitMessage('Fix x\n\nbody', opts)
+    expect(result.violations.some(v => v.group === 'body' && v.reason === 'No body is permitted in this repository')).toBe(true)
+  })
+
+  it('allows subject only, with or without trailing newline', () => {
+    expect(lintCommitMessage('Fix x', opts).violations).toHaveLength(0)
+    expect(lintCommitMessage('Fix x\n', opts).violations).toHaveLength(0)
+  })
+
+  it('still skips subject checks but not body check for fixup!', () => {
+    expect(lintCommitMessage('fixup! anything', opts).violations).toHaveLength(0)
+    expect(lintCommitMessage('squash! anything', opts).violations).toHaveLength(0)
+    for (const m of ['fixup! x\n\nbody', 'squash! x\n\nbody']) {
+      expect(lintCommitMessage(m, opts).violations.some(v => v.group === 'body')).toBe(true)
+    }
   })
 
   it('fails conventional-format subject (wrong verb pattern)', () => {

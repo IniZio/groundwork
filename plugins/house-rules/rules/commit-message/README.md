@@ -2,7 +2,7 @@
 
 # commit-message
 
-Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars). Configure via .house-rules.json: {"rules":{"commit-message":["error",{"preset":"conventional"}]}}. Presets: handbook, conventional, subject-only; without an explicit preset it is detected from .gitmessage, commitlint config, then commit history.
+Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars, subject line only). Configure via .house-rules.json: {"rules":{"commit-message":["error",{"preset":"conventional"}]}}. Presets: handbook, conventional, subject-only; without an explicit preset it is detected from .gitmessage, commitlint config, then commit history.
 
 > Not in policy.
 
@@ -22,6 +22,13 @@ Add user login validation
 Fix null-pointer in token refresh
 ```
 
+### handbook preset: subject line only, trailing newline is fine
+
+```
+Fix null-pointer in token refresh
+
+```
+
 ### conventional preset: type(scope): description
 
 ```
@@ -35,6 +42,17 @@ feat: add login flow
 ```
 
 ## Flagged
+
+### handbook preset: body is not allowed, subject line only
+
+```
+Fix null-pointer in token refresh
+
+The refresh path read a stale token.
+```
+
+**Expected findings:**
+- No body is permitted in this repository
 
 ### handbook preset: conventional-style type prefix not an imperative verb
 

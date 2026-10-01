@@ -89,34 +89,33 @@ export function lintCommitMessage(message, opts = {}) {
     }
   }
 
-  if (preset === PRESET_CONVENTIONAL || preset === PRESET_SUBJECT_ONLY) {
-    if (lines.length > 1) {
-      if (lines[1] !== '') {
-        violations.push({
-          line: 2,
-          group: 'body',
-          reason: 'Line 2 must be blank when body is present',
-        })
-      }
-      const bodyLines = lines.slice(2)
-      const nonBlankBodyLines = bodyLines.filter(l => l.trim() !== '')
-      if (nonBlankBodyLines.length > 0) {
-        violations.push({
-          line: 3,
-          group: 'body',
-          reason: 'No body is permitted in this repository',
-        })
-      }
-      bodyLines.forEach((bodyLine, idx) => {
-        if (/^\s*[-*•]\s/.test(bodyLine)) {
-          violations.push({
-            line: 3 + idx,
-            group: 'body',
-            reason: 'body lines must not use bullet markers (-, *, •)',
-          })
-        }
+  // Every preset is subject-line only: a body is rejected.
+  if (lines.length > 1) {
+    if (lines[1] !== '') {
+      violations.push({
+        line: 2,
+        group: 'body',
+        reason: 'Line 2 must be blank when body is present',
       })
     }
+    const bodyLines = lines.slice(2)
+    const nonBlankBodyLines = bodyLines.filter(l => l.trim() !== '')
+    if (nonBlankBodyLines.length > 0) {
+      violations.push({
+        line: 3,
+        group: 'body',
+        reason: 'No body is permitted in this repository',
+      })
+    }
+    bodyLines.forEach((bodyLine, idx) => {
+      if (/^\s*[-*•]\s/.test(bodyLine)) {
+        violations.push({
+          line: 3 + idx,
+          group: 'body',
+          reason: 'body lines must not use bullet markers (-, *, •)',
+        })
+      }
+    })
   }
 
   return { violations, preset }

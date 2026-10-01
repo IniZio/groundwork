@@ -18,6 +18,10 @@ export const cases: RuleCases = {
       code: 'Fix null-pointer in token refresh',
     },
     {
+      why: 'handbook preset: subject line only, trailing newline is fine',
+      code: 'Fix null-pointer in token refresh\n',
+    },
+    {
       why: 'conventional preset: type(scope): description',
       code: 'fix(auth): correct token expiry check',
     },
@@ -27,6 +31,11 @@ export const cases: RuleCases = {
     },
   ],
   invalid: [
+    {
+      why: 'handbook preset: body is not allowed, subject line only',
+      code: 'Fix null-pointer in token refresh\n\nThe refresh path read a stale token.',
+      findings: [{ ruleId: 'commit-message', message: 'No body is permitted in this repository' }],
+    },
     {
       why: 'handbook preset: conventional-style type prefix not an imperative verb',
       code: 'feat(auth): add login',

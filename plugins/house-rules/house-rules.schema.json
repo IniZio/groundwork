@@ -42,7 +42,7 @@
                     "preset": {
                       "type": "string",
                       "enum": ["handbook", "conventional", "subject-only"],
-                      "description": "Commit style to enforce. \"handbook\": subject starts with an imperative verb and is at most 50 characters. \"conventional\": subject follows type(scope): description with a known type (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert), at most 72 characters. \"subject-only\": use when the repository already has its own subject convention (for example commitlint); the subject format is not checked and only the message structure is."
+                      "description": "Commit style to enforce. \"handbook\": subject starts with an imperative verb and is at most 50 characters; no commit body is allowed. \"conventional\": subject follows type(scope): description with a known type (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert), at most 72 characters. \"subject-only\": use when the repository already has its own subject convention (for example commitlint); the subject format is not checked and only the message structure is."
                     }
                   }
                 }

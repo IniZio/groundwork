@@ -181,9 +181,9 @@ describe("commit-message-guard — Family 6", () => {
     expect(result.exit).toBe(0);
   });
 
-  it("ALLOW: -F - (stdin) passes through silently", () => {
+  it("DENY: -F - (stdin, no heredoc) cannot be linted", () => {
     const result = check(bash("git commit -F -"));
-    expect(result.stdout).toBe("");
+    expect(decision(result)).toBe("deny");
     expect(result.exit).toBe(0);
   });
 
@@ -314,6 +314,108 @@ describe("commit-message-guard — wrapper forms", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  const BAD = "bad message no convention";
+  const HB = "fix(auth): correct token expiry check";
+  const denyForms: Array<[string, string]> = [
+    ["/usr/bin/git commit", `/usr/bin/git commit -m "${BAD}"`],
+    ["/usr/bin/git -C /tmp commit", `/usr/bin/git -C /tmp commit -m "${BAD}"`],
+    ["quoted \"/usr/bin/git\" commit", `"/usr/bin/git" commit -m "${BAD}"`],
+    ["env FOO=1 git commit", `env FOO=1 git commit -m "${BAD}"`],
+    ["env -i git commit", `env -i git commit -m "${BAD}"`],
+    ["env -u X git commit", `env -u X git commit -m "${BAD}"`],
+    ["cd /tmp && /usr/bin/git commit", `cd /tmp && /usr/bin/git commit -m "${BAD}"`],
+    ["rtk git commit", `rtk git commit -m "${BAD}"`],
+    ["rtk proxy git commit", `rtk proxy git commit -m "${BAD}"`],
+  ];
+  for (const [name, cmd] of denyForms) {
+    it(`DENY: ${name} — bad message blocked`, () => {
+      expect(decision(check(bash(cmd)))).toBe("deny");
+    });
+    it(`ALLOW: ${name} — valid message passes`, () => {
+      const ok = cmd.includes('-C /tmp') ? "Fix token expiry check" : HB;
+      const result = check(bash(cmd.replace(BAD, ok)));
+      expect(result.stdout).toBe("");
+    });
+  }
+
+  it("DENY: /usr/local/bin/git commit --no-verify — blocked via no-verify path", () => {
+    const result = check(bash('/usr/local/bin/git commit --no-verify -m "Fix x"'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/no-verify/);
+  });
+
+  it.each([
+    ["gitk commit", `gitk commit -m "${BAD}"`],
+    ["echo git commit", `echo git commit -m "${BAD}"`],
+    ["/usr/bin/gitx commit", `/usr/bin/gitx commit -m "${BAD}"`],
+  ])("ALLOW: %s — not git, passes", (_n, cmd) => {
+    expect(check(bash(cmd)).stdout).toBe("");
+  });
+
+  it.each([
+    ["git", "git commit -q -F - <<'EOF'"],
+    ["/usr/bin/git", "/usr/bin/git commit -q -F - <<'EOF'"],
+    ["git --file=-", "git commit -q --file=- <<'EOF'"],
+    ["git dquoted tag", 'git commit -q -F - <<"EOF"'],
+    ["git bare tag", "git commit -q -F - <<EOF"],
+    ["git <<-", "git commit -q -F - <<-EOF"],
+  ])("DENY/ALLOW: heredoc -F - (%s) lints the body", (_n, head) => {
+    expect(decision(check(bash(`${head}\n${BAD}\nEOF`)))).toBe("deny");
+    expect(check(bash(`${head}\n${HB}\nEOF`)).stdout).toBe("");
+  });
+
+  it.each([
+    ["nice -n 10", "nice -n 10 git commit"],
+    ["sudo -u root", "sudo -u root git commit"],
+    ["sudo -E", "sudo -E git commit"],
+    ["time -p", "time -p git commit"],
+    ["command -p", "command -p git commit"],
+    ["exec -a x", "exec -a x git commit"],
+    ["env -C /tmp", "env -C /tmp git commit"],
+    ["env --chdir=/tmp", "env --chdir=/tmp git commit"],
+  ])("launcher flags: %s git commit — bad denied, valid passes", (_n, head) => {
+    expect(decision(check(bash(`${head} -m "${BAD}"`)))).toBe("deny");
+    expect(check(bash(`${head} -m "${HB}"`)).stdout).toBe("");
+  });
+
+  it.each([
+    "time echo git commit", "/opt/xgit commit", "sudo -u root gitk commit",
+  ])("ALLOW: %s — not a git commit, passes", (cmd) => {
+    expect(check(bash(`${cmd} -m "${BAD}"`)).stdout).toBe("");
+  });
+
+  it.each([
+    ["-F-", "git commit -F- <<'EOF'"],
+    ["-qF -", "git commit -qF - <<'EOF'"],
+    ["-qF-", "git commit -qF- <<'EOF'"],
+  ])("DENY/ALLOW: glued heredoc %s lints the body", (_n, head) => {
+    expect(decision(check(bash(`${head}\n${BAD}\nEOF`)))).toBe("deny");
+    expect(check(bash(`${head}\n${HB}\nEOF`)).stdout).toBe("");
+  });
+
+  it("DENY/ALLOW: <<- heredoc with tab-indented body and terminator", () => {
+    const head = "git commit -q -F - <<-EOF";
+    expect(decision(check(bash(`${head}\n\t${BAD}\n\tEOF`)))).toBe("deny");
+    expect(check(bash(`${head}\n\t${HB}\n\tEOF`)).stdout).toBe("");
+  });
+
+  it("ALLOW: duplicate heredoc text earlier in a quoted string does not pick the wrong body", () => {
+    const cmd = `echo "x\n git commit -q -F - <<'EOF'\n${BAD}" && git commit -q -F - <<'EOF'\n${HB}\nEOF`;
+    expect(check(bash(cmd)).stdout).toBe("");
+  });
+
+  it("DENY: -F - with piped stdin cannot be linted — guidance names -m", () => {
+    const result = check(bash('echo "bad message" | git commit -F -'));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/-m/);
+  });
+
+  it("DENY: -F - with redirected stdin cannot be linted", () => {
+    const result = check(bash("git commit -F - < /tmp/msg.txt"));
+    expect(decision(result)).toBe("deny");
+    expect(reason(result)).toMatch(/-m/);
   });
 });
 

@@ -13,8 +13,13 @@
  *   git -c key=val commit ...       (git -c flag)
  *   git --git-dir=<d> commit ...    (git --git-dir flag)
  *   cmd1 && git commit ...          (after &&, ||, ;, |, newline)
+ *   /usr/bin/git commit ...         (any path or quoted form whose basename is git)
+ *   env [-i] [-u N] FOO=1 git ...   (env, exec, nohup, nice, time, sudo launchers)
+ *   rtk [proxy] git commit ...      (rtk launcher)
+ *   git commit -F - <<'EOF' ...     (heredoc body is linted; <<TAG, <<"TAG", <<-TAG)
  *
  * Also denied:
+ *   git commit -F -                 (stdin without a heredoc; use -m)
  *   git commit --no-verify / -n     (skips commit-msg hook)
  *   git -c core.hooksPath=... ...   (overrides hooks directory)
  *   git commit-tree ... -m <msg>    (plumbing bypass; shell vars → guidance)
@@ -27,7 +32,7 @@
 
 import { lintMessage, resolveRepoRoot } from '../../hooks/lib/commit-convention.mjs'
 import { readFileSync, statSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -59,8 +64,9 @@ function lintAndDecide(message: string, cwd: string): HookResult {
  * Split a shell command string on unquoted &&, ||, ;, |, newline operators.
  * Single- and double-quoted regions are skipped.
  */
-function splitOnShellOps(cmd: string): string[] {
-  const segments: string[] = [];
+function splitOnShellOps(cmd: string): Array<{ text: string; start: number }> {
+  const segments: Array<{ text: string; start: number }> = [];
+  const push = (text: string, end: number) => segments.push({ text, start: end - text.length });
   let current = '';
   let i = 0;
   while (i < cmd.length) {
@@ -76,17 +82,17 @@ function splitOnShellOps(cmd: string): string[] {
       }
       if (i < cmd.length) { current += cmd[i]; i++; }
     } else if (c === '&' && i + 1 < cmd.length && cmd[i + 1] === '&') {
-      segments.push(current); current = ''; i += 2;
+      push(current, i); current = ''; i += 2;
     } else if (c === '|' && i + 1 < cmd.length && cmd[i + 1] === '|') {
-      segments.push(current); current = ''; i += 2;
+      push(current, i); current = ''; i += 2;
     } else if (c === ';' || c === '|' || c === '\n') {
-      segments.push(current); current = ''; i++;
+      push(current, i); current = ''; i++;
     } else {
       current += c; i++;
     }
   }
-  segments.push(current);
-  return segments.filter(s => s.trim().length > 0);
+  push(current, cmd.length);
+  return segments.filter(s => s.text.trim().length > 0);
 }
 
 type SegmentKind = 'commit' | 'commit-tree' | 'update-ref' | 'hash-object';
@@ -107,18 +113,31 @@ interface ParsedSegment {
 function parseSegmentForGit(seg: string): ParsedSegment {
   let tokens = seg.trim().split(/\s+/).filter(t => t.length > 0);
 
-  while (tokens.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) {
-    tokens = tokens.slice(1);
-  }
-
-  while (tokens.length > 0 && (tokens[0] === 'command' || tokens[0] === 'builtin')) {
-    tokens = tokens.slice(1);
-    while (tokens.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) {
+  const unquote = (t: string) => t.replace(/^(['"])(.*)\1$/, '$2');
+  const launchers: Record<string, string[]> = {
+    command: [], builtin: [], nohup: [], time: [], nice: ['-n'], exec: ['-a'],
+    sudo: ['-u', '-g', '-C', '-h', '-p', '-D', '-r', '-t', '-U'],
+    env: ['-C', '-S', '-u'],
+  };
+  while (tokens.length > 0) {
+    const w = unquote(tokens[0]);
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) {
       tokens = tokens.slice(1);
+    } else if (Object.hasOwn(launchers, w)) {
+      tokens = tokens.slice(1);
+      while (tokens.length > 0 && tokens[0].startsWith('-')) {
+        const flag = tokens[0];
+        tokens = tokens.slice(launchers[w].includes(flag) ? 2 : 1);
+        if (flag === '--') break;
+      }
+    } else if (w === 'rtk') {
+      tokens = tokens.slice(tokens[1] === 'proxy' ? 2 : 1);
+    } else {
+      break;
     }
   }
 
-  if (tokens.length === 0 || tokens[0] !== 'git') return { found: false };
+  if (tokens.length === 0 || basename(unquote(tokens[0])) !== 'git') return { found: false };
   tokens = tokens.slice(1);
 
   let cwdOverride: string | undefined;
@@ -177,10 +196,10 @@ function parseSegmentForGit(seg: string): ParsedSegment {
  * Checks each shell-operator-separated segment in order; returns on first match,
  * including the matched segment text so callers can scope extraction to that segment.
  */
-function detectGitOp(command: string): ParsedSegment & { segment?: string } {
+function detectGitOp(command: string): ParsedSegment & { segment?: string; offset?: number } {
   for (const seg of splitOnShellOps(command)) {
-    const result = parseSegmentForGit(seg);
-    if (result.found) return { ...result, segment: seg };
+    const result = parseSegmentForGit(seg.text);
+    if (result.found) return { ...result, segment: seg.text, offset: seg.start };
   }
   return { found: false };
 }
@@ -202,6 +221,24 @@ function extractInlineMessage(cmd: string): string | null {
 
   if (messages.length === 0) return null;
   return messages.join('\n\n');
+}
+
+function readsMessageFromStdin(seg: string): boolean {
+  return /(?:^|\s)-[A-Za-z]*F(?:[\s=]+)?(['"]?)-\1(?:\s|$)|--file[\s=]+(['"]?)-\2(?:\s|$)/.test(seg);
+}
+
+function extractHeredocBody(command: string, seg: string, segStart: number): string | null {
+  const m = /(?<!<)<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(seg);
+  if (!m) return null;
+  const nl = command.indexOf('\n', segStart + m.index + m[0].length);
+  if (nl < 0) return null;
+  const strip = m[1] === '-';
+  const body: string[] = [];
+  for (const line of command.slice(nl + 1).split('\n')) {
+    if ((strip ? line.replace(/^\t+/, '') : line) === m[3]) break;
+    body.push(strip ? line.replace(/^\t+/, '') : line);
+  }
+  return body.join('\n');
 }
 
 function extractFilePath(cmd: string): string | null {
@@ -312,6 +349,15 @@ export function check(input: unknown): HookResult {
       const commitSeg = gitMatch.segment ?? command;
       const inlineMsg = extractInlineMessage(commitSeg);
       if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
+
+      if (readsMessageFromStdin(commitSeg)) {
+        const body = extractHeredocBody(command, commitSeg, gitMatch.offset ?? 0);
+        if (body !== null) return lintAndDecide(body, cmdCwd);
+        return deny(
+          'git commit -F - reads a message from stdin which cannot be linted.\n' +
+          'Use `git commit -m "<message>"` with a literal message instead.',
+        );
+      }
 
       const rawPath = extractFilePath(commitSeg);
       if (rawPath !== null) {

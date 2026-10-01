@@ -140,6 +140,13 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
     expect(reason(stdout)).toContain('rules["commit-message"][1].preset');
   });
 
+  it("DENY: absolute-path /usr/bin/git commit — deny line on stdout, exit 0", () => {
+    const { stdout, exit } = run(bash('/usr/bin/git commit -m "bad message no convention"'));
+    expect(exit).toBe(0);
+    expect(decision(stdout)).toBe("deny");
+    expect(reason(stdout)).toMatch(/line 1/);
+  });
+
   it("ALLOW: non-git-commit Bash command — empty stdout", () => {
     const { stdout, exit } = run(bash("echo hello"));
     expect(exit).toBe(0);

@@ -59,6 +59,18 @@ const LOAD_BEARING_RULES: { name: string; patterns: RegExp[] }[] = [
       /sequencing.*not compressed/i,
     ],
   },
+  {
+    name: "never grow (compression never adds words)",
+    patterns: [/never grow/i],
+  },
+  {
+    name: "auto-clarity (security, irreversible, ambiguity stay full sentences)",
+    patterns: [/auto-clarity/i],
+  },
+  {
+    name: "no arrows as prose shorthand",
+    patterns: [/no arrows/i],
+  },
 ];
 
 function rulePresent(content: string, rule: { name: string; patterns: RegExp[] }): boolean {

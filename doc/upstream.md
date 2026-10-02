@@ -1,6 +1,6 @@
 # Upstream adoption record
 
-Written against: mattpocock-skills 1.2.3; caveman 2fd153c67988e980fb0b2455c90832159a6a5a25
+Written against: mattpocock-skills 1.2.3; caveman b39c90862855ad2f0813ce775b8bf07a9d6d2a50
 
 ## Flow
 
@@ -31,7 +31,7 @@ Main agent then loads `/vertical-slice` without asking — no confirmation promp
 | NOT USED | `mattpocock-skills:domain-modeling` | Not adopted; no groundwork routing |
 | NOT USED | `mattpocock-skills:writing-for-agents` | Not adopted; groundwork writes briefs per its own conventions |
 
-## Caveman (commit 2fd153c67988e980fb0b2455c90832159a6a5a25)
+## Caveman (commit b39c90862855ad2f0813ce775b8bf07a9d6d2a50)
 
 | Status | Mechanism | Notes |
 |---|---|---|
@@ -39,6 +39,11 @@ Main agent then loads `/vertical-slice` without asking — no confirmation promp
 | ACCEPTED | Terse directive style for agents and skills | Applied at caveman "full" level in `agents/*.md` and `skills/*/SKILL.md` — fragments OK, imperative mood |
 | ALTERED | Ruleset delivery | Caveman injects the full SKILL.md ruleset on SessionStart; groundwork delivers from `rules/authoring-rules.md` (human-authored source) and enforces via build hook — not runtime injection |
 | ALTERED | Per-turn style reinforcement | Caveman re-emits full rules every UserPromptSubmit; groundwork's `src/hooks/prompt-reminder.ts` emits a single-line style prefix merged with the delegation nudge — avoids re-injecting the full ruleset each turn |
+| ACCEPTED | Never-grow rule | Compression never adds words; style only. In `rules/authoring-rules.md` rule 12 |
+| ACCEPTED | Auto-clarity rule | Security warnings, irreversible-action confirmations, ambiguity stay full sentences; merged into sequencing rule 8 |
+| ACCEPTED | No arrows (`→`) as prose shorthand | Upstream measured zero token saving; rule 13. Upstream now also bans arrows and invented abbreviations |
+| ACCEPTED | Evidence: decisive lines only | Rule 7 amended: verbatim, decisive lines, no full log dumps unless asked; never-paraphrase kept |
+| ACCEPTED/ALTERED | cavecrew-style output contracts | Agent `## Output` sections in `agents/*.md` fixed-shape receipts; groundwork adds status token and file:line |
 | ALTERED | `cavecrew-investigator` | Became `groundwork:explore`; same read-only constraint; adds a structured path:line receipt contract |
 | NOT USED | Intensity levels surfaced at runtime (lite/full/ultra) | Used in planning groundwork's own content; not exposed as user-selectable runtime modes |
 | NOT USED | `cavecrew-builder` (as-named) | Role covered by `groundwork:implementer`; not imported by name |

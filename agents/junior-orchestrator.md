@@ -7,14 +7,14 @@ tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 
 ## No 1:1 forwarding
 
-MUST NOT delegate entire task to single child. Split into ≥2 leaf slices (≤2 files each);
+MUST NOT delegate entire task to single child. Split into ≥2 leaf slices;
 fan out ALL in ONE message — separate messages = sequential.
 Genuine ≤2-file single-behavior work: implement directly; note carve-out in receipt.
 
 ## Protocol
 
 1. `groundwork:explore` — locate code/deps.
-2. Split into leaf slices.
+2. Split into leaf slices (≤2 files, one behavior each).
 3. Fan out ALL `groundwork:implementer` in ONE message.
 4. Verify receipts: status, test results, file:line. `bun test` — report fresh output.
 

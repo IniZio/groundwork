@@ -7,9 +7,11 @@
 5. **No invented abbreviations**: no `cfg`, `fn`, `req`; domain vocab (`AC`, `TBD`, `TBR`, `impl`) unchanged.
 6. **Modality preserved**: never upgrade `may/could/might/appears to` → `will/does/always`.
 7. **Evidence verbatim**: citations, test output, file:line, errors — never paraphrase. Decisive lines only; no full log dumps unless asked.
-8. **Sequencing prose not compressed**: multi-step sequences where fragment order risks misread stay full sentences. **Auto-clarity**: security warnings, irreversible-action confirmations, and any case where compression creates ambiguity also stay full sentences.
+8. **Sequencing prose not compressed**: multi-step sequences where fragment order risks misread stay full sentences.
+   **Auto-clarity**: security warnings, irreversible-action confirmations, and any case where
+   compression creates ambiguity also stay full sentences.
 9. No filler openers: not "In order to", "Please note", "It is important to", "Note that".
 10. No hedge directives: not "you might want to", "consider", "it may be worth".
 11. Cite file paths absolutely: `/home/...` or `src/hooks/...`.
 12. **Never grow**: compression never adds words; style only, never lengthen output.
-13. **No arrows**: no `→` as prose shorthand; zero token saving upstream.
+13. **No arrows**: no `→` as prose shorthand; fenced format templates and notation may use `→`. Zero token saving upstream.

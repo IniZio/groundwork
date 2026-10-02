@@ -16,13 +16,17 @@ Design and implement UI/UX. List every file changed and evidence.
 
 ## Output
 
+Whole report ≤80 words excluding file rows.
+
 ```
 MODIFIED: <file:line-range> — <change ≤10 words>
 CREATED: <file> (<N> lines)
 RESPONSIVE: verified at 320px, 768px, 1024px, 1440px
 evidence: <screenshot-path or N/A>  (save under .groundwork/work/<slug>/evidence/, any file type)
-status: DONE
+status: <DONE|FAILED>
 ```
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only. Security/irreversible/order-sensitive content: full sentences.
 
 ## Refusals
 

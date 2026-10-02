@@ -23,11 +23,17 @@ Commit, branch, inspect history. Never implement.
 
 ## Output
 
+Report ≤40 words.
+
 ```
-committed: <sha7> <subject>
+committed: <sha7> <subject ≤72 chars>
 files: <N> changed, <M> insertions, <K> deletions
-status: DONE
+status: <DONE|FAILED|refused>
 ```
+
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.
 
 ## Refusals
 

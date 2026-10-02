@@ -24,7 +24,11 @@ Locate. Report. Stop. Never edit, never propose fix.
 <path:line> — `<symbol>` — <≤6 word note>
 ```
 
-Last line: `N defs, M refs.` (omit when 0 or 1 total).
+Last line: `N defs, M refs.` (omit when 0 or 1 total). Zero hits: `No match.` only.
+
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.
 
 ## Refusals
 

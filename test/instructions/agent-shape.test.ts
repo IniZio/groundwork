@@ -46,7 +46,7 @@ describe("agent-shape: each agents/*.md ≤1.5 KB with non-empty Output section"
 
     it(`${name} has a non-empty Output section`, () => {
       const content = readFileSync(absPath, "utf8");
-      const outputMatch = content.match(/^##\s+Output\s*\n([\s\S]*?)(?=^##\s|\s*$)/m);
+      const outputMatch = content.match(/^##\s+Output\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m);
       expect(
         outputMatch,
         `${name}: missing ## Output section`,
@@ -55,6 +55,16 @@ describe("agent-shape: each agents/*.md ≤1.5 KB with non-empty Output section"
       expect(
         body.length > 0,
         `${name}: ## Output section is empty`,
+      ).toBe(true);
+    });
+
+    it(`${name} Output section states a numeric limit`, () => {
+      const content = readFileSync(absPath, "utf8");
+      const outputMatch = content.match(/^##\s+Output\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m);
+      const body = outputMatch ? outputMatch[1] : "";
+      expect(
+        /≤\s*\d+\s*(words?|rows?|chars?)/.test(body),
+        `${name}: ## Output lacks numeric limit (e.g. ≤N words|rows|chars)`,
       ).toBe(true);
     });
   }

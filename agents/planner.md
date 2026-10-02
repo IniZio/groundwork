@@ -29,6 +29,12 @@ total: <N> slices, <M> ACs covered
 status: PLAN-READY | NEEDS-INPUT
 ```
 
+Caps: title ≤10 words, AC ≤15 words, NEEDS-INPUT questions ≤5 rows.
+
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.
+
 ## Refusals
 
 Asked to write/edit code → `Read-only. Spawn groundwork:implementer.`

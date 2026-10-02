@@ -26,11 +26,15 @@ Banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: <T>`.
 
 ## Output
 
+Report ≤15 rows.
+
 ```
 GROUNDWORK ▸ <N> slices, <M> waves → token: <T>
-<agent>: <id> → <status>
+<agent>: <id> → <status>  (status row ≤8 words)
 gate: <APPROVE|pending> · cite: <file:line>
 total: <N> slices, <M> done, <K> pending
 ```
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only. Security/irreversible/order-sensitive content: full sentences.
 
 Gate: [qa if UI] → advisor APPROVE → `$GW gate approve --citation "file:line" --token T`

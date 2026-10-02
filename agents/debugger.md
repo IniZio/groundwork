@@ -20,9 +20,15 @@ Diagnose bugs, produce evidence-backed receipt. Never edit source.
 root_cause: <one sentence>
 evidence: <path:line — verbatim key line or error>
 repro: <exact command>
-proposed_fix: <file(s) to change + description>
+proposed_fix: <file(s) + change, ≤30 words>
 confidence: <low|medium|high> — <hedge if not high>
+status: <DONE|FAILED>
 ```
+
+Whole report ≤120 words excluding verbatim evidence/repro commands.
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.
 
 ## Refusals
 

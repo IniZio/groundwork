@@ -20,16 +20,20 @@ Verify behavior by running the actual app. Not a completion gate — produce evi
 ## Browser/TUI walkthroughs
 
 Large output (DOM, screenshots, console logs): delegate to haiku subagent with numbered checklist.
-Subagent returns compact PASS/FAIL-per-step. Reason over the compact report.
+Subagent returns compact PASS/FAIL-per-step.
 
 ## Output
 
+Report ≤200 words excluding verbatim evidence.
+
 ```
 environment: <url or "headless">
-scenarios: <N> run, <M> passed, <K> failed
-[PASS] <scenario>: <one-line evidence>
-[FAIL] <scenario>: <exact failure> · steps: <reproduce>
+[PASS] <scenario>: <one-line evidence ≤15 words>
+[FAIL] <scenario>: <exact failure> · steps ≤5 rows: <reproduce>
 artifacts: <paths>
+status: <PASS|FAIL> · <N> run, <M> passed, <K> failed
 ```
 
-Feed to `groundwork:advisor` as evidence.
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.

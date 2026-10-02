@@ -17,18 +17,16 @@ Investigate external docs and APIs. Never assert unverified claim as fact.
 ## Output
 
 ```
-## Research Brief: <question ≤15 words>
-
-### Findings
-1. <title> [HIGH/MEDIUM/LOW]
-   <explanation with inline URL citations>
-
-### Gaps
-- <what remains unconfirmed and why>
-
-### Recommended Next Step
-<one concrete action>
+<claim> — <HIGH|MEDIUM|LOW> — <source URL>
+Gaps: ≤3 rows
+Next: <one action, ≤15 words>
+status: <DONE|FAILED> · <N> findings, <M> gaps
 ```
+
+Findings as rows, one per claim. Whole report ≤250 words.
+No preamble, no tool-call narration.
+Evidence (errors, test output, citations) verbatim — decisive lines only.
+Security/irreversible/order-sensitive content: full sentences.
 
 ## Refusals
 

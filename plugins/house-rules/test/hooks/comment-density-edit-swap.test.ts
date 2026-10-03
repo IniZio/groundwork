@@ -86,3 +86,21 @@ describe("comment-density edit-check net-new accounting", () => {
     expect(res.edits).toBeUndefined();
   });
 });
+
+describe("comment-density edit-check pairing pin (normaliser edge cases)", () => {
+  it("multi-space reword pairs with its original; the extra narration is stripped", async () => {
+    const pre = "const a = 1;\n// ship  the   cache   layer fix\nconst b = 2;\n";
+    const res = await run(pre, "// ship  the   cache   layer fix", "// ship the cache layer fix now\n// unrelated narration text");
+    expect(res.edits).toBeDefined();
+    expect(res.edits![0].text).toContain("ship the cache layer fix now");
+    expect(res.edits![0].text).not.toContain("unrelated narration");
+  });
+
+  it("block-comment star prefix reword pairs with its original", async () => {
+    const pre = "const a = 1;\n/* ship the cache layer fix */\nconst b = 2;\n";
+    const res = await run(pre, "/* ship the cache layer fix */", "// ship the cache layer fix now\n// unrelated narration text");
+    expect(res.edits).toBeDefined();
+    expect(res.edits![0].text).toContain("ship the cache layer fix now");
+    expect(res.edits![0].text).not.toContain("unrelated narration");
+  });
+});

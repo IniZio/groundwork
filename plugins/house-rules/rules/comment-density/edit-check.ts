@@ -3,6 +3,8 @@ import {
   findComments,
   newComments as findNewComments,
   netNewCommentRows,
+  greedyPair,
+  jaccard,
   autoFix,
   type Comment,
   type GetParserFn,
@@ -12,31 +14,7 @@ import { fixEntryFor, type FixEntry } from "./languages.js";
 import type { Language } from "../../src/hooks/languages/registry.js";
 import type { PendingEdit, EditCheckEnv, EditCheckResult } from "../../src/engine/types.js";
 
-function tokenJaccard(a: string, b: string): number {
-  const ta = new Set(normalizeCommentText(a).toLowerCase().split(" ").filter(Boolean));
-  const tb = new Set(normalizeCommentText(b).toLowerCase().split(" ").filter(Boolean));
-  if (ta.size === 0 || tb.size === 0) return ta.size === tb.size ? 1 : 0;
-  let inter = 0;
-  for (const t of ta) if (tb.has(t)) inter++;
-  return inter / (ta.size + tb.size - inter);
-}
-
-/** Pair removed comments with the most similar added ones (similarity, then row distance); return the unpaired added. */
-function unpairedAdded(removed: Comment[], added: Comment[]): Comment[] {
-  const cands: Array<{ ri: number; ai: number; sim: number; dist: number }> = [];
-  removed.forEach((r, ri) => added.forEach((a, ai) => {
-    cands.push({ ri, ai, sim: tokenJaccard(r.text, a.text), dist: Math.abs(r.startRow - a.startRow) });
-  }));
-  cands.sort((x, y) => (y.sim !== x.sim ? y.sim - x.sim : x.dist - y.dist));
-  const usedR = new Set<number>();
-  const usedA = new Set<number>();
-  for (const { ri, ai } of cands) {
-    if (usedR.has(ri) || usedA.has(ai)) continue;
-    usedR.add(ri);
-    usedA.add(ai);
-  }
-  return added.filter((_, ai) => !usedA.has(ai));
-}
+const tokens = (s: string): Set<string> => new Set(normalizeCommentText(s).toLowerCase().split(" ").filter(Boolean));
 
 export function buildCtx(
   tool: string,
@@ -195,7 +173,7 @@ export async function commentDensityEditCheck(edit: PendingEdit, env: EditCheckE
       if (n > 0) postTexts.set(k, n - 1);
       else removed.push(c);
     }
-    nc = unpairedAdded(removed, nc);
+    nc = greedyPair(removed, nc, (r, a) => jaccard(tokens(r.text), tokens(a.text)), c => c.startRow);
   }
 
   const budget = baseBudget;

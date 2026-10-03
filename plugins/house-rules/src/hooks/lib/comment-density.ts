@@ -468,15 +468,46 @@ function normForPairing(raw: string): string {
     .trim();
 }
 
-/** Token-set Jaccard similarity on whitespace-split tokens. */
-function tokenSetJaccard(a: string, b: string): number {
-  const ta = new Set(a.split(/\s+/).filter(Boolean));
-  const tb = new Set(b.split(/\s+/).filter(Boolean));
+/** Jaccard similarity of two token sets; two empty sets are identical. */
+export function jaccard(ta: Set<string>, tb: Set<string>): number {
   if (ta.size === 0 && tb.size === 0) return 1;
   if (ta.size === 0 || tb.size === 0) return 0;
   let inter = 0;
   for (const t of ta) if (tb.has(t)) inter++;
   return inter / (ta.size + tb.size - inter);
+}
+
+/** Token-set Jaccard similarity on whitespace-split tokens. */
+function tokenSetJaccard(a: string, b: string): number {
+  return jaccard(new Set(a.split(/\s+/).filter(Boolean)), new Set(b.split(/\s+/).filter(Boolean)));
+}
+
+/**
+ * Greedy pairing: pair each removed item with the most similar added item
+ * (descending `sim`; tie-break by smallest `pos` distance). Returns the
+ * added items left unpaired, in order.
+ */
+export function greedyPair<T>(
+  removed: T[],
+  added: T[],
+  sim: (r: T, a: T) => number,
+  pos: (t: T) => number,
+): T[] {
+  const candidates: Array<{ ri: number; ai: number; sim: number; dist: number }> = [];
+  for (let ri = 0; ri < removed.length; ri++) {
+    for (let ai = 0; ai < added.length; ai++) {
+      candidates.push({ ri, ai, sim: sim(removed[ri], added[ai]), dist: Math.abs(pos(removed[ri]) - pos(added[ai])) });
+    }
+  }
+  candidates.sort((a, b) => (b.sim !== a.sim ? b.sim - a.sim : a.dist - b.dist));
+  const pairedRemoved = new Set<number>();
+  const pairedAdded = new Set<number>();
+  for (const { ri, ai } of candidates) {
+    if (pairedRemoved.has(ri) || pairedAdded.has(ai)) continue;
+    pairedRemoved.add(ri);
+    pairedAdded.add(ai);
+  }
+  return added.filter((_, ai) => !pairedAdded.has(ai));
 }
 
 /**
@@ -494,32 +525,7 @@ function greedyPairCommentRows(
   removed: Array<{ lineNo: number; normText: string }>,
   added: Array<{ lineNo: number; normText: string }>,
 ): number[] {
-  if (removed.length === 0) return added.map(a => a.lineNo);
-
-  // Build all candidate pairs with similarity scores
-  const candidates: Array<{ ri: number; ai: number; sim: number; dist: number }> = [];
-  for (let ri = 0; ri < removed.length; ri++) {
-    for (let ai = 0; ai < added.length; ai++) {
-      const sim = tokenSetJaccard(removed[ri].normText, added[ai].normText);
-      const dist = Math.abs(removed[ri].lineNo - added[ai].lineNo);
-      candidates.push({ ri, ai, sim, dist });
-    }
-  }
-
-  // Sort: highest similarity first; tie-break by smallest position distance
-  candidates.sort((a, b) =>
-    b.sim !== a.sim ? b.sim - a.sim : a.dist - b.dist,
-  );
-
-  const pairedRemoved = new Set<number>();
-  const pairedAdded = new Set<number>();
-  for (const { ri, ai } of candidates) {
-    if (pairedRemoved.has(ri) || pairedAdded.has(ai)) continue;
-    pairedRemoved.add(ri);
-    pairedAdded.add(ai);
-  }
-
-  return added.filter((_, ai) => !pairedAdded.has(ai)).map(a => a.lineNo);
+  return greedyPair(removed, added, (r, a) => tokenSetJaccard(r.normText, a.normText), t => t.lineNo).map(a => a.lineNo);
 }
 
 export async function netNewCommentRows(

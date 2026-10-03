@@ -1,12 +1,13 @@
 /**
  * Family: Best-practice enforcement on new code only.
  * Trigger: Stop + SubagentStop.
- * "New code" = added lines in `git diff HEAD` plus all lines of untracked files.
+ * "New code" = added lines in `git diff <session base>` (committed + uncommitted) plus all lines of untracked files.
  * Reads active rules from Makefile (# groundwork-rule: <name>). No rule → no block.
  */
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { sessionBase } from "./lib/session-base.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -73,12 +74,12 @@ function untrackedLines(repo: string): AddedLine[] {
   return result;
 }
 
-export function check(repo: string): Violation[] {
+export function check(repo: string, base = "HEAD"): Violation[] {
   const activeRules = readActiveRules(repo);
   if (activeRules.size === 0) return [];
 
   let diffOut = "";
-  try { diffOut = execSync("git diff --no-prefix HEAD", { cwd: repo, encoding: "utf8" }); } catch { /* no repo or no HEAD */ }
+  try { diffOut = execSync(`git diff --no-prefix ${base}`, { cwd: repo, encoding: "utf8" }); } catch { /* no repo or no HEAD */ }
 
   const added: AddedLine[] = [...parseDiff(diffOut), ...untrackedLines(repo)];
   const violations: Violation[] = [];
@@ -104,7 +105,10 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
       const allowed = Object.keys(RULES).join(", ");
       return block(`new-code-gate: unknown rule ${unknown.map(u => `"${u}"`).join(", ")} in Makefile "# groundwork-rule:" line. Allowed rules: ${allowed}. Fix or remove that line in ${path.join(cwd, "Makefile")}.`);
     }
-    const violations = check(cwd);
+    const event = inp.hook_event_name;
+    const tp = event === "SubagentStop" && typeof inp.agent_transcript_path === "string" ? inp.agent_transcript_path
+      : typeof inp.transcript_path === "string" ? inp.transcript_path : undefined;
+    const violations = check(cwd, tp ? sessionBase(tp, cwd) : "HEAD");
     if (violations.length === 0) return allow();
     const msg = violations.map(v => `new-code-gate: ${v.rule} ${v.file}:${v.line}`).join("; ");
     return block(msg);

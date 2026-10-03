@@ -178,3 +178,71 @@ describe("new-code-gate — unknown rule marker", () => {
     expect(JSON.parse(run({ cwd: repo, hook_event_name: "Stop" }, {}).stdout).continue).toBe(true);
   });
 });
+
+describe("new-code-gate — session base (spawned by deployed path)", () => {
+  const HOOK = path.resolve(import.meta.dir, "../../src/hooks/new-code-gate.ts");
+  const BASE_DATE = "2020-01-01T00:00:00Z";
+  const SESSION_START = "2020-01-02T00:00:00Z";
+  const SESSION_DATE = "2020-01-03T00:00:00Z";
+
+  function save(repo: string, msg: string, date: string) {
+    execSync(`git add -A && git commit -m '${msg}'`, { cwd: repo, shell: "/bin/bash", env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
+  }
+  function transcript(repo: string): string {
+    const f = path.join(repo, "..", `${path.basename(repo)}.jsonl`);
+    writeFileSync(f, JSON.stringify({ timestamp: SESSION_START }) + "\n");
+    return f;
+  }
+  function spawn(payload: Record<string, unknown>) {
+    const env = { ...process.env } as Record<string, string | undefined>;
+    delete env.CLAUDE_PROJECT_DIR;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    const r = Bun.spawnSync(["bun", HOOK], { stdin: Buffer.from(JSON.stringify(payload)), env: env as Record<string, string> });
+    return JSON.parse(r.stdout.toString());
+  }
+  function seed(label: string, body: string): string {
+    const repo = makeRepo(label);
+    makefileWithRules(repo);
+    mkdirSync(path.join(repo, "src"), { recursive: true });
+    writeFileSync(path.join(repo, "src/a.ts"), body);
+    save(repo, "chore: init", BASE_DATE);
+    return repo;
+  }
+
+  it("subagent commits violation then SubagentStop -> blocks naming rule", () => {
+    const repo = seed("sb-commit", "export const x = 1;\n");
+    const tp = transcript(repo);
+    writeFileSync(path.join(repo, "src/a.ts"), 'export const x = 1;\nconsole.log("c");\n');
+    save(repo, "feat: add", SESSION_DATE);
+    const out = spawn({ hook_event_name: "SubagentStop", transcript_path: "/nonexistent", agent_transcript_path: tp, cwd: repo });
+    expect(out.decision).toBe("block");
+    expect(out.reason).toMatch(/no-console-log src\/a\.ts:2/);
+  });
+
+  it("Stop: uncommitted and untracked violations still block", () => {
+    const repo = seed("sb-dirty", "export const x = 1;\n");
+    const tp = transcript(repo);
+    writeFileSync(path.join(repo, "src/a.ts"), 'export const x = 1;\nconsole.log("u");\n');
+    writeFileSync(path.join(repo, "src/b.ts"), 'console.log("n");\n');
+    const out = spawn({ hook_event_name: "Stop", transcript_path: tp, cwd: repo });
+    expect(out.decision).toBe("block");
+    expect(out.reason).toMatch(/src\/a\.ts:2/);
+    expect(out.reason).toMatch(/src\/b\.ts:1/);
+  });
+
+  it("violation committed before session start -> allowed", () => {
+    const repo = seed("sb-old", 'console.log("old");\n');
+    const tp = transcript(repo);
+    expect(spawn({ hook_event_name: "Stop", transcript_path: tp, cwd: repo }).continue).toBe(true);
+  });
+
+  it("missing transcript -> diffs against HEAD (committed ignored, dirty blocks)", () => {
+    const repo = seed("sb-missing", "export const x = 1;\n");
+    writeFileSync(path.join(repo, "src/a.ts"), 'export const x = 1;\nconsole.log("c");\n');
+    save(repo, "feat: add", SESSION_DATE);
+    const payload = { hook_event_name: "SubagentStop", transcript_path: "/nonexistent", agent_transcript_path: "/nonexistent2", cwd: repo };
+    expect(spawn(payload).continue).toBe(true);
+    writeFileSync(path.join(repo, "src/a.ts"), 'export const x = 1;\nconsole.log("c");\nconsole.log("d");\n');
+    expect(spawn(payload).decision).toBe("block");
+  });
+});

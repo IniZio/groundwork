@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSyn
 import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
+import { resolveDbPath, resolveRepoBase } from "./lib/repo-base.js";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
 import { readPointer, type ScopePointer } from "../store/scope-pointer.js";
@@ -117,7 +118,10 @@ export function detectYield(input: unknown): string | null {
         t => t.status === "running" && (t.type === undefined || t.type === "subagent")
       );
       if (inFlight.length > 0) {
-        return `background Agent(s) still in-flight (${inFlight.length} running) — orchestrator awaiting completion`;
+        const names = inFlight.map(t => (typeof t.agent_type === "string" && t.agent_type ? t.agent_type : "unknown"));
+        const shells = (tasks as Record<string, unknown>[]).filter(t => t.status === "running" && t.type !== undefined && t.type !== "subagent").length;
+        const ignored = shells > 0 ? `; ${shells} shell${shells === 1 ? "" : "s"} ignored` : "";
+        return `background Agent(s) still in-flight (${inFlight.length} running: ${names.join(", ")}${ignored}) — orchestrator awaiting completion`;
       }
     }
     // Field present (even if empty/non-array) → harness says nothing running.
@@ -157,10 +161,7 @@ function isEmbedded(env: Record<string, string | undefined>): boolean {
 }
 
 function resolveDb(env: Record<string, string | undefined>, cwd?: string): string | null {
-  if (env.GROUNDWORK_DB) return env.GROUNDWORK_DB;
-  const base = cwd ?? env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const p = path.join(base, ".groundwork", "work.db");
-  return existsSync(p) ? p : null;
+  return resolveDbPath(cwd, env);
 }
 
 function countFile(dbPath: string, sessionId: string): string {
@@ -439,7 +440,7 @@ export function escalateStateFile(
   if (dbPath !== null) {
     return path.join(path.dirname(dbPath), `stop-gate.${safeId}.escalate.json`);
   }
-  const base = (typeof inp.cwd === "string" ? inp.cwd : undefined) ?? env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const base = resolveRepoBase((typeof inp.cwd === "string" ? inp.cwd : undefined) ?? env.CLAUDE_PROJECT_DIR ?? process.cwd());
   return path.join(base, ".groundwork", `stop-gate.${safeId}.escalate.json`);
 }
 

@@ -7,6 +7,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { resolveRepoBase } from "./lib/repo-base.js";
 import { sessionBase } from "./lib/session-base.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -99,7 +100,7 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return allow();
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-    const cwd = typeof inp.cwd === "string" ? inp.cwd : (env.CLAUDE_PROJECT_DIR ?? process.cwd());
+    const cwd = resolveRepoBase(typeof inp.cwd === "string" ? inp.cwd : (env.CLAUDE_PROJECT_DIR ?? process.cwd()));
     const unknown = [...readActiveRules(cwd)].filter(r => !(r in RULES));
     if (unknown.length > 0) {
       const allowed = Object.keys(RULES).join(", ");

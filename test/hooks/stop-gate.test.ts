@@ -341,12 +341,23 @@ describe("stop-gate — yield detection (T05)", () => {
         { id: "b1", type: "shell", status: "running", command: "bun dev" },
       ],
     });
-    expect(result).toContain("(1 running)");
+    expect(result).toContain("(1 running: groundwork:advisor; 1 shell ignored)");
+  });
+
+  it("BG-TASKS: typed subagent + 2 shells → lists agent_type, counts shells ignored", () => {
+    const result = detectYield({
+      background_tasks: [
+        { id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" },
+        { id: "b1", type: "shell", status: "running", command: "bash runs.sh" },
+        { id: "b2", type: "shell", status: "running", command: "bun dev" },
+      ],
+    });
+    expect(result).toBe("background Agent(s) still in-flight (1 running: groundwork:advisor; 2 shells ignored) — orchestrator awaiting completion");
   });
 
   it("BG-TASKS: running entry without type → still yields", () => {
     const result = detectYield({ background_tasks: [{ id: "old1", status: "running" }] });
-    expect(result).toContain("(1 running)");
+    expect(result).toContain("(1 running: unknown)");
   });
 
   it("BG-TASKS: run() with only a running shell → blocks on incomplete slices", () => {

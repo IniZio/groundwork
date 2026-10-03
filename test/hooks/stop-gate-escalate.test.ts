@@ -238,3 +238,100 @@ describe("stop-gate — escalation nudge", () => {
     expect(result).toContain("implementer-escalation");
   });
 });
+
+const MIN = 60_000;
+
+describe("stop-gate — escalation clock across resume", () => {
+  const tmpDirs: string[] = [];
+  afterEach(() => {
+    while (tmpDirs.length > 0) {
+      try { rmSync(tmpDirs.pop()!, { recursive: true, force: true }); } catch { /* ok */ }
+    }
+  });
+
+  function setup(sessionId: string, taskId: string, lines: unknown[] | null) {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "gw-esc-resume-"));
+    tmpDirs.push(tmp);
+    const transcript = path.join(tmp, `${sessionId}.jsonl`);
+    writeFileSync(transcript, "");
+    if (lines) {
+      const dir = path.join(tmp, sessionId, "subagents");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, `agent-${taskId}.jsonl`), lines.map(l => JSON.stringify(l)).join("\n") + "\n");
+    }
+    const stop = (running: boolean) => {
+      const r = spawnSync("bun", ["run", HOOK_PATH], {
+        input: JSON.stringify({
+          hook_event_name: "Stop", cwd: tmp, stop_hook_active: false, session_id: sessionId, transcript_path: transcript,
+          background_tasks: running
+            ? [{ id: taskId, type: "subagent", status: "running", description: "impl", agent_type: "groundwork:implementer" }]
+            : [],
+        }),
+        env: { ...process.env, CLAUDE_PROJECT_DIR: tmp }, encoding: "utf8",
+      });
+      const out = JSON.parse(r.stdout) as Record<string, unknown>;
+      const hs = out.hookSpecificOutput as Record<string, unknown> | undefined;
+      return hs ? String(hs.additionalContext) : null;
+    };
+    return { tmp, stop };
+  }
+
+  const iso = (minAgo: number) => new Date(Date.now() - minAgo * MIN).toISOString();
+  const userStr = (minAgo: number) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: "go" } });
+  const toolResult = (minAgo: number) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "ok" }] } });
+  const assistant = (minAgo: number) => ({ type: "assistant", timestamp: iso(minAgo), message: { role: "assistant", content: [{ type: "text", text: "hi" }] } });
+
+  const meta = (minAgo: number, text: string) => ({ type: "user", isMeta: true, timestamp: iso(minAgo), message: { role: "user", content: [{ type: "text", text }] } });
+  const toolUse = (minAgo: number, id: string, name: string) => ({ type: "assistant", timestamp: iso(minAgo), message: { role: "assistant", content: [{ type: "tool_use", id, name, input: {} }] } });
+  const resultFor = (minAgo: number, id: string) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } });
+  const COORD = "The coordinator sent a message while you were working: continue";
+
+  it("(a) resumed run 2m old does not nudge despite 24m since spawn", () => {
+    const { tmp, stop } = setup("sa", "ta", [userStr(24), assistant(23), toolUse(22.5, "h1", "SubagentHandback"), resultFor(22, "h1"), meta(2, COORD)]);
+    const stateFile = path.join(tmp, ".groundwork", "stop-gate.sa.escalate.json");
+    mkdirSync(path.dirname(stateFile), { recursive: true });
+    writeFileSync(stateFile, JSON.stringify({ firstSeen: { ta: iso(24) }, nudged: [] }));
+    expect(stop(true)).toBeNull();
+  });
+
+  it("(b) single user entry 16m old with continuous activity nudges", () => {
+    const { stop } = setup("sb", "tb", [userStr(16), assistant(10), toolResult(5), assistant(1)]);
+    const out = stop(true);
+    expect(out).toContain("implementer-escalation");
+    expect(out).toContain("groundwork:junior-orchestrator");
+  });
+
+  it("(c) transcript absent: stale firstSeen dropped once id stops running", () => {
+    const { tmp, stop } = setup("sc", "tc", null);
+    const stateFile = path.join(tmp, ".groundwork", "stop-gate.sc.escalate.json");
+    mkdirSync(path.dirname(stateFile), { recursive: true });
+    writeFileSync(stateFile, JSON.stringify({ firstSeen: { tc: iso(30) }, nudged: [] }));
+    expect(stop(false)).toBeNull();
+    expect(stop(true)).toBeNull();
+  });
+
+  it("(d) tool_result-only user entries do not reset the clock", () => {
+    const { stop } = setup("sd", "td", [userStr(16), assistant(10), toolResult(1)]);
+    expect(stop(true)).toContain("implementer-escalation");
+  });
+
+  for (const [name, text] of [["skill-load", "Base directory for this skill: /x"], ["notification", "[SYSTEM NOTIFICATION - NOT USER INPUT] bg done"], ["stop-hook", "Stop hook feedback: keep going"]]) {
+    it(`(e) mid-run meta entry (${name}) 8m ago does not reset the clock`, () => {
+      const { stop } = setup(`se-${name}`, `te-${name}`, [userStr(20), assistant(19.9), toolUse(15, "b1", "Bash"), resultFor(14.9, "b1"), meta(8, text), assistant(7), toolResult(1)]);
+      expect(stop(true)).toContain("implementer-escalation");
+    });
+  }
+
+  it("(f) long Bash gap (tool_use T-10m, tool_result T-6m) in 16m run nudges", () => {
+    const { stop } = setup("sf", "tf", [userStr(16), assistant(15), toolUse(10, "b2", "Bash"), resultFor(6, "b2"), assistant(1)]);
+    expect(stop(true)).toContain("implementer-escalation");
+  });
+
+  it("(g) resumed run nudged before the resume is nudged again", () => {
+    const { tmp, stop } = setup("sg", "tg", [userStr(40), assistant(38), toolUse(37.5, "h3", "SubagentHandback"), resultFor(37, "h3"), meta(17, COORD), assistant(10), toolResult(1)]);
+    const stateFile = path.join(tmp, ".groundwork", "stop-gate.sg.escalate.json");
+    mkdirSync(path.dirname(stateFile), { recursive: true });
+    writeFileSync(stateFile, JSON.stringify({ firstSeen: { tg: iso(40) }, nudged: ["tg"] }));
+    expect(stop(true)).toContain("implementer-escalation");
+  });
+});

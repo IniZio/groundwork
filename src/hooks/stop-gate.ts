@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readSealKey, verifySeal, type SealFields } from "../store/key-store.js";
@@ -439,6 +439,55 @@ export function escalateStateFile(
   return path.join(base, ".groundwork", `stop-gate.${safeId}.escalate.json`);
 }
 
+function currentRunStart(inp: Record<string, unknown>, id: string): number | null {
+  try {
+    const tp = inp.transcript_path;
+    const sid = inp.session_id;
+    if (typeof tp !== "string" || typeof sid !== "string" || !tp) return null;
+    const file = path.join(path.dirname(tp), sid, "subagents", `agent-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}.jsonl`);
+    const size = statSync(file).size;
+    const fd = openSync(file, "r");
+    try {
+      type Ent = { type: string; t: number; content: unknown };
+      for (let win = 256 * 1024; ; win *= 4) {
+        const len = Math.min(win, size);
+        const buf = Buffer.alloc(len);
+        readSync(fd, buf, 0, len, size - len);
+        const lines = buf.toString("utf8").split("\n");
+        if (len < size) lines.shift(); // possibly partial first line
+        const ents: Ent[] = [];
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const e = JSON.parse(line) as Record<string, unknown>;
+            const t = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
+            if ((e.type === "user" || e.type === "assistant") && !Number.isNaN(t)) {
+              ents.push({ type: e.type, t, content: (e.message as Record<string, unknown> | undefined)?.content });
+            }
+          } catch { /* skip bad line */ }
+        }
+        const blocks = (c: unknown): Record<string, unknown>[] =>
+          Array.isArray(c) ? (c as Record<string, unknown>[]).filter(b => b && typeof b === "object") : [];
+        const isText = (c: unknown) =>
+          typeof c === "string" ? c.length > 0 : blocks(c).some(b => b.type === "text");
+        const idle = (prev: Ent): boolean => {
+          if (prev.type === "assistant") return !blocks(prev.content).some(b => b.type === "tool_use");
+          const ids = blocks(prev.content).filter(b => b.type === "tool_result").map(b => b.tool_use_id);
+          if (ids.length === 0) return false;
+          return ents.some(e => e.type === "assistant" && blocks(e.content).some(
+            b => b.type === "tool_use" && ids.includes(b.id) && /handback/i.test(String(b.name))));
+        };
+        for (let i = ents.length - 1; i >= 1; i--) {
+          const e = ents[i];
+          if (e.type !== "user" || !isText(e.content)) continue;
+          if (e.t - ents[i - 1].t >= 60_000 && idle(ents[i - 1])) return e.t;
+        }
+        if (len >= size) return ents.length > 0 ? ents[0].t : null;
+      }
+    } finally { closeSync(fd); }
+  } catch { return null; }
+}
+
 export function escalationNudge(
   inp: Record<string, unknown>,
   env: Record<string, string | undefined>,
@@ -450,8 +499,6 @@ export function escalationNudge(
     const matching = (tasks as Record<string, unknown>[]).filter(
       t => t.status === "running" && t.agent_type === "groundwork:implementer" && typeof t.id === "string" && (t.id as string).length > 0
     );
-    if (matching.length === 0) return null;
-
     const stateFile = escalateStateFile(inp, env, dbPath);
     let state: EscalateState = { firstSeen: {}, nudged: [] };
     try {
@@ -460,13 +507,33 @@ export function escalationNudge(
       if (parsed && typeof parsed === "object") state = parsed;
     } catch { /* absent or corrupt — use default */ }
 
+    if (!state.firstSeen || typeof state.firstSeen !== "object") state.firstSeen = {};
+    if (!Array.isArray(state.nudged)) state.nudged = [];
+
     const now = Date.now();
     const threshold = 15 * 60 * 1000;
     const nudgeLines: string[] = [];
     let stateChanged = false;
 
+    const runningIds = new Set(matching.map(t => t.id as string));
+    for (const id of Object.keys(state.firstSeen)) {
+      if (!runningIds.has(id)) { delete state.firstSeen[id]; stateChanged = true; }
+    }
+    const keptNudged = state.nudged.filter(id => runningIds.has(id));
+    if (keptNudged.length !== state.nudged.length) { state.nudged = keptNudged; stateChanged = true; }
+
     for (const task of matching) {
       const id = task.id as string;
+      const runStart = currentRunStart(inp, id);
+      if (runStart !== null) {
+        const seen = Date.parse(state.firstSeen[id] ?? "");
+        if (Number.isNaN(seen) || seen !== runStart) {
+          // new run (spawn or resume): restart clock; allow a fresh nudge
+          if (Number.isNaN(seen) || runStart > seen) state.nudged = state.nudged.filter(n => n !== id);
+          state.firstSeen[id] = new Date(runStart).toISOString();
+          stateChanged = true;
+        }
+      }
       if (state.nudged.includes(id)) continue;
       if (!(id in state.firstSeen)) {
         state.firstSeen[id] = new Date().toISOString();

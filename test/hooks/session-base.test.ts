@@ -73,3 +73,44 @@ describe('sessionBase — installed-cache layout (no plugins/, no package.json)'
     expect(out).toBe(shas[1])
   })
 })
+
+describe('sessionBase — bounded git invocation', () => {
+  it('250-commit history: correct mid-history base, run completes quickly', () => {
+    const big = join(tmp, 'big'); mkdirSync(big)
+    execFileSync('git', ['-C', big, 'init', '-q', '-b', 'master'])
+    let s = ''
+    for (let i = 1; i <= 250; i++) {
+      s += `commit refs/heads/master\nmark :${i}\ncommitter t <t@t> ${1_700_000_000 + i * 10} +0000\ndata 2\nc\n` +
+        (i > 1 ? `from :${i - 1}\n` : '') + `M 644 inline f\ndata 1\nx\n\n`
+    }
+    execFileSync('git', ['-C', big, 'fast-import', '--quiet'], { input: s })
+    const rev = (n: number) => execFileSync('git', ['-C', big, 'rev-parse', `master~${250 - n}`], { encoding: 'utf8' }).trim()
+    const p = tr('bigts', JSON.stringify({ timestamp: T(1_700_000_000 + 100 * 10 + 5) }) + '\n')
+    const t0 = Date.now()
+    const got = sessionBase(p, big)
+    expect(Date.now() - t0).toBeLessThan(5000)
+    expect(got).toBe(rev(100))
+    expect(got).toBe(ref(p, big))
+    const eq = tr('bigeq', JSON.stringify({ timestamp: T(1_700_000_000 + 100 * 10) }) + '\n')
+    expect(sessionBase(eq, big)).toBe(rev(99))
+  })
+  it('skewed committer dates (A=100, B=50, C=200 chain, ts=150): documented divergence', () => {
+    const sk = join(tmp, 'skew'); mkdirSync(sk)
+    execFileSync('git', ['-C', sk, 'init', '-q', '-b', 'master'])
+    let s = ''
+    ;[1_700_000_100, 1_700_000_050, 1_700_000_200].forEach((ct, i) => {
+      s += `commit refs/heads/master\nmark :${i + 1}\ncommitter t <t@t> ${ct} +0000\ndata 2\nc\n` +
+        (i > 0 ? `from :${i}\n` : '') + `M 644 inline f\ndata 1\nx\n\n`
+    })
+    execFileSync('git', ['-C', sk, 'fast-import', '--quiet'], { input: s })
+    const A = execFileSync('git', ['-C', sk, 'rev-parse', 'master~2'], { encoding: 'utf8' }).trim()
+    const B = execFileSync('git', ['-C', sk, 'rev-parse', 'master~1'], { encoding: 'utf8' }).trim()
+    const p = tr('skewts', JSON.stringify({ timestamp: T(1_700_000_150) }) + '\n')
+    expect(sessionBase(p, sk)).toBe(B)
+    expect(ref(p, sk)).toBe(A)
+  })
+  it('not a git repo: never throws, falls back to HEAD', () => {
+    const p = tr('ng', JSON.stringify({ timestamp: T(1_700_001_500) }) + '\n')
+    expect(sessionBase(p, join(tmp, 'no-such-dir'))).toBe('HEAD')
+  })
+})

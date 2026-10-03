@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Groundwork — convention adapter, enforcement hooks, SQLite work store",
-    "version": "2.12.0"
+    "version": "2.12.1"
   },
   "allowCrossMarketplaceDependenciesOn": [
     "claude-plugins-official"
@@ -16,7 +16,7 @@
       "name": "groundwork",
       "source": "./",
       "description": "Convention detection, enforcement hooks, work store, and advisor gate for Claude Code",
-      "version": "2.12.0",
+      "version": "2.12.1",
       "author": {
         "name": "Newman"
       },
@@ -33,7 +33,7 @@
       "name": "house-rules",
       "source": "./plugins/house-rules",
       "description": "Code-quality rule engine: guard codebase health against vibe-coded bloat",
-      "version": "0.15.2",
+      "version": "0.15.3",
       "author": {
         "name": "Newman"
       },

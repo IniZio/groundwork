@@ -196,3 +196,32 @@ describe("live-autofix-proof: typescript stable — writes file, preserves pre-e
     expect(narrationLines.length).toBe(0);
   });
 });
+
+describe("gate repo selection ignores scratch files without a git toplevel", () => {
+  it("picks the repo of the touched in-repo file when a scratch file is also touched", () => {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "ge-sel-repo-"));
+    const scratch = mkdtempSync(path.join(os.tmpdir(), "ge-sel-scratch-"));
+    const tpDir = mkdtempSync(path.join(os.tmpdir(), "ge-sel-tp-"));
+    try {
+      initGitRepo(repo);
+      writeFileSync(path.join(repo, ".gitkeep"), "");
+      gitCommit(repo, "base");
+      const fp = path.join(repo, "tmp-notes.md");
+      writeFileSync(fp, "# notes\n");
+      const sf = path.join(scratch, "s.txt");
+      writeFileSync(sf, "x\n");
+      const ts = new Date(Date.now() - 5000).toISOString();
+      const tp = path.join(tpDir, "t.jsonl");
+      writeFileSync(tp, [
+        JSON.stringify({ type: "assistant", timestamp: ts, message: { content: [{ type: "tool_use", name: "Bash", input: { command: `echo x > ${sf}` } }] } }),
+        JSON.stringify({ type: "assistant", timestamp: ts, message: { content: [{ type: "tool_use", name: "Write", input: { file_path: fp, content: "# notes\n" } }] } }),
+      ].join("\n") + "\n");
+      const r = runGate({ hook_event_name: "Stop", session_id: `sel-${Date.now()}`, transcript_path: tp });
+      const out = parseOut(r.stdout);
+      expect(out.decision).toBe("block");
+      expect(out.reason as string).toContain("tmp-notes.md");
+    } finally {
+      for (const d of [repo, scratch, tpDir]) rmSync(d, { recursive: true, force: true });
+    }
+  });
+});

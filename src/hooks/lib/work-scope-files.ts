@@ -8,8 +8,6 @@ function addPath(raw: string, cwd: string, files: Set<string>): void {
   if (!stripped) return
   const resolved = stripped.startsWith('/') ? stripped : path.join(cwd, stripped)
   if (resolved === '/dev/null') return
-  if (resolved.startsWith('/tmp/')) return
-  if (resolved.startsWith('/dev/shm/')) return
   files.add(resolved)
 }
 

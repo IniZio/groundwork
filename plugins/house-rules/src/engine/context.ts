@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
@@ -147,6 +147,10 @@ export function scopeFiles(opts: BuildContextOpts): string[] {
   return scopeWithBash(opts).files;
 }
 
+function realpathOrSelf(p: string): string {
+  try { return realpathSync(p); } catch { return p; }
+}
+
 function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: Set<string> } {
   const bashCreated = new Set<string>();
   const { repoRoot, mode } = opts;
@@ -165,7 +169,10 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
     });
 
     const result: string[] = [];
+    const realRoot = realpathOrSelf(repoRoot);
     for (const absPath of absPaths) {
+      const realAbs = realpathOrSelf(absPath);
+      if (realAbs !== realRoot && !realAbs.startsWith(realRoot + path.sep)) continue;
       if (!existsSync(absPath)) continue;
       const relPath = path.relative(repoRoot, absPath);
       const tracked = isTracked(repoRoot, relPath);

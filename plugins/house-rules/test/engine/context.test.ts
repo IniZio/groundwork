@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildContext } from '../../src/engine/context.js';
@@ -298,4 +298,68 @@ describe('buildContext — CLAUDE_PROJECT_DIR independence', () => {
     expect(f).toBeDefined();
     expect(f!.text).toBe('const x = 2;\n');
   });
+});
+
+// ---------------------------------------------------------------------------
+// Bash writes: repo-rooted scope, scratch roots (tmpdir, /dev/shm)
+// ---------------------------------------------------------------------------
+
+function makeBashLine(command: string, cwd: string): string {
+  return JSON.stringify({
+    type: 'assistant',
+    cwd,
+    message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] },
+  }) + '\n';
+}
+
+function scratchSuite(label: string, base: string): void {
+  describe(`buildContext — gate Bash scope, repo rooted under ${label}`, () => {
+    it('Bash write inside the repo brings the file into scope', () => {
+      const repo = mkdtempSync(path.join(base, 'gw-bsh-in-'));
+      tmpRoots.push(repo);
+      initRepo(repo);
+      writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');
+      commit(repo, 'init', '2026-01-01T00:00:00+00:00');
+      writeFileSync(path.join(repo, 'a.ts'), 'export const y = 1;\n');
+      const transcriptPath = path.join(repo, 'transcript.jsonl');
+      writeFileSync(transcriptPath, makeUserLine('2026-01-01T06:00:00Z') + makeBashLine(`echo y >> ${repo}/a.ts`, repo));
+      const ctx = buildContext({ repoRoot: repo, mode: 'gate', transcriptPath, sessionId: 's' });
+      expect(ctx.files!.map((x) => x.path)).toEqual(['a.ts']);
+    });
+
+    it(`Bash write to a ${label} scratch file outside the repo stays out of scope`, () => {
+      const repo = mkdtempSync(path.join(base, 'gw-bsh-repo-'));
+      const scratch = mkdtempSync(path.join(base, 'gw-bsh-out-'));
+      tmpRoots.push(repo, scratch);
+      initRepo(repo);
+      writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');
+      commit(repo, 'init', '2026-01-01T00:00:00+00:00');
+      const scratchFile = path.join(scratch, 'scratch.ts');
+      writeFileSync(scratchFile, 'x\n');
+      const transcriptPath = path.join(repo, 'transcript.jsonl');
+      writeFileSync(transcriptPath, makeUserLine('2026-01-01T06:00:00Z') + makeBashLine(`echo x > ${scratchFile}`, repo));
+      const ctx = buildContext({ repoRoot: repo, mode: 'gate', transcriptPath, sessionId: 's' });
+      expect(ctx.files!.map((x) => x.path)).toEqual([]);
+    });
+
+    it(`Write to a ${label} file outside the repo stays out of scope (in-repo filter bites)`, () => {
+      const repo = mkdtempSync(path.join(base, 'gw-wr-repo-'));
+      const scratch = mkdtempSync(path.join(base, 'gw-wr-out-'));
+      tmpRoots.push(repo, scratch);
+      initRepo(repo);
+      writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');
+      commit(repo, 'init', '2026-01-01T00:00:00+00:00');
+      const scratchFile = path.join(scratch, 'scratch.ts');
+      writeFileSync(scratchFile, 'x\n');
+      const transcriptPath = path.join(repo, 'transcript.jsonl');
+      writeFileSync(transcriptPath, makeUserLine('2026-01-01T06:00:00Z') + makeWriteLine(scratchFile));
+      const ctx = buildContext({ repoRoot: repo, mode: 'gate', transcriptPath, sessionId: 's' });
+      expect(ctx.files!.map((x) => x.path)).toEqual([]);
+    });
+  });
+}
+
+scratchSuite('os.tmpdir()', os.tmpdir());
+describe.skipIf(!existsSync('/dev/shm'))('buildContext — /dev/shm', () => {
+  scratchSuite('/dev/shm', '/dev/shm');
 });

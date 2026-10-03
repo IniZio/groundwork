@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, cpSync, symlinkSync, realpathSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, cpSync, symlinkSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path, { join, resolve } from 'node:path'
@@ -51,6 +51,26 @@ describe('sessionTouchedFiles', () => {
     for (const absent of ['var.txt', 'scratch.txt', 'py.txt']) expect(got.join()).not.toContain(absent)
   })
 
+  it('matches house-rules extraction when the repo root is under tmpdir and /dev/shm', () => {
+    for (const base of [tmpdir(), '/dev/shm']) {
+      if (!existsSync(base)) continue
+      const root = mkdtempSync(join(base, 'wsf-par-'))
+      const out = mkdtempSync(join(base, 'wsf-parout-'))
+      try {
+        const p = tr('par-tmp.jsonl', [
+          entry('Bash', { command: `echo x > ${root}/in.txt` }, { cwd: root }),
+          entry('Bash', { command: `echo x > rel.txt` }, { cwd: root }),
+          entry('Bash', { command: `echo x > ${out}/scratch.txt` }, { cwd: root }),
+        ])
+        const got = [...sessionTouchedFiles(p, root)].sort()
+        const refGot = touchedFiles({ event: 'SubagentStop', transcriptPath: p, sessionId: '' })
+          .map(f => path.relative(root, f)).filter(r => !r.startsWith('..')).sort()
+        expect(got).toEqual(['in.txt', 'rel.txt'])
+        expect(refGot).toEqual(got)
+      } finally { rmSync(root, { recursive: true, force: true }); rmSync(out, { recursive: true, force: true }) }
+    }
+  })
+
   it('excludes sidechain entries (reference does not filter them)', () => {
     const p = tr('side.jsonl', [...main, sidechain])
     expect([...sessionTouchedFiles(p, REPO)].sort()).toEqual(EXPECTED)
@@ -71,6 +91,21 @@ describe('sessionTouchedFiles', () => {
     const r = spawnSync(process.execPath, [join(dir, 'run.ts'), p, REPO], { encoding: 'utf8', cwd: dir })
     expect(r.status).toBe(0)
     expect(JSON.parse(r.stdout)).toEqual(EXPECTED)
+  })
+
+  it('attributes Bash writes inside a repo rooted under the tmp dir; not /tmp paths outside it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'wsf-root-'))
+    const outside = mkdtempSync(join(tmpdir(), 'wsf-out-'))
+    try {
+      const p = tr('tmproot.jsonl', [
+        entry('Bash', { command: `echo x > ${root}/inside.txt` }, { cwd: root }),
+        entry('Bash', { command: `echo x > rel.txt` }, { cwd: root }),
+        entry('Bash', { command: `echo x > ${outside}/scratch.txt` }, { cwd: root }),
+      ])
+      expect([...sessionTouchedFiles(p, root)].sort()).toEqual(['inside.txt', 'rel.txt'])
+    } finally {
+      rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true })
+    }
   })
 
   it('attributes files across a symlinked checkout path (either direction)', () => {

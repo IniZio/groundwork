@@ -89,3 +89,58 @@ describe("store-write-guard — Family 2", () => {
     expect(safeDecision(result)).toBe("deny");
   });
 });
+
+const HOOK = new URL("../../src/hooks/store-write-guard.ts", import.meta.url).pathname;
+function runHook(payload: Record<string, unknown>) {
+  const r = Bun.spawnSync(["bun", HOOK], {
+    stdin: new TextEncoder().encode(JSON.stringify({ hook_event_name: "PreToolUse", ...payload })),
+  });
+  expect(r.exitCode).toBe(0);
+  return r.stdout.toString().trim();
+}
+function spawnHook(payload: Record<string, unknown>): string {
+  const s = runHook(payload);
+  return s ? JSON.parse(s).hookSpecificOutput.permissionDecision : "allow";
+}
+
+describe("store-write-guard — gw-only link/inbox paths", () => {
+  const denied = [
+    "/repo/.groundwork/parent",
+    ".groundwork/parent",
+    "/repo/.groundwork/inbox/child-1.md",
+    ".groundwork/inbox/a/b/c.json",
+    "/repo/sub/../.groundwork/./inbox/x",
+  ];
+  for (const tool of ["Write", "Edit", "MultiEdit"]) {
+    for (const fp of denied) {
+      for (const agent of [undefined, "groundwork:implementer"]) {
+        it(`VIOLATION: ${tool} ${fp} ${agent ? "subagent" : "main"} → deny`, () => {
+          expect(spawnHook({ tool_name: tool, tool_input: { file_path: fp }, ...(agent ? { agent_type: agent } : {}) })).toBe("deny");
+        });
+      }
+    }
+  }
+
+  it("VIOLATION: NotebookEdit notebook_path under inbox → deny", () => {
+    expect(spawnHook({ tool_name: "NotebookEdit", tool_input: { notebook_path: "/repo/.groundwork/inbox/n.ipynb" } })).toBe("deny");
+  });
+
+  it("deny message suggests no bypass", () => {
+    const reason: string = JSON.parse(runHook({ tool_name: "Write", tool_input: { file_path: "/r/.groundwork/inbox/x" } })).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain("written only by gw");
+    expect(reason).not.toMatch(/bypass|instead|unless|override|use bash|manually/i);
+  });
+
+  it("CLEAN: Write to .groundwork/work/<slug>/motive.md → allow", () => {
+    expect(spawnHook({ tool_name: "Write", tool_input: { file_path: "/repo/.groundwork/work/s/motive.md" } })).toBe("allow");
+  });
+
+  it("CLEAN: Write to file named parent outside .groundwork → allow", () => {
+    expect(spawnHook({ tool_name: "Write", tool_input: { file_path: "/repo/src/parent" } })).toBe("allow");
+    expect(spawnHook({ tool_name: "Write", tool_input: { file_path: "/repo/.groundwork/work/parent" } })).toBe("allow");
+  });
+
+  it("CLEAN: inbox-prefixed sibling dir → allow", () => {
+    expect(spawnHook({ tool_name: "Write", tool_input: { file_path: "/repo/.groundwork/inbox-notes/x" } })).toBe("allow");
+  });
+});

@@ -5,7 +5,11 @@ function deny(r: string): HookResult {
 }
 function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 
+import { posix } from "node:path";
+
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit"]);
+const LINK_WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const GW_ONLY_PATH_RE = /(?:^|\/)\.groundwork\/(?:parent$|inbox\/.)/;
 const READ_TOOLS  = new Set(["Read", "Grep", "Glob"]);
 const STORE_PATH_RE = /\.groundwork\/[^/\s]*\.db\b/;
 
@@ -63,6 +67,14 @@ export function check(input: unknown): HookResult {
       const fp = typeof ti.file_path === "string" ? ti.file_path : "";
       if (STORE_PATH_RE.test(fp)) {
         return deny(`store-write-guard: ${tool} to store db path "${fp}" denied — mutate store only via WorkStore API.`);
+      }
+    }
+
+    if (LINK_WRITE_TOOLS.has(tool)) {
+      const raw = typeof ti.file_path === "string" ? ti.file_path
+        : typeof ti.notebook_path === "string" ? ti.notebook_path : "";
+      if (raw && GW_ONLY_PATH_RE.test(posix.normalize(raw.replace(/\\/g, "/")))) {
+        return deny(`store-write-guard: ${tool} to "${raw}" denied — this path is written only by gw.`);
       }
     }
 

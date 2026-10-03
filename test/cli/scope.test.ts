@@ -8,7 +8,7 @@ import { ingestInbox } from "../../src/store/scope-inbox.js";
 import { linksFor, requirement } from "../../src/store/scope-link.js";
 import { readPointer, CHILD_REGISTER } from "../../src/store/scope-pointer.js";
 import {
-  ScopeError, SCOPE_PARENT, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify,
+  ScopeError, SCOPE_PARENT, assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify,
 } from "../../src/cli/scope.js";
 
 const tmp = mkdtempSync(path.join(tmpdir(), "gw-scope-"));
@@ -205,5 +205,57 @@ describe("forwardVerdict", () => {
     p.store.close();
     rmSync(path.join(p.dir, ".groundwork", "work.db"));
     expect(code(() => forwardVerdict({ childDir: c, verdict: "APPROVE", citation: "a:1", base_commit: "x" }))).toBe("PARENT_UNREACHABLE");
+  });
+});
+
+describe("assertCommittedForApprove", () => {
+  it("no pointer or direct pointer: no-op even when dirty", () => {
+    const p = makeParent(); const c = makeChild(p.dir);
+    writeFileSync(path.join(c, "x.txt"), "x");
+    expect(() => assertCommittedForApprove(c)).not.toThrow();
+    scopeLink(p.store, { childDir: c, slice: "S1", mode: "direct", repoDir: p.dir });
+    expect(() => assertCommittedForApprove(c)).not.toThrow();
+  });
+  it("delegate: lists dirty paths, ignores .groundwork/", () => {
+    const p = makeParent(); const c = makeChild(p.dir);
+    scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
+    expect(() => assertCommittedForApprove(c)).not.toThrow();
+    writeFileSync(path.join(c, "x.txt"), "x");
+    expect(code(() => assertCommittedForApprove(c))).toBe("UNCOMMITTED_WORK");
+    try { assertCommittedForApprove(c); } catch (e) {
+      expect((e as Error).message).toBe("cannot approve a linked child with uncommitted work — commit first:\nx.txt");
+    }
+  });
+});
+
+describe("childInit adopt", () => {
+  const preStore = (c: string) => {
+    mkdirSync(path.join(c, ".groundwork"), { recursive: true });
+    const s = new WorkStore(path.join(c, ".groundwork", "work.db"));
+    s.createMotive("other"); s.close();
+  };
+  it("existing store without SCOPE_PARENT: linked once, then exists", () => {
+    const p = makeParent(); const c = makeChild(p.dir);
+    preStore(c);
+    scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
+    expect(childInit({ childDir: c })?.status).toBe("linked");
+    expect(ingestInbox(p.store, p.dir)).toEqual({ ingested: 1, rejected: [] });
+    expect(childInit({ childDir: c })?.status).toBe("exists");
+    const cs = new WorkStore(path.join(c, ".groundwork", "work.db"));
+    expect(cs.getEvents(SCOPE_PARENT, "m1")).toHaveLength(1);
+    cs.close();
+  });
+  it("relinked (different link_id): records new SCOPE_PARENT + register", () => {
+    const p = makeParent(); const c = makeChild(p.dir);
+    const l1 = scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
+    expect(childInit({ childDir: c })?.status).toBe("created");
+    scopeUnlink(p.store, { slice: "S1", reason: "redo" });
+    const l2 = scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
+    expect(l2.link_id).not.toBe(l1.link_id);
+    expect(childInit({ childDir: c })?.status).toBe("linked");
+    expect(childInit({ childDir: c })?.status).toBe("exists");
+    const cs = new WorkStore(path.join(c, ".groundwork", "work.db"));
+    expect(cs.getEvents(SCOPE_PARENT, "m1")).toHaveLength(2);
+    cs.close();
   });
 });

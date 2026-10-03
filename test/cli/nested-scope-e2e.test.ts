@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,7 +24,7 @@ const gw = (cwd: string, ...a: string[]) => {
 };
 
 let n = 0;
-function setup(mode?: string) {
+function setup(mode?: string, preInit = false) {
   const parent = path.join(tmp, `p${n}`);
   const child = path.join(tmp, `c${n++}`);
   mkdirSync(parent, { recursive: true });
@@ -37,6 +37,7 @@ function setup(mode?: string) {
   const tok = /token: (\S+)/.exec(init.out)![1];
   expect(gw(parent, "motive", "add", "m1", "--use", "--token", tok).code).toBe(0);
   expect(gw(parent, "slice", "add", "S1", "--token", tok).code).toBe(0);
+  if (preInit) expect(gw(child, "init").code).toBe(0);
   const link = gw(parent, "scope", "link", child, "--slice", "S1", ...(mode ? ["--mode", mode] : []), "--token", tok);
   expect(link.code).toBe(0);
   return { parent, child, tok };
@@ -138,7 +139,85 @@ describe("nested scope e2e", () => {
     expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).toBe("APPROVE");
   });
 
-  describe("plain errors print gw: <msg>, no stack", () => {
+  const inboxText = (parent: string) => {
+  const d = path.join(parent, ".groundwork", "inbox");
+  if (!existsSync(d)) return "";
+  return readdirSync(d, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile()).map((e) => readFileSync(path.join(e.parentPath, e.name), "utf8")).join("\n");
+};
+
+describe("dirty-tree approve refusal", () => {
+  const MSG = "gw: cannot approve a linked child with uncommitted work — commit first:";
+  const approve = (child: string, ctok: string) => gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok);
+
+  for (const [label, dirty] of [
+    ["untracked", (c: string) => writeFileSync(path.join(c, "new.txt"), "x\n")],
+    ["modified", (c: string) => writeFileSync(path.join(c, "a.txt"), "changed\n")],
+    ["staged", (c: string) => { writeFileSync(path.join(c, "s.txt"), "x\n"); git(c, "add", "s.txt"); }],
+  ] as const) {
+    it(`${label}: refused before local record or forward`, () => {
+      const { parent, child } = setup();
+      const ctok = childInit(child);
+      dirty(child);
+      const before = inboxText(parent);
+      const r = approve(child, ctok);
+      expect(r.code).toBe(1);
+      expect(r.err).toContain(MSG);
+      expect(r.err).toMatch(/new\.txt|a\.txt|s\.txt/);
+      expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).not.toBe("APPROVE");
+      expect(inboxText(parent)).toBe(before);
+    });
+  }
+
+  it("ignored files and .groundwork do not block", () => {
+    const { child } = setup();
+    const ctok = childInit(child);
+    writeFileSync(path.join(child, ".groundwork", "scratch"), "x");
+    expect(approve(child, ctok).code).toBe(0);
+  });
+
+  it("other verdicts are not blocked in a dirty tree", () => {
+    const { child } = setup();
+    const ctok = childInit(child);
+    writeFileSync(path.join(child, "new.txt"), "x\n");
+    expect(gw(child, "gate", "correction", "--citation", "a.txt:1", "--token", ctok).code).toBe(0);
+  });
+
+  it("clean tree: records locally and forwards base_commit = HEAD", () => {
+    const { parent, child } = setup();
+    const ctok = childInit(child);
+    const head = git(child, "rev-parse", "HEAD").stdout.trim();
+    const r = approve(child, ctok);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).toBe("APPROVE");
+    expect(inboxText(parent)).toContain(head);
+  });
+});
+
+describe("gw init adopts a pre-existing child store", () => {
+  it("records SCOPE_PARENT + CHILD_REGISTER once", () => {
+    const { parent, child } = setup(undefined, true);
+    const r = gw(child, "init");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("linked existing store");
+    expect(inboxText(parent)).toContain("CHILD_REGISTER");
+    const before = inboxText(parent);
+    const r2 = gw(child, "init");
+    expect(r2.code).toBe(0);
+    expect(r2.out).toContain("already initialized");
+    expect(inboxText(parent)).toBe(before);
+  });
+
+  it("adopted child approve completes the parent slice", () => {
+    const { parent, child, tok } = setup(undefined, true);
+    gw(child, "init");
+    const ctok = gw(child, "token").out.match(/token: (\S+)/)![1];
+    expect(gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok).code).toBe(0);
+    expect(gw(parent, "slice", "complete", "S1", "--token", tok).code).toBe(0);
+  });
+});
+
+describe("plain errors print gw: <msg>, no stack", () => {
     const clean = (r: { code: number | null; err: string }) => {
       expect(r.code).toBe(1);
       expect(r.err.startsWith("gw: ")).toBe(true);

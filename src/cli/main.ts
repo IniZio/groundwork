@@ -3,6 +3,7 @@ import { WorkStore, EVENT_TYPES, GATE_VERDICTS } from "../store/store.js";
 import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { resolveRepoBase } from "../hooks/lib/repo-base.js";
 import { runArchive } from "./archive.js";
 import { runMigrate } from "./migrate.js";
 import { renderRecipe } from "./recipe.js";
@@ -14,7 +15,7 @@ import {
   computeSeal,
   type SealFields,
 } from "../store/key-store.js";
-import { childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
+import { assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
 import { completionGuard, gateStatus } from "./gate-status.js";
 import { CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
@@ -39,9 +40,14 @@ function getGitHead(cwd: string): string | null {
   } catch { return null; }
 }
 
+let baseDir: string | undefined;
+function repoBase(): string {
+  return (baseDir ??= resolveRepoBase(process.cwd()));
+}
+
 function dbPath(): string {
   if (process.env.GROUNDWORK_DB) return process.env.GROUNDWORK_DB;
-  return path.join(process.cwd(), ".groundwork", "work.db");
+  return path.join(repoBase(), ".groundwork", "work.db");
 }
 
 function repoDir(): string {
@@ -107,7 +113,7 @@ function cmdInit(args: string[]): void {
       process.stdout.write(`no child store: direct-mode link (slice ${child.pointer.slice}); verify from the parent with \`${gw} scope verify\`\n`);
     } else {
       if (child.status === "created") excludeWorkingTier(repoDir());
-      process.stdout.write(`${child.status === "created" ? "initialized child store" : "already initialized"}: ${child.dbPath}\nlinked to slice ${child.pointer.slice} (${child.pointer.mode})\n`);
+      process.stdout.write(`${child.status === "created" ? "initialized child store" : child.status === "linked" ? "linked existing store" : "already initialized"}: ${child.dbPath}\nlinked to slice ${child.pointer.slice} (${child.pointer.mode})\n`);
     }
     return;
   }
@@ -294,12 +300,15 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
     process.stderr.write("error: --citation must include at least one file:line reference (e.g. src/foo.ts:42)\n");
     process.exit(1);
   }
+  if (upper === "APPROVE") {
+    try { assertCommittedForApprove(repoBase()); } catch (e: unknown) { scopeFail(e); }
+  }
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   const eventType = `GATE_${upper}`;
   const payload: Record<string, unknown> = { citation };
   if (upper === "APPROVE") {
-    const head = getGitHead(process.cwd());
+    const head = getGitHead(repoBase());
     if (head) payload.base_commit = head;
     const sealKey = ensureSealKey(repoDir());
     const createdAt = new Date().toISOString();
@@ -318,8 +327,8 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
   process.stdout.write(`${eventType} recorded  citation: ${citation}\n`);
   store.close();
   try {
-    const head = getGitHead(process.cwd());
-    const fwd = forwardVerdict({ childDir: process.cwd(), verdict: upper, citation, base_commit: head ?? "" });
+    const head = getGitHead(repoBase());
+    const fwd = forwardVerdict({ childDir: repoBase(), verdict: upper, citation, base_commit: head ?? "" });
     if (fwd) process.stdout.write(`forwarded to parent: ${fwd.event_id}\n`);
   } catch (e: unknown) {
     process.stderr.write(`gw: verdict forward failed: ${e instanceof Error ? e.message : String(e)}\n(local ${eventType} remains recorded)\n`);
@@ -359,7 +368,7 @@ function cmdScope(sub: string | undefined, args: string[], motiveSlug?: string):
 }
 
 function cmdGateStatus(args: string[]): void {
-  const st = gateStatus({ cwd: process.cwd() });
+  const st = gateStatus({ cwd: repoBase() });
   if (boolFlag(args, "--json")) {
     process.stdout.write(JSON.stringify(st, null, 2) + "\n");
     return;

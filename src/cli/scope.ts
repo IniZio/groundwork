@@ -1,5 +1,6 @@
 import { existsSync, realpathSync, rmSync, statSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { GATE_VERDICTS, WorkStore, type GateVerdict } from "../store/store.js";
 import { ensureSealKey, ensureWriteToken } from "../store/key-store.js";
 import { createLink, linksFor, type ScopeLink } from "../store/scope-link.js";
@@ -25,7 +26,7 @@ export const SCOPE_PARENT = "SCOPE_PARENT";
 
 export type ScopeErrorCode =
   | "BAD_MODE" | "NO_CHILD_DIR" | "SELF_LINK" | "NO_LIVE_LINK" | "REASON_REQUIRED"
-  | "BAD_CITATION" | "NOT_DIRECT" | "PARENT_UNREACHABLE" | "BAD_VERDICT" | "BAD_BASE_COMMIT";
+  | "BAD_CITATION" | "NOT_DIRECT" | "PARENT_UNREACHABLE" | "BAD_VERDICT" | "BAD_BASE_COMMIT" | "UNCOMMITTED_WORK";
 
 export class ScopeError extends Error {
   constructor(readonly code: ScopeErrorCode, message: string) {
@@ -101,6 +102,7 @@ function reachableParent(p: ScopePointer): string {
 
 export type ChildInitResult =
   | { status: "no-child-store"; pointer: ScopePointer }
+  | { status: "linked"; pointer: ScopePointer; dbPath: string }
   | { status: "exists"; pointer: ScopePointer; dbPath: string }
   | { status: "created"; pointer: ScopePointer; dbPath: string };
 
@@ -116,10 +118,22 @@ export function childInit(o: { childDir: string }): ChildInitResult | null {
     }
   }
   const db = path.join(o.childDir, ".groundwork", "work.db");
-  if (existsSync(db)) return { status: "exists", pointer, dbPath: db };
+  const reg: ChildRegisterPayload = { link_id: pointer.link_id, slice: pointer.slice };
+  if (existsSync(db)) {
+    // Store predates the link (or the tree was relinked): adopt it unless this link is already recorded.
+    const store = new WorkStore(db);
+    try {
+      const known = store.getEvents(SCOPE_PARENT, pointer.motive)
+        .some((e) => (JSON.parse(e.payload) as { link_id?: string }).link_id === pointer.link_id);
+      if (known) return { status: "exists", pointer, dbPath: db };
+      writeInboxEvent(root, pointer.link_id, CHILD_REGISTER, { ...reg });
+      store.createMotive(pointer.motive);
+      store.appendEvent(SCOPE_PARENT, { ...pointer }, pointer.motive);
+    } finally { store.close(); }
+    return { status: "linked", pointer, dbPath: db };
+  }
 
   // Parent-side write first: if it fails, nothing exists in the child yet.
-  const reg: ChildRegisterPayload = { link_id: pointer.link_id, slice: pointer.slice };
   writeInboxEvent(root, pointer.link_id, CHILD_REGISTER, { ...reg });
 
   try {
@@ -136,6 +150,25 @@ export function childInit(o: { childDir: string }): ChildInitResult | null {
     throw e;
   }
   return { status: "created", pointer, dbPath: db };
+}
+
+/** Delegate child only: refuse approve while the tree has non-.groundwork changes, so base_commit covers the work. */
+export function assertCommittedForApprove(childDir: string): void {
+  const pointer = readPointer(childDir);
+  if (!pointer || pointer.mode === "direct") return;
+  const r = spawnSync("git", ["status", "--porcelain", "-z", "--untracked-files=all"], { cwd: childDir, encoding: "utf8" });
+  if (r.status !== 0) throw new ScopeError("UNCOMMITTED_WORK", `git status failed in ${childDir}: ${(r.stderr ?? "").trim()}`);
+  const ents = r.stdout.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  for (let i = 0; i < ents.length; i++) {
+    const code = ents[i].slice(0, 2);
+    paths.push(ents[i].slice(3));
+    if (code[0] === "R" || code[0] === "C") i++;
+  }
+  const dirty = paths.filter((f) => f !== ".groundwork" && !f.startsWith(".groundwork/"));
+  if (dirty.length) {
+    throw new ScopeError("UNCOMMITTED_WORK", `cannot approve a linked child with uncommitted work — commit first:\n${dirty.join("\n")}`);
+  }
 }
 
 /** Null = no pointer. Throws on any failure; caller must exit nonzero. */

@@ -46,10 +46,6 @@ function setup() {
   expect(gw("parent", parent, "slice", "add", "S", "--token", tok).code).toBe(0);
   expect(gw("parent", parent, "scope", "link", child, "--slice", "S", "--token", tok).code).toBe(0);
 
-  // Aliasing approach: the pointer stores the parent's realpath, and the child can resolve that directly,
-  // so a cwd-based alias cannot reach it. Instead a host-side helper rewrites the pointer's `root` to the
-  // symlink alias path (a variant of the pointer a sandbox mount could produce). The child then reaches the
-  // parent only through the alias; sameRoot() must realpath both sides to treat it as the same repo.
   const pf = path.join(child, ".groundwork", "parent");
   const p = parsePointer(readFileSync(pf, "utf8"));
   expect(p.root).not.toBe(alias);

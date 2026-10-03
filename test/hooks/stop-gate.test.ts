@@ -327,6 +327,41 @@ describe("stop-gate — yield detection (T05)", () => {
     expect(result).toContain("in-flight");
   });
 
+  it("BG-TASKS: only a running shell → no yield", () => {
+    const result = detectYield({
+      background_tasks: [{ id: "bjykd0x4l", type: "shell", status: "running", command: "bash runs.sh" }],
+    });
+    expect(result).toBeNull();
+  });
+
+  it("BG-TASKS: running subagent + running shell → counts subagents only", () => {
+    const result = detectYield({
+      background_tasks: [
+        { id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" },
+        { id: "b1", type: "shell", status: "running", command: "bun dev" },
+      ],
+    });
+    expect(result).toContain("(1 running)");
+  });
+
+  it("BG-TASKS: running entry without type → still yields", () => {
+    const result = detectYield({ background_tasks: [{ id: "old1", status: "running" }] });
+    expect(result).toContain("(1 running)");
+  });
+
+  it("BG-TASKS: run() with only a running shell → blocks on incomplete slices", () => {
+    const { db, dbPath } = makeDb("bg-tasks-shell-only");
+    db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
+    db.close();
+    const result = run({
+      session_id: "sess-bg-shell",
+      background_tasks: [{ id: "bjykd0x4l", type: "shell", status: "running", command: "bun dev" }],
+    }, { GROUNDWORK_DB: dbPath });
+    const out = JSON.parse(result.stdout);
+    expect(out.decision).toBe("block");
+    expect(out.reason).toContain("incomplete");
+  });
+
   it("BG-TASKS: background_tasks empty array → no yield even when transcript fixture shows in-flight agents", () => {
     // Empty array means harness says nothing running — must NOT fall back.
     const inFlightPath = path.join(FIXTURES, "stop-gate-inflight.jsonl");

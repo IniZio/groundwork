@@ -5,6 +5,7 @@ import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
+import { readPointer, type ScopePointer } from "../store/scope-pointer.js";
 import { readSealKey, verifySeal, type SealFields } from "../store/key-store.js";
 
 // ---------------------------------------------------------------------------
@@ -113,7 +114,7 @@ export function detectYield(input: unknown): string | null {
     const tasks = inp.background_tasks;
     if (Array.isArray(tasks)) {
       const inFlight = (tasks as Record<string, unknown>[]).filter(
-        t => t.status === "running"
+        t => t.status === "running" && (t.type === undefined || t.type === "subagent")
       );
       if (inFlight.length > 0) {
         return `background Agent(s) still in-flight (${inFlight.length} running) — orchestrator awaiting completion`;
@@ -634,6 +635,13 @@ function unledgeredGate(inp: Record<string, unknown>, env: Record<string, string
     return null;
   }
   const files = res.files;
+  let pointer: ScopePointer | null = null;
+  let pointerErr: string | null = null;
+  try { pointer = readPointer(res.top); } catch (e) { pointerErr = e instanceof Error ? e.message : String(e); }
+  if (pointer?.mode === "direct") {
+    reset();
+    return allow("stop-gate: parent scope governs this tree — no separate work store needed");
+  }
   const count = Math.max(primary ? readCount(primary) : 0, readCount(fallback)) + 1;
   if (count >= 4) {
     reset();
@@ -645,6 +653,12 @@ function unledgeredGate(inp: Record<string, unknown>, env: Record<string, string
     return allow("stop-gate: override — block counter cannot be persisted");
   }
   const list = files.slice(0, 5).join(", ") + (files.length > 5 ? `, +${files.length - 5} more` : "");
+  if (pointerErr !== null) {
+    return block(`stop-gate: ${files.length} code file(s) changed this session [${list}] but the scope pointer at .groundwork/parent is invalid: ${pointerErr}. Fix or re-link the pointer.`);
+  }
+  if (pointer) {
+    return block(`stop-gate: ${files.length} code file(s) changed this session with no work store [${list}]. This tree is linked to parent slice ${pointer.slice} (motive ${pointer.motive}); run \`$GW init\` here to give it its own work store, slice with \`$GW slice add\`, delegate to groundwork:implementer.`);
+  }
   return block(`stop-gate: ${files.length} code file(s) changed this session with no work store [${list}]. Set up the store with gw init: run \`$GW init\`, slice with \`$GW slice add\`, delegate to groundwork:implementer.`);
 }
 

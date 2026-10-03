@@ -196,6 +196,18 @@ describe("stop-gate — unledgered code changes", () => {
     expect(stop(repo, transcript).out.decision).toBe("block");
   });
 
+  it("running shell background task is not a yield: block, block, block, allow", () => {
+    const { repo, transcript } = setup();
+    writeFileSync(path.join(repo, "new.py"), "x = 1\n");
+    edit(repo, transcript, "new.py");
+    const bg = [{ id: "b1", type: "shell", status: "running", command: "npm run dev" }];
+    const seq = [0, 1, 2, 3].map(() => {
+      const r = stop(repo, transcript, { background_tasks: bg });
+      return r.out.decision === "block" ? "block" : "allow";
+    });
+    expect(seq).toEqual(["block", "block", "block", "allow"]);
+  });
+
   it("session-touched tracked code file later deleted: allows", () => {
     const { repo, transcript } = setup();
     writeFileSync(path.join(repo, "a.ts"), "export const a = 2;\n");

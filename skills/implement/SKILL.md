@@ -36,6 +36,21 @@ Orchestrator checks `git merge-base <branch> main` equals that sha before mergin
 Merge branches after wave, run full suite.
 Hard-size-limit files (e.g. `agents/orchestrator.md`) get one owner per wave.
 
+## Separate-session dispatch
+
+For a slice sent to another session in an isolated tree (another Claude session, sandbox, `claude -p` in a worktree):
+
+1. Before dispatch, on the host: `$GW scope link <tree> --slice S --mode delegate --token T`.
+   Use `--mode direct` when the host verifies before merging; after verifying, run
+   `$GW scope verify --slice S --citation file:line --token T`.
+2. Delegate brief's first child step: run `$GW init` in the tree.
+3. `$GW slice complete S` refuses until child approval (delegate) or host verification (direct) is recorded.
+   Read the refusal and act on it.
+4. Abandoned child: link a fresh tree, or `$GW scope unlink --slice S --reason "..." --token T`.
+
+`Agent({ isolation: "worktree" })` subagents are exempt: subagents cannot run `$GW init`
+(store-write-guard denies it) and stay in the host ledger.
+
 ## Upstream coverage
 
 For interview/planning: `mattpocock-skills:grilling`.

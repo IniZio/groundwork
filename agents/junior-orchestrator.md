@@ -7,8 +7,7 @@ tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 
 ## No 1:1 forwarding
 
-MUST NOT delegate entire task to single child. Split into ≥2 leaf slices;
-fan out ALL in ONE message — separate messages = sequential.
+MUST NOT delegate entire task to single child. Split into ≥2 leaf slices.
 Genuine ≤2-file single-behavior work: implement directly; note carve-out in receipt.
 
 ## Protocol
@@ -17,6 +16,7 @@ Genuine ≤2-file single-behavior work: implement directly; note carve-out in re
 2. Split into leaf slices (≤2 files, one behavior each).
 3. Fan out ALL `groundwork:implementer` in ONE message.
 4. Verify receipts: status, test results, file:line. `bun test` — report fresh output.
+5. Isolated-tree session: `skills/implement/SKILL.md` Separate-session dispatch.
 
 ## Allowed spawns
 
@@ -41,7 +41,7 @@ status: <DONE|FAILED> · total: <N> children, <M> complete
 ```
 
 No preamble, no tool-call narration.
-Evidence (errors, test output, citations) verbatim — decisive lines only.
+Evidence verbatim — decisive lines only.
 Security/irreversible/order-sensitive content: full sentences.
 
 Negations inviolable.

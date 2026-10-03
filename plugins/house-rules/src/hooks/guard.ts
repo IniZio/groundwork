@@ -89,6 +89,62 @@ function getBaseText(filePath: string, base: string): string | null {
   return showResult.stdout;
 }
 
+// Claude Code's Edit apply: an empty new_string also deletes the newline after old_string.
+function ccApplyEdit(text: string, e: EditEntry): string | null {
+  let old = e.old_string;
+  if (old === "") return null;
+  if (e.new_string === "" && !old.endsWith("\n") && text.includes(old + "\n")) old += "\n";
+  const first = text.indexOf(old);
+  if (first === -1) return null;
+  if (e.replace_all) return text.split(old).join(e.new_string);
+  if (text.indexOf(old, first + 1) !== -1) return null;
+  return text.slice(0, first) + e.new_string + text.slice(first + old.length);
+}
+
+function ccApplyInput(tool: string, ti: Record<string, unknown>, pre: string): string | null {
+  if (tool === "write") return typeof ti.content === "string" ? ti.content : null;
+  const edits: EditEntry[] = tool === "multiedit"
+    ? (Array.isArray(ti.edits) ? ti.edits as EditEntry[] : [])
+    : [{
+        old_string: typeof ti.old_string === "string" ? ti.old_string : "",
+        new_string: typeof ti.new_string === "string" ? ti.new_string : "",
+        replace_all: !!ti.replace_all,
+      }];
+  let text = pre;
+  for (const e of edits) {
+    const next = ccApplyEdit(text, e);
+    if (next === null) return null;
+    text = next;
+  }
+  return text;
+}
+
+// Replace an empty new_string with one CC applies verbatim: widen old/new by one shared neighbour char.
+function widenEmptyNew(text: string, e: EditEntry): EditEntry {
+  if (e.new_string !== "" || e.old_string === "" || e.old_string.endsWith("\n")) return e;
+  if (!text.includes(e.old_string + "\n")) return e;
+  const after = new Set<string>();
+  const before = new Set<string>();
+  let from = 0;
+  while (true) {
+    const i = text.indexOf(e.old_string, from);
+    if (i === -1) break;
+    after.add(text.slice(i + e.old_string.length, i + e.old_string.length + 1));
+    before.add(text.slice(i - 1 < 0 ? 0 : i - 1, i));
+    from = i + e.old_string.length;
+    if (!e.replace_all) break;
+  }
+  if (after.size === 1 && [...after][0] !== "") {
+    const c = [...after][0];
+    return { ...e, old_string: e.old_string + c, new_string: c };
+  }
+  if (before.size === 1 && [...before][0] !== "") {
+    const c = [...before][0];
+    return { ...e, old_string: c + e.old_string, new_string: c };
+  }
+  return e;
+}
+
 function mapEditToInput(
   ti: Record<string, unknown>,
   pre: string,
@@ -207,8 +263,24 @@ function mapToInput(
   stripped_post: string,
 ): Record<string, unknown> | null {
   if (tool === "write") return { ...ti, content: stripped_post };
-  if (tool === "edit") return mapEditToInput(ti, pre, post, stripped_post);
-  if (tool === "multiedit") return mapMultiEditToInput(ti, pre, post, stripped_post);
+  if (tool === "edit") {
+    const m = mapEditToInput(ti, pre, post, stripped_post);
+    if (m === null) return null;
+    const w = widenEmptyNew(pre, m as unknown as EditEntry);
+    return { ...m, old_string: w.old_string, new_string: w.new_string };
+  }
+  if (tool === "multiedit") {
+    const m = mapMultiEditToInput(ti, pre, post, stripped_post);
+    if (m === null) return null;
+    let text = pre;
+    const edits = (m.edits as EditEntry[]).map((e) => {
+      const w = widenEmptyNew(text, e);
+      const i = text.indexOf(w.old_string);
+      if (i !== -1) text = text.slice(0, i) + w.new_string + text.slice(i + w.old_string.length);
+      return w;
+    });
+    return { ...m, edits };
+  }
   return null;
 }
 
@@ -449,7 +521,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       const updatedTi = mapToInput(tool, ti, pre ?? "", originalPost, text);
       if (updatedTi !== null) {
         const verified = reconstructPostEdit(tool, updatedTi as EditInput, pre);
-        if (verified && verified.post === text) {
+        if (verified && verified.post === text && ccApplyInput(tool, updatedTi, pre ?? "") === text) {
           const ctxStr = contextItems.map(c => c.normal).filter(s => s.length > 0).join("\n");
           return rewrite(updatedTi, ctxStr);
         }

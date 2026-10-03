@@ -6,7 +6,7 @@ import path2 from "node:path";
 import os from "node:os";
 import { check } from "../../src/hooks/guard.js";
 import { buildCtx } from "../../rules/comment-density/edit-check.js";
-import { reconstructPostEdit, type GetParserFn } from "../../src/hooks/lib/comment-density.js";
+import { type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 import { grammarFailureWarning } from "../../src/engine/run.js";
 import { getParser as realGetParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
@@ -716,22 +716,14 @@ describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAdde
     expect(r.exit).toBe(0);
   });
 
-  it("B: Edit // old → // new, budget 0 → updatedInput present, applied text equals stripped exactly", async () => {
+  it("B: Edit // old → // new (1:1 swap), budget 0 → comment kept, no updatedInput", async () => {
     const pre = "a\n// old\nb\n";
     const r = await check(
       { tool_name: "Edit", tool_input: { file_path: "/tmp/cdg-b-fix.ts", old_string: "// old", new_string: "// new" } },
       { readFile: () => pre },
     );
-    const hso = getHso(r);
-    expect(hso).toHaveProperty("updatedInput");
-    const ui = hso.updatedInput as Record<string, unknown>;
-    const reconResult = reconstructPostEdit(
-      "edit",
-      { file_path: "/tmp/cdg-b-fix.ts", ...ui } as Parameters<typeof reconstructPostEdit>[1],
-      pre,
-    );
-    expect(reconResult).not.toBeNull();
-    expect(reconResult!.post).toBe("a\nb\n");
+    expect(getHso(r)).not.toHaveProperty("updatedInput");
+    expect(getHso(r).permissionDecision).toBeUndefined();
   });
 
   it("C: advisory path → context says not stripped, not before it was applied", async () => {

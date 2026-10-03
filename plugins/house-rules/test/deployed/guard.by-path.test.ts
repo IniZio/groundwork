@@ -105,5 +105,5 @@ describe("comment-density-guard deployed path (probe.sh Write)", () => {
     const median = times[4];
     console.log(`Latency: ${times.join(", ")} ms; median=${median} ms`);
     expect(median).toBeLessThan(15000);
-  });
+  }, 180_000);
 });

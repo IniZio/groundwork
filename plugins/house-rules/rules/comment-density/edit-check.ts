@@ -12,6 +12,32 @@ import { fixEntryFor, type FixEntry } from "./languages.js";
 import type { Language } from "../../src/hooks/languages/registry.js";
 import type { PendingEdit, EditCheckEnv, EditCheckResult } from "../../src/engine/types.js";
 
+function tokenJaccard(a: string, b: string): number {
+  const ta = new Set(normalizeCommentText(a).toLowerCase().split(" ").filter(Boolean));
+  const tb = new Set(normalizeCommentText(b).toLowerCase().split(" ").filter(Boolean));
+  if (ta.size === 0 || tb.size === 0) return ta.size === tb.size ? 1 : 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  return inter / (ta.size + tb.size - inter);
+}
+
+/** Pair removed comments with the most similar added ones (similarity, then row distance); return the unpaired added. */
+function unpairedAdded(removed: Comment[], added: Comment[]): Comment[] {
+  const cands: Array<{ ri: number; ai: number; sim: number; dist: number }> = [];
+  removed.forEach((r, ri) => added.forEach((a, ai) => {
+    cands.push({ ri, ai, sim: tokenJaccard(r.text, a.text), dist: Math.abs(r.startRow - a.startRow) });
+  }));
+  cands.sort((x, y) => (y.sim !== x.sim ? y.sim - x.sim : x.dist - y.dist));
+  const usedR = new Set<number>();
+  const usedA = new Set<number>();
+  for (const { ri, ai } of cands) {
+    if (usedR.has(ri) || usedA.has(ai)) continue;
+    usedR.add(ri);
+    usedA.add(ai);
+  }
+  return added.filter((_, ai) => !usedA.has(ai));
+}
+
 export function buildCtx(
   tool: string,
   filePath: string,
@@ -128,31 +154,51 @@ export async function commentDensityEditCheck(edit: PendingEdit, env: EditCheckE
     }
   }
 
-  const budget = Math.floor(0.05 * (priorAddedCount + changedRows.size)) - priorAddedComments;
+  const baseBudget = Math.floor(0.05 * (priorAddedCount + changedRows.size)) - priorAddedComments;
 
   // Base-aware new-comment detection
   let nc: Comment[];
-  if (session !== null && pre !== null) {
-    if (session.baseText !== null && session.postHunks !== null) {
-      const netNewResult = await netNewCommentRows(session.baseText, post, lang, session.postHunks as Parameters<typeof netNewCommentRows>[3], getParser);
-      if (netNewResult.ok) {
-        const netNewRows = new Set(netNewResult.rows);
-        nc = postFindResult.comments.filter(c => {
-          if (c.exempt) return false;
-          for (let r = c.startRow; r <= c.endRow; r++) {
-            if (changedRows.has(r) && netNewRows.has(r + 1)) return true;
-          }
-          return false;
-        });
-      } else {
-        nc = findNewComments(preComments, postFindResult.comments, changedRows);
-      }
+  let basePaired = false;
+  if (session !== null && pre !== null && session.baseText !== null && session.postHunks !== null) {
+    const netNewResult = await netNewCommentRows(session.baseText, post, lang, session.postHunks as Parameters<typeof netNewCommentRows>[3], getParser);
+    if (netNewResult.ok) {
+      basePaired = true;
+      const netNewRows = new Set(netNewResult.rows);
+      nc = postFindResult.comments.filter(c => {
+        if (c.exempt) return false;
+        for (let r = c.startRow; r <= c.endRow; r++) {
+          if (changedRows.has(r) && netNewRows.has(r + 1)) return true;
+        }
+        return false;
+      });
     } else {
       nc = findNewComments(preComments, postFindResult.comments, changedRows);
     }
   } else {
     nc = findNewComments(preComments, postFindResult.comments, changedRows);
   }
+
+  // Comments dropped from pre offset added ones (a swap is not net-new). The base-aware
+  // path already pairs removals with additions, so only the pre/post path needs this.
+  if (!basePaired && preComments && nc.length > 0) {
+    const postTexts = new Map<string, number>();
+    for (const c of postFindResult.comments) {
+      if (c.exempt) continue;
+      const k = normalizeCommentText(c.text);
+      postTexts.set(k, (postTexts.get(k) ?? 0) + 1);
+    }
+    const removed: Comment[] = [];
+    for (const c of preComments) {
+      if (c.exempt) continue;
+      const k = normalizeCommentText(c.text);
+      const n = postTexts.get(k) ?? 0;
+      if (n > 0) postTexts.set(k, n - 1);
+      else removed.push(c);
+    }
+    nc = unpairedAdded(removed, nc);
+  }
+
+  const budget = baseBudget;
 
   if (nc.length === 0) return { findings: [] };
 

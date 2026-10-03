@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
@@ -168,8 +169,8 @@ function countFile(dbPath: string, sessionId: string): string {
 function readCount(f: string): number {
   try { const n = parseInt(readFileSync(f, "utf8").trim(), 10); return isNaN(n) ? 0 : n; } catch { return 0; }
 }
-function writeCount(f: string, n: number): void {
-  try { mkdirSync(path.dirname(f), { recursive: true }); writeFileSync(f, String(n)); } catch { /* fail-open */ }
+function writeCount(f: string, n: number): boolean {
+  try { mkdirSync(path.dirname(f), { recursive: true }); writeFileSync(f, String(n)); return true; } catch { return false; }
 }
 function resetCount(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
 
@@ -441,6 +442,17 @@ export function escalateStateFile(
   return path.join(base, ".groundwork", `stop-gate.${safeId}.escalate.json`);
 }
 
+const RUN_START_TAIL_CAP = 1024 * 1024;
+
+function headEntryTime(fd: number, size: number): number | null {
+  const len = Math.min(RUN_START_TAIL_CAP, size);
+  const buf = Buffer.alloc(len);
+  readSync(fd, buf, 0, len, 0);
+  const line = buf.toString("utf8").split("\n")[0];
+  const t = Date.parse(String((JSON.parse(line) as Record<string, unknown>).timestamp));
+  return Number.isNaN(t) ? null : t;
+}
+
 function currentRunStart(inp: Record<string, unknown>, id: string): number | null {
   try {
     const tp = inp.transcript_path;
@@ -452,7 +464,7 @@ function currentRunStart(inp: Record<string, unknown>, id: string): number | nul
     try {
       type Ent = { type: string; t: number; content: unknown };
       for (let win = 256 * 1024; ; win *= 4) {
-        const len = Math.min(win, size);
+        const len = Math.min(win, size, RUN_START_TAIL_CAP);
         const buf = Buffer.alloc(len);
         readSync(fd, buf, 0, len, size - len);
         const lines = buf.toString("utf8").split("\n");
@@ -485,6 +497,7 @@ function currentRunStart(inp: Record<string, unknown>, id: string): number | nul
           if (e.t - ents[i - 1].t >= 60_000 && idle(ents[i - 1])) return e.t;
         }
         if (len >= size) return ents.length > 0 ? ents[0].t : null;
+        if (len >= RUN_START_TAIL_CAP) { try { return headEntryTime(fd, size); } catch { return null; } }
       }
     } finally { closeSync(fd); }
   } catch { return null; }
@@ -598,31 +611,39 @@ export function changedCodeFiles(inp: Record<string, unknown>, env: Record<strin
   return { files: files.sort(), top };
 }
 
-/** Per-session counter kept in the git common dir, never in the working tree. */
-function unledgeredCountFile(top: string, inp: Record<string, unknown>): string | null {
-  const gd = gitOut(top, ["rev-parse", "--path-format=absolute", "--git-common-dir"])?.trim();
-  if (!gd) return null;
+/** Per-session counter: git common dir when resolvable, else a tmpdir fallback. */
+function unledgeredCountFiles(top: string, inp: Record<string, unknown>): { primary: string | null; fallback: string } {
   const safeId = (typeof inp.session_id === "string" ? inp.session_id : "default").replace(/[^a-zA-Z0-9-]/g, "_").slice(0, 64);
-  return path.join(gd, "groundwork", `stop-gate.${safeId}.unledgered.count`);
+  const name = `stop-gate.${safeId}.unledgered.count`;
+  const gd = gitOut(top, ["rev-parse", "--path-format=absolute", "--git-common-dir"])?.trim();
+  const uid = process.getuid?.() ?? "u";
+  return {
+    primary: gd ? path.join(gd, "groundwork", name) : null,
+    fallback: path.join(os.tmpdir(), `groundwork-${uid}`, name),
+  };
 }
 
 function unledgeredGate(inp: Record<string, unknown>, env: Record<string, string | undefined>): HookResult | null {
   if (inp.hook_event_name === "SubagentStop") return null;
   const res = changedCodeFiles(inp, env);
   if (!res) return null;
-  const cf = unledgeredCountFile(res.top, inp);
+  const { primary, fallback } = unledgeredCountFiles(res.top, inp);
+  const reset = () => { if (primary) resetCount(primary); resetCount(fallback); };
   if (res.files.length === 0) {
-    if (cf) resetCount(cf);
+    reset();
     return null;
   }
   const files = res.files;
-  const count = (cf ? readCount(cf) : 0) + 1;
+  const count = Math.max(primary ? readCount(primary) : 0, readCount(fallback)) + 1;
   if (count >= 4) {
-    if (cf) resetCount(cf);
+    reset();
     process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
     return allow("stop-gate: override — consecutive block limit reached");
   }
-  if (cf) writeCount(cf, count);
+  if (!(primary && writeCount(primary, count)) && !writeCount(fallback, count)) {
+    process.stderr.write("stop-gate: cannot persist unledgered block counter — allowing Stop\n");
+    return allow("stop-gate: override — block counter cannot be persisted");
+  }
   const list = files.slice(0, 5).join(", ") + (files.length > 5 ? `, +${files.length - 5} more` : "");
   return block(`stop-gate: ${files.length} code file(s) changed this session with no work store [${list}]. Set up the store with gw init: run \`$GW init\`, slice with \`$GW slice add\`, delegate to groundwork:implementer.`);
 }

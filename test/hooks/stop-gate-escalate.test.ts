@@ -334,4 +334,25 @@ describe("stop-gate — escalation clock across resume", () => {
     writeFileSync(stateFile, JSON.stringify({ firstSeen: { tg: iso(40) }, nudged: ["tg"] }));
     expect(stop(true)).toContain("implementer-escalation");
   });
+
+  // Pad lines push the transcript past the 1 MiB tail cap.
+  const pad = (minAgo: number) => ({ type: "user", isMeta: true, timestamp: iso(minAgo), message: { role: "user", content: [{ type: "text", text: "x".repeat(200_000) }] } });
+
+  it("(h) head-line fallback: no boundary in small transcript uses first entry", () => {
+    const { stop } = setup("sh", "th", [userStr(16), assistant(10), assistant(1)]);
+    expect(stop(true)).toContain("implementer-escalation");
+  });
+
+  it("(i) boundary within the tail cap is found in a large transcript", () => {
+    const lines = [userStr(40), pad(39), pad(38), pad(37), pad(36), pad(35), pad(34), assistant(33), toolUse(32.5, "h9", "SubagentHandback"), resultFor(32, "h9"), meta(2, COORD), assistant(1)];
+    const { stop } = setup("si", "ti", lines);
+    expect(stop(true)).toBeNull();
+  });
+
+  it("(j) boundary 5m ago beyond the cap falls back to head line (40m): nudges only because of the cap", () => {
+    const lines = [userStr(40), assistant(39), toolUse(7, "h8", "SubagentHandback"), resultFor(6.5, "h8"), meta(5, COORD),
+      ...[4.9, 4.8, 4.7, 4.6, 4.5, 4.4, 4.3].map(pad), assistant(1)];
+    const { stop } = setup("sj", "tj", lines);
+    expect(stop(true)).toContain("implementer-escalation");
+  });
 });

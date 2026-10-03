@@ -223,4 +223,60 @@ describe("stop-gate — unledgered code changes", () => {
     writeFileSync(path.join(d, "a.ts"), "x\n");
     expect(stop(path.join(d), path.join(d, "none.jsonl")).out.decision).toBeUndefined();
   });
+
+  describe("counter persistence", () => {
+    const decisions = (repo: string, transcript: string, n: number, env: Record<string, string> = {}) => {
+      const rs = [];
+      for (let i = 0; i < n; i++) rs.push(stop(repo, transcript, {}, env));
+      return rs.map(r => (r.out.decision === "block" ? "block" : "allow"));
+    };
+    const dirty = () => {
+      const { repo, transcript } = setup();
+      writeFileSync(path.join(repo, "a.ts"), "export const a = 2;\n");
+      edit(repo, transcript, "a.ts");
+      return { repo, transcript };
+    };
+    const tmpEnv = (repo: string) => {
+      const t = path.join(path.dirname(repo), "tmpdir");
+      mkdirSync(t, { recursive: true });
+      return { TMPDIR: t };
+    };
+
+    it("positive control: primary path blocks 3 times then releases", () => {
+      const { repo, transcript } = dirty();
+      expect(decisions(repo, transcript, 5, tmpEnv(repo))).toEqual(["block", "block", "block", "allow", "block"]);
+    });
+
+    it("non-git cwd never blocks", () => {
+      const d = mkdtempSync(path.join(os.tmpdir(), "gw-unledgered-ng-"));
+      tmpDirs.push(d);
+      expect(decisions(d, path.join(d, "none.jsonl"), 5)).toEqual(["allow", "allow", "allow", "allow", "allow"]);
+    });
+
+    it("unwritable common dir falls back and releases on the 4th Stop", () => {
+      const { repo, transcript } = dirty();
+      writeFileSync(path.join(repo, ".git", "groundwork"), "not a dir");
+      expect(decisions(repo, transcript, 5, tmpEnv(repo)).slice(0, 4)).toEqual(["block", "block", "block", "allow"]);
+    });
+
+    it("git-common-dir failing falls back and releases within 4 Stops", () => {
+      const { repo, transcript } = dirty();
+      const bin = path.join(path.dirname(repo), "fakebin");
+      mkdirSync(bin);
+      const real = spawnSync("which", ["git"], { encoding: "utf8" }).stdout.trim();
+      writeFileSync(path.join(bin, "git"), `#!/bin/sh\ncase "$*" in *--git-common-dir*) exit 128;; esac\nexec ${real} "$@"\n`, { mode: 0o755 });
+      const env = { ...tmpEnv(repo), PATH: `${bin}:${process.env.PATH}` };
+      expect(decisions(repo, transcript, 5, env).slice(0, 4)).toEqual(["block", "block", "block", "allow"]);
+    });
+
+    it("primary and fallback both unwritable: first Stop allows with stderr notice", () => {
+      const { repo, transcript } = dirty();
+      writeFileSync(path.join(repo, ".git", "groundwork"), "not a dir");
+      const bad = path.join(path.dirname(repo), "tmpfile");
+      writeFileSync(bad, "x");
+      const r = stop(repo, transcript, {}, { TMPDIR: bad });
+      expect(r.out.decision).toBeUndefined();
+      expect(r.stderr).toContain("cannot persist");
+    });
+  });
 });

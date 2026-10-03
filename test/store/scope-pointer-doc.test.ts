@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { buildJournald } from "../../src/store/scope-notify.js";
 import { parsePointer } from "../../src/store/scope-pointer.js";
 
 const DOC = path.join(import.meta.dir, "..", "..", "doc", "spec", "nested-work-scope.md");
@@ -49,5 +50,18 @@ describe("scope pointer doc", () => {
 
   it("higher version is a hard error", () => {
     expect(() => parsePointer({ ...example(), v: 2 })).toThrow();
+  });
+
+  it("Notifications table matches the journald fields emitted", () => {
+    const sec = /## Notifications\n([\s\S]*?)\n## /.exec(doc);
+    if (!sec) throw new Error("no Notifications section");
+    const documented = [...sec[1].matchAll(/^\| (CE_\w+|MESSAGE) \|/gm)].map((m) => m[1]);
+    const emitted = buildJournald({
+      id: "i", type: "groundwork.child_gate", source: "s", linkId: "l", time: "t", message: "{}",
+    })!.trimEnd().split("\n").map((l) => l.split("=")[0]);
+    expect(documented).toEqual(emitted);
+    expect(sec[1]).toContain("/run/systemd/journal/socket");
+    expect(sec[1]).toContain("/dev/log");
+    expect(sec[1]).toContain("ce@32473");
   });
 });

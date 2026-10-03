@@ -1,2 +1,2 @@
 [test]
-preload = ["./plugins/house-rules/test/preload.ts"]
+preload = ["./plugins/house-rules/test/preload.ts", "./test/preload-notify.ts"]

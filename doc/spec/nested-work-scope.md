@@ -68,6 +68,31 @@ A child reports to the host through inbox files, never by writing to the host's 
 
 A shared SQLite database is not used. Concurrent writers from two trees are not proven safe, and the same directory can appear under different paths on each side, which breaks locking and identity checks.
 
+## Notifications
+
+When a child writes an inbox event, `gw` also emits a best-effort CloudEvents 1.0 notification to the local system log. The notification is sent only after the inbox file is in place. It never changes the exit code, never prints, and is not retried. The whole attempt is bounded to one second.
+
+Fields:
+
+| Field | Value |
+| --- | --- |
+| CE_SPECVERSION | `1.0` |
+| CE_ID | The inbox `event_id`. |
+| CE_SOURCE | `groundwork://` followed by the absolute repository root of the writer. |
+| CE_TYPE | `groundwork.child_register` or `groundwork.child_gate`. |
+| CE_SUBJECT | `link:` followed by the link id. |
+| CE_TIME | Time of the write, ISO 8601 in UTC. |
+| CE_DATACONTENTTYPE | `application/json` |
+| MESSAGE | Exactly the inbox file JSON. |
+
+Transport, first match wins:
+
+1. If `/run/systemd/journal/socket` exists, the fields are sent to journald in its native format, one `KEY=VALUE` line each. The inbox JSON is a single line.
+2. Otherwise, if `/dev/log` exists, one RFC 5424 message is sent with structured data `[ce@32473 specversion=".." id=".." source=".." type=".." subject=".." time=".."]` and the JSON as the message text. Values in the structured data escape `"`, `\` and `]` with a backslash.
+3. Otherwise nothing is sent.
+
+Set `GROUNDWORK_NOTIFY=off` to disable notifications, for example in test suites.
+
 ## Abandoned children
 
 A child can disappear: the sandbox is destroyed, the agent stalls, or the tree is deleted. The host slice then stays blocked by a link that will never report.

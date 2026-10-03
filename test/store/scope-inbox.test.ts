@@ -42,7 +42,7 @@ describe("writeInboxEvent", () => {
 import { writeInboxEvent } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/store/scope-inbox.ts"))};
 for (let i = 0; i < 1; i++) writeInboxEvent(${JSON.stringify(tmp)}, "L1", "CHILD_REGISTER", { link_id: "L1", slice: "S-1" });
 `);
-    const procs = [0, 1].map(() => Bun.spawn([process.execPath, script], { stdout: "pipe", stderr: "pipe" }));
+    const procs = [0, 1].map(() => Bun.spawn([process.execPath, script], { stdout: "pipe", stderr: "pipe", env: { ...process.env } }));
     const codes = await Promise.all(procs.map(p => p.exited));
     expect(codes).toEqual([0, 0]);
     const files = readdirSync(inboxDir(tmp, "L1"));

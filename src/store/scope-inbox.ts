@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { linkSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { WorkStore } from "./store.js";
+import { notifyForInboxWrite } from "./scope-notify.js";
 import { CHILD_GATE, CHILD_LINK, CHILD_REGISTER } from "./scope-pointer.js";
 
 /** ND-6: the only event types a child may deliver through the inbox. */
@@ -47,12 +48,14 @@ export function writeInboxEvent(
   const tmp = path.join(dir, `.tmp-${randomUUID()}`);
   const final = path.join(dir, name);
   const env: InboxEnvelope = { event_id, type, payload };
-  writeFileSync(tmp, JSON.stringify(env), { flag: "wx" });
+  const json = JSON.stringify(env);
+  writeFileSync(tmp, json, { flag: "wx" });
   try {
     linkSync(tmp, final);
   } finally {
     unlinkSync(tmp);
   }
+  notifyForInboxWrite(type, linkId, event_id, json);
   return { file: final, event_id };
 }
 

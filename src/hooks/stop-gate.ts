@@ -2,6 +2,8 @@ import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { sessionBase } from "./lib/session-base.js";
+import { sessionTouchedFiles } from "./lib/work-scope-files.js";
 import { readSealKey, verifySeal, type SealFields } from "../store/key-store.js";
 
 // ---------------------------------------------------------------------------
@@ -571,6 +573,60 @@ function appendNudge(result: HookResult, nudge: string): HookResult {
   }
 }
 
+function gitOut(root: string, args: string[]): string | null {
+  const r = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000 });
+  return r.status === 0 ? r.stdout : null;
+}
+
+const NON_CODE = /(^|\/)\.groundwork\/|^doc\/|\.md$/;
+
+/** Code files THIS session touched (per transcript) that differ from the session base or are untracked; null when not a git repo. */
+export function changedCodeFiles(inp: Record<string, unknown>, env: Record<string, string | undefined>): { files: string[]; top: string } | null {
+  const start = (typeof inp.cwd === "string" ? inp.cwd : undefined) ?? env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const top = gitOut(start, ["rev-parse", "--show-toplevel"])?.trim();
+  if (!top) return null;
+  const tp = typeof inp.transcript_path === "string" ? inp.transcript_path : undefined;
+  if (!tp) return { files: [], top };
+  const touched = sessionTouchedFiles(tp, top);
+  if (touched.size === 0) return { files: [], top };
+  const base = sessionBase(tp, top);
+  const diff = gitOut(top, ["diff", "--name-only", base]);
+  const untracked = gitOut(top, ["ls-files", "--others", "--exclude-standard"]);
+  if (diff === null || untracked === null) return null;
+  const changed = new Set([...diff.split("\n"), ...untracked.split("\n")].map(f => f.trim()).filter(Boolean));
+  const files = [...touched].filter(f => changed.has(f) && existsSync(path.join(top, f)) && !NON_CODE.test(f));
+  return { files: files.sort(), top };
+}
+
+/** Per-session counter kept in the git common dir, never in the working tree. */
+function unledgeredCountFile(top: string, inp: Record<string, unknown>): string | null {
+  const gd = gitOut(top, ["rev-parse", "--path-format=absolute", "--git-common-dir"])?.trim();
+  if (!gd) return null;
+  const safeId = (typeof inp.session_id === "string" ? inp.session_id : "default").replace(/[^a-zA-Z0-9-]/g, "_").slice(0, 64);
+  return path.join(gd, "groundwork", `stop-gate.${safeId}.unledgered.count`);
+}
+
+function unledgeredGate(inp: Record<string, unknown>, env: Record<string, string | undefined>): HookResult | null {
+  if (inp.hook_event_name === "SubagentStop") return null;
+  const res = changedCodeFiles(inp, env);
+  if (!res) return null;
+  const cf = unledgeredCountFile(res.top, inp);
+  if (res.files.length === 0) {
+    if (cf) resetCount(cf);
+    return null;
+  }
+  const files = res.files;
+  const count = (cf ? readCount(cf) : 0) + 1;
+  if (count >= 4) {
+    if (cf) resetCount(cf);
+    process.stderr.write("stop-gate: 4th consecutive block — allowing; resolve store state manually\n");
+    return allow("stop-gate: override — consecutive block limit reached");
+  }
+  if (cf) writeCount(cf, count);
+  const list = files.slice(0, 5).join(", ") + (files.length > 5 ? `, +${files.length - 5} more` : "");
+  return block(`stop-gate: ${files.length} code file(s) changed this session with no work store [${list}]. Set up the store with gw init: run \`$GW init\`, slice with \`$GW slice add\`, delegate to groundwork:implementer.`);
+}
+
 export function run(input: unknown, env: Record<string, string | undefined>): HookResult {
   const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   try {
@@ -579,6 +635,8 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
     if (!dbPath) {
+      const gated = unledgeredGate(inp, env);
+      if (gated) return gated;
       const base = allow("stop-gate: no active work store — session may end");
       const nudge = escalationNudge(inp, env, null);
       return nudge ? appendNudge(base, nudge) : base;

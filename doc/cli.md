@@ -16,6 +16,7 @@ The write token and gate-seal key live in `~/.config/groundwork/repos/<hash>/` (
 Creates the work store and prints the write token **once** (first run only). Idempotent on re-run — prints `already initialized` without revealing the token.
 If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
 Also adds `.groundwork/` to the repository's `.git/info/exclude` so the working tier stays out of git. `gw init` never touches `.gitignore`. Outside a git repository it prints a note and excludes nothing.
+In a tree linked to a parent slice (see [nested work scope](spec/nested-work-scope.md)), `gw init` creates a child store and prints `initialized child store: <path>` (or `already initialized: <path>` on re-run) instead of a token. In a direct-mode link it creates no store and prints `no child store: direct-mode link (slice <S>); ...`.
 
 ### `gw token`
 Prints the current write token for the store. Use this on session resume — the main session only; subagents are denied this command by the `store-write-guard` hook.
@@ -31,6 +32,16 @@ Sets (or replaces) the `covers_ac` field on an existing slice.
 
 ### `gw slice complete <id> --token T`
 Marks a slice complete and records a `SLICE_COMPLETE` event. Works from `pending` or `in_progress`.
+If the slice has a live child-scope link, completion is refused (exit 1, `error: cannot complete slice '<id>': <reason>`) until the child's approved gate has arrived (delegate) or the host has run `gw scope verify` (direct). No flag disables the check. Unlink an abandoned child to free the slice. See [nested work scope](spec/nested-work-scope.md).
+
+### `gw scope link <dir> --slice S [--mode direct|delegate] --token T`
+Links the tree at `<dir>` to slice `S` (default mode `delegate`) and writes the pointer file there. Prints `linked <link_id>: slice S -> <dir> (<mode>)`.
+
+### `gw scope unlink --slice S --reason "..." --token T`
+Removes the live link on `S`; the reason is required and recorded. Prints `unlinked <link_id>: slice S`.
+
+### `gw scope verify --slice S --citation file:line --token T`
+Records the host's own verification of a direct-mode slice. Refused for delegate links. Prints `verified slice S`.
 
 ### `gw slice status`
 Lists all slices with blocked-by, N/M complete count, gate state, hold state. Read-only.
@@ -44,6 +55,7 @@ Records a gate verdict event. `verdict` is one of: `approve`, `correction`, `sto
 Every verdict requires `--citation` with at least one `file:line` reference.
 The stop-gate hook releases only when the **newest** gate verdict for the motive is `approve` (`GATE_APPROVE`).
 A `correction`, `stop`, `gaps`, or `replan` recorded after an `approve` closes the gate.
+In a tree linked to a parent slice (delegate mode), every verdict is also forwarded to the parent and prints `forwarded to parent: <id>`. If forwarding fails the verdict stays recorded locally, and the command exits 1 with `gw: verdict forward failed: <reason>`. The parent uses the newest forwarded verdict, so a later non-approval supersedes an earlier approval.
 
 | Verdict     | Event type        | Gate effect    |
 |-------------|-------------------|----------------|
@@ -55,6 +67,9 @@ A `correction`, `stop`, `gaps`, or `replan` recorded after an `approve` closes t
 
 **HEAD binding (approve only):** `gw gate approve` records the current git HEAD SHA as `base_commit` in the event payload. The stop-gate treats the approval as void if (a) the repo's HEAD has moved since approval, or (b) a slice was added to the motive after the approval was recorded. In both cases the stop-gate names which condition applies. Uncommitted working-tree changes do not void an approval — only HEAD moving (a new commit) does. If the working directory is not inside a git repository, HEAD binding is skipped and the approval is honoured as-is.
 
+### `gw gate status [--json]`
+Read-only. Prints `scope: <child|root|orphan>  gate: <verdict|none>  slices: N complete, M open`. `--json` adds `v`, `mode` and `parent` (child only), and `approved_at`, which is the time of the newest gate verdict of any kind. Fields are listed in [nested work scope](spec/nested-work-scope.md).
+
 ### `gw hold set --reason "..." --token T`
 Records a `HOLD` event. Hold reason appears in `gw slice status`.
 
@@ -62,7 +77,7 @@ Records a `HOLD` event. Hold reason appears in `gw slice status`.
 Records a `HOLD_CLEAR` event.
 
 ### `gw event append --type TYPE [--msg TEXT] [--data JSON] --token T`
-Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate verdict types (`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`) are rejected — use `gw gate <verdict>` instead.
+Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate verdict types (`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`) are rejected — use `gw gate <verdict>` instead. The scope event types (`CHILD_LINK`, `CHILD_REGISTER`, `CHILD_GATE`, `SCOPE_VERIFY`, `SCOPE_UNLINK`, `SCOPE_PARENT`) are rejected with ``error: <TYPE> is a scope event and cannot be appended directly — use `$GW scope` commands``.
 
 ### `gw compile [--json]`
 Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.

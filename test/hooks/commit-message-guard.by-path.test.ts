@@ -185,4 +185,28 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  describe("heredoc body text is not parsed as commands", () => {
+    it("ALLOW: git commit -m inside a cat heredoc body", () => {
+      const cmd = 'cat > test.ts <<\'EOF\'\ngit commit -m "bad msg"\nEOF';
+      const { stdout, exit } = run(bash(cmd));
+      expect(exit).toBe(0);
+      expect(stdout.trim()).toBe("");
+    });
+
+    it("DENY: real git commit before << on the same line is still linted", () => {
+      const cmd = 'git commit -m "bad msg" && cat <<\'EOF\'\nhello\nEOF';
+      expect(decision(run(bash(cmd)).stdout)).toBe("deny");
+    });
+
+    it("DENY: real git commit after the heredoc terminator is still linted", () => {
+      const cmd = 'cat > t.ts <<\'EOF\'\ngit commit -m "ok"\nEOF\ngit commit -m "bad msg"';
+      expect(decision(run(bash(cmd)).stdout)).toBe("deny");
+    });
+
+    it("DENY: git commit -F - heredoc body is still linted", () => {
+      const cmd = "git commit -F - <<'EOF'\nbad msg\nEOF";
+      expect(decision(run(bash(cmd)).stdout)).toBe("deny");
+    });
+  });
 });

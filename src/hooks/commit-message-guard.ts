@@ -62,15 +62,38 @@ function lintAndDecide(message: string, cwd: string): HookResult {
 
 /**
  * Split a shell command string on unquoted &&, ||, ;, |, newline operators.
- * Single- and double-quoted regions are skipped.
+ * Single- and double-quoted regions and heredoc bodies are skipped.
  */
 function splitOnShellOps(cmd: string): Array<{ text: string; start: number }> {
   const segments: Array<{ text: string; start: number }> = [];
   const push = (text: string, end: number) => segments.push({ text, start: end - text.length });
   let current = '';
   let i = 0;
+  const pending: Array<{ tag: string; strip: boolean }> = [];
   while (i < cmd.length) {
     const c = cmd[i];
+    if (c === '<' && cmd[i + 1] === '<' && cmd[i - 1] !== '<' && cmd[i + 2] !== '<') {
+      const hm = /^<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(cmd.slice(i));
+      if (hm) {
+        pending.push({ tag: hm[3], strip: hm[1] === '-' });
+        current += hm[0]; i += hm[0].length;
+        continue;
+      }
+    }
+    if (c === '\n' && pending.length > 0) {
+      push(current, i); current = ''; i++;
+      for (const h of pending) {
+        while (i < cmd.length) {
+          let e = cmd.indexOf('\n', i);
+          if (e < 0) e = cmd.length;
+          const line = cmd.slice(i, e);
+          i = Math.min(e + 1, cmd.length);
+          if ((h.strip ? line.replace(/^\t+/, '') : line) === h.tag) break;
+        }
+      }
+      pending.length = 0;
+      continue;
+    }
     if (c === '"' || c === "'") {
       const q = c;
       current += c;

@@ -1,9 +1,6 @@
 import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
-// Vendored from plugins/house-rules/src/hooks/lib/work-scope.ts (extractFilesFromContent,
-// addPath, extractBashTargets). The installed cache lacks plugins/, so no import.
-// Pure extraction only: existence/tracked/session-created filtering is the consumer's job.
 
 function addPath(raw: string, cwd: string, files: Set<string>): void {
   if (!raw || raw.includes('$')) return

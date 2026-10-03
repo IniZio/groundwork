@@ -14,6 +14,9 @@ import {
   computeSeal,
   type SealFields,
 } from "../store/key-store.js";
+import { childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
+import { completionGuard, gateStatus } from "./gate-status.js";
+import { CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
 
@@ -87,7 +90,27 @@ function excludeWorkingTier(root: string): void {
   appendFileSync(file, (cur === "" || cur.endsWith("\n") ? "" : "\n") + ".groundwork/\n");
 }
 
+function scopeFail(e: unknown): never {
+  if (e instanceof Error) {
+    process.stderr.write(`gw: ${e.message}\n`);
+    process.exit(1);
+  }
+  throw e;
+}
+
 function cmdInit(args: string[]): void {
+  let child: ReturnType<typeof childInit> = null;
+  try { child = childInit({ childDir: repoDir() }); }
+  catch (e: unknown) { scopeFail(e); }
+  if (child) {
+    if (child.status === "no-child-store") {
+      process.stdout.write(`no child store: direct-mode link (slice ${child.pointer.slice}); verify from the parent with \`${gw} scope verify\`\n`);
+    } else {
+      if (child.status === "created") excludeWorkingTier(repoDir());
+      process.stdout.write(`${child.status === "created" ? "initialized child store" : "already initialized"}: ${child.dbPath}\nlinked to slice ${child.pointer.slice} (${child.pointer.mode})\n`);
+    }
+    return;
+  }
   const p = dbPath();
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -155,6 +178,13 @@ function cmdSliceComplete(args: string[], motiveSlug?: string): void {
   checkToken(store, args);
   if (!store.getSlice(id)) {
     process.stderr.write(`error: slice '${id}' not found\n`);
+    store.close();
+    process.exit(1);
+  }
+  const guard = completionGuard(store, { slice: id, repoDir: repoDir() });
+  if (!guard.ok) {
+    process.stderr.write(`error: cannot complete slice '${id}': ${guard.message}\n`);
+    for (const ev of guard.evidence) process.stderr.write(`  ${ev}\n`);
     store.close();
     process.exit(1);
   }
@@ -287,6 +317,54 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
   store.appendEvent(eventType, payload);
   process.stdout.write(`${eventType} recorded  citation: ${citation}\n`);
   store.close();
+  try {
+    const head = getGitHead(process.cwd());
+    const fwd = forwardVerdict({ childDir: process.cwd(), verdict: upper, citation, base_commit: head ?? "" });
+    if (fwd) process.stdout.write(`forwarded to parent: ${fwd.event_id}\n`);
+  } catch (e: unknown) {
+    process.stderr.write(`gw: verdict forward failed: ${e instanceof Error ? e.message : String(e)}\n(local ${eventType} remains recorded)\n`);
+    process.exit(1);
+  }
+}
+
+function cmdScope(sub: string | undefined, args: string[], motiveSlug?: string): void {
+  const slice = flag(args, "--slice");
+  if (sub !== "link" && sub !== "unlink" && sub !== "verify") {
+    process.stderr.write(`unknown scope subcommand: ${sub ?? "(none)"}\nsubcommands: link <dir> --slice S [--mode direct|delegate], unlink --slice S --reason TEXT, verify --slice S --citation file:line\n`);
+    process.exit(1);
+  }
+  const childDir = sub === "link" ? args[0] : undefined;
+  if (!slice || (sub === "link" && (!childDir || childDir.startsWith("-")))) {
+    process.stderr.write(`usage: ${gw} scope ${sub === "link" ? "link <dir> --slice S [--mode direct|delegate]" : sub === "unlink" ? "unlink --slice S --reason TEXT" : "verify --slice S --citation file:line"} --token T\n`);
+    process.exit(1);
+  }
+  const store = requireDb(motiveSlug);
+  checkToken(store, args);
+  try {
+    if (sub === "link") {
+      const l = scopeLink(store, { childDir: path.resolve(childDir!), slice, mode: flag(args, "--mode"), repoDir: repoDir() });
+      process.stdout.write(`linked ${l.link_id}: slice ${slice} -> ${path.resolve(childDir!)} (${l.mode})\n`);
+    } else if (sub === "unlink") {
+      const l = scopeUnlink(store, { slice, reason: flag(args, "--reason") ?? "" });
+      process.stdout.write(`unlinked ${l.link_id}: slice ${slice}\n`);
+    } else {
+      scopeVerify(store, { slice, citation: flag(args, "--citation") ?? "" });
+      process.stdout.write(`verified slice ${slice}\n`);
+    }
+  } catch (e: unknown) {
+    store.close();
+    scopeFail(e);
+  }
+  store.close();
+}
+
+function cmdGateStatus(args: string[]): void {
+  const st = gateStatus({ cwd: process.cwd() });
+  if (boolFlag(args, "--json")) {
+    process.stdout.write(JSON.stringify(st, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write(`scope: ${st.scope}  gate: ${st.gate}  slices: ${st.slices.complete} complete, ${st.slices.open} open\n`);
 }
 
 function cmdHoldSet(args: string[], motiveSlug?: string): void {
@@ -311,6 +389,10 @@ function cmdEventAppend(args: string[], motiveSlug?: string): void {
   const type = flag(args, "--type");
   if (!type) { process.stderr.write(`usage: ${gw} event append --type TYPE [--msg TEXT] [--data JSON] --token T\n`); process.exit(1); }
   // Gate verdict types must go through `$GW gate <verdict>` with a citation.
+  if ([CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK, "SCOPE_PARENT"].includes(type)) {
+    process.stderr.write(`error: ${type} is a scope event and cannot be appended directly — use \`$GW scope\` commands\n`);
+    process.exit(1);
+  }
   const gatePrefix = "GATE_";
   if (type.startsWith(gatePrefix)) {
     const verdictLower = type.slice(gatePrefix.length).toLowerCase();
@@ -553,8 +635,11 @@ if (cmd === "init") {
 } else if (cmd === "gate") {
   const sub = argv[1];
   const rest = argv.slice(2);
-  if (sub && (GATE_VERDICTS as readonly string[]).includes(sub.toUpperCase())) cmdGateVerdict(sub, rest, globalMotive);
+  if (sub === "status") cmdGateStatus(rest);
+  else if (sub && (GATE_VERDICTS as readonly string[]).includes(sub.toUpperCase())) cmdGateVerdict(sub, rest, globalMotive);
   else { process.stderr.write(`unknown gate subcommand: ${sub ?? "(none)"}\nvalid: ${GATE_VERDICTS.map(v => v.toLowerCase()).join(", ")}\n`); process.exit(1); }
+} else if (cmd === "scope") {
+  cmdScope(argv[1], argv.slice(2), globalMotive);
 } else if (cmd === "hold") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -583,6 +668,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate ${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate, recipe\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate, recipe\n`);
   process.exit(1);
 }

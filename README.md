@@ -26,16 +26,16 @@ Two stores only:
 ## Install
 
 ```
-claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin marketplace add mattpocock/skills
 claude plugin marketplace add /path/to/groundwork    # or a URL
 claude plugin install groundwork
 ```
 
-`claude plugin install groundwork` auto-installs mattpocock-skills (+ 1 dependency) from claude-plugins-official. Both appear in `claude plugin list` as `✔ enabled`.
+`claude plugin install groundwork` auto-installs mattpocock-skills (+ 1 dependency) from the `mattpocock` marketplace (add it first; Claude Code does not add a dependency's marketplace for you). Both appear in `claude plugin list` as `✔ enabled`.
 
-If the official marketplace is not registered first, `claude plugin install groundwork` exits 0 and reports success, but `claude plugin list` shows:
-`Status: ✘ failed to load — Dependency "mattpocock-skills@claude-plugins-official" is not installed — run \`claude plugin install mattpocock-skills@claude-plugins-official\`, or check that its marketplace is added`
-Fix: `claude plugin marketplace add anthropics/claude-plugins-official` then `claude plugin install groundwork` again.
+If the `mattpocock` marketplace is not registered first, `claude plugin install groundwork` exits 0 and reports success, but `claude plugin list` shows:
+`Status: ✘ failed to load — Dependency "mattpocock-skills@mattpocock" is not installed — run \`claude plugin install mattpocock-skills@mattpocock\`, or check that its marketplace is added`
+Fix: `claude plugin marketplace add mattpocock/skills` then `claude plugin install groundwork` again.
 
 ## What groundwork adds on top of mattpocock-skills
 

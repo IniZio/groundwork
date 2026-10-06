@@ -6,7 +6,7 @@ import os from "node:os";
 const ROOT = path.resolve(import.meta.dir, "../..");
 
 function resolveMpSkillsRoot(): string | null {
-  const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache", "claude-plugins-official", "mattpocock-skills");
+  const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache", "mattpocock", "mattpocock-skills");
   if (!statSync(cacheDir, { throwIfNoEntry: false })?.isDirectory()) return null;
   const versions = readdirSync(cacheDir).filter(v => /^\d+\.\d+\.\d+$/.test(v)).sort((a, b) => {
     const [am, an, ap] = a.split(".").map(Number);
@@ -20,7 +20,7 @@ function resolveMpSkillsRoot(): string | null {
 
 const MP_SKILLS_ROOT = resolveMpSkillsRoot();
 const MP_SKIP_REASON = MP_SKILLS_ROOT === null
-  ? `mattpocock-skills not found under ${path.join(os.homedir(), ".claude/plugins/cache/claude-plugins-official/mattpocock-skills")}`
+  ? `mattpocock-skills not found under ${path.join(os.homedir(), ".claude/plugins/cache/mattpocock/mattpocock-skills")}`
   : null;
 
 function collectFiles(dir: string, ext: string): string[] {
@@ -38,6 +38,13 @@ function mpSkillExists(name: string): boolean {
   if (!MP_SKILLS_ROOT) return false;
   const found = collectFiles(MP_SKILLS_ROOT, "SKILL.md");
   return found.some(f => path.dirname(f).endsWith("/" + name));
+}
+
+function gwResolves(name: string): boolean {
+  return (
+    existsSync(path.join(ROOT, "agents", `${name}.md`)) ||
+    existsSync(path.join(ROOT, "skills", name, "SKILL.md"))
+  );
 }
 
 function extractRefs(content: string): { groundwork: string[]; mattpocock: string[] } {
@@ -60,14 +67,22 @@ describe("references — all agent/skill cross-references resolve", () => {
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
+  it("groundwork:vertical-slice resolves to a plugin skill", () => {
+    expect(gwResolves("vertical-slice")).toBe(true);
+  });
+
+  it("groundwork:nope does not resolve", () => {
+    expect(gwResolves("nope")).toBe(false);
+  });
+
   for (const file of allFiles) {
     const rel = path.relative(ROOT, file);
     const content = readFileSync(file, "utf8");
     const { groundwork, mattpocock } = extractRefs(content);
 
     for (const name of groundwork) {
-      it(`${rel}: groundwork:${name} agent exists`, () => {
-        expect(existsSync(path.join(ROOT, "agents", `${name}.md`))).toBe(true);
+      it(`${rel}: groundwork:${name} agent or skill exists`, () => {
+        expect(gwResolves(name)).toBe(true);
       });
     }
 

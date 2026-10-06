@@ -9,7 +9,7 @@
     "version": "2.13.0"
   },
   "allowCrossMarketplaceDependenciesOn": [
-    "claude-plugins-official"
+    "mattpocock"
   ],
   "plugins": [
     {

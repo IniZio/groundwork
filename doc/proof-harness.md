@@ -8,7 +8,7 @@
 
 ```json
 "dependencies": [
-  { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }
+  { "name": "mattpocock-skills", "marketplace": "mattpocock" }
 ]
 ```
 

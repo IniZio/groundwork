@@ -196,7 +196,7 @@ done
 echo "auth: ${COPIED[*]:-none} | HOME: $TEMP_HOME" >&2
 
 # --- install --------------------------------------------------------------------
-claude plugin marketplace add anthropics/claude-plugins-official >&2
+claude plugin marketplace add mattpocock/skills >&2
 claude plugin marketplace add "$PLUGIN" >&2
 claude plugin install groundwork >&2
 claude plugin list 2>&1 | tee "$OUT/plugin-list.txt" >&2

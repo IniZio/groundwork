@@ -16,7 +16,7 @@ function resolveMpPluginRoot(): string | null {
     const data = JSON.parse(readFileSync(pluginsFile, "utf8")) as {
       plugins: Record<string, Array<{ installPath: string }>>;
     };
-    const entries = data.plugins["mattpocock-skills@claude-plugins-official"];
+    const entries = data.plugins["mattpocock-skills@mattpocock"];
     if (!entries || entries.length === 0) return null;
     const p = entries[0].installPath;
     return statSync(p, { throwIfNoEntry: false })?.isDirectory() ? p : null;

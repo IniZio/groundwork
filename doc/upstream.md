@@ -1,14 +1,14 @@
 # Upstream adoption record
 
-Written against: mattpocock-skills 1.2.3; caveman b39c90862855ad2f0813ce775b8bf07a9d6d2a50
+Written against: mattpocock-skills 1.3.1; caveman b39c90862855ad2f0813ce775b8bf07a9d6d2a50
 
 ## Flow
 
 User runs `/to-tickets` (`mattpocock-skills:to-tickets`, user-only, disable-model-invocation).
 Output format kept aligned with mattpocock spec.
-Main agent then loads `/vertical-slice` without asking — no confirmation prompt.
+Main agent then calls the Skill tool with `groundwork:vertical-slice` without asking — no confirmation prompt.
 
-## mattpocock-skills (v1.2.3)
+## mattpocock-skills (v1.3.1)
 
 | Status | Skill | Notes |
 |---|---|---|
@@ -18,7 +18,7 @@ Main agent then loads `/vertical-slice` without asking — no confirmation promp
 | ACCEPTED | `mattpocock-skills:codebase-design` | Routed directly for architecture review |
 | ACCEPTED | `mattpocock-skills:research` | Routed directly for library/API investigation |
 | ALTERED | `mattpocock-skills:diagnosing-bugs` | Runs inside `groundwork:debugger` rather than inline; gives the protocol a dedicated read-only context and enforces a structured receipt (root_cause/evidence/repro/proposed_fix/confidence) |
-| ALTERED | `mattpocock-skills:to-tickets` | User-only (disable-model-invocation); groundwork refers user to run it; output kept aligned with mattpocock spec; main agent loads `/vertical-slice` without asking |
+| ALTERED | `mattpocock-skills:to-tickets` | User-only (disable-model-invocation); groundwork refers user to run it; output kept aligned with mattpocock spec; main agent calls the Skill tool with `groundwork:vertical-slice` without asking |
 | NOT USED | `mattpocock-skills:implement` | Superseded by `groundwork:implement`, which adds gw slice ledger, stop-gate, and wave protocol |
 | NOT USED | `mattpocock-skills:to-spec` | User-only; not wired into groundwork agent routing |
 | NOT USED | `mattpocock-skills:triage` | User-only; not wired into groundwork agent routing |
@@ -27,9 +27,18 @@ Main agent then loads `/vertical-slice` without asking — no confirmation promp
 | NOT USED | `mattpocock-skills:improve-codebase-architecture` | User-only; not wired into groundwork agent routing |
 | NOT USED | `mattpocock-skills:wizard` | Not adopted; no groundwork routing |
 | NOT USED | `mattpocock-skills:prototype` | Not adopted; no groundwork routing |
-| NOT USED | `mattpocock-skills:resolving-merge-conflicts` | Not adopted; no groundwork routing |
-| NOT USED | `mattpocock-skills:domain-modeling` | Not adopted; no groundwork routing |
+| NOT USED | `mattpocock-skills:implement-spec` | Superseded by `groundwork:implement`; user-only; no groundwork routing |
+| NOT USED | `mattpocock-skills:pr` | Not adopted; no groundwork routing |
+| NOT USED | `mattpocock-skills:retro` | User-only; not adopted; no groundwork routing |
+| ALTERED | `mattpocock-skills:domain-modeling` | `doc/agents/domain.md` routes through it (via `grill-with-docs`); ADR writes become `DECISION` events |
 | NOT USED | `mattpocock-skills:writing-for-agents` | Not adopted; groundwork writes briefs per its own conventions |
+| ALTERED | `mattpocock-skills:grill-with-docs` | User-only; `grilling` plus `domain-modeling`; `doc/agents/domain.md` points readers here, but ADR writes become `DECISION` events |
+| NOT USED | `mattpocock-skills:ask-matt` | User-only; router over upstream skills and flows; not wired into groundwork routing |
+| NOT USED | `mattpocock-skills:setup-matt-pocock-skills` | User-only; per-repo tracker/label/domain-doc setup; groundwork records the result in `doc/agents/` |
+| NOT USED | `mattpocock-skills:grill-me` | User-only; alias for `grilling`; groundwork routes `grilling` directly |
+| NOT USED | `mattpocock-skills:teach` | User-only; multi-session teaching workspace; not wired into groundwork agent routing |
+| NOT USED | `mattpocock-skills:to-questionnaire` | User-only; turns an open decision into a questionnaire for another person; not wired into groundwork agent routing |
+| NOT USED | `mattpocock-skills:wait-what` | User-only; re-pitch a message in STE100; not wired into groundwork agent routing |
 
 ## Caveman (commit b39c90862855ad2f0813ce775b8bf07a9d6d2a50)
 

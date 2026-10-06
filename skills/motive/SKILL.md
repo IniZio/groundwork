@@ -32,13 +32,13 @@ status: active
 
 ## Authoring steps
 
-1. Use `mattpocock-skills:grilling` to capture intent if the objective is unclear.
+1. Call the Skill tool with `mattpocock-skills:grilling` to capture intent if the objective is unclear.
 2. Write the charter at `.groundwork/work/<slug>/motive.md`.
 3. Create `.groundwork/work/<slug>/spec.md`; set `folds_into:` to a living spec path
    like `doc/spec/<area>.md`, or `none` plus a `reason:` line.
 4. Run `$GW init` to create the work store.
 5. Tell user to run `/to-tickets` (or `/wayfinder` for large work) to decompose into tickets.
-   Load `/vertical-slice` yourself without asking — no confirmation prompt.
+   Call the Skill tool with `groundwork:vertical-slice` yourself without asking — no confirmation prompt.
 
 ## Recording decisions
 

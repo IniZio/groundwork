@@ -12,7 +12,7 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 ## Protocol
 
 1. Run `$GW init` → prints `token: T` on first run only. Capture T for this session; store nowhere persistent. On resume use `$GW token`.
-2. Decompose into vertical slices (load `/vertical-slice` for non-trivial fan-out).
+2. Decompose into vertical slices (call the Skill tool with `groundwork:vertical-slice` for non-trivial fan-out).
    Each slice: single domain, independent, owns its files exclusively.
 3. Add slices: `$GW slice add <id> --desc "..." --wave N --blocked-by <deps> --acceptance "crit1;crit2" --token T`
 4. Emit banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: T`
@@ -53,9 +53,9 @@ For a slice sent to another session in an isolated tree (another Claude session,
 
 ## Upstream coverage
 
-For interview/planning: `mattpocock-skills:grilling`.
+For interview/planning: call the Skill tool with `mattpocock-skills:grilling`.
 For tickets: tell user to run `/to-tickets` (model can't invoke it),
-then run `/vertical-slice` yourself without asking.
-For TDD: `mattpocock-skills:tdd`.
-For research: `mattpocock-skills:research`.
-For arch review: `mattpocock-skills:codebase-design`.
+then call the Skill tool with `groundwork:vertical-slice` yourself without asking.
+For TDD: call the Skill tool with `mattpocock-skills:tdd`.
+For research: call the Skill tool with `mattpocock-skills:research`.
+For arch review: call the Skill tool with `mattpocock-skills:codebase-design`.

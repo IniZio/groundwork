@@ -28,3 +28,7 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - **Frontier**: scan `.groundwork/work/<slug>/tickets/` for files that are open, unblocked, and unclaimed; first by number wins.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+
+## Parent and blocking
+
+`to-tickets` 1.3 makes tickets sub-issues of a parent and drops "Blocked by" when the tracker has native blocking. The local markdown tracker has neither, so keep the `Blocked by:` line and record the parent in a `## Parent` section in each ticket file, as upstream `to-tickets` does.

@@ -31,9 +31,9 @@ claude plugin marketplace add /path/to/groundwork    # or a URL
 claude plugin install groundwork
 ```
 
-`claude plugin install groundwork` auto-installs mattpocock-skills (+ 1 dependency) from the `mattpocock` marketplace (add it first; Claude Code does not add a dependency's marketplace for you). Both appear in `claude plugin list` as `✔ enabled`.
+`claude plugin install groundwork` auto-installs its dependencies mattpocock-skills (from the `mattpocock` marketplace) and house-rules. Add the `mattpocock` marketplace first: Claude Code does not add a dependency's marketplace for you (verified with `scripts/proof-harness.sh --install-only`). All three appear in `claude plugin list` as `✔ enabled`.
 
-If the `mattpocock` marketplace is not registered first, `claude plugin install groundwork` exits 0 and reports success, but `claude plugin list` shows:
+If the `mattpocock` marketplace is not registered first, `claude plugin install groundwork` exits 0 and reports `Warning: dependency "mattpocock-skills@mattpocock" was not installed (no marketplace you have added lists it)`, and `claude plugin list` shows:
 `Status: ✘ failed to load — Dependency "mattpocock-skills@mattpocock" is not installed — run \`claude plugin install mattpocock-skills@mattpocock\`, or check that its marketplace is added`
 Fix: `claude plugin marketplace add mattpocock/skills` then `claude plugin install groundwork` again.
 

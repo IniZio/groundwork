@@ -272,3 +272,58 @@ describe("proof-harness.sh — missing-plugin bite proof", () => {
     expect(result.stdout).toContain(`groundwork ${EXPECTED_VERSION} not found`);
   });
 });
+
+describe("proof-harness.sh --install-only — no billed session", () => {
+  function runWithStub(args: string, plugin: string, installRc = 0) {
+    const dir = path.join(SCRATCH, `stub-${Math.random().toString(36).slice(2)}`);
+    const bin = path.join(dir, "bin");
+    const fakeHome = path.join(dir, "home");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(fakeHome, { recursive: true });
+    const argvLog = path.join(dir, "argv.log");
+    const stub = path.join(bin, "claude");
+    writeFileSync(
+      stub,
+      `#!/usr/bin/env bash\necho "$*" >> "${argvLog}"\n[[ "$1 $2" == "plugin install" ]] && exit ${installRc}\nexit 0\n`,
+    );
+    execSync(`chmod +x "${stub}"`);
+    let exit = 0;
+    try {
+      execSync(`bash "${HARNESS}" --install-only --plugin "${plugin}" --out "${dir}/out" ${args}`, {
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, HOME: fakeHome, PATH: `${bin}:${process.env.PATH}` },
+      });
+    } catch (err: unknown) {
+      exit = (err as { status?: number }).status ?? 1;
+    }
+    const calls = existsSync(argvLog) ? readFileSync(argvLog, "utf8").trim().split("\n") : [];
+    return { exit, calls };
+  }
+
+  it("adds both marketplaces, installs, lists, and never runs claude -p", () => {
+    const { exit, calls } = runWithStub("", ROOT);
+    expect(exit).toBe(0);
+    expect(calls).toEqual([
+      "plugin marketplace add mattpocock/skills",
+      `plugin marketplace add ${ROOT}`,
+      "plugin install groundwork",
+      "plugin list",
+    ]);
+    expect(calls.some((c) => /(^|\s)-p(\s|$)/.test(c))).toBe(false);
+  });
+
+  it("--no-dep-marketplace skips the mattpocock marketplace add", () => {
+    const { exit, calls } = runWithStub("--no-dep-marketplace", ROOT);
+    expect(exit).toBe(0);
+    expect(calls.some((c) => c.includes("mattpocock/skills"))).toBe(false);
+    expect(calls).toContain("plugin install groundwork");
+    expect(calls.some((c) => /(^|\s)-p(\s|$)/.test(c))).toBe(false);
+  });
+
+  it("exits non-zero when install fails, still without claude -p", () => {
+    const { exit, calls } = runWithStub("", ROOT, 1);
+    expect(exit).toBe(1);
+    expect(calls.some((c) => /(^|\s)-p(\s|$)/.test(c))).toBe(false);
+  });
+});

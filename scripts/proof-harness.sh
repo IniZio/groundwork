@@ -10,6 +10,9 @@
 #   --settings   <file>  optional --settings file forwarded to claude
 #   --plugin     <path>  local marketplace dir (default: <repo-root>/.claude-plugin)
 #   --check-log  <file>  skip install+run; only run INIT CHECK on an existing stdout.log
+#   --install-only       marketplace add, install, plugin list; exit before claude -p (no billed call;
+#                        --repo and --prompt not required)
+#   --no-dep-marketplace skip `marketplace add mattpocock/skills` (tests dependency auto-add)
 #
 # Auth: copies ~/.claude/.credentials.json and ~/.claude/.claude.json into the fresh HOME.
 # No other ~/.claude content is copied; plugins, settings, and MCP config stay behind.
@@ -125,7 +128,7 @@ check_session_start() {
 }
 
 # --- parse arguments ------------------------------------------------------------
-REPO="" PROMPT="" AGENT="" MODEL="sonnet" OUT="" SETTINGS="" PLUGIN="" CHECK_LOG="" KEEP_HOME=0
+REPO="" PROMPT="" AGENT="" MODEL="sonnet" OUT="" SETTINGS="" PLUGIN="" CHECK_LOG="" KEEP_HOME=0 INSTALL_ONLY=0 NO_DEP_MP=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -138,6 +141,8 @@ while [[ $# -gt 0 ]]; do
     --plugin)      PLUGIN="$2";    shift 2 ;;
     --check-log)   CHECK_LOG="$2"; shift 2 ;;
     --keep-home)   KEEP_HOME=1;    shift ;;
+    --install-only) INSTALL_ONLY=1; shift ;;
+    --no-dep-marketplace) NO_DEP_MP=1; shift ;;
     --help|-h)     grep '^#' "$0" | head -20 | sed 's/^# \?//'; exit 0 ;;
     *)             die "unknown argument: $1" ;;
   esac
@@ -150,11 +155,12 @@ if [[ -n "$CHECK_LOG" ]]; then
   exit $INIT_EXIT
 fi
 
-[[ -z "$REPO" ]]   && die "--repo is required"
-[[ -z "$PROMPT" ]] && die "--prompt is required"
-
-REPO="$(realpath "$REPO")"
-[[ -d "$REPO" ]] || die "--repo path does not exist: $REPO"
+if [[ "$INSTALL_ONLY" -eq 0 ]]; then
+  [[ -z "$REPO" ]]   && die "--repo is required"
+  [[ -z "$PROMPT" ]] && die "--prompt is required"
+  REPO="$(realpath "$REPO")"
+  [[ -d "$REPO" ]] || die "--repo path does not exist: $REPO"
+fi
 
 if [[ -z "$PLUGIN" ]]; then
   PLUGIN="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -196,10 +202,15 @@ done
 echo "auth: ${COPIED[*]:-none} | HOME: $TEMP_HOME" >&2
 
 # --- install --------------------------------------------------------------------
-claude plugin marketplace add mattpocock/skills >&2
+[[ "$NO_DEP_MP" -eq 0 ]] && { claude plugin marketplace add mattpocock/skills >&2; }
 claude plugin marketplace add "$PLUGIN" >&2
 claude plugin install groundwork >&2
+INSTALL_RC=$?
 claude plugin list 2>&1 | tee "$OUT/plugin-list.txt" >&2
+
+if [[ "$INSTALL_ONLY" -eq 1 ]]; then
+  exit "$INSTALL_RC"
+fi
 
 # --- run claude -----------------------------------------------------------------
 CLAUDE_ARGS=(-p "$PROMPT" --model "$MODEL" --output-format stream-json --verbose --permission-mode acceptEdits)

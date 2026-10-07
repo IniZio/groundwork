@@ -36,7 +36,14 @@ scripts/proof-harness.sh --repo <path> --prompt <text> [OPTIONS]
   --settings   <file>   forwarded as --settings to claude
   --plugin     <path>   repo root containing .claude-plugin/ (default: this script's repo root)
   --check-log  <file>   skip install+run; run INIT CHECK only on an existing stdout.log
+  --install-only        marketplace add, install, `plugin list`; exit before `claude -p` (no billed call;
+                        --repo and --prompt not required; exit status is the install status)
+  --no-dep-marketplace  skip `marketplace add mattpocock/skills`
 ```
+
+`--install-only --no-dep-marketplace` shows that Claude Code does not add a dependency's marketplace: install exits 0 with `Warning: dependency "mattpocock-skills@mattpocock" was not installed (no marketplace you have added lists it)` and `plugin list` shows groundwork `✘ failed to load`. With the marketplace added, install reports `+ 2 dependencies: mattpocock-skills, house-rules` and all three plugins are `✔ enabled`.
+
+`--plugin` copies the directory as is, including untracked files. A checkout whose `node_modules` holds a broken symlink (for example `node_modules/node_modules`) fails install with `ENOENT ... symlink`. Pass a clean tree, for example `git archive HEAD | tar -x -C <dir>`.
 
 The `--check-log` flag is useful for re-checking a saved run or for fast testing without a live install.
 

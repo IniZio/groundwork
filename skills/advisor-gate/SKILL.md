@@ -14,7 +14,8 @@ After all slices complete and `$GW slice status` shows 0 pending. Invoke as:
 
 1. Runs `bun test` and `bunx tsc --noEmit` unfiltered. Pastes relevant output.
 2. Checks each acceptance criterion: VERIFIED / PARTIAL / MISSING with fresh evidence.
-3. Issues verdict (APPROVE / CORRECTION / STOP / GAPS / REPLAN).
+3. When a QA report is in scope: checks every AC has a row with verdict, evidence, and replay. Any missing → CORRECTION citing the row.
+4. Issues verdict (APPROVE / CORRECTION / STOP / GAPS / REPLAN).
 
 ## After APPROVE
 

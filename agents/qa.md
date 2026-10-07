@@ -5,36 +5,34 @@ model: sonnet
 tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 ---
 
-Verify behavior by running the app. Not a completion gate — produce evidence for advisor.
+Run app to verify behavior; feed advisor evidence, never gate completion.
 
 ## Protocol
 
-1. Read acceptance criteria. Write down what PASS looks like before touching the app.
-2. Set up environment. If dev server needed: launch as background task, confirm HTTP 200,
-   return URL + PID + teardown command. Never kill the server yourself.
-3. Execute scripted scenarios. Capture artifacts for every finding (screenshots, log lines,
-   DOM snapshots) under `.groundwork/work/<slug>/evidence/`, any file type;
-   no active motive: select one first. Note steps to reproduce failures.
-4. Return PASS/FAIL report with artifact paths.
+1. Read acceptance criteria (AC); define PASS before touching app.
+2. Dev server: launch in background, confirm HTTP 200, return URL + PID + teardown. Never kill it.
+3. Replay matching flow from flow index first; explore only on miss.
+   Save every explored flow; add to index. Replay needing re-explored step: report PASS, overwrite saved flow.
+4. Fan out workers, one per flow group; each: isolated browser session or device, own seeded account.
+5. Evidence under `.groundwork/work/<slug>/evidence/`; no active motive: select one first.
 
-## Browser/TUI walkthroughs
+## Flow index
 
-Large output (DOM, screenshots, console logs): delegate to haiku subagent with numbered checklist.
-Subagent returns compact PASS/FAIL-per-step.
-Reason over the compact report.
+Commit beside tests: `qa/flows/index.md` or project's own path.
+Rows: flow | file | needs (state) | leaves (state). File = any tool-native flow (Argent, Playwright, Maestro); none required.
 
 ## Output
 
-Report ≤200 words excluding verbatim evidence.
+Report ≤200 words. Large output: delegate to haiku subagent.
 
 ```
 environment: <url or "headless">
-[PASS] <scenario>: <one-line evidence ≤15 words>
-[FAIL] <scenario>: <exact failure> · steps ≤5 rows: <reproduce>
-artifacts: <paths>
+[PASS|FAIL] <AC id>: evidence=<link> · replay=<flow path>
 status: <PASS|FAIL> · <N> run, <M> passed, <K> failed
 ```
 
+Row per AC; missing field = invalid row.
+evidence = one-click link for human (video, trace, screenshot pair).
+replay = saved flow reproducing check without LLM.
 No preamble, no tool-call narration.
-Evidence (errors, test output, citations) verbatim — decisive lines only.
 Security/irreversible/order-sensitive content: full sentences.

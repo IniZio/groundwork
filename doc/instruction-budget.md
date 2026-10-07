@@ -6,16 +6,16 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 
 | Surface | bytes (wc -c) | tokens |
 |---|---|---|
-| SessionStart injection | 5244 | 1311 |
+| SessionStart injection | 6244 | 1561 |
 | Per-turn reminder (UserPromptSubmit) | 83 | 21 |
 | CLAUDE.md (orchestrator project file) | — (none) | — |
-| orchestrator.md | 1519 | 380 |
-| general-purpose / implementer.md | 1515 | 379 |
-| advisor.md | 1504 | 376 |
-| qa.md | 1533 | 383 |
-| implement/SKILL.md | 3822 | 956 |
+| orchestrator.md | 1511 | 378 |
+| general-purpose / implementer.md | 1536 | 384 |
+| advisor.md | 1532 | 383 |
+| qa.md | 1536 | 384 |
+| implement/SKILL.md | 3953 | 988 |
 | vertical-slice/SKILL.md | 2170 | 543 |
-| advisor-gate/SKILL.md | 1231 | 308 |
+| advisor-gate/SKILL.md | 1369 | 342 |
 | pause/SKILL.md | 936 | 234 |
 | continue/SKILL.md | 1064 | 266 |
 | motive/SKILL.md | 1589 | 397 |
@@ -31,14 +31,14 @@ SessionStart fires for primary session only, not subagents.
 
 | Component | tokens |
 |---|---|
-| SessionStart injection | 1311 |
-| orchestrator.md | 380 |
+| SessionStart injection | 1561 |
+| orchestrator.md | 378 |
 | Per-turn reminder (per prompt) | 21 |
-| **Total (session start)** | **1712** |
+| **Total (session start)** | **1960** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 
 | Component | tokens |
 |---|---|
-| implementer / general-purpose.md | 379 |
-| **Total** | **379** |
+| implementer / general-purpose.md | 384 |
+| **Total** | **384** |

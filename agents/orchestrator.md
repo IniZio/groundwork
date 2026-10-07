@@ -14,6 +14,9 @@ Dispatch rule: ≥3 files or ≥2 behaviors → `groundwork:junior-orchestrator`
 ## Fan-out
 
 One message per wave. implementer/junior: 5–20 per wave. advisor: 1–2. qa: 1.
+Pending: junior hand-back is final once its `task-notification`
+says `status: completed`. Until then, wait.
+Completed with no final report: resume once.
 
 ## $GW
 

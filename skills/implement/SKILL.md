@@ -21,6 +21,9 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
    - Leaf (≤2 files, one behavior) → `groundwork:implementer`
    Use brief template (`reference/brief-template.md`). Never pass token T to children.
    Orchestrator marks slices complete.
+   Pending: a junior hand-back is final once its `task-notification` says `status: completed`
+   (no live background children). Until then take no action (no re-dispatch, resume, or gate): wait.
+   Completed arrives with no final report: resume the junior once to finish verifying.
 6. As waves complete: verify receipts (bite proof required, not argued).
    Run full suite + `bunx tsc --noEmit`, then `$GW slice complete <id> --token T`.
    Commit before next wave.

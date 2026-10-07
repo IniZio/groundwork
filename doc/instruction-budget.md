@@ -9,11 +9,11 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | SessionStart injection | 5244 | 1311 |
 | Per-turn reminder (UserPromptSubmit) | 83 | 21 |
 | CLAUDE.md (orchestrator project file) | — (none) | — |
-| orchestrator.md | 1366 | 342 |
+| orchestrator.md | 1519 | 380 |
 | general-purpose / implementer.md | 1515 | 379 |
 | advisor.md | 1504 | 376 |
 | qa.md | 1533 | 383 |
-| implement/SKILL.md | 3540 | 885 |
+| implement/SKILL.md | 3822 | 956 |
 | vertical-slice/SKILL.md | 2170 | 543 |
 | advisor-gate/SKILL.md | 1231 | 308 |
 | pause/SKILL.md | 936 | 234 |
@@ -32,9 +32,9 @@ SessionStart fires for primary session only, not subagents.
 | Component | tokens |
 |---|---|
 | SessionStart injection | 1311 |
-| orchestrator.md | 342 |
+| orchestrator.md | 380 |
 | Per-turn reminder (per prompt) | 21 |
-| **Total (session start)** | **1674** |
+| **Total (session start)** | **1712** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 

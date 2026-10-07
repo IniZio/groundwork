@@ -151,6 +151,23 @@ describe("hold state", () => {
   });
 });
 
+describe("compile hold note", () => {
+  const note = "established: X\nstill need: Y";
+  it("compile shows multi-line note while set, none after clear", () => {
+    const env = { CLAUDE_PROJECT_DIR: dir };
+    run(["hold", "set", "--reason", note, "--token", tok], dir, env);
+    const on = run(["compile"], dir, env);
+    expect(on.exitCode).toBe(0);
+    expect(on.stdout).toContain("hold: awaiting human — established: X\n    still need: Y\n");
+    const j = JSON.parse(run(["compile", "--json"], dir, env).stdout) as { hold: string | null };
+    expect(j.hold).toBe(note);
+
+    run(["hold", "clear", "--token", tok], dir, env);
+    expect(run(["compile"], dir, env).stdout).toContain("hold: none");
+    expect((JSON.parse(run(["compile", "--json"], dir, env).stdout) as { hold: string | null }).hold).toBeNull();
+  });
+});
+
 describe("event append", () => {
   it("every non-gate EVENT_TYPES entry appends without error", () => {
     for (const type of EVENT_TYPES) {

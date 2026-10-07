@@ -378,7 +378,7 @@ function cmdGateStatus(args: string[]): void {
 
 function cmdHoldSet(args: string[], motiveSlug?: string): void {
   const reason = flag(args, "--reason");
-  if (!reason) { process.stderr.write(`usage: ${gw} hold set --reason TEXT --token T\n`); process.exit(1); }
+  if (!reason) { process.stderr.write(`usage: ${gw} hold set --reason "established: ...; still need: ..." --token T\n`); process.exit(1); }
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   store.appendEvent("HOLD", { reason });
@@ -479,7 +479,13 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
     process.stdout.write(`motive: ${motive}\n`);
     process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
     process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}\n`);
-    process.stdout.write(`hold: ${hold ?? "none"}\n`);
+    if (hold) {
+      const [first, ...rest] = hold.split("\n");
+      process.stdout.write(`hold: awaiting human — ${first}\n`);
+      for (const line of rest) process.stdout.write(`    ${line}\n`);
+    } else {
+      process.stdout.write("hold: none\n");
+    }
     process.stdout.write(`open slices (${openSlices.length}):\n`);
     for (const s of openSlices) {
       process.stdout.write(`  ${s.id} [wave ${s.wave}] ${s.status}${s.blocked_by ? ` blocked-by=${s.blocked_by}` : ""}\n`);

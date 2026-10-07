@@ -176,6 +176,10 @@ function writeCount(f: string, n: number): boolean {
 }
 function resetCount(f: string): void { try { unlinkSync(f); } catch { /* ok */ } }
 
+function holdFile(dbPath: string, sessionId: string): string {
+  return path.join(path.dirname(dbPath), `stop-gate.${sessionId}.hold`);
+}
+
 function sigFile(dbPath: string, sessionId: string): string {
   return path.join(path.dirname(dbPath), `stop-gate.${sessionId}.sig`);
 }
@@ -237,6 +241,7 @@ export function getCurrentHead(cwd: string): string | null {
 
 export function checkStore(dbPath: string, repoPath?: string): {
   sliceCount: number; incomplete: number; incompleteIds: string[]; approved: boolean; holdActive: boolean;
+  holdId: number | null; holdNote: string;
   motiveDetails: MotiveStatus[];
 } {
   const resolvedRepo = repoPath ?? path.dirname(path.dirname(dbPath));
@@ -342,15 +347,31 @@ export function checkStore(dbPath: string, repoPath?: string): {
     const incomplete = motiveDetails.reduce((s, m) => s + m.incomplete, 0);
     const incompleteIds = motiveDetails.flatMap(m => m.incompleteIds).slice(0, 10);
     const approved = motiveDetails.length > 0 && motiveDetails.every(m => m.approved);
-    const globalHoldId = db.query<{ max_id: number | null }, []>(
-      "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD'"
-    ).get()?.max_id ?? null;
-    const globalClearId = db.query<{ max_id: number | null }, []>(
-      "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
-    ).get()?.max_id ?? null;
-    const holdActive = globalHoldId !== null && (globalClearId === null || globalHoldId > globalClearId);
+    const holdRows = db.query<{ id: number; event_type: string; payload: string; motive_id: string | null }, []>(
+      hasMotives
+        ? "SELECT id, event_type, payload, motive_id FROM events WHERE event_type IN ('HOLD','HOLD_CLEAR') ORDER BY id DESC"
+        : "SELECT id, event_type, payload, NULL AS motive_id FROM events WHERE event_type IN ('HOLD','HOLD_CLEAR') ORDER BY id DESC"
+    ).all();
+    const seen = new Set<string>();
+    let activeHold: { id: number; payload: string } | null = null;
+    for (const r of holdRows) {
+      const key = r.motive_id ?? "";
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (r.event_type === "HOLD" && !activeHold) activeHold = { id: r.id, payload: r.payload };
+    }
+    const holdActive = activeHold !== null;
+    let holdId: number | null = null;
+    let holdNote = "on hold";
+    if (activeHold) {
+      holdId = activeHold.id;
+      try {
+        const reason = (JSON.parse(activeHold.payload) as Record<string, unknown>).reason;
+        if (typeof reason === "string" && reason.trim()) holdNote = reason.trim();
+      } catch { /* ok */ }
+    }
 
-    return { sliceCount, incomplete, incompleteIds, approved, holdActive, motiveDetails };
+    return { sliceCount, incomplete, incompleteIds, approved, holdActive, holdId, holdNote, motiveDetails };
   } finally {
     db.close();
   }
@@ -679,12 +700,21 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     }
 
     const compute = (): { result: HookResult; yieldResult: string | null } => {
-      const { sliceCount, incomplete, incompleteIds, approved, holdActive, motiveDetails } = checkStore(dbPath);
+      const { sliceCount, incomplete, incompleteIds, approved, holdActive, holdId, holdNote, motiveDetails } = checkStore(dbPath);
       const cf = countFile(dbPath, sessionId);
+      const hf = holdFile(dbPath, sessionId);
       if (holdActive) {
         resetCount(cf);
-        return { result: allow("stop-gate: HOLD active — human hold in effect, session may end"), yieldResult: null };
+        if (readSig(hf) === String(holdId)) return { result: allow(), yieldResult: null };
+        writeSig(hf, String(holdId));
+        const shown = {
+          continue: true,
+          reason: `stop-gate: HOLD active — awaiting human: ${holdNote}`,
+          systemMessage: `stop-gate: awaiting human — ${holdNote}`,
+        };
+        return { result: { stdout: JSON.stringify(shown) + "\n", stderr: "", exit: 0 }, yieldResult: null };
       }
+      resetSig(hf);
       if (sliceCount === 0) {
         resetCount(cf);
         return { result: allow("stop-gate: no slices in store — nothing to gate"), yieldResult: null };
@@ -777,7 +807,7 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
         } else {
           ids = incompleteIds.join(", ");
         }
-        return { result: block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "<why>"\` to stop for a human.`), yieldResult: null };
+        return { result: block(`stop-gate: ${incomplete} slice(s) incomplete [${ids}]. Run \`$GW slice complete <id>\` when done, or \`$GW hold set --reason "established: <...>; still need: <...>"\` to stop for a human.`), yieldResult: null };
       }
       // All slices complete but newest verdict is not APPROVE (or no verdict recorded).
       const sealRejectedMotive = motiveDetails.find(m => m.sealRejected);

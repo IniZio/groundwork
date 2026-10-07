@@ -71,16 +71,19 @@ In a tree linked to a parent slice (delegate mode), every verdict is also forwar
 Read-only. Prints `scope: <child|root|orphan>  gate: <verdict|none>  slices: N complete, M open`. `--json` adds `v`, `mode` and `parent` (child only), and `approved_at`, which is the time of the newest gate verdict of any kind. Fields are listed in [nested work scope](spec/nested-work-scope.md).
 
 ### `gw hold set --reason "..." --token T`
-Records a `HOLD` event. Hold reason appears in `gw slice status`.
+Records a `HOLD` event. Pauses the run for a human. Hold reason appears in `gw slice status`. Put an "established / still need" note in `--reason`, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`.
+While a hold is active (in any motive), the Stop hook allows the session to end. It shows the note once per session per hold. On later turns it stays silent. It does not block for open slices or a missing gate approval.
+A new `gw hold set` replaces the note and shows it again.
 
 ### `gw hold clear --token T`
-Records a `HOLD_CLEAR` event.
+Records a `HOLD_CLEAR` event. Removes the hold. The Stop hook then blocks normally again (open slices, missing `GATE_APPROVE`). Clear the hold when the human replies. The run resumes from the paused ledger state.
 
 ### `gw event append --type TYPE [--msg TEXT] [--data JSON] --token T`
 Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate verdict types (`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`) are rejected — use `gw gate <verdict>` instead. The scope event types (`CHILD_LINK`, `CHILD_REGISTER`, `CHILD_GATE`, `SCOPE_VERIFY`, `SCOPE_UNLINK`, `SCOPE_PARENT`) are rejected with ``error: <TYPE> is a scope event and cannot be appended directly — use `$GW scope` commands``.
 
 ### `gw compile [--json]`
 Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.
+Hold line: `hold: awaiting human — <note>` (further note lines indented) or `hold: none`. The `--json` output gives `hold` as the note string or `null`.
 AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: slice-id, ...` rows (sorted). If no slice has `covers_ac` set, prints `ac coverage: none`. The `--json` output includes an `ac_coverage` object mapping each AC id to the list of slice ids that cover it.
 Idle units line: `idle units (≥14d): slug (Nd), ...` lists each unit under `.groundwork/work/` whose newest file change is 14 or more days old, or `idle units: none`. The `--json` output includes an `idle_units` array of `{slug, idle_days}`.
 

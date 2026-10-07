@@ -943,3 +943,71 @@ describe("stop-gate — AC1: motive-complete release", () => {
     expect(String(out.reason)).toMatch(/no active motives/i);
   });
 });
+
+describe("stop-gate — quiet hold (HAH-02a), spawned by deployed path", () => {
+  const HOOK = path.resolve(import.meta.dir, "../../src/hooks/stop-gate.ts");
+  const NOTE = "established: parser done; still need: human pick of schema";
+
+  function spawnHook(dbPath: string, sessionId: string) {
+    const env: Record<string, string | undefined> = { ...process.env, GROUNDWORK_DB: dbPath };
+    delete env.CLAUDE_PROJECT_DIR;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    const r = spawnSync("bun", [HOOK], { input: JSON.stringify({ session_id: sessionId, cwd: path.dirname(dbPath) }), env, encoding: "utf8" });
+    return { status: r.status, out: r.stdout.trim() };
+  }
+  const hold = (db: Database, note: string, motive = "default") =>
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('HOLD',?,?,?)", [JSON.stringify({ reason: note }), new Date().toISOString(), motive]);
+  const clear = (db: Database, motive = "default") =>
+    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('HOLD_CLEAR','{}',?,?)", [new Date().toISOString(), motive]);
+  const openSlice = (db: Database, motive = "default") =>
+    db.run("INSERT INTO slices (id,wave,status,created_at,motive_id) VALUES (?,1,'pending',?,?)", [`S-${motive}`, new Date().toISOString(), motive]);
+
+  it("a: note shown once, then plain continue", () => {
+    const { db, dbPath } = makeDb("qh-a");
+    openSlice(db); hold(db, NOTE); db.close();
+    const first = spawnHook(dbPath, "qh-a");
+    expect(first.status).toBe(0);
+    const o = JSON.parse(first.out);
+    expect(first.out).toContain(NOTE);
+    expect(o.systemMessage).toContain("awaiting human");
+    const second = spawnHook(dbPath, "qh-a");
+    expect(second.status).toBe(0);
+    expect(second.out).toBe('{"continue":true}');
+  });
+
+  it("b: HOLD_CLEAR restores blocking", () => {
+    const { db, dbPath } = makeDb("qh-b");
+    openSlice(db); hold(db, NOTE); clear(db); db.close();
+    const r = spawnHook(dbPath, "qh-b");
+    expect(r.status).toBe(0);
+    const o = JSON.parse(r.out);
+    expect(o.decision).toBe("block");
+    expect(o.reason).toContain("incomplete");
+  });
+
+  it("c: new HOLD event prints again", () => {
+    const { db, dbPath } = makeDb("qh-c");
+    openSlice(db); hold(db, NOTE); db.close();
+    spawnHook(dbPath, "qh-c");
+    const db2 = new Database(dbPath);
+    hold(db2, "established: round two; still need: sign-off"); db2.close();
+    const r = spawnHook(dbPath, "qh-c");
+    expect(r.status).toBe(0);
+    expect(r.out).toContain("round two");
+    expect(r.out).toContain("awaiting human");
+  });
+
+  it("d: clear in another motive does not cancel hold", () => {
+    const { db, dbPath } = makeDb("qh-d");
+    const now = new Date().toISOString();
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-a','active',?)", [now]);
+    db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-b','active',?)", [now]);
+    openSlice(db, "motive-a");
+    hold(db, NOTE, "motive-a"); hold(db, "other", "motive-b"); clear(db, "motive-b");
+    db.close();
+    const r = spawnHook(dbPath, "qh-d");
+    expect(r.status).toBe(0);
+    expect(r.out).toContain(NOTE);
+    expect(r.out).not.toContain('"block"');
+  });
+});

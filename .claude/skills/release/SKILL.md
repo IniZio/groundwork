@@ -100,7 +100,11 @@ Stage files by path only — never `git add -A` — so stray untracked files don
 along. If the commit hook rejects the message, fix the message; never `--no-verify`.
 If a push is rejected, stop and report; never force-push.
 
-## 5. Report
+## 5. Re-gate
+
+The bump commit moves HEAD, so the stop-gate voids any earlier APPROVE. Have `groundwork:advisor` check `git diff <approved-sha>..HEAD`: only the approved files plus version fields (`package.json`, `.claude-plugin/*.json`). On APPROVE, re-run `$GW gate approve --citation "file:line" --token T` at the new HEAD.
+
+## 6. Report
 
 Tell the user: old → new version, the commit SHA, the tag, and that both pushes
 succeeded (quote the push output lines). Mention that their own install updates

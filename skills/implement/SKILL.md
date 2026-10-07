@@ -24,8 +24,10 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 6. As waves complete: verify receipts (bite proof required, not argued).
    Run full suite + `bunx tsc --noEmit`, then `$GW slice complete <id> --token T`.
    Commit before next wave.
-7. Completion gate: `[groundwork:qa if UI] → groundwork:advisor` → APPROVE
+7. Commit the final wave (and release bump, if any) first: the stop-gate voids APPROVE when HEAD moves.
+   Completion gate: `[groundwork:qa if UI] → groundwork:advisor` → APPROVE
    → `$GW gate approve --citation "file:line" --token T`
+   Commit after APPROVE: advisor checks `git diff <approved-sha>..HEAD`, then re-run `gate approve`.
 
 ## Worktree fallback
 

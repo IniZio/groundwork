@@ -10,10 +10,10 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | Per-turn reminder (UserPromptSubmit) | 79 | 20 |
 | CLAUDE.md (orchestrator project file) | — (none) | — |
 | orchestrator.md | 1366 | 342 |
-| general-purpose / implementer.md | 1535 | 384 |
+| general-purpose / implementer.md | 1515 | 379 |
 | advisor.md | 1504 | 376 |
 | qa.md | 1533 | 383 |
-| implement/SKILL.md | 3335 | 834 |
+| implement/SKILL.md | 3540 | 885 |
 | vertical-slice/SKILL.md | 2170 | 543 |
 | advisor-gate/SKILL.md | 1231 | 308 |
 | pause/SKILL.md | 936 | 234 |
@@ -40,5 +40,5 @@ SessionStart fires for primary session only, not subagents.
 
 | Component | tokens |
 |---|---|
-| implementer / general-purpose.md | 384 |
+| implementer / general-purpose.md | 379 |
 | **Total** | **384** |

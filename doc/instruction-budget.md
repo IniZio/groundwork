@@ -7,7 +7,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | Surface | bytes (wc -c) | tokens |
 |---|---|---|
 | SessionStart injection | 5244 | 1311 |
-| Per-turn reminder (UserPromptSubmit) | 79 | 20 |
+| Per-turn reminder (UserPromptSubmit) | 83 | 21 |
 | CLAUDE.md (orchestrator project file) | — (none) | — |
 | orchestrator.md | 1366 | 342 |
 | general-purpose / implementer.md | 1515 | 379 |
@@ -33,12 +33,12 @@ SessionStart fires for primary session only, not subagents.
 |---|---|
 | SessionStart injection | 1311 |
 | orchestrator.md | 342 |
-| Per-turn reminder (per prompt) | 20 |
-| **Total (session start)** | **1673** |
+| Per-turn reminder (per prompt) | 21 |
+| **Total (session start)** | **1674** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 
 | Component | tokens |
 |---|---|
 | implementer / general-purpose.md | 379 |
-| **Total** | **384** |
+| **Total** | **379** |

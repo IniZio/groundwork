@@ -20,6 +20,8 @@ export const FILE_ROWS: { surface: string; relPath: string }[] = [
 ];
 
 export const INJECTION = "SessionStart injection";
+export const REMINDER = "Per-turn reminder (UserPromptSubmit)";
+export const REMINDER_TURN = "Per-turn reminder (per prompt)";
 export const UPDATE_CMD = "bun run budget:update";
 
 export const tokensOf = (bytes: number): number => Math.round(bytes / 4);
@@ -43,10 +45,28 @@ export function injectionBytes(): number {
   return Buffer.byteLength(norm, "utf8");
 }
 
+/** Bytes of the UserPromptSubmit additionalContext, measured with no caveman flag (style half included). */
+export function reminderBytes(): number {
+  const empty = mkdtempSync(path.join(tmpdir(), "budget-empty-"));
+  const env: Record<string, string | undefined> = { ...process.env, CLAUDE_CONFIG_DIR: empty, CLAUDE_PROJECT_DIR: empty };
+  delete env.CLAUDE_CODE_ENTRYPOINT;
+  delete env.GW_PROMPT_REMINDER_DISABLE;
+  let result: ReturnType<typeof spawnSync>;
+  try {
+    result = spawnSync("bun", [path.join(ROOT, "src/hooks/prompt-reminder.ts")], { input: "{}", env, cwd: empty });
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+  if (result.status !== 0) throw new Error(`prompt-reminder hook exited ${result.status}: ${String(result.stderr)}`);
+  const out = JSON.parse(String(result.stdout)) as { hookSpecificOutput: { additionalContext: string } };
+  return Buffer.byteLength(out.hookSpecificOutput.additionalContext, "utf8");
+}
+
 export function computeBytes(): Map<string, number> {
   const m = new Map<string, number>();
   for (const { surface, relPath } of FILE_ROWS) m.set(surface, statSync(path.join(ROOT, relPath)).size);
   m.set(INJECTION, injectionBytes());
+  m.set(REMINDER, reminderBytes());
   return m;
 }
 
@@ -56,8 +76,7 @@ const cells = (line: string) => line.split("|").slice(1, -1).map(c => c.trim());
 export function renderDoc(doc: string, bytes: Map<string, number>): string {
   const lines = doc.split("\n");
   const tok = (s: string) => tokensOf(bytes.get(s)!);
-  const turn = lines.map(cells).find(c => c[0]?.startsWith("Per-turn reminder (per prompt)"));
-  const total = tok(INJECTION) + tok("orchestrator.md") + parseInt(turn?.[1] ?? "0", 10);
+  const total = tok(INJECTION) + tok("orchestrator.md") + tok(REMINDER);
   const leaf = tok("general-purpose / implementer.md");
   let table = "";
   return lines.map(line => {
@@ -68,8 +87,9 @@ export function renderDoc(doc: string, bytes: Map<string, number>): string {
     if (c.length === 3 && bytes.has(name)) return `| ${name} | ${bytes.get(name)} | ${tok(name)} |`;
     if (c.length !== 2) return line;
     if (name === "**Total (session start)**") return `| ${name} | **${total}** |`;
-    if (name === "**Total**" && table.includes("per-leaf")) return `| ${name} | **${leaf}** |`;
-    const key = name === "implementer / general-purpose.md" ? "general-purpose / implementer.md" : name;
+    if (name === "**Total**" && /per-leaf/i.test(table)) return `| ${name} | **${leaf}** |`;
+    const key = name === "implementer / general-purpose.md" ? "general-purpose / implementer.md"
+      : name === REMINDER_TURN ? REMINDER : name;
     return bytes.has(key) ? `| ${name} | ${tok(key)} |` : line;
   }).join("\n");
 }

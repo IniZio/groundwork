@@ -26,9 +26,17 @@ export const UPDATE_CMD = "bun run budget:update";
 
 export const tokensOf = (bytes: number): number => Math.round(bytes / 4);
 
+/** Spawn env with ambient hook-suppressing variables removed, so measurement never depends on the caller. */
+function measureEnv(extra: Record<string, string>): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env, ...extra };
+  delete env.CLAUDE_CODE_ENTRYPOINT;
+  delete env.GW_PROMPT_REMINDER_DISABLE;
+  return env;
+}
+
 export function injectionBytes(): number {
   const empty = mkdtempSync(path.join(tmpdir(), "budget-empty-"));
-  const env = { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: empty };
+  const env = measureEnv({ CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: empty });
   let result: ReturnType<typeof spawnSync>;
   try {
     result = spawnSync("bun", [path.join(ROOT, "src/hooks/session-start.ts")], { input: "{}", env, cwd: empty });
@@ -48,9 +56,7 @@ export function injectionBytes(): number {
 /** Bytes of the UserPromptSubmit additionalContext, measured with no caveman flag (style half included). */
 export function reminderBytes(): number {
   const empty = mkdtempSync(path.join(tmpdir(), "budget-empty-"));
-  const env: Record<string, string | undefined> = { ...process.env, CLAUDE_CONFIG_DIR: empty, CLAUDE_PROJECT_DIR: empty };
-  delete env.CLAUDE_CODE_ENTRYPOINT;
-  delete env.GW_PROMPT_REMINDER_DISABLE;
+  const env = measureEnv({ CLAUDE_CONFIG_DIR: empty, CLAUDE_PROJECT_DIR: empty });
   let result: ReturnType<typeof spawnSync>;
   try {
     result = spawnSync("bun", [path.join(ROOT, "src/hooks/prompt-reminder.ts")], { input: "{}", env, cwd: empty });

@@ -65,3 +65,17 @@ describe("instruction-budget.md — totals equal the sum of their parsed compone
     expect(section("per-orchestrator").some(r => r.name.startsWith("Per-turn reminder"))).toBe(true);
   });
 });
+
+describe("budget measurement is independent of ambient CLAUDE_CODE_ENTRYPOINT", () => {
+  it("injectionBytes measures SessionStart even when the SDK entrypoint is inherited", () => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, "CLAUDE_CODE_ENTRYPOINT");
+    const prev = process.env.CLAUDE_CODE_ENTRYPOINT;
+    process.env.CLAUDE_CODE_ENTRYPOINT = "sdk-js";
+    try {
+      expect(computeBytes().get(INJECTION)!).toBeGreaterThan(0);
+    } finally {
+      if (had) process.env.CLAUDE_CODE_ENTRYPOINT = prev;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  });
+});

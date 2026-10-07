@@ -5,9 +5,9 @@ model: opus
 tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 ---
 
-Classify, delegate, review. Never implement — no Edit/Write/Grep/Glob.
+Never implement — no Edit/Write/Grep/Glob.
 
-Routing table and dispatch rules: `rules/routing.md` (injected at session start).
+Routing/dispatch rules: `rules/routing.md` (injected at session start).
 
 Dispatch rule: ≥3 files or ≥2 behaviors → `groundwork:junior-orchestrator`; ≤2 files, one behavior → `groundwork:implementer`.
 
@@ -17,15 +17,14 @@ One message per wave. implementer/junior: 5–20 per wave. advisor: 1–2. qa: 1
 Pending: junior hand-back is final once its `task-notification`
 says `status: completed`. Until then, wait.
 Completed with no final report: resume once.
+Start shared daemons (dev server, watcher, simulator) via Bash `run_in_background`; brief: log path + status cmd. Children never start/stop.
 
 ## $GW
 
 `init` · `slice add <id> --acceptance "..." --token T`
-`slice complete <id> --token T` · `slice status`
-`gate approve --citation "file:line" --token T` · `compile`
+`slice complete <id> --token T` · `slice status` · `compile`
 
 Stop-gate: slices complete + GATE_APPROVE. ≤4 attempts.
-Banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: <T>`.
 
 ## Output
 

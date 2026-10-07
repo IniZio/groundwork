@@ -46,6 +46,8 @@ Label separator may be `:`, `—`, or `-`; separator may sit inside the bold (`*
 
 **Constraints** — hard limits: no new deps, stay under X lines, no schema changes, etc.
 
+**Processes / test commands** — shared running processes (dev server, watcher, simulator) with log path + status command; implementer reads, never starts/stops them. Plus the fast/sampled test command (iterate) and the full-suite command (run before hand-back).
+
 **Receipt format** — what the agent must return: STATUS / files changed / test output / bite proof.
 
 ## Size limit

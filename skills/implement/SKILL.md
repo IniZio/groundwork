@@ -20,6 +20,7 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
    - Multi-file (≥3 files or ≥2 behaviors) → `groundwork:junior-orchestrator`
    - Leaf (≤2 files, one behavior) → `groundwork:implementer`
    Use brief template (`reference/brief-template.md`). Never pass token T to children.
+   Before fan-out, start shared long-lived processes (dev server, watcher, simulator) in background; brief: log path + status cmd.
    Orchestrator marks slices complete.
    Pending: a junior hand-back is final once its `task-notification` says `status: completed`
    (no live background children). Until then take no action (no re-dispatch, resume, or gate): wait.

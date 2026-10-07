@@ -22,6 +22,25 @@ function latestPluginJson(): string | null {
 
 const PLUGIN_JSON = latestPluginJson();
 
+const INSTALLED_FILE = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+function installedEntry(): { version: string; gitCommitSha: string } | null {
+  try {
+    return JSON.parse(readFileSync(INSTALLED_FILE, "utf8")).plugins?.["mattpocock-skills@mattpocock"]?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+const INSTALLED = installedEntry();
+
+describe("doc/upstream.md recorded SHA", () => {
+  it.skipIf(INSTALLED === null)("equals installed gitCommitSha at lines 3 and 11", () => {
+    const lines = readFileSync(path.join(ROOT, "doc/upstream.md"), "utf8").split("\n");
+    const sha = (l: string) => l.match(/mattpocock-skills[^;]*?\b(?:commit )?([0-9a-f]{40})/)?.[1];
+    expect(sha(lines[2])).toBe(INSTALLED!.gitCommitSha);
+    expect(sha(lines[10])).toBe(INSTALLED!.gitCommitSha);
+  });
+});
+
 describe("doc/upstream.md mattpocock table", () => {
   it.skipIf(PLUGIN_JSON === null)("rows equal cached plugin.json skills[]", () => {
     const cached = new Set<string>(

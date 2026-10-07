@@ -1,6 +1,6 @@
 # Upstream adoption record
 
-Written against: mattpocock-skills 1.3.1; caveman b39c90862855ad2f0813ce775b8bf07a9d6d2a50
+Written against: mattpocock-skills 1.3.1 (commit 6fd947921b935b7e1e69293a200400f0fdd5c15f); caveman b39c90862855ad2f0813ce775b8bf07a9d6d2a50
 
 ## Flow
 
@@ -8,7 +8,7 @@ User runs `/to-tickets` (`mattpocock-skills:to-tickets`, user-only, disable-mode
 Output format kept aligned with mattpocock spec.
 Main agent then calls the Skill tool with `groundwork:vertical-slice` without asking — no confirmation prompt.
 
-## mattpocock-skills (v1.3.1)
+## mattpocock-skills (v1.3.1, commit 6fd947921b935b7e1e69293a200400f0fdd5c15f)
 
 | Status | Skill | Notes |
 |---|---|---|

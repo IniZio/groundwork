@@ -27,3 +27,24 @@
     compression creates ambiguity also stay full sentences.
 18. Never grow: compression never adds words; style only, never lengthen output.
 19. No arrows: no `→` as prose shorthand; fenced format templates and notation may use `→`. Upstream measured zero token saving.
+
+## Routing rule
+
+Agent-written specs, tickets, motives, designs and PR bodies split into a human view and an agent view.
+If changing an item could flip a reviewer's yes/no, it goes in the human view (committed `doc/` files, PR bodies, README.md).
+If it only changes how the work gets done, it goes in the agent view (`.groundwork/`).
+
+## Human writing standard
+
+This standard applies to the human view only. The compression rules above (dropped articles, fragments) apply to agent-facing text.
+The human view follows this standard instead, so the two sets do not conflict.
+Rule 15 (cite paths absolutely) applies to the agent view. The human view uses permalinks.
+
+- Lead with the point. Never open with "This document describes".
+- Never state what baseline CI enforces (lint, typecheck, tests passed).
+- File mentions are GitHub permalinks pinned to a commit, never code-blocked paths.
+- Flows, architectures and state machines are shown as a diagram.
+- Each decision carries its rejected alternative.
+- Write plain controlled English. Apply ASD-STE100 where a reader could misparse.
+- No agent bookkeeping in the human view: file lists, commands, AC tables, ledger ids.
+- No hard length cap.

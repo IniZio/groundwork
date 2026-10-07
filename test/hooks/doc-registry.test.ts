@@ -47,15 +47,15 @@ function validate(id: DocTypeId, text: string): boolean {
 describe("AC1 registry shape", () => {
   it("has exactly the expected keys", () => {
     expect([...ids].sort() as string[]).toEqual(
-      ["design", "evidence", "handoff", "lessons", "map", "motive", "out-of-scope", "plan", "research", "spec", "ticket"].sort(),
+      ["design", "design-human", "evidence", "handoff", "lessons", "map", "motive", "motive-human", "out-of-scope", "plan", "research", "spec", "spec-human", "ticket", "ticket-human"].sort(),
     );
   });
-  it("each entry has exactly 7 keys and tier working", () => {
+  it("each entry has exactly 7 keys and the right tier", () => {
     for (const id of ids) {
       expect(Object.keys(WORKING_TYPES[id]).sort()).toEqual(
         ["description", "frontmatter", "generates", "headings", "instruction", "template", "tier"],
       );
-      expect(WORKING_TYPES[id].tier).toBe("working");
+      expect(WORKING_TYPES[id].tier).toBe(id.endsWith("-human") ? "product" : "working");
     }
   });
   it("evidence template is null, all others non-null", () => {
@@ -73,7 +73,18 @@ describe("AC2 generates literals", () => {
     expect(WORKING_TYPES.ticket.generates).toBe(".groundwork/work/{slug}/tickets/{nn}-{name:kebab}.md");
   });
   it("every generates starts under the work dir", () => {
-    for (const id of ids) expect(WORKING_TYPES[id].generates.startsWith(".groundwork/work/{slug}/")).toBe(true);
+    for (const id of ids) {
+      const prefix = WORKING_TYPES[id].tier === "product" ? "doc/{slug}/" : ".groundwork/work/{slug}/";
+      expect(WORKING_TYPES[id].generates.startsWith(prefix)).toBe(true);
+    }
+  });
+  it("each agent type has a human view outside .groundwork with reviewer-only headings", () => {
+    for (const base of ["spec", "ticket", "motive", "design"]) {
+      const human = WORKING_TYPES[`${base}-human` as DocTypeId];
+      expect(human).toBeDefined();
+      expect(human.generates.includes(".groundwork")).toBe(false);
+      for (const h of ["Acceptance criteria", "Files", "Commands", "Ledger"]) expect(human.headings).not.toContain(h);
+    }
   });
 });
 

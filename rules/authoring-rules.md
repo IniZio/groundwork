@@ -15,3 +15,22 @@
 11. Cite file paths absolutely: `/home/...` or `src/hooks/...`.
 12. **Never grow**: compression never adds words; style only, never lengthen output.
 13. **No arrows**: no `→` as prose shorthand; fenced format templates and notation may use `→`. Zero token saving upstream.
+
+## Routing rule
+
+If changing an item could flip a reviewer's yes/no, it goes in the human view (committed `doc/` files, PR bodies, README.md).
+If it only changes how the work gets done, it goes in the agent view (`.groundwork/`).
+
+## Human writing standard
+
+Applies to human view only. Rules 1-3, 5, 12 (compression) govern agent-facing text; human view follows this standard instead.
+Rule 11 (absolute paths) governs agent view; human view uses permalinks.
+
+- Lead with the point. No "This document describes".
+- Never state what baseline CI enforces (lint, typecheck, tests passed).
+- File mentions are GitHub permalinks pinned to a commit. Never code-blocked paths.
+- Flows, architectures, state machines: diagram.
+- Each decision carries its rejected alternative.
+- Plain controlled English. Apply ASD-STE100 where reader could misparse.
+- No agent bookkeeping in human view: file lists, commands, AC tables, ledger ids.
+- No hard length cap.

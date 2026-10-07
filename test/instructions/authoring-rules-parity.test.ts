@@ -71,6 +71,42 @@ const LOAD_BEARING_RULES: { name: string; patterns: RegExp[] }[] = [
     name: "no arrows as prose shorthand",
     patterns: [/no arrows/i],
   },
+  {
+    name: "routing rule (reviewer yes/no flip goes to human view)",
+    patterns: [/flip a reviewer'?s yes\/no/i],
+  },
+  {
+    name: "human writing standard section",
+    patterns: [/human writing standard/i],
+  },
+  {
+    name: "lead with the point",
+    patterns: [/lead with the point/i],
+  },
+  {
+    name: "no baseline CI claims",
+    patterns: [/baseline CI/i],
+  },
+  {
+    name: "file mentions as permalinks pinned to a commit",
+    patterns: [/permalink/i],
+  },
+  {
+    name: "flows as diagrams",
+    patterns: [/diagram/i],
+  },
+  {
+    name: "each decision carries rejected alternative",
+    patterns: [/rejected alternative/i],
+  },
+  {
+    name: "controlled English ASD-STE100",
+    patterns: [/ASD-STE100/i],
+  },
+  {
+    name: "no agent bookkeeping in human view",
+    patterns: [/agent bookkeeping/i],
+  },
 ];
 
 function rulePresent(content: string, rule: { name: string; patterns: RegExp[] }): boolean {
@@ -100,4 +136,19 @@ describe("authoring-rules parity: doc vs runtime", () => {
       ).toBe(true);
     });
   }
+});
+
+describe("routing rule stated once", () => {
+  const ROUTING = /flip a reviewer'?s yes\/no/gi;
+  const count = (content: string) => (content.match(ROUTING) ?? []).length;
+
+  it("doc/authoring-rules.md states the routing rule exactly once", () => {
+    const n = count(readFileSync(DOC, "utf8"));
+    expect(n, `doc/authoring-rules.md routing rule appears ${n} times, expected exactly 1`).toBe(1);
+  });
+
+  it("rules/authoring-rules.md states the routing rule exactly once", () => {
+    const n = count(readFileSync(RUNTIME, "utf8"));
+    expect(n, `rules/authoring-rules.md routing rule appears ${n} times, expected exactly 1`).toBe(1);
+  });
 });

@@ -9,7 +9,11 @@ export type DocTypeId =
   | "handoff"
   | "evidence"
   | "out-of-scope"
-  | "lessons";
+  | "lessons"
+  | "spec-human"
+  | "ticket-human"
+  | "motive-human"
+  | "design-human";
 
 // Deliberately tiny subset: a hand-written validator supports only these keywords.
 export interface JsonSchema {
@@ -26,7 +30,7 @@ export interface JsonSchema {
 }
 
 export interface DocType {
-  tier: "working";
+  tier: "working" | "product";
   generates: string;
   description: string;
   instruction: string;
@@ -48,8 +52,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
   motive: {
     tier: "working",
     generates: `${W}/motive.md`,
-    description: "Charter: objective, decisions, open questions",
-    instruction: "One per unit of work; record decisions via $GW event append",
+    description: "Agent view of the charter: objective, decisions, open questions",
+    instruction: "One per unit of work; record decisions via $GW event append; holds AC and agent detail",
     template: tpl("motive"),
     frontmatter: {
       type: "object",
@@ -64,8 +68,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
   spec: {
     tier: "working",
     generates: `${W}/spec.md`,
-    description: "Requirements for the work, folded into durable docs",
-    instruction: "Set folds_into to the durable doc, or none with a reason",
+    description: "Agent view of the spec: requirements and AC, folded into durable docs",
+    instruction: "Set folds_into to the durable doc, or none with a reason; holds AC",
     template: tpl("spec"),
     frontmatter: {
       type: "object",
@@ -79,8 +83,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
   ticket: {
     tier: "working",
     generates: `${W}/tickets/{nn}-{name:kebab}.md`,
-    description: "One actionable task with acceptance criteria",
-    instruction: "Number tickets with a two-digit prefix",
+    description: "Agent view of one actionable task, holds acceptance criteria",
+    instruction: "Number tickets with a two-digit prefix; holds AC",
     template: tpl("ticket"),
     frontmatter: anyObject,
     headings: ["Goal", "Acceptance criteria"],
@@ -122,8 +126,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
   design: {
     tier: "working",
     generates: `${W}/design.md`,
-    description: "Design context and chosen approach",
-    instruction: "Explain context first, then the design",
+    description: "Agent view of the design: context and chosen approach",
+    instruction: "Explain context first, then the design; holds agent detail and AC",
     template: tpl("design"),
     frontmatter: anyObject,
     headings: ["Context", "Design"],
@@ -163,6 +167,42 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     template: tpl("lessons"),
     frontmatter: anyObject,
     headings: ["Lessons"],
+  },
+  "spec-human": {
+    tier: "product",
+    generates: "doc/{slug}/spec.md",
+    description: "Human view of the spec: reviewer-facing, committed",
+    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in spec",
+    template: tpl("spec-human"),
+    frontmatter: anyObject,
+    headings: ["Summary", "Decisions"],
+  },
+  "ticket-human": {
+    tier: "product",
+    generates: "doc/{slug}/tickets/{nn}-{name:kebab}.md",
+    description: "Human view of a ticket: reviewer-facing, committed",
+    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in ticket",
+    template: tpl("ticket-human"),
+    frontmatter: anyObject,
+    headings: ["Summary"],
+  },
+  "motive-human": {
+    tier: "product",
+    generates: "doc/{slug}/motive.md",
+    description: "Human view of the motive: reviewer-facing, committed",
+    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in motive",
+    template: tpl("motive-human"),
+    frontmatter: anyObject,
+    headings: ["Objective", "Decisions"],
+  },
+  "design-human": {
+    tier: "product",
+    generates: "doc/{slug}/design.md",
+    description: "Human view of the design: reviewer-facing, committed",
+    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in design",
+    template: tpl("design-human"),
+    frontmatter: anyObject,
+    headings: ["Summary", "Diagram", "Decisions"],
   },
 };
 

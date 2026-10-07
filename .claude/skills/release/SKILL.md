@@ -102,7 +102,7 @@ If a push is rejected, stop and report; never force-push.
 
 ## 5. Re-gate
 
-The bump commit moves HEAD, so the stop-gate voids any earlier APPROVE. Have `groundwork:advisor` check `git diff <approved-sha>..HEAD`: only the approved files plus version fields (`package.json`, `.claude-plugin/*.json`). On APPROVE, re-run `$GW gate approve --citation "file:line" --token T` at the new HEAD.
+The bump commit moves HEAD, so the stop-gate voids any earlier APPROVE. Have `groundwork:advisor` check `git diff <approved-sha>..HEAD`: only the approved files plus version fields (the files staged in §4: `package.json`, `.claude-plugin/*.json`, `plugins/house-rules/.claude-plugin/plugin.json`). On APPROVE, re-run `$GW gate approve --citation "file:line" --token T` at the new HEAD.
 
 ## 6. Report
 

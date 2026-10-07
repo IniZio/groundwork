@@ -93,3 +93,66 @@ describe("references — all agent/skill cross-references resolve", () => {
     }
   }
 });
+
+function extractSkillToolRefs(content: string): string[] {
+  const re = /skill tool with `([^`]+)`/gi;
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) out.push(m[1]);
+  return out;
+}
+
+function skillRefProblem(ref: string, mpExists: (n: string) => boolean = mpSkillExists): string | null {
+  const m = /^([a-z][a-z0-9-]*):([a-z][a-z0-9-]*)$/.exec(ref);
+  if (!m) return `"${ref}" lacks a plugin: prefix`;
+  if (m[1] === "groundwork") return gwResolves(m[2]) ? null : `"${ref}" does not resolve`;
+  if (m[1] === "mattpocock-skills") return mpExists(m[2]) ? null : `"${ref}" not in mattpocock cache`;
+  return `"${ref}" has unknown plugin`;
+}
+
+describe("references — Skill tool phrases name a resolvable plugin:skill", () => {
+  it("extractor sees PRESENT phrases, case-insensitive", () => {
+    expect(extractSkillToolRefs("(call the Skill tool with `vertical-slice`) Call the Skill tool with `groundwork:nope`"))
+      .toEqual(["vertical-slice", "groundwork:nope"]);
+    expect(extractSkillToolRefs("no phrase here")).toEqual([]);
+  });
+
+  it("bare vertical-slice fails", () => {
+    expect(skillRefProblem("vertical-slice")).toContain("prefix");
+  });
+
+  it("groundwork:nope fails", () => {
+    expect(skillRefProblem("groundwork:nope")).toContain("does not resolve");
+  });
+
+  it("groundwork:vertical-slice passes", () => {
+    expect(skillRefProblem("groundwork:vertical-slice")).toBeNull();
+  });
+
+  it("mattpocock-skills ref resolved through injected lookup", () => {
+    expect(skillRefProblem("mattpocock-skills:tdd", n => n === "tdd")).toBeNull();
+    expect(skillRefProblem("mattpocock-skills:zzz", () => false)).toContain("not in mattpocock cache");
+  });
+
+  const files = [
+    ...collectFiles(path.join(ROOT, "skills"), "SKILL.md"),
+    ...collectFiles(path.join(ROOT, "agents"), ".md"),
+    ...collectFiles(path.join(ROOT, "rules"), ".md"),
+  ];
+  const found: { rel: string; ref: string }[] = [];
+  for (const f of files) {
+    for (const ref of extractSkillToolRefs(readFileSync(f, "utf8"))) found.push({ rel: path.relative(ROOT, f), ref });
+  }
+
+  it("scan finds phrases in the real tree, including rules/routing.md", () => {
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.some(x => x.rel === "rules/routing.md")).toBe(true);
+  });
+
+  for (const { rel, ref } of found) {
+    const isMp = ref.startsWith("mattpocock-skills:");
+    it.skipIf(isMp && MP_SKIP_REASON !== null)(`${rel}: Skill tool with ${ref} resolves`, () => {
+      expect(skillRefProblem(ref)).toBeNull();
+    });
+  }
+});

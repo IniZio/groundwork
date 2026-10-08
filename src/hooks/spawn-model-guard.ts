@@ -4,9 +4,10 @@
  * D-11 reuse: v1 agent-model-guard structure; debug logging, prefix warnings, banned-builtins env dropped.
  * D5: depth-allowlist per caller type (replaces dead JUNIOR_BANNED rule).
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
+import { intentGates, refusalMessage } from "../cli/gate-status.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -136,6 +137,26 @@ export function loadRegistry(): Record<string, string> {
   } catch { return {}; }
 }
 
+const INTENT_GATED = new Set(["groundwork:implementer", "groundwork:junior-orchestrator", "groundwork:designer"]);
+
+function intentRefusal(projDir: string): string | null {
+  try {
+    const dbPath = path.join(projDir, ".groundwork", "work.db");
+    if (!existsSync(dbPath)) return null;
+    const db = new Database(dbPath, { readonly: true, create: false });
+    try {
+      const slug = db.query<{ value: string }, []>("SELECT value FROM meta WHERE key='active_motive'").get()?.value ?? "default";
+      const latest = (t: string): string | null =>
+        db.query<{ payload: string }, [string, string]>(
+          "SELECT payload FROM events WHERE event_type=? AND motive_id=? ORDER BY id DESC LIMIT 1"
+        ).get(t, slug)?.payload ?? null;
+      return refusalMessage(intentGates(projDir, slug, latest));
+    } finally {
+      db.close();
+    }
+  } catch { return null; }
+}
+
 export function check(input: unknown, callerType?: string, projectDir?: string, registryOverride?: Record<string, string>): HookResult {
   try {
     const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -156,6 +177,12 @@ export function check(input: unknown, callerType?: string, projectDir?: string, 
         const spawnedLabel = subTypeOmitted ? `"general-purpose" (subagent_type omitted)` : `"${subType}"`;
         return deny(`depth-guard: "${caller}" may not spawn ${spawnedLabel} — allowed: [${list}].`);
       }
+    }
+
+    if (INTENT_GATED.has(subType)) {
+      const projDir = projectDir ?? process.env.CLAUDE_PROJECT_DIR ?? "";
+      const msg = projDir ? intentRefusal(projDir) : null;
+      if (msg) return deny(msg);
     }
 
     if (subType === "groundwork:implementer" && caller !== "groundwork:junior-orchestrator") {

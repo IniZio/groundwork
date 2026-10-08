@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { readFileSync, mkdirSync, unlinkSync, rmdirSync } from "node:fs";
+import { readFileSync, mkdirSync, unlinkSync, rmdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { check, loadRegistry, parseBriefFiles, isWithinSlice } from "../../src/hooks/spawn-model-guard.js";
+import { artifactHash } from "../../src/cli/gate-status.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
 
@@ -340,5 +341,69 @@ describe("isWithinSlice", () => {
 
   it("no match", () => {
     expect(isWithinSlice("outside/z.ts", ["src/a.ts", "src/b.ts"])).toBe(false);
+  });
+});
+
+describe("spawn-model-guard — intent gate (H1/H2)", () => {
+  const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
+
+  function setup(withDocs: boolean): string {
+    const dir = makeProjectDir("S1", ["a.ts"]);
+    if (withDocs) {
+      mkdirSync(path.join(dir, "doc", "default"), { recursive: true });
+      writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter v1");
+      writeFileSync(path.join(dir, "doc", "default", "spec.md"), "spec v1");
+    }
+    return dir;
+  }
+
+  function approve(dir: string, type: string, a: "charter" | "spec") {
+    const db = new Database(path.join(dir, ".groundwork", "work.db"));
+    db.run(
+      "INSERT INTO events (event_type, payload, created_at, motive_id) VALUES (?, ?, ?, 'default')",
+      [type, JSON.stringify({ hash: artifactHash(dir, "default", a) }), new Date().toISOString()]
+    );
+    db.close();
+  }
+
+  afterEach(() => {
+    for (const d of tmpDirs) rmSync(path.join(d, "doc"), { recursive: true, force: true });
+  });
+
+  const impl = agentWithPrompt("groundwork:implementer", "do it", "sonnet");
+
+  it("missing approvals → implementer denied naming H1 and H2", () => {
+    const dir = setup(true);
+    const r = check(impl, undefined, dir);
+    expect(safeDecision(r)).toBe("deny");
+    expect(reasonOf(r)).toContain("H1 charter approval missing");
+    expect(reasonOf(r)).toContain("H2 spec approval");
+  });
+
+  it("both approved with correct hashes → not denied", () => {
+    const dir = setup(true);
+    approve(dir, "APPROVE_CHARTER", "charter");
+    approve(dir, "APPROVE_SPEC", "spec");
+    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
+  });
+
+  it("edited after approval → denied as void", () => {
+    const dir = setup(true);
+    approve(dir, "APPROVE_CHARTER", "charter");
+    approve(dir, "APPROVE_SPEC", "spec");
+    writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter v2");
+    const r = check(impl, undefined, dir);
+    expect(safeDecision(r)).toBe("deny");
+    expect(reasonOf(r)).toContain("void");
+  });
+
+  it("no doc/<slug>/ → not denied (backward compat)", () => {
+    const dir = setup(false);
+    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
+  });
+
+  it("explore with missing approvals → not denied", () => {
+    const dir = setup(true);
+    expect(safeDecision(check(agentWithPrompt("groundwork:explore", "look", "sonnet"), undefined, dir))).not.toBe("deny");
   });
 });

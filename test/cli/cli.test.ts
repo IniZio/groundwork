@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EVENT_TYPES } from "../../src/store/store.js";
@@ -408,5 +408,64 @@ describe("stop-gate seam", () => {
     run(["hold", "clear", "--token", tok], dir);
     const result = stopGate(dir, "seam-4");
     expect(result.decision).toBe("block");
+  });
+});
+
+describe("approve", () => {
+  const scrub = { CLAUDE_PROJECT_DIR: "" };
+  const slugOf = () => /^motive: (\S+)/m.exec(run(["compile"], dir, scrub).stdout)![1];
+  const write = (rel: string, text: string) => {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    writeFileSync(path.join(dir, rel), text);
+  };
+
+  it("compile reports n/a when no doc/<slug>/ exists", () => {
+    const r = run(["compile"], dir, scrub);
+    expect(r.stdout).toContain("intent gates: n/a (no doc/");
+  });
+
+  it("approve charter then edit voids it", () => {
+    const slug = slugOf();
+    write(`doc/${slug}/motive.md`, "# charter\n");
+    const a = run(["approve", "charter", "--token", tok], dir, scrub);
+    expect(a.exitCode).toBe(0);
+    expect(a.stdout).toMatch(/^H1 charter approved: sha256:/);
+    expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: approved (human)");
+    write(`doc/${slug}/motive.md`, "# charter edited\n");
+    expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: void");
+  });
+
+  it("approve charter without artifact exits 1", () => {
+    const r = run(["approve", "charter", "--token", tok], dir, scrub);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("error:");
+  });
+
+  it("unknown approve subcommand exits 1", () => {
+    expect(run(["approve", "bogus", "--token", tok], dir, scrub).exitCode).toBe(1);
+  });
+
+  it("spec auto-passes for refactor", () => {
+    const slug = slugOf();
+    write(`doc/${slug}/spec.md`, "# spec\n");
+    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [refactor]\n---\nbody\n");
+    const r = run(["approve", "spec", "--auto", "--token", tok], dir, scrub);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("H2 auto-pass: Refactor, no behaviour or interface change");
+    expect(run(["compile"], dir, scrub).stdout).toContain("H2 spec: approved (auto)");
+  });
+
+  it("spec with dependency holds, human approve clears", () => {
+    const slug = slugOf();
+    write(`doc/${slug}/spec.md`, "# spec\n");
+    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [dependency]\n---\nbody\n");
+    const r = run(["approve", "spec", "--auto", "--token", tok], dir, scrub);
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout).toContain("H2 awaiting human: H2 needs human approval: Dependency added");
+    expect(run(["compile"], dir, scrub).stdout).toContain("hold: awaiting human — H2 needs human approval: Dependency added");
+    const h = run(["approve", "spec", "--token", tok], dir, scrub);
+    expect(h.exitCode).toBe(0);
+    expect(h.stdout).toMatch(/^H2 spec approved: sha256:/);
+    expect(run(["compile"], dir, scrub).stdout).toContain("hold: none");
   });
 });

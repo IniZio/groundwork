@@ -6,7 +6,9 @@ import { spawnSync } from "node:child_process";
 import { WorkStore } from "../../src/store/store.js";
 import { CHILD_GATE, CHILD_LINK, SCOPE_VERIFY, serializePointer } from "../../src/store/scope-pointer.js";
 import { writeInboxEvent } from "../../src/store/scope-inbox.js";
-import { completionGuard, gateStatus } from "../../src/cli/gate-status.js";
+import {
+  approvalPayload, classifySpec, completionGuard, evaluateArtifact, gateStatus, intentGates, intentGatesApply, refusalMessage,
+} from "../../src/cli/gate-status.js";
 
 const git = (cwd: string, ...a: string[]) =>
   spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd, encoding: "utf8" });
@@ -93,7 +95,8 @@ describe("gateStatus", () => {
   it("root: main worktree, no pointer", () => {
     store.completeSlice("S-1");
     store.appendEvent("GATE_APPROVE", { citation: "a.ts:1", created_at: "2026-01-01T00:00:00.000Z" });
-    const s = gateStatus({ cwd: tmp });
+    const { intent, ...s } = gateStatus({ cwd: tmp });
+    expect(intent?.applies).toBe(false);
     expect(s).toEqual({
       v: 1, scope: "root", slices: { open: 0, complete: 1 }, gate: "APPROVE", approved_at: "2026-01-01T00:00:00.000Z",
     });
@@ -135,5 +138,112 @@ describe("gateStatus", () => {
       expect(s.slices).toEqual({ open: 0, complete: 0 });
       expect(s.gate).toBe("none");
     } finally { rmSync(d, { recursive: true, force: true }); }
+  });
+});
+
+describe("intent gates", () => {
+  const slug = "m1";
+  const spec = (fm: string, body = "") => `---\n${fm}\n---\n\n# Spec\n\n## Acceptance criteria\n\n${body}`;
+  const put = (rel: string, text: string) => {
+    mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+    writeFileSync(path.join(tmp, rel), text);
+  };
+
+  it("bugfix with repro_test -> auto", () => {
+    const c = classifySpec(spec("change_kinds: [bugfix]\nrepro_test: test/a.test.ts"));
+    expect(c.auto).toBe(true);
+    expect(c.rows).toContain("Bug fix with a failing test that reproduces it");
+    expect(c.openDecision).toBeNull();
+  });
+  it("bugfix without repro_test -> human", () => {
+    const c = classifySpec(spec("change_kinds:\n  - bugfix"));
+    expect(c.auto).toBe(false);
+    expect(c.rows).toContain("Bug fix without a reproducing test");
+    expect(c.openDecision?.startsWith("H2 ")).toBe(true);
+  });
+  it("refactor -> auto", () => {
+    const c = classifySpec(spec("change_kinds: [refactor]"));
+    expect(c.auto).toBe(true);
+    expect(c.rows).toContain("Refactor, no behaviour or interface change");
+  });
+  it("cli-flag / config-key -> human", () => {
+    for (const k of ["cli-flag", "config-key"]) {
+      const c = classifySpec(spec(`change_kinds: [${k}]`));
+      expect(c.auto).toBe(false);
+      expect(c.rows).toContain("New CLI flag or config key");
+    }
+  });
+  it("data-format / migration -> human", () => {
+    for (const k of ["data-format", "migration"]) {
+      const c = classifySpec(spec(`change_kinds: [${k}]`));
+      expect(c.auto).toBe(false);
+      expect(c.rows).toContain("Change to stored data format or migration");
+    }
+  });
+  it("TBD AC -> human, names the line", () => {
+    const line = "- [ ] AC-2 TBD later";
+    const c = classifySpec(spec("change_kinds: [refactor]", `- [ ] AC-1 ok\n${line}\n`));
+    expect(c.auto).toBe(false);
+    expect(c.rows).toContain("Every AC maps to a slice, one AC still TBD");
+    expect(c.openDecision).toContain(line);
+  });
+  it("dependency -> human", () => {
+    const c = classifySpec(spec("change_kinds: [dependency]"));
+    expect(c.auto).toBe(false);
+    expect(c.rows).toContain("Dependency added");
+  });
+  it("null / no frontmatter / empty kinds -> Unclassified human", () => {
+    for (const t of [null, "# no fm", spec("change_kinds: []")]) {
+      const c = classifySpec(t);
+      expect(c.auto).toBe(false);
+      expect(c.rows).toEqual(["Unclassified"]);
+      expect(c.openDecision).toBe("H2 needs human approval: Unclassified (spec declares no change_kinds)");
+    }
+  });
+  it("unknown kind -> human, named", () => {
+    const c = classifySpec(spec("change_kinds: [refactor, weird]"));
+    expect(c.auto).toBe(false);
+    expect(c.rows).toContain("Unclassified");
+    expect(c.openDecision).toContain("weird");
+  });
+
+  it("approved -> edit -> void; no event -> missing", () => {
+    put(`doc/${slug}/spec.md`, "v1");
+    const rec = approvalPayload(tmp, slug, "spec", "human");
+    expect(rec.files).toEqual([`doc/${slug}/spec.md`]);
+    expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("approved");
+    put(`doc/${slug}/spec.md`, "v2");
+    expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("void");
+    expect(evaluateArtifact(tmp, slug, "spec", null).state).toBe("missing");
+    expect(evaluateArtifact(tmp, slug, "spec", "{bad").state).toBe("missing");
+  });
+  it("approvalPayload throws when no file", () => {
+    expect(() => approvalPayload(tmp, slug, "charter", "human")).toThrow(
+      `no charter found for ${slug}: expected doc/${slug}/motive.md or .groundwork/work/${slug}/motive.md`,
+    );
+  });
+  it("intentGatesApply false without doc views; refusalMessage null", () => {
+    put(`.groundwork/work/${slug}/spec.md`, "x");
+    expect(intentGatesApply(tmp, slug)).toBe(false);
+    expect(refusalMessage(intentGates(tmp, slug, () => null))).toBeNull();
+  });
+  it("refusalMessage names H1 and H2 when missing", () => {
+    put(`doc/${slug}/motive.md`, "c");
+    put(`doc/${slug}/spec.md`, "s");
+    const g = intentGates(tmp, slug, () => null);
+    expect(g.applies).toBe(true);
+    const m = refusalMessage(g) ?? "";
+    expect(m.startsWith("intent gate: implementation dispatch refused — ")).toBe(true);
+    expect(m).toContain("H1 charter approval missing");
+    expect(m).toContain("H2 spec approval missing");
+  });
+  it("refusalMessage null when both approved", () => {
+    put(`doc/${slug}/motive.md`, "c");
+    put(`doc/${slug}/spec.md`, "s");
+    const ev: Record<string, string> = {
+      APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
+      APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "auto", ["Refactor, no behaviour or interface change"])),
+    };
+    expect(refusalMessage(intentGates(tmp, slug, (t) => ev[t] ?? null))).toBeNull();
   });
 });

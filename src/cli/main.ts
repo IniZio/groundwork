@@ -16,7 +16,7 @@ import {
   type SealFields,
 } from "../store/key-store.js";
 import { assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
-import { completionGuard, gateStatus } from "./gate-status.js";
+import { completionGuard, gateStatus, APPROVAL_EVENT, approvalPayload, classifySpec, intentGates, type IntentArtifact } from "./gate-status.js";
 import { CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
@@ -373,7 +373,54 @@ function cmdGateStatus(args: string[]): void {
     process.stdout.write(JSON.stringify(st, null, 2) + "\n");
     return;
   }
-  process.stdout.write(`scope: ${st.scope}  gate: ${st.gate}  slices: ${st.slices.complete} complete, ${st.slices.open} open\n`);
+  process.stdout.write(`scope: ${st.scope}  gate: ${st.gate}  slices: ${st.slices.complete} complete, ${st.slices.open} open${st.intent?.applies ? `  H1: ${st.intent.h1.state}  H2: ${st.intent.h2.state}` : ""}\n`);
+}
+
+function cmdApprove(args: string[], motiveSlug?: string): void {
+  const artifact = args[0];
+  if (artifact !== "charter" && artifact !== "spec") {
+    process.stderr.write(`usage: ${gw} approve charter|spec [--auto] --token T\n`);
+    process.exit(1);
+  }
+  const a: IntentArtifact = artifact;
+  const auto = a === "spec" && boolFlag(args, "--auto");
+  const store = requireDb(motiveSlug);
+  checkToken(store, args);
+  const slug = store.activeMotive;
+  const root = repoDir();
+  const label = a === "charter" ? "H1 charter" : "H2 spec";
+  if (auto) {
+    const specPath = path.join(root, ".groundwork", "work", slug, "spec.md");
+    const cls = classifySpec(existsSync(specPath) ? readFileSync(specPath, "utf8") : null);
+    if (!cls.auto) {
+      const reason = cls.openDecision ?? "H2 needs human approval";
+      store.appendEvent("HOLD", { reason });
+      process.stdout.write(`H2 awaiting human: ${reason}\n`);
+      store.close();
+      process.exit(2);
+    }
+    try {
+      store.appendEvent(APPROVAL_EVENT.spec, approvalPayload(root, slug, "spec", "auto", cls.rows) as unknown as Record<string, unknown>);
+    } catch (e: unknown) {
+      store.close();
+      process.stderr.write(`error: ${e instanceof Error ? e.message : String(e)}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`H2 auto-pass: ${cls.rows.join(", ")}\n`);
+    store.close();
+    return;
+  }
+  let payload;
+  try { payload = approvalPayload(root, slug, a, "human"); }
+  catch (e: unknown) {
+    store.close();
+    process.stderr.write(`error: ${e instanceof Error ? e.message : String(e)}\n`);
+    process.exit(1);
+  }
+  store.appendEvent(APPROVAL_EVENT[a], payload as unknown as Record<string, unknown>);
+  if (a === "spec" && store.getHoldState()?.startsWith("H2 ")) store.appendEvent("HOLD_CLEAR", {});
+  process.stdout.write(`${label} approved: ${payload.hash}\n`);
+  store.close();
 }
 
 function cmdHoldSet(args: string[], motiveSlug?: string): void {
@@ -453,6 +500,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const acCoverage = buildAcCoverage(slices);
   const acCoverageObj = Object.fromEntries([...acCoverage.entries()]);
   const unitRoot = repoDir();
+  const intent = intentGates(unitRoot, motive, t => store.getLastEvent(t)?.payload ?? null);
   const idleUnits: { slug: string; idle_days: number }[] = [];
   for (const slug of listUnits(unitRoot)) {
     try {
@@ -472,6 +520,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       last_pause: pausePayload,
       gate: gateOk ? "APPROVED" : "pending",
       hold: hold ?? null,
+      intent,
       ac_coverage: acCoverageObj,
       idle_units: idleUnits,
     }, null, 2) + "\n");
@@ -479,6 +528,13 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
     process.stdout.write(`motive: ${motive}\n`);
     process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
     process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}\n`);
+    if (!intent.applies) {
+      process.stdout.write(`intent gates: n/a (no doc/${motive}/ human view)\n`);
+    } else {
+      const fmt = (g: typeof intent.h1) => g.state === "approved" ? `approved (${g.approved?.by})` : g.state;
+      process.stdout.write(`H1 charter: ${fmt(intent.h1)}\n`);
+      process.stdout.write(`H2 spec: ${fmt(intent.h2)}\n`);
+    }
     if (hold) {
       const [first, ...rest] = hold.split("\n");
       process.stdout.write(`hold: awaiting human — ${first}\n`);
@@ -661,6 +717,8 @@ if (cmd === "init") {
   if (sub === "set") cmdHoldSet(rest, globalMotive);
   else if (sub === "clear") cmdHoldClear(rest, globalMotive);
   else { process.stderr.write(`unknown hold subcommand: ${sub}\n`); process.exit(1); }
+} else if (cmd === "approve") {
+  cmdApprove(argv.slice(1), globalMotive);
 } else if (cmd === "event") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -683,6 +741,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate, recipe\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate, recipe\n`);
   process.exit(1);
 }

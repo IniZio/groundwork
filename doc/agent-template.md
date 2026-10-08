@@ -90,3 +90,4 @@ Skills run in the caller's context; these agents are being restored so each runs
 | `groundwork:researcher` | sonnet | D7 |
 | `groundwork:designer` | opus | D7 |
 | `groundwork:git-master` | haiku | D7 |
+| `groundwork:human-doc-reviewer` | sonnet | DECISION event 546 — human-doc review |

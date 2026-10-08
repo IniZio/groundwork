@@ -28,6 +28,10 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 6. As waves complete: verify receipts (bite proof required, not argued).
    Run full suite + `bunx tsc --noEmit`, then `$GW slice complete <id> --token T`.
    Commit before next wave.
+6b. Before opening a PR or committing human docs (`doc/`, PR body from `templates/doc-types/pr-body.md`):
+   per artifact spawn `groundwork:human-doc-reviewer` with only that path + check cmd
+   `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
+   Apply deletions; loop until `status: PASS`.
 7. Commit the final wave (and release bump, if any) first: the stop-gate voids APPROVE when HEAD moves.
    Completion gate: `[groundwork:qa if UI] → groundwork:advisor` → APPROVE
    → `$GW gate approve --citation "file:line" --token T`

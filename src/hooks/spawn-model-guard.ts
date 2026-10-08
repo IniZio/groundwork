@@ -100,6 +100,7 @@ export function isWithinSlice(briefFile: string, sliceFiles: string[]): boolean 
  *   git-master: agents/git-master.md — tools:[Bash,Read], Agent absent → empty set
  *   planner/researcher: agents/*.md — Agent not in disallowedTools → explore
  *   qa: agents/qa.md — tools includes Agent (delegates haiku walkthroughs) → explore
+ *   human-doc-reviewer: agents/human-doc-reviewer.md — Agent in disallowedTools → empty set
  */
 export const DEPTH_ALLOWLIST = new Map<string, ReadonlySet<string>>([
   ["groundwork:junior-orchestrator", new Set(["groundwork:implementer", "groundwork:explore"])],
@@ -112,6 +113,7 @@ export const DEPTH_ALLOWLIST = new Map<string, ReadonlySet<string>>([
   ["groundwork:planner",             new Set(["groundwork:explore"])],
   ["groundwork:researcher",          new Set(["groundwork:explore"])],
   ["groundwork:qa",                  new Set(["groundwork:explore"])],
+  ["groundwork:human-doc-reviewer",  new Set()],
 ]);
 
 // Built-in agent names that are banned; value is the groundwork replacement to name in the deny reason.

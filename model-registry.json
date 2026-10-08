@@ -9,6 +9,7 @@
     "researcher":         { "claude-code": "opus" },
     "implementer":        { "claude-code": "sonnet" },
     "junior-orchestrator":{ "claude-code": "sonnet" },
+    "human-doc-reviewer": { "claude-code": "sonnet" },
     "git-master":         { "claude-code": "haiku" },
     "explore":            { "claude-code": "sonnet" }
   }

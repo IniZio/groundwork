@@ -193,6 +193,7 @@ describe("routes-resolve — every advertised route resolves", () => {
       "mattpocock-skills:grilling",
       "groundwork:qa",
       "groundwork:advisor",
+      "groundwork:human-doc-reviewer",
     ];
 
     for (const route of REQUIRED_ROUTES) {

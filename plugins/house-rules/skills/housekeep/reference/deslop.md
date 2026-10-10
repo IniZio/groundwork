@@ -13,6 +13,8 @@
 | **Redundant comments** | Narration, step markers, restatements. Keep: non-obvious *why*, invariants, gotchas, spec links, doc-comments |
 | **Orphaned entry point** | A file in an entry-point directory (`hooks/`, `src/hooks/`, `plugins/*/src/hooks/`, `src/cli/`, `.claude/skills/*/scripts/`, `bin/`) that is not reachable from any manifest (`.claude-plugin/plugin.json` hooks, `plugins/*/.claude-plugin/plugin.json`, `hooks.json`, `package.json` bin/scripts, or the git-hook installer: `src/hooks/installer.ts` imports `hooks/lib/commit-msg-template.mjs` via a `file://` URL dynamic `import()` — `installer.ts:33`) or import graph starting at a live file. Dynamic `import()` calls (including `file://` URL imports) count as import edges. Two parallel implementations of one behaviour are SEV2; anything else unreachable is SEV3. A test that imports a file does not make it live. This check always runs repo-wide, independent of hot-spot scope. |
 
+Some of these smells are now mechanised as house-rules warn rules (`type-escape-hatches`, `code-smells`, `no-module-mocking`). They flag added lines at edit and stop time without blocking.
+
 ## Fix guidance
 
 - Pass 1: Dead code deletion

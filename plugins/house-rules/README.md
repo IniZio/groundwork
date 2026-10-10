@@ -19,6 +19,11 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 |---|---|---|---|---|---|
 | comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged | every language in the Supported languages table below: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims every language in the Supported languages table | `house-rules check --base <ref>` | all supported languages: stable |
 | artifact-structure | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
+| type-escape-hatches | warn. TypeScript only. Checks: no-unknown-parameters, no-unknown-returns, no-unknown-type-aliases, no-unsafe-dictionary-type, no-object-parameters, no-chained-type-assertions (ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
+| code-smells | warn. TypeScript and JavaScript. Checks: no-reflect-apply, no-reflect-get, no-conditional-empty-object-spread, no-array-filter-map, no-reduce-accumulator-copy, no-shape-in-symbol-names (all ported), and no-accumulator-spread (original to house-rules, not from anti-slop: flags `{...acc, …}` or `[...acc, …]` returned from a reduce callback) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
+| no-module-mocking | warn. TypeScript and JavaScript. Flags Vitest and Jest module mocking (`mock`, `doMock`, `unstable_mockModule`) (ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
+
+Warn rules flag only lines added in the diff. The edit guard adds a context line, `house-rules <rule>: [<check>] <msg>`, and never denies. The Stop and SubagentStop gate lists unbaselined warn findings in a non-blocking message. It shows at most 20, then `… N more`. `house-rules check` exits 0 when only warn findings remain. TypeScript means `.ts`, `.mts`, `.cts` and `.tsx`. JavaScript means `.js`, `.mjs`, `.cjs` and `.jsx`. The type-escape-hatches checks run on TypeScript files only. Checks marked as ported come from anti-slop; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Per-rule READMEs are generated under `rules/<id>/`.
 
@@ -32,7 +37,8 @@ Repo-level config lives in `.house-rules.json` at the repo root:
   "rules": {
     "commit-message": ["error", {"preset": "conventional"}],
     "comment-density": "error",
-    "artifact-structure": "error"
+    "artifact-structure": "error",
+    "code-smells": "off"
   }
 }
 ```
@@ -42,10 +48,13 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 | commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
 | comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
 | artifact-structure | severity `error` only; options `govern`, `types`, `forbidden` (see Doc-type manifest below) |
+| type-escape-hatches | severity `off` or `warn` (default `warn`); no options |
+| code-smells | severity `off` or `warn` (default `warn`); no options |
+| no-module-mocking | severity `off` or `warn` (default `warn`); no options |
 
 The former id `stray-artifacts` remains accepted as a config alias for `artifact-structure`.
 
-The only configurable options are the commit-message `preset` and the artifact-structure manifest options `govern`, `types` and `forbidden`.
+The only configurable options are the commit-message `preset` and the artifact-structure manifest options `govern`, `types` and `forbidden`. The warn rules take a severity only.
 
 Commit preset precedence: explicit config, then `.gitmessage`, then commitlint config, then git history, then the `handbook` default.
 
@@ -141,8 +150,8 @@ house-rules housekeep [--all | --since <ref>] [--rules <a,b>] [--paths <glob,...
 
 | Code | Meaning |
 |---|---|
-| 0 | No error-severity findings remain |
-| 1 | Error-severity findings remain |
+| 0 | No error-severity findings remain (warn findings never change the exit code) |
+| 1 | Error-severity findings remain (only error severity exits 1) |
 | 2 | Usage error, unknown flag, or runtime error |
 
 `--fix` is valid only for the `check` subcommand; using it on another subcommand is a usage error (exit 2).

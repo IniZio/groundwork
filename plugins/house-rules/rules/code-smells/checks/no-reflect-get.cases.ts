@@ -11,6 +11,11 @@ export const cases: RuleCases = {
     { why: 'get on another receiver', code: 'const value = map.get(key);\n' },
     { why: 'locally declared Reflect shadows the global', code: 'const Reflect = { get() { return 1; } }; Reflect.get();\n' },
     { why: 'parameter named Reflect shadows the global', code: 'function read(Reflect: { get(): number }) { return Reflect.get(); }\n' },
+    { why: 'declare const Reflect shadows the global', code: 'declare const Reflect: any;\nReflect.get(o, k);\n' },
+    { why: 'var Reflect hoisted from a block shadows the global', code: 'function f() { if (c) { var Reflect = x; } return Reflect.get(o, k); }\n' },
+    { why: 'class Reflect shadows the global', code: 'class Reflect {}\nReflect.get(o, k);\n' },
+    { why: 'enum Reflect shadows the global', code: 'enum Reflect { A }\nReflect.get(o, k);\n' },
+    { why: 'namespace Reflect shadows the global', code: 'namespace Reflect { export const get = 1; }\nReflect.get(o, k);\n' },
     {
       why: 'Reflect.get on an unchanged base line is not flagged',
       base: 'const a = Reflect.get(owner, key);\n',

@@ -192,6 +192,7 @@ async function cmdCheck(opts: {
   const findings = subtractBaseline(allFindings, baseline);
   const coverage = await coverageReport(rules, ctx);
 
+  if (!opts.fix) ctx.dispose();
   if (opts.fix) {
     // Apply autofixes, then re-evaluate to determine remaining findings.
     const outcome = await fixFindings({
@@ -202,8 +203,10 @@ async function cmdCheck(opts: {
       write: true,
     });
 
+    ctx.dispose();
     const { ctx: freshCtx } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
     const freshAll = await runRules(rules, freshCtx, policy);
+    freshCtx.dispose();
     const freshBaseline = await readBaseline(baselineFile);
     const remaining = subtractBaseline(freshAll, freshBaseline);
 
@@ -269,6 +272,7 @@ async function cmdBaseline(opts: {
   const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
   const rules = await loadRules(rulesDirResolved);
   const findings = await runRules(rules, ctx, policyForRoot(repoRoot));
+  ctx.dispose();
 
   const dir = path.dirname(baselineFile);
   fs.mkdirSync(dir, { recursive: true });

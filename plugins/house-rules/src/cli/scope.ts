@@ -24,6 +24,8 @@ export interface ResolveScopeOpts {
   since?: string;
 }
 
+export type DisposableContext = RuleContext & { dispose(): void };
+
 export class ScopeUsageError extends Error {}
 
 type SpawnFn = (cmd: string, args: string[], opts: { encoding: 'utf8' }) => SpawnSyncReturns<string>;
@@ -33,7 +35,7 @@ export function buildAllTrackedContext(
   base?: string,
   paths?: string[],
   _spawnFn: SpawnFn = spawnSync,
-): RuleContext {
+): DisposableContext {
   const effectiveBase = base ?? EMPTY_TREE;
   const lsArgs = ['-C', repoRoot, 'ls-files'];
   if (paths && paths.length > 0) lsArgs.push('--', ...paths);
@@ -61,6 +63,7 @@ export function buildAllTrackedContext(
       repoRoot,
       mode: 'cli',
       files,
+      dispose: () => sources.dispose(),
       sourceFile(file: ScopedFile) {
         if (!file.lang || file.text === undefined) return Promise.resolve(null);
         return sources.get(file.lang, file.text, file.path);
@@ -88,6 +91,7 @@ export function buildAllTrackedContext(
     repoRoot,
     mode: 'cli',
     files,
+    dispose: () => sources.dispose(),
     sourceFile(file: ScopedFile) {
       if (!file.lang || file.text === undefined) return Promise.resolve(null);
       return sources.get(file.lang, file.text, file.path);
@@ -95,7 +99,7 @@ export function buildAllTrackedContext(
   };
 }
 
-export function resolveScope(opts: ResolveScopeOpts): { ctx: RuleContext; scope: Scope } {
+export function resolveScope(opts: ResolveScopeOpts): { ctx: DisposableContext; scope: Scope } {
   const { repoRoot, paths } = opts;
 
   if (opts.all) {
@@ -110,7 +114,7 @@ export function resolveScope(opts: ResolveScopeOpts): { ctx: RuleContext; scope:
 
   // diff mode
   const base = opts.base ?? opts.since ?? defaultBase(repoRoot);
-  let ctx = buildContext({ repoRoot, mode: 'cli', base });
+  let ctx: DisposableContext = { ...buildContext({ repoRoot, mode: 'cli', base }), dispose() {} };
 
   if (paths && paths.length > 0) {
     // Narrow ctx.files to the set returned by git ls-files for the pathspec.

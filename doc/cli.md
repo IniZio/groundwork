@@ -1,152 +1,93 @@
-# gw CLI reference
+# gw CLI
 
-Binary: `gw` (`bun src/cli/main.ts`). DB path: `$GROUNDWORK_DB` or `<cwd>/.groundwork/work.db`.
+gw keeps all work state for a repo in one SQLite store. Run it as `gw` (`bun` on the CLI entry [main.ts](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/cli/main.ts)). The store is at `$GROUNDWORK_DB`, else the work database inside the repo's working-tier directory.
 
-All mutation commands require `--token <t>` matching the value printed by `gw init` on first run or by `gw token` on subsequent runs.
+## Model
 
-## Token security
+- **One store per repo.** Plain files per agent would drift and cannot answer "is this run done?" in one read.
+- **Motives.** A motive is one line of work with its own slices, events, and gate. A command targets the active motive, or the one named by `--motive`. The stop-gate checks every active motive that has slices, and blocks if any has open slices or no approval. A hold is the exception: it is store-wide, because it is a session-level signal.
+- **Token-guarded writes.** Every mutation needs `--token`, printed once by `gw init` and again by `gw token`. The token and the gate-seal key live outside the repo, so a subagent cannot read them. Rejected: trusting the caller, because a subagent could then approve its own work. Residual risk: a subagent that builds the key path at runtime can evade the string-match guard. Forging an approval needs the seal key, which only `gw gate approve` reads.
+- **Gate verdicts are events, not edits.** The newest verdict decides. Rejected: a mutable "done" flag, because it loses who closed the gate and when.
 
-The write token and gate-seal key live in `~/.config/groundwork/repos/<hash>/` (outside the repo, mode 0600, not in work.db). The `store-write-guard` PreToolUse hook denies subagents (those with `agent_type` set) from using Read/Bash/Grep/Glob to access paths containing `.config/groundwork`, `groundwork/repos`, `write.token`, or `seal.key`, and from invoking `gw init` or `gw token`. The main thread (no `agent_type`) is unrestricted.
+```mermaid
+stateDiagram-v2
+    [*] --> pending: slice add
+    pending --> in_progress: slice claim
+    in_progress --> complete: slice complete
+    pending --> complete: slice complete
+    complete --> [*]
 
-**Limitation:** a subagent that builds the config-dir path fully dynamically at runtime (e.g. a `bun -e` script computing `$HOME` and the repo hash) can bypass the string-match guard. The HMAC seal on gate verdicts is the primary protection: forging a GATE_APPROVE requires the seal key, which only the `gw gate approve` CLI command reads.
+    state "Motive gate" as G {
+        [*] --> closed
+        closed --> open: gate approve
+        open --> closed: correction / stop / gaps / replan
+        open --> closed: HEAD moves or slice added
+    }
+    state "Hold" as H {
+        [*] --> running
+        running --> held: hold set
+        held --> running: hold clear
+    }
+```
 
-## Commands
+## Command groups
 
-### `gw init [--objective TEXT]`
-Creates the work store and prints the write token **once** (first run only). Idempotent on re-run — prints `already initialized` without revealing the token.
-If `--objective TEXT` is given, appends an `OBJECTIVE` event so the text appears in `gw compile`.
-Also adds `.groundwork/` to the repository's `.git/info/exclude` so the working tier stays out of git. `gw init` never touches `.gitignore`. Outside a git repository it prints a note and excludes nothing.
-In a tree linked to a parent slice (see [nested work scope](spec/nested-work-scope.md)), `gw init` creates a child store and prints `initialized child store: <path>` (or `already initialized: <path>` on re-run) instead of a token. In a direct-mode link it creates no store and prints `no child store: direct-mode link (slice <S>); ...`.
+### Gate rules
 
-### `gw token`
-Prints the current write token for the store. Use this on session resume — the main session only; subagents are denied this command by the `store-write-guard` hook.
+The stop-hook releases only when the newest verdict for the motive is `approve`. The parent of a delegate child uses the newest forwarded verdict, so a later non-approval supersedes an earlier approval.
 
-### `gw slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] --token T`
-Adds a pending slice. `--wave` must be a numeric integer; a non-numeric value is a usage error (exit 1). `--covers-ac` is a comma-separated list of AC identifiers this slice satisfies.
+`gw gate approve` records the git HEAD SHA. The approval is void if HEAD moved since, or if a slice was added to the motive after it. The stop-gate names which case applies. Uncommitted changes do not void it. Outside a git repo, no HEAD binding applies.
 
-### `gw slice claim <id> --by AGENT --token T`
-Claims a slice for an agent: sets status to `in_progress` and records `claimed_by`. Refused (exit 1) if the slice is already claimed by any agent.
+A child tree linked in delegate mode cannot approve while it has uncommitted changes outside the working-tier directory. The command exits 1 and asks for a commit first. Direct-mode links are not checked. `gw gate status` prints `H1:` and `H2:` fields on its first line when intent approvals apply.
 
-### `gw slice set-ac <id> --covers-ac AC-1,AC-3 --token T`
-Sets (or replaces) the `covers_ac` field on an existing slice.
+### Intent approvals
 
-### `gw slice complete <id> --token T`
-Marks a slice complete and records a `SLICE_COMPLETE` event. Works from `pending` or `in_progress`.
-If the slice has a live child-scope link, completion is refused (exit 1, `error: cannot complete slice '<id>': <reason>`) until the child's approved gate has arrived (delegate) or the host has run `gw scope verify` (direct). No flag disables the check. Unlink an abandoned child to free the slice. See [nested work scope](spec/nested-work-scope.md).
+A human approves the charter (H1) and the spec (H2) with `gw approve charter` and `gw approve spec`. The approval binds to a hash of the file. Edit the file afterwards and the approval is void, so approve again.
 
-### `gw scope link <dir> --slice S [--mode direct|delegate] --token T`
-Links the tree at `<dir>` to slice `S` (default mode `delegate`) and writes the pointer file there. Prints `linked <link_id>: slice S -> <dir> (<mode>)`.
+An agent may run `gw approve spec --auto` to pass H2 when no decision is open. Otherwise the command sets a hold whose note starts `H2 needs human approval:`. The human's `gw approve spec` clears that hold.
 
-### `gw scope unlink --slice S --reason "..." --token T`
-Removes the live link on `S`; the reason is required and recorded. Prints `unlinked <link_id>: slice S`.
+The command exits 0 on success. It exits 1 when the artifact is missing or the subcommand is wrong. It exits 2 when `--auto` hit a case that needs a human.
 
-### `gw scope verify --slice S --citation file:line --token T`
-Records the host's own verification of a direct-mode slice. Refused for delegate links. Prints `verified slice S`.
+Until both are approved, the session cannot dispatch implementation agents. The dispatch is refused with a message that names the missing approval.
 
-### `gw slice status`
-Lists all slices with blocked-by, N/M complete count, gate state, hold state. Read-only.
+### Hold
 
-### `gw slice rm <id> --token T`
-Removes a slice. Writes a `RETENTION_ACTION` event first, then attempts DELETE.
-Refused (exit 1) on completed/archived slices via the D-12 SQLite trigger.
+While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. It does not block for open slices or a missing approval. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused ledger.
 
-### `gw gate <verdict> --citation "file:line ..." --token T`
-Records a gate verdict event. `verdict` is one of: `approve`, `correction`, `stop`, `gaps`, `replan`.
-Every verdict requires `--citation` with at least one `file:line` reference.
-The stop-gate hook releases only when the **newest** gate verdict for the motive is `approve` (`GATE_APPROVE`).
-A `correction`, `stop`, `gaps`, or `replan` recorded after an `approve` closes the gate.
-In a tree linked to a parent slice (delegate mode), every verdict is also forwarded to the parent and prints `forwarded to parent: <id>`. If forwarding fails the verdict stays recorded locally, and the command exits 1 with `gw: verdict forward failed: <reason>`. The parent uses the newest forwarded verdict, so a later non-approval supersedes an earlier approval.
+### Compile output
 
-| Verdict     | Event type        | Gate effect    |
-|-------------|-------------------|----------------|
-| `approve`   | `GATE_APPROVE`    | Opens gate     |
-| `correction`| `GATE_CORRECTION` | Closes gate    |
-| `stop`      | `GATE_STOP`       | Closes gate    |
-| `gaps`      | `GATE_GAPS`       | Closes gate    |
-| `replan`    | `GATE_REPLAN`     | Closes gate    |
+- Intent line: `H1 charter: <state>` and `H2 spec: <state>`, where state is `approved (human)`, `approved (auto)`, `void`, or `missing`. Without a human view for the motive it prints `intent gates: n/a`. In `--json`, `intent` carries the same data.
+- Hold line: `hold: awaiting human — <note>` or `hold: none`. In `--json`, `hold` is the note or `null`.
+- AC coverage: `ac coverage: N ACs covered by M slice(s)`, then sorted `AC-x: slice-id, ...` rows, or `ac coverage: none`. `--json` adds `ac_coverage`, a map from AC id to slice ids.
+- Idle units: `idle units (≥14d): slug (Nd), ...` lists work units whose newest file change is 14 days old or more, else `idle units: none`. `--json` adds `idle_units` as `{slug, idle_days}`.
 
-**HEAD binding (approve only):** `gw gate approve` records the current git HEAD SHA as `base_commit` in the event payload. The stop-gate treats the approval as void if (a) the repo's HEAD has moved since approval, or (b) a slice was added to the motive after the approval was recorded. In both cases the stop-gate names which condition applies. Uncommitted working-tree changes do not void an approval — only HEAD moving (a new commit) does. If the working directory is not inside a git repository, HEAD binding is skipped and the approval is honoured as-is.
+### Archive checks
 
-### `gw gate status [--json]`
-Read-only. Prints `scope: <child|root|orphan>  gate: <verdict|none>  slices: N complete, M open`. `--json` adds `v`, `mode` and `parent` (child only), and `approved_at`, which is the time of the newest gate verdict of any kind. Fields are listed in [nested work scope](spec/nested-work-scope.md).
+`gw archive` changes nothing and exits 1 if a check fails. It moves the unit into a dated archive folder and drops its evidence directory. Checks:
 
-### `gw hold set --reason "..." --token T`
-Records a `HOLD` event. Pauses the run for a human. Hold reason appears in `gw slice status`. Put an "established / still need" note in `--reason`, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`.
-While a hold is active (in any motive), the Stop hook allows the session to end. It shows the note once per session per hold. On later turns it stays silent. It does not block for open slices or a missing gate approval.
-A new `gw hold set` replaces the note and shows it again.
+- The unit's motive file has a `created: YYYY-MM-DD` date.
+- If the unit has a spec, its frontmatter has `folds_into:`. The named living spec needs a git commit after `created`, or a staged change. To skip, set `folds_into: none` with a `reason:`. `none` without a reason is refused.
+- The archive target does not already exist.
 
-### `gw hold clear --token T`
-Records a `HOLD_CLEAR` event. Removes the hold. The Stop hook then blocks normally again (open slices, missing `GATE_APPROVE`). Clear the hold when the human replies. The run resumes from the paused ledger state.
+### Migrate rules
 
-### `gw event append --type TYPE [--msg TEXT] [--data JSON] --token T`
-Appends an event. `TYPE` must be one of the exported `EVENT_TYPES` list. Gate verdict types (`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`) are rejected — use `gw gate <verdict>` instead. The scope event types (`CHILD_LINK`, `CHILD_REGISTER`, `CHILD_GATE`, `SCOPE_VERIFY`, `SCOPE_UNLINK`, `SCOPE_PARENT`) are rejected with ``error: <TYPE> is a scope event and cannot be appended directly — use `$GW scope` commands``.
+Default is a dry run: one `<from> → <to>` line per move, nothing changed.
 
-### `gw compile [--json]`
-Resume view: objective, decisions, open slices, AC coverage, last PAUSE, gate state, hold state. Read-only.
-Hold line: `hold: awaiting human — <note>` (further note lines indented) or `hold: none`. The `--json` output gives `hold` as the note string or `null`.
-AC coverage line: `ac coverage: N ACs covered by M slice(s)` followed by `AC-x: slice-id, ...` rows (sorted). If no slice has `covers_ac` set, prints `ac coverage: none`. The `--json` output includes an `ac_coverage` object mapping each AC id to the list of slice ids that cover it.
-Idle units line: `idle units (≥14d): slug (Nd), ...` lists each unit under `.groundwork/work/` whose newest file change is 14 or more days old, or `idle units: none`. The `--json` output includes an `idle_units` array of `{slug, idle_days}`.
+- An old motive folder goes to the work folder, or to the dated archive folder when its `status:` is complete, completed, archived, or done. No `status:` is flagged `[unclassified]`. A missing `created:` date is inferred from file times, flagged `[created inferred]`, and written on apply.
+- A scratch feature folder goes to the work folder.
+- Loose v1 directories (`handoffs`, `research`, `journal`, `compiled`, `gates`, `runs`, `specs`, `learnings`, old archived motives) and pause-state files go to the legacy archive folder.
+- A move whose destination exists is skipped as `[collision: skipped]` and the command exits 1.
+- Symlinks and unrecognised entries are never moved. They print as `left in place: <name>`.
 
-### `gw archive <slug> --token T`
-Moves `.groundwork/work/<slug>` to `.groundwork/archive/<yyyy-mm>/<slug>`, drops its `evidence/` directory, and marks the motive complete. Nothing changes if a check fails (exit 1). Checks:
-- `motive.md` must have a `created: YYYY-MM-DD` date.
-- If the unit has a `spec.md`, its frontmatter must have `folds_into:`. The named living spec must have a git commit after the `created` date, or a staged change. To skip this check, set `folds_into: none` and add a `reason:`; `folds_into: none` without `reason:` is refused.
-- The archive target must not already exist.
+### Recipe
 
-### `gw migrate [--apply --token T]`
-Plans the move of older layouts into the current one. Default is a dry run that prints one `<from> → <to>` line per move and changes nothing. `--apply` performs the moves and requires `--token`.
-- `.groundwork/motives/<slug>` goes to `work/<slug>`, or to `archive/<yyyy-mm>/<slug>` when its `status:` is complete, completed, archived, or done. A motive with no `status:` is flagged `[unclassified]`. A missing `created:` date is inferred from file times, flagged `[created inferred]`, and written into `motive.md` on apply.
-- `.scratch/<feature>` directories go to `work/<feature>`.
-- Loose v1 directories (`handoffs`, `research`, `journal`, `compiled`, `gates`, `runs`, `specs`, `learnings`, `archive/motives`) and `pause-state*.md` files go to `archive/legacy/`.
-- A move whose destination exists is skipped with `[collision: skipped]`, and the command exits 1.
-- Symlinks are never moved. Symlinks and unrecognised entries under `.groundwork/` are listed as `left in place: <name>`.
-- Prints `nothing to migrate` when no move is planned.
+Paste the output into a host's house-rules config. Its `govern` list covers only working-tier markdown, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own types. A stray document inside the working tier is denied with the nearest matching types named. The `forbidden` patterns apply repo-wide, each with a redirect to the right place (for example, learning records redirect to the motive's lessons file):
 
-### `gw recipe`
-Prints the working-tier `artifact-structure` rule as JSON for a host's `.house-rules.json`. It only prints; it does not write any file. The printed `govern` list covers only `.groundwork/**/*.md`, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own product types. The `forbidden` patterns apply repo-wide and are: `**/adr/**`, `.scratch/**`, `.out-of-scope/**`, `lessons/**`, `learning-records/**`, `to-questionnaire-*.md` and `**/to-questionnaire-*.md`. Each carries a redirect to the correct location, for example `learning-records/**` redirects to `.groundwork/work/{slug}/lessons.md`. A stray document inside `.groundwork/work/` is denied with the nearest matching types named. Paths outside `.groundwork/` are still not governed unless the host widens `govern`. When a stop-time manifest finding is blocked, the gate footer tells the agent to move the file to the path named, fix its frontmatter or headings, or record decisions with `$GW event append --type DECISION`.
+- ADR directories
+- scratch and out-of-scope folders
+- lessons and learning-records folders
+- to-questionnaire files
 
-## Multi-motive design (T11)
+### Commit-message lint
 
-**Structure.** A `motives` table holds slugs + status. Slices and events carry a `motive_id` column (DEFAULT `'default'`). The active motive pointer is stored in `meta['active_motive']`.
-
-**Token.** One token per store. All motives in a store share the same write token.
-
-**Stop-gate.** Evaluates every active motive that has at least one slice. Blocks if any motive has incomplete slices or no `GATE_APPROVE`. Block message names which motive has incomplete slices. `HOLD` is checked globally (any event in the store, not per-motive) because it is a session-level signal.
-
-**Migration 5.** Adds `motives` table, inserts `'default'` row, adds `motive_id TEXT NOT NULL DEFAULT 'default'` to `slices` and `events`. Existing rows silently inherit `motive_id = 'default'`. Sets `meta['active_motive'] = 'default'`.
-
-### `gw --motive <slug> <command>`
-Global flag parsed before subcommand. Targets all reads and writes at `<slug>` instead of the active motive.
-
-### `gw motive add <slug> [--use] --token T`
-Creates a new motive. `--use` sets it as active.
-
-### `gw motive use <slug> --token T`
-Persistently sets the active motive (written to `meta['active_motive']`).
-
-### `gw motive list`
-Lists all motives; marks the active one with `*`.
-
-### `gw motive complete <slug> --token T`
-Marks the motive complete (excluded from future stop-gate evaluation).
-
-## Event types
-
-Exported as `EVENT_TYPES` from `src/store/store.ts`. Used by both `gw event append` and `gw compile`.
-
-`GATE_APPROVE`, `GATE_CORRECTION`, `GATE_STOP`, `GATE_GAPS`, `GATE_REPLAN`,
-`HOLD`, `HOLD_CLEAR`, `DECISION`, `OBJECTIVE`, `PAUSE`, `VERIFICATION`, `FAILURE`,
-`MILESTONE`, `HANDOFF`, `SESSION_START`, `CHECKPOINT`, `SLICE_COMPLETE`, `RETENTION_ACTION`
-
-`DECISION` — records a decision; `msg` is the decision text. Shown in `gw compile` under `decisions (N)`.
-`OBJECTIVE` — sets the motive objective; `msg` is the objective text. `gw compile` shows the newest.
-
-## Commit-message lint guard (Family 6)
-
-The `commit-message-guard` PreToolUse hook intercepts `git commit` calls and lints the message before the commit runs. The style comes from `.house-rules.json`; run `house-rules config` to see the active preset.
-
-**Detectable forms** (all linted): bare `git commit`, `command git commit`, `builtin git commit`, env-prefixed `FOO=1 git commit`, `git -C <path> commit`, `git -c key=val commit`, `git --git-dir=<dir> commit`, and any of these appearing after `&&`, `||`, `;`, or `|`.
-
-**Not detectable**: shell function aliases such as `g(){ command git "$@"; }; g commit`. The git-level `commit-msg` hook installed by `session-commit-msg-installer` is the backstop for those cases.
-
-**`core.hooksPath` handling**: if `core.hooksPath` is set and the target directory exists, the session installer skips silently (the host hooks mechanism is active). If the target directory does not exist, the installer emits a one-line warning naming the path and the fix (`git config --unset core.hooksPath`) and does not install. The installer never modifies git config.
+A hook lints every `git commit` message before it runs, in the style set by the host's house-rules config. It sees direct, prefixed, `-C`/`-c`/`--git-dir` forms, and commits chained after `&&`, `||`, `;`, or `|`. It cannot see a commit run through a shell function alias; a git-level `commit-msg` hook, installed per session, catches those. If `core.hooksPath` is set to a missing directory, the installer warns and does not install.

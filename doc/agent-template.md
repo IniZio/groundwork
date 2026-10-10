@@ -1,93 +1,20 @@
 # Agent template
 
-Use this for every agent in `agents/`. Budget: ≤1536 bytes (1.5 KB). Tested by `test/instructions/agent-shape.test.ts`.
+Every agent file stays at or under 1536 bytes, so its instructions are cheap to load in each spawn. [agent-shape test](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/test/instructions/agent-shape.test.ts) enforces this.
 
-## Frontmatter (required)
+The authoring checklist and the list of agents live in [agent-authoring rules](https://github.com/IniZio/groundwork/blob/1cecca5618ba2c7e58d7ff9068fd32110c9c7be0/rules/agent-authoring.md).
 
-```yaml
----
-name: <agent-name>
-description: <one-sentence role. Describe what it does and when to spawn it.>
-model: opus | sonnet | haiku
-tools: [Tool1, Tool2, …]         # or disallowedTools: [Write, Edit, …]
----
-```
+## Required shape
 
-## Role line (required, ≤1 line)
+- Frontmatter with name, a one-sentence description (role and when to spawn), model (opus, sonnet or haiku), and either tools or disallowedTools.
+- A role line right after the frontmatter: one line, active voice, no articles.
+- A Job or Protocol section: steps only, no backstory.
+- A non-empty Output section holding a fixed receipt.
+- A spawn section, only for agents that may spawn: `## Sub-delegation` (short list, implementer style) or `## Allowed spawns` (longer list with negations, orchestrator style).
 
-Immediately after frontmatter. Active voice. No articles.
+Optional: Tools (when restricted), Refusals (terminal one-liners for out-of-scope requests), Auto-clarity.
 
-```
-Classify, delegate, review. Never implement.
-```
+## Decisions
 
-## Sections
-
-### Job / Protocol (required)
-
-What the agent does, in bullet or numbered steps. No backstory.
-
-### Output (required — must be non-empty)
-
-Fixed receipt shape. Prose summaries are not receipts.
-
-```
-<file:line-range> — <change ≤10 words>
-status: <DONE|FAILED|APPROVE|…>
-total: <N> items, <M> complete
-```
-
-Rules:
-- path:line rows for every file touched or finding
-- a verdict/status line
-- totals when N > 1
-- evidence (citations, test output, file:line, errors) verbatim — never compressed
-
-### Sub-delegation / Allowed spawns (required for agents that may spawn)
-
-List every `groundwork:<x>` the agent is permitted to spawn or escalate to. Use **one of these two section names**:
-- `## Sub-delegation` — for implementer-style agents with a short list
-- `## Allowed spawns` — for orchestrators with a longer + negation list
-
-Convention enforced by `test/instructions/agent-spawn-parity.test.ts`:
-Every `groundwork:<x>` that appears in a `## Sub-delegation` **or** `## Allowed spawns` section body is treated as a **spawn/escalate target**. The test checks that `x` is permitted by `DEPTH_ALLOWLIST` for that agent's caller type. Mentions of `groundwork:<x>` outside these sections (e.g. "never spawn", prose description) are **references only** and are not checked.
-
-### Tools (if restricted)
-
-List tools allowed or disallowed. Omit if unrestricted.
-
-### Refusals (if applicable)
-
-Terminal one-liners for out-of-scope requests.
-
-```
-3+ files → `too-big. split: <n tasks>.`
-Asked to design → `Read-only. Spawn <agent>.`
-```
-
-### Auto-clarity
-
-Security warnings or destructive ops → plain English, then resume caveman.
-
-## Sizing checklist
-
-- [ ] File ≤ 1536 bytes (`wc -c agents/<name>.md`)
-- [ ] `## Output` section present and non-empty
-- [ ] Evidence surfaces (citations, test lines, file:line) are verbatim — not compressed
-- [ ] Negations exact (never upgrade "may" to "will", never drop "not")
-- [ ] No hedge-to-fact upgrades
-
-## Agents to be authored with this template
-
-Skills run in the caller's context; these agents are being restored so each runs in its own context.
-
-| Agent | Model | Decision |
-|---|---|---|
-| `groundwork:debugger` | opus | D1 — bug/debug route |
-| `groundwork:explore` | haiku | D2 — read-only locator, modelled on cavecrew-investigator |
-| `groundwork:junior-orchestrator` | sonnet | D4 — sub-orchestrator for multi-file slices |
-| `groundwork:planner` | opus | D7 |
-| `groundwork:researcher` | sonnet | D7 |
-| `groundwork:designer` | opus | D7 |
-| `groundwork:git-master` | haiku | D7 |
-| `groundwork:human-doc-reviewer` | sonnet | DECISION event 546 — human-doc review |
+- **Output is a fixed receipt, not a prose summary.** A receipt has path:line rows for each file touched or finding, a verdict line, and totals when there is more than one item. Evidence (citations, test output, errors) is quoted verbatim. Prose summaries are rejected: callers cannot parse them and compression drops evidence.
+- **Spawn targets are declared by section, not by mention.** Every `groundwork:<x>` inside a Sub-delegation or Allowed spawns section counts as a spawn or escalation target. The [spawn-parity test](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/test/instructions/agent-spawn-parity.test.ts) checks each one against the allowlist for that agent's caller type. Mentions elsewhere (for example "never spawn `groundwork:x`") are references and are not checked. Scanning the whole file was rejected because it would flag every negation.

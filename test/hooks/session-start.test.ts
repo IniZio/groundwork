@@ -162,6 +162,22 @@ describe("session-start hook", () => {
   });
 });
 
+describe("session-start agent reference index", () => {
+  it("lists the 5 agent-facing rules files when spawned by path", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "ss-ref-"));
+    try {
+      const { stdout, exit } = run({}, { CLAUDE_PROJECT_DIR: dir });
+      expect(exit).toBe(0);
+      const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+      for (const f of ["cli-reference", "proof-harness", "enforcement-details", "conventions-cli", "agent-authoring"]) {
+        expect(ctx).toContain(`rules/${f}.md`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("session-start Where docs go", () => {
   const dirs: string[] = [];
   const NOTE = "not enforced — $GW recipe prints the .house-rules.json block";

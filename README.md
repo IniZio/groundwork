@@ -1,27 +1,30 @@
 # groundwork
 
-Glue that adapts to per-repo conventions, enforces best-practice direction in new code, and builds known-from-unknown — without reinventing what upstream already ships.
+groundwork is a Claude Code plugin that adapts to each repo's conventions, enforces best practice in new code only, and builds known-from-unknown.
 
-## What it is
+It adds:
 
-groundwork is a Claude Code plugin. It installs alongside mattpocock/skills (a peer plugin) and adds on top:
+- **Intent routing**: classifies a request and fans out to the right agent type.
+- **Convention adaptation**: detect, confirm, then write to the repo's own files. See [doc/conventions.md](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/conventions.md).
+- **Work store and stop-gate**: slices, decisions, events and charter in one SQLite file. The stop-gate blocks while work is open.
+- **Enforcement hooks**: five families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate).
+- **Advisor gate**: evidence-graded APPROVE, CORRECTION or STOP verdict before completion.
+- **Session continuity**: a SessionStart hook restores context.
 
-- Convention detection: DETECT → CONFIRM → WRITE to the repo's own files
-- Best-practice enforcement in new code only; existing code is left alone
-- A SQLite work store (slices, decisions, events, charter in one file)
-- Five enforcement hook families in their cheapest biting form
+## How it fits in a session
 
-## What it is not
+```mermaid
+flowchart LR
+  P[groundwork plugin] --> S[skills]
+  P --> A[agents]
+  P --> H[hooks]
+  S --> G[gw CLI]
+  A --> G
+  G --> W["groundwork state<br/>(work.db, work documents)"]
+  H --> W
+```
 
-- A reinvention of mattpocock/skills capabilities (arch-review, prototype — covered upstream)
-- A replacement for per-repo tooling (conventions write to `.gitmessage`, `Makefile`, etc.)
-
-## State model (D-7, D-9)
-
-Two stores only:
-
-1. **Repository itself** — conventions in `.gitmessage`, `.github/pull_request_template.md`, `Makefile`, handbook
-2. **SQLite work store** — slices, decisions, events, charter in one `.groundwork/work.db` file (the repo's `.gitignore` ignores `*.db`; `$GW init` also adds `.groundwork/` to the clone's `.git/info/exclude` and never edits `.gitignore`)
+State lives in two places only: the repo itself, and one work.db file. `gw init` adds the state directory to the clone's local git exclude list.
 
 ## Install
 
@@ -31,30 +34,24 @@ claude plugin marketplace add /path/to/groundwork    # or a URL
 claude plugin install groundwork
 ```
 
-`claude plugin install groundwork` auto-installs its dependencies mattpocock-skills (from the `mattpocock` marketplace) and house-rules. Add the `mattpocock` marketplace first: Claude Code does not add a dependency's marketplace for you (verified with `scripts/proof-harness.sh --install-only`). All three appear in `claude plugin list` as `✔ enabled`.
+Install pulls in two dependencies: mattpocock-skills and house-rules. Add the `mattpocock` marketplace first, because Claude Code does not add a dependency's marketplace for you ([proof harness](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/scripts/proof-harness.sh), `--install-only`).
 
-If the `mattpocock` marketplace is not registered first, `claude plugin install groundwork` exits 0 and reports `Warning: dependency "mattpocock-skills@mattpocock" was not installed (no marketplace you have added lists it)`, and `claude plugin list` shows:
-`Status: ✘ failed to load — Dependency "mattpocock-skills@mattpocock" is not installed — run \`claude plugin install mattpocock-skills@mattpocock\`, or check that its marketplace is added`
-Fix: `claude plugin marketplace add mattpocock/skills` then `claude plugin install groundwork` again.
+If the marketplace is missing, install still exits 0 but warns `dependency "mattpocock-skills@mattpocock" was not installed`. `claude plugin list` then shows `Status: ✘ failed to load — Dependency "mattpocock-skills@mattpocock" is not installed — run \`claude plugin install mattpocock-skills@mattpocock\`, or check that its marketplace is added`. Fix: run `claude plugin marketplace add mattpocock/skills`, then `claude plugin install groundwork` again.
 
-## What groundwork adds on top of mattpocock-skills
-
-- **Intent routing** — classifies requests and fans out to the right agent type
-- **Work store + stop-gate** — SQLite slice/decision/event store with a stop-gate that blocks when work is open
-- **Enforcement hooks** — five hook families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate); comment-density and document-placement (`artifact-structure`) enforcement is provided by the `house-rules` plugin dependency (auto-installed)
-- **Convention adaptation** — DETECT → CONFIRM → WRITE to per-repo convention files
-- **Advisor gate** — evidence-graded APPROVE/CORRECTION/STOP verdicts before completion
-- **Session continuity** — SessionStart hook restores context across sessions
+house-rules needs Claude Code v2.1.193 or later. On older versions its checks are silently off.
 
 ## Peer plugins
 
-**mattpocock/skills** is installed automatically as a dependency. It provides capabilities groundwork does not reinvent: arch-review, prototype, tdd, code-review (D-11 reuse-first). See `doc/collision-policy.md` for the skill-name collision policy.
+- **mattpocock-skills** provides arch-review, prototype, tdd and code-review. See the [collision policy](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/collision-policy.md) for skill-name clashes.
+- **house-rules** provides comment-density limits (at most 5 net-new comments per 100 lines, checked per edit and at Stop/SubagentStop) and document placement (the `artifact-structure` rule, formerly `stray-artifacts`). Work documents live under a per-slug folder inside the state directory.
 
-**house-rules** is installed automatically as a dependency (requires Claude Code v2.1.193+). It provides comment-density enforcement (5/100 net-new comment cap, per-edit guard and Stop/SubagentStop gate) and document-placement enforcement (`artifact-structure`, formerly `stray-artifacts`). Work documents live under `.groundwork/work/<slug>/`; `$GW archive`, `$GW migrate` and `$GW recipe` manage them. On older Claude Code versions enforcement is silently lost; this is accepted and documented.
+## Key decisions
 
-## Conventions layer
-
-Convention detection, targeted writing, best-practice enforcement, and known-from-unknown artifacts. See **[doc/conventions.md](doc/conventions.md)** for CLI usage, allowed write targets, artifact paths, new-code-gate definition, and the D-16 fork-only PR rule.
+- **Reuse upstream skills.** Alternative rejected: reinvent arch-review, prototype and tdd. The v2 rewrite deleted the home-grown versions as "covered upstream".
+- **Write conventions into the repo's own files** (`.gitmessage`, `Makefile`, PR template). Alternative rejected: replace per-repo tooling with groundwork's own.
+- **Enforce on new code only.** Alternative rejected: change existing code; it is left alone.
+- **One SQLite file for work state.**
+- **Ignore the state directory through the local git exclude list.** Alternative rejected: edit the host repo's `.gitignore`.
 
 ## Development
 
@@ -65,15 +62,10 @@ bun test
 
 ### Testing a change live
 
-The `groundwork` marketplace is a `directory` source pointing at this repo. Every session runs the working tree directly, including uncommitted edits. No reinstall step.
+The `groundwork` marketplace is a `directory` source pointing at this repo. Every session runs the working tree, including uncommitted edits. No reinstall.
 
-**What applies when:**
+- Hook and CLI edits apply on the next hook call.
+- SessionStart text, skills and agents need a new session or the reload-plugins command.
+- A half-finished edit affects every open session. Commit at wave boundaries.
 
-- Hook and CLI edits apply on the next hook invocation.
-- SessionStart text, skills, and agents need a new session (or `/reload-plugins`).
-
-**Risk:** a half-finished edit affects every open session. Commit at wave boundaries.
-
-**Verify you are running the dev checkout:** SessionStart prints the version, git sha, and root path. If the root is the cache path (`~/.claude/plugins/cache/...`), you are not running the dev checkout.
-
-**How the root is resolved:** the session-start hook derives its root from its own file location (`import.meta.url`). `CLAUDE_PLUGIN_ROOT` is cross-checked only — if it mismatches, a line is printed. The hook command itself is located via `CLAUDE_PLUGIN_ROOT`, so the hook file and the cross-check should agree.
+SessionStart prints the version, git sha and root path. A root under the plugin cache directory means you are not running the dev checkout. The hook finds its root from its own file location. `CLAUDE_PLUGIN_ROOT` is only cross-checked, and a mismatch prints a line.

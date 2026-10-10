@@ -112,6 +112,8 @@ async function main() {
 
   const docsBlock = await whereDocsGoBlock(env);
 
+  const agentRefBlock = `\n\n## Agent reference (read on demand)\n\n- rules/cli-reference.md — gw CLI commands and flags\n- rules/proof-harness.md — QA evidence contract and proof harness flags\n- rules/enforcement-details.md — enforcement internals\n- rules/conventions-cli.md — conventions CLI and run files\n- rules/agent-authoring.md — agent authoring checklist`;
+
   const additionalContext = `${rootMismatchLine}# groundwork ${version}${shaLabel} — ${pluginRoot}
 
 Classify, delegate, review. Never implement directly.
@@ -132,7 +134,7 @@ Blocks on \`git diff HEAD\` violations of Makefile rules (\`# groundwork-rule: <
 
 ## house-rules enforcement
 
-Comment density and artifact structure are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before Write/Edit/MultiEdit for every language house-rules registers (see its README) — other languages pass through — and the gate blocks at Stop/SubagentStop. The artifact-structure rule denies writing into either synonym dir (doc/docs, test/tests, script/scripts, util/utils, lib/libs) when its sibling already exists at the same parent — a lone docs/ or doc/ is fine — and denies root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*). The gate may auto-trim over-budget comments at turn end, so a later "file changed since last Read" on such a file is expected — it is autofix, not another agent. Re-read the file before editing and do not re-add the removed comments; a comment that must stay should explain a non-obvious why.\n\nCommit style comes from \`.house-rules.json\`; run \`house-rules config\` to see active values and their source, and load \`house-rules:configure\` to change it. Loosening a rule is a human decision.${docsBlock}${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
+Comment density and artifact structure are enforced by the \`house-rules\` plugin dependency (requires Claude Code v2.1.193+). The comment-density rule caps net-new comments at 5 per 100 added lines; the per-edit guard strips over-budget comments before Write/Edit/MultiEdit for every language house-rules registers (see its README) — other languages pass through — and the gate blocks at Stop/SubagentStop. The artifact-structure rule denies writing into either synonym dir (doc/docs, test/tests, script/scripts, util/utils, lib/libs) when its sibling already exists at the same parent — a lone docs/ or doc/ is fine — and denies root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*). The gate may auto-trim over-budget comments at turn end, so a later "file changed since last Read" on such a file is expected — it is autofix, not another agent. Re-read the file before editing and do not re-add the removed comments; a comment that must stay should explain a non-obvious why.\n\nCommit style comes from \`.house-rules.json\`; run \`house-rules config\` to see active values and their source, and load \`house-rules:configure\` to change it. Loosening a rule is a human decision.${docsBlock}${agentRefBlock}${routingRulesBlock}${authoringRulesBlock}${identityBlock}`;
 
   const out = {
     hookSpecificOutput: {

@@ -1,58 +1,31 @@
-# Glue layer — convention detection, enforcement, known-from-unknown
+# Conventions: detect, enforce in new code, separate known from unknown
 
-## CLI tools
+The convention layer reads a repo's existing conventions, writes accepted ones into native repo files, and blocks new code that breaks them.
+```mermaid
+flowchart LR
+  D[detect: scan repo, print findings] --> A[apply: write accepted findings to native files]
+  A --> F[(commit template, PR template, Makefile rules)]
+  F --> G[new-code-gate: check new lines at Stop]
+  D -.unclear.-> U[unknowns register]
+  D -.stable.-> K[profile and promoted skills]
+```
 
-| Command | Purpose |
-|---|---|
-| `bun src/conventions/detect.ts <repo> [--pretty]` | Scan repo; print findings JSON. Writes nothing. |
-| `bun src/conventions/apply.ts <repo> --accept <id,...> [--handbook <path>]` | Write accepted findings. Reads findings JSON from stdin or `--findings <file>`. Pass `--handbook <path>` to allow writes under that handbook checkout. |
-| `bun src/conventions/known.ts <repo>` | Init .groundwork/ D-4 artifacts; idempotent, accretes on repeat runs. |
-| `bun src/conventions/promote.ts <repo> --name <kebab> --description "..."` | Write `.groundwork/skills/<name>/SKILL.md` in mattpocock SKILL.md format. |
-| `bun src/conventions/unknown.ts <repo> --add "question"` | Append a question to `.groundwork/unknowns.md`. |
+## Decisions
 
-## D-4 artifact paths
+**Conventions live in the repo's own files, not in groundwork state.** The commit message shape comes from the commit template (it must have a type marker). Code rules come from Makefile comment lines of the form `# groundwork-rule: <name>`. The profile under the working tier can hold a pointer, but it is never the rule source. Rejected: a groundwork-owned rule store, which would hide the rules from people who never run groundwork.
 
-All paths are relative to the target repo root:
+**[Apply](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/conventions/apply.ts) writes only to an allowed set:** the commit template, the PR template, the Makefile, and a handbook checkout passed with the handbook option (it can sit outside the repo).
 
-- `.groundwork/profile.md` — accretes across runs; records run timestamps. NOT the convention source of truth. Conventions live in the repo's own files (see below).
-- `.groundwork/skills/<name>/SKILL.md` — promoted skill in mattpocock SKILL.md format (YAML frontmatter with `name`, `description`; optional body).
-- `.groundwork/unknowns.md` — append-only register of open questions.
+**Project instructions are a last resort.** The agent instruction file and the rules folder under the agent config directory are valid targets only when a finding sets `fallback: true`. Rejected: writing every convention to the agent instruction file, which binds only agents and leaves other contributors unaware.
 
-## Allowed write targets (apply)
+**Handbook changes go through the fork only.** The Oursky handbook is [oursky/handbook-dev](https://github.com/oursky/handbook-dev). Writing into a local checkout is allowed. A PR against that upstream is forbidden; PRs target only the fork [IniZio/handbook-dev](https://github.com/IniZio/handbook-dev). Rejected: opening upstream PRs directly, so a bad automated change never reaches the shared handbook.
 
-`apply` refuses any path not in this set:
+## New-code gate
 
-- `.gitmessage`
-- `.github/pull_request_template.md`
-- `Makefile`
-- `<handbook_path>/**` (when `--handbook <path>` is passed to `apply`; the handbook may be outside the repo, e.g. a sibling clone)
-- `CLAUDE.md` and `.claude/rules/*` — **last resort only**, when `fallback: true` on the finding (D-17)
+The gate runs on Stop and SubagentStop. "New code" means lines added in the working tree against HEAD, plus every line of untracked files. Rejected: checking the whole repo, which would block work on old debt.
 
-Writing to `.groundwork.db` or `.groundwork/` via apply is always FORBIDDEN. `.groundwork/` is the working tier: D-4 run artifacts, the store, and per-unit documents under `.groundwork/work/<slug>/`. It never holds convention rules. `$GW init` adds `.groundwork/` to `.git/info/exclude`, not to `.gitignore`.
+The shipped rules are `no-console-log` (no `console.log(` in new lines) and `no-ts-any` (no `: any` or `as any` in new TypeScript lines).
 
-## Convention source of truth
+## Known and unknown
 
-Confirmed conventions are read back from the repo's own files:
-
-- Commit message shape → `.gitmessage` (presence + `<type>` marker)
-- Code rules → `Makefile` lines matching `# groundwork-rule: <name>`
-
-`new-code-gate` reads those files directly. `.groundwork/profile.md` may hold a pointer note but is never the authoritative rule source.
-
-## new-code-gate
-
-- **Name**: `new-code-gate`
-- **Trigger**: Stop and SubagentStop hooks
-- **Definition of "new code"**: lines added in `git diff HEAD` (working tree vs HEAD) plus all lines of untracked files
-- **Pre-existing violations** (committed at HEAD) are never flagged
-- **Rules are active only when present in `Makefile`** as `# groundwork-rule: <name>` lines; if no rules are present, the gate always allows
-- **Block message format**: `new-code-gate: <rule> <file>:<line>[; ...]`
-- **Shipped rules**: `no-console-log` (no `console.log(` in new lines), `no-ts-any` (no `: any` or `as any` in new `.ts`/`.tsx` lines)
-
-## D-16 fork-only PR rule
-
-The Oursky handbook lives at `git@github.com:oursky/handbook-dev.git`. Writing into a local checkout (path configured via `handbook_path`) is allowed. Opening a PR directly against the upstream is FORBIDDEN. PRs must target only the fork at `git@github.com:IniZio/handbook-dev.git`. No PR or push automation is implemented.
-
-## CLAUDE.md last-resort rule (D-17)
-
-`CLAUDE.md` and `.claude/rules/*` are valid apply targets only when a finding sets `fallback: true`. Use a native repo file (`.gitmessage`, `Makefile`, etc.) whenever one can express the convention. Mark `fallback: true` only when no native file can.
+The [known](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/conventions/known.ts) step creates the working-tier run files and is safe to repeat; it adds to them. The [unknown](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/conventions/unknown.ts) step appends open questions to an append-only register. The [promote](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/conventions/promote.ts) step turns a stable convention into a skill in the standard skill format.

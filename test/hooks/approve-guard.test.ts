@@ -19,6 +19,7 @@ function decision(stdout: string): string {
 }
 
 const DENY = [
+  "echo $'\\' #'; gw approve spec",
   "gw approve charter --token T",
   "gw approve spec --token T",
   "$GW approve spec --token T",
@@ -64,6 +65,7 @@ describe("approve-guard by path", () => {
     "bun /x/src/cli/main.ts approve spec --auto",
     "/usr/bin/gw approve spec --auto",
     "gw approve spec --auto # done",
+    "gw approve spec --auto # note",
     "gw gate status",
     "ls approve",
   ];

@@ -6,37 +6,31 @@ import { loadGroupedCases } from '../../src/engine/grouped-rule.js';
 import type { Case, Rule, RuleContext, ScopedFile } from '../../src/engine/types.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
 import { languageForPath } from '../../src/hooks/languages/registry.js';
-import escapeHatches from '../../rules/type-escape-hatches/index.js';
-import codeSmells from '../../rules/code-smells/index.js';
-import noModuleMocking from '../../rules/no-module-mocking/index.js';
 
 type OverlapMap = Record<string, string[]>;
 
-const EXPECTED: Record<string, OverlapMap> = {
-  'type-escape-hatches': {
-    '[no-unknown-returns] unresolved alias declaration to unknown is not a return': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] generic parameter shadows alias': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] mapped type key shadows alias': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] infer binding shadows alias in true branch': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] inner alias shadows outer unknown': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] alias resolving to unknown': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] infer name is not bound in the false branch': ['no-unknown-type-aliases'],
-    '[no-unknown-returns] alias scoped inside a function body': ['no-unknown-type-aliases'],
-    '[no-unsafe-dictionary-type] record of alias for unknown': ['no-unknown-type-aliases'],
-  },
-  'code-smells': {
-    '[no-reflect-apply] other Reflect method': ['no-reflect-get'],
-    '[no-reduce-accumulator-copy] items.reduce((acc, item) => [...acc, item], []);': ['no-accumulator-spread'],
-    '[no-reduce-accumulator-copy] items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});': ['no-accumulator-spread'],
-  },
-  'no-module-mocking': {},
-};
+const rulesRoot = path.resolve(import.meta.dir, '../../rules');
+const KNOWN_DIRS = ['code-smells', 'no-module-mocking', 'type-escape-hatches'];
 
-const RULES: { rule: Rule; dir: string }[] = [
-  { rule: escapeHatches, dir: 'type-escape-hatches' },
-  { rule: codeSmells, dir: 'code-smells' },
-  { rule: noModuleMocking, dir: 'no-module-mocking' },
-];
+const groupedDirs = fs.readdirSync(rulesRoot)
+  .filter((d) => fs.existsSync(path.join(rulesRoot, d, 'checks')) && fs.existsSync(path.join(rulesRoot, d, 'index.ts')))
+  .sort();
+
+async function loadRule(dir: string): Promise<Rule> {
+  return (await import(path.join(rulesRoot, dir, 'index.ts'))).default as Rule;
+}
+
+async function declaredHits(dir: string): Promise<Record<string, string[]>> {
+  const checksDir = path.join(rulesRoot, dir, 'checks');
+  const declared: Record<string, string[]> = {};
+  const subs = fs.readdirSync(checksDir).filter((n) => n.endsWith('.cases.ts')).map((n) => n.slice(0, -'.cases.ts'.length)).sort();
+  for (const sub of subs) {
+    const mod = await import(path.join(checksDir, `${sub}.cases.ts`));
+    for (const key of (mod.foreignHits as readonly string[] | undefined) ?? []) (declared[key] ??= []).push(sub);
+  }
+  for (const key of Object.keys(declared)) declared[key].sort();
+  return declared;
+}
 
 export function diffOverlaps(expected: OverlapMap, actual: OverlapMap): string[] {
   const diffs: string[] = [];
@@ -114,13 +108,23 @@ async function actualOverlaps(rule: Rule, dir: string): Promise<OverlapMap> {
 }
 
 describe('grouped rule cross-check overlaps', () => {
-  for (const { rule, dir } of RULES) {
-    it(`${rule.id}: foreign findings match the pinned overlap map`, async () => {
+  it('discovers the grouped rule dirs', () => {
+    expect(groupedDirs.length).toBeGreaterThanOrEqual(1);
+    for (const known of KNOWN_DIRS) expect(groupedDirs).toContain(known);
+  });
+
+  for (const dir of groupedDirs) {
+    it(`${dir}: foreign findings match the declared foreignHits`, async () => {
+      const rule = await loadRule(dir);
+      const declared = await declaredHits(dir);
+      const cases = await loadGroupedCases(path.join(rulesRoot, dir, 'checks'));
+      const whys = new Set([...cases.valid, ...cases.invalid].map((c) => c.why));
+      const unknownKeys = Object.keys(declared).filter((k) => !whys.has(k)).map((k) => `foreignHits key names no case: ${k}`);
+      expect(unknownKeys).toEqual([]);
       const actual = await actualOverlaps(rule, dir);
-      expect(diffOverlaps(EXPECTED[rule.id] ?? {}, actual)).toEqual([]);
+      expect(diffOverlaps(declared, actual)).toEqual([]);
     });
   }
-
   it('guard sensitivity: an extra overlap yields a named diff string', () => {
     const expected: OverlapMap = { '[no-unknown-returns] type alias': ['no-unknown-type-aliases'] };
     const actual: OverlapMap = {

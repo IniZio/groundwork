@@ -31,3 +31,8 @@ export const cases: RuleCases = {
     { why: 'fires on a .js file', filename: 'util.js', code: 'const value = Reflect.get(owner, key);\n', findings: [finding(1)] },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-reflect-apply] other Reflect method',
+];

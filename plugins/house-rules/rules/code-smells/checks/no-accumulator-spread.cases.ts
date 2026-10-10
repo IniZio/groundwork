@@ -30,3 +30,9 @@ export const cases: RuleCases = {
     { why: 'fires on a .js file', filename: 'util.js', code: "items.reduce((acc, x) => [...acc, x], []);\n", findings: [finding(1)] },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-reduce-accumulator-copy] items.reduce((acc, item) => [...acc, item], []);',
+  '[no-reduce-accumulator-copy] items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});',
+];

@@ -40,3 +40,16 @@ export const cases: RuleCases = {
     { why: 'alias declared inside a function', code: 'function outer() { type Payload = unknown; }\n', findings: one('Payload') },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-unknown-returns] unresolved alias declaration to unknown is not a return',
+  '[no-unknown-returns] generic parameter shadows alias',
+  '[no-unknown-returns] mapped type key shadows alias',
+  '[no-unknown-returns] infer binding shadows alias in true branch',
+  '[no-unknown-returns] inner alias shadows outer unknown',
+  '[no-unknown-returns] alias resolving to unknown',
+  '[no-unknown-returns] infer name is not bound in the false branch',
+  '[no-unknown-returns] alias scoped inside a function body',
+  '[no-unsafe-dictionary-type] record of alias for unknown',
+];

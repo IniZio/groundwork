@@ -100,13 +100,13 @@ describe('dogfood e2e', () => {
     }
   });
 
-  it('gen-rule-readmes --check reports exactly 3 rules', () => {
+  it('gen-rule-readmes --check reports exactly 6 rules', () => {
     const r = spawnSync(
       'bun',
       ['plugins/house-rules/scripts/gen-rule-readmes.ts', '--check'],
       { cwd: REPO, encoding: 'utf8' },
     );
     expect(r.status).toBe(0);
-    expect(r.stdout.trim()).toBe('rules checked: 3');
+    expect(r.stdout.trim()).toBe('rules checked: 6');
   });
 });

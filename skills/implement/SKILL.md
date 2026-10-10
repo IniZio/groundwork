@@ -16,6 +16,8 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
    Each slice: single domain, independent, owns its files exclusively.
 3. Add slices: `$GW slice add <id> --desc "..." --wave N --blocked-by <deps> --acceptance "crit1;crit2" --token T`
 4. Emit banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: T`
+4b. Human views exist: run `$GW approve spec --auto --token T` before dispatch.
+   Exit 2 = Human row, hold set: stop; tell the user to run `! $GW approve spec`.
 5. Fan out in ONE message. Route each slice by size:
    - Multi-file (≥3 files or ≥2 behaviors) → `groundwork:junior-orchestrator`
    - Leaf (≤2 files, one behavior) → `groundwork:implementer`

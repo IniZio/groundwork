@@ -13,6 +13,7 @@ Decompose work into slices. Never implement.
 2. Decompose into vertical slices: each independently testable, one behavior.
 3. Map blocked-by edges between slices.
 4. Produce AC coverage table: every criterion traced to a slice.
+5. Fill `change_kinds:` and `repro_test:` in the spec frontmatter (kinds per `templates/doc-types/spec.md`).
 
 ## Output
 

@@ -21,6 +21,21 @@ export interface ResolvedConfig {
       options: ManifestOptions
       sources: { severity: Source }
     }
+    'type-escape-hatches': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
+    'no-module-mocking': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
+    'code-smells': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
   }
 }
 

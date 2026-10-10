@@ -1,21 +1,41 @@
-export type RuleId = "commit-message" | "comment-density" | "artifact-structure";
+export type RuleId =
+  | "commit-message"
+  | "comment-density"
+  | "artifact-structure"
+  | "type-escape-hatches"
+  | "no-module-mocking"
+  | "code-smells";
 export type RuleAlias = "stray-artifacts";
-export type Severity = "error";
+export type Severity = "off" | "warn" | "error";
 export type Preset = "handbook" | "conventional" | "subject-only";
 
-export const RULE_IDS: readonly ["commit-message", "comment-density", "artifact-structure"];
+export const RULE_IDS: readonly [
+  "commit-message",
+  "comment-density",
+  "artifact-structure",
+  "type-escape-hatches",
+  "no-module-mocking",
+  "code-smells",
+];
 export const RULE_ALIASES: { readonly "stray-artifacts": "artifact-structure" };
 export const SEVERITIES: readonly ["error"];
+export const WARN_SEVERITIES: readonly ["off", "warn"];
 export const RULE_SEVERITIES: {
   readonly "commit-message": readonly ["error"];
   readonly "comment-density": readonly ["error"];
   readonly "artifact-structure": readonly ["error"];
+  readonly "type-escape-hatches": readonly ["off", "warn"];
+  readonly "no-module-mocking": readonly ["off", "warn"];
+  readonly "code-smells": readonly ["off", "warn"];
 };
 export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
 export const RULE_OPTION_KEYS: {
   readonly "commit-message": readonly ["preset"];
   readonly "comment-density": readonly [];
   readonly "artifact-structure": readonly ["govern", "types", "forbidden"];
+  readonly "type-escape-hatches": readonly [];
+  readonly "no-module-mocking": readonly [];
+  readonly "code-smells": readonly [];
 };
 export type Tier = "product" | "working" | "ephemeral";
 export const TIERS: readonly ["product", "working", "ephemeral"];

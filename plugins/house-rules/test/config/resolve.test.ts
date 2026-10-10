@@ -68,8 +68,25 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
+    'type-escape-hatches': {
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    },
+    'no-module-mocking': {
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    },
+    'code-smells': {
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    },
   },
 } as const;
+
+const WARN_RULE_IDS = ['type-escape-hatches', 'no-module-mocking', 'code-smells'] as const;
 
 function caught(fn: () => unknown): unknown {
   try {
@@ -95,6 +112,27 @@ describe('resolveConfig defaults', () => {
     expect<string>(rules['comment-density'].severity).toEqual(BUILTIN_POLICY['comment-density'].severity);
     expect<string>(rules['artifact-structure'].severity).toEqual(BUILTIN_POLICY['artifact-structure'].severity);
     expect(rules['commit-message'].severity).toEqual('error');
+  });
+});
+
+describe('resolveConfig warn-only rules', () => {
+  it('absent resolves to warn from default', () => {
+    const { rules } = resolveConfig(makeRepo());
+    for (const id of WARN_RULE_IDS) {
+      expect(rules[id]).toEqual({ severity: 'warn', options: {}, sources: { severity: 'default' } });
+    }
+  });
+
+  it('explicit off resolves to off from explicit', () => {
+    for (const id of WARN_RULE_IDS) {
+      const repo = makeRepo();
+      writeConfig(repo, { rules: { [id]: 'off' } });
+      expect(resolveConfig(repo).rules[id]).toEqual({
+        severity: 'off',
+        options: {},
+        sources: { severity: 'explicit' },
+      });
+    }
   });
 });
 
@@ -387,6 +425,9 @@ describe('AC2 legacy artifact-structure configs', () => {
           options: {},
           sources: { severity: 'explicit' },
         },
+        'type-escape-hatches': ALL_DEFAULTS.rules['type-escape-hatches'],
+        'no-module-mocking': ALL_DEFAULTS.rules['no-module-mocking'],
+        'code-smells': ALL_DEFAULTS.rules['code-smells'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

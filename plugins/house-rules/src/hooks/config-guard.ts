@@ -8,13 +8,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
 import { resolveConfigText } from "../config/resolve.mjs";
+import { RULE_IDS } from "../config/schema.mjs";
 import { detectPreset } from "../config/detect.mjs";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
 const CONFIG_NAME = ".house-rules.json";
-// The legacy stray-artifacts key is canonicalised by resolveConfigText, so only canonical ids appear in resolved rules.
-const RULE_IDS = ["commit-message", "comment-density", "artifact-structure"] as const;
 const RANK: Record<string, number> = { off: 0, warn: 1, error: 2 };
 const ASK = "Loosening house-rules config is a human decision. Ask the user to make this change.";
 

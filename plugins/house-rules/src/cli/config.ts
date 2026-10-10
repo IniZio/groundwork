@@ -3,11 +3,21 @@ import path from 'node:path';
 import { resolveConfig, pointer } from '../config/resolve.mjs';
 import { RULE_SEVERITIES } from '../config/schema.mjs';
 
-const RULE_ORDER = ['commit-message', 'comment-density', 'artifact-structure'] as const;
+const RULE_ORDER = [
+  'commit-message',
+  'comment-density',
+  'artifact-structure',
+  'type-escape-hatches',
+  'no-module-mocking',
+  'code-smells',
+] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
   'comment-density': [],
   'artifact-structure': [],
+  'type-escape-hatches': [],
+  'no-module-mocking': [],
+  'code-smells': [],
 };
 
 function schemaUrl(): string {

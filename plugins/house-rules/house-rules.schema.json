@@ -13,7 +13,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Map of rule id to rule setting. Rules you omit keep their defaults. Known rules: commit-message, comment-density, artifact-structure. The id stray-artifacts is a deprecated alias for artifact-structure.",
+      "description": "Map of rule id to rule setting. Rules you omit keep their defaults. Known rules: commit-message, comment-density, artifact-structure, type-escape-hatches, no-module-mocking, code-smells. The id stray-artifacts is a deprecated alias for artifact-structure.",
       "properties": {
         "commit-message": {
           "description": "Checks commit messages against a style preset. Severity can only be \"error\": a commit that violates the preset is rejected. Use options to choose the preset; the default preset is handbook.",
@@ -266,6 +266,93 @@
                       }
                     }
                   }
+                }
+              ]
+            }
+          ]
+        },
+        "type-escape-hatches": {
+          "description": "Flags TypeScript escape hatches that bypass the type checker: any, as casts, and ts-ignore-style directives. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["off", "warn"],
+              "description": "Severity. The default is \"warn\": the rule flags a type escape hatch without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "enum": ["off", "warn"],
+                  "description": "Severity. The default is \"warn\": the rule flags a type escape hatch without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Options for type-escape-hatches. This rule has no options; the object must be empty.",
+                  "properties": {}
+                }
+              ]
+            }
+          ]
+        },
+        "no-module-mocking": {
+          "description": "Flags module-level mocks in tests. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["off", "warn"],
+              "description": "Severity. The default is \"warn\": the rule flags a module-level mock without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "enum": ["off", "warn"],
+                  "description": "Severity. The default is \"warn\": the rule flags a module-level mock without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Options for no-module-mocking. This rule has no options; the object must be empty.",
+                  "properties": {}
+                }
+              ]
+            }
+          ]
+        },
+        "code-smells": {
+          "description": "Flags assorted low-signal code smells in added code. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["off", "warn"],
+              "description": "Severity. The default is \"warn\": the rule flags a code smell without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "enum": ["off", "warn"],
+                  "description": "Severity. The default is \"warn\": the rule flags a code smell without rejecting the change. \"off\" disables the rule. No other severity is accepted for this rule."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Options for code-smells. This rule has no options; the object must be empty.",
+                  "properties": {}
                 }
               ]
             }

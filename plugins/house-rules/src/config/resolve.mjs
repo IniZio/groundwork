@@ -44,14 +44,17 @@ export function resolveConfigText(repoRoot, text) {
   const parsed = parseText(file, text)
   const rules = applyAliases(file, parsed.rules ?? {})
 
-  const severityOf = (id) =>
+  const severityOf = (id, fallback = DEFAULT_SEVERITY) =>
     rules[id]?.severity !== undefined
       ? { value: rules[id].severity, source: 'explicit' }
-      : { value: DEFAULT_SEVERITY, source: 'default' }
+      : { value: fallback, source: 'default' }
 
   const commit = severityOf('commit-message')
   const density = severityOf('comment-density')
   const stray = severityOf('artifact-structure')
+  const escapes = severityOf('type-escape-hatches', 'warn')
+  const mocking = severityOf('no-module-mocking', 'warn')
+  const smells = severityOf('code-smells', 'warn')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -76,6 +79,21 @@ export function resolveConfigText(repoRoot, text) {
         severity: stray.value,
         options: { ...(rules['artifact-structure']?.options ?? {}) },
         sources: { severity: stray.source },
+      },
+      'type-escape-hatches': {
+        severity: escapes.value,
+        options: {},
+        sources: { severity: escapes.source },
+      },
+      'no-module-mocking': {
+        severity: mocking.value,
+        options: {},
+        sources: { severity: mocking.source },
+      },
+      'code-smells': {
+        severity: smells.value,
+        options: {},
+        sources: { severity: smells.source },
       },
     },
   }

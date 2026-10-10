@@ -407,6 +407,33 @@ describe("explicit preset pin is a human decision", () => {
   });
 });
 
+describe("warn-only rules: code-smells, no-module-mocking, type-escape-hatches", () => {
+  test("explicit warn to off denied (code-smells)", async () => {
+    setFile(cfg({ "code-smells": "warn" }));
+    await expectDeny(write(cfg({ "code-smells": "off" })), 'rules["code-smells"]: warn → off', LOOSEN_MSG);
+  });
+
+  test("default warn to off denied (no-module-mocking)", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ "no-module-mocking": "off" })), 'rules["no-module-mocking"]: warn → off');
+  });
+
+  test("pin default warn allowed (type-escape-hatches)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ "type-escape-hatches": "warn" })));
+  });
+
+  test("error severity denied as invalid (type-escape-hatches)", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ "type-escape-hatches": "error" })), "invalid severity; allowed: off, warn");
+  });
+
+  test("off to warn tightening allowed (code-smells)", async () => {
+    setFile(cfg({ "code-smells": "off" }));
+    await expectAllow(write(cfg({ "code-smells": "warn" })));
+  });
+});
+
 describe("no bypass hints", () => {
   test("positive control: BYPASS_RE matches bypass hints", () => {
     expect("set HOUSE_RULES_DISABLE=1 to bypass the hook").toMatch(BYPASS_RE);

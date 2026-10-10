@@ -50,6 +50,59 @@ const SHAPE = ["severity string", "[severity]", "[severity, options]"];
 const CD = 'rules["comment-density"]';
 const CM = 'rules["commit-message"]';
 const SA = 'rules["artifact-structure"]';
+const WARN_IDS = ["type-escape-hatches", "no-module-mocking", "code-smells"] as const;
+
+describe("warn-only rule ids", () => {
+  it("accepts off, warn, and array forms", () => {
+    for (const id of WARN_IDS) {
+      for (const v of ['"off"', '"warn"', '["warn"]', '["off",{}]']) {
+        const out = parseConfig(`{"rules":{"${id}":${v}}}`);
+        const sev = v.includes("off") ? "off" : "warn";
+        expect(out.rules[id]).toEqual({ severity: sev, options: {} });
+      }
+    }
+  });
+
+  it("rejects error severity", () => {
+    for (const id of WARN_IDS) {
+      const err = capture(`{"rules":{"${id}":"error"}}`);
+      expect(err.path).toBe(`rules["${id}"]`);
+      expect(err.message).toContain("invalid severity; allowed: off, warn");
+      const arr = capture(`{"rules":{"${id}":["error"]}}`);
+      expect(arr.path).toBe(`rules["${id}"][0]`);
+      expect(arr.message).toContain("invalid severity; allowed: off, warn");
+    }
+  });
+
+  it("rejects unknown options", () => {
+    for (const id of WARN_IDS) {
+      expectConfigError(
+        `{"rules":{"${id}":["warn",{"foo":1}]}}`,
+        `rules["${id}"][1].foo`,
+        [],
+        "unknown option",
+      );
+    }
+  });
+
+  it("includes ids in RULE_IDS", () => {
+    for (const id of WARN_IDS) expect(RULE_IDS).toContain(id);
+  });
+
+  it("still accepts error on the original rules", () => {
+    for (const id of (["commit-message", "comment-density", "artifact-structure"] as const)) {
+      expect(parseConfig(`{"rules":{"${id}":"error"}}`).rules[id]?.severity).toBe("error");
+    }
+  });
+
+  it("hints warn for a top-level new id", () => {
+    for (const id of WARN_IDS) {
+      const err = capture(`{"${id}":{}}`);
+      expect(err.path).toBe(id);
+      expect(err.message).toContain("warn");
+    }
+  });
+});
 
 describe("parseConfig valid input", () => {
   it("normalizes the full shape", () => {
@@ -246,18 +299,29 @@ describe("parseConfig invalid input", () => {
 
 describe("exported constants", () => {
   it("pins exact values", () => {
-    expect(RULE_IDS).toEqual(["commit-message", "comment-density", "artifact-structure"]);
+    expect(RULE_IDS).toEqual([
+      "commit-message",
+      "comment-density",
+      "artifact-structure",
+      ...WARN_IDS,
+    ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
       "commit-message": ["error"],
       "comment-density": ["error"],
       "artifact-structure": ["error"],
+      "type-escape-hatches": ["off", "warn"],
+      "no-module-mocking": ["off", "warn"],
+      "code-smells": ["off", "warn"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
       "commit-message": ["preset"],
       "comment-density": [],
       "artifact-structure": ["govern", "types", "forbidden"],
+      "type-escape-hatches": [],
+      "no-module-mocking": [],
+      "code-smells": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

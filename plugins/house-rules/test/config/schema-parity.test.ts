@@ -106,8 +106,26 @@ function manifestFixtures(): [string, unknown, boolean][] {
   return out;
 }
 
+function warnOnlyFixtures(): [string, unknown, boolean][] {
+  const out: [string, unknown, boolean][] = [];
+  for (const id of ["type-escape-hatches", "no-module-mocking", "code-smells"]) {
+    const mk = (v: unknown) => ({ rules: { [id]: v } });
+    out.push(
+      [`${id} warn`, mk("warn"), true],
+      [`${id} off`, mk("off"), true],
+      [`${id} [warn]`, mk(["warn"]), true],
+      [`${id} [off, {}]`, mk(["off", {}]), true],
+      [`${id} error`, mk("error"), false],
+      [`${id} fatal`, mk("fatal"), false],
+      [`${id} [warn, {x:1}]`, mk(["warn", { x: 1 }]), false],
+    );
+  }
+  return out;
+}
+
 const fixtures: [string, unknown, boolean][] = [
   ["empty object", {}, true],
+  ...warnOnlyFixtures(),
   ["$schema string", { $schema: "x" }, true],
   ["empty rules", { rules: {} }, true],
   ["comment-density error string", { rules: { "comment-density": "error" } }, true],

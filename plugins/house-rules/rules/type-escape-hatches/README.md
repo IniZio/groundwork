@@ -375,6 +375,41 @@ type Value = unknown; function outer() { type Value = User; function load(): Val
 
 ```
 
+### [no-unknown-returns] interface shadows unknown alias
+
+```
+type Value = unknown; interface Value { a: string } function load(): Value { return v; }
+
+```
+
+### [no-unknown-returns] nested interface shadows outer unknown alias
+
+```
+type Value = unknown; function outer() { interface Value { a: string } function load(): Value { return v; } }
+
+```
+
+### [no-unknown-returns] nested class shadows outer unknown alias
+
+```
+type Value = unknown; function outer() { class Value {} function load(): Value { return v; } }
+
+```
+
+### [no-unknown-returns] import shadows unknown alias
+
+```
+import type { Value } from 'x'; type Value = unknown; function load(): Value { return v; }
+
+```
+
+### [no-unknown-returns] duplicate same-scope aliases are ambiguous (oxlint cannot parse; artifact residual)
+
+```
+type Value = unknown; type Value = string; function load(): Value { return v; }
+
+```
+
 ### [no-unknown-returns] javascript files are skipped
 
 ```js
@@ -853,6 +888,16 @@ type Identity<T> = T; type Wrapped<T> = Identity<T>; function consume(value: Wra
 **Expected findings:**
 - [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
 
+### [no-object-parameters] default type parameter resolving to object
+
+```
+type O<T = object> = T; function f(x: O) {}
+
+```
+
+**Expected findings:**
+- [no-object-parameters] Parameter `x` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+
 ### [no-object-parameters] union containing object
 
 ```
@@ -992,6 +1037,16 @@ declare function d(v: unknown): void;
 
 **Expected findings:**
 - [no-unknown-parameters] Parameter `v` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+
+### [no-unknown-returns] default type param is unknown
+
+```
+type Box<T = unknown> = T; function load(): Box { return v; }
+
+```
+
+**Expected findings:**
+- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
 
 ### [no-unknown-returns] function declaration
 
@@ -1214,6 +1269,36 @@ type Identity<T> = T; type Wrapped<T> = Identity<T>; type Payload = Wrapped<unkn
 
 **Expected findings:**
 - [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+
+### [no-unknown-type-aliases] upstream: bare unknown alias
+
+```
+type Current = unknown;
+```
+
+**Expected findings:**
+- [no-unknown-type-aliases] Type alias `Current` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+
+### [no-unknown-type-aliases] type parameter shadows an unknown alias
+
+```
+type Value = unknown; type Box<Value> = Value;
+
+```
+
+**Expected findings:**
+- [no-unknown-type-aliases] Type alias `Value` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+
+### [no-unknown-type-aliases] inner alias shadows outer unknown alias
+
+```
+type A = unknown; type B = A; function f() { type A = string; type C = A; }
+
+```
+
+**Expected findings:**
+- [no-unknown-type-aliases] Type alias `A` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `B` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
 
 ### [no-unknown-type-aliases] alias declared inside a function
 

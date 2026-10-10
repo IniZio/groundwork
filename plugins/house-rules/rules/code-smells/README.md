@@ -462,6 +462,45 @@ function invoke(Reflect: { apply(): number }) { return Reflect.apply(); }
 
 ```
 
+### [no-reflect-apply] declare const Reflect shadows the global
+
+```
+declare const Reflect: any;
+Reflect.apply(f, t, a);
+
+```
+
+### [no-reflect-apply] var Reflect hoisted from a block shadows the global
+
+```
+function f() { if (c) { var Reflect = x; } return Reflect.apply(f, t, a); }
+
+```
+
+### [no-reflect-apply] class Reflect shadows the global
+
+```
+class Reflect {}
+Reflect.apply(f, t, a);
+
+```
+
+### [no-reflect-apply] enum Reflect shadows the global
+
+```
+enum Reflect { A }
+Reflect.apply(f, t, a);
+
+```
+
+### [no-reflect-apply] namespace Reflect shadows the global
+
+```
+namespace Reflect { export const apply = 1; }
+Reflect.apply(f, t, a);
+
+```
+
 ### [no-reflect-apply] Reflect.apply on an unchanged base line is not flagged
 
 ```
@@ -509,6 +548,45 @@ const Reflect = { get() { return 1; } }; Reflect.get();
 
 ```
 function read(Reflect: { get(): number }) { return Reflect.get(); }
+
+```
+
+### [no-reflect-get] declare const Reflect shadows the global
+
+```
+declare const Reflect: any;
+Reflect.get(o, k);
+
+```
+
+### [no-reflect-get] var Reflect hoisted from a block shadows the global
+
+```
+function f() { if (c) { var Reflect = x; } return Reflect.get(o, k); }
+
+```
+
+### [no-reflect-get] class Reflect shadows the global
+
+```
+class Reflect {}
+Reflect.get(o, k);
+
+```
+
+### [no-reflect-get] enum Reflect shadows the global
+
+```
+enum Reflect { A }
+Reflect.get(o, k);
+
+```
+
+### [no-reflect-get] namespace Reflect shadows the global
+
+```
+namespace Reflect { export const get = 1; }
+Reflect.get(o, k);
 
 ```
 

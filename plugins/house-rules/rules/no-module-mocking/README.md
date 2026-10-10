@@ -68,6 +68,28 @@ localVi.mock('./module');
 
 ```
 
+### [no-module-mocking] vi declared via declare const is not the framework
+
+```
+declare const vi: any;
+vi.mock('x');
+
+```
+
+### [no-module-mocking] catch parameter shadows vi
+
+```
+try {} catch (vi) { vi.mock('x'); }
+
+```
+
+### [no-module-mocking] for-of loop variable shadows vi
+
+```
+for (const vi of xs) { vi.mock('x'); }
+
+```
+
 ### [no-module-mocking] computed non-mock method
 
 ```

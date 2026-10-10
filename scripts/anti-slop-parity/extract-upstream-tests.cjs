@@ -3,8 +3,6 @@
 
 const fs = require('fs');
 const path = require('path');
-// Needs the classic TypeScript compiler API (createSourceFile). The repo's typescript@7 dropped it,
-// so resolve: PARITY_TYPESCRIPT, then repo-local classic (<7) pnpm copy (highest), then top-level copy if classic.
 const ts = (() => {
   const repo = path.resolve(__dirname, '../..');
   const classic = (m) => m && typeof m.createSourceFile === 'function';

@@ -23,7 +23,8 @@ function segments(cmd: string): string[][] {
 
 /** Strict allowlist: `--auto` must directly follow the target and nothing may obscure the command. */
 function riskyCommand(cmd: string): boolean {
-  const bare = cmd.replace(/["']?\$\{?GW\}?["']?(?=\s+approve\b)/g, "");
+  const rebound = /\bGW=|\bexport\s+GW\b|\balias\b|\bfunction\b/.test(cmd);
+  const bare = rebound ? cmd : cmd.replace(/["']?\$\{?GW\}?["']?(?=\s+approve\b)/g, "");
   if (/[$<>]|\|&/.test(bare)) return true;
   return segments(bare).some(toks => toks.some(t => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(t) || t === "eval"));
 }
@@ -33,6 +34,7 @@ export function isHumanApproval(cmd: string): boolean {
     const i = toks.indexOf("approve");
     if (i < 0) return false;
     const kind = toks[i + 1];
+    if ((kind === undefined || kind.startsWith("-")) && /^(gw|\$GW|.*\/gw|.*main\.ts)$/.test(toks[i - 1] ?? "")) return true;
     if (kind !== "charter" && kind !== "spec" && !kind?.startsWith("$")) return false;
     if (toks[i + 2] !== "--auto") return true;
     return riskyCommand(cmd) || toks.slice(0, i + 2).some(t => t.includes("#"));

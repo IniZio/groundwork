@@ -19,6 +19,8 @@ function decision(stdout: string): string {
 }
 
 const DENY = [
+  "echo charter --token T | xargs gw approve",
+  "printf x | tee approve; GW=sh; $GW approve spec --auto",
   "echo $'\\' #'; gw approve spec",
   "gw approve charter --token T",
   "gw approve spec --token T",

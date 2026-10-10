@@ -43,7 +43,10 @@ Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status
 - Auto rows: bugfix with `repro_test`; refactor.
 - approve-guard hook (src/hooks/approve-guard.ts): agents cannot record a human approval; ask the human to run `! gw approve charter|spec --token T`. `gw approve spec --auto` is allowed.
 - Limitations of the approve guard: it matches command text, not behavior.
-  - Strict allowlist (HAH-D13): allow only when `--auto` is the token right after the target, with no `$` (except a leading `$GW`/`"$GW"`/`${GW}` program word), redirect, `-c`/bundled `-…c`, `eval`, or a `#` before `--auto` anywhere in the command. Everything else denies, including `approve $K --auto` and `--token T --auto` ordering.
+  - Strict allowlist (HAH-D13): allow only when `--auto` is the token right after the target, with no `$` (except a leading `$GW`/`"$GW"`/`${GW}` program word), redirect, `-c`/bundled `-…c`, `eval`, or a `#` before `--auto` anywhere in the command. The `$GW` exemption lapses when the command also has `GW=`, `export GW`, `alias`, or `function`. Denies `approve $K --auto`, `--token T --auto` ordering, and `gw approve` with no target or a flag next (xargs/stdin form). Other direct forms are not matched.
+  - Threat model (HAH-D14): speed bump against casual self-approval, not a determined agent.
+  - Out of scope (not caught): interpreter one-liners building argv (`bun -e`, `node -e`, `perl -e`, `python3 -c`), scripts, aliases, run-time strings, other indirect execution.
+  - Real fix (out-of-band signature or external review): next-iteration work (HAH-D14).
   - Second line of defense: `gw approve` itself exits 1 on extra positionals, unknown flags, `--`, `--token <flag>`, and repeated `--auto`.
   - Remaining limit: strings an agent builds at run time outside the guarded command (a generated script file run later, an alias) can still record a human approval. Closing this needs a check agents cannot fake, such as a secret only the human shell holds; deferred to the next iteration.
   - It falsely denies read-only commands whose text contains the word approve followed by charter or spec (grep, echo, heredocs, commit messages).

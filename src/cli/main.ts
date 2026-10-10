@@ -382,8 +382,17 @@ function cmdApprove(args: string[], motiveSlug?: string): void {
     process.stderr.write(`usage: ${gw} approve charter|spec [--auto] --token T\n`);
     process.exit(1);
   }
+  let autoFlag = false;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--token" && i + 1 < args.length && !args[i + 1].startsWith("-")) i++;
+    else if (args[i] === "--auto" && !autoFlag) autoFlag = true;
+    else {
+      process.stderr.write(`usage: ${gw} approve charter|spec [--auto] --token T\n`);
+      process.exit(1);
+    }
+  }
   const a: IntentArtifact = artifact;
-  const auto = a === "spec" && boolFlag(args, "--auto");
+  const auto = a === "spec" && autoFlag;
   const store = requireDb(motiveSlug);
   checkToken(store, args);
   const slug = store.activeMotive;

@@ -445,6 +445,32 @@ describe("approve", () => {
     expect(run(["approve", "bogus", "--token", tok], dir, scrub).exitCode).toBe(1);
   });
 
+  const rejects = (extra: string[]) => run(["approve", "charter", ...extra], dir, scrub);
+
+  it("approve rejects extra positional argument", () => {
+    const r = rejects(["extra", "--token", tok]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("usage:");
+  });
+
+  it("approve rejects unknown flag and bare --", () => {
+    write(`doc/${slugOf()}/motive.md`, "# charter\n");
+    expect(rejects(["--bogus", "--token", tok]).exitCode).toBe(1);
+    expect(rejects(["--", "--token", tok]).exitCode).toBe(1);
+  });
+
+  it("approve rejects --token whose value is a flag", () => {
+    const r = run(["approve", "spec", "--token", "--auto"], dir, scrub);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("usage:");
+  });
+
+  it("approve rejects repeated --auto and --auto as a value", () => {
+    expect(run(["approve", "spec", "--auto", "--auto", "--token", tok], dir, scrub).exitCode).toBe(1);
+    expect(run(["approve", "spec", "--token", tok, "--auto", "--auto"], dir, scrub).exitCode).toBe(1);
+    expect(run(["approve", "spec", "--token", "--auto", "--auto"], dir, scrub).exitCode).toBe(1);
+  });
+
   it("spec auto-passes for refactor", () => {
     const slug = slugOf();
     write(`doc/${slug}/spec.md`, "# spec\n");

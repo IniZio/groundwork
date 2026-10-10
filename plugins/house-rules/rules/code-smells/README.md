@@ -45,6 +45,13 @@ items.reduce((acc, x) => { { const acc = []; use([...acc]); } return acc; }, [])
 
 ```
 
+### [no-accumulator-spread] items.reduce((acc, x) => { { const {acc} = o; use([...acc]); } return acc; }, []);
+
+```
+items.reduce((acc, x) => { { const {acc} = o; use([...acc]); } return acc; }, []);
+
+```
+
 ### [no-accumulator-spread] items.reduce((acc, x) => { acc.push(x); return acc; }, []);
 
 ```
@@ -622,6 +629,16 @@ items?.reduce((acc, x) => ({ ...acc, k: x }), {});
 
 ```
 items.reduce((acc, x) => ({ ...(acc as State), k: x }), {});
+
+```
+
+**Expected findings:**
+- [no-accumulator-spread] Do not spread the reducer accumulator on every iteration; each copy is O(n) so the reduce is O(n^2). Mutate a fresh, locally owned accumulator and return it, or build the result with Object.fromEntries/flatMap.
+
+### [no-accumulator-spread] items.reduce((acc, x) => { { var acc = []; return [...acc]; } }, []);
+
+```
+items.reduce((acc, x) => { { var acc = []; return [...acc]; } }, []);
 
 ```
 
@@ -1270,6 +1287,93 @@ const a = <b.Shape />;
 
 ```js
 const shape = 1;
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] shorthand property reports key and value
+
+```
+const shape = 1;
+const o = { shape };
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] shorthand destructure reports key and value
+
+```
+const { shape } = x;
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] unaliased import reports imported and local
+
+```
+import { shape } from 'x';
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] unaliased export reports local and exported plus declaration
+
+```
+const shape = 1; export { shape };
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] non-shorthand property reports once
+
+```
+const o = { shape: 1 };
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] aliased import away from shape reports once
+
+```
+import { shape as s } from 'x';
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] aliased import to shape reports once
+
+```
+import { a as shape } from 'x';
+
+```
+
+**Expected findings:**
+- [no-shape-in-symbol-names] Rename symbol "shape" for its domain role; "shape" describes structure rather than ownership.
+
+### [no-shape-in-symbol-names] renamed destructure reports once
+
+```
+const { shape: s } = o;
 
 ```
 

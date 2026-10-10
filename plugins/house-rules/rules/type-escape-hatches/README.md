@@ -31,6 +31,13 @@ const value = ({ id: 1 } as const) as const;
 
 ```
 
+### [no-chained-type-assertions] angle-bracket const-only chain
+
+```
+const value = <const>(<const>{ a: 1 });
+
+```
+
 ### [no-chained-type-assertions] single as const
 
 ```
@@ -720,6 +727,16 @@ const value = (((input as unknown) as object)) as User;
 
 ```
 const value = <User>(input as unknown);
+
+```
+
+**Expected findings:**
+- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+
+### [no-chained-type-assertions] angle-bracket const over non-const as
+
+```
+const value = <const>(input as User);
 
 ```
 

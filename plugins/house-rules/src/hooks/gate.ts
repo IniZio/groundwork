@@ -12,7 +12,7 @@ import { loadRules } from '../engine/registry.js';
 import { runRules, coverageReport, formatCoverage, grammarWarnings, type FindingWithSeverity } from '../engine/run.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
-import { BUILTIN_POLICY, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
+import { policyForRoot, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 import type { Rule, ScopedFile } from '../engine/types.js';
@@ -108,7 +108,7 @@ export async function run(
 
     const rulesDir = path.resolve(import.meta.dir, '../../rules');
     const rules = opts?.testOnly_rules ?? await loadRules(rulesDir);
-    const policy: Record<string, PolicyEntry> = { ...BUILTIN_POLICY, ...(opts?.testOnly_policy ?? {}) };
+    const policy: Record<string, PolicyEntry> = { ...policyForRoot(repoRoot), ...(opts?.testOnly_policy ?? {}) };
     const ctx = buildContext({
       repoRoot,
       mode: 'gate',
@@ -133,10 +133,18 @@ export async function run(
         .filter(e => inRepo(e.path)),
     };
     const coverageText = formatCoverage(absCov, "house-rules coverage:", "  ").join("\n");
-    const warnings = grammarWarnings(absCov);
+    const grammar = grammarWarnings(absCov);
     const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
     const baseline = await readBaseline(baselinePath);
     const unbaselined = subtractBaseline(allFindings, baseline);
+    const warnFindings = unbaselined.filter(f => f.severity === 'warn');
+    const WARN_CAP = 20;
+    const warnLines = warnFindings.length === 0 ? [] : [
+      "house-rules warnings:",
+      ...warnFindings.slice(0, WARN_CAP).map(f => `${f.path}:${f.line ?? 0} ${f.ruleId} ${f.message}`),
+      ...(warnFindings.length > WARN_CAP ? [`… ${warnFindings.length - WARN_CAP} more`] : []),
+    ];
+    const warnings = [...grammar, ...warnLines];
 
     const fixableFindings = unbaselined.filter(f =>
       f.severity === 'error' &&

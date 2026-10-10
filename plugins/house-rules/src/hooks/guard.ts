@@ -12,7 +12,7 @@ import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
 import { languageForPath } from "./languages/registry.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
-import { BUILTIN_POLICY, DEFAULT_IGNORE } from "../engine/policy.js";
+import { policyForRoot, DEFAULT_IGNORE } from "../engine/policy.js";
 import { createSourceFiles, getDefaultParserFactory } from "../engine/source-file.js";
 import { grammarFailureWarning } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
@@ -350,11 +350,12 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     }
 
     // Load and filter rules: keep those with editCheck, non-off severity, matching language
+    const policy = policyForRoot(repoRoot ?? cwd ?? path.dirname(filePath));
     const rulesDir = path.join(import.meta.dir, "../../rules");
     const allRules = opts.rules ?? await loadRules(rulesDir);
     let activeRules = allRules.filter(r => {
       if (!r.editCheck) return false;
-      const severity = BUILTIN_POLICY[r.id]?.severity ?? "warn";
+      const severity = policy[r.id]?.severity ?? "warn";
       if (severity === "off") return false;
       if (r.languages && r.languages.length > 0) {
         if (lang === null || !r.languages.includes(lang)) return false;
@@ -423,7 +424,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
         !DEFAULT_IGNORE.some(pattern => new Bun.Glob(pattern).match(f.path)),
       );
 
-      const severity = BUILTIN_POLICY[rule.id]?.severity ?? "warn";
+      const severity = policy[rule.id]?.severity ?? "warn";
       const isErrorSeverity = severity === "error";
 
       if (isErrorSeverity && findings.length > 0) {

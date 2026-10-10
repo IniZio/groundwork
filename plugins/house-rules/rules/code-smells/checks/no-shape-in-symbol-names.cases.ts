@@ -32,5 +32,13 @@ export const cases: RuleCases = {
     { why: 'private field', code: 'class C { #shape = 1; }\n', findings: [finding(1, '#shape')] },
     { why: 'JSX member tag', filename: 'a.tsx', code: 'const a = <b.Shape />;\n', findings: [finding(1, 'Shape')] },
     { why: 'fires on a .js file', filename: 'util.js', code: 'const shape = 1;\n', findings: [finding(1, 'shape')] },
+    { why: 'shorthand property reports key and value', code: 'const shape = 1;\nconst o = { shape };\n', findings: [finding(1, 'shape'), finding(2, 'shape'), finding(2, 'shape')] },
+    { why: 'shorthand destructure reports key and value', code: 'const { shape } = x;\n', findings: [finding(1, 'shape'), finding(1, 'shape')] },
+    { why: 'unaliased import reports imported and local', code: "import { shape } from 'x';\n", findings: [finding(1, 'shape'), finding(1, 'shape')] },
+    { why: 'unaliased export reports local and exported plus declaration', code: 'const shape = 1; export { shape };\n', findings: [finding(1, 'shape'), finding(1, 'shape'), finding(1, 'shape')] },
+    { why: 'non-shorthand property reports once', code: 'const o = { shape: 1 };\n', findings: [finding(1, 'shape')] },
+    { why: 'aliased import away from shape reports once', code: "import { shape as s } from 'x';\n", findings: [finding(1, 'shape')] },
+    { why: 'aliased import to shape reports once', code: "import { a as shape } from 'x';\n", findings: [finding(1, 'shape')] },
+    { why: 'renamed destructure reports once', code: 'const { shape: s } = o;\n', findings: [finding(1, 'shape')] },
   ],
 };

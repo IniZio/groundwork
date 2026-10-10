@@ -17,6 +17,14 @@ const NAME_TYPES = new Set([
 const JSX_TAGS = new Set(['jsx_opening_element', 'jsx_closing_element', 'jsx_self_closing_element']);
 
 /** A non-computed `a.shape` member name belongs to another value; JSX tag members (`<a.Shape/>`) still count. */
+/** ESTree visits two Identifier nodes (key+value, imported+local) where tree-sitter has one name node. */
+function isDoubleVisited(node: Node): boolean {
+  if (node.type === 'shorthand_property_identifier' || node.type === 'shorthand_property_identifier_pattern') return true;
+  const parent = node.parent;
+  if (!parent || (parent.type !== 'import_specifier' && parent.type !== 'export_specifier')) return false;
+  return !parent.childForFieldName('alias') && parent.childForFieldName('name')?.id === node.id;
+}
+
 function isBorrowedMemberName(node: Node): boolean {
   const parent = node.parent;
   if (!parent || parent.type !== 'member_expression') return false;
@@ -29,6 +37,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): { node: N
   for (const node of (index ?? buildNodeIndex(root)).all) {
     if (NAME_TYPES.has(node.type) && node.text.toLowerCase().includes('shape') && !isBorrowedMemberName(node)) {
       hits.push(node);
+      if (isDoubleVisited(node)) hits.push(node);
     }
   }
   return hits.map((node) => ({

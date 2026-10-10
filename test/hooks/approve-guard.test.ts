@@ -43,6 +43,9 @@ const DENY = [
   'gw approve "sp""ec"',
   'gw appr""ove spec',
   "x=spec; gw approve $x",
+  "echo ' #'; gw approve spec",
+  'echo "a #"; gw approve spec',
+  "x=' #'; gw approve spec --token T",
 ];
 
 describe("approve-guard by path", () => {
@@ -60,6 +63,7 @@ describe("approve-guard by path", () => {
     "$GW approve spec --auto",
     "bun /x/src/cli/main.ts approve spec --auto",
     "/usr/bin/gw approve spec --auto",
+    "gw approve spec --auto # done",
     "gw gate status",
     "ls approve",
   ];

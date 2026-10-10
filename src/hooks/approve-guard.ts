@@ -14,10 +14,31 @@ function deny(): HookResult {
 }
 function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 
+/** Remove unquoted word-start `#` comments up to end of line; `#` inside quotes is kept. */
+function stripComments(cmd: string): string {
+  let out = "";
+  let q = "";
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q) {
+      if (c === "\\" && q === '"') { out += c + (cmd[++i] ?? ""); continue; }
+      if (c === q) q = "";
+    } else if (c === "\\") {
+      out += c + (cmd[++i] ?? ""); continue;
+    } else if (c === "'" || c === '"') {
+      q = c;
+    } else if (c === "#" && (i === 0 || /[\s;&|()]/.test(cmd[i - 1]))) {
+      while (i < cmd.length && cmd[i] !== "\n") i++;
+      i--; continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
 /** Drop comments, split on separators and substitution openers, join quote fragments, split words. */
 function segments(cmd: string): string[][] {
-  return cmd
-    .replace(/(^|[\s;&|()])#[^\n]*/g, "$1")
+  return stripComments(cmd)
     .split(/&&|\|\||[;&|\n`()]|\$\(/)
     .map(seg => seg.replace(/["'\\]/g, "").replace(/[{}]/g, " ").split(/\s+/).filter(Boolean));
 }

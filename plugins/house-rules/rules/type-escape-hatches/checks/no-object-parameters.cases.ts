@@ -43,6 +43,7 @@ export const cases: RuleCases = {
       code: 'type Identity<T> = T; type Wrapped<T> = Identity<T>; function consume(value: Wrapped<object>) {}\n',
       findings: one('value'),
     },
+    { why: 'default type parameter resolving to object', code: 'type O<T = object> = T; function f(x: O) {}\n', findings: one('x') },
     { why: 'union containing object', code: 'function f(value: string | object) {}\n', findings: one('value') },
   ],
 };

@@ -27,6 +27,7 @@ export const cases: RuleCases = {
     { why: "items.reduce((acc, item) => [...acc, item], []);", code: "items.reduce((acc, item) => [...acc, item], []);\n" },
     { why: "items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});", code: "items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});\n" },
     { why: 'unchanged base line is not flagged', base: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});\n", code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});\nconst b = 1;\n" },
+    { why: "let initial = []; initial = x; items.reduce((acc, i) => acc.concat(i), initial);", code: "let initial = []; initial = x;\nitems.reduce((acc, i) => acc.concat(i), initial);\n" },
   ],
   invalid: [
     { why: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});", code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});\n", findings: [finding(1)] },
@@ -50,5 +51,7 @@ export const cases: RuleCases = {
     { why: "items.reduce((acc, item) => acc.toReversed(), []);", code: "items.reduce((acc, item) => acc.toReversed(), []);\n", findings: [finding(1)] },
     { why: "items.reduce((acc, item) => acc.with(0, item), []);", code: "items.reduce((acc, item) => acc.with(0, item), []);\n", findings: [finding(1)] },
     { why: 'fires on a .js file', filename: 'util.js', code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});\n", findings: [finding(1)] },
+    { why: "function f(initial: Item[]) { return items.reduce((acc, i) => acc.concat(i), initial); }", code: "function f(initial: Item[]) { return items.reduce((acc, i) => acc.concat(i), initial); }\n", findings: [finding(1)] },
+    { why: "let initial: Item[] = []; items.reduce((acc, i) => acc.concat(i), initial);", code: "let initial: Item[] = [];\nitems.reduce((acc, i) => acc.concat(i), initial);\n", findings: [finding(2)] },
   ],
 };

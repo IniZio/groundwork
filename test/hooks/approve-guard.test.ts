@@ -47,6 +47,14 @@ const DENY = [
   "echo ' #'; gw approve spec",
   'echo "a #"; gw approve spec',
   "x=' #'; gw approve spec --token T",
+  "bash -c 'gw approve spec --token T' --auto",
+  "gw approve spec --token T > --auto",
+  "H='#'; bash -c \"gw approve spec --token T $H --auto\"",
+  "H='#'; eval gw approve spec --token T ${H} --auto",
+  "gw approve spec --token T --auto",
+  "gw approve $K --auto",
+  "gw approve spec --auto > /dev/null",
+  "bash -lc 'gw approve spec --auto'",
 ];
 
 describe("approve-guard by path", () => {
@@ -60,8 +68,12 @@ describe("approve-guard by path", () => {
 
   const ALLOW = [
     "gw approve spec --auto --token T",
-    "gw approve spec --token T --auto",
+    "gw approve charter --auto",
+    'gw approve "spec" --auto',
     "$GW approve spec --auto",
+    "$GW approve spec --auto --token T",
+    '"$GW" approve spec --auto --token T',
+    "${GW} approve spec --auto --token T",
     "bun /x/src/cli/main.ts approve spec --auto",
     "/usr/bin/gw approve spec --auto",
     "gw approve spec --auto # done",

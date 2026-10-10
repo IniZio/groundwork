@@ -9,6 +9,11 @@ export const cases: RuleCases = {
     { why: 'other Reflect method', code: 'Reflect.get(owner, key);\n' },
     { why: 'locally declared Reflect shadows the global', code: 'const Reflect = { apply() { return 1; } }; Reflect.apply();\n' },
     { why: 'parameter named Reflect shadows the global', code: 'function invoke(Reflect: { apply(): number }) { return Reflect.apply(); }\n' },
+    { why: 'declare const Reflect shadows the global', code: 'declare const Reflect: any;\nReflect.apply(f, t, a);\n' },
+    { why: 'var Reflect hoisted from a block shadows the global', code: 'function f() { if (c) { var Reflect = x; } return Reflect.apply(f, t, a); }\n' },
+    { why: 'class Reflect shadows the global', code: 'class Reflect {}\nReflect.apply(f, t, a);\n' },
+    { why: 'enum Reflect shadows the global', code: 'enum Reflect { A }\nReflect.apply(f, t, a);\n' },
+    { why: 'namespace Reflect shadows the global', code: 'namespace Reflect { export const apply = 1; }\nReflect.apply(f, t, a);\n' },
     {
       why: 'Reflect.apply on an unchanged base line is not flagged',
       base: 'const a = Reflect.apply(op, owner, args);\n',

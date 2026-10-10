@@ -37,6 +37,17 @@ export const cases: RuleCases = {
       code: 'type Identity<T> = T; type Wrapped<T> = Identity<T>; type Payload = Wrapped<unknown>;\n',
       findings: one('Payload'),
     },
+    { why: 'upstream: bare unknown alias', code: 'type Current = unknown;', findings: one('Current') },
+    {
+      why: 'type parameter shadows an unknown alias',
+      code: 'type Value = unknown; type Box<Value> = Value;\n',
+      findings: one('Value'),
+    },
+    {
+      why: 'inner alias shadows outer unknown alias',
+      code: 'type A = unknown; type B = A; function f() { type A = string; type C = A; }\n',
+      findings: [{ message: message('A') }, { message: message('B') }],
+    },
     { why: 'alias declared inside a function', code: 'function outer() { type Payload = unknown; }\n', findings: one('Payload') },
   ],
 };

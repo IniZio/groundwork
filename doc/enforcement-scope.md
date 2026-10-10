@@ -1,6 +1,6 @@
 # Enforcement Scope
 
-The [prose-quality guard](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/hooks/prose-quality-guard.ts) is advisory. It runs after a write and never blocks.
+The [prose-quality guard](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/hooks/prose-quality-guard.ts) is advisory.
 
 ## What the guard checks
 

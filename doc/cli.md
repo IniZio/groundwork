@@ -1,6 +1,6 @@
 # gw CLI
 
-gw keeps all work state for a repo in one SQLite store. Run it as `gw` (`bun` on the CLI entry [main.ts](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/src/cli/main.ts)). The store is at `$GROUNDWORK_DB`, else the work database inside the repo's working-tier directory.
+gw keeps all work state for a repo in one SQLite store. The store is at `$GROUNDWORK_DB`, else the work database inside the repo's working-tier directory.
 
 ## Model
 
@@ -38,7 +38,7 @@ The stop-hook releases only when the newest verdict for the motive is `approve`.
 
 `gw gate approve` records the git HEAD SHA. The approval is void if HEAD moved since, or if a slice was added to the motive after it. The stop-gate names which case applies. Uncommitted changes do not void it. Outside a git repo, no HEAD binding applies.
 
-A child tree linked in delegate mode cannot approve while it has uncommitted changes outside the working-tier directory. The command exits 1 and asks for a commit first. Direct-mode links are not checked. `gw gate status` prints `H1:` and `H2:` fields on its first line when intent approvals apply.
+A child tree linked in delegate mode cannot approve while it has uncommitted changes outside the working-tier directory. The command exits 1 and asks for a commit first. Direct-mode links are not checked.
 
 ### Intent approvals
 
@@ -46,13 +46,13 @@ A human approves the charter (H1) and the spec (H2) with `gw approve charter` an
 
 An agent may run `gw approve spec --auto` to pass H2 when no decision is open. Otherwise the command sets a hold whose note starts `H2 needs human approval:`. The human's `gw approve spec` clears that hold.
 
-The command exits 0 on success. It exits 1 when the artifact is missing or the subcommand is wrong. It exits 2 when `--auto` hit a case that needs a human.
+It exits 1 when the artifact is missing or the subcommand is wrong. It exits 2 when `--auto` hit a case that needs a human.
 
-Until both are approved, the session cannot dispatch implementation agents. The dispatch is refused with a message that names the missing approval.
+When the active motive has a charter or spec file in the repo's doc folder, the session cannot dispatch implementation agents until both are approved. The dispatch is refused with a message that names the missing approval.
 
 ### Hold
 
-While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. It does not block for open slices or a missing approval. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused ledger.
+While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused ledger.
 
 ### Compile output
 

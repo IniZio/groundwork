@@ -42,6 +42,10 @@ Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status
 - Human rows (no auto-pass): bugfix without `repro_test`; cli-flag or config-key; data-format or migration; dependency; `TBD` in an `## Acceptance criteria` checkbox; Unclassified (no `change_kinds`, or unknown kinds).
 - Auto rows: bugfix with `repro_test`; refactor.
 - approve-guard hook (src/hooks/approve-guard.ts): agents cannot record a human approval; ask the human to run `! gw approve charter|spec --token T`. `gw approve spec --auto` is allowed.
+- Limitations of the approve guard: it matches command text, not behavior.
+  - It can be bypassed by strings the shell builds at run time (variables, generated scripts). A parallel fix closes the `# --auto` comment and quote-concatenation bypasses.
+  - It falsely denies read-only commands whose text contains the word approve followed by charter or spec (grep, echo, heredocs, commit messages).
+  - H2 hash seam: the CLI hashes from the db's repo dir (src/cli/main.ts:53); the hook hashes from CLAUDE_PROJECT_DIR (src/hooks/spawn-model-guard.ts:183). A mismatch makes approvals read as void, so dispatch is refused (fails closed).
 
 ### Dispatch refusal
 

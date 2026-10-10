@@ -19,6 +19,9 @@ export const cases: RuleCases = {
     { why: 'angle-bracket chain', code: 'const value = <User>(<unknown>input);\n', findings: one },
     { why: 'mixed const chain', code: 'const value = ({ id: 1 } as const) as User;\n', findings: one },
     { why: 'three links report once', code: 'const value = input as unknown as object as User;\n', findings: one },
+    { why: 'doubly parenthesized chain reports once', code: 'const value = ((input as unknown)) as User;\n', findings: one },
+    { why: 'parenthesized inner chain reports once', code: 'const value = ((input as unknown) as object) as User;\n', findings: one },
+    { why: 'doubly parenthesized inner chain reports once', code: 'const value = (((input as unknown) as object)) as User;\n', findings: one },
     { why: 'mixed as and angle-bracket', code: 'const value = <User>(input as unknown);\n', findings: one },
   ],
 };

@@ -296,14 +296,20 @@ function addedVsCommittedSource(
   }
 }
 
-export function addedRanges(file: string, base: string, transcriptPath?: string): number[] | null {
+export function addedRanges(file: string, base: string, transcriptPath?: string, knownRoot?: string | null): number[] | null {
   const dir = path.dirname(file);
 
-  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
-    encoding: "utf8",
-  });
-  if (rootResult.status !== 0) return null;
-  const repoRoot = rootResult.stdout.trim();
+  let repoRoot: string;
+  if (knownRoot !== undefined) {
+    if (knownRoot === null) return null;
+    repoRoot = knownRoot;
+  } else {
+    const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+    });
+    if (rootResult.status !== 0) return null;
+    repoRoot = rootResult.stdout.trim();
+  }
 
   let exists = false;
   try { exists = statSync(file).isFile(); } catch { /* ok */ }

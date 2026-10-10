@@ -5,7 +5,7 @@
  * or the house-rules gate.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
@@ -54,15 +54,40 @@ function deny(reason: string): HookResult {
   };
 }
 
-function isIgnoredByDefault(filePath: string, cwd: string | null): boolean {
+function lookupRoot(filePath: string, cwd: string | null): string | null {
   let dir = cwd ?? path.dirname(filePath);
   // Walk up to the nearest existing directory (the target path may not exist yet)
   while (dir !== path.dirname(dir) && !existsSync(dir)) {
     dir = path.dirname(dir);
   }
   const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
-  if (r.status !== 0) return false;
-  const repoRoot = r.stdout.trim();
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+// Toplevel for the file's own dir; reuses the cwd toplevel only when no nested .git lies between.
+export function fileDirRoot(filePath: string, cwdRoot: string | null): string | null {
+  const dir = path.dirname(filePath);
+  if (cwdRoot !== null && !process.env.GIT_DIR && !process.env.GIT_WORK_TREE && existsSync(dir)) {
+    try {
+      let d = realpathSync(dir);
+      const rel = path.relative(cwdRoot, d);
+      if (rel.split(path.sep).includes(".git")) throw new Error("inside .git");
+      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+        let nested = false;
+        while (d !== cwdRoot && d !== path.dirname(d)) {
+          if (existsSync(path.join(d, ".git"))) { nested = true; break; }
+          d = path.dirname(d);
+        }
+        if (!nested) return cwdRoot;
+      }
+    } catch { }
+  }
+  const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+function isIgnoredByDefault(filePath: string, repoRoot: string | null): boolean {
+  if (repoRoot === null) return false;
   const relPath = path.relative(repoRoot, filePath);
   return DEFAULT_IGNORE.some((pattern) => new Bun.Glob(pattern).match(relPath));
 }
@@ -77,12 +102,9 @@ function normalTool(raw: unknown): string {
 
 type EditEntry = { old_string: string; new_string: string; replace_all?: boolean };
 
-function getBaseText(filePath: string, base: string): string | null {
+function getBaseText(filePath: string, base: string, repoRoot: string | null): string | null {
   if (!base || base === EMPTY_TREE) return null;
-  const dir = path.dirname(filePath);
-  const rootResult = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
-  if (rootResult.status !== 0) return null;
-  const repoRoot = rootResult.stdout.trim();
+  if (repoRoot === null) return null;
   const relPath = path.relative(repoRoot, filePath);
   const showResult = spawnSync("git", ["-C", repoRoot, "show", `${base}:${relPath}`], { encoding: "utf8" });
   if (showResult.status !== 0) return null;
@@ -310,7 +332,8 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     if (!filePath) return allow();
     const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
     const cwd = typeof inp.cwd === "string" ? inp.cwd : null;
-    if (isIgnoredByDefault(filePath, cwd)) return allow();
+    const cwdRoot = lookupRoot(filePath, cwd);
+    if (isIgnoredByDefault(filePath, cwdRoot)) return allow();
 
     const readFile = opts.readFile ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } });
     const pre = readFile(filePath);
@@ -325,12 +348,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     const { post: originalPost, changedRows } = recon;
 
     // Resolve repoRoot
-    const repoRoot: string | null = (() => {
-      let dir = cwd ?? path.dirname(filePath);
-      while (dir !== path.dirname(dir) && !existsSync(dir)) dir = path.dirname(dir);
-      const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
-      return r.status === 0 ? r.stdout.trim() : null;
-    })();
+    const repoRoot: string | null = cwdRoot;
 
     // Build session base info (shared; postHunks recomputed per rule below)
     type SessionBase_ = {
@@ -343,8 +361,9 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     if (transcriptPath && pre !== null) {
       const repo = cwd ?? path.dirname(filePath);
       const commit = sessionBase(transcriptPath, repo);
-      const addedRowsVal = addedRanges(filePath, commit);
-      const baseText = getBaseText(filePath, commit);
+      const fileRoot = fileDirRoot(filePath, cwdRoot);
+      const addedRowsVal = addedRanges(filePath, commit, undefined, fileRoot);
+      const baseText = getBaseText(filePath, commit, fileRoot);
       const preHunks = baseText !== null ? diffTextToHunks(baseText, pre) : null;
       sessionBase_ = { commit, addedRows: addedRowsVal, baseText, preHunks };
     }

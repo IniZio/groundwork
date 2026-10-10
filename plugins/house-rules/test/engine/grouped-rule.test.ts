@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { defineGroupedRule, loadGroupedCases } from '../../src/engine/grouped-rule.js';
+import { defineGroupedRule, loadGroupedCases, loadIsolatedCases } from '../../src/engine/grouped-rule.js';
 import { createSourceFiles, getDefaultParserFactory } from '../../src/engine/source-file.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
 import type { ParserFactory } from '../../src/hooks/languages/parse.js';
@@ -178,6 +178,65 @@ describe('grouped-rule: check', () => {
     const f = await rule.check(ctxFor([file], () => sfs.get('typescript', 'debugger;\n', 'src/run.ts')));
     expect(f).toHaveLength(1);
     sfs.dispose();
+  });
+});
+
+describe('grouped-rule: loadIsolatedCases', () => {
+  const dir2 = () => makeChecksDir({ extra: { id: 'ts-debugger', tsOnly: false } });
+
+  it('yields one entry per sub with only that sub\'s cases', async () => {
+    const dir = dir2();
+    const rule = defineGroupedRule('demo', 'd', dir);
+    const iso = await loadIsolatedCases(rule, dir);
+    expect(iso.map((e) => e.sub)).toEqual(['no-debugger', 'ts-debugger']);
+    for (const e of iso) {
+      expect(e.cases.valid.map((c) => c.why)).toEqual([`[${e.sub}] no debugger`]);
+      expect(e.cases.invalid.map((c) => c.why)).toEqual([`[${e.sub}] debugger flagged`]);
+      expect(e.rule.id).toBe('demo');
+    }
+  });
+
+  it('view drops a sibling check finding on the same line; original keeps both', async () => {
+    const dir = dir2();
+    const rule = defineGroupedRule('demo', 'd', dir);
+    const iso = await loadIsolatedCases(rule, dir);
+    const ctx = ctxFor([fileFor('src/run.ts', SRC)]);
+    expect((await rule.check(ctx)).map((f) => f.line)).toEqual([2, 2]);
+    for (const e of iso) {
+      const f = await e.rule.check(ctx);
+      expect(f).toHaveLength(1);
+      expect(f[0].message.startsWith(`[${e.sub}]`)).toBe(true);
+    }
+    const edit: PendingEdit = {
+      path: '/repo/src/run.ts', tool: 'edit', lang: 'typescript', pre: SRC, post: SRC,
+      changedRows: new Set([1]), session: null, repoRoot: null, cwd: null,
+    };
+    const sfs = createSourceFiles();
+    const env = { sourceFile: () => sfs.get('typescript', SRC, edit.path), parserFactory: getDefaultParserFactory() };
+    expect((await rule.editCheck!(edit, env)).findings).toHaveLength(2);
+    const r = await iso[0].rule.editCheck!(edit, env);
+    expect(r.findings.map((f) => f.message.split(']')[0])).toEqual(['[no-debugger']);
+    sfs.dispose();
+  });
+
+  it('leaves the original rule unchanged', async () => {
+    const dir = dir2();
+    const rule = defineGroupedRule('demo', 'd', dir);
+    const { check, editCheck } = rule;
+    const iso = await loadIsolatedCases(rule, dir);
+    expect(rule.check).toBe(check);
+    expect(rule.editCheck).toBe(editCheck);
+    expect(iso[0].rule).not.toBe(rule);
+    expect(iso[0].rule.check).not.toBe(check);
+  });
+
+  it('view has no editCheck when the original has none', async () => {
+    const dir = makeChecksDir();
+    const base = defineGroupedRule('demo', 'd', dir);
+    const bare = { ...base };
+    delete bare.editCheck;
+    const [e] = await loadIsolatedCases(bare, dir);
+    expect(e.rule.editCheck).toBeUndefined();
   });
 });
 

@@ -131,12 +131,45 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
   };
 }
 
+async function loadSubCases(checksDir: string, sub: string): Promise<RuleCases> {
+  const mod = (await import(path.join(checksDir, `${sub}.cases.ts`))) as { cases: RuleCases };
+  return {
+    valid: mod.cases.valid.map((c) => ({ ...c, why: `[${sub}] ${c.why}` })),
+    invalid: mod.cases.invalid.map((c) => ({ ...c, why: `[${sub}] ${c.why}` })),
+  };
+}
+
 export async function loadGroupedCases(checksDir: string): Promise<RuleCases> {
   const cases: RuleCases = { valid: [], invalid: [] };
   for (const sub of discover(checksDir)) {
-    const mod = (await import(path.join(checksDir, `${sub}.cases.ts`))) as { cases: RuleCases };
-    cases.valid.push(...mod.cases.valid.map((c) => ({ ...c, why: `[${sub}] ${c.why}` })));
-    cases.invalid.push(...mod.cases.invalid.map((c) => ({ ...c, why: `[${sub}] ${c.why}` })));
+    const one = await loadSubCases(checksDir, sub);
+    cases.valid.push(...one.valid);
+    cases.invalid.push(...one.invalid);
   }
   return cases;
+}
+
+export interface IsolatedCheckCases { sub: string; rule: Rule; cases: RuleCases }
+
+/** One entry per check: a view of `rule` reporting only that check's findings, with that check's cases. */
+export async function loadIsolatedCases(rule: Rule, checksDir: string): Promise<IsolatedCheckCases[]> {
+  const out: IsolatedCheckCases[] = [];
+  for (const sub of discover(checksDir)) {
+    const own = (f: Finding) => f.fingerprintBasis.startsWith(`${sub}\n`);
+    const view: Rule = {
+      ...rule,
+      check: async (ctx) => (await rule.check(ctx)).filter(own),
+    };
+    if (rule.editCheck) {
+      const edit = rule.editCheck.bind(rule);
+      view.editCheck = async (e, env) => {
+        const r = await edit(e, env);
+        return { ...r, findings: r.findings.filter(own) };
+      };
+    } else {
+      delete view.editCheck;
+    }
+    out.push({ sub, rule: view, cases: await loadSubCases(checksDir, sub) });
+  }
+  return out;
 }

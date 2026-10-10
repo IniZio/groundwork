@@ -2,14 +2,14 @@ import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import rule from './index.js';
 import { loadRules } from '../../src/engine/registry.js';
-import { loadGroupedCases } from '../../src/engine/grouped-rule.js';
+import { loadGroupedCases, loadIsolatedCases } from '../../src/engine/grouped-rule.js';
 import { ruleTester } from '../../src/engine/rule-tester.js';
 import type { RuleContext } from '../../src/engine/types.js';
 
 const checksDir = path.join(import.meta.dir, 'checks');
 const cases = await loadGroupedCases(checksDir);
 
-ruleTester(rule, cases);
+for (const { rule: view, cases: isolated } of await loadIsolatedCases(rule, checksDir)) ruleTester(view, isolated);
 
 function ctxFor(filePath: string, code: string): RuleContext {
   const lines = code.split('\n');

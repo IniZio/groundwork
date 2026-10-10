@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import rule from './index.js';
 import { loadRules } from '../../src/engine/registry.js';
-import { loadGroupedCases } from '../../src/engine/grouped-rule.js';
+import { loadGroupedCases, loadIsolatedCases } from '../../src/engine/grouped-rule.js';
 import { ruleTester } from '../../src/engine/rule-tester.js';
 
 const CHECKS_DIR = path.join(import.meta.dir, 'checks');
@@ -22,8 +22,7 @@ async function uncoveredChecks(dir: string): Promise<string[]> {
   return checkIds(dir).filter((sub) => !cases.invalid.some((c) => c.why.startsWith(`[${sub}] `)));
 }
 
-const aggregated = await loadGroupedCases(CHECKS_DIR);
-ruleTester(rule, aggregated);
+for (const { rule: view, cases } of await loadIsolatedCases(rule, CHECKS_DIR)) ruleTester(view, cases);
 
 describe('code-smells grouped rule', () => {
   it('loadRules loads id code-smells from the rules dir', async () => {

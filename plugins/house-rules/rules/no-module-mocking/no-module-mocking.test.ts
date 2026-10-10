@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import rule from './index.js';
 import { loadRules } from '../../src/engine/registry.js';
-import { loadGroupedCases } from '../../src/engine/grouped-rule.js';
+import { loadIsolatedCases } from '../../src/engine/grouped-rule.js';
 import { createSourceFiles, getDefaultParserFactory } from '../../src/engine/source-file.js';
 import { ruleTester } from '../../src/engine/rule-tester.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
@@ -13,7 +13,7 @@ import type { PendingEdit, ScopedFile } from '../../src/engine/types.js';
 const CHECKS_DIR = path.join(import.meta.dir, 'checks');
 const MSG = '[no-module-mocking] Replace module mocking with dependency injection through a real interface, service layer, or faithful test implementation.';
 
-ruleTester(rule, await loadGroupedCases(CHECKS_DIR));
+for (const { rule: view, cases } of await loadIsolatedCases(rule, CHECKS_DIR)) ruleTester(view, cases);
 
 function fileFor(p: string, text: string, base?: string): ScopedFile {
   const lines = text.split('\n');

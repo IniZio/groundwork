@@ -235,6 +235,33 @@ const users = []; users[method](active).map(email);
 
 ```
 
+### [no-array-filter-map] destructuring write disqualifies annotated let
+
+```
+let a: User[] = x;
+[a] = [y];
+a.filter(g).map(h);
+
+```
+
+### [no-array-filter-map] for-of write disqualifies annotated let
+
+```
+let a: User[] = x;
+for (a of lists) {}
+a.filter(g).map(h);
+
+```
+
+### [no-array-filter-map] update write disqualifies annotated let
+
+```
+let a: User[] = x;
+a++;
+a.filter(g).map(h);
+
+```
+
 ### [no-array-filter-map] cyclic const bindings
 
 ```
@@ -431,6 +458,14 @@ items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
 ```
 items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});
 const b = 1;
+
+```
+
+### [no-reduce-accumulator-copy] let initial = []; initial = x; items.reduce((acc, i) => acc.concat(i), initial);
+
+```
+let initial = []; initial = x;
+items.reduce((acc, i) => acc.concat(i), initial);
 
 ```
 
@@ -888,6 +923,18 @@ const a = 1;
 **Expected findings:**
 - [no-array-filter-map] Avoid consecutive array `filter` and `map` passes. Prefer `.values().filter(...).map(...).toArray()` where iterator helpers are supported, or a single `flatMap`/mutating reducer. Preserve callback ordering, indexes, and filtering semantics.
 
+### [no-array-filter-map] write to shadowing binding in nested function does not suppress
+
+```
+let a: User[] = [];
+function f(){ let a: number = 0; a = 1; }
+a.filter(g).map(h);
+
+```
+
+**Expected findings:**
+- [no-array-filter-map] Avoid consecutive array `filter` and `map` passes. Prefer `.values().filter(...).map(...).toArray()` where iterator helpers are supported, or a single `flatMap`/mutating reducer. Preserve callback ordering, indexes, and filtering semantics.
+
 ### [no-array-filter-map] fires on a .js file
 
 ```js
@@ -1152,6 +1199,27 @@ items.reduce((acc, item) => acc.with(0, item), []);
 
 ```js
 items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});
+
+```
+
+**Expected findings:**
+- [no-reduce-accumulator-copy] Do not copy the reducer accumulator on every iteration; growing copies can cause quadratic work. Mutate a fresh, locally owned accumulator and return it, or use an iterator pipeline/flatMap.
+
+### [no-reduce-accumulator-copy] function f(initial: Item[]) { return items.reduce((acc, i) => acc.concat(i), initial); }
+
+```
+function f(initial: Item[]) { return items.reduce((acc, i) => acc.concat(i), initial); }
+
+```
+
+**Expected findings:**
+- [no-reduce-accumulator-copy] Do not copy the reducer accumulator on every iteration; growing copies can cause quadratic work. Mutate a fresh, locally owned accumulator and return it, or use an iterator pipeline/flatMap.
+
+### [no-reduce-accumulator-copy] let initial: Item[] = []; items.reduce((acc, i) => acc.concat(i), initial);
+
+```
+let initial: Item[] = [];
+items.reduce((acc, i) => acc.concat(i), initial);
 
 ```
 

@@ -26,6 +26,8 @@ const EXPECTED: Record<string, OverlapMap> = {
   },
   'code-smells': {
     '[no-reflect-apply] other Reflect method': ['no-reflect-get'],
+    '[no-reduce-accumulator-copy] items.reduce((acc, item) => [...acc, item], []);': ['no-accumulator-spread'],
+    '[no-reduce-accumulator-copy] items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});': ['no-accumulator-spread'],
   },
   'no-module-mocking': {},
 };

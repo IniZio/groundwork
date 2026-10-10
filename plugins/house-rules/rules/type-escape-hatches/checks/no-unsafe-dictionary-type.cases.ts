@@ -69,7 +69,7 @@ export const cases: RuleCases = {
       code: 'interface Owner { readonly id: string } type A = Record<string, any & Owner>;\n',
       findings: f('any'),
     },
-    { why: 'record of alias for any', code: 'type Escape = any; type A = Record<string, Escape>;\n', findings: f('any') },
+    { why: 'record of alias for unknown', code: 'type Escape = unknown; type A = Record<string, Escape>;\n', findings: f('unknown') },
     { why: 'named dictionary alias', code: 'type Dict = Record<string, unknown>;\n', findings: f('unknown') },
     {
       why: 'wrappers around unsafe record report once',

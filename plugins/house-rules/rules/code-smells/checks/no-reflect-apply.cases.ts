@@ -6,7 +6,7 @@ const finding = (line: number) => ({ line, message: MESSAGE });
 export const cases: RuleCases = {
   valid: [
     { why: 'native Function.prototype-style .apply on another receiver', code: 'const value = operation.apply(owner, args);\n' },
-    { why: 'other Reflect method', code: 'Reflect.has(owner, key);\n' },
+    { why: 'other Reflect method', code: 'Reflect.get(owner, key);\n' },
     { why: 'locally declared Reflect shadows the global', code: 'const Reflect = { apply() { return 1; } }; Reflect.apply();\n' },
     { why: 'parameter named Reflect shadows the global', code: 'function invoke(Reflect: { apply(): number }) { return Reflect.apply(); }\n' },
     {

@@ -9,7 +9,7 @@ import { runHousekeep, fixFindings } from './housekeep.js';
 import { runConfig } from './config.js';
 import { runStructure, runWhere, runNew } from './structure.js';
 import { resolveScope, ScopeUsageError } from './scope.js';
-import { BUILTIN_POLICY } from '../engine/policy.js';
+import { policyForRoot } from '../engine/policy.js';
 import {
   type OutputFormat,
   writeScopeHeader,
@@ -186,7 +186,8 @@ async function cmdCheck(opts: {
 
   const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
   const rules = await loadRules(rulesDirResolved);
-  const allFindings = await runRules(rules, ctx);
+  const policy = policyForRoot(repoRoot);
+  const allFindings = await runRules(rules, ctx, policy);
   const baseline = await readBaseline(baselineFile);
   const findings = subtractBaseline(allFindings, baseline);
   const coverage = await coverageReport(rules, ctx);
@@ -197,12 +198,12 @@ async function cmdCheck(opts: {
       rules,
       ctx,
       findings,
-      policy: BUILTIN_POLICY,
+      policy,
       write: true,
     });
 
     const { ctx: freshCtx } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
-    const freshAll = await runRules(rules, freshCtx);
+    const freshAll = await runRules(rules, freshCtx, policy);
     const freshBaseline = await readBaseline(baselineFile);
     const remaining = subtractBaseline(freshAll, freshBaseline);
 
@@ -267,7 +268,7 @@ async function cmdBaseline(opts: {
 
   const { ctx, scope } = resolveScope({ repoRoot, all: opts.all, paths: opts.pathspec, base: opts.base });
   const rules = await loadRules(rulesDirResolved);
-  const findings = await runRules(rules, ctx);
+  const findings = await runRules(rules, ctx, policyForRoot(repoRoot));
 
   const dir = path.dirname(baselineFile);
   fs.mkdirSync(dir, { recursive: true });

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "ch-three",
+    "check": "no-chained-type-assertions",
+    "code": "const v = x as A as B as C;",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ch-nonnull-between",
+    "check": "no-chained-type-assertions",
+    "code": "const v = (x as A)! as B;",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "ch-satisfies-between",
+    "check": "no-chained-type-assertions",
+    "code": "const v = (x satisfies A) as B;",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "ch-angle-const-const",
+    "check": "no-chained-type-assertions",
+    "code": "const v = <const>(<const>{ a: 1 });",
+    "upstreamExpect": "0 (const check applies to TSTypeAssertion too)",
+    "src": "probe"
+  },
+  {
+    "id": "ch-as-const-const",
+    "check": "no-chained-type-assertions",
+    "code": "const v = ({ a: 1 } as const) as const;",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "ch-const-then-as",
+    "check": "no-chained-type-assertions",
+    "code": "const v = (x as const) as User;",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ch-in-call-arg",
+    "check": "no-chained-type-assertions",
+    "code": "f(x as unknown as User);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ch-js-file",
+    "check": "no-chained-type-assertions",
+    "code": "const v = 1;",
+    "upstreamExpect": "n/a (TS syntax)",
+    "filename": "probe.js",
+    "src": "probe"
+  },
+  {
+    "id": "README-chained",
+    "check": "no-chained-type-assertions",
+    "code": "const user = input as object as User;",
+    "upstreamExpect": "1",
+    "src": "readme"
+  }
+]

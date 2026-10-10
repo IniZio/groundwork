@@ -1,0 +1,136 @@
+[
+  {
+    "id": "ur-class-method",
+    "check": "no-unknown-returns",
+    "code": "class A { m(): unknown { return 1 } }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-getter",
+    "check": "no-unknown-returns",
+    "code": "class A { get v(): unknown { return 1 } }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-abstract",
+    "check": "no-unknown-returns",
+    "code": "abstract class A { abstract m(): unknown }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-ctor-type",
+    "check": "no-unknown-returns",
+    "code": "type C = new () => unknown;",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-promiselike",
+    "check": "no-unknown-returns",
+    "code": "function f(): PromiseLike<unknown> { return p }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-nested-promise",
+    "check": "no-unknown-returns",
+    "code": "function f(): Promise<Promise<unknown>> { return p }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-async",
+    "check": "no-unknown-returns",
+    "code": "async function f(): Promise<unknown> { return 1 }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-default-param-alias",
+    "check": "no-unknown-returns",
+    "code": "type Maybe<T = unknown> = T;\nfunction f(): Maybe { return 1 }",
+    "upstreamExpect": "1 (default substitution)",
+    "src": "probe"
+  },
+  {
+    "id": "ur-default-param-alias-explicit",
+    "check": "no-unknown-returns",
+    "code": "type Maybe<T = string> = T;\nfunction f(): Maybe<unknown> { return 1 }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-interface-shadows-alias",
+    "check": "no-unknown-returns",
+    "code": "type V = unknown;\nfunction o(){ interface V { a: string }\n function g(): V { return x } }",
+    "upstreamExpect": "0 (nearest binding is interface => not resolved)",
+    "src": "probe"
+  },
+  {
+    "id": "ur-import-shadows-alias",
+    "check": "no-unknown-returns",
+    "code": "import { V } from 'x';\ntype V2 = unknown;\nfunction g(): V { return x }",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "ur-class-shadows-alias",
+    "check": "no-unknown-returns",
+    "code": "type V = unknown;\nfunction o(){ class V {}\n function g(): V { return x } }",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "ur-namespace-scope",
+    "check": "no-unknown-returns",
+    "code": "namespace N { type V = unknown; export function g(): V { return x } }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-namespace-scope-outside",
+    "check": "no-unknown-returns",
+    "code": "namespace N { type V = unknown; }\nfunction g(): V { return x }",
+    "upstreamExpect": "0 (alias not visible outside)",
+    "src": "probe"
+  },
+  {
+    "id": "ur-duplicate-alias-same-scope",
+    "check": "no-unknown-returns",
+    "code": "type V = unknown;\ntype V = string;\nfunction g(): V { return x }",
+    "upstreamExpect": "0 (ambiguous: bindings.length !== 1)",
+    "src": "probe"
+  },
+  {
+    "id": "ur-generic-method-sig",
+    "check": "no-unknown-returns",
+    "code": "interface I { m<T>(): unknown }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "ur-js-file",
+    "check": "no-unknown-returns",
+    "code": "function f() {}",
+    "upstreamExpect": "n/a",
+    "filename": "probe.js",
+    "src": "probe"
+  },
+  {
+    "id": "README-unknown-return",
+    "check": "no-unknown-returns",
+    "code": "function loadUser(): unknown {\n  return input;\n}",
+    "upstreamExpect": "1",
+    "src": "readme"
+  },
+  {
+    "id": "README-unknown-returns-PromiseLike",
+    "check": "no-unknown-returns",
+    "code": "function f(): PromiseLike<unknown> { return p }",
+    "upstreamExpect": "1 (README names PromiseLike)",
+    "src": "readme"
+  }
+]

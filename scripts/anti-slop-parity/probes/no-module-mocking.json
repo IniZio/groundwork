@@ -1,0 +1,129 @@
+[
+  {
+    "id": "mock-declare-vi",
+    "check": "no-module-mocking",
+    "code": "declare const vi: any;\nvi.mock('x');",
+    "upstreamExpect": "0 (def exists, not import)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-ns-import",
+    "check": "no-module-mocking",
+    "code": "import * as vi from 'vitest';\nvi.mock('x');",
+    "upstreamExpect": "0 (namespace spec -> importedName null)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-default-import",
+    "check": "no-module-mocking",
+    "code": "import vi from 'vitest';\nvi.mock('x');",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "mock-require-destructure",
+    "check": "no-module-mocking",
+    "code": "const { vi } = require('vitest');\nvi.mock('x');",
+    "upstreamExpect": "0 (variable def, not import)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-optional-call",
+    "check": "no-module-mocking",
+    "code": "vi.mock?.('x');",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "mock-optional-object",
+    "check": "no-module-mocking",
+    "code": "vi?.mock('x');",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "mock-doMock-jest",
+    "check": "no-module-mocking",
+    "code": "jest.doMock('x');",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "mock-setMock",
+    "check": "no-module-mocking",
+    "code": "jest.setMock('x', {});",
+    "upstreamExpect": "0 (not in method set)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-hoisted-not-in-set",
+    "check": "no-module-mocking",
+    "code": "vi.hoisted(() => 1);",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "mock-fn-param-shadow-import",
+    "check": "no-module-mocking",
+    "code": "import { vi } from 'vitest';\nfunction f(vi: any){ vi.mock('x'); }",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "mock-catch-param-shadow",
+    "check": "no-module-mocking",
+    "code": "try {} catch (vi) { vi.mock('x'); }",
+    "upstreamExpect": "0 (catch param def)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-for-of-shadow",
+    "check": "no-module-mocking",
+    "code": "for (const vi of xs) { vi.mock('x'); }",
+    "upstreamExpect": "0 (loop var def)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-vitest-wrong-name",
+    "check": "no-module-mocking",
+    "code": "import { vi as v, expect } from 'vitest';\nexpect.mock('x');",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "mock-jest-from-jest",
+    "check": "no-module-mocking",
+    "code": "import { jest } from 'jest';\njest.mock('x');",
+    "upstreamExpect": "0 (source must be @jest/globals)",
+    "src": "probe"
+  },
+  {
+    "id": "mock-js-file",
+    "check": "no-module-mocking",
+    "code": "vi.mock('x');",
+    "upstreamExpect": "1",
+    "filename": "probe.js",
+    "src": "probe"
+  },
+  {
+    "id": "mock-template-literal-arg-computed",
+    "check": "no-module-mocking",
+    "code": "vi[`mock`]('x');",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "mock-class-decl-shadow",
+    "check": "no-module-mocking",
+    "code": "class vi {}\nvi.mock('x');",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "README-module-mock",
+    "check": "no-module-mocking",
+    "code": "vi.mock(\"./user-store\");",
+    "upstreamExpect": "1",
+    "src": "readme"
+  }
+]

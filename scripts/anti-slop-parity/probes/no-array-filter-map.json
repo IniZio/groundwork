@@ -1,0 +1,150 @@
+[
+  {
+    "id": "fm-flatMap-chain",
+    "check": "no-array-filter-map",
+    "code": "const a = [1]; a.flatMap(f).filter(g).map(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-concat",
+    "check": "no-array-filter-map",
+    "code": "const a = [1]; a.concat(b).filter(g).map(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-toSorted",
+    "check": "no-array-filter-map",
+    "code": "const a = [1]; a.toSorted().filter(g).map(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-toReversed",
+    "check": "no-array-filter-map",
+    "code": "const a = [1]; a.toReversed().map(g).filter(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-toSpliced",
+    "check": "no-array-filter-map",
+    "code": "const a = [1]; a.toSpliced(0,1).map(g).filter(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-tuple-annotation",
+    "check": "no-array-filter-map",
+    "code": "function f(a: [number, string]) { return a.filter(g).map(h); }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-paren-type",
+    "check": "no-array-filter-map",
+    "code": "function f(a: (User[])) { return a.filter(g).map(h); }",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-let-annotated",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = x;\na.filter(g).map(h);",
+    "upstreamExpect": "1 (annotation wins; init write ignored)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-let-annotated-reassigned",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = x;\na = y;\na.filter(g).map(h);",
+    "upstreamExpect": "0 (plain write)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-destructuring-write",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = x;\n[a] = [y];\na.filter(g).map(h);",
+    "upstreamExpect": "0 (reference.isWrite && !init)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-for-of-write",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = x;\nfor (a of lists) {}\na.filter(g).map(h);",
+    "upstreamExpect": "0 (write)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-update-write",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = x;\na++;\na.filter(g).map(h);",
+    "upstreamExpect": "0 (write)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-as-literal",
+    "check": "no-array-filter-map",
+    "code": "const a = [] as User[]; a.filter(g).map(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-computed-method",
+    "check": "no-array-filter-map",
+    "code": "const a = []; a['filter'](g)['map'](h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-Array-from",
+    "check": "no-array-filter-map",
+    "code": "Array.from(x).filter(g).map(h);",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "fm-param-unannotated",
+    "check": "no-array-filter-map",
+    "code": "function f(a) { return a.filter(g).map(h); }",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "fm-imported",
+    "check": "no-array-filter-map",
+    "code": "import { a } from 'x';\na.filter(g).map(h);",
+    "upstreamExpect": "0",
+    "src": "probe"
+  },
+  {
+    "id": "fm-shadow-assign-other-scope",
+    "check": "no-array-filter-map",
+    "code": "const a = [];\nfunction f(){ let a2; a2 = 1; }\na.filter(g).map(h);",
+    "upstreamExpect": "1",
+    "src": "probe"
+  },
+  {
+    "id": "fm-nested-fn-assign-shadowed",
+    "check": "no-array-filter-map",
+    "code": "let a: User[] = [];\nfunction f(){ let a: number = 0; a = 1; }\na.filter(g).map(h);",
+    "upstreamExpect": "1 (scope-resolved writes only)",
+    "src": "probe"
+  },
+  {
+    "id": "fm-js-file",
+    "check": "no-array-filter-map",
+    "code": "const a = [];\na.filter(g).map(h);",
+    "upstreamExpect": "1",
+    "filename": "probe.js",
+    "src": "probe"
+  },
+  {
+    "id": "README-filter-map-1",
+    "check": "no-array-filter-map",
+    "code": "const users: User[] = loadUsers();\nconst emails = users.filter(user => user.active).map(user => user.email);\nconst found = users.map(lookup).filter(value => value !== undefined);",
+    "upstreamExpect": "2 findings (lines 2,3)",
+    "src": "readme"
+  }
+]

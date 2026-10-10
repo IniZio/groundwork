@@ -1,0 +1,7 @@
+{
+  "upstreamSha": "c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b",
+  "realSampleCommit": "05bf55ad79c79e3efe89b215c77b9304da6bbcba",
+  "corpusSha256": "13a02b7cb8882c3dc280accc102c461380b541fb63da6541a5344de52adca1f5",
+  "oxlintVersion": "Version: 1.78.0",
+  "generatedAt": "2026-10-10T17:26:45.438Z"
+}

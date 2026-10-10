@@ -10,8 +10,8 @@ const MESSAGE = 'This assertion chain discards type evidence. Keep the original 
 const isAssertion = (node: Node): boolean => node.type === 'as_expression' || node.type === 'type_assertion';
 
 function isConst(node: Node): boolean {
-  const last = node.child(node.childCount - 1);
-  return node.type === 'as_expression' && last?.type === 'const';
+  if (node.type === 'type_assertion') return node.namedChildren[0]?.child(1)?.type === 'const';
+  return node.child(node.childCount - 1)?.type === 'const';
 }
 
 function operand(node: Node): Node | null {

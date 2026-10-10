@@ -8,6 +8,7 @@ export const cases: RuleCases = {
     { why: 'single as', code: 'const value = input as User;\n' },
     { why: 'single parenthesized as', code: 'const value = (input as User);\n' },
     { why: 'const-only chain', code: 'const value = ({ id: 1 } as const) as const;\n' },
+    { why: 'angle-bracket const-only chain', code: 'const value = <const>(<const>{ a: 1 });\n' },
     { why: 'single as const', code: 'const value = { id: 1 } as const;\n' },
     { why: 'single angle-bracket assertion', code: 'const value = <User>input;\n' },
     { why: 'as inside call argument is not a chain', code: 'const value = f(a as unknown, b as User);\n' },
@@ -23,5 +24,6 @@ export const cases: RuleCases = {
     { why: 'parenthesized inner chain reports once', code: 'const value = ((input as unknown) as object) as User;\n', findings: one },
     { why: 'doubly parenthesized inner chain reports once', code: 'const value = (((input as unknown) as object)) as User;\n', findings: one },
     { why: 'mixed as and angle-bracket', code: 'const value = <User>(input as unknown);\n', findings: one },
+    { why: 'angle-bracket const over non-const as', code: 'const value = <const>(input as User);\n', findings: one },
   ],
 };

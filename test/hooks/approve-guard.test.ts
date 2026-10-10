@@ -39,6 +39,10 @@ const DENY = [
   "gw approve   spec",
   "echo --auto; gw approve spec",
   "gw approve spec\ngw approve spec --auto",
+  "gw approve spec # --auto",
+  'gw approve "sp""ec"',
+  'gw appr""ove spec',
+  "x=spec; gw approve $x",
 ];
 
 describe("approve-guard by path", () => {

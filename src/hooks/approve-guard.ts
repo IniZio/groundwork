@@ -14,11 +14,12 @@ function deny(): HookResult {
 }
 function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 
-/** Split on shell separators and substitution openers, drop quotes, split words. */
+/** Drop comments, split on separators and substitution openers, join quote fragments, split words. */
 function segments(cmd: string): string[][] {
   return cmd
+    .replace(/(^|[\s;&|()])#[^\n]*/g, "$1")
     .split(/&&|\|\||[;&|\n`()]|\$\(/)
-    .map(seg => seg.replace(/["'\\{}]/g, " ").split(/\s+/).filter(Boolean));
+    .map(seg => seg.replace(/["'\\]/g, "").replace(/[{}]/g, " ").split(/\s+/).filter(Boolean));
 }
 
 export function isHumanApproval(cmd: string): boolean {
@@ -26,7 +27,7 @@ export function isHumanApproval(cmd: string): boolean {
     const i = toks.indexOf("approve");
     if (i < 0) return false;
     const kind = toks[i + 1];
-    if (kind !== "charter" && kind !== "spec") return false;
+    if (kind !== "charter" && kind !== "spec" && !kind?.startsWith("$")) return false;
     return !toks.slice(i + 2).includes("--auto");
   });
 }

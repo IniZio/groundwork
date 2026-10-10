@@ -43,7 +43,9 @@ Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status
 - Auto rows: bugfix with `repro_test`; refactor.
 - approve-guard hook (src/hooks/approve-guard.ts): agents cannot record a human approval; ask the human to run `! gw approve charter|spec --token T`. `gw approve spec --auto` is allowed.
 - Limitations of the approve guard: it matches command text, not behavior.
-  - It can be bypassed by strings the shell builds at run time (variables, generated scripts). A parallel fix closes the `# --auto` comment and quote-concatenation bypasses.
+  - Strict allowlist (HAH-D13): allow only when `--auto` is the token right after the target, with no `$` (except a leading `$GW`/`"$GW"`/`${GW}` program word), redirect, `-c`/bundled `-…c`, `eval`, or a `#` before `--auto` anywhere in the command. Everything else denies, including `approve $K --auto` and `--token T --auto` ordering.
+  - Second line of defense: `gw approve` itself exits 1 on extra positionals, unknown flags, `--`, `--token <flag>`, and repeated `--auto`.
+  - Remaining limit: strings an agent builds at run time outside the guarded command (a generated script file run later, an alias) can still record a human approval. Closing this needs a check agents cannot fake, such as a secret only the human shell holds; deferred to the next iteration.
   - It falsely denies read-only commands whose text contains the word approve followed by charter or spec (grep, echo, heredocs, commit messages).
   - H2 hash seam: the CLI hashes from the db's repo dir (src/cli/main.ts:53); the hook hashes from CLAUDE_PROJECT_DIR (src/hooks/spawn-model-guard.ts:183). A mismatch makes approvals read as void, so dispatch is refused (fails closed).
 

@@ -27,6 +27,9 @@ export const cases: RuleCases = {
     { why: 'catch parameter is not known array', code: 'try { run(); } catch (items) { items.filter(f).map(g); }\n' },
     { why: 'for-of variable is not known array', code: 'for (const items of groups) { items.filter(f).map(g); }\n' },
     { why: 'dynamic method name', code: 'const users = []; users[method](active).map(email);\n' },
+    { why: 'destructuring write disqualifies annotated let', code: 'let a: User[] = x;\n[a] = [y];\na.filter(g).map(h);\n' },
+    { why: 'for-of write disqualifies annotated let', code: 'let a: User[] = x;\nfor (a of lists) {}\na.filter(g).map(h);\n' },
+    { why: 'update write disqualifies annotated let', code: 'let a: User[] = x;\na++;\na.filter(g).map(h);\n' },
     { why: 'cyclic const bindings', code: 'const first = second; const second = first; first.filter(active).map(email);\n' },
     {
       why: 'filter.map on an unchanged base line is not flagged',
@@ -59,6 +62,7 @@ export const cases: RuleCases = {
       code: 'const a = 1;\n[].filter(active).map(email);\n',
       findings: [fm(2)],
     },
+    { why: 'write to shadowing binding in nested function does not suppress', code: 'let a: User[] = [];\nfunction f(){ let a: number = 0; a = 1; }\na.filter(g).map(h);\n', findings: [fm(3)] },
     { why: 'fires on a .js file', filename: 'util.js', code: '[].filter(active).map(email);\n', findings: [fm(1)] },
   ],
 };

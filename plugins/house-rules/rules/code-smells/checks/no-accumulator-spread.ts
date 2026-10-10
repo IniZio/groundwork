@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { resolve } from '../../../src/analysis/lexical-bindings.js';
 import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-accumulator-spread';
@@ -7,7 +8,6 @@ const MESSAGE =
   'Do not spread the reducer accumulator on every iteration; each copy is O(n) so the reduce is O(n^2). Mutate a fresh, locally owned accumulator and return it, or build the result with Object.fromEntries/flatMap.';
 const WRAPPERS = new Set(['parenthesized_expression', 'as_expression', 'satisfies_expression', 'non_null_expression', 'type_assertion']);
 const FUNCTION_TYPES = new Set(['function_declaration', 'generator_function_declaration', 'function_expression', 'function', 'generator_function', 'arrow_function', 'method_definition']);
-const BLOCK_DECLS = new Set(['lexical_declaration', 'variable_declaration']);
 
 function unwrap(node: Node): Node {
   let cur = node;
@@ -20,25 +20,8 @@ function unwrap(node: Node): Node {
   return cur;
 }
 
-function bindsName(scope: Node, name: string): boolean {
-  if (scope.type === 'statement_block' || scope.type === 'program') {
-    for (const stmt of scope.children) {
-      const decl = stmt?.type === 'export_statement' ? (stmt.childForFieldName('declaration') ?? stmt) : stmt;
-      if (decl && BLOCK_DECLS.has(decl.type)) {
-        for (const d of decl.children) if (d?.type === 'variable_declarator' && d.childForFieldName('name')?.text === name) return true;
-      } else if (decl?.type === 'function_declaration' && decl.childForFieldName('name')?.text === name) return true;
-    }
-    return false;
-  }
-  if (FUNCTION_TYPES.has(scope.type)) {
-    const params = scope.childForFieldName('parameters') ?? scope.childForFieldName('parameter');
-    return !!params && params.descendantsOfType('identifier').some((n: Node | null) => n?.text === name);
-  }
-  return false;
-}
-
 /** The reduce callback when `node`'s own function is a reduce/reduceRight callback, with its accumulator name. */
-function reducerOf(node: Node): { callback: Node; accumulator: string } | null {
+function reducerOf(node: Node): { accumulator: Node } | null {
   let fn = node.parent;
   while (fn && !FUNCTION_TYPES.has(fn.type)) fn = fn.parent;
   if (!fn || (fn.type !== 'arrow_function' && fn.type !== 'function_expression' && fn.type !== 'function')) return null;
@@ -52,7 +35,7 @@ function reducerOf(node: Node): { callback: Node; accumulator: string } | null {
   if (args.length > 2 || !args[0] || unwrap(args[0]).id !== fn.id) return null;
   const param = fn.childForFieldName('parameter') ?? fn.childForFieldName('parameters')?.namedChildren.find((c: Node | null) => c && c.type !== 'comment') ?? null;
   const pattern = param?.type === 'identifier' ? param : (param?.childForFieldName('pattern') ?? param?.childForFieldName('left'));
-  return pattern?.type === 'identifier' ? { callback: fn, accumulator: pattern.text } : null;
+  return pattern?.type === 'identifier' ? { accumulator: pattern } : null;
 }
 
 function spreadsAccumulator(spread: Node): boolean {
@@ -60,11 +43,9 @@ function spreadsAccumulator(spread: Node): boolean {
   const target = arg && unwrap(arg);
   if (target?.type !== 'identifier' || (spread.parent?.type !== 'object' && spread.parent?.type !== 'array')) return false;
   const reducer = reducerOf(spread);
-  if (!reducer || reducer.accumulator !== target.text) return false;
-  for (let scope = target.parent; scope; scope = scope.parent) {
-    if (bindsName(scope, target.text)) return scope.id === reducer.callback.id;
-  }
-  return false;
+  if (!reducer || reducer.accumulator.text !== target.text) return false;
+  const binding = resolve(target);
+  return !!binding && binding.id.id === reducer.accumulator.id;
 }
 
 export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {

@@ -12,6 +12,7 @@ export const cases: RuleCases = {
     { why: "function f(acc) { return [...acc, 1]; }", code: "function f(acc) { return [...acc, 1]; }\n" },
     { why: "items.reduce((acc, x) => { const snap = (acc) => [...acc, x]; acc.push(x); return acc; }, []);", code: "items.reduce((acc, x) => { const snap = (acc) => [...acc, x]; acc.push(x); return acc; }, []);\n" },
     { why: "items.reduce((acc, x) => { { const acc = []; use([...acc]); } return acc; }, []);", code: "items.reduce((acc, x) => { { const acc = []; use([...acc]); } return acc; }, []);\n" },
+    { why: "items.reduce((acc, x) => { { const {acc} = o; use([...acc]); } return acc; }, []);", code: "items.reduce((acc, x) => { { const {acc} = o; use([...acc]); } return acc; }, []);\n" },
     { why: "items.reduce((acc, x) => { acc.push(x); return acc; }, []);", code: "items.reduce((acc, x) => { acc.push(x); return acc; }, []);\n" },
     { why: "items.reduce((acc, x) => Object.assign(acc, x), {});", code: "items.reduce((acc, x) => Object.assign(acc, x), {});\n" },
     { why: "items.map((acc, x) => ({ ...acc, k: x }));", code: "items.map((acc, x) => ({ ...acc, k: x }));\n" },
@@ -27,6 +28,7 @@ export const cases: RuleCases = {
     { why: "items.reduceRight((acc, x) => [...acc, x], []);", code: "items.reduceRight((acc, x) => [...acc, x], []);\n", findings: [finding(1)] },
     { why: "items?.reduce((acc, x) => ({ ...acc, k: x }), {});", code: "items?.reduce((acc, x) => ({ ...acc, k: x }), {});\n", findings: [finding(1)] },
     { why: "items.reduce((acc, x) => ({ ...(acc as State), k: x }), {});", code: "items.reduce((acc, x) => ({ ...(acc as State), k: x }), {});\n", findings: [finding(1)] },
+    { why: "items.reduce((acc, x) => { { var acc = []; return [...acc]; } }, []);", code: "items.reduce((acc, x) => { { var acc = []; return [...acc]; } }, []);\n", findings: [finding(1)] },
     { why: 'fires on a .js file', filename: 'util.js', code: "items.reduce((acc, x) => [...acc, x], []);\n", findings: [finding(1)] },
   ],
 };

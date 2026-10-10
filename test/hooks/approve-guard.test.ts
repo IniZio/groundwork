@@ -57,6 +57,8 @@ const DENY = [
   "gw approve $K --auto",
   "gw approve spec --auto > /dev/null",
   "bash -lc 'gw approve spec --auto'",
+  "gw approve charter --auto",
+  "gw approve charter --auto --token T",
 ];
 
 describe("approve-guard by path", () => {
@@ -70,7 +72,6 @@ describe("approve-guard by path", () => {
 
   const ALLOW = [
     "gw approve spec --auto --token T",
-    "gw approve charter --auto",
     'gw approve "spec" --auto',
     "$GW approve spec --auto",
     "$GW approve spec --auto --token T",

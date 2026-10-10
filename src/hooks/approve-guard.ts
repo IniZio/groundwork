@@ -1,6 +1,6 @@
 /**
  * PreToolUse on Bash: an agent must not record a human approval.
- * Denies `$GW approve charter|spec` without --auto in any invocation form
+ * Denies `$GW approve charter|spec` except `spec --auto`, in any invocation form
  * (absolute path, $GW, bun .../main.ts, env/launcher prefix, bash -c, chains).
  * The human runs it with the `!` prompt prefix, which never fires PreToolUse.
  */
@@ -21,7 +21,7 @@ function segments(cmd: string): string[][] {
     .map(seg => seg.replace(/["'\\]/g, "").replace(/[{}]/g, " ").split(/\s+/).filter(Boolean));
 }
 
-/** Strict allowlist: `--auto` must directly follow the target and nothing may obscure the command. */
+/** Strict allowlist: `--auto` must directly follow `spec` and nothing may obscure the command. */
 function riskyCommand(cmd: string): boolean {
   const rebound = /\bGW=|\bexport\s+GW\b|\balias\b|\bfunction\b/.test(cmd);
   const bare = rebound ? cmd : cmd.replace(/["']?\$\{?GW\}?["']?(?=\s+approve\b)/g, "");
@@ -36,7 +36,7 @@ export function isHumanApproval(cmd: string): boolean {
     const kind = toks[i + 1];
     if ((kind === undefined || kind.startsWith("-")) && /^(gw|\$GW|.*\/gw|.*main\.ts)$/.test(toks[i - 1] ?? "")) return true;
     if (kind !== "charter" && kind !== "spec" && !kind?.startsWith("$")) return false;
-    if (toks[i + 2] !== "--auto") return true;
+    if (kind !== "spec" || toks[i + 2] !== "--auto") return true;
     return riskyCommand(cmd) || toks.slice(0, i + 2).some(t => t.includes("#"));
   });
 }

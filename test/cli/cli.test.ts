@@ -471,6 +471,14 @@ describe("approve", () => {
     expect(run(["approve", "spec", "--token", "--auto", "--auto"], dir, scrub).exitCode).toBe(1);
   });
 
+  it("charter with --auto exits 1 and records no H1 approval", () => {
+    write(`doc/${slugOf()}/motive.md`, "# charter\n");
+    const r = run(["approve", "charter", "--auto", "--token", tok], dir, scrub);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--auto applies to spec only");
+    expect(run(["compile"], dir, scrub).stdout).not.toContain("H1 charter: approved");
+  });
+
   it("spec auto-passes for refactor", () => {
     const slug = slugOf();
     write(`doc/${slug}/spec.md`, "# spec\n");

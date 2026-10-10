@@ -391,6 +391,10 @@ function cmdApprove(args: string[], motiveSlug?: string): void {
       process.exit(1);
     }
   }
+  if (artifact === "charter" && autoFlag) {
+    process.stderr.write(`usage: ${gw} approve charter [--token T]; --auto applies to spec only\n`);
+    process.exit(1);
+  }
   const a: IntentArtifact = artifact;
   const auto = a === "spec" && autoFlag;
   const store = requireDb(motiveSlug);

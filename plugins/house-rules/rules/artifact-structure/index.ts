@@ -43,8 +43,16 @@ function isNewFile(repoRoot: string, relPath: string): boolean {
   return inHead.status !== 0;
 }
 
-function isIgnored(repoRoot: string, relPath: string): boolean {
-  return spawnSync('git', ['check-ignore', '-q', '--', relPath], { cwd: repoRoot, stdio: 'ignore' }).status === 0;
+function ignoredPaths(repoRoot: string, relPaths: string[]): Set<string> {
+  if (relPaths.length === 0) return new Set();
+  const r = spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+    cwd: repoRoot,
+    input: relPaths.join('\0') + '\0',
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (r.status !== 0 || r.error) return new Set();
+  return new Set(r.stdout.split('\0').filter(Boolean));
 }
 
 function contentFindings(repoRoot: string, relPath: string, typeId: string, def: NonNullable<ManifestOptions['types']>[string]): string[] {
@@ -71,6 +79,7 @@ function contentFindings(repoRoot: string, relPath: string, typeId: string, def:
 function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: ManifestOptions, contentChecks: boolean): Finding[] {
   const findings: Finding[] = [];
   const globs = options.govern ?? [];
+  let ignored: Set<string> | null = null;
   for (const f of scoped) {
     if (!isNewFile(repoRoot, f.path)) continue;
     const redirect = forbiddenRedirect(f.path, { forbidden: options.forbidden ?? [] });
@@ -96,7 +105,8 @@ function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: Manif
     }
     const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
     if (!governed) continue;
-    if (isIgnored(repoRoot, f.path) && !inTypedArea(f.path, options)) continue;
+    ignored ??= ignoredPaths(repoRoot, scoped.map(s => s.path));
+    if (ignored.has(f.path) &&!inTypedArea(f.path, options)) continue;
     const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
     const lines = nearestTypes(f.path, options, 2).flatMap(n => {
       const def = options.types?.[n.type];
@@ -171,10 +181,10 @@ const rule: Rule = {
         addFileDirs(filePath);
       }
       // Add dirs from ctx.files that are not gitignored (guards writing new files)
-      for (const f of files) {
-        if (hasSpecialSegment(f.path)) continue;
-        const ignore = spawnSync('git', ['check-ignore', '-q', '--', f.path], { cwd: repoRoot });
-        if (ignore.status !== 0) addFileDirs(f.path);
+      const candidates = files.filter(f => !hasSpecialSegment(f.path));
+      const ignoredFiles = ignoredPaths(repoRoot, candidates.map(f => f.path));
+      for (const f of candidates) {
+        if (!ignoredFiles.has(f.path)) addFileDirs(f.path);
       }
     } else {
       (function walkFs(dir: string, relParent: string): void {

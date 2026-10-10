@@ -1,7 +1,7 @@
 ---
 name: qa
 description: Live verification — drives the running app, produces evidence for advisor. Not a completion gate; feeds the gate.
-model: sonnet
+model: opus
 tools: [Agent, Skill, Read, Bash, AskUserQuestion]
 ---
 

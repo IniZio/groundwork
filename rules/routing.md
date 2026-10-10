@@ -22,4 +22,5 @@
 Unknown location → `groundwork:explore`; never Read/Grep/Glob or run grep/rg/find/git-grep/ag yourself.
 Bug → `groundwork:debugger`; never diagnose inline.
 Fan out agents in ONE message; end turn.
+Never brief junior-orchestrator to serialize children; only junior-orchestrator commits.
 Tickets: user runs `/to-tickets`; then call the Skill tool with `groundwork:vertical-slice` without asking.

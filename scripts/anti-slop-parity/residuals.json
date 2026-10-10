@@ -2,60 +2,6 @@
   "upstreamSha": "c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b",
   "divergences": [
     {
-      "file": "probes/rd-param-annotated-initial.ts",
-      "line": 1,
-      "check": "no-reduce-accumulator-copy",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1 (shared isKnownArrayExpression: param annotation)"
-    },
-    {
-      "file": "probes/rd-let-annotated-initial.ts",
-      "line": 2,
-      "check": "no-reduce-accumulator-copy",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1"
-    },
-    {
-      "file": "probes/fm-nested-fn-assign-shadowed.ts",
-      "line": 3,
-      "check": "no-array-filter-map",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1 (scope-resolved writes only)"
-    },
-    {
-      "file": "probes/fm-destructuring-write.ts",
-      "line": 3,
-      "check": "no-array-filter-map",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (reference.isWrite && !init)"
-    },
-    {
-      "file": "probes/fm-for-of-write.ts",
-      "line": 3,
-      "check": "no-array-filter-map",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (write)"
-    },
-    {
-      "file": "probes/fm-update-write.ts",
-      "line": 3,
-      "check": "no-array-filter-map",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (write)"
-    },
-    {
       "file": "probes/ur-duplicate-alias-same-scope.ts",
       "line": 1,
       "check": "no-unknown-type-aliases",

@@ -11,24 +11,6 @@
       "why": "1 (shared isKnownArrayExpression: param annotation)"
     },
     {
-      "file": "probes/ur-default-param-alias.ts",
-      "line": 2,
-      "check": "no-unknown-returns",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1 (default substitution)"
-    },
-    {
-      "file": "probes/op-default-alias.ts",
-      "line": 2,
-      "check": "no-object-parameters",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1"
-    },
-    {
       "file": "probes/rd-let-annotated-initial.ts",
       "line": 2,
       "check": "no-reduce-accumulator-copy",
@@ -38,15 +20,6 @@
       "why": "1"
     },
     {
-      "file": "probes/ua-default-param.ts",
-      "line": 2,
-      "check": "no-unknown-type-aliases",
-      "upOnly": 1,
-      "portOnly": 0,
-      "class": "known",
-      "why": "1 (X)"
-    },
-    {
       "file": "probes/fm-nested-fn-assign-shadowed.ts",
       "line": 3,
       "check": "no-array-filter-map",
@@ -54,51 +27,6 @@
       "portOnly": 0,
       "class": "known",
       "why": "1 (scope-resolved writes only)"
-    },
-    {
-      "file": "probes/apply-class-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-apply",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0"
-    },
-    {
-      "file": "probes/apply-declare-const.ts",
-      "line": 2,
-      "check": "no-reflect-apply",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (declare const creates a def)"
-    },
-    {
-      "file": "probes/apply-enum-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-apply",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (enum def)"
-    },
-    {
-      "file": "probes/apply-namespace-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-apply",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (namespace def)"
-    },
-    {
-      "file": "probes/apply-var-hoist-in-block.ts",
-      "line": 1,
-      "check": "no-reflect-apply",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (var is function-scoped; def exists)"
     },
     {
       "file": "probes/fm-destructuring-write.ts",
@@ -128,132 +56,6 @@
       "why": "0 (write)"
     },
     {
-      "file": "probes/get-class-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-get",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0"
-    },
-    {
-      "file": "probes/get-declare-const.ts",
-      "line": 2,
-      "check": "no-reflect-get",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (declare const creates a def)"
-    },
-    {
-      "file": "probes/get-enum-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-get",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (enum def)"
-    },
-    {
-      "file": "probes/get-namespace-shadow.ts",
-      "line": 2,
-      "check": "no-reflect-get",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (namespace def)"
-    },
-    {
-      "file": "probes/get-var-hoist-in-block.ts",
-      "line": 1,
-      "check": "no-reflect-get",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (var is function-scoped; def exists)"
-    },
-    {
-      "file": "probes/mock-catch-param-shadow.ts",
-      "line": 1,
-      "check": "no-module-mocking",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (catch param def)"
-    },
-    {
-      "file": "probes/mock-declare-vi.ts",
-      "line": 2,
-      "check": "no-module-mocking",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (def exists, not import)"
-    },
-    {
-      "file": "probes/mock-for-of-shadow.ts",
-      "line": 1,
-      "check": "no-module-mocking",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (loop var def)"
-    },
-    {
-      "file": "probes/ua-inner-scope-last-wins.ts",
-      "line": 1,
-      "check": "no-unknown-type-aliases",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "2 (A, C); B not flagged"
-    },
-    {
-      "file": "probes/ua-interface-shadow.ts",
-      "line": 3,
-      "check": "no-unknown-type-aliases",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "1 (V only)"
-    },
-    {
-      "file": "probes/ua-namespace-scope.ts",
-      "line": 2,
-      "check": "no-unknown-type-aliases",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "1 (A in N only; B not flagged: A not visible)"
-    },
-    {
-      "file": "probes/ua-param-shadow.ts",
-      "line": 2,
-      "check": "no-unknown-type-aliases",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "1 (only Value; Box not flagged)"
-    },
-    {
-      "file": "probes/ur-class-shadows-alias.ts",
-      "line": 3,
-      "check": "no-unknown-returns",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0"
-    },
-    {
-      "file": "probes/ur-duplicate-alias-same-scope.ts",
-      "line": 3,
-      "check": "no-unknown-returns",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "artifact",
-      "why": "artifact: upstream parser rejects duplicate alias; port parses it"
-    },
-    {
       "file": "probes/ur-duplicate-alias-same-scope.ts",
       "line": 1,
       "check": "no-unknown-type-aliases",
@@ -261,15 +63,6 @@
       "portOnly": 1,
       "class": "artifact",
       "why": "artifact: upstream parser rejects duplicate alias; port parses it"
-    },
-    {
-      "file": "probes/ur-interface-shadows-alias.ts",
-      "line": 3,
-      "check": "no-unknown-returns",
-      "upOnly": 0,
-      "portOnly": 1,
-      "class": "known",
-      "why": "0 (nearest binding is interface => not resolved)"
     }
   ],
   "notPorted": [

@@ -23,7 +23,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 | code-smells | warn. TypeScript and JavaScript. Checks: no-reflect-apply, no-reflect-get, no-conditional-empty-object-spread, no-array-filter-map, no-reduce-accumulator-copy, no-shape-in-symbol-names (all ported), and no-accumulator-spread (original to house-rules, not from anti-slop: flags `{...acc, …}` or `[...acc, …]` returned from a reduce callback) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
 | no-module-mocking | warn. TypeScript and JavaScript. Flags Vitest and Jest module mocking (`mock`, `doMock`, `unstable_mockModule`) (ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
 
-Warn rules flag only lines added in the diff. The edit guard adds a context line, `house-rules <rule>: [<check>] <msg>`, and never denies. The Stop and SubagentStop gate lists unbaselined warn findings in a non-blocking message. It shows at most 20, then `… N more`. The new rules scan TypeScript and JavaScript files. Checks marked as ported come from anti-slop; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Warn rules flag only lines added in the diff. The edit guard adds a context line, `house-rules <rule>: [<check>] <msg>`, and never denies. The Stop and SubagentStop gate lists unbaselined warn findings in a non-blocking message. It shows at most 20, then `… N more`. Checks marked as ported come from anti-slop; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Per-rule READMEs are generated under `rules/<id>/`.
 

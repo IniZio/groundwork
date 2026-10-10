@@ -8,6 +8,9 @@
  * (TS treats type-only namespaces as non-instantiated; value is chosen for parity with the upstream shadow audit);
  * var/let/const/using/param/function/catch -> value. `declare global {}` is a module scope; string-named modules bind nothing.
  * `using` is only recognised when the grammar yields a lexical_declaration for it.
+ * References are value-namespace only and mirror eslint-scope: declaring ids of declarators with an initialiser and of
+ * declaration-headed for-in/of loops are init writes; other declaring ids and unresolved (global) names yield none.
+ * Identifiers under type annotations, type arguments/parameters, type aliases, interfaces and `typeof` type queries are skipped.
  */
 import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
 
@@ -42,6 +45,14 @@ export interface Binding {
   readonly declared: boolean;
   readonly id: Node;
   readonly scope: Scope;
+  readonly references: readonly Reference[];
+}
+
+export interface Reference {
+  readonly node: Node;
+  readonly isWrite: boolean;
+  readonly isRead: boolean;
+  readonly init: boolean;
 }
 
 export interface LexicalBindings {
@@ -78,6 +89,23 @@ const VALUE: readonly Namespace[] = ['value'];
 const TYPE: readonly Namespace[] = ['type'];
 const BOTH: readonly Namespace[] = ['value', 'type'];
 const LEXICAL_KEYWORDS = new Set(['var', 'let', 'const', 'using']);
+const TYPE_ONLY_NODES = new Set([
+  'type_annotation',
+  'type_query',
+  'type_arguments',
+  'type_parameters',
+  'type_alias_declaration',
+  'interface_declaration',
+  'nested_type_identifier',
+  'nested_identifier',
+  'import_specifier',
+  'import_clause',
+  'import_require_clause',
+  'import_alias',
+  'namespace_import',
+]);
+const PATTERN_WRAPPERS = new Set(['array_pattern', 'object_pattern', 'rest_pattern', 'parenthesized_expression']);
+const PARAMETER_NODES = new Set(['required_parameter', 'optional_parameter', 'formal_parameters']);
 
 let buildCount = 0;
 const cache = new WeakMap<Tree, LexicalBindings>();
@@ -93,6 +121,10 @@ export function analyzeBindings(tree: Tree): LexicalBindings {
     cache.set(tree, result);
   }
   return result;
+}
+
+export function referencesOf(binding: Binding): readonly Reference[] {
+  return binding.references;
 }
 
 export function resolve(identifier: Node, ns?: Namespace): Binding | null {
@@ -135,6 +167,7 @@ function build(tree: Tree): LexicalBindings {
   buildCount++;
   const scopes = new Map<number, MutableScope>();
   const declaringIds = new Map<number, Binding>();
+  const initIds = new Set<number>();
   const root = newScope('program', tree.rootNode, null);
   let declaredDepth = 0;
 
@@ -158,6 +191,7 @@ function build(tree: Tree): LexicalBindings {
       declared: declaredDepth > 0,
       id,
       scope: scope as Scope,
+      references: [],
     };
     const list = scope.bindings.get(binding.name);
     if (list) list.push(binding);
@@ -245,7 +279,11 @@ function build(tree: Tree): LexicalBindings {
       const target = keyword === 'var' ? hoistTarget(scope) : scope;
       for (const declarator of node.namedChildren) {
         if (declarator?.type === 'variable_declarator') {
-          bindPattern(target, declarator.childForFieldName('name'), keyword);
+          const name = declarator.childForFieldName('name');
+          bindPattern(target, name, keyword);
+          if (declarator.childForFieldName('value')) {
+            for (const id of patternIdentifiers(name)) initIds.add(id.id);
+          }
         }
       }
     } else if (type === 'import_statement') {
@@ -291,6 +329,7 @@ function build(tree: Tree): LexicalBindings {
       const inner = newScope('for', node, scope);
       const keyword = firstKeyword(node);
       if (keyword) {
+        for (const id of patternIdentifiers(node.childForFieldName('left'))) initIds.add(id.id);
         bindPattern(keyword === 'var' ? hoistTarget(scope) : inner, node.childForFieldName('left'), keyword as BindingKind);
       }
       return visitChildren(node, inner);
@@ -300,6 +339,78 @@ function build(tree: Tree): LexicalBindings {
 
   visitChildren(tree.rootNode, root);
 
+  function isField(parent: Node, field: string, child: Node): boolean {
+    return parent.childForFieldName(field)?.id === child.id;
+  }
+
+  // Walks from a candidate identifier up through assignment-target wrappers; null means it is a parameter declaration.
+  function classify(node: Node): { isWrite: boolean; isRead: boolean } | null {
+    const read = { isWrite: false, isRead: true };
+    let cur = node;
+    for (let parent = cur.parent; parent; cur = parent, parent = cur.parent) {
+      const t = parent.type;
+      if (PARAMETER_NODES.has(t)) return t === 'formal_parameters' || isField(parent, 'pattern', cur) ? null : read;
+      if (PATTERN_WRAPPERS.has(t)) continue;
+      if (t === 'non_null_expression' || ((t === 'as_expression' || t === 'satisfies_expression') && parent.namedChildren[0]?.id === cur.id)) continue;
+      if (t === 'pair_pattern') {
+        if (isField(parent, 'value', cur)) continue;
+        return read;
+      }
+      if (t === 'assignment_pattern' || t === 'object_assignment_pattern') {
+        if (isField(parent, 'left', cur)) continue;
+        return read;
+      }
+      if (t === 'assignment_expression' && isField(parent, 'left', cur)) return { isWrite: true, isRead: false };
+      if (t === 'augmented_assignment_expression' && isField(parent, 'left', cur)) return { isWrite: true, isRead: true };
+      if (t === 'update_expression' && isField(parent, 'argument', cur)) return { isWrite: true, isRead: true };
+      if (t === 'for_in_statement' && isField(parent, 'left', cur)) return { isWrite: true, isRead: false };
+      return read;
+    }
+    return read;
+  }
+
+  function collectReferences(node: Node): void {
+    const type = node.type;
+    if (TYPE_ONLY_NODES.has(type)) return;
+    if (type === 'export_specifier') {
+      const name = node.childForFieldName('name');
+      if (name) addReference(name);
+      return;
+    }
+    if (type === 'identifier' || type === 'shorthand_property_identifier' || type === 'shorthand_property_identifier_pattern') {
+      addReference(node);
+      return;
+    }
+    for (const child of node.children) if (child) collectReferences(child);
+  }
+
+  function addReference(node: Node): void {
+    const binding = resolveIn(node, 'value');
+    if (!binding) return;
+    let flags: { isWrite: boolean; isRead: boolean } | null;
+    let init = false;
+    if (declaringIds.has(node.id)) {
+      if (!initIds.has(node.id)) return;
+      flags = { isWrite: true, isRead: false };
+      init = true;
+    } else {
+      flags = classify(node);
+    }
+    if (!flags) return;
+    (binding.references as Reference[]).push({ node, isWrite: flags.isWrite, isRead: flags.isRead, init });
+  }
+
+  function resolveIn(identifier: Node, wanted: Namespace): Binding | null {
+    const own = declaringIds.get(identifier.id);
+    if (own && own.namespaces.includes(wanted)) return own;
+    const name = identifier.text;
+    for (let scope: Scope | null = scopeOf(identifier); scope; scope = scope.parent) {
+      const hit = scope.bindings.get(name)?.find((b) => b.namespaces.includes(wanted));
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   function scopeOf(node: Node): Scope {
     for (let current: Node | null = node; current; current = current.parent) {
       const scope = scopes.get(current.id);
@@ -308,19 +419,13 @@ function build(tree: Tree): LexicalBindings {
     return root as Scope;
   }
 
+  collectReferences(tree.rootNode);
+
   return {
     root: root as Scope,
     scopeOf,
     resolve(identifier, ns) {
-      const wanted: Namespace = ns ?? (identifier.type === 'type_identifier' ? 'type' : 'value');
-      const own = declaringIds.get(identifier.id);
-      if (own && own.namespaces.includes(wanted)) return own;
-      const name = identifier.text;
-      for (let scope: Scope | null = scopeOf(identifier); scope; scope = scope.parent) {
-        const hit = scope.bindings.get(name)?.find((b) => b.namespaces.includes(wanted));
-        if (hit) return hit;
-      }
-      return null;
+      return resolveIn(identifier, ns ?? (identifier.type === 'type_identifier' ? 'type' : 'value'));
     },
   };
 }

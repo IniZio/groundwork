@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-unknown-returns';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-returns.ts";
@@ -111,16 +111,12 @@ function returnedType(owner: Node): Node | null {
   return field.type === 'type_annotation' ? (field.namedChildren[0] ?? null) : field;
 }
 
-function visit(node: Node, hits: CheckHit[]): void {
-  if (OWNERS.has(node.type)) {
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+  const hits: CheckHit[] = [];
+  for (const node of (index ?? buildNodeIndex(root)).all) {
+    if (!OWNERS.has(node.type)) continue;
     const returned = returnedType(node);
     if (returned && isUnknown(returned, new Map(), new Set(), 0)) hits.push({ node: returned, message: MESSAGE });
   }
-  for (const child of node.namedChildren) visit(child, hits);
-}
-
-export function check(root: Node, _source: string): CheckHit[] {
-  const hits: CheckHit[] = [];
-  visit(root, hits);
   return hits;
 }

@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-unknown-parameters';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-parameters.ts";
@@ -39,7 +39,7 @@ function bindingName(pattern: Node): string {
 }
 
 function visit(node: Node, hits: CheckHit[]): void {
-  if (node.type === 'formal_parameters' && node.parent) {
+  if (node.parent) {
     const guarded = predicateName(node.parent);
     for (const param of node.namedChildren) {
       if (!PARAMETER_TYPES.has(param.type)) continue;
@@ -54,11 +54,10 @@ function visit(node: Node, hits: CheckHit[]): void {
       });
     }
   }
-  for (const child of node.namedChildren) visit(child, hits);
 }
 
-export function check(root: Node, _source: string): CheckHit[] {
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
   const hits: CheckHit[] = [];
-  visit(root, hits);
+  for (const node of (index ?? buildNodeIndex(root)).byType('formal_parameters')) visit(node, hits);
   return hits;
 }

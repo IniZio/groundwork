@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { defineGroupedRule, loadGroupedCases, loadIsolatedCases } from '../../src/engine/grouped-rule.js';
+import { buildNodeIndex, defineGroupedRule, loadGroupedCases, loadIsolatedCases } from '../../src/engine/grouped-rule.js';
 import { createSourceFiles, getDefaultParserFactory } from '../../src/engine/source-file.js';
 import { diffTextToHunks } from '../../src/hooks/lib/work-scope.js';
 import type { ParserFactory } from '../../src/hooks/languages/parse.js';
@@ -266,5 +266,101 @@ describe('grouped-rule: editCheck', () => {
     const edit = pending(SRC, SRC, [2]);
     const r = await rule.editCheck!(edit, envFor(SRC, edit.path));
     expect(r.findings).toHaveLength(0);
+  });
+});
+
+describe('grouped-rule: buildNodeIndex', () => {
+  const BIG = `import { a } from './a';
+export class K<T> extends Base implements I {
+  private x: number = 1;
+  async m(p: T, ...rest: number[]): Promise<void> {
+    const o = { ...p, k: [1, ...rest], 'q': \`t\${p}\` };
+    for (const i of rest) { if (i > 1) continue; else break; }
+    // comment
+    return void (await fetch(\`u\`)) as never;
+  }
+}
+`;
+  const rec = (n: any, out: any[]) => { out.push(n); for (const c of n.children) if (c) rec(c, out); return out; };
+
+  it('all equals recursive children pre-order and byType preserves it', async () => {
+    const sfs = createSourceFiles();
+    try {
+      const r = await sfs.get('typescript', BIG, 'src/big.ts');
+      if (!r || !r.ok) throw new Error('parse failed');
+      const root = r.source.tree.rootNode;
+      const expected = rec(root, []);
+      const index = buildNodeIndex(root);
+      const key = (n: any) => `${n.id}:${n.type}`;
+      expect(index.all.map(key)).toEqual(expected.map(key));
+      expect(index.all.length).toBeGreaterThan(50);
+      expect(index.all.some((n) => !n.isNamed)).toBe(true);
+      for (const t of new Set(expected.map((n: any) => n.type))) {
+        expect(index.byType(t as string).map(key)).toEqual(expected.filter((n: any) => n.type === t).map(key));
+      }
+      expect(index.byType('no_such_type')).toEqual([]);
+      const sp = index.byType('spread_element')[0];
+      const twin = expected.find((n: any) => n.id === sp.id);
+      expect(sp.parent?.id).toBe(twin.parent?.id);
+      expect(sp.text).toBe(twin.text);
+      expect(sp.startPosition).toEqual(twin.startPosition);
+      expect(index.all[0].id).toBe(root.id);
+    } finally {
+      sfs.dispose();
+    }
+  });
+});
+
+describe('grouped-rule: shared node index', () => {
+  function probeDir(seen: unknown[], touch: boolean): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gr-probe-'));
+    dirs.push(dir);
+    const checks = path.join(dir, 'rules', 'g', 'checks');
+    fs.mkdirSync(checks, { recursive: true });
+    (globalThis as any).__seen = seen;
+    fs.writeFileSync(path.join(checks, 'probe.ts'), `export const id = 'probe';
+export const upstream = 'u';
+export function check(_r: unknown, _s: string, index: any): never[] {
+  (globalThis as any).__seen.push(index);
+  ${touch ? 'index.byType("program");' : ''}
+  return [];
+}
+`);
+    fs.writeFileSync(path.join(checks, 'probe.cases.ts'), CASES_SRC);
+    return checks;
+  }
+
+  it('two grouped rules over one tree share an index; another tree gets a fresh one', async () => {
+    const seen: any[] = [];
+    const a = defineGroupedRule('a', 'd', probeDir(seen, false));
+    const b = defineGroupedRule('b', 'd', probeDir(seen, false));
+    const sfs = createSourceFiles();
+    try {
+      const f1 = fileFor('src/one.ts', 'const x = 1;\n');
+      const f2 = fileFor('src/two.ts', 'const y = 2;\n');
+      const sourceFile: RuleContext['sourceFile'] = (f) => sfs.get('typescript', f.text!, f.path);
+      await a.check(ctxFor([f1, f2], sourceFile));
+      await b.check(ctxFor([f1, f2], sourceFile));
+      expect(seen).toHaveLength(4);
+      expect(seen[0]).toBe(seen[2]);
+      expect(seen[1]).toBe(seen[3]);
+      expect(seen[0]).not.toBe(seen[1]);
+    } finally {
+      sfs.dispose();
+    }
+  });
+
+  it('serves correct nodes lazily through the shared index', async () => {
+    const seen: any[] = [];
+    const a = defineGroupedRule('a', 'd', probeDir(seen, true));
+    const sfs = createSourceFiles();
+    try {
+      const f1 = fileFor('src/one.ts', 'const x = 1;\n');
+      await a.check(ctxFor([f1], (f) => sfs.get('typescript', f.text!, f.path)));
+      expect(seen[0].byType('program')).toHaveLength(1);
+      expect(seen[0].all.length).toBeGreaterThan(3);
+    } finally {
+      sfs.dispose();
+    }
   });
 });

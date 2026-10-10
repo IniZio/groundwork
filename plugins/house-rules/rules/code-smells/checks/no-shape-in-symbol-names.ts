@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-shape-in-symbol-names';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-shape-in-symbol-names.ts";
@@ -23,16 +24,13 @@ function isBorrowedMemberName(node: Node): boolean {
   return !(parent.parent && JSX_TAGS.has(parent.parent.type));
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (NAME_TYPES.has(node.type) && node.text.toLowerCase().includes('shape') && !isBorrowedMemberName(node)) {
-    hits.push(node);
-  }
-  for (const child of node.children) if (child) walk(child, hits);
-}
-
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
   const hits: Node[] = [];
-  walk(root, hits);
+  for (const node of (index ?? buildNodeIndex(root)).all) {
+    if (NAME_TYPES.has(node.type) && node.text.toLowerCase().includes('shape') && !isBorrowedMemberName(node)) {
+      hits.push(node);
+    }
+  }
   return hits.map((node) => ({
     node,
     message: `Rename symbol "${node.text}" for its domain role; "shape" describes structure rather than ownership.`,

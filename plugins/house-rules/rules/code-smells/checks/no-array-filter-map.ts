@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-array-filter-map';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-array-filter-map.ts";
@@ -179,14 +180,8 @@ function isFilterMap(call: Node): boolean {
   return isKnownArray(inner.object, new Set<number>());
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (node.type === 'call_expression' && isFilterMap(node)) hits.push(node);
-  for (const child of node.children) if (child) walk(child, hits);
-}
-
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
-  const hits: Node[] = [];
-  walk(root, hits);
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
+  const hits = (index ?? buildNodeIndex(root)).byType('call_expression').filter(isFilterMap);
   return hits.map((node) => {
     const outer = methodTarget(node.childForFieldName('function') ?? node)!;
     const first = outer.name === 'map' ? 'filter' : 'map';

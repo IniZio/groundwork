@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-object-parameters';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-object-parameters.ts";
@@ -34,15 +34,21 @@ function bindingNames(node: Node): string[] {
   return [];
 }
 
-function collectBindings(node: Node, out: Env): void {
-  const names = bindingNames(node);
-  const scope = names.length > 0 ? scopeOf(node) : null;
-  if (scope) {
-    const byName = out.get(scope.id) ?? new Map<string, Node[]>();
-    for (const name of names) byName.set(name, [...(byName.get(name) ?? []), node]);
-    out.set(scope.id, byName);
+const BINDING_TYPES = [...DECLARATIONS, 'import_specifier', 'namespace_import', 'import_clause'];
+
+function collectBindings(index: NodeIndex): Env {
+  const out: Env = new Map();
+  for (const type of BINDING_TYPES) {
+    for (const node of index.byType(type)) {
+      const names = bindingNames(node);
+      const scope = names.length > 0 ? scopeOf(node) : null;
+      if (!scope) continue;
+      const byName = out.get(scope.id) ?? new Map<string, Node[]>();
+      for (const name of names) byName.set(name, [...(byName.get(name) ?? []), node]);
+      out.set(scope.id, byName);
+    }
   }
-  for (const child of node.namedChildren) collectBindings(child, out);
+  return out;
 }
 
 function typeParameterNames(node: Node): string[] {
@@ -134,26 +140,23 @@ function bindingName(pattern: Node): string {
 }
 
 function visit(node: Node, env: Env, hits: CheckHit[]): void {
-  if (node.type === 'formal_parameters') {
-    for (const param of node.namedChildren) {
-      if (!PARAMETER_TYPES.has(param.type)) continue;
-      const pattern = param.childForFieldName('pattern');
-      const annotation = param.childForFieldName('type');
-      const type = annotation?.namedChildren[0];
-      if (!pattern || !annotation || !type || !resolvesToObject(type, env, new Map(), new Set())) continue;
-      hits.push({
-        node: annotation,
-        message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type. Accept a named owner type; parse external input at its boundary before calling this function.`,
-      });
-    }
+  for (const param of node.namedChildren) {
+    if (!PARAMETER_TYPES.has(param.type)) continue;
+    const pattern = param.childForFieldName('pattern');
+    const annotation = param.childForFieldName('type');
+    const type = annotation?.namedChildren[0];
+    if (!pattern || !annotation || !type || !resolvesToObject(type, env, new Map(), new Set())) continue;
+    hits.push({
+      node: annotation,
+      message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type. Accept a named owner type; parse external input at its boundary before calling this function.`,
+    });
   }
-  for (const child of node.namedChildren) visit(child, env, hits);
 }
 
-export function check(root: Node, _source: string): CheckHit[] {
-  const env = new Map() as Env;
-  collectBindings(root, env);
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+  const idx = index ?? buildNodeIndex(root);
+  const env = collectBindings(idx);
   const hits: CheckHit[] = [];
-  visit(root, env, hits);
+  for (const params of idx.byType('formal_parameters')) visit(params, env, hits);
   return hits;
 }

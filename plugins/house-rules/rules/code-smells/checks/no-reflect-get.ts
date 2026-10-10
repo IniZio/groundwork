@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-reflect-get';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-reflect-get.ts";
@@ -93,20 +94,15 @@ function isGetMember(callee: Node): boolean {
   return false;
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (node.type === 'call_expression') {
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
+  const hits: Node[] = [];
+  for (const node of (index ?? buildNodeIndex(root)).byType('call_expression')) {
     const callee = node.childForFieldName('function');
     if (callee && isGetMember(callee)) {
       const object = callee.childForFieldName('object');
       if (object && isGlobalReflect(object)) hits.push(node);
     }
   }
-  for (const child of node.children) if (child) walk(child, hits);
-}
-
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
-  const hits: Node[] = [];
-  walk(root, hits);
   return hits.map((node) => ({
     node,
     message: 'Replace `Reflect.get` with typed property access. Parse dynamic input into a named domain type before reading it.',

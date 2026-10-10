@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-reduce-accumulator-copy';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-reduce-accumulator-copy.ts";
@@ -232,16 +233,14 @@ function copiesAccumulator(call: Node, reducer: Reducer): boolean {
   return false;
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (node.type === 'call_expression') {
-    const reducer = methodTarget(node.childForFieldName('function')) ? enclosingReducer(node) : null;
-    if (reducer && copiesAccumulator(node, reducer)) hits.push(node);
-  }
-  for (const child of node.children) if (child) walk(child, hits);
+function isCopyHit(node: Node): boolean {
+  const reducer = methodTarget(node.childForFieldName('function')) ? enclosingReducer(node) : null;
+  return !!reducer && copiesAccumulator(node, reducer);
 }
 
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
-  const hits: Node[] = [];
-  walk(root, hits);
-  return hits.map((node) => ({ node, message: MESSAGE }));
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
+  return (index ?? buildNodeIndex(root))
+    .byType('call_expression')
+    .filter(isCopyHit)
+    .map((node) => ({ node, message: MESSAGE }));
 }

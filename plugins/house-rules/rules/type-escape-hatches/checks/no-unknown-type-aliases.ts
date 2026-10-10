@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-unknown-type-aliases';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-type-aliases.ts";
@@ -11,8 +11,8 @@ type Bindings = Map<string, Bound>;
 
 const MAX_DEPTH = 32;
 
-function collectAliases(node: Node, aliases: Map<string, Alias>, all: Node[]): void {
-  if (node.type === 'type_alias_declaration') {
+function collectAliases(decls: readonly Node[], aliases: Map<string, Alias>, all: Node[]): void {
+  for (const node of decls) {
     const name = node.childForFieldName('name');
     const value = node.childForFieldName('value');
     if (name && value) {
@@ -22,7 +22,6 @@ function collectAliases(node: Node, aliases: Map<string, Alias>, all: Node[]): v
       all.push(node);
     }
   }
-  for (const child of node.namedChildren) collectAliases(child, aliases, all);
 }
 
 function matches(type: Node | null, bindings: Bindings, aliases: Map<string, Alias>, depth: number): boolean {
@@ -55,10 +54,10 @@ function matches(type: Node | null, bindings: Bindings, aliases: Map<string, Ali
   }
 }
 
-export function check(root: Node, _source: string): CheckHit[] {
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
   const aliases = new Map<string, Alias>();
   const declarations: Node[] = [];
-  collectAliases(root, aliases, declarations);
+  collectAliases((index ?? buildNodeIndex(root)).byType('type_alias_declaration'), aliases, declarations);
   const hits: CheckHit[] = [];
   for (const decl of declarations) {
     const name = decl.childForFieldName('name')!;

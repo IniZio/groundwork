@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-reflect-apply';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-reflect-apply.ts";
@@ -93,22 +94,19 @@ function isApplyMember(callee: Node): boolean {
   return false;
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (node.type === 'call_expression') {
-    const callee = node.childForFieldName('function');
-    if (callee && isApplyMember(callee)) {
-      const object = callee.childForFieldName('object');
-      if (object && isGlobalReflect(object)) hits.push(node);
-    }
-  }
-  for (const child of node.children) if (child) walk(child, hits);
+function isReflectApply(node: Node): boolean {
+  const callee = node.childForFieldName('function');
+  if (!callee || !isApplyMember(callee)) return false;
+  const object = callee.childForFieldName('object');
+  return !!object && isGlobalReflect(object);
 }
 
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
-  const hits: Node[] = [];
-  walk(root, hits);
-  return hits.map((node) => ({
-    node,
-    message: 'Replace `Reflect.apply` with a typed function call. Model dynamic dispatch behind a named interface.',
-  }));
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
+  return (index ?? buildNodeIndex(root))
+    .byType('call_expression')
+    .filter(isReflectApply)
+    .map((node) => ({
+      node,
+      message: 'Replace `Reflect.apply` with a typed function call. Model dynamic dispatch behind a named interface.',
+    }));
 }

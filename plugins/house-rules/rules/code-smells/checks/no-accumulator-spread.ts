@@ -1,4 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-accumulator-spread';
 
@@ -66,13 +67,9 @@ function spreadsAccumulator(spread: Node): boolean {
   return false;
 }
 
-function walk(node: Node, hits: Node[]): void {
-  if (node.type === 'spread_element' && spreadsAccumulator(node)) hits.push(node);
-  for (const child of node.children) if (child) walk(child, hits);
-}
-
-export function check(root: Node, _source: string): { node: Node; message: string }[] {
-  const hits: Node[] = [];
-  walk(root, hits);
-  return hits.map((node) => ({ node, message: MESSAGE }));
+export function check(root: Node, _source: string, index?: NodeIndex): { node: Node; message: string }[] {
+  return (index ?? buildNodeIndex(root))
+    .byType('spread_element')
+    .filter(spreadsAccumulator)
+    .map((node) => ({ node, message: MESSAGE }));
 }

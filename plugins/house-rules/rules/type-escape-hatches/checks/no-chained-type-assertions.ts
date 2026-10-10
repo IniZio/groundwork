@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-chained-type-assertions';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-chained-type-assertions.ts";
@@ -47,15 +47,11 @@ function isForbiddenChain(node: Node): boolean {
   return count > 1 && nonConst;
 }
 
-function visit(node: Node, hits: CheckHit[]): void {
-  if (isAssertion(node) && isOutermost(node) && isForbiddenChain(node)) {
-    hits.push({ node, message: MESSAGE });
-  }
-  for (const child of node.namedChildren) visit(child, hits);
-}
-
-export function check(root: Node, _source: string): CheckHit[] {
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+  const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
-  visit(root, hits);
+  for (const node of [...idx.byType('as_expression'), ...idx.byType('type_assertion')].sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex)) {
+    if (isOutermost(node) && isForbiddenChain(node)) hits.push({ node, message: MESSAGE });
+  }
   return hits;
 }

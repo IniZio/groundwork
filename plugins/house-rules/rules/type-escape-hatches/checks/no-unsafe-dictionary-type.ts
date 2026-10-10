@@ -1,5 +1,5 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
-import type { CheckHit } from '../../../src/engine/grouped-rule.js';
+import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-unsafe-dictionary-type';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unsafe-dictionary-type.ts";
@@ -67,7 +67,7 @@ function enclosingScope(node: Node): Node {
   return node;
 }
 
-function buildEnv(root: Node): Env {
+function buildEnv(root: Node, index: NodeIndex): Env {
   const interfaces = new Map<string, Node[]>();
   const bindings = new Map<string, Binding[]>();
   for (const statement of root.namedChildren) {
@@ -75,16 +75,16 @@ function buildEnv(root: Node): Env {
     const name = decl?.type === 'interface_declaration' ? decl.childForFieldName('name') : null;
     if (decl && name) interfaces.set(name.text, [...(interfaces.get(name.text) ?? []), decl]);
   }
-  const walk = (node: Node): void => {
+  const declarations = [...TYPE_DECLS, 'import_specifier', 'namespace_import']
+    .flatMap((type) => index.byType(type))
+    .concat(index.byType('import_clause').flatMap((clause) => clause.namedChildren.filter((c: Node) => c.type === 'identifier')));
+  for (const node of declarations) {
     const declared = declaredBinding(node);
-    if (declared) {
-      const list = bindings.get(declared.name) ?? [];
-      list.push({ alias: declared.alias, scope: enclosingScope(node) });
-      bindings.set(declared.name, list);
-    }
-    for (const c of node.namedChildren) walk(c);
-  };
-  walk(root);
+    if (!declared) continue;
+    const list = bindings.get(declared.name) ?? [];
+    list.push({ alias: declared.alias, scope: enclosingScope(node) });
+    bindings.set(declared.name, list);
+  }
   return { interfaces, bindings };
 }
 
@@ -278,11 +278,12 @@ function visit(node: Node, env: Env, hits: CheckHit[]): void {
     const unsafe = value ? unsafeDirect(value, env, new Map(), new Set()) : null;
     if (unsafe !== null) hits.push({ node, message: message(unsafe) });
   }
-  for (const c of node.namedChildren) visit(c, env, hits);
 }
 
-export function check(root: Node, _source: string): CheckHit[] {
+export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+  const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
-  visit(root, buildEnv(root), hits);
+  const env = buildEnv(root, idx);
+  for (const node of idx.all) visit(node, env, hits);
   return hits;
 }

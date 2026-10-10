@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Node } from '../hooks/lib/tree-sitter.js';
+import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
 import type { Finding, PendingEdit, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
 import { createSourceFiles, type SourceFileResult } from './source-file.js';
 
@@ -15,7 +15,49 @@ export interface Check {
   id: string;
   upstream: string;
   tsOnly?: boolean;
-  check(root: Node, source: string): CheckHit[];
+  check(root: Node, source: string, index?: NodeIndex): CheckHit[];
+}
+
+export interface NodeIndex {
+  byType(type: string): readonly Node[];
+  readonly all: readonly Node[];
+}
+
+const NO_NODES: readonly Node[] = Object.freeze([]);
+
+/** One cursor pass; `all` is pre-order over named and anonymous nodes, `byType` its per-type subsequences. */
+export function buildNodeIndex(root: Node): NodeIndex {
+  const all: Node[] = [];
+  const groups = new Map<string, Node[]>();
+  const cursor = root.walk();
+  try {
+    for (;;) {
+      const node = cursor.currentNode;
+      const type = node.type;
+      all.push(node);
+      const group = groups.get(type);
+      if (group) group.push(node);
+      else groups.set(type, [node]);
+      if (cursor.gotoFirstChild()) continue;
+      while (!cursor.gotoNextSibling()) if (!cursor.gotoParent()) return { all, byType: (t) => groups.get(t) ?? NO_NODES };
+    }
+  } finally {
+    cursor.delete();
+  }
+}
+
+const indexByTree = new WeakMap<Tree, NodeIndex>();
+
+/** One lazy index per parsed tree, shared by every grouped rule; built only when a check reads it. */
+function sharedIndex(tree: Tree): NodeIndex {
+  let shared = indexByTree.get(tree);
+  if (!shared) {
+    let built: NodeIndex | undefined;
+    const get = (): NodeIndex => (built ??= buildNodeIndex(tree.rootNode));
+    shared = { byType: (t) => get().byType(t), get all() { return get().all; } };
+    indexByTree.set(tree, shared);
+  }
+  return shared;
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts', '.tsx']);
@@ -72,9 +114,10 @@ function collect(
   const lines = text.split('\n');
   const jsFile = isJsOnly(filePath);
   const findings: Finding[] = [];
+  const index = sharedIndex(tree);
   for (const c of checks) {
     if (c.tsOnly && jsFile) continue;
-    for (const hit of c.check(tree.rootNode, text)) {
+    for (const hit of c.check(tree.rootNode, text, index)) {
       const row = hit.node ? hit.node.startPosition.row : hit.row;
       if (row === undefined || errorRows.has(row) || !isAdded(row)) continue;
       findings.push({

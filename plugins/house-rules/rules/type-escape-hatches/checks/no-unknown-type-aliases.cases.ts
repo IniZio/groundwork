@@ -62,5 +62,10 @@ export const foreignHits: readonly string[] = [
   '[no-unknown-returns] alias resolving to unknown',
   '[no-unknown-returns] infer name is not bound in the false branch',
   '[no-unknown-returns] alias scoped inside a function body',
+  '[no-unknown-returns] interface shadows unknown alias',
+  '[no-unknown-returns] nested interface shadows outer unknown alias',
+  '[no-unknown-returns] nested class shadows outer unknown alias',
+  '[no-unknown-returns] import shadows unknown alias',
+  '[no-unknown-returns] duplicate same-scope aliases are ambiguous (oxlint cannot parse; artifact residual)',
   '[no-unsafe-dictionary-type] record of alias for unknown',
 ];

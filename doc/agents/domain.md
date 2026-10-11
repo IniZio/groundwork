@@ -28,7 +28,7 @@ bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"ra
 - ADR headings: Context, Decision, Rejected alternatives, Consequences.
 - ADR numbering is per checkout. Reference another repo's ADR as prose in Context plus a `supersedes` entry.
 - Human view: only a decision that flips a reviewer's verdict gets one row in the Decisions table under Changes of the PR body draft. Rejected alternatives stay in the ADR or event. Add nothing else there.
-- The token comes from `bun src/cli/main.ts token`. Only the main session may run it; the `store-write-guard` hook denies subagents. A subagent that resolves a decision must hand the text back to the main session to record.
+- The token comes from `bun src/cli/main.ts token`. Only the main session should run it. A subagent that resolves a decision must hand the text back to the main session to record.
 - After appending, run `bun src/cli/main.ts compile` and confirm the decision appears. A successful append alone does not prove the decision is visible.
 
 Events live in `.groundwork/work.db` (machine-local). `*.db` is ignored via `.gitignore`, so they are durable only on this machine. ADR files live in `.groundwork/adr/`.

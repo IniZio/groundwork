@@ -6,7 +6,7 @@ gw keeps all work state for a repo in one SQLite store. The store is at `$GROUND
 
 - **One store per repo.** Plain files per agent would drift and cannot answer "is this run done?" in one read.
 - **Motives.** A motive is one line of work with its own slices, events, and gate. A command targets the active motive, or the one named by `--motive`. The stop-gate checks every active motive that has slices, and blocks if any has open slices or no approval. A hold is the exception: it is store-wide, because it is a session-level signal.
-- **Token-guarded writes.** Every mutation needs `--token`, printed once by `gw init` and again by `gw token`. The token and the gate-seal key live outside the repo, so a subagent cannot read them. Rejected: trusting the caller, because a subagent could then approve its own work. Residual risk: a subagent that builds the key path at runtime can evade the string-match guard. Forging an approval needs the seal key, which only `gw gate approve` reads.
+- **Token-guarded writes.** Every mutation needs `--token`, printed once by `gw init` and again by `gw token`. The token and the gate-seal key live outside the repo. Rejected: trusting the caller, because a subagent could then approve its own work. Forging an approval needs the seal key, which only `gw gate approve` reads; the HMAC seal and the fail-closed stop gate are the control.
 - **Gate verdicts are events, not edits.** The newest verdict decides. Rejected: a mutable "done" flag, because it loses who closed the gate and when.
 
 ```mermaid

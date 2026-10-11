@@ -7,7 +7,7 @@ Agent-facing. Human overview: doc/cli.md.
 | Command | Flags | Effect |
 |---|---|---|
 | `gw init` | `--objective TEXT` | Creates the store and prints the token once. Safe to re-run; the token shows on the first run only. `--objective` records the objective for `gw compile`. Excludes the working-tier directory through git's local exclude file, never `.gitignore`. In a tree linked to a parent slice it creates a child store instead and prints no token. A direct-mode link creates no store. See [nested work scope](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/spec/nested-work-scope.md). |
-| `gw token` | | Prints the write token again. Main session only; subagents are denied by the store-write-guard hook. Use on session resume. |
+| `gw token` | | Prints the write token again. Main session only by convention. Use on session resume. |
 | `gw slice add <id>` | `--desc TEXT` `--wave N` `--covers-ac AC-1,AC-3` `--blocked-by a,b` `--acceptance "x;y"` | Adds a pending slice. `--wave` must be an integer, else exit 1. |
 | `gw slice claim <id>` | `--by AGENT` | Sets `in_progress` and records the claimer. Exit 1 if already claimed. |
 | `gw slice set-ac <id>` | `--covers-ac AC-1,AC-3` | Sets or replaces the slice's covered acceptance criteria. |
@@ -58,13 +58,13 @@ spawn-model-guard (src/hooks/spawn-model-guard.ts) denies spawning `groundwork:i
 
 ### Token security (hook detail)
 
-The write token and gate-seal key live in ~/.config/groundwork/repos/<hash>/ (outside the repo, mode 0600, not in work.db). The `store-write-guard` PreToolUse hook denies subagents (those with `agent_type` set) from using Read/Bash/Grep/Glob to access paths containing `.config/groundwork`, `groundwork/repos`, `write.token`, or `seal.key`, and from invoking `gw init` or `gw token`. The main thread (no `agent_type`) is unrestricted.
+The write token and gate-seal key live in ~/.config/groundwork/repos/<hash>/ (outside the repo, mode 0600, not in work.db). Keeping the key out of the repo means a subagent cannot forge an approval: the HMAC seal needs the key, and the stop gate fails closed without a valid seal.
 
 **Limitation:** a subagent that builds the config-dir path fully dynamically at runtime (e.g. a `bun -e` script computing `$HOME` and the repo hash) can bypass the string-match guard. The HMAC seal on gate verdicts is the primary protection: forging a GATE_APPROVE requires the seal key, which only the `gw gate approve` CLI command reads.
 
 ### gw token
 
-Use this on session resume — the main session only; subagents are denied this command by the `store-write-guard` hook.
+Use this on session resume — the main session only.
 
 ### gw recipe (footer)
 

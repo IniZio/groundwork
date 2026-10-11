@@ -359,7 +359,7 @@
           ]
         },
         "effect": {
-          "description": "Opt-in group of Effect (effect-ts) checks. Off by default. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "description": "Opt-in group of five Effect checks for TypeScript and JavaScript: prefer-effect-match, no-manual-effect-error-tag, no-service-constructor-imports (skips test and spec files), no-manual-tag-comparison, and no-manual-tagged-construction. Off by default. Severity can be \"warn\" or \"off\"; the rule has no options.",
           "oneOf": [
             {
               "type": "string",
@@ -388,7 +388,7 @@
           ]
         },
         "require-safety-comment-for-type-assertion": {
-          "description": "Flags type assertions (as and <T> casts) that lack a nearby safety comment justifying them. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "description": "Flags non-const type assertions (as and <T> casts) in TypeScript that have no SAFETY: comment right before the assertion or its statement. as const is exempt. The default severity is \"warn\". Severity can be \"warn\" or \"off\"; the rule has no options.",
           "oneOf": [
             {
               "type": "string",
@@ -417,7 +417,7 @@
           ]
         },
         "require-readable-spacing": {
-          "description": "Flags code that lacks readable spacing: blocks of code that are not separated by blank lines. Severity can be \"warn\" or \"off\"; the rule has no options.",
+          "description": "Flags statements in TypeScript and JavaScript that need a blank line before them, following the padding-line-between-statements policy of ESLint Stylistic. It never autofixes. The default severity is \"warn\". Severity can be \"warn\" or \"off\"; the rule has no options.",
           "oneOf": [
             {
               "type": "string",

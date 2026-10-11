@@ -130,4 +130,8 @@ describe("adr supersedes/date frontmatter through the deployed hooks", () => {
   it("(5) non-date date blocks Stop naming date", () => {
     expectBlock("case5", ".groundwork/adr/0105-baddate.md", adr("date: yesterday"), "date");
   });
+
+  it("(6) supersedes array element of wrong type blocks Stop naming supersedes[0]", () => {
+    expectBlock("case6", ".groundwork/adr/0106-badelem.md", adr("supersedes: [1]"), "supersedes[0]: expected type string");
+  });
 });

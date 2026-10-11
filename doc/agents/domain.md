@@ -10,20 +10,27 @@ How the engineering skills should consume this repo's domain documentation when 
 
 If any of these don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 
-## Decisions are DECISION events, not ADRs
+## Decisions: DECISION events and ADRs
 
-This repo has no ADR directory. Never create `doc/adr/`, `docs/adr/`, or any `NNNN-*.md` ADR file. Where a skill says "write an ADR", record a `DECISION` event instead:
+A `DECISION` event is the resume index for every decision. Where a skill says "write an ADR", append a `DECISION` event; add an ADR file only when the rule below says so. Never create `doc/adr/` or `docs/adr/`.
 
 ```
+bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"adr":".groundwork/adr/NNNN-name.md"}' --token T
 bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"rationale":"...","alternatives":["... (rejected: ...)"]}' --token T
 ```
 
 - `--msg` is the decision statement. It is what `gw compile` shows under `decisions (N)`.
-- Put the rationale and rejected alternatives in `--data`. Those are the ADR's "why" and "considered options".
+- First command: decision with an ADR. `--data` links the record through `adr`.
+- Second command: event-only decision. Put the rationale and rejected alternatives in `--data`.
+- Create an ADR only when the decision spans motives or needs full reasoning. A decision that only changes how the work gets done stays event-only.
+- ADR path: `.groundwork/adr/{nnnn}-{name:kebab}.md`. ADRs are repo-level and may span motives.
+- ADR frontmatter: `status` (`accepted` or `superseded`) and `superseded_by`.
+- ADR headings: Context, Decision, Rejected alternatives, Consequences.
+- Human view: only a decision that flips a reviewer's verdict gets one line plus its rejected alternative in `doc/<slug>/design.md`. Add nothing else there.
 - The token comes from `bun src/cli/main.ts token`. Only the main session may run it; the `store-write-guard` hook denies subagents. A subagent that resolves a decision must hand the text back to the main session to record.
 - After appending, run `bun src/cli/main.ts compile` and confirm the decision appears. A successful append alone does not prove the decision is visible.
 
-Decisions live in `.groundwork/work.db`. `*.db` is ignored via `.gitignore`, so they are durable only on this machine.
+Events live in `.groundwork/work.db` (machine-local). `*.db` is ignored via `.gitignore`, so they are durable only on this machine. ADR files live in `.groundwork/adr/`.
 
 ## File structure
 
@@ -32,7 +39,8 @@ Decisions live in `.groundwork/work.db`. `*.db` is ignored via `.gitignore`, so 
 ├── GLOSSARY.md               ← glossary (committed)
 ├── doc/                      ← only committed doc root; never create docs/
 ├── .groundwork/              ← working tier, excluded per clone by `gw init` via .git/info/exclude
-│   └── work.db               ← DECISION events (`*.db` ignored via .gitignore)
+│   ├── work.db               ← DECISION events (`*.db` ignored via .gitignore)
+│   └── adr/                  ← ADR records
 └── src/
 ```
 

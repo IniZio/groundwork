@@ -32,7 +32,11 @@ _Avoid_: Log entry, journal line
 
 **Decision**:
 An event that records a settled choice, its rationale and the alternatives rejected.
-_Avoid_: ADR
+_Avoid_: ADR (the ADR is the file a Decision may link to)
+
+**ADR**:
+A repo-level decision record at `.groundwork/adr/NNNN-name.md`, linked from a Decision event, for a choice that spans motives or needs full reasoning.
+_Avoid_: Design doc
 
 **Write token**:
 The secret that authorises changes to the work store; only the main session holds it.

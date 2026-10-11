@@ -10,4 +10,4 @@ Default five roles (needs-triage, needs-info, ready-for-agent, ready-for-human, 
 
 ### Domain docs
 
-Single-context: root `GLOSSARY.md` for terms; decisions are `DECISION` events recorded with `gw event append`, not ADR files. See `doc/agents/domain.md`.
+Single-context: root `GLOSSARY.md` for terms; decisions are `DECISION` events (`gw event append`); a decision that spans motives or needs full reasoning also gets an ADR at `.groundwork/adr/NNNN-name.md`, linked from the event. See `doc/agents/domain.md`.

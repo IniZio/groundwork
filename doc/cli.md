@@ -83,7 +83,7 @@ Default is a dry run: one `<from> → <to>` line per move, nothing changed.
 
 Paste the output into a host's house-rules config. Its `govern` list covers only working-tier markdown, so host product docs stay ungoverned. A host that wants to catch stray docs elsewhere must widen `govern` and add its own types. A stray document inside the working tier is denied with the nearest matching types named. The `forbidden` patterns apply repo-wide, each with a redirect to the right place (for example, learning records redirect to the motive's lessons file):
 
-- ADR directories
+- ADR folders under `doc` and `docs`, redirected to the `adr` folder inside `.groundwork`
 - scratch and out-of-scope folders
 - lessons and learning-records folders
 - to-questionnaire files

@@ -79,6 +79,8 @@ export const cases: RuleCases = {
     { why: 'extra: expression-bodied arrow names its binding', code: 'const make = (): object => [];', findings: msg('return value of `make`', 'object') },
     { why: 'extra: angle-bracket assertion reports', code: 'const value = <unknown>1;', findings: msg('assertion', 'unknown') },
     { why: 'extra: declare function predicate with call evidence', code: 'declare function isString(value: unknown): value is string; isString(1);', findings: msg('argument for parameter `value` of `isString`', 'unknown') },
+    { why: 'upstream oracle: destructured const binding follows declarator init as evidence (object pattern)', code: 'const s = { id: 1 }; const { a }: any = s; const p = a as { id: number };\n', findings: msg('assertion', 'anonymous object') },
+    { why: 'upstream oracle: destructured const binding follows declarator init as evidence (array pattern)', code: 'const s = { id: 1 }; const [a]: any = s; const p = a as { id: number };\n', findings: msg('assertion', 'anonymous object') },
   ],
 };
 
@@ -129,6 +131,8 @@ export const foreignHits: readonly string[] = [
   "[no-widen-then-assert] widenedBinding: let binding is ignored",
   "[no-widen-then-assert] widenedBinding: var binding is ignored",
   "[no-widen-then-assert] widenedBinding: reassigned binding is ignored",
+  "[no-widen-then-assert] widenedBinding: object destructured id is ignored",
+  "[no-widen-then-assert] widenedBinding: array destructured id is ignored",
   "[no-widen-then-assert] widenedBinding: not broad (no annotation, no broad assertion)",
   "[no-widen-then-assert] checkAssertion: assertion inside own initializer precedes declaredAt",
   "[no-widen-then-assert] checkAssertion: assertion on a non-identifier expression",

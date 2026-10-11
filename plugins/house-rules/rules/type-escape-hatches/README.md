@@ -1831,6 +1831,26 @@ declare function isString(value: unknown): value is string; isString(1);
 **Expected findings:**
 - [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
 
+### [no-known-value-widening] upstream oracle: destructured const binding follows declarator init as evidence (object pattern)
+
+```
+const s = { id: 1 }; const { a }: any = s; const p = a as { id: number };
+
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit anonymous object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream oracle: destructured const binding follows declarator init as evidence (array pattern)
+
+```
+const s = { id: 1 }; const [a]: any = s; const p = a as { id: number };
+
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit anonymous object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
 ### [no-object-parameters] bare object parameter
 
 ```

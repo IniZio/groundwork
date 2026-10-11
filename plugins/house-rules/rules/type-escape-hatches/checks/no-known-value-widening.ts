@@ -28,11 +28,18 @@ function annotationType(owner: Node | null, field: string): Node | null {
   return annotation ? (named(annotation)[0] ?? null) : null;
 }
 
+const DESTRUCTURING = new Set(['object_pattern', 'array_pattern', 'pair_pattern', 'rest_pattern', 'assignment_pattern', 'object_assignment_pattern']);
+
 function constDeclarator(binding: Binding): Node | null {
   if (binding.kind !== 'const') return null;
-  const declarator = binding.id.parent;
-  if (declarator?.type !== 'variable_declarator' || declarator.childForFieldName('name')?.id !== binding.id.id) return null;
-  return declarator;
+  let child: Node = binding.id;
+  let parent = child.parent;
+  while (parent !== null && DESTRUCTURING.has(parent.type)) {
+    child = parent;
+    parent = child.parent;
+  }
+  if (parent?.type !== 'variable_declarator' || parent.childForFieldName('name')?.id !== child.id) return null;
+  return parent;
 }
 
 const hasNonInitWrite = (binding: Binding): boolean => binding.references.some((r) => r.isWrite && !r.init);

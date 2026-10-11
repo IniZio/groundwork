@@ -1,6 +1,6 @@
 ## What changed
 
-State the point of the change in one or two sentences. Say what a user or reader sees now that they did not see before. Then give the reasons a reviewer needs to judge it.
+State the point of the change in one or two sentences. Say what a user or reader sees now that they did not see before. Then write one line for each decision that could flip the reviewer's yes or no. Give no rejected alternatives. Give no reason longer than one clause. Rejected alternatives live in the ADR or the DECISION event.
 
 ## Evidence
 

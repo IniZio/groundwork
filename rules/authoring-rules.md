@@ -31,7 +31,7 @@ Rule 11 (absolute paths) governs agent view; human view uses permalinks.
 - Never state what baseline CI enforces (lint, typecheck, tests passed).
 - File mentions are GitHub permalinks pinned to a commit. Never code-blocked paths.
 - Flows, architectures, state machines: diagram.
-- Each decision carries its rejected alternative.
+- State decisions only; rejected alternatives live in ADRs and DECISION events.
 - Plain controlled English. Apply ASD-STE100 where reader could misparse.
 - No agent bookkeeping in human view (PR body, `doc/` snapshot): file lists, commands, AC tables, ledger ids.
 - No hard length cap.

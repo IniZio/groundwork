@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vm-run.sh W -- run upstream anti-slop's oxlint over W/corpus inside a nexus microVM.
 # Upstream code never runs on the host. Guest: network only for `pnpm install`; lint runs
-# in an empty netns as uid 65534 with zero capabilities, after NET/CapEff probes (exit 97 on fail).
+# in an empty netns as uid 65534 with zero capabilities, after NET/CapEff/uid probes (exit 97 on fail).
 # Writes W/out/{oxlint.json,oxlint.stderr,positive-control.txt,probe.log,vm-run.log}.
 # PARITY_DRY_RUN=1 prints every command (host prep included) and executes nothing.
 # Env: PARITY_NODE_TARBALL, XDG_CACHE_HOME.
@@ -105,6 +105,7 @@ exec unshare --net -- setpriv --reuid=65534 --regid=65534 --clear-groups --inh-c
   net=$(timeout 30 node -e "require(\"https\").get(\"https://registry.npmjs.org/\",r=>console.log(\"NET OPEN\",r.statusCode)).on(\"error\",e=>console.log(\"NET BLOCKED\",e.code))" 2>&1)
   echo "$net" | tee /work/out/probe.log
   grep -E "CapEff|CapBnd" /proc/self/status | tee -a /work/out/probe.log
+  echo "UID=$(id -u)" | tee -a /work/out/probe.log
   cap=$(awk "/^CapEff/{print \$2}" /proc/self/status)
   case "$net" in
     "NET BLOCKED "*) ;;
@@ -112,6 +113,7 @@ exec unshare --net -- setpriv --reuid=65534 --regid=65534 --clear-groups --inh-c
   esac
   [ "$(printf "%s\n" "$net" | wc -l)" = 1 ] || { echo "PROBE FAIL: unexpected probe output"; exit 97; }
   [ "$cap" = 0000000000000000 ] || { echo "PROBE FAIL: CapEff=$cap"; exit 97; }
+  [ "$(id -u)" = 65534 ] || { echo "PROBE FAIL: uid=$(id -u)"; exit 97; }
   echo "OXLINT_VERSION=$($OX --version)"
   timeout 600 $OX -c /work/cfg/.oxlintrc.json --format json corpus > /work/out/oxlint.json 2> /work/out/oxlint.stderr
   echo "oxlint exit=$?"
@@ -162,7 +164,8 @@ else
   # host-side re-check of the guest log
   grep -q 'NET BLOCKED' "$LOG" && ! grep -q 'NET OPEN' "$LOG" \
     && grep -q "$(printf 'CapEff:\t0000000000000000')" "$LOG" \
-    || { echo "guest log lacks NET BLOCKED / CapEff 0; refusing results" >&2; exit 98; }
+    && grep -q '^UID=65534$' "$LOG" \
+    || { echo "guest log lacks NET BLOCKED / CapEff 0 / UID=65534; refusing results" >&2; exit 98; }
 fi
 for f in oxlint.json oxlint.stderr positive-control.txt probe.log; do
   run timeout 60 nexus cp "$SB" "guest:/work/out/$f" "$OUT/$f"

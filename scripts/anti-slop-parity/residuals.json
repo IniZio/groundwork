@@ -9,48 +9,25 @@
       "portOnly": 1,
       "class": "artifact",
       "why": "artifact: upstream parser rejects duplicate alias; port parses it"
+    },
+    {
+      "file": "probes/ur-duplicate-alias-same-scope.ts",
+      "line": 2,
+      "check": "require-readable-spacing",
+      "upOnly": 0,
+      "portOnly": 1,
+      "class": "artifact",
+      "why": "artifact: upstream parser rejects duplicate alias, so no upstream rule reports in this file; port parses it and flags the missing blank line"
+    },
+    {
+      "file": "probes/ur-duplicate-alias-same-scope.ts",
+      "line": 3,
+      "check": "require-readable-spacing",
+      "upOnly": 0,
+      "portOnly": 1,
+      "class": "artifact",
+      "why": "artifact: upstream parser rejects duplicate alias, so no upstream rule reports in this file; port parses it and flags the missing blank line"
     }
   ],
-  "notPorted": [
-    {
-      "check": "no-known-value-widening",
-      "why": "not-ported: widening heuristics"
-    },
-    {
-      "check": "no-runtime-typeof",
-      "why": "not-ported: typeof rule"
-    },
-    {
-      "check": "no-widen-then-assert",
-      "why": "not-ported: widen/assert flow rule"
-    },
-    {
-      "check": "require-readable-spacing",
-      "why": "not-ported: formatting rule"
-    },
-    {
-      "check": "require-safety-comment-for-type-assertion",
-      "why": "not-ported: comment-policy rule"
-    },
-    {
-      "check": "no-manual-effect-error-tag",
-      "why": "not-ported: Effect-specific rule"
-    },
-    {
-      "check": "no-manual-tag-comparison",
-      "why": "not-ported: Effect-specific rule"
-    },
-    {
-      "check": "no-manual-tagged-construction",
-      "why": "not-ported: Effect-specific rule"
-    },
-    {
-      "check": "no-service-constructor-imports",
-      "why": "not-ported: Effect-specific rule"
-    },
-    {
-      "check": "prefer-effect-match",
-      "why": "not-ported: Effect-specific rule"
-    }
-  ]
+  "notPorted": []
 }

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const PORTED = new Set(['no-unknown-parameters', 'no-unknown-returns', 'no-unknown-type-aliases', 'no-unsafe-dictionary-type', 'no-object-parameters', 'no-chained-type-assertions', 'no-module-mocking', 'no-reflect-apply', 'no-reflect-get', 'no-conditional-empty-object-spread', 'no-array-filter-map', 'no-reduce-accumulator-copy', 'no-shape-in-symbol-names']);
+const PORTED = new Set(['no-unknown-parameters', 'no-unknown-returns', 'no-unknown-type-aliases', 'no-unsafe-dictionary-type', 'no-object-parameters', 'no-chained-type-assertions', 'no-module-mocking', 'no-reflect-apply', 'no-reflect-get', 'no-conditional-empty-object-spread', 'no-array-filter-map', 'no-reduce-accumulator-copy', 'no-shape-in-symbol-names', 'no-runtime-typeof', 'no-widen-then-assert', 'no-known-value-widening', 'prefer-effect-match', 'no-manual-effect-error-tag', 'no-service-constructor-imports', 'no-manual-tag-comparison', 'no-manual-tagged-construction', 'require-safety-comment-for-type-assertion', 'require-readable-spacing']);
 
 const die = (msg, code = 2) => { console.error(msg); process.exit(code); };
 const [W, OXPATH] = process.argv.slice(2);

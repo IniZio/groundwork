@@ -74,7 +74,7 @@ describe("recipe CLI", () => {
 
     const parsed = JSON.parse(b.stdout);
     expect(b.stdout).toBe(renderRecipe());
-    expect(Object.keys(parsed)).toEqual(["rules"]);
+    expect(Object.keys(parsed)).toEqual(["$schema", "rules"]);
     const [sev, opts] = parsed.rules["artifact-structure"];
     expect(sev).toBe("error");
     expect(opts.govern).toEqual([".groundwork/**/*.md"]);

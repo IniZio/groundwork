@@ -19,7 +19,7 @@ const env = {
 delete env.GROUNDWORK_DB;
 delete env.CLAUDE_PROJECT_DIR;
 
-const WARNING = "warning: 1 agent-view file(s) under .groundwork/ are tracked by git; untrack with: git rm -r --cached .groundwork\n";
+const WARNING = "warning: 1 agent-view file(s) under .groundwork/ are tracked by git; untrack with: git rm -r --cached .groundwork, then a plain git commit (not git commit -- <path>, which re-adds them)\n";
 
 function run(cmd: string, args: string[], cwd: string) {
   return spawnSync(cmd, args, { cwd, env, encoding: "utf8", timeout: 15000 });

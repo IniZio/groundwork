@@ -26,7 +26,7 @@ Agent-facing. Human overview: doc/cli.md.
 | `gw compile` | `--json` | Resume view. Read-only. Prints `H1 charter: <state>` and `H2 spec: <state>` lines (state `approved (human\|auto)`, `void`, `missing`) or `intent gates: n/a (no PR body draft)`. `--json` adds `intent`. |
 | `gw archive <slug>` | | Moves a finished unit to the archive and marks its motive complete. |
 | `gw migrate` | `--apply` | Moves older layouts into the current one. |
-| `gw recipe` | | Prints the working-tier `artifact-structure` rule as JSON. |
+| `gw recipe` | `--merge` | Prints the working-tier `artifact-structure` rule (with `$schema`) as JSON; `--merge` prints the repo's `.house-rules.json` with only that rule replaced. Never writes files. |
 | `gw --motive <slug> <command>` | | Global flag, parsed before the subcommand. |
 | `gw motive add <slug>` | `--use` | Creates a motive. `--use` makes it active. |
 | `gw motive use <slug>` | | Persists across sessions. |

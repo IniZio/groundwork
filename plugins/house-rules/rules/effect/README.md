@@ -10,6 +10,63 @@ Flags code that should use Effect idioms in added lines.
 
 ## Allowed
 
+### [no-manual-effect-error-tag] tag comparison outside a handler
+
+```
+error._tag === "NotFound";
+
+```
+
+### [no-manual-effect-error-tag] catchTag call without a callback
+
+```
+Effect.catchTag("NotFound", recover);
+
+```
+
+### [no-manual-effect-error-tag] tag comparison inside a catchTag callback
+
+```
+Effect.catchTag("Wrapper", (error) => error.reason._tag === "Timeout" ? retry : fail);
+
+```
+
+### [no-service-constructor-imports] test file may import constructor
+
+```ts
+import { makeIssueService } from "./issue-service.ts";
+
+```
+
+### [no-service-constructor-imports] spec tsx file may import constructor
+
+```tsx
+import { makeIssueService } from "../issue-service.ts";
+
+```
+
+### [no-service-constructor-imports] package import is not project-local
+
+```ts
+import { makeExecutionMemo } from "alchemy/Runtime/ExecutionMemo";
+
+```
+
+### [no-service-constructor-imports] layer import and unrelated make call
+
+```ts
+import { issueServiceLayer } from "./issue-service.ts";
+WorkspaceName.make("name");
+
+```
+
+### [no-service-constructor-imports] lowercase after make is not a constructor name
+
+```ts
+import { makeissueService } from "./issue-service.ts";
+
+```
+
 ### [prefer-effect-match] single literal ternary
 
 ```
@@ -53,6 +110,56 @@ kind === "a" ? first : fallback;
 ```
 
 ## Flagged
+
+### [no-manual-effect-error-tag] tag comparison in Effect.catch arrow
+
+```
+Effect.catch((error) => error._tag === "NotFound" ? recover : fail);
+
+```
+
+**Expected findings:**
+- [no-manual-effect-error-tag] Use Effect.catchTag or Effect.catchTags instead of manually discriminating a tagged error in a broad Effect catch handler.
+
+### [no-manual-effect-error-tag] reason tag comparison in Effect.catchAll function
+
+```
+Effect.catchAll(function (error) { return error.reason._tag === "Timeout" ? retry : fail; });
+
+```
+
+**Expected findings:**
+- [no-manual-effect-error-tag] Use Effect.catchReason or Effect.catchReasons instead of manually discriminating a tagged `reason` in a broad Effect catch handler.
+
+### [no-manual-effect-error-tag] tag switch in Effect.catchIf callback
+
+```
+Effect.catchIf(predicate, (error) => { switch (error._tag) { case "NotFound": return recover; } });
+
+```
+
+**Expected findings:**
+- [no-manual-effect-error-tag] Use Effect.catchTag or Effect.catchTags instead of manually discriminating a tagged error in a broad Effect catch handler.
+
+### [no-service-constructor-imports] local constructor import
+
+```ts
+import { makeIssueService } from "./issue-service.ts";
+
+```
+
+**Expected findings:**
+- [no-service-constructor-imports] Do not import Effect service constructor "makeIssueService" into runtime code. Import the owning Layer, yield the contextual service, and allow its requirements to propagate to the composition root.
+
+### [no-service-constructor-imports] aliased constructor import reports imported name
+
+```ts
+import { makeIssueService as createIssueService } from "../issue-service.ts";
+
+```
+
+**Expected findings:**
+- [no-service-constructor-imports] Do not import Effect service constructor "makeIssueService" into runtime code. Import the owning Layer, yield the contextual service, and allow its requirements to propagate to the composition root.
 
 ### [prefer-effect-match] two string literal arms
 

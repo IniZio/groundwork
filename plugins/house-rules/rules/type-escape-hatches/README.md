@@ -725,6 +725,461 @@ type A = Record<string, unknown>;
 
 ```
 
+### [no-widen-then-assert] upstream: widenedBinding: widening alone, no assertion
+
+```
+const source = { id: 'first' }; const widened: unknown = source;
+
+```
+
+### [no-widen-then-assert] upstream: widenedBinding: init === null / declare const is ignored
+
+```
+declare const input: unknown; const parsed = input as { readonly id: string };
+
+```
+
+### [no-widen-then-assert] assertionIsNarrower: asserted type unknown is broad
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as unknown;
+
+```
+
+### [no-widen-then-assert] assertionIsNarrower: asserted type any is broad
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as any;
+
+```
+
+### [no-widen-then-assert] assertionIsNarrower: asserted type object is broad
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as object;
+
+```
+
+### [no-widen-then-assert] assertionIsNarrower: asserted type parenthesized unknown is broad
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as (unknown);
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted type reference
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as Foo;
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted empty type literal
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as {};
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted intersection with non-object member
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } & Foo;
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted union
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } | null;
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted string
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as string;
+
+```
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with non-object asserted readonly of non-object
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as readonly Foo;
+
+```
+
+### [no-widen-then-assert] assertionIsNarrower: object kind asserted object is broad
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as object;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record<string, unknown> (broad) is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<string, unknown>;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted index-only literal (broad) is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { [key: string]: unknown };
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted index-only literal with narrow value is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { [key: string]: string };
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and unknown value is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<'a', unknown>;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Foo type reference is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Foo;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly of Foo is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Foo>;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, unknown>> (broad) is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Record<string, unknown>>;
+
+```
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted array type is not narrower
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as string[];
+
+```
+
+### [no-widen-then-assert] broadKind: Record<string, number> annotation is not a broad type
+
+```
+const s = { id: 1 }; const w: Record<string, number> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: Record<'a', unknown> narrow keys is not a broad type
+
+```
+const s = { id: 1 }; const w: Record<'a', unknown> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: Record with three args is not a broad type
+
+```
+const s = { id: 1 }; const w: Record<string, unknown, 1> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: Record with one arg is not a broad type
+
+```
+const s = { id: 1 }; const w: Record<string> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: index-signature literal with property is not a broad type
+
+```
+const s = { id: 1 }; const w: { id: number; [k: string]: unknown } = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: two index signatures is not a broad type
+
+```
+const s = { id: 1 }; const w: { [k: string]: unknown; [n: number]: unknown } = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: Readonly<Foo> is not a broad type
+
+```
+const s = { id: 1 }; const w: Readonly<Foo> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] broadKind: Map reference is not a broad type
+
+```
+const s = { id: 1 }; const w: Map<string, unknown> = s; const p = w as Record<string, string>;
+
+```
+
+### [no-widen-then-assert] typesHaveSameSyntax: differing evidence and asserted type, non-object
+
+```
+const s = make() as Foo; const w: object = s; const p = w as Bar;
+
+```
+
+### [no-widen-then-assert] typesHaveSameSyntax: evidence type null (literal init) never matches
+
+```
+const w: object = 'a'; const p = w as Foo;
+
+```
+
+### [no-widen-then-assert] widenedBinding: let binding is ignored
+
+```
+const s = { id: 1 }; let w: unknown = s; const p = w as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: var binding is ignored
+
+```
+const s = { id: 1 }; var w: unknown = s; const p = w as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: reassigned binding is ignored
+
+```
+const s = { id: 1 }; const w: unknown = s; w = 1; const p = w as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: object destructured id is ignored
+
+```
+const s = { id: 1 }; const { a }: any = s; const p = a as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: array destructured id is ignored
+
+```
+const s = { id: 1 }; const [a]: any = s; const p = a as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: no initializer (declare)
+
+```
+declare const w: unknown; const p = w as string;
+
+```
+
+### [no-widen-then-assert] widenedBinding: not broad (no annotation, no broad assertion)
+
+```
+const s = { id: 1 }; const w = s; const p = w as { id: number };
+
+```
+
+### [no-widen-then-assert] widenedBinding: initializer assertion to a narrow type is not broad
+
+```
+const s = { id: 1 }; const w = s as Foo; const p = w as Bar;
+
+```
+
+### [no-widen-then-assert] checkAssertion: assertion inside own initializer precedes declaredAt
+
+```
+const w: unknown = [w as string];
+
+```
+
+### [no-widen-then-assert] checkAssertion: assertion on a non-identifier expression
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w.id as string;
+
+```
+
+### [no-widen-then-assert] checkAssertion: assertion on a call expression
+
+```
+const p = make() as string;
+
+```
+
+### [no-widen-then-assert] checkAssertion: unresolved assertion subject
+
+```
+const p = missing as string;
+
+```
+
+### [no-widen-then-assert] checkAssertion: nested function vs outer declaration
+
+```
+const s = { id: 1 }; const w: unknown = s; const f = () => w as { id: number };
+
+```
+
+### [no-widen-then-assert] checkAssertion: function declaration boundary vs outer declaration
+
+```
+const s = { id: 1 }; const w: unknown = s; function f() { return w as { id: number }; }
+
+```
+
+### [no-widen-then-assert] checkAssertion: declaration in function, assertion in nested arrow
+
+```
+function f() { const s = { id: 1 }; const w: unknown = s; return () => w as { id: number }; }
+
+```
+
+### [no-widen-then-assert] checkAssertion: satisfies is not an assertion
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w satisfies { id: number };
+
+```
+
+### [no-widen-then-assert] checkAssertion: const assertion is not a variable-based assertion
+
+```
+const w: unknown = 1; const p = 1 as const;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence from unknown-annotated variable
+
+```
+declare const s: unknown; const w: unknown = s; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence from any-annotated variable
+
+```
+declare const s: any; const w: unknown = s; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence from Record<string, unknown>-annotated variable
+
+```
+declare const s: Record<string, unknown>; const w: unknown = s; const p = w as Foo;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence from object-annotated variable
+
+```
+declare const s: object; const w: unknown = s; const p = w as Foo;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: annotated evidence from a different function boundary
+
+```
+declare const s: Foo; function f() { const w: unknown = s; return w as Bar; }
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: const evidence from a different function boundary
+
+```
+const s = { a: 1 }; function f() { const w: unknown = s; return w as { a: number }; }
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence variable is let
+
+```
+let s = { a: 1 }; const w: unknown = s; const p = w as { a: number };
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence const was reassigned
+
+```
+const s = { a: 1 }; s = {}; const w: unknown = s; const p = w as { a: number };
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: evidence const has no initializer
+
+```
+declare const s; const w: unknown = s; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: self-referencing initializer is cyclic
+
+```
+const w: unknown = w; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: mutually cyclic const identifiers
+
+```
+const a = b; const b = a; const w: unknown = a; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: unresolved identifier
+
+```
+const w: unknown = missing; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: call expression is not known evidence
+
+```
+const w: unknown = make(); const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: member expression is not known evidence
+
+```
+const w: unknown = a.b; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: await expression is not known evidence
+
+```
+async function f() { const w: unknown = await g(); return w as string; }
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: initializer assertion to broad type over a call
+
+```
+const w = make() as unknown; const p = w as string;
+
+```
+
+### [no-widen-then-assert] knownValueEvidence: initializer as unknown over inner as unknown has no evidence
+
+```
+declare const s: unknown; const w = s as unknown; const p = w as string;
+
+```
+
 ## Flagged
 
 ### [no-chained-type-assertions] as chain
@@ -1861,3 +2316,593 @@ function local() { type Record<K, V> = { key: K; value: V }; type A = Record<str
 
 **Expected findings:**
 - [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+
+### [no-widen-then-assert] upstream: checkAssertion: unknown annotation then narrower assertion
+
+```
+const source = { id: 'second' }; const widened: unknown = source; const parsed = widened as { readonly id: string };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "widened" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] widenedBinding: broadKind top via any annotation
+
+```
+const s = { id: 1 }; const w: any = s; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] widenedBinding: broadKind top via initializer assertion `as unknown`
+
+```
+const s = { id: 1 }; const w = s as unknown; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] widenedBinding: broadKind top via initializer assertion `as any`
+
+```
+const s = { id: 1 }; const w = s as any; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] assertionIsNarrower: top kind accepts non-array non-object asserted type
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with type literal
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with array
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as number[];
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with tuple
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as [number, string];
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with function type
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as () => void;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with constructor type
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as new () => Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with mapped type
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as { [K in 'a']: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with intersection of objects
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } & { b: 2 };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with readonly array
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as readonly number[];
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with object keyword nested in intersection
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as object & { a: 1 };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyObjectType: object kind with parenthesized array
+
+```
+const s = { id: 1 }; const w: object = s; const p = w as (number[]);
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via Record<string, unknown>: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via Readonly<Record<string, unknown>>: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: Readonly<Record<string, unknown>> = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via index-signature literal: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: { [key: string]: unknown } = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via Record<PropertyKey, any>: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: Record<PropertyKey, any> = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via Record<string | number, unknown>: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: Record<string | number, unknown> = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via Record<symbol, unknown>: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: Record<symbol, unknown> = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] broadKind record via parenthesized Record: narrower Record<string, string>
+
+```
+const s = { id: 1 }; const w: (Record<string, unknown>) = s; const p = w as Record<string, string>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with properties
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, string>>
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Record<string, string>>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and narrow value
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<'a', number>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with property and index signature
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: number; [k: string]: unknown };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly of literal with properties
+
+```
+const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<{ id: number }>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] typesHaveSameSyntax: object kind, evidence type equals asserted type
+
+```
+const s = make() as Foo; const w: object = s; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] typesHaveSameSyntax: whitespace-insensitive match
+
+```
+const s = make() as Map<string, number>; const w: object = s; const p = w as Map<string,number>;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] typesHaveSameSyntax: parenthesized types unwrapped on both sides
+
+```
+const s = make() as (Foo); const w: object = s; const p = w as ((Foo));
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] typesHaveSameSyntax: record kind with matching evidence
+
+```
+const s = make() as Foo; const w: Record<string, unknown> = s; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: same nested function boundary on both sides
+
+```
+function f() { const s = { id: 1 }; const w: unknown = s; return w as { id: number }; }
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: const chain recursion
+
+```
+const a = { x: 1 }; const b = a; const w: unknown = b; const p = w as { x: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: chain through parenthesized identifier
+
+```
+const a = { x: 1 }; const w: unknown = (a); const p = w as { x: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: chain through non-broad assertion
+
+```
+const a = make() as Foo; const b = a; const w: unknown = b; const p = w as Bar;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: evidence from non-broad annotated variable
+
+```
+declare const s: Foo; const w: unknown = s; const p = w as Bar;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: non-broad annotated const with unresolved init
+
+```
+const s: Foo = make(); const w: unknown = s; const p = w as Bar;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: string literal initializer is known evidence
+
+```
+const w: unknown = 'a'; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: number literal initializer is known evidence
+
+```
+const w: unknown = 1; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: template literal initializer is known evidence
+
+```
+const w: unknown = `a${b}`; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: array expression initializer is known evidence
+
+```
+const w: unknown = [1]; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: arrow function initializer is known evidence
+
+```
+const w: unknown = () => 1; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: class expression initializer is known evidence
+
+```
+const w: unknown = class {}; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: function expression initializer is known evidence
+
+```
+const w: unknown = function () {}; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: new expression initializer is known evidence
+
+```
+const w: unknown = new Foo(); const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: object expression initializer is known evidence
+
+```
+const w: unknown = { a: 1 }; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: parenthesized object expression initializer is known evidence
+
+```
+const w: unknown = ({ a: 1 }); const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: null literal initializer is known evidence
+
+```
+const w: unknown = null; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: non-broad type assertion initializer is known evidence
+
+```
+const w: unknown = make() as Foo; const p = w as Foo;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] knownValueEvidence: broad assertion unwrapped to literal original
+
+```
+const w = 'a' as unknown; const p = w as string;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] assertedExpression: parenthesized asserted identifier
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = (w) as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] assertionFromExpression: parenthesized initializer assertion
+
+```
+const s = { id: 1 }; const w = (s as unknown); const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] unwrapTypeParentheses: parenthesized annotation
+
+```
+const s = { id: 1 }; const w: (unknown) = s; const p = w as { id: number };
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] unwrapTypeParentheses: parenthesized asserted type
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = w as (string);
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: angle-bracket TSTypeAssertion
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = <{ id: number }>w;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: angle-bracket assertion on parenthesized identifier
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = <string>(w);
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: initializer angle-bracket assertion to unknown
+
+```
+const s = { id: 1 }; const w = <unknown>s; const p = w as string;
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: assertion nested in a call argument
+
+```
+const s = { id: 1 }; const w: unknown = s; use(w as string);
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+
+### [no-widen-then-assert] checkAssertion: every assertion reported separately (first)
+
+```
+const s = { id: 1 }; const w: unknown = s; const p = [w as string];
+
+```
+
+**Expected findings:**
+- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.

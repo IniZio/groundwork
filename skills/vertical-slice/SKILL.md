@@ -35,6 +35,8 @@ Wave 1: parallel implementation — one implementer per slice
 Wave 2: verification — [qa] → advisor → APPROVE
 ```
 
+The PR body and human view are written via `groundwork:human-layer`.
+
 ## Failure modes
 
 Six named causal chains — full details in `reference/failure-modes.md`:

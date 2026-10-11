@@ -36,16 +36,9 @@ status: active
 2. Write the charter at `.groundwork/work/<slug>/motive.md`.
 3. Create `.groundwork/work/<slug>/spec.md`; set `folds_into:` to a living spec path
    like `doc/spec/<area>.md`, or `none` plus a `reason:` line.
-4. Write the PR body draft `.groundwork/work/<slug>/pr-body.md` (Why, Changes and Impact only) from
-   `templates/doc-types/pr-body.md`. No `doc/<slug>/` folder.
+4. Write the PR body draft `.groundwork/work/<slug>/pr-body.md`: call the Skill tool with `groundwork:human-layer`.
    Check each `### Decisions` row and each diff before-side against current source; record evidence
    (permalink, `path@sha:line` if no remote, `none` if new-only) in `spec.md`, never the PR body.
-   Cut any row or block that restates current behaviour.
-   Spawn `groundwork:human-doc-reviewer` with only that path + check cmd
-   `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
-   Apply deletions; re-run until `status: PASS`.
-   Charter approval binds `motive.md` plus the draft's Why, Changes and Impact sections;
-   filling Review focus or Proof later does not void it.
 5. Run `$GW init` to create the work store.
 6. Run `$GW event append --type OBJECTIVE --msg "<motive.md Objective text>" --token T`
    (T = init's `token:` line, or `$GW token` on an existing store),

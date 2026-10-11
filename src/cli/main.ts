@@ -16,7 +16,7 @@ import {
   type SealFields,
 } from "../store/key-store.js";
 import { assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
-import { completionGuard, gateStatus, APPROVAL_EVENT, approvalPayload, classifySpec, intentGates, type IntentArtifact } from "./gate-status.js";
+import { completionGuard, gateStatus, sealedGateVerdict, APPROVAL_EVENT, approvalPayload, classifySpec, intentGates, type IntentArtifact } from "./gate-status.js";
 import { CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
@@ -264,11 +264,12 @@ function cmdSliceStatus(motiveSlug?: string): void {
   const store = requireDb(motiveSlug);
   const slices = store.getAllSlices();
   const done = slices.filter(s => s.status === "complete" || s.status === "archived").length;
-  const newestGate = store.getNewestGateVerdict();
-  const gate = newestGate ? newestGate.event_type.replace("GATE_", "") : "pending";
+  const sg = sealedGateVerdict(store, dbPath());
+  const gate = !sg.verdict || (sg.verdict === "APPROVE" && !sg.approved) ? "pending" : sg.verdict;
+  const gateNote = sg.reason ? ` (${sg.reason})` : "";
   const hold = store.getHoldState() ?? "none";
   const motiveLabel = motiveSlug ? `  motive: ${motiveSlug}` : "";
-  process.stdout.write(`slices: ${done}/${slices.length} complete  gate: ${gate}  hold: ${hold}${motiveLabel}\n`);
+  process.stdout.write(`slices: ${done}/${slices.length} complete  gate: ${gate}${gateNote}  hold: ${hold}${motiveLabel}\n`);
   for (const s of slices) {
     const bl = s.blocked_by ? `  blocked-by=[${s.blocked_by}]` : "";
     const d = s.description ? `  ${s.description.slice(0, 60)}` : "";
@@ -515,8 +516,9 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const slices = store.getAllSlices();
   const openSlices = slices.filter(s => s.status === "pending" || s.status === "in_progress");
   const decisions = store.getDecisionEvents();
-  const newestGateEvent = store.getNewestGateVerdict();
-  const gateOk = newestGateEvent?.event_type === "GATE_APPROVE";
+  const sealedGate = sealedGateVerdict(store, dbPath());
+  const gateOk = sealedGate.approved;
+  const gateNote = sealedGate.reason ? ` (${sealedGate.reason})` : "";
   const hold = store.getHoldState();
   const lastPause = store.getLastEvent("PAUSE");
   const pausePayload = lastPause ? JSON.parse(lastPause.payload) as Record<string, unknown> : null;
@@ -542,6 +544,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       open_slices: openSlices,
       last_pause: pausePayload,
       gate: gateOk ? "APPROVED" : "pending",
+      ...(sealedGate.reason ? { gate_reason: sealedGate.reason } : {}),
       hold: hold ?? null,
       intent,
       ac_coverage: acCoverageObj,
@@ -550,7 +553,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   } else {
     process.stdout.write(`motive: ${motive}\n`);
     process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
-    process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}\n`);
+    process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}${gateNote}\n`);
     if (!intent.applies) {
       process.stdout.write(`intent gates: n/a (no .groundwork/work/${motive}/pr-body.md)\n`);
     } else {

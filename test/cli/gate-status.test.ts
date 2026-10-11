@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -98,7 +98,7 @@ describe("gateStatus", () => {
     const { intent, ...s } = gateStatus({ cwd: tmp });
     expect(intent?.applies).toBe(false);
     expect(s).toEqual({
-      v: 1, scope: "root", slices: { open: 0, complete: 1 }, gate: "APPROVE", approved_at: "2026-01-01T00:00:00.000Z",
+      v: 1, scope: "root", slices: { open: 0, complete: 1 }, gate: "pending", approved_at: "2026-01-01T00:00:00.000Z", seal_reason: "approval has no verifiable seal",
     });
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });
@@ -339,5 +339,55 @@ describe("intent gates", () => {
       APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "auto", ["Refactor, no behaviour or interface change"])),
     };
     expect(refusalMessage(intentGates(tmp, slug, (t) => ev[t] ?? null))).toBeNull();
+  });
+});
+
+describe("sealed approval across gate status / compile / slice status (spawned)", () => {
+  let repo: string;
+  let xdg: string;
+  let token: string;
+  const gw = (...a: string[]) => {
+    const env: Record<string, string | undefined> = { ...process.env, XDG_CONFIG_HOME: xdg };
+    delete env.CLAUDE_PROJECT_DIR;
+    delete env.GROUNDWORK_DB;
+    return spawnSync("bun", [path.resolve("src/cli/main.ts"), ...a], { cwd: repo, encoding: "utf8", env: env as NodeJS.ProcessEnv, timeout: 20000 });
+  };
+  beforeEach(() => {
+    repo = realpathSync(mkdtempSync(path.join(tmpdir(), "gs-seal-")));
+    xdg = realpathSync(mkdtempSync(path.join(tmpdir(), "gs-xdg-")));
+    git(repo, "init", "-q");
+    git(repo, "commit", "--allow-empty", "-q", "-m", "init");
+    const init = gw("init");
+    token = /token: ([0-9a-f]{32})/.exec(init.stdout)?.[1] ?? "";
+    expect(token).toHaveLength(32);
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "wip", "--allow-empty");
+    const ap = gw("gate", "approve", "--citation", "a.ts:1", "--token", token);
+    expect(ap.stdout).toContain("GATE_APPROVE recorded");
+  });
+  afterEach(() => {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(xdg, { recursive: true, force: true });
+  });
+  const dropKey = () => {
+    const keys = readdirSync(xdg, { recursive: true, encoding: "utf8" }).filter((f) => path.basename(f) === "seal.key");
+    expect(keys).toHaveLength(1);
+    rmSync(path.join(xdg, keys[0]), { force: true });
+  };
+  const REASON = "approval has no verifiable seal";
+
+  it("sealed approval is approved everywhere", () => {
+    expect(JSON.parse(gw("gate", "status", "--json").stdout)).toMatchObject({ gate: "APPROVE" });
+    expect(gw("compile").stdout).toContain("gate: APPROVED");
+    expect(gw("slice", "status").stdout).toContain("gate: APPROVE ");
+  });
+
+  it("keyless approval is not approved and shows the reason", () => {
+    dropKey();
+    const st = JSON.parse(gw("gate", "status", "--json").stdout) as { gate: string; seal_reason?: string };
+    expect(st.gate).toBe("pending");
+    expect(st.seal_reason).toBe(REASON);
+    expect(gw("compile").stdout).toContain(`gate: pending (${REASON})`);
+    expect(gw("slice", "status").stdout).toContain(`gate: pending (${REASON})`);
   });
 });

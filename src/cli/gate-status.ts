@@ -6,6 +6,8 @@ import { WorkStore } from "../store/store.js";
 import { ingestInbox } from "../store/scope-inbox.js";
 import { linksFor, requirement } from "../store/scope-link.js";
 import { readPointer } from "../store/scope-pointer.js";
+import { readSealKeyForDb } from "../store/key-store.js";
+import { verifyApprovalSeal } from "../store/gate-seal.js";
 
 export type GuardResult =
   | { ok: true; evidence: string[] }
@@ -31,6 +33,22 @@ export function completionGuard(
   return { ok: false, message, evidence: r.evidence };
 }
 
+/** Newest gate verdict with GATE_APPROVE downgraded unless its seal verifies. */
+export function sealedGateVerdict(
+  store: WorkStore,
+  dbPath: string,
+): { approved: boolean; verdict: string | null; reason?: string; at?: string } {
+  const g = store.getNewestGateVerdict();
+  if (!g) return { approved: false, verdict: null };
+  const verdict = g.event_type.replace("GATE_", "");
+  let payload: Record<string, unknown> = {};
+  try { payload = JSON.parse(g.payload) as Record<string, unknown>; } catch { /* unsealed */ }
+  const at = typeof payload.created_at === "string" ? payload.created_at : g.created_at;
+  if (g.event_type !== "GATE_APPROVE") return { approved: false, verdict, at };
+  const v = verifyApprovalSeal({ motiveId: store.activeMotive, payload }, readSealKeyForDb(dbPath));
+  return v.ok ? { approved: true, verdict, at } : { approved: false, verdict, reason: v.reason, at };
+}
+
 export interface GateStatus {
   v: 1;
   scope: "child" | "root" | "orphan";
@@ -39,6 +57,7 @@ export interface GateStatus {
   slices: { open: number; complete: number };
   gate: string;
   approved_at?: string;
+  seal_reason?: string;
   intent?: IntentGates;
 }
 
@@ -75,15 +94,11 @@ export function gateStatus(o: { cwd: string }): GateStatus {
     const slices = store.getAllSlices();
     const done = slices.filter((s) => s.status === "complete" || s.status === "archived").length;
     out.slices = { open: slices.length - done, complete: done };
-    const g = store.getNewestGateVerdict();
-    if (g) {
-      out.gate = g.event_type.replace("GATE_", "");
-      let at = g.created_at;
-      try {
-        const c = (JSON.parse(g.payload) as { created_at?: unknown }).created_at;
-        if (typeof c === "string") at = c;
-      } catch { /* keep row time */ }
-      out.approved_at = at;
+    const g = sealedGateVerdict(store, db);
+    if (g.verdict) {
+      out.gate = g.verdict === "APPROVE" && !g.approved ? "pending" : g.verdict;
+      if (g.reason) out.seal_reason = g.reason;
+      if (g.at) out.approved_at = g.at;
     }
   } finally {
     store.close();

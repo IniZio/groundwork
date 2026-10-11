@@ -2439,3 +2439,59 @@ describe("autoFix opts.maxAllowedRows override", () => {
     expect(r.removedTexts).toEqual(["// should be stripped"]);
   });
 });
+
+describe("SAFETY comment exemption", () => {
+  const scan = async (code: string) => {
+    const r = await findComments(code, "typescript", tsParser);
+    if (!r.ok) throw new Error(r.reason);
+    return r.comments;
+  };
+  const rowsOf = (code: string) => new Set(code.split("\n").map((_, i) => i));
+  const fix = async (code: string) => {
+    const r = await autoFix(code, "typescript", rowsOf(code), tsParser, undefined, { maxAllowedRows: 0 });
+    if (!r.ok) throw new Error(r.reason);
+    return r.fixed;
+  };
+
+  it("justifying SAFETY comment is exempt with reason safety", async () => {
+    const code = `// SAFETY: value validated upstream\nconst a = x as Foo;\n`;
+    const cs = await scan(code);
+    expect(cs.length).toBe(1);
+    expect(cs[0].exempt).toBe(true);
+    expect(cs[0].exemptReason).toBe("safety");
+    expect(cs.filter(c => !c.exempt).length).toBe(0);
+  });
+
+  it("export-wrapped assertion is justified", async () => {
+    const code = `// SAFETY: value validated upstream\nexport const a = x as Foo;\n`;
+    const cs = await scan(code);
+    expect(cs[0].exempt).toBe(true);
+    expect(cs[0].exemptReason).toBe("safety");
+  });
+
+  it("SAFETY comment with no assertion still counts", async () => {
+    const code = `// SAFETY: nothing to justify here\nconst a = 1;\n`;
+    const cs = await scan(code);
+    expect(cs[0].exempt).toBe(false);
+  });
+
+  it("SAFETY comment over only as const / satisfies still counts", async () => {
+    for (const body of [`const a = [1] as const;`, `const a = { b: 1 } satisfies Foo;`]) {
+      const cs = await scan(`// SAFETY: not an assertion\n${body}\n`);
+      expect(cs[0].exempt).toBe(false);
+    }
+  });
+
+  it("guard strips unjustified SAFETY comment but keeps the justifying one", async () => {
+    const code = `// SAFETY: value validated upstream\nconst a = x as Foo;\n// SAFETY: nothing to justify here\nconst b = 1;\n`;
+    const fixed = await fix(code);
+    expect(fixed).toContain("// SAFETY: value validated upstream");
+    expect(fixed).not.toContain("nothing to justify");
+    expect(fixed).toContain("const b = 1;");
+  });
+
+  it("guard never strips justifying export-wrapped SAFETY comment", async () => {
+    const code = `// SAFETY: value validated upstream\nexport const a = x as Foo;\n`;
+    expect(await fix(code)).toBe(code);
+  });
+});

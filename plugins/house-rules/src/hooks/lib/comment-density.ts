@@ -5,6 +5,7 @@ import type { Language } from "../languages/registry.js";
 import { isCommentNode, parseText, classifyComments } from "../languages/parse.js";
 import type { ClassifiedComment } from "../languages/comments.js";
 import { commentInnerText as stripMarkers } from "../languages/comments.js";
+import { commentJustifiesAssertion } from "../../analysis/type-assertion-safety.js";
 import { languageHookFor, type RemovalGrouping } from "../../../rules/comment-density/languages.js";
 
 export interface Comment {
@@ -109,6 +110,7 @@ function collectComments(root: Node, text: string, lang: Language, classified: M
 
       const cls = classified.get(node.startIndex)!;
       let { exempt, reason } = checkExempt(raw, cls.label, cls.fallbackLabel === undefined ? cls.directive : false);
+      if (!exempt && lang === "typescript" && commentJustifiesAssertion(node)) { exempt = true; reason = "safety"; }
       if (!exempt && cls.kind === "doc") { exempt = true; reason = `${lang}-doc`; }
       if (!exempt && cls.header) { exempt = true; reason = `${lang}-file-header`; }
       if (!exempt && cls.fallbackLabel !== undefined) { exempt = true; reason = cls.fallbackLabel; }

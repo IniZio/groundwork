@@ -96,6 +96,14 @@ function excludeWorkingTier(root: string): void {
   appendFileSync(file, (cur === "" || cur.endsWith("\n") ? "" : "\n") + ".groundwork/\n");
 }
 
+function warnTrackedAgentView(root: string): void {
+  const r = spawnSync("git", ["ls-files", "-z", "--", ".groundwork"], { cwd: root, encoding: "utf8", timeout: 3000 });
+  if (r.status !== 0) return;
+  const n = (r.stdout ?? "").split("\0").filter(Boolean).length;
+  if (n === 0) return;
+  process.stderr.write(`warning: ${n} agent-view file(s) under .groundwork/ are tracked by git; untrack with: git rm -r --cached .groundwork\n`);
+}
+
 function scopeFail(e: unknown): never {
   if (e instanceof Error) {
     process.stderr.write(`gw: ${e.message}\n`);
@@ -121,6 +129,7 @@ function cmdInit(args: string[]): void {
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   excludeWorkingTier(repoDir());
+  warnTrackedAgentView(repoDir());
   const store = new WorkStore(p);
 
   const metaTok = store.getMeta("token");
@@ -500,6 +509,7 @@ function buildAcCoverage(slices: import("../store/store.js").Slice[]): Map<strin
 function cmdCompile(args: string[], motiveSlug?: string): void {
   const asJson = boolFlag(args, "--json");
   const store = requireDb(motiveSlug);
+  warnTrackedAgentView(repoDir());
   const motive = store.activeMotive;
   const objective = store.getObjective();
   const slices = store.getAllSlices();

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { mkdirSync,mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -378,6 +379,38 @@ describe("sealed approval across gate status / compile / slice status (spawned)"
     rmSync(path.join(xdg, keys[0]), { force: true });
   };
   const REASON = "approval has no verifiable seal";
+
+  const tamper = (edit: (p: Record<string, unknown>) => void) => {
+    const db = new Database(path.join(repo, ".groundwork", "work.db"));
+    try {
+      const row = db.query("SELECT id, payload FROM events WHERE event_type = 'GATE_APPROVE' ORDER BY id DESC LIMIT 1").get() as { id: number; payload: string };
+      const p = JSON.parse(row.payload) as Record<string, unknown>;
+      expect(p.seal).toBeDefined();
+      edit(p);
+      db.run("UPDATE events SET payload = ? WHERE id = ?", [JSON.stringify(p), row.id]);
+    } finally { db.close(); }
+  };
+  const expectPending = () => {
+    const st = JSON.parse(gw("gate", "status", "--json").stdout) as { gate: string; seal_reason?: string };
+    expect(st.gate).toBe("pending");
+    expect(st.seal_reason).toBe(REASON);
+    expect(gw("compile").stdout).toContain(`gate: pending (${REASON})`);
+  };
+
+  it("key present, seal stripped: pending with reason", () => {
+    tamper((p) => { delete p.seal; });
+    expectPending();
+  });
+
+  it("key present, citation changed after sealing: pending with reason", () => {
+    tamper((p) => { p.citation = "b.ts:2"; });
+    expectPending();
+  });
+
+  it("key present, base_commit changed after sealing: pending with reason", () => {
+    tamper((p) => { p.base_commit = "deadbeef".repeat(5); });
+    expectPending();
+  });
 
   it("sealed approval is approved everywhere", () => {
     expect(JSON.parse(gw("gate", "status", "--json").stdout)).toMatchObject({ gate: "APPROVE" });

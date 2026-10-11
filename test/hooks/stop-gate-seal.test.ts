@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync, readdirSync, existsSync } from "node:fs";
+import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -57,6 +58,23 @@ function findSealKey(xdg: string): string {
   return path.join(repos, dir, ["seal", "key"].join("."));
 }
 
+/** Rewrite the newest GATE_APPROVE payload in the repo store, bypassing the CLI. */
+function mutateApproval(root: string, edit: (p: Record<string, unknown>) => void) {
+  const db = new Database(path.join(root, ".groundwork", "work.db"));
+  try {
+    const row = db.query("SELECT id, payload FROM events WHERE event_type='GATE_APPROVE' ORDER BY id DESC LIMIT 1").get() as { id: number; payload: string };
+    const p = JSON.parse(row.payload) as Record<string, unknown>;
+    edit(p);
+    db.run("UPDATE events SET payload=? WHERE id=?", [JSON.stringify(p), row.id]);
+  } finally { db.close(); }
+}
+
+function expectBlocked(root: string, env: Record<string, string>) {
+  const out = JSON.parse(stop(root, env).out);
+  expect(out.decision).toBe("block");
+  expect(out.reason).toContain("approval has no verifiable seal");
+}
+
 describe("stop-gate fails closed without a verifiable seal", () => {
   it("positive control: valid sealed approval allows Stop", () => {
     const { root, env } = approvedRepo();
@@ -73,5 +91,26 @@ describe("stop-gate fails closed without a verifiable seal", () => {
     const out = JSON.parse(stop(root, env).out);
     expect(out.decision).toBe("block");
     expect(out.reason).toContain("approval has no verifiable seal");
+  });
+
+  it("seal key present, approval seal stripped blocks Stop with the reason", () => {
+    const { root, xdg, env } = approvedRepo();
+    expect(existsSync(findSealKey(xdg))).toBe(true);
+    mutateApproval(root, (p) => { expect(typeof p.seal).toBe("string"); delete p.seal; });
+    expectBlocked(root, env);
+  });
+
+  it("seal key present, citation changed after sealing blocks Stop with the reason", () => {
+    const { root, xdg, env } = approvedRepo();
+    expect(existsSync(findSealKey(xdg))).toBe(true);
+    mutateApproval(root, (p) => { p.citation = "EVIL.ts:999"; });
+    expectBlocked(root, env);
+  });
+
+  it("seal key present, base_commit changed after sealing blocks Stop with the reason", () => {
+    const { root, xdg, env } = approvedRepo();
+    expect(existsSync(findSealKey(xdg))).toBe(true);
+    mutateApproval(root, (p) => { p.base_commit = "deadbeef".repeat(5); });
+    expectBlocked(root, env);
   });
 });

@@ -15,7 +15,7 @@
  *
  * Mode 0600. Never committed. Not in work.db.
  *
- * Subagents are blocked from reaching these paths by store-write-guard.
+ * Verdicts are protected by the HMAC seal on GATE_APPROVE plus the fail-closed stop gate, not by path access control.
  * The main session retrieves the token via $GW init stdout only.
  */
 

@@ -15,7 +15,7 @@ export interface Check {
   id: string;
   upstream: string;
   tsOnly?: boolean;
-  check(root: Node, source: string, index?: NodeIndex): CheckHit[];
+  check(root: Node, source: string, index?: NodeIndex, filePath?: string): CheckHit[];
 }
 
 export interface NodeIndex {
@@ -117,7 +117,7 @@ function collect(
   const index = sharedIndex(tree);
   for (const c of checks) {
     if (c.tsOnly && jsFile) continue;
-    for (const hit of c.check(tree.rootNode, text, index)) {
+    for (const hit of c.check(tree.rootNode, text, index, filePath)) {
       const row = hit.node ? hit.node.startPosition.row : hit.row;
       if (row === undefined || errorRows.has(row) || !isAdded(row)) continue;
       findings.push({

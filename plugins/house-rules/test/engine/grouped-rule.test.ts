@@ -364,3 +364,36 @@ export function check(_r: unknown, _s: string, index: any): never[] {
     }
   });
 });
+
+describe('grouped-rule: file path', () => {
+  function pathProbeDir(): string {
+    const dir = makeChecksDir();
+    fs.writeFileSync(path.join(dir, 'path-probe.ts'), `export const id = 'path-probe';
+export const upstream = 'https://example.com/path-probe';
+export function check(_r: unknown, _s: string, _i: unknown, filePath?: string): { row: number; message: string }[] {
+  return [{ row: 0, message: 'path=' + filePath }];
+}
+`);
+    fs.writeFileSync(path.join(dir, 'path-probe.cases.ts'), CASES_SRC);
+    return dir;
+  }
+
+  it('check receives the file path', async () => {
+    const rule = defineGroupedRule('demo', 'd', pathProbeDir());
+    const f = await rule.check(ctxFor([fileFor('src/deep/run.ts', 'export const a = 1;\n')]));
+    expect(f.map((x) => x.message)).toEqual(['[path-probe] path=src/deep/run.ts']);
+  });
+
+  it('editCheck receives the file path', async () => {
+    const rule = defineGroupedRule('demo', 'd', pathProbeDir());
+    const post = 'export const a = 1;\n';
+    const p = '/repo/src/spec/a.test.ts';
+    const sfs = createSourceFiles();
+    const edit: PendingEdit = {
+      path: p, tool: 'edit', lang: 'typescript', pre: null, post,
+      changedRows: new Set([0]), session: null, repoRoot: null, cwd: null,
+    };
+    const r = await rule.editCheck!(edit, { sourceFile: () => sfs.get('typescript', post, p), parserFactory: getDefaultParserFactory() });
+    expect(r.findings.map((x) => x.message)).toEqual(['[path-probe] path=/repo/src/spec/a.test.ts']);
+  });
+});

@@ -73,15 +73,29 @@ function checkVocab(line: string): Finding[] {
     .map((h) => ({ quote: h.text, reason: `groundwork vocabulary "${h.text}": write from the reviewer's view of the repo` }));
 }
 
-function checkGroundworkLinks(line: string): Finding[] {
+function groundworkLinkTargets(line: string): string[] {
   const targets = [...line.matchAll(/\[[^\]]*\]\(\s*<?([^)\s>]+)/g)].map((m) => m[1]);
   const def = line.match(/^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/);
   if (def) targets.push(def[1]);
-  return targets.flatMap((quote) =>
-    /^(\.\/)?\.groundwork\//.test(quote) || quote.includes("/.groundwork/")
-      ? [{ quote, reason: "link into .groundwork/: state the constraint in one line instead" }]
-      : [],
-  );
+  return targets.filter((t) => /^(\.\/)?\.groundwork\//.test(t) || t.includes("/.groundwork/"));
+}
+
+function checkGroundworkLinks(line: string): Finding[] {
+  return groundworkLinkTargets(line).map((quote) => ({ quote, reason: "link into .groundwork/: state the constraint in one line instead" }));
+}
+
+/** Link targets pointing into .groundwork/, outside fenced blocks. Single source for the checker and the doc-size-guard hook. */
+export function findGroundworkLinks(text: string): string[] {
+  const out: string[] = [];
+  let fence = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (FENCE_RE.test(line)) {
+      fence = !fence;
+      continue;
+    }
+    if (!fence) out.push(...groundworkLinkTargets(line));
+  }
+  return out;
 }
 
 export function checkRules(lines: string[], isPrBody: boolean): Finding[] {

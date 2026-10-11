@@ -12,6 +12,9 @@ export const cases: RuleCases = {
     { why: 'single-quoted existence probe', code: "const missing = typeof process == 'undefined';\n" },
     { why: 'no typeof', code: 'const value = input;\n' },
     { why: 'existence probe in a javascript file', filename: 'x.js', code: 'const isServer = typeof document === "undefined";\n' },
+    { why: 'option skips typeof in a function type guard', code: 'function isString(value: unknown): value is string { return typeof value === "string"; }\n', options: { allowInTypeGuards: true } },
+    { why: 'option skips typeof in an arrow type guard', code: 'const isString = (value: unknown): value is string => typeof value === "string";\n', options: { allowInTypeGuards: true } },
+    { why: 'option skips typeof in an assertion function', code: 'function assertString(value: unknown): asserts value is string { if (typeof value !== "string") throw new Error(); }\n', options: { allowInTypeGuards: true } },
   ],
   invalid: [
     { why: 'typeof string comparison', code: 'if (typeof input === "string") use(input);\n', findings: one },
@@ -22,5 +25,7 @@ export const cases: RuleCases = {
     { why: 'typeof in a nested closure of a type guard', code: 'function isString(value: unknown): value is string { const check = () => typeof value === "string"; return check(); }\n', findings: one },
     { why: 'typeof in an arrow type guard', code: 'const isString = (value: unknown): value is string => typeof value === "string";\n', findings: one },
     { why: 'typeof in an assertion function', code: 'function assertString(value: unknown): asserts value is string { if (typeof value !== "string") throw new Error(); }\n', findings: one },
+    { why: 'option still flags typeof in a non-guard function', code: 'function parse(value: unknown): string { if (typeof value !== "string") throw new Error(); return value; }\n', options: { allowInTypeGuards: true }, findings: one },
+    { why: 'option still flags typeof in a closure nested in a type guard', code: 'function isString(value: unknown): value is string { const check = () => typeof value === "string"; return check(); }\n', options: { allowInTypeGuards: true }, findings: one },
   ],
 };

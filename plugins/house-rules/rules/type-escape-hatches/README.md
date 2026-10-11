@@ -425,6 +425,27 @@ const isServer = typeof document === "undefined";
 
 ```
 
+### [no-runtime-typeof] option skips typeof in a function type guard
+
+```
+function isString(value: unknown): value is string { return typeof value === "string"; }
+
+```
+
+### [no-runtime-typeof] option skips typeof in an arrow type guard
+
+```
+const isString = (value: unknown): value is string => typeof value === "string";
+
+```
+
+### [no-runtime-typeof] option skips typeof in an assertion function
+
+```
+function assertString(value: unknown): asserts value is string { if (typeof value !== "string") throw new Error(); }
+
+```
+
 ### [no-unknown-parameters] cause parameter is exempt
 
 ```
@@ -2055,6 +2076,26 @@ const isString = (value: unknown): value is string => typeof value === "string";
 
 ```
 function assertString(value: unknown): asserts value is string { if (typeof value !== "string") throw new Error(); }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] option still flags typeof in a non-guard function
+
+```
+function parse(value: unknown): string { if (typeof value !== "string") throw new Error(); return value; }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] option still flags typeof in a closure nested in a type guard
+
+```
+function isString(value: unknown): value is string { const check = () => typeof value === "string"; return check(); }
 
 ```
 

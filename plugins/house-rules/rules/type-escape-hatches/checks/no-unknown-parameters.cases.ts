@@ -50,4 +50,5 @@ export const cases: RuleCases = {
 // Other checks' case keys this check also fires on.
 export const foreignHits: readonly string[] = [
   '[no-runtime-typeof] typeof in a non-guard function',
+  '[no-runtime-typeof] option still flags typeof in a non-guard function',
 ];

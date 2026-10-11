@@ -21,9 +21,27 @@ function isExistenceProbe(node: Node): boolean {
   return isUndefinedLiteral(other ?? null);
 }
 
-export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+const FUNCTION_TYPES = new Set([
+  'arrow_function', 'function_declaration', 'function_expression', 'function', 'generator_function',
+  'generator_function_declaration', 'method_definition',
+]);
+const PREDICATE_TYPES = new Set(['type_predicate_annotation', 'asserts_annotation']);
+
+/** Whether the nearest enclosing function declares a type predicate return type. */
+function isInsideTypeGuard(node: Node): boolean {
+  for (let cur = node.parent; cur; cur = cur.parent) {
+    if (FUNCTION_TYPES.has(cur.type)) return PREDICATE_TYPES.has(cur.childForFieldName('return_type')?.type ?? '');
+  }
+  return false;
+}
+
+export function check(
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, options?: Readonly<Record<string, unknown>>,
+): CheckHit[] {
+  const allowInTypeGuards = options?.allowInTypeGuards === true;
   return (index ?? buildNodeIndex(root))
     .byType('unary_expression')
     .filter((node) => node.childForFieldName('operator')?.text === 'typeof' && !isExistenceProbe(node))
+    .filter((node) => !allowInTypeGuards || !isInsideTypeGuard(node))
     .map((node) => ({ node, message: MESSAGE }));
 }

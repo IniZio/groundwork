@@ -79,7 +79,7 @@ describe("warn-only rule ids", () => {
       expectConfigError(
         `{"rules":{"${id}":["warn",{"foo":1}]}}`,
         `rules["${id}"][1].foo`,
-        [],
+        id === "type-escape-hatches" ? ["allowInTypeGuards"] : [],
         "unknown option",
       );
     }
@@ -101,6 +101,67 @@ describe("warn-only rule ids", () => {
       expect(err.path).toBe(id);
       expect(err.message).toContain("warn");
     }
+  });
+});
+
+describe("type-escape-hatches allowInTypeGuards option", () => {
+  it("accepts boolean true and false", () => {
+    for (const b of [true, false]) {
+      const out = parseConfig(`{"rules":{"type-escape-hatches":["warn",{"allowInTypeGuards":${b}}]}}`);
+      expect(out.rules["type-escape-hatches"]).toEqual({
+        severity: "warn",
+        options: { allowInTypeGuards: b },
+      });
+    }
+  });
+
+  it("rejects non-boolean values at the option path", () => {
+    for (const v of ['"yes"', "1"]) {
+      const err = capture(`{"rules":{"type-escape-hatches":["warn",{"allowInTypeGuards":${v}}]}}`);
+      expect(err instanceof ConfigError).toBe(true);
+      expect(err.path).toBe('rules["type-escape-hatches"][1].allowInTypeGuards');
+    }
+  });
+
+  it("still rejects an unknown key beside it", () => {
+    expectConfigError(
+      '{"rules":{"type-escape-hatches":["warn",{"allowInTypeGuards":true,"foo":1}]}}',
+      'rules["type-escape-hatches"][1].foo',
+      ["allowInTypeGuards"],
+      "unknown option",
+    );
+  });
+});
+
+describe("silent-early-return-in-test rule id", () => {
+  it("accepts off, warn, and array forms", () => {
+    for (const v of ['"off"', '"warn"', '["warn"]', '["off",{}]']) {
+      const out = parseConfig(`{"rules":{"silent-early-return-in-test":${v}}}`);
+      const sev = v.includes("off") ? "off" : "warn";
+      expect(out.rules["silent-early-return-in-test"]).toEqual({ severity: sev, options: {} });
+    }
+  });
+
+  it("rejects error severity", () => {
+    const err = capture('{"rules":{"silent-early-return-in-test":"error"}}');
+    expect(err.path).toBe('rules["silent-early-return-in-test"]');
+    expect(err.message).toContain("invalid severity; allowed: off, warn");
+    const arr = capture('{"rules":{"silent-early-return-in-test":["error"]}}');
+    expect(arr.path).toBe('rules["silent-early-return-in-test"][0]');
+    expect(arr.message).toContain("invalid severity; allowed: off, warn");
+  });
+
+  it("rejects options", () => {
+    expectConfigError(
+      '{"rules":{"silent-early-return-in-test":["warn",{"x":1}]}}',
+      'rules["silent-early-return-in-test"][1].x',
+      [],
+      "unknown option",
+    );
+  });
+
+  it("is included in RULE_IDS", () => {
+    expect(RULE_IDS).toContain("silent-early-return-in-test");
   });
 });
 
@@ -403,6 +464,7 @@ describe("exported constants", () => {
       "effect",
       "require-safety-comment-for-type-assertion",
       "require-readable-spacing",
+      "silent-early-return-in-test",
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
@@ -415,18 +477,20 @@ describe("exported constants", () => {
       "effect": ["off", "warn"],
       "require-safety-comment-for-type-assertion": ["off", "warn"],
       "require-readable-spacing": ["off", "warn"],
+      "silent-early-return-in-test": ["off", "warn"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
       "commit-message": ["preset"],
       "comment-density": [],
       "artifact-structure": ["govern", "types", "forbidden"],
-      "type-escape-hatches": [],
+      "type-escape-hatches": ["allowInTypeGuards"],
       "no-module-mocking": [],
       "code-smells": [],
       "effect": [],
       "require-safety-comment-for-type-assertion": [],
       "require-readable-spacing": [],
+      "silent-early-return-in-test": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

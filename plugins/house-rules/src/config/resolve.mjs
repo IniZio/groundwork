@@ -56,8 +56,9 @@ export function resolveConfigText(repoRoot, text) {
   const mocking = severityOf('no-module-mocking', 'warn')
   const smells = severityOf('code-smells', 'warn')
   const effect = severityOf('effect', 'off')
-  const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'warn')
-  const readableSpacing = severityOf('require-readable-spacing', 'warn')
+  const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'off')
+  const readableSpacing = severityOf('require-readable-spacing', 'off')
+  const silentEarlyReturn = severityOf('silent-early-return-in-test', 'warn')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -85,7 +86,7 @@ export function resolveConfigText(repoRoot, text) {
       },
       'type-escape-hatches': {
         severity: escapes.value,
-        options: {},
+        options: { ...(rules['type-escape-hatches']?.options ?? {}) },
         sources: { severity: escapes.source },
       },
       'no-module-mocking': {
@@ -112,6 +113,11 @@ export function resolveConfigText(repoRoot, text) {
         severity: readableSpacing.value,
         options: {},
         sources: { severity: readableSpacing.source },
+      },
+      'silent-early-return-in-test': {
+        severity: silentEarlyReturn.value,
+        options: {},
+        sources: { severity: silentEarlyReturn.source },
       },
     },
   }

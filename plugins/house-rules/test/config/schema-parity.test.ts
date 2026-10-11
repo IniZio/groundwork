@@ -108,7 +108,7 @@ function manifestFixtures(): [string, unknown, boolean][] {
 
 function warnOnlyFixtures(): [string, unknown, boolean][] {
   const out: [string, unknown, boolean][] = [];
-  for (const id of ["type-escape-hatches", "no-module-mocking", "code-smells", "effect", "require-safety-comment-for-type-assertion", "require-readable-spacing"]) {
+  for (const id of ["type-escape-hatches", "no-module-mocking", "code-smells", "effect", "require-safety-comment-for-type-assertion", "require-readable-spacing", "silent-early-return-in-test"]) {
     const mk = (v: unknown) => ({ rules: { [id]: v } });
     out.push(
       [`${id} warn`, mk("warn"), true],
@@ -156,6 +156,12 @@ const fixtures: [string, unknown, boolean][] = [
   ["comment-density preset option", { rules: { "comment-density": ["error", { preset: "handbook" }] } }, false],
   ["artifact-structure unknown option", { rules: { "artifact-structure": ["error", { x: 1 }] } }, false],
   ...manifestFixtures(),
+  ["type-escape-hatches allowInTypeGuards true", { rules: { "type-escape-hatches": ["warn", { allowInTypeGuards: true }] } }, true],
+  ["type-escape-hatches allowInTypeGuards false", { rules: { "type-escape-hatches": ["off", { allowInTypeGuards: false }] } }, true],
+  ["type-escape-hatches allowInTypeGuards string", { rules: { "type-escape-hatches": ["warn", { allowInTypeGuards: "yes" }] } }, false],
+  ["type-escape-hatches allowInTypeGuards number", { rules: { "type-escape-hatches": ["warn", { allowInTypeGuards: 1 }] } }, false],
+  ["type-escape-hatches allowInTypeGuards plus unknown", { rules: { "type-escape-hatches": ["warn", { allowInTypeGuards: true, x: 1 }] } }, false],
+  ["require-readable-spacing allowInTypeGuards", { rules: { "require-readable-spacing": ["warn", { allowInTypeGuards: true }] } }, false],
   ["bad severity fatal", { rules: { "comment-density": "fatal" } }, false],
   ["commit-message warn", { rules: { "commit-message": "warn" } }, false],
   ["commit-message off", { rules: { "commit-message": "off" } }, false],

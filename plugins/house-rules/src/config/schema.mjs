@@ -8,6 +8,7 @@ export const RULE_IDS = Object.freeze([
   "effect",
   "require-safety-comment-for-type-assertion",
   "require-readable-spacing",
+  "silent-early-return-in-test",
 ]);
 export const RULE_ALIASES = Object.freeze({ "stray-artifacts": "artifact-structure" });
 export const SEVERITIES = Object.freeze(["error"]);
@@ -22,18 +23,20 @@ export const RULE_SEVERITIES = Object.freeze({
   "effect": WARN_SEVERITIES,
   "require-safety-comment-for-type-assertion": WARN_SEVERITIES,
   "require-readable-spacing": WARN_SEVERITIES,
+  "silent-early-return-in-test": WARN_SEVERITIES,
 });
 export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"]);
 export const RULE_OPTION_KEYS = Object.freeze({
   "commit-message": Object.freeze(["preset"]),
   "comment-density": Object.freeze([]),
   "artifact-structure": Object.freeze(["govern", "types", "forbidden"]),
-  "type-escape-hatches": Object.freeze([]),
+  "type-escape-hatches": Object.freeze(["allowInTypeGuards"]),
   "no-module-mocking": Object.freeze([]),
   "code-smells": Object.freeze([]),
   "effect": Object.freeze([]),
   "require-safety-comment-for-type-assertion": Object.freeze([]),
   "require-readable-spacing": Object.freeze([]),
+  "silent-early-return-in-test": Object.freeze([]),
 });
 export const TIERS = Object.freeze(["product", "working", "ephemeral"]);
 export const TYPE_KEYS = Object.freeze([
@@ -147,6 +150,13 @@ function checkOptions(id, options, path) {
   }
   if (Object.hasOwn(options, "preset") && !PRESETS.includes(options.preset)) {
     throw new ConfigError(`${path}.preset`, "invalid preset", PRESETS);
+  }
+  if (
+    canonical(id) === "type-escape-hatches" &&
+    Object.hasOwn(options, "allowInTypeGuards") &&
+    typeof options.allowInTypeGuards !== "boolean"
+  ) {
+    throw new ConfigError(`${path}.allowInTypeGuards`, "must be a boolean", ["boolean"]);
   }
   if (canonical(id) === "artifact-structure") {
     checkManifestOptions(options, path);

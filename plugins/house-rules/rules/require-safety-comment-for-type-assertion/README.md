@@ -4,7 +4,7 @@
 
 Type assertions (as / <T>x, not as const) must be preceded by a SAFETY: comment stating the checked invariant.
 
-**Severity**: warn | **Autofix**: no
+**Severity**: off | **Autofix**: no
 
 **Edit-time check**: yes | **Languages**: typescript
 

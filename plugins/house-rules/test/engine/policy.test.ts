@@ -25,17 +25,26 @@ describe("BUILTIN_POLICY", () => {
 });
 
 describe("policyForRoot", () => {
-  it("defaults require-safety-comment-for-type-assertion to warn and overlays off", () => {
+  it("defaults require-safety-comment-for-type-assertion to off and overlays warn", () => {
     const id = "require-safety-comment-for-type-assertion";
-    expect(policyForRoot(tmpWith(JSON.stringify({ rules: {} })))[id]).toEqual({ severity: "warn", autofix: false });
-    expect(policyForRoot(tmpWith(JSON.stringify({ rules: { [id]: "off" } })))[id]).toEqual({
-      severity: "off",
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: {} })))[id]).toEqual({ severity: "off", autofix: false });
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: { [id]: "warn" } })))[id]).toEqual({
+      severity: "warn",
       autofix: false,
     });
   });
 
-  it("defaults require-readable-spacing to warn and overlays off", () => {
+  it("defaults require-readable-spacing to off and overlays warn", () => {
     const id = "require-readable-spacing";
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: {} })))[id]).toEqual({ severity: "off", autofix: false });
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: { [id]: "warn" } })))[id]).toEqual({
+      severity: "warn",
+      autofix: false,
+    });
+  });
+
+  it("defaults silent-early-return-in-test to warn and overlays off", () => {
+    const id = "silent-early-return-in-test";
     expect(policyForRoot(tmpWith(JSON.stringify({ rules: {} })))[id]).toEqual({ severity: "warn", autofix: false });
     expect(policyForRoot(tmpWith(JSON.stringify({ rules: { [id]: "off" } })))[id]).toEqual({
       severity: "off",

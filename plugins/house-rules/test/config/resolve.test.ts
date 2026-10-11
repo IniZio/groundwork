@@ -89,11 +89,16 @@ const ALL_DEFAULTS = {
       sources: { severity: 'default' },
     },
     'require-safety-comment-for-type-assertion': {
-      severity: 'warn',
+      severity: 'off',
       options: {},
       sources: { severity: 'default' },
     },
     'require-readable-spacing': {
+      severity: 'off',
+      options: {},
+      sources: { severity: 'default' },
+    },
+    'silent-early-return-in-test': {
       severity: 'warn',
       options: {},
       sources: { severity: 'default' },
@@ -182,19 +187,19 @@ describe('resolveConfig effect rule', () => {
 });
 
 describe('resolveConfig require-safety-comment-for-type-assertion rule', () => {
-  it('absent resolves to warn from default', () => {
+  it('absent resolves to off from default', () => {
     expect(resolveConfig(makeRepo()).rules['require-safety-comment-for-type-assertion']).toEqual({
-      severity: 'warn',
+      severity: 'off',
       options: {},
       sources: { severity: 'default' },
     });
   });
 
-  it('string off resolves to off from config', () => {
+  it('string warn resolves to warn from explicit', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'require-safety-comment-for-type-assertion': 'off' } });
+    writeConfig(repo, { rules: { 'require-safety-comment-for-type-assertion': 'warn' } });
     expect(resolveConfig(repo).rules['require-safety-comment-for-type-assertion']).toEqual({
-      severity: 'off',
+      severity: 'warn',
       options: {},
       sources: { severity: 'explicit' },
     });
@@ -202,18 +207,54 @@ describe('resolveConfig require-safety-comment-for-type-assertion rule', () => {
 });
 
 describe('resolveConfig require-readable-spacing rule', () => {
-  it('absent resolves to warn from default', () => {
+  it('absent resolves to off from default', () => {
     expect(resolveConfig(makeRepo()).rules['require-readable-spacing']).toEqual({
+      severity: 'off',
+      options: {},
+      sources: { severity: 'default' },
+    });
+  });
+
+  it('string warn resolves to warn from explicit', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'require-readable-spacing': 'warn' } });
+    expect(resolveConfig(repo).rules['require-readable-spacing']).toEqual({
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
+  });
+});
+
+describe('resolveConfig type-escape-hatches allowInTypeGuards', () => {
+  it('passes the option through as explicit options', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'type-escape-hatches': ['warn', { allowInTypeGuards: true }] } });
+    expect(resolveConfig(repo).rules['type-escape-hatches']).toEqual({
+      severity: 'warn',
+      options: { allowInTypeGuards: true },
+      sources: { severity: 'explicit' },
+    });
+  });
+
+  it('default options stay empty', () => {
+    expect(resolveConfig(makeRepo()).rules['type-escape-hatches'].options).toEqual({});
+  });
+});
+
+describe('resolveConfig silent-early-return-in-test rule', () => {
+  it('absent resolves to warn from default', () => {
+    expect(resolveConfig(makeRepo()).rules['silent-early-return-in-test']).toEqual({
       severity: 'warn',
       options: {},
       sources: { severity: 'default' },
     });
   });
 
-  it('string off resolves to off from config', () => {
+  it('string off resolves to off from explicit', () => {
     const repo = makeRepo();
-    writeConfig(repo, { rules: { 'require-readable-spacing': 'off' } });
-    expect(resolveConfig(repo).rules['require-readable-spacing']).toEqual({
+    writeConfig(repo, { rules: { 'silent-early-return-in-test': 'off' } });
+    expect(resolveConfig(repo).rules['silent-early-return-in-test']).toEqual({
       severity: 'off',
       options: {},
       sources: { severity: 'explicit' },
@@ -516,6 +557,7 @@ describe('AC2 legacy artifact-structure configs', () => {
         'effect': ALL_DEFAULTS.rules['effect'],
         'require-safety-comment-for-type-assertion': ALL_DEFAULTS.rules['require-safety-comment-for-type-assertion'],
         'require-readable-spacing': ALL_DEFAULTS.rules['require-readable-spacing'],
+        'silent-early-return-in-test': ALL_DEFAULTS.rules['silent-early-return-in-test'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

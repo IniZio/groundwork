@@ -61,10 +61,12 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
     '  change with: rules["code-smells"] (active: warn, source: default)',
     'effect                                    severity=off (default)',
     '  change with: rules["effect"] (active: off, source: default)',
-    'require-safety-comment-for-type-assertion severity=warn (default)',
-    '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
-    'require-readable-spacing                  severity=warn (default)',
-    '  change with: rules["require-readable-spacing"] (active: warn, source: default)',
+    'require-safety-comment-for-type-assertion severity=off (default)',
+    '  change with: rules["require-safety-comment-for-type-assertion"] (active: off, source: default)',
+    'require-readable-spacing                  severity=off (default)',
+    '  change with: rules["require-readable-spacing"] (active: off, source: default)',
+    'silent-early-return-in-test               severity=warn (default)',
+    '  change with: rules["silent-early-return-in-test"] (active: warn, source: default)',
     '',
   ].join('\n');
 
@@ -92,10 +94,12 @@ function explicitText(file: string) {
     '  change with: rules["code-smells"] (active: warn, source: default)',
     'effect                                    severity=off (default)',
     '  change with: rules["effect"] (active: off, source: default)',
-    'require-safety-comment-for-type-assertion severity=warn (default)',
-    '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
-    'require-readable-spacing                  severity=warn (default)',
-    '  change with: rules["require-readable-spacing"] (active: warn, source: default)',
+    'require-safety-comment-for-type-assertion severity=off (default)',
+    '  change with: rules["require-safety-comment-for-type-assertion"] (active: off, source: default)',
+    'require-readable-spacing                  severity=off (default)',
+    '  change with: rules["require-readable-spacing"] (active: off, source: default)',
+    'silent-early-return-in-test               severity=warn (default)',
+    '  change with: rules["silent-early-return-in-test"] (active: warn, source: default)',
     '',
   ].join('\n');
 }
@@ -113,6 +117,16 @@ describe('house-rules config', () => {
     const r = runConfig(['--repo', repo], repo);
     expect(r.status).toBe(0);
     expect(r.stdout.split('\n')).toEqual(explicitText(path.join(repo, '.house-rules.json')).split('\n'));
+  });
+
+  it('reports require-readable-spacing as explicit warn when enabled in the file', () => {
+    const repo = makeRepo(CONVENTIONAL, {
+      '.house-rules.json': JSON.stringify({ rules: { 'require-readable-spacing': 'warn' } }),
+    });
+    const r = runConfig(['--repo', repo], repo);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('require-readable-spacing                  severity=warn (explicit)');
+    expect(r.stdout).toContain('require-safety-comment-for-type-assertion severity=off (default)');
   });
 
   it('detects subject-only from .gitmessage', () => {
@@ -186,8 +200,9 @@ describe('house-rules config', () => {
         'no-module-mocking': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         'code-smells': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         effect: { severity: 'off', options: {}, sources: { severity: 'default' } },
-        'require-safety-comment-for-type-assertion': { severity: 'warn', options: {}, sources: { severity: 'default' } },
-        'require-readable-spacing': { severity: 'warn', options: {}, sources: { severity: 'default' } },
+        'require-safety-comment-for-type-assertion': { severity: 'off', options: {}, sources: { severity: 'default' } },
+        'require-readable-spacing': { severity: 'off', options: {}, sources: { severity: 'default' } },
+        'silent-early-return-in-test': { severity: 'warn', options: {}, sources: { severity: 'default' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);
@@ -201,8 +216,28 @@ describe('house-rules config', () => {
       'effect',
       'require-safety-comment-for-type-assertion',
       'require-readable-spacing',
+      'silent-early-return-in-test',
     ]);
     expect(r.stdout).toBe(JSON.stringify(out, null, 2) + '\n');
+  });
+
+  it('shows an explicit type-escape-hatches allowInTypeGuards option in text and json', () => {
+    const repo = makeRepo(CONVENTIONAL, {
+      '.house-rules.json': JSON.stringify({
+        rules: { 'type-escape-hatches': ['warn', { allowInTypeGuards: true }] },
+      }),
+    });
+    const text = runConfig(['--repo', repo], repo);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(
+      'type-escape-hatches                       severity=warn (explicit)  allowInTypeGuards=true (explicit)',
+    );
+    expect(text.stdout).toContain(
+      '  change with: rules["type-escape-hatches"].allowInTypeGuards (active: true, source: explicit)',
+    );
+    const json = runConfig(['--repo', repo, '--format', 'json'], repo);
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).rules['type-escape-hatches'].options).toEqual({ allowInTypeGuards: true });
   });
 
   it('defaults --repo to the git root of cwd', () => {

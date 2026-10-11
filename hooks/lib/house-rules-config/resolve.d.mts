@@ -23,7 +23,7 @@ export interface ResolvedConfig {
     }
     'type-escape-hatches': {
       severity: Severity
-      options: Record<string, never>
+      options: { allowInTypeGuards?: boolean }
       sources: { severity: Source }
     }
     'no-module-mocking': {
@@ -47,6 +47,11 @@ export interface ResolvedConfig {
       sources: { severity: Source }
     }
     'require-readable-spacing': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
+    'silent-early-return-in-test': {
       severity: Severity
       options: Record<string, never>
       sources: { severity: Source }

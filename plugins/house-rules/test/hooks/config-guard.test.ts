@@ -461,10 +461,10 @@ describe("effect rule (default off)", () => {
   });
 });
 
-describe("require-safety-comment-for-type-assertion rule (default warn)", () => {
+describe("require-safety-comment-for-type-assertion rule (default off)", () => {
   const ID = "require-safety-comment-for-type-assertion";
 
-  test("absent to warn allowed (no change)", async () => {
+  test("absent to warn allowed (tightening)", async () => {
     setFile(null);
     await expectAllow(write(cfg({ [ID]: "warn" })));
   });
@@ -474,9 +474,9 @@ describe("require-safety-comment-for-type-assertion rule (default warn)", () => 
     await expectDeny(write(cfg({ [ID]: "off" })), `rules["${ID}"]: warn → off`, LOOSEN_MSG);
   });
 
-  test("off written when absent denied (loosens default warn)", async () => {
+  test("off written when absent allowed (no change)", async () => {
     setFile(null);
-    await expectDeny(write(cfg({ [ID]: "off" })), `rules["${ID}"]: warn → off`, LOOSEN_MSG);
+    await expectAllow(write(cfg({ [ID]: "off" })));
   });
 
   test("error severity denied as invalid", async () => {
@@ -490,8 +490,37 @@ describe("require-safety-comment-for-type-assertion rule (default warn)", () => 
   });
 });
 
-describe("require-readable-spacing rule (default warn)", () => {
+describe("require-readable-spacing rule (default off)", () => {
   const ID = "require-readable-spacing";
+
+  test("absent to warn allowed (tightening)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ [ID]: "warn" })));
+  });
+
+  test("warn to off denied", async () => {
+    setFile(cfg({ [ID]: "warn" }));
+    await expectDeny(write(cfg({ [ID]: "off" })), `rules["${ID}"]: warn → off`, LOOSEN_MSG);
+  });
+
+  test("off written when absent allowed (no change)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ [ID]: "off" })));
+  });
+
+  test("error severity denied as invalid", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ [ID]: "error" })), "invalid severity; allowed: off, warn");
+  });
+
+  test("options array denied", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ [ID]: ["warn", { x: 1 }] })));
+  });
+});
+
+describe("silent-early-return-in-test rule (default warn)", () => {
+  const ID = "silent-early-return-in-test";
 
   test("absent to warn allowed (no change)", async () => {
     setFile(null);

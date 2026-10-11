@@ -4,7 +4,7 @@
 
 Require readable spacing between declarations and logical statement groups.
 
-**Severity**: warn | **Autofix**: no
+**Severity**: off | **Autofix**: no
 
 **Edit-time check**: yes | **Languages**: typescript
 

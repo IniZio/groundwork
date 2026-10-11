@@ -7,7 +7,7 @@ import { resolveDbPath, resolveRepoBase } from "./lib/repo-base.js";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
 import { readPointer, type ScopePointer } from "../store/scope-pointer.js";
-import { readSealKey } from "../store/key-store.js";
+import { readSealKeyForDb } from "../store/key-store.js";
 import { verifyApprovalSeal } from "../store/gate-seal.js";
 
 // ---------------------------------------------------------------------------
@@ -242,13 +242,12 @@ export function getCurrentHead(cwd: string): string | null {
   } catch { return null; }
 }
 
-export function checkStore(dbPath: string, repoPath?: string): {
+export function checkStore(dbPath: string): {
   sliceCount: number; incomplete: number; incompleteIds: string[]; approved: boolean; holdActive: boolean;
   holdId: number | null; holdNote: string;
   motiveDetails: MotiveStatus[];
 } {
-  const resolvedRepo = repoPath ?? path.dirname(path.dirname(dbPath));
-  const sealKey = readSealKey(resolvedRepo);
+  const sealKey = readSealKeyForDb(dbPath);
   const db = new Database(dbPath, { readonly: true });
   try {
     const sliceCount = db.query<{ n: number }, []>(

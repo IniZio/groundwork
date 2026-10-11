@@ -40,7 +40,7 @@ function repoHash(repoPath: string): string {
 }
 
 /** Legacy config dir: `<repos>/<sha256(resolve(repoPath))[:16]>/`. */
-export function legacyConfigDirForRepo(repoPath: string): string {
+function legacyConfigDirForRepo(repoPath: string): string {
   return join(reposBase(), repoHash(repoPath));
 }
 
@@ -82,25 +82,8 @@ export function configDirForDb(dbPath: string): string {
   return join(reposBase(), storeIdForDb(dbPath));
 }
 
-function dbPathForRepo(repoPath: string): string {
-  return join(repoPath, ".groundwork", "work.db");
-}
-
 function ensureDbParent(dbPath: string): void {
   if (!existsSync(dbPath)) mkdirSync(dirname(resolve(dbPath)), { recursive: true });
-}
-
-/** Shim: config dir for a repo, via its work.db. */
-export function configDirForRepo(repoPath: string): string {
-  return configDirForDb(dbPathForRepo(repoPath));
-}
-
-export function writeTokenPath(repoPath: string): string {
-  return join(configDirForRepo(repoPath), "write.token");
-}
-
-export function sealKeyPath(repoPath: string): string {
-  return join(configDirForRepo(repoPath), "seal.key");
 }
 
 // ---------------------------------------------------------------------------
@@ -129,15 +112,6 @@ export function ensureWriteTokenForDb(dbPath: string, existing?: string): string
   return tok;
 }
 
-/** Read the write token for a repo, or null if not initialised. */
-export function readWriteToken(repoPath: string): string | null {
-  return readWriteTokenForDb(dbPathForRepo(repoPath));
-}
-
-export function ensureWriteToken(repoPath: string, existing?: string): string {
-  return ensureWriteTokenForDb(dbPathForRepo(repoPath), existing);
-}
-
 // ---------------------------------------------------------------------------
 // Seal key
 // ---------------------------------------------------------------------------
@@ -164,15 +138,6 @@ export function ensureSealKeyForDb(dbPath: string): Buffer {
   const key = randomBytes(32);
   writeFileSync(p, key, { mode: 0o600 });
   return key;
-}
-
-/** Read the seal key for a repo, or null if not initialised. */
-export function readSealKey(repoPath: string): Buffer | null {
-  return readSealKeyForDb(dbPathForRepo(repoPath));
-}
-
-export function ensureSealKey(repoPath: string): Buffer {
-  return ensureSealKeyForDb(dbPathForRepo(repoPath));
 }
 
 // ---------------------------------------------------------------------------

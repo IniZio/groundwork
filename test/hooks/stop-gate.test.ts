@@ -8,7 +8,7 @@ import { run, checkStore, detectYield, extractBackgroundAgentIds, getCurrentHead
 import { WorkStore } from "../../src/store/store.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
-import { ensureSealKey, computeSeal } from "../../src/store/key-store.js";
+import { ensureSealKeyForDb, computeSeal } from "../../src/store/key-store.js";
 
 // Sealed-approve fixture: checkStore() derives the repo from dirname(dirname(db)) and
 // reads that repo's HMAC key from XDG_CONFIG_HOME, so point it at an isolated temp dir.
@@ -16,7 +16,7 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(tmpdir(), "gw-stop-gate-xdg-
 
 /** Returns a GATE_APPROVE payload carrying a valid HMAC seal for (repo of dbFile, motiveId). */
 function sealedPayload(dbFile: string, motiveId: string, payload: Record<string, unknown>): Record<string, unknown> {
-  const key = ensureSealKey(path.dirname(path.dirname(dbFile)));
+  const key = ensureSealKeyForDb(dbFile);
   const citation = typeof payload.citation === "string" ? payload.citation : "";
   const createdAt = new Date().toISOString();
   const baseCommit = typeof payload.base_commit === "string" ? payload.base_commit : null;

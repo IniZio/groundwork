@@ -5,7 +5,7 @@ import path from "node:path";
 import { Database } from "bun:sqlite";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
-import { readWriteToken } from "../../src/store/key-store.js";
+import { readWriteTokenForDb } from "../../src/store/key-store.js";
 
 const TMP = "/dev/shm/gw-token-hygiene-test";
 mkdirSync(TMP, { recursive: true });
@@ -57,7 +57,7 @@ describe("token hygiene — T15", () => {
   it("gw init: token stored in config dir", () => {
     const dir = makeRepoDir();
     runGw(["init"], dir);
-    const tok = readWriteToken(dir);
+    const tok = readWriteTokenForDb(path.join(dir, ".groundwork", "work.db"));
     expect(tok).toMatch(/^[0-9a-f]{32}$/);
   });
 
@@ -88,7 +88,7 @@ describe("token hygiene — T15", () => {
     db.close();
     const r = runGw(["init"], dir);
     expect(r.status).toBe(0);
-    const tok = readWriteToken(dir);
+    const tok = readWriteTokenForDb(dbPath);
     expect(tok).toBe("deadbeef12345678deadbeef12345678");
     const db2 = new Database(dbPath, { readonly: true });
     const row = db2.query<{ value: string }, [string]>("SELECT value FROM meta WHERE key = ?").get("token");

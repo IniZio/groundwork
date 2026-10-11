@@ -46,3 +46,8 @@ export const cases: RuleCases = {
     { why: 'declare function without predicate', code: 'declare function d(v: unknown): void;\n', findings: one('v') },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-runtime-typeof] typeof in a non-guard function',
+];

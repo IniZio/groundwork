@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import fs from 'node:fs';
 import path from 'node:path';
 import rule from './index.js';
 import { loadRules } from '../../src/engine/registry.js';
@@ -8,6 +9,11 @@ import type { RuleContext } from '../../src/engine/types.js';
 
 const checksDir = path.join(import.meta.dir, 'checks');
 const cases = await loadGroupedCases(checksDir);
+const tsOnlyIds = new Set<string>();
+for (const name of fs.readdirSync(checksDir).filter((n) => n.endsWith('.ts') && !n.endsWith('.cases.ts'))) {
+  const mod = (await import(path.join(checksDir, name))) as { id: string; tsOnly?: boolean };
+  if (mod.tsOnly) tsOnlyIds.add(mod.id);
+}
 
 for (const { rule: view, cases: isolated } of await loadIsolatedCases(rule, checksDir)) ruleTester(view, isolated);
 
@@ -42,8 +48,9 @@ describe('type-escape-hatches language scope', () => {
 
   for (const c of cases.invalid) {
     for (const ext of ['js', 'jsx']) {
-      it(`${c.why}: no findings in x.${ext}`, async () => {
-        expect(await rule.check(ctxFor(`x.${ext}`, c.code ?? ''))).toEqual([]);
+      it(`${c.why}: no ts-only findings in x.${ext}`, async () => {
+        const findings = await rule.check(ctxFor(`x.${ext}`, c.code ?? ''));
+        expect(findings.filter((f) => tsOnlyIds.has(/^\[([^\]]+)\]/.exec(f.message)![1]))).toEqual([]);
       });
     }
 

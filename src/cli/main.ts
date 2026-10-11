@@ -9,9 +9,9 @@ import { runMigrate } from "./migrate.js";
 import { runRecipeCommand } from "./recipe.js";
 import { listUnits, idleDays } from "../store/work-units.js";
 import {
-  readWriteToken,
-  ensureWriteToken,
-  ensureSealKey,
+  readWriteTokenForDb,
+  ensureWriteTokenForDb,
+  ensureSealKeyForDb,
   computeSeal,
   type SealFields,
 } from "../store/key-store.js";
@@ -69,7 +69,7 @@ function checkToken(store: WorkStore, args: string[]): void {
   const t = flag(args, "--token");
   // Token lives in config dir (not in work.db).  Fall back to meta for stores
   // that have not yet run $GW init under the new scheme.
-  const stored = readWriteToken(repoDir()) ?? store.getMeta("token");
+  const stored = readWriteTokenForDb(dbPath()) ?? store.getMeta("token");
   if (!stored) {
     process.stderr.write(`error: store has no token — run \`${gw} init\` first\n`);
     store.close();
@@ -133,16 +133,16 @@ function cmdInit(args: string[]): void {
   const store = new WorkStore(p);
 
   const metaTok = store.getMeta("token");
-  let tok = readWriteToken(repoDir());
+  let tok = readWriteTokenForDb(p);
   if (!tok) {
-    tok = ensureWriteToken(repoDir(), metaTok ?? undefined);
+    tok = ensureWriteTokenForDb(p, metaTok ?? undefined);
     if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
     process.stdout.write(`initialized: ${p}\ntoken: ${tok}\n`);
   } else {
     if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
     process.stdout.write(`already initialized: ${p}\n`);
   }
-  ensureSealKey(repoDir());
+  ensureSealKeyForDb(p);
 
   const objective = flag(args, "--objective");
   if (objective) {
@@ -319,7 +319,7 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
   if (upper === "APPROVE") {
     const head = getGitHead(repoBase());
     if (head) payload.base_commit = head;
-    const sealKey = ensureSealKey(repoDir());
+    const sealKey = ensureSealKeyForDb(dbPath());
     const createdAt = new Date().toISOString();
     payload.created_at = createdAt;
     const motiveId = motiveSlug ?? store.activeMotive;
@@ -713,7 +713,7 @@ const cmd = argv[0];
 if (cmd === "init") {
   cmdInit(argv.slice(1));
 } else if (cmd === "token") {
-  const tok = readWriteToken(repoDir());
+  const tok = readWriteTokenForDb(dbPath());
   if (!tok) { process.stderr.write(`error: no token — run \`${gw} init\` first\n`); process.exit(1); }
   process.stdout.write(`token: ${tok}\n`);
 } else if (cmd === "slice") {

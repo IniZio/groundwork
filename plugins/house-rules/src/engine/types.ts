@@ -37,6 +37,8 @@ export interface RuleContext {
   repoRoot: string;
   mode: 'guard' | 'gate' | 'cli';
   files?: ScopedFile[];
+  /** Rule options override; when absent, rules resolve options from config. */
+  options?: Record<string, unknown>;
   /**
    * Resolves null when the file has no registered language or no text;
    * parses at most once per (language, text) per context.
@@ -163,6 +165,8 @@ export interface Case {
   tree?: Record<string, string>;
   /** Base text for a code case; when present, addedHunks = diffTextToHunks(base, code) */
   base?: string;
+  /** Passed to the rule as ctx.options. */
+  options?: Record<string, unknown>;
 }
 
 export interface RuleCases {

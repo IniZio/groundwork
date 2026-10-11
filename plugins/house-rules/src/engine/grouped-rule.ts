@@ -3,6 +3,27 @@ import path from 'node:path';
 import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
 import type { Finding, PendingEdit, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
 import { createSourceFiles, type SourceFileResult } from './source-file.js';
+import { resolveConfig } from '../config/resolve.mjs';
+
+type ResolvedConfig = ReturnType<typeof resolveConfig>;
+const configByRoot = new Map<string, ResolvedConfig | null>();
+
+/** Options configured for rule `ruleId` at `repoRoot`; `{}` when unset or config fails to resolve. Cached per root, errors included. */
+function configOptions(repoRoot: string, ruleId: string): Readonly<Record<string, unknown>> {
+  let cfg = configByRoot.get(repoRoot);
+  if (cfg === undefined) {
+    try {
+      cfg = resolveConfig(repoRoot);
+    } catch {
+      cfg = null;
+    }
+    configByRoot.set(repoRoot, cfg);
+  }
+  if (!cfg) return {};
+
+  // SAFETY: config rules are keyed by rule id; options is an optional per-rule record.
+  return (cfg.rules as unknown as Record<string, { options?: Record<string, unknown> } | undefined>)[ruleId]?.options ?? {};
+}
 
 export interface CheckHit {
   node?: Node;
@@ -15,7 +36,7 @@ export interface Check {
   id: string;
   upstream: string;
   tsOnly?: boolean;
-  check(root: Node, source: string, index?: NodeIndex, filePath?: string): CheckHit[];
+  check(root: Node, source: string, index?: NodeIndex, filePath?: string, options?: Readonly<Record<string, unknown>>): CheckHit[];
 }
 
 export interface NodeIndex {
@@ -108,6 +129,7 @@ function collect(
   filePath: string,
   ruleId: string,
   isAdded: (row: number) => boolean,
+  options: Readonly<Record<string, unknown>>,
 ): Finding[] {
   if (!result.ok) return [];
   const { tree, text, errorRows } = result.source;
@@ -117,7 +139,7 @@ function collect(
   const index = sharedIndex(tree);
   for (const c of checks) {
     if (c.tsOnly && jsFile) continue;
-    for (const hit of c.check(tree.rootNode, text, index, filePath)) {
+    for (const hit of c.check(tree.rootNode, text, index, filePath, options)) {
       const row = hit.node ? hit.node.startPosition.row : hit.row;
       if (row === undefined || errorRows.has(row) || !isAdded(row)) continue;
       findings.push({
@@ -147,6 +169,7 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
       const active = await checks();
       const own = ctx.sourceFile ? null : createSourceFiles();
       const findings: Finding[] = [];
+      let options: Readonly<Record<string, unknown>> | undefined = ctx.options;
       try {
         for (const file of ctx.files ?? []) {
           if (!file.addedHunks || !file.text || !isScanned(file.path)) continue;
@@ -156,7 +179,8 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
             ? await ctx.sourceFile(file as ScopedFile)
             : await own!.get('typescript', file.text, file.path);
           if (!result) continue;
-          findings.push(...collect(active, result, file.path, id, (r) => added.has(r)));
+          options ??= configOptions(ctx.repoRoot, id);
+          findings.push(...collect(active, result, file.path, id, (r) => added.has(r), options));
         }
       } finally {
         own?.dispose();
@@ -169,7 +193,8 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
       const result = await env.sourceFile();
       if (!result) return { findings: [] };
       const active = await checks();
-      return { findings: collect(active, result, edit.path, id, (r) => edit.changedRows.has(r)) };
+      const options = edit.repoRoot ? configOptions(edit.repoRoot, id) : {};
+      return { findings: collect(active, result, edit.path, id, (r) => edit.changedRows.has(r), options) };
     },
   };
 }

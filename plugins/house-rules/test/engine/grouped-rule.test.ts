@@ -397,3 +397,56 @@ export function check(_r: unknown, _s: string, _i: unknown, filePath?: string): 
     expect(r.findings.map((x) => x.message)).toEqual(['[path-probe] path=/repo/src/spec/a.test.ts']);
   });
 });
+
+describe('grouped-rule: options', () => {
+  function echoDir(): string {
+    const dir = makeChecksDir();
+    fs.writeFileSync(path.join(dir, 'echo-options.ts'), `export const id = 'echo-options';
+export const upstream = 'https://example.com/echo-options';
+export function check(_r: unknown, _s: string, _i: unknown, _p?: string, options?: Record<string, unknown>): { row: number; message: string }[] {
+  return [{ row: 0, message: JSON.stringify(options ?? null) }];
+}
+`);
+    fs.writeFileSync(path.join(dir, 'echo-options.cases.ts'), CASES_SRC);
+    return dir;
+  }
+  const echoes = (fs_: { message: string }[]) => fs_.map((f) => f.message).filter((m) => m.startsWith('[echo-options]'));
+  const tmpRepo = (config?: string): string => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gr-opts-'));
+    dirs.push(d);
+    if (config !== undefined) fs.writeFileSync(path.join(d, '.house-rules.json'), config);
+    return d;
+  };
+  const text = 'export const a = 1;\n';
+
+  it('check passes ctx.options to the check', async () => {
+    const rule = defineGroupedRule('demo', 'd', echoDir());
+    const ctx = { ...ctxFor([fileFor('src/run.ts', text)]), options: { allowInTypeGuards: true } };
+    expect(echoes(await rule.check(ctx))).toEqual(['[echo-options] {"allowInTypeGuards":true}']);
+  });
+
+  it('check passes {} (not undefined) when no options are configured', async () => {
+    const rule = defineGroupedRule('demo', 'd', echoDir());
+    const ctx = { ...ctxFor([fileFor('src/run.ts', text)]), repoRoot: tmpRepo() };
+    expect(echoes(await rule.check(ctx))).toEqual(['[echo-options] {}']);
+  });
+
+  it('check falls back to {} on a malformed config', async () => {
+    const rule = defineGroupedRule('demo', 'd', echoDir());
+    const ctx = { ...ctxFor([fileFor('src/run.ts', text)]), repoRoot: tmpRepo('{not json') };
+    expect(echoes(await rule.check(ctx))).toEqual(['[echo-options] {}']);
+  });
+
+  it('editCheck passes {} when repoRoot is null', async () => {
+    const rule = defineGroupedRule('demo', 'd', echoDir());
+    const p = '/repo/src/run.ts';
+    const sfs = createSourceFiles();
+    const edit: PendingEdit = {
+      path: p, tool: 'edit', lang: 'typescript', pre: null, post: text,
+      changedRows: new Set([0]), session: null, repoRoot: null, cwd: null,
+    };
+    const r = await rule.editCheck!(edit, { sourceFile: () => sfs.get('typescript', text, p), parserFactory: getDefaultParserFactory() });
+    expect(echoes(r.findings)).toEqual(['[echo-options] {}']);
+    sfs.dispose();
+  });
+});

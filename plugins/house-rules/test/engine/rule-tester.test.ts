@@ -261,6 +261,54 @@ describe('ruleTester — code case with base field', () => {
   });
 });
 
+describe('ruleTester — case options reach ctx.options', () => {
+  const optionsEchoRule: Rule = {
+    id: 'options-echo',
+    meta: { description: 'echoes ctx.options as the finding message' },
+    check: (ctx) =>
+      (ctx.files ?? [])
+        .filter((f) => f.text !== '')
+        .map((f) => ({
+          ruleId: 'options-echo',
+          path: f.path,
+          message: JSON.stringify(ctx.options ?? null),
+          fingerprintBasis: f.path,
+        })),
+  };
+
+  ruleTester(optionsEchoRule, {
+    valid: [
+      { why: 'empty file never flags (keeps valid non-empty)', code: '', filename: 'none.ts' },
+    ],
+    invalid: [
+      {
+        why: 'code case with options: ctx.options deep-equals them',
+        code: 'x',
+        filename: 'a.ts',
+        options: { flag: true },
+        findings: [{ message: '{"flag":true}' }],
+      },
+      {
+        why: 'code case without options: ctx.options is undefined',
+        code: 'x',
+        filename: 'a.ts',
+        findings: [{ message: 'null' }],
+      },
+      {
+        why: 'tree case with options: ctx.options deep-equals them',
+        tree: { 'a.ts': 'x' },
+        options: { flag: true },
+        findings: [{ message: '{"flag":true}' }],
+      },
+      {
+        why: 'tree case without options: ctx.options is undefined',
+        tree: { 'a.ts': 'x' },
+        findings: [{ message: 'null' }],
+      },
+    ],
+  });
+});
+
 describe('ruleTester — sessionCreatedOverrides', () => {
   const sessionCreatedRule: Rule = {
     id: 'session-created-only',

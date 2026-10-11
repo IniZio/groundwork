@@ -107,7 +107,7 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
         sessionCreated: c.sessionCreatedOverrides?.[filePath] ?? false,
       });
     }
-    return { repoRoot: tmp, mode: 'cli', files };
+    return { repoRoot: tmp, mode: 'cli', files, ...(c.options !== undefined ? { options: c.options } : {}) };
   }
 
   // code case (or bare case with no code/tree)
@@ -137,5 +137,5 @@ function buildContext(rule: Rule, c: TrackedCase, tmpDirs: string[]): RuleContex
     ...(c.base !== undefined ? { baseText: c.base } : {}),
     addedHunks: caseAddedHunks,
   }];
-  return { repoRoot: tmp, mode: 'cli', files };
+  return { repoRoot: tmp, mode: 'cli', files, ...(c.options !== undefined ? { options: c.options } : {}) };
 }

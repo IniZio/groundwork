@@ -265,3 +265,65 @@ describe("doc-size-guard — per-unit layout", () => {
     }
   });
 });
+
+describe("doc-size-guard — CLAUDE.md/AGENTS.md links into .groundwork/", () => {
+  const WARN = "CLAUDE.md links into .groundwork/ (gitignored, unreadable on a fresh clone): state the constraint in one line instead";
+  const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+  const cmds: string[] = [];
+  const walk = (n: unknown): void => {
+    if (typeof n === "string") { if (n.includes("doc-size-guard.ts")) cmds.push(n); }
+    else if (n && typeof n === "object") Object.values(n).forEach(walk);
+  };
+  walk(manifest);
+
+  const run = (rel: string, tool: string, content: string) => {
+    const fp = path.join(tmpDir, rel);
+    mkdirSync(path.dirname(fp), { recursive: true });
+    writeFileSync(fp, content);
+    const command = cmds[0]!.replaceAll("${CLAUDE_PLUGIN_ROOT}", REPO_ROOT);
+    return spawnSync(command, {
+      shell: true,
+      cwd: tmpDir,
+      input: JSON.stringify({ hook_event_name: "PostToolUse", tool_name: tool, tool_input: { file_path: fp } }),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir, CLAUDE_CODE_ENTRYPOINT: "cli" },
+      encoding: "utf8",
+    });
+  };
+
+  it("CLAUDE.md with a .groundwork/ link warns, exit 0", () => {
+    const r = run("CLAUDE.md", "Write", "See [plan](.groundwork/work/x/plan.md).\n");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(WARN);
+  });
+
+  it("AGENTS.md in a subdir with a nested /.groundwork/ link warns (Edit)", () => {
+    const r = run("pkg/sub/AGENTS.md", "Edit", "Read [x](../../.groundwork/notes.md) first.\n");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(WARN);
+  });
+
+  it("MultiEdit also warns", () => {
+    const r = run("CLAUDE.md", "MultiEdit", "[a](./.groundwork/a.md)\n");
+    expect(r.stdout).toContain(WARN);
+  });
+
+  it("plain textual mention passes silently", () => {
+    const r = run("CLAUDE.md", "Write", "Agent view lives in .groundwork/work/ and is gitignored.\n");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  it("README.md with the link is not warned by this hook", () => {
+    const r = run("README.md", "Write", "See [plan](.groundwork/work/x/plan.md).\n");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  it("size checks still behave alongside (violation + silent)", () => {
+    const fp = path.join(tmpDir, ".groundwork", "work", "s", "plan.md");
+    writeFileSync(fp, bigContent());
+    expect(check({ tool_name: "Write", tool_input: { file_path: fp } }, tmpDir).stdout).toContain("doc-size-guard: violation");
+    writeFileSync(fp, "# Doc\n\n## Section\n\nShort.\n");
+    expect(check({ tool_name: "Write", tool_input: { file_path: fp } }, tmpDir).stdout).toBe("");
+  });
+});

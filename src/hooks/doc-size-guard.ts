@@ -16,7 +16,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { classifyDoc, estimateTokens, checkStructure } from "./doc-io.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -30,6 +30,21 @@ function advise(msg: string): HookResult {
 function isEmbeddedAgent(): boolean {
   const ep = process.env.CLAUDE_CODE_ENTRYPOINT;
   return ep === "sdk-py" || ep === "sdk-js";
+}
+
+const AGENT_DOCS = new Set(["CLAUDE.md", "AGENTS.md"]);
+const LINK_WARNING =
+  "CLAUDE.md links into .groundwork/ (gitignored, unreadable on a fresh clone): state the constraint in one line instead\n";
+
+/** Same link-target detection as review/human-doc-rules.ts (its helper is not exported). */
+function linksIntoGroundwork(content: string): boolean {
+  const targets: string[] = [];
+  for (const line of content.split("\n")) {
+    targets.push(...[...line.matchAll(/\[[^\]]*\]\(\s*<?([^)\s>]+)/g)].map((m) => m[1]!));
+    const def = line.match(/^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/);
+    if (def) targets.push(def[1]!);
+  }
+  return targets.some((t) => /^(\.\/)?\.groundwork\//.test(t) || t.includes("/.groundwork/"));
 }
 
 const GUARDED = new Set(["write", "edit", "multiedit"]);
@@ -50,6 +65,11 @@ export function check(input: unknown, rootDir?: string): HookResult {
     if (!fp) return allow();
 
     const absPath = resolve(root, fp);
+    if (AGENT_DOCS.has(basename(absPath))) {
+      try {
+        if (linksIntoGroundwork(readFileSync(absPath, "utf8"))) return advise(LINK_WARNING);
+      } catch { return allow(); }
+    }
     const cls = classifyDoc(absPath, root);
     if (!cls) return allow();
 

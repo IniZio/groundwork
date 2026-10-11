@@ -95,7 +95,7 @@ describe("COV-2: recognised .ts file produces no coverage output", () => {
 
   it("session writes only clean .ts file → stdout is {continue:true}, no 'not checked'", async () => {
     const fp = path.join(tmpDir, "clean.ts");
-    writeFileSync(fp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n");
+    writeFileSync(fp, Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`).join("\n\n") + "\n");
     const ts = new Date(Date.now() - 10000).toISOString();
     const tp = makeTranscript(tmpDir, [fp], ts);
     const r = runGate({ hook_event_name: "Stop", session_id: `cov2-${Date.now()}`, transcript_path: tp, cwd: tmpDir, stop_hook_active: false });

@@ -10,7 +10,8 @@ import { type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 import { grammarFailureWarning } from "../../src/engine/run.js";
 import { getParser as realGetParser } from "../../src/hooks/lib/tree-sitter-loader.js";
 
-const CODE_25 = Array.from({ length: 25 }, (_, i) => `const v${i} = ${i};`).join("\n");
+// 13 code lines + 12 blank separators = 25 rows
+const CODE_25 = Array.from({ length: 13 }, (_, i) => `const v${i} = ${i};`).join("\n\n");
 
 const OVER_CAP_25 = [
   ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
@@ -22,7 +23,8 @@ const OVER_CAP_25 = [
 ].join("\n");
 
 const WITH_ANNOTATIONS_25 = [
-  ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
+  // 10 code + 9 separators + 1 blank = 20 rows, + 5 comments = 25 rows
+  Array.from({ length: 10 }, (_, i) => `const v${i} = ${i};`).join("\n\n") + "\n",
   "// @ts-expect-error legacy type mismatch",
   "// eslint-disable-next-line no-console",
   "// TODO(owner): remove this",
@@ -122,7 +124,8 @@ describe("comment-density-guard", () => {
 
   it("WHITELIST: eslint-disable and @ts-expect-error individually exempt", async () => {
     const content = [
-      ...Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`),
+      // 20 rows of code and blanks, + 3 exempt comments = 23 rows
+      Array.from({ length: 10 }, (_, i) => `const v${i} = ${i};`).join("\n\n") + "\n",
       "// @ts-expect-error needed",
       "// eslint-disable-next-line no-unused-vars",
       "// @ts-ignore temporary",
@@ -432,6 +435,7 @@ function makeSessionRepo(opts: {
   priorCommentLines: number;
   baseCommentLines?: number;
   baseCodeLines?: number;
+  padded?: boolean;
 }): { dir: string; file: string; transcript: string } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "cdg-ac4-"));
   gitIn(dir, ["init"]);
@@ -441,9 +445,11 @@ function makeSessionRepo(opts: {
   const file = path.join(dir, "session.ts");
   const bCode = opts.baseCodeLines ?? 0;
   const bComment = opts.baseCommentLines ?? 0;
+  // padded: each code line is followed by a blank row, so N code lines add 2N rows
+  const pad = opts.padded ? "\n" : "";
   const baseLines = [
     ...Array.from({ length: bComment }, (_, i) => `// base comment ${i}`),
-    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};`),
+    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};${pad}`),
     'const ANCHOR = "session";',
   ].join("\n") + "\n";
   writeFileSync(file, baseLines);
@@ -458,9 +464,9 @@ function makeSessionRepo(opts: {
 
   const sessionLines = [
     ...Array.from({ length: opts.priorCommentLines }, (_, i) => `// session comment ${i}`),
-    ...Array.from({ length: opts.priorCodeLines }, (_, i) => `const sessionLine${i} = ${i};`),
+    ...Array.from({ length: opts.priorCodeLines }, (_, i) => `const sessionLine${i} = ${i};${pad}`),
     ...Array.from({ length: bComment }, (_, i) => `// base comment ${i}`),
-    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};`),
+    ...Array.from({ length: bCode }, (_, i) => `const baseCode${i} = ${i};${pad}`),
     'const ANCHOR = "session";',
   ].join("\n") + "\n";
   writeFileSync(file, sessionLines);
@@ -481,14 +487,15 @@ describe("AC4 cumulative budget", () => {
   beforeAll(() => {
     // priorLines=40, priorComments=2 → budget=floor(0.05*(40+10))-2=0 → strip
     strippedRepo = makeSessionRepo({ priorCodeLines: 38, priorCommentLines: 2 });
-    // priorLines=100, priorComments=1 → budget=floor(0.05*(100+10))-1=4 → allow
-    allowedRepo = makeSessionRepo({ priorCodeLines: 99, priorCommentLines: 1 });
-    // base has 3 comments, session adds 40 code lines (no comments) → priorAddedComments=0
-    baseCommentRepo = makeSessionRepo({ priorCodeLines: 40, priorCommentLines: 0, baseCommentLines: 3, baseCodeLines: 5 });
+    // padded: 1 comment + 50 code + 50 blank = 101 prior rows, 9-row edit → budget=floor(0.05*(101+9))-1=4 → allow
+    allowedRepo = makeSessionRepo({ priorCodeLines: 50, priorCommentLines: 1, padded: true });
+    // base has 3 comments, session adds 20 padded code lines = 40 rows (no comments) → priorAddedComments=0
+    baseCommentRepo = makeSessionRepo({ priorCodeLines: 20, priorCommentLines: 0, baseCommentLines: 3, baseCodeLines: 5, padded: true });
   });
 
-  function makeNewString(codeLines: number, includeComment: boolean): string {
-    const lines = Array.from({ length: codeLines }, (_, i) => `const editLine${i} = ${i};`);
+  function makeNewString(codeLines: number, includeComment: boolean, padded = false): string {
+    const pad = padded ? "\n" : "";
+    const lines = Array.from({ length: codeLines }, (_, i) => `const editLine${i} = ${i};${pad}`);
     if (includeComment) lines.push("// edit comment");
     return lines.join("\n");
   }
@@ -509,9 +516,9 @@ describe("AC4 cumulative budget", () => {
     expect(ctx!).toContain("2 comments already added");
   });
 
-  it("budget=4: prior 100 lines + 1 comment, 10-line edit + 1 comment → allowed", async () => {
+  it("budget=4: prior 101 rows (1 comment), 9-row edit with 1 comment → allowed", async () => {
     const { dir, file, transcript } = allowedRepo;
-    const new_string = makeNewString(9, true); // 10 lines
+    const new_string = makeNewString(4, true, true); // 9 rows: 4 code + 4 blank + 1 comment
     const r = await check({
       tool_name: "Edit",
       tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
@@ -524,9 +531,10 @@ describe("AC4 cumulative budget", () => {
 
   it("base-commit comments not counted as session-added", async () => {
     const { dir, file, transcript } = baseCommentRepo;
-    // base has 3 comments; session adds 40 code lines (no comments)
-    // priorAddedComments=0 → budget=floor(0.05*(40+20))-0=3 → allow 1 comment
-    const new_string = makeNewString(19, true); // 20 lines: 19 code + 1 comment
+    // base has 3 comments; session adds 40 rows (no comments)
+    // priorAddedComments=0 → budget=floor(0.05*(40+21))-0=3 → allow 1 comment
+    // (if the 3 base comments were counted: 3-3=0 → strip)
+    const new_string = makeNewString(10, true, true); // 21 rows: 10 code + 10 blank + 1 comment
     const r = await check({
       tool_name: "Edit",
       tool_input: { file_path: file, old_string: 'const ANCHOR = "session";', new_string },
@@ -555,9 +563,9 @@ describe("AC4 cumulative budget", () => {
   it("BITE: prior always 0 → should-strip case becomes allow (red without real prior)", async () => {
     // Use a repo where bite changes the outcome: 20 prior + 2 comments, 20-line edit
     const biteRepo = makeSessionRepo({ priorCodeLines: 18, priorCommentLines: 2 });
-    // Real: floor(0.05*(20+20))-2=2-2=0 → over budget (nc.size=1 > 0)
-    // Bite (prior=0): floor(0.05*20)-0=1 → nc.size=1 ≤ 1 → allow (empty stdout)
-    const new_string = makeNewString(19, true); // 20 lines: 19 code + 1 comment
+    // Real: floor(0.05*(20+21))-2=2-2=0 → over budget (nc.size=1 > 0)
+    // Bite (prior=0): floor(0.05*21)-0=1 → nc.size=1 ≤ 1 → allow (empty stdout)
+    const new_string = makeNewString(10, true, true); // 21 rows: 10 code + 10 blank + 1 comment
     const r = await check({
       tool_name: "Edit",
       tool_input: { file_path: biteRepo.file, old_string: 'const ANCHOR = "session";', new_string },
@@ -687,8 +695,8 @@ describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAdde
     gitIn(dir, ["config", "user.name", "Test"]);
 
     const file = path.join(dir, "test.ts");
-    const codeLines = Array.from({ length: 10 }, (_, i) => `const c${i} = ${i};`).join("\n");
-    writeFileSync(file, `${codeLines}\n// why old\nconst z = 99;\n`);
+    const codeLines = Array.from({ length: 10 }, (_, i) => `const c${i} = ${i};`).join("\n\n");
+    writeFileSync(file, `${codeLines}\n\n// why old\nconst z = 99;\n`);
     gitIn(dir, ["add", "test.ts"]);
     gitIn(dir, ["commit", "-m", "base"], {
       GIT_AUTHOR_DATE: "2024-01-01T12:00:00+00:00",
@@ -698,7 +706,7 @@ describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAdde
     const transcript = path.join(dir, "transcript.jsonl");
     writeFileSync(transcript, JSON.stringify({ timestamp: "2024-01-02T12:00:00.000Z" }) + "\n");
 
-    writeFileSync(file, `${codeLines}\nconst z = 99;\n`);
+    writeFileSync(file, `${codeLines}\n\nconst z = 99;\n`);
     gitIn(dir, ["add", "test.ts"]);
     gitIn(dir, ["commit", "-m", "session"], {
       GIT_AUTHOR_DATE: "2024-01-03T12:00:00+00:00",
@@ -783,13 +791,14 @@ describe("defect fixes: base-aware nc, mapEdit pfx/sfx, advisory text, priorAdde
       GIT_COMMITTER_DATE: "2024-01-03T12:00:00+00:00",
     });
 
-    const editLines = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`).join("\n");
+    // 10 code + 9 separators + 1 blank + 1 comment = 21 rows
+    const editLines = Array.from({ length: 10 }, (_, i) => `const x${i} = ${i};`).join("\n\n");
     const r = await check({
       tool_name: "Edit",
       tool_input: {
         file_path: file,
         old_string: 'const ANCHOR = "session";',
-        new_string: `${editLines}\n// genuinely new comment`,
+        new_string: `${editLines}\n\n// genuinely new comment`,
       },
       transcript_path: transcript,
       cwd: dir,

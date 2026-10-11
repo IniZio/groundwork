@@ -298,7 +298,7 @@ function makeTsViolatorAutoFixable(dir: string, name: string): string {
     "// comment two", ...code.slice(20, 30), "// comment three", ...code.slice(30, 40),
     "// comment four", ...code.slice(40, 45), "// comment five", "// comment six",
     ...code.slice(45)];
-  writeFileSync(fp, lines.join("\n") + "\n");
+  writeFileSync(fp, lines.join("\n\n") + "\n");
   return fp;
 }
 

@@ -85,7 +85,7 @@ describe("gate warn findings", () => {
   });
 
   it("AC5: list capped at 20 lines plus a tail", () => {
-    const body = Array.from({ length: 25 }, (_, i) => `const v${i} = Reflect.get(o, k${i});`).join("\n") + "\n";
+    const body = Array.from({ length: 25 }, (_, i) => `const v${i} = Reflect.get(o, k${i});`).join("\n\n") + "\n";
     const { out } = stop({ "a.ts": body });
     const lines = (out.systemMessage as string).split("\n");
     expect(lines.filter(l => /^a\.ts:\d+ code-smells /.test(l)).length).toBe(20);

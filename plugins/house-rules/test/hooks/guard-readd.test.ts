@@ -15,11 +15,10 @@ afterEach(() => {
   rmSync(ledgerDir, { recursive: true, force: true });
 });
 
-// 100 code lines + 1 comment → budget = floor(0.05*101) = 5 → within budget
+// 50 code lines + 49 blank separators + 1 blank + 1 comment = 101 rows → budget = floor(0.05*101) = 5 → within budget
 function withinBudgetContent(comment: string): string {
-  const lines = Array.from({ length: 100 }, (_, i) => `const v${i} = ${i};`);
-  lines.push(comment);
-  return lines.join("\n");
+  const lines = Array.from({ length: 50 }, (_, i) => `const v${i} = ${i};`);
+  return lines.join("\n\n") + "\n\n" + comment;
 }
 
 // 5 code lines + 6 comments → budget = floor(0.05*11) = 0 → over budget

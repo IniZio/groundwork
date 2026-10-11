@@ -129,6 +129,7 @@ const FIX_TS = `// c1
 // c5
 // c6
 export const a = 1;
+
 export const b = 2;
 `;
 
@@ -139,6 +140,7 @@ const BAD_TS = `// c1
 // c5
 // c6
 export const a = (;
+
 export const b = 2;
 `;
 
@@ -157,7 +159,7 @@ function buildFixture(): { repoDir: string; baseSha: string } {
 
 const SUMMARY = '1 fixed, 2 need manual fix';
 const MANUAL_SVC = '    svc.go comment-density 25.0/100 (2 comments in 8 added lines; rows 17, 19)';
-const MANUAL_BAD = '    bad.ts comment-density 75.0/100 (6 comments in 8 added lines; rows 1-6)';
+const MANUAL_BAD = '    bad.ts comment-density 66.7/100 (6 comments in 9 added lines; rows 1-6)';
 
 describe('housekeep --dry-run parity', () => {
 

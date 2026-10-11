@@ -18,6 +18,12 @@ function run(payload: unknown, env: Record<string, string> = {}): { stdout: stri
 }
 
 describe("session-start hook", () => {
+  it("injects the human-layer routing row", () => {
+    const { stdout } = run({});
+    const ctx = (JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("| Human doc / PR body (write or review) | load skill `groundwork:human-layer` |");
+  });
+
   it("emits SessionStart hookEventName", () => {
     const { stdout, exit } = run({ session_id: "test-123" });
     expect(exit).toBe(0);

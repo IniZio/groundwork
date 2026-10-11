@@ -14,7 +14,7 @@
 | UI/UX | `groundwork:designer` |
 | Grilling | `mattpocock-skills:grilling` |
 | Verify/gate | `groundwork:qa`, `groundwork:advisor` |
-| Human doc / PR body review | `groundwork:human-doc-reviewer` |
+| Human doc / PR body (write or review) | load skill `groundwork:human-layer` |
 | Hygiene/deslop | `house-rules:housekeep` |
 | Config / commit style rejected | `house-rules:configure` |
 | Motive | /motive, /pause, /continue |

@@ -5,7 +5,7 @@ status: {{status}}
 
 # {{title}}
 
-Agent view. Human view at doc/{slug}/motive.md.
+Agent view. The human view of this change is the PR body draft at .groundwork/work/{slug}/pr-body.md.
 
 ## Objective
 

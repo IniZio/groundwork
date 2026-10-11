@@ -50,7 +50,7 @@ describe("human-doc-check", () => {
     expect(r.stdout).toContain('- "src/foo/bar.ts" — code-blocked path');
   });
 
-  for (const name of ["pr-body.md", "motive-human.md", "spec-human.md", "design-human.md", "ticket-human.md"]) {
+  for (const name of ["pr-body.md"]) {
     test(`clean template ${name} passes`, () => {
       const r = run(path.join(TPL, name));
       expect(r.stdout.trim()).toBe("PASS");

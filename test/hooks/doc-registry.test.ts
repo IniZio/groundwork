@@ -47,7 +47,7 @@ function validate(id: DocTypeId, text: string): boolean {
 describe("AC1 registry shape", () => {
   it("has exactly the expected keys", () => {
     expect([...ids].sort() as string[]).toEqual(
-      ["adr", "design", "design-human", "evidence", "handoff", "lessons", "map", "motive", "motive-human", "out-of-scope", "plan", "research", "spec", "spec-human", "ticket", "ticket-human"].sort(),
+      ["adr", "design", "evidence", "handoff", "lessons", "map", "motive", "out-of-scope", "plan", "pr-body", "research", "spec", "ticket"].sort(),
     );
   });
   it("each entry has exactly 7 keys and the right tier", () => {
@@ -55,7 +55,7 @@ describe("AC1 registry shape", () => {
       expect(Object.keys(WORKING_TYPES[id]).sort()).toEqual(
         ["description", "frontmatter", "generates", "headings", "instruction", "template", "tier"],
       );
-      expect(WORKING_TYPES[id].tier).toBe(id.endsWith("-human") ? "product" : "working");
+      expect(WORKING_TYPES[id].tier).toBe("working");
     }
   });
   it("evidence template is null, all others non-null", () => {
@@ -79,17 +79,17 @@ describe("AC2 generates literals", () => {
         expect(WORKING_TYPES[id].generates).toBe(".groundwork/adr/{nnnn}-{name:kebab}.md");
         continue;
       }
-      const prefix = WORKING_TYPES[id].tier === "product" ? "doc/{slug}/" : ".groundwork/work/{slug}/";
-      expect(WORKING_TYPES[id].generates.startsWith(prefix)).toBe(true);
+      expect(WORKING_TYPES[id].tier).not.toBe("product");
+      expect(WORKING_TYPES[id].generates.startsWith(".groundwork/work/{slug}/")).toBe(true);
     }
   });
-  it("each agent type has a human view outside .groundwork with reviewer-only headings", () => {
-    for (const base of ["spec", "ticket", "motive", "design"]) {
-      const human = WORKING_TYPES[`${base}-human` as DocTypeId];
-      expect(human).toBeDefined();
-      expect(human.generates.includes(".groundwork")).toBe(false);
-      for (const h of ["Acceptance criteria", "Files", "Commands", "Ledger"]) expect(human.headings).not.toContain(h);
-    }
+  it("pr-body resolves under the work dir", () => {
+    expect(resolveDocPath("pr-body", { slug: "demo" })).toBe(".groundwork/work/demo/pr-body.md");
+  });
+  it("forbids per-slug human views under doc/ but not snapshot docs", () => {
+    const redirect = "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`";
+    for (const p of ["doc/demo/motive.md", "doc/demo/spec.md", "doc/demo/tickets/01-x.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBe(redirect);
+    for (const p of ["doc/spec/billing.md", "doc/architecture.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBeNull();
   });
 });
 
@@ -100,7 +100,8 @@ describe("AC3 templates match schema and headings", () => {
       const path = join(ROOT, WORKING_TYPES[id].template as string);
       expect(existsSync(path)).toBe(true);
       const text = readFileSync(path, "utf8");
-      expect(validate(id, text)).toBe(true);
+      if (id === "pr-body") expect(text.startsWith("---")).toBe(false);
+      else expect(validate(id, text)).toBe(true);
       for (const h of WORKING_TYPES[id].headings) expect(text).toContain(`## ${h}`);
     });
   }
@@ -149,6 +150,9 @@ describe("AC5 forbidden patterns", () => {
       "learning-records/**",
       "to-questionnaire-*.md",
       "**/to-questionnaire-*.md",
+      "doc/*/motive.md",
+      "doc/*/spec.md",
+      "doc/*/tickets/**",
     ]);
     for (const f of FORBIDDEN) expect(f.redirect.length).toBeGreaterThan(0);
     expect(FORBIDDEN[0].redirect).toContain("$GW event append --type DECISION");

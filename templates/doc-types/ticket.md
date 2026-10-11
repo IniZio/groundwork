@@ -4,7 +4,7 @@ title: {{title}}
 
 # {{title}}
 
-Agent view. The human view lives at doc/{slug}/tickets/.
+Agent view. The human view of this change is the PR body draft at .groundwork/work/{slug}/pr-body.md.
 
 ## Goal
 

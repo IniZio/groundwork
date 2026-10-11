@@ -7,7 +7,7 @@ repro_test: ""
 
 # {{title}}
 
-Agent view. The human view lives at doc/{slug}/spec.md.
+Agent view. The human view of this change is the PR body draft at .groundwork/work/{slug}/pr-body.md.
 
 change_kinds lists every kind that applies: bugfix, refactor, cli-flag, config-key, data-format, migration, dependency. The H2 gate auto-passes only bugfix (with repro_test naming the failing test) and refactor. Any other kind, an unknown kind, an empty list, or a TBD acceptance criterion holds the run for a human.
 

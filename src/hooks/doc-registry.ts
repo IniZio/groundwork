@@ -11,10 +11,7 @@ export type DocTypeId =
   | "out-of-scope"
   | "lessons"
   | "adr"
-  | "spec-human"
-  | "ticket-human"
-  | "motive-human"
-  | "design-human";
+  | "pr-body";
 
 // Deliberately tiny subset: a hand-written validator supports only these keywords.
 export interface JsonSchema {
@@ -188,41 +185,14 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     },
     headings: ["Context", "Decision", "Rejected alternatives", "Consequences"],
   },
-  "spec-human": {
-    tier: "product",
-    generates: "doc/{slug}/spec.md",
-    description: "Human view of the spec: reviewer-facing, committed",
-    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in spec",
-    template: tpl("spec-human"),
-    frontmatter: anyObject,
-    headings: ["Summary", "Decisions"],
-  },
-  "ticket-human": {
-    tier: "product",
-    generates: "doc/{slug}/tickets/{nn}-{name:kebab}.md",
-    description: "Human view of a ticket: reviewer-facing, committed",
-    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in ticket",
-    template: tpl("ticket-human"),
-    frontmatter: anyObject,
-    headings: ["Summary"],
-  },
-  "motive-human": {
-    tier: "product",
-    generates: "doc/{slug}/motive.md",
-    description: "Human view of the motive: reviewer-facing, committed",
-    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in motive",
-    template: tpl("motive-human"),
-    frontmatter: anyObject,
-    headings: ["Objective", "Decisions"],
-  },
-  "design-human": {
-    tier: "product",
-    generates: "doc/{slug}/design.md",
-    description: "Human view of the design: reviewer-facing, committed",
-    instruction: "Holds only what could flip a reviewer's yes/no; agent detail and AC go in design",
-    template: tpl("design-human"),
-    frontmatter: anyObject,
-    headings: ["Summary", "Diagram", "Decisions"],
+  "pr-body": {
+    tier: "working",
+    generates: `${W}/pr-body.md`,
+    description: "Draft PR body: the human view of this change, reviewed before implementation and published as the PR description",
+    instruction: "Only what could flip a reviewer's yes/no; What changed is approved at H1/H2, so fill Evidence and Residual risk as work lands",
+    template: tpl("pr-body"),
+    frontmatter: { type: "object" },
+    headings: ["What changed", "Evidence", "Residual risk"],
   },
 };
 
@@ -235,6 +205,9 @@ export const FORBIDDEN: ForbiddenPattern[] = [
   { pattern: "learning-records/**", redirect: "Use `.groundwork/work/{slug}/lessons.md`" },
   { pattern: "to-questionnaire-*.md", redirect: "Use `.groundwork/work/{slug}/`" },
   { pattern: "**/to-questionnaire-*.md", redirect: "Use `.groundwork/work/{slug}/`" },
+  { pattern: "doc/*/motive.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
+  { pattern: "doc/*/spec.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
+  { pattern: "doc/*/tickets/**", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
 ];
 
 const words = (s: string) => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/).filter(Boolean).map((w) => w.toLowerCase());

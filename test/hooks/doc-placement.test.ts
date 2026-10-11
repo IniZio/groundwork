@@ -8,7 +8,6 @@ const ROOT = path.resolve(import.meta.dir, "../..");
 const MAIN = path.join(ROOT, "src/cli/main.ts");
 const HR_MAIN = path.join(ROOT, "plugins/house-rules/src/cli/main.ts");
 const BASES = ["spec", "ticket", "motive", "design"];
-const HUMAN_FORBIDDEN = ["Acceptance criteria", "Files", "Commands", "Ledger", "Requirements", "Execution notes"];
 const tmps: string[] = [];
 afterAll(() => {
   for (const d of tmps) rmSync(d, { recursive: true, force: true });
@@ -41,7 +40,7 @@ function scaffold(tmp: string, type: string) {
 
 describe("doc placement via deployed CLI", () => {
   for (const base of BASES) {
-    it(`${base}: agent view in .groundwork, human view in doc/`, () => {
+    it(`${base}: agent view in .groundwork only`, () => {
       const tmp = makeRepo();
       const agent = scaffold(tmp, base);
       expect(agent.status, agent.stderr).toBe(0);
@@ -49,12 +48,7 @@ describe("doc placement via deployed CLI", () => {
       expect(agent.text).toContain("## Acceptance criteria");
 
       const human = scaffold(tmp, `${base}-human`);
-      expect(human.status, human.stderr).toBe(0);
-      expect(human.rel.startsWith("doc/demo/")).toBe(true);
-      for (const h of HUMAN_FORBIDDEN) {
-        expect(new RegExp(`^##+ ${h}`, "m").test(human.text), `heading ${h}`).toBe(false);
-      }
-      expect(/\$GW|bun test/.test(human.text)).toBe(false);
+      expect(human.status).not.toBe(0);
     }, 40000);
   }
 });

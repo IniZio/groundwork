@@ -59,6 +59,41 @@ Effect.catch((error) => error._tag === "NotFound" ? recover : fail);
 
 ```
 
+### [no-manual-tagged-construction] tag object in Match.when
+
+```
+Match.when({ _tag: "Ready" }, handleReady);
+
+```
+
+### [no-manual-tagged-construction] quoted tag object in Match.not
+
+```
+Match.not({ "_tag": "Pending" });
+
+```
+
+### [no-manual-tagged-construction] Schema tagged make
+
+```
+Ready.make({ value });
+
+```
+
+### [no-manual-tagged-construction] tagged class constructor
+
+```
+new NotFound({ id });
+
+```
+
+### [no-manual-tagged-construction] dynamic tag value
+
+```
+({ _tag: tag, value });
+
+```
+
 ### [no-service-constructor-imports] test file may import constructor
 
 ```ts
@@ -198,6 +233,26 @@ switch (value._tag) { case "Ready": handleReady(value); }
 
 **Expected findings:**
 - [no-manual-tag-comparison] Use Match.value(value).pipe(Match.tag/Match.tags/Match.tagsExhaustive) or the tagged enum `$match` helper instead of switching on `_tag`.
+
+### [no-manual-tagged-construction] object literal with tag
+
+```
+const value = { _tag: "Ready", payload };
+
+```
+
+**Expected findings:**
+- [no-manual-tagged-construction] Use the existing Schema tagged `.make`, tagged class/error constructor, or Data.taggedEnum variant constructor instead of writing a literal `_tag` object.
+
+### [no-manual-tagged-construction] object literal with computed string tag
+
+```
+const value = { ["_tag"]: "Ready" };
+
+```
+
+**Expected findings:**
+- [no-manual-tagged-construction] Use the existing Schema tagged `.make`, tagged class/error constructor, or Data.taggedEnum variant constructor instead of writing a literal `_tag` object.
 
 ### [no-service-constructor-imports] local constructor import
 

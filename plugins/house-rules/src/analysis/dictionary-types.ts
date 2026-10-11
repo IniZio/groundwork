@@ -255,7 +255,7 @@ export function classifyWideningTarget(type: Node, env: TypeEnvironment): Wideni
 }
 
 const EXPR_WRAPPERS = new Set(['parenthesized_expression', 'as_expression', 'type_assertion', 'non_null_expression']);
-function unwrapExpression(node: Node, includeSatisfies: boolean): Node {
+export function unwrapExpression(node: Node, includeSatisfies: boolean): Node {
   let cur = node;
   while (EXPR_WRAPPERS.has(cur.type) || (includeSatisfies && cur.type === 'satisfies_expression')) {
     const inner = cur.type === 'type_assertion' ? cur.namedChildren[cur.namedChildren.length - 1] : cur.namedChildren[0];

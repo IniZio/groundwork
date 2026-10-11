@@ -49,3 +49,10 @@ export const cases: RuleCases = {
     { why: 'class method', code: 'class A { m(): unknown { return 1; } }\n', findings: one },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-known-value-widening] upstream: valid #28',
+  '[no-known-value-widening] upstream: invalid #4',
+  '[no-known-value-widening] extra: method return value names the method',
+];

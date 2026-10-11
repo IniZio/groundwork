@@ -27,3 +27,8 @@ export const cases: RuleCases = {
     { why: 'angle-bracket const over non-const as', code: 'const value = <const>(input as User);\n', findings: one },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-known-value-widening] upstream: invalid #10',
+];

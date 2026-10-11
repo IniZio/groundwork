@@ -172,3 +172,108 @@ export function classifyUnsafeDictionary(type: Node, env: TypeEnvironment): Unsa
   }
   return null;
 }
+
+export type WideningTargetKind = 'anonymous object' | 'generic container' | 'object' | 'open dictionary' | 'unknown';
+export interface WideningTarget {
+  readonly kind: WideningTargetKind;
+}
+
+const isMappedSignature = (m: Node): boolean => m.type === 'index_signature' && !!child(m, 'mapped_type_clause');
+const mappedKey = (u: Node): Node | null => {
+  const only = u.type === 'object_type' ? members(u) : [];
+  return only.length === 1 && isMappedSignature(only[0]!) ? (child(only[0]!, 'mapped_type_clause')?.childForFieldName('type') ?? null) : null;
+};
+const hasRealIndexSignature = (u: Node): boolean => members(u).some((m: Node) => m.type === 'index_signature' && !isMappedSignature(m));
+
+function isBroadMappedKey(type: Node, env: TypeEnvironment, subs: Subs, visited: ReadonlySet<string> = new Set()): boolean {
+  const u = unwrap(type);
+  if (u.type === 'predefined_type') return u.text === 'string' || u.text === 'number' || u.text === 'symbol';
+  if (u.type === 'union_type') return u.namedChildren.some((m: Node) => isBroadMappedKey(m, env, subs, visited));
+  const name = refName(u);
+  if (name === null) return false;
+  const sub = subs.get(name);
+  if (sub !== undefined && !isUnappliedRef(sub, name)) return isBroadMappedKey(sub, env, subs, visited);
+  if (name === 'PropertyKey' && isBuiltIn(name, u, env)) return true;
+  const alias = visibleTypeAlias(name, u, env.typeAliases);
+  const value = alias?.childForFieldName('value');
+  if (!alias || !value || aliasParams(alias).length > 0 || visited.has(name)) return false;
+  return isBroadMappedKey(value, env, subs, new Set(visited).add(name));
+}
+
+function hasBroadRecordKey(ref: Node, env: TypeEnvironment, subs: Subs): boolean {
+  const key = refArgs(ref)[0];
+  return key === undefined || isBroadMappedKey(key, env, subs);
+}
+
+function classifyAliasBroad(type: Node, env: TypeEnvironment, subs: Subs, resolving: ReadonlySet<string>): WideningTarget | null {
+  const u = unwrap(type);
+  if (u.type === 'predefined_type') return u.text === 'unknown' ? { kind: 'unknown' } : u.text === 'object' ? { kind: 'object' } : null;
+  if (u.type === 'object_type') {
+    const key = mappedKey(u);
+    if (key) return isBroadMappedKey(key, env, subs) ? { kind: 'open dictionary' } : null;
+    return hasRealIndexSignature(u) ? { kind: 'open dictionary' } : null;
+  }
+  const name = refName(u);
+  if (name === null) return null;
+  const sub = subs.get(name);
+  if (sub !== undefined) return isUnappliedRef(sub, name) ? null : classifyAliasBroad(sub, env, subs, resolving);
+  if (WRAPPERS.has(name) && isBuiltIn(name, u, env)) {
+    const wrapped = refArgs(u)[0];
+    return wrapped ? classifyAliasBroad(wrapped, env, subs, resolving) : null;
+  }
+  if (name === 'Record' && isBuiltIn(name, u, env)) return hasBroadRecordKey(u, env, subs) ? { kind: 'open dictionary' } : null;
+  const alias = visibleTypeAlias(name, u, env.typeAliases);
+  const value = alias?.childForFieldName('value');
+  if (!alias || !value || resolving.has(name)) return null;
+  const next = aliasSubs(alias, u, subs);
+  return next ? classifyAliasBroad(value, env, next, new Set(resolving).add(name)) : null;
+}
+
+export function classifyWideningTarget(type: Node, env: TypeEnvironment): WideningTarget | null {
+  const u = unwrap(type);
+  if (u.type === 'predefined_type') return u.text === 'unknown' ? { kind: 'unknown' } : u.text === 'object' ? { kind: 'object' } : null;
+  if (u.type === 'object_type') {
+    if (mappedKey(u)) return { kind: 'open dictionary' };
+    if (hasRealIndexSignature(u)) return { kind: 'open dictionary' };
+    return members(u).length > 0 ? { kind: 'anonymous object' } : null;
+  }
+  const name = refName(u);
+  if (name === null) return null;
+  if (WRAPPERS.has(name) && isBuiltIn(name, u, env)) {
+    const wrapped = refArgs(u)[0];
+    return wrapped ? classifyWideningTarget(wrapped, env) : null;
+  }
+  if (name === 'Record' && isBuiltIn(name, u, env)) return hasBroadRecordKey(u, env, new Map()) ? { kind: 'open dictionary' } : null;
+  const alias = visibleTypeAlias(name, u, env.typeAliases);
+  const value = alias?.childForFieldName('value');
+  if (!alias || !value) return null;
+  const subs = aliasSubs(alias, u, new Map());
+  if (subs === null) return null;
+  const resolved = classifyAliasBroad(value, env, subs, new Set([name]));
+  if (aliasParams(alias).length > 0) return resolved?.kind === 'open dictionary' ? { kind: 'generic container' } : null;
+  return resolved;
+}
+
+const EXPR_WRAPPERS = new Set(['parenthesized_expression', 'as_expression', 'type_assertion', 'non_null_expression']);
+function unwrapExpression(node: Node, includeSatisfies: boolean): Node {
+  let cur = node;
+  while (EXPR_WRAPPERS.has(cur.type) || (includeSatisfies && cur.type === 'satisfies_expression')) {
+    const inner = cur.type === 'type_assertion' ? cur.namedChildren[cur.namedChildren.length - 1] : cur.namedChildren[0];
+    if (!inner) break;
+    cur = inner;
+  }
+  return cur;
+}
+
+export function isPopulatedObjectExpression(expression: Node): boolean {
+  const cur = unwrapExpression(expression, false);
+  return cur.type === 'object' && cur.namedChildren.some((c: Node) => c.type !== 'comment');
+}
+
+const EVIDENCE = new Set([
+  'object', 'array', 'arrow_function', 'class', 'function_expression', 'generator_function', 'new_expression',
+  'number', 'string', 'true', 'false', 'null', 'regex', 'template_string', 'unary_expression',
+]);
+export function isKnownEvidenceExpression(expression: Node): boolean {
+  return EVIDENCE.has(unwrapExpression(expression, true).type);
+}

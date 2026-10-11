@@ -1,3 +1,7 @@
+## Summary
+
+One to three sentences saying what this PR is, written for a skimmer.
+
 ## Why
 
 - One plain sentence per claim, each mapping to a planned hunk in the diff.
@@ -8,7 +12,7 @@
 
 ### Decisions
 
-Each row is a decision with no visual form that differs from current behaviour.
+This table appears only when the PR changes existing behaviour; an initial version has none. Each row is a decision with no visual form that differs from current behaviour.
 
 | Decision | Constraint |
 | --- | --- |
@@ -19,9 +23,11 @@ Each row is a decision with no visual form that differs from current behaviour.
 One lead sentence says what the visual shows and why it matters for this PR, or says the visual is new-only.
 
 ```diff
-- before, from current source with a permalink (or path@sha:line with no remote), never from design notes
+- before, from current source, never from design notes
 + after
 ```
+
+Every file reference is a rendered link: a filename label pointing to the pinned blob permalink, plus a files-changed anchor added at PR open by `bun src/review/pr-links.ts`.
 
 Order areas as a story, the problem's shape first and then the new shape. Cut any block or row that restates current behaviour.
 
@@ -38,4 +44,4 @@ At most 5 permalinks to line ranges, the most load-bearing first, filled once th
 
 Before/after evidence the automated checks do not give, such as fails-before and works-after output. Leave this section out if there is none.
 
-Prose in Why, Changes and Impact is at most 12 lines total. Headings, fenced blocks, diagrams and tables do not count. No rejected alternatives anywhere.
+Prose in Why, Changes and Impact is at most 12 lines total; Summary prose is limited to 1-3 sentences by the checker instead. Headings, fenced blocks, diagrams and tables do not count. No rejected alternatives anywhere.

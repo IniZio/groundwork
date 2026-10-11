@@ -347,7 +347,7 @@ describe("isWithinSlice", () => {
 describe("spawn-model-guard — intent gate (H1/H2)", () => {
   const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
 
-  const PR_BODY = "## Why\nwhy v1\n\n## Changes\niface v1\n\n## Impact\nimpact v1\n\n## Review focus\nfocus v1\n\n## Proof\nproof v1\n";
+  const PR_BODY = "## Summary\nsummary v1\n\n## Why\nwhy v1\n\n## Changes\niface v1\n\n## Impact\nimpact v1\n\n## Review focus\nfocus v1\n\n## Proof\nproof v1\n";
   const workDir = (d: string) => path.join(d, ".groundwork", "work", "default");
 
   function setup(withDocs: boolean): string {
@@ -435,6 +435,7 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
   });
 
   for (const [section, from, to] of [
+    ["Summary", "summary v1", "summary v2"],
     ["Why", "why v1", "why v2"],
     ["Changes", "iface v1", "iface v2"],
     ["Impact", "impact v1", "impact v2"],

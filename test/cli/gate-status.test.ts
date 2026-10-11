@@ -208,8 +208,8 @@ describe("intent gates", () => {
   });
 
   const defaultChanges = "Lead sentence.\n\n### Decisions\n\n| Decision | Constraint |\n| --- | --- |\n| Use A | Must be fast |";
-  const prBody = (o: { why?: string; changes?: string; impact?: string; focus?: string; proof?: string } = {}) =>
-    `# Title\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Changes\n\n${o.changes ?? defaultChanges}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Review focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
+  const prBody = (o: { summary?: string; why?: string; changes?: string; impact?: string; focus?: string; proof?: string } = {}) =>
+    `# Title\n\n## Summary\n\n${o.summary ?? "One sentence summary."}\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Changes\n\n${o.changes ?? defaultChanges}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Review focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
   const prPath = `.groundwork/work/${slug}/pr-body.md`;
   const approveBoth = () => ({
     APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
@@ -239,8 +239,8 @@ describe("intent gates", () => {
     expect(g.applies).toBe(false);
     expect(refusalMessage(g)).toBeNull();
   });
-  it("hashed headings constant is Why, Changes, Impact", () => {
-    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Why", "Changes", "Impact"]);
+  it("hashed headings constant is Summary, Why, Changes, Impact", () => {
+    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Summary", "Why", "Changes", "Impact"]);
   });
   it("(b) Review focus edit keeps charter approved with identical hash", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
@@ -248,6 +248,7 @@ describe("intent gates", () => {
     const rec = approvalPayload(tmp, slug, "charter", "human");
     expect(rec.files).toEqual([
       `.groundwork/work/${slug}/motive.md`,
+      `${prPath}#summary`,
       `${prPath}#why`,
       `${prPath}#changes`,
       `${prPath}#impact`,
@@ -267,6 +268,7 @@ describe("intent gates", () => {
     expect(g.hash).toBe(rec.hash);
   });
   for (const [name, edit] of [
+    ["Summary", { summary: "Different summary." }],
     ["Why", { why: "Because Y." }],
     ["Changes", { changes: "Changed." }],
     ["Impact", { impact: "Breaks Z." }],
@@ -294,11 +296,12 @@ describe("intent gates", () => {
     expect(h1.hash).not.toBe(JSON.parse(ev.APPROVE_CHARTER).hash);
     expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
   });
-  it("pr-body missing Changes still hashes Why and Impact only", () => {
+  it("pr-body missing Changes still hashes Summary, Why and Impact only", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(prPath, "# Title\n\n## Why\n\nW.\n\n## Impact\n\nI.\n\n## Proof\n\nP.\n");
+    put(prPath, "# Title\n\n## Summary\n\nS.\n\n## Why\n\nW.\n\n## Impact\n\nI.\n\n## Proof\n\nP.\n");
     expect(artifactFiles(tmp, slug, "charter")).toEqual([
       `.groundwork/work/${slug}/motive.md`,
+      `${prPath}#summary`,
       `${prPath}#why`,
       `${prPath}#impact`,
     ]);

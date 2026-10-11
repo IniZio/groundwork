@@ -420,7 +420,7 @@ describe("approve", () => {
   };
 
   const prBody = (slug: string, over: Partial<Record<string, string>> = {}) => {
-    const sec = { Why: "because", Changes: "iface", Impact: "impact", "Review focus": "look here", Proof: "ran tests", ...over };
+    const sec = { Summary: "one-line summary", Why: "because", Changes: "iface", Impact: "impact", "Review focus": "look here", Proof: "ran tests", ...over };
     write(
       `.groundwork/work/${slug}/pr-body.md`,
       Object.entries(sec).map(([h, t]) => `## ${h}\n${t}\n`).join("\n"),
@@ -465,7 +465,7 @@ describe("approve", () => {
     });
   }
 
-  for (const h of ["Why", "Changes", "Impact"]) {
+  for (const h of ["Summary", "Why", "Changes", "Impact"]) {
     it(`editing ## ${h} voids H1 and H2`, () => {
       const slug = slugOf();
       prBody(slug);

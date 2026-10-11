@@ -293,13 +293,11 @@ describe("human-doc-check", () => {
       passes(write("README.md", "# Readme\n\nSee [notes](docs/x.md) here.\n"));
     });
 
-    test("real pr-body template checked by path: only the Summary finding", () => {
-      // TODO(PH-11): template gains ## Summary; flip this to PASS.
+    test("real pr-body template checked by path: passes with no findings", () => {
       const r = run(path.join(TPL, "pr-body.md"));
-      expect(r.status).toBe(1);
+      expect(r.status).toBe(0);
       const found = lines(r).filter((l) => l.startsWith("- "));
-      expect(found).toContain(MISSING("## Why"));
-      expect(found).toEqual([MISSING("## Why")]);
+      expect(found).toEqual([]);
     });
   });
 

@@ -12,6 +12,16 @@ describe("pr-body template / HASHED_PR_BODY_HEADINGS seam", () => {
     expect(HASHED_PR_BODY_HEADINGS.length).toBeGreaterThan(0);
   });
 
+  it("hashed headings equal the template's level-2 headings before '## Review focus'", () => {
+    const reviewIdx = lines.indexOf("## Review focus");
+    expect(reviewIdx).toBeGreaterThan(-1);
+    const before = lines
+      .slice(0, reviewIdx)
+      .filter((l) => l.startsWith("## "))
+      .map((l) => l.slice(3));
+    expect(before).toEqual([...HASHED_PR_BODY_HEADINGS]);
+  });
+
   for (const h of HASHED_PR_BODY_HEADINGS) {
     it(`template has heading "## ${h}"`, () => {
       expect(lines).toContain(`## ${h}`);

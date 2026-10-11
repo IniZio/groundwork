@@ -113,7 +113,7 @@ const baseOf = (a: IntentArtifact) => (a === "charter" ? "motive" : "spec");
 
 const prBodyRel = (slug: string) => `.groundwork/work/${slug}/pr-body.md`;
 /** pr-body sections covered by H1/H2 approval; Review focus and Proof are deliberately excluded. */
-export const HASHED_PR_BODY_HEADINGS = ["Why", "Changes", "Impact"] as const;
+export const HASHED_PR_BODY_HEADINGS = ["Summary", "Why", "Changes", "Impact"] as const;
 
 const headingRel = (slug: string, heading: string) =>
   `${prBodyRel(slug)}#${heading.toLowerCase().replace(/\s+/g, "-")}`;

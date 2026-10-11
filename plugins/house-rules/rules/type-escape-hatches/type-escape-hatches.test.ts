@@ -10,8 +10,10 @@ import type { RuleContext } from '../../src/engine/types.js';
 const checksDir = path.join(import.meta.dir, 'checks');
 const cases = await loadGroupedCases(checksDir);
 const tsOnlyIds = new Set<string>();
+const allIds: string[] = [];
 for (const name of fs.readdirSync(checksDir).filter((n) => n.endsWith('.ts') && !n.endsWith('.cases.ts'))) {
   const mod = (await import(path.join(checksDir, name))) as { id: string; tsOnly?: boolean };
+  allIds.push(mod.id);
   if (mod.tsOnly) tsOnlyIds.add(mod.id);
 }
 
@@ -42,6 +44,10 @@ describe('type-escape-hatches registration', () => {
 });
 
 describe('type-escape-hatches language scope', () => {
+  it('pins the checks that run on JS to exactly no-runtime-typeof', () => {
+    expect(allIds.filter((id) => !tsOnlyIds.has(id)).sort()).toEqual(['no-runtime-typeof']);
+  });
+
   it('has at least one invalid case to exercise', () => {
     expect(cases.invalid.length).toBeGreaterThan(0);
   });

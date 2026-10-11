@@ -1,21 +1,41 @@
 ## Why
 
-1-3 lines. Each claim maps to a hunk in the diff (a planned hunk, before implementation). Name the constraint that forces this shape; do not list alternatives.
+- One plain sentence per claim, each mapping to a planned hunk in the diff.
+- Name the constraint that forces this shape, because the reviewer checks the shape against it.
+- Keep it to 1-3 bullets and list no alternatives.
 
-## Interface
+## Changes
 
-The smallest view that makes the change clear: a diff-sketch (a `diff` fenced block) of the signatures, call tree, file tree or state flow; pseudocode; or a mermaid diagram. Put `// because <constraint>` inline only where the shape is not obvious. For decisions with no visual form, add a compact `| Decision | Constraint |` table with one row per decision and exactly 2 columns; no rejected or alternative column. Take the "before" side of a diff from the current source (cite a permalink), never from design notes.
+### Decisions
+
+Each row is a decision with no visual form that differs from current behaviour.
+
+| Decision | Constraint |
+| --- | --- |
+| What now happens | Why this shape is forced |
+
+### Short area name
+
+One lead sentence says what the visual shows and why it matters for this PR, or says the visual is new-only.
+
+```diff
+- before, from current source with a permalink (or path@sha:line with no remote), never from design notes
++ after
+```
+
+Order areas as a story, the problem's shape first and then the new shape. Cut any block or row that restates current behaviour.
 
 ## Impact
 
-One short line per affected consumer or risk: who breaks, or what changes behaviour, if this is wrong. Write "None" if nothing outside the diff is affected. Risk lines are optional when every affected consumer is listed; do not add generic risk filler.
+- One plain sentence per affected consumer, naming who breaks if this is wrong.
+- Add a risk bullet only when it names a concrete failure a reviewer can check.
 
-## Reviewer focus
+## Review focus
 
-At most 5 commit-pinned permalinks to line ranges, the most load-bearing first. Fill this when the code exists.
+At most 5 permalinks to line ranges, the most load-bearing first, filled once the code exists.
 
 ## Proof
 
-Before/after evidence that CI does not already give: the deciding test as fails-before, works-after pseudocode, live-run output, or a screenshot. Leave this section out if there is none.
+Before/after evidence the automated checks do not give, such as fails-before and works-after output. Leave this section out if there is none.
 
-Prose at most 12 lines including headings; fenced code blocks, diagrams and tables do not count.
+Prose at most 12 lines. Headings, fenced blocks, diagrams and tables do not count. No rejected alternatives anywhere.

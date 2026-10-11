@@ -420,7 +420,7 @@ describe("approve", () => {
   };
 
   const prBody = (slug: string, over: Partial<Record<string, string>> = {}) => {
-    const sec = { Why: "because", Interface: "iface", Impact: "impact", "Reviewer focus": "look here", Proof: "ran tests", ...over };
+    const sec = { Why: "because", Changes: "iface", Impact: "impact", "Review focus": "look here", Proof: "ran tests", ...over };
     write(
       `.groundwork/work/${slug}/pr-body.md`,
       Object.entries(sec).map(([h, t]) => `## ${h}\n${t}\n`).join("\n"),
@@ -453,7 +453,7 @@ describe("approve", () => {
     expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: void");
   });
 
-  for (const h of ["Reviewer focus", "Proof"]) {
+  for (const h of ["Review focus", "Proof"]) {
     it(`editing only ## ${h} keeps H1 approved`, () => {
       const slug = slugOf();
       prBody(slug);
@@ -465,7 +465,7 @@ describe("approve", () => {
     });
   }
 
-  for (const h of ["Why", "Interface", "Impact"]) {
+  for (const h of ["Why", "Changes", "Impact"]) {
     it(`editing ## ${h} voids H1 and H2`, () => {
       const slug = slugOf();
       prBody(slug);

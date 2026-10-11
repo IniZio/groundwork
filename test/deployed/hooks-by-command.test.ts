@@ -237,7 +237,7 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     if (withDocs) {
       const work = path.join(proj, ".groundwork", "work", SLUG);
       mkdirSync(work, { recursive: true });
-      writeFileSync(path.join(work, "pr-body.md"), "## Why\nx\n\n## Interface\ni\n\n## Impact\nm\n\n## Reviewer focus\nf\n\n## Proof\ny\n");
+      writeFileSync(path.join(work, "pr-body.md"), "## Why\nx\n\n## Changes\ni\n\n## Impact\nm\n\n## Review focus\nf\n\n## Proof\ny\n");
       writeFileSync(path.join(work, "motive.md"), "# charter\n");
       writeFileSync(path.join(work, "spec.md"), "# spec\n");
     }

@@ -97,13 +97,13 @@ export const APPROVAL_EVENT: Record<IntentArtifact, string> = { charter: "APPROV
 const baseOf = (a: IntentArtifact) => (a === "charter" ? "motive" : "spec");
 
 const prBodyRel = (slug: string) => `.groundwork/work/${slug}/pr-body.md`;
-/** pr-body sections covered by H1/H2 approval; Reviewer focus and Proof are deliberately excluded. */
-export const HASHED_PR_BODY_HEADINGS = ["Why", "Interface", "Impact"] as const;
+/** pr-body sections covered by H1/H2 approval; Review focus and Proof are deliberately excluded. */
+export const HASHED_PR_BODY_HEADINGS = ["Why", "Changes", "Impact"] as const;
 
 const headingRel = (slug: string, heading: string) =>
   `${prBodyRel(slug)}#${heading.toLowerCase().replace(/\s+/g, "-")}`;
 
-/** Text of the `## <heading>` section (heading line to next `## ` line or EOF), or null. */
+/** Text of the `## <heading>` section (heading line to next `## ` line or EOF; `###` sub-headings stay inside), or null. */
 function prBodySection(lines: string[], heading: string): string | null {
   const start = lines.findIndex((l) => l.trimEnd() === `## ${heading}`);
   if (start < 0) return null;

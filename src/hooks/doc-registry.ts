@@ -192,10 +192,10 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     tier: "working",
     generates: `${W}/pr-body.md`,
     description: "Draft PR body: the human view of this change, reviewed before implementation and published as the PR description",
-    instruction: "Only what could flip a reviewer's yes/no; Why, Interface and Impact are approved at H1/H2, so fill Reviewer focus and Proof as work lands",
+    instruction: "Only what could flip a reviewer's yes/no; Why, Changes and Impact are approved at H1/H2, so fill Review focus and Proof as work lands",
     template: tpl("pr-body"),
     frontmatter: { type: "object" },
-    headings: ["Why", "Interface", "Impact", "Reviewer focus", "Proof"],
+    headings: ["Why", "Changes", "Impact", "Review focus", "Proof"],
   },
 };
 

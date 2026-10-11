@@ -347,7 +347,7 @@ describe("isWithinSlice", () => {
 describe("spawn-model-guard — intent gate (H1/H2)", () => {
   const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
 
-  const PR_BODY = "## Why\nwhy v1\n\n## Interface\niface v1\n\n## Impact\nimpact v1\n\n## Reviewer focus\nfocus v1\n\n## Proof\nproof v1\n";
+  const PR_BODY = "## Why\nwhy v1\n\n## Changes\niface v1\n\n## Impact\nimpact v1\n\n## Review focus\nfocus v1\n\n## Proof\nproof v1\n";
   const workDir = (d: string) => path.join(d, ".groundwork", "work", "default");
 
   function setup(withDocs: boolean): string {
@@ -418,7 +418,7 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
     expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
   });
 
-  it("edit only ## Reviewer focus after approvals → not denied", () => {
+  it("edit only ## Review focus after approvals → not denied", () => {
     const dir = setup(true);
     approve(dir, "APPROVE_CHARTER", "charter");
     approve(dir, "APPROVE_SPEC", "spec");
@@ -436,7 +436,7 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
 
   for (const [section, from, to] of [
     ["Why", "why v1", "why v2"],
-    ["Interface", "iface v1", "iface v2"],
+    ["Changes", "iface v1", "iface v2"],
     ["Impact", "impact v1", "impact v2"],
   ]) {
     it(`edit ## ${section} after approvals → denied as void`, () => {

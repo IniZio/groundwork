@@ -33,16 +33,35 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
   const isPrBody = fileName !== undefined && path.basename(fileName) === "pr-body.md";
   let prose = 0;
   let overflowQuote = "";
+  let section = "";
+  let afterHeading = false;
+  const visual = (q: string) => out.push({ quote: q, reason: "pr-body: add a lead sentence before this visual" });
   for (const line of stripFrontmatter(text.split(/\r?\n/))) {
     const open = line.match(/^\s*(```|~~~)\s*(\S*)/);
     if (open) {
+      if (isPrBody && fence === null && afterHeading) visual(line.trim());
+      afterHeading = false;
       fence = fence === null ? open[2].toLowerCase() || "code" : null;
       continue;
     }
     const t = line.trim();
-    if (isPrBody && fence === null && t && !t.startsWith("|")) {
-      prose++;
-      if (prose === PR_BODY_MAX_PROSE + 1) overflowQuote = t;
+    const isHeading = /^#{1,6}\s/.test(line);
+    if (isPrBody && fence === null && t) {
+      if (/^##\s/.test(line)) section = t.slice(2).trim();
+      const bulletSection = section === "Why" || section === "Impact";
+      if (t.startsWith("|") && afterHeading) visual(t);
+      if (!isHeading && !t.startsWith("|")) {
+        prose++;
+        if (prose === PR_BODY_MAX_PROSE + 1) overflowQuote = t;
+      }
+      if (!isHeading && bulletSection) {
+        const where = `pr-body ${section}`;
+        // ignores inline code, URLs and a leading **Label:** prefix
+        const rest = t.replace(/`[^`]*`/g, "").replace(/\S+:\/\/\S*/g, "").replace(/^-\s+\*\*[^*]+:\*\*/, "-");
+        if (!t.startsWith("- ")) out.push({ quote: t, reason: `${where}: use one bullet per claim` });
+        else if (/;|:(\s|$)/.test(rest)) out.push({ quote: t, reason: `${where}: split ':'/';' joined clauses into separate bullets` });
+      }
+      afterHeading = isHeading;
     }
     if (fence !== null) {
       if (fence !== "mermaid" && t && looksLikePath(t)) out.push({ quote: t, reason: PATH_REASON });
@@ -61,7 +80,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
     }
   }
   if (prose > PR_BODY_MAX_PROSE) {
-    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (fenced blocks and tables excluded)` });
+    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (headings, fenced blocks and tables excluded)` });
   }
   return out;
 }

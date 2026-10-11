@@ -74,7 +74,7 @@ describe("human-doc-check", () => {
     test("13 prose lines is flagged", () => {
       const r = run(write("pr-body.md", `${prose(13)}\n`));
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("pr-body prose 13 lines > 12");
+      expect(r.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
     });
 
     const table =
@@ -92,7 +92,7 @@ describe("human-doc-check", () => {
     test("13 prose lines plus a table is flagged at 13", () => {
       const r = run(write("pr-body.md", `${prose(13)}\n\n${table}\n`));
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("pr-body prose 13 lines > 12");
+      expect(r.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
     });
 
     test("pipe lines inside a fence are not counted", () => {
@@ -101,7 +101,7 @@ describe("human-doc-check", () => {
       expect(ok.status).toBe(0);
       const over = run(write("pr-body.md", `${prose(13)}\n\n${pipeFence}\n`));
       expect(over.status).toBe(1);
-      expect(over.stdout).toContain("pr-body prose 13 lines > 12");
+      expect(over.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
     });
 
     test("13 prose lines in a file not named pr-body.md is not flagged", () => {
@@ -114,6 +114,46 @@ describe("human-doc-check", () => {
       const r = run(write("pr-body.md", tpl("pr-body.md")));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
+    });
+  });
+
+  describe("pr-body v3 rules", () => {
+    const out = (doc: string) => run(write("pr-body.md", doc)).stdout.split("\n");
+    const pass = (doc: string) => {
+      const r = run(write("pr-body.md", doc));
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
+    };
+
+    test("headings are excluded from the prose count", () => {
+      const prose = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of prose.`).join("\n");
+      pass(`## A\n\n### B\n\n#### C\n\n${prose}\n\n## D\n`);
+      const r = run(write("pr-body.md", `## A\n\n${prose}\nLine 13 of prose.\n`));
+      expect(r.stdout).toContain('- "Line 13 of prose." — pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)');
+    });
+
+    test("Why and Impact need one bullet per claim", () => {
+      pass("## Why\n\n- Some line.\n\n## Impact\n\n- Other line.\n");
+      expect(out("## Why\n\nSome line.\n")).toContain('- "Some line." — pr-body Why: use one bullet per claim');
+      expect(out("## Impact\n\n- Ok.\nLoose line.\n")).toContain('- "Loose line." — pr-body Impact: use one bullet per claim');
+      expect(out("## Why\n\n### Sub\n\nNot bullet.\n")).toContain('- "Not bullet." — pr-body Why: use one bullet per claim');
+      pass("## Changes\n\nFree prose here.\n");
+    });
+
+    test("colon and semicolon joined clauses are flagged", () => {
+      const reason = "split ':'/';' joined clauses into separate bullets";
+      expect(out("## Why\n\n- Two claims; one bullet.\n")).toContain(`- "- Two claims; one bullet." — pr-body Why: ${reason}`);
+      expect(out("## Impact\n\n- Breaks: the parser.\n")).toContain(`- "- Breaks: the parser." — pr-body Impact: ${reason}`);
+      expect(out("## Impact\n\n- Breaks:\n")).toContain(`- "- Breaks:" — pr-body Impact: ${reason}`);
+      pass("## Why\n\n- Runs `a: b; c` fine.\n");
+      pass("## Why\n\n- See https://example.com:8080/x for more.\n");
+      pass("## Why\n\n- **Label:** one claim only.\n");
+    });
+
+    test("visual directly after a heading needs a lead sentence", () => {
+      pass("### Area\n\nLead sentence.\n\n```diff\n- a\n+ b\n```\n\n### Rows\n\nLead.\n\n| a | b |\n| - | - |\n");
+      expect(out("### Area\n\n```diff\n- a\n+ b\n```\n")).toContain('- "```diff" — pr-body: add a lead sentence before this visual');
+      expect(out("### Rows\n\n| a | b |\n| - | - |\n| c | d |\n")).toContain('- "| a | b |" — pr-body: add a lead sentence before this visual');
     });
   });
 

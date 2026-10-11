@@ -89,7 +89,7 @@ describe("AC2 generates literals", () => {
     expect(resolveDocPath("pr-body", { slug: "demo" })).toBe(".groundwork/work/demo/pr-body.md");
   });
   it("pr-body headings are the five sections", () => {
-    expect(WORKING_TYPES["pr-body"].headings).toEqual(["Why", "Interface", "Impact", "Reviewer focus", "Proof"]);
+    expect(WORKING_TYPES["pr-body"].headings).toEqual(["Why", "Changes", "Impact", "Review focus", "Proof"]);
   });
   it("forbids per-slug human views under doc/ but not snapshot docs", () => {
     const redirect = "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`";

@@ -207,8 +207,9 @@ describe("intent gates", () => {
     expect(c.openDecision).toContain("weird");
   });
 
-  const prBody = (o: { why?: string; iface?: string; impact?: string; focus?: string; proof?: string } = {}) =>
-    `# Title\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Interface\n\n${o.iface ?? "No change."}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Reviewer focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
+  const defaultChanges = "Lead sentence.\n\n### Decisions\n\n| Decision | Constraint |\n| --- | --- |\n| Use A | Must be fast |";
+  const prBody = (o: { why?: string; changes?: string; impact?: string; focus?: string; proof?: string } = {}) =>
+    `# Title\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Changes\n\n${o.changes ?? defaultChanges}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Review focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
   const prPath = `.groundwork/work/${slug}/pr-body.md`;
   const approveBoth = () => ({
     APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
@@ -238,17 +239,17 @@ describe("intent gates", () => {
     expect(g.applies).toBe(false);
     expect(refusalMessage(g)).toBeNull();
   });
-  it("hashed headings constant is Why, Interface, Impact", () => {
-    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Why", "Interface", "Impact"]);
+  it("hashed headings constant is Why, Changes, Impact", () => {
+    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Why", "Changes", "Impact"]);
   });
-  it("(b) Reviewer focus edit keeps charter approved with identical hash", () => {
+  it("(b) Review focus edit keeps charter approved with identical hash", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
     put(prPath, prBody());
     const rec = approvalPayload(tmp, slug, "charter", "human");
     expect(rec.files).toEqual([
       `.groundwork/work/${slug}/motive.md`,
       `${prPath}#why`,
-      `${prPath}#interface`,
+      `${prPath}#changes`,
       `${prPath}#impact`,
     ]);
     put(prPath, prBody({ focus: "Look at B instead." }));
@@ -267,7 +268,7 @@ describe("intent gates", () => {
   });
   for (const [name, edit] of [
     ["Why", { why: "Because Y." }],
-    ["Interface", { iface: "Changed." }],
+    ["Changes", { changes: "Changed." }],
     ["Impact", { impact: "Breaks Z." }],
   ] as const) {
     it(`(c) ${name} edit voids H1 and H2`, () => {
@@ -282,7 +283,18 @@ describe("intent gates", () => {
       expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
     });
   }
-  it("pr-body missing Interface still hashes Why and Impact only", () => {
+  it("(c2) Decisions table row edit inside Changes voids H1 and H2", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(`.groundwork/work/${slug}/spec.md`, "s");
+    put(prPath, prBody());
+    const ev = approveBoth();
+    put(prPath, prBody({ changes: defaultChanges.replace("| Use A | Must be fast |", "| Use B | Must be slow |") }));
+    const h1 = evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER);
+    expect(h1.state).toBe("void");
+    expect(h1.hash).not.toBe(JSON.parse(ev.APPROVE_CHARTER).hash);
+    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
+  });
+  it("pr-body missing Changes still hashes Why and Impact only", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
     put(prPath, "# Title\n\n## Why\n\nW.\n\n## Impact\n\nI.\n\n## Proof\n\nP.\n");
     expect(artifactFiles(tmp, slug, "charter")).toEqual([

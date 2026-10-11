@@ -58,7 +58,7 @@ describe("pr-body template", () => {
   it("has the five sections", () => {
     const lines = text.split("\n");
     let prev = -1;
-    for (const h of ["Why", "Interface", "Impact", "Reviewer focus", "Proof"]) {
+    for (const h of ["Why", "Changes", "Impact", "Review focus", "Proof"]) {
       const idx = lines.indexOf(`## ${h}`);
       expect(idx, h).toBeGreaterThan(prev);
       prev = idx;

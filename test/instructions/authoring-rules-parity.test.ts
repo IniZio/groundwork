@@ -96,7 +96,7 @@ const LOAD_BEARING_RULES: { name: string; patterns: RegExp[] }[] = [
     patterns: [/diagram/i],
   },
   {
-    name: "each decision carries rejected alternative",
+    name: "rejected alternatives live in ADRs and DECISION events",
     patterns: [/rejected alternative/i],
   },
   {

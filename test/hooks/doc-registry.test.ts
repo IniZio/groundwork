@@ -27,13 +27,15 @@ function makeAjv() {
   return ajv;
 }
 
-function parseFrontmatter(text: string): Record<string, string> {
+function parseFrontmatter(text: string): Record<string, string | string[]> {
   const m = /^---\n([\s\S]*?)\n---/.exec(text);
   if (!m) throw new Error("no frontmatter");
-  const out: Record<string, string> = {};
+  const out: Record<string, string | string[]> = {};
   for (const line of m[1].split("\n")) {
     const kv = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
-    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, "");
+    if (!kv) continue;
+    const flow = /^\[(.*)\]$/.exec(kv[2]);
+    out[kv[1]] = flow ? flow[1].split(",").map((v) => v.trim().replace(/^["']|["']$/g, "")).filter(Boolean) : kv[2].replace(/^["']|["']$/g, "");
   }
   return out;
 }
@@ -131,6 +133,10 @@ describe("AC4 motive and spec schemas", () => {
     expect(validate("adr", "---\nstatus: bogus\n---\n")).toBe(false);
     expect(validate("adr", "---\nstatus: superseded\n---\n")).toBe(false);
     expect(validate("adr", "---\nstatus: superseded\nsuperseded_by: .groundwork/adr/0002-y.md\n---\n")).toBe(true);
+    expect(validate("adr", "---\nstatus: accepted\ndate: 2026-10-11\n---\n")).toBe(true);
+    expect(validate("adr", "---\nstatus: accepted\ndate: yesterday\n---\n")).toBe(false);
+    expect(validate("adr", "---\nstatus: accepted\nsupersedes: [moor@main ADR 0005]\n---\n")).toBe(true);
+    expect(validate("adr", "---\nstatus: accepted\nsupersedes: moor@main ADR 0005\n---\n")).toBe(false);
   });
   it("research requires question and confidence enum", () => {
     expect(validate("research", "---\nquestion: Q?\nconfidence: high\n---\n")).toBe(true);

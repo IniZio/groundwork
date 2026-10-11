@@ -19,6 +19,7 @@ export interface JsonSchema {
   required?: string[];
   properties?: Record<string, JsonSchema>;
   enum?: string[];
+  items?: JsonSchema;
   const?: string;
   pattern?: string;
   format?: "date";
@@ -179,6 +180,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
       properties: {
         status: { type: "string", enum: ["accepted", "superseded"] },
         superseded_by: { type: "string" },
+        date: { type: "string", format: "date" },
+        supersedes: { type: "array", items: { type: "string" } },
       },
       if: { properties: { status: { const: "superseded" } }, required: ["status"] },
       then: { required: ["superseded_by"] },

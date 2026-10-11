@@ -14,6 +14,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dir, "../..");
 const DOC = path.join(ROOT, "doc/authoring-rules.md");
 const RUNTIME = path.join(ROOT, "rules/authoring-rules.md");
+const SKILL = path.join(ROOT, "skills/human-layer/SKILL.md");
 
 /**
  * Each entry: { name, patterns }
@@ -75,6 +76,13 @@ const LOAD_BEARING_RULES: { name: string; patterns: RegExp[] }[] = [
     name: "routing rule (reviewer yes/no flip goes to human view)",
     patterns: [/flip a reviewer'?s yes\/no/i],
   },
+];
+
+/**
+ * The Human writing standard lives in the human-layer skill (loaded on demand),
+ * not in the always-injected runtime rules. Doc and skill must both carry it.
+ */
+const HUMAN_STANDARD_RULES: { name: string; patterns: RegExp[] }[] = [
   {
     name: "human writing standard section",
     patterns: [/human writing standard/i],
@@ -136,6 +144,41 @@ describe("authoring-rules parity: doc vs runtime", () => {
       ).toBe(true);
     });
   }
+});
+
+describe("human writing standard: doc vs skill", () => {
+  const docContent = readFileSync(DOC, "utf8");
+  const skillContent = readFileSync(SKILL, "utf8");
+
+  for (const rule of HUMAN_STANDARD_RULES) {
+    it(`doc contains: ${rule.name}`, () => {
+      expect(
+        rulePresent(docContent, rule),
+        `doc/authoring-rules.md missing human-standard rule: "${rule.name}"`,
+      ).toBe(true);
+    });
+
+    it(`skill contains: ${rule.name}`, () => {
+      expect(
+        rulePresent(skillContent, rule),
+        `skills/human-layer/SKILL.md missing human-standard rule: "${rule.name}"`,
+      ).toBe(true);
+    });
+  }
+});
+
+describe("runtime rules no longer hold the human writing standard", () => {
+  const runtimeContent = readFileSync(RUNTIME, "utf8");
+
+  for (const phrase of ["Lead with the point", "baseline CI", "ASD-STE100", "agent bookkeeping"]) {
+    it(`runtime does not contain: ${phrase}`, () => {
+      expect(runtimeContent).not.toMatch(new RegExp(phrase, "i"));
+    });
+  }
+
+  it("runtime points to groundwork:human-layer", () => {
+    expect(runtimeContent).toContain("groundwork:human-layer");
+  });
 });
 
 describe("routing rule stated once", () => {

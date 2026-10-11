@@ -39,6 +39,7 @@ Everything else goes in the agent view, the gitignored .groundwork folder.
 
 This standard applies to the human view only: the PR body and the doc snapshot. The compression rules above (dropped articles, fragments) apply to agent-facing text.
 The human view follows this standard instead, so the two sets do not conflict.
+Agents load this standard on demand through the human-layer skill; the session rules only point to it.
 Rule 15 (cite paths absolutely) applies to the agent view. The human view uses permalinks.
 
 - Lead with the point. Never open with "This document describes".

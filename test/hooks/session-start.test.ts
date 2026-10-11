@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { WorkStore } from "../../src/store/store.js";
 
@@ -140,6 +140,34 @@ describe("session-start hook", () => {
     expect(ctx).toMatch(/Evidence verbatim/i);
     expect(ctx).toMatch(/Sequencing prose/i);
     expect(ctx).toMatch(/invented abbreviations/i);
+  });
+
+  it("deployed plugin.json hook command injects human-layer pointer, not the Human standard bullets", () => {
+    const manifest = JSON.parse(readFileSync(path.join(ROOT, ".claude-plugin/plugin.json"), "utf8")) as {
+      hooks?: { SessionStart?: { hooks?: { command?: string }[] }[] };
+    };
+    const raw = (manifest.hooks?.SessionStart ?? [])
+      .flatMap((g) => g.hooks ?? [])
+      .map((h) => h.command)
+      .find((c) => c?.includes("session-start.ts"));
+    expect(raw).toBeDefined();
+    const command = raw!.replaceAll("${CLAUDE_PLUGIN_ROOT}", ROOT);
+    const cwd = mkdtempSync(path.join(tmpdir(), "gw-session-start-"));
+    try {
+      const r = spawnSync("sh", ["-c", command], {
+        input: "{}",
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PROJECT_DIR: cwd },
+        cwd,
+      });
+      expect(r.status).toBe(0);
+      const ctx = (JSON.parse(r.stdout.toString()) as { hookSpecificOutput: { additionalContext: string } })
+        .hookSpecificOutput.additionalContext;
+      expect(ctx).toContain("## Authoring rules");
+      expect(ctx).not.toContain("Lead with the point");
+      expect(ctx).toContain("groundwork:human-layer");
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   it("additionalContext points at house-rules config and configure skill", () => {

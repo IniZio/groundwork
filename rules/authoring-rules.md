@@ -18,20 +18,10 @@
 
 ## Routing rule
 
-If an item could flip a reviewer's yes/no, it goes in the PR body, drafted at `.groundwork/work/<slug>/pr-body.md`.
-`doc/` and README.md describe current code only, in present tense. No per-slug `doc/<slug>/` folders.
+If an item could flip a reviewer's yes/no, it goes in the PR body.
+The human side (PR body, `doc/`, README) follows `groundwork:human-layer`.
 Everything else goes in the agent view (`.groundwork/`, gitignored).
 
 ## Human writing standard
 
-Applies to human view only: the PR body and the `doc/` snapshot. Rules 1-3, 5, 12 (compression) govern agent-facing text; human view follows this standard instead.
-Rule 11 (absolute paths) governs agent view; human view uses permalinks.
-
-- Lead with the point. No "This document describes".
-- Never state what baseline CI enforces (lint, typecheck, tests passed).
-- File mentions are GitHub permalinks pinned to a commit. Never code-blocked paths.
-- Flows, architectures, state machines: diagram.
-- State decisions only; rejected alternatives live in ADRs and DECISION events.
-- Plain controlled English. Apply ASD-STE100 where reader could misparse.
-- No agent bookkeeping in human view (PR body, `doc/` snapshot): file lists, commands, AC tables, ledger ids.
-- No hard length cap.
+Load `groundwork:human-layer` before writing a PR body, `doc/` or README.

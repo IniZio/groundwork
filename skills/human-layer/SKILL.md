@@ -51,3 +51,16 @@ No rejected alternatives anywhere (they live in ADRs).
 
 - Agent-view records live at `.groundwork/adr/{nnnn}-{name}.md`, with optional `date` and `supersedes`.
 - The PR body states the decision only.
+
+## 7. Human writing standard
+
+Applies to the PR body and `doc/` snapshot only.
+
+- Compression rules in session authoring rules (dropped articles, fragments, absolute paths) do not apply to human view.
+- Lead with the point. No "This document describes".
+- Never state what baseline CI enforces (lint, typecheck, tests passed).
+- Flows, architectures, state machines: diagram.
+- State decisions only. Rejected alternatives live in ADRs and DECISION events, never in human view.
+- Plain controlled English. Apply ASD-STE100 where reader could misparse.
+- No agent bookkeeping: file lists, commands, AC tables, ledger ids.
+- No hard length cap.

@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { MIGRATIONS } from "../../src/store/schema.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { artifactHash } from "../../src/cli/gate-status.js";
@@ -237,7 +238,7 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     if (withDocs) {
       const work = path.join(proj, ".groundwork", "work", SLUG);
       mkdirSync(work, { recursive: true });
-      writeFileSync(path.join(work, "pr-body.md"), "## Why\nx\n\n## Changes\ni\n\n## Impact\nm\n\n## Review focus\nf\n\n## Proof\ny\n");
+      writeFileSync(path.join(work, "pr-body.md"), "## Summary\ns\n\n## Why\nx\n\n## Changes\ni\n\n## Impact\nm\n\n## Review focus\nf\n\n## Proof\ny\n");
       writeFileSync(path.join(work, "motive.md"), "# charter\n");
       writeFileSync(path.join(work, "spec.md"), "# spec\n");
     }
@@ -280,6 +281,29 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     const { stdout, exit } = await run(proj);
     expect(exit).toBe(0);
     expect(reasonOf(stdout)).toContain("H2 spec approval void");
+  });
+
+  it("deny: Summary edited after approval → H1 charter and H2 spec approvals void", async () => {
+    const proj = makeProject("summary-edited", true);
+    approve(proj, "APPROVE_CHARTER", "charter");
+    approve(proj, "APPROVE_SPEC", "spec");
+    const pr = path.join(proj, ".groundwork", "work", SLUG, "pr-body.md");
+    writeFileSync(pr, readFileSync(pr, "utf8").replace("## Summary\ns\n", "## Summary\ns edited\n"));
+    const { stdout, exit } = await run(proj);
+    expect(exit).toBe(0);
+    expect(reasonOf(stdout)).toContain("H1 charter approval void");
+    expect(reasonOf(stdout)).toContain("H2 spec approval void");
+  });
+
+  it("allow: Review focus and Proof edited after approval → approvals kept", async () => {
+    const proj = makeProject("unhashed-edited", true);
+    approve(proj, "APPROVE_CHARTER", "charter");
+    approve(proj, "APPROVE_SPEC", "spec");
+    const pr = path.join(proj, ".groundwork", "work", SLUG, "pr-body.md");
+    writeFileSync(pr, readFileSync(pr, "utf8").replace("\nf\n", "\nf edited\n").replace("\ny\n", "\ny edited\n"));
+    const { stdout, exit } = await run(proj);
+    expect(exit).toBe(0);
+    expect(reasonOf(stdout)).not.toContain("intent gate");
   });
 
   it("allow: no pr-body.md → no intent-gate deny", async () => {
@@ -343,7 +367,7 @@ describe("deployed — stop-gate (Stop)", () => {
   });
 
   it("allow: no db file → allow", async () => {
-    const { stdout } = await spawnHook(CMD, { session_id: "dep-2" }, { GROUNDWORK_DB: "/tmp/nonexistent-deployed.db" });
+    const { stdout } = await spawnHook(CMD, { session_id: "dep-2", cwd: tmpdir() }, { GROUNDWORK_DB: "/tmp/nonexistent-deployed.db" });
     const out = JSON.parse(stdout);
     expect(out.continue).toBe(true);
   });

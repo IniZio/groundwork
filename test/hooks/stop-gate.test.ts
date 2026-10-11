@@ -100,7 +100,7 @@ describe("stop-gate — Family 3", () => {
   });
 
   it("CLEAN: no db file → allow (no active run)", () => {
-    const result = run({}, { GROUNDWORK_DB: "/tmp/nonexistent-gw-999.db" });
+    const result = run({ cwd: tmpdir() }, { GROUNDWORK_DB: "/tmp/nonexistent-gw-999.db" });
     const out = JSON.parse(result.stdout);
     expect(out.continue).toBe(true);
   });

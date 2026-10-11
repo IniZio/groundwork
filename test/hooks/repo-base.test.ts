@@ -68,7 +68,7 @@ describe("resolveRepoBase / resolveDbPath", () => {
     const root = mkRepo();
     seedStore(root);
     const other = mkRepo();
-    expect(resolveDbPath(undefined, { GROUNDWORK_DB: "/x/y.db" })).toBe("/x/y.db");
+    expect(resolveDbPath(undefined, { GROUNDWORK_DB: path.join(root, ".groundwork", "work.db") })).toBe(path.join(root, ".groundwork", "work.db"));
     expect(resolveDbPath(path.join(root, "apps"), { CLAUDE_PROJECT_DIR: other })).toBe(path.join(root, ".groundwork", "work.db"));
     expect(resolveDbPath(undefined, { CLAUDE_PROJECT_DIR: other })).toBeNull();
   });

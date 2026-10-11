@@ -133,3 +133,33 @@ export const cases: RuleCases = {
     },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record<string, unknown> (broad) is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted index-only literal (broad) is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted index-only literal with narrow value is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and unknown value is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Foo type reference is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly of Foo is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, unknown>> (broad) is not narrower',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted array type is not narrower',
+  "[no-widen-then-assert] broadKind: Record<'a', unknown> narrow keys is not a broad type",
+  '[no-widen-then-assert] broadKind: Record with three args is not a broad type',
+  '[no-widen-then-assert] broadKind: index-signature literal with property is not a broad type',
+  '[no-widen-then-assert] broadKind: two index signatures is not a broad type',
+  '[no-widen-then-assert] knownValueEvidence: evidence from Record<string, unknown>-annotated variable',
+  '[no-widen-then-assert] broadKind record via Record<string, unknown>: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via Readonly<Record<string, unknown>>: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via index-signature literal: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via Record<PropertyKey, any>: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via Record<string | number, unknown>: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via Record<symbol, unknown>: narrower Record<string, string>',
+  '[no-widen-then-assert] broadKind record via parenthesized Record: narrower Record<string, string>',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with properties',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, string>>',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and narrow value',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with property and index signature',
+  '[no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly of literal with properties',
+  '[no-widen-then-assert] typesHaveSameSyntax: record kind with matching evidence',
+];

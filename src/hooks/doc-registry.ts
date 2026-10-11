@@ -172,7 +172,7 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     generates: ".groundwork/adr/{nnnn}-{name:kebab}.md",
     description: "Agent-view decision record that can span motives: context, decision, rejected alternatives",
     instruction:
-      "Number with a four-digit prefix; link it from a DECISION event via $GW event append --type DECISION --data '{\"adr\":\"<path>\"}'; supersede an accepted record instead of editing it",
+      "Number with a four-digit prefix; link it from a DECISION event via $GW event append --type DECISION --data '{\"adr\":\"<path>\"}'; supersede an accepted record instead of editing it; a format-only migration (frontmatter or headings) may edit an accepted record",
     template: tpl("adr"),
     frontmatter: {
       type: "object",
@@ -211,6 +211,9 @@ export const FORBIDDEN: ForbiddenPattern[] = [
   { pattern: "doc/*/motive.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
   { pattern: "doc/*/spec.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
   { pattern: "doc/*/tickets/**", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
+  { pattern: "docs/*/motive.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
+  { pattern: "docs/*/spec.md", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
+  { pattern: "docs/*/tickets/**", redirect: "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`" },
 ];
 
 const words = (s: string) => s.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/).filter(Boolean).map((w) => w.toLowerCase());

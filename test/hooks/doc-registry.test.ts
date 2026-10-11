@@ -96,6 +96,14 @@ describe("AC2 generates literals", () => {
     for (const p of ["doc/demo/motive.md", "doc/demo/spec.md", "doc/demo/tickets/01-x.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBe(redirect);
     for (const p of ["doc/spec/billing.md", "doc/architecture.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBeNull();
   });
+  it("forbids per-slug human views under docs/ but not snapshot docs", () => {
+    const redirect = "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`";
+    for (const p of ["docs/demo/motive.md", "docs/demo/spec.md", "docs/demo/tickets/01-x.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBe(redirect);
+    for (const p of ["docs/spec/billing.md", "docs/architecture.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBeNull();
+  });
+  it("adr instruction exempts format-only migration", () => {
+    expect(WORKING_TYPES.adr.instruction).toContain("format-only migration (frontmatter or headings) may edit an accepted record");
+  });
 });
 
 describe("AC3 templates match schema and headings", () => {
@@ -162,6 +170,9 @@ describe("AC5 forbidden patterns", () => {
       "doc/*/motive.md",
       "doc/*/spec.md",
       "doc/*/tickets/**",
+      "docs/*/motive.md",
+      "docs/*/spec.md",
+      "docs/*/tickets/**",
     ]);
     for (const f of FORBIDDEN) expect(f.redirect.length).toBeGreaterThan(0);
     expect(FORBIDDEN[0].redirect).toContain("$GW event append --type DECISION");

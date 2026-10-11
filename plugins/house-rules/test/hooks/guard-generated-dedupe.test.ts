@@ -62,6 +62,13 @@ describe("guard skips generated files", () => {
     const r = await spawnGuard(write(dir, "attr-gen.ts", "const x = y as unknown as Foo;\n"), dir);
     expect(r.stdout.trim()).toBe("");
   });
+
+  it("header-marked file still gets artifact-structure finding", async () => {
+    const r = await spawnGuard(write(dir, "tmp-x.ts", "// @generated\nexport const a = 1;\n"), dir);
+    expect(r.exit).toBe(0);
+    const hso = (JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput;
+    expect(hso.additionalContext).toContain("root scratch file: tmp-x.ts");
+  });
 });
 
 describe("guard dedupes overlapping safety-comment finding", () => {

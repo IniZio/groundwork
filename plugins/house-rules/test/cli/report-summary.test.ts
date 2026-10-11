@@ -40,6 +40,18 @@ describe('formatSummary', () => {
     expect(hintLines).toEqual(['  hint: Type on `<name>` is wide; use <name> instead']);
   });
 
+  it('structurally different hints under one check print only the most frequent one', () => {
+    const fs = [
+      f('r', 'chk-multi', 'a.ts', 'Foo `a1` on return value of `x1`.', 0),
+      f('r', 'chk-multi', 'a.ts', 'Foo `a2` on return value of `x2`.', 1),
+      f('r', 'chk-multi', 'a.ts', 'Foo `a3` on return value of `x3`.', 2),
+      f('r', 'chk-multi', 'a.ts', 'Foo `b` on binding `y`.', 3),
+    ];
+    const o = formatSummary(buildReport(scope, { findings: fs }), 'p');
+    const hintLines = o.split('\n').filter(l => l.startsWith('  hint:'));
+    expect(hintLines).toEqual(['  hint: Foo `<name>` on return value of `<name>`.']);
+  });
+
   it('top 10 files by count, ordered', () => {
     const files = [...out.matchAll(/^file (\S+): (\d+)$/gm)];
     expect(files.length).toBe(10);

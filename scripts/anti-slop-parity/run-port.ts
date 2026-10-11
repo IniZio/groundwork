@@ -16,7 +16,7 @@ const rules = [
   defineGroupedRule('require-safety-comment-for-type-assertion', 'x', R + '/require-safety-comment-for-type-assertion/checks'),
   defineGroupedRule('require-readable-spacing', 'x', R + '/require-readable-spacing/checks'),
 ];
-const manifest = JSON.parse(readFileSync(resolve(W, 'manifest.json'), 'utf8')) as { file: string }[];
+const manifest = JSON.parse(readFileSync(resolve(W, 'manifest.json'), 'utf8')) as { file: string; options?: unknown }[];
 const out: string[] = [];
 let other = 0, errors = 0, findings = 0;
 for (const m of manifest) {
@@ -24,6 +24,8 @@ for (const m of manifest) {
   const lines = text.split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
   const ctx: any = { repoRoot: C, mode: 'cli', files: [{ path: m.file, text, tracked: true, addedHunks: [{ added: lines.map((_, i) => i + 1), removed: [], removedBaseLineNos: [] }] }] };
+  const o = Array.isArray(m.options) ? m.options[0] : m.options;
+  if (o && !Array.isArray(o)) ctx.options = o;
   for (const rule of rules) {
     let f: any[];
     try { f = await rule.check(ctx); } catch (e: any) { errors++; out.push(JSON.stringify({ file: m.file, error: String(e?.message ?? e) })); continue; }

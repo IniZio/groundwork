@@ -65,9 +65,12 @@ const port = portAll.filter((p) => p.error === undefined);
 // ---- multiplicity diff ----
 const key = (x) => `${x.file}\t${x.line}\t${x.check}`;
 const count = (arr) => { const c = new Map(); for (const x of arr) c.set(key(x), (c.get(key(x)) || 0) + 1); return c; };
-const cu = count(up), cp = count(port);
+const hasOpts = (m) => m.options && (typeof m.options !== 'object' || Object.keys(m.options).length > 0);
+const optFiles = new Set(manifest.filter((m) => m.src === 'upstream-test' && m.check && hasOpts(m)).map((m) => m.file));
+const upC = up.filter((x) => !optFiles.has(x.file)), portC = port.filter((x) => !optFiles.has(x.file));
+const cu = count(upC), cp = count(portC);
 const firstMsg = (arr) => { const m = new Map(); for (const x of arr) if (!m.has(key(x))) m.set(key(x), x.msg); return m; };
-const mu = firstMsg(up), mp = firstMsg(port);
+const mu = firstMsg(upC), mp = firstMsg(portC);
 const rows = [];
 for (const k of new Set([...cu.keys(), ...cp.keys()])) {
   const [file, line, check] = k.split('\t');
@@ -90,8 +93,8 @@ for (const r of rows) {
 const stale = [];
 for (const r of res.divergences) if (!matchedRes.has(rkey(r))) stale.push({ kind: 'divergence', ...r });
 const upByCheck = new Map(), portByCheck = new Map();
-for (const x of up) upByCheck.set(x.check, (upByCheck.get(x.check) || 0) + 1);
-for (const x of port) portByCheck.set(x.check, (portByCheck.get(x.check) || 0) + 1);
+for (const x of upC) upByCheck.set(x.check, (upByCheck.get(x.check) || 0) + 1);
+for (const x of portC) portByCheck.set(x.check, (portByCheck.get(x.check) || 0) + 1);
 for (const r of res.notPorted) {
   const u = upByCheck.get(r.check) || 0, p = portByCheck.get(r.check) || 0;
   if (u === 0 || p >= 1) stale.push({ kind: 'notPorted', ...r, up: u, port: p });
@@ -119,8 +122,24 @@ for (const m of manifest) {
   const n = up.filter((x) => x.file === m.file && x.check === m.check).length;
   if (n === m.expected) continue;
   const e = { file: m.file, check: m.check, expected: m.expected, oxlint: n };
-  const hasOpts = m.options && (typeof m.options !== 'object' || Object.keys(m.options).length > 0);
-  (hasOpts ? selfOpts : selfMismatch).push(e);
+  (hasOpts(m) ? selfOpts : selfMismatch).push(e);
+}
+
+// ---- port vs upstream expected, for option cases ----
+const PORT_OPTIONS = { 'no-runtime-typeof': ['allowInTypeGuards'] };
+const portOptsMismatch = [], portOptsUnsupported = [], poByCheck = {};
+let poAgree = 0, poJudged = 0;
+for (const m of manifest) {
+  if (m.src !== 'upstream-test' || !m.check || !hasOpts(m)) continue;
+  const o = Array.isArray(m.options) ? m.options[0] : m.options;
+  const n = port.filter((x) => x.file === m.file && x.check === m.check).length;
+  const e = { file: m.file, check: m.check, options: m.options, expected: m.expected, port: n };
+  const supported = PORT_OPTIONS[m.check] || [];
+  const keys = o && typeof o === 'object' ? Object.keys(o) : [];
+  if (!keys.every((k) => supported.includes(k))) { portOptsUnsupported.push(e); continue; }
+  const t = poByCheck[m.check] || (poByCheck[m.check] = { agree: 0, judged: 0 });
+  poJudged++; t.judged++;
+  if (n === m.expected) { poAgree++; t.agree++; } else portOptsMismatch.push(e);
 }
 
 const newRows = rows.filter((r) => r.status === 'new');
@@ -136,6 +155,10 @@ lines.push(`upstream-self-mismatch ${selfMismatch.length}`);
 for (const e of selfMismatch) lines.push(`  self-mismatch ${JSON.stringify(e)}`);
 lines.push(`self-mismatch-with-options ${selfOpts.length}`);
 for (const e of selfOpts) lines.push(`  self-mismatch-opts ${JSON.stringify(e)}`);
+lines.push(`port-opts agree ${poAgree}/${poJudged}${Object.entries(poByCheck).map(([c, t]) => ` ${c}=${t.agree}/${t.judged}`).join('')}`);
+for (const e of portOptsMismatch) lines.push(`  port-opts-mismatch ${JSON.stringify(e)}`);
+lines.push(`port-opts unsupported ${portOptsUnsupported.length}`);
+for (const e of portOptsUnsupported) lines.push(`  port-opts-unsupported ${JSON.stringify(e)}`);
 for (const m of manifest) {
   if (!m.unverified) continue;
   const id = m.id || m.file;
@@ -144,10 +167,10 @@ for (const m of manifest) {
 for (const r of newRows) lines.push(`NEW ${r.file}:${r.line} ${r.check} up=${r.up} port=${r.port} upMsg=${JSON.stringify(r.upMsg)} portMsg=${JSON.stringify(r.portMsg)}`);
 for (const e of portErrors) lines.push(`NEW ${e.file}:0 port-error up=0 port=0 upMsg=null portMsg=${JSON.stringify(e.error)}`);
 for (const s of stale) lines.push(`STALE ${JSON.stringify(s)}`);
-const nNew = newRows.length + portErrors.length;
+const nNew = newRows.length + portErrors.length + portOptsMismatch.length;
 lines.push(`new=${nNew} stale=${stale.length}`);
 console.log(lines.join('\n'));
 
 fs.mkdirSync(path.join(W, 'out'), { recursive: true });
-fs.writeFileSync(path.join(W, 'out', 'diff.json'), JSON.stringify({ parseErrors: [...parseErr], realSample: { agree: rsA, total: rsT }, upstreamSelfMismatch: selfMismatch, selfMismatchWithOptions: selfOpts, table, divergences: rows.filter((r) => r.upOnly || r.portOnly), portErrors, stale, new: nNew }, null, 1));
+fs.writeFileSync(path.join(W, 'out', 'diff.json'), JSON.stringify({ parseErrors: [...parseErr], realSample: { agree: rsA, total: rsT }, upstreamSelfMismatch: selfMismatch, selfMismatchWithOptions: selfOpts, portOpts: { agree: poAgree, judged: poJudged, mismatches: portOptsMismatch, unsupported: portOptsUnsupported }, table, divergences: rows.filter((r) => r.upOnly || r.portOnly), portErrors, stale, new: nNew }, null, 1));
 process.exit(nNew + stale.length > 0 ? 1 : 0);

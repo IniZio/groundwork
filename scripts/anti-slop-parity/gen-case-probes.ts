@@ -9,8 +9,9 @@ for (const f of files) {
   const { cases } = await import(resolve(f));
   const probes: Record<string, unknown>[] = [];
   for (const [kind, tag] of [['valid', 'v'], ['invalid', 'i']] as const) {
-    cases[kind].forEach((c: { why: string; code?: string; filename?: string; findings?: unknown[] }, i: number) => {
+    cases[kind].forEach((c: { why: string; code?: string; filename?: string; findings?: unknown[]; options?: unknown }, i: number) => {
       if (typeof c.code !== 'string') return;
+      if (c.options !== undefined) return;
       const p: Record<string, unknown> = { id: `pc-${check}-${tag}${String(i).padStart(3, '0')}`, check, code: c.code, upstreamExpect: `${c.findings ? c.findings.length : 0} per port case: ${c.why}`, src: 'probe' };
       if (c.filename) p.filename = c.filename;
       probes.push(p);

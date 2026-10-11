@@ -397,7 +397,7 @@ describe('AC6: diff-mode pathspec filters by file identity', () => {
 
     // HEAD~1 is the init empty commit; both files are new in HEAD
     const r = runBIN(
-      ['check', '--base', 'HEAD~1', '--rules-dir', rulesDir, '--repo', repoDir, 'src/a.ts'],
+      ['check', '--verbose', '--base', 'HEAD~1', '--rules-dir', rulesDir, '--repo', repoDir, 'src/a.ts'],
       repoDir,
     );
 

@@ -71,7 +71,7 @@ describe('house-rules CLI', () => {
     initRepo(repoDir);
     writeStubRule(rulesDir, 'comment-density', 'error');
 
-    const r = runCLI(['check', '--base', 'HEAD', '--rules-dir', rulesDir, '--baseline-file', '/tmp/nonexistent-baseline-xyz.json'], repoDir);
+    const r = runCLI(['check', '--verbose', '--base', 'HEAD', '--rules-dir', rulesDir, '--baseline-file', '/tmp/nonexistent-baseline-xyz.json'], repoDir);
     expect(r.status).toBe(1);
     expect(r.stdout).toContain('README.md:42 comment-density stub finding');
     expect(r.stdout).toContain('1 finding(s)');
@@ -109,7 +109,7 @@ describe('house-rules CLI', () => {
     initRepo(repoDir);
     writeStubRule(rulesDir, 'comment-density', 'error', 42);
 
-    const r = runCLI(['check', '--base', 'HEAD', '--rules-dir', rulesDir, '--baseline-file', '/tmp/nonexistent-baseline-xyz.json'], repoDir);
+    const r = runCLI(['check', '--verbose', '--base', 'HEAD', '--rules-dir', rulesDir, '--baseline-file', '/tmp/nonexistent-baseline-xyz.json'], repoDir);
     const lines = r.stdout.split('\n');
     expect(lines.some((l) => l === 'README.md:42 comment-density stub finding')).toBe(true);
   });
@@ -198,7 +198,7 @@ describe('house-rules CLI', () => {
     spawnSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=T', 'commit', '-m', 'init'], { cwd: repoDir });
 
     const r = runBIN(
-      ['check', '--base', EMPTY_TREE, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR, '--baseline-file', '/tmp/nonexistent-baseline-ac2-xyz.json'],
+      ['check', '--verbose', '--base', EMPTY_TREE, '--repo', repoDir, '--rules-dir', REAL_RULES_DIR, '--baseline-file', '/tmp/nonexistent-baseline-ac2-xyz.json'],
       repoDir,
     );
     expect(r.status).toBe(1);

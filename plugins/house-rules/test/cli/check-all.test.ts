@@ -58,7 +58,7 @@ describe('check --all', () => {
       commitFile(dir, 'src/a.ts', VIOLATION_CONTENT);
 
       const noAll = runBIN(
-        ['check', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
+        ['check', '--verbose', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
           '--baseline-file', path.join(os.tmpdir(), 'nonexistent-check-all-bl.json')],
         dir,
       );
@@ -67,7 +67,7 @@ describe('check --all', () => {
       expect(noAll.stdout).not.toContain('src/a.ts');
 
       const withAll = runBIN(
-        ['check', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
+        ['check', '--verbose', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
           '--baseline-file', path.join(os.tmpdir(), 'nonexistent-check-all-bl.json')],
         dir,
       );
@@ -85,7 +85,7 @@ describe('check --all', () => {
       commitFile(dir, 'src/b.ts', VIOLATION_CONTENT);
 
       const r = runBIN(
-        ['check', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
+        ['check', '--verbose', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
           '--baseline-file', path.join(os.tmpdir(), 'nonexistent-check-all-bl2.json'),
           'src/a.ts'],
         dir,
@@ -158,7 +158,7 @@ describe('check --all', () => {
 
       const nonexistentBl = path.join(os.tmpdir(), `nonexistent-check-all-bl4-${Date.now()}.json`);
       const chkR = runBIN(
-        ['check', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
+        ['check', '--verbose', '--all', '--repo', dir, '--rules-dir', REAL_RULES_DIR,
           '--baseline-file', nonexistentBl],
         dir,
       );

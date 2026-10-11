@@ -29,7 +29,7 @@ describe('check --all on a TypeScript file named like a Dockerfile', () => {
       git(dir, 'add', 'dockerfile.ts');
       git(dir, 'commit', '-m', 'add dockerfile.ts');
 
-      const r = spawnSync(BIN, ['check', '--all'], { cwd: dir, encoding: 'utf8', env: childEnv() });
+      const r = spawnSync(BIN, ['check', '--all', '--verbose'], { cwd: dir, encoding: 'utf8', env: childEnv() });
 
       expect(r.stdout).toContain(
         'dockerfile.ts:1 type-escape-hatches [no-unknown-parameters] Parameter `y` leaves input unparsed.',

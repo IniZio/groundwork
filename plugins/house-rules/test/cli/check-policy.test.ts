@@ -55,7 +55,7 @@ describe('check uses config-resolved policy', () => {
   });
 
   it('yields no findings for a rule set off (text)', () => {
-    const r = check(makeRepo({ rules: { 'no-module-mocking': 'off' } }));
+    const r = check(makeRepo({ rules: { 'no-module-mocking': 'off' } }), ['--verbose']);
     expect(r.stdout + r.stderr).not.toContain('no-module-mocking');
   });
 

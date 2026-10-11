@@ -12,6 +12,8 @@ import { resolveScope, ScopeUsageError } from './scope.js';
 import { policyForRoot } from '../engine/policy.js';
 import {
   type OutputFormat,
+  type Report,
+  formatSummary,
   writeScopeHeader,
   toReportFinding,
   buildReport,
@@ -19,6 +21,8 @@ import {
   formatFindingLine,
   exitCodeFor,
 } from './report.js';
+
+import { writeSidecar } from './sidecar.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -56,7 +60,7 @@ function printUsage(toStdout = false): void {
   const out = toStdout ? process.stdout : process.stderr;
   out.write(
     'Usage:\n' +
-      '  house-rules check [--all] [--base <ref>] [--fix] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
+      '  house-rules check [--all] [--base <ref>] [--fix] [--verbose] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules baseline [--all] [--base <ref>] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules housekeep [--all] [--rules <a,b>] [--paths <glob,...>] [--since <ref>] [--baseline] [--max <n>] [--dry-run] [--diff] [--format <text|json>] [--rules-dir <dir>] [--baseline-file <file>] [--repo <dir>] [<pathspec>...]\n' +
       '  house-rules config [--format <text|json>] [--repo <dir>]\n' +
@@ -79,6 +83,7 @@ function printUsage(toStdout = false): void {
       '  --rules <a,b>       comma-separated rule IDs\n' +
       '  --rules-dir <dir>   path to rules directory\n' +
       '  --since <ref>       housekeep since ref\n' +
+      '  --verbose           print every finding row (check text output only)\n' +
       '\n' +
       'Exit codes:\n' +
       '  0  no error-severity findings remain\n' +
@@ -102,6 +107,7 @@ function parseArgs(argv: string[]): {
   diff?: boolean;
   all?: boolean;
   fix?: boolean;
+  verbose?: boolean;
   format: OutputFormat;
   pathspec?: string[];
 } {
@@ -130,7 +136,8 @@ function parseArgs(argv: string[]): {
       arg === '--dry-run' ||
       arg === '--diff' ||
       arg === '--all' ||
-      arg === '--fix'
+      arg === '--fix' ||
+      arg === '--verbose'
     ) {
       flags[arg.slice(2)] = true;
     } else if (!arg.startsWith('-')) {
@@ -161,9 +168,20 @@ function parseArgs(argv: string[]): {
     diff: flags['diff'],
     all: flags['all'],
     fix: flags['fix'],
+    verbose: flags['verbose'],
     format,
     pathspec: positionals.length > 0 ? positionals : undefined,
   };
+}
+
+function writeSummary(repoRoot: string, report: Report): void {
+  process.stdout.write(formatSummary(report, writeSidecar(repoRoot, report)) + '\n');
+}
+
+function writeCoverage(coverage: Parameters<typeof formatCoverage>[0]): void {
+  for (const line of formatCoverage(coverage, 'coverage:', '')) {
+    process.stdout.write(line + '\n');
+  }
 }
 
 async function cmdCheck(opts: {
@@ -173,6 +191,7 @@ async function cmdCheck(opts: {
   repo?: string;
   all?: boolean;
   fix?: boolean;
+  verbose?: boolean;
   format: OutputFormat;
   pathspec?: string[];
 }): Promise<void> {
@@ -220,6 +239,16 @@ async function cmdCheck(opts: {
         manual: outcome.manual.map(m => ({ ...toReportFinding(m.finding), reason: m.reason })),
         coverage,
       }));
+    } else if (!opts.verbose) {
+      writeScopeHeader(scope);
+      writeSummary(repoRoot, buildReport(scope, {
+        findings: remaining.map(toReportFinding),
+        fixed: outcome.fixed.map(e => toReportFinding(e.finding)),
+        manual: outcome.manual.map(m => ({ ...toReportFinding(m.finding), reason: m.reason })),
+        coverage,
+      }));
+      process.stdout.write(`${outcome.fixed.length} fixed\n`);
+      writeCoverage(coverage);
     } else {
       writeScopeHeader(scope);
       for (const f of remaining) {
@@ -239,6 +268,10 @@ async function cmdCheck(opts: {
   }
   if (opts.format === 'json') {
     writeJsonReport(buildReport(scope, { findings: findings.map(toReportFinding), coverage }));
+  } else if (!opts.verbose) {
+    writeScopeHeader(scope);
+    writeSummary(repoRoot, buildReport(scope, { findings: findings.map(toReportFinding), coverage }));
+    writeCoverage(coverage);
   } else {
     // Header after readBaseline succeeds (a corrupt baseline throws before we reach here).
     writeScopeHeader(scope);
@@ -302,6 +335,10 @@ try {
 
   if (parsed.fix && parsed.subcommand !== 'check') {
     throw new UsageError('--fix is only valid for the check subcommand');
+  }
+
+  if (parsed.verbose && parsed.subcommand !== 'check') {
+    throw new UsageError('--verbose is only valid for the check subcommand');
   }
 
   switch (parsed.subcommand) {

@@ -7,7 +7,8 @@ import { resolveDbPath, resolveRepoBase } from "./lib/repo-base.js";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
 import { readPointer, type ScopePointer } from "../store/scope-pointer.js";
-import { readSealKey, verifySeal, type SealFields } from "../store/key-store.js";
+import { readSealKey } from "../store/key-store.js";
+import { verifyApprovalSeal } from "../store/gate-seal.js";
 
 // ---------------------------------------------------------------------------
 // Yield detection — allow stop when background Agents are still in-flight
@@ -222,6 +223,8 @@ export interface MotiveStatus {
   holdActive: boolean;
   /** True when the newest GATE_APPROVE event exists but its HMAC seal failed verification. */
   sealRejected: boolean;
+  /** Why the seal was rejected, or null. */
+  sealReason: string | null;
   /** SHA recorded in GATE_APPROVE payload, or null if absent/not recorded. */
   approvalBaseCommit: string | null;
   /** created_at of the newest GATE_APPROVE event, or null if no approval. */
@@ -283,6 +286,7 @@ export function checkStore(dbPath: string, repoPath?: string): {
         ).get(motiveId);
         let rawApproved = newestGate?.event_type === "GATE_APPROVE";
         let sealValid = false;
+        let sealReason: string | null = null;
         let approvalBaseCommit: string | null = null;
         let approvalCreatedAt: string | null = null;
         let sliceAddedAfterApproval = false;
@@ -291,22 +295,9 @@ export function checkStore(dbPath: string, repoPath?: string): {
           let parsedPayload: Record<string, unknown> = {};
           try { parsedPayload = JSON.parse(newestGate.payload) as Record<string, unknown>; } catch { /* ok */ }
           approvalBaseCommit = typeof parsedPayload.base_commit === "string" ? parsedPayload.base_commit : null;
-          const storedSeal = typeof parsedPayload.seal === "string" ? parsedPayload.seal : null;
-          const payloadCreatedAt = typeof parsedPayload.created_at === "string" ? parsedPayload.created_at : null;
-          if (sealKey) {
-            if (storedSeal && payloadCreatedAt) {
-              const fields: SealFields = {
-                citation: typeof parsedPayload.citation === "string" ? parsedPayload.citation : "",
-                created_at: payloadCreatedAt,
-                event_type: "GATE_APPROVE",
-                motive_id: motiveId,
-                base_commit: approvalBaseCommit,
-              };
-              sealValid = verifySeal(sealKey, fields, storedSeal);
-            }
-          } else {
-            sealValid = true;
-          }
+          const verdict = verifyApprovalSeal({ motiveId, payload: parsedPayload }, sealKey);
+          sealValid = verdict.ok;
+          sealReason = verdict.reason ?? null;
           const sliceAfter = db.query<{ n: number }, [string, string]>(
             "SELECT COUNT(*) AS n FROM slices WHERE motive_id = ? AND created_at > ?"
           ).get(motiveId, newestGate.created_at)?.n ?? 0;
@@ -321,7 +312,7 @@ export function checkStore(dbPath: string, repoPath?: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR' AND motive_id = ?"
         ).get(motiveId)?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved, sealRejected, holdActive, approvalBaseCommit, approvalCreatedAt, sliceAddedAfterApproval };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved, sealRejected, sealReason, holdActive, approvalBaseCommit, approvalCreatedAt, sliceAddedAfterApproval };
       } else {
         const inc = db.query<{ n: number }, []>(
           "SELECT COUNT(*) AS n FROM slices WHERE status IN ('pending','in_progress')"
@@ -340,7 +331,7 @@ export function checkStore(dbPath: string, repoPath?: string): {
           "SELECT MAX(id) AS max_id FROM events WHERE event_type='HOLD_CLEAR'"
         ).get()?.max_id ?? null;
         const holdActive = holdId !== null && (clearId === null || holdId > clearId);
-        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approvedLegacy, sealRejected: false, holdActive, approvalBaseCommit: null, approvalCreatedAt: null, sliceAddedAfterApproval: false };
+        return { motiveId, incomplete: inc, incompleteIds: incIds, approved: approvedLegacy, sealRejected: false, sealReason: null, holdActive, approvalBaseCommit: null, approvalCreatedAt: null, sliceAddedAfterApproval: false };
       }
     });
 
@@ -812,7 +803,7 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
       // All slices complete but newest verdict is not APPROVE (or no verdict recorded).
       const sealRejectedMotive = motiveDetails.find(m => m.sealRejected);
       if (sealRejectedMotive) {
-        return { result: block(`stop-gate: GATE_APPROVE for motive '${sealRejectedMotive.motiveId}' has invalid or missing HMAC seal — verdict rejected as forged. Re-run \`$GW gate approve\`.`), yieldResult: null };
+        return { result: block(`stop-gate: GATE_APPROVE for motive '${sealRejectedMotive.motiveId}' has invalid or missing HMAC seal — verdict rejected as forged. Reason: ${sealRejectedMotive.sealReason ?? "approval has no verifiable seal"}. Re-run \`$GW gate approve\`.`), yieldResult: null };
       }
       const unapprovedMotive = motiveDetails.find(m => !m.approved);
       const verdictHint = unapprovedMotive ? ` (motive: ${unapprovedMotive.motiveId})` : "";

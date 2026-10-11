@@ -8,6 +8,27 @@ import { run, checkStore, detectYield, extractBackgroundAgentIds, getCurrentHead
 import { WorkStore } from "../../src/store/store.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
+import { ensureSealKey, computeSeal } from "../../src/store/key-store.js";
+
+// Sealed-approve fixture: checkStore() derives the repo from dirname(dirname(db)) and
+// reads that repo's HMAC key from XDG_CONFIG_HOME, so point it at an isolated temp dir.
+process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(tmpdir(), "gw-stop-gate-xdg-"));
+
+/** Returns a GATE_APPROVE payload carrying a valid HMAC seal for (repo of dbFile, motiveId). */
+function sealedPayload(dbFile: string, motiveId: string, payload: Record<string, unknown>): Record<string, unknown> {
+  const key = ensureSealKey(path.dirname(path.dirname(dbFile)));
+  const citation = typeof payload.citation === "string" ? payload.citation : "";
+  const createdAt = new Date().toISOString();
+  const baseCommit = typeof payload.base_commit === "string" ? payload.base_commit : null;
+  const seal = computeSeal(key, { citation, created_at: createdAt, event_type: "GATE_APPROVE", motive_id: motiveId, base_commit: baseCommit });
+  return { ...payload, created_at: createdAt, seal };
+}
+
+/** Inserts a sealed GATE_APPROVE event row (event created_at column = `at`). */
+function insertApprove(db: Database, payload: Record<string, unknown>, at: string, motiveId = "default"): void {
+  db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE',?,?,?)",
+    [JSON.stringify(sealedPayload(db.filename, motiveId, payload)), at, motiveId]);
+}
 
 const FIXTURES = path.join(import.meta.dir, "fixtures");
 
@@ -45,7 +66,7 @@ describe("stop-gate — Family 3", () => {
   it("VIOLATION: incomplete slices → block with gw CLI hint", () => {
     const { db, dbPath } = makeDb("incomplete");
     db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.close();
     const result = run({ session_id: "t1" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);
@@ -71,7 +92,7 @@ describe("stop-gate — Family 3", () => {
     const { db, dbPath } = makeDb("clean");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.close();
     const result = run({ session_id: "t3" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);
@@ -142,7 +163,7 @@ describe("stop-gate — Family 3", () => {
   it("COUNTER: counter resets after gate passes — count file absent, next block is count-1 (not unresolvable)", () => {
     const { db, dbPath } = makeDb("counter-reset");
     db.run("INSERT INTO slices (id,wave,status,created_at) VALUES ('S1',1,'pending',?)", [new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.close();
     const env = { GROUNDWORK_DB: dbPath };
     const payload = { session_id: "sess-reset" };
@@ -193,7 +214,7 @@ describe("stop-gate — Family 3", () => {
 
   it("REGRESSION: empty slices with GATE_APPROVE present → allow", () => {
     const { db, dbPath } = makeDb("empty-with-approve");
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.close();
     const result = run({ session_id: "t-empty-approve" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);
@@ -219,7 +240,7 @@ describe("stop-gate — yield detection (T05)", () => {
     // Confirm count file was never written (counter stays at 0 through yield allows)
     const db2 = new Database(dbPath);
     db2.run("UPDATE slices SET status='complete', completed_at=? WHERE id='S1'", [new Date().toISOString()]);
-    db2.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db2, {}, new Date().toISOString());
     db2.close();
     // Now without agents in-flight the gate should pass cleanly (counter wasn't burned)
     const noAgentPath = path.join(FIXTURES, "stop-gate-noagents.jsonl");
@@ -444,7 +465,7 @@ describe("stop-gate — yield detection (T05)", () => {
     db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-b', 'active', ?)", [now]);
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'motive-a')",
       [now, now]);
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'motive-a')", [now]);
+    insertApprove(db, {}, now, "motive-a");
     db.run("INSERT INTO slices (id,wave,status,created_at,motive_id) VALUES ('B1',1,'pending',?,'motive-b')", [now]);
     db.close();
 
@@ -464,11 +485,11 @@ describe("stop-gate — yield detection (T05)", () => {
 
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'alpha')",
       [now, now]);
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'alpha')", [now]);
+    insertApprove(db, {}, now, "alpha");
 
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('B1',1,'complete',?,?,'beta')",
       [now, now]);
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'beta')", [now]);
+    insertApprove(db, {}, now, "beta");
 
     db.close();
 
@@ -485,7 +506,7 @@ describe("stop-gate — yield detection (T05)", () => {
     db.run("INSERT INTO motives (id, status, created_at) VALUES ('motive-b', 'active', ?)", [now]);
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('A1',1,'complete',?,?,'motive-a')",
       [now, now]);
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,'motive-a')", [now]);
+    insertApprove(db, {}, now, "motive-a");
     db.run("INSERT INTO slices (id,wave,status,created_at,motive_id) VALUES ('B1',1,'pending',?,'motive-b')", [now]);
     db.close();
 
@@ -539,7 +560,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     const { db, dbPath } = makeDb("approve-then-correction");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
     db.close();
     const result = run({ session_id: "t-verdict-1" }, { GROUNDWORK_DB: dbPath });
@@ -553,7 +574,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.close();
     const result = run({ session_id: "t-verdict-2" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);
@@ -570,13 +591,13 @@ describe("stop-gate — verdict logic (T13)", () => {
     store.setMotiveContext("ma");
     store.insertSlice({ id: "SA", wave: 1, status: "pending", covers_ac: null, decisions: null, acceptance: null, blocked_by: null });
     store.completeSlice("SA");
-    store.appendEvent("GATE_APPROVE", { citation: "src/x.ts:1" });
+    store.appendEvent("GATE_APPROVE", sealedPayload(dbPath, "ma", { citation: "src/x.ts:1" }));
     store.appendEvent("GATE_CORRECTION", { citation: "src/x.ts:2" });
 
     store.setMotiveContext("mb");
     store.insertSlice({ id: "SB", wave: 1, status: "pending", covers_ac: null, decisions: null, acceptance: null, blocked_by: null });
     store.completeSlice("SB");
-    store.appendEvent("GATE_APPROVE", { citation: "src/y.ts:1" });
+    store.appendEvent("GATE_APPROVE", sealedPayload(dbPath, "mb", { citation: "src/y.ts:1" }));
 
     expect(store.getNewestGateVerdict("ma")?.event_type).toBe("GATE_CORRECTION");
     expect(store.getNewestGateVerdict("mb")?.event_type).toBe("GATE_APPROVE");
@@ -600,7 +621,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     const { db, dbPath } = makeDb("stop-verdict");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_STOP','{}',?)", [new Date().toISOString()]);
     db.close();
     const result = run({ session_id: "t-stop" }, { GROUNDWORK_DB: dbPath });
@@ -611,7 +632,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     const { db, dbPath } = makeDb("gaps-verdict");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_GAPS','{}',?)", [new Date().toISOString()]);
     db.close();
     const result = run({ session_id: "t-gaps" }, { GROUNDWORK_DB: dbPath });
@@ -622,7 +643,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     const { db, dbPath } = makeDb("replan-verdict");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_REPLAN','{}',?)", [new Date().toISOString()]);
     db.close();
     const result = run({ session_id: "t-replan" }, { GROUNDWORK_DB: dbPath });
@@ -633,7 +654,7 @@ describe("stop-gate — verdict logic (T13)", () => {
     const { db, dbPath } = makeDb("newest-verdict");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [new Date().toISOString(), new Date().toISOString()]);
-    db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE','{}',?)", [new Date().toISOString()]);
+    insertApprove(db, {}, new Date().toISOString());
     db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_CORRECTION','{}',?)", [new Date().toISOString()]);
     db.close();
     const { approved, motiveDetails } = checkStore(dbPath);
@@ -685,8 +706,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, now);
     sdb.close();
     const out = JSON.parse(run({ cwd: d, session_id: "t-head-ok" }, { GROUNDWORK_DB: dbPath }).stdout);
     expect(out.continue).toBe(true);
@@ -699,8 +719,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, now);
     sdb.close();
     makeCommit(d);
     const out = JSON.parse(run({ cwd: d, session_id: "t-head-moved" }, { GROUNDWORK_DB: dbPath }).stdout);
@@ -716,8 +735,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     const past = new Date(Date.now() - 5000).toISOString();
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, past);
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S2',1,'complete',?,?)", [now, now]);
     sdb.close();
     const out = JSON.parse(run({ cwd: d, session_id: "t-slice-added" }, { GROUNDWORK_DB: dbPath }).stdout);
@@ -733,8 +751,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: "abc123" }), now]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: "abc123" }, now);
     sdb.close();
     const out = JSON.parse(run({ cwd: d, session_id: "t-nogit" }, { GROUNDWORK_DB: dbPath }).stdout);
     expect(out.continue).toBe(true);
@@ -757,8 +774,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, now);
     sdb.close();
     makeCommit(d);
     const bgTasks = [{ id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" }];
@@ -775,8 +791,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     const past = new Date(Date.now() - 5000).toISOString();
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, past);
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S2',1,'complete',?,?)", [now, now]);
     sdb.close();
     const bgTasks = [{ id: "a1", type: "subagent", status: "running", agent_type: "groundwork:advisor" }];
@@ -792,8 +807,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const now = new Date().toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [now, now]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), now]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, now);
     sdb.close();
     makeCommit(d);
     const inp = { cwd: d, session_id: "rc2", stop_hook_active: true, background_tasks: [] };
@@ -827,8 +841,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     const sessionFirstEntry = "2026-09-23T11:00:00.000Z";
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [approvalTime, approvalTime]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), approvalTime]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, approvalTime);
     sdb.close();
     makeCommit(d);
     const transcriptPath = path.join(d, ".groundwork", "test-transcript-a.jsonl");
@@ -849,8 +862,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     const sliceDone = new Date(Date.now() - 300000).toISOString();
     const approvalTime = new Date(Date.now() - 60000).toISOString();
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [sliceDone, sliceDone]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), approvalTime]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, approvalTime);
     sdb.close();
     makeCommit(d);
     const transcriptPath = path.join(d, ".groundwork", "test-transcript-b.jsonl");
@@ -869,8 +881,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const past = "2026-09-23T10:00:00.000Z";
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, past);
     sdb.close();
     makeCommit(d);
     const out = JSON.parse(run({ cwd: d, session_id: "t-ac2c", background_tasks: [] }, { GROUNDWORK_DB: dbPath }).stdout);
@@ -887,8 +898,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     const sessionFirstEntry = "2026-09-23T12:00:00.000Z";
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)",
       [sqliteApprovalAt, sqliteApprovalAt]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), sqliteApprovalAt]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, sqliteApprovalAt);
     sdb.close();
     makeCommit(d);
     const transcriptPath = path.join(d, ".groundwork", "test-transcript-d.jsonl");
@@ -914,8 +924,7 @@ describe("stop-gate — HEAD binding (T14)", () => {
     runMigrations(sdb, MIGRATIONS);
     const past = "2026-09-23T04:00:00.000Z";
     sdb.run("INSERT INTO slices (id,wave,status,created_at,completed_at) VALUES ('S1',1,'complete',?,?)", [past, past]);
-    sdb.run("INSERT INTO events (event_type,payload,created_at) VALUES ('GATE_APPROVE',?,?)",
-      [JSON.stringify({ citation: "src/x.ts:1", base_commit: initialHead }), past]);
+    insertApprove(sdb, { citation: "src/x.ts:1", base_commit: initialHead }, past);
     sdb.close();
     makeCommit(d);
     const transcriptPath = path.join(d, ".groundwork", "test-transcript-notimestamp.jsonl");
@@ -935,7 +944,7 @@ describe("stop-gate — AC1: motive-complete release", () => {
     db.run("UPDATE motives SET status = 'complete' WHERE id = 'default'");
     db.run("INSERT INTO slices (id,wave,status,created_at,completed_at,motive_id) VALUES ('S1',1,'complete',?,?,'default')",
       [now, now]);
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES ('GATE_APPROVE','{}',?,?)", [now, "default"]);
+    insertApprove(db, {}, now, "default");
     db.close();
     const result = run({ session_id: "t-ac1" }, { GROUNDWORK_DB: dbPath });
     const out = JSON.parse(result.stdout);

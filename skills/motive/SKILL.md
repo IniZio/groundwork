@@ -38,6 +38,9 @@ status: active
    like `doc/spec/<area>.md`, or `none` plus a `reason:` line.
 4. Write the PR body draft `.groundwork/work/<slug>/pr-body.md` (Why, Changes and Impact only) from
    `templates/doc-types/pr-body.md`. No `doc/<slug>/` folder.
+   Check each `### Decisions` row and each diff before-side against current source; record evidence
+   (permalink, `path@sha:line` if no remote, `none` if new-only) in `spec.md`, never the PR body.
+   Cut any row or block that restates current behaviour.
    Spawn `groundwork:human-doc-reviewer` with only that path + check cmd
    `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
    Apply deletions; re-run until `status: PASS`.

@@ -15,3 +15,8 @@ export const cases: RuleCases = {
     { why: 'tag switch in Effect.catchIf callback', code: 'Effect.catchIf(predicate, (error) => { switch (error._tag) { case "NotFound": return recover; } });\n', findings: tag },
   ],
 };
+
+// Other checks' case keys this check also fires on.
+export const foreignHits: readonly string[] = [
+  '[no-manual-tag-comparison] tag comparison inside Effect.catch handler',
+];

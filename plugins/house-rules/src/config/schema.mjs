@@ -7,6 +7,7 @@ export const RULE_IDS = Object.freeze([
   "code-smells",
   "effect",
   "require-safety-comment-for-type-assertion",
+  "require-readable-spacing",
 ]);
 export const RULE_ALIASES = Object.freeze({ "stray-artifacts": "artifact-structure" });
 export const SEVERITIES = Object.freeze(["error"]);
@@ -20,6 +21,7 @@ export const RULE_SEVERITIES = Object.freeze({
   "code-smells": WARN_SEVERITIES,
   "effect": WARN_SEVERITIES,
   "require-safety-comment-for-type-assertion": WARN_SEVERITIES,
+  "require-readable-spacing": WARN_SEVERITIES,
 });
 export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"]);
 export const RULE_OPTION_KEYS = Object.freeze({
@@ -31,6 +33,7 @@ export const RULE_OPTION_KEYS = Object.freeze({
   "code-smells": Object.freeze([]),
   "effect": Object.freeze([]),
   "require-safety-comment-for-type-assertion": Object.freeze([]),
+  "require-readable-spacing": Object.freeze([]),
 });
 export const TIERS = Object.freeze(["product", "working", "ephemeral"]);
 export const TYPE_KEYS = Object.freeze([

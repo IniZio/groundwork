@@ -46,6 +46,11 @@ export interface ResolvedConfig {
       options: Record<string, never>
       sources: { severity: Source }
     }
+    'require-readable-spacing': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
   }
 }
 

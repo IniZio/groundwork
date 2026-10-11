@@ -12,6 +12,7 @@ const RULE_ORDER = [
   'code-smells',
   'effect',
   'require-safety-comment-for-type-assertion',
+  'require-readable-spacing',
 ] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
@@ -22,6 +23,7 @@ const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'code-smells': [],
   effect: [],
   'require-safety-comment-for-type-assertion': [],
+  'require-readable-spacing': [],
 };
 
 function schemaUrl(): string {

@@ -34,6 +34,15 @@ describe("policyForRoot", () => {
     });
   });
 
+  it("defaults require-readable-spacing to warn and overlays off", () => {
+    const id = "require-readable-spacing";
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: {} })))[id]).toEqual({ severity: "warn", autofix: false });
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: { [id]: "off" } })))[id]).toEqual({
+      severity: "off",
+      autofix: false,
+    });
+  });
+
   it("overlays configured effect warn and defaults effect off", () => {
     const on = policyForRoot(tmpWith(JSON.stringify({ rules: { effect: "warn" } })));
     expect(on["effect"]).toEqual({ severity: "warn", autofix: false });

@@ -168,6 +168,38 @@ describe("require-safety-comment-for-type-assertion rule id", () => {
   });
 });
 
+describe("require-readable-spacing rule id", () => {
+  it("accepts off, warn, and array forms", () => {
+    for (const v of ['"off"', '"warn"', '["warn"]', '["off",{}]']) {
+      const out = parseConfig(`{"rules":{"require-readable-spacing":${v}}}`);
+      const sev = v.includes("off") ? "off" : "warn";
+      expect(out.rules["require-readable-spacing"]).toEqual({ severity: sev, options: {} });
+    }
+  });
+
+  it("rejects error severity", () => {
+    const err = capture('{"rules":{"require-readable-spacing":"error"}}');
+    expect(err.path).toBe('rules["require-readable-spacing"]');
+    expect(err.message).toContain("invalid severity; allowed: off, warn");
+    const arr = capture('{"rules":{"require-readable-spacing":["error"]}}');
+    expect(arr.path).toBe('rules["require-readable-spacing"][0]');
+    expect(arr.message).toContain("invalid severity; allowed: off, warn");
+  });
+
+  it("rejects options", () => {
+    expectConfigError(
+      '{"rules":{"require-readable-spacing":["warn",{"x":1}]}}',
+      'rules["require-readable-spacing"][1].x',
+      [],
+      "unknown option",
+    );
+  });
+
+  it("is included in RULE_IDS", () => {
+    expect(RULE_IDS).toContain("require-readable-spacing");
+  });
+});
+
 describe("parseConfig valid input", () => {
   it("normalizes the full shape", () => {
     const text = JSON.stringify({
@@ -370,6 +402,7 @@ describe("exported constants", () => {
       ...WARN_IDS,
       "effect",
       "require-safety-comment-for-type-assertion",
+      "require-readable-spacing",
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
@@ -381,6 +414,7 @@ describe("exported constants", () => {
       "code-smells": ["off", "warn"],
       "effect": ["off", "warn"],
       "require-safety-comment-for-type-assertion": ["off", "warn"],
+      "require-readable-spacing": ["off", "warn"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
@@ -392,6 +426,7 @@ describe("exported constants", () => {
       "code-smells": [],
       "effect": [],
       "require-safety-comment-for-type-assertion": [],
+      "require-readable-spacing": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

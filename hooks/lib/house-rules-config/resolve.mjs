@@ -57,6 +57,7 @@ export function resolveConfigText(repoRoot, text) {
   const smells = severityOf('code-smells', 'warn')
   const effect = severityOf('effect', 'off')
   const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'warn')
+  const readableSpacing = severityOf('require-readable-spacing', 'warn')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -106,6 +107,11 @@ export function resolveConfigText(repoRoot, text) {
         severity: safetyComment.value,
         options: {},
         sources: { severity: safetyComment.source },
+      },
+      'require-readable-spacing': {
+        severity: readableSpacing.value,
+        options: {},
+        sources: { severity: readableSpacing.source },
       },
     },
   }

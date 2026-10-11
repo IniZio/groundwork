@@ -63,6 +63,8 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
     '  change with: rules["effect"] (active: off, source: default)',
     'require-safety-comment-for-type-assertion severity=warn (default)',
     '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
+    'require-readable-spacing                  severity=warn (default)',
+    '  change with: rules["require-readable-spacing"] (active: warn, source: default)',
     '',
   ].join('\n');
 
@@ -92,6 +94,8 @@ function explicitText(file: string) {
     '  change with: rules["effect"] (active: off, source: default)',
     'require-safety-comment-for-type-assertion severity=warn (default)',
     '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
+    'require-readable-spacing                  severity=warn (default)',
+    '  change with: rules["require-readable-spacing"] (active: warn, source: default)',
     '',
   ].join('\n');
 }
@@ -183,6 +187,7 @@ describe('house-rules config', () => {
         'code-smells': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         effect: { severity: 'off', options: {}, sources: { severity: 'default' } },
         'require-safety-comment-for-type-assertion': { severity: 'warn', options: {}, sources: { severity: 'default' } },
+        'require-readable-spacing': { severity: 'warn', options: {}, sources: { severity: 'default' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);
@@ -195,6 +200,7 @@ describe('house-rules config', () => {
       'code-smells',
       'effect',
       'require-safety-comment-for-type-assertion',
+      'require-readable-spacing',
     ]);
     expect(r.stdout).toBe(JSON.stringify(out, null, 2) + '\n');
   });

@@ -6,7 +6,8 @@ export type RuleId =
   | "no-module-mocking"
   | "code-smells"
   | "effect"
-  | "require-safety-comment-for-type-assertion";
+  | "require-safety-comment-for-type-assertion"
+  | "require-readable-spacing";
 export type RuleAlias = "stray-artifacts";
 export type Severity = "off" | "warn" | "error";
 export type Preset = "handbook" | "conventional" | "subject-only";
@@ -20,6 +21,7 @@ export const RULE_IDS: readonly [
   "code-smells",
   "effect",
   "require-safety-comment-for-type-assertion",
+  "require-readable-spacing",
 ];
 export const RULE_ALIASES: { readonly "stray-artifacts": "artifact-structure" };
 export const SEVERITIES: readonly ["error"];
@@ -33,6 +35,7 @@ export const RULE_SEVERITIES: {
   readonly "code-smells": readonly ["off", "warn"];
   readonly "effect": readonly ["off", "warn"];
   readonly "require-safety-comment-for-type-assertion": readonly ["off", "warn"];
+  readonly "require-readable-spacing": readonly ["off", "warn"];
 };
 export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
 export const RULE_OPTION_KEYS: {
@@ -44,6 +47,7 @@ export const RULE_OPTION_KEYS: {
   readonly "code-smells": readonly [];
   readonly "effect": readonly [];
   readonly "require-safety-comment-for-type-assertion": readonly [];
+  readonly "require-readable-spacing": readonly [];
 };
 export type Tier = "product" | "working" | "ephemeral";
 export const TIERS: readonly ["product", "working", "ephemeral"];

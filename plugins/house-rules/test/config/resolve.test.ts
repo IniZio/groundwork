@@ -93,6 +93,11 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
+    'require-readable-spacing': {
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    },
   },
 } as const;
 
@@ -189,6 +194,26 @@ describe('resolveConfig require-safety-comment-for-type-assertion rule', () => {
     const repo = makeRepo();
     writeConfig(repo, { rules: { 'require-safety-comment-for-type-assertion': 'off' } });
     expect(resolveConfig(repo).rules['require-safety-comment-for-type-assertion']).toEqual({
+      severity: 'off',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
+  });
+});
+
+describe('resolveConfig require-readable-spacing rule', () => {
+  it('absent resolves to warn from default', () => {
+    expect(resolveConfig(makeRepo()).rules['require-readable-spacing']).toEqual({
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    });
+  });
+
+  it('string off resolves to off from config', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'require-readable-spacing': 'off' } });
+    expect(resolveConfig(repo).rules['require-readable-spacing']).toEqual({
       severity: 'off',
       options: {},
       sources: { severity: 'explicit' },
@@ -490,6 +515,7 @@ describe('AC2 legacy artifact-structure configs', () => {
         'code-smells': ALL_DEFAULTS.rules['code-smells'],
         'effect': ALL_DEFAULTS.rules['effect'],
         'require-safety-comment-for-type-assertion': ALL_DEFAULTS.rules['require-safety-comment-for-type-assertion'],
+        'require-readable-spacing': ALL_DEFAULTS.rules['require-readable-spacing'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

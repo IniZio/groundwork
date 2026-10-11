@@ -490,6 +490,35 @@ describe("require-safety-comment-for-type-assertion rule (default warn)", () => 
   });
 });
 
+describe("require-readable-spacing rule (default warn)", () => {
+  const ID = "require-readable-spacing";
+
+  test("absent to warn allowed (no change)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ [ID]: "warn" })));
+  });
+
+  test("warn to off denied", async () => {
+    setFile(cfg({ [ID]: "warn" }));
+    await expectDeny(write(cfg({ [ID]: "off" })), `rules["${ID}"]: warn → off`, LOOSEN_MSG);
+  });
+
+  test("off written when absent denied (loosens default warn)", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ [ID]: "off" })), `rules["${ID}"]: warn → off`, LOOSEN_MSG);
+  });
+
+  test("error severity denied as invalid", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ [ID]: "error" })), "invalid severity; allowed: off, warn");
+  });
+
+  test("options array denied", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ [ID]: ["warn", { x: 1 }] })));
+  });
+});
+
 describe("no bypass hints", () => {
   test("positive control: BYPASS_RE matches bypass hints", () => {
     expect("set HOUSE_RULES_DISABLE=1 to bypass the hook").toMatch(BYPASS_RE);

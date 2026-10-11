@@ -10,6 +10,7 @@ export type DocTypeId =
   | "evidence"
   | "out-of-scope"
   | "lessons"
+  | "adr"
   | "spec-human"
   | "ticket-human"
   | "motive-human"
@@ -168,6 +169,25 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     frontmatter: anyObject,
     headings: ["Lessons"],
   },
+  adr: {
+    tier: "working",
+    generates: ".groundwork/adr/{nnnn}-{name:kebab}.md",
+    description: "Agent-view decision record that can span motives: context, decision, rejected alternatives",
+    instruction:
+      "Number with a four-digit prefix; link it from a DECISION event via $GW event append --type DECISION --data '{\"adr\":\"<path>\"}'; supersede an accepted record instead of editing it",
+    template: tpl("adr"),
+    frontmatter: {
+      type: "object",
+      required: ["status"],
+      properties: {
+        status: { type: "string", enum: ["accepted", "superseded"] },
+        superseded_by: { type: "string" },
+      },
+      if: { properties: { status: { const: "superseded" } }, required: ["status"] },
+      then: { required: ["superseded_by"] },
+    },
+    headings: ["Context", "Decision", "Rejected alternatives", "Consequences"],
+  },
   "spec-human": {
     tier: "product",
     generates: "doc/{slug}/spec.md",
@@ -207,7 +227,8 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
 };
 
 export const FORBIDDEN: ForbiddenPattern[] = [
-  { pattern: "**/adr/**", redirect: "Record decisions with `$GW event append --type DECISION`" },
+  { pattern: "**/doc/adr/**", redirect: "Agent-view decision records go in `.groundwork/adr/{nnnn}-{name:kebab}.md`; link with `$GW event append --type DECISION --data '{\"adr\":\"<path>\"}'`" },
+  { pattern: "**/docs/adr/**", redirect: "Agent-view decision records go in `.groundwork/adr/{nnnn}-{name:kebab}.md`; link with `$GW event append --type DECISION --data '{\"adr\":\"<path>\"}'`" },
   { pattern: ".scratch/**", redirect: "Use `.groundwork/work/{slug}/`" },
   { pattern: ".out-of-scope/**", redirect: "Use `.groundwork/work/{slug}/out-of-scope.md`" },
   { pattern: "lessons/**", redirect: "Use `.groundwork/work/{slug}/lessons.md`" },

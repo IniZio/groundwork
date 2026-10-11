@@ -47,7 +47,7 @@ function validate(id: DocTypeId, text: string): boolean {
 describe("AC1 registry shape", () => {
   it("has exactly the expected keys", () => {
     expect([...ids].sort() as string[]).toEqual(
-      ["design", "design-human", "evidence", "handoff", "lessons", "map", "motive", "motive-human", "out-of-scope", "plan", "research", "spec", "spec-human", "ticket", "ticket-human"].sort(),
+      ["adr", "design", "design-human", "evidence", "handoff", "lessons", "map", "motive", "motive-human", "out-of-scope", "plan", "research", "spec", "spec-human", "ticket", "ticket-human"].sort(),
     );
   });
   it("each entry has exactly 7 keys and the right tier", () => {
@@ -71,9 +71,14 @@ describe("AC2 generates literals", () => {
     expect(WORKING_TYPES.handoff.generates).toBe(".groundwork/work/{slug}/handoff.md");
     expect(WORKING_TYPES.research.generates).toBe(".groundwork/work/{slug}/research/{name:kebab}.md");
     expect(WORKING_TYPES.ticket.generates).toBe(".groundwork/work/{slug}/tickets/{nn}-{name:kebab}.md");
+    expect(WORKING_TYPES.adr.generates).toBe(".groundwork/adr/{nnnn}-{name:kebab}.md");
   });
   it("every generates starts under the work dir", () => {
     for (const id of ids) {
+      if (id === "adr") {
+        expect(WORKING_TYPES[id].generates).toBe(".groundwork/adr/{nnnn}-{name:kebab}.md");
+        continue;
+      }
       const prefix = WORKING_TYPES[id].tier === "product" ? "doc/{slug}/" : ".groundwork/work/{slug}/";
       expect(WORKING_TYPES[id].generates.startsWith(prefix)).toBe(true);
     }
@@ -119,6 +124,13 @@ describe("AC4 motive and spec schemas", () => {
     expect(validate("spec", "---\nfolds_into: none\n---\n")).toBe(false);
     expect(validate("spec", "---\nreason: x\n---\n")).toBe(false);
   });
+  it("adr requires status enum, and superseded_by when superseded", () => {
+    expect(validate("adr", "---\nstatus: accepted\n---\n")).toBe(true);
+    expect(validate("adr", "---\nsuperseded_by: x\n---\n")).toBe(false);
+    expect(validate("adr", "---\nstatus: bogus\n---\n")).toBe(false);
+    expect(validate("adr", "---\nstatus: superseded\n---\n")).toBe(false);
+    expect(validate("adr", "---\nstatus: superseded\nsuperseded_by: .groundwork/adr/0002-y.md\n---\n")).toBe(true);
+  });
   it("research requires question and confidence enum", () => {
     expect(validate("research", "---\nquestion: Q?\nconfidence: high\n---\n")).toBe(true);
     expect(validate("research", "---\nquestion: Q?\n---\n")).toBe(false);
@@ -129,7 +141,8 @@ describe("AC4 motive and spec schemas", () => {
 describe("AC5 forbidden patterns", () => {
   it("lists the patterns with redirects", () => {
     expect(FORBIDDEN.map((f) => f.pattern)).toEqual([
-      "**/adr/**",
+      "**/doc/adr/**",
+      "**/docs/adr/**",
       ".scratch/**",
       ".out-of-scope/**",
       "lessons/**",
@@ -139,9 +152,11 @@ describe("AC5 forbidden patterns", () => {
     ]);
     for (const f of FORBIDDEN) expect(f.redirect.length).toBeGreaterThan(0);
     expect(FORBIDDEN[0].redirect).toContain("$GW event append --type DECISION");
-    expect(FORBIDDEN[1].redirect).toContain(".groundwork/work/{slug}/");
-    expect(FORBIDDEN[2].redirect).toContain(".groundwork/work/{slug}/out-of-scope.md");
-    expect(FORBIDDEN[3].redirect).toContain(".groundwork/work/{slug}/lessons.md");
+    expect(FORBIDDEN[0].redirect).toContain(".groundwork/adr/");
+    expect(FORBIDDEN[1].redirect).toContain(".groundwork/adr/");
+    expect(FORBIDDEN[2].redirect).toContain(".groundwork/work/{slug}/");
+    expect(FORBIDDEN[3].redirect).toContain(".groundwork/work/{slug}/out-of-scope.md");
+    expect(FORBIDDEN[4].redirect).toContain(".groundwork/work/{slug}/lessons.md");
   });
 });
 
@@ -153,8 +168,12 @@ describe("forbidden globs via vendored house-rules matcher", () => {
     expect(forbiddenRedirect("to-questionnaire-foo.md", manifest)).toBe(`${W}\``);
     expect(forbiddenRedirect("sub/to-questionnaire-foo.md", manifest)).toBe(`${W}\``);
     expect(forbiddenRedirect("src/billing/docs/adr/0001-x.md", manifest)).toContain("$GW event append");
+    for (const p of ["doc/adr/0001-x.md", "docs/adr/0001-x.md", "src/billing/docs/adr/0001-x.md"]) {
+      expect(forbiddenRedirect(p, manifest)).toContain(".groundwork/adr/");
+    }
   });
   it("controls return null", () => {
+    expect(forbiddenRedirect(".groundwork/adr/0001-x.md", manifest)).toBeNull();
     expect(forbiddenRedirect("docs/learning.md", manifest)).toBeNull();
     expect(forbiddenRedirect("questionnaire.md", manifest)).toBeNull();
   });

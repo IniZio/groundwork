@@ -36,12 +36,13 @@ status: active
 2. Write the charter at `.groundwork/work/<slug>/motive.md`.
 3. Create `.groundwork/work/<slug>/spec.md`; set `folds_into:` to a living spec path
    like `doc/spec/<area>.md`, or `none` plus a `reason:` line.
-4. Write the PR body draft `.groundwork/work/<slug>/pr-body.md` (What changed only) from
+4. Write the PR body draft `.groundwork/work/<slug>/pr-body.md` (Why, Interface and Impact only) from
    `templates/doc-types/pr-body.md`. No `doc/<slug>/` folder.
    Spawn `groundwork:human-doc-reviewer` with only that path + check cmd
    `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
    Apply deletions; re-run until `status: PASS`.
-   Charter approval binds `motive.md` plus the draft's What changed; filling Evidence or Residual risk later does not void it.
+   Charter approval binds `motive.md` plus the draft's Why, Interface and Impact sections;
+   filling Reviewer focus or Proof later does not void it.
 5. Run `$GW init` to create the work store.
 6. Run `$GW event append --type OBJECTIVE --msg "<motive.md Objective text>" --token T`
    (T = init's `token:` line, or `$GW token` on an existing store),

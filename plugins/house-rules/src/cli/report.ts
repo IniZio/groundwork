@@ -77,9 +77,50 @@ export function buildReport(
   };
 }
 
+/** Serialise a Report exactly as `--format json` emits it (no trailing newline). */
+export function serializeReport(report: Report): string {
+  return JSON.stringify(report);
+}
+
 /** Write exactly one JSON line to stdout. */
 export function writeJsonReport(report: Report): void {
-  process.stdout.write(JSON.stringify(report) + '\n');
+  process.stdout.write(serializeReport(report) + '\n');
+}
+
+function bump(m: Map<string, number>, k: string): void {
+  m.set(k, (m.get(k) ?? 0) + 1);
+}
+
+function ranked(m: Map<string, number>): Array<[string, number]> {
+  return [...m].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+}
+
+/** Compact findings summary: counts per rule/check, top 10 files, each hint once per check. */
+export function formatSummary(report: Report, fullReportPath: string): string {
+  const rules = new Map<string, number>();
+  const checks = new Map<string, number>();
+  const files = new Map<string, number>();
+  const hints = new Map<string, Set<string>>();
+  for (const f of report.findings) {
+    const m = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(f.message);
+    const check = m ? m[1] : '(none)';
+    const prose = m ? m[2] : f.message;
+    bump(rules, f.ruleId);
+    bump(checks, check);
+    bump(files, f.path);
+    if (!hints.has(check)) hints.set(check, new Set());
+    hints.get(check)!.add(prose);
+  }
+  const out: string[] = [];
+  for (const [k, n] of ranked(rules)) out.push(`rule ${k}: ${n}`);
+  for (const [k, n] of ranked(checks)) {
+    out.push(`check ${k}: ${n}`);
+    for (const h of hints.get(k)!) out.push(`  hint: ${h}`);
+  }
+  for (const [k, n] of ranked(files).slice(0, 10)) out.push(`file ${k}: ${n}`);
+  out.push(`total: ${report.findings.length}`);
+  out.push(`full report: ${fullReportPath}`);
+  return out.join('\n');
 }
 
 /** Format a single finding as an eslint-style line. */

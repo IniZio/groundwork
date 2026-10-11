@@ -88,6 +88,11 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
+    'require-safety-comment-for-type-assertion': {
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    },
   },
 } as const;
 
@@ -165,6 +170,26 @@ describe('resolveConfig effect rule', () => {
     writeConfig(repo, { rules: { effect: ['warn', {}] } });
     expect(resolveConfig(repo).rules['effect']).toEqual({
       severity: 'warn',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
+  });
+});
+
+describe('resolveConfig require-safety-comment-for-type-assertion rule', () => {
+  it('absent resolves to warn from default', () => {
+    expect(resolveConfig(makeRepo()).rules['require-safety-comment-for-type-assertion']).toEqual({
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'default' },
+    });
+  });
+
+  it('string off resolves to off from config', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { 'require-safety-comment-for-type-assertion': 'off' } });
+    expect(resolveConfig(repo).rules['require-safety-comment-for-type-assertion']).toEqual({
+      severity: 'off',
       options: {},
       sources: { severity: 'explicit' },
     });
@@ -464,6 +489,7 @@ describe('AC2 legacy artifact-structure configs', () => {
         'no-module-mocking': ALL_DEFAULTS.rules['no-module-mocking'],
         'code-smells': ALL_DEFAULTS.rules['code-smells'],
         'effect': ALL_DEFAULTS.rules['effect'],
+        'require-safety-comment-for-type-assertion': ALL_DEFAULTS.rules['require-safety-comment-for-type-assertion'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

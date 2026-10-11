@@ -49,18 +49,20 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
   [
     'config: none (all values default or detected)',
     `schema: ${SCHEMA_URL}`,
-    `commit-message      severity=error (default)  preset=${preset} (${why})`,
+    `commit-message                            severity=error (default)  preset=${preset} (${why})`,
     `  change with: rules["commit-message"].preset (active: ${preset}, source: ${why})`,
-    'comment-density     severity=error (default)',
-    'artifact-structure  severity=error (default)',
-    'type-escape-hatches severity=warn (default)',
+    'comment-density                           severity=error (default)',
+    'artifact-structure                        severity=error (default)',
+    'type-escape-hatches                       severity=warn (default)',
     '  change with: rules["type-escape-hatches"] (active: warn, source: default)',
-    'no-module-mocking   severity=warn (default)',
+    'no-module-mocking                         severity=warn (default)',
     '  change with: rules["no-module-mocking"] (active: warn, source: default)',
-    'code-smells         severity=warn (default)',
+    'code-smells                               severity=warn (default)',
     '  change with: rules["code-smells"] (active: warn, source: default)',
-    'effect              severity=off (default)',
+    'effect                                    severity=off (default)',
     '  change with: rules["effect"] (active: off, source: default)',
+    'require-safety-comment-for-type-assertion severity=warn (default)',
+    '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
     '',
   ].join('\n');
 
@@ -76,18 +78,20 @@ function explicitText(file: string) {
   return [
     `config: ${file}`,
     `schema: ${SCHEMA_URL}`,
-    'commit-message      severity=error (explicit)  preset=handbook (explicit)',
+    'commit-message                            severity=error (explicit)  preset=handbook (explicit)',
     '  change with: rules["commit-message"].preset (active: handbook, source: explicit)',
-    'comment-density     severity=error (explicit)',
-    'artifact-structure  severity=error (explicit)',
-    'type-escape-hatches severity=warn (default)',
+    'comment-density                           severity=error (explicit)',
+    'artifact-structure                        severity=error (explicit)',
+    'type-escape-hatches                       severity=warn (default)',
     '  change with: rules["type-escape-hatches"] (active: warn, source: default)',
-    'no-module-mocking   severity=warn (default)',
+    'no-module-mocking                         severity=warn (default)',
     '  change with: rules["no-module-mocking"] (active: warn, source: default)',
-    'code-smells         severity=warn (default)',
+    'code-smells                               severity=warn (default)',
     '  change with: rules["code-smells"] (active: warn, source: default)',
-    'effect              severity=off (default)',
+    'effect                                    severity=off (default)',
     '  change with: rules["effect"] (active: off, source: default)',
+    'require-safety-comment-for-type-assertion severity=warn (default)',
+    '  change with: rules["require-safety-comment-for-type-assertion"] (active: warn, source: default)',
     '',
   ].join('\n');
 }
@@ -178,6 +182,7 @@ describe('house-rules config', () => {
         'no-module-mocking': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         'code-smells': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         effect: { severity: 'off', options: {}, sources: { severity: 'default' } },
+        'require-safety-comment-for-type-assertion': { severity: 'warn', options: {}, sources: { severity: 'default' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);
@@ -189,6 +194,7 @@ describe('house-rules config', () => {
       'no-module-mocking',
       'code-smells',
       'effect',
+      'require-safety-comment-for-type-assertion',
     ]);
     expect(r.stdout).toBe(JSON.stringify(out, null, 2) + '\n');
   });

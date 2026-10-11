@@ -56,6 +56,7 @@ export function resolveConfigText(repoRoot, text) {
   const mocking = severityOf('no-module-mocking', 'warn')
   const smells = severityOf('code-smells', 'warn')
   const effect = severityOf('effect', 'off')
+  const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'warn')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -100,6 +101,11 @@ export function resolveConfigText(repoRoot, text) {
         severity: effect.value,
         options: {},
         sources: { severity: effect.source },
+      },
+      'require-safety-comment-for-type-assertion': {
+        severity: safetyComment.value,
+        options: {},
+        sources: { severity: safetyComment.source },
       },
     },
   }

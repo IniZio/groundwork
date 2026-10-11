@@ -41,6 +41,11 @@ export interface ResolvedConfig {
       options: Record<string, never>
       sources: { severity: Source }
     }
+    'require-safety-comment-for-type-assertion': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
   }
 }
 

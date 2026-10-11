@@ -108,7 +108,7 @@ function manifestFixtures(): [string, unknown, boolean][] {
 
 function warnOnlyFixtures(): [string, unknown, boolean][] {
   const out: [string, unknown, boolean][] = [];
-  for (const id of ["type-escape-hatches", "no-module-mocking", "code-smells", "effect"]) {
+  for (const id of ["type-escape-hatches", "no-module-mocking", "code-smells", "effect", "require-safety-comment-for-type-assertion"]) {
     const mk = (v: unknown) => ({ rules: { [id]: v } });
     out.push(
       [`${id} warn`, mk("warn"), true],

@@ -11,6 +11,7 @@ const RULE_ORDER = [
   'no-module-mocking',
   'code-smells',
   'effect',
+  'require-safety-comment-for-type-assertion',
 ] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
@@ -20,6 +21,7 @@ const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'no-module-mocking': [],
   'code-smells': [],
   effect: [],
+  'require-safety-comment-for-type-assertion': [],
 };
 
 function schemaUrl(): string {

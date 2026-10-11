@@ -136,6 +136,38 @@ describe("effect rule id", () => {
   });
 });
 
+describe("require-safety-comment-for-type-assertion rule id", () => {
+  it("accepts off, warn, and array forms", () => {
+    for (const v of ['"off"', '"warn"', '["warn"]', '["off",{}]']) {
+      const out = parseConfig(`{"rules":{"require-safety-comment-for-type-assertion":${v}}}`);
+      const sev = v.includes("off") ? "off" : "warn";
+      expect(out.rules["require-safety-comment-for-type-assertion"]).toEqual({ severity: sev, options: {} });
+    }
+  });
+
+  it("rejects error severity", () => {
+    const err = capture('{"rules":{"require-safety-comment-for-type-assertion":"error"}}');
+    expect(err.path).toBe('rules["require-safety-comment-for-type-assertion"]');
+    expect(err.message).toContain("invalid severity; allowed: off, warn");
+    const arr = capture('{"rules":{"require-safety-comment-for-type-assertion":["error"]}}');
+    expect(arr.path).toBe('rules["require-safety-comment-for-type-assertion"][0]');
+    expect(arr.message).toContain("invalid severity; allowed: off, warn");
+  });
+
+  it("rejects options", () => {
+    expectConfigError(
+      '{"rules":{"require-safety-comment-for-type-assertion":["warn",{"x":1}]}}',
+      'rules["require-safety-comment-for-type-assertion"][1].x',
+      [],
+      "unknown option",
+    );
+  });
+
+  it("is included in RULE_IDS", () => {
+    expect(RULE_IDS).toContain("require-safety-comment-for-type-assertion");
+  });
+});
+
 describe("parseConfig valid input", () => {
   it("normalizes the full shape", () => {
     const text = JSON.stringify({
@@ -337,6 +369,7 @@ describe("exported constants", () => {
       "artifact-structure",
       ...WARN_IDS,
       "effect",
+      "require-safety-comment-for-type-assertion",
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
@@ -347,6 +380,7 @@ describe("exported constants", () => {
       "no-module-mocking": ["off", "warn"],
       "code-smells": ["off", "warn"],
       "effect": ["off", "warn"],
+      "require-safety-comment-for-type-assertion": ["off", "warn"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
@@ -357,6 +391,7 @@ describe("exported constants", () => {
       "no-module-mocking": [],
       "code-smells": [],
       "effect": [],
+      "require-safety-comment-for-type-assertion": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

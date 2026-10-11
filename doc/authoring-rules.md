@@ -33,7 +33,7 @@
 Agent-written work splits into a human view and an agent view.
 If an item could flip a reviewer's yes/no, it goes in the PR body, drafted in the work folder of the change as pr-body.md.
 The doc folder and README.md describe the current code only, in present tense. They have no per-change folders.
-Everything else goes in the agent view (`.groundwork/`, gitignored).
+Everything else goes in the agent view, the gitignored .groundwork folder.
 
 ## Human writing standard
 

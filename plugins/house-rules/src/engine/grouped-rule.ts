@@ -34,7 +34,7 @@ export interface CheckHit {
 
 export interface Check {
   id: string;
-  upstream: string;
+  upstream?: string;
   tsOnly?: boolean;
   check(root: Node, source: string, index?: NodeIndex, filePath?: string, options?: Readonly<Record<string, unknown>>): CheckHit[];
 }

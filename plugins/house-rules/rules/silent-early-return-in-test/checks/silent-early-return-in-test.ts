@@ -2,7 +2,6 @@ import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
 import { buildNodeIndex, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'silent-early-return-in-test';
-export const upstream = 'https://github.com/dmmulroy/anti-slop';
 
 const TEST_FILE = /(\.(test|spec)\.[^/\\]+$)|((^|[/\\])(test|tests|__tests__)[/\\])/;
 const FUNCTION_TYPES = new Set([

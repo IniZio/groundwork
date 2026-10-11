@@ -77,6 +77,33 @@ describe("human-doc-check", () => {
       expect(r.stdout).toContain("pr-body prose 13 lines > 12");
     });
 
+    const table =
+      "| Decision | Constraint |\n| --- | --- |\n" +
+      Array.from({ length: 10 }, (_, i) => `| d${i} | c${i} |`).join("\n");
+    const pipeFence = "```\n| a | b |\n| c | d |\n| e | f |\n```";
+
+    test("12 prose lines plus a 10-row table passes", () => {
+      const r = run(write("pr-body.md", `${prose(12)}\n\n${table}\n`));
+      expect(r.stdout).not.toContain("pr-body prose");
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
+    });
+
+    test("13 prose lines plus a table is flagged at 13", () => {
+      const r = run(write("pr-body.md", `${prose(13)}\n\n${table}\n`));
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("pr-body prose 13 lines > 12");
+    });
+
+    test("pipe lines inside a fence are not counted", () => {
+      const ok = run(write("pr-body.md", `${prose(12)}\n\n${pipeFence}\n`));
+      expect(ok.stdout.trim()).toBe("PASS");
+      expect(ok.status).toBe(0);
+      const over = run(write("pr-body.md", `${prose(13)}\n\n${pipeFence}\n`));
+      expect(over.status).toBe(1);
+      expect(over.stdout).toContain("pr-body prose 13 lines > 12");
+    });
+
     test("13 prose lines in a file not named pr-body.md is not flagged", () => {
       const r = run(write("notes.md", `${prose(13)}\n`));
       expect(r.stdout).not.toContain("pr-body prose");

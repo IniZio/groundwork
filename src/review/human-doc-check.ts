@@ -40,7 +40,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
       continue;
     }
     const t = line.trim();
-    if (isPrBody && fence === null && t) {
+    if (isPrBody && fence === null && t && !t.startsWith("|")) {
       prose++;
       if (prose === PR_BODY_MAX_PROSE + 1) overflowQuote = t;
     }
@@ -61,7 +61,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
     }
   }
   if (prose > PR_BODY_MAX_PROSE) {
-    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (fenced blocks excluded)` });
+    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (fenced blocks and tables excluded)` });
   }
   return out;
 }

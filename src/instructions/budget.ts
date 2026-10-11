@@ -17,6 +17,7 @@ export const FILE_ROWS: { surface: string; relPath: string }[] = [
   { surface: "pause/SKILL.md",           relPath: "skills/pause/SKILL.md" },
   { surface: "continue/SKILL.md",        relPath: "skills/continue/SKILL.md" },
   { surface: "motive/SKILL.md",          relPath: "skills/motive/SKILL.md" },
+  { surface: "human-layer/SKILL.md",     relPath: "skills/human-layer/SKILL.md" },
 ];
 
 export const INJECTION = "SessionStart injection";

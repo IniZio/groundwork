@@ -11,6 +11,11 @@ function renderCase(c: Case): string {
   lines.push(`### ${c.why}`);
   lines.push('');
 
+  if (c.options) {
+    lines.push(`**With options:** \`${JSON.stringify(c.options)}\``);
+    lines.push('');
+  }
+
   if (c.tree) {
     lines.push('**Files:**');
     for (const [filename, content] of Object.entries(c.tree)) {

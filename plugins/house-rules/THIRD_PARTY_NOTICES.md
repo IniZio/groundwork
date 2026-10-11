@@ -10,6 +10,7 @@ Several house-rules checks are ported from anti-slop, which is MIT-licensed.
 Ported checks, by rule:
 
 - `type-escape-hatches`: `no-unknown-parameters`, `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-object-parameters`, `no-chained-type-assertions`, `no-runtime-typeof`, `no-widen-then-assert`, `no-known-value-widening`
+- `type-escape-hatches` option `allowInTypeGuards` (for `no-runtime-typeof`) is also ported from anti-slop.
 - `code-smells`: `no-reflect-apply`, `no-reflect-get`, `no-conditional-empty-object-spread`, `no-array-filter-map`, `no-reduce-accumulator-copy`, `no-shape-in-symbol-names`
 - `no-module-mocking`: `no-module-mocking`
 - `effect`: `prefer-effect-match`, `no-manual-effect-error-tag`, `no-service-constructor-imports`, `no-manual-tag-comparison`, `no-manual-tagged-construction`

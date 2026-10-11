@@ -83,15 +83,12 @@ const ENTRIES: Case[] = [
   { title: 'entry 8: do', src: '{\n  foo();\n  do {} while (a);\n}', expected: [[3, 2, 3, 18]] },
   { title: 'entry 8: padded return', src: 'function f() {\n  foo();\n\n  return 1;\n}', expected: [] },
   { title: 'entry 8: labeled loop is unwrapped', src: '{\n  foo();\n  a: while (b) {}\n}', expected: [[3, 2, 3, 17]] },
-  // 9: prev block-like
   { title: 'entry 9: statement after block-like if', src: '{\n  if (a) {\n  }\n  foo();\n}', expected: [[4, 2, 4, 8]] },
   { title: 'entry 9: statement after IIFE', src: '{\n  (() => {})();\n  foo();\n}', expected: [[3, 2, 3, 8]] },
   { title: 'entry 9: non-block-like if needs nothing', src: '{\n  if (a) b();\n  foo();\n}', expected: [] },
   { title: 'entry 9: padded', src: '{\n  if (a) {\n  }\n\n  foo();\n}', expected: [] },
-  // 10: import after import overrides entries 1-3
   { title: 'entry 10: import after import', src: "import a from 'a';\nimport b from 'b';", expected: [] },
   { title: 'entry 10: import then non-import still reports', src: "import a from 'a';\nimport b from 'b';\nfoo();", expected: [[3, 0, 3, 6]] },
-  // 11: overload signature then overload/implementation overrides entries 2-5
   {
     title: 'entry 11: overloads then implementation',
     src: 'function f(a: string): void;\nfunction f(a: number): void;\nfunction f(a: any) {}',

@@ -62,7 +62,6 @@ function makeParityDensityRepo(label: string): { transcriptPath: string } {
   for (const name of ["Dockerfile", "probe.sh"]) {
     writeFileSync(path.join(dir, name), readFileSync(path.join(FIXTURES, name), "utf8"));
   }
-  execSync("git add . && git commit -m fixtures", { cwd: dir });
   const transcriptPath = path.join(tmpDir, `parity-cdg-${label}.jsonl`);
   const entries = ["Dockerfile", "probe.sh"].map(name =>
     JSON.stringify({

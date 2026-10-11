@@ -132,7 +132,6 @@ describe("AC1: nexus-probe fixtures", () => {
       copyFileSync(path.join(PROBE_DIR, name), dst);
       copiedPaths.push(dst);
     }
-    gitCommit(repoDir, "add fixtures");
 
     const hashBefore = copiedPaths.map(fp => sha256(fp));
     const transcriptPath = makeTranscript(tmpDir, copiedPaths, "2020-01-01T00:00:00.000Z");
@@ -154,7 +153,6 @@ describe("AC1: nexus-probe fixtures", () => {
       copyFileSync(path.join(PROBE_DIR, name), dst);
       copiedPaths.push(dst);
     }
-    gitCommit(repoDir, "add fixtures");
 
     const hashBefore = copiedPaths.map(fp => sha256(fp));
     const timestamp = "2020-01-01T00:00:00.000Z";
@@ -550,7 +548,6 @@ describe("AC10: real probe files block and stay on disk unchanged", () => {
     const dstYaml = path.join(repoDir, "deploy", "pod-nonroot.yaml");
     copyFileSync(path.join(src, "probe.sh"), dstSh);
     copyFileSync(path.join(src, "pod-nonroot.yaml"), dstYaml);
-    gitCommit(repoDir, "add deploy");
 
     const hashShBefore = sha256(dstSh);
     const hashYamlBefore = sha256(dstYaml);
@@ -773,7 +770,7 @@ describe("AC16: file mode preserved (no write)", () => {
   });
 });
 
-describe("AC17: no-write invariant — over-cap files committed after base stay byte-identical", () => {
+describe("AC17: no-write invariant — over-cap uncommitted session files stay byte-identical", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -785,11 +782,10 @@ describe("AC17: no-write invariant — over-cap files committed after base stay 
 
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } });
 
-  it("preview (fix-table override): over-cap fixtures committed after base → block; every file sha256 unchanged", async () => {
+  it("preview (fix-table override): over-cap uncommitted session fixtures → block; every file sha256 unchanged", async () => {
     const src = PROBE_DIR;
     const dstSh = path.join(tmpDir, "probe.sh");
     copyFileSync(path.join(src, "probe.sh"), dstSh);
-    gitCommit(tmpDir, "add probe");
 
     const hashBefore = sha256(dstSh);
 
@@ -1605,5 +1601,77 @@ describe("S2-gate-net-growth: reword pre-existing comment", () => {
     const out = parseOut(r.stdout);
     expect(out.decision).not.toBe("block");
     expect(out.hookSpecificOutput).toBeTruthy();
+  });
+});
+
+describe("comment-density: committed lines are never re-counted (RP-1)", () => {
+  let tmpDir: string;
+  let repoDir: string;
+  let scratchTmp: string;
+  let committedContent: string;
+  let fp: string;
+  let tp: string;
+
+  function commitAt(dir: string, message: string, iso: string): void {
+    const env = { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso };
+    spawnSync("git", ["add", "-A"], { cwd: dir, env });
+    spawnSync("git", ["commit", "--allow-empty", "-m", message], { cwd: dir, env });
+  }
+
+  function gateEnv(): Record<string, string> {
+    return { CLAUDE_PROJECT_DIR: repoDir, TMPDIR: scratchTmp };
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "cdg-rp1-"));
+    repoDir = path.join(tmpDir, "repo");
+    scratchTmp = path.join(tmpDir, "scratch");
+    mkdirSync(repoDir);
+    mkdirSync(scratchTmp);
+    initGitRepo(repoDir);
+    writeFileSync(path.join(repoDir, "README.md"), "# test\n");
+    commitAt(repoDir, "initial", "2020-01-01T00:00:00Z");
+
+    fp = makeViolatorTs(repoDir, "committed.ts");
+    committedContent = readFileSync(fp, "utf8");
+    commitAt(repoDir, "add over-budget file", "2020-01-01T01:00:00Z");
+
+    tp = makeTranscript(tmpDir, [fp], "2020-01-01T00:30:00.000Z");
+  });
+
+  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it("regression: committed over-budget comments untouched when only a code line is uncommitted", () => {
+    const appended = "const extra = 1;\n";
+    writeFileSync(fp, committedContent + appended);
+    const sid = `rp1a-${Date.now()}`;
+    const r = runGate({ hook_event_name: "Stop", session_id: sid, transcript_path: tp }, gateEnv());
+    expect(r.status).toBe(0);
+    const out = parseOut(r.stdout);
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeFalsy();
+    expect(existsSync(path.join(scratchTmp, "house-rules", sid, "stop-block.txt"))).toBe(false);
+    expect(readFileSync(fp, "utf8")).toBe(committedContent + appended);
+  });
+
+  it("positive control: uncommitted over-budget comments are trimmed; committed prefix byte-identical", () => {
+    const appendedLines = Array.from({ length: 20 }, (_, i) =>
+      i % 2 === 0 ? `// new reason ${i}` : `const n${i} = ${i};`
+    );
+    writeFileSync(fp, committedContent + appendedLines.join("\n") + "\n");
+    const sid = `rp1b-${Date.now()}`;
+    const r = runGate({ hook_event_name: "Stop", session_id: sid, transcript_path: tp }, gateEnv());
+    expect(r.status).toBe(0);
+    const out = parseOut(r.stdout);
+    expect(out.decision).not.toBe("block");
+    expect(out.hookSpecificOutput).toBeTruthy();
+
+    const after = readFileSync(fp, "utf8");
+    expect(after.startsWith(committedContent)).toBe(true);
+    const tail = after.slice(committedContent.length).split("\n");
+    for (const code of appendedLines.filter(l => !l.startsWith("//"))) expect(tail).toContain(code);
+    const tailComments = tail.filter(l => l.startsWith("//"));
+    expect(tailComments.length).toBeLessThan(10);
+    for (const c of tailComments) expect(appendedLines).toContain(c);
   });
 });

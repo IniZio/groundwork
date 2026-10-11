@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { addedHunks, diffTextToHunks, sessionBase, touchedFiles } from '../hooks/lib/work-scope.js';
+import { addedHunks, diffTextToHunks, gateBase, touchedFiles } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { resolveConfig } from '../config/resolve.mjs';
@@ -14,7 +14,7 @@ export interface BuildContextOpts {
   mode: 'guard' | 'gate' | 'cli';
   /** guard: repo-relative path(s) of the file(s) being edited; gate/cli: ignored */
   files?: string[];
-  /** git ref; gate: auto-derived from transcript via sessionBase if omitted; guard: defaults to 'HEAD' if omitted */
+  /** git ref; gate: defaults to gateBase (HEAD on default branch, merge-base with default branch on a feature branch) if omitted; guard: defaults to 'HEAD' if omitted */
   base?: string;
   transcriptPath?: string;
   /** guard only: the new file content being written */
@@ -287,7 +287,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
   if (mode === 'guard') {
     base = opts.base ?? 'HEAD';
   } else if (mode === 'gate') {
-    base = opts.base ?? sessionBase(opts.transcriptPath ?? '', repoRoot);
+    base = opts.base ?? gateBase(repoRoot);
   } else {
     base = opts.base ?? '';
   }

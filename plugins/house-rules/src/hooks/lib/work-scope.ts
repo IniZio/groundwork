@@ -56,6 +56,29 @@ export function sessionBase(transcriptPath: string, repo: string): string {
   return best ?? EMPTY_TREE;
 }
 
+function git(repo: string, args: string[]): string | null {
+  const r = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+  if (r.status !== 0) return null;
+  return r.stdout.trim() || null;
+}
+
+/** Gate base: HEAD on the default branch or detached; merge-base with the default branch on a feature branch. */
+export function gateBase(repoRoot: string): string {
+  const head = git(repoRoot, ["rev-parse", "--verify", "HEAD"]);
+  if (!head) return EMPTY_TREE;
+
+  const branch = git(repoRoot, ["symbolic-ref", "--short", "-q", "HEAD"]);
+  if (!branch || branch === "main" || branch === "master") return head;
+
+  for (const ref of ["origin/HEAD", "main", "master"]) {
+    const sha = git(repoRoot, ["rev-parse", "--verify", ref]);
+    if (!sha) continue;
+    if (sha === head || ref === branch || ref === `origin/${branch}`) return head;
+    return git(repoRoot, ["merge-base", "HEAD", ref]) ?? head;
+  }
+  return head;
+}
+
 function extractFilesFromContent(
   raw: string,
   sessionCwd: string,

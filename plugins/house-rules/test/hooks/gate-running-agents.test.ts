@@ -94,7 +94,6 @@ describe("gate: running agent file exclusion", () => {
   it("running agent: its over-budget file is byte-identical after run and has no ledger record", async () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const originalContent = readFileSync(agentFile, "utf8");
-    gitCommit(repoDir, "add files");
 
     makeMainTranscript(transcriptPath, [agentFile], ts, repoDir);
     makeSubagentTranscript(subagentPath, [agentFile], ts, repoDir);
@@ -123,7 +122,6 @@ describe("gate: running agent file exclusion", () => {
   it("completed agent: its over-budget file is auto-trimmed (content changes or gate mentions it)", async () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const originalContent = readFileSync(agentFile, "utf8");
-    gitCommit(repoDir, "add files");
 
     makeMainTranscript(transcriptPath, [agentFile], ts, repoDir);
     makeSubagentTranscript(subagentPath, [agentFile], ts, repoDir);
@@ -155,7 +153,6 @@ describe("gate: running agent file exclusion", () => {
   it("docs-shape entry (no type field) running: its over-budget file is excluded", async () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const originalContent = readFileSync(agentFile, "utf8");
-    gitCommit(repoDir, "add files");
 
     makeMainTranscript(transcriptPath, [agentFile], ts, repoDir);
     makeSubagentTranscript(subagentPath, [agentFile], ts, repoDir);
@@ -184,7 +181,6 @@ describe("gate: running agent file exclusion", () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const mainFile = makeViolatorTs(repoDir, "main-file.ts");
     const agentOriginal = readFileSync(agentFile, "utf8");
-    gitCommit(repoDir, "add files");
 
     makeMainTranscript(transcriptPath, [agentFile, mainFile], ts, repoDir);
     makeSubagentTranscript(subagentPath, [agentFile], ts, repoDir);
@@ -220,7 +216,6 @@ describe("gate: running agent file exclusion", () => {
   it("no-repoRoot fallback: running agent file is excluded even when cwd is absent", async () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const originalContent = readFileSync(agentFile, "utf8");
-    gitCommit(repoDir, "add files");
 
     // Transcript is inside the repo so gate can find repoRoot from it via fallback
     const fallbackTranscriptPath = path.join(repoDir, `${sessionId}.jsonl`);

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 
 export interface Finding {
   quote: string;
@@ -24,9 +25,14 @@ function stripFrontmatter(lines: string[]): string[] {
   return end < 0 ? lines : lines.slice(end + 1);
 }
 
-export function checkHumanDoc(text: string): Finding[] {
+const PR_BODY_MAX_PROSE = 12;
+
+export function checkHumanDoc(text: string, fileName?: string): Finding[] {
   const out: Finding[] = [];
   let fence: string | null = null;
+  const isPrBody = fileName !== undefined && path.basename(fileName) === "pr-body.md";
+  let prose = 0;
+  let overflowQuote = "";
   for (const line of stripFrontmatter(text.split(/\r?\n/))) {
     const open = line.match(/^\s*(```|~~~)\s*(\S*)/);
     if (open) {
@@ -34,6 +40,10 @@ export function checkHumanDoc(text: string): Finding[] {
       continue;
     }
     const t = line.trim();
+    if (isPrBody && fence === null && t) {
+      prose++;
+      if (prose === PR_BODY_MAX_PROSE + 1) overflowQuote = t;
+    }
     if (fence !== null) {
       if (fence !== "mermaid" && t && looksLikePath(t)) out.push({ quote: t, reason: PATH_REASON });
       continue;
@@ -49,6 +59,9 @@ export function checkHumanDoc(text: string): Finding[] {
     for (const sentence of line.split(/(?<=[.!?])\s+/)) {
       if (BASELINE_RE.test(sentence)) out.push({ quote: sentence.trim(), reason: "states the CI baseline" });
     }
+  }
+  if (prose > PR_BODY_MAX_PROSE) {
+    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (fenced blocks excluded)` });
   }
   return out;
 }
@@ -66,7 +79,7 @@ if (import.meta.main) {
     console.error(`cannot read ${file}: ${(e as Error).message}`);
     process.exit(2);
   }
-  const findings = checkHumanDoc(text);
+  const findings = checkHumanDoc(text, file);
   if (findings.length === 0) {
     console.log("PASS");
   } else {

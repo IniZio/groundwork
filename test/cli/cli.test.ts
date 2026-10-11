@@ -419,11 +419,13 @@ describe("approve", () => {
     writeFileSync(path.join(dir, rel), text);
   };
 
-  const prBody = (slug: string, changed = "did a thing", evidence = "ran tests", risk = "none") =>
+  const prBody = (slug: string, over: Partial<Record<string, string>> = {}) => {
+    const sec = { Why: "because", Interface: "iface", Impact: "impact", "Reviewer focus": "look here", Proof: "ran tests", ...over };
     write(
       `.groundwork/work/${slug}/pr-body.md`,
-      `## What changed\n${changed}\n\n## Evidence\n${evidence}\n\n## Residual risk\n${risk}\n`,
+      Object.entries(sec).map(([h, t]) => `## ${h}\n${t}\n`).join("\n"),
     );
+  };
 
   it("compile reports n/a when no pr-body.md exists", () => {
     const slug = slugOf();
@@ -451,31 +453,35 @@ describe("approve", () => {
     expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: void");
   });
 
-  it("editing only ## Evidence keeps H1 approved", () => {
-    const slug = slugOf();
-    prBody(slug);
-    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
-    expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
-    prBody(slug, "did a thing", "ran MORE tests", "some risk");
-    const out = run(["compile"], dir, scrub).stdout;
-    expect(out).toContain("H1 charter: approved (human)");
-  });
+  for (const h of ["Reviewer focus", "Proof"]) {
+    it(`editing only ## ${h} keeps H1 approved`, () => {
+      const slug = slugOf();
+      prBody(slug);
+      write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
+      expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
+      prBody(slug, { [h]: "EDITED" });
+      const out = run(["compile"], dir, scrub).stdout;
+      expect(out).toContain("H1 charter: approved (human)");
+    });
+  }
 
-  it("editing ## What changed voids H1 and H2", () => {
-    const slug = slugOf();
-    prBody(slug);
-    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
-    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [feature]\n---\nbody\n");
-    expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
-    expect(run(["approve", "spec", "--token", tok], dir, scrub).exitCode).toBe(0);
-    const before = run(["compile"], dir, scrub).stdout;
-    expect(before).toContain("H1 charter: approved (human)");
-    expect(before).toContain("H2 spec: approved (human)");
-    prBody(slug, "did a DIFFERENT thing");
-    const out = run(["compile"], dir, scrub).stdout;
-    expect(out).toContain("H1 charter: void");
-    expect(out).toContain("H2 spec: void");
-  });
+  for (const h of ["Why", "Interface", "Impact"]) {
+    it(`editing ## ${h} voids H1 and H2`, () => {
+      const slug = slugOf();
+      prBody(slug);
+      write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
+      write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [feature]\n---\nbody\n");
+      expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
+      expect(run(["approve", "spec", "--token", tok], dir, scrub).exitCode).toBe(0);
+      const before = run(["compile"], dir, scrub).stdout;
+      expect(before).toContain("H1 charter: approved (human)");
+      expect(before).toContain("H2 spec: approved (human)");
+      prBody(slug, { [h]: "EDITED" });
+      const out = run(["compile"], dir, scrub).stdout;
+      expect(out).toContain("H1 charter: void");
+      expect(out).toContain("H2 spec: void");
+    });
+  }
 
   it("editing agent spec.md voids H2 only", () => {
     const slug = slugOf();

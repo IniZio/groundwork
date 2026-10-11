@@ -347,7 +347,7 @@ describe("isWithinSlice", () => {
 describe("spawn-model-guard — intent gate (H1/H2)", () => {
   const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
 
-  const PR_BODY = "## What changed\nchange v1\n\n## Evidence\nevidence v1\n\n## Residual risk\nrisk v1\n";
+  const PR_BODY = "## Why\nwhy v1\n\n## Interface\niface v1\n\n## Impact\nimpact v1\n\n## Reviewer focus\nfocus v1\n\n## Proof\nproof v1\n";
   const workDir = (d: string) => path.join(d, ".groundwork", "work", "default");
 
   function setup(withDocs: boolean): string {
@@ -418,23 +418,37 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
     expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
   });
 
-  it("edit only ## Evidence after approvals → not denied", () => {
+  it("edit only ## Reviewer focus after approvals → not denied", () => {
     const dir = setup(true);
     approve(dir, "APPROVE_CHARTER", "charter");
     approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("evidence v1", "evidence v2"));
+    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("focus v1", "focus v2"));
     expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
   });
 
-  it("edit ## What changed after approvals → denied as void", () => {
+  it("edit only ## Proof after approvals → not denied", () => {
     const dir = setup(true);
     approve(dir, "APPROVE_CHARTER", "charter");
     approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("change v1", "change v2"));
-    const r = check(impl, undefined, dir);
-    expect(safeDecision(r)).toBe("deny");
-    expect(reasonOf(r)).toContain("void");
+    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("proof v1", "proof v2"));
+    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
   });
+
+  for (const [section, from, to] of [
+    ["Why", "why v1", "why v2"],
+    ["Interface", "iface v1", "iface v2"],
+    ["Impact", "impact v1", "impact v2"],
+  ]) {
+    it(`edit ## ${section} after approvals → denied as void`, () => {
+      const dir = setup(true);
+      approve(dir, "APPROVE_CHARTER", "charter");
+      approve(dir, "APPROVE_SPEC", "spec");
+      writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace(from, to));
+      const r = check(impl, undefined, dir);
+      expect(safeDecision(r)).toBe("deny");
+      expect(reasonOf(r)).toContain("void");
+    });
+  }
 
   it("explore with missing approvals → not denied", () => {
     const dir = setup(true);

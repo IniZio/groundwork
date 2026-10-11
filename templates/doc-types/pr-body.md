@@ -1,13 +1,21 @@
-## What changed
+## Why
 
-State the point of the change in one or two sentences. Say what a user or reader sees now that they did not see before. Then write one line for each decision that could flip the reviewer's yes or no. Give no rejected alternatives. Give no reason longer than one clause. Rejected alternatives live in the ADR or the DECISION event.
+1-3 lines. Each claim maps to a hunk in the diff (a planned hunk, before implementation). Name the constraint that forces this shape; do not list alternatives.
 
-## Evidence
+## Interface
 
-One bullet for each acceptance criterion. Write the criterion text. Link it to its proof: a GitHub permalink pinned to a commit, a test name, or a screenshot.
+The smallest view that makes the change clear: a diff-sketch (a `diff` fenced block) of the signatures, call tree, file tree or state flow; pseudocode; or a mermaid diagram. Put `// because <constraint>` inline only where the shape is not obvious.
 
-- <criterion text> — <permalink, test name, or screenshot>
+## Impact
 
-## Residual risk
+One short line per affected consumer or risk: who breaks, or what changes behaviour, if this is wrong. Write "None" if nothing outside the diff is affected.
 
-Name what this change does not cover, and what could still go wrong. Write "None known" if nothing remains.
+## Reviewer focus
+
+At most 5 commit-pinned permalinks to line ranges, the most load-bearing first. Fill this when the code exists.
+
+## Proof
+
+Before/after evidence that CI does not already give: the deciding test as fails-before, works-after pseudocode, live-run output, or a screenshot. Leave this section out if there is none.
+
+Prose at most 12 lines including headings; fenced code blocks and diagrams do not count.

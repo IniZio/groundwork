@@ -14,7 +14,7 @@ describe("pr-body path: gate and registry agree", () => {
   it("gate applies when pr-body exists at the registry-resolved path", () => {
     const p = path.join(tmp, resolveDocPath("pr-body", { slug }));
     mkdirSync(path.dirname(p), { recursive: true });
-    writeFileSync(p, "## What changed\n");
+    writeFileSync(p, "## Why\n");
     expect(intentGatesApply(tmp, slug)).toBe(true);
     expect(intentGates(tmp, slug, () => null).applies).toBe(true);
   });

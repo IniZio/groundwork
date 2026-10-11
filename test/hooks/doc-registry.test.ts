@@ -88,6 +88,9 @@ describe("AC2 generates literals", () => {
   it("pr-body resolves under the work dir", () => {
     expect(resolveDocPath("pr-body", { slug: "demo" })).toBe(".groundwork/work/demo/pr-body.md");
   });
+  it("pr-body headings are the five sections", () => {
+    expect(WORKING_TYPES["pr-body"].headings).toEqual(["Why", "Interface", "Impact", "Reviewer focus", "Proof"]);
+  });
   it("forbids per-slug human views under doc/ but not snapshot docs", () => {
     const redirect = "doc/ describes the current code only; draft change intent in `.groundwork/work/{slug}/pr-body.md`";
     for (const p of ["doc/demo/motive.md", "doc/demo/spec.md", "doc/demo/tickets/01-x.md"]) expect(forbiddenRedirect(p, { forbidden: FORBIDDEN })).toBe(redirect);

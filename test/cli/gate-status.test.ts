@@ -7,7 +7,7 @@ import { WorkStore } from "../../src/store/store.js";
 import { CHILD_GATE, CHILD_LINK, SCOPE_VERIFY, serializePointer } from "../../src/store/scope-pointer.js";
 import { writeInboxEvent } from "../../src/store/scope-inbox.js";
 import {
-  approvalPayload, classifySpec, completionGuard, evaluateArtifact, gateStatus, intentGates, intentGatesApply, refusalMessage,
+  HASHED_PR_BODY_HEADINGS, artifactFiles, artifactHash, approvalPayload, classifySpec, completionGuard, evaluateArtifact, gateStatus, intentGates, intentGatesApply, refusalMessage,
 } from "../../src/cli/gate-status.js";
 
 const git = (cwd: string, ...a: string[]) =>
@@ -207,8 +207,8 @@ describe("intent gates", () => {
     expect(c.openDecision).toContain("weird");
   });
 
-  const prBody = (changed = "Did X.", evidence = "Ran tests.", risk = "None.") =>
-    `# Title\n\n## What changed\n\n${changed}\n\n## Evidence\n\n${evidence}\n\n## Residual risk\n\n${risk}\n`;
+  const prBody = (o: { why?: string; iface?: string; impact?: string; focus?: string; proof?: string } = {}) =>
+    `# Title\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Interface\n\n${o.iface ?? "No change."}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Reviewer focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
   const prPath = `.groundwork/work/${slug}/pr-body.md`;
   const approveBoth = () => ({
     APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
@@ -238,24 +238,59 @@ describe("intent gates", () => {
     expect(g.applies).toBe(false);
     expect(refusalMessage(g)).toBeNull();
   });
-  it("(b) Evidence edit keeps charter approved with identical hash", () => {
+  it("hashed headings constant is Why, Interface, Impact", () => {
+    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Why", "Interface", "Impact"]);
+  });
+  it("(b) Reviewer focus edit keeps charter approved with identical hash", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
     put(prPath, prBody());
     const rec = approvalPayload(tmp, slug, "charter", "human");
-    expect(rec.files).toEqual([`.groundwork/work/${slug}/motive.md`, `${prPath}#what-changed`]);
-    put(prPath, prBody("Did X.", "Different evidence.", "Other risk."));
+    expect(rec.files).toEqual([
+      `.groundwork/work/${slug}/motive.md`,
+      `${prPath}#why`,
+      `${prPath}#interface`,
+      `${prPath}#impact`,
+    ]);
+    put(prPath, prBody({ focus: "Look at B instead." }));
     const g = evaluateArtifact(tmp, slug, "charter", JSON.stringify(rec));
     expect(g.state).toBe("approved");
     expect(g.hash).toBe(rec.hash);
   });
-  it("(c) What changed edit voids H1 and H2", () => {
+  it("(b2) Proof edit keeps charter approved with identical hash", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(`.groundwork/work/${slug}/spec.md`, "s");
     put(prPath, prBody());
-    const ev = approveBoth();
-    put(prPath, prBody("Did Y."));
-    expect(evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER).state).toBe("void");
-    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
+    const rec = approvalPayload(tmp, slug, "charter", "human");
+    put(prPath, prBody({ proof: "Different proof." }));
+    const g = evaluateArtifact(tmp, slug, "charter", JSON.stringify(rec));
+    expect(g.state).toBe("approved");
+    expect(g.hash).toBe(rec.hash);
+  });
+  for (const [name, edit] of [
+    ["Why", { why: "Because Y." }],
+    ["Interface", { iface: "Changed." }],
+    ["Impact", { impact: "Breaks Z." }],
+  ] as const) {
+    it(`(c) ${name} edit voids H1 and H2`, () => {
+      put(`.groundwork/work/${slug}/motive.md`, "c");
+      put(`.groundwork/work/${slug}/spec.md`, "s");
+      put(prPath, prBody());
+      const ev = approveBoth();
+      put(prPath, prBody(edit));
+      const h1 = evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER);
+      expect(h1.state).toBe("void");
+      expect(h1.hash).not.toBe(JSON.parse(ev.APPROVE_CHARTER).hash);
+      expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
+    });
+  }
+  it("pr-body missing Interface still hashes Why and Impact only", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(prPath, "# Title\n\n## Why\n\nW.\n\n## Impact\n\nI.\n\n## Proof\n\nP.\n");
+    expect(artifactFiles(tmp, slug, "charter")).toEqual([
+      `.groundwork/work/${slug}/motive.md`,
+      `${prPath}#why`,
+      `${prPath}#impact`,
+    ]);
+    expect(artifactHash(tmp, slug, "charter")).not.toBeNull();
   });
   it("(d) spec.md edit voids H2 only", () => {
     put(`.groundwork/work/${slug}/motive.md`, "c");

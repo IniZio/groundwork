@@ -97,14 +97,15 @@ export const APPROVAL_EVENT: Record<IntentArtifact, string> = { charter: "APPROV
 const baseOf = (a: IntentArtifact) => (a === "charter" ? "motive" : "spec");
 
 const prBodyRel = (slug: string) => `.groundwork/work/${slug}/pr-body.md`;
-const whatChangedRel = (slug: string) => `${prBodyRel(slug)}#what-changed`;
+/** pr-body sections covered by H1/H2 approval; Reviewer focus and Proof are deliberately excluded. */
+export const HASHED_PR_BODY_HEADINGS = ["Why", "Interface", "Impact"] as const;
 
-/** Text of the `## What changed` section (heading line to next `## ` line or EOF), or null. */
-function whatChangedSection(root: string, slug: string): string | null {
-  const p = path.join(root, prBodyRel(slug));
-  if (!existsSync(p)) return null;
-  const lines = readFileSync(p, "utf8").split("\n");
-  const start = lines.findIndex((l) => l.trimEnd() === "## What changed");
+const headingRel = (slug: string, heading: string) =>
+  `${prBodyRel(slug)}#${heading.toLowerCase().replace(/\s+/g, "-")}`;
+
+/** Text of the `## <heading>` section (heading line to next `## ` line or EOF), or null. */
+function prBodySection(lines: string[], heading: string): string | null {
+  const start = lines.findIndex((l) => l.trimEnd() === `## ${heading}`);
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
@@ -113,13 +114,19 @@ function whatChangedSection(root: string, slug: string): string | null {
   return lines.slice(start, end).join("\n");
 }
 
-/** Hash inputs as [rel, content]; empty when the agent file is missing. pr-body section is added only when present. */
+/** Hash inputs as [rel, content]; empty when the agent file is missing. Each present HASHED_PR_BODY_HEADINGS section is appended in fixed order. */
 function artifactParts(root: string, slug: string, a: IntentArtifact): [string, string][] {
   const rel = `.groundwork/work/${slug}/${baseOf(a)}.md`;
   if (!existsSync(path.join(root, rel))) return [];
   const parts: [string, string][] = [[rel, readFileSync(path.join(root, rel), "utf8")]];
-  const sec = whatChangedSection(root, slug);
-  if (sec !== null) parts.push([whatChangedRel(slug), sec]);
+  const pr = path.join(root, prBodyRel(slug));
+  if (existsSync(pr)) {
+    const lines = readFileSync(pr, "utf8").split("\n");
+    for (const h of HASHED_PR_BODY_HEADINGS) {
+      const sec = prBodySection(lines, h);
+      if (sec !== null) parts.push([headingRel(slug, h), sec]);
+    }
+  }
   return parts;
 }
 

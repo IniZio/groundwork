@@ -55,8 +55,14 @@ describe("doc placement via deployed CLI", () => {
 
 describe("pr-body template", () => {
   const text = readFileSync(path.join(ROOT, "templates/doc-types/pr-body.md"), "utf8");
-  it("has the three sections", () => {
-    for (const h of ["## What changed", "## Evidence", "## Residual risk"]) expect(text).toContain(h);
+  it("has the five sections", () => {
+    const lines = text.split("\n");
+    let prev = -1;
+    for (const h of ["Why", "Interface", "Impact", "Reviewer focus", "Proof"]) {
+      const idx = lines.indexOf(`## ${h}`);
+      expect(idx, h).toBeGreaterThan(prev);
+      prev = idx;
+    }
   });
   it("has no baseline-check claims", () => {
     expect(/tests? pass|lint|typecheck|tsc|CI (is )?green|bun test/i.test(text)).toBe(false);

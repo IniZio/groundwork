@@ -95,12 +95,16 @@ function ranked(m: Map<string, number>): Array<[string, number]> {
   return [...m].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
 }
 
+function normaliseHint(prose: string): string {
+  return prose.replace(/`[^`]*`/g, '`<name>`').replace(/"[^"\n]*"|'[^'\n]*'/g, '<name>');
+}
+
 /** Compact findings summary: counts per rule/check, top 10 files, each hint once per check. */
 export function formatSummary(report: Report, fullReportPath: string): string {
   const rules = new Map<string, number>();
   const checks = new Map<string, number>();
   const files = new Map<string, number>();
-  const hints = new Map<string, Set<string>>();
+  const hints = new Map<string, Map<string, number>>();
   for (const f of report.findings) {
     const m = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(f.message);
     const check = m ? m[1] : '(none)';
@@ -108,14 +112,14 @@ export function formatSummary(report: Report, fullReportPath: string): string {
     bump(rules, f.ruleId);
     bump(checks, check);
     bump(files, f.path);
-    if (!hints.has(check)) hints.set(check, new Set());
-    hints.get(check)!.add(prose);
+    if (!hints.has(check)) hints.set(check, new Map());
+    bump(hints.get(check)!, normaliseHint(prose));
   }
   const out: string[] = [];
   for (const [k, n] of ranked(rules)) out.push(`rule ${k}: ${n}`);
   for (const [k, n] of ranked(checks)) {
     out.push(`check ${k}: ${n}`);
-    for (const h of hints.get(k)!) out.push(`  hint: ${h}`);
+    out.push(`  hint: ${ranked(hints.get(k)!)[0][0]}`);
   }
   for (const [k, n] of ranked(files).slice(0, 10)) out.push(`file ${k}: ${n}`);
   out.push(`total: ${report.findings.length}`);

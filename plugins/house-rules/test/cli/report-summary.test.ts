@@ -33,6 +33,13 @@ describe('formatSummary', () => {
     expect(out.split('Other advice').length - 1).toBe(1);
   });
 
+  it('hints differing only by symbol names collapse to one line per check', () => {
+    const fs = ['alpha', 'beta', 'gamma', 'delta'].map((n, i) => f('r', 'chk-sym', 'a.ts', `Type on \`${n}\` is wide; use "${n}x" instead`, i));
+    const o = formatSummary(buildReport(scope, { findings: fs }), 'p');
+    const hintLines = o.split('\n').filter(l => l.startsWith('  hint:'));
+    expect(hintLines).toEqual(['  hint: Type on `<name>` is wide; use <name> instead']);
+  });
+
   it('top 10 files by count, ordered', () => {
     const files = [...out.matchAll(/^file (\S+): (\d+)$/gm)];
     expect(files.length).toBe(10);

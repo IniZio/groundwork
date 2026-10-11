@@ -50,7 +50,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
       if (/^##\s/.test(line)) section = t.slice(2).trim();
       const bulletSection = section === "Why" || section === "Impact";
       if (t.startsWith("|") && afterHeading) visual(t);
-      if (!isHeading && !t.startsWith("|")) {
+      if (!isHeading && !t.startsWith("|") && (section === "Why" || section === "Changes" || section === "Impact")) {
         prose++;
         if (prose === PR_BODY_MAX_PROSE + 1) overflowQuote = t;
       }
@@ -80,7 +80,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
     }
   }
   if (prose > PR_BODY_MAX_PROSE) {
-    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (headings, fenced blocks and tables excluded)` });
+    out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (Why, Changes, Impact; headings, fenced blocks and tables excluded)` });
   }
   return out;
 }

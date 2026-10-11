@@ -62,7 +62,9 @@ describe("human-doc-check", () => {
   }
 
   describe("pr-body prose length", () => {
-    const prose = (n: number) => Array.from({ length: n }, (_, i) => `Line ${i + 1} of prose.`).join("\n");
+    const OVER13 = "pr-body prose 13 lines > 12 (Why, Changes, Impact; headings, fenced blocks and tables excluded)";
+    const prose = (n: number) =>
+      "## Changes\n\n" + Array.from({ length: n }, (_, i) => `Line ${i + 1} of prose.`).join("\n");
     const fenced = "```ts\n" + Array.from({ length: 30 }, (_, i) => `const a${i} = ${i};`).join("\n") + "\n```";
 
     test("12 prose lines plus a 30-line fenced block passes", () => {
@@ -74,7 +76,7 @@ describe("human-doc-check", () => {
     test("13 prose lines is flagged", () => {
       const r = run(write("pr-body.md", `${prose(13)}\n`));
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
+      expect(r.stdout).toContain(OVER13);
     });
 
     const table =
@@ -92,7 +94,7 @@ describe("human-doc-check", () => {
     test("13 prose lines plus a table is flagged at 13", () => {
       const r = run(write("pr-body.md", `${prose(13)}\n\n${table}\n`));
       expect(r.status).toBe(1);
-      expect(r.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
+      expect(r.stdout).toContain(OVER13);
     });
 
     test("pipe lines inside a fence are not counted", () => {
@@ -101,7 +103,34 @@ describe("human-doc-check", () => {
       expect(ok.status).toBe(0);
       const over = run(write("pr-body.md", `${prose(13)}\n\n${pipeFence}\n`));
       expect(over.status).toBe(1);
-      expect(over.stdout).toContain("pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)");
+      expect(over.stdout).toContain(OVER13);
+    });
+
+    const argument = (n: number) => {
+      const why = Array.from({ length: 4 }, (_, i) => `- Why claim ${i + 1}.`);
+      const impact = Array.from({ length: 4 }, (_, i) => `- Impact claim ${i + 1}.`);
+      const changes = Array.from({ length: n - 8 }, (_, i) => `Changes line ${i + 1}.`);
+      return `## Why\n\n${why.join("\n")}\n\n## Changes\n\n${changes.join("\n")}\n\n## Impact\n\n${impact.join("\n")}\n`;
+    };
+    const focus = (n: number) => Array.from({ length: n }, (_, i) => `- https://example.com/blob/abc/f${i}#L1 focus ${i}`).join("\n");
+
+    test("12 argument lines plus Review focus and Proof lines pass", () => {
+      const proof = "- Proof one.\n- Proof two.\n- Proof three.";
+      const r = run(write("pr-body.md", `${argument(12)}\n## Review focus\n\n${focus(5)}\n\n## Proof\n\n${proof}\n`));
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
+    });
+
+    test("13 argument lines are flagged, quoting the 13th argument line", () => {
+      const r = run(write("pr-body.md", `${argument(13)}\n## Review focus\n\n${focus(5)}\n`));
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain('- "- Impact claim 4." — pr-body prose 13 lines > 12 (Why, Changes, Impact; headings, fenced blocks and tables excluded)');
+    });
+
+    test("30 lines only in Review focus pass", () => {
+      const r = run(write("pr-body.md", `## Why\n\n- A claim.\n\n## Changes\n\nOne line.\n\n## Impact\n\n- Another claim.\n\n## Review focus\n\n${focus(30)}\n`));
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
     });
 
     test("13 prose lines in a file not named pr-body.md is not flagged", () => {
@@ -127,9 +156,9 @@ describe("human-doc-check", () => {
 
     test("headings are excluded from the prose count", () => {
       const prose = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of prose.`).join("\n");
-      pass(`## A\n\n### B\n\n#### C\n\n${prose}\n\n## D\n`);
-      const r = run(write("pr-body.md", `## A\n\n${prose}\nLine 13 of prose.\n`));
-      expect(r.stdout).toContain('- "Line 13 of prose." — pr-body prose 13 lines > 12 (headings, fenced blocks and tables excluded)');
+      pass(`## Changes\n\n### B\n\n#### C\n\n${prose}\n\n## D\n`);
+      const r = run(write("pr-body.md", `## Changes\n\n${prose}\nLine 13 of prose.\n`));
+      expect(r.stdout).toContain('- "Line 13 of prose." — pr-body prose 13 lines > 12 (Why, Changes, Impact; headings, fenced blocks and tables excluded)');
     });
 
     test("Why and Impact need one bullet per claim", () => {

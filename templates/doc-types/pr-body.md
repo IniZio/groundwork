@@ -38,4 +38,4 @@ At most 5 permalinks to line ranges, the most load-bearing first, filled once th
 
 Before/after evidence the automated checks do not give, such as fails-before and works-after output. Leave this section out if there is none.
 
-Prose at most 12 lines. Headings, fenced blocks, diagrams and tables do not count. No rejected alternatives anywhere.
+Prose in Why, Changes and Impact is at most 12 lines total. Headings, fenced blocks, diagrams and tables do not count. No rejected alternatives anywhere.

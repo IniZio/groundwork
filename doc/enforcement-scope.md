@@ -39,7 +39,7 @@ flowchart LR
 
 ### Spawn guard
 
-The spawn-model-guard also refuses to dispatch implementation agents (implementer, junior-orchestrator, designer) until the charter and spec are approved, when the work unit has a human view in its own `doc` folder. It allows the spawn when the store is absent or the check errors.
+The spawn-model-guard also refuses to dispatch implementation agents (implementer, junior-orchestrator, designer) until the charter and spec are approved, when the work unit has a drafted PR body, which is the human record of the change. It allows the spawn when the store is absent or the check errors.
 ### Block bounds
 
 - **stop-gate** releases after four consecutive blocks. Blocks 1 and 2 name the fix. Block 3 says the problem is externally unresolvable. Block 4 allows the stop with a stderr warning and resets the counter. A HOLD event with no later HOLD_CLEAR allows at once, because a human hold is a legitimate stop.

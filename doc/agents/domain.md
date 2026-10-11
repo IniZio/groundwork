@@ -26,7 +26,7 @@ bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"ra
 - ADR path: `.groundwork/adr/{nnnn}-{name:kebab}.md`. ADRs are repo-level and may span motives.
 - ADR frontmatter: `status` (`accepted` or `superseded`) and `superseded_by`.
 - ADR headings: Context, Decision, Rejected alternatives, Consequences.
-- Human view: only a decision that flips a reviewer's verdict gets one line plus its rejected alternative in `doc/<slug>/design.md`. Add nothing else there.
+- Human view: only a decision that flips a reviewer's verdict gets one line plus its rejected alternative in the What changed section of the PR body draft. Add nothing else there.
 - The token comes from `bun src/cli/main.ts token`. Only the main session may run it; the `store-write-guard` hook denies subagents. A subagent that resolves a decision must hand the text back to the main session to record.
 - After appending, run `bun src/cli/main.ts compile` and confirm the decision appears. A successful append alone does not prove the decision is visible.
 

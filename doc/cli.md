@@ -56,7 +56,7 @@ While any motive has a hold, the stop-hook lets the session end. It shows the no
 
 ### Compile output
 
-- Intent line: `H1 charter: <state>` and `H2 spec: <state>`, where state is `approved (human)`, `approved (auto)`, `void`, or `missing`. Without a human view for the motive it prints `intent gates: n/a`. In `--json`, `intent` carries the same data.
+- Intent line: `H1 charter: <state>` and `H2 spec: <state>`, where state is `approved (human)`, `approved (auto)`, `void`, or `missing`. Without a PR body draft for the motive it prints `intent gates: n/a`. In `--json`, `intent` carries the same data.
 - Hold line: `hold: awaiting human — <note>` or `hold: none`. In `--json`, `hold` is the note or `null`.
 - AC coverage: `ac coverage: N ACs covered by M slice(s)`, then sorted `AC-x: slice-id, ...` rows, or `ac coverage: none`. `--json` adds `ac_coverage`, a map from AC id to slice ids.
 - Idle units: `idle units (≥14d): slug (Nd), ...` lists work units whose newest file change is 14 days old or more, else `idle units: none`. `--json` adds `idle_units` as `{slug, idle_days}`.

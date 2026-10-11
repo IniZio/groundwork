@@ -16,7 +16,7 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
    Each slice: single domain, independent, owns its files exclusively.
 3. Add slices: `$GW slice add <id> --desc "..." --wave N --blocked-by <deps> --acceptance "crit1;crit2" --token T`
 4. Emit banner: `GROUNDWORK ▸ <N> slices, <M> waves → token: T`
-4b. Human views exist: run `$GW approve spec --auto --token T` before dispatch.
+4b. PR body draft exists (`.groundwork/work/<slug>/pr-body.md`): run `$GW approve spec --auto --token T` before dispatch.
    Exit 2 = Human row, hold set: stop; tell the user to run `! $GW approve spec`.
 5. Fan out in ONE message. Route each slice by size:
    - Multi-file (≥3 files or ≥2 behaviors) → `groundwork:junior-orchestrator`
@@ -30,8 +30,8 @@ Feature work: ≥3 files OR ≥2 behaviors OR large verification surface. For si
 6. As waves complete: verify receipts (bite proof required, not argued).
    Run full suite + `bunx tsc --noEmit`, then `$GW slice complete <id> --token T`.
    Commit before next wave.
-6b. Before opening a PR or committing human docs (`doc/`, PR body from `templates/doc-types/pr-body.md`):
-   per artifact spawn `groundwork:human-doc-reviewer` with only that path + check cmd
+6b. Before opening a PR or committing human docs: artifacts = the PR body draft and any changed `doc/` snapshot files.
+   Per artifact spawn `groundwork:human-doc-reviewer` with only that path + check cmd
    `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
    Apply deletions; loop until `status: PASS`.
 7. Commit the final wave (and release bump, if any) first: the stop-gate voids APPROVE when HEAD moves.

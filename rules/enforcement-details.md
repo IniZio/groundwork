@@ -30,6 +30,6 @@ Human summary: `doc/enforcement-scope.md`.
 
 - Source: `src/hooks/spawn-model-guard.ts` (`INTENT_GATED`, `intentRefusal`); message built by `refusalMessage` in `src/cli/gate-status.ts`.
 - Denies spawning `groundwork:implementer`, `groundwork:junior-orchestrator`, `groundwork:designer`.
-- Applies while the active motive's intent gates apply (`doc/<slug>/motive.md` or `doc/<slug>/spec.md` exists) and H1 (charter) or H2 (spec) approval is missing or void.
+- Applies only while the PR-body draft `.groundwork/work/<slug>/pr-body.md` exists, and H1 (charter) or H2 (spec) approval is missing or void. H1 binds `motive.md` plus the draft's "What changed" section; H2 binds `spec.md` plus that section. Filling Evidence or Residual risk later does not void approval. Without the draft, neither gate applies.
 - Message starts `intent gate: implementation dispatch refused — `.
 - Fails open: no `.groundwork/work.db`, no project dir, or any error → allow.

@@ -30,13 +30,14 @@
 
 ## Routing rule
 
-Agent-written specs, tickets, motives, designs and PR bodies split into a human view and an agent view.
-If changing an item could flip a reviewer's yes/no, it goes in the human view (committed `doc/` files, PR bodies, README.md).
-If it only changes how the work gets done, it goes in the agent view (`.groundwork/`).
+Agent-written work splits into a human view and an agent view.
+If an item could flip a reviewer's yes/no, it goes in the PR body, drafted in the work folder of the change as pr-body.md.
+The doc folder and README.md describe the current code only, in present tense. They have no per-change folders.
+Everything else goes in the agent view (`.groundwork/`, gitignored).
 
 ## Human writing standard
 
-This standard applies to the human view only. The compression rules above (dropped articles, fragments) apply to agent-facing text.
+This standard applies to the human view only: the PR body and the doc snapshot. The compression rules above (dropped articles, fragments) apply to agent-facing text.
 The human view follows this standard instead, so the two sets do not conflict.
 Rule 15 (cite paths absolutely) applies to the agent view. The human view uses permalinks.
 
@@ -46,5 +47,5 @@ Rule 15 (cite paths absolutely) applies to the agent view. The human view uses p
 - Flows, architectures and state machines are shown as a diagram.
 - Each decision carries its rejected alternative.
 - Write plain controlled English. Apply ASD-STE100 where a reader could misparse.
-- No agent bookkeeping in the human view: file lists, commands, AC tables, ledger ids.
+- No agent bookkeeping in the human view (PR body, doc snapshot): file lists, commands, AC tables, ledger ids.
 - No hard length cap.

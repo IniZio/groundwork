@@ -41,7 +41,7 @@ export function parseFrontmatter(text: string): ParseResult {
 
 const ANNOTATIONS = new Set(["$schema", "description", "title"]);
 const KNOWN = new Set([
-  "type", "required", "properties", "enum", "const", "pattern", "format", "if", "then", "oneOf",
+  "type", "required", "properties", "items", "enum", "const", "pattern", "format", "if", "then", "oneOf",
 ]);
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -128,6 +128,9 @@ function check(schema: unknown, value: unknown, path: string, errs: string[]): v
         if (Object.hasOwn(value, k)) check(sub, value[k], path === "(root)" ? k : `${path}.${k}`, errs);
       }
     }
+  }
+  if (Array.isArray(value) && schema.items !== undefined) {
+    value.forEach((el, i) => check(schema.items, el, `${path}[${i}]`, errs));
   }
   if (schema.if !== undefined && schema.then !== undefined) {
     const probe: string[] = [];

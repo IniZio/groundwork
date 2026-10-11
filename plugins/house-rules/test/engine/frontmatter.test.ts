@@ -145,6 +145,21 @@ describe("frontmatter", () => {
     expect(validateFrontmatter({ title: "t", description: "d", $schema: "s" }, 1)).toEqual([]);
   });
 
+  test("items: array of strings passes", () => {
+    const s = { type: "object", properties: { supersedes: { type: "array", items: { type: "string" } } } };
+    expect(validateFrontmatter(s, { supersedes: ["a", "b"] })).toEqual([]);
+  });
+
+  test("items: non-string element fails with index path", () => {
+    const s = { type: "object", properties: { supersedes: { type: "array", items: { type: "string" } } } };
+    expect(validateFrontmatter(s, { supersedes: ["a", 2] })).toEqual(["supersedes[1]: expected type string"]);
+  });
+
+  test("items: non-array still gives expected type array", () => {
+    const s = { type: "object", properties: { supersedes: { type: "array", items: { type: "string" } } } };
+    expect(validateFrontmatter(s, { supersedes: "a" })).toEqual(["supersedes: expected type array"]);
+  });
+
   test("AC7 missing Bun.YAML is visible error", () => {
     const bun = (globalThis as unknown as { Bun: { YAML?: unknown } }).Bun;
     const saved = bun.YAML;

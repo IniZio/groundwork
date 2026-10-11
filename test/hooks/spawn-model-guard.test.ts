@@ -347,12 +347,17 @@ describe("isWithinSlice", () => {
 describe("spawn-model-guard — intent gate (H1/H2)", () => {
   const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
 
+  const PR_BODY = "## What changed\nchange v1\n\n## Evidence\nevidence v1\n\n## Residual risk\nrisk v1\n";
+  const workDir = (d: string) => path.join(d, ".groundwork", "work", "default");
+
   function setup(withDocs: boolean): string {
     const dir = makeProjectDir("S1", ["a.ts"]);
     if (withDocs) {
-      mkdirSync(path.join(dir, "doc", "default"), { recursive: true });
-      writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter v1");
-      writeFileSync(path.join(dir, "doc", "default", "spec.md"), "spec v1");
+      const work = path.join(dir, ".groundwork", "work", "default");
+      mkdirSync(work, { recursive: true });
+      writeFileSync(path.join(work, "pr-body.md"), PR_BODY);
+      writeFileSync(path.join(work, "motive.md"), "charter v1");
+      writeFileSync(path.join(work, "spec.md"), "spec v1");
     }
     return dir;
   }
@@ -367,7 +372,10 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
   }
 
   afterEach(() => {
-    for (const d of tmpDirs) rmSync(path.join(d, "doc"), { recursive: true, force: true });
+    for (const d of tmpDirs) {
+      rmSync(workDir(d), { recursive: true, force: true });
+      rmSync(path.join(d, "doc"), { recursive: true, force: true });
+    }
   });
 
   const impl = agentWithPrompt("groundwork:implementer", "do it", "sonnet");
@@ -391,15 +399,41 @@ describe("spawn-model-guard — intent gate (H1/H2)", () => {
     const dir = setup(true);
     approve(dir, "APPROVE_CHARTER", "charter");
     approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter v2");
+    writeFileSync(path.join(workDir(dir), "motive.md"), "charter v2");
     const r = check(impl, undefined, dir);
     expect(safeDecision(r)).toBe("deny");
     expect(reasonOf(r)).toContain("void");
   });
 
-  it("no doc/<slug>/ → not denied (backward compat)", () => {
-    const dir = setup(false);
+  it("no pr-body.md → not denied", () => {
+    const dir = setup(true);
+    rmSync(path.join(workDir(dir), "pr-body.md"));
     expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
+  });
+
+  it("only doc/default/motive.md, no pr-body.md → not denied (doc/ ignored)", () => {
+    const dir = setup(false);
+    mkdirSync(path.join(dir, "doc", "default"), { recursive: true });
+    writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter");
+    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
+  });
+
+  it("edit only ## Evidence after approvals → not denied", () => {
+    const dir = setup(true);
+    approve(dir, "APPROVE_CHARTER", "charter");
+    approve(dir, "APPROVE_SPEC", "spec");
+    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("evidence v1", "evidence v2"));
+    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
+  });
+
+  it("edit ## What changed after approvals → denied as void", () => {
+    const dir = setup(true);
+    approve(dir, "APPROVE_CHARTER", "charter");
+    approve(dir, "APPROVE_SPEC", "spec");
+    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("change v1", "change v2"));
+    const r = check(impl, undefined, dir);
+    expect(safeDecision(r)).toBe("deny");
+    expect(reasonOf(r)).toContain("void");
   });
 
   it("explore with missing approvals → not denied", () => {

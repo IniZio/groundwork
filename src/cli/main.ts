@@ -552,7 +552,7 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
     process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
     process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}\n`);
     if (!intent.applies) {
-      process.stdout.write(`intent gates: n/a (no doc/${motive}/ human view)\n`);
+      process.stdout.write(`intent gates: n/a (no .groundwork/work/${motive}/pr-body.md)\n`);
     } else {
       const fmt = (g: typeof intent.h1) => g.state === "approved" ? `approved (${g.approved?.by})` : g.state;
       process.stdout.write(`H1 charter: ${fmt(intent.h1)}\n`);

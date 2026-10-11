@@ -207,29 +207,75 @@ describe("intent gates", () => {
     expect(c.openDecision).toContain("weird");
   });
 
+  const prBody = (changed = "Did X.", evidence = "Ran tests.", risk = "None.") =>
+    `# Title\n\n## What changed\n\n${changed}\n\n## Evidence\n\n${evidence}\n\n## Residual risk\n\n${risk}\n`;
+  const prPath = `.groundwork/work/${slug}/pr-body.md`;
+  const approveBoth = () => ({
+    APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
+    APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "human")),
+  });
+
   it("approved -> edit -> void; no event -> missing", () => {
-    put(`doc/${slug}/spec.md`, "v1");
+    put(`.groundwork/work/${slug}/spec.md`, "v1");
     const rec = approvalPayload(tmp, slug, "spec", "human");
-    expect(rec.files).toEqual([`doc/${slug}/spec.md`]);
+    expect(rec.files).toEqual([`.groundwork/work/${slug}/spec.md`]);
     expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("approved");
-    put(`doc/${slug}/spec.md`, "v2");
+    put(`.groundwork/work/${slug}/spec.md`, "v2");
     expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("void");
     expect(evaluateArtifact(tmp, slug, "spec", null).state).toBe("missing");
     expect(evaluateArtifact(tmp, slug, "spec", "{bad").state).toBe("missing");
   });
   it("approvalPayload throws when no file", () => {
     expect(() => approvalPayload(tmp, slug, "charter", "human")).toThrow(
-      `no charter found for ${slug}: expected doc/${slug}/motive.md or .groundwork/work/${slug}/motive.md`,
+      `no charter found for ${slug}: expected .groundwork/work/${slug}/motive.md`,
     );
   });
-  it("intentGatesApply false without doc views; refusalMessage null", () => {
+  it("(a) no pr-body: gates do not apply; refusalMessage null", () => {
     put(`.groundwork/work/${slug}/spec.md`, "x");
+    put(`.groundwork/work/${slug}/motive.md`, "c");
     expect(intentGatesApply(tmp, slug)).toBe(false);
-    expect(refusalMessage(intentGates(tmp, slug, () => null))).toBeNull();
+    const g = intentGates(tmp, slug, () => null);
+    expect(g.applies).toBe(false);
+    expect(refusalMessage(g)).toBeNull();
   });
-  it("refusalMessage names H1 and H2 when missing", () => {
+  it("(b) Evidence edit keeps charter approved with identical hash", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(prPath, prBody());
+    const rec = approvalPayload(tmp, slug, "charter", "human");
+    expect(rec.files).toEqual([`.groundwork/work/${slug}/motive.md`, `${prPath}#what-changed`]);
+    put(prPath, prBody("Did X.", "Different evidence.", "Other risk."));
+    const g = evaluateArtifact(tmp, slug, "charter", JSON.stringify(rec));
+    expect(g.state).toBe("approved");
+    expect(g.hash).toBe(rec.hash);
+  });
+  it("(c) What changed edit voids H1 and H2", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(`.groundwork/work/${slug}/spec.md`, "s");
+    put(prPath, prBody());
+    const ev = approveBoth();
+    put(prPath, prBody("Did Y."));
+    expect(evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER).state).toBe("void");
+    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
+  });
+  it("(d) spec.md edit voids H2 only", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(`.groundwork/work/${slug}/spec.md`, "s");
+    put(prPath, prBody());
+    const ev = approveBoth();
+    put(`.groundwork/work/${slug}/spec.md`, "s2");
+    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
+    expect(evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER).state).toBe("approved");
+  });
+  it("(e) doc/<slug> files alone do not apply the gates", () => {
     put(`doc/${slug}/motive.md`, "c");
     put(`doc/${slug}/spec.md`, "s");
+    expect(intentGatesApply(tmp, slug)).toBe(false);
+    expect(intentGates(tmp, slug, () => null).applies).toBe(false);
+  });
+  it("refusalMessage names H1 and H2 when missing", () => {
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(`.groundwork/work/${slug}/spec.md`, "s");
+    put(prPath, prBody());
     const g = intentGates(tmp, slug, () => null);
     expect(g.applies).toBe(true);
     const m = refusalMessage(g) ?? "";
@@ -238,8 +284,9 @@ describe("intent gates", () => {
     expect(m).toContain("H2 spec approval missing");
   });
   it("refusalMessage null when both approved", () => {
-    put(`doc/${slug}/motive.md`, "c");
-    put(`doc/${slug}/spec.md`, "s");
+    put(`.groundwork/work/${slug}/motive.md`, "c");
+    put(`.groundwork/work/${slug}/spec.md`, "s");
+    put(prPath, prBody());
     const ev: Record<string, string> = {
       APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
       APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "auto", ["Refactor, no behaviour or interface change"])),

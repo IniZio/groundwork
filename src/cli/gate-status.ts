@@ -96,21 +96,47 @@ export const APPROVAL_EVENT: Record<IntentArtifact, string> = { charter: "APPROV
 
 const baseOf = (a: IntentArtifact) => (a === "charter" ? "motive" : "spec");
 
+const prBodyRel = (slug: string) => `.groundwork/work/${slug}/pr-body.md`;
+const whatChangedRel = (slug: string) => `${prBodyRel(slug)}#what-changed`;
+
+/** Text of the `## What changed` section (heading line to next `## ` line or EOF), or null. */
+function whatChangedSection(root: string, slug: string): string | null {
+  const p = path.join(root, prBodyRel(slug));
+  if (!existsSync(p)) return null;
+  const lines = readFileSync(p, "utf8").split("\n");
+  const start = lines.findIndex((l) => l.trimEnd() === "## What changed");
+  if (start < 0) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i].startsWith("## ")) { end = i; break; }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+/** Hash inputs as [rel, content]; empty when the agent file is missing. pr-body section is added only when present. */
+function artifactParts(root: string, slug: string, a: IntentArtifact): [string, string][] {
+  const rel = `.groundwork/work/${slug}/${baseOf(a)}.md`;
+  if (!existsSync(path.join(root, rel))) return [];
+  const parts: [string, string][] = [[rel, readFileSync(path.join(root, rel), "utf8")]];
+  const sec = whatChangedSection(root, slug);
+  if (sec !== null) parts.push([whatChangedRel(slug), sec]);
+  return parts;
+}
+
 export function artifactFiles(root: string, slug: string, a: IntentArtifact): string[] {
-  const b = baseOf(a);
-  return [`doc/${slug}/${b}.md`, `.groundwork/work/${slug}/${b}.md`].filter((r) => existsSync(path.join(root, r)));
+  return artifactParts(root, slug, a).map(([rel]) => rel);
 }
 
 export function artifactHash(root: string, slug: string, a: IntentArtifact): string | null {
-  const files = artifactFiles(root, slug, a);
-  if (files.length === 0) return null;
+  const parts = artifactParts(root, slug, a);
+  if (parts.length === 0) return null;
   const h = createHash("sha256");
-  for (const rel of files) h.update(`${rel}\0${readFileSync(path.join(root, rel), "utf8")}\0`);
+  for (const [rel, content] of parts) h.update(`${rel}\0${content}\0`);
   return `sha256:${h.digest("hex")}`;
 }
 
 export function intentGatesApply(root: string, slug: string): boolean {
-  return existsSync(path.join(root, "doc", slug, "motive.md")) || existsSync(path.join(root, "doc", slug, "spec.md"));
+  return existsSync(path.join(root, prBodyRel(slug)));
 }
 
 export interface ApprovalRecord { hash: string; files: string[]; by: "human" | "auto"; rows?: string[]; created_at: string }
@@ -125,7 +151,7 @@ export function approvalPayload(
   const hash = artifactHash(root, slug, a);
   if (hash === null) {
     const b = baseOf(a);
-    throw new Error(`no ${a} found for ${slug}: expected doc/${slug}/${b}.md or .groundwork/work/${slug}/${b}.md`);
+    throw new Error(`no ${a} found for ${slug}: expected .groundwork/work/${slug}/${b}.md`);
   }
   const rec: ApprovalRecord = { hash, files: artifactFiles(root, slug, a), by, created_at: new Date().toISOString() };
   if (rows) rec.rows = rows;

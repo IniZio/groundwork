@@ -235,9 +235,11 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     db.run("INSERT OR REPLACE INTO meta (key,value) VALUES ('active_motive', ?)", [SLUG]);
     db.close();
     if (withDocs) {
-      mkdirSync(path.join(proj, "doc", SLUG), { recursive: true });
-      writeFileSync(path.join(proj, "doc", SLUG, "motive.md"), "# charter\n");
-      writeFileSync(path.join(proj, "doc", SLUG, "spec.md"), "# spec\n");
+      const work = path.join(proj, ".groundwork", "work", SLUG);
+      mkdirSync(work, { recursive: true });
+      writeFileSync(path.join(work, "pr-body.md"), "## What changed\nx\n\n## Evidence\ny\n\n## Residual risk\nz\n");
+      writeFileSync(path.join(work, "motive.md"), "# charter\n");
+      writeFileSync(path.join(work, "spec.md"), "# spec\n");
     }
     return proj;
   }
@@ -274,14 +276,17 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     const proj = makeProject("edited", true);
     approve(proj, "APPROVE_CHARTER", "charter");
     approve(proj, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(proj, "doc", SLUG, "spec.md"), "# spec edited\n");
+    writeFileSync(path.join(proj, ".groundwork", "work", SLUG, "spec.md"), "# spec edited\n");
     const { stdout, exit } = await run(proj);
     expect(exit).toBe(0);
     expect(reasonOf(stdout)).toContain("H2 spec approval void");
   });
 
-  it("allow: no doc/<slug>/ → no intent-gate deny (backward compat)", async () => {
-    const { stdout, exit } = await run(makeProject("nodocs", false));
+  it("allow: no pr-body.md → no intent-gate deny", async () => {
+    const proj = makeProject("nodocs", false);
+    mkdirSync(path.join(proj, "doc", SLUG), { recursive: true });
+    writeFileSync(path.join(proj, "doc", SLUG, "motive.md"), "# charter\n");
+    const { stdout, exit } = await run(proj);
     expect(exit).toBe(0);
     expect(reasonOf(stdout)).not.toContain("intent gate");
   });

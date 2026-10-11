@@ -419,20 +419,75 @@ describe("approve", () => {
     writeFileSync(path.join(dir, rel), text);
   };
 
-  it("compile reports n/a when no doc/<slug>/ exists", () => {
+  const prBody = (slug: string, changed = "did a thing", evidence = "ran tests", risk = "none") =>
+    write(
+      `.groundwork/work/${slug}/pr-body.md`,
+      `## What changed\n${changed}\n\n## Evidence\n${evidence}\n\n## Residual risk\n${risk}\n`,
+    );
+
+  it("compile reports n/a when no pr-body.md exists", () => {
+    const slug = slugOf();
     const r = run(["compile"], dir, scrub);
-    expect(r.stdout).toContain("intent gates: n/a (no doc/");
+    expect(r.stdout).toContain(`intent gates: n/a (no .groundwork/work/${slug}/pr-body.md)`);
+  });
+
+  it("doc/<slug>/motive.md alone does not enable intent gates", () => {
+    const slug = slugOf();
+    write(`doc/${slug}/motive.md`, "# charter\n");
+    expect(run(["compile"], dir, scrub).stdout).toContain(
+      `intent gates: n/a (no .groundwork/work/${slug}/pr-body.md)`,
+    );
   });
 
   it("approve charter then edit voids it", () => {
     const slug = slugOf();
-    write(`doc/${slug}/motive.md`, "# charter\n");
+    prBody(slug);
+    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
     const a = run(["approve", "charter", "--token", tok], dir, scrub);
     expect(a.exitCode).toBe(0);
     expect(a.stdout).toMatch(/^H1 charter approved: sha256:/);
     expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: approved (human)");
-    write(`doc/${slug}/motive.md`, "# charter edited\n");
+    write(`.groundwork/work/${slug}/motive.md`, "# charter edited\n");
     expect(run(["compile"], dir, scrub).stdout).toContain("H1 charter: void");
+  });
+
+  it("editing only ## Evidence keeps H1 approved", () => {
+    const slug = slugOf();
+    prBody(slug);
+    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
+    expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
+    prBody(slug, "did a thing", "ran MORE tests", "some risk");
+    const out = run(["compile"], dir, scrub).stdout;
+    expect(out).toContain("H1 charter: approved (human)");
+  });
+
+  it("editing ## What changed voids H1 and H2", () => {
+    const slug = slugOf();
+    prBody(slug);
+    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
+    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [feature]\n---\nbody\n");
+    expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
+    expect(run(["approve", "spec", "--token", tok], dir, scrub).exitCode).toBe(0);
+    const before = run(["compile"], dir, scrub).stdout;
+    expect(before).toContain("H1 charter: approved (human)");
+    expect(before).toContain("H2 spec: approved (human)");
+    prBody(slug, "did a DIFFERENT thing");
+    const out = run(["compile"], dir, scrub).stdout;
+    expect(out).toContain("H1 charter: void");
+    expect(out).toContain("H2 spec: void");
+  });
+
+  it("editing agent spec.md voids H2 only", () => {
+    const slug = slugOf();
+    prBody(slug);
+    write(`.groundwork/work/${slug}/motive.md`, "# charter\n");
+    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [feature]\n---\nbody\n");
+    expect(run(["approve", "charter", "--token", tok], dir, scrub).exitCode).toBe(0);
+    expect(run(["approve", "spec", "--token", tok], dir, scrub).exitCode).toBe(0);
+    write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [feature]\n---\nbody edited\n");
+    const out = run(["compile"], dir, scrub).stdout;
+    expect(out).toContain("H1 charter: approved (human)");
+    expect(out).toContain("H2 spec: void");
   });
 
   it("approve charter without artifact exits 1", () => {
@@ -454,7 +509,9 @@ describe("approve", () => {
   });
 
   it("approve rejects unknown flag and bare --", () => {
-    write(`doc/${slugOf()}/motive.md`, "# charter\n");
+    const s0 = slugOf();
+    prBody(s0);
+    write(`.groundwork/work/${s0}/motive.md`, "# charter\n");
     expect(rejects(["--bogus", "--token", tok]).exitCode).toBe(1);
     expect(rejects(["--", "--token", tok]).exitCode).toBe(1);
   });
@@ -472,7 +529,9 @@ describe("approve", () => {
   });
 
   it("charter with --auto exits 1 and records no H1 approval", () => {
-    write(`doc/${slugOf()}/motive.md`, "# charter\n");
+    const s0 = slugOf();
+    prBody(s0);
+    write(`.groundwork/work/${s0}/motive.md`, "# charter\n");
     const r = run(["approve", "charter", "--auto", "--token", tok], dir, scrub);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("--auto applies to spec only");
@@ -481,7 +540,7 @@ describe("approve", () => {
 
   it("spec auto-passes for refactor", () => {
     const slug = slugOf();
-    write(`doc/${slug}/spec.md`, "# spec\n");
+    prBody(slug);
     write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [refactor]\n---\nbody\n");
     const r = run(["approve", "spec", "--auto", "--token", tok], dir, scrub);
     expect(r.exitCode).toBe(0);
@@ -491,7 +550,7 @@ describe("approve", () => {
 
   it("spec with dependency holds, human approve clears", () => {
     const slug = slugOf();
-    write(`doc/${slug}/spec.md`, "# spec\n");
+    prBody(slug);
     write(`.groundwork/work/${slug}/spec.md`, "---\nchange_kinds: [dependency]\n---\nbody\n");
     const r = run(["approve", "spec", "--auto", "--token", tok], dir, scrub);
     expect(r.exitCode).toBe(2);

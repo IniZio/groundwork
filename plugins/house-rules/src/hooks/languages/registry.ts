@@ -26,7 +26,7 @@ export interface LanguageDetection {
   readonly extensions: readonly string[];
   /** exact, case-sensitive basenames */
   readonly basenames?: readonly string[];
-  /** case-INsensitive basename prefixes; checked before extensions */
+  /** case-INsensitive basename prefixes; checked after extensions */
   readonly basenamePrefixes?: readonly string[];
   /** shebang interpreter names; only consulted when the file has no extension and a first line is given */
   readonly shebangInterpreters?: readonly string[];
@@ -282,12 +282,12 @@ export function languageForPath(filePath: string, firstLine?: string): Language 
 
   for (const lang of LANGUAGES) {
     const detect = LANGUAGE_ADAPTERS[lang].detect;
-    if (detect.basenamePrefixes?.some(p => base.toLowerCase().startsWith(p.toLowerCase()))) return lang;
+    if (detect.extensions.includes(ext)) return lang;
   }
 
   for (const lang of LANGUAGES) {
     const detect = LANGUAGE_ADAPTERS[lang].detect;
-    if (detect.extensions.includes(ext)) return lang;
+    if (detect.basenamePrefixes?.some(p => base.toLowerCase().startsWith(p.toLowerCase()))) return lang;
   }
 
   if (!ext && firstLine) {

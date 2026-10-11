@@ -32,10 +32,10 @@ function makeRepo(name: string, tracked: boolean): string {
   mkdirSync(path.join(d, ".groundwork/work/x"), { recursive: true });
   git(d, "init", "-q");
   writeFileSync(path.join(d, ".groundwork/work/x/motive.md"), "x\n");
-  if (tracked) {
-    git(d, "add", "-f", ".groundwork/work/x/motive.md");
-    expect(git(d, "commit", "-qm", "track").status).toBe(0);
-  }
+  writeFileSync(path.join(d, ".gitignore"), ".groundwork/\n");
+  git(d, "add", ".gitignore");
+  if (tracked) git(d, "add", "-f", ".groundwork/work/x/motive.md");
+  expect(git(d, "commit", "-qm", "track").status).toBe(0);
   return d;
 }
 

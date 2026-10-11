@@ -17,7 +17,8 @@ import {
 } from "../store/key-store.js";
 import { assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
 import { completionGuard, gateStatus, sealedGateVerdict, APPROVAL_EVENT, approvalPayload, classifySpec, intentGates, type IntentArtifact } from "./gate-status.js";
-import { CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
+import { hasCommittedGroundworkIgnore } from "./ignore-check.js";
+import { CHILD_LINK,CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
 const gw = process.env.GW ?? `bun ${process.argv[1]}`;
 
@@ -129,6 +130,7 @@ function cmdInit(args: string[]): void {
   const dir = path.dirname(p);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   excludeWorkingTier(repoDir());
+  if (!hasCommittedGroundworkIgnore(repoDir())) process.stderr.write(`warning: no committed .gitignore rule covers .groundwork/; a fresh clone will track agent files. Add ".groundwork/" to .gitignore and commit it.\n`);
   warnTrackedAgentView(repoDir());
   const store = new WorkStore(p);
 

@@ -35,7 +35,8 @@ function newRepo() {
   mkdirSync(dir, { recursive: true });
   git(dir, "init", "-q");
   writeFileSync(path.join(dir, "a.txt"), "a\n");
-  git(dir, "add", "a.txt");
+  writeFileSync(path.join(dir, ".gitignore"), ".groundwork/\n");
+  git(dir, "add", "a.txt", ".gitignore");
   git(dir, "commit", "-q", "-m", "init");
   const init = gw(dir, ["init"]);
   expect(init.err).toBe("");

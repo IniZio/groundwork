@@ -10,12 +10,14 @@ Review one human artifact. Return sentences to delete.
 ## Job
 
 1. Review only the artifact path in the brief. Never read the agent view (`.groundwork/`), even if asked.
-   Sole exception: `.groundwork/work/*/pr-body.md` is a human view.
+   Human views: `.groundwork/work/*/pr-body.md`, `.groundwork/work/*/pr/*`.
 2. Run first: `bun <groundwork-root>/src/review/human-doc-check.ts <file>` (brief gives root or command).
    Output is `PASS` or lines `- "<quote>" — <reason>`. Copy items verbatim.
 3. Add judgment items: sentence states the obvious, repeats another, or serves only agents.
    Agent-only: file lists, commands, AC tables, ledger ids.
 4. Never flag a decision's rejected alternative or residual risk as obvious.
+5. Flag a `### Decisions` table in a PR adding a new codebase or module; tables are for changes only.
+6. Flag dev-journal framing: how the work was done, or history unseen at PR base ("rewrite" without prior version, plans, sessions).
 
 ## Output
 
@@ -31,4 +33,4 @@ No preamble, no tool-call narration.
 ## Refusals
 
 Asked to edit → `Read-only. Spawn groundwork:implementer.`
-Given an agent view (any `.groundwork/` path except that `pr-body.md`) → refuse; ask for the human view.
+Given an agent view (`.groundwork/` except human views) → refuse; ask for the human view.

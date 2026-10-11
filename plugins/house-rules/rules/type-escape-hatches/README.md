@@ -66,6 +66,204 @@ const value = input;
 
 ```
 
+### [no-known-value-widening] upstream: valid #1
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: Record<string, Command> = {};
+```
+
+### [no-known-value-widening] upstream: valid #2
+
+```
+type Command = () => void; const startCommand = () => {}; type Index<T> = Record<string, T>; const commands: Index<Command> = {};
+```
+
+### [no-known-value-widening] upstream: valid #3
+
+```
+type Command = () => void; const startCommand = () => {}; class Registry { commands: Record<string, Command> = {}; }
+```
+
+### [no-known-value-widening] upstream: valid #4
+
+```
+type Command = () => void; const startCommand = () => {}; class Registry { accessor commands: Record<string, Command> = {}; }
+```
+
+### [no-known-value-widening] upstream: valid #5
+
+```
+type Command = () => void; const startCommand = () => {}; let commands: Record<string, Command>; commands = {};
+```
+
+### [no-known-value-widening] upstream: valid #6
+
+```
+type Command = () => void; const startCommand = () => {}; function create(): Record<string, Command> { return {}; }
+```
+
+### [no-known-value-widening] upstream: valid #7
+
+```
+type Command = () => void; const startCommand = () => {}; const create = (): Record<string, Command> => ({});
+```
+
+### [no-known-value-widening] upstream: valid #8
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = {} as Record<string, Command>;
+```
+
+### [no-known-value-widening] upstream: valid #9
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = <Record<string, Command>>{};
+```
+
+### [no-known-value-widening] upstream: valid #10
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = { start: startCommand };
+```
+
+### [no-known-value-widening] upstream: valid #11
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = { start: startCommand } as const;
+```
+
+### [no-known-value-widening] upstream: valid #12
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = { start: startCommand } satisfies Record<string, Command>;
+```
+
+### [no-known-value-widening] upstream: valid #13
+
+```
+type Command = () => void; const startCommand = () => {}; type Commands = Record<string, Command>; const commands = { start: startCommand } as const satisfies Commands;
+```
+
+### [no-known-value-widening] upstream: valid #14
+
+```
+type Command = () => void; const startCommand = () => {}; interface Commands { readonly start: Command } const commands: Commands = { start: startCommand };
+```
+
+### [no-known-value-widening] upstream: valid #15
+
+```
+type Command = () => void; const startCommand = () => {}; type Commands = { readonly start: Command }; const commands: Commands = { start: startCommand };
+```
+
+### [no-known-value-widening] upstream: valid #16
+
+```
+type Command = () => void; const startCommand = () => {}; type PermissionLevels = { readonly [Level in Permission]: number }; const levels: PermissionLevels = { admin: 1 };
+```
+
+### [no-known-value-widening] upstream: valid #17
+
+```
+type Command = () => void; const startCommand = () => {}; function create() { return { start: startCommand }; }
+```
+
+### [no-known-value-widening] upstream: valid #18
+
+```
+type Command = () => void; const startCommand = () => {}; interface Commands { readonly start: Command } function create(): Commands { return { start: startCommand }; }
+```
+
+### [no-known-value-widening] upstream: valid #19
+
+```
+type Command = () => void; const startCommand = () => {}; declare function make(): Record<string, Command>; const commands: Record<string, Command> = make();
+```
+
+### [no-known-value-widening] upstream: valid #20
+
+```
+type Command = () => void; const startCommand = () => {}; import { Commands } from './types'; const commands: Commands = { start: startCommand };
+```
+
+### [no-known-value-widening] upstream: valid #21
+
+```
+type Command = () => void; const startCommand = () => {}; type Diet = 'vegan' | 'omnivore'; const labels: Record<Diet, string> = { vegan: 'V', omnivore: 'O' };
+```
+
+### [no-known-value-widening] upstream: valid #22
+
+```
+type Command = () => void; const startCommand = () => {}; type Diet = 'vegan' | 'omnivore'; type Labels = Record<Diet, string>; const labels: Labels = { vegan: 'V', omnivore: 'O' };
+```
+
+### [no-known-value-widening] upstream: valid #23
+
+```
+type Command = () => void; const startCommand = () => {}; type Diet = 'vegan' | 'omnivore'; const labels: Readonly<Record<Diet, string>> = { vegan: 'V', omnivore: 'O' };
+```
+
+### [no-known-value-widening] upstream: valid #24
+
+```
+type Command = () => void; const startCommand = () => {}; const labels: Record<'a' | 'b', number> = { a: 1, b: 2 };
+```
+
+### [no-known-value-widening] upstream: valid #25
+
+```
+type Command = () => void; const startCommand = () => {}; type Index<Key extends PropertyKey, Value> = Record<Key, Value>; const commands: Index<'start', Command> = { start: startCommand };
+```
+
+### [no-known-value-widening] upstream: valid #26
+
+```
+function isString(value: unknown): value is string { return true; } declare const input: unknown; isString(input);
+```
+
+### [no-known-value-widening] upstream: valid #27
+
+```
+function isString(value: string | unknown): value is string { return true; } declare const input: string | unknown; isString(input);
+```
+
+### [no-known-value-widening] upstream: valid #28
+
+```
+function isString(value: unknown): value is string { return true; } declare function readInput(): unknown; isString(readInput());
+```
+
+### [no-known-value-widening] extra: cyclic const chain terminates without a finding
+
+```
+const a = b; const b = a; const value: unknown = a;
+```
+
+### [no-known-value-widening] extra: reassigned const-like let is not stable evidence
+
+```
+let source = { a: 1 }; source = { a: 2 }; const value: unknown = source;
+```
+
+### [no-known-value-widening] extra: as const target is not a widening target
+
+```
+const value = { a: 1 } as const;
+```
+
+### [no-known-value-widening] extra: predicate parameter Array<unknown> is not an absorbing unknown
+
+```
+function isList(value: Array<unknown>): value is string[] { return true; } isList([1]);
+```
+
+### [no-known-value-widening] extra: predicate parameter with nested unknown member is not an absorbing unknown
+
+```
+function isBox(value: { readonly v: unknown }): value is { readonly v: string } { return true; } isBox({ v: 'known' });
+```
+
 ### [no-object-parameters] alias declaration alone
 
 ```
@@ -1281,6 +1479,357 @@ const value = <const>(input as User);
 
 **Expected findings:**
 - [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+
+### [no-known-value-widening] upstream: invalid #1
+
+```
+const value: unknown = {};
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #2
+
+```
+const value: object = {};
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit object type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #3
+
+```
+let value: unknown; value = {};
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #4
+
+```
+function create(): unknown { return {}; }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #5
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: Record<string, Command> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #6
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: { [key: string]: Command } = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #7
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: { [K in string]: Command } = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #8
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: { start: Command } = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit anonymous object type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #9
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = { start: startCommand } as Record<string, Command>;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #10
+
+```
+type Command = () => void; const startCommand = () => {}; const commands = ({ start: startCommand } as Record<string, Command>) as object;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #11
+
+```
+type Command = () => void; const startCommand = () => {}; class Registry { commands: Record<string, Command> = { start: startCommand }; }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on property `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #12
+
+```
+type Command = () => void; const startCommand = () => {}; let commands: Record<string, Command>; commands = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #13
+
+```
+type Command = () => void; const startCommand = () => {}; function create(): Record<string, Command> { return { start: startCommand }; }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #14
+
+```
+type Command = () => void; const startCommand = () => {}; function create(): { start: Command } { return { start: startCommand }; }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit anonymous object type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #15
+
+```
+type Command = () => void; const startCommand = () => {}; const source = { start: startCommand }; const commands: Record<string, Command> = source;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #16
+
+```
+type Command = () => void; const startCommand = () => {}; type Open = Record<string, Command>; const source = { start: startCommand }; const commands: Open = source;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #17
+
+```
+type Command = () => void; const startCommand = () => {}; type Open = { [key: string]: Command }; const source = { start: startCommand }; const commands: Open = source;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #18
+
+```
+type Command = () => void; const startCommand = () => {}; type Open = { [key in string]: Command }; const source = { start: startCommand }; const commands: Open = source;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #19
+
+```
+type Command = () => void; const startCommand = () => {}; type Open = Readonly<Record<string, Command>>; const source = { start: startCommand }; const commands: Open = source;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #20
+
+```
+type Command = () => void; const startCommand = () => {}; function outer() { type Open = Record<string, Command>; const commands: Open = { start: startCommand }; }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #21
+
+```
+type Command = () => void; const startCommand = () => {}; type Index<T> = Record<string, T>; const commands: Index<Command> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #22
+
+```
+type Command = () => void; const startCommand = () => {}; type Identity<T> = T; const commands: Identity<Record<string, Command>> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #23
+
+```
+type Command = () => void; const startCommand = () => {}; type Index<T> = Record<string, T>; type CommandsByName = Index<Command>; const commands: CommandsByName = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #24
+
+```
+type Command = () => void; const startCommand = () => {}; type Index<T = Command> = Record<string, T>; const commands: Index = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #25
+
+```
+type Command = () => void; const startCommand = () => {}; type Key = string; const commands: Record<Key, Command> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #26
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: Record<PropertyKey, Command> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #27
+
+```
+type Command = () => void; const startCommand = () => {}; const commands: Record<string | 'start', Command> = { start: startCommand };
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #28
+
+```
+const value: unknown = 1;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #29
+
+```
+const value: object = [];
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit object type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #30
+
+```
+function isString(value: unknown): value is string { return true; } isString('known');
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #31
+
+```
+function isString(value: unknown): value is string { return true; } const known = 'known'; isString(known);
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #32
+
+```
+function isString(value: string | unknown): value is string { return true; } isString('known');
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #33
+
+```
+function isString(value: unknown): value is string { return true; } function check(known: string): boolean { return isString(known); }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #34
+
+```
+const isString = (value: unknown): value is string => true; const known: string = getValue(); isString(known);
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] upstream: invalid #35
+
+```
+type User = { readonly id: string }; function isUser(value: unknown): value is User { return true; } function parse(): User { return { id: 'known' }; } const user = parse(); isUser(user);
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isUser` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] extra: method return value names the method
+
+```
+class A { make(): unknown { return 1; } }
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on return value of `make` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] extra: expression-bodied arrow names its binding
+
+```
+const make = (): object => [];
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit object type on return value of `make` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] extra: angle-bracket assertion reports
+
+```
+const value = <unknown>1;
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+### [no-known-value-widening] extra: declare function predicate with call evidence
+
+```
+declare function isString(value: unknown): value is string; isString(1);
+```
+
+**Expected findings:**
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
 
 ### [no-object-parameters] bare object parameter
 

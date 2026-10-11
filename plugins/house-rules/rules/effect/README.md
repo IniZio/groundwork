@@ -31,6 +31,34 @@ Effect.catchTag("Wrapper", (error) => error.reason._tag === "Timeout" ? retry : 
 
 ```
 
+### [no-manual-tag-comparison] Predicate.isTagged call
+
+```
+Predicate.isTagged("Ready")(value);
+
+```
+
+### [no-manual-tag-comparison] Match.tag pipeline
+
+```
+Match.value(value).pipe(Match.tag("Ready", handleReady));
+
+```
+
+### [no-manual-tag-comparison] non-tag property comparison
+
+```
+if (value.status === "Ready") handleReady(value);
+
+```
+
+### [no-manual-tag-comparison] tag comparison inside Effect.catch handler
+
+```
+Effect.catch((error) => error._tag === "NotFound" ? recover : fail);
+
+```
+
 ### [no-service-constructor-imports] test file may import constructor
 
 ```ts
@@ -140,6 +168,36 @@ Effect.catchIf(predicate, (error) => { switch (error._tag) { case "NotFound": re
 
 **Expected findings:**
 - [no-manual-effect-error-tag] Use Effect.catchTag or Effect.catchTags instead of manually discriminating a tagged error in a broad Effect catch handler.
+
+### [no-manual-tag-comparison] dot tag compared to literal
+
+```
+value._tag === "Ready";
+
+```
+
+**Expected findings:**
+- [no-manual-tag-comparison] Use Match.tag/Match.tags for tagged-value branching, or Predicate.isTagged for a simple reusable predicate.
+
+### [no-manual-tag-comparison] literal !== bracket tag
+
+```
+"Ready" !== value["_tag"];
+
+```
+
+**Expected findings:**
+- [no-manual-tag-comparison] Use Match.tag/Match.tags for tagged-value branching, or Predicate.isTagged for a simple reusable predicate.
+
+### [no-manual-tag-comparison] switch on tag
+
+```
+switch (value._tag) { case "Ready": handleReady(value); }
+
+```
+
+**Expected findings:**
+- [no-manual-tag-comparison] Use Match.value(value).pipe(Match.tag/Match.tags/Match.tagsExhaustive) or the tagged enum `$match` helper instead of switching on `_tag`.
 
 ### [no-service-constructor-imports] local constructor import
 

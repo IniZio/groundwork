@@ -1,10 +1,7 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
+import { checkRules, isPrBodyPath, type Finding } from "./human-doc-rules.js";
 
-export interface Finding {
-  quote: string;
-  reason: string;
-}
+export type { Finding };
 
 const AGENT_HEADINGS = ["Acceptance criteria", "Files", "Commands", "Ledger", "Requirements", "Execution notes"];
 const HEADING_RE = new RegExp(`^#{2,}\\s+(${AGENT_HEADINGS.join("|")})\\s*$`, "i");
@@ -30,13 +27,14 @@ const PR_BODY_MAX_PROSE = 12;
 export function checkHumanDoc(text: string, fileName?: string): Finding[] {
   const out: Finding[] = [];
   let fence: string | null = null;
-  const isPrBody = fileName !== undefined && path.basename(fileName) === "pr-body.md";
+  const isPrBody = fileName !== undefined && isPrBodyPath(fileName);
   let prose = 0;
   let overflowQuote = "";
   let section = "";
   let afterHeading = false;
   const visual = (q: string) => out.push({ quote: q, reason: "pr-body: add a lead sentence before this visual" });
-  for (const line of stripFrontmatter(text.split(/\r?\n/))) {
+  const lines = stripFrontmatter(text.split(/\r?\n/));
+  for (const line of lines) {
     const open = line.match(/^\s*(```|~~~)\s*(\S*)/);
     if (open) {
       if (isPrBody && fence === null && afterHeading) visual(line.trim());
@@ -79,6 +77,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
       if (BASELINE_RE.test(sentence)) out.push({ quote: sentence.trim(), reason: "states the CI baseline" });
     }
   }
+  out.push(...checkRules(lines, isPrBody));
   if (prose > PR_BODY_MAX_PROSE) {
     out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (Why, Changes, Impact; headings, fenced blocks and tables excluded)` });
   }

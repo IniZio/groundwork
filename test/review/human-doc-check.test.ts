@@ -17,6 +17,7 @@ function run(file: string) {
   return spawnSync("bun", [SCRIPT, file], { encoding: "utf8", env });
 }
 const tpl = (name: string) => readFileSync(path.join(TPL, name), "utf8");
+const SUM = "## Summary\n\nOne sentence.\n\n";
 let seq = 0;
 function write(name: string, content: string) {
   const dir = path.join(tmp, String(seq++));
@@ -55,7 +56,7 @@ describe("human-doc-check", () => {
 
   for (const name of ["pr-body.md"]) {
     test(`clean template ${name} passes`, () => {
-      const r = run(path.join(TPL, name));
+      const r = run(write("pr-body.md", SUM + tpl(name)));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
@@ -68,13 +69,13 @@ describe("human-doc-check", () => {
     const fenced = "```ts\n" + Array.from({ length: 30 }, (_, i) => `const a${i} = ${i};`).join("\n") + "\n```";
 
     test("12 prose lines plus a 30-line fenced block passes", () => {
-      const r = run(write("pr-body.md", `${prose(12)}\n\n${fenced}\n`));
+      const r = run(write("pr-body.md", SUM + `${prose(12)}\n\n${fenced}\n`));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
 
     test("13 prose lines is flagged", () => {
-      const r = run(write("pr-body.md", `${prose(13)}\n`));
+      const r = run(write("pr-body.md", SUM + `${prose(13)}\n`));
       expect(r.status).toBe(1);
       expect(r.stdout).toContain(OVER13);
     });
@@ -85,23 +86,23 @@ describe("human-doc-check", () => {
     const pipeFence = "```\n| a | b |\n| c | d |\n| e | f |\n```";
 
     test("12 prose lines plus a 10-row table passes", () => {
-      const r = run(write("pr-body.md", `${prose(12)}\n\n${table}\n`));
+      const r = run(write("pr-body.md", SUM + `${prose(12)}\n\n${table}\n`));
       expect(r.stdout).not.toContain("pr-body prose");
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
 
     test("13 prose lines plus a table is flagged at 13", () => {
-      const r = run(write("pr-body.md", `${prose(13)}\n\n${table}\n`));
+      const r = run(write("pr-body.md", SUM + `${prose(13)}\n\n${table}\n`));
       expect(r.status).toBe(1);
       expect(r.stdout).toContain(OVER13);
     });
 
     test("pipe lines inside a fence are not counted", () => {
-      const ok = run(write("pr-body.md", `${prose(12)}\n\n${pipeFence}\n`));
+      const ok = run(write("pr-body.md", SUM + `${prose(12)}\n\n${pipeFence}\n`));
       expect(ok.stdout.trim()).toBe("PASS");
       expect(ok.status).toBe(0);
-      const over = run(write("pr-body.md", `${prose(13)}\n\n${pipeFence}\n`));
+      const over = run(write("pr-body.md", SUM + `${prose(13)}\n\n${pipeFence}\n`));
       expect(over.status).toBe(1);
       expect(over.stdout).toContain(OVER13);
     });
@@ -116,19 +117,19 @@ describe("human-doc-check", () => {
 
     test("12 argument lines plus Review focus and Proof lines pass", () => {
       const proof = "- Proof one.\n- Proof two.\n- Proof three.";
-      const r = run(write("pr-body.md", `${argument(12)}\n## Review focus\n\n${focus(5)}\n\n## Proof\n\n${proof}\n`));
+      const r = run(write("pr-body.md", SUM + `${argument(12)}\n## Review focus\n\n${focus(5)}\n\n## Proof\n\n${proof}\n`));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
 
     test("13 argument lines are flagged, quoting the 13th argument line", () => {
-      const r = run(write("pr-body.md", `${argument(13)}\n## Review focus\n\n${focus(5)}\n`));
+      const r = run(write("pr-body.md", SUM + `${argument(13)}\n## Review focus\n\n${focus(5)}\n`));
       expect(r.status).toBe(1);
       expect(r.stdout).toContain('- "- Impact claim 4." — pr-body prose 13 lines > 12 (Why, Changes, Impact; headings, fenced blocks and tables excluded)');
     });
 
     test("30 lines only in Review focus pass", () => {
-      const r = run(write("pr-body.md", `## Why\n\n- A claim.\n\n## Changes\n\nOne line.\n\n## Impact\n\n- Another claim.\n\n## Review focus\n\n${focus(30)}\n`));
+      const r = run(write("pr-body.md", SUM + `## Why\n\n- A claim.\n\n## Changes\n\nOne line.\n\n## Impact\n\n- Another claim.\n\n## Review focus\n\n${focus(30)}\n`));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
@@ -140,16 +141,16 @@ describe("human-doc-check", () => {
     });
 
     test("real template copied to pr-body.md passes", () => {
-      const r = run(write("pr-body.md", tpl("pr-body.md")));
+      const r = run(write("pr-body.md", SUM + tpl("pr-body.md")));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     });
   });
 
   describe("pr-body v3 rules", () => {
-    const out = (doc: string) => run(write("pr-body.md", doc)).stdout.split("\n");
+    const out = (doc: string) => run(write("pr-body.md", SUM + doc)).stdout.split("\n");
     const pass = (doc: string) => {
-      const r = run(write("pr-body.md", doc));
+      const r = run(write("pr-body.md", SUM + doc));
       expect(r.stdout.trim()).toBe("PASS");
       expect(r.status).toBe(0);
     };
@@ -157,7 +158,7 @@ describe("human-doc-check", () => {
     test("headings are excluded from the prose count", () => {
       const prose = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of prose.`).join("\n");
       pass(`## Changes\n\n### B\n\n#### C\n\n${prose}\n\n## D\n`);
-      const r = run(write("pr-body.md", `## Changes\n\n${prose}\nLine 13 of prose.\n`));
+      const r = run(write("pr-body.md", SUM + `## Changes\n\n${prose}\nLine 13 of prose.\n`));
       expect(r.stdout).toContain('- "Line 13 of prose." — pr-body prose 13 lines > 12 (Why, Changes, Impact; headings, fenced blocks and tables excluded)');
     });
 
@@ -183,6 +184,122 @@ describe("human-doc-check", () => {
       pass("### Area\n\nLead sentence.\n\n```diff\n- a\n+ b\n```\n\n### Rows\n\nLead.\n\n| a | b |\n| - | - |\n");
       expect(out("### Area\n\n```diff\n- a\n+ b\n```\n")).toContain('- "```diff" — pr-body: add a lead sentence before this visual');
       expect(out("### Rows\n\n| a | b |\n| - | - |\n| c | d |\n")).toContain('- "| a | b |" — pr-body: add a lead sentence before this visual');
+    });
+  });
+
+  describe("PH-6b rules", () => {
+    const lines = (r: { stdout: string }) => r.stdout.split("\n");
+    const passes = (file: string) => {
+      const r = run(file);
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
+    };
+    const flags = (file: string, finding: string) => {
+      const r = run(file);
+      expect(r.status).toBe(1);
+      expect(lines(r)).toContain(finding);
+      return r;
+    };
+    const MISSING = (q: string) => `- "${q}" — pr-body: start with ## Summary`;
+    const REFLINK = (q: string) => `- "${q}" — pr-body: file reference must be a rendered link`;
+    const VOCAB = (m: string) =>
+      `- "${m}" — groundwork vocabulary "${m}": write from the reviewer's view of the repo`;
+
+    test("Summary missing: first heading is quoted", () => {
+      const r = flags(write("pr-body.md", "## Why\n\n- A claim.\n"), MISSING("## Why"));
+      expect(lines(r).filter((l) => l.startsWith("- "))).toEqual([MISSING("## Why")]);
+    });
+    test("Summary missing with no heading quotes empty", () => {
+      flags(write("pr-body.md", "Just prose.\n"), MISSING(""));
+    });
+    test("Summary first passes", () => {
+      passes(write("pr-body.md", "## Summary\n\nOne sentence.\n\n## Why\n\n- A claim.\n"));
+    });
+    test("pr/ directory segment marks a pr body", () => {
+      const dir = path.join(tmp, String(seq++), "pr");
+      mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, "01-x.md");
+      writeFileSync(p, "## Why\n\n- A claim.\n");
+      flags(p, MISSING("## Why"));
+    });
+    test("non-pr-body md without Summary is not flagged", () => {
+      passes(write("notes.md", "## Why\n\n- A claim.\n"));
+    });
+
+    test("Summary with 4 sentences is flagged with joined prose", () => {
+      const prose = "One. Two. Three. Four.";
+      flags(
+        write("pr-body.md", `## Summary\n\nOne. Two.\nThree. Four.\n`),
+        `- "${prose}" — pr-body Summary: 1-3 sentences`,
+      );
+    });
+    test("Summary with 3 sentences passes", () => {
+      passes(write("pr-body.md", "## Summary\n\nOne. Two! Three?\n"));
+    });
+    test("Summary with no prose is flagged", () => {
+      const r = run(write("pr-body.md", "## Summary\n\n## Why\n\n- A claim.\n"));
+      expect(r.status).toBe(1);
+      expect(lines(r)).toContain('- "" — pr-body Summary: 1-3 sentences');
+    });
+
+    test("bare path:line is flagged", () => {
+      flags(write("pr-body.md", SUM + "## Changes\n\nSee src/a.ts:12 for it.\n"), REFLINK("src/a.ts:12"));
+    });
+    test("path@sha:line is flagged", () => {
+      flags(write("pr-body.md", SUM + "## Changes\n\nSee src/a.ts@abc1234:12 for it.\n"), REFLINK("src/a.ts@abc1234:12"));
+    });
+    test("backticked path is flagged as a reference", () => {
+      const r = flags(write("pr-body.md", SUM + "## Changes\n\nThe parser lives in `src/foo.ts` now.\n"), REFLINK("src/foo.ts"));
+      expect(lines(r)).toContain('- "src/foo.ts" — code-blocked path; use a commit-pinned GitHub permalink');
+    });
+    test("rendered link file reference passes", () => {
+      passes(
+        write(
+          "pr-body.md",
+          SUM + "## Changes\n\nSee [src/a.ts:12](https://github.com/o/r/blob/abc1234/src/a.ts#L12) for it.\n",
+        ),
+      );
+    });
+
+    test("vocabulary in a pr body is flagged", () => {
+      flags(write("pr-body.md", SUM + "## Changes\n\nWrites a ledger entry.\n"), VOCAB("ledger"));
+    });
+    test("vocabulary in a non-pr file is flagged", () => {
+      flags(write("README.md", "# Readme\n\nSee the DECISION event for details.\n"), VOCAB("DECISION event"));
+      flags(write("README.md", "# Readme\n\nPlans live in slice PH-6 now.\n"), VOCAB("PH-6"));
+      flags(write("README.md", "# Readme\n\nRuns the stop-gate hook.\n"), VOCAB("stop-gate"));
+    });
+    test("plain prose passes vocabulary check", () => {
+      passes(write("README.md", "# Readme\n\nPlain description of the parser.\n"));
+    });
+    test("SHA-256, UTF-8, ISO-8601 and bare gate do not flag", () => {
+      passes(write("README.md", "# Readme\n\nUses SHA-256, UTF-8 and ISO-8601. The gate opens.\n"));
+    });
+    test("vocabulary inside a fenced block does not flag", () => {
+      passes(write("README.md", "# Readme\n\n```\nledger motive DECISION event\n```\n"));
+    });
+
+    test("link into .groundwork/ is flagged", () => {
+      flags(
+        write("README.md", "# Readme\n\nSee [notes](.groundwork/work/x.md) here.\n"),
+        '- ".groundwork/work/x.md" — link into .groundwork/: state the constraint in one line instead',
+      );
+      flags(
+        write("README.md", "# Readme\n\nSee [notes](../../.groundwork/work/x.md) here.\n"),
+        '- "../../.groundwork/work/x.md" — link into .groundwork/: state the constraint in one line instead',
+      );
+    });
+    test("link to a normal target passes", () => {
+      passes(write("README.md", "# Readme\n\nSee [notes](docs/x.md) here.\n"));
+    });
+
+    test("real pr-body template checked by path: only the Summary finding", () => {
+      // TODO(PH-11): template gains ## Summary; flip this to PASS.
+      const r = run(path.join(TPL, "pr-body.md"));
+      expect(r.status).toBe(1);
+      const found = lines(r).filter((l) => l.startsWith("- "));
+      expect(found).toContain(MISSING("## Why"));
+      expect(found).toEqual([MISSING("## Why")]);
     });
   });
 

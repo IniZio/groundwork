@@ -14,6 +14,8 @@ import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
 import { policyForRoot, DEFAULT_IGNORE } from "../engine/policy.js";
 import { createSourceFiles, getDefaultParserFactory } from "../engine/source-file.js";
+import { isGeneratedText, generatedPaths } from "../engine/generated.js";
+import { dropOverlappingSafetyFindings } from "../engine/assertion-overlap.js";
 import { grammarFailureWarning } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
 import { parserForPath, type ParserFactory } from "./languages/parse.js";
@@ -382,9 +384,13 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       return true;
     }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
+    const isGenerated = isGeneratedText(originalPost) ||
+      (repoRoot !== null && generatedPaths(repoRoot, [path.relative(repoRoot, filePath)]).size > 0);
+    if (isGenerated) activeRules = activeRules.filter(r => r.id === "artifact-structure");
+
     let text = originalPost;
     // Each item tracks normal context text and advisory text (for mapping-failure advisory).
-    const contextItems: Array<{ normal: string; advisory: string }> = [];
+    const contextItems: Array<{ normal: string; advisory: string; finding?: Finding }> = [];
     const stderrLines: string[] = [];
     let blockingFinding: Finding | null = null;
 
@@ -526,11 +532,17 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       if (!isErrorSeverity) {
         for (const f of findings) {
           const line = `house-rules ${f.ruleId}: ${f.message}`;
-          contextItems.push({ normal: line, advisory: line });
+          contextItems.push({ normal: line, advisory: line, finding: f });
         }
       }
 
       if (result.stderr !== undefined) stderrLines.push(result.stderr);
+    }
+
+    const kept = new Set<Finding>(dropOverlappingSafetyFindings(contextItems.flatMap(c => c.finding ? [c.finding] : [])));
+    for (let i = contextItems.length - 1; i >= 0; i--) {
+      const f = contextItems[i].finding;
+      if (f && !kept.has(f)) contextItems.splice(i, 1);
     }
 
     if (blockingFinding !== null) {

@@ -178,6 +178,55 @@ function parse(value) {}
 
 ```
 
+### [no-runtime-typeof] existence probe of document
+
+```
+const isServer = typeof document === "undefined";
+
+```
+
+### [no-runtime-typeof] existence probe of localStorage
+
+```
+const hasStorage = typeof localStorage !== "undefined";
+
+```
+
+### [no-runtime-typeof] existence probe of member
+
+```
+if (typeof globalThis.crypto === "undefined") throw new Error("no crypto");
+
+```
+
+### [no-runtime-typeof] existence probe with reversed operands
+
+```
+const missing = "undefined" === typeof process;
+
+```
+
+### [no-runtime-typeof] single-quoted existence probe
+
+```
+const missing = typeof process == 'undefined';
+
+```
+
+### [no-runtime-typeof] no typeof
+
+```
+const value = input;
+
+```
+
+### [no-runtime-typeof] existence probe in a javascript file
+
+```js
+const isServer = typeof document === "undefined";
+
+```
+
 ### [no-unknown-parameters] cause parameter is exempt
 
 ```
@@ -907,6 +956,86 @@ function f(value: string | object) {}
 
 **Expected findings:**
 - [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+
+### [no-runtime-typeof] typeof string comparison
+
+```
+if (typeof input === "string") use(input);
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof compared with undefined identifier
+
+```
+if (typeof input === undefined) use(input);
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in a javascript file
+
+```js
+if (typeof input === "string") use(input);
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in a type guard is still flagged
+
+```
+function isString(value: unknown): value is string { return typeof value === "string"; }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in a non-guard function
+
+```
+function parse(value: unknown): string { if (typeof value !== "string") throw new Error(); return value; }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in a nested closure of a type guard
+
+```
+function isString(value: unknown): value is string { const check = () => typeof value === "string"; return check(); }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in an arrow type guard
+
+```
+const isString = (value: unknown): value is string => typeof value === "string";
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+
+### [no-runtime-typeof] typeof in an assertion function
+
+```
+function assertString(value: unknown): asserts value is string { if (typeof value !== "string") throw new Error(); }
+
+```
+
+**Expected findings:**
+- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
 
 ### [no-unknown-parameters] bare unknown parameter
 

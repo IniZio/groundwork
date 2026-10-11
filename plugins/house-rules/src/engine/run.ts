@@ -3,6 +3,10 @@ import type { Rule, Finding, RuleContext, Severity, ScopedFile } from './types.j
 import type { Language } from '../hooks/languages/registry.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import { BUILTIN_POLICY, DEFAULT_IGNORE, type PolicyEntry } from './policy.js';
+import { isGeneratedText, generatedPaths } from './generated.js';
+import { dropOverlappingSafetyFindings } from './assertion-overlap.js';
+
+const SEES_GENERATED = new Set(['artifact-structure']);
 
 const SOURCE_CODE_EXTENSIONS = new Set([
   ".kt", ".kts", ".java", ".scala", ".groovy",
@@ -47,6 +51,17 @@ export async function runRules(
   ignore: string[] = DEFAULT_IGNORE,
 ): Promise<FindingWithSeverity[]> {
   const results: FindingWithSeverity[] = [];
+  const files = ctx.files;
+  let handwritten: ScopedFile[] | undefined;
+  const handwrittenFiles = (): ScopedFile[] => {
+    if (handwritten === undefined) {
+      const attr = generatedPaths(ctx.repoRoot, (files ?? []).map((f) => f.path));
+      handwritten = (files ?? []).filter(
+        (f) => !attr.has(f.path) && !(f.text !== undefined && isGeneratedText(f.text)),
+      );
+    }
+    return handwritten;
+  };
 
   for (const rule of rules) {
     const severity: Severity = policy[rule.id]?.severity ?? 'warn';
@@ -55,7 +70,9 @@ export async function runRules(
     }
 
     const hasLanguages = rule.languages && rule.languages.length > 0;
-    const ruleCtx: RuleContext = hasLanguages ? ctx : { ...ctx, sourceFile: undefined };
+    const base: RuleContext = hasLanguages ? ctx : { ...ctx, sourceFile: undefined };
+    const ruleCtx: RuleContext =
+      files === undefined || SEES_GENERATED.has(rule.id) ? base : { ...base, files: handwrittenFiles() };
     const findings: Finding[] = await rule.check(ruleCtx);
 
     for (const finding of findings) {
@@ -66,7 +83,7 @@ export async function runRules(
     }
   }
 
-  return results;
+  return dropOverlappingSafetyFindings(results) as FindingWithSeverity[];
 }
 
 /**

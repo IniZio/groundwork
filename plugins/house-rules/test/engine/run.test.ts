@@ -222,3 +222,50 @@ describe("loadRules — directory loading", () => {
     await expect(loadRules(tmpDir)).rejects.toThrow("wrong-id");
   });
 });
+
+describe("runRules generated-file filtering and assertion overlap", () => {
+  const seen: Record<string, string[]> = {};
+  function spyRule(id: string, findings: Finding[] = []): Rule {
+    return {
+      id,
+      meta: { description: id },
+      check: (c) => {
+        seen[id] = (c.files ?? []).map((f) => f.path);
+        return findings;
+      },
+    };
+  }
+  const files = [
+    { path: "gen.ts", text: "// @generated\nexport const a = 1;\n" },
+    { path: "hand.ts", text: "export const a = 1;\n" },
+  ];
+  const policy: Record<string, PolicyEntry> = {
+    content: { severity: "warn", autofix: false },
+    "artifact-structure": { severity: "warn", autofix: false },
+  };
+
+  it("hides generated files from content rules but not artifact-structure", async () => {
+    await runRules([spyRule("content"), spyRule("artifact-structure")], { ...CTX, files }, policy);
+    expect(seen["content"]).toEqual(["hand.ts"]);
+    expect(seen["artifact-structure"]).toEqual(["gen.ts", "hand.ts"]);
+  });
+
+  it("drops a safety finding on a line type-escape-hatches reported, across rules", async () => {
+    const at = (ruleId: string, line: number) => makeFinding("hand.ts", { ruleId, line });
+    const out = await runRules(
+      [
+        makeRule("require-safety-comment-for-type-assertion", [at("require-safety-comment-for-type-assertion", 1), at("require-safety-comment-for-type-assertion", 2)]),
+        makeRule("type-escape-hatches", [at("type-escape-hatches", 1)]),
+      ],
+      CTX,
+      {
+        "require-safety-comment-for-type-assertion": { severity: "warn", autofix: false },
+        "type-escape-hatches": { severity: "warn", autofix: false },
+      },
+    );
+    expect(out.map((f) => `${f.ruleId}:${f.line}`).sort()).toEqual([
+      "require-safety-comment-for-type-assertion:2",
+      "type-escape-hatches:1",
+    ]);
+  });
+});

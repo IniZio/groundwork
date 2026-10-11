@@ -63,7 +63,8 @@ if (fs.existsSync(PROBES_DIR)) {
       const dir = p.src === 'readme' ? 'readme' : 'probes';
       const meta = { src: p.src === 'readme' ? 'readme' : 'probe', id: p.id, check: p.check, upstreamExpect: p.upstreamExpect };
       if (p.unverified !== undefined) meta.unverified = p.unverified;
-      put(`${dir}/${p.id}${ext(p.filename)}`, p.code, meta);
+      const rel = typeof p.filename === 'string' && p.filename.includes('/') ? `${dir}/${p.id}/${declared(p.filename)}` : `${dir}/${p.id}${ext(p.filename)}`;
+      put(rel, p.code, meta);
     }
   }
 }

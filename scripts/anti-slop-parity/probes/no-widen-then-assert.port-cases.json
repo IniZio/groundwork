@@ -1,0 +1,870 @@
+[
+  {
+    "id": "pc-no-widen-then-assert-v000",
+    "check": "no-widen-then-assert",
+    "code": "const source = { id: 'first' }; const widened: unknown = source;\n",
+    "upstreamExpect": "0 per port case: upstream: widenedBinding: widening alone, no assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v001",
+    "check": "no-widen-then-assert",
+    "code": "declare const input: unknown; const parsed = input as { readonly id: string };\n",
+    "upstreamExpect": "0 per port case: upstream: widenedBinding: init === null / declare const is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v002",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as unknown;\n",
+    "upstreamExpect": "0 per port case: assertionIsNarrower: asserted type unknown is broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v003",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as any;\n",
+    "upstreamExpect": "0 per port case: assertionIsNarrower: asserted type any is broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v004",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as object;\n",
+    "upstreamExpect": "0 per port case: assertionIsNarrower: asserted type object is broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v005",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as (unknown);\n",
+    "upstreamExpect": "0 per port case: assertionIsNarrower: asserted type parenthesized unknown is broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v006",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as Foo;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted type reference",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v007",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as {};\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted empty type literal",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v008",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } & Foo;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted intersection with non-object member",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v009",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } | null;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted union",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v010",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted string",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v011",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as readonly Foo;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyObjectType: object kind with non-object asserted readonly of non-object",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v012",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as object;\n",
+    "upstreamExpect": "0 per port case: assertionIsNarrower: object kind asserted object is broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v013",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<string, unknown>;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted Record<string, unknown> (broad) is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v014",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { [key: string]: unknown };\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted index-only literal (broad) is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v015",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { [key: string]: string };\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted index-only literal with narrow value is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v016",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<'a', unknown>;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and unknown value is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v017",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Foo;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted Foo type reference is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v018",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Foo>;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted Readonly of Foo is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v019",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Record<string, unknown>>;\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, unknown>> (broad) is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v020",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as string[];\n",
+    "upstreamExpect": "0 per port case: isDefinitelyNarrowerRecordType: record kind asserted array type is not narrower",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v021",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, number> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Record<string, number> annotation is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v022",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<'a', unknown> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Record<'a', unknown> narrow keys is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v023",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown, 1> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Record with three args is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v024",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Record with one arg is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v025",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: { id: number; [k: string]: unknown } = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: index-signature literal with property is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v026",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: { [k: string]: unknown; [n: number]: unknown } = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: two index signatures is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v027",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Readonly<Foo> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Readonly<Foo> is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v028",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Map<string, unknown> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "0 per port case: broadKind: Map reference is not a broad type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v029",
+    "check": "no-widen-then-assert",
+    "code": "const s = make() as Foo; const w: object = s; const p = w as Bar;\n",
+    "upstreamExpect": "0 per port case: typesHaveSameSyntax: differing evidence and asserted type, non-object",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v030",
+    "check": "no-widen-then-assert",
+    "code": "const w: object = 'a'; const p = w as Foo;\n",
+    "upstreamExpect": "0 per port case: typesHaveSameSyntax: evidence type null (literal init) never matches",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v031",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; let w: unknown = s; const p = w as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: let binding is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v032",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; var w: unknown = s; const p = w as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: var binding is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v033",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; w = 1; const p = w as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: reassigned binding is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v034",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const { a }: any = s; const p = a as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: object destructured id is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v035",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const [a]: any = s; const p = a as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: array destructured id is ignored",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v036",
+    "check": "no-widen-then-assert",
+    "code": "declare const w: unknown; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: widenedBinding: no initializer (declare)",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v037",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = s; const p = w as { id: number };\n",
+    "upstreamExpect": "0 per port case: widenedBinding: not broad (no annotation, no broad assertion)",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v038",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = s as Foo; const p = w as Bar;\n",
+    "upstreamExpect": "0 per port case: widenedBinding: initializer assertion to a narrow type is not broad",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v039",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = [w as string];\n",
+    "upstreamExpect": "0 per port case: checkAssertion: assertion inside own initializer precedes declaredAt",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v040",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w.id as string;\n",
+    "upstreamExpect": "0 per port case: checkAssertion: assertion on a non-identifier expression",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v041",
+    "check": "no-widen-then-assert",
+    "code": "const p = make() as string;\n",
+    "upstreamExpect": "0 per port case: checkAssertion: assertion on a call expression",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v042",
+    "check": "no-widen-then-assert",
+    "code": "const p = missing as string;\n",
+    "upstreamExpect": "0 per port case: checkAssertion: unresolved assertion subject",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v043",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const f = () => w as { id: number };\n",
+    "upstreamExpect": "0 per port case: checkAssertion: nested function vs outer declaration",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v044",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; function f() { return w as { id: number }; }\n",
+    "upstreamExpect": "0 per port case: checkAssertion: function declaration boundary vs outer declaration",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v045",
+    "check": "no-widen-then-assert",
+    "code": "function f() { const s = { id: 1 }; const w: unknown = s; return () => w as { id: number }; }\n",
+    "upstreamExpect": "0 per port case: checkAssertion: declaration in function, assertion in nested arrow",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v046",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w satisfies { id: number };\n",
+    "upstreamExpect": "0 per port case: checkAssertion: satisfies is not an assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v047",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = 1; const p = 1 as const;\n",
+    "upstreamExpect": "0 per port case: checkAssertion: const assertion is not a variable-based assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v048",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: unknown; const w: unknown = s; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence from unknown-annotated variable",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v049",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: any; const w: unknown = s; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence from any-annotated variable",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v050",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: Record<string, unknown>; const w: unknown = s; const p = w as Foo;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence from Record<string, unknown>-annotated variable",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v051",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: object; const w: unknown = s; const p = w as Foo;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence from object-annotated variable",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v052",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: Foo; function f() { const w: unknown = s; return w as Bar; }\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: annotated evidence from a different function boundary",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v053",
+    "check": "no-widen-then-assert",
+    "code": "const s = { a: 1 }; function f() { const w: unknown = s; return w as { a: number }; }\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: const evidence from a different function boundary",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v054",
+    "check": "no-widen-then-assert",
+    "code": "let s = { a: 1 }; const w: unknown = s; const p = w as { a: number };\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence variable is let",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v055",
+    "check": "no-widen-then-assert",
+    "code": "const s = { a: 1 }; s = {}; const w: unknown = s; const p = w as { a: number };\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence const was reassigned",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v056",
+    "check": "no-widen-then-assert",
+    "code": "declare const s; const w: unknown = s; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: evidence const has no initializer",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v057",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = w; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: self-referencing initializer is cyclic",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v058",
+    "check": "no-widen-then-assert",
+    "code": "const a = b; const b = a; const w: unknown = a; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: mutually cyclic const identifiers",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v059",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = missing; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: unresolved identifier",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v060",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = make(); const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: call expression is not known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v061",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = a.b; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: member expression is not known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v062",
+    "check": "no-widen-then-assert",
+    "code": "async function f() { const w: unknown = await g(); return w as string; }\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: await expression is not known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v063",
+    "check": "no-widen-then-assert",
+    "code": "const w = make() as unknown; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: initializer assertion to broad type over a call",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-v064",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: unknown; const w = s as unknown; const p = w as string;\n",
+    "upstreamExpect": "0 per port case: knownValueEvidence: initializer as unknown over inner as unknown has no evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i000",
+    "check": "no-widen-then-assert",
+    "code": "const source = { id: 'second' }; const widened: unknown = source; const parsed = widened as { readonly id: string };\n",
+    "upstreamExpect": "1 per port case: upstream: checkAssertion: unknown annotation then narrower assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i001",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: any = s; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: widenedBinding: broadKind top via any annotation",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i002",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = s as unknown; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: widenedBinding: broadKind top via initializer assertion `as unknown`",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i003",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = s as any; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: widenedBinding: broadKind top via initializer assertion `as any`",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i004",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: assertionIsNarrower: top kind accepts non-array non-object asserted type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i005",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with type literal",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i006",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as number[];\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with array",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i007",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as [number, string];\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with tuple",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i008",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as () => void;\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with function type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i009",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as new () => Foo;\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with constructor type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i010",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as { [K in 'a']: number };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with mapped type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i011",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } & { b: 2 };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with intersection of objects",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i012",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as readonly number[];\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with readonly array",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i013",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as object & { a: 1 };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with object keyword nested in intersection",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i014",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: object = s; const p = w as (number[]);\n",
+    "upstreamExpect": "1 per port case: isDefinitelyObjectType: object kind with parenthesized array",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i015",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via Record<string, unknown>: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i016",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Readonly<Record<string, unknown>> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via Readonly<Record<string, unknown>>: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i017",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: { [key: string]: unknown } = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via index-signature literal: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i018",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<PropertyKey, any> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via Record<PropertyKey, any>: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i019",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string | number, unknown> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via Record<string | number, unknown>: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i020",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<symbol, unknown> = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via Record<symbol, unknown>: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i021",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: (Record<string, unknown>) = s; const p = w as Record<string, string>;\n",
+    "upstreamExpect": "1 per port case: broadKind record via parenthesized Record: narrower Record<string, string>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i022",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyNarrowerRecordType: record kind asserted literal with properties",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i023",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<Record<string, string>>;\n",
+    "upstreamExpect": "1 per port case: isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, string>>",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i024",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record<'a', number>;\n",
+    "upstreamExpect": "1 per port case: isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and narrow value",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i025",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: number; [k: string]: unknown };\n",
+    "upstreamExpect": "1 per port case: isDefinitelyNarrowerRecordType: record kind asserted literal with property and index signature",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i026",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readonly<{ id: number }>;\n",
+    "upstreamExpect": "1 per port case: isDefinitelyNarrowerRecordType: record kind asserted Readonly of literal with properties",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i027",
+    "check": "no-widen-then-assert",
+    "code": "const s = make() as Foo; const w: object = s; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: typesHaveSameSyntax: object kind, evidence type equals asserted type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i028",
+    "check": "no-widen-then-assert",
+    "code": "const s = make() as Map<string, number>; const w: object = s; const p = w as Map<string,number>;\n",
+    "upstreamExpect": "1 per port case: typesHaveSameSyntax: whitespace-insensitive match",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i029",
+    "check": "no-widen-then-assert",
+    "code": "const s = make() as (Foo); const w: object = s; const p = w as ((Foo));\n",
+    "upstreamExpect": "1 per port case: typesHaveSameSyntax: parenthesized types unwrapped on both sides",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i030",
+    "check": "no-widen-then-assert",
+    "code": "const s = make() as Foo; const w: Record<string, unknown> = s; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: typesHaveSameSyntax: record kind with matching evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i031",
+    "check": "no-widen-then-assert",
+    "code": "function f() { const s = { id: 1 }; const w: unknown = s; return w as { id: number }; }\n",
+    "upstreamExpect": "1 per port case: checkAssertion: same nested function boundary on both sides",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i032",
+    "check": "no-widen-then-assert",
+    "code": "const a = { x: 1 }; const b = a; const w: unknown = b; const p = w as { x: number };\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: const chain recursion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i033",
+    "check": "no-widen-then-assert",
+    "code": "const a = { x: 1 }; const w: unknown = (a); const p = w as { x: number };\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: chain through parenthesized identifier",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i034",
+    "check": "no-widen-then-assert",
+    "code": "const a = make() as Foo; const b = a; const w: unknown = b; const p = w as Bar;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: chain through non-broad assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i035",
+    "check": "no-widen-then-assert",
+    "code": "declare const s: Foo; const w: unknown = s; const p = w as Bar;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: evidence from non-broad annotated variable",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i036",
+    "check": "no-widen-then-assert",
+    "code": "const s: Foo = make(); const w: unknown = s; const p = w as Bar;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: non-broad annotated const with unresolved init",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i037",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = 'a'; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: string literal initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i038",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = 1; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: number literal initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i039",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = `a${b}`; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: template literal initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i040",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = [1]; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: array expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i041",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = () => 1; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: arrow function initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i042",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = class {}; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: class expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i043",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = function () {}; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: function expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i044",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = new Foo(); const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: new expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i045",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = { a: 1 }; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: object expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i046",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = ({ a: 1 }); const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: parenthesized object expression initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i047",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = null; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: null literal initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i048",
+    "check": "no-widen-then-assert",
+    "code": "const w: unknown = make() as Foo; const p = w as Foo;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: non-broad type assertion initializer is known evidence",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i049",
+    "check": "no-widen-then-assert",
+    "code": "const w = 'a' as unknown; const p = w as string;\n",
+    "upstreamExpect": "1 per port case: knownValueEvidence: broad assertion unwrapped to literal original",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i050",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = (w) as { id: number };\n",
+    "upstreamExpect": "1 per port case: assertedExpression: parenthesized asserted identifier",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i051",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = (s as unknown); const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: assertionFromExpression: parenthesized initializer assertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i052",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: (unknown) = s; const p = w as { id: number };\n",
+    "upstreamExpect": "1 per port case: unwrapTypeParentheses: parenthesized annotation",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i053",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = w as (string);\n",
+    "upstreamExpect": "1 per port case: unwrapTypeParentheses: parenthesized asserted type",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i054",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = <{ id: number }>w;\n",
+    "upstreamExpect": "1 per port case: checkAssertion: angle-bracket TSTypeAssertion",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i055",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = <string>(w);\n",
+    "upstreamExpect": "1 per port case: checkAssertion: angle-bracket assertion on parenthesized identifier",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i056",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w = <unknown>s; const p = w as string;\n",
+    "upstreamExpect": "1 per port case: checkAssertion: initializer angle-bracket assertion to unknown",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i057",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; use(w as string);\n",
+    "upstreamExpect": "1 per port case: checkAssertion: assertion nested in a call argument",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-widen-then-assert-i058",
+    "check": "no-widen-then-assert",
+    "code": "const s = { id: 1 }; const w: unknown = s; const p = [w as string];\n",
+    "upstreamExpect": "1 per port case: checkAssertion: every assertion reported separately (first)",
+    "src": "probe"
+  }
+]

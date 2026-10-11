@@ -1,0 +1,58 @@
+[
+  {
+    "id": "pc-no-service-constructor-imports-v000",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeIssueService } from \"./issue-service.ts\";\n",
+    "upstreamExpect": "0 per port case: test file may import constructor",
+    "src": "probe",
+    "filename": "src/issue-service.test.ts"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-v001",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeIssueService } from \"../issue-service.ts\";\n",
+    "upstreamExpect": "0 per port case: spec tsx file may import constructor",
+    "src": "probe",
+    "filename": "src/issue-service.spec.tsx"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-v002",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeExecutionMemo } from \"alchemy/Runtime/ExecutionMemo\";\n",
+    "upstreamExpect": "0 per port case: package import is not project-local",
+    "src": "probe",
+    "filename": "src/runtime.ts"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-v003",
+    "check": "no-service-constructor-imports",
+    "code": "import { issueServiceLayer } from \"./issue-service.ts\";\nWorkspaceName.make(\"name\");\n",
+    "upstreamExpect": "0 per port case: layer import and unrelated make call",
+    "src": "probe",
+    "filename": "src/runtime.ts"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-v004",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeissueService } from \"./issue-service.ts\";\n",
+    "upstreamExpect": "0 per port case: lowercase after make is not a constructor name",
+    "src": "probe",
+    "filename": "src/runtime.ts"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-i000",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeIssueService } from \"./issue-service.ts\";\n",
+    "upstreamExpect": "1 per port case: local constructor import",
+    "src": "probe",
+    "filename": "src/runtime.ts"
+  },
+  {
+    "id": "pc-no-service-constructor-imports-i001",
+    "check": "no-service-constructor-imports",
+    "code": "import { makeIssueService as createIssueService } from \"../issue-service.ts\";\n",
+    "upstreamExpect": "1 per port case: aliased constructor import reports imported name",
+    "src": "probe",
+    "filename": "src/runtime.ts"
+  }
+]

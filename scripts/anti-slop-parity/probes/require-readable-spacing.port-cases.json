@@ -1,0 +1,163 @@
+[
+  {
+    "id": "pc-require-readable-spacing-v000",
+    "check": "require-readable-spacing",
+    "code": "import { a } from 'a';\nimport { b } from 'b';\n\nexport const c = a + b;",
+    "upstreamExpect": "0 per port case: imports then blank line before export",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v001",
+    "check": "require-readable-spacing",
+    "code": "function f() {\nconst a = 1;\nconst b = 2;\n\nreturn a + b;\n}",
+    "upstreamExpect": "0 per port case: const run then blank line before return",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v002",
+    "check": "require-readable-spacing",
+    "code": "function f() { return 1; }",
+    "upstreamExpect": "0 per port case: single-statement function body",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v003",
+    "check": "require-readable-spacing",
+    "code": "function f(a: string): string;\nfunction f(a: number): number;\nfunction f(a: string | number) { return a; }",
+    "upstreamExpect": "0 per port case: overload signatures adjacent",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v004",
+    "check": "require-readable-spacing",
+    "code": "export function f(a: string): string;\nexport function f(a: number): number;\nexport function f(a: string | number) { return a; }",
+    "upstreamExpect": "0 per port case: exported overload signatures adjacent",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v005",
+    "check": "require-readable-spacing",
+    "code": "const f = Effect.gen(function* () {\nconst a = yield* A;\nconst b = yield* B;\n\nreturn a + b;\n});",
+    "upstreamExpect": "0 per port case: Effect.gen const run then blank before return",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v006",
+    "check": "require-readable-spacing",
+    "code": "export type A = string;\n\n/** B documentation. */\nexport type B = number;",
+    "upstreamExpect": "0 per port case: doc comment after blank line",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v007",
+    "check": "require-readable-spacing",
+    "code": "function f() { if (ok) { go(); } else { stop(); } }",
+    "upstreamExpect": "0 per port case: single-line if/else block",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v008",
+    "check": "require-readable-spacing",
+    "code": "function f() {\n// return docs\nreturn 1;\n}",
+    "upstreamExpect": "0 per port case: leading comment only before sole return",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v009",
+    "check": "require-readable-spacing",
+    "code": "const a = 1;\n\n\nconst b = 2;",
+    "upstreamExpect": "0 per port case: multiple blank lines accepted",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-v010",
+    "check": "require-readable-spacing",
+    "code": "switch (x) { case 1: case 2: go(); break; default: stop(); }",
+    "upstreamExpect": "0 per port case: switch case fallthrough single line",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i000",
+    "check": "require-readable-spacing",
+    "code": "const a = 1;\nconst b = 2;",
+    "upstreamExpect": "1 per port case: adjacent consts",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i001",
+    "check": "require-readable-spacing",
+    "code": "export const a = 1;\n/** B docs. */\nexport type B = number;",
+    "upstreamExpect": "1 per port case: doc comment attached to next export without blank",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i002",
+    "check": "require-readable-spacing",
+    "code": "const a = 1; // trailing\n// leading\nconst b = 2;",
+    "upstreamExpect": "1 per port case: trailing comment then leading comment",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i003",
+    "check": "require-readable-spacing",
+    "code": "const a = 1; const b = 2;",
+    "upstreamExpect": "1 per port case: two statements on one line",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i004",
+    "check": "require-readable-spacing",
+    "code": "import { a } from 'a';\nconst b = a;",
+    "upstreamExpect": "1 per port case: import directly followed by const",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i005",
+    "check": "require-readable-spacing",
+    "code": "function f() {\nconst a = 1;\nreturn a;\n}",
+    "upstreamExpect": "1 per port case: const then return in function",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i006",
+    "check": "require-readable-spacing",
+    "code": "function f() {\nconst a = 1;\nif (a) go();\n}",
+    "upstreamExpect": "1 per port case: const then if without braces",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i007",
+    "check": "require-readable-spacing",
+    "code": "function f() {\nif (ok) { go(); }\nstop();\n}",
+    "upstreamExpect": "1 per port case: block statement then expression",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i008",
+    "check": "require-readable-spacing",
+    "code": "const f = Effect.gen(function* () {\nconst a = yield* A;\nconst b = yield* B;\nconst dispatch = Effect.fn('dispatch')(function* () {\nyield* a;\n});\nreturn dispatch;\n});",
+    "upstreamExpect": "2 per port case: Effect.gen with two violations",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i009",
+    "check": "require-readable-spacing",
+    "code": "export interface A {}\nexport class B {}",
+    "upstreamExpect": "1 per port case: interface then class",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i010",
+    "check": "require-readable-spacing",
+    "code": "const a = 1\n;[1].forEach(f)",
+    "upstreamExpect": "1 per port case: leading semicolon ASI statement",
+    "src": "probe"
+  },
+  {
+    "id": "pc-require-readable-spacing-i011",
+    "check": "require-readable-spacing",
+    "code": "function f() {\nfoo();\nwhile (ok) go();\n}",
+    "upstreamExpect": "1 per port case: expression then while",
+    "src": "probe"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "pc-no-manual-effect-error-tag-v000",
+    "check": "no-manual-effect-error-tag",
+    "code": "error._tag === \"NotFound\";\n",
+    "upstreamExpect": "0 per port case: tag comparison outside a handler",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-effect-error-tag-v001",
+    "check": "no-manual-effect-error-tag",
+    "code": "Effect.catchTag(\"NotFound\", recover);\n",
+    "upstreamExpect": "0 per port case: catchTag call without a callback",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-effect-error-tag-v002",
+    "check": "no-manual-effect-error-tag",
+    "code": "Effect.catchTag(\"Wrapper\", (error) => error.reason._tag === \"Timeout\" ? retry : fail);\n",
+    "upstreamExpect": "0 per port case: tag comparison inside a catchTag callback",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-effect-error-tag-i000",
+    "check": "no-manual-effect-error-tag",
+    "code": "Effect.catch((error) => error._tag === \"NotFound\" ? recover : fail);\n",
+    "upstreamExpect": "1 per port case: tag comparison in Effect.catch arrow",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-effect-error-tag-i001",
+    "check": "no-manual-effect-error-tag",
+    "code": "Effect.catchAll(function (error) { return error.reason._tag === \"Timeout\" ? retry : fail; });\n",
+    "upstreamExpect": "1 per port case: reason tag comparison in Effect.catchAll function",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-effect-error-tag-i002",
+    "check": "no-manual-effect-error-tag",
+    "code": "Effect.catchIf(predicate, (error) => { switch (error._tag) { case \"NotFound\": return recover; } });\n",
+    "upstreamExpect": "1 per port case: tag switch in Effect.catchIf callback",
+    "src": "probe"
+  }
+]

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "pc-no-manual-tag-comparison-v000",
+    "check": "no-manual-tag-comparison",
+    "code": "Predicate.isTagged(\"Ready\")(value);\n",
+    "upstreamExpect": "0 per port case: Predicate.isTagged call",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-v001",
+    "check": "no-manual-tag-comparison",
+    "code": "Match.value(value).pipe(Match.tag(\"Ready\", handleReady));\n",
+    "upstreamExpect": "0 per port case: Match.tag pipeline",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-v002",
+    "check": "no-manual-tag-comparison",
+    "code": "if (value.status === \"Ready\") handleReady(value);\n",
+    "upstreamExpect": "0 per port case: non-tag property comparison",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-v003",
+    "check": "no-manual-tag-comparison",
+    "code": "Effect.catch((error) => error._tag === \"NotFound\" ? recover : fail);\n",
+    "upstreamExpect": "0 per port case: tag comparison inside Effect.catch handler",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-i000",
+    "check": "no-manual-tag-comparison",
+    "code": "value._tag === \"Ready\";\n",
+    "upstreamExpect": "1 per port case: dot tag compared to literal",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-i001",
+    "check": "no-manual-tag-comparison",
+    "code": "\"Ready\" !== value[\"_tag\"];\n",
+    "upstreamExpect": "1 per port case: literal !== bracket tag",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tag-comparison-i002",
+    "check": "no-manual-tag-comparison",
+    "code": "switch (value._tag) { case \"Ready\": handleReady(value); }\n",
+    "upstreamExpect": "1 per port case: switch on tag",
+    "src": "probe"
+  }
+]

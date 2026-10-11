@@ -1,0 +1,51 @@
+[
+  {
+    "id": "pc-no-manual-tagged-construction-v000",
+    "check": "no-manual-tagged-construction",
+    "code": "Match.when({ _tag: \"Ready\" }, handleReady);\n",
+    "upstreamExpect": "0 per port case: tag object in Match.when",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-v001",
+    "check": "no-manual-tagged-construction",
+    "code": "Match.not({ \"_tag\": \"Pending\" });\n",
+    "upstreamExpect": "0 per port case: quoted tag object in Match.not",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-v002",
+    "check": "no-manual-tagged-construction",
+    "code": "Ready.make({ value });\n",
+    "upstreamExpect": "0 per port case: Schema tagged make",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-v003",
+    "check": "no-manual-tagged-construction",
+    "code": "new NotFound({ id });\n",
+    "upstreamExpect": "0 per port case: tagged class constructor",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-v004",
+    "check": "no-manual-tagged-construction",
+    "code": "({ _tag: tag, value });\n",
+    "upstreamExpect": "0 per port case: dynamic tag value",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-i000",
+    "check": "no-manual-tagged-construction",
+    "code": "const value = { _tag: \"Ready\", payload };\n",
+    "upstreamExpect": "1 per port case: object literal with tag",
+    "src": "probe"
+  },
+  {
+    "id": "pc-no-manual-tagged-construction-i001",
+    "check": "no-manual-tagged-construction",
+    "code": "const value = { [\"_tag\"]: \"Ready\" };\n",
+    "upstreamExpect": "1 per port case: object literal with computed string tag",
+    "src": "probe"
+  }
+]

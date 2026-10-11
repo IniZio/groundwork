@@ -301,6 +301,23 @@ describe("human-doc-check", () => {
     });
   });
 
+  describe("path detection", () => {
+    const found = (body: string) => run(write("p.md", body)).stdout.split("\n").filter((l) => l.startsWith("- "));
+    test("extensionless non-existent token like `moor/1` is not a path", () => {
+      expect(found("## What\n\nSee `moor/1` for details.\n")).toEqual([]);
+    });
+    test("token with file extension is a path", () => {
+      expect(found("## What\n\nSee `src/foo.ts` now.\n")).toEqual([
+        '- "src/foo.ts" — code-blocked path; use a commit-pinned GitHub permalink',
+      ]);
+    });
+    test("existing extensionless path is a path", () => {
+      expect(found("## What\n\nSee `src/cli` now.\n")).toEqual([
+        '- "src/cli" — code-blocked path; use a commit-pinned GitHub permalink',
+      ]);
+    });
+  });
+
   test("missing arg and unreadable file exit 2", () => {
     expect(spawnSync("bun", [SCRIPT], { encoding: "utf8", env }).status).toBe(2);
     expect(run(path.join(tmp, "nope.md")).status).toBe(2);

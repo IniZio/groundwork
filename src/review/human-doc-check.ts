@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { checkRules, isPrBodyPath, type Finding } from "./human-doc-rules.js";
 
 export type { Finding };
@@ -11,9 +12,14 @@ const EXT_RE = /\.(ts|tsx|js|jsx|mjs|json|md|yml|yaml|toml|sh|py|css|html)$/i;
 const PATH_REASON = "code-blocked path; use a commit-pinned GitHub permalink";
 const AGENT_REASON = "agent-only content";
 
+const REPO_ROOT = path.resolve(import.meta.dir, "../..");
+const LAST_SEG_EXT_RE = /\.[A-Za-z0-9]+$/;
+
 function looksLikePath(s: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /\s/.test(s)) return false;
-  return s.includes("/") || EXT_RE.test(s);
+  if (!s.includes("/")) return EXT_RE.test(s);
+  const last = s.replace(/\/+$/, "").split("/").pop() ?? "";
+  return LAST_SEG_EXT_RE.test(last) || existsSync(path.join(REPO_ROOT, s));
 }
 
 function stripFrontmatter(lines: string[]): string[] {

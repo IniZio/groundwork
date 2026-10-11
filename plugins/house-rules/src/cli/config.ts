@@ -10,6 +10,7 @@ const RULE_ORDER = [
   'type-escape-hatches',
   'no-module-mocking',
   'code-smells',
+  'effect',
 ] as const;
 const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'commit-message': ['preset'],
@@ -18,6 +19,7 @@ const OPTION_KEYS: Record<(typeof RULE_ORDER)[number], string[]> = {
   'type-escape-hatches': [],
   'no-module-mocking': [],
   'code-smells': [],
+  effect: [],
 };
 
 function schemaUrl(): string {

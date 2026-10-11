@@ -83,6 +83,11 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
+    'effect': {
+      severity: 'off',
+      options: {},
+      sources: { severity: 'default' },
+    },
   },
 } as const;
 
@@ -133,6 +138,36 @@ describe('resolveConfig warn-only rules', () => {
         sources: { severity: 'explicit' },
       });
     }
+  });
+});
+
+describe('resolveConfig effect rule', () => {
+  it('absent resolves to off from default', () => {
+    expect(resolveConfig(makeRepo()).rules['effect']).toEqual({
+      severity: 'off',
+      options: {},
+      sources: { severity: 'default' },
+    });
+  });
+
+  it('string warn resolves to warn from explicit', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { effect: 'warn' } });
+    expect(resolveConfig(repo).rules['effect']).toEqual({
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
+  });
+
+  it('tuple warn with empty options resolves to warn', () => {
+    const repo = makeRepo();
+    writeConfig(repo, { rules: { effect: ['warn', {}] } });
+    expect(resolveConfig(repo).rules['effect']).toEqual({
+      severity: 'warn',
+      options: {},
+      sources: { severity: 'explicit' },
+    });
   });
 });
 
@@ -428,6 +463,7 @@ describe('AC2 legacy artifact-structure configs', () => {
         'type-escape-hatches': ALL_DEFAULTS.rules['type-escape-hatches'],
         'no-module-mocking': ALL_DEFAULTS.rules['no-module-mocking'],
         'code-smells': ALL_DEFAULTS.rules['code-smells'],
+        'effect': ALL_DEFAULTS.rules['effect'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

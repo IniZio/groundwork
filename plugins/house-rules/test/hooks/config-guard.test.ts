@@ -434,6 +434,33 @@ describe("warn-only rules: code-smells, no-module-mocking, type-escape-hatches",
   });
 });
 
+describe("effect rule (default off)", () => {
+  test("absent to warn allowed (tightening)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ effect: "warn" })));
+  });
+
+  test("warn to off denied", async () => {
+    setFile(cfg({ effect: "warn" }));
+    await expectDeny(write(cfg({ effect: "off" })), 'rules["effect"]: warn → off', LOOSEN_MSG);
+  });
+
+  test("off written when absent allowed (no change)", async () => {
+    setFile(null);
+    await expectAllow(write(cfg({ effect: "off" })));
+  });
+
+  test("error severity denied as invalid", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ effect: "error" })), "invalid severity; allowed: off, warn");
+  });
+
+  test("options array denied", async () => {
+    setFile(null);
+    await expectDeny(write(cfg({ effect: ["warn", { x: 1 }] })));
+  });
+});
+
 describe("no bypass hints", () => {
   test("positive control: BYPASS_RE matches bypass hints", () => {
     expect("set HOUSE_RULES_DISABLE=1 to bypass the hook").toMatch(BYPASS_RE);

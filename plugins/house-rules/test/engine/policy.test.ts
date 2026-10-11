@@ -18,9 +18,28 @@ describe("BUILTIN_POLICY", () => {
       expect(BUILTIN_POLICY[id]).toEqual({ severity: "warn", autofix: false });
     }
   });
+
+  it("lists effect at off, no autofix", () => {
+    expect(BUILTIN_POLICY["effect"]).toEqual({ severity: "off", autofix: false });
+  });
 });
 
 describe("policyForRoot", () => {
+  it("overlays configured effect warn and defaults effect off", () => {
+    const on = policyForRoot(tmpWith(JSON.stringify({ rules: { effect: "warn" } })));
+    expect(on["effect"]).toEqual({ severity: "warn", autofix: false });
+    const dflt = policyForRoot(tmpWith(JSON.stringify({ rules: {} })));
+    expect(dflt["effect"]).toEqual({ severity: "off", autofix: false });
+  });
+
+  it("keeps effect off when config invalid", () => {
+    expect(policyForRoot(tmpWith("{not json"))["effect"]).toEqual({ severity: "off", autofix: false });
+    expect(policyForRoot(tmpWith(JSON.stringify({ rules: { effect: "error" } })))["effect"]).toEqual({
+      severity: "off",
+      autofix: false,
+    });
+  });
+
   it("applies configured off/warn to new ids only", () => {
     const dir = tmpWith(
       JSON.stringify({ rules: { "type-escape-hatches": "off", "code-smells": "warn", "comment-density": "error" } }),

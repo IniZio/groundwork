@@ -36,6 +36,11 @@ export interface ResolvedConfig {
       options: Record<string, never>
       sources: { severity: Source }
     }
+    effect: {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
   }
 }
 

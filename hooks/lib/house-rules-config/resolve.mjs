@@ -55,6 +55,7 @@ export function resolveConfigText(repoRoot, text) {
   const escapes = severityOf('type-escape-hatches', 'warn')
   const mocking = severityOf('no-module-mocking', 'warn')
   const smells = severityOf('code-smells', 'warn')
+  const effect = severityOf('effect', 'off')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -94,6 +95,11 @@ export function resolveConfigText(repoRoot, text) {
         severity: smells.value,
         options: {},
         sources: { severity: smells.source },
+      },
+      effect: {
+        severity: effect.value,
+        options: {},
+        sources: { severity: effect.source },
       },
     },
   }

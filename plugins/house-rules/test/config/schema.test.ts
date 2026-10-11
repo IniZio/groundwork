@@ -104,6 +104,38 @@ describe("warn-only rule ids", () => {
   });
 });
 
+describe("effect rule id", () => {
+  it("accepts off, warn, and array forms", () => {
+    for (const v of ['"off"', '"warn"', '["warn"]', '["off",{}]']) {
+      const out = parseConfig(`{"rules":{"effect":${v}}}`);
+      const sev = v.includes("off") ? "off" : "warn";
+      expect(out.rules["effect"]).toEqual({ severity: sev, options: {} });
+    }
+  });
+
+  it("rejects error severity", () => {
+    const err = capture('{"rules":{"effect":"error"}}');
+    expect(err.path).toBe('rules["effect"]');
+    expect(err.message).toContain("invalid severity; allowed: off, warn");
+    const arr = capture('{"rules":{"effect":["error"]}}');
+    expect(arr.path).toBe('rules["effect"][0]');
+    expect(arr.message).toContain("invalid severity; allowed: off, warn");
+  });
+
+  it("rejects options", () => {
+    expectConfigError(
+      '{"rules":{"effect":["warn",{"x":1}]}}',
+      'rules["effect"][1].x',
+      [],
+      "unknown option",
+    );
+  });
+
+  it("is included in RULE_IDS", () => {
+    expect(RULE_IDS).toContain("effect");
+  });
+});
+
 describe("parseConfig valid input", () => {
   it("normalizes the full shape", () => {
     const text = JSON.stringify({
@@ -304,6 +336,7 @@ describe("exported constants", () => {
       "comment-density",
       "artifact-structure",
       ...WARN_IDS,
+      "effect",
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
@@ -313,6 +346,7 @@ describe("exported constants", () => {
       "type-escape-hatches": ["off", "warn"],
       "no-module-mocking": ["off", "warn"],
       "code-smells": ["off", "warn"],
+      "effect": ["off", "warn"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
@@ -322,6 +356,7 @@ describe("exported constants", () => {
       "type-escape-hatches": [],
       "no-module-mocking": [],
       "code-smells": [],
+      "effect": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

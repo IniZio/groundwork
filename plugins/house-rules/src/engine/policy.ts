@@ -12,9 +12,10 @@ export const BUILTIN_POLICY: Record<string, PolicyEntry> = {
   'type-escape-hatches': { severity: 'warn', autofix: false },
   'no-module-mocking': { severity: 'warn', autofix: false },
   'code-smells': { severity: 'warn', autofix: false },
+  'effect': { severity: 'off', autofix: false },
 };
 
-const CONFIGURABLE_IDS = ['type-escape-hatches', 'no-module-mocking', 'code-smells'] as const;
+const CONFIGURABLE_IDS = ['type-escape-hatches', 'no-module-mocking', 'code-smells', 'effect'] as const;
 
 /** Overlays configured severity for the grouped rules; 'off' is kept as severity 'off' (runRules skips it). */
 export function policyFor(resolved: ResolvedConfig): Record<string, PolicyEntry> {

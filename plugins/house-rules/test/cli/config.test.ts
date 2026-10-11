@@ -59,6 +59,8 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
     '  change with: rules["no-module-mocking"] (active: warn, source: default)',
     'code-smells         severity=warn (default)',
     '  change with: rules["code-smells"] (active: warn, source: default)',
+    'effect              severity=off (default)',
+    '  change with: rules["effect"] (active: off, source: default)',
     '',
   ].join('\n');
 
@@ -84,6 +86,8 @@ function explicitText(file: string) {
     '  change with: rules["no-module-mocking"] (active: warn, source: default)',
     'code-smells         severity=warn (default)',
     '  change with: rules["code-smells"] (active: warn, source: default)',
+    'effect              severity=off (default)',
+    '  change with: rules["effect"] (active: off, source: default)',
     '',
   ].join('\n');
 }
@@ -173,6 +177,7 @@ describe('house-rules config', () => {
         'type-escape-hatches': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         'no-module-mocking': { severity: 'warn', options: {}, sources: { severity: 'default' } },
         'code-smells': { severity: 'warn', options: {}, sources: { severity: 'default' } },
+        effect: { severity: 'off', options: {}, sources: { severity: 'default' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);
@@ -183,6 +188,7 @@ describe('house-rules config', () => {
       'type-escape-hatches',
       'no-module-mocking',
       'code-smells',
+      'effect',
     ]);
     expect(r.stdout).toBe(JSON.stringify(out, null, 2) + '\n');
   });

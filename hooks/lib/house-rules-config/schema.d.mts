@@ -4,7 +4,8 @@ export type RuleId =
   | "artifact-structure"
   | "type-escape-hatches"
   | "no-module-mocking"
-  | "code-smells";
+  | "code-smells"
+  | "effect";
 export type RuleAlias = "stray-artifacts";
 export type Severity = "off" | "warn" | "error";
 export type Preset = "handbook" | "conventional" | "subject-only";
@@ -16,6 +17,7 @@ export const RULE_IDS: readonly [
   "type-escape-hatches",
   "no-module-mocking",
   "code-smells",
+  "effect",
 ];
 export const RULE_ALIASES: { readonly "stray-artifacts": "artifact-structure" };
 export const SEVERITIES: readonly ["error"];
@@ -27,6 +29,7 @@ export const RULE_SEVERITIES: {
   readonly "type-escape-hatches": readonly ["off", "warn"];
   readonly "no-module-mocking": readonly ["off", "warn"];
   readonly "code-smells": readonly ["off", "warn"];
+  readonly "effect": readonly ["off", "warn"];
 };
 export const PRESETS: readonly ["handbook", "conventional", "subject-only"];
 export const RULE_OPTION_KEYS: {
@@ -36,6 +39,7 @@ export const RULE_OPTION_KEYS: {
   readonly "type-escape-hatches": readonly [];
   readonly "no-module-mocking": readonly [];
   readonly "code-smells": readonly [];
+  readonly "effect": readonly [];
 };
 export type Tier = "product" | "working" | "ephemeral";
 export const TIERS: readonly ["product", "working", "ephemeral"];

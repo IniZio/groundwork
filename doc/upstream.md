@@ -30,9 +30,9 @@ Main agent then calls the Skill tool with `groundwork:vertical-slice` without as
 | NOT USED | `mattpocock-skills:implement-spec` | Superseded by `groundwork:implement`; user-only; no groundwork routing |
 | NOT USED | `mattpocock-skills:pr` | Not adopted; no groundwork routing |
 | NOT USED | `mattpocock-skills:retro` | User-only; not adopted; no groundwork routing |
-| ALTERED | `mattpocock-skills:domain-modeling` | the [domain.md](https://github.com/IniZio/groundwork/blob/0c395fd3199c9567f105e95e396b98a60567ea9a/doc/agents/domain.md) doc routes through it (via `grill-with-docs`); ADRs go to the `adr` folder inside `.groundwork`, linked from a `DECISION` event |
+| ALTERED | `mattpocock-skills:domain-modeling` | the [domain.md](https://github.com/IniZio/groundwork/blob/0c395fd3199c9567f105e95e396b98a60567ea9a/doc/agents/domain.md) routes through it (via `grill-with-docs`); ADRs go to the `adr` folder inside `.groundwork`, linked from a `DECISION` event |
 | NOT USED | `mattpocock-skills:writing-for-agents` | Not adopted; groundwork writes briefs per its own conventions |
-| ALTERED | `mattpocock-skills:grill-with-docs` | User-only; `grilling` plus `domain-modeling`; the [domain.md](https://github.com/IniZio/groundwork/blob/0c395fd3199c9567f105e95e396b98a60567ea9a/doc/agents/domain.md) doc points readers here, but ADRs go to the `adr` folder inside `.groundwork`, linked from a `DECISION` event |
+| ALTERED | `mattpocock-skills:grill-with-docs` | User-only; `grilling` plus `domain-modeling`; the [domain.md](https://github.com/IniZio/groundwork/blob/0c395fd3199c9567f105e95e396b98a60567ea9a/doc/agents/domain.md) points readers here, but ADRs go to the `adr` folder inside `.groundwork`, linked from a `DECISION` event |
 | NOT USED | `mattpocock-skills:ask-matt` | User-only; router over upstream skills and flows; not wired into groundwork routing |
 | NOT USED | `mattpocock-skills:setup-matt-pocock-skills` | User-only; per-repo tracker/label/domain-doc setup; groundwork records the result in the agent setup docs under its doc folder |
 | NOT USED | `mattpocock-skills:grill-me` | User-only; alias for `grilling`; groundwork routes `grilling` directly |

@@ -34,7 +34,7 @@ stateDiagram-v2
 
 ### Gate rules
 
-The stop-hook releases only when the newest verdict for the motive is `approve`. The parent of a delegate child uses the newest forwarded verdict, so a later non-approval supersedes an earlier approval.
+The stop-gate releases only when the newest verdict for the motive is `approve`. The parent of a delegate child uses the newest forwarded verdict, so a later non-approval supersedes an earlier approval.
 
 `gw gate approve` records the git HEAD SHA. The approval is void if HEAD moved since, or if a slice was added to the motive after it. The stop-gate names which case applies. Uncommitted changes do not void it. Outside a git repo, no HEAD binding applies.
 
@@ -52,7 +52,7 @@ When the active motive has a charter or spec file in the repo's doc folder, the 
 
 ### Hold
 
-While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused work store.
+While any motive has a hold, the stop-gate lets the session end. It shows the note once per session and per hold, then stays silent. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from where it paused.
 
 ### Compile output
 

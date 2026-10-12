@@ -102,7 +102,7 @@ To recover, do one of two things from the host:
 - Re-link: create a fresh link for the same slice in a new tree. The newest live link decides whether the slice is satisfied, so the new child takes over. If that newer link is later unlinked, the previous live link counts again.
 - Unlink: remove the link and give a reason. The reason is recorded so the history shows why the slice was freed.
 
-## Commands
+## Command reference
 
 All host-side commands need the host write token (`--token`). Run them from the host repository.
 

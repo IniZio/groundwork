@@ -42,10 +42,10 @@ The human view follows this standard instead, so the two sets do not conflict.
 Rule 15 (cite paths absolutely) applies to the agent view. The human view uses permalinks.
 
 - Lead with the point. Never open with "This document describes".
-- Never state what baseline CI enforces (lint, typecheck, tests passed).
+- Never report checks that baseline CI already runs, such as lint, typecheck or passing tests.
 - File mentions are GitHub permalinks pinned to a commit, never code-blocked paths.
 - Flows, architectures and state machines are shown as a diagram.
-- State decisions only; rejected alternatives live in ADRs and DECISION events.
+- State decisions only; rejected alternatives live in ADRs and Decision events.
 - Write plain controlled English. Apply ASD-STE100 where a reader could misparse.
-- No agent bookkeeping in the human view (PR body, doc snapshot): file lists, commands, AC tables, ledger ids.
+- No agent bookkeeping in the human view (PR body, doc snapshot): file lists, commands, AC tables, slice ids.
 - No hard length cap.

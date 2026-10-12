@@ -42,9 +42,9 @@ A child tree linked in delegate mode cannot approve while it has uncommitted cha
 
 ### Intent approvals
 
-A human approves the charter (H1) and the spec (H2) with `gw approve charter` and `gw approve spec`. The approval binds to a hash of the file. Edit the file afterwards and the approval is void, so approve again.
+A human approves the charter (`H1`) and the spec (`H2`) with `gw approve charter` and `gw approve spec`. The approval binds to a hash of the file. Edit the file afterwards and the approval is void, so approve again.
 
-An agent may run `gw approve spec --auto` to pass H2 when no decision is open. Otherwise the command sets a hold whose note starts `H2 needs human approval:`. The human's `gw approve spec` clears that hold.
+An agent may run `gw approve spec --auto` to pass `H2` when no decision is open. Otherwise the command sets a hold whose note starts `H2 needs human approval:`. The human's `gw approve spec` clears that hold.
 
 It exits 1 when the artifact is missing or the subcommand is wrong. It exits 2 when `--auto` hit a case that needs a human.
 
@@ -52,7 +52,7 @@ When the active motive has a charter or spec file in the repo's doc folder, the 
 
 ### Hold
 
-While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused ledger.
+While any motive has a hold, the stop-hook lets the session end. It shows the note once per session and per hold, then stays silent. A new `gw hold set` replaces the note and shows it again. Put "established / still need" in the reason, for example `--reason "established: API shape agreed; still need: prod credentials from ops"`. Clear the hold when the human replies; the run resumes from the paused work store.
 
 ### Compile output
 

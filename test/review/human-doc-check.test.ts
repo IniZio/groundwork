@@ -311,10 +311,22 @@ describe("human-doc-check", () => {
         '- "src/foo.ts" — code-blocked path; use a commit-pinned GitHub permalink',
       ]);
     });
-    test("existing extensionless path is a path", () => {
-      expect(found("## What\n\nSee `src/cli` now.\n")).toEqual([
-        '- "src/cli" — code-blocked path; use a commit-pinned GitHub permalink',
-      ]);
+    describe("existence check resolves against the checked file's git root", () => {
+      const repo = path.join(tmp, "existence-repo");
+      mkdirSync(path.join(repo, ".git"), { recursive: true });
+      mkdirSync(path.join(repo, "app/models"), { recursive: true });
+      const doc = path.join(repo, "doc.md");
+      writeFileSync(doc, "## What\n\nSee `app/models` and `src/cli` and `moor/1` now.\n");
+      const lines = run(doc).stdout.split("\n").filter((l) => l.startsWith("- "));
+      test("extensionless dir existing in the checked repo is flagged", () => {
+        expect(lines).toContain('- "app/models" — code-blocked path; use a commit-pinned GitHub permalink');
+      });
+      test("dir existing only in groundwork is not flagged", () => {
+        expect(lines.some((l) => l.includes('"src/cli"'))).toBe(false);
+      });
+      test("non-existent `moor/1` is not flagged", () => {
+        expect(lines.some((l) => l.includes('"moor/1"'))).toBe(false);
+      });
     });
   });
 

@@ -69,15 +69,22 @@ function normalize(s: string): string {
   return s.trim().toLowerCase().replace(/s$/, "");
 }
 
-/** Terms defined as `**Term**:` in the GLOSSARY.md at the git root enclosing `file`. */
-export function glossaryTerms(file: string): Set<string> {
-  const terms = new Set<string>();
+/** Nearest ancestor directory of `file` holding a `.git` entry, or null. */
+export function gitRoot(file: string): string | null {
   let dir = path.dirname(path.resolve(file));
   while (!existsSync(path.join(dir, ".git"))) {
     const parent = path.dirname(dir);
-    if (parent === dir) return terms;
+    if (parent === dir) return null;
     dir = parent;
   }
+  return dir;
+}
+
+/** Terms defined as `**Term**:` in the GLOSSARY.md at the git root enclosing `file`. */
+export function glossaryTerms(file: string): Set<string> {
+  const terms = new Set<string>();
+  const dir = gitRoot(file);
+  if (dir === null) return terms;
   const glossary = path.join(dir, "GLOSSARY.md");
   if (!existsSync(glossary)) return terms;
   for (const line of readFileSync(glossary, "utf8").split(/\r?\n/)) {

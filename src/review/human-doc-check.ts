@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { checkRules, glossaryTerms, isPrBodyPath, type Finding } from "./human-doc-rules.js";
+import { checkRules, gitRoot, glossaryTerms, isPrBodyPath, type Finding } from "./human-doc-rules.js";
 
 export type { Finding };
 
@@ -12,14 +12,15 @@ const EXT_RE = /\.(ts|tsx|js|jsx|mjs|json|md|yml|yaml|toml|sh|py|css|html)$/i;
 const PATH_REASON = "code-blocked path; use a commit-pinned GitHub permalink";
 const AGENT_REASON = "agent-only content";
 
-const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const LAST_SEG_EXT_RE = /\.[A-Za-z0-9]+$/;
 
-function looksLikePath(s: string): boolean {
+function looksLikePath(s: string, fileName?: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /\s/.test(s)) return false;
   if (!s.includes("/")) return EXT_RE.test(s);
   const last = s.replace(/\/+$/, "").split("/").pop() ?? "";
-  return LAST_SEG_EXT_RE.test(last) || existsSync(path.join(REPO_ROOT, s));
+  if (LAST_SEG_EXT_RE.test(last)) return true;
+  const root = fileName === undefined ? null : gitRoot(fileName);
+  return root !== null && existsSync(path.join(root, s));
 }
 
 function stripFrontmatter(lines: string[]): string[] {
@@ -68,7 +69,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
       afterHeading = isHeading;
     }
     if (fence !== null) {
-      if (fence !== "mermaid" && t && looksLikePath(t)) out.push({ quote: t, reason: PATH_REASON });
+      if (fence !== "mermaid" && t && looksLikePath(t, fileName)) out.push({ quote: t, reason: PATH_REASON });
       continue;
     }
     if (HEADING_RE.test(line) || /^\$GW\b/.test(t)) {
@@ -77,7 +78,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
     }
     if (/^#{1,6}\s/.test(line)) continue;
     for (const m of line.matchAll(/`([^`\n]+)`/g)) {
-      if (looksLikePath(m[1])) out.push({ quote: m[1], reason: PATH_REASON });
+      if (looksLikePath(m[1], fileName)) out.push({ quote: m[1], reason: PATH_REASON });
     }
     for (const sentence of line.split(/(?<=[.!?])\s+/)) {
       if (BASELINE_RE.test(sentence)) out.push({ quote: sentence.trim(), reason: "states the CI baseline" });

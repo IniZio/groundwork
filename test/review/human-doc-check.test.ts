@@ -318,6 +318,66 @@ describe("human-doc-check", () => {
     });
   });
 
+  describe("glossary-aware vocabulary", () => {
+    const VOCAB = (m: string) =>
+      `- "${m}" — groundwork vocabulary "${m}": write from the reviewer's view of the repo`;
+    function repoDoc(doc: string, glossary?: string, name = "a.md") {
+      const repo = path.join(tmp, String(seq++));
+      mkdirSync(path.join(repo, ".git"), { recursive: true });
+      mkdirSync(path.join(repo, "doc"));
+      if (glossary !== undefined) writeFileSync(path.join(repo, "GLOSSARY.md"), glossary);
+      const p = path.join(repo, "doc", name);
+      writeFileSync(p, doc);
+      return p;
+    }
+    const finds = (r: { stdout: string }) => r.stdout.split("\n").filter((l) => l.startsWith("- "));
+    const MOTIVE_DOC = "Each motive groups slices.\n";
+
+    test("term defined in repo GLOSSARY.md is not flagged", () => {
+      const r = run(repoDoc(MOTIVE_DOC, "**Motive**:\nA unit of intent.\n"));
+      expect(r.stdout.trim()).toBe("PASS");
+      expect(r.status).toBe(0);
+    });
+    test("same doc in a repo without GLOSSARY.md flags motive", () => {
+      const r = run(repoDoc(MOTIVE_DOC));
+      expect(finds(r)).toEqual([VOCAB("motive")]);
+      expect(r.status).toBe(1);
+    });
+    test("glossary defining only another term still flags motive", () => {
+      const r = run(repoDoc(MOTIVE_DOC, "**Slice**:\nA piece.\n"));
+      expect(finds(r)).toEqual([VOCAB("motive")]);
+      expect(r.status).toBe(1);
+    });
+    test("_Avoid_ line is not a glossary term", () => {
+      const r = run(repoDoc("Read the ledger.\n", "**Motive**:\nIntent.\n_Avoid_: Ledger\n"));
+      expect(finds(r)).toEqual([VOCAB("ledger")]);
+      expect(r.status).toBe(1);
+    });
+    test("inline code span and table rows are not flagged without a glossary", () => {
+      const code = run(repoDoc("Run `gw gate approve` for the `motive`.\n"));
+      expect(code.stdout.trim()).toBe("PASS");
+      expect(code.status).toBe(0);
+      const table = run(repoDoc("The columns below.\n\n| motive | ledger |\n|---|---|\n| a | b |\n"));
+      expect(table.stdout.trim()).toBe("PASS");
+      expect(table.status).toBe(0);
+    });
+    test("glossary with Motive does not exempt H2", () => {
+      const r = run(repoDoc("Approve the H2 spec.\n", "**Motive**:\nIntent.\n"));
+      expect(finds(r)).toEqual([VOCAB("H2")]);
+      expect(r.status).toBe(1);
+    });
+    test("multiple files: per-file PASS and findings, exit 1", () => {
+      const good = repoDoc("Plain text.\n", undefined, "good.md");
+      const bad = repoDoc(MOTIVE_DOC, undefined, "bad.md");
+      const r = spawnSync("bun", [SCRIPT, good, bad], { encoding: "utf8", env });
+      const out = r.stdout.split("\n");
+      expect(out).toContain(`${good}: PASS`);
+      expect(out.indexOf(`${bad}:`)).toBeGreaterThanOrEqual(0);
+      expect(out[out.indexOf(`${bad}:`) + 1]).toBe(VOCAB("motive"));
+      expect(r.status).toBe(1);
+    });
+  });
+
   test("missing arg and unreadable file exit 2", () => {
     expect(spawnSync("bun", [SCRIPT], { encoding: "utf8", env }).status).toBe(2);
     expect(run(path.join(tmp, "nope.md")).status).toBe(2);

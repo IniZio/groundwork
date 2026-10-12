@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { checkRules, isPrBodyPath, type Finding } from "./human-doc-rules.js";
+import { checkRules, glossaryTerms, isPrBodyPath, type Finding } from "./human-doc-rules.js";
 
 export type { Finding };
 
@@ -83,7 +83,7 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
       if (BASELINE_RE.test(sentence)) out.push({ quote: sentence.trim(), reason: "states the CI baseline" });
     }
   }
-  out.push(...checkRules(lines, isPrBody));
+  out.push(...checkRules(lines, isPrBody, fileName === undefined ? new Set() : glossaryTerms(fileName)));
   if (prose > PR_BODY_MAX_PROSE) {
     out.push({ quote: overflowQuote, reason: `pr-body prose ${prose} lines > ${PR_BODY_MAX_PROSE} (Why, Changes, Impact; headings, fenced blocks and tables excluded)` });
   }
@@ -91,23 +91,31 @@ export function checkHumanDoc(text: string, fileName?: string): Finding[] {
 }
 
 if (import.meta.main) {
-  const file = process.argv[2];
-  if (!file) {
+  const files = process.argv.slice(2);
+  if (files.length === 0) {
     console.error("usage: bun src/review/human-doc-check.ts <file.md>");
     process.exit(2);
   }
-  let text: string;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch (e) {
-    console.error(`cannot read ${file}: ${(e as Error).message}`);
-    process.exit(2);
-  }
-  const findings = checkHumanDoc(text, file);
-  if (findings.length === 0) {
-    console.log("PASS");
-  } else {
+  const multi = files.length > 1;
+  let unreadable = false;
+  let found = false;
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch (e) {
+      console.error(`cannot read ${file}: ${(e as Error).message}`);
+      unreadable = true;
+      continue;
+    }
+    const findings = checkHumanDoc(text, file);
+    if (findings.length === 0) {
+      console.log(multi ? `${file}: PASS` : "PASS");
+      continue;
+    }
+    found = true;
+    if (multi) console.log(`${file}:`);
     for (const f of findings) console.log(`- "${f.quote}" — ${f.reason}`);
-    process.exit(1);
   }
+  process.exit(unreadable ? 2 : found ? 1 : 0);
 }

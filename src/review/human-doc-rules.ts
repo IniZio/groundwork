@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export interface Finding {
@@ -64,9 +65,36 @@ function checkFileRefs(line: string): Finding[] {
   return quotes.map((quote) => ({ quote, reason: FILE_REF_REASON }));
 }
 
-function checkVocab(line: string): Finding[] {
+function normalize(s: string): string {
+  return s.trim().toLowerCase().replace(/s$/, "");
+}
+
+/** Terms defined as `**Term**:` in the GLOSSARY.md at the git root enclosing `file`. */
+export function glossaryTerms(file: string): Set<string> {
+  const terms = new Set<string>();
+  let dir = path.dirname(path.resolve(file));
+  while (!existsSync(path.join(dir, ".git"))) {
+    const parent = path.dirname(dir);
+    if (parent === dir) return terms;
+    dir = parent;
+  }
+  const glossary = path.join(dir, "GLOSSARY.md");
+  if (!existsSync(glossary)) return terms;
+  for (const line of readFileSync(glossary, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^\*\*([^*]+)\*\*:/);
+    if (m) terms.add(normalize(m[1]));
+  }
+  return terms;
+}
+
+function checkVocab(line: string, terms: Set<string>): Finding[] {
   const hits: { at: number; text: string }[] = [];
-  for (const re of VOCAB_RES) for (const m of line.matchAll(re)) hits.push({ at: m.index ?? 0, text: m[0] });
+  if (!line.trim().startsWith("|")) {
+    const bare = line.replace(/`[^`\n]+`/g, (s) => " ".repeat(s.length));
+    for (const re of VOCAB_RES) {
+      for (const m of bare.matchAll(re)) if (!terms.has(normalize(m[0]))) hits.push({ at: m.index ?? 0, text: m[0] });
+    }
+  }
   for (const m of line.matchAll(SLICE_RE)) if (!NOT_SLICE.has(m[1])) hits.push({ at: m.index ?? 0, text: m[0] });
   return hits
     .sort((a, b) => a.at - b.at)
@@ -98,7 +126,7 @@ export function findGroundworkLinks(text: string): string[] {
   return out;
 }
 
-export function checkRules(lines: string[], isPrBody: boolean): Finding[] {
+export function checkRules(lines: string[], isPrBody: boolean, terms: Set<string> = new Set()): Finding[] {
   const out: Finding[] = isPrBody ? checkOpening(lines) : [];
   let fence = false;
   for (const line of lines) {
@@ -108,7 +136,7 @@ export function checkRules(lines: string[], isPrBody: boolean): Finding[] {
     }
     if (fence) continue;
     if (isPrBody) out.push(...checkFileRefs(line));
-    out.push(...checkVocab(line), ...checkGroundworkLinks(line));
+    out.push(...checkVocab(line, terms),...checkGroundworkLinks(line));
   }
   return out;
 }

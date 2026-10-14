@@ -325,6 +325,16 @@ describe("session-start Where docs go", () => {
     const s = section(spawnHook(d).ctx);
     expect(s.join("\n")).toContain("$GW motive use <slug>");
     expect(s.join("\n")).not.toContain("work/default/");
+    expect(s.join("\n")).not.toContain("--token");
+    cleanup();
+  });
+
+  it("gw section drops token text and keeps the store-creation line", () => {
+    const d = repo();
+    const ctx = spawnHook(d).ctx;
+    expect(ctx).toContain("`$GW init` creates the store.");
+    expect(ctx).not.toContain("--token");
+    expect(ctx).not.toContain("write token");
     cleanup();
   });
 

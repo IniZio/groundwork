@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { WorkStore } from "../../src/store/store.js";
+import { readSealKeyForDb, readWriteTokenForDb } from "../../src/store/key-store.js";
 import { ingestInbox } from "../../src/store/scope-inbox.js";
 import { linksFor, requirement } from "../../src/store/scope-link.js";
 import { readPointer, CHILD_REGISTER } from "../../src/store/scope-pointer.js";
@@ -124,6 +125,8 @@ describe("childInit", () => {
     const l = scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
     const r = childInit({ childDir: c });
     expect(r?.status).toBe("created");
+    expect(readSealKeyForDb(path.join(c, ".groundwork", "work.db"))).not.toBeNull();
+    expect(readWriteTokenForDb(path.join(c, ".groundwork", "work.db"))).toBeNull();
     const cs = new WorkStore(path.join(c, ".groundwork", "work.db"));
     const ev = cs.getEvents(SCOPE_PARENT, "m1");
     expect(ev).toHaveLength(1);
@@ -171,7 +174,7 @@ describe("childInit", () => {
     it("child store creation fails: db files rolled back", () => {
       const p = makeParent(); const c = makeChild(p.dir);
       scopeLink(p.store, { childDir: c, slice: "S1", repoDir: p.dir });
-      // XDG path blocked by a file -> ensureWriteToken throws after the db was created.
+      // XDG path blocked by a file -> ensureSealKey throws after the db was created.
       const prev = process.env.XDG_CONFIG_HOME;
       const blocker = path.join(tmp, `blocker${n++}`);
       writeFileSync(blocker, "x");

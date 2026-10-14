@@ -117,9 +117,8 @@ describe("store_id key callers", () => {
     const pDir = path.join(reposDir, pId!);
     const cDir = path.join(reposDir, cId!);
     expect(pDir).not.toBe(cDir);
-    for (const f of ["write.token", "seal.key"]) {
-      expect(existsSync(path.join(cDir, f)), `missing ${path.join(cDir, f)}`).toBe(true);
-    }
+    expect(existsSync(path.join(cDir, "seal.key")), `missing ${path.join(cDir, "seal.key")}`).toBe(true);
+    expect(existsSync(path.join(cDir, "write.token")), `unexpected ${path.join(cDir, "write.token")}`).toBe(false);
   });
 
   it("(c) stop-gate in a fresh repo with no .groundwork creates no work.db", () => {

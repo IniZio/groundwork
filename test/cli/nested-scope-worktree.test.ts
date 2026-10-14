@@ -58,12 +58,11 @@ function setup() {
 function childFlow(child: string, approve: boolean) {
   const init = gw("child", child, "init");
   expect(init.code).toBe(0);
-  const ctok = tokenOf(init.out) ?? tokenOf(gw("child", child, "token").out)!;
   writeFileSync(path.join(child, "b.txt"), "b\n");
   git(child, "add", "b.txt");
   expect(git(child, "commit", "-q", "-m", "child work").status).toBe(0);
   const head = git(child, "rev-parse", "HEAD").stdout.trim();
-  if (approve) expect(gw("child", child, "gate", "approve", "--citation", "b.txt:1", "--token", ctok).code).toBe(0);
+  if (approve) expect(gw("child", child, "gate", "approve", "--citation", "b.txt:1").code).toBe(0);
   return head;
 }
 

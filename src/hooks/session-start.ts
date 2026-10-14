@@ -14,7 +14,7 @@ async function whereDocsGoBlock(env: Record<string, string | undefined>, pluginR
 
     const slug = activeSlug(root);
     const head: string[] = [];
-    if (!slug) head.push("no active motive — select one with `$GW motive use <slug> --token T` before writing docs");
+    if (!slug) head.push("no active motive — select one with `$GW motive use <slug>` before writing docs");
 
     const manifest = resolveConfig(root).rules["artifact-structure"].options as Record<string, unknown>;
     let rows: string[];
@@ -118,7 +118,7 @@ Classify, delegate, review. Never implement directly.
 
 \`GW="bun ${pluginRoot}/src/cli/main.ts"\`
 
-\`$GW init\` → write token T. \`$GW slice add <id> --acceptance "..." --token T\`. \`$GW slice complete <id> --token T\`. \`$GW slice status\`. \`$GW gate approve --citation "file:line" --token T\`. \`$GW compile\` → resume view.
+\`$GW init\` creates the store. \`$GW slice add <id> --acceptance "..."\`. \`$GW slice complete <id>\`. \`$GW slice status\`. \`$GW gate approve --citation "file:line"\`. \`$GW compile\` → resume view.
 
 ## Stop-gate
 

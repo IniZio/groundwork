@@ -2,7 +2,7 @@ import { existsSync, realpathSync, rmSync, statSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { GATE_VERDICTS, WorkStore, type GateVerdict } from "../store/store.js";
-import { ensureSealKeyForDb, ensureWriteTokenForDb } from "../store/key-store.js";
+import { ensureSealKeyForDb } from "../store/key-store.js";
 import { createLink, linksFor, type ScopeLink } from "../store/scope-link.js";
 import { writeInboxEvent } from "../store/scope-inbox.js";
 import {
@@ -143,7 +143,6 @@ export function childInit(o: { childDir: string }): ChildInitResult | null {
       store.createMotive(pointer.motive);
       store.appendEvent(SCOPE_PARENT, { ...pointer }, pointer.motive);
     } finally { store.close(); }
-    ensureWriteTokenForDb(db);
     ensureSealKeyForDb(db);
   } catch (e) {
     for (const f of [db, `${db}-wal`, `${db}-shm`]) rmSync(f, { force: true });

@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { resolveRepoBase } from "../hooks/lib/repo-base.js";
 import { runArchive } from "./archive.js";
 import { runMigrate } from "./migrate.js";
+import { runMigrateIssues } from "./migrate-issues.js";
 import { runRecipeCommand } from "./recipe.js";
 import { listUnits, idleDays } from "../store/work-units.js";
 import {
@@ -663,10 +664,22 @@ function cmdMotiveComplete(args: string[], motiveSlug?: string): void {
   store.close();
 }
 function cmdMigrate(args: string[]): void {
+  if (args[0] === "issues") {
+    const rest = args.slice(1);
+    const rootArg = flag(rest, "--root");
+    const root = rootArg ? path.resolve(rootArg) : rest.includes("--root") ? "" : repoDir();
+    if (!root || !existsSync(root)) {
+      process.stderr.write(`usage: ${gw} migrate issues [--apply] [--root DIR]\n`);
+      process.exit(1);
+    }
+    const r = runMigrateIssues(root, rest.includes("--apply"));
+    process.stdout.write(r.lines.join("\n") + "\n");
+    process.exit(r.code);
+  }
   const apply = args.includes("--apply");
   if (apply) {
     if (!flag(args, "--token")) {
-      process.stderr.write(`usage: ${gw} migrate [--apply --token T]\n`);
+      process.stderr.write(`usage: ${gw} migrate [issues] [--apply --token T]\n`);
       process.exit(1);
     }
     const store = requireDb();
@@ -769,6 +782,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate, recipe [--merge]\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe [--merge]\n`);
   process.exit(1);
 }

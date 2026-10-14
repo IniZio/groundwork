@@ -45,6 +45,7 @@ const VENDORED: Array<[string, string]> = [
       `plugins/house-rules/src/config/${n}.${ext}`,
     ]),
   ),
+  ['hooks/lib/house-rules-config/doc-registry.json', 'plugins/house-rules/src/config/doc-registry.json'],
 ]
 
 function assertByteParity(vendoredAbs: string, sourceAbs: string): void {

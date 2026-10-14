@@ -5,7 +5,21 @@ import { WORKING_TYPES, FORBIDDEN, type DocType, type ForbiddenPattern } from ".
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-type RecipeType = Omit<DocType, "template"> & { template?: string };
+export type RegistryType = Omit<DocType, "template"> & { template?: string };
+
+export interface RegistryManifestOptions {
+  types: Record<string, RegistryType>;
+  forbidden: ForbiddenPattern[];
+}
+
+export function registryManifestOptions(): RegistryManifestOptions {
+  const types: Record<string, RegistryType> = {};
+  for (const [id, t] of Object.entries(WORKING_TYPES)) {
+    const { template, ...rest } = t;
+    types[id] = template === null ? rest : { ...rest, template };
+  }
+  return { types, forbidden: FORBIDDEN.map((f) => ({ pattern: f.pattern, redirect: f.redirect })) };
+}
 
 export const HOUSE_RULES_SCHEMA_URL =
   "https://raw.githubusercontent.com/IniZio/groundwork/main/plugins/house-rules/house-rules.schema.json";
@@ -13,16 +27,15 @@ export const HOUSE_RULES_SCHEMA_URL =
 export interface Recipe {
   $schema: string;
   rules: {
-    "artifact-structure": ["error", { govern: string[]; types: Record<string, RecipeType>; forbidden: ForbiddenPattern[] }];
+    "artifact-structure": ["error", { govern: string[]; types: Record<string, RegistryType>; forbidden: ForbiddenPattern[] }];
   };
 }
 
 export function buildRecipe(): Recipe {
-  const types: Record<string, RecipeType> = {};
-  for (const [id, t] of Object.entries(WORKING_TYPES)) {
-    const { template, ...rest } = t;
-    // A null registry template (evidence) omits the key entirely.
-    types[id] = template === null ? rest : { ...rest, template: readFileSync(path.join(REPO_ROOT, template), "utf8") };
+  const { types: projected, forbidden } = registryManifestOptions();
+  const types: Record<string, RegistryType> = {};
+  for (const [id, t] of Object.entries(projected)) {
+    types[id] = t.template === undefined ? t : { ...t, template: readFileSync(path.join(REPO_ROOT, t.template), "utf8") };
   }
   return {
     $schema: HOUSE_RULES_SCHEMA_URL,
@@ -33,7 +46,7 @@ export function buildRecipe(): Recipe {
           // Narrow: host product docs (README.md etc.) stay ungoverned; forbidden patterns apply repo-wide regardless.
           govern: [".groundwork/**/*.md"],
           types,
-          forbidden: FORBIDDEN.map((f) => ({ pattern: f.pattern, redirect: f.redirect })),
+          forbidden,
         },
       ],
     },

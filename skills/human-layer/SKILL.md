@@ -13,7 +13,7 @@ description: Load when writing or reviewing anything a human reviewer reads, suc
 ## 2. Reviewer framing
 
 - Write from reviewer view of repo at PR base, never from dev journal.
-- No groundwork vocabulary: slice ids, DECISION events, motive, ledger, H1/H2, gates.
+- No groundwork vocabulary: slice ids, DECISION events, motive, ledger, gates.
 - No "rewrite" when the base has no prior version.
 
 ## 3. PR body v4 shape
@@ -43,9 +43,7 @@ No rejected alternatives anywhere (they live in ADRs).
 
 1. Run `bun <root>/src/review/human-doc-check.ts <file>` (`<root>` = dir holding `src/cli/main.ts` from `$GW`).
 2. Spawn `groundwork:human-doc-reviewer` with only that path and the check command; apply its deletions; repeat until `status: PASS`.
-3. Hand off to approval. H1 (`! $GW approve charter`) and H2 (`$GW approve spec --auto`, or `! $GW approve spec` for a human)
-   bind Summary, Why, Changes and Impact. Review focus and Proof edits never void them.
-4. Only the human runs the non-auto approvals.
+3. The human reviews the PR body draft.
 
 ## 6. ADRs
 

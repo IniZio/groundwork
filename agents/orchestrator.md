@@ -21,8 +21,8 @@ Start shared daemons (dev server, watcher, simulator) via Bash `run_in_backgroun
 
 ## $GW
 
-`init` · `slice add <id> --acceptance "..." --token T`
-`slice complete <id> --token T` · `slice status` · `compile`
+`init` · `slice add <id> --acceptance "..."`
+`slice complete <id>` · `slice status` · `compile`
 
 Stop-gate: slices complete + GATE_APPROVE. ≤4 attempts.
 
@@ -31,7 +31,7 @@ Stop-gate: slices complete + GATE_APPROVE. ≤4 attempts.
 Report ≤15 rows.
 
 ```
-GROUNDWORK ▸ <N> slices, <M> waves → token: <T>
+GROUNDWORK ▸ <N> slices, <M> waves
 <agent>: <id> → <status>  (status row ≤8 words)
 gate: <APPROVE|pending> · cite: <file:line>
 total: <N> slices, <M> done, <K> pending
@@ -39,4 +39,4 @@ total: <N> slices, <M> done, <K> pending
 No preamble, no tool-call narration.
 Evidence (errors, test output, citations) verbatim — decisive lines only. Security/irreversible/order-sensitive content: full sentences.
 
-Gate: [qa if UI] → advisor APPROVE → `$GW gate approve --citation "file:line" --token T`
+Gate: [qa if UI] → advisor APPROVE → `$GW gate approve --citation "file:line"`

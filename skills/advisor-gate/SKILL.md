@@ -20,7 +20,7 @@ After all slices complete and `$GW slice status` shows 0 pending. Invoke as:
 ## After APPROVE
 
 ```
-$GW gate approve --citation "<file:line from advisor's evidence>" --token T
+$GW gate approve --citation "<file:line from advisor's evidence>"
 ```
 
 The stop-gate reads the `GATE_APPROVE` event and releases. Without this call the session stays blocked.

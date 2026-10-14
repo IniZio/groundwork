@@ -40,8 +40,7 @@ status: active
    Check each `### Decisions` row and each diff before-side against current source; record evidence
    (permalink, `path@sha:line` if no remote, `none` if new-only) in `spec.md`, never the PR body.
 5. Run `$GW init` to create the work store.
-6. Run `$GW event append --type OBJECTIVE --msg "<motive.md Objective text>" --token T`
-   (T = init's `token:` line, or `$GW token` on an existing store),
+6. Run `$GW event append --type OBJECTIVE --msg "<motive.md Objective text>"`,
    then `$GW compile`; confirm `objective:` matches.
 7. Tell user to run `/to-tickets` (or `/wayfinder` for large work) to decompose into tickets.
    Call the Skill tool with `groundwork:vertical-slice` yourself without asking — no confirmation prompt.
@@ -49,7 +48,7 @@ status: active
 ## Recording decisions
 
 ```
-$GW event append --type DECISION --msg "<decision statement>" --data '{"rationale":"..."}' --token T
+$GW event append --type DECISION --msg "<decision statement>" --data '{"rationale":"..."}'
 ```
 
 ## Upstream coverage

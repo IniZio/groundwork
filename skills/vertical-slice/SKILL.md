@@ -21,10 +21,10 @@ so parallel implementers never race on an undefined type.
 ## Registration
 
 ```
-$GW init                                  # get token T
-$GW slice add S0 --desc "tracer bullet: shared types" --wave 0 --acceptance "types compile" --token T
-$GW slice add S1 --desc "..." --wave 1 --blocked-by S0 --acceptance "..." --token T
-$GW slice add S2 --desc "..." --wave 1 --blocked-by S0 --acceptance "..." --token T
+$GW init
+$GW slice add S0 --desc "tracer bullet: shared types" --wave 0 --acceptance "types compile"
+$GW slice add S1 --desc "..." --wave 1 --blocked-by S0 --acceptance "..."
+$GW slice add S2 --desc "..." --wave 1 --blocked-by S0 --acceptance "..."
 ```
 
 ## Wave template

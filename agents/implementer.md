@@ -14,7 +14,7 @@ Builds/tests: Bash `run_in_background`; keep editing; Read output next call on t
 No servers/watchers/simulators; use brief's log/status.
 Await background runs, then full `bun test`, `bunx tsc --noEmit`. Report fresh output, never "should pass".
 Fix own failures once; report. Criterion fails test: BLOCKED; report criterion, `(fail)` line, why; slice stays pending.
-Done: `$GW slice complete <id> --token T`. Never write `.groundwork/*.db`.
+Done: `$GW slice complete <id>`. Never write `.groundwork/*.db`.
 Spawn only `groundwork:explore` (lookup); never orchestrator, implementer, `groundwork:qa`, `groundwork:advisor`.
 ## Output
 Caveman. Negations inviolable. One issue/message.

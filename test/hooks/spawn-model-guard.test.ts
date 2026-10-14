@@ -3,7 +3,6 @@ import { Database } from "bun:sqlite";
 import { readFileSync, mkdirSync, unlinkSync, rmdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { check, loadRegistry, parseBriefFiles, isWithinSlice } from "../../src/hooks/spawn-model-guard.js";
-import { artifactHash } from "../../src/cli/gate-status.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
 
@@ -344,115 +343,22 @@ describe("isWithinSlice", () => {
   });
 });
 
-describe("spawn-model-guard — intent gate (H1/H2)", () => {
-  const reasonOf = (r: { stdout: string }) => parseOutput(r).hookSpecificOutput.permissionDecisionReason;
-
-  const PR_BODY = "## Summary\nsummary v1\n\n## Why\nwhy v1\n\n## Changes\niface v1\n\n## Impact\nimpact v1\n\n## Review focus\nfocus v1\n\n## Proof\nproof v1\n";
-  const workDir = (d: string) => path.join(d, ".groundwork", "work", "default");
-
-  function setup(withDocs: boolean): string {
-    const dir = makeProjectDir("S1", ["a.ts"]);
-    if (withDocs) {
-      const work = path.join(dir, ".groundwork", "work", "default");
-      mkdirSync(work, { recursive: true });
-      writeFileSync(path.join(work, "pr-body.md"), PR_BODY);
-      writeFileSync(path.join(work, "motive.md"), "charter v1");
-      writeFileSync(path.join(work, "spec.md"), "spec v1");
-    }
-    return dir;
-  }
-
-  function approve(dir: string, type: string, a: "charter" | "spec") {
-    const db = new Database(path.join(dir, ".groundwork", "work.db"));
-    db.run(
-      "INSERT INTO events (event_type, payload, created_at, motive_id) VALUES (?, ?, ?, 'default')",
-      [type, JSON.stringify({ hash: artifactHash(dir, "default", a) }), new Date().toISOString()]
-    );
-    db.close();
-  }
-
+describe("spawn-model-guard — no intent gate", () => {
   afterEach(() => {
     for (const d of tmpDirs) {
-      rmSync(workDir(d), { recursive: true, force: true });
-      rmSync(path.join(d, "doc"), { recursive: true, force: true });
+      rmSync(path.join(d, ".groundwork", "work"), { recursive: true, force: true });
     }
   });
 
-  const impl = agentWithPrompt("groundwork:implementer", "do it", "sonnet");
-
-  it("missing approvals → implementer denied naming H1 and H2", () => {
-    const dir = setup(true);
-    const r = check(impl, undefined, dir);
-    expect(safeDecision(r)).toBe("deny");
-    expect(reasonOf(r)).toContain("H1 charter approval missing");
-    expect(reasonOf(r)).toContain("H2 spec approval");
-  });
-
-  it("both approved with correct hashes → not denied", () => {
-    const dir = setup(true);
-    approve(dir, "APPROVE_CHARTER", "charter");
-    approve(dir, "APPROVE_SPEC", "spec");
-    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
-  });
-
-  it("edited after approval → denied as void", () => {
-    const dir = setup(true);
-    approve(dir, "APPROVE_CHARTER", "charter");
-    approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(workDir(dir), "motive.md"), "charter v2");
-    const r = check(impl, undefined, dir);
-    expect(safeDecision(r)).toBe("deny");
-    expect(reasonOf(r)).toContain("void");
-  });
-
-  it("no pr-body.md → not denied", () => {
-    const dir = setup(true);
-    rmSync(path.join(workDir(dir), "pr-body.md"));
-    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
-  });
-
-  it("only doc/default/motive.md, no pr-body.md → not denied (doc/ ignored)", () => {
-    const dir = setup(false);
-    mkdirSync(path.join(dir, "doc", "default"), { recursive: true });
-    writeFileSync(path.join(dir, "doc", "default", "motive.md"), "charter");
-    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
-  });
-
-  it("edit only ## Review focus after approvals → not denied", () => {
-    const dir = setup(true);
-    approve(dir, "APPROVE_CHARTER", "charter");
-    approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("focus v1", "focus v2"));
-    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
-  });
-
-  it("edit only ## Proof after approvals → not denied", () => {
-    const dir = setup(true);
-    approve(dir, "APPROVE_CHARTER", "charter");
-    approve(dir, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace("proof v1", "proof v2"));
-    expect(safeDecision(check(impl, undefined, dir))).not.toBe("deny");
-  });
-
-  for (const [section, from, to] of [
-    ["Summary", "summary v1", "summary v2"],
-    ["Why", "why v1", "why v2"],
-    ["Changes", "iface v1", "iface v2"],
-    ["Impact", "impact v1", "impact v2"],
-  ]) {
-    it(`edit ## ${section} after approvals → denied as void`, () => {
-      const dir = setup(true);
-      approve(dir, "APPROVE_CHARTER", "charter");
-      approve(dir, "APPROVE_SPEC", "spec");
-      writeFileSync(path.join(workDir(dir), "pr-body.md"), PR_BODY.replace(from, to));
-      const r = check(impl, undefined, dir);
-      expect(safeDecision(r)).toBe("deny");
-      expect(reasonOf(r)).toContain("void");
-    });
-  }
-
-  it("explore with missing approvals → not denied", () => {
-    const dir = setup(true);
-    expect(safeDecision(check(agentWithPrompt("groundwork:explore", "look", "sonnet"), undefined, dir))).not.toBe("deny");
+  it("implementer dispatch allowed with pr-body.md present and no APPROVE_* events", () => {
+    const dir = makeProjectDir("S1", ["a.ts"]);
+    const work = path.join(dir, ".groundwork", "work", "default");
+    mkdirSync(work, { recursive: true });
+    writeFileSync(path.join(work, "pr-body.md"), "## Summary\nsummary v1\n");
+    writeFileSync(path.join(work, "motive.md"), "charter v1");
+    writeFileSync(path.join(work, "spec.md"), "spec v1");
+    const r = check(agentWithPrompt("groundwork:implementer", "do it", "sonnet"), undefined, dir);
+    expect(safeDecision(r)).not.toBe("deny");
+    expect(r.exit).toBe(0);
   });
 });

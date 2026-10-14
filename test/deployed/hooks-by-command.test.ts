@@ -6,7 +6,6 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { MIGRATIONS } from "../../src/store/schema.js";
 import { runMigrations } from "../../src/store/migrations.js";
-import { artifactHash } from "../../src/cli/gate-status.js";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 
@@ -204,7 +203,7 @@ describe("deployed — spawn-model-guard (PreToolUse)", () => {
   });
 });
 
-describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
+describe("deployed — spawn-model-guard without intent gate (PreToolUse)", () => {
   const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/spawn-model-guard.ts";
   const SLUG = "intent-demo";
   const payload = { tool_name: "Agent", hook_event_name: "PreToolUse",
@@ -228,91 +227,26 @@ describe("deployed — spawn-model-guard intent gate (PreToolUse)", () => {
     return { stdout, exit: await proc.exited };
   }
 
-  function makeProject(label: string, withDocs: boolean): string {
+  function makeProject(label: string): string {
     const proj = path.join(tmpDir, `intent-${label}`);
     mkdirSync(path.join(proj, ".groundwork"), { recursive: true });
     const db = new Database(path.join(proj, ".groundwork", "work.db"));
     runMigrations(db, MIGRATIONS);
     db.run("INSERT OR REPLACE INTO meta (key,value) VALUES ('active_motive', ?)", [SLUG]);
     db.close();
-    if (withDocs) {
-      const work = path.join(proj, ".groundwork", "work", SLUG);
-      mkdirSync(work, { recursive: true });
-      writeFileSync(path.join(work, "pr-body.md"), "## Summary\ns\n\n## Why\nx\n\n## Changes\ni\n\n## Impact\nm\n\n## Review focus\nf\n\n## Proof\ny\n");
-      writeFileSync(path.join(work, "motive.md"), "# charter\n");
-      writeFileSync(path.join(work, "spec.md"), "# spec\n");
-    }
+    const work = path.join(proj, ".groundwork", "work", SLUG);
+    mkdirSync(work, { recursive: true });
+    writeFileSync(path.join(work, "pr-body.md"), "## Summary\ns\n\n## Why\nx\n\n## Changes\ni\n\n## Impact\nm\n\n## Review focus\nf\n\n## Proof\ny\n");
+    writeFileSync(path.join(work, "motive.md"), "# charter\n");
+    writeFileSync(path.join(work, "spec.md"), "# spec\n");
     return proj;
   }
 
-  function approve(proj: string, type: "APPROVE_CHARTER" | "APPROVE_SPEC", kind: "charter" | "spec") {
-    const hash = artifactHash(proj, SLUG, kind);
-    const db = new Database(path.join(proj, ".groundwork", "work.db"));
-    db.run("INSERT INTO events (event_type,payload,created_at,motive_id) VALUES (?,?,?,?)",
-      [type, JSON.stringify({ hash, files: [], by: "human", created_at: new Date().toISOString() }), new Date().toISOString(), SLUG]);
-    db.close();
-  }
-
-  const reasonOf = (stdout: string): string =>
-    stdout ? (JSON.parse(stdout).hookSpecificOutput?.permissionDecisionReason ?? "") : "";
-
-  it("deny: charter present, no approvals → H1 charter approval missing", async () => {
-    const { stdout, exit } = await run(makeProject("noappr", true));
-    const out = JSON.parse(stdout);
+  it("allow: pr-body.md present, no APPROVE_* events → implementer dispatch not denied", async () => {
+    const { stdout, exit } = await run(makeProject("noappr"));
     expect(exit).toBe(0);
-    expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
-    expect(out.hookSpecificOutput.permissionDecisionReason).toContain("H1 charter approval missing");
-  });
-
-  it("allow: correct approvals → no intent-gate deny", async () => {
-    const proj = makeProject("approved", true);
-    approve(proj, "APPROVE_CHARTER", "charter");
-    approve(proj, "APPROVE_SPEC", "spec");
-    const { stdout, exit } = await run(proj);
-    expect(exit).toBe(0);
-    expect(reasonOf(stdout)).not.toContain("intent gate");
-  });
-
-  it("deny: spec edited after approval → H2 spec approval void", async () => {
-    const proj = makeProject("edited", true);
-    approve(proj, "APPROVE_CHARTER", "charter");
-    approve(proj, "APPROVE_SPEC", "spec");
-    writeFileSync(path.join(proj, ".groundwork", "work", SLUG, "spec.md"), "# spec edited\n");
-    const { stdout, exit } = await run(proj);
-    expect(exit).toBe(0);
-    expect(reasonOf(stdout)).toContain("H2 spec approval void");
-  });
-
-  it("deny: Summary edited after approval → H1 charter and H2 spec approvals void", async () => {
-    const proj = makeProject("summary-edited", true);
-    approve(proj, "APPROVE_CHARTER", "charter");
-    approve(proj, "APPROVE_SPEC", "spec");
-    const pr = path.join(proj, ".groundwork", "work", SLUG, "pr-body.md");
-    writeFileSync(pr, readFileSync(pr, "utf8").replace("## Summary\ns\n", "## Summary\ns edited\n"));
-    const { stdout, exit } = await run(proj);
-    expect(exit).toBe(0);
-    expect(reasonOf(stdout)).toContain("H1 charter approval void");
-    expect(reasonOf(stdout)).toContain("H2 spec approval void");
-  });
-
-  it("allow: Review focus and Proof edited after approval → approvals kept", async () => {
-    const proj = makeProject("unhashed-edited", true);
-    approve(proj, "APPROVE_CHARTER", "charter");
-    approve(proj, "APPROVE_SPEC", "spec");
-    const pr = path.join(proj, ".groundwork", "work", SLUG, "pr-body.md");
-    writeFileSync(pr, readFileSync(pr, "utf8").replace("\nf\n", "\nf edited\n").replace("\ny\n", "\ny edited\n"));
-    const { stdout, exit } = await run(proj);
-    expect(exit).toBe(0);
-    expect(reasonOf(stdout)).not.toContain("intent gate");
-  });
-
-  it("allow: no pr-body.md → no intent-gate deny", async () => {
-    const proj = makeProject("nodocs", false);
-    mkdirSync(path.join(proj, "doc", SLUG), { recursive: true });
-    writeFileSync(path.join(proj, "doc", SLUG, "motive.md"), "# charter\n");
-    const { stdout, exit } = await run(proj);
-    expect(exit).toBe(0);
-    expect(reasonOf(stdout)).not.toContain("intent gate");
+    const decision = stdout ? JSON.parse(stdout).hookSpecificOutput?.permissionDecision : undefined;
+    expect(decision).not.toBe("deny");
   });
 });
 

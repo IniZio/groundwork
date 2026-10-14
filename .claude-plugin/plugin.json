@@ -62,10 +62,6 @@
           {
             "type": "command",
             "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-message-guard.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/approve-guard.ts"
           }
         ]
       },

@@ -9,17 +9,17 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | SessionStart injection | 8354 | 2089 |
 | Per-turn reminder (UserPromptSubmit) | 83 | 21 |
 | CLAUDE.md (orchestrator project file) | — (none) | — |
-| orchestrator.md | 1511 | 378 |
-| general-purpose / implementer.md | 1536 | 384 |
+| orchestrator.md | 1466 | 367 |
+| general-purpose / implementer.md | 1526 | 382 |
 | advisor.md | 1532 | 383 |
 | qa.md | 1536 | 384 |
-| implement/SKILL.md | 4258 | 1065 |
-| vertical-slice/SKILL.md | 2240 | 560 |
-| advisor-gate/SKILL.md | 1369 | 342 |
-| pause/SKILL.md | 934 | 234 |
-| continue/SKILL.md | 1064 | 266 |
-| motive/SKILL.md | 2112 | 528 |
-| human-layer/SKILL.md | 3389 | 847 |
+| implement/SKILL.md | 3828 | 957 |
+| vertical-slice/SKILL.md | 2163 | 541 |
+| advisor-gate/SKILL.md | 1359 | 340 |
+| pause/SKILL.md | 849 | 212 |
+| continue/SKILL.md | 931 | 233 |
+| motive/SKILL.md | 2025 | 506 |
+| human-layer/SKILL.md | 3161 | 790 |
 
 Recompute bytes (wc -c): `wc -c agents/orchestrator.md agents/advisor.md agents/qa.md agents/implementer.md skills/*/SKILL.md` (SessionStart injection size is measured on the normalised output — root path replaced with `/GROUNDWORK_ROOT`, sha replaced with `(XXXXXXX)`, header version replaced with `vX.Y.Z` — and run from an empty temp dir with no store, so the "Where docs go" table renders the no-motive fallback regardless of the repo's active motive: `ROOT=$(pwd); E=$(mktemp -d); (cd "$E" && echo '{}' | env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PROJECT_DIR="$E" bun "$ROOT/src/hooks/session-start.ts") | ROOT="$ROOT" bun -e "const d=await Bun.stdin.json();const n=d.hookSpecificOutput.additionalContext.split(process.env.ROOT).join('/GROUNDWORK_ROOT').replace(/\\([0-9a-f]{7,40}\\)/g,'(XXXXXXX)').replace(/(?<=^# groundwork v)\\d+\\.\\d+\\.\\d+/m,'X.Y.Z');console.log(Buffer.byteLength(n,'utf8'))"; rm -r "$E"`).
 
@@ -33,13 +33,13 @@ SessionStart fires for primary session only, not subagents.
 | Component | tokens |
 |---|---|
 | SessionStart injection | 2089 |
-| orchestrator.md | 378 |
+| orchestrator.md | 367 |
 | Per-turn reminder (per prompt) | 21 |
-| **Total (session start)** | **2488** |
+| **Total (session start)** | **2477** |
 
 ### Per-leaf spawn (SessionStart does NOT fire for subagents)
 
 | Component | tokens |
 |---|---|
-| implementer / general-purpose.md | 384 |
-| **Total** | **384** |
+| implementer / general-purpose.md | 382 |
+| **Total** | **382** |

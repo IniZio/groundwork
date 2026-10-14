@@ -75,7 +75,70 @@ none
 **Files:**
 - `tmp-notes.md`: 
 
+### registry source: an issue whose status is triage needs no Acceptance criteria heading
+
+**Files:**
+- `.groundwork/.keep`: 
+- `.groundwork/work/x/tickets/01-y.md`: ---
+title: Y
+status: triage
+---
+
+## Summary
+
+
+### registry source: without a .groundwork/ directory and without config, lessons/x.md is not flagged
+
+**Files:**
+- `lessons/x.md`: 
+
+### config source: headingsWhen does not demand its heading when the status does not match
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+status: open
+---
+
+## Notes
+
+
 ## Flagged
+
+### registry source: with a .groundwork/ directory and no configured types, the shipped registry applies; a todo issue without an Acceptance criteria heading is flagged as a warning
+
+**Files:**
+- `.groundwork/.keep`: 
+- `.groundwork/work/x/tickets/01-y.md`: ---
+title: Y
+status: todo
+---
+
+## Summary
+
+
+**Expected findings:**
+- artifact-structure: .groundwork/work/x/tickets/01-y.md is missing required heading "Acceptance criteria" (type "issue")
+
+### registry source: with a .groundwork/ directory and no configured types, a file under the registry-forbidden lessons/ is flagged as a warning
+
+**Files:**
+- `.groundwork/.keep`: 
+- `lessons/x.md`: 
+
+### config source: headingsWhen on a configured type demands its heading; the finding carries no severity tag
+
+**Files:**
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
+- `.groundwork/work/a/research/x.md`: ---
+status: done
+---
+
+## Notes
+
+
+**Expected findings:**
+- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "Risks" (type "research")
 
 ### content: missing required frontmatter key is flagged
 
@@ -103,7 +166,7 @@ status: open
 
 
 **Expected findings:**
-- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "## Decisions"
+- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "## Decisions" (type "research")
 
 ### content: unsupported schema keyword surfaces as a finding, not a silent pass
 

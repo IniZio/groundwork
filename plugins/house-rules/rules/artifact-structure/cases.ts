@@ -14,6 +14,11 @@ const CONTENT_CFG = (schema: unknown = SCHEMA) => JSON.stringify({ rules: { 'art
   types: { research: { tier: 'working', generates: '.groundwork/work/{slug}/research/{name:kebab}.md', frontmatter: schema, headings: ['## Decisions'] } },
 }] } });
 const RESEARCH = '.groundwork/work/a/research/x.md';
+const WHEN_CFG = JSON.stringify({ rules: { 'artifact-structure': ['error', {
+  govern: ['notes/**'],
+  types: { research: { tier: 'working', generates: '.groundwork/work/{slug}/research/{name:kebab}.md', headingsWhen: [{ property: 'status', in: ['done'], headings: ['Risks'] }] } },
+}] } });
+const ISSUE = '.groundwork/work/x/tickets/01-y.md';
 
 const valid: TrackedCase[] = [
   {
@@ -66,7 +71,39 @@ const valid: TrackedCase[] = [
   },
 ];
 
+const REGISTRY_VALID: TrackedCase[] = [
+  {
+    why: 'registry source: an issue whose status is triage needs no Acceptance criteria heading',
+    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: triage\n---\n\n## Summary\n' },
+  },
+  {
+    why: 'registry source: without a .groundwork/ directory and without config, lessons/x.md is not flagged',
+    tree: { 'lessons/x.md': '' },
+  },
+  {
+    why: 'config source: headingsWhen does not demand its heading when the status does not match',
+    tree: { '.house-rules.json': WHEN_CFG, [RESEARCH]: '---\nstatus: open\n---\n\n## Notes\n' },
+    sessionCreatedOverrides: { [RESEARCH]: true },
+  },
+];
+valid.push(...REGISTRY_VALID);
+
 const invalid: InvalidTrackedCase[] = [
+  {
+    why: 'registry source: with a .groundwork/ directory and no configured types, the shipped registry applies; a todo issue without an Acceptance criteria heading is flagged as a warning',
+    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: todo\n---\n\n## Summary\n' },
+    findings: [{ ruleId: 'artifact-structure', path: ISSUE, severity: 'warn', message: `artifact-structure: ${ISSUE} is missing required heading "Acceptance criteria" (type "issue")` }],
+  },
+  {
+    why: 'registry source: with a .groundwork/ directory and no configured types, a file under the registry-forbidden lessons/ is flagged as a warning',
+    tree: { '.groundwork/.keep': '', 'lessons/x.md': '' },
+    findings: [{ ruleId: 'artifact-structure', path: 'lessons/x.md', severity: 'warn' }],
+  },
+  {
+    why: 'config source: headingsWhen on a configured type demands its heading; the finding carries no severity tag',
+    tree: { '.house-rules.json': WHEN_CFG, [RESEARCH]: '---\nstatus: done\n---\n\n## Notes\n' },
+    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} is missing required heading "Risks" (type "research")` }],
+  },
   {
     why: 'content: missing required frontmatter key is flagged',
     tree: { '.house-rules.json': CONTENT_CFG(), [RESEARCH]: '---\ntitle: x\n---\n\n## Decisions\n' },
@@ -75,7 +112,7 @@ const invalid: InvalidTrackedCase[] = [
   {
     why: 'content: missing required heading is flagged',
     tree: { '.house-rules.json': CONTENT_CFG(), [RESEARCH]: '---\nstatus: open\n---\n\n## Notes\n' },
-    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} is missing required heading "## Decisions"` }],
+    findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} is missing required heading "## Decisions" (type "research")` }],
   },
   {
     why: 'content: unsupported schema keyword surfaces as a finding, not a silent pass',

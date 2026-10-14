@@ -4,8 +4,8 @@ import path from 'node:path';
 import { addedHunks, diffTextToHunks, gateBase, touchedFiles } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
-import { resolveConfig } from '../config/resolve.mjs';
 import { forbiddenRedirect, inTypedArea, matchPath } from '../config/manifest.mjs';
+import { resolveManifest } from '../../rules/artifact-structure/index.js';
 import { createSourceFiles } from './source-file.js';
 import type { RuleContext, ScopedFile } from './types.js';
 
@@ -49,9 +49,11 @@ export function detectBashCreatedDocs(
 ): string[] {
   try {
     if (!transcriptPath) return [];
-    const opts = resolveConfig(repoRoot).rules['artifact-structure'].options;
+    const manifest = resolveManifest(repoRoot);
+    if (!manifest) return [];
+    const opts = manifest.options;
     const govern = opts.govern ?? [];
-    if (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0) return [];
+    if (manifest.source === 'config' && (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0)) return [];
 
     let start = NaN;
     for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {

@@ -4,8 +4,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveConfig } from '../../src/config/resolve.mjs';
 import type { ManifestOptions } from '../../src/config/resolve.mjs';
+import { loadRegistrySnapshot } from '../../src/registry/doc-registry-snapshot.js';
 import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, inTypedArea, words } from '../../src/config/manifest.mjs';
-import { parseFrontmatter, validateFrontmatter, missingHeadings } from '../../src/engine/frontmatter.js';
+import { parseFrontmatter, validateFrontmatter, missingHeadings, requiredHeadings } from '../../src/engine/frontmatter.js';
 
 export const CANONICAL_SYNONYMS: Record<string, string> = {
   docs: 'doc',
@@ -27,12 +28,24 @@ const ROOT_SCRATCH_PATTERNS = [
 
 const SLUG_SENTINEL = 'slugplaceholder';
 
-function resolveManifest(repoRoot: string): ManifestOptions | null {
+interface ResolvedManifest {
+  options: ManifestOptions;
+  source: 'config' | 'registry';
+}
+
+// Config wins when it sets types or forbidden. Otherwise a repo with a .groundwork/ directory
+// is checked against the shipped registry snapshot; any other repo is not checked.
+export function resolveManifest(repoRoot: string): ResolvedManifest | null {
   try {
     const options = resolveConfig(repoRoot).rules['artifact-structure'].options;
     const hasTypes = options.types !== undefined && Object.keys(options.types).length > 0;
     const hasForbidden = options.forbidden !== undefined && options.forbidden.length > 0;
-    return hasTypes || hasForbidden ? options : null;
+    if (hasTypes || hasForbidden) return { options, source: 'config' };
+    if (fs.statSync(path.join(repoRoot, '.groundwork')).isDirectory()) {
+      const snapshot = loadRegistrySnapshot();
+      return { options: { types: snapshot.types, forbidden: snapshot.forbidden }, source: 'registry' };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -70,64 +83,92 @@ function contentFindings(repoRoot: string, relPath: string, typeId: string, def:
     const prefix = parsed.data === null ? 'has no frontmatter block; ' : '';
     for (const err of errors) messages.push(`artifact-structure: ${relPath} frontmatter invalid for type ${typeId}: ${prefix}${err}`);
   }
-  if (def.headings !== undefined) {
-    for (const h of missingHeadings(parsed.body, def.headings)) messages.push(`artifact-structure: ${relPath} is missing required heading "${h}"`);
+  for (const h of missingHeadings(parsed.body, requiredHeadings(def, parsed.data))) {
+    messages.push(`artifact-structure: ${relPath} is missing required heading "${h}" (type "${typeId}")`);
   }
   return messages;
 }
 
-function manifestFindings(repoRoot: string, scoped: ScopedFile[], options: ManifestOptions, contentChecks: boolean): Finding[] {
-  const findings: Finding[] = [];
+// Findings from the shipped registry never block: they are always tagged warn.
+function tag(source: ResolvedManifest['source']): { severity?: 'warn' } {
+  return source === 'registry' ? { severity: 'warn' } : {};
+}
+
+function fileManifestFindings(
+  repoRoot: string,
+  relPath: string,
+  { options, source }: ResolvedManifest,
+  contentChecks: boolean,
+  isIgnored: () => boolean,
+): Finding[] {
+  const severity = tag(source);
+  const redirect = forbiddenRedirect(relPath, { forbidden: options.forbidden ?? [] });
+  if (redirect !== null) {
+    return [{
+      ruleId: 'artifact-structure',
+      path: relPath,
+      message: `artifact-structure: ${relPath} is not allowed here. ${redirect}`,
+      fingerprintBasis: relPath,
+      ...severity,
+    }];
+  }
+  const matched = matchPath(relPath, options);
+  if (matched !== null) {
+    const def = options.types?.[matched.type];
+    // Edit-time writes are drafts; only the gate content-checks.
+    if (!contentChecks || !def || (def.frontmatter === undefined && def.headings === undefined && def.headingsWhen === undefined)) return [];
+    return contentFindings(repoRoot, relPath, matched.type, def).map(message => ({
+      ruleId: 'artifact-structure',
+      path: relPath,
+      message,
+      fingerprintBasis: `${relPath}:${message}`,
+      ...severity,
+    }));
+  }
   const globs = options.govern ?? [];
+  const governed = globs.some(g => forbiddenRedirect(relPath, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
+  if (!governed) return [];
+  if (isIgnored() && !inTypedArea(relPath, options)) return [];
+  const stem = words(path.basename(relPath, path.extname(relPath))).join('-');
+  const lines = nearestTypes(relPath, options, 2).flatMap(n => {
+    const def = options.types?.[n.type];
+    if (!def) return [];
+    try {
+      const params: Record<string, string> = {};
+      for (const p of compileGenerates(def.generates).params) params[p.name] = p.name === 'slug' ? SLUG_SENTINEL : stem;
+      const resolved = renderPath(def.generates, params).split(SLUG_SENTINEL).join('<slug>');
+      return [`- ${n.type}: ${def.description ? `${def.description} ` : ''}-> ${resolved}`];
+    } catch {
+      return [];
+    }
+  });
+  return [{
+    ruleId: 'artifact-structure',
+    path: relPath,
+    message: [`artifact-structure: ${relPath} is outside every doc type path. Nearest types:`, ...lines].join('\n'),
+    fingerprintBasis: relPath,
+    ...severity,
+  }];
+}
+
+function manifestFindings(repoRoot: string, scoped: ScopedFile[], manifest: ResolvedManifest, contentChecks: boolean): Finding[] {
+  const findings: Finding[] = [];
   let ignored: Set<string> | null = null;
   for (const f of scoped) {
     if (!isNewFile(repoRoot, f.path)) continue;
-    const redirect = forbiddenRedirect(f.path, { forbidden: options.forbidden ?? [] });
-    if (redirect !== null) {
-      findings.push({
-        ruleId: 'artifact-structure',
-        path: f.path,
-        message: `artifact-structure: ${f.path} is not allowed here. ${redirect}`,
-        fingerprintBasis: f.path,
-      });
-      continue;
-    }
-    const matched = matchPath(f.path, options);
-    if (matched !== null) {
-      const def = options.types?.[matched.type];
-      // Edit-time writes are drafts; only the gate content-checks.
-      if (contentChecks && def && (def.frontmatter !== undefined || def.headings !== undefined)) {
-        for (const message of contentFindings(repoRoot, f.path, matched.type, def)) {
-          findings.push({ ruleId: 'artifact-structure', path: f.path, message, fingerprintBasis: `${f.path}:${message}` });
-        }
-      }
-      continue;
-    }
-    const governed = globs.some(g => forbiddenRedirect(f.path, { forbidden: [{ pattern: g, redirect: '' }] }) !== null);
-    if (!governed) continue;
-    ignored ??= ignoredPaths(repoRoot, scoped.map(s => s.path));
-    if (ignored.has(f.path) &&!inTypedArea(f.path, options)) continue;
-    const stem = words(path.basename(f.path, path.extname(f.path))).join('-');
-    const lines = nearestTypes(f.path, options, 2).flatMap(n => {
-      const def = options.types?.[n.type];
-      if (!def) return [];
-      try {
-        const params: Record<string, string> = {};
-        for (const p of compileGenerates(def.generates).params) params[p.name] = p.name === 'slug' ? SLUG_SENTINEL : stem;
-        const resolved = renderPath(def.generates, params).split(SLUG_SENTINEL).join('<slug>');
-        return [`- ${n.type}: ${def.description ? `${def.description} ` : ''}-> ${resolved}`];
-      } catch {
-        return [];
-      }
-    });
-    findings.push({
-      ruleId: 'artifact-structure',
-      path: f.path,
-      message: [`artifact-structure: ${f.path} is outside every doc type path. Nearest types:`, ...lines].join('\n'),
-      fingerprintBasis: f.path,
-    });
+    findings.push(...fileManifestFindings(repoRoot, f.path, manifest, contentChecks, () => {
+      ignored ??= ignoredPaths(repoRoot, scoped.map(s => s.path));
+      return ignored.has(f.path);
+    }));
   }
   return findings;
+}
+
+/** Checks one file against the resolved manifest whether or not it is new in git. Writes nothing. */
+export function checkDocConformance(repoRoot: string, relPath: string): Finding[] {
+  const manifest = resolveManifest(repoRoot);
+  if (manifest === null) return [];
+  return fileManifestFindings(repoRoot, relPath, manifest, true, () => ignoredPaths(repoRoot, [relPath]).has(relPath));
 }
 
 const rule: Rule = {

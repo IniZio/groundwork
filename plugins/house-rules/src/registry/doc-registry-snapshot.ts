@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface RegistrySnapshotType {
-  tier: string;
+  tier: 'product' | 'working' | 'ephemeral';
   generates: string;
   description: string;
   instruction: string;
   template?: string;
   frontmatter: Record<string, unknown>;
   headings: string[];
+  headingsWhen?: Array<{ property: string; in: string[]; headings: string[] }>;
 }
 
 export interface RegistrySnapshot {

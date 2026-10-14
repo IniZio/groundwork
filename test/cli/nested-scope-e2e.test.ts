@@ -33,36 +33,35 @@ function setup(mode?: string, preInit = false) {
   git(parent, "add", "a.txt");
   git(parent, "commit", "-q", "-m", "init");
   expect(git(parent, "worktree", "add", "-q", "-b", `b${n}`, child).status).toBe(0);
-  const init = gw(parent, "init");
-  const tok = /token: (\S+)/.exec(init.out)![1];
-  expect(gw(parent, "motive", "add", "m1", "--use", "--token", tok).code).toBe(0);
-  expect(gw(parent, "slice", "add", "S1", "--token", tok).code).toBe(0);
+  expect(gw(parent, "init").code).toBe(0);
+  expect(gw(parent, "motive", "add", "m1", "--use").code).toBe(0);
+  expect(gw(parent, "slice", "add", "S1").code).toBe(0);
   if (preInit) expect(gw(child, "init").code).toBe(0);
-  const link = gw(parent, "scope", "link", child, "--slice", "S1", ...(mode ? ["--mode", mode] : []), "--token", tok);
+  const link = gw(parent, "scope", "link", child, "--slice", "S1", ...(mode ? ["--mode", mode] : []));
   expect(link.code).toBe(0);
-  return { parent, child, tok };
+  return { parent, child };
 }
 const childInit = (child: string) => {
   const r = gw(child, "init");
   expect(r.code).toBe(0);
-  return /token: (\S+)/.exec(r.out)?.[1] ?? gw(child, "token").out.match(/token: (\S+)/)![1];
+  return r;
 };
 
 describe("nested scope e2e", () => {
   it("delegate: child approve forwards, parent complete succeeds", () => {
-    const { parent, child, tok } = setup();
-    const ctok = childInit(child);
-    expect(gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok).code).toBe(0);
-    const r = gw(parent, "slice", "complete", "S1", "--token", tok);
+    const { parent, child } = setup();
+    childInit(child);
+    expect(gw(child, "gate", "approve", "--citation", "a.txt:1").code).toBe(0);
+    const r = gw(parent, "slice", "complete", "S1");
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
   });
 
   it("parent complete refused before child approve; unknown flags change nothing", () => {
-    const { parent, child, tok } = setup();
+    const { parent, child } = setup();
     childInit(child);
     for (const extra of [[], ["--force"], ["--skip-guard"]]) {
-      const r = gw(parent, "slice", "complete", "S1", "--token", tok, ...extra);
+      const r = gw(parent, "slice", "complete", "S1", ...extra);
       expect(r.code).toBe(1);
       expect(r.err).toContain("cannot complete slice 'S1'");
     }
@@ -70,70 +69,68 @@ describe("nested scope e2e", () => {
   });
 
   it("CORRECTION after APPROVE refuses", () => {
-    const { parent, child, tok } = setup();
-    const ctok = childInit(child);
-    gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok);
-    const c = gw(child, "gate", "correction", "--citation", "a.txt:2", "--token", ctok);
+    const { parent, child } = setup();
+    childInit(child);
+    gw(child, "gate", "approve", "--citation", "a.txt:1");
+    const c = gw(child, "gate", "correction", "--citation", "a.txt:2");
     expect(c.code).toBe(0);
-    const r = gw(parent, "slice", "complete", "S1", "--token", tok);
+    const r = gw(parent, "slice", "complete", "S1");
     expect(r.code).toBe(1);
     expect(r.err).toContain("latest child verdict");
   });
 
   it("direct mode needs scope verify", () => {
-    const { parent, child, tok } = setup("direct");
+    const { parent, child } = setup("direct");
     expect(gw(child, "init").out).toContain("no child store");
-    const before = gw(parent, "slice", "complete", "S1", "--token", tok);
+    const before = gw(parent, "slice", "complete", "S1");
     expect(before.code).toBe(1);
     expect(before.err).toContain("gw scope verify");
-    expect(gw(parent, "scope", "verify", "--slice", "S1", "--citation", "a.txt:1", "--token", tok).code).toBe(0);
-    expect(gw(parent, "slice", "complete", "S1", "--token", tok).code).toBe(0);
+    expect(gw(parent, "scope", "verify", "--slice", "S1", "--citation", "a.txt:1").code).toBe(0);
+    expect(gw(parent, "slice", "complete", "S1").code).toBe(0);
   });
 
-  it("scope errors: stderr gw: prefix, exit 1; token required", () => {
-    const { parent, child, tok } = setup();
-    const v = gw(parent, "scope", "verify", "--slice", "S1", "--citation", "a.txt:1", "--token", tok);
+  it("scope errors: stderr gw: prefix, exit 1", () => {
+    const { parent, child } = setup();
+    const v = gw(parent, "scope", "verify", "--slice", "S1", "--citation", "a.txt:1");
     expect(v.code).toBe(1);
     expect(v.err).toStartWith("gw: ");
-    expect(gw(parent, "scope", "unlink", "--slice", "S1", "--reason", "x").code).toBe(1);
     void child;
   });
 
   it("unlink with reason frees slice", () => {
-    const { parent, tok } = setup();
-    expect(gw(parent, "slice", "complete", "S1", "--token", tok).code).toBe(1);
-    expect(gw(parent, "scope", "unlink", "--slice", "S1", "--reason", " ", "--token", tok).code).toBe(1);
-    expect(gw(parent, "scope", "unlink", "--slice", "S1", "--reason", "abandoned", "--token", tok).code).toBe(0);
-    expect(gw(parent, "slice", "complete", "S1", "--token", tok).code).toBe(0);
+    const { parent } = setup();
+    expect(gw(parent, "slice", "complete", "S1").code).toBe(1);
+    expect(gw(parent, "scope", "unlink", "--slice", "S1", "--reason", " ").code).toBe(1);
+    expect(gw(parent, "scope", "unlink", "--slice", "S1", "--reason", "abandoned").code).toBe(0);
+    expect(gw(parent, "slice", "complete", "S1").code).toBe(0);
   });
 
   it("event append rejects each scope type", () => {
-    const { parent, tok } = setup();
+    const { parent } = setup();
     for (const t of ["CHILD_LINK", "CHILD_REGISTER", "CHILD_GATE", "SCOPE_VERIFY", "SCOPE_UNLINK", "SCOPE_PARENT"]) {
-      const r = gw(parent, "event", "append", "--type", t, "--msg", "x", "--token", tok);
+      const r = gw(parent, "event", "append", "--type", t, "--msg", "x");
       expect(r.code).toBe(1);
       expect(r.err).toContain("cannot be appended directly");
     }
   });
 
   it("gate status --json in parent and child", () => {
-    const { parent, child, tok } = setup();
-    const ctok = childInit(child);
+    const { parent, child } = setup();
+    childInit(child);
     const p = JSON.parse(gw(parent, "gate", "status", "--json").out);
     expect(p.scope).toBe("root");
     const c0 = JSON.parse(gw(child, "gate", "status", "--json").out);
     expect(c0.scope).toBe("child");
     expect(c0.parent.slice).toBe("S1");
-    gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok);
+    gw(child, "gate", "approve", "--citation", "a.txt:1");
     expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).toBe("APPROVE");
-    void tok;
   });
 
   it("forward failure exits nonzero, local verdict stays", () => {
     const { parent, child } = setup();
-    const ctok = childInit(child);
+    childInit(child);
     rmSync(path.join(parent, ".groundwork", "work.db"));
-    const r = gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok);
+    const r = gw(child, "gate", "approve", "--citation", "a.txt:1");
     expect(r.code).toBe(1);
     expect(r.err).toContain("remains recorded");
     expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).toBe("APPROVE");
@@ -148,7 +145,7 @@ describe("nested scope e2e", () => {
 
 describe("dirty-tree approve refusal", () => {
   const MSG = "gw: cannot approve a linked child with uncommitted work — commit first:";
-  const approve = (child: string, ctok: string) => gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok);
+  const approve = (child: string) => gw(child, "gate", "approve", "--citation", "a.txt:1");
 
   for (const [label, dirty] of [
     ["untracked", (c: string) => writeFileSync(path.join(c, "new.txt"), "x\n")],
@@ -157,10 +154,10 @@ describe("dirty-tree approve refusal", () => {
   ] as const) {
     it(`${label}: refused before local record or forward`, () => {
       const { parent, child } = setup();
-      const ctok = childInit(child);
+      childInit(child);
       dirty(child);
       const before = inboxText(parent);
-      const r = approve(child, ctok);
+      const r = approve(child);
       expect(r.code).toBe(1);
       expect(r.err).toContain(MSG);
       expect(r.err).toMatch(/new\.txt|a\.txt|s\.txt/);
@@ -171,23 +168,23 @@ describe("dirty-tree approve refusal", () => {
 
   it("ignored files and .groundwork do not block", () => {
     const { child } = setup();
-    const ctok = childInit(child);
+    childInit(child);
     writeFileSync(path.join(child, ".groundwork", "scratch"), "x");
-    expect(approve(child, ctok).code).toBe(0);
+    expect(approve(child).code).toBe(0);
   });
 
   it("other verdicts are not blocked in a dirty tree", () => {
     const { child } = setup();
-    const ctok = childInit(child);
+    childInit(child);
     writeFileSync(path.join(child, "new.txt"), "x\n");
-    expect(gw(child, "gate", "correction", "--citation", "a.txt:1", "--token", ctok).code).toBe(0);
+    expect(gw(child, "gate", "correction", "--citation", "a.txt:1").code).toBe(0);
   });
 
   it("clean tree: records locally and forwards base_commit = HEAD", () => {
     const { parent, child } = setup();
-    const ctok = childInit(child);
+    childInit(child);
     const head = git(child, "rev-parse", "HEAD").stdout.trim();
-    const r = approve(child, ctok);
+    const r = approve(child);
     expect(r.code).toBe(0);
     expect(JSON.parse(gw(child, "gate", "status", "--json").out).gate).toBe("APPROVE");
     expect(inboxText(parent)).toContain(head);
@@ -209,11 +206,10 @@ describe("gw init adopts a pre-existing child store", () => {
   });
 
   it("adopted child approve completes the parent slice", () => {
-    const { parent, child, tok } = setup(undefined, true);
+    const { parent, child } = setup(undefined, true);
     gw(child, "init");
-    const ctok = gw(child, "token").out.match(/token: (\S+)/)![1];
-    expect(gw(child, "gate", "approve", "--citation", "a.txt:1", "--token", ctok).code).toBe(0);
-    expect(gw(parent, "slice", "complete", "S1", "--token", tok).code).toBe(0);
+    expect(gw(child, "gate", "approve", "--citation", "a.txt:1").code).toBe(0);
+    expect(gw(parent, "slice", "complete", "S1").code).toBe(0);
   });
 });
 
@@ -225,16 +221,16 @@ describe("plain errors print gw: <msg>, no stack", () => {
     };
 
     it("scope link to a missing slice", () => {
-      const { parent, child, tok } = setup();
-      clean(gw(parent, "scope", "link", child, "--slice", "NOPE", "--token", tok));
+      const { parent, child } = setup();
+      clean(gw(parent, "scope", "link", child, "--slice", "NOPE"));
     });
 
     it("scope link into a dir with a corrupt pointer", () => {
-      const { parent, tok } = setup();
+      const { parent } = setup();
       const bad = path.join(tmp, `bad${n++}`);
       mkdirSync(path.join(bad, ".groundwork"), { recursive: true });
       writeFileSync(path.join(bad, ".groundwork", "parent"), "{not json");
-      clean(gw(parent, "scope", "link", bad, "--slice", "S1", "--token", tok));
+      clean(gw(parent, "scope", "link", bad, "--slice", "S1"));
     });
   });
 });

@@ -7,9 +7,7 @@ import { spawnSync } from "node:child_process";
 import { WorkStore } from "../../src/store/store.js";
 import { CHILD_GATE, CHILD_LINK, SCOPE_VERIFY, serializePointer } from "../../src/store/scope-pointer.js";
 import { writeInboxEvent } from "../../src/store/scope-inbox.js";
-import {
-  HASHED_PR_BODY_HEADINGS, artifactFiles, artifactHash, approvalPayload, classifySpec, completionGuard, evaluateArtifact, gateStatus, intentGates, intentGatesApply, refusalMessage,
-} from "../../src/cli/gate-status.js";
+import { completionGuard, gateStatus } from "../../src/cli/gate-status.js";
 
 const git = (cwd: string, ...a: string[]) =>
   spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd, encoding: "utf8" });
@@ -96,8 +94,8 @@ describe("gateStatus", () => {
   it("root: main worktree, no pointer", () => {
     store.completeSlice("S-1");
     store.appendEvent("GATE_APPROVE", { citation: "a.ts:1", created_at: "2026-01-01T00:00:00.000Z" });
-    const { intent, ...s } = gateStatus({ cwd: tmp });
-    expect(intent?.applies).toBe(false);
+    const s = gateStatus({ cwd: tmp });
+    expect("intent" in s).toBe(false);
     expect(s).toEqual({
       v: 1, scope: "root", slices: { open: 0, complete: 1 }, gate: "pending", approved_at: "2026-01-01T00:00:00.000Z", seal_reason: "approval has no verifiable seal",
     });
@@ -142,214 +140,9 @@ describe("gateStatus", () => {
   });
 });
 
-describe("intent gates", () => {
-  const slug = "m1";
-  const spec = (fm: string, body = "") => `---\n${fm}\n---\n\n# Spec\n\n## Acceptance criteria\n\n${body}`;
-  const put = (rel: string, text: string) => {
-    mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
-    writeFileSync(path.join(tmp, rel), text);
-  };
-
-  it("bugfix with repro_test -> auto", () => {
-    const c = classifySpec(spec("change_kinds: [bugfix]\nrepro_test: test/a.test.ts"));
-    expect(c.auto).toBe(true);
-    expect(c.rows).toContain("Bug fix with a failing test that reproduces it");
-    expect(c.openDecision).toBeNull();
-  });
-  it("bugfix without repro_test -> human", () => {
-    const c = classifySpec(spec("change_kinds:\n  - bugfix"));
-    expect(c.auto).toBe(false);
-    expect(c.rows).toContain("Bug fix without a reproducing test");
-    expect(c.openDecision?.startsWith("H2 ")).toBe(true);
-  });
-  it("refactor -> auto", () => {
-    const c = classifySpec(spec("change_kinds: [refactor]"));
-    expect(c.auto).toBe(true);
-    expect(c.rows).toContain("Refactor, no behaviour or interface change");
-  });
-  it("cli-flag / config-key -> human", () => {
-    for (const k of ["cli-flag", "config-key"]) {
-      const c = classifySpec(spec(`change_kinds: [${k}]`));
-      expect(c.auto).toBe(false);
-      expect(c.rows).toContain("New CLI flag or config key");
-    }
-  });
-  it("data-format / migration -> human", () => {
-    for (const k of ["data-format", "migration"]) {
-      const c = classifySpec(spec(`change_kinds: [${k}]`));
-      expect(c.auto).toBe(false);
-      expect(c.rows).toContain("Change to stored data format or migration");
-    }
-  });
-  it("TBD AC -> human, names the line", () => {
-    const line = "- [ ] AC-2 TBD later";
-    const c = classifySpec(spec("change_kinds: [refactor]", `- [ ] AC-1 ok\n${line}\n`));
-    expect(c.auto).toBe(false);
-    expect(c.rows).toContain("Every AC maps to a slice, one AC still TBD");
-    expect(c.openDecision).toContain(line);
-  });
-  it("dependency -> human", () => {
-    const c = classifySpec(spec("change_kinds: [dependency]"));
-    expect(c.auto).toBe(false);
-    expect(c.rows).toContain("Dependency added");
-  });
-  it("null / no frontmatter / empty kinds -> Unclassified human", () => {
-    for (const t of [null, "# no fm", spec("change_kinds: []")]) {
-      const c = classifySpec(t);
-      expect(c.auto).toBe(false);
-      expect(c.rows).toEqual(["Unclassified"]);
-      expect(c.openDecision).toBe("H2 needs human approval: Unclassified (spec declares no change_kinds)");
-    }
-  });
-  it("unknown kind -> human, named", () => {
-    const c = classifySpec(spec("change_kinds: [refactor, weird]"));
-    expect(c.auto).toBe(false);
-    expect(c.rows).toContain("Unclassified");
-    expect(c.openDecision).toContain("weird");
-  });
-
-  const defaultChanges = "Lead sentence.\n\n### Decisions\n\n| Decision | Constraint |\n| --- | --- |\n| Use A | Must be fast |";
-  const prBody = (o: { summary?: string; why?: string; changes?: string; impact?: string; focus?: string; proof?: string } = {}) =>
-    `# Title\n\n## Summary\n\n${o.summary ?? "One sentence summary."}\n\n## Why\n\n${o.why ?? "Because X."}\n\n## Changes\n\n${o.changes ?? defaultChanges}\n\n## Impact\n\n${o.impact ?? "None."}\n\n## Review focus\n\n${o.focus ?? "Look at A."}\n\n## Proof\n\n${o.proof ?? "Ran tests."}\n`;
-  const prPath = `.groundwork/work/${slug}/pr-body.md`;
-  const approveBoth = () => ({
-    APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
-    APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "human")),
-  });
-
-  it("approved -> edit -> void; no event -> missing", () => {
-    put(`.groundwork/work/${slug}/spec.md`, "v1");
-    const rec = approvalPayload(tmp, slug, "spec", "human");
-    expect(rec.files).toEqual([`.groundwork/work/${slug}/spec.md`]);
-    expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("approved");
-    put(`.groundwork/work/${slug}/spec.md`, "v2");
-    expect(evaluateArtifact(tmp, slug, "spec", JSON.stringify(rec)).state).toBe("void");
-    expect(evaluateArtifact(tmp, slug, "spec", null).state).toBe("missing");
-    expect(evaluateArtifact(tmp, slug, "spec", "{bad").state).toBe("missing");
-  });
-  it("approvalPayload throws when no file", () => {
-    expect(() => approvalPayload(tmp, slug, "charter", "human")).toThrow(
-      `no charter found for ${slug}: expected .groundwork/work/${slug}/motive.md`,
-    );
-  });
-  it("(a) no pr-body: gates do not apply; refusalMessage null", () => {
-    put(`.groundwork/work/${slug}/spec.md`, "x");
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    expect(intentGatesApply(tmp, slug)).toBe(false);
-    const g = intentGates(tmp, slug, () => null);
-    expect(g.applies).toBe(false);
-    expect(refusalMessage(g)).toBeNull();
-  });
-  it("hashed headings constant is Summary, Why, Changes, Impact", () => {
-    expect([...HASHED_PR_BODY_HEADINGS]).toEqual(["Summary", "Why", "Changes", "Impact"]);
-  });
-  it("(b) Review focus edit keeps charter approved with identical hash", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(prPath, prBody());
-    const rec = approvalPayload(tmp, slug, "charter", "human");
-    expect(rec.files).toEqual([
-      `.groundwork/work/${slug}/motive.md`,
-      `${prPath}#summary`,
-      `${prPath}#why`,
-      `${prPath}#changes`,
-      `${prPath}#impact`,
-    ]);
-    put(prPath, prBody({ focus: "Look at B instead." }));
-    const g = evaluateArtifact(tmp, slug, "charter", JSON.stringify(rec));
-    expect(g.state).toBe("approved");
-    expect(g.hash).toBe(rec.hash);
-  });
-  it("(b2) Proof edit keeps charter approved with identical hash", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(prPath, prBody());
-    const rec = approvalPayload(tmp, slug, "charter", "human");
-    put(prPath, prBody({ proof: "Different proof." }));
-    const g = evaluateArtifact(tmp, slug, "charter", JSON.stringify(rec));
-    expect(g.state).toBe("approved");
-    expect(g.hash).toBe(rec.hash);
-  });
-  for (const [name, edit] of [
-    ["Summary", { summary: "Different summary." }],
-    ["Why", { why: "Because Y." }],
-    ["Changes", { changes: "Changed." }],
-    ["Impact", { impact: "Breaks Z." }],
-  ] as const) {
-    it(`(c) ${name} edit voids H1 and H2`, () => {
-      put(`.groundwork/work/${slug}/motive.md`, "c");
-      put(`.groundwork/work/${slug}/spec.md`, "s");
-      put(prPath, prBody());
-      const ev = approveBoth();
-      put(prPath, prBody(edit));
-      const h1 = evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER);
-      expect(h1.state).toBe("void");
-      expect(h1.hash).not.toBe(JSON.parse(ev.APPROVE_CHARTER).hash);
-      expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
-    });
-  }
-  it("(c2) Decisions table row edit inside Changes voids H1 and H2", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(`.groundwork/work/${slug}/spec.md`, "s");
-    put(prPath, prBody());
-    const ev = approveBoth();
-    put(prPath, prBody({ changes: defaultChanges.replace("| Use A | Must be fast |", "| Use B | Must be slow |") }));
-    const h1 = evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER);
-    expect(h1.state).toBe("void");
-    expect(h1.hash).not.toBe(JSON.parse(ev.APPROVE_CHARTER).hash);
-    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
-  });
-  it("pr-body missing Changes still hashes Summary, Why and Impact only", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(prPath, "# Title\n\n## Summary\n\nS.\n\n## Why\n\nW.\n\n## Impact\n\nI.\n\n## Proof\n\nP.\n");
-    expect(artifactFiles(tmp, slug, "charter")).toEqual([
-      `.groundwork/work/${slug}/motive.md`,
-      `${prPath}#summary`,
-      `${prPath}#why`,
-      `${prPath}#impact`,
-    ]);
-    expect(artifactHash(tmp, slug, "charter")).not.toBeNull();
-  });
-  it("(d) spec.md edit voids H2 only", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(`.groundwork/work/${slug}/spec.md`, "s");
-    put(prPath, prBody());
-    const ev = approveBoth();
-    put(`.groundwork/work/${slug}/spec.md`, "s2");
-    expect(evaluateArtifact(tmp, slug, "spec", ev.APPROVE_SPEC).state).toBe("void");
-    expect(evaluateArtifact(tmp, slug, "charter", ev.APPROVE_CHARTER).state).toBe("approved");
-  });
-  it("(e) doc/<slug> files alone do not apply the gates", () => {
-    put(`doc/${slug}/motive.md`, "c");
-    put(`doc/${slug}/spec.md`, "s");
-    expect(intentGatesApply(tmp, slug)).toBe(false);
-    expect(intentGates(tmp, slug, () => null).applies).toBe(false);
-  });
-  it("refusalMessage names H1 and H2 when missing", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(`.groundwork/work/${slug}/spec.md`, "s");
-    put(prPath, prBody());
-    const g = intentGates(tmp, slug, () => null);
-    expect(g.applies).toBe(true);
-    const m = refusalMessage(g) ?? "";
-    expect(m.startsWith("intent gate: implementation dispatch refused — ")).toBe(true);
-    expect(m).toContain("H1 charter approval missing");
-    expect(m).toContain("H2 spec approval missing");
-  });
-  it("refusalMessage null when both approved", () => {
-    put(`.groundwork/work/${slug}/motive.md`, "c");
-    put(`.groundwork/work/${slug}/spec.md`, "s");
-    put(prPath, prBody());
-    const ev: Record<string, string> = {
-      APPROVE_CHARTER: JSON.stringify(approvalPayload(tmp, slug, "charter", "human")),
-      APPROVE_SPEC: JSON.stringify(approvalPayload(tmp, slug, "spec", "auto", ["Refactor, no behaviour or interface change"])),
-    };
-    expect(refusalMessage(intentGates(tmp, slug, (t) => ev[t] ?? null))).toBeNull();
-  });
-});
-
 describe("sealed approval across gate status / compile / slice status (spawned)", () => {
   let repo: string;
   let xdg: string;
-  let token: string;
   const gw = (...a: string[]) => {
     const env: Record<string, string | undefined> = { ...process.env, XDG_CONFIG_HOME: xdg };
     delete env.CLAUDE_PROJECT_DIR;
@@ -361,12 +154,10 @@ describe("sealed approval across gate status / compile / slice status (spawned)"
     xdg = realpathSync(mkdtempSync(path.join(tmpdir(), "gs-xdg-")));
     git(repo, "init", "-q");
     git(repo, "commit", "--allow-empty", "-q", "-m", "init");
-    const init = gw("init");
-    token = /token: ([0-9a-f]{32})/.exec(init.stdout)?.[1] ?? "";
-    expect(token).toHaveLength(32);
+    gw("init");
     git(repo, "add", "-A");
     git(repo, "commit", "-q", "-m", "wip", "--allow-empty");
-    const ap = gw("gate", "approve", "--citation", "a.ts:1", "--token", token);
+    const ap = gw("gate", "approve", "--citation", "a.ts:1");
     expect(ap.stdout).toContain("GATE_APPROVE recorded");
   });
   afterEach(() => {

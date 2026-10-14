@@ -10,14 +10,12 @@ import { runMigrateIssues } from "./migrate-issues.js";
 import { runRecipeCommand } from "./recipe.js";
 import { listUnits, idleDays } from "../store/work-units.js";
 import {
-  readWriteTokenForDb,
-  ensureWriteTokenForDb,
   ensureSealKeyForDb,
   computeSeal,
   type SealFields,
 } from "../store/key-store.js";
 import { assertCommittedForApprove, childInit, forwardVerdict, scopeLink, scopeUnlink, scopeVerify } from "./scope.js";
-import { completionGuard, gateStatus, sealedGateVerdict, APPROVAL_EVENT, approvalPayload, classifySpec, intentGates, type IntentArtifact } from "./gate-status.js";
+import { completionGuard, gateStatus, sealedGateVerdict } from "./gate-status.js";
 import { hasCommittedGroundworkIgnore } from "./ignore-check.js";
 import { CHILD_LINK,CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK } from "../store/scope-pointer.js";
 
@@ -65,23 +63,6 @@ function requireDb(motiveSlug?: string): WorkStore {
   const store = new WorkStore(p);
   if (motiveSlug) store.setMotiveContext(motiveSlug);
   return store;
-}
-
-function checkToken(store: WorkStore, args: string[]): void {
-  const t = flag(args, "--token");
-  // Token lives in config dir (not in work.db).  Fall back to meta for stores
-  // that have not yet run $GW init under the new scheme.
-  const stored = readWriteTokenForDb(dbPath()) ?? store.getMeta("token");
-  if (!stored) {
-    process.stderr.write(`error: store has no token — run \`${gw} init\` first\n`);
-    store.close();
-    process.exit(1);
-  }
-  if (t !== stored) {
-    process.stderr.write("error: --token required for mutations\n");
-    store.close();
-    process.exit(1);
-  }
 }
 
 function excludeWorkingTier(root: string): void {
@@ -133,18 +114,11 @@ function cmdInit(args: string[]): void {
   excludeWorkingTier(repoDir());
   if (!hasCommittedGroundworkIgnore(repoDir())) process.stderr.write(`warning: no committed .gitignore rule covers .groundwork/; a fresh clone will track agent files. Add ".groundwork/" to .gitignore and commit it.\n`);
   warnTrackedAgentView(repoDir());
+  const existed = existsSync(p);
   const store = new WorkStore(p);
 
-  const metaTok = store.getMeta("token");
-  let tok = readWriteTokenForDb(p);
-  if (!tok) {
-    tok = ensureWriteTokenForDb(p, metaTok ?? undefined);
-    if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
-    process.stdout.write(`initialized: ${p}\ntoken: ${tok}\n`);
-  } else {
-    if (metaTok) store.database.run("DELETE FROM meta WHERE key = 'token'");
-    process.stdout.write(`already initialized: ${p}\n`);
-  }
+  if (store.getMeta("token")) store.database.run("DELETE FROM meta WHERE key = 'token'");
+  process.stdout.write(`${existed ? "already initialized" : "initialized"}: ${p}\n`);
   ensureSealKeyForDb(p);
 
   const objective = flag(args, "--objective");
@@ -158,14 +132,14 @@ function cmdInit(args: string[]): void {
 function cmdSliceAdd(args: string[], motiveSlug?: string): void {
   const id = args[0];
   if (!id || id.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] [--files a.ts,b.ts] --token T\n`);
+    process.stderr.write(`usage: ${gw} slice add <id> [--desc TEXT] [--wave N] [--covers-ac AC-1,AC-3] [--blocked-by a,b] [--acceptance "x;y"] [--files a.ts,b.ts]\n`);
     process.exit(1);
   }
   const waveRaw = flag(args, "--wave");
   let wave = 0;
   if (waveRaw !== undefined) {
     if (!/^-?\d+$/.test(waveRaw.trim())) {
-      process.stderr.write(`error: --wave must be a numeric integer (got: ${JSON.stringify(waveRaw)})\nusage: ${gw} slice add <id> [--wave N] --token T\n`);
+      process.stderr.write(`error: --wave must be a numeric integer (got: ${JSON.stringify(waveRaw)})\nusage: ${gw} slice add <id> [--wave N]\n`);
       process.exit(1);
     }
     wave = parseInt(waveRaw, 10);
@@ -173,7 +147,6 @@ function cmdSliceAdd(args: string[], motiveSlug?: string): void {
   const filesRaw = flag(args, "--files");
   const files = filesRaw ? JSON.stringify(filesRaw.split(",").map(f => f.trim()).filter(Boolean)) : null;
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.insertSlice({
     id,
     wave,
@@ -191,9 +164,8 @@ function cmdSliceAdd(args: string[], motiveSlug?: string): void {
 
 function cmdSliceComplete(args: string[], motiveSlug?: string): void {
   const id = args[0];
-  if (!id) { process.stderr.write(`usage: ${gw} slice complete <id> --token T\n`); process.exit(1); }
+  if (!id) { process.stderr.write(`usage: ${gw} slice complete <id>\n`); process.exit(1); }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   if (!store.getSlice(id)) {
     process.stderr.write(`error: slice '${id}' not found\n`);
     store.close();
@@ -214,16 +186,15 @@ function cmdSliceComplete(args: string[], motiveSlug?: string): void {
 function cmdSliceClaim(args: string[], motiveSlug?: string): void {
   const id = args[0];
   if (!id || id.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} slice claim <id> --by AGENT --token T\n`);
+    process.stderr.write(`usage: ${gw} slice claim <id> --by AGENT\n`);
     process.exit(1);
   }
   const by = flag(args, "--by");
   if (!by) {
-    process.stderr.write(`error: --by required\nusage: ${gw} slice claim <id> --by AGENT --token T\n`);
+    process.stderr.write(`error: --by required\nusage: ${gw} slice claim <id> --by AGENT\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   if (!store.getSlice(id)) {
     process.stderr.write(`error: slice '${id}' not found\n`);
     store.close();
@@ -243,16 +214,15 @@ function cmdSliceClaim(args: string[], motiveSlug?: string): void {
 function cmdSliceSetAc(args: string[], motiveSlug?: string): void {
   const id = args[0];
   if (!id || id.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3 --token T\n`);
+    process.stderr.write(`usage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3\n`);
     process.exit(1);
   }
   const covers_ac = flag(args, "--covers-ac");
   if (!covers_ac) {
-    process.stderr.write(`error: --covers-ac required\nusage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3 --token T\n`);
+    process.stderr.write(`error: --covers-ac required\nusage: ${gw} slice set-ac <id> --covers-ac AC-1,AC-3\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   if (!store.getSlice(id)) {
     process.stderr.write(`error: slice '${id}' not found\n`);
     store.close();
@@ -285,9 +255,8 @@ function cmdSliceStatus(motiveSlug?: string): void {
 
 function cmdSliceRm(args: string[], motiveSlug?: string): void {
   const id = args[0];
-  if (!id) { process.stderr.write(`usage: ${gw} slice rm <id> --token T\n`); process.exit(1); }
+  if (!id) { process.stderr.write(`usage: ${gw} slice rm <id>\n`); process.exit(1); }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   const s = store.getSlice(id);
   if (!s) { process.stderr.write(`error: slice '${id}' not found\n`); store.close(); process.exit(1); }
   store.appendEvent("RETENTION_ACTION", { slice_id: id, reason: "cli rm", prior_status: s.status });
@@ -317,7 +286,6 @@ function cmdGateVerdict(verdict: string, args: string[], motiveSlug?: string): v
     try { assertCommittedForApprove(repoBase()); } catch (e: unknown) { scopeFail(e); }
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   const eventType = `GATE_${upper}`;
   const payload: Record<string, unknown> = { citation };
   if (upper === "APPROVE") {
@@ -357,11 +325,10 @@ function cmdScope(sub: string | undefined, args: string[], motiveSlug?: string):
   }
   const childDir = sub === "link" ? args[0] : undefined;
   if (!slice || (sub === "link" && (!childDir || childDir.startsWith("-")))) {
-    process.stderr.write(`usage: ${gw} scope ${sub === "link" ? "link <dir> --slice S [--mode direct|delegate]" : sub === "unlink" ? "unlink --slice S --reason TEXT" : "verify --slice S --citation file:line"} --token T\n`);
+    process.stderr.write(`usage: ${gw} scope ${sub === "link" ? "link <dir> --slice S [--mode direct|delegate]" : sub === "unlink" ? "unlink --slice S --reason TEXT" : "verify --slice S --citation file:line"}\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   try {
     if (sub === "link") {
       const l = scopeLink(store, { childDir: path.resolve(childDir!), slice, mode: flag(args, "--mode"), repoDir: repoDir() });
@@ -386,74 +353,13 @@ function cmdGateStatus(args: string[]): void {
     process.stdout.write(JSON.stringify(st, null, 2) + "\n");
     return;
   }
-  process.stdout.write(`scope: ${st.scope}  gate: ${st.gate}  slices: ${st.slices.complete} complete, ${st.slices.open} open${st.intent?.applies ? `  H1: ${st.intent.h1.state}  H2: ${st.intent.h2.state}` : ""}\n`);
-}
-
-function cmdApprove(args: string[], motiveSlug?: string): void {
-  const artifact = args[0];
-  if (artifact !== "charter" && artifact !== "spec") {
-    process.stderr.write(`usage: ${gw} approve charter|spec [--auto] --token T\n`);
-    process.exit(1);
-  }
-  let autoFlag = false;
-  for (let i = 1; i < args.length; i++) {
-    if (args[i] === "--token" && i + 1 < args.length && !args[i + 1].startsWith("-")) i++;
-    else if (args[i] === "--auto" && !autoFlag) autoFlag = true;
-    else {
-      process.stderr.write(`usage: ${gw} approve charter|spec [--auto] --token T\n`);
-      process.exit(1);
-    }
-  }
-  if (artifact === "charter" && autoFlag) {
-    process.stderr.write(`usage: ${gw} approve charter [--token T]; --auto applies to spec only\n`);
-    process.exit(1);
-  }
-  const a: IntentArtifact = artifact;
-  const auto = a === "spec" && autoFlag;
-  const store = requireDb(motiveSlug);
-  checkToken(store, args);
-  const slug = store.activeMotive;
-  const root = repoDir();
-  const label = a === "charter" ? "H1 charter" : "H2 spec";
-  if (auto) {
-    const specPath = path.join(root, ".groundwork", "work", slug, "spec.md");
-    const cls = classifySpec(existsSync(specPath) ? readFileSync(specPath, "utf8") : null);
-    if (!cls.auto) {
-      const reason = cls.openDecision ?? "H2 needs human approval";
-      store.appendEvent("HOLD", { reason });
-      process.stdout.write(`H2 awaiting human: ${reason}\n`);
-      store.close();
-      process.exit(2);
-    }
-    try {
-      store.appendEvent(APPROVAL_EVENT.spec, approvalPayload(root, slug, "spec", "auto", cls.rows) as unknown as Record<string, unknown>);
-    } catch (e: unknown) {
-      store.close();
-      process.stderr.write(`error: ${e instanceof Error ? e.message : String(e)}\n`);
-      process.exit(1);
-    }
-    process.stdout.write(`H2 auto-pass: ${cls.rows.join(", ")}\n`);
-    store.close();
-    return;
-  }
-  let payload;
-  try { payload = approvalPayload(root, slug, a, "human"); }
-  catch (e: unknown) {
-    store.close();
-    process.stderr.write(`error: ${e instanceof Error ? e.message : String(e)}\n`);
-    process.exit(1);
-  }
-  store.appendEvent(APPROVAL_EVENT[a], payload as unknown as Record<string, unknown>);
-  if (a === "spec" && store.getHoldState()?.startsWith("H2 ")) store.appendEvent("HOLD_CLEAR", {});
-  process.stdout.write(`${label} approved: ${payload.hash}\n`);
-  store.close();
+  process.stdout.write(`scope: ${st.scope}  gate: ${st.gate}  slices: ${st.slices.complete} complete, ${st.slices.open} open\n`);
 }
 
 function cmdHoldSet(args: string[], motiveSlug?: string): void {
   const reason = flag(args, "--reason");
-  if (!reason) { process.stderr.write(`usage: ${gw} hold set --reason "established: ...; still need: ..." --token T\n`); process.exit(1); }
+  if (!reason) { process.stderr.write(`usage: ${gw} hold set --reason "established: ...; still need: ..."\n`); process.exit(1); }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.appendEvent("HOLD", { reason });
   process.stdout.write(`hold set: ${reason}\n`);
   store.close();
@@ -461,7 +367,6 @@ function cmdHoldSet(args: string[], motiveSlug?: string): void {
 
 function cmdHoldClear(args: string[], motiveSlug?: string): void {
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.appendEvent("HOLD_CLEAR", {});
   process.stdout.write("hold cleared\n");
   store.close();
@@ -469,7 +374,7 @@ function cmdHoldClear(args: string[], motiveSlug?: string): void {
 
 function cmdEventAppend(args: string[], motiveSlug?: string): void {
   const type = flag(args, "--type");
-  if (!type) { process.stderr.write(`usage: ${gw} event append --type TYPE [--msg TEXT] [--data JSON] --token T\n`); process.exit(1); }
+  if (!type) { process.stderr.write(`usage: ${gw} event append --type TYPE [--msg TEXT] [--data JSON]\n`); process.exit(1); }
   // Gate verdict types must go through `$GW gate <verdict>` with a citation.
   if ([CHILD_LINK, CHILD_REGISTER, CHILD_GATE, SCOPE_VERIFY, SCOPE_UNLINK, "SCOPE_PARENT"].includes(type)) {
     process.stderr.write(`error: ${type} is a scope event and cannot be appended directly — use \`$GW scope\` commands\n`);
@@ -491,7 +396,6 @@ function cmdEventAppend(args: string[], motiveSlug?: string): void {
   try { data = JSON.parse(dataRaw) as Record<string, unknown>; }
   catch { process.stderr.write("error: --data must be valid JSON\n"); process.exit(1); }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.appendEvent(type, { msg, ...data });
   process.stdout.write(`event ${type} appended\n`);
   store.close();
@@ -528,7 +432,6 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
   const acCoverage = buildAcCoverage(slices);
   const acCoverageObj = Object.fromEntries([...acCoverage.entries()]);
   const unitRoot = repoDir();
-  const intent = intentGates(unitRoot, motive, t => store.getLastEvent(t)?.payload ?? null);
   const idleUnits: { slug: string; idle_days: number }[] = [];
   for (const slug of listUnits(unitRoot)) {
     try {
@@ -549,7 +452,6 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
       gate: gateOk ? "APPROVED" : "pending",
       ...(sealedGate.reason ? { gate_reason: sealedGate.reason } : {}),
       hold: hold ?? null,
-      intent,
       ac_coverage: acCoverageObj,
       idle_units: idleUnits,
     }, null, 2) + "\n");
@@ -557,13 +459,6 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
     process.stdout.write(`motive: ${motive}\n`);
     process.stdout.write(`objective: ${objective ?? "(none)"}\n`);
     process.stdout.write(`gate: ${gateOk ? "APPROVED" : "pending"}${gateNote}\n`);
-    if (!intent.applies) {
-      process.stdout.write(`intent gates: n/a (no .groundwork/work/${motive}/pr-body.md)\n`);
-    } else {
-      const fmt = (g: typeof intent.h1) => g.state === "approved" ? `approved (${g.approved?.by})` : g.state;
-      process.stdout.write(`H1 charter: ${fmt(intent.h1)}\n`);
-      process.stdout.write(`H2 spec: ${fmt(intent.h2)}\n`);
-    }
     if (hold) {
       const [first, ...rest] = hold.split("\n");
       process.stdout.write(`hold: awaiting human — ${first}\n`);
@@ -604,11 +499,10 @@ function cmdCompile(args: string[], motiveSlug?: string): void {
 function cmdMotiveAdd(args: string[], motiveSlug?: string): void {
   const slug = args[0];
   if (!slug || slug.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} motive add <slug> [--use] --token T\n`);
+    process.stderr.write(`usage: ${gw} motive add <slug> [--use]\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.createMotive(slug);
   const useFlag = boolFlag(args, "--use");
   if (useFlag) {
@@ -623,11 +517,10 @@ function cmdMotiveAdd(args: string[], motiveSlug?: string): void {
 function cmdMotiveUse(args: string[]): void {
   const slug = args[0];
   if (!slug || slug.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} motive use <slug> --token T\n`);
+    process.stderr.write(`usage: ${gw} motive use <slug>\n`);
     process.exit(1);
   }
   const store = requireDb();
-  checkToken(store, args);
   // Ensure the motive exists.
   const motives = store.listMotives();
   if (!motives.some(m => m.id === slug)) {
@@ -654,11 +547,10 @@ function cmdMotiveList(): void {
 function cmdMotiveComplete(args: string[], motiveSlug?: string): void {
   const slug = args[0];
   if (!slug || slug.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} motive complete <slug> --token T\n`);
+    process.stderr.write(`usage: ${gw} motive complete <slug>\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   store.completeMotive(slug);
   process.stdout.write(`motive ${slug} marked complete\n`);
   store.close();
@@ -677,15 +569,7 @@ function cmdMigrate(args: string[]): void {
     process.exit(r.code);
   }
   const apply = args.includes("--apply");
-  if (apply) {
-    if (!flag(args, "--token")) {
-      process.stderr.write(`usage: ${gw} migrate [issues] [--apply --token T]\n`);
-      process.exit(1);
-    }
-    const store = requireDb();
-    checkToken(store, args);
-    store.close();
-  }
+  if (apply) requireDb().close();
   const r = runMigrate(repoDir(), apply);
   process.stdout.write(r.lines.join("\n") + "\n");
   process.exit(r.code);
@@ -693,11 +577,10 @@ function cmdMigrate(args: string[]): void {
 function cmdArchive(args: string[], motiveSlug?: string): void {
   const slug = args[0];
   if (!slug || slug.startsWith("-")) {
-    process.stderr.write(`usage: ${gw} archive <slug> --token T\n`);
+    process.stderr.write(`usage: ${gw} archive <slug>\n`);
     process.exit(1);
   }
   const store = requireDb(motiveSlug);
-  checkToken(store, args);
   const r = runArchive(repoDir(), slug);
   if (!r.ok) {
     process.stderr.write(`error: ${r.err}\n`);
@@ -713,7 +596,15 @@ function cmdArchive(args: string[], motiveSlug?: string): void {
 // Entry point — parse global --motive flag before subcommand dispatch
 // ---------------------------------------------------------------------------
 
-const rawArgv = process.argv.slice(2);
+// --token <v> is accepted and ignored (tokens are no longer used).
+const rawArgv: string[] = [];
+{
+  const raw = process.argv.slice(2);
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "--token") { i++; continue; }
+    rawArgv.push(raw[i]);
+  }
+}
 
 // Extract global --motive <slug> before subcommand parsing.
 const motiveIdx = rawArgv.indexOf("--motive");
@@ -731,9 +622,7 @@ const cmd = argv[0];
 if (cmd === "init") {
   cmdInit(argv.slice(1));
 } else if (cmd === "token") {
-  const tok = readWriteTokenForDb(dbPath());
-  if (!tok) { process.stderr.write(`error: no token — run \`${gw} init\` first\n`); process.exit(1); }
-  process.stdout.write(`token: ${tok}\n`);
+  process.stdout.write("tokens are no longer used; gw mutations need no --token\n");
 } else if (cmd === "slice") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -758,8 +647,6 @@ if (cmd === "init") {
   if (sub === "set") cmdHoldSet(rest, globalMotive);
   else if (sub === "clear") cmdHoldClear(rest, globalMotive);
   else { process.stderr.write(`unknown hold subcommand: ${sub}\n`); process.exit(1); }
-} else if (cmd === "approve") {
-  cmdApprove(argv.slice(1), globalMotive);
 } else if (cmd === "event") {
   const sub = argv[1];
   const rest = argv.slice(2);
@@ -782,6 +669,6 @@ if (cmd === "init") {
   else if (sub === "complete") cmdMotiveComplete(rest, globalMotive);
   else { process.stderr.write(`unknown motive subcommand: ${sub}\nsubcommands: add, use, list, complete\n`); process.exit(1); }
 } else {
-  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe [--merge]\n`);
+  process.stderr.write(`unknown command: ${cmd ?? "(none)"}\ncommands: init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|${GATE_VERDICTS.map(v => v.toLowerCase()).join("|")}, scope link|unlink|verify, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe [--merge]\n`);
   process.exit(1);
 }

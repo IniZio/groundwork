@@ -35,10 +35,10 @@ function approvedRepo() {
   writeFileSync(path.join(root, "a.txt"), "a\n");
   git("add", "-A");
   git("commit", "-q", "-m", "init");
-  const tok = /token: (\S+)/.exec(gw("init").stdout)![1];
-  expect(gw("slice", "add", "S1", "--token", tok).status).toBe(0);
-  expect(gw("slice", "complete", "S1", "--token", tok).status).toBe(0);
-  const ap = gw("gate", "approve", "--citation", "a.txt:1", "--token", tok);
+  gw("init");
+  expect(gw("slice", "add", "S1").status).toBe(0);
+  expect(gw("slice", "complete", "S1").status).toBe(0);
+  const ap = gw("gate", "approve", "--citation", "a.txt:1");
   expect(ap.stderr).toBe("");
   expect(ap.status).toBe(0);
   return { root, xdg, env };

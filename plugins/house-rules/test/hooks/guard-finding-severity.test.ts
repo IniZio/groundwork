@@ -22,14 +22,14 @@ function repo(files: Record<string, string>): string {
   return dir;
 }
 
-function fakeRule(severity: Severity | undefined): Rule {
+function fakeRule(severity: Severity | undefined, id: string = RULE_ID): Rule {
   return {
-    id: RULE_ID,
+    id,
     meta: { description: "fake" },
     check: () => [],
     editCheck: (edit) => ({
       findings: [{
-        ruleId: RULE_ID, path: path.basename(edit.path), line: 1,
+        ruleId: id, path: path.basename(edit.path), line: 1,
         message: MSG, fingerprintBasis: "x", ...(severity ? { severity } : {}),
       }],
     }),
@@ -84,6 +84,19 @@ describe("guard per-finding severity", () => {
       const r = await check({ tool_name: "Write", cwd: dir, tool_input: { file_path: fp, content: "const x = 1;\n" } }, { rules: [fakeRule("off")] });
       expect(hso(r).permissionDecision).toBeUndefined();
       expect(r.stdout).not.toContain(MSG);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a finding tagged error under a warn rule warns instead of denying", async () => {
+    // An id with no policy entry falls back to warn, so it stands in for a rule configured as warn.
+    const WARN_RULE_ID = "unconfigured-fake-rule";
+    const dir = repo({});
+    try {
+      const fp = path.join(dir, "a.ts");
+      const r = await check({ tool_name: "Write", cwd: dir, tool_input: { file_path: fp, content: "const x = 1;\n" } }, { rules: [fakeRule("error", WARN_RULE_ID)] });
+      const h = hso(r);
+      expect(h.permissionDecision).toBeUndefined();
+      expect(h.additionalContext as string).toContain(`house-rules ${WARN_RULE_ID}: ${MSG}`);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

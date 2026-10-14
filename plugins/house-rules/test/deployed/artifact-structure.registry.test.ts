@@ -200,4 +200,32 @@ describe("artifact-structure registry fallback (deployed)", () => {
     expect(denied.decision).toBe("deny");
     expect(denied.full).toContain(".scratch");
   });
+
+  const IGNORE_CASES: Array<[string, (dir: string) => void]> = [
+    ["a committed .gitignore", (dir) => {
+      writeFileSync(path.join(dir, ".gitignore"), ".groundwork/\n");
+      git(dir, "rm -rq --cached .groundwork");
+      git(dir, "add -A");
+      git(dir, "commit -q -m ignore");
+    }],
+    [".git/info/exclude", (dir) => {
+      writeFileSync(path.join(dir, ".git/info/exclude"), ".groundwork/\n");
+      git(dir, "rm -rq --cached .groundwork");
+      git(dir, "commit -q -m untrack");
+    }],
+  ];
+  for (const [label, ignore] of IGNORE_CASES) {
+    it(`still warns about a todo issue missing Acceptance criteria when .groundwork is ignored by ${label}`, async () => {
+      const dir = makeRepo({ groundwork: true });
+      ignore(dir);
+      put(dir, ISSUE, TODO_NO_AC);
+      const out = await stop(dir);
+      expect(out.exit).toBe(0);
+      expect(out.decision).not.toBe("block");
+      const line = out.lines.find((l) => l.includes(MISSING_AC));
+      expect(line).toBeDefined();
+      expect(line).toContain(ISSUE);
+      expect(line).toContain('(type "issue")');
+    });
+  }
 });

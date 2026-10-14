@@ -26,10 +26,3 @@ Human summary: `doc/enforcement-scope.md`.
 - comment-restate: restatement recurs as a measurable regression across multiple motives.
 - broader slop patterns: mid-sentence filler survives at a rate that hurts plan or agent output.
 
-## Intent-gate dispatch refusal (spawn-model-guard)
-
-- Source: `src/hooks/spawn-model-guard.ts` (`INTENT_GATED`, `intentRefusal`); message built by `refusalMessage` in `src/cli/gate-status.ts`.
-- Denies spawning `groundwork:implementer`, `groundwork:junior-orchestrator`, `groundwork:designer`.
-- Applies only while the PR-body draft `.groundwork/work/<slug>/pr-body.md` exists, and H1 (charter) or H2 (spec) approval is missing or void. H1 binds `motive.md` plus the draft's Why, Changes and Impact sections; H2 binds `spec.md` plus those sections. Filling Review focus or Proof later does not void approval. Without the draft, neither gate applies.
-- Message starts `intent gate: implementation dispatch refused — `.
-- Fails open: no `.groundwork/work.db`, no project dir, or any error → allow.

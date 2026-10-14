@@ -6,8 +6,8 @@ Agent-facing. Human overview: doc/cli.md.
 
 | Command | Flags | Effect |
 |---|---|---|
-| `gw init` | `--objective TEXT` | Creates the store and prints the token once. Safe to re-run; the token shows on the first run only. `--objective` records the objective for `gw compile`. Excludes the working-tier directory through git's local exclude file, never `.gitignore`. In a tree linked to a parent slice it creates a child store instead and prints no token. A direct-mode link creates no store. See [nested work scope](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/spec/nested-work-scope.md). |
-| `gw token` | | Prints the write token again. Main session only by convention. Use on session resume. |
+| `gw init` | `--objective TEXT` | Creates the store and the gate-seal key. Safe to re-run. `--objective` records the objective for `gw compile`. Excludes the working-tier directory through git's local exclude file, never `.gitignore`. In a tree linked to a parent slice it creates a child store instead. A direct-mode link creates no store. See [nested work scope](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/spec/nested-work-scope.md). |
+| `gw token` | | Prints a notice that tokens are no longer used. `gw` mutations need no token flag. |
 | `gw slice add <id>` | `--desc TEXT` `--wave N` `--covers-ac AC-1,AC-3` `--blocked-by a,b` `--acceptance "x;y"` | Adds a pending slice. `--wave` must be an integer, else exit 1. |
 | `gw slice claim <id>` | `--by AGENT` | Sets `in_progress` and records the claimer. Exit 1 if already claimed. |
 | `gw slice set-ac <id>` | `--covers-ac AC-1,AC-3` | Sets or replaces the slice's covered acceptance criteria. |
@@ -18,15 +18,14 @@ Agent-facing. Human overview: doc/cli.md.
 | `gw scope unlink` | `--slice S` `--reason "..."` | Removes the live link. Reason is required and recorded. |
 | `gw scope verify` | `--slice S` `--citation file:line` | Records the host's own check of a direct-mode slice. Refused for delegate links. |
 | `gw gate <verdict>` | `--citation "file:line ..."` | Records a verdict: `approve`, `correction`, `stop`, `gaps`, or `replan`. Citation needs at least one `file:line`. `approve` records base_commit (git HEAD) and an HMAC seal. In a linked child, the verdict is also forwarded to the parent inbox with base_commit and prints `forwarded to parent: <id>`; if forwarding fails it stays local and exits 1. A delegate-mode child cannot `gate approve` while the tree has uncommitted changes outside `.groundwork/`: exit 1, `cannot approve a linked child with uncommitted work` (src/cli/scope.ts assertCommittedForApprove). Direct-mode links are not checked. |
-| `gw gate status` | `--json` | Prints `scope: <child\|root\|orphan>  gate: <verdict\|none>  slices: N complete, M open`, plus suffix `  H1: <state>  H2: <state>` when intent gates apply (states `approved`, `void`, `missing`; `void` = artifact edited after approval). `--json` adds `v`, `approved_at` (time of the newest verdict of any kind), for children `mode` and `parent`, and `intent` `{applies,slug,h1,h2}`. |
-| `gw approve charter\|spec` | `--auto` `--token T` | Records a human approval of the charter (`.groundwork/work/<slug>/motive.md`) or spec (`.../spec.md`) as an APPROVE_CHARTER / APPROVE_SPEC event holding a sha256 hash of that file plus the `Why`, `Changes` and `Impact` sections of the PR body draft `.groundwork/work/<slug>/pr-body.md`. Prints `H1 charter approved: <hash>` / `H2 spec approved: <hash>`. Exit 0 ok; exit 1 if the artifact is missing or the subcommand is not charter\|spec (usage printed); exit 2 only with `spec --auto` when classification needs a human (a Human row): appends a HOLD event whose reason is `H2 needs human approval: <rows>`, prints `H2 awaiting human: <reason>`. `--auto` passes (prints `H2 auto-pass: <rows>`, records by=auto) only when the spec's frontmatter `change_kinds` has no Human row. A human `approve spec` (no --auto) also appends HOLD_CLEAR when the current hold starts with `H2 `. `--auto` applies to spec only. |
+| `gw gate status` | `--json` | Prints `scope: <child\|root\|orphan>  gate: <verdict\|none>  slices: N complete, M open`. `--json` adds `v`, `approved_at` (time of the newest verdict of any kind), and for children `mode` and `parent`. |
 | `gw hold set` | `--reason "..."` | Pauses the run for a human. The reason shows in `gw slice status`. |
 | `gw hold clear` | | Ends the hold. |
 | `gw event append` | `--type TYPE` `--msg TEXT` `--data JSON` | Appends an event. Gate verdict types and scope event types are rejected; use `gw gate` and `gw scope`. TYPE list below. |
-| `gw compile` | `--json` | Resume view. Read-only. Prints `H1 charter: <state>` and `H2 spec: <state>` lines (state `approved (human\|auto)`, `void`, `missing`) or `intent gates: n/a (no PR body draft)`. `--json` adds `intent`. |
+| `gw compile` | `--json` | Resume view. Read-only. |
 | `gw archive <slug>` | | Moves a finished unit to the archive and marks its motive complete. |
 | `gw migrate` | `--apply` | Moves older layouts into the current one. |
-| `gw migrate issues` | `--apply` `--root DIR` | Converts legacy ticket files under `<root>/.groundwork/work/*/tickets/` to the `issue` doc type (root defaults to the repo). Dry run by default: prints `would convert <file>: <notes>` / `would normalise ...`, skips and warnings, then `summary: N converted, M normalised, K skipped, W warnings (dry run, nothing written)`. `--apply` first writes a tar backup under `.groundwork/backup/` (prints `backup: <path>`), then rewrites the files; no backup when nothing converts. Needs no token. Exit 0; exit 1 if `--root` is missing or not a directory (usage printed) or the backup fails. |
+| `gw migrate issues` | `--apply` `--root DIR` | Converts legacy ticket files under `<root>/.groundwork/work/*/tickets/` to the `issue` doc type (root defaults to the repo). Dry run by default: prints `would convert <file>: <notes>` / `would normalise ...`, skips and warnings, then `summary: N converted, M normalised, K skipped, W warnings (dry run, nothing written)`. `--apply` first writes a tar backup under `.groundwork/backup/` (prints `backup: <path>`), then rewrites the files; no backup when nothing converts. Exit 0; exit 1 if `--root` is missing or not a directory (usage printed) or the backup fails. |
 | `gw recipe` | `--merge` | Prints the working-tier `artifact-structure` rule (with `$schema`) as JSON; `--merge` prints the repo's `.house-rules.json` with only that rule replaced. Never writes files. |
 | `gw --motive <slug> <command>` | | Global flag, parsed before the subcommand. |
 | `gw motive add <slug>` | `--use` | Creates a motive. `--use` makes it active. |
@@ -34,38 +33,15 @@ Agent-facing. Human overview: doc/cli.md.
 | `gw motive list` | | Lists motives. The active one is marked `*`. |
 | `gw motive complete <slug>` | | Marks the motive complete. The stop-gate stops checking it. |
 
-Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|<verdicts>, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe`.
+Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|<verdicts>, scope link|unlink|verify, hold set|clear, event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe [--merge]`.
 
-### Intent gates
+### spawn-model-guard
 
-- Apply only when the PR body draft `.groundwork/work/<slug>/pr-body.md` exists. The human approves a rendered review of that draft. H1 binds `motive.md` plus its `Why`, `Changes` and `Impact` sections; H2 binds `spec.md` plus them. Filling `Review focus` or `Proof` later does not void an approval. `doc/` is a present-tense snapshot of the code; there is no `doc/<slug>/`.
-- `--auto` classifies `.groundwork/work/<slug>/spec.md` by frontmatter `change_kinds` (known: bugfix, refactor, cli-flag, config-key, data-format, migration, dependency; src/cli/gate-status.ts CHANGE_KINDS, classifySpec).
-- Human rows (no auto-pass): bugfix without `repro_test`; cli-flag or config-key; data-format or migration; dependency; `TBD` in an `## Acceptance criteria` checkbox; Unclassified (no `change_kinds`, or unknown kinds).
-- Auto rows: bugfix with `repro_test`; refactor.
-- approve-guard hook (src/hooks/approve-guard.ts): agents cannot record a human approval; ask the human to run `! gw approve charter|spec --token T`. `gw approve spec --auto` is allowed.
-- Limitations of the approve guard: it matches command text, not behavior.
-  - Strict allowlist (HAH-D13): covers the `spec` target only; allow only when `--auto` is the token right after `spec` (`charter --auto` is rejected by both the guard and the CLI), with no `$` (except a leading `$GW`/`"$GW"`/`${GW}` program word), redirect, `-c`/bundled `-…c`, `eval`, or a `#` before `--auto` anywhere in the command. The `$GW` exemption lapses when the command also has `GW=`, `export GW`, `alias`, or `function`. Denies `approve $K --auto`, `--token T --auto` ordering, and `gw approve` with no target or a flag next (xargs/stdin form). Other direct forms are not matched.
-  - Threat model (HAH-D14): speed bump against casual self-approval, not a determined agent.
-  - Out of scope (not caught): interpreter one-liners building argv (`bun -e`, `node -e`, `perl -e`, `python3 -c`), scripts, aliases, run-time strings, other indirect execution.
-  - Real fix (out-of-band signature or external review): next-iteration work (HAH-D14).
-  - Second line of defense: `gw approve` itself exits 1 on extra positionals, unknown flags, `--`, `--token <flag>`, and repeated `--auto`.
-  - Remaining limit: strings an agent builds at run time outside the guarded command (a generated script file run later, an alias) can still record a human approval. Closing this needs a check agents cannot fake, such as a secret only the human shell holds; deferred to the next iteration.
-  - It falsely denies read-only commands whose text contains the word approve followed by charter or spec (grep, echo, heredocs, commit messages).
-  - H2 hash seam: the CLI hashes from the db's repo dir (src/cli/main.ts:53); the hook hashes from CLAUDE_PROJECT_DIR (src/hooks/spawn-model-guard.ts:183). A mismatch makes approvals read as void, so dispatch is refused (fails closed).
+spawn-model-guard (src/hooks/spawn-model-guard.ts) is a PreToolUse hook on `Agent`/`Task`. It denies a spawn outside the caller's depth allowlist, denies the bare built-ins `explore` and `general-purpose`, redirects a `groundwork:implementer` brief for a slice with 3 or more files to `groundwork:junior-orchestrator`, and injects the registry model when the spawn sets none.
 
-### Dispatch refusal
+### Seal key
 
-spawn-model-guard (src/hooks/spawn-model-guard.ts) denies spawning `groundwork:implementer`, `groundwork:junior-orchestrator`, `groundwork:designer` when the active motive has intent gates that apply and H1 or H2 is not `approved`. Message begins `intent gate: implementation dispatch refused — `. It names `$GW approve charter --token T` (human) for H1, and `$GW approve spec --auto --token T` or a human `$GW approve spec --token T` for H2.
-
-### Token security (hook detail)
-
-The write token and gate-seal key live in ~/.config/groundwork/repos/<hash>/ (outside the repo, mode 0600, not in work.db). Keeping the key out of the repo means a subagent cannot forge an approval: the HMAC seal needs the key, and the stop gate fails closed without a valid seal.
-
-**Limitation:** a subagent that builds the config-dir path fully dynamically at runtime (e.g. a `bun -e` script computing `$HOME` and the repo hash) can bypass the string-match guard. The HMAC seal on gate verdicts is the primary protection: forging a GATE_APPROVE requires the seal key, which only the `gw gate approve` CLI command reads.
-
-### gw token
-
-Use this on session resume — the main session only.
+The gate-seal key lives in `~/.config/groundwork/repos/<store_id>/seal.key` (`$XDG_CONFIG_HOME` when set), outside the repo, mode 0600, not in work.db (src/store/key-store.ts). `gw init` creates it. `gw gate approve` signs the verdict with an HMAC seal from this key; the stop gate fails closed without a valid seal. A subagent without the key cannot forge an approval.
 
 ### gw recipe (footer)
 

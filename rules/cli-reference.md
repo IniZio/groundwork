@@ -26,6 +26,7 @@ Agent-facing. Human overview: doc/cli.md.
 | `gw compile` | `--json` | Resume view. Read-only. Prints `H1 charter: <state>` and `H2 spec: <state>` lines (state `approved (human\|auto)`, `void`, `missing`) or `intent gates: n/a (no PR body draft)`. `--json` adds `intent`. |
 | `gw archive <slug>` | | Moves a finished unit to the archive and marks its motive complete. |
 | `gw migrate` | `--apply` | Moves older layouts into the current one. |
+| `gw migrate issues` | `--apply` `--root DIR` | Converts legacy ticket files under `<root>/.groundwork/work/*/tickets/` to the `issue` doc type (root defaults to the repo). Dry run by default: prints `would convert <file>: <notes>` / `would normalise ...`, skips and warnings, then `summary: N converted, M normalised, K skipped, W warnings (dry run, nothing written)`. `--apply` first writes a tar backup under `.groundwork/backup/` (prints `backup: <path>`), then rewrites the files; no backup when nothing converts. Needs no token. Exit 0; exit 1 if `--root` is missing or not a directory (usage printed) or the backup fails. |
 | `gw recipe` | `--merge` | Prints the working-tier `artifact-structure` rule (with `$schema`) as JSON; `--merge` prints the repo's `.house-rules.json` with only that rule replaced. Never writes files. |
 | `gw --motive <slug> <command>` | | Global flag, parsed before the subcommand. |
 | `gw motive add <slug>` | `--use` | Creates a motive. `--use` makes it active. |
@@ -33,7 +34,7 @@ Agent-facing. Human overview: doc/cli.md.
 | `gw motive list` | | Lists motives. The active one is marked `*`. |
 | `gw motive complete <slug>` | | Marks the motive complete. The stop-gate stops checking it. |
 
-Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|<verdicts>, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate, recipe`.
+Unknown-command usage list: `init, token, slice add|complete|claim|set-ac|status|rm, gate status [--json]|<verdicts>, scope link|unlink|verify, hold set|clear, approve charter|spec [--auto], event append, compile, motive add|use|list|complete, archive, migrate [issues], recipe`.
 
 ### Intent gates
 

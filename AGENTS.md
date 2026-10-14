@@ -6,7 +6,7 @@ Issues live as local markdown files under `.groundwork/work/<slug>/`. See `doc/a
 
 ### Triage labels
 
-Default five roles (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix), recorded as a `Status:` line. See `doc/agents/triage-labels.md`.
+Default five roles (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix), recorded as the `status` property in issue frontmatter. See `doc/agents/triage-labels.md`.
 
 ### Domain docs
 

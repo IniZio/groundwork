@@ -14,6 +14,10 @@ _Avoid_: Ledger, journal, database
 One conflict-free unit of work with acceptance criteria and a fenced set of files, completed by one agent.
 _Avoid_: Task, ticket, step
 
+**Issue**:
+One markdown file under `.groundwork/work/<slug>/tickets/` of doc type `issue`, with status, assignee, priority, tags, parent and blocked_by properties.
+_Avoid_: Ticket
+
 **Acceptance criterion**:
 A checkable statement a slice must satisfy before it can be marked complete.
 _Avoid_: Requirement, AC list item

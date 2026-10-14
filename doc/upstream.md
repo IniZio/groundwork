@@ -5,7 +5,7 @@ Written against: mattpocock-skills 1.3.1 (commit 6fd947921b935b7e1e69293a200400f
 ## Flow
 
 User runs `/to-tickets` (`mattpocock-skills:to-tickets`, user-only, disable-model-invocation).
-Output format kept aligned with mattpocock spec.
+Output follows groundwork's [issue](https://github.com/IniZio/groundwork/blob/215ef4d8c2f8c5a385510367704d6db2c4d55116/templates/doc-types/issue.md) doc type.
 Main agent then calls the Skill tool with `groundwork:vertical-slice` without asking — no confirmation prompt.
 
 ## mattpocock-skills (v1.3.1, commit 6fd947921b935b7e1e69293a200400f0fdd5c15f)
@@ -18,7 +18,7 @@ Main agent then calls the Skill tool with `groundwork:vertical-slice` without as
 | ACCEPTED | `mattpocock-skills:codebase-design` | Routed directly for architecture review |
 | ACCEPTED | `mattpocock-skills:research` | Routed directly for library/API investigation |
 | ALTERED | `mattpocock-skills:diagnosing-bugs` | Runs inside `groundwork:debugger` rather than inline; gives the protocol a dedicated read-only context and enforces a structured receipt (root_cause/evidence/repro/proposed_fix/confidence) |
-| ALTERED | `mattpocock-skills:to-tickets` | User-only (disable-model-invocation); groundwork refers user to run it; output kept aligned with mattpocock spec; main agent calls the Skill tool with `groundwork:vertical-slice` without asking |
+| ALTERED | `mattpocock-skills:to-tickets` | User-only (disable-model-invocation); groundwork refers user to run it; output follows the issue doc type, with `parent` and `blocked_by` properties instead of the Blocked by line and Parent section, and files land as the [issue-tracker.md](https://github.com/IniZio/groundwork/blob/0c395fd3199c9567f105e95e396b98a60567ea9a/doc/agents/issue-tracker.md) describes; main agent calls the Skill tool with `groundwork:vertical-slice` without asking |
 | NOT USED | `mattpocock-skills:implement` | Superseded by `groundwork:implement`, which adds gw slice ledger, stop-gate, and wave protocol |
 | NOT USED | `mattpocock-skills:to-spec` | User-only; not wired into groundwork agent routing |
 | NOT USED | `mattpocock-skills:triage` | User-only; not wired into groundwork agent routing |

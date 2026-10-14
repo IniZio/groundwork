@@ -7,7 +7,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dir, "../..");
 const MAIN = path.join(ROOT, "src/cli/main.ts");
 const HR_MAIN = path.join(ROOT, "plugins/house-rules/src/cli/main.ts");
-const BASES = ["spec", "ticket", "motive", "design"];
+const BASES = ["spec", "issue", "motive", "design"];
 const tmps: string[] = [];
 afterAll(() => {
   for (const d of tmps) rmSync(d, { recursive: true, force: true });

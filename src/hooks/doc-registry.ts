@@ -1,7 +1,7 @@
 export type DocTypeId =
   | "motive"
   | "spec"
-  | "ticket"
+  | "issue"
   | "map"
   | "research"
   | "plan"
@@ -79,20 +79,34 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
     },
     headings: ["Purpose", "Requirements"],
   },
-  ticket: {
+  issue: {
     tier: "working",
     generates: `${W}/tickets/{nn}-{name:kebab}.md`,
-    description: "Agent view of one actionable task, holds acceptance criteria",
-    instruction: "Number tickets with a two-digit prefix; holds AC",
-    template: tpl("ticket"),
-    frontmatter: anyObject,
-    headings: ["Goal", "Acceptance criteria"],
+    description: "One actionable unit of work, tracked in Obsidian properties",
+    instruction: "Number issues with a two-digit prefix; track state in frontmatter",
+    template: tpl("issue"),
+    frontmatter: {
+      type: "object",
+      required: ["title", "status"],
+      properties: {
+        title: { type: "string" },
+        status: { type: "string", enum: ["triage", "needs-info", "todo", "in-progress", "done", "canceled"] },
+        assignee: { type: "string", enum: ["agent", "human"] },
+        priority: { type: "string", enum: ["urgent", "high", "medium", "low", "none"] },
+        tags: { type: "array", items: { type: "string" } },
+        parent: { type: "string" },
+        blocked_by: { type: "array", items: { type: "string" } },
+        source: { type: "string" },
+        created: { type: "string", format: "date" },
+      },
+    },
+    headings: [],
   },
   map: {
     tier: "working",
     generates: `${W}/map.md`,
     description: "Overview map of the work and its parts",
-    instruction: "Keep to a short overview; link tickets and docs",
+    instruction: "Keep to a short overview; link issues and docs",
     template: tpl("map"),
     frontmatter: anyObject,
     headings: ["Overview"],

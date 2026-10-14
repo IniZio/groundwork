@@ -49,7 +49,7 @@ function validate(id: DocTypeId, text: string): boolean {
 describe("AC1 registry shape", () => {
   it("has exactly the expected keys", () => {
     expect([...ids].sort() as string[]).toEqual(
-      ["adr", "design", "evidence", "handoff", "lessons", "map", "motive", "out-of-scope", "plan", "pr-body", "research", "spec", "ticket"].sort(),
+      ["adr", "design", "evidence", "handoff", "lessons", "map", "motive", "out-of-scope", "plan", "pr-body", "research", "spec", "issue"].sort(),
     );
   });
   it("each entry has exactly 7 keys and the right tier", () => {
@@ -72,7 +72,7 @@ describe("AC2 generates literals", () => {
     expect(WORKING_TYPES.spec.generates).toBe(".groundwork/work/{slug}/spec.md");
     expect(WORKING_TYPES.handoff.generates).toBe(".groundwork/work/{slug}/handoff.md");
     expect(WORKING_TYPES.research.generates).toBe(".groundwork/work/{slug}/research/{name:kebab}.md");
-    expect(WORKING_TYPES.ticket.generates).toBe(".groundwork/work/{slug}/tickets/{nn}-{name:kebab}.md");
+    expect(WORKING_TYPES.issue.generates).toBe(".groundwork/work/{slug}/tickets/{nn}-{name:kebab}.md");
     expect(WORKING_TYPES.adr.generates).toBe(".groundwork/adr/{nnnn}-{name:kebab}.md");
   });
   it("every generates starts under the work dir", () => {
@@ -220,8 +220,8 @@ describe("AC6 resolveDocPath", () => {
   it("resolves research example", () => {
     expect(resolveDocPath("research", { slug: "foo", name: "My Note" })).toBe(".groundwork/work/foo/research/my-note.md");
   });
-  it("resolves ticket with plain and kebab params", () => {
-    expect(resolveDocPath("ticket", { slug: "foo", nn: "01", name: "Do It Now" })).toBe(".groundwork/work/foo/tickets/01-do-it-now.md");
+  it("resolves issue with plain and kebab params", () => {
+    expect(resolveDocPath("issue", { slug: "foo", nn: "01", name: "Do It Now" })).toBe(".groundwork/work/foo/tickets/01-do-it-now.md");
   });
   it("throws on missing param", () => {
     expect(() => resolveDocPath("research", { slug: "foo" })).toThrow(/name/);
@@ -234,5 +234,54 @@ describe("AC6 resolveDocPath", () => {
     } finally {
       WORKING_TYPES.plan.generates = orig;
     }
+  });
+});
+
+describe("issue type", () => {
+  const schema = () => WORKING_TYPES.issue.frontmatter;
+  const ok = (obj: Record<string, unknown>) => makeAjv().validate(schema(), obj) as boolean;
+
+  it("accepts a full frontmatter object and a minimal one", () => {
+    expect(
+      ok({
+        title: "Fix login",
+        status: "in-progress",
+        assignee: "agent",
+        priority: "high",
+        tags: ["auth", "bug"],
+        parent: "[[demo]]",
+        blocked_by: ["[[other]]"],
+        source: "user report",
+        created: "2026-01-01",
+      }),
+    ).toBe(true);
+    expect(ok({ title: "T", status: "triage" })).toBe(true);
+  });
+  it("rejects a status outside the enum", () => {
+    expect(ok({ title: "T", status: "active" })).toBe(false);
+  });
+  it("rejects missing title or status", () => {
+    expect(ok({ status: "todo" })).toBe(false);
+    expect(ok({ title: "T" })).toBe(false);
+  });
+  it("is the only type matching a tickets path", () => {
+    const concrete = ".groundwork/work/demo/tickets/01-demo.md";
+    const toRegex = (g: string) =>
+      new RegExp("^" + g.split(/\{[^}]+\}/).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]+") + "$");
+    const matching = ids.filter((id) => toRegex(WORKING_TYPES[id].generates).test(concrete));
+    expect(matching).toEqual(["issue"]);
+  });
+  const tpl = () => readFileSync(join(ROOT, "templates/doc-types/issue.md"), "utf8");
+  it("template validates against the schema", () => {
+    expect(validate("issue", tpl())).toBe(true);
+  });
+  it("template has no H1", () => {
+    expect(/^# /m.test(tpl())).toBe(false);
+  });
+  it("template has acceptance criteria and comments", () => {
+    const text = tpl();
+    expect(text).toContain("## Acceptance criteria");
+    expect(text).toMatch(/^- \[ \]/m);
+    expect(text).toContain("## Comments");
   });
 });

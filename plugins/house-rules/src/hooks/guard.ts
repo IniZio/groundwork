@@ -16,7 +16,7 @@ import { policyForRoot, DEFAULT_IGNORE } from "../engine/policy.js";
 import { createSourceFiles, getDefaultParserFactory } from "../engine/source-file.js";
 import { isGeneratedText, generatedPaths } from "../engine/generated.js";
 import { dropOverlappingSafetyFindings } from "../engine/assertion-overlap.js";
-import { grammarFailureWarning } from "../engine/run.js";
+import { grammarFailureWarning, effectiveSeverity } from "../engine/run.js";
 import type { Rule, PendingEdit, EditCheckEnv, SessionBaseInfo, Finding } from "../engine/types.js";
 import { parserForPath, type ParserFactory } from "./languages/parse.js";
 
@@ -450,10 +450,11 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
       );
 
       const severity = policy[rule.id]?.severity ?? "warn";
-      const isErrorSeverity = severity === "error";
+      const effective = findings.map(f => ({ f, sev: effectiveSeverity(severity, f.severity) }));
 
-      if (isErrorSeverity && findings.length > 0) {
-        blockingFinding = findings[0];
+      const blocking = effective.find(e => e.sev === "error");
+      if (blocking) {
+        blockingFinding = blocking.f;
         break;
       }
 
@@ -529,11 +530,10 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
         }
       }
 
-      if (!isErrorSeverity) {
-        for (const f of findings) {
-          const line = `house-rules ${f.ruleId}: ${f.message}`;
-          contextItems.push({ normal: line, advisory: line, finding: f });
-        }
+      for (const { f, sev } of effective) {
+        if (sev !== "warn") continue;
+        const line = `house-rules ${f.ruleId}: ${f.message}`;
+        contextItems.push({ normal: line, advisory: line, finding: f });
       }
 
       if (result.stderr !== undefined) stderrLines.push(result.stderr);

@@ -43,6 +43,22 @@ const q = (s: string): string => JSON.stringify(s);
 const tag = (s: string): string => (/^[A-Za-z][\w-]*$/.test(s) ? s : q(s));
 const ymd = (d: Date): string => d.toISOString().slice(0, 10);
 
+function resolveParent(root: string, motive: string, siblings: string[], content: string): string | undefined {
+  if (!content || /\s/.test(content.replace(/^\[\[(.*)\]\]$/s, "$1").trim())) return undefined;
+  let ref = content.replace(/^\[\[(.*)\]\]$/s, "$1").replace(/[|#].*$/s, "").replace(/^`(.*)`$/, "$1");
+  const m = /^(?:\.\/)?\.groundwork\/work\/([^/]+)/.exec(ref);
+  if (m) ref = m[1];
+  ref = ref.replace(/\/$/, "").replace(/\.md$/, "");
+  if (!ref || ref.includes("/")) return undefined;
+  const stems = siblings.map(s => s.replace(/\.md$/, ""));
+  const num = /^\d{1,2}$/.test(ref) ? ref.padStart(2, "0") : undefined;
+  const sib = stems.find(s => s === ref || (num !== undefined && s.startsWith(`${num}-`)));
+  if (sib) return sib;
+  const work = path.join(root, ".groundwork", "work", ref);
+  if (ref === motive || (existsSync(work) && statSync(work).isDirectory())) return ref;
+  return undefined;
+}
+
 function convert(root: string, abs: string, motive: string, siblings: string[]): Conversion | { skip: string; warn?: boolean } {
   const rel = path.relative(root, abs);
   const text = readFileSync(abs, "utf8");
@@ -91,9 +107,11 @@ function convert(root: string, abs: string, motive: string, siblings: string[]):
     while (first < pEnd && body[first].trim() === "") first++;
     let last = first;
     while (last < pEnd && body[last].trim() !== "") last++;
-    const content = body.slice(first, last).join("\n").trim().replace(/\s*\r?\n\s*/g, " ");
-    if (content) {
-      parent = `[[${content}]]`;
+    const content = body.slice(first, last).join("\n").trim();
+    // The section is removed only when its first paragraph is nothing but a resolvable reference; prose stays verbatim.
+    const target = resolveParent(root, motive, siblings, content);
+    if (target) {
+      parent = `[[${target}]]`;
       for (let i = pIdx; i < last; i++) drop.add(i);
     }
   }

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { WORKING_TYPES } from "../../src/hooks/doc-registry.js";
@@ -43,7 +43,7 @@ const snapshot = (root: string): Record<string, { text: string; mtime: number }>
   Object.fromEntries(ALL.map(r => [r, { text: read(root, r), mtime: statSync(abs(root, r)).mtimeMs }]));
 const created = (root: string, rel: string): string => statSync(abs(root, rel)).mtime.toISOString().slice(0, 10);
 
-// Independent of the implementation: strip frontmatter, H1, header lines before the first H2, and the Parent paragraph.
+// Independent of the implementation: strip frontmatter, H1 and header lines before the first H2. Parent prose stays.
 function expectedBody(original: string): string[] {
   let lines = original.split("\n");
   if (lines[0] === "---") lines = lines.slice(lines.indexOf("---", 1) + 1);
@@ -51,12 +51,7 @@ function expectedBody(original: string): string[] {
   const end = h2 === -1 ? lines.length : h2;
   const h1 = lines.findIndex((l, i) => i < end && l.startsWith("# "));
   const header = /^(\*\*)?(Status|Type|Source|Blocked by):(\*\*)?( |$)/;
-  const out = lines.filter((l, i) => i !== h1 && !(i > h1 && i < end && header.test(l)));
-  const p = out.findIndex(l => l === "## Parent");
-  if (p === -1) return out;
-  let q = p + 1;
-  while (out[q] === "") q++;
-  return [...out.slice(0, p), ...out.slice(q + 1)];
+  return lines.filter((l, i) => i !== h1 && !(i > h1 && i < end && header.test(l)));
 }
 function splitFm(text: string): { fm: string[]; body: string[] } {
   const lines = text.split("\n");
@@ -130,23 +125,21 @@ describe("migrate issues: apply", () => {
     ]);
   });
 
-  test("converts a bold-format ready-for-agent ticket and takes the parent from its Parent section", () => {
+  test("a Parent section of prose gives the motive slug as parent and stays in the body", () => {
     const rel = "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md";
     const fm = splitFm(read(r, rel)).fm;
-    const parentText = orig[rel].text.split("\n").find(l => l.startsWith("Retro of session"))!;
     expect(fm).toEqual([
       'title: "Junior-orchestrator hand-back waits for its children"',
       "status: todo",
       "assignee: agent",
       "priority: none",
       "tags: []",
-      `parent: ${JSON.stringify(`[[${parentText}]]`)}`,
+      'parent: "[[retro-2026-10-06]]"',
       "blocked_by: []",
       'source: ""',
       `created: ${created(r, rel)}`,
     ]);
-    expect(parentText).toContain('"');
-    expect(read(r, rel)).not.toContain("## Parent");
+    expect(read(r, rel)).toContain("## Parent");
   });
 
   test("converts a ready-for-human ticket to todo with a human assignee", () => {
@@ -208,6 +201,78 @@ describe("migrate issues: apply", () => {
     expect(second.lines.some(l => l.startsWith("backup: "))).toBe(false);
     expect(second.lines.at(-1)).toContain("0 converted");
     expect(second.lines.some(l => l.includes("already converted"))).toBe(true);
+  });
+});
+
+describe("migrate issues: parent resolution on real retro tickets", () => {
+  const DIR = "retro-2026-10-06/tickets";
+  const T01 = `${DIR}/01-junior-hand-back-waits-for-children.md`;
+  const T06 = `${DIR}/06-upstream-drift-check.md`;
+  function retroRoot(): string {
+    const d = mk("mig-issues-retro-");
+    for (const rel of [T01, T06]) {
+      const dest = path.join(d, ".groundwork/work", rel);
+      mkdirSync(path.dirname(dest), { recursive: true });
+      cpSync(path.join(WORK, rel), dest);
+    }
+    return d;
+  }
+  // Every non-blank original line outside the frontmatter, H1 and header lines must survive in order.
+  function expectLinesInOrder(original: string, converted: string, skip: (l: string) => boolean): void {
+    const out = converted.split("\n");
+    let at = 0;
+    for (const l of original.split("\n")) {
+      if (l === "" || skip(l)) continue;
+      const i = out.indexOf(l, at);
+      if (i === -1) throw new Error(`line lost or out of order: ${JSON.stringify(l)}`);
+      at = i + 1;
+    }
+  }
+  const header = /^(# |\*\*(Status|Type|Source|Blocked by):\*\*)/;
+
+  test("tickets 01 and 06 get the motive slug as parent and keep every body line in order", () => {
+    const d = retroRoot();
+    const orig: Record<string, string> = { [T01]: read(d, T01), [T06]: read(d, T06) };
+    runMigrateIssues(d, true);
+    for (const rel of [T01, T06]) {
+      const { fm, body } = splitFm(read(d, rel));
+      expect(fm).toContain('parent: "[[retro-2026-10-06]]"');
+      expect(fm.filter(l => l.startsWith("parent:")).length).toBe(1);
+      expect(body).toEqual(expectedBody(orig[rel]));
+      expectLinesInOrder(orig[rel], read(d, rel), l => header.test(l));
+      expect(body).toContain("## Parent");
+    }
+  });
+
+  test("a Parent section holding only a wikilink to the motive is removed and sets the parent", () => {
+    const d = retroRoot();
+    const file = abs(d, T06);
+    const prose = readFileSync(file, "utf8").split("\n").find(l => l.startsWith("Retro of session"))!;
+    const text = readFileSync(file, "utf8");
+    writeFileSync(file, text.replace(prose, "[[retro-2026-10-06]]"));
+    const orig = text.replace(prose, "[[retro-2026-10-06]]");
+    runMigrateIssues(d, true);
+    const { fm, body } = splitFm(read(d, T06));
+    expect(fm).toContain('parent: "[[retro-2026-10-06]]"');
+    expect(body).not.toContain("## Parent");
+    expect(body).not.toContain("[[retro-2026-10-06]]");
+    expectLinesInOrder(orig, read(d, T06), l => header.test(l) || l === "## Parent" || l === "[[retro-2026-10-06]]");
+  });
+
+  test("a Parent section holding only a .groundwork/work path or a sibling ticket number resolves to its slug", () => {
+    const d = retroRoot();
+    const f06 = abs(d, T06);
+    const f01 = abs(d, T01);
+    const t06 = readFileSync(f06, "utf8");
+    const t01 = readFileSync(f01, "utf8");
+    const prose06 = t06.split("\n").find(l => l.startsWith("Retro of session"))!;
+    const prose01 = t01.split("\n").find(l => l.startsWith("Retro of session"))!;
+    writeFileSync(f06, t06.replace(prose06, ".groundwork/work/retro-2026-10-06/README.md"));
+    writeFileSync(f01, t01.replace(prose01, "06"));
+    runMigrateIssues(d, true);
+    expect(splitFm(read(d, T06)).fm).toContain('parent: "[[retro-2026-10-06]]"');
+    expect(splitFm(read(d, T01)).fm).toContain('parent: "[[06-upstream-drift-check]]"');
+    expect(read(d, T01)).not.toContain("## Parent");
   });
 });
 

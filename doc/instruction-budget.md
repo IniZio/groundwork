@@ -16,7 +16,7 @@ Token method: `chars / 4` (proxy; stated). No tokenizer dependency added.
 | implement/SKILL.md | 4258 | 1065 |
 | vertical-slice/SKILL.md | 2240 | 560 |
 | advisor-gate/SKILL.md | 1369 | 342 |
-| pause/SKILL.md | 936 | 234 |
+| pause/SKILL.md | 934 | 234 |
 | continue/SKILL.md | 1064 | 266 |
 | motive/SKILL.md | 2112 | 528 |
 | human-layer/SKILL.md | 3389 | 847 |

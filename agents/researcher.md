@@ -24,6 +24,7 @@ status: <DONE|FAILED> · <N> findings, <M> gaps
 ```
 
 Findings as rows, one per claim. Whole report ≤250 words.
+Research doc: `templates/doc-types/research.md`; frontmatter `question`, `confidence` (low|medium|high); `## Question`, `## Findings`.
 No preamble, no tool-call narration.
 Evidence (errors, test output, citations) verbatim — decisive lines only.
 Security/irreversible/order-sensitive content: full sentences.

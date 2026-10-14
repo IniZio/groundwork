@@ -336,7 +336,7 @@
       "tier": "working",
       "generates": ".groundwork/work/{slug}/pr-body.md",
       "description": "Draft PR body: the human view of this change, reviewed before implementation and published as the PR description",
-      "instruction": "Only what could flip a reviewer's yes/no; Summary, Why, Changes and Impact are approved at H1/H2, so fill Review focus and Proof as work lands",
+      "instruction": "Only what could flip a reviewer's yes/no; fill Review focus and Proof as work lands",
       "frontmatter": {
         "type": "object"
       },

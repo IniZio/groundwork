@@ -84,6 +84,24 @@ describe("schema constants parity", () => {
 
 const goodType = { tier: "working", generates: "{dir}/research/{name:kebab}.md", headings: ["A"] };
 
+const validWhen = { property: "status", in: ["done"], headings: ["Outcome"] };
+const badWhen = {
+  "entry missing property": [{ in: ["done"], headings: ["Outcome"] }],
+  "entry in is not an array": [{ ...validWhen, in: "done" }],
+  "entry headings is empty": [{ ...validWhen, headings: [] }],
+  "entry headings has a non-string": [{ ...validWhen, headings: [1] }],
+  "entry has an unknown key": [{ ...validWhen, extra: 1 }],
+  "is not an array": validWhen,
+} satisfies Record<string, unknown>;
+const badWhenErrors = {
+  "entry missing property": ["/headingsWhen/0", "required"],
+  "entry in is not an array": ["/headingsWhen/0/in", "type"],
+  "entry headings is empty": ["/headingsWhen/0/headings", "minItems"],
+  "entry headings has a non-string": ["/headingsWhen/0/headings/0", "type"],
+  "entry has an unknown key": ["/headingsWhen/0", "additionalProperties"],
+  "is not an array": ["/headingsWhen", "type"],
+} satisfies Record<keyof typeof badWhen, [string, string]>;
+
 function manifestFixtures(): [string, unknown, boolean][] {
   const out: [string, unknown, boolean][] = [];
   for (const id of ["artifact-structure", "stray-artifacts"]) {
@@ -98,6 +116,8 @@ function manifestFixtures(): [string, unknown, boolean][] {
       [`${id} bad tier`, mk({ types: { research: { ...goodType, tier: "x" } } }), false],
       [`${id} type missing generates`, mk({ types: { research: { tier: "product" } } }), false],
       [`${id} headings not array`, mk({ types: { research: { ...goodType, headings: "A" } } }), false],
+      [`${id} headingsWhen valid entry`, mk({ types: { research: { ...goodType, headingsWhen: [validWhen] } } }), true],
+      ...Object.entries(badWhen).map(([k, v]): [string, unknown, boolean] => [`${id} headingsWhen ${k}`, mk({ types: { research: { ...goodType, headingsWhen: v } } }), false]),
       [`${id} forbidden missing redirect`, mk({ forbidden: [{ pattern: "a" }] }), false],
       [`${id} forbidden unknown key`, mk({ forbidden: [{ pattern: "a", redirect: "b", x: 1 }] }), false],
       [`${id} manifest unknown option`, mk({ types: {}, bogus: 1 }), false],
@@ -176,6 +196,21 @@ const fixtures: [string, unknown, boolean][] = [
   ["rules as array", { rules: [] }, false],
   ["root as array", [], false],
 ];
+
+describe("headingsWhen schema errors", () => {
+  for (const id of ["artifact-structure", "stray-artifacts"]) {
+    for (const [label, value] of Object.entries(badWhen)) {
+      it(`${id}: headingsWhen ${label} is reported at the right path`, () => {
+        const cfg = { rules: { [id]: ["error", { types: { research: { ...goodType, headingsWhen: value } } }] } };
+        expect(validate(cfg)).toBe(false);
+        const base = `/rules/${id}/1/types/research`;
+        const [path, keyword] = badWhenErrors[label as keyof typeof badWhen];
+        const hit = (validate.errors ?? []).some((e) => e.instancePath === base + path && e.keyword === keyword);
+        expect(hit).toBe(true);
+      });
+    }
+  }
+});
 
 describe("ajv and parseConfig agree", () => {
   it("has enough fixtures", () => {

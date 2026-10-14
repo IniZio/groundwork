@@ -6,6 +6,7 @@ export interface DocType {
   template?: string | null;
   frontmatter?: Record<string, unknown>;
   headings?: string[];
+  headingsWhen?: { property: string; in: string[]; headings: string[] }[];
 }
 export interface ForbiddenEntry {
   pattern: string;

@@ -146,6 +146,34 @@
                             "type": "array",
                             "items": { "type": "string" },
                             "description": "Headings documents of this type carry."
+                          },
+                          "headingsWhen": {
+                            "type": "array",
+                            "description": "Headings required only when a frontmatter property has one of the listed values.",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["property", "in", "headings"],
+                              "properties": {
+                                "property": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Frontmatter property to check."
+                                },
+                                "in": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "items": { "type": "string" },
+                                  "description": "Values of the property that make the headings required."
+                                },
+                                "headings": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "items": { "type": "string" },
+                                  "description": "Headings required when the property matches."
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -242,6 +270,34 @@
                             "type": "array",
                             "items": { "type": "string" },
                             "description": "Headings documents of this type carry."
+                          },
+                          "headingsWhen": {
+                            "type": "array",
+                            "description": "Headings required only when a frontmatter property has one of the listed values.",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["property", "in", "headings"],
+                              "properties": {
+                                "property": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Frontmatter property to check."
+                                },
+                                "in": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "items": { "type": "string" },
+                                  "description": "Values of the property that make the headings required."
+                                },
+                                "headings": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "items": { "type": "string" },
+                                  "description": "Headings required when the property matches."
+                                }
+                              }
+                            }
                           }
                         }
                       }

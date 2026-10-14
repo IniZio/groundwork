@@ -501,6 +501,7 @@ describe("exported constants", () => {
       "template",
       "frontmatter",
       "headings",
+      "headingsWhen",
     ]);
     expect(FORBIDDEN_KEYS).toEqual(["pattern", "redirect"]);
     expect(TOP_LEVEL_KEYS).toEqual(["$schema", "rules"]);
@@ -515,6 +516,7 @@ const fullType: any = {
   template: "# {title}\n",
   frontmatter: { type: "object", properties: { title: { type: "string" } } },
   headings: ["Summary", "Sources"],
+  headingsWhen: [{ property: "status", in: ["done", "closed"], headings: ["Outcome"] }],
 };
 const manifest: any = {
   govern: ["docs/**"],
@@ -572,6 +574,68 @@ describe("AC1 artifact-structure manifest options", () => {
     );
     expect(err.path).toBe(`${SA}[1].types.r.headings`);
     expect(err.allowed).toEqual(["string[]"]);
+  });
+
+  describe("headingsWhen", () => {
+    const base = { tier: "product", generates: "a" };
+    const entry = { property: "status", in: ["done"], headings: ["Outcome"] };
+    const withWhen = (headingsWhen: unknown) =>
+      withOpts("artifact-structure", { types: { r: { ...base, headingsWhen } } });
+    const P = `${SA}[1].types.r.headingsWhen`;
+
+    it("accepts a valid headingsWhen and keeps it unchanged", () => {
+      const out: any = parseConfig(withWhen([entry]));
+      expect(out.rules["artifact-structure"].options.types.r.headingsWhen).toEqual([entry]);
+    });
+
+    it("rejects headingsWhen that is not an array", () => {
+      const err = capture(withWhen("status"));
+      expect(err.path).toBe(P);
+      expect(err.message).toBe(`${P}: must be an array; allowed: array`);
+    });
+
+    it("rejects an entry that is not an object", () => {
+      const err = capture(withWhen(["x"]));
+      expect(err.path).toBe(`${P}[0]`);
+      expect(err.message).toBe(`${P}[0]: must be an object; allowed: object`);
+    });
+
+    it("rejects an entry missing property", () => {
+      const err = capture(withWhen([{ in: ["done"], headings: ["Outcome"] }]));
+      expect(err.path).toBe(`${P}[0].property`);
+      expect(err.message).toBe(`${P}[0].property: required; allowed: string`);
+    });
+
+    it("rejects an entry with an empty property", () => {
+      const err = capture(withWhen([{ ...entry, property: "" }]));
+      expect(err.path).toBe(`${P}[0].property`);
+      expect(err.message).toBe(`${P}[0].property: must be a non-empty string; allowed: string`);
+    });
+
+    it("rejects an entry where in is not an array", () => {
+      const err = capture(withWhen([{ ...entry, in: "done" }]));
+      expect(err.path).toBe(`${P}[0].in`);
+      expect(err.message).toBe(`${P}[0].in: must be a non-empty array of strings; allowed: string[]`);
+    });
+
+    it("rejects an entry with empty headings", () => {
+      const err = capture(withWhen([{ ...entry, headings: [] }]));
+      expect(err.path).toBe(`${P}[0].headings`);
+      expect(err.message).toBe(`${P}[0].headings: must be a non-empty array of strings; allowed: string[]`);
+    });
+
+    it("rejects an entry whose headings contain a non-string", () => {
+      const err = capture(withWhen([entry, { ...entry, headings: ["Outcome", 3] }]));
+      expect(err.path).toBe(`${P}[1].headings`);
+      expect(err.message).toBe(`${P}[1].headings: must be a non-empty array of strings; allowed: string[]`);
+    });
+
+    it("rejects an unknown key inside an entry", () => {
+      const err = capture(withWhen([{ ...entry, bogus: 1 }]));
+      expect(err.path).toBe(`${P}[0].bogus`);
+      expect(err.allowed).toEqual(["property", "in", "headings"]);
+      expect(err.message).toBe(`${P}[0].bogus: unknown key; allowed: property, in, headings`);
+    });
   });
 
   it("AC1: rejects a type missing generates", () => {

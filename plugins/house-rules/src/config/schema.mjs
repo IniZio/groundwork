@@ -47,7 +47,9 @@ export const TYPE_KEYS = Object.freeze([
   "template",
   "frontmatter",
   "headings",
+  "headingsWhen",
 ]);
+const HEADINGS_WHEN_KEYS = Object.freeze(["property", "in", "headings"]);
 export const FORBIDDEN_KEYS = Object.freeze(["pattern", "redirect"]);
 const TYPE_REQUIRED_KEYS = Object.freeze(["tier", "generates"]);
 const TYPE_SHAPES = Object.freeze({ tier: TIERS.join("|"), generates: "string" });
@@ -116,7 +118,30 @@ function checkType(type, path) {
   if (Object.hasOwn(type, "headings") && !isStringArray(type.headings)) {
     throw new ConfigError(`${path}.headings`, "must be an array of strings", ["string[]"]);
   }
+  if (Object.hasOwn(type, "headingsWhen")) checkHeadingsWhen(type.headingsWhen, `${path}.headingsWhen`);
   return structuredClone(type);
+}
+
+function checkHeadingsWhen(list, path) {
+  if (!Array.isArray(list)) throw new ConfigError(path, "must be an array", ["array"]);
+  list.forEach((entry, i) => {
+    const p = `${path}[${i}]`;
+    if (!isObject(entry)) throw new ConfigError(p, "must be an object", ["object"]);
+    checkKeys(entry, HEADINGS_WHEN_KEYS, p);
+    for (const key of HEADINGS_WHEN_KEYS) {
+      if (!Object.hasOwn(entry, key)) {
+        throw new ConfigError(`${p}.${key}`, "required", [key === "property" ? "string" : "string[]"]);
+      }
+    }
+    if (typeof entry.property !== "string" || entry.property === "") {
+      throw new ConfigError(`${p}.property`, "must be a non-empty string", ["string"]);
+    }
+    for (const key of ["in", "headings"]) {
+      if (!isStringArray(entry[key]) || entry[key].length === 0) {
+        throw new ConfigError(`${p}.${key}`, "must be a non-empty array of strings", ["string[]"]);
+      }
+    }
+  });
 }
 
 function checkManifestOptions(options, path) {

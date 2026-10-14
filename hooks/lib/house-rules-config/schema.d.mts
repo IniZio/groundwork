@@ -63,8 +63,15 @@ export const TYPE_KEYS: readonly [
   "template",
   "frontmatter",
   "headings",
+  "headingsWhen",
 ];
 export const FORBIDDEN_KEYS: readonly ["pattern", "redirect"];
+
+export interface HeadingsWhen {
+  property: string;
+  in: string[];
+  headings: string[];
+}
 
 export interface ManifestType {
   tier: Tier;
@@ -74,6 +81,7 @@ export interface ManifestType {
   template?: string | null;
   frontmatter?: Record<string, unknown>;
   headings?: string[];
+  headingsWhen?: HeadingsWhen[];
 }
 
 export interface ManifestForbidden {

@@ -16,7 +16,12 @@ const PATTERNS: RegExp[] = [
 ];
 
 const SCAN_DIRS = ["skills", "agents", "rules", "doc", "templates"];
-const SCAN_FILES = ["src/hooks/session-start.ts", "src/hooks/doc-registry.ts"];
+const SCAN_FILES = [
+  "src/hooks/session-start.ts",
+  "src/hooks/doc-registry.ts",
+  "hooks/lib/house-rules-config/doc-registry.json",
+  "plugins/house-rules/src/config/doc-registry.json",
+];
 
 // agents/researcher.md carries uncommitted user edits outside the
 // drop-token-and-intent-gates motive; it is not scrubbed here.
@@ -95,6 +100,8 @@ describe("token-instruction guard — shipped files", () => {
     expect(files.length).toBeGreaterThan(20);
     expect(files).toContain("skills/implement/SKILL.md");
     expect(files).not.toContain("agents/researcher.md");
+    expect(files).toContain("hooks/lib/house-rules-config/doc-registry.json");
+    expect(files).toContain("plugins/house-rules/src/config/doc-registry.json");
   });
 
   it("no file instructs token / approve / intent-gate use", () => {

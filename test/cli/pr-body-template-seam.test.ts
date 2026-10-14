@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { HASHED_PR_BODY_HEADINGS } from "../../src/cli/gate-status.js";
 
+const HASHED_PR_BODY_HEADINGS = ["Summary", "Why", "Changes", "Impact"] as const;
 const repoRoot = join(import.meta.dir, "..", "..");
 const template = readFileSync(join(repoRoot, "templates", "doc-types", "pr-body.md"), "utf8");
 const lines = template.split("\n").map((l) => l.trimEnd());

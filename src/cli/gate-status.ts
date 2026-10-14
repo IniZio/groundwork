@@ -102,6 +102,3 @@ export function gateStatus(o: { cwd: string }): GateStatus {
   }
   return out;
 }
-
-/** pr-body sections covered by H1/H2 approval; Review focus and Proof are deliberately excluded. */
-export const HASHED_PR_BODY_HEADINGS = ["Summary", "Why", "Changes", "Impact"] as const;

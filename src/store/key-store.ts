@@ -1,22 +1,22 @@
 /**
  * External secret management for groundwork.
  *
- * Both the write-token and the gate-seal key live OUTSIDE the repo:
- *   $XDG_CONFIG_HOME(or ~/.config)/groundwork/repos/<store_id>/{write.token,seal.key}
+ * The gate-seal key lives OUTSIDE the repo:
+ *   $XDG_CONFIG_HOME(or ~/.config)/groundwork/repos/<store_id>/seal.key
+ * Legacy write.token files are left alone (not read, not copied, not deleted).
  *
  * <store_id> is a random 16-byte hex id stored in the work.db `meta` table
  * (key `store_id`), generated on first use. Keys follow the db, so moving or
  * swapping a checkout neither loses keys nor inherits another checkout's.
  *
  * Migration: the old layout keyed the dir by sha256(resolve(repoPath))[:16].
- * On first store_id resolution, write.token and seal.key are COPIED from that
+ * On first store_id resolution, seal.key is COPIED from that
  * legacy dir into the store_id dir if absent there. The legacy dir is never
  * modified or deleted.
  *
  * Mode 0600. Never committed. Not in work.db.
  *
  * Verdicts are protected by the HMAC seal on GATE_APPROVE plus the fail-closed stop gate, not by path access control.
- * The main session retrieves the token via $GW init stdout only.
  */
 
 import { createHmac, randomBytes, createHash } from "node:crypto";
@@ -44,7 +44,7 @@ function legacyConfigDirForRepo(repoPath: string): string {
   return join(reposBase(), repoHash(repoPath));
 }
 
-const KEY_FILES = ["write.token", "seal.key"] as const;
+const KEY_FILES = ["seal.key"] as const;
 
 /**
  * Return the store_id of a work.db, creating it if missing, then copy any
@@ -90,26 +90,11 @@ function ensureDbParent(dbPath: string): void {
 // Write token
 // ---------------------------------------------------------------------------
 
-/** Read the write token for a db, or null. Never creates the db. */
+/** Legacy detection only: gw no longer uses a write token. Reads a leftover write.token, or null. Never creates the db. */
 export function readWriteTokenForDb(dbPath: string): string | null {
   if (!existsSync(dbPath)) return null;
   try { return readFileSync(join(configDirForDb(dbPath), "write.token"), "utf8").trim() || null; }
   catch { return null; }
-}
-
-/**
- * Ensure a write token exists.  Returns the token.
- * Pass `existing` to migrate a token from the old meta-table location.
- */
-export function ensureWriteTokenForDb(dbPath: string, existing?: string): string {
-  ensureDbParent(dbPath);
-  const dir = configDirForDb(dbPath);
-  const p = join(dir, "write.token");
-  if (existsSync(p)) return readFileSync(p, "utf8").trim();
-  mkdirSync(dir, { recursive: true });
-  const tok = existing ?? randomBytes(16).toString("hex");
-  writeFileSync(p, tok + "\n", { mode: 0o600 });
-  return tok;
 }
 
 // ---------------------------------------------------------------------------

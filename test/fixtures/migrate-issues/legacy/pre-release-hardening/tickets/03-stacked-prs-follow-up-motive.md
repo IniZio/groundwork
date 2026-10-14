@@ -25,9 +25,9 @@ Open: Q6 budget enforced vs advisory (planner: reject only missing reasons and >
 
 ## Comments
 
-Evidence: moor PR #1 restack (38,334 lines into 29 PRs) by session moor-95.
+Evidence: the app PR #1 restack (38,334 lines into 29 PRs) by session peer-a.
 
-2026-10-11, moor-95 after the local 30-PR build (reviewed 37,808 lines: must 11,845 / should 7,441 / optional 18,522; exempt 887):
+2026-10-11, peer-a after the local 30-PR build (reviewed 37,808 lines: must 11,845 / should 7,441 / optional 18,522; exempt 887):
 - artifact-structure rejects `.groundwork/work/<slug>/pr/<nn>-<name>.md` and `pr/index.md`; PH-17 must add those types (bodies parked in a scratchpad meanwhile).
 - junior-orchestrator cannot spawn groundwork:human-doc-reviewer (depth guard), so stack bodies went unreviewed. Either the human-layer review loop runs in the main thread, or the depth guard allows the reviewer.
 - Dev-journal vocabulary leaked into committed non-doc files (~105 "decision N" / "motive.md" refs in the parity inventory, exclusions.toml, harness contract). The checker should scan the PR diff's added lines, not only pr bodies and doc/.

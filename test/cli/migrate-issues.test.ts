@@ -13,14 +13,14 @@ const CONVERTED = path.join(FIX, "converted");
 
 // Real ticket files copied verbatim into test/fixtures/migrate-issues (legacy/ = before conversion, converted/ = already converted); no ticket content is written by hand.
 const FIXTURES = [
-  "moor-retro-requests/tickets/01-module-boundary-rule.md",
-  "moor-retro-requests/tickets/04-pr-body-link-rendering.md",
-  "moor-retro-requests/tickets/05-stacked-pr-workflow.md",
+  "example-retro-requests/tickets/01-module-boundary-rule.md",
+  "example-retro-requests/tickets/04-pr-body-link-rendering.md",
+  "example-retro-requests/tickets/05-stacked-pr-workflow.md",
   "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md",
   "pre-release-hardening/tickets/03-stacked-prs-follow-up-motive.md",
   "anti-slop-port/tickets/03-dockerfile-prefix-misclassifies-ts.md",
 ];
-const README_REL = "moor-retro-requests/tickets/README.md";
+const README_REL = "example-retro-requests/tickets/README.md";
 const ALL = [...FIXTURES, README_REL];
 
 const tmps: string[] = [];
@@ -85,7 +85,7 @@ describe("migrate issues: dry run", () => {
     expect(dry.code).toBe(0);
     const after = snapshot(root);
     expect(after).toEqual(before);
-    expect(dry.lines.some(l => l.includes(".groundwork/work/moor-retro-requests/tickets/05-stacked-pr-workflow.md") && l.includes("needs-triage -> triage"))).toBe(true);
+    expect(dry.lines.some(l => l.includes(".groundwork/work/example-retro-requests/tickets/05-stacked-pr-workflow.md") && l.includes("needs-triage -> triage"))).toBe(true);
     expect(dry.lines.at(-1)).toContain(`${FIXTURES.length} converted`);
     expect(existsSync(path.join(root, ".groundwork/backup"))).toBe(false);
   });
@@ -120,15 +120,15 @@ describe("migrate issues: apply", () => {
   });
 
   test("converts a needs-triage task ticket with a resolved blocker", () => {
-    const rel = "moor-retro-requests/tickets/05-stacked-pr-workflow.md";
+    const rel = "example-retro-requests/tickets/05-stacked-pr-workflow.md";
     expect(splitFm(read(r, rel)).fm).toEqual([
       'title: "Stacked-PR restack, retarget and lease-push support"',
       "status: triage",
       "priority: none",
       "tags: [enhancement]",
-      'parent: "[[moor-retro-requests]]"',
+      'parent: "[[example-retro-requests]]"',
       'blocked_by: ["[[04-pr-body-link-rendering]]"]',
-      'source: "moor-95 retro, 2026-10-12 (rank 5)"',
+      'source: "peer-a retro, 2026-10-12 (rank 5)"',
       `created: ${created(r, rel)}`,
     ]);
   });
@@ -287,7 +287,7 @@ describe("migrate issues: parent resolution on real retro tickets", () => {
 describe("migrate issues: blocker resolution", () => {
   test("a blocker with no sibling file warns and stays as a bare link", () => {
     const solo = mk("mig-issues-solo-");
-    const rel = "moor-retro-requests/tickets/05-stacked-pr-workflow.md";
+    const rel = "example-retro-requests/tickets/05-stacked-pr-workflow.md";
     const dest = path.join(solo, ".groundwork/work/other-motive/tickets/05-stacked-pr-workflow.md");
     mkdirSync(path.dirname(dest), { recursive: true });
     cpSync(path.join(LEGACY, rel), dest);
@@ -308,7 +308,7 @@ describe("migrate issues: deployed path", () => {
     delete env.CLAUDE_PROJECT_DIR;
     const r = Bun.spawnSync([process.execPath, path.join(REPO, "src/cli/main.ts"), "migrate", "issues", "--root", cliRoot], { env: env as Record<string, string> });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.toString()).toContain("moor-retro-requests/tickets/05-stacked-pr-workflow.md");
+    expect(r.stdout.toString()).toContain("example-retro-requests/tickets/05-stacked-pr-workflow.md");
     expect(read(cliRoot, FIXTURES[2])).toBe(readFileSync(path.join(LEGACY, FIXTURES[2]), "utf8"));
   });
 });
@@ -356,7 +356,7 @@ describe("migrate issues: normalise already-converted issues", () => {
   }
 
   test("extra blank lines after the frontmatter collapse to one and nothing else changes", () => {
-    const rel = "moor-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
+    const rel = "example-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
     const d = oneRoot(rel);
     const input = read(d, rel).split("\n");
     const end = input.indexOf("---", 1);
@@ -414,7 +414,7 @@ describe("migrate issues: normalise already-converted issues", () => {
 
   test("a dry run lists normalised files apart from converted ones and writes nothing", () => {
     const d = oneRoot(CASES[0].rel);
-    const legacy = "moor-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
+    const legacy = "example-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
     const src = readFileSync(path.join(CONVERTED, legacy), "utf8").split("\n");
     const body = src.slice(src.indexOf("---", 1) + 1);
     const dest = path.join(d, ".groundwork/work", legacy);

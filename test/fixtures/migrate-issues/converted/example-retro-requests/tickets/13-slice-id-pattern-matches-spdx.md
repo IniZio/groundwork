@@ -3,9 +3,9 @@ title: "Slice-id pattern flags licence names like BSD-3-Clause"
 status: triage
 priority: none
 tags: [bug]
-parent: "[[moor-retro-requests]]"
+parent: "[[example-retro-requests]]"
 blocked_by: []
-source: "moor-b7, 2026-10-12. Seen in the body of https://github.com/IniZio/moor/pull/46"
+source: "peer-b, 2026-10-12. Seen in the body of https://github.com/example/app/pull/46"
 created: 2026-10-12
 ---
 

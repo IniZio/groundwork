@@ -7,7 +7,7 @@ title: Stacked-PR restack, retarget and lease-push support
 Status: needs-triage
 Type: task
 Blocked by: 04
-Source: moor-95 retro, 2026-10-12 (rank 5)
+Source: peer-a retro, 2026-10-12 (rank 5)
 Related: .groundwork/work/pre-release-hardening/tickets/03-stacked-prs-follow-up-motive.md (planning side: PH-17..PH-23)
 
 ## Owner rules

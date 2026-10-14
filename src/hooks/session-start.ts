@@ -4,10 +4,8 @@ function isEmbedded(env: Record<string, string | undefined>): boolean {
   return env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js";
 }
 
-const DOCS_MAX_LINES = 8;
-
 // Fails open: any error omits the table, never the rest of the context.
-async function whereDocsGoBlock(env: Record<string, string | undefined>): Promise<string> {
+async function whereDocsGoBlock(env: Record<string, string | undefined>, pluginRoot: string): Promise<string> {
   try {
     const root = env.CLAUDE_PROJECT_DIR || process.cwd();
     const { resolveConfig } = await import("../../hooks/lib/house-rules-config/resolve.mjs");
@@ -15,25 +13,23 @@ async function whereDocsGoBlock(env: Record<string, string | undefined>): Promis
     const { activeSlug } = await import("../store/work-units.js");
 
     const slug = activeSlug(root);
-    const extra: string[] = [];
-    if (!slug) extra.push("no active motive — select one with `$GW motive use <slug> --token T` before writing docs");
+    const head: string[] = [];
+    if (!slug) head.push("no active motive — select one with `$GW motive use <slug> --token T` before writing docs");
 
-    let manifest = resolveConfig(root).rules["artifact-structure"].options as Record<string, unknown>;
-    if (!Object.keys((manifest.types as object | undefined) ?? {}).length) {
+    const manifest = resolveConfig(root).rules["artifact-structure"].options as Record<string, unknown>;
+    let rows: string[];
+    if (Object.keys((manifest.types as object | undefined) ?? {}).length) {
+      rows = renderStructure(manifest) as string[];
+    } else {
       const { WORKING_TYPES, FORBIDDEN } = await import("./doc-registry.js");
-      const types: Record<string, { tier: string; generates: string; description: string }> = {};
-      for (const [id, t] of Object.entries(WORKING_TYPES) as [string, { tier: string; generates: string; description: string }][]) {
-        types[id] = { tier: t.tier, generates: t.generates, description: t.description };
-      }
-      manifest = { types, forbidden: FORBIDDEN };
-      extra.push("not enforced — $GW recipe prints the .house-rules.json block");
+      head.push(`template paths are relative to ${pluginRoot}`);
+      rows = Object.entries(WORKING_TYPES).map(([id, t]) =>
+        `${id} (${t.tier}): ${t.generates} — ${t.template ? `template ${t.template}` : "no template"}`);
+      for (const f of FORBIDDEN) rows.push(`forbidden: ${f.pattern} → ${f.redirect}`);
     }
 
-    const lines = (renderStructure(manifest, { maxLines: DOCS_MAX_LINES - extra.length }) as string[])
-      .map(l => l.replaceAll("{slug}", slug ?? "<slug>"));
-    const noteFirst = extra.filter(l => l.startsWith("no active"));
-    const noteLast = extra.filter(l => l.startsWith("not enforced"));
-    return `\n\n## Where docs go\n${[...noteFirst, ...lines, ...noteLast].join("\n")}`;
+    const lines = rows.map(l => l.replaceAll("{slug}", slug ?? "<slug>"));
+    return `\n\n## Where docs go\n${[...head, ...lines].join("\n")}`;
   } catch {
     return "";
   }
@@ -110,7 +106,7 @@ async function main() {
     ? `\n\n${routingRules.trim()}`
     : "";
 
-  const docsBlock = await whereDocsGoBlock(env);
+  const docsBlock = await whereDocsGoBlock(env, pluginRoot);
 
   const agentRefBlock = `\n\n## Agent reference (read on demand)\n\n- rules/cli-reference.md — gw CLI commands and flags\n- rules/proof-harness.md — QA evidence contract and proof harness flags\n- rules/enforcement-details.md — enforcement internals\n- rules/conventions-cli.md — conventions CLI and run files\n- rules/agent-authoring.md — agent authoring checklist`;
 

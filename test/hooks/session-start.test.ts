@@ -214,7 +214,6 @@ describe("session-start agent reference index", () => {
 
 describe("session-start Where docs go", () => {
   const dirs: string[] = [];
-  const NOTE = "not enforced — $GW recipe prints the .house-rules.json block";
   const HOST = {
     rules: {
       "artifact-structure": [
@@ -269,15 +268,22 @@ describe("session-start Where docs go", () => {
 
   const cleanup = () => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); };
 
-  it("AC1 registered command emits Where docs go with <=8 lines and registry fallback note", () => {
+  it("without host config, lists every registry type with its path and template, untruncated", () => {
     const d = repo("foo");
     const { ctx, exit } = spawnHook(d);
     expect(exit).toBe(0);
     const lines = section(ctx);
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.length).toBeLessThanOrEqual(8);
-    expect(lines).toContain(NOTE);
-    expect(lines.join("\n")).toContain("motive (working)");
+    const row = (id: string) => lines.find(l => l.startsWith(`${id} (working): `));
+    expect(row("adr")).toBe("adr (working): .groundwork/adr/{nnnn}-{name:kebab}.md — template templates/doc-types/adr.md");
+    expect(row("handoff")).toBe("handoff (working): .groundwork/work/foo/handoff.md — template templates/doc-types/handoff.md");
+    expect(row("pr-body")).toBe("pr-body (working): .groundwork/work/foo/pr-body.md — template templates/doc-types/pr-body.md");
+    expect(row("issue")).toContain("— template templates/doc-types/issue.md");
+    expect(row("evidence")).toContain("— no template");
+    expect(row("motive")).toBeDefined();
+    expect(lines).toContain(`template paths are relative to ${ROOT}`);
+    const text = lines.join("\n");
+    expect(text).not.toContain(" more; run");
+    expect(text).not.toContain("not enforced");
     cleanup();
   });
 
@@ -289,16 +295,15 @@ describe("session-start Where docs go", () => {
     cleanup();
   });
 
-  it("AC2 parity with house-rules structure output capped at 8 lines, {slug} substituted", () => {
+  it("host manifest matches house-rules structure output in full, {slug} substituted", () => {
     const many: Record<string, unknown> = {};
     for (let i = 0; i < 10; i++) many[`t${i}`] = { tier: "working", generates: `d${i}/{slug}/x.md`, description: `type ${i}` };
     const d = repo("foo", { rules: { "artifact-structure": ["error", { types: many }] } });
     spawnSync("git", ["init", "-q"], { cwd: d });
     const cli = spawnSync(path.join(ROOT, "plugins/house-rules/bin/house-rules"), ["structure"], { cwd: d, env: { ...process.env, CLAUDE_PROJECT_DIR: d } });
     expect(cli.status).toBe(0);
-    let expected = cli.stdout.toString().trimEnd().split("\n");
-    if (expected.length > 8) expected = [...expected.slice(0, 7), `… ${expected.length - 7} more; run \`house-rules structure\` for all`];
-    expected = expected.map(l => l.replaceAll("{slug}", "foo"));
+    const expected = cli.stdout.toString().trimEnd().split("\n").map(l => l.replaceAll("{slug}", "foo"));
+    expect(expected.length).toBe(10);
     expect(section(spawnHook(d).ctx)).toEqual(expected);
     cleanup();
   });
@@ -318,7 +323,6 @@ describe("session-start Where docs go", () => {
   it("AC4 unseeded repo tells agent to select a motive, never work/default/", () => {
     const d = repo();
     const s = section(spawnHook(d).ctx);
-    expect(s.length).toBeLessThanOrEqual(8);
     expect(s.join("\n")).toContain("$GW motive use <slug>");
     expect(s.join("\n")).not.toContain("work/default/");
     cleanup();
@@ -327,7 +331,6 @@ describe("session-start Where docs go", () => {
   it("AC4 repo seeded default tells agent to select a motive, never work/default/", () => {
     const d = repo("default");
     const s = section(spawnHook(d).ctx);
-    expect(s.length).toBeLessThanOrEqual(8);
     expect(s.join("\n")).toContain("$GW motive use <slug>");
     expect(s.join("\n")).not.toContain("work/default/");
     cleanup();

@@ -16,7 +16,32 @@ const ISSUE_STATUSES = new Set(["triage", "needs-info", "todo", "in-progress", "
 const TYPE_TAGS: Record<string, string> = { bug: "bug", task: "enhancement", research: "research", prototype: "prototype", grilling: "grilling" };
 const MANAGED = new Set(["title", "status", "assignee", "priority", "tags", "parent", "blocked_by", "source", "created"]);
 
-type Conversion = { rel: string; abs: string; text: string; notes: string[]; warnings: string[] };
+type Conversion = { rel: string; abs: string; text: string; notes: string[]; warnings: string[]; normalise?: boolean };
+
+const CHECKBOX = /^- \[[ xX]\]/;
+
+// Collapses extra blank lines after the frontmatter, and adds an acceptance-criteria heading above a checkbox list
+// that follows the description directly. A "# Title" line is not a section heading, so it does not block the insert;
+// any "##" or deeper heading before the list (e.g. "## Parent") means the list belongs to that section and is left alone.
+function normalise(lines: string[], end: number): { lines: string[]; notes: string[] } {
+  const notes: string[] = [];
+  let out = lines;
+  let blanks = 0;
+  while (out[end + blanks]?.trim() === "") blanks++;
+  if (blanks > 1) {
+    out = [...out.slice(0, end + 1), ...out.slice(end + blanks)];
+    notes.push("collapsed blank lines after frontmatter");
+  }
+  const body = out.slice(end);
+  if (!body.some(l => /^##\s+Acceptance criteria\s*$/i.test(l.replace(/\r$/, "")))) {
+    const box = body.findIndex(l => CHECKBOX.test(l));
+    if (box !== -1 && !body.slice(0, box).some(l => /^#{2,6}\s/.test(l))) {
+      out = [...out.slice(0, end + box), "## Acceptance criteria", "", ...out.slice(end + box)];
+      notes.push("added ## Acceptance criteria heading");
+    }
+  }
+  return { lines: out, notes };
+}
 
 function parseFm(lines: string[]): { fm: Map<string, string>; raw: Map<string, string>; end: number } {
   const fm = new Map<string, string>();
@@ -64,7 +89,11 @@ function convert(root: string, abs: string, motive: string, siblings: string[]):
   const text = readFileSync(abs, "utf8");
   const lines = text.split("\n");
   const { fm, raw, end } = parseFm(lines);
-  if (fm.has("status") && ISSUE_STATUSES.has(fm.get("status")!)) return { skip: "already converted" };
+  if (fm.has("status") && ISSUE_STATUSES.has(fm.get("status")!)) {
+    const n = normalise(lines, end);
+    if (n.notes.length === 0) return { skip: "already converted" };
+    return { rel, abs, text: n.lines.join("\n"), notes: n.notes, warnings: [], normalise: true };
+  }
 
   let body = lines.slice(end);
   const warnings: string[] = [];
@@ -168,13 +197,15 @@ function convert(root: string, abs: string, motive: string, siblings: string[]):
 
   const notes = [`status ${oldStatus} -> ${mapped.status}`, `tags [${tags.join(", ")}]`, `blocked_by [${blocked.join(", ")}]`, `parent ${parent}`];
   if (extras.length) notes.push(`extra frontmatter kept: ${extras.join(", ")}`);
-  return { rel, abs, text: [...out, ...body].join("\n"), notes, warnings };
+  const norm = normalise([...out, ...body], out.length);
+  return { rel, abs, text: norm.lines.join("\n"), notes: [...notes, ...norm.notes], warnings };
 }
 
 export function runMigrateIssues(root: string, apply: boolean): MigrateResult {
   const lines: string[] = [];
   const work = path.join(root, ".groundwork", "work");
   const todo: Conversion[] = [];
+  const norms: string[] = [];
   let skipped = 0;
   let warnings = 0;
 
@@ -202,6 +233,11 @@ export function runMigrateIssues(root: string, apply: boolean): MigrateResult {
         continue;
       }
       todo.push(r);
+      if (r.normalise) {
+        norms.push(r.rel);
+        lines.push(`${apply ? "normalise" : "would normalise"} ${r.rel}: ${r.notes.join("; ")}`);
+        continue;
+      }
       lines.push(`${apply ? "convert" : "would convert"} ${r.rel}: ${r.notes.join("; ")}`);
       for (const w of r.warnings) {
         lines.push(`warning ${r.rel}: ${w}`);
@@ -210,6 +246,7 @@ export function runMigrateIssues(root: string, apply: boolean): MigrateResult {
     }
   }
 
+  if (norms.length > 0) lines.push(`normalise: ${norms.length} file(s): ${norms.join(", ")}`);
   if (apply && todo.length === 0) lines.push("nothing to convert, no backup made");
   if (apply && todo.length > 0) {
     const dir = path.join(root, ".groundwork", "backup");
@@ -224,6 +261,6 @@ export function runMigrateIssues(root: string, apply: boolean): MigrateResult {
     lines.push(`backup: ${path.resolve(archive)}`);
     for (const t of todo) writeFileSync(t.abs, t.text);
   }
-  lines.push(`summary: ${todo.length} converted, ${skipped} skipped, ${warnings} warnings${apply ? "" : " (dry run, nothing written)"}`);
+  lines.push(`summary: ${todo.length - norms.length} converted, ${norms.length} normalised, ${skipped} skipped, ${warnings} warnings${apply ? "" : " (dry run, nothing written)"}`);
   return { lines, code: 0 };
 }

@@ -7,9 +7,11 @@ import { runMigrateIssues } from "../../src/cli/migrate-issues.js";
 import { parseFrontmatter, validateFrontmatter, type FmSchema } from "../../plugins/house-rules/src/engine/frontmatter.js";
 
 const REPO = path.resolve(import.meta.dir, "../..");
-const WORK = path.join(REPO, ".groundwork/work");
+const FIX = path.join(REPO, "test/fixtures/migrate-issues");
+const LEGACY = path.join(FIX, "legacy");
+const CONVERTED = path.join(FIX, "converted");
 
-// Real ticket files copied verbatim; no ticket content is written by hand.
+// Real ticket files copied verbatim into test/fixtures/migrate-issues (legacy/ = before conversion, converted/ = already converted); no ticket content is written by hand.
 const FIXTURES = [
   "moor-retro-requests/tickets/01-module-boundary-rule.md",
   "moor-retro-requests/tickets/04-pr-body-link-rendering.md",
@@ -32,7 +34,7 @@ function buildRoot(): string {
   for (const rel of FIXTURES) {
     const dest = path.join(root, ".groundwork/work", rel);
     mkdirSync(path.dirname(dest), { recursive: true });
-    cpSync(path.join(WORK, rel), dest);
+    cpSync(path.join(LEGACY, rel), dest);
   }
   cpSync(path.join(REPO, "README.md"), path.join(root, ".groundwork/work", README_REL));
   return root;
@@ -44,6 +46,7 @@ const snapshot = (root: string): Record<string, { text: string; mtime: number }>
 const created = (root: string, rel: string): string => statSync(abs(root, rel)).mtime.toISOString().slice(0, 10);
 
 // Independent of the implementation: strip frontmatter, H1 and header lines before the first H2. Parent prose stays.
+// After that, a leading run of 2 or more blank lines is reduced to one.
 function expectedBody(original: string): string[] {
   let lines = original.split("\n");
   if (lines[0] === "---") lines = lines.slice(lines.indexOf("---", 1) + 1);
@@ -51,7 +54,9 @@ function expectedBody(original: string): string[] {
   const end = h2 === -1 ? lines.length : h2;
   const h1 = lines.findIndex((l, i) => i < end && l.startsWith("# "));
   const header = /^(\*\*)?(Status|Type|Source|Blocked by):(\*\*)?( |$)/;
-  return lines.filter((l, i) => i !== h1 && !(i > h1 && i < end && header.test(l)));
+  const kept = lines.filter((l, i) => i !== h1 && !(i > h1 && i < end && header.test(l)));
+  while (kept[0] === "" && kept[1] === "") kept.shift();
+  return kept;
 }
 function splitFm(text: string): { fm: string[]; body: string[] } {
   const lines = text.split("\n");
@@ -213,7 +218,7 @@ describe("migrate issues: parent resolution on real retro tickets", () => {
     for (const rel of [T01, T06]) {
       const dest = path.join(d, ".groundwork/work", rel);
       mkdirSync(path.dirname(dest), { recursive: true });
-      cpSync(path.join(WORK, rel), dest);
+      cpSync(path.join(LEGACY, rel), dest);
     }
     return d;
   }
@@ -282,7 +287,7 @@ describe("migrate issues: blocker resolution", () => {
     const rel = "moor-retro-requests/tickets/05-stacked-pr-workflow.md";
     const dest = path.join(solo, ".groundwork/work/other-motive/tickets/05-stacked-pr-workflow.md");
     mkdirSync(path.dirname(dest), { recursive: true });
-    cpSync(path.join(WORK, rel), dest);
+    cpSync(path.join(LEGACY, rel), dest);
     const res = runMigrateIssues(solo, false);
     expect(res.code).toBe(0);
     expect(res.lines.some(l => l.startsWith("warning ") && l.includes("04"))).toBe(true);
@@ -301,6 +306,103 @@ describe("migrate issues: deployed path", () => {
     const r = Bun.spawnSync([process.execPath, path.join(REPO, "src/cli/main.ts"), "migrate", "issues", "--root", cliRoot], { env: env as Record<string, string> });
     expect(r.exitCode).toBe(0);
     expect(r.stdout.toString()).toContain("moor-retro-requests/tickets/05-stacked-pr-workflow.md");
-    expect(read(cliRoot, FIXTURES[2])).toBe(readFileSync(path.join(WORK, FIXTURES[2]), "utf8"));
+    expect(read(cliRoot, FIXTURES[2])).toBe(readFileSync(path.join(LEGACY, FIXTURES[2]), "utf8"));
+  });
+});
+
+describe("migrate issues: normalise already-converted issues", () => {
+  const HEADING = "## Acceptance criteria";
+  const CASES = [
+    { rel: "human-agent-handoff/tickets/01-human-agent-split.md", insertAt: 25 },
+    { rel: "delegation-enforcement/tickets/01-shared-session-base-helper.md", insertAt: 15 },
+  ];
+  function oneRoot(rel: string): string {
+    const d = mk("mig-issues-norm-");
+    const dest = path.join(d, ".groundwork/work", rel);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    cpSync(path.join(CONVERTED, rel), dest);
+    return d;
+  }
+
+  for (const c of CASES) {
+    test(`${c.rel}: heading goes directly above the checkbox list and nothing else changes`, () => {
+      const d = oneRoot(c.rel);
+      const input = read(d, c.rel).split("\n");
+      expect(input[c.insertAt].startsWith("- [")).toBe(true);
+      const res = runMigrateIssues(d, true);
+      expect(res.code).toBe(0);
+      const output = read(d, c.rel).split("\n");
+      expect(output[c.insertAt]).toBe(HEADING);
+      expect(output[c.insertAt + 1]).toBe("");
+      expect(output.filter(l => l === HEADING).length).toBe(1);
+      expect([...output.slice(0, c.insertAt), ...output.slice(c.insertAt + 2)]).toEqual(input);
+      expect(res.lines.some(l => l.startsWith("normalise ") && l.includes(c.rel))).toBe(true);
+      expect(res.lines.at(-1)).toContain("0 converted");
+      expect(res.lines.at(-1)).toContain("1 normalised");
+    });
+
+    test(`${c.rel}: a second run changes nothing and reports 0 normalised`, () => {
+      const d = oneRoot(c.rel);
+      runMigrateIssues(d, true);
+      const once = read(d, c.rel);
+      const second = runMigrateIssues(d, true);
+      expect(read(d, c.rel)).toBe(once);
+      expect(second.lines.at(-1)).toContain("0 converted");
+      expect(second.lines.at(-1)).toContain("0 normalised");
+    });
+  }
+
+  test("extra blank lines after the frontmatter collapse to one and nothing else changes", () => {
+    const rel = "moor-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
+    const d = oneRoot(rel);
+    const input = read(d, rel).split("\n");
+    const end = input.indexOf("---", 1);
+    expect(input.slice(end + 1, end + 4)).toEqual(["", "", ""]);
+    const res = runMigrateIssues(d, true);
+    const output = read(d, rel).split("\n");
+    const dropped = input.slice(end + 1).findIndex(l => l !== "") - 1;
+    expect(dropped).toBe(2);
+    expect(output.slice(0, end + 1)).toEqual(input.slice(0, end + 1));
+    expect(output[end + 1]).toBe("");
+    expect(output[end + 2]).toBe("## Problem");
+    expect(output.slice(end + 1)).toEqual(input.slice(end + 1 + dropped));
+    expect(output).not.toContain(HEADING);
+    expect(res.lines.some(l => l.startsWith("normalise ") && l.includes(rel))).toBe(true);
+    const second = runMigrateIssues(d, true);
+    expect(read(d, rel)).toBe(output.join("\n"));
+    expect(second.lines.at(-1)).toContain("0 normalised");
+  });
+
+  test("a checkbox list under a Parent section gets no heading and the file stays byte-identical", () => {
+    const rel = "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md";
+    const d = oneRoot(rel);
+    const input = read(d, rel);
+    const lines = input.split("\n");
+    expect(lines.indexOf("## Parent")).toBeLessThan(lines.findIndex(l => l.startsWith("- [ ]")));
+    const first = runMigrateIssues(d, true);
+    const second = runMigrateIssues(d, true);
+    expect(read(d, rel)).toBe(input);
+    expect(first.lines.at(-1)).toContain("0 normalised");
+    expect(second.lines.at(-1)).toContain("0 normalised");
+  });
+
+  test("a dry run lists normalised files apart from converted ones and writes nothing", () => {
+    const d = oneRoot(CASES[0].rel);
+    const legacy = "moor-retro-requests/tickets/13-slice-id-pattern-matches-spdx.md";
+    const src = readFileSync(path.join(CONVERTED, legacy), "utf8").split("\n");
+    const body = src.slice(src.indexOf("---", 1) + 1);
+    const dest = path.join(d, ".groundwork/work", legacy);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    writeFileSync(dest, ["# 13: Slice-id pattern", "", "Status: needs-triage", ...body].join("\n"));
+    const rels = [CASES[0].rel, legacy];
+    const before = rels.map(r => read(d, r));
+    const res = runMigrateIssues(d, false);
+    expect(rels.map(r => read(d, r))).toEqual(before);
+    expect(res.lines.some(l => l.startsWith("would normalise ") && l.includes(CASES[0].rel))).toBe(true);
+    expect(res.lines.some(l => l.startsWith("would convert ") && l.includes(legacy))).toBe(true);
+    expect(res.lines.some(l => l.startsWith("would convert ") && l.includes(CASES[0].rel))).toBe(false);
+    expect(res.lines.some(l => l.startsWith("normalise:") && l.includes(CASES[0].rel))).toBe(true);
+    expect(res.lines.at(-1)).toContain("1 converted");
+    expect(res.lines.at(-1)).toContain("1 normalised");
   });
 });

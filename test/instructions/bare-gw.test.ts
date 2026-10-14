@@ -27,15 +27,15 @@ function findBareGwLines(content: string): { line: number; text: string }[] {
 
 describe("bare-gw detector — fixture", () => {
   it("detects backtick-form bare invocation", () => {
-    expect(findBareGwLines("`gw slice add S1 --token T`")).toHaveLength(1);
+    expect(findBareGwLines("`gw slice add S1`")).toHaveLength(1);
   });
 
   it("detects code-block-line bare invocation", () => {
-    expect(findBareGwLines("gw init  # get token T")).toHaveLength(1);
+    expect(findBareGwLines("gw init  # create the store")).toHaveLength(1);
   });
 
   it("does not flag $GW invocation", () => {
-    expect(findBareGwLines("`$GW slice add S1 --token T`")).toHaveLength(0);
+    expect(findBareGwLines("`$GW slice add S1`")).toHaveLength(0);
   });
 
   it("does not flag GW= definition line", () => {

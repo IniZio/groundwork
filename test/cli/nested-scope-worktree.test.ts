@@ -25,7 +25,6 @@ const gw = (side: "parent" | "child", cwd: string, ...a: string[]) => {
   const r = spawnSync("bun", [MAIN, ...a], { cwd, env: envFor(side), encoding: "utf8" });
   return { code: r.status, out: r.stdout ?? "", err: r.stderr ?? "" };
 };
-const tokenOf = (s: string) => /token: (\S+)/.exec(s)?.[1];
 
 let n = 0;
 function setup() {
@@ -40,11 +39,10 @@ function setup() {
   git(parent, "commit", "-q", "-m", "init");
   symlinkSync(parent, alias);
   expect(git(parent, "worktree", "add", "-q", "-b", `b${n}`, child).status).toBe(0);
-  const init = gw("parent", parent, "init");
-  const tok = tokenOf(init.out)!;
-  expect(gw("parent", parent, "motive", "add", "m1", "--use", "--token", tok).code).toBe(0);
-  expect(gw("parent", parent, "slice", "add", "S", "--token", tok).code).toBe(0);
-  expect(gw("parent", parent, "scope", "link", child, "--slice", "S", "--token", tok).code).toBe(0);
+  gw("parent", parent, "init");
+  expect(gw("parent", parent, "motive", "add", "m1", "--use").code).toBe(0);
+  expect(gw("parent", parent, "slice", "add", "S").code).toBe(0);
+  expect(gw("parent", parent, "scope", "link", child, "--slice", "S").code).toBe(0);
 
   const pf = path.join(child, ".groundwork", "parent");
   const p = parsePointer(readFileSync(pf, "utf8"));
@@ -52,7 +50,7 @@ function setup() {
   writeFileSync(pf, serializePointer({ ...p, root: alias }));
   expect(parsePointer(readFileSync(pf, "utf8")).root).toBe(alias);
   expect(sameRoot(alias, parent)).toBe(true);
-  return { parent, alias, child, tok };
+  return { parent, alias, child };
 }
 
 function childFlow(child: string, approve: boolean) {
@@ -68,32 +66,32 @@ function childFlow(child: string, approve: boolean) {
 
 describe("nested scope worktree + alias", () => {
   it("child without approve: parent complete refused (bite)", () => {
-    const { parent, child, tok } = setup();
+    const { parent, child } = setup();
     childFlow(child, false);
-    const r = gw("parent", parent, "slice", "complete", "S", "--token", tok);
+    const r = gw("parent", parent, "slice", "complete", "S");
     expect(r.code).toBe(1);
     expect(r.err).toContain("cannot complete slice 'S'");
   });
 
   it("alias-root child init registers in parent inbox; approve forwards; parent complete flips refused to ok", () => {
-    const { parent, child, tok } = setup();
-    expect(gw("parent", parent, "slice", "complete", "S", "--token", tok).code).toBe(1);
+    const { parent, child } = setup();
+    expect(gw("parent", parent, "slice", "complete", "S").code).toBe(1);
     childFlow(child, true);
     expect(existsSync(path.join(child, ".groundwork", "work.db"))).toBe(true);
-    const r = gw("parent", parent, "slice", "complete", "S", "--token", tok);
+    const r = gw("parent", parent, "slice", "complete", "S");
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
   });
 
   it("AC2: child worktree removed after APPROVE, parent complete still succeeds", () => {
-    const { parent, child, tok } = setup();
+    const { parent, child } = setup();
     const head = childFlow(child, true);
     expect(git(parent, "worktree", "remove", "--force", child).status).toBe(0);
     rmSync(child, { recursive: true, force: true });
     expect(existsSync(child)).toBe(false);
     // Commit lives in the shared object store of the parent repo, so it stays reachable via its branch.
     expect(git(parent, "cat-file", "-e", `${head}^{commit}`).status).toBe(0);
-    const r = gw("parent", parent, "slice", "complete", "S", "--token", tok);
+    const r = gw("parent", parent, "slice", "complete", "S");
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
   });

@@ -51,7 +51,6 @@ function storeId(db: string): string | undefined {
     return (d.query("SELECT value FROM meta WHERE key = 'store_id'").get() as { value: string } | null)?.value;
   } finally { d.close(); }
 }
-const tokenOf = (s: string) => /token: (\S+)/.exec(s)?.[1];
 
 describe("store_id key callers", () => {
   it("(a) stop-gate with GROUNDWORK_DB outside the repo verifies seal via store_id; missing seal.key blocks", () => {
@@ -65,11 +64,9 @@ describe("store_id key callers", () => {
 
     const init = gwIn(repo, env, "init");
     expect(init.code, `init: ${JSON.stringify(init)}`).toBe(0);
-    const tok = tokenOf(init.out)!;
-    expect(tok, `init out: ${init.out}`).toBeTruthy();
-    expect(gwIn(repo, env, "slice", "add", "S1", "--token", tok).code).toBe(0);
-    expect(gwIn(repo, env, "slice", "complete", "S1", "--token", tok).code).toBe(0);
-    const ap = gwIn(repo, env, "gate", "approve", "--citation", "a.txt:1", "--token", tok);
+    expect(gwIn(repo, env, "slice", "add", "S1").code).toBe(0);
+    expect(gwIn(repo, env, "slice", "complete", "S1").code).toBe(0);
+    const ap = gwIn(repo, env, "gate", "approve", "--citation", "a.txt:1");
     expect(ap.code, `approve: ${JSON.stringify(ap)}`).toBe(0);
 
     const sid = storeId(db);
@@ -102,9 +99,8 @@ describe("store_id key callers", () => {
 
     const init = gwIn(parent, env, "init");
     expect(init.code, `init: ${JSON.stringify(init)}`).toBe(0);
-    const tok = tokenOf(init.out)!;
-    expect(gwIn(parent, env, "slice", "add", "S1", "--token", tok).code).toBe(0);
-    const link = gwIn(parent, env, "scope", "link", child, "--slice", "S1", "--token", tok);
+    expect(gwIn(parent, env, "slice", "add", "S1").code).toBe(0);
+    const link = gwIn(parent, env, "scope", "link", child, "--slice", "S1");
     expect(link.code, `link: ${JSON.stringify(link)}`).toBe(0);
     const cinit = gwIn(child, env, "init");
     expect(cinit.code, `child init: ${JSON.stringify(cinit)}`).toBe(0);

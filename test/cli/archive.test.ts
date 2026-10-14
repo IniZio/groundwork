@@ -23,7 +23,7 @@ delete baseEnv.GROUNDWORK_DB;
 delete baseEnv.CLAUDE_PROJECT_DIR;
 
 let n = 0;
-interface Ctx { d: string; env: Record<string, string>; token: string }
+interface Ctx { d: string; env: Record<string, string> }
 
 function run(cmd: string, args: string[], c: { d: string; env: Record<string, string> }, extra: Record<string, string> = {}) {
   return spawnSync(cmd, args, { cwd: c.d, env: { ...c.env, ...extra }, encoding: "utf8", timeout: 30000 });
@@ -37,14 +37,11 @@ function makeRepo(): Ctx {
   const d = path.join(base, "repo");
   mkdirSync(d, { recursive: true });
   const env = { ...baseEnv, XDG_CONFIG_HOME: path.join(base, "xdg") };
-  const c = { d, env, token: "" } as Ctx;
+  const c = { d, env } as Ctx;
   git(c, {}, "init", "-q");
   const init = gw(c, "init");
   expect(init.status).toBe(0);
-  const m = /token: (\S+)/.exec(init.stdout);
-  expect(m).not.toBeNull();
-  c.token = m![1];
-  expect(gw(c, "motive", "add", "foo", "--token", c.token).status).toBe(0);
+  expect(gw(c, "motive", "add", "foo").status).toBe(0);
   return c;
 }
 
@@ -97,7 +94,7 @@ describe("gw archive", () => {
     const files = walk(work(c)).filter(f => !f.startsWith("evidence/"));
     expect(files.sort()).toEqual(["motive.md", "notes.md", "spec.md", "sub/x.txt"]);
     const before = new Map(files.map(f => [f, sha(path.join(work(c), f))]));
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(0);
     expect(r.stdout).toBe(`archived: foo → .groundwork/archive/${month()}/foo\n`);
     expect(existsSync(work(c))).toBe(false);
@@ -113,7 +110,7 @@ describe("gw archive", () => {
     commitSpec(c, "2026-08-01T12:00:00");
     writeFileSync(path.join(c.d, "doc/spec/a.md"), "spec\nmodified\n");
     expect(git(c, {}, "add", "doc/spec/a.md").status).toBe(0);
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(0);
     expect(existsSync(work(c))).toBe(false);
     expect(existsSync(archiveDir(c))).toBe(true);
@@ -124,7 +121,7 @@ describe("gw archive", () => {
     seed(c);
     commitSpec(c, "2026-08-01T12:00:00");
     const before = treeHash(work(c));
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("doc/spec/a.md");
     expect(r.stderr).toContain("2026-09-01");
@@ -136,7 +133,7 @@ describe("gw archive", () => {
   it("AC4: folds_into none with reason archives", () => {
     const c = makeRepo();
     seed(c, { spec: "---\nfolds_into: none\nreason: superseded\n---\n# spec\n" });
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(0);
     expect(existsSync(work(c))).toBe(false);
     expect(existsSync(path.join(archiveDir(c), "spec.md"))).toBe(true);
@@ -146,7 +143,7 @@ describe("gw archive", () => {
     const c = makeRepo();
     seed(c, { spec: "---\nfolds_into: none\n---\n# spec\n" });
     const before = treeHash(work(c));
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("reason");
     expect(treeHash(work(c))).toBe(before);
@@ -157,7 +154,7 @@ describe("gw archive", () => {
     const c = makeRepo();
     seed(c, { spec: null });
     expect(existsSync(path.join(work(c), "spec.md"))).toBe(false);
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(0);
     expect(existsSync(work(c))).toBe(false);
     expect(existsSync(path.join(archiveDir(c), "motive.md"))).toBe(true);
@@ -170,7 +167,7 @@ describe("gw archive", () => {
     const old = new Date("2020-01-01T00:00:00Z");
     for (const f of walk(work(c))) utimesSync(path.join(work(c), f), old, old);
     const before = treeHash(work(c));
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("created:");
     expect(treeHash(work(c))).toBe(before);
@@ -183,41 +180,48 @@ describe("gw archive", () => {
     commitSpec(c, "2026-09-10T12:00:00");
     expect(listLine(c)).toContain("foo");
     expect(listLine(c)).not.toContain("[complete]");
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(0);
     expect(listLine(c)).toContain("[complete]");
   });
 
-  it("AC7: missing token is refused, tree and store unchanged", () => {
+  it("AC7: archive succeeds without any token argument", () => {
     const c = makeRepo();
     seed(c);
     commitSpec(c, "2026-09-10T12:00:00");
-    const before = treeHash(work(c));
     const r = gw(c, "archive", "foo");
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("--token required");
-    expect(treeHash(work(c))).toBe(before);
-    expect(existsSync(path.join(c.d, ".groundwork", "archive"))).toBe(false);
-    expect(listLine(c)).not.toContain("[complete]");
+    expect(r.status).toBe(0);
+    expect(existsSync(work(c))).toBe(false);
+    expect(existsSync(archiveDir(c))).toBe(true);
+    expect(listLine(c)).toContain("[complete]");
   });
 
-  it("AC7: wrong token is refused, tree and store unchanged", () => {
+  it("AC7: archive succeeds with no write.token in the key store", () => {
     const c = makeRepo();
     seed(c);
     commitSpec(c, "2026-09-10T12:00:00");
-    const before = treeHash(work(c));
-    const r = gw(c, "archive", "foo", "--token", "wrong-token");
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("--token required");
-    expect(treeHash(work(c))).toBe(before);
-    expect(listLine(c)).not.toContain("[complete]");
+    const r = gw(c, "archive", "foo");
+    expect(r.status).toBe(0);
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(path.join(dir, e.name));
+        else if (e.name === "write.token") found.push(path.join(dir, e.name));
+      }
+    };
+    walk(c.env.XDG_CONFIG_HOME);
+    expect(found).toEqual([]);
+    expect(existsSync(work(c))).toBe(false);
+    expect(existsSync(archiveDir(c))).toBe(true);
+    expect(listLine(c)).toContain("[complete]");
   });
 
   it("AC7: unknown slug is refused", () => {
     const c = makeRepo();
     seed(c);
     const before = treeHash(work(c));
-    const r = gw(c, "archive", "nope", "--token", c.token);
+    const r = gw(c, "archive", "nope");
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("no work unit 'nope'");
     expect(treeHash(work(c))).toBe(before);
@@ -229,7 +233,7 @@ describe("gw archive", () => {
     commitSpec(c, "2026-09-10T12:00:00");
     mkdirSync(archiveDir(c), { recursive: true });
     const before = treeHash(work(c));
-    const r = gw(c, "archive", "foo", "--token", c.token);
+    const r = gw(c, "archive", "foo");
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("archive target exists");
     expect(treeHash(work(c))).toBe(before);

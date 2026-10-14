@@ -93,7 +93,7 @@ describe("authoring-rules — fixture violations", () => {
   });
 
   it("clean text passes all rules", () => {
-    const clean = "Run `gw init` to create work store. Capture write token T.";
+    const clean = "Run `gw init` to create work store.";
     const v = checkAuthoringRules(clean);
     expect(v).toHaveLength(0);
   });

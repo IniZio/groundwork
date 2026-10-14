@@ -33,25 +33,24 @@ function repo() {
   git(root, "commit", "-q", "-m", "init");
   return root;
 }
-const tokOf = (out: string) => /token: (\S+)/.exec(out)![1];
 
 function linked() {
   const parent = repo();
   const child = path.join(tmp, `c${n++}`);
   expect(git(parent, "worktree", "add", "-q", "-b", `b${n}`, child).status).toBe(0);
-  const tok = tokOf(gw(parent, ["init"]).out);
-  expect(gw(parent, ["motive", "add", "m1", "--use", "--token", tok]).code).toBe(0);
-  expect(gw(parent, ["slice", "add", "S1", "--token", tok]).code).toBe(0);
-  const ctok = tokOf(gw(child, ["init"]).out);
-  expect(gw(parent, ["scope", "link", child, "--slice", "S1", "--token", tok]).code).toBe(0);
-  return { parent, child, tok, ctok, csub: path.join(child, "sub", "deep") };
+  gw(parent, ["init"]);
+  expect(gw(parent, ["motive", "add", "m1", "--use"]).code).toBe(0);
+  expect(gw(parent, ["slice", "add", "S1"]).code).toBe(0);
+  gw(child, ["init"]);
+  expect(gw(parent, ["scope", "link", child, "--slice", "S1"]).code).toBe(0);
+  return { parent, child, csub: path.join(child, "sub", "deep") };
 }
 
 describe("gw resolves repo base from a subdirectory", () => {
   it("slice status from subdir finds the root store", () => {
     const root = repo();
-    const tok = tokOf(gw(root, ["init"]).out);
-    expect(gw(root, ["slice", "add", "S1", "--token", tok]).code).toBe(0);
+    gw(root, ["init"]);
+    expect(gw(root, ["slice", "add", "S1"]).code).toBe(0);
     const r = gw(path.join(root, "sub", "deep"), ["slice", "status"]);
     expect(r.err).not.toContain("no work store");
     expect(r.code).toBe(0);
@@ -69,20 +68,20 @@ describe("gw resolves repo base from a subdirectory", () => {
   });
 
   it("linked child with uncommitted file: approve from subdir refused", () => {
-    const { child, ctok, csub } = linked();
+    const { child, csub } = linked();
     writeFileSync(path.join(child, "dirty.txt"), "x\n");
-    const r = gw(csub, ["gate", "approve", "--citation", "a.txt:1", "--token", ctok]);
+    const r = gw(csub, ["gate", "approve", "--citation", "a.txt:1"]);
     expect(r.code).not.toBe(0);
     expect(r.err.toLowerCase()).toContain("uncommitted");
   });
 
   it("clean linked child: approve from subdir forwards to parent", () => {
-    const { parent, tok, ctok, csub } = linked();
-    const r = gw(csub, ["gate", "approve", "--citation", "a.txt:1", "--token", ctok]);
+    const { parent, csub } = linked();
+    const r = gw(csub, ["gate", "approve", "--citation", "a.txt:1"]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(r.out).toContain("forwarded to parent");
-    expect(gw(parent, ["slice", "complete", "S1", "--token", tok]).code).toBe(0);
+    expect(gw(parent, ["slice", "complete", "S1"]).code).toBe(0);
   });
 
   it("gate status --json from subdir reports scope child", () => {

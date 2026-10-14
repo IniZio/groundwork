@@ -18,19 +18,15 @@ function run(args: string[], cwd: string, env?: Record<string, string>) {
   };
 }
 
-function initRepo(d: string): string {
-  const r = run(["init"], d);
-  const m = r.stdout.match(/token: (\S+)/);
-  if (!m) throw new Error(`init produced no token: ${r.stdout} ${r.stderr}`);
-  return m[1];
+function initRepo(d: string): void {
+  run(["init"], d);
 }
 
 let dir: string;
-let tok: string;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(tmpdir(), "gw-claim-test-"));
-  tok = initRepo(dir);
+  initRepo(dir);
 });
 
 afterEach(() => {
@@ -39,8 +35,8 @@ afterEach(() => {
 
 describe("slice claim", () => {
   it("claim sets status in_progress and records claimed_by", () => {
-    run(["slice", "add", "C-1", "--token", tok], dir);
-    const r = run(["slice", "claim", "C-1", "--by", "agent-x", "--token", tok], dir);
+    run(["slice", "add", "C-1"], dir);
+    const r = run(["slice", "claim", "C-1", "--by", "agent-x"], dir);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("claimed by agent-x");
 
@@ -52,9 +48,9 @@ describe("slice claim", () => {
   });
 
   it("double claim of same slice is refused with clear error", () => {
-    run(["slice", "add", "C-2", "--token", tok], dir);
-    run(["slice", "claim", "C-2", "--by", "agent-x", "--token", tok], dir);
-    const r = run(["slice", "claim", "C-2", "--by", "agent-y", "--token", tok], dir);
+    run(["slice", "add", "C-2"], dir);
+    run(["slice", "claim", "C-2", "--by", "agent-x"], dir);
+    const r = run(["slice", "claim", "C-2", "--by", "agent-y"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("already claimed");
   });
@@ -64,9 +60,9 @@ describe("slice claim", () => {
   // Without that guard, agent-y would succeed and exitCode would be 0.
 
   it("claim → complete path works", () => {
-    run(["slice", "add", "C-3", "--token", tok], dir);
-    run(["slice", "claim", "C-3", "--by", "agent-z", "--token", tok], dir);
-    const r = run(["slice", "complete", "C-3", "--token", tok], dir);
+    run(["slice", "add", "C-3"], dir);
+    run(["slice", "claim", "C-3", "--by", "agent-z"], dir);
+    const r = run(["slice", "complete", "C-3"], dir);
     expect(r.exitCode).toBe(0);
 
     const store = new WorkStore(path.join(dir, ".groundwork", "work.db"));
@@ -76,20 +72,20 @@ describe("slice claim", () => {
   });
 
   it("slice complete works from pending (no claim required)", () => {
-    run(["slice", "add", "C-4", "--token", tok], dir);
-    const r = run(["slice", "complete", "C-4", "--token", tok], dir);
+    run(["slice", "add", "C-4"], dir);
+    const r = run(["slice", "complete", "C-4"], dir);
     expect(r.exitCode).toBe(0);
   });
 
   it("claim missing --by flag gives usage error", () => {
-    run(["slice", "add", "C-5", "--token", tok], dir);
-    const r = run(["slice", "claim", "C-5", "--token", tok], dir);
+    run(["slice", "add", "C-5"], dir);
+    const r = run(["slice", "claim", "C-5"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("--by");
   });
 
   it("claim on non-existent slice fails", () => {
-    const r = run(["slice", "claim", "no-such-slice", "--by", "agent-x", "--token", tok], dir);
+    const r = run(["slice", "claim", "no-such-slice", "--by", "agent-x"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("not found");
   });
@@ -97,7 +93,7 @@ describe("slice claim", () => {
 
 describe("covers_ac — slice add and set-ac", () => {
   it("slice add --covers-ac stores the value", () => {
-    run(["slice", "add", "AC-slice-1", "--covers-ac", "AC-1,AC-3", "--token", tok], dir);
+    run(["slice", "add", "AC-slice-1", "--covers-ac", "AC-1,AC-3"], dir);
     const store = new WorkStore(path.join(dir, ".groundwork", "work.db"));
     const s = store.getSlice("AC-slice-1");
     expect(s?.covers_ac).toBe("AC-1,AC-3");
@@ -105,8 +101,8 @@ describe("covers_ac — slice add and set-ac", () => {
   });
 
   it("slice set-ac updates covers_ac on an existing slice", () => {
-    run(["slice", "add", "AC-slice-2", "--token", tok], dir);
-    const r = run(["slice", "set-ac", "AC-slice-2", "--covers-ac", "AC-2", "--token", tok], dir);
+    run(["slice", "add", "AC-slice-2"], dir);
+    const r = run(["slice", "set-ac", "AC-slice-2", "--covers-ac", "AC-2"], dir);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("AC-2");
 
@@ -118,9 +114,9 @@ describe("covers_ac — slice add and set-ac", () => {
 
   it("compile reports AC coverage count and slice mapping", () => {
     // Seed a real-shaped fixture: two slices covering different ACs
-    run(["slice", "add", "S-a", "--covers-ac", "AC-1,AC-2", "--token", tok], dir);
-    run(["slice", "add", "S-b", "--covers-ac", "AC-3", "--token", tok], dir);
-    run(["slice", "add", "S-c", "--token", tok], dir); // no AC
+    run(["slice", "add", "S-a", "--covers-ac", "AC-1,AC-2"], dir);
+    run(["slice", "add", "S-b", "--covers-ac", "AC-3"], dir);
+    run(["slice", "add", "S-c"], dir); // no AC
 
     const r = run(["compile"], dir);
     expect(r.exitCode).toBe(0);
@@ -132,13 +128,13 @@ describe("covers_ac — slice add and set-ac", () => {
   });
 
   it("compile with no AC links reports 'ac coverage: none'", () => {
-    run(["slice", "add", "S-noac", "--token", tok], dir);
+    run(["slice", "add", "S-noac"], dir);
     const r = run(["compile"], dir);
     expect(r.stdout).toContain("ac coverage: none");
   });
 
   it("compile --json includes ac_coverage map", () => {
-    run(["slice", "add", "S-j", "--covers-ac", "AC-1", "--token", tok], dir);
+    run(["slice", "add", "S-j", "--covers-ac", "AC-1"], dir);
     const r = run(["compile", "--json"], dir);
     expect(r.exitCode).toBe(0);
     const json = JSON.parse(r.stdout) as Record<string, unknown>;
@@ -146,14 +142,14 @@ describe("covers_ac — slice add and set-ac", () => {
   });
 
   it("set-ac on non-existent slice fails", () => {
-    const r = run(["slice", "set-ac", "no-such", "--covers-ac", "AC-1", "--token", tok], dir);
+    const r = run(["slice", "set-ac", "no-such", "--covers-ac", "AC-1"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("not found");
   });
 
   it("set-ac missing --covers-ac gives usage error", () => {
-    run(["slice", "add", "S-missing-ac", "--token", tok], dir);
-    const r = run(["slice", "set-ac", "S-missing-ac", "--token", tok], dir);
+    run(["slice", "add", "S-missing-ac"], dir);
+    const r = run(["slice", "set-ac", "S-missing-ac"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("--covers-ac");
   });
@@ -161,21 +157,21 @@ describe("covers_ac — slice add and set-ac", () => {
 
 describe("--wave validation", () => {
   it("--wave with a non-numeric string gives usage error and exits non-zero", () => {
-    const r = run(["slice", "add", "W-1", "--wave", "abc", "--token", tok], dir);
+    const r = run(["slice", "add", "W-1", "--wave", "abc"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("--wave");
     expect(r.stderr).not.toContain("NOT NULL"); // no SQLite crash
   });
 
   it("--wave with a missing value (next arg is a flag) gives usage error", () => {
-    // --wave with no value: the next token is --token, which is not numeric
-    const r = run(["slice", "add", "W-2", "--wave", "--token", tok], dir);
+    // --wave with no value: the next arg is --covers-ac, a flag, which is not numeric
+    const r = run(["slice", "add", "W-2", "--wave", "--covers-ac", "AC-1"], dir);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("--wave");
   });
 
   it("--wave with a valid integer is accepted", () => {
-    const r = run(["slice", "add", "W-3", "--wave", "2", "--token", tok], dir);
+    const r = run(["slice", "add", "W-3", "--wave", "2"], dir);
     expect(r.exitCode).toBe(0);
     const store = new WorkStore(path.join(dir, ".groundwork", "work.db"));
     expect(store.getSlice("W-3")?.wave).toBe(2);
@@ -183,7 +179,7 @@ describe("--wave validation", () => {
   });
 
   it("missing --wave defaults to 0", () => {
-    run(["slice", "add", "W-4", "--token", tok], dir);
+    run(["slice", "add", "W-4"], dir);
     const store = new WorkStore(path.join(dir, ".groundwork", "work.db"));
     expect(store.getSlice("W-4")?.wave).toBe(0);
     store.close();

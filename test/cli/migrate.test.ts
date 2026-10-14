@@ -24,7 +24,7 @@ delete baseEnv.GROUNDWORK_DB;
 delete baseEnv.CLAUDE_PROJECT_DIR;
 
 let n = 0;
-interface Ctx { d: string; gwd: string; env: Record<string, string>; token: string }
+interface Ctx { d: string; gwd: string; env: Record<string, string> }
 
 function run(cmd: string, args: string[], c: { d: string; env: Record<string, string> }) {
   return spawnSync(cmd, args, { cwd: c.d, env: c.env, encoding: "utf8", timeout: 30000 });
@@ -50,13 +50,10 @@ function makeRepo(): Ctx {
   const d = path.join(base, "repo");
   mkdirSync(d, { recursive: true });
   const env = { ...baseEnv, XDG_CONFIG_HOME: path.join(base, "xdg") };
-  const c = { d, gwd: path.join(d, ".groundwork"), env, token: "" } as Ctx;
+  const c = { d, gwd: path.join(d, ".groundwork"), env } as Ctx;
   git(c, "init", "-q");
   const init = gw(c, "init");
   expect(init.status).toBe(0);
-  const m = /token: (\S+)/.exec(init.stdout);
-  expect(m).not.toBeNull();
-  c.token = m![1];
 
   put(c, "motives/a/motive.md", MOTIVE_A);
   put(c, "motives/a/notes.md", "notes a\n");
@@ -134,7 +131,7 @@ describe("gw migrate", () => {
 
   it("AC2: never-touch paths are absent from the plan and unchanged after apply", () => {
     const c = makeRepo();
-    // The token check opens work.db as SQLite, which may drop the fake -wal; only presence is asserted for those.
+    // `migrate --apply` opens work.db as a WorkStore (SQLite), which may drop the fake -wal; only presence is asserted for those.
     const bytes = NEVER.filter(f => !f.startsWith("work.db"));
     const before = new Map(bytes.map(f => [f, sha(path.join(c.gwd, f))]));
     const dry = gw(c, "migrate");
@@ -143,7 +140,7 @@ describe("gw migrate", () => {
         expect(l.split(` ${AR} `)[0]).not.toContain(p);
       }
     }
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).toBe(0);
     for (const f of bytes) expect(sha(path.join(c.gwd, f))).toBe(before.get(f)!);
     expect(has(c, "work.db")).toBe(true);
@@ -159,7 +156,7 @@ describe("gw migrate", () => {
       "archive/legacy/specs/s.md": sha(path.join(c.gwd, "specs/s.md")),
     };
     const dry = gw(c, "migrate");
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).toBe(0);
     expect(lines(r.stdout)).toEqual(lines(dry.stdout));
     for (const [f, h] of Object.entries(legacyBefore)) expect(sha(path.join(c.gwd, f))).toBe(h);
@@ -181,7 +178,7 @@ describe("gw migrate", () => {
       return git(c, "commit", "--allow-empty", "-m", subject);
     }
     it("AC4: subjects naming a work slug and a legacy slug are rejected, a neutral subject is not", () => {
-      expect(gw(c, "migrate", "--apply", "--token", c.token).status).toBe(0);
+      expect(gw(c, "migrate", "--apply").status).toBe(0);
       const inst = run("bun", [INSTALLER], c);
       expect(inst.status).toBe(0);
       installed = existsSync(path.join(c.d, ".git/hooks/commit-msg"));
@@ -203,9 +200,9 @@ describe("gw migrate", () => {
 
   it("AC5: a second apply reports nothing to migrate", () => {
     const c = makeRepo();
-    expect(gw(c, "migrate", "--apply", "--token", c.token).status).toBe(0);
+    expect(gw(c, "migrate", "--apply").status).toBe(0);
     const after = treeHash(c);
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("nothing to migrate\n");
     expect(treeHash(c)).toBe(after);
@@ -219,7 +216,7 @@ describe("gw migrate", () => {
     expect(dry.status).toBe(1);
     expect(lines(dry.stdout)).toEqual(expected);
 
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).not.toBe(0);
     expect(lines(r.stdout)).toEqual(expected);
     expect(rd(c, "work/f/keep.md")).toBe("existing f\n");
@@ -252,7 +249,7 @@ describe("gw migrate", () => {
     expect(out[2]).toBe(`motives/c ${AR} work/c [unclassified] [created inferred]`);
     expect(rd(c, "motives/bravo-unit/motive.md")).toBe(withFm);
 
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).toBe(0);
     expect(lines(r.stdout)).toEqual(out);
     expect(rd(c, "work/bravo-unit/motive.md")).toBe("---\nstatus: active\ncreated: 2024-02-03\n---\n# bravo\nbody\n");
@@ -280,13 +277,13 @@ describe("gw migrate", () => {
     expect(dry.status).toBe(0);
     expect(lines(dry.stdout)).toEqual([...plan, ...LEFT]);
 
-    const r = gw(c, "migrate", "--apply", "--token", c.token);
+    const r = gw(c, "migrate", "--apply");
     expect(r.status).toBe(0);
     expect(lines(r.stdout)).toEqual([...plan, ...LEFT]);
     for (const f of kept) expect(sha(path.join(c.gwd, f))).toBe(before.get(f)!);
     expect(has(c, "handoffs")).toBe(false);
 
-    const again = gw(c, "migrate", "--apply", "--token", c.token);
+    const again = gw(c, "migrate", "--apply");
     expect(again.status).toBe(0);
     expect(lines(again.stdout)).toEqual(["nothing to migrate", ...LEFT]);
     for (const f of kept) expect(sha(path.join(c.gwd, f))).toBe(before.get(f)!);
@@ -327,13 +324,13 @@ describe("gw migrate", () => {
         expect(has(c, "archive/legacy/research")).toBe(false);
       };
 
-      const r = gw(c, "migrate", "--apply", "--token", c.token);
+      const r = gw(c, "migrate", "--apply");
       expect(r.status).toBe(0);
       expect(lines(r.stdout)).toEqual([...plan, ...LINKS]);
       checkLinks();
       expect(has(c, "archive/legacy/handoffs/h.md")).toBe(true);
 
-      const again = gw(c, "migrate", "--apply", "--token", c.token);
+      const again = gw(c, "migrate", "--apply");
       expect(again.status).toBe(0);
       expect(lines(again.stdout)).toEqual(["nothing to migrate", ...LINKS]);
       checkLinks();
@@ -351,7 +348,7 @@ describe("gw migrate", () => {
       expect(dry.status).toBe(0);
       expect(lines(dry.stdout)).toEqual([...PLAN, line]);
 
-      const r = gw(c, "migrate", "--apply", "--token", c.token);
+      const r = gw(c, "migrate", "--apply");
       expect(r.status).toBe(0);
       expect(lines(r.stdout)).toEqual([...PLAN, line]);
       expect(readlinkSync(path.join(c.gwd, "motives/linked"))).toBe("../../elsewhere");
@@ -361,11 +358,11 @@ describe("gw migrate", () => {
     });
   });
 
-  it("token: apply without --token exits 1 and changes nothing", () => {
+  it("token-free: apply without a token argument exits 0 and migrates", () => {
     const c = makeRepo();
     const before = treeHash(c);
     const r = gw(c, "migrate", "--apply");
-    expect(r.status).toBe(1);
-    expect(treeHash(c)).toBe(before);
+    expect(r.status).toBe(0);
+    expect(treeHash(c)).not.toBe(before);
   });
 });

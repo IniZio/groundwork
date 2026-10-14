@@ -279,12 +279,9 @@ const CLI = new URL("../../src/cli/main.ts", import.meta.url).pathname;
 
 function makeDb(files: string[]): { dir: string } {
   const d = mkdtempSync(path.join(tmpdir(), "gw-guard-"));
-  const r = spawnSync("bun", [CLI, "init"], { cwd: d, encoding: "utf8", env: process.env as Record<string, string> });
-  const m = r.stdout.match(/token: (\S+)/);
-  if (!m) throw new Error(`init no token: ${r.stdout} ${r.stderr}`);
-  const tok = m[1];
+  spawnSync("bun", [CLI, "init"], { cwd: d, encoding: "utf8", env: process.env as Record<string, string> });
   const filesFlag = files.join(",");
-  spawnSync("bun", [CLI, "slice", "add", "S-guard-1", "--files", filesFlag, "--token", tok],
+  spawnSync("bun", [CLI, "slice", "add", "S-guard-1", "--files", filesFlag],
     { cwd: d, encoding: "utf8", env: process.env as Record<string, string> });
   return { dir: d };
 }

@@ -18,14 +18,10 @@ function run(args: string[], cwd: string, env?: Record<string, string>) {
 }
 
 let dir: string;
-let tok: string;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(tmpdir(), "gw-slice-files-"));
-  const r = run(["init"], dir);
-  const m = r.stdout.match(/token: (\S+)/);
-  if (!m) throw new Error(`init produced no token: ${r.stdout} ${r.stderr}`);
-  tok = m[1];
+  run(["init"], dir);
 });
 
 afterEach(() => {
@@ -35,7 +31,7 @@ afterEach(() => {
 describe("slice add --files", () => {
   it("stores files list and shows it in slice status", () => {
     const add = run(
-      ["slice", "add", "S-files-1", "--files", "src/a.ts,src/b.ts,src/c.ts", "--token", tok],
+      ["slice", "add", "S-files-1", "--files", "src/a.ts,src/b.ts,src/c.ts"],
       dir,
     );
     expect(add.exitCode).toBe(0);
@@ -47,14 +43,14 @@ describe("slice add --files", () => {
   });
 
   it("slice without --files shows no files entry in status", () => {
-    run(["slice", "add", "S-nofiles", "--token", tok], dir);
+    run(["slice", "add", "S-nofiles"], dir);
     const status = run(["slice", "status"], dir);
     expect(status.stdout).not.toContain("files=");
   });
 
   it("trimming: comma-separated list trims whitespace", () => {
     const add = run(
-      ["slice", "add", "S-trim", "--files", "a.ts, b.ts , c.ts", "--token", tok],
+      ["slice", "add", "S-trim", "--files", "a.ts, b.ts , c.ts"],
       dir,
     );
     expect(add.exitCode).toBe(0);

@@ -36,8 +36,8 @@ function repo(store: boolean) {
   git("add", "-A");
   git("commit", "-q", "-m", "init");
   if (store) {
-    const tok = /token: (\S+)/.exec(gw("init").stdout)![1];
-    expect(gw("slice", "add", "S1", "--token", tok).status).toBe(0);
+    gw("init");
+    expect(gw("slice", "add", "S1").status).toBe(0);
   }
   return { root, xdg };
 }

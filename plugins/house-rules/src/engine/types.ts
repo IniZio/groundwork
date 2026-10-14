@@ -10,6 +10,8 @@ export interface Finding {
   line?: number;
   message: string;
   fingerprintBasis: string;
+  /** Optional per-finding severity. It can only lower the rule's configured severity, never raise it. */
+  severity?: Severity;
 }
 
 /** Structural twin of DiffHunk in src/hooks/lib/work-scope.ts — kept local to avoid cross-plugin imports. */

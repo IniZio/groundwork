@@ -34,6 +34,14 @@ export interface FindingWithSeverity extends Finding {
   severity: Severity;
 }
 
+const SEVERITY_RANK: Record<Severity, number> = { off: 0, warn: 1, error: 2 };
+
+/** Lower of the rule severity and the finding severity (off < warn < error); a finding can never raise it. */
+export function effectiveSeverity(ruleSeverity: Severity, findingSeverity?: Severity): Severity {
+  if (findingSeverity === undefined) return ruleSeverity;
+  return SEVERITY_RANK[findingSeverity] < SEVERITY_RANK[ruleSeverity] ? findingSeverity : ruleSeverity;
+}
+
 function isIgnored(filePath: string, ignorePatterns: string[]): boolean {
   return ignorePatterns.some((pattern) => new Bun.Glob(pattern).match(filePath));
 }
@@ -79,7 +87,9 @@ export async function runRules(
       if (isIgnored(finding.path, ignore)) {
         continue;
       }
-      results.push({ ...finding, severity });
+      const effective = effectiveSeverity(severity, finding.severity);
+      if (effective === 'off') continue;
+      results.push({ ...finding, severity: effective });
     }
   }
 

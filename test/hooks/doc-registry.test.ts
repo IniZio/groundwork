@@ -264,9 +264,9 @@ describe("issue type", () => {
     expect(ok({ status: "todo" })).toBe(false);
     expect(ok({ title: "T" })).toBe(false);
   });
-  it("requires the Acceptance criteria heading when status is todo, in-progress or done", () => {
+  it("requires the Acceptance criteria heading only while status is todo or in-progress", () => {
     expect(WORKING_TYPES.issue.headingsWhen).toEqual([
-      { property: "status", in: ["todo", "in-progress", "done"], headings: ["Acceptance criteria"] },
+      { property: "status", in: ["todo", "in-progress"], headings: ["Acceptance criteria"] },
     ]);
   });
   it("is the only type matching a tickets path", () => {

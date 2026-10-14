@@ -145,8 +145,7 @@
           "property": "status",
           "in": [
             "todo",
-            "in-progress",
-            "done"
+            "in-progress"
           ],
           "headings": [
             "Acceptance criteria"

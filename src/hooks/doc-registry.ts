@@ -102,7 +102,7 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
       },
     },
     headings: [],
-    headingsWhen: [{ property: "status", in: ["todo", "in-progress", "done"], headings: ["Acceptance criteria"] }],
+    headingsWhen: [{ property: "status", in: ["todo", "in-progress"], headings: ["Acceptance criteria"] }],
   },
   map: {
     tier: "working",

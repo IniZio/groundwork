@@ -97,7 +97,7 @@ describe('doc-registry snapshot parity', () => {
   it('the committed snapshot carries the issue conditional headings', () => {
     const snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8'))
     expect(snapshot.types.issue.headingsWhen).toEqual([
-      { property: 'status', in: ['todo', 'in-progress', 'done'], headings: ['Acceptance criteria'] },
+      { property: 'status', in: ['todo', 'in-progress'], headings: ['Acceptance criteria'] },
     ])
   })
 

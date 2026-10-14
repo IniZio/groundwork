@@ -58,6 +58,21 @@ describe('checkDocConformance with the shipped registry', () => {
     expect(checkDocConformance(dir, ISSUE)).toEqual([]);
   });
 
+  it('reports nothing for a done issue without the heading, because its criteria are history', () => {
+    const dir = mkRepo({ groundwork: true });
+    write(dir, ISSUE, issueDoc('done', false));
+    expect(checkDocConformance(dir, ISSUE)).toEqual([]);
+  });
+
+  it('flags an in-progress issue that lacks the Acceptance criteria heading, as a warning', () => {
+    const dir = mkRepo({ groundwork: true });
+    write(dir, ISSUE, issueDoc('in-progress', false));
+    const findings = checkDocConformance(dir, ISSUE);
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe('warn');
+    expect(findings[0].message).toContain('Acceptance criteria');
+  });
+
   it('reports nothing for a triage issue without the heading', () => {
     const dir = mkRepo({ groundwork: true });
     write(dir, ISSUE, issueDoc('triage', false));

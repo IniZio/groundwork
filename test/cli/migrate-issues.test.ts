@@ -46,7 +46,7 @@ const snapshot = (root: string): Record<string, { text: string; mtime: number }>
 const created = (root: string, rel: string): string => statSync(abs(root, rel)).mtime.toISOString().slice(0, 10);
 
 // Independent of the implementation: strip frontmatter, H1 and header lines before the first H2. Parent prose stays.
-// After that, a leading run of 2 or more blank lines is reduced to one.
+// After that, a leading run of 2 or more blank lines is reduced to one, and a checkbox list under ## Parent gets an AC heading.
 function expectedBody(original: string): string[] {
   let lines = original.split("\n");
   if (lines[0] === "---") lines = lines.slice(lines.indexOf("---", 1) + 1);
@@ -56,6 +56,9 @@ function expectedBody(original: string): string[] {
   const header = /^(\*\*)?(Status|Type|Source|Blocked by):(\*\*)?( |$)/;
   const kept = lines.filter((l, i) => i !== h1 && !(i > h1 && i < end && header.test(l)));
   while (kept[0] === "" && kept[1] === "") kept.shift();
+  const box = kept.findIndex(l => l.startsWith("- ["));
+  const owner = kept.slice(0, Math.max(box, 0)).filter(l => l.startsWith("## ")).at(-1);
+  if (box !== -1 && owner === "## Parent") kept.splice(box, 0, "## Acceptance criteria", "");
   return kept;
 }
 function splitFm(text: string): { fm: string[]; body: string[] } {
@@ -373,17 +376,40 @@ describe("migrate issues: normalise already-converted issues", () => {
     expect(second.lines.at(-1)).toContain("0 normalised");
   });
 
-  test("a checkbox list under a Parent section gets no heading and the file stays byte-identical", () => {
+  test("a checkbox list under a Parent section gets the heading directly above the first checkbox", () => {
     const rel = "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md";
     const d = oneRoot(rel);
-    const input = read(d, rel);
-    const lines = input.split("\n");
-    expect(lines.indexOf("## Parent")).toBeLessThan(lines.findIndex(l => l.startsWith("- [ ]")));
+    const input = read(d, rel).split("\n");
+    const box = input.findIndex(l => l.startsWith("- [ ]"));
+    expect(input.lastIndexOf("## Parent", box)).toBeGreaterThan(-1);
     const first = runMigrateIssues(d, true);
+    const output = read(d, rel).split("\n");
+    expect(output[box]).toBe(HEADING);
+    expect(output[box + 1]).toBe("");
+    expect(output[box + 2]).toBe(input[box]);
+    expect(output.filter(l => l === HEADING).length).toBe(1);
+    expect([...output.slice(0, box), ...output.slice(box + 2)]).toEqual(input);
+    expect(first.lines.at(-1)).toContain("1 normalised");
+  });
+
+  test("a second run on a Parent ticket changes nothing and reports 0 normalised", () => {
+    const rel = "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md";
+    const d = oneRoot(rel);
+    runMigrateIssues(d, true);
+    const once = read(d, rel);
     const second = runMigrateIssues(d, true);
-    expect(read(d, rel)).toBe(input);
-    expect(first.lines.at(-1)).toContain("0 normalised");
+    expect(read(d, rel)).toBe(once);
     expect(second.lines.at(-1)).toContain("0 normalised");
+  });
+
+  test("a checkbox list under another heading stays byte-identical", () => {
+    const rel = "retro-2026-10-06/tickets/01-junior-hand-back-waits-for-children.md";
+    const d = oneRoot(rel);
+    const input = read(d, rel).replace("## Parent", "## Goal");
+    writeFileSync(abs(d, rel), input);
+    const res = runMigrateIssues(d, true);
+    expect(read(d, rel)).toBe(input);
+    expect(res.lines.at(-1)).toContain("0 normalised");
   });
 
   test("a dry run lists normalised files apart from converted ones and writes nothing", () => {

@@ -22,7 +22,7 @@ const CHECKBOX = /^- \[[ xX]\]/;
 
 // Collapses extra blank lines after the frontmatter, and adds an acceptance-criteria heading above a checkbox list
 // that follows the description directly. A "# Title" line is not a section heading, so it does not block the insert;
-// any "##" or deeper heading before the list (e.g. "## Parent") means the list belongs to that section and is left alone.
+// a "##" or deeper heading before the list means the list belongs to that section and is left alone, except "## Parent", which never owns a list.
 function normalise(lines: string[], end: number): { lines: string[]; notes: string[] } {
   const notes: string[] = [];
   let out = lines;
@@ -35,7 +35,8 @@ function normalise(lines: string[], end: number): { lines: string[]; notes: stri
   const body = out.slice(end);
   if (!body.some(l => /^##\s+Acceptance criteria\s*$/i.test(l.replace(/\r$/, "")))) {
     const box = body.findIndex(l => CHECKBOX.test(l));
-    if (box !== -1 && !body.slice(0, box).some(l => /^#{2,6}\s/.test(l))) {
+    const owner = body.slice(0, Math.max(box, 0)).filter(l => /^#{2,6}\s/.test(l)).at(-1);
+    if (box !== -1 && (owner === undefined || /^##\s+Parent\s*$/.test(owner.replace(/\r$/, "")))) {
       out = [...out.slice(0, end + box), "## Acceptance criteria", "", ...out.slice(end + box)];
       notes.push("added ## Acceptance criteria heading");
     }

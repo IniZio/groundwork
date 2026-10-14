@@ -15,8 +15,8 @@ If any of these don't exist, **proceed silently**. Don't flag their absence; don
 A `DECISION` event is the resume index for every decision. Where a skill says "write an ADR", append a `DECISION` event; add an ADR file only when the rule below says so. Never create `doc/adr/` or `docs/adr/`.
 
 ```
-bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"adr":".groundwork/adr/NNNN-name.md"}' --token T
-bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"rationale":"...","alternatives":["... (rejected: ...)"]}' --token T
+bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"adr":".groundwork/adr/NNNN-name.md"}'
+bun src/cli/main.ts event append --type DECISION --msg "<decision>" --data '{"rationale":"...","alternatives":["... (rejected: ...)"]}'
 ```
 
 - `--msg` is the decision statement. It is what `gw compile` shows under `decisions (N)`.

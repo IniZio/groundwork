@@ -104,9 +104,9 @@ To recover, do one of two things from the host:
 
 ## Command reference
 
-All host-side commands need the host write token (`--token`). Run them from the host repository.
+Run host-side commands from the host repository.
 
-### `gw scope link <dir> --slice S [--mode direct|delegate] --token T`
+### `gw scope link <dir> --slice S [--mode direct|delegate]`
 
 Links the tree at `<dir>` to slice `S`. The mode defaults to `delegate`. The host records the link with a new link id and writes the pointer file into `<dir>`. On success it prints:
 
@@ -120,7 +120,7 @@ Failures, each printed as `gw: <message>` with exit code 1:
 - `child dir does not exist: <dir>`
 - `child dir is the parent repo; cannot link a tree to itself`
 
-### `gw scope unlink --slice S --reason "..." --token T`
+### `gw scope unlink --slice S --reason "..."`
 
 Removes the live link on slice `S` and records the reason. The slice is no longer held by that link. Prints `unlinked <link_id>: slice <S>`.
 
@@ -129,7 +129,7 @@ Failures:
 - `unlink requires a non-empty reason`
 - `no live link for slice '<S>'`
 
-### `gw scope verify --slice S --citation file:line --token T`
+### `gw scope verify --slice S --citation file:line`
 
 Records the host's own verification of a direct-mode slice. The citation must be `path:line` or `path:line-line`. Only a verification recorded after the live link counts. Prints `verified slice <S>`.
 
@@ -166,7 +166,7 @@ The reason is one of the parent-unreachable messages above, `citation required`,
 
 Every verdict is forwarded, not only approvals. The host uses the newest one: a later `correction`, `stop`, `gaps`, or `replan` supersedes an earlier approval, and the host treats the slice as not approved until the child approves again.
 
-### `gw slice complete <id> --token T`
+### `gw slice complete <id>`
 
 On the host, before completing, `gw` reads any waiting child inbox files and then checks the live link on the slice. A slice with no link, or only unlinked links, completes as before. Otherwise a refusal prints `error: cannot complete slice '<id>': <reason>`, then one indented line per link showing its mode, the verdicts it has received, and any unlink reason, and exits with code 1. The reason is one of:
 

@@ -179,3 +179,22 @@ export function missingHeadings(body: string, headings: string[]): string[] {
     return !found.some((f) => f.replace(/^#{1,6}\s+/, "") === want);
   });
 }
+
+/** A list-valued property matches when any one of its items is in the `in` list. */
+export function requiredHeadings(
+  def: { headings?: string[]; headingsWhen?: { property: string; in: string[]; headings: string[] }[] },
+  frontmatter: Record<string, unknown> | null | undefined,
+): string[] {
+  const out: string[] = [...(def.headings ?? [])];
+  if (frontmatter) {
+    for (const w of def.headingsWhen ?? []) {
+      const v = frontmatter[w.property];
+      const vals = Array.isArray(v) ? v : [v];
+      const hit = vals.some(
+        (x) => (typeof x === "string" || typeof x === "number" || typeof x === "boolean") && w.in.includes(String(x)),
+      );
+      if (hit) out.push(...w.headings);
+    }
+  }
+  return [...new Set(out)];
+}

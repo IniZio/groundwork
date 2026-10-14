@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Ajv2020Mod from "ajv/dist/2020.js";
 import addFormatsMod from "ajv-formats";
 import { WORKING_TYPES } from "../../../../src/hooks/doc-registry.js";
-import { missingHeadings, parseFrontmatter, validateFrontmatter, type FmSchema } from "../../src/engine/frontmatter.js";
+import { missingHeadings, parseFrontmatter, requiredHeadings, validateFrontmatter, type FmSchema } from "../../src/engine/frontmatter.js";
 
 // nodenext typing wraps CJS default exports; bun returns them directly.
 const unwrap = <T>(m: unknown): T => ((m as { default?: T }).default ?? m) as T;
@@ -187,5 +187,39 @@ describe("frontmatter", () => {
     expect(missingHeadings(body, ["# Decisions"])).toEqual(["# Decisions"]);
     expect(missingHeadings(body, ["Hidden", "Nope"])).toEqual(["Hidden", "Nope"]);
     expect(missingHeadings("Decisions\n#Decisions\n", ["Decisions"])).toEqual(["Decisions"]);
+  });
+});
+
+describe("requiredHeadings", () => {
+  const when = { property: "status", in: ["todo", "in-progress", "done"], headings: ["Acceptance criteria"] };
+  const def = { headings: ["Summary"], headingsWhen: [when] };
+
+  test("a value outside the allowed values adds no conditional heading", () => {
+    expect(requiredHeadings(def, { status: "triage" })).toEqual(["Summary"]);
+  });
+
+  test("each allowed status value adds the conditional heading", () => {
+    for (const status of ["todo", "in-progress", "done"]) {
+      expect(requiredHeadings(def, { status })).toEqual(["Summary", "Acceptance criteria"]);
+    }
+  });
+
+  test("a missing property or null frontmatter adds no conditional heading", () => {
+    expect(requiredHeadings(def, { title: "x" })).toEqual(["Summary"]);
+    expect(requiredHeadings(def, null)).toEqual(["Summary"]);
+  });
+
+  test("a list-valued property matches when any element is in the allowed values", () => {
+    expect(requiredHeadings(def, { status: ["triage", "todo"] })).toEqual(["Summary", "Acceptance criteria"]);
+    expect(requiredHeadings(def, { status: ["triage", "wontfix"] })).toEqual(["Summary"]);
+  });
+
+  test("a heading required by both the base list and a match appears once", () => {
+    const both = { headings: ["Summary", "Acceptance criteria"], headingsWhen: [when] };
+    expect(requiredHeadings(both, { status: "todo" })).toEqual(["Summary", "Acceptance criteria"]);
+  });
+
+  test("a def with no headings and no headingsWhen requires nothing", () => {
+    expect(requiredHeadings({}, { status: "todo" })).toEqual([]);
   });
 });

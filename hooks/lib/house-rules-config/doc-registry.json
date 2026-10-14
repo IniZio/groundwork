@@ -140,6 +140,19 @@
         }
       },
       "headings": [],
+      "headingsWhen": [
+        {
+          "property": "status",
+          "in": [
+            "todo",
+            "in-progress",
+            "done"
+          ],
+          "headings": [
+            "Acceptance criteria"
+          ]
+        }
+      ],
       "template": "templates/doc-types/issue.md"
     },
     "map": {

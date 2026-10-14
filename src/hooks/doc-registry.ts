@@ -36,6 +36,7 @@ export interface DocType {
   template: string | null;
   frontmatter: JsonSchema;
   headings: string[];
+  headingsWhen?: { property: string; in: string[]; headings: string[] }[];
 }
 
 export interface ForbiddenPattern {
@@ -101,6 +102,7 @@ export const WORKING_TYPES: Record<DocTypeId, DocType> = {
       },
     },
     headings: [],
+    headingsWhen: [{ property: "status", in: ["todo", "in-progress", "done"], headings: ["Acceptance criteria"] }],
   },
   map: {
     tier: "working",

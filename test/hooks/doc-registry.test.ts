@@ -52,11 +52,11 @@ describe("AC1 registry shape", () => {
       ["adr", "design", "evidence", "handoff", "lessons", "map", "motive", "out-of-scope", "plan", "pr-body", "research", "spec", "issue"].sort(),
     );
   });
-  it("each entry has exactly 7 keys and the right tier", () => {
+  it("each entry has exactly 7 required keys, plus headingsWhen only on issue, and the right tier", () => {
+    const required = ["description", "frontmatter", "generates", "headings", "instruction", "template", "tier"];
     for (const id of ids) {
-      expect(Object.keys(WORKING_TYPES[id]).sort()).toEqual(
-        ["description", "frontmatter", "generates", "headings", "instruction", "template", "tier"],
-      );
+      const expected = id === "issue" ? [...required, "headingsWhen"].sort() : required;
+      expect(Object.keys(WORKING_TYPES[id]).sort()).toEqual(expected);
       expect(WORKING_TYPES[id].tier).toBe("working");
     }
   });
@@ -263,6 +263,11 @@ describe("issue type", () => {
   it("rejects missing title or status", () => {
     expect(ok({ status: "todo" })).toBe(false);
     expect(ok({ title: "T" })).toBe(false);
+  });
+  it("requires the Acceptance criteria heading when status is todo, in-progress or done", () => {
+    expect(WORKING_TYPES.issue.headingsWhen).toEqual([
+      { property: "status", in: ["todo", "in-progress", "done"], headings: ["Acceptance criteria"] },
+    ]);
   });
   it("is the only type matching a tickets path", () => {
     const concrete = ".groundwork/work/demo/tickets/01-demo.md";

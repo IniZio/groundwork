@@ -94,6 +94,13 @@ describe('doc-registry snapshot parity', () => {
     expect(types.motive.headings.length).toBeGreaterThan(0)
   })
 
+  it('the committed snapshot carries the issue conditional headings', () => {
+    const snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8'))
+    expect(snapshot.types.issue.headingsWhen).toEqual([
+      { property: 'status', in: ['todo', 'in-progress', 'done'], headings: ['Acceptance criteria'] },
+    ])
+  })
+
   it('a changed heading string is reported at exactly that heading path', () => {
     const base = live()
     const mutated = structuredClone(base)

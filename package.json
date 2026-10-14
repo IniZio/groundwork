@@ -10,6 +10,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "budget:update": "bun scripts/budget-update.ts",
+    "docs:conformance": "bun scripts/doc-conformance.ts",
     "sync:doc-registry": "bun scripts/sync-doc-registry.ts",
     "upstream:check": "bun scripts/upstream-check.ts",
     "gw": "bun src/cli/main.ts",

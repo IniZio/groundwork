@@ -7,12 +7,22 @@ Issues and specs for this repo live as markdown files in `.groundwork/work/<slug
 - One unit of work per directory: `.groundwork/work/<slug>/`
 - The spec is `.groundwork/work/<slug>/spec.md`
 - Implementation issues are one file per ticket at `.groundwork/work/<slug>/tickets/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- New issues start from `templates/doc-types/issue.md` (Obsidian Markdown, Linear-style)
+- State lives in frontmatter properties, not body lines:
+  - `title`
+  - `status`: `triage` | `needs-info` | `todo` | `in-progress` | `done` | `canceled`
+  - `assignee`: `agent` | `human`
+  - `priority`: `urgent` | `high` | `medium` | `low` | `none`
+  - `tags`: category (such as `bug`, `enhancement`) plus area tags
+  - `parent`, `blocked_by`: wikilinks, e.g. `"[[04-pr-body-link-rendering]]"`
+  - `source`, `created`
+- Role-to-property mapping (triage roles → `status`/`assignee`) is in `triage-labels.md`
+- Body has no H1: description, then `## Acceptance criteria` (checkbox list; required once `status` is `todo`, `in-progress` or `done`), then `## Comments`
+- Comments and conversation history append to the bottom under `## Comments` as dated entries; the AI-generated disclaimer is a `> [!ai]` callout
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.groundwork/work/<slug>/` (creating the directory if needed). Never write to `.scratch/`; the placement guard denies it and names `.groundwork/work/<slug>/` instead.
+Create a new file under `.groundwork/work/<slug>/` (creating the directory if needed) from `templates/doc-types/issue.md`. Never write to `.scratch/`. `.scratch/**` is in `FORBIDDEN` in `src/hooks/doc-registry.ts` with the redirect "Use `.groundwork/work/{slug}/`". The house-rules artifact-structure rule (edit-time check, severity error) flags a new file under `.scratch/` with that redirect only when the repo's `.house-rules.json` artifact-structure options carry the `forbidden` list (`$GW recipe` prints that block). Without that config the path appears only in the session-start "Where docs go" note, marked not enforced.
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -23,12 +33,12 @@ Read the file at the referenced path. The user will normally pass the path or th
 Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 
 - **Map**: `.groundwork/work/<slug>/map.md` — the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: `.groundwork/work/<slug>/tickets/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.groundwork/work/<slug>/tickets/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+- **Child ticket**: `.groundwork/work/<slug>/tickets/NN-<slug>.md`, numbered from `01`, in the issue format, with the question in the body. The ticket type (`research`/`prototype`/`grilling`/`task`) is a tag.
+- **Blocking**: the `blocked_by` property, wikilinks to ticket files. A ticket is unblocked when every linked issue has `status: done`.
+- **Frontier**: scan `.groundwork/work/<slug>/tickets/` for files with `status: todo`, unblocked, and not `in-progress`; first by number wins.
+- **Claim**: set `status: in-progress` and save before any work.
+- **Resolve**: append the answer under an `## Answer` heading, set `status: done`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
 
-## Parent and blocking
+## Hierarchy and blocking
 
-`to-tickets` 1.3 makes tickets sub-issues of a parent and drops "Blocked by" when the tracker has native blocking. The local markdown tracker has neither, so keep the `Blocked by:` line and record the parent in a `## Parent` section in each ticket file, as upstream `to-tickets` does.
+`to-tickets` 1.3 makes tickets sub-issues of a parent and drops "Blocked by" when the tracker has native blocking. The local markdown tracker records the parent in the `parent` property and blocking in `blocked_by`, both as wikilinks. These replace upstream `to-tickets`' "Blocked by" line and `## Parent` section; do not write either.

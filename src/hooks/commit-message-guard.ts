@@ -32,6 +32,8 @@
 
 import { lintMessage, resolveRepoRoot } from '../../hooks/lib/commit-convention.mjs'
 import { readFileSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { homedir } from 'node:os'
 import { basename, resolve } from 'node:path'
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -47,7 +49,71 @@ function deny(reason: string): HookResult {
 }
 
 function containsShellVar(s: string): boolean {
-  return /\$[{(a-zA-Z_]/.test(s);
+  return /\$[{(\w@*#?!-]|`/.test(s);
+}
+
+const UNRESOLVED_TARGET =
+  'git -C <path> cannot resolve target repo; use a literal path (no $VAR, backticks, or missing directory).';
+
+/** Split on whitespace outside quotes; tokens keep their quote characters. */
+function tokenizeShell(seg: string): string[] {
+  const tokens: string[] = [];
+  let cur = '';
+  let q = '';
+  for (let i = 0; i < seg.length; i++) {
+    const c = seg[i];
+    if (q) {
+      cur += c;
+      if (c === '\\' && q === '"' && i + 1 < seg.length) { cur += seg[++i]; continue; }
+      if (c === q) q = '';
+    } else if (c === '"' || c === "'") {
+      q = c; cur += c;
+    } else if (/\s/.test(c)) {
+      if (cur) { tokens.push(cur); cur = ''; }
+    } else {
+      cur += c;
+    }
+  }
+  if (cur) tokens.push(cur);
+  return tokens;
+}
+
+function isDir(p: string): boolean {
+  try { return statSync(p).isDirectory(); } catch { return false; }
+}
+
+function expandHome(p: string): string {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/')) return resolve(homedir(), p.slice(2));
+  return p;
+}
+
+/** True when the target repo's hooks dir has the groundwork commit-msg hook. */
+function targetHasCommitMsgHook(cwd: string): boolean {
+  try {
+    const dir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!dir) return false;
+    return readFileSync(resolve(cwd, dir, 'commit-msg'), 'utf-8').includes('GROUNDWORK-COMMIT-MSG');
+  } catch {
+    return false;
+  }
+}
+
+/** True when a non-single-quoted -m / --message value contains shell expansion. */
+function inlineMessageExpands(cmd: string): boolean {
+  const res = [
+    /(?:^|\s)-m\s+"([\s\S]*?)"/g,
+    /(?:^|\s)-m\s+([^\s'"]+)/g,
+    /--message[=\s]\s*"([\s\S]*?)"/g,
+    /--message=([^\s'"]+)/g,
+  ];
+  for (const re of res) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(cmd)) !== null) if (containsShellVar(m[1])) return true;
+  }
+  return false;
 }
 
 function lintAndDecide(message: string, cwd: string): HookResult {
@@ -134,7 +200,7 @@ interface ParsedSegment {
  * (-C, -c, --git-dir, --work-tree, --namespace, boolean flags).
  */
 function parseSegmentForGit(seg: string): ParsedSegment {
-  let tokens = seg.trim().split(/\s+/).filter(t => t.length > 0);
+  let tokens = tokenizeShell(seg);
 
   const unquote = (t: string) => t.replace(/^(['"])(.*)\1$/, '$2');
   const launchers: Record<string, string[]> = {
@@ -171,7 +237,11 @@ function parseSegmentForGit(seg: string): ParsedSegment {
     if (!t.startsWith('-')) break;
 
     if (t === '-C') {
-      if (i + 1 < tokens.length) { cwdOverride = tokens[i + 1]; i += 2; } else i++;
+      if (i + 1 < tokens.length) {
+        const v = unquote(tokens[i + 1]);
+        cwdOverride = cwdOverride === undefined ? v : resolve(cwdOverride, v);
+        i += 2;
+      } else i++;
       continue;
     }
     if (t === '-c') {
@@ -219,10 +289,19 @@ function parseSegmentForGit(seg: string): ParsedSegment {
  * Checks each shell-operator-separated segment in order; returns on first match,
  * including the matched segment text so callers can scope extraction to that segment.
  */
-function detectGitOp(command: string): ParsedSegment & { segment?: string; offset?: number } {
+function detectGitOp(command: string, baseCwd: string): ParsedSegment & { segment?: string; offset?: number; cdDir?: string } {
+  let cdDir: string | undefined;
   for (const seg of splitOnShellOps(command)) {
     const result = parseSegmentForGit(seg.text);
-    if (result.found) return { ...result, segment: seg.text, offset: seg.start };
+    if (result.found) return { ...result, segment: seg.text, offset: seg.start, cdDir };
+    const t = tokenizeShell(seg.text.trim());
+    if (t[0] === 'cd' && t.length >= 2) {
+      const target = t[1].replace(/^(['"])(.*)\1$/, '$2');
+      if (!/[$`]/.test(target)) {
+        const next = resolve(cdDir ?? baseCwd, expandHome(target));
+        if (isDir(next)) cdDir = next;
+      }
+    }
   }
   return { found: false };
 }
@@ -235,6 +314,9 @@ function extractInlineMessage(cmd: string): string | null {
 
   const mQuoted = /(?:^|\s)-m\s+(['"])([\s\S]*?)\1/g;
   while ((m = mQuoted.exec(cmd)) !== null) messages.push(m[2]);
+
+  const mBare = /(?:^|\s)-m\s+([^\s'"]+)/g;
+  while ((m = mBare.exec(cmd)) !== null) messages.push(m[1]);
 
   const msgLong = /--message=(['"])([\s\S]*?)\1|--message=([^\s'"]+)/g;
   while ((m = msgLong.exec(cmd)) !== null) messages.push(m[2] ?? m[3] ?? '');
@@ -343,16 +425,28 @@ export function check(input: unknown): HookResult {
     const command = (toolInput as Record<string, unknown>)['command'];
     if (typeof command !== 'string') return allow();
 
-    const gitMatch = detectGitOp(command);
-    if (!gitMatch.found) return allow();
-
     const baseCwd =
       typeof inp['cwd'] === 'string'
         ? (inp['cwd'] as string)
         : typeof (toolInput as Record<string, unknown>)['cwd'] === 'string'
           ? ((toolInput as Record<string, unknown>)['cwd'] as string)
           : process.cwd();
-    const cmdCwd = gitMatch.cwdOverride ? resolve(baseCwd, gitMatch.cwdOverride) : baseCwd;
+    const gitMatch = detectGitOp(command, baseCwd);
+    if (!gitMatch.found) return allow();
+
+    // A cd into a non-repo dir keeps the session cwd for linting (git would fail there anyway).
+    const startCwd =
+      gitMatch.cdDir && (gitMatch.cwdOverride || resolveRepoRoot(gitMatch.cdDir) !== null)
+        ? gitMatch.cdDir
+        : baseCwd;
+    let cmdCwd = startCwd;
+    if (gitMatch.cwdOverride) {
+      const raw = gitMatch.cwdOverride;
+      if (/[$`]/.test(raw)) return deny(UNRESOLVED_TARGET);
+      cmdCwd = resolve(startCwd, expandHome(raw));
+      // An existing non-repo dir keeps the legacy handbook lint; a missing dir cannot be a target.
+      if (resolveRepoRoot(cmdCwd) === null && !isDir(cmdCwd)) return deny(UNRESOLVED_TARGET);
+    }
 
     if (gitMatch.hooksPathOverride) {
       return deny(
@@ -371,7 +465,17 @@ export function check(input: unknown): HookResult {
 
       const commitSeg = gitMatch.segment ?? command;
       const inlineMsg = extractInlineMessage(commitSeg);
-      if (inlineMsg !== null) return lintAndDecide(inlineMsg, cmdCwd);
+      if (inlineMsg !== null) {
+        if (inlineMessageExpands(commitSeg)) {
+          if (targetHasCommitMsgHook(cmdCwd)) return allow();
+          return deny(
+            'git commit -m with a shell-expanded message ($VAR, $(...), backticks) cannot be linted here, ' +
+            'and the target repo has no groundwork commit-msg hook to check it: ' +
+            'use a literal message or -F <file>.',
+          );
+        }
+        return lintAndDecide(inlineMsg, cmdCwd);
+      }
 
       if (readsMessageFromStdin(commitSeg)) {
         const body = extractHeredocBody(command, commitSeg, gitMatch.offset ?? 0);

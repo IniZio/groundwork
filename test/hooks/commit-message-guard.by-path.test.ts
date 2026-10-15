@@ -6,7 +6,7 @@
 
 import { describe, it, expect, afterAll } from "bun:test";
 import { spawnSync, execFileSync } from "node:child_process";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import path from "node:path";
@@ -207,6 +207,152 @@ describe("commit-message-guard — by-path (entrypoint test)", () => {
     it("DENY: git commit -F - heredoc body is still linted", () => {
       const cmd = "git commit -F - <<'EOF'\nbad msg\nEOF";
       expect(decision(run(bash(cmd)).stdout)).toBe("deny");
+    });
+  });
+
+  describe("target repo resolution (-C, cd) and shell-expanded -m", () => {
+    const CONVENTIONAL = { rules: { "commit-message": ["error", { preset: "conventional" }] } };
+    const UNRESOLVED = "cannot resolve target repo; use a literal path";
+    const NEEDS_LITERAL = "use a literal message or -F <file>";
+    const POINTER = "Commit style is set by";
+
+    // Session repo (REPO) has no config => handbook fallback. Targets are other repos.
+    function conventionalRepo(): string {
+      return realpathSync(repoWith(CONVENTIONAL));
+    }
+
+    function linkedWorktree(): string {
+      const main = repoWith(CONVENTIONAL);
+      const git = (...a: string[]) =>
+        execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: main, stdio: "ignore" });
+      git("add", ".house-rules.json");
+      git("commit", "-q", "-m", "init");
+      const wt = join(mkdtempSync(join(tmpdir(), "gw-cmg-bp-wt-")), "wt");
+      git("worktree", "add", "-q", wt);
+      extraRepos.push(wt);
+      return realpathSync(wt);
+    }
+
+    function installHook(repo: string): void {
+      const hooks = join(repo, ".git", "hooks");
+      mkdirSync(hooks, { recursive: true });
+      writeFileSync(join(hooks, "commit-msg"), "#!/bin/sh\n# GROUNDWORK-COMMIT-MSG\nexit 0\n");
+    }
+
+    it("ALLOW: git -C \"<wt>\" commit -m \"fix(x): y\" lints against the worktree's conventional config", () => {
+      const wt = linkedWorktree();
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "fix(x): y"`));
+      expect(decision(stdout)).toBe("allow");
+    });
+
+    it("DENY: git -C \"<wt>\" commit -m \"bad subject\" gives the conventional reason and the config pointer", () => {
+      const wt = linkedWorktree();
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "bad subject"`));
+      expect(decision(stdout)).toBe("deny");
+      const r = reason(stdout);
+      expect(r).toContain("conventional");
+      expect(r).not.toContain("Add, Fix, Remove");
+      expect(r).toContain(POINTER);
+    });
+
+    it("DENY: plain -m 'bad subject' is still denied with the pointer line", () => {
+      const { stdout } = run(bash(`git commit -m 'bad subject'`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(POINTER);
+    });
+
+    it("DENY: -C ~/nonexistent is denied with 'cannot resolve target repo; use a literal path'", () => {
+      const { stdout } = run(bash(`git -C ~/gw-cmg-no-such-dir-xyz commit -m "fix(x): y"`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(UNRESOLVED);
+      expect(reason(stdout)).not.toContain("Add, Fix, Remove");
+    });
+
+    it("DENY: -C \"$WT\" is denied with 'cannot resolve target repo; use a literal path'", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`git -C "$WT" commit -m "fix(x): y"`), { WT: wt });
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(UNRESOLVED);
+    });
+
+    it("ALLOW: cd <wt> && git commit -m \"fix(x): y\" lints against the cd target's config", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`cd ${wt} && git commit -m "fix(x): y"`));
+      expect(decision(stdout)).toBe("allow");
+    });
+
+    it("DENY: cd <wt> && git commit -m \"Fix thing\" is rejected by conventional (proves cd config used)", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`cd ${wt} && git commit -m "Fix thing"`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(POINTER);
+      expect(reason(stdout)).toContain("conventional");
+    });
+
+    it("ALLOW: cd <parent> && git -C <rel> commit resolves -C relative to the cd dir", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`cd ${join(wt, "..")} && git -C ${path.basename(wt)} commit -m "fix(x): y"`));
+      expect(decision(stdout)).toBe("allow");
+    });
+
+    it("DENY: git -C \"/p/sp ace\" commit -m \"bad\" is detected and denied", () => {
+      const base = mkdtempSync(join(tmpdir(), "gw-cmg-bp-sp-"));
+      extraRepos.push(base);
+      const spaced = join(base, "sp ace");
+      mkdirSync(spaced);
+      execFileSync("git", ["init", "-q"], { cwd: spaced });
+      writeFileSync(join(spaced, ".house-rules.json"), JSON.stringify(CONVENTIONAL));
+      const { stdout } = run(bash(`git -C "${spaced}" commit -m "bad"`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain("conventional");
+    });
+
+    it("ALLOW: -m \"$2\" when the target hooks dir has the GROUNDWORK-COMMIT-MSG commit-msg hook", () => {
+      const wt = conventionalRepo();
+      installHook(wt);
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "$2"`));
+      expect(decision(stdout)).toBe("allow");
+    });
+
+    it("ALLOW: -m \"$(cat f)\" when the target hooks dir has the GROUNDWORK-COMMIT-MSG commit-msg hook", () => {
+      const wt = conventionalRepo();
+      installHook(wt);
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "$(cat /tmp/f)"`));
+      expect(decision(stdout)).toBe("allow");
+    });
+
+    it("DENY: -m \"$2\" without the hook says 'use a literal message or -F <file>'", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "$2"`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(NEEDS_LITERAL);
+    });
+
+    it("DENY: -m \"$(cat f)\" without the hook says 'use a literal message or -F <file>'", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`git -C "${wt}" commit -m "$(cat /tmp/f)"`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain(NEEDS_LITERAL);
+    });
+
+    it("DENY: hook only in the session repo does not excuse a target repo without it", () => {
+      installHook(REPO);
+      try {
+        const wt = conventionalRepo();
+        const { stdout } = run(bash(`git -C "${wt}" commit -m "$2"`));
+        expect(decision(stdout)).toBe("deny");
+        expect(reason(stdout)).toContain(NEEDS_LITERAL);
+      } finally {
+        rmSync(join(REPO, ".git", "hooks", "commit-msg"), { force: true });
+      }
+    });
+
+    it("DENY: single-quoted -m '$2' is literal text and is linted normally", () => {
+      const wt = conventionalRepo();
+      const { stdout } = run(bash(`git -C "${wt}" commit -m '$2'`));
+      expect(decision(stdout)).toBe("deny");
+      expect(reason(stdout)).toContain("line 1");
+      expect(reason(stdout)).not.toContain(NEEDS_LITERAL);
     });
   });
 });

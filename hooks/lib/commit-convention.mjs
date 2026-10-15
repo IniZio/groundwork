@@ -156,6 +156,7 @@ export function getMotiveSlugs(repoRoot) {
   } catch {
     return []
   }
+  if (typeof root !== 'string' || root === '') return []
   const gw = join(root, '.groundwork')
   // Only yyyy-mm buckets hold slugs; archive/legacy/handoffs and other siblings do not.
   const archived = listDirs(join(gw, 'archive'))
@@ -174,6 +175,7 @@ export function getMotiveSlugs(repoRoot) {
 function getMarketplacePluginNames(repoRoot) {
   try {
     const root = repoRoot ?? resolveRepoRoot()
+    if (typeof root !== 'string' || root === '') return []
     const raw = readFileSync(join(root, '.claude-plugin', 'marketplace.json'), 'utf8')
     const parsed = JSON.parse(raw)
     const plugins = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.plugins) ? parsed.plugins : [])

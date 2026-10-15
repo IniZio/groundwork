@@ -61,7 +61,7 @@ export declare function resolveHostRules(repoRoot: string | null | undefined): H
 
 export declare function clearHostRulesCache(): void
 
-export declare function getMotiveSlugs(repoRoot?: string): string[]
+export declare function getMotiveSlugs(repoRoot?: string | null): string[]
 
 export interface LintViolation {
   line: number

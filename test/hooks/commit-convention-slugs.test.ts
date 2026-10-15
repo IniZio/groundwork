@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { lintMessage } from "../../hooks/lib/commit-convention.mjs";
+import { lintMessage, getMotiveSlugs } from "../../hooks/lib/commit-convention.mjs";
 import { renderCommitMsgHook } from "../../hooks/lib/commit-msg-template.mjs";
 import { check } from "../../src/hooks/commit-message-guard.js";
 
@@ -270,5 +270,34 @@ describe("commit-convention — slug sources across the work/archive layout", ()
 
   it("plugin-name exclusion still applies to work/ slugs", () => {
     expect(runGuard(layoutRepo(), "feat: tune golf-unit flow").stdout).toBe("");
+  });
+});
+
+describe("getMotiveSlugs outside a repo", () => {
+  function inNonRepo(fn: () => void): void {
+    const dir = mkdtempSync(join(tmpdir(), "cc-nonrepo-"));
+    const prevCwd = process.cwd();
+    const prevEnv = process.env.CLAUDE_PROJECT_DIR;
+    delete process.env.CLAUDE_PROJECT_DIR;
+    try {
+      process.chdir(dir);
+      fn();
+    } finally {
+      process.chdir(prevCwd);
+      if (prevEnv !== undefined) process.env.CLAUDE_PROJECT_DIR = prevEnv;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("returns [] without throwing when called with no arg and cwd is not a repo", () => {
+    inNonRepo(() => {
+      expect(getMotiveSlugs()).toEqual([]);
+    });
+  });
+
+  it("returns [] without throwing when called with explicit null", () => {
+    inNonRepo(() => {
+      expect(getMotiveSlugs(null)).toEqual([]);
+    });
   });
 });

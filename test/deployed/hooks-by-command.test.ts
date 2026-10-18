@@ -104,6 +104,9 @@ describe("event-output contract — every (event, command) pair must produce the
     "src/hooks/piped-exit-code-guard.ts": [
       { tool_name: "Bash", tool_input: { command: "make build | tail -5\nif [ $? -ne 0 ]; then exit 1; fi" } }, {}
     ],
+    "src/hooks/slow-command-timeout-guard.ts": [
+      { tool_name: "Bash", tool_input: { command: "ssh host uptime" } }, {}
+    ],
     "src/hooks/spawn-model-guard.ts": [
       { tool_name: "Agent", tool_input: { subagent_type: "groundwork:orchestrator", model: "haiku" }, agent_type: "groundwork:junior-orchestrator" }, {}
     ],
@@ -168,6 +171,29 @@ describe("deployed — piped-exit-code-guard (PreToolUse/Bash)", () => {
   it("deny: piped $? check", async () => {
     const { stdout } = await spawnHook(CMD,
       { tool_name: "Bash", tool_input: { command: "make build | tail -5\nif [ $? -ne 0 ]; then exit 1; fi" } });
+    const out = JSON.parse(stdout);
+    expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
+  });
+
+  it("allow: clean bash command → empty stdout exit 0", async () => {
+    const { stdout, exit } = await spawnHook(CMD,
+      { tool_name: "Bash", tool_input: { command: "git status" } });
+    expect(stdout).toBe("");
+    expect(exit).toBe(0);
+  });
+
+  it("registered under PreToolUse only", () => {
+    const event = eventForCommand(CMD);
+    expect(event).toBe("PreToolUse");
+  });
+});
+
+describe("deployed — slow-command-timeout-guard (PreToolUse/Bash)", () => {
+  const CMD = "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/slow-command-timeout-guard.ts";
+
+  it("deny: foreground ssh", async () => {
+    const { stdout } = await spawnHook(CMD,
+      { tool_name: "Bash", tool_input: { command: "ssh host uptime" } });
     const out = JSON.parse(stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
   });

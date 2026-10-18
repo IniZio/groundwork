@@ -7,7 +7,7 @@ It adds:
 - **Intent routing**: classifies a request and fans out to the right agent type.
 - **Convention adaptation**: detect, confirm, then write to the repo's own files. See [doc/conventions.md](https://github.com/IniZio/groundwork/blob/cc3f4e32aff23bc44798cd668375e8c9ad8e29ec/doc/conventions.md).
 - **Work store and stop-gate**: slices, decisions, events and charter in one SQLite file. The stop-gate blocks while work is open.
-- **Enforcement hooks**: five families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate).
+- **Enforcement hooks**: six families (spawn-model, store-write, piped-exit-code, prose-quality, new-code-gate, slow-command).
 - **Advisor gate**: evidence-graded APPROVE, CORRECTION or STOP verdict before completion.
 - **Session continuity**: a SessionStart hook restores context.
 

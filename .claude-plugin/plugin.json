@@ -61,6 +61,10 @@
           },
           {
             "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/slow-command-timeout-guard.ts"
+          },
+          {
+            "type": "command",
             "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-message-guard.ts"
           }
         ]

@@ -188,6 +188,16 @@ describe("event append", () => {
     }
   });
 
+  it("BUDGET event stores task/action/minutes/reason", () => {
+    const r = run(["event", "append", "--type", "BUDGET", "--data", '{"task":"t1","action":"extend","minutes":10,"reason":"build at 80%"}'], dir);
+    expect(r.exitCode).toBe(0);
+    const { Database } = require("bun:sqlite") as typeof import("bun:sqlite");
+    const db = new Database(path.join(dir, ".groundwork", "work.db"), { readonly: true });
+    const row = db.query<{ payload: string }, []>("SELECT payload FROM events WHERE event_type = 'BUDGET'").get();
+    db.close();
+    expect(JSON.parse(row!.payload)).toMatchObject({ task: "t1", action: "extend", minutes: 10, reason: "build at 80%" });
+  });
+
   it("compile shows last PAUSE msg", () => {
     run(["event", "append", "--type", "PAUSE", "--msg", "stopping for handoff", "--data", '{"next_actions":"resume S2"}'], dir);
     const c = run(["compile"], dir);

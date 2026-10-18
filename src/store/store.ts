@@ -32,6 +32,7 @@ export const EVENT_TYPES = [
   "CHECKPOINT",
   "SLICE_COMPLETE",
   "RETENTION_ACTION",
+  "BUDGET",
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 

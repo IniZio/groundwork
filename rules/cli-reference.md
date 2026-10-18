@@ -60,7 +60,7 @@ Writes a RETENTION_ACTION event first, then attempts DELETE. Refused on complete
 ### gw event append
 
 TYPE must be one of the exported EVENT_TYPES list (src/store/store.ts), used by both `gw event append` and `gw compile`:
-GATE_APPROVE, GATE_CORRECTION, GATE_STOP, GATE_GAPS, GATE_REPLAN, HOLD, HOLD_CLEAR, DECISION, OBJECTIVE, PAUSE, VERIFICATION, FAILURE, MILESTONE, HANDOFF, SESSION_START, CHECKPOINT, SLICE_COMPLETE, RETENTION_ACTION
+GATE_APPROVE, GATE_CORRECTION, GATE_STOP, GATE_GAPS, GATE_REPLAN, HOLD, HOLD_CLEAR, DECISION, OBJECTIVE, PAUSE, VERIFICATION, FAILURE, MILESTONE, HANDOFF, SESSION_START, CHECKPOINT, SLICE_COMPLETE, RETENTION_ACTION, BUDGET
 DECISION — msg is the decision text. Shown in `gw compile` under `decisions (N)`.
 OBJECTIVE — msg is the objective text. `gw compile` shows the newest.
 Scope rejection text: error: <TYPE> is a scope event and cannot be appended directly — use `$GW scope` commands

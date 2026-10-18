@@ -7,6 +7,10 @@ import { resolveDbPath, resolveRepoBase } from "./lib/repo-base.js";
 import { sessionBase } from "./lib/session-base.js";
 import { sessionTouchedFiles } from "./lib/work-scope-files.js";
 import { readPointer, type ScopePointer } from "../store/scope-pointer.js";
+import {
+  readBudgetDecisionsFromDb, readBudgetDecisionsFromTranscript, readDispatchPrompt,
+  evaluateBudgets, budgetBlockReason, type BudgetTask,
+} from "./stop-gate-budget.js";
 import { readSealKeyForDb } from "../store/key-store.js";
 import { verifyApprovalSeal } from "../store/gate-seal.js";
 
@@ -433,12 +437,11 @@ function writeDiag(
 }
 
 // ---------------------------------------------------------------------------
-// Escalation nudge — warn when a groundwork:implementer has run too long
+// Budget gate — block Stop while a background child is over its time budget
 // ---------------------------------------------------------------------------
 
 interface EscalateState {
   firstSeen: Record<string, string>; // taskId → ISO timestamp
-  nudged: string[];                  // taskIds already nudged
 }
 
 export function escalateStateFile(
@@ -516,65 +519,57 @@ function currentRunStart(inp: Record<string, unknown>, id: string): number | nul
   } catch { return null; }
 }
 
-export function escalationNudge(
+export function budgetGate(
   inp: Record<string, unknown>,
   env: Record<string, string | undefined>,
   dbPath: string | null,
+  nowMs: number = Date.now(),
 ): string | null {
   try {
+    if (inp.hook_event_name === "SubagentStop") return null;
     const tasks = inp.background_tasks;
     if (!Array.isArray(tasks)) return null;
-    const matching = (tasks as Record<string, unknown>[]).filter(
-      t => t.status === "running" && t.agent_type === "groundwork:implementer" && typeof t.id === "string" && (t.id as string).length > 0
+    const running = (tasks as Record<string, unknown>[]).filter(
+      t => t.status === "running" && typeof t.id === "string" && (t.id as string).length > 0 && typeof t.agent_type === "string"
     );
     const stateFile = escalateStateFile(inp, env, dbPath);
-    let state: EscalateState = { firstSeen: {}, nudged: [] };
+    let state: EscalateState = { firstSeen: {} };
     try {
-      const raw = readFileSync(stateFile, "utf8");
-      const parsed = JSON.parse(raw) as EscalateState;
+      const parsed = JSON.parse(readFileSync(stateFile, "utf8")) as EscalateState;
       if (parsed && typeof parsed === "object") state = parsed;
     } catch { /* absent or corrupt — use default */ }
-
     if (!state.firstSeen || typeof state.firstSeen !== "object") state.firstSeen = {};
-    if (!Array.isArray(state.nudged)) state.nudged = [];
 
-    const now = Date.now();
-    const threshold = 15 * 60 * 1000;
-    const nudgeLines: string[] = [];
     let stateChanged = false;
-
-    const runningIds = new Set(matching.map(t => t.id as string));
+    const runningIds = new Set(running.map(t => t.id as string));
     for (const id of Object.keys(state.firstSeen)) {
       if (!runningIds.has(id)) { delete state.firstSeen[id]; stateChanged = true; }
     }
-    const keptNudged = state.nudged.filter(id => runningIds.has(id));
-    if (keptNudged.length !== state.nudged.length) { state.nudged = keptNudged; stateChanged = true; }
 
-    for (const task of matching) {
+    const transcript = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
+    const sessionId = typeof inp.session_id === "string" ? inp.session_id : null;
+    const budgetTasks: BudgetTask[] = [];
+    for (const task of running) {
       const id = task.id as string;
       const runStart = currentRunStart(inp, id);
       if (runStart !== null) {
         const seen = Date.parse(state.firstSeen[id] ?? "");
         if (Number.isNaN(seen) || seen !== runStart) {
-          // new run (spawn or resume): restart clock; allow a fresh nudge
-          if (Number.isNaN(seen) || runStart > seen) state.nudged = state.nudged.filter(n => n !== id);
+          // new run (spawn or resume): restart the clock
           state.firstSeen[id] = new Date(runStart).toISOString();
           stateChanged = true;
         }
       }
-      if (state.nudged.includes(id)) continue;
       if (!(id in state.firstSeen)) {
-        state.firstSeen[id] = new Date().toISOString();
+        state.firstSeen[id] = new Date(nowMs).toISOString();
         stateChanged = true;
       }
-      const elapsedMs = now - Date.parse(state.firstSeen[id]);
-      if (elapsedMs >= threshold) {
-        const elapsedMin = Math.floor(elapsedMs / 60000);
-        const desc = typeof task.description === "string" ? task.description : id;
-        nudgeLines.push(`implementer-escalation: task "${desc}" has run for ${elapsedMin} min — split further or re-route to groundwork:junior-orchestrator`);
-        state.nudged.push(id);
-        stateChanged = true;
-      }
+      budgetTasks.push({
+        id,
+        description: typeof task.description === "string" ? task.description : id,
+        prompt: transcript && sessionId ? readDispatchPrompt(transcript, sessionId, id) : null,
+        startMs: Date.parse(state.firstSeen[id]),
+      });
     }
 
     if (stateChanged) {
@@ -584,19 +579,13 @@ export function escalationNudge(
       } catch { }
     }
 
-    if (nudgeLines.length === 0) return null;
-    return nudgeLines.join("\n");
+    const decisions = [
+      ...(dbPath !== null ? readBudgetDecisionsFromDb(dbPath) : []),
+      ...(transcript ? readBudgetDecisionsFromTranscript(transcript) : []),
+    ];
+    const breaches = evaluateBudgets(budgetTasks, decisions, nowMs);
+    return breaches.length > 0 ? budgetBlockReason(breaches) : null;
   } catch { return null; }
-}
-
-function appendNudge(result: HookResult, nudge: string): HookResult {
-  try {
-    const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
-    parsed.hookSpecificOutput = { hookEventName: "Stop", additionalContext: nudge };
-    return { ...result, stdout: JSON.stringify(parsed) + "\n" };
-  } catch {
-    return result;
-  }
 }
 
 function gitOut(root: string, args: string[]): string | null {
@@ -682,11 +671,11 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
     const sessionId = typeof inp.session_id === "string" ? inp.session_id : "default";
     const dbPath = resolveDb(env, cwd);
     if (!dbPath) {
+      // Budget first: unledgeredGate's repeat-block release must never free an over-budget child.
+      const overBudget = budgetGate(inp, env, null);
+      if (overBudget) return block(overBudget);
       const gated = unledgeredGate(inp, env);
-      if (gated) return gated;
-      const base = allow("stop-gate: no active work store — session may end");
-      const nudge = escalationNudge(inp, env, null);
-      return nudge ? appendNudge(base, nudge) : base;
+      return gated ?? allow("stop-gate: no active work store — session may end");
     }
 
     const compute = (): { result: HookResult; yieldResult: string | null } => {
@@ -811,12 +800,12 @@ export function run(input: unknown, env: Record<string, string | undefined>): Ho
 
     const { result, yieldResult } = compute();
     writeDiag(dbPath, inp, yieldResult, result);
-    const nudge = escalationNudge(inp, env, dbPath);
-    return nudge ? appendNudge(result, nudge) : result;
+    // Not counted: the consecutive-block release must never free an over-budget child.
+    const overBudget = budgetGate(inp, env, dbPath);
+    return overBudget ? block(overBudget) : result;
   } catch {
-    const base = allow("stop-gate: error reading store — fail-open");
-    const nudge = escalationNudge(inp, env, null);
-    return nudge ? appendNudge(base, nudge) : base;
+    const overBudget = budgetGate(inp, env, null);
+    return overBudget ? block(overBudget) : allow("stop-gate: error reading store — fail-open");
   }
 }
 

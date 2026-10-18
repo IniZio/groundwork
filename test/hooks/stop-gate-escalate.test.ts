@@ -1,247 +1,206 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { run, escalationNudge, escalateStateFile } from "../../src/hooks/stop-gate.js";
+import { run, budgetGate, escalateStateFile } from "../../src/hooks/stop-gate.js";
 import { runMigrations } from "../../src/store/migrations.js";
 import { MIGRATIONS } from "../../src/store/schema.js";
-import { mkdirSync, writeFileSync, rmSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync, readdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 
 const HOOK_PATH = path.resolve(import.meta.dir, "../../src/hooks/stop-gate.ts");
+const MIN = 60_000;
+const iso = (minAgo: number) => new Date(Date.now() - minAgo * MIN).toISOString();
+const userEntry = (minAgo: number, text: string) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: text } });
+const assistantEntry = (minAgo: number) => ({ type: "assistant", timestamp: iso(minAgo), message: { role: "assistant", content: [{ type: "text", text: "hi" }] } });
+const budgetBash = (action: string, minutes: number, task: string) => ({
+  type: "assistant", timestamp: iso(1),
+  message: { role: "assistant", content: [{ type: "tool_use", id: `b-${action}-${minutes}`, name: "Bash", input: {
+    command: `$GW event append --type BUDGET --data '${JSON.stringify({ task, action, minutes })}'`,
+  } }] },
+});
 
-describe("stop-gate — escalation nudge", () => {
+describe("stop-gate — budget block", () => {
   const tmpDirs: string[] = [];
-
-  function makeTmp(): string {
-    const d = mkdtempSync(path.join(os.tmpdir(), "gw-escalate-"));
-    tmpDirs.push(d);
-    return d;
-  }
-
   afterEach(() => {
     while (tmpDirs.length > 0) {
-      const d = tmpDirs.pop()!;
-      try { rmSync(d, { recursive: true, force: true }); } catch { /* ok */ }
+      try { rmSync(tmpDirs.pop()!, { recursive: true, force: true }); } catch { /* ok */ }
     }
   });
 
-  function preWriteState(stateFile: string, taskId: string, minutesAgo: number, alreadyNudged = false) {
-    mkdirSync(path.dirname(stateFile), { recursive: true });
-    writeFileSync(stateFile, JSON.stringify({
-      firstSeen: { [taskId]: new Date(Date.now() - minutesAgo * 60 * 1000).toISOString() },
-      nudged: alreadyNudged ? [taskId] : [],
-    }));
+  interface Opts { agentType?: string; event?: string; mainLines?: unknown[]; withDb?: boolean }
+
+  /** Real hook-input shape with a main transcript and one subagent transcript whose first user entry is the dispatch prompt. */
+  function setup(sessionId: string, taskId: string, childLines: unknown[], opts: Opts = {}) {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "gw-budget-"));
+    tmpDirs.push(tmp);
+    const transcript = path.join(tmp, `${sessionId}.jsonl`);
+    writeFileSync(transcript, (opts.mainLines ?? []).map(l => JSON.stringify(l)).join("\n") + (opts.mainLines?.length ? "\n" : ""));
+    const dir = path.join(tmp, sessionId, "subagents");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `agent-${taskId}.jsonl`), childLines.map(l => JSON.stringify(l)).join("\n") + "\n");
+    let dbPath: string | null = null;
+    if (opts.withDb) {
+      dbPath = path.join(tmp, "work.db");
+      const db = new Database(dbPath);
+      runMigrations(db, MIGRATIONS);
+      db.close();
+    }
+    const inp = {
+      session_id: sessionId, transcript_path: transcript, cwd: tmp, hook_event_name: opts.event ?? "Stop",
+      background_tasks: [{ id: taskId, type: "local_agent", status: "running", description: "child work", agent_type: opts.agentType ?? "groundwork:implementer" }],
+    };
+    const env: Record<string, string | undefined> = { CLAUDE_PROJECT_DIR: tmp, ...(dbPath ? { GROUNDWORK_DB: dbPath } : {}) };
+    const addDecision = (action: string, minutes: number) => {
+      const db = new Database(dbPath!);
+      db.run("INSERT INTO events (event_type, payload, created_at) VALUES ('BUDGET', ?, ?)",
+        [JSON.stringify({ task: taskId, action, minutes }), new Date().toISOString()]);
+      db.close();
+    };
+    const stop = () => {
+      const out = JSON.parse(run(inp, env).stdout) as Record<string, unknown>;
+      return out.decision === "block" ? String(out.reason) : null;
+    };
+    return { tmp, inp, env, dbPath, transcript, addDecision, stop };
   }
 
-  it("no nudge for empty background_tasks", () => {
-    const tmpDir = makeTmp();
-    const inp = { hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s1", background_tasks: [] };
-    expect(escalationNudge(inp, { CLAUDE_PROJECT_DIR: tmpDir }, null)).toBeNull();
+  it("blocks a 20 min child with no budget line, naming id, elapsed, budget and the append command", () => {
+    const { stop } = setup("s1", "tk1", [userEntry(20, "implement the thing"), assistantEntry(1)]);
+    const reason = stop()!;
+    expect(reason).not.toBeNull();
+    expect(reason).toContain("tk1");
+    expect(reason).toContain("20 min");
+    expect(reason).toContain("15 min");
+    expect(reason).toContain("event append --type BUDGET");
   });
 
-  it("no nudge for non-implementer agent type", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s2",
-      background_tasks: [{ id: "t2", type: "subagent", status: "running", description: "adv", agent_type: "groundwork:advisor" }],
-    };
-    expect(escalationNudge(inp, { CLAUDE_PROJECT_DIR: tmpDir }, null)).toBeNull();
+  it("budget: 40m on the first line lets a 20 min child run", () => {
+    const { stop } = setup("s2", "tk2", [userEntry(20, "budget: 40m\nimplement the thing"), assistantEntry(1)]);
+    expect(stop()).toBeNull();
   });
 
-  it("no nudge for completed implementer", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s3",
-      background_tasks: [{ id: "t3", type: "subagent", status: "complete", description: "done", agent_type: "groundwork:implementer" }],
-    };
-    expect(escalationNudge(inp, { CLAUDE_PROJECT_DIR: tmpDir }, null)).toBeNull();
+  it("a budget line on line 2 is ignored and the default applies", () => {
+    const { stop } = setup("s3", "tk3", [userEntry(20, "implement the thing\nbudget: 40m"), assistantEntry(1)]);
+    expect(stop()).toContain("15 min");
   });
 
-  it("no nudge for implementer below threshold", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s4",
-      background_tasks: [{ id: "t4", type: "subagent", status: "running", description: "short", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    preWriteState(escalateStateFile(inp, env, null), "t4", 5);
-    expect(escalationNudge(inp, env, null)).toBeNull();
+  it("a child under budget is not blocked", () => {
+    const { stop } = setup("s4", "tk4", [userEntry(5, "go"), assistantEntry(1)]);
+    expect(stop()).toBeNull();
   });
 
-  it("nudge fires for implementer over threshold", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s5",
-      background_tasks: [{ id: "task-1", type: "subagent", status: "running", description: "My task", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    preWriteState(escalateStateFile(inp, env, null), "task-1", 16);
-    const result = escalationNudge(inp, env, null);
-    expect(result).not.toBeNull();
-    expect(result).toContain("implementer-escalation");
-    expect(result!.includes("task-1") || result!.includes("My task")).toBe(true);
-    expect(result).toContain("min");
-    expect(result).toContain("groundwork:junior-orchestrator");
+  it("budgets non-implementer agents too", () => {
+    const { stop } = setup("s5", "tk5", [userEntry(20, "go"), assistantEntry(1)], { agentType: "groundwork:researcher" });
+    expect(stop()).toContain("tk5");
   });
 
-  it("nudge records first-seen on first call (below threshold)", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s6",
-      background_tasks: [{ id: "new-task", type: "subagent", status: "running", description: "fresh", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    expect(escalationNudge(inp, env, null)).toBeNull();
-    const state = JSON.parse(readFileSync(escalateStateFile(inp, env, null), "utf8")) as { firstSeen: Record<string, string> };
-    expect(state.firstSeen["new-task"]).toBeDefined();
+  it("does not block SubagentStop", () => {
+    const { inp, env } = setup("s6", "tk6", [userEntry(20, "go"), assistantEntry(1)], { event: "SubagentStop" });
+    expect(budgetGate(inp, env, null)).toBeNull();
+    const out = JSON.parse(run(inp, env).stdout) as Record<string, unknown>;
+    expect(out.decision).toBeUndefined();
   });
 
-  it("no repeat nudge for same task", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s7",
-      background_tasks: [{ id: "task-1", type: "subagent", status: "running", description: "repeat", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    preWriteState(escalateStateFile(inp, env, null), "task-1", 16, true);
-    expect(escalationNudge(inp, env, null)).toBeNull();
+  it("ignores tasks that are not running", () => {
+    const { inp, env } = setup("s7", "tk7", [userEntry(20, "go")]);
+    (inp.background_tasks[0] as Record<string, unknown>).status = "complete";
+    expect(budgetGate(inp, env, null)).toBeNull();
   });
 
-  it("run() includes hookSpecificOutput.additionalContext when nudge fires (no-db path)", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "s8",
-      background_tasks: [{ id: "imp-1", type: "subagent", status: "running", description: "Impl", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    preWriteState(escalateStateFile(inp, env, null), "imp-1", 16);
-    const result = run(inp, env);
-    const out = JSON.parse(result.stdout) as Record<string, unknown>;
-    const hs = out.hookSpecificOutput as Record<string, unknown> | undefined;
-    expect(hs?.hookEventName).toBe("Stop");
-    expect(String(hs?.additionalContext)).toContain("implementer-escalation");
+  it("db extend 10 raises a 15 min budget to 25: 20 min passes, 30 min blocks as already extended", () => {
+    const young = setup("s8a", "tk8a", [userEntry(20, "go"), assistantEntry(1)], { withDb: true });
+    young.addDecision("extend", 10);
+    expect(young.stop()).toBeNull();
+    const old = setup("s8b", "tk8b", [userEntry(30, "go"), assistantEntry(1)], { withDb: true });
+    old.addDecision("extend", 10);
+    const reason = old.stop()!;
+    expect(reason).toContain("already extended");
+    expect(reason).toContain("25 min");
   });
 
-  // M2-PROOF: nudge fires once; second call suppressed; state.nudged updated.
-  // Under M2 (nudged.push removed): second call re-fires → expect(out2.hookSpecificOutput).toBeUndefined() FAILS.
-  it("M2-PROOF: nudge fires on first CLI call, suppressed on second; state.nudged contains id", () => {
-    const tmpDir = makeTmp();
-    mkdirSync(path.join(tmpDir, ".groundwork"), { recursive: true });
-    const sessionId = "m2-sess";
-    const taskId = "m2-task";
-    const stateFile = path.join(tmpDir, ".groundwork", `stop-gate.${sessionId}.escalate.json`);
-    preWriteState(stateFile, taskId, 16);
-
-    const inpJson = JSON.stringify({
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: sessionId,
-      background_tasks: [{ id: taskId, type: "subagent", status: "running", description: "M2 impl", agent_type: "groundwork:implementer" }],
-    });
-
-    const r1 = spawnSync("bun", ["run", HOOK_PATH], {
-      input: inpJson, env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir }, encoding: "utf8",
-    });
-    const out1 = JSON.parse(r1.stdout) as Record<string, unknown>;
-    expect(String((out1.hookSpecificOutput as Record<string, unknown> | undefined)?.additionalContext))
-      .toContain("implementer-escalation");
-
-    const state = JSON.parse(readFileSync(stateFile, "utf8")) as { nudged: string[] };
-    expect(state.nudged).toContain(taskId);
-
-    const r2 = spawnSync("bun", ["run", HOOK_PATH], {
-      input: inpJson, env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir }, encoding: "utf8",
-    });
-    const out2 = JSON.parse(r2.stdout) as Record<string, unknown>;
-    expect(out2.hookSpecificOutput).toBeUndefined();
+  it("transcript extend 10 (Bash tool_use in the main transcript) behaves the same", () => {
+    const young = setup("s9a", "tk9a", [userEntry(20, "go"), assistantEntry(1)], { mainLines: [budgetBash("extend", 10, "tk9a")] });
+    expect(young.stop()).toBeNull();
+    const old = setup("s9b", "tk9b", [userEntry(30, "go"), assistantEntry(1)], { mainLines: [budgetBash("extend", 10, "tk9b")] });
+    expect(old.stop()).toContain("already extended");
   });
 
-  // M7-PROOF: nudge fires through the store-present (GROUNDWORK_DB) path.
-  // Under M7 (escalationNudge at line 633 disabled): hookSpecificOutput absent → test FAILS.
-  it("M7-PROOF: nudge fires through store-present path with real GROUNDWORK_DB", () => {
-    const tmpDir = makeTmp();
-    const dbPath = path.join(tmpDir, "work.db");
-    const db = new Database(dbPath);
-    runMigrations(db, MIGRATIONS);
-    db.close();
+  it("a second extend does not move the budget", () => {
+    const { stop, addDecision } = setup("s10", "tk10", [userEntry(30, "go"), assistantEntry(1)], { withDb: true });
+    addDecision("extend", 10);
+    addDecision("extend", 30);
+    expect(stop()).toContain("25 min");
+  });
 
-    const sessionId = "m7-sess";
-    const taskId = "m7-task";
-    const stateFile = path.join(tmpDir, `stop-gate.${sessionId}.escalate.json`);
-    preWriteState(stateFile, taskId, 16);
+  it("stop clears the breach", () => {
+    const { stop, addDecision } = setup("s11", "tk11", [userEntry(30, "go"), assistantEntry(1)], { withDb: true });
+    expect(stop()).not.toBeNull();
+    addDecision("stop", 0);
+    expect(stop()).toBeNull();
+  });
 
-    const inpJson = JSON.stringify({
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: sessionId,
-      background_tasks: [{ id: taskId, type: "subagent", status: "running", description: "M7 impl", agent_type: "groundwork:implementer" }],
-    });
+  it("five consecutive Stop runs over budget all block and leave no counter files", () => {
+    const { stop, tmp } = setup("s12", "tk12", [userEntry(30, "go"), assistantEntry(1)], { withDb: true });
+    for (let i = 0; i < 5; i++) expect(stop()).toContain("tk12");
+    expect(readdirSync(tmp).filter(f => f.endsWith(".count") || f.endsWith(".sig"))).toEqual([]);
+  });
 
-    const r = spawnSync("bun", ["run", HOOK_PATH], {
-      input: inpJson, env: { ...process.env, GROUNDWORK_DB: dbPath }, encoding: "utf8",
-    });
+  it("CLI spawn: hook prints a block decision for an over-budget child", () => {
+    const { inp, env } = setup("s13", "tk13", [userEntry(30, "go"), assistantEntry(1)]);
+    const r = spawnSync("bun", ["run", HOOK_PATH], { input: JSON.stringify(inp), env: { ...process.env, ...env }, encoding: "utf8" });
     const out = JSON.parse(r.stdout) as Record<string, unknown>;
-    const hs = out.hookSpecificOutput as Record<string, unknown> | undefined;
-    expect(hs).toBeDefined();
-    expect(String(hs?.additionalContext)).toContain("implementer-escalation");
+    expect(out.decision).toBe("block");
+    expect(String(out.reason)).toContain("tk13");
   });
 
-  // Fail-open: nudge appended even when store read errors (catch path).
-  it("fail-open: nudge appended when store read errors", () => {
-    const tmpDir = makeTmp();
-    const corruptDb = path.join(tmpDir, "corrupt.db");
-    writeFileSync(corruptDb, "not valid sqlite");
-
-    const sessionId = "fo-sess";
-    const taskId = "fo-task";
-    // inp.cwd = tmpDir → escalationNudge(inp, env, null) looks in tmpDir/.groundwork/
-    const stateFile = path.join(tmpDir, ".groundwork", `stop-gate.${sessionId}.escalate.json`);
-    preWriteState(stateFile, taskId, 16);
-
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: sessionId,
-      background_tasks: [{ id: taskId, type: "subagent", status: "running", description: "Fail-open", agent_type: "groundwork:implementer" }],
-    };
-    const result = run(inp, { GROUNDWORK_DB: corruptDb });
-    const out = JSON.parse(result.stdout) as Record<string, unknown>;
-    const hs = out.hookSpecificOutput as Record<string, unknown> | undefined;
-    expect(hs).toBeDefined();
-    expect(String(hs?.additionalContext)).toContain("implementer-escalation");
+  it("no work store: an over-budget child blocks on every run while unledgered edits also block", () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "gw-budget-nostore-"));
+    tmpDirs.push(tmp);
+    const repo = path.join(tmp, "repo");
+    mkdirSync(repo);
+    const git = (args: string[]) => spawnSync("git", args, { cwd: repo, encoding: "utf8",
+      env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+        GIT_AUTHOR_DATE: "2020-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2020-01-01T00:00:00Z" } });
+    git(["init", "-q"]);
+    writeFileSync(path.join(repo, "a.ts"), "export const a = 1;\n");
+    git(["add", "-A"]);
+    git(["commit", "-q", "-m", "base"]);
+    writeFileSync(path.join(repo, "a.ts"), "export const a = 2;\n");
+    const transcript = path.join(tmp, "snost.jsonl");
+    writeFileSync(transcript, [
+      { type: "user", timestamp: "2021-01-01T00:00:00Z" },
+      { type: "assistant", timestamp: "2021-01-02T00:00:00Z", cwd: repo, isSidechain: false, message: { role: "assistant", content: [
+        { type: "tool_use", id: "tu0", name: "Edit", input: { file_path: path.join(repo, "a.ts"), old_string: "1", new_string: "2" } }] } },
+    ].map(l => JSON.stringify(l)).join("\n") + "\n");
+    const dir = path.join(tmp, "snost", "subagents");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "agent-tkns.jsonl"), [userEntry(30, "go"), assistantEntry(1)].map(l => JSON.stringify(l)).join("\n") + "\n");
+    const home = path.join(tmp, "home");
+    mkdirSync(home);
+    const inp = { session_id: "snost", transcript_path: transcript, cwd: repo, hook_event_name: "Stop", stop_hook_active: false,
+      background_tasks: [{ id: "tkns", type: "local_agent", status: "running", description: "child work", agent_type: "groundwork:implementer" }] };
+    const env = { ...process.env, HOME: home, CLAUDE_PROJECT_DIR: repo } as Record<string, string | undefined>;
+    delete env.GROUNDWORK_DB;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    for (let i = 0; i < 5; i++) {
+      const r = spawnSync("bun", [HOOK_PATH], { input: JSON.stringify(inp), encoding: "utf8", env: env as Record<string, string> });
+      const out = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+      expect(out.decision).toBe("block");
+      expect(String(out.reason)).toContain("event append --type BUDGET");
+    }
   });
 
-  it("CLI spawn: hook adds nudge to stdout when implementer over threshold", () => {
-    const tmpDir = makeTmp();
-    mkdirSync(path.join(tmpDir, ".groundwork"), { recursive: true });
-    const sessionId = "s9";
-    const stateFile = path.join(tmpDir, ".groundwork", `stop-gate.${sessionId}.escalate.json`);
-    preWriteState(stateFile, "cli-imp-1", 16);
-
-    const r = spawnSync("bun", ["run", HOOK_PATH], {
-      input: JSON.stringify({
-        hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: sessionId,
-        background_tasks: [{ id: "cli-imp-1", type: "subagent", status: "running", description: "CLI impl", agent_type: "groundwork:implementer" }],
-      }),
-      env: { ...process.env, CLAUDE_PROJECT_DIR: tmpDir }, encoding: "utf8",
-    });
-    const out = JSON.parse(r.stdout) as Record<string, unknown>;
-    expect(String((out.hookSpecificOutput as Record<string, unknown> | undefined)?.additionalContext))
-      .toContain("implementer-escalation");
-  });
-
-  it("BITE-PROOF: over-threshold implementer result is not null", () => {
-    const tmpDir = makeTmp();
-    const inp = {
-      hook_event_name: "Stop", cwd: tmpDir, stop_hook_active: false, session_id: "bite",
-      background_tasks: [{ id: "bite-task", type: "subagent", status: "running", description: "bite", agent_type: "groundwork:implementer" }],
-    };
-    const env = { CLAUDE_PROJECT_DIR: tmpDir };
-    preWriteState(escalateStateFile(inp, env, null), "bite-task", 16);
-    const result = escalationNudge(inp, env, null);
-    expect(result).not.toBeNull();
-    expect(result).toContain("implementer-escalation");
+  it("an old escalate state file carrying a nudged list does not break the clock", () => {
+    const { inp, env } = setup("s14", "tk14", [userEntry(30, "go"), assistantEntry(1)]);
+    const f = escalateStateFile(inp, env, null);
+    mkdirSync(path.dirname(f), { recursive: true });
+    writeFileSync(f, JSON.stringify({ firstSeen: { tk14: iso(30) }, nudged: ["tk14"] }));
+    expect(budgetGate(inp, env, null)).toContain("tk14");
   });
 });
 
-const MIN = 60_000;
 
-describe("stop-gate — escalation clock across resume", () => {
+describe("stop-gate — budget clock across resume", () => {
   const tmpDirs: string[] = [];
   afterEach(() => {
     while (tmpDirs.length > 0) {
@@ -270,13 +229,11 @@ describe("stop-gate — escalation clock across resume", () => {
         env: { ...process.env, CLAUDE_PROJECT_DIR: tmp }, encoding: "utf8",
       });
       const out = JSON.parse(r.stdout) as Record<string, unknown>;
-      const hs = out.hookSpecificOutput as Record<string, unknown> | undefined;
-      return hs ? String(hs.additionalContext) : null;
+      return out.decision === "block" ? String(out.reason) : null;
     };
     return { tmp, stop };
   }
 
-  const iso = (minAgo: number) => new Date(Date.now() - minAgo * MIN).toISOString();
   const userStr = (minAgo: number) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: "go" } });
   const toolResult = (minAgo: number) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "ok" }] } });
   const assistant = (minAgo: number) => ({ type: "assistant", timestamp: iso(minAgo), message: { role: "assistant", content: [{ type: "text", text: "hi" }] } });
@@ -286,7 +243,7 @@ describe("stop-gate — escalation clock across resume", () => {
   const resultFor = (minAgo: number, id: string) => ({ type: "user", timestamp: iso(minAgo), message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } });
   const COORD = "The coordinator sent a message while you were working: continue";
 
-  it("(a) resumed run 2m old does not nudge despite 24m since spawn", () => {
+  it("(a) resumed run 2m old does not block despite 24m since spawn", () => {
     const { tmp, stop } = setup("sa", "ta", [userStr(24), assistant(23), toolUse(22.5, "h1", "SubagentHandback"), resultFor(22, "h1"), meta(2, COORD)]);
     const stateFile = path.join(tmp, ".groundwork", "stop-gate.sa.escalate.json");
     mkdirSync(path.dirname(stateFile), { recursive: true });
@@ -294,11 +251,11 @@ describe("stop-gate — escalation clock across resume", () => {
     expect(stop(true)).toBeNull();
   });
 
-  it("(b) single user entry 16m old with continuous activity nudges", () => {
+  it("(b) single user entry 16m old with continuous activity blocks", () => {
     const { stop } = setup("sb", "tb", [userStr(16), assistant(10), toolResult(5), assistant(1)]);
     const out = stop(true);
-    expect(out).toContain("implementer-escalation");
-    expect(out).toContain("groundwork:junior-orchestrator");
+    expect(out).toContain("stop-gate: budget");
+    expect(out).toContain("event append --type BUDGET");
   });
 
   it("(c) transcript absent: stale firstSeen dropped once id stops running", () => {
@@ -312,27 +269,27 @@ describe("stop-gate — escalation clock across resume", () => {
 
   it("(d) tool_result-only user entries do not reset the clock", () => {
     const { stop } = setup("sd", "td", [userStr(16), assistant(10), toolResult(1)]);
-    expect(stop(true)).toContain("implementer-escalation");
+    expect(stop(true)).toContain("stop-gate: budget");
   });
 
   for (const [name, text] of [["skill-load", "Base directory for this skill: /x"], ["notification", "[SYSTEM NOTIFICATION - NOT USER INPUT] bg done"], ["stop-hook", "Stop hook feedback: keep going"]]) {
     it(`(e) mid-run meta entry (${name}) 8m ago does not reset the clock`, () => {
       const { stop } = setup(`se-${name}`, `te-${name}`, [userStr(20), assistant(19.9), toolUse(15, "b1", "Bash"), resultFor(14.9, "b1"), meta(8, text), assistant(7), toolResult(1)]);
-      expect(stop(true)).toContain("implementer-escalation");
+      expect(stop(true)).toContain("stop-gate: budget");
     });
   }
 
-  it("(f) long Bash gap (tool_use T-10m, tool_result T-6m) in 16m run nudges", () => {
+  it("(f) long Bash gap (tool_use T-10m, tool_result T-6m) in 16m run blocks", () => {
     const { stop } = setup("sf", "tf", [userStr(16), assistant(15), toolUse(10, "b2", "Bash"), resultFor(6, "b2"), assistant(1)]);
-    expect(stop(true)).toContain("implementer-escalation");
+    expect(stop(true)).toContain("stop-gate: budget");
   });
 
-  it("(g) resumed run nudged before the resume is nudged again", () => {
+  it("(g) resumed run blocked before the resume is blocked again", () => {
     const { tmp, stop } = setup("sg", "tg", [userStr(40), assistant(38), toolUse(37.5, "h3", "SubagentHandback"), resultFor(37, "h3"), meta(17, COORD), assistant(10), toolResult(1)]);
     const stateFile = path.join(tmp, ".groundwork", "stop-gate.sg.escalate.json");
     mkdirSync(path.dirname(stateFile), { recursive: true });
     writeFileSync(stateFile, JSON.stringify({ firstSeen: { tg: iso(40) }, nudged: ["tg"] }));
-    expect(stop(true)).toContain("implementer-escalation");
+    expect(stop(true)).toContain("stop-gate: budget");
   });
 
   // Pad lines push the transcript past the 1 MiB tail cap.
@@ -340,7 +297,7 @@ describe("stop-gate — escalation clock across resume", () => {
 
   it("(h) head-line fallback: no boundary in small transcript uses first entry", () => {
     const { stop } = setup("sh", "th", [userStr(16), assistant(10), assistant(1)]);
-    expect(stop(true)).toContain("implementer-escalation");
+    expect(stop(true)).toContain("stop-gate: budget");
   });
 
   it("(i) boundary within the tail cap is found in a large transcript", () => {
@@ -349,10 +306,10 @@ describe("stop-gate — escalation clock across resume", () => {
     expect(stop(true)).toBeNull();
   });
 
-  it("(j) boundary 5m ago beyond the cap falls back to head line (40m): nudges only because of the cap", () => {
+  it("(j) boundary 5m ago beyond the cap falls back to head line (40m): blocks only because of the cap", () => {
     const lines = [userStr(40), assistant(39), toolUse(7, "h8", "SubagentHandback"), resultFor(6.5, "h8"), meta(5, COORD),
       ...[4.9, 4.8, 4.7, 4.6, 4.5, 4.4, 4.3].map(pad), assistant(1)];
     const { stop } = setup("sj", "tj", lines);
-    expect(stop(true)).toContain("implementer-escalation");
+    expect(stop(true)).toContain("stop-gate: budget");
   });
 });

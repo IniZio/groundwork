@@ -15,9 +15,20 @@ export function parseBudget(prompt: string | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export interface BudgetDecision { task: string; action: "stop" | "extend"; minutes: number }
+export interface BudgetDecision {
+  task: string; action: "stop" | "extend"; minutes: number;
+  /** When the decision was recorded; null when unknown (such a decision is ignored). */
+  atMs: number | null;
+  /** Transcript decisions come from this session and may name the task by description; db rows persist across sessions and match by id only. */
+  sameSession: boolean;
+}
 
-function toDecision(raw: unknown): BudgetDecision | null {
+function parseMs(v: unknown): number | null {
+  const t = typeof v === "string" ? Date.parse(v) : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+
+function toDecision(raw: unknown, atMs: number | null, sameSession: boolean): BudgetDecision | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.task !== "string" || o.task.trim() === "") return null;
@@ -25,20 +36,20 @@ function toDecision(raw: unknown): BudgetDecision | null {
   let minutes = o.minutes;
   if (minutes === undefined && o.action === "stop") minutes = 0;
   if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes < 0) return null;
-  return { task: o.task, action: o.action, minutes };
+  return { task: o.task, action: o.action, minutes, atMs, sameSession };
 }
 
 export function readBudgetDecisionsFromDb(dbPath: string): BudgetDecision[] {
   try {
     const db = new Database(dbPath, { readonly: true });
     try {
-      const rows = db.query<{ payload: string }, []>(
-        "SELECT payload FROM events WHERE event_type = 'BUDGET' ORDER BY id ASC",
+      const rows = db.query<{ payload: string; created_at: string }, []>(
+        "SELECT payload, created_at FROM events WHERE event_type = 'BUDGET' ORDER BY id ASC",
       ).all();
       const out: BudgetDecision[] = [];
       for (const r of rows) {
         try {
-          const d = toDecision(JSON.parse(r.payload));
+          const d = toDecision(JSON.parse(r.payload), parseMs(r.created_at), false);
           if (d) out.push(d);
         } catch { /* skip malformed row */ }
       }
@@ -60,7 +71,7 @@ export function readBudgetDecisionsFromTranscript(transcriptPath: string): Budge
     for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
       if (!line.includes("event append")) continue;
       try {
-        const e = JSON.parse(line) as { type?: unknown; message?: { content?: unknown } };
+        const e = JSON.parse(line) as { type?: unknown; timestamp?: unknown; message?: { content?: unknown } };
         if (e.type !== "assistant" || !Array.isArray(e.message?.content)) continue;
         for (const b of e.message.content as Record<string, unknown>[]) {
           if (!b || b.type !== "tool_use" || b.name !== "Bash") continue;
@@ -71,7 +82,7 @@ export function readBudgetDecisionsFromTranscript(transcriptPath: string): Budge
           // Inside double quotes the shell turns \" and \\ into the bare character.
           const json = m[1] ?? (m[2] ?? "").replace(/\\(["\\$`])/g, "$1");
           try {
-            const d = toDecision(JSON.parse(json));
+            const d = toDecision(JSON.parse(json), parseMs(e.timestamp), true);
             if (d) out.push(d);
           } catch { /* skip unparseable --data */ }
         }
@@ -119,14 +130,16 @@ export interface BudgetBreach { id: string; description: string; elapsedMin: num
 export function evaluateBudgets(tasks: BudgetTask[], decisions: BudgetDecision[], nowMs: number): BudgetBreach[] {
   const breaches: BudgetBreach[] = [];
   for (const t of tasks) {
-    let budgetMin = parseBudget(t.prompt) ?? DEFAULT_BUDGET_MIN;
+    const baseMin = parseBudget(t.prompt) ?? DEFAULT_BUDGET_MIN;
+    let budgetMin = baseMin;
     let extended = false;
     let stopped = false;
     for (const d of decisions) {
+      if (d.atMs === null || d.atMs < t.startMs) continue;
       const key = d.task.trim();
-      if (key !== t.id && key !== t.description.trim()) continue;
+      if (key !== t.id && !(d.sameSession && key === t.description.trim())) continue;
       if (d.action === "stop") { stopped = true; break; }
-      if (!extended) { budgetMin += d.minutes; extended = true; }
+      if (!extended) { budgetMin += Math.min(d.minutes, baseMin); extended = true; }
     }
     if (stopped) continue;
     const elapsedMin = Math.floor((nowMs - t.startMs) / 60000);
@@ -138,7 +151,9 @@ export function evaluateBudgets(tasks: BudgetTask[], decisions: BudgetDecision[]
 export function budgetBlockReason(breaches: BudgetBreach[]): string {
   const lines = breaches.map(b =>
     `budget: task ${b.id} ("${b.description}") has run ${b.elapsedMin} min, over its ${b.budgetMin} min budget.` +
-    (b.extended ? " It was already extended once; only a \"stop\" decision clears this block." : ""));
+    (b.extended
+      ? " It was already extended once; only a \"stop\" decision clears this block."
+      : ` To extend: extend adds up to ${b.budgetMin} minutes once.`));
   const first = breaches[0]?.id ?? "<id>";
   return [
     "stop-gate: " + lines[0],

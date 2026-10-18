@@ -36,12 +36,12 @@ describe("parseBudget", () => {
   it("default is 15", () => expect(DEFAULT_BUDGET_MIN).toBe(15));
 });
 
-function budgetDb(rows: string[]): string {
+function budgetDb(rows: string[], at = "2026-01-01T00:00:00Z"): string {
   const p = path.join(TMP, `work-${Math.random().toString(36).slice(2)}.db`);
   const db = new Database(p);
   runMigrations(db, MIGRATIONS);
   db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('OTHER','{}','2026-01-01T00:00:00Z')");
-  for (const r of rows) db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('BUDGET',?,'2026-01-01T00:00:00Z')", [r]);
+  for (const r of rows) db.run("INSERT INTO events (event_type,payload,created_at) VALUES ('BUDGET',?,?)", [r, at]);
   db.close();
   return p;
 }
@@ -58,16 +58,17 @@ describe("readBudgetDecisionsFromDb", () => {
       JSON.stringify({ task: " b3 ", action: "stop" }),
     ]);
     expect(readBudgetDecisionsFromDb(p)).toEqual([
-      { task: "a1b2", action: "extend", minutes: 20 },
-      { task: " b3 ", action: "stop", minutes: 0 },
+      { task: "a1b2", action: "extend", minutes: 20, atMs: Date.parse("2026-01-01T00:00:00Z"), sameSession: false },
+      { task: " b3 ", action: "stop", minutes: 0, atMs: Date.parse("2026-01-01T00:00:00Z"), sameSession: false },
     ]);
   });
   it("returns [] for a missing db", () => expect(readBudgetDecisionsFromDb(path.join(TMP, "nope.db"))).toEqual([]));
 });
 
 describe("readBudgetDecisionsFromTranscript", () => {
+  const TS = "2026-01-01T11:00:00Z";
   const bash = (command: string) => JSON.stringify({
-    type: "assistant", message: { content: [{ type: "text", text: "ok" }, { type: "tool_use", name: "Bash", input: { command } }] },
+    type: "assistant", timestamp: TS, message: { content: [{ type: "text", text: "ok" }, { type: "tool_use", name: "Bash", input: { command } }] },
   });
   it("extracts quoted --data in transcript order", () => {
     const p = path.join(TMP, "main.jsonl");
@@ -80,8 +81,8 @@ describe("readBudgetDecisionsFromTranscript", () => {
       "garbage line",
     ].join("\n"));
     expect(readBudgetDecisionsFromTranscript(p)).toEqual([
-      { task: "a1b2", action: "extend", minutes: 20 },
-      { task: "a1b2", action: "stop", minutes: 0 },
+      { task: "a1b2", action: "extend", minutes: 20, atMs: Date.parse(TS), sameSession: true },
+      { task: "a1b2", action: "stop", minutes: 0, atMs: Date.parse(TS), sameSession: true },
     ]);
   });
   it("returns [] for a missing file", () => expect(readBudgetDecisionsFromTranscript(path.join(TMP, "nope.jsonl"))).toEqual([]));
@@ -108,7 +109,8 @@ describe("readDispatchPrompt", () => {
 });
 
 describe("evaluateBudgets", () => {
-  const d = (action: "stop" | "extend", minutes = 0, t = "a1b2"): BudgetDecision => ({ task: t, action, minutes });
+  const d = (action: "stop" | "extend", minutes = 0, t = "a1b2", over: Partial<BudgetDecision> = {}): BudgetDecision =>
+    ({ task: t, action, minutes, atMs: minsAgo(5), sameSession: true, ...over });
   it("no breach under default budget", () => expect(evaluateBudgets([task()], [], NOW)).toEqual([]));
   it("no breach exactly at budget", () => expect(evaluateBudgets([task({ startMs: minsAgo(15) })], [], NOW)).toEqual([]));
   it("breach over default budget", () => {
@@ -123,21 +125,43 @@ describe("evaluateBudgets", () => {
   });
   it("stop clears", () => expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop")], NOW)).toEqual([]));
   it("extend moves the budget", () => {
-    const t = task({ startMs: minsAgo(30) });
-    expect(evaluateBudgets([t], [d("extend", 20)], NOW)).toEqual([]);
-    expect(evaluateBudgets([{ ...t, startMs: minsAgo(40) }], [d("extend", 20)], NOW)).toEqual([
-      { id: "a1b2", description: "Implement widget", elapsedMin: 40, budgetMin: 35, extended: true },
+    const t = task({ startMs: minsAgo(20) });
+    expect(evaluateBudgets([t], [d("extend", 10)], NOW)).toEqual([]);
+    expect(evaluateBudgets([{ ...t, startMs: minsAgo(40) }], [d("extend", 10)], NOW)).toEqual([
+      { id: "a1b2", description: "Implement widget", elapsedMin: 40, budgetMin: 25, extended: true },
     ]);
   });
   it("second extend is ignored", () => {
-    const r = evaluateBudgets([task({ startMs: minsAgo(40) })], [d("extend", 20), d("extend", 60)], NOW);
+    const r = evaluateBudgets([task({ startMs: minsAgo(40) })], [d("extend", 10), d("extend", 60)], NOW);
     expect(r).toHaveLength(1);
-    expect(r[0]).toMatchObject({ budgetMin: 35, extended: true });
+    expect(r[0]).toMatchObject({ budgetMin: 25, extended: true });
   });
   it("stop after extend clears", () =>
     expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("extend", 20), d("stop")], NOW)).toEqual([]));
   it("matches by trimmed description", () =>
     expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop", 0, "  Implement widget ")], NOW)).toEqual([]));
+  it("a stop from before the run start does not clear a resumed run", () => {
+    const t = task({ startMs: minsAgo(20) });
+    expect(evaluateBudgets([t], [d("stop", 0, "a1b2", { atMs: minsAgo(60) })], NOW)).toHaveLength(1);
+  });
+  it("a decision without a timestamp is ignored", () =>
+    expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop", 0, "a1b2", { atMs: null })], NOW)).toHaveLength(1));
+  it("an extend before the resume does not carry over", () => {
+    const r = evaluateBudgets([task({ startMs: minsAgo(20) })], [d("extend", 20, "a1b2", { atMs: minsAgo(60) })], NOW);
+    expect(r[0]).toMatchObject({ budgetMin: 15, extended: false });
+  });
+  it("db stop keyed by description does not clear", () =>
+    expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop", 0, "Implement widget", { sameSession: false })], NOW)).toHaveLength(1));
+  it("db stop keyed by id clears", () =>
+    expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop", 0, "a1b2", { sameSession: false })], NOW)).toEqual([]));
+  it("extend adds at most the original budget", () => {
+    const r = evaluateBudgets([task({ startMs: minsAgo(40) })], [d("extend", 100000)], NOW);
+    expect(r[0]).toMatchObject({ budgetMin: 30, extended: true });
+  });
+  it("extend cap uses the declared budget", () => {
+    const r = evaluateBudgets([task({ prompt: "budget: 40m\nx", startMs: minsAgo(100) })], [d("extend", 100000)], NOW);
+    expect(r[0]).toMatchObject({ budgetMin: 80 });
+  });
   it("ignores decisions for other tasks", () =>
     expect(evaluateBudgets([task({ startMs: minsAgo(90) })], [d("stop", 0, "other")], NOW)).toHaveLength(1));
 });
@@ -150,6 +174,7 @@ describe("budgetBlockReason", () => {
     expect(m).toContain(`budget: task a1b2 ("Implement widget") has run 40 min, over its 35 min budget.`);
     expect(m).toContain("event append --type BUDGET");
     expect(m).toContain(`"task":"a1b2"`);
+    expect(m).toContain("extend adds up to 35 minutes once");
   });
   it("says extended breaches need a stop", () => {
     expect(budgetBlockReason([{ ...b, extended: true }])).toContain("already extended once");

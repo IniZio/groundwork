@@ -25,20 +25,24 @@ export const SLOW_OPS: SlowOp[] = [
   { name: "crabbox warmup", match: (w) => sub(w, "crabbox", ["warmup"]) },
   { name: "crabbox run", match: (w) => sub(w, "crabbox", ["run"]) },
   { name: "docker build", match: (w) => sub(w, "docker", ["build"]) },
+  { name: "docker build", match: (w) => base(w[0]) === "docker" && ["buildx", "compose"].includes(w[1] ?? "") && w.slice(2).includes("build") },
+  { name: "docker build", match: (w) => base(w[0]) === "docker-compose" && w.slice(1).includes("build") },
   { name: "npx agent37", match: (w) => base(w[0]) === "npx" && w.slice(1, 3).includes("agent37") },
   { name: "ssh", match: (w) => base(w[0]) === "ssh" },
   { name: "scp", match: (w) => base(w[0]) === "scp" },
   { name: "wait loop", match: (w, c) => c.inWaitLoop && ["sleep", "pgrep"].includes(base(w[0])) },
 ];
 
+interface Segment { words: string[]; bg: boolean }
+
 /** Splits into simple-command segments of words; quoted text stays inside one word. */
-function segments(cmd: string): string[][] {
-  const out: string[][] = [];
+function segments(cmd: string): Segment[] {
+  const out: Segment[] = [];
   let words: string[] = [];
   let cur = "";
   let has = false;
   const endWord = () => { if (has) words.push(cur); cur = ""; has = false; };
-  const endSeg = () => { endWord(); if (words.length) out.push(words); words = []; };
+  const endSeg = (bg = false) => { endWord(); if (words.length) out.push({ words, bg }); words = []; };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i]!;
     if (c === "'") {
@@ -54,7 +58,13 @@ function segments(cmd: string): string[][] {
       has = true;
     } else if (c === "\\" && i + 1 < cmd.length) {
       cur += cmd[++i]; has = true;
-    } else if (";&|\n()`".includes(c)) {
+    } else if (c === "&") {
+      // A lone `&` backgrounds the segment; `&&`, `2>&1` and `&>` do not.
+      const next = cmd[i + 1];
+      const prev = cmd[i - 1];
+      if (next === "&") { endSeg(); i++; }
+      else endSeg(next !== ">" && prev !== ">" && prev !== "<");
+    } else if (";|\n()`".includes(c)) {
       endSeg();
     } else if (c === " " || c === "\t") {
       endWord();
@@ -80,16 +90,19 @@ function stripPrefixes(words: string[]): string[] {
   return w;
 }
 
-function isTimeoutWrapped(words: string[]): boolean {
-  if (base(words[0]) !== "timeout") return false;
+/** Parses `timeout [flags] <dur> cmd…`; `rest` is the command after the flags (and the duration, if present). */
+function parseTimeout(words: string[]) {
   let i = 1;
   while (i < words.length && words[i]!.startsWith("-")) i += TIMEOUT_ARG_FLAGS.has(words[i]!) ? 2 : 1;
-  return /^\d+(\.\d+)?[smhd]?$/.test(words[i] ?? "") && i + 1 < words.length;
+  const hasDuration = /^\d+(\.\d+)?[smhd]?$/.test(words[i] ?? "");
+  return { hasDuration, rest: words.slice(hasDuration ? i + 1 : i) };
 }
+
+const HELP_FLAGS = new Set(["--help", "-h", "-V", "--version"]);
 
 function findSlowOp(cmd: string): string | null {
   const loops: string[] = [];
-  for (const seg of segments(cmd)) {
+  for (const { words: seg, bg } of segments(cmd)) {
     let w = seg;
     while (w.length && LEADING_KEYWORDS.has(w[0]!)) w = w.slice(1);
     if (w[0] === "done") { loops.pop(); continue; }
@@ -101,8 +114,15 @@ function findSlowOp(cmd: string): string | null {
       loops.push("for");
       continue;
     }
+    if (bg) continue;
+    if (base(w[0]) === "command" && w.includes("-v")) continue;
     w = stripPrefixes(w);
-    if (!w.length || isTimeoutWrapped(w)) continue;
+    if (base(w[0]) === "timeout") {
+      const t = parseTimeout(w);
+      if (t.hasDuration) continue;
+      w = stripPrefixes(t.rest);
+    }
+    if (!w.length || w.some((x) => HELP_FLAGS.has(x))) continue;
     const ctx = { inWaitLoop: loops.includes("wait") };
     const hit = SLOW_OPS.find((op) => op.match(w, ctx));
     if (hit) return hit.name;

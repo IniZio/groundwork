@@ -45,6 +45,13 @@ const DENY: Array<[string, string]> = [
   ["while ! pgrep x; do sleep 5; done", "wait loop"],
   ["until curl -s u; do sleep 2; done", "wait loop"],
   ["timeout 600 echo a; ssh h ls", "ssh"],
+  ["timeout moor start x", "moor start"],
+  ["timeout -k 5 moor run x", "moor run"],
+  ["docker buildx build .", "docker build"],
+  ["docker compose build", "docker build"],
+  ["docker-compose build", "docker build"],
+  ["ssh h uptime && echo done", "ssh"],
+  ["ssh h 2>&1", "ssh"],
 ];
 
 const PASS = [
@@ -63,6 +70,20 @@ const PASS = [
   "while read l; do echo $l; done < f",
   'echo "ssh later"',
   'git commit -m "moor run fix"',
+  "timeout 10m ssh h",
+  "timeout 1.5h docker build .",
+  "moor start --help",
+  "ssh -V",
+  "docker build --help",
+  "docker build --version",
+  "ssh -h",
+  "command -v ssh",
+  "type ssh",
+  "which ssh",
+  "moor run x &",
+  "ssh h uptime & echo started",
+  "docker buildx ls",
+  "docker compose ps",
 ];
 
 describe("slow-command-timeout-guard", () => {

@@ -43,11 +43,11 @@ flowchart LR
 The spawn-model-guard also refuses to dispatch implementation agents (implementer, junior-orchestrator, designer) until the charter and spec are approved, when the work unit has a drafted PR body, which is the human record of the change. It allows the spawn when the store is absent or the check errors.
 ### Slow commands
 
-The slow-command-timeout-guard denies a foreground Bash call to a slow or remote operation (`moor start|run|close`, `crabbox warmup|run`, `docker build`, `npx agent37`, `ssh`, `scp`, and `while`/`until` wait loops containing `sleep` or `pgrep`). The call passes if it runs in the background or is wrapped in `timeout <dur>`, for example `timeout 600 …`.
+The slow-command-timeout-guard denies a foreground Bash call to a slow or remote operation (`moor start|run|close`, `crabbox warmup|run`, `docker build`, `npx agent37`, `ssh`, `scp`, and `while`/`until` wait loops containing `sleep` or `pgrep`). The call passes if it runs in the background or is wrapped in `timeout <dur>`, for example `timeout 600 …`; `timeout` must be followed by a duration. A trailing `&` counts as background, help/version forms (`--help`, `-V`, `command -v`) pass, and `docker buildx build` and `docker compose build` count as slow. Known gap: the guard does not look inside wrappers such as `sudo -u <user>`, `nice`, `bash -c '…'`, `xargs`, or `rsync -e ssh`.
 
 ### Time budget
 
-A background child gets 15 minutes by default. An Agent prompt can set another limit with `budget: <N>m` on its first line. When a running child exceeds its budget, stop-gate blocks and names the task, the elapsed minutes and the budget. Only a recorded BUDGET event clears the block: `stop`, or `extend` by N minutes. Each task can be extended once; after that only `stop` clears it. The four-block release below does not apply to this block, and SubagentStop is not budget-gated.
+A background child gets 15 minutes by default. An Agent prompt can set another limit with `budget: <N>m` on its first line. When a running child exceeds its budget, stop-gate blocks and names the task, the elapsed minutes and the budget. Only a recorded BUDGET event clears the block: `stop`, or `extend` by N minutes. Each task can be extended once; after that only `stop` clears it. An extend adds at most the task's original budget. A decision only counts for the task's current run, so a resumed child gets a fresh budget and one fresh extend. Decisions in the work store match by task id only; matching by description works only within the current session. The four-block release below does not apply to this block, and SubagentStop is not budget-gated.
 
 ### Block bounds
 

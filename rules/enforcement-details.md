@@ -11,6 +11,12 @@ Human summary: `doc/enforcement-scope.md`.
 
 - Sidecar counter file: `.groundwork/stop-gate.<session_id>.count`.
 - Attempt 1-2: normal block message naming `gw slice complete <id>` and `gw hold set`.
+- Budget block: an Agent prompt may start with `budget: <N>m` on its first line (default 15). When a running background child exceeds it, Stop blocks with the task, elapsed minutes and budget. It clears only on `$GW event append --type BUDGET --data '{"task":"<id or description>","action":"stop"|"extend","minutes":N,"reason":"<measured reason>"}'`. `extend` adds N minutes once per task; after that only `stop` clears it. The 4-block release does not apply. SubagentStop is not budget-gated.
+
+## slow-command-timeout-guard
+
+- PreToolUse Bash. Denies a foreground call to `moor start|run|close`, `crabbox warmup|run`, `docker build`, `npx agent37`, `ssh`, `scp`, or a `while`/`until` loop with `sleep` or `pgrep`.
+- Allowed when the call uses run_in_background or is wrapped in `timeout <dur>`. Wrap it in `timeout 600 …`, or run it in the background with a Monitor until-condition.
 
 ## Working tier
 

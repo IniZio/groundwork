@@ -31,6 +31,7 @@ flowchart LR
 | Hook | Event | Output |
 |---|---|---|
 | piped-exit-code-guard | PreToolUse (Bash) | deny with reason |
+| slow-command-timeout-guard | PreToolUse (Bash) | deny with reason |
 | spawn-model-guard | PreToolUse | deny, or allow with optional `updatedInput` |
 | store-write-guard | PreToolUse | deny, or empty output to allow |
 | prose-quality-guard | PostToolUse | `additionalContext` only |
@@ -40,6 +41,14 @@ flowchart LR
 ### Spawn guard
 
 The spawn-model-guard also refuses to dispatch implementation agents (implementer, junior-orchestrator, designer) until the charter and spec are approved, when the work unit has a drafted PR body, which is the human record of the change. It allows the spawn when the store is absent or the check errors.
+### Slow commands
+
+The slow-command-timeout-guard denies a foreground Bash call to a slow or remote operation (`moor start|run|close`, `crabbox warmup|run`, `docker build`, `npx agent37`, `ssh`, `scp`, and `while`/`until` wait loops containing `sleep` or `pgrep`). The call passes if it runs in the background or is wrapped in `timeout <dur>`, for example `timeout 600 …`.
+
+### Time budget
+
+A background child gets 15 minutes by default. An Agent prompt can set another limit with `budget: <N>m` on its first line. When a running child exceeds its budget, stop-gate blocks and names the task, the elapsed minutes and the budget. Only a recorded BUDGET event clears the block: `stop`, or `extend` by N minutes. Each task can be extended once; after that only `stop` clears it. The four-block release below does not apply to this block, and SubagentStop is not budget-gated.
+
 ### Block bounds
 
 - **stop-gate** releases after four consecutive blocks. Blocks 1 and 2 name the fix. Block 3 says the problem is externally unresolvable. Block 4 allows the stop with a stderr warning and resets the counter. A HOLD event with no later HOLD_CLEAR allows at once, because a human hold is a legitimate stop.

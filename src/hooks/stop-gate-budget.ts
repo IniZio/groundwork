@@ -125,7 +125,7 @@ export function readDispatchPrompt(transcriptPath: string, sessionId: string, ta
 }
 
 export interface BudgetTask { id: string; description: string; prompt: string | null; startMs: number }
-export interface BudgetBreach { id: string; description: string; elapsedMin: number; budgetMin: number; extended: boolean }
+export interface BudgetBreach { id: string; description: string; elapsedSec: number; budgetMin: number; extended: boolean }
 
 export function evaluateBudgets(tasks: BudgetTask[], decisions: BudgetDecision[], nowMs: number): BudgetBreach[] {
   const breaches: BudgetBreach[] = [];
@@ -142,15 +142,23 @@ export function evaluateBudgets(tasks: BudgetTask[], decisions: BudgetDecision[]
       if (!extended) { budgetMin += Math.min(d.minutes, baseMin); extended = true; }
     }
     if (stopped) continue;
-    const elapsedMin = Math.floor((nowMs - t.startMs) / 60000);
-    if (elapsedMin > budgetMin) breaches.push({ id: t.id, description: t.description, elapsedMin, budgetMin, extended });
+    const elapsedMs = nowMs - t.startMs;
+    if (elapsedMs > budgetMin * 60000) {
+      breaches.push({ id: t.id, description: t.description, elapsedSec: Math.floor(elapsedMs / 1000), budgetMin, extended });
+    }
   }
   return breaches;
 }
 
+function fmtElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m === 0 ? `${s}s` : s === 0 ? `${m}m` : `${m}m${s}s`;
+}
+
 export function budgetBlockReason(breaches: BudgetBreach[]): string {
   const lines = breaches.map(b =>
-    `budget: task ${b.id} ("${b.description}") has run ${b.elapsedMin} min, over its ${b.budgetMin} min budget.` +
+    `budget: task ${b.id} ("${b.description}") has run ${fmtElapsed(b.elapsedSec)}, over its ${b.budgetMin}m budget.` +
     (b.extended
       ? " It was already extended once; only a \"stop\" decision clears this block."
       : ` To extend: extend adds up to ${b.budgetMin} minutes once.`));

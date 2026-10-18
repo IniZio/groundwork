@@ -69,8 +69,8 @@ describe("stop-gate — budget block", () => {
     const reason = stop()!;
     expect(reason).not.toBeNull();
     expect(reason).toContain("tk1");
-    expect(reason).toContain("20 min");
-    expect(reason).toContain("15 min");
+    expect(reason).toContain("20m");
+    expect(reason).toContain("15m");
     expect(reason).toContain("event append --type BUDGET");
   });
 
@@ -81,7 +81,7 @@ describe("stop-gate — budget block", () => {
 
   it("a budget line on line 2 is ignored and the default applies", () => {
     const { stop } = setup("s3", "tk3", [userEntry(20, "implement the thing\nbudget: 40m"), assistantEntry(1)]);
-    expect(stop()).toContain("15 min");
+    expect(stop()).toContain("15m");
   });
 
   it("a child under budget is not blocked", () => {
@@ -115,7 +115,7 @@ describe("stop-gate — budget block", () => {
     old.addDecision("extend", 10);
     const reason = old.stop()!;
     expect(reason).toContain("already extended");
-    expect(reason).toContain("25 min");
+    expect(reason).toContain("25m");
   });
 
   it("transcript extend 10 (Bash tool_use in the main transcript) behaves the same", () => {
@@ -129,7 +129,7 @@ describe("stop-gate — budget block", () => {
     const { stop, addDecision } = setup("s10", "tk10", [userEntry(30, "go"), assistantEntry(1)], { withDb: true });
     addDecision("extend", 10);
     addDecision("extend", 30);
-    expect(stop()).toContain("25 min");
+    expect(stop()).toContain("25m");
   });
 
   it("stop clears the breach", () => {

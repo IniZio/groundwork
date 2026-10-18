@@ -113,9 +113,11 @@ describe("evaluateBudgets", () => {
     ({ task: t, action, minutes, atMs: minsAgo(5), sameSession: true, ...over });
   it("no breach under default budget", () => expect(evaluateBudgets([task()], [], NOW)).toEqual([]));
   it("no breach exactly at budget", () => expect(evaluateBudgets([task({ startMs: minsAgo(15) })], [], NOW)).toEqual([]));
+  it("breaches a 1m budget after 88 s (live rehearsal)", () =>
+    expect(evaluateBudgets([task({ prompt: "budget: 1m\n\nx", startMs: NOW - 88_000 })], [], NOW)).toHaveLength(1));
   it("breach over default budget", () => {
     expect(evaluateBudgets([task({ startMs: minsAgo(16) })], [], NOW)).toEqual([
-      { id: "a1b2", description: "Implement widget", elapsedMin: 16, budgetMin: 15, extended: false },
+      { id: "a1b2", description: "Implement widget", elapsedSec: 960, budgetMin: 15, extended: false },
     ]);
   });
   it("uses the declared budget", () => {
@@ -128,7 +130,7 @@ describe("evaluateBudgets", () => {
     const t = task({ startMs: minsAgo(20) });
     expect(evaluateBudgets([t], [d("extend", 10)], NOW)).toEqual([]);
     expect(evaluateBudgets([{ ...t, startMs: minsAgo(40) }], [d("extend", 10)], NOW)).toEqual([
-      { id: "a1b2", description: "Implement widget", elapsedMin: 40, budgetMin: 25, extended: true },
+      { id: "a1b2", description: "Implement widget", elapsedSec: 2400, budgetMin: 25, extended: true },
     ]);
   });
   it("second extend is ignored", () => {
@@ -167,14 +169,17 @@ describe("evaluateBudgets", () => {
 });
 
 describe("budgetBlockReason", () => {
-  const b = { id: "a1b2", description: "Implement widget", elapsedMin: 40, budgetMin: 35, extended: false };
+  const b = { id: "a1b2", description: "Implement widget", elapsedSec: 2400, budgetMin: 35, extended: false };
   it("names task, elapsed, budget and the command", () => {
     const m = budgetBlockReason([b]);
     expect(m.startsWith("stop-gate: ")).toBe(true);
-    expect(m).toContain(`budget: task a1b2 ("Implement widget") has run 40 min, over its 35 min budget.`);
+    expect(m).toContain(`budget: task a1b2 ("Implement widget") has run 40m, over its 35m budget.`);
     expect(m).toContain("event append --type BUDGET");
     expect(m).toContain(`"task":"a1b2"`);
     expect(m).toContain("extend adds up to 35 minutes once");
+  });
+  it("shows elapsed seconds precisely", () => {
+    expect(budgetBlockReason([{ ...b, elapsedSec: 88, budgetMin: 1 }])).toContain("has run 1m28s, over its 1m budget.");
   });
   it("says extended breaches need a stop", () => {
     expect(budgetBlockReason([{ ...b, extended: true }])).toContain("already extended once");

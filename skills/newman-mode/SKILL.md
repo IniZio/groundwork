@@ -69,6 +69,10 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 ## Subagents and sessions
 
 - You are the coordinator. Delegate implementation to subagents, then review their diffs for coupling to one vendor or harness before you accept them. Use `/pstack:swarm` for parallel work. Brief them per `references/briefs.md`.
+- Route by model tier. Opus (poteto-agent) for judgment and nontrivial code. Sonnet for search and mechanical leaves. Haiku for clerk work whose every input is decided.
+  - Search: `Explore`, which a hook runs on sonnet. Fan out one Explore per independent question or partition (directory, failure class, symbol family), all in one message. One Explore for a broad sweep is a miss.
+  - Mechanical leaves: brief each poteto-agent to fan its mechanical leaves out to `groundwork:junior`, one per file set, and to prove any "pre-existing" failure a junior hands back against base. Only poteto-agent may spawn a junior. A hook denies everyone else.
+  - Clerk work: `groundwork:git` for commits, branches, pushes and PRs with paths and messages you give it. `groundwork:tracker` for Linear or GitHub issue operations whose fields you give it. Rebases, conflicts, partial staging and issue prose stay with you.
 - Brief workers to run long suites in the foreground under `timeout` and hand back only with results. Don't resume an agent that is waiting on a background job: it hands back "still waiting" each time. Watch the job yourself or give the finish to a fresh agent.
 - For questions about another project (a plugin, a provider, a tool the user owns), message that project's Claude session with `SendMessage`. Check that you picked the right session. Send friction with a tool or skill to its owning session as a triage item. Don't work around it silently.
 

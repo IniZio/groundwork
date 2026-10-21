@@ -221,7 +221,7 @@ describe("AC6 entry point — real registry and subprocess parity", () => {
 
     const ctx = safeContext(r);
     expect(ctx).not.toBeNull();
-    expect(ctx!).toContain("groundwork comment-density: removed");
+    expect(ctx!).toContain("house-rules comment-density: removed");
   });
 
   it("(b) subprocess stdin: same payload gives updatedInput with fewer comment lines", () => {
@@ -259,6 +259,6 @@ describe("AC6 entry point — real registry and subprocess parity", () => {
 
     const ctx = safeContext({ stdout: proc.stdout ?? "" });
     expect(ctx).not.toBeNull();
-    expect(ctx!).toContain("groundwork comment-density: removed");
+    expect(ctx!).toContain("house-rules comment-density: removed");
   });
 });

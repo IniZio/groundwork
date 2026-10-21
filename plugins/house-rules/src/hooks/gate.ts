@@ -320,7 +320,7 @@ export async function run(
     const DFOOTERBASE = "Remove comments that restate the code; keep only one-line \"why\" comments, until each file is at or under 5/100. Deleting or rewording a comment that predates the session is not an acceptable fix. Then stop again.";
     const DFOOTER_DENSITY_BOTH = DFOOTERBASE.slice(0, -" Then stop again.".length);
     const MERGE_ADVICE = "Merge the coexisting directories or move/delete the scratch file.";
-    const MANIFEST_ADVICE = "Move the file to the path named above, fix its frontmatter/headings, or record decisions with $GW event append --type DECISION.";
+    const MANIFEST_ADVICE = "Move the file to the path named above or fix its frontmatter/headings.";
     const isManifest = (m: string) => m.startsWith("artifact-structure:");
     const hasManifest = strayErrors.some(f => isManifest(f.message));
     const hasLegacy = strayErrors.some(f => !isManifest(f.message));

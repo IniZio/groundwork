@@ -35,7 +35,6 @@ export const URL_RE = /^https?:\/\/\S+$/;
 const DIVIDER_RE = /^(?:[─-╿━═]{2,}|[-=#*~_]{4,})$/u;
 // go/doc treats any [A-Z]{2,}(uid): as a note marker (TODO, BUG, FIXME, NOTE, XXX, HACK…)
 export const NOTE_MARKER_RE = /^[A-Z]{2,}\([^)]+\)/;
-const GW_RULE_RE = /^groundwork-rule:/;
 
 function isExemptInner(inner: string): boolean {
   if (
@@ -43,8 +42,7 @@ function isExemptInner(inner: string): boolean {
     REGION_RE.test(inner) ||
     URL_RE.test(inner) ||
     DIVIDER_RE.test(inner) ||
-    NOTE_MARKER_RE.test(inner) ||
-    GW_RULE_RE.test(inner)
+    NOTE_MARKER_RE.test(inner)
   ) return true;
   return false;
 }

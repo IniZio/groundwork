@@ -168,7 +168,7 @@ describe("GO-T4 AC1: Go autofix preview — no write, shadow log written", () =>
     expect(sha256(fp)).toBe(hashBefore);
 
     // Positive control: shadow file exists and has ≥1 record
-    const shadowFile = path.join(shadowTmpDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+    const shadowFile = path.join(shadowTmpDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
     expect(existsSync(shadowFile)).toBe(true);
     const rawLines = readFileSync(shadowFile, "utf8").split("\n").filter(l => l.trim());
     expect(rawLines.length).toBeGreaterThanOrEqual(1);

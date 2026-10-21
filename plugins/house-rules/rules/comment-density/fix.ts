@@ -236,7 +236,7 @@ async function gateFix(ctx: RuleContext, opts: FixOptions): Promise<FixResult> {
       const densityAfter = d2.ok && d2.total > 0 ? d2.effective / d2.total * 100 : 0;
       const shadowBase = caller.shadowDir ?? os.tmpdir();
       try {
-        const dir = path.join(shadowBase, 'groundwork-autofix-shadow');
+        const dir = path.join(shadowBase, 'house-rules-autofix-shadow');
         mkdirSync(dir, { recursive: true });
         appendFileSync(path.join(dir, `${sessionId}.jsonl`), JSON.stringify({ file: absPath, lang, removedLines, densityBefore, densityAfter }) + '\n');
       } catch { /* fail-open */ }

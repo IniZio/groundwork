@@ -106,7 +106,6 @@ export const RUST_TOOL_MARKERS: readonly RegExp[] = [
 ];
 
 export const MAKE_TOOL_MARKERS: readonly RegExp[] = [
-  /^groundwork-rule:/,
   /^-\*-.*-\*-$/,
   /^vim?:/,
 ];

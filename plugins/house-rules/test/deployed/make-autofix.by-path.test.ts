@@ -45,18 +45,10 @@ const NARRATIVE = [
   "# narrative six: run the test target before publishing a new build anywhere",
 ];
 
-const KEPT = [
-  "# groundwork-rule: no-console-log",
-  "# groundwork-rule: no-ts-any",
-];
-
 const RECIPE_HASH = "\t# recipe hash line handed to the shell";
 
 function makefile(): string {
   return [
-    KEPT[0],
-    KEPT[1],
-    "",
     ...Array.from({ length: 20 }, (_, i) => `VAR_${i} = ${i}`),
     "",
     ...NARRATIVE,
@@ -74,14 +66,13 @@ function makefile(): string {
 }
 
 const SURVIVING_HASH_LINES = [
-  ...KEPT,
   "# body hash line inside define",
 ];
 
-describe("make guard: Write of over-budget Makefile strips narrative, keeps rules and hazards", () => {
+describe("make guard: Write of over-budget Makefile strips narrative, keeps hazards", () => {
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), "make-guard-"));
 
-  it("exit 0; narrative gone; groundwork-rule, define body, escaped hash, recipe hash survive", async () => {
+  it("exit 0; narrative gone; define body, escaped hash, recipe hash survive", async () => {
     const content = makefile();
     await assertParsesClean(content, "input");
     const { stdout, exit } = await spawnGuard(
@@ -115,7 +106,7 @@ describe("make gate: Stop autofix of over-budget Makefile fixes file on disk", (
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), "make-gate-"));
   const mkPath = path.join(tmpDir, "Makefile");
 
-  it("removes narrative from disk; markers survive; stdout reports autofix", async () => {
+  it("removes narrative from disk; stdout reports autofix", async () => {
     git(tmpDir, "init");
     git(tmpDir, "config", "user.email", "test@test.com");
     git(tmpDir, "config", "user.name", "Test");

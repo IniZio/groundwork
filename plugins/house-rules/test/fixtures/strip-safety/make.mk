@@ -3,8 +3,7 @@
 # Makefile for a small C project — strip-safety fixture.
 # Demonstrates variables, phony targets, pattern rules, and recipe comments.
 
-# groundwork-rule: no-console-log
-# groundwork-rule: no-ts-any
+# vim: set filetype=make:
 
 # Project identity
 PROJECT = myapp

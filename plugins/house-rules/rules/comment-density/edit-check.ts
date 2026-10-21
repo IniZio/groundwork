@@ -43,7 +43,7 @@ export function buildCtx(
 
   if (mode === "advisory") {
     return [
-      `groundwork comment-density: ${N} comment(s) in your ${displayTool} to ${filePath} were not stripped — could not map edit automatically.`,
+      `house-rules comment-density: ${N} comment(s) in your ${displayTool} to ${filePath} were not stripped — could not map edit automatically.`,
       `Why: code convention — at most 5 comment lines per 100 lines added this session. This file: ${A} lines added, ${C} comments already added, budget left before this edit: ${B}.`,
       `Would-be stripped:\n${rows}`,
       `These comments remain in the file as written. Remove them manually before your next Edit to this region.`,
@@ -52,9 +52,9 @@ export function buildCtx(
   }
 
   return [
-    `groundwork comment-density: removed ${N} comment(s) from your ${displayTool} to ${filePath} before it was applied.`,
+    `house-rules comment-density: removed ${N} comment(s) from your ${displayTool} to ${filePath} before it was applied.`,
     `Why: code convention — at most 5 comment lines per 100 lines added this session. This file: ${A} lines added, ${C} comments already added, budget left before this edit: ${B}.`,
-    `This is groundwork's automatic correction — not another session's edit, a merge, or a bug.`,
+    `This is house-rules automatic correction — not another session's edit, a merge, or a bug.`,
     `Removed:\n${rows}`,
     `The file will not contain these comments. Re-Read the file before your next Edit to this region; your old_string must match the corrected text.`,
     readdLine,
@@ -98,7 +98,7 @@ export async function commentDensityEditCheck(edit: PendingEdit, env: EditCheckE
     const reason = postFindResult.reason;
     return {
       findings: [],
-      notice: `groundwork comment-density: tree-sitter unavailable (${reason}) — advisory only`,
+      notice: `house-rules comment-density: tree-sitter unavailable (${reason}) — advisory only`,
       stderr: `[comment-density-guard] tree-sitter unavailable: ${reason}`,
     };
   }

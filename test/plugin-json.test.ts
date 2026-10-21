@@ -89,6 +89,15 @@ describe("plugin manifest parity", () => {
     expect(deps).toContainEqual({ name: "pstack", marketplace: "cursor-plugins" });
   });
 
+  it("marketplace.json groundwork entry keeps its name and root source", () => {
+    const marketplace = JSON.parse(
+      readFileSync(join(ROOT, ".claude-plugin/marketplace.json"), "utf8")
+    );
+    const groundwork = marketplace.plugins.find((p: { name: string }) => p.name === "groundwork");
+    expect(groundwork).toBeDefined();
+    expect(groundwork.source).toBe("./");
+  });
+
   it("every groundwork hook command points at a file in this repo", () => {
     expect(gwCmds.length).toBeGreaterThan(0);
     for (const cmd of gwCmds) {

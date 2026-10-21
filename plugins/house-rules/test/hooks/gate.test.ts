@@ -395,15 +395,6 @@ describe("AC6: fail-open", () => {
     expect(r.status).toBe(0);
   });
 
-  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — gate still acts on violations", () => {
-    const fp = makeViolatorTs(tmpDir, "v.ts");
-    const ts = new Date(Date.now() - 10000).toISOString();
-    const tp = makeTranscript(tmpDir, [fp], ts);
-    const r = runGate({ hook_event_name: "Stop", session_id: "ac6b", transcript_path: tp }, { GROUNDWORK_COMMENT_DENSITY: "0" });
-    expect(r.stdout.trim()).not.toBe("");
-    expect(r.stdout.trim()).not.toBe(JSON.stringify({ continue: true }));
-  });
-
   it("allows when transcript_path is missing", () => {
     const r = runGate({ hook_event_name: "Stop", session_id: "ac6c" });
     expect(parseOut(r.stdout).decision).not.toBe("block");
@@ -1015,7 +1006,7 @@ describe("S1-autofix-shadow", () => {
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
     expect(sha256(fp)).toBe(hashBefore);
-    const shadowFile = path.join(shadowTmpDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+    const shadowFile = path.join(shadowTmpDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
     expect(existsSync(shadowFile)).toBe(true);
     const firstLine = readFileSync(shadowFile, "utf8").split("\n").find(l => l.trim());
     expect(firstLine).toBeTruthy();
@@ -1179,7 +1170,7 @@ describe("S1b-tmp-mismatch-and-density-after-scope", () => {
       );
       const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
       expect(out.decision).toBe("block");
-      const shadowFile = path.join(shadowTmpDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+      const shadowFile = path.join(shadowTmpDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
       expect(existsSync(shadowFile)).toBe(true);
       const rec = JSON.parse(readFileSync(shadowFile, "utf8").split("\n").find(l => l.trim())!) as Record<string, unknown>;
       expect(rec.densityBefore as number).toBeGreaterThan(5);
@@ -1295,7 +1286,7 @@ describe("S1c-trailing-comment-regression", () => {
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
-    const shadowFile = path.join(shadowDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+    const shadowFile = path.join(shadowDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
     expect(existsSync(shadowFile)).toBe(true);
     const rec = JSON.parse(readFileSync(shadowFile, "utf8").split("\n").find(l => l.trim())!) as Record<string, unknown>;
     const removed = rec.removedLines as Array<{ lineNum: number; text: string; preExisting: boolean }>;
@@ -1361,7 +1352,7 @@ describe("S1c-duplicate-comment-regression", () => {
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
-    const shadowFile = path.join(shadowDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+    const shadowFile = path.join(shadowDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
     expect(existsSync(shadowFile)).toBe(true);
     const rec = JSON.parse(readFileSync(shadowFile, "utf8").split("\n").find(l => l.trim())!) as Record<string, unknown>;
     const removed = rec.removedLines as Array<{ lineNum: number; text: string; preExisting: boolean }>;
@@ -1490,7 +1481,7 @@ describe("S1c-remap-sensitive", () => {
     );
     const out = JSON.parse(r.stdout.trim() || "{}") as Record<string, unknown>;
     expect(out.decision).toBe("block");
-    const shadowFile = path.join(shadowDir, "groundwork-autofix-shadow", `${sessionId}.jsonl`);
+    const shadowFile = path.join(shadowDir, "house-rules-autofix-shadow", `${sessionId}.jsonl`);
     expect(existsSync(shadowFile)).toBe(true);
     const rec = JSON.parse(readFileSync(shadowFile, "utf8").split("\n").find(l => l.trim())!) as Record<string, unknown>;
     expect(rec.densityAfter as number).toBe(0);

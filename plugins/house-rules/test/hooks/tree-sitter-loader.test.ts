@@ -71,7 +71,7 @@ describe("AC1: loadLanguage loads grammars from buffer", () => {
 });
 
 describe("AC2: vendored runtime works without node_modules", () => {
-  const TMP = `/tmp/gw-ts-loader-test-${process.pid}`;
+  const TMP = `/tmp/hr-ts-loader-test-${process.pid}`;
 
   beforeAll(() => {
     rmSync(TMP, { recursive: true, force: true });
@@ -93,7 +93,7 @@ describe("AC2: vendored runtime works without node_modules", () => {
 });
 
 describe("AC3: missing or corrupt wasm fails open", () => {
-  const TMP3 = `/tmp/gw-ts-loader-failopen-${process.pid}`;
+  const TMP3 = `/tmp/hr-ts-loader-failopen-${process.pid}`;
 
   beforeAll(() => {
     rmSync(TMP3, { recursive: true, force: true });

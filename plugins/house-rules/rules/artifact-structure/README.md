@@ -13,8 +13,8 @@ Flags repo-shape bloat: coexisting synonym directory pairs, symmetric duplicate 
 ### content: frontmatter satisfies schema and required heading present
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `work/a/research/x.md`: ---
 status: open
 ---
 
@@ -31,8 +31,8 @@ none
 ### manifest: conforming path is clean
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":".groundwork/work/{slug}/research/{name:kebab}.md"}}}]}}
-- `.groundwork/work/a/research/x.md`: 
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":"work/{slug}/research/{name:kebab}.md"}}}]}}
+- `work/a/research/x.md`: 
 
 ### doc/ is canonical; no finding
 
@@ -75,24 +75,6 @@ none
 **Files:**
 - `tmp-notes.md`: 
 
-### no config: a repo with a .groundwork/ directory gets no doc-type checks, so a todo issue without an Acceptance criteria heading is not flagged
-
-**Files:**
-- `.groundwork/.keep`: 
-- `.groundwork/work/x/tickets/01-y.md`: ---
-title: Y
-status: todo
----
-
-## Summary
-
-
-### no config: a repo with a .groundwork/ directory has nothing forbidden, so lessons/x.md is not flagged
-
-**Files:**
-- `.groundwork/.keep`: 
-- `lessons/x.md`: 
-
 ### no config: lessons/x.md is not flagged
 
 **Files:**
@@ -101,8 +83,8 @@ status: todo
 ### headingsWhen does not demand its heading when the status does not match
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
+- `work/a/research/x.md`: ---
 status: open
 ---
 
@@ -114,8 +96,8 @@ status: open
 ### headingsWhen on a configured type demands its heading; the finding carries no severity tag
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
+- `work/a/research/x.md`: ---
 status: done
 ---
 
@@ -123,13 +105,13 @@ status: done
 
 
 **Expected findings:**
-- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "Risks" (type "research")
+- artifact-structure: work/a/research/x.md is missing required heading "Risks" (type "research")
 
 ### content: missing required frontmatter key is flagged
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `work/a/research/x.md`: ---
 title: x
 ---
 
@@ -137,13 +119,13 @@ title: x
 
 
 **Expected findings:**
-- artifact-structure: .groundwork/work/a/research/x.md frontmatter invalid for type research: (root): missing required key "status"
+- artifact-structure: work/a/research/x.md frontmatter invalid for type research: (root): missing required key "status"
 
 ### content: missing required heading is flagged
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}},"headings":["## Decisions"]}}}]}}
+- `work/a/research/x.md`: ---
 status: open
 ---
 
@@ -151,13 +133,13 @@ status: open
 
 
 **Expected findings:**
-- artifact-structure: .groundwork/work/a/research/x.md is missing required heading "## Decisions" (type "research")
+- artifact-structure: work/a/research/x.md is missing required heading "## Decisions" (type "research")
 
 ### content: unsupported schema keyword surfaces as a finding, not a silent pass
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","patternProperties":{}},"headings":["## Decisions"]}}}]}}
-- `.groundwork/work/a/research/x.md`: ---
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":"work/{slug}/research/{name:kebab}.md","frontmatter":{"type":"object","patternProperties":{}},"headings":["## Decisions"]}}}]}}
+- `work/a/research/x.md`: ---
 status: open
 ---
 
@@ -165,17 +147,17 @@ status: open
 
 
 **Expected findings:**
-- artifact-structure: .groundwork/work/a/research/x.md frontmatter invalid for type research: (root): unsupported schema keyword "patternProperties"
+- artifact-structure: work/a/research/x.md frontmatter invalid for type research: (root): unsupported schema keyword "patternProperties"
 
 ### manifest: new governed md outside every doc type is flagged with nearest type
 
 **Files:**
-- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":".groundwork/work/{slug}/research/{name:kebab}.md"}}}]}}
+- `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","description":"Research notes","generates":"work/{slug}/research/{name:kebab}.md"}}}]}}
 - `notes/research-notes.md`: 
 
 **Expected findings:**
 - artifact-structure: notes/research-notes.md is outside every doc type path. Nearest types:
-- research: Research notes -> .groundwork/work/<slug>/research/research-notes.md
+- research: Research notes -> work/<slug>/research/research-notes.md
 
 ### docs/ and doc/ coexist; both dirs have tracked files, both flagged
 

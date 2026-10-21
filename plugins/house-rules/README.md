@@ -170,7 +170,7 @@ house-rules housekeep [--all | --since <ref>] [--rules <a,b>] [--paths <glob,...
 
 `--fix` is valid only for the `check` subcommand; using it on another subcommand is a usage error (exit 2).
 
-**Text output**: `check` prints a summary: the count per rule and check, each hint once, the 10 files with most findings, and the total. The full report goes to `.groundwork/house-rules/check-report.json`, and `check` adds `.groundwork/` to `.git/info/exclude` (never to `.gitignore`) so the report does not show up as untracked. `--verbose` prints every row.
+**Text output**: `check` prints a summary: the count per rule and check, each hint once, the 10 files with most findings, and the total. The full report goes to `.house-rules/check-report.json`, and `check` adds that one file to `.git/info/exclude` (never to `.gitignore`) so the report does not show up as untracked while `.house-rules/baseline.json` stays committed. `--verbose` prints every row.
 
 **JSON output**: `--format json` is unchanged and emits one JSON line to stdout; no scope header is written. Text mode prints the scope header to stderr: `house-rules: base=<ref|all> files=<N>`.
 

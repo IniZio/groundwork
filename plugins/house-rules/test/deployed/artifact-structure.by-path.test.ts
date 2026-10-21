@@ -23,7 +23,7 @@ const CONFIG = {
           research: {
             tier: "working",
             description: "Research notes for a motive",
-            generates: ".groundwork/work/{slug}/research/{name:kebab}.md",
+            generates: "work/work/{slug}/research/{name:kebab}.md",
           },
           "living-spec": {
             tier: "product",
@@ -112,7 +112,7 @@ describe("artifact-structure deployed by-path", () => {
     const research = typeLines.find((l) => l.includes("research"));
     expect(research).toBeDefined();
     expect(research).toContain("Research notes for a motive");
-    expect(research).toContain(".groundwork/work/<slug>/research/research-notes.md");
+    expect(research).toContain("work/work/<slug>/research/research-notes.md");
     for (const l of typeLines) expect(l).toContain("->");
   });
 

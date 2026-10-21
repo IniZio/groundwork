@@ -5,20 +5,19 @@ type InvalidTrackedCase = TrackedCase & { findings: Partial<Finding>[] };
 
 const MANIFEST_CFG = JSON.stringify({ rules: { 'artifact-structure': ['error', {
   govern: ['notes/**'],
-  types: { research: { tier: 'working', description: 'Research notes', generates: '.groundwork/work/{slug}/research/{name:kebab}.md' } },
+  types: { research: { tier: 'working', description: 'Research notes', generates: 'work/{slug}/research/{name:kebab}.md' } },
 }] } });
 
 const SCHEMA = { type: 'object', required: ['status'], properties: { status: { type: 'string' } } };
 const CONTENT_CFG = (schema: unknown = SCHEMA) => JSON.stringify({ rules: { 'artifact-structure': ['error', {
   govern: ['notes/**'],
-  types: { research: { tier: 'working', generates: '.groundwork/work/{slug}/research/{name:kebab}.md', frontmatter: schema, headings: ['## Decisions'] } },
+  types: { research: { tier: 'working', generates: 'work/{slug}/research/{name:kebab}.md', frontmatter: schema, headings: ['## Decisions'] } },
 }] } });
-const RESEARCH = '.groundwork/work/a/research/x.md';
+const RESEARCH = 'work/a/research/x.md';
 const WHEN_CFG = JSON.stringify({ rules: { 'artifact-structure': ['error', {
   govern: ['notes/**'],
-  types: { research: { tier: 'working', generates: '.groundwork/work/{slug}/research/{name:kebab}.md', headingsWhen: [{ property: 'status', in: ['done'], headings: ['Risks'] }] } },
+  types: { research: { tier: 'working', generates: 'work/{slug}/research/{name:kebab}.md', headingsWhen: [{ property: 'status', in: ['done'], headings: ['Risks'] }] } },
 }] } });
-const ISSUE = '.groundwork/work/x/tickets/01-y.md';
 
 const valid: TrackedCase[] = [
   {
@@ -32,7 +31,7 @@ const valid: TrackedCase[] = [
   },
   {
     why: 'manifest: conforming path is clean',
-    tree: { '.house-rules.json': MANIFEST_CFG, '.groundwork/work/a/research/x.md': '' },
+    tree: { '.house-rules.json': MANIFEST_CFG, 'work/a/research/x.md': '' },
   },
   {
     why: 'doc/ is canonical; no finding',
@@ -73,14 +72,6 @@ const valid: TrackedCase[] = [
 
 const NO_CONFIG_VALID: TrackedCase[] = [
   {
-    why: 'no config: a repo with a .groundwork/ directory gets no doc-type checks, so a todo issue without an Acceptance criteria heading is not flagged',
-    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: todo\n---\n\n## Summary\n' },
-  },
-  {
-    why: 'no config: a repo with a .groundwork/ directory has nothing forbidden, so lessons/x.md is not flagged',
-    tree: { '.groundwork/.keep': '', 'lessons/x.md': '' },
-  },
-  {
     why: 'no config: lessons/x.md is not flagged',
     tree: { 'lessons/x.md': '' },
   },
@@ -120,7 +111,7 @@ const invalid: InvalidTrackedCase[] = [
       {
         ruleId: 'artifact-structure',
         path: 'notes/research-notes.md',
-        message: 'artifact-structure: notes/research-notes.md is outside every doc type path. Nearest types:\n- research: Research notes -> .groundwork/work/<slug>/research/research-notes.md',
+        message: 'artifact-structure: notes/research-notes.md is outside every doc type path. Nearest types:\n- research: Research notes -> work/<slug>/research/research-notes.md',
       },
     ],
   },

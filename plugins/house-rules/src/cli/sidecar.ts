@@ -3,8 +3,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { serializeReport, type Report } from './report.js';
 
-export const SIDECAR_REL = '.groundwork/house-rules/check-report.json';
-const EXCLUDE_LINE = '.groundwork/';
+export const SIDECAR_REL = '.house-rules/check-report.json';
+const EXCLUDE_LINE = SIDECAR_REL;
 
 function excludeFile(repoRoot: string): string | null {
   const r = spawnSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: repoRoot, encoding: 'utf8' });
@@ -20,7 +20,7 @@ function upsertExclude(file: string): void {
   fs.writeFileSync(file, cur + sep + EXCLUDE_LINE + '\n');
 }
 
-/** Write the full JSON report under .groundwork/ and git-exclude that dir; returns the sidecar path. */
+/** Write the full JSON report and git-exclude only that file, since .house-rules/baseline.json is committed; returns the sidecar path. */
 export function writeSidecar(repoRoot: string, report: Report): string {
   const target = path.join(repoRoot, SIDECAR_REL);
   fs.mkdirSync(path.dirname(target), { recursive: true });

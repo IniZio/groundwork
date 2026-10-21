@@ -41,11 +41,10 @@ const ISSUE_CONFIG = JSON.stringify({
   },
 });
 
-function mkRepo(opts: { groundwork?: boolean; config?: string } = {}): string {
+function mkRepo(opts: { config?: string } = {}): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hr-conf-'));
   tmpDirs.push(dir);
   git(dir, 'init');
-  if (opts.groundwork) fs.mkdirSync(path.join(dir, '.groundwork'), { recursive: true });
   if (opts.config) fs.writeFileSync(path.join(dir, '.house-rules.json'), opts.config);
   return dir;
 }
@@ -122,15 +121,6 @@ describe('checkDocConformance without config', () => {
   it('returns nothing for lessons/x.md', () => {
     const dir = mkRepo();
     write(dir, 'lessons/x.md', '# x\n');
-    expect(checkDocConformance(dir, 'lessons/x.md')).toEqual([]);
-  });
-
-  it('returns nothing in a repo with a .groundwork directory', () => {
-    const dir = mkRepo({ groundwork: true });
-    const issue = '.groundwork/work/demo/tickets/01-first-ticket.md';
-    write(dir, issue, issueDoc('todo', false));
-    write(dir, 'lessons/x.md', '# x\n');
-    expect(checkDocConformance(dir, issue)).toEqual([]);
     expect(checkDocConformance(dir, 'lessons/x.md')).toEqual([]);
   });
 });

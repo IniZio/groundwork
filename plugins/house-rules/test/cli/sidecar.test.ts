@@ -35,20 +35,30 @@ const findings: ReportFinding[] = [
   { ruleId: 'r2', path: 'b.ts', line: null, severity: 'warn', message: '[d] two' },
 ];
 const report = buildReport(scope, { findings });
-const ignored = (d: string) =>
-  spawnSync('git', ['check-ignore', SIDECAR_REL], { cwd: d }).status === 0;
+const REPORT_REL = '.house-rules/check-report.json';
+const isIgnored = (d: string, rel: string) =>
+  spawnSync('git', ['check-ignore', rel], { cwd: d }).status === 0;
+const ignored = (d: string) => isIgnored(d, REPORT_REL);
 const excludePath = (d: string) => path.resolve(d, git(d, 'rev-parse', '--git-path', 'info/exclude'));
 
 describe('writeSidecar', () => {
   it('writes full report with every finding and ignores it', () => {
     const d = repo();
     const p = writeSidecar(d, report);
-    expect(p).toBe(path.join(d, SIDECAR_REL));
+    expect(SIDECAR_REL).toBe(REPORT_REL);
+    expect(p).toBe(path.join(d, REPORT_REL));
     const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
     expect(parsed).toEqual(JSON.parse(JSON.stringify(report)));
     for (const x of findings) expect(parsed.findings).toContainEqual(x);
     expect(ignored(d)).toBe(true);
     expect(fs.existsSync(path.join(d, '.gitignore'))).toBe(false);
+  });
+
+  it('leaves the committed baseline beside the report trackable', () => {
+    const d = repo();
+    writeSidecar(d, report);
+    expect(fs.readFileSync(excludePath(d), 'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#'))).toEqual([REPORT_REL]);
+    expect(isIgnored(d, '.house-rules/baseline.json')).toBe(false);
   });
 
   it('is idempotent and preserves existing lines without trailing newline', () => {
@@ -61,7 +71,7 @@ describe('writeSidecar', () => {
     const lines = fs.readFileSync(ex, 'utf8').split('\n');
     expect(lines).toContain('# keep');
     expect(lines).toContain('foo/');
-    expect(lines.filter(l => l === '.groundwork/').length).toBe(1);
+    expect(lines.filter(l => l === REPORT_REL).length).toBe(1);
     expect(ignored(d)).toBe(true);
   });
 
@@ -80,10 +90,10 @@ describe('writeSidecar', () => {
     git(d, 'worktree', 'add', wt, '-b', 'side');
     writeSidecar(wt, report);
     writeSidecar(wt, report);
-    expect(fs.existsSync(path.join(wt, SIDECAR_REL))).toBe(true);
+    expect(fs.existsSync(path.join(wt, REPORT_REL))).toBe(true);
     expect(ignored(wt)).toBe(true);
     const lines = fs.readFileSync(excludePath(wt), 'utf8').split('\n');
-    expect(lines.filter(l => l === '.groundwork/').length).toBe(1);
+    expect(lines.filter(l => l === REPORT_REL).length).toBe(1);
   });
 
   it('outside a git repo writes sidecar and does not throw', () => {

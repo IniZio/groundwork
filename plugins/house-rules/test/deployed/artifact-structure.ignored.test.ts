@@ -30,14 +30,14 @@ const CONFIG = {
           spec: {
             tier: "working",
             description: "Work unit spec",
-            generates: ".groundwork/work/{name:kebab}/spec.md",
+            generates: "work/work/{name:kebab}/spec.md",
             template: "---\nfolds_into: x\n---\n",
             frontmatter: { type: "object", required: ["folds_into"] },
           },
           motive: {
             tier: "working",
             description: "Work unit motive",
-            generates: ".groundwork/work/{name:kebab}/motive.md",
+            generates: "work/work/{name:kebab}/motive.md",
             template: '---\ncreated: "2026-09-29"\n---\n',
             frontmatter: { type: "object", required: ["created"] },
           },
@@ -69,7 +69,7 @@ function makeRepo(config: unknown = CONFIG): string {
   writeFileSync(path.join(dir, ".house-rules.json"), JSON.stringify(config));
   writeFileSync(path.join(dir, "README.txt"), "x\n");
   writeFileSync(path.join(dir, ".gitignore"), ".scratch/\ninternal/\ndist/\n");
-  appendFileSync(path.join(dir, ".git/info/exclude"), ".groundwork/\n");
+  appendFileSync(path.join(dir, ".git/info/exclude"), "work/\n");
   git(dir, "add -A");
   // Backdated so the commit predates the transcript's first timestamp (session base).
   const past = new Date(Date.now() - 3600_000).toISOString();
@@ -161,25 +161,25 @@ describe("artifact-structure ignored paths (deployed)", () => {
     expect(b.reason).toContain("REDIRECT-ADR");
   });
 
-  it("AC2: Stop blocks a new ignored .groundwork spec lacking folds_into, and passes once valid", async () => {
+  it("AC2: Stop blocks a new ignored work spec lacking folds_into, and passes once valid", async () => {
     const dir = makeRepo();
-    put(dir, ".groundwork/work/foo/spec.md", "---\ntitle: x\n---\n\n# x\n");
+    put(dir, "work/work/foo/spec.md", "---\ntitle: x\n---\n\n# x\n");
     const out = await stop(dir);
     expect(out.decision).toBe("block");
     expect(out.full).toContain("folds_into");
 
     const ok = makeRepo();
-    put(ok, ".groundwork/work/foo/spec.md", "---\nfolds_into: doc/spec/x.md\n---\n\n# x\n");
+    put(ok, "work/work/foo/spec.md", "---\nfolds_into: doc/spec/x.md\n---\n\n# x\n");
     expect((await stop(ok)).decision).toBeUndefined();
   });
 
   it("AC3: Stop blocks a Bash-created ignored motive.md missing created", async () => {
     const dir = makeRepo();
-    const cmd = `mkdir -p .groundwork/work/foo && printf -- '---\\ntitle: x\\n---\\n' > .groundwork/work/foo/motive.md`;
+    const cmd = `mkdir -p work/work/foo && printf -- '---\\ntitle: x\\n---\\n' > work/work/foo/motive.md`;
     await spawnArgv(["sh", "-c", cmd], undefined, dir);
     const out = await stop(dir, cmd);
     expect(out.decision).toBe("block");
-    expect(out.full).toContain(".groundwork/work/foo/motive.md");
+    expect(out.full).toContain("work/work/foo/motive.md");
     expect(out.full).toContain("created");
   });
 
@@ -199,11 +199,11 @@ describe("artifact-structure ignored paths (deployed)", () => {
   it("AC5: a file tracked in HEAD then modified stays exempt from content checks at Stop", async () => {
     const dir = makeRepo();
     put(dir, "doc/spec/keep.md", "# tracked\n");
-    put(dir, ".groundwork/work/foo/spec.md", "---\nfolds_into: y\n---\n");
-    git(dir, "add -f doc/spec/keep.md .groundwork/work/foo/spec.md");
+    put(dir, "work/work/foo/spec.md", "---\nfolds_into: y\n---\n");
+    git(dir, "add -f doc/spec/keep.md work/work/foo/spec.md");
     const past = new Date(Date.now() - 3600_000).toISOString();
     git(dir, "commit -q -m add", { GIT_AUTHOR_DATE: past, GIT_COMMITTER_DATE: past });
-    put(dir, ".groundwork/work/foo/spec.md", "---\ntitle: no fold\n---\n");
+    put(dir, "work/work/foo/spec.md", "---\ntitle: no fold\n---\n");
     expect((await stop(dir)).decision).toBeUndefined();
   });
 });

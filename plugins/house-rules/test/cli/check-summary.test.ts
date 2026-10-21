@@ -58,7 +58,7 @@ function groundTruth(dir: string) {
   return { report: JSON.parse(r.stdout), status: r.status };
 }
 
-const sidecarOf = (dir: string) => path.join(dir, '.groundwork/house-rules/check-report.json');
+const sidecarOf = (dir: string) => path.join(dir, '.house-rules/check-report.json');
 
 describe('check summary default output', () => {
   it('fixture yields findings from at least two rules and two files', () => {
@@ -83,15 +83,16 @@ describe('check summary default output', () => {
     expect(r.stdout).not.toContain('finding(s)');
   });
 
-  it('prints the sidecar path, writes it, and keeps .groundwork/ out of git', () => {
+  it('prints the sidecar path, writes it, and keeps only the report out of git', () => {
     const dir = makeRepo();
     const r = run(dir, ['check', '--all']);
     expect(r.stdout).toContain(`full report: ${sidecarOf(dir)}\n`);
     expect(fs.existsSync(sidecarOf(dir))).toBe(true);
     const exclude = fs.readFileSync(path.join(dir, '.git/info/exclude'), 'utf8').split('\n');
-    expect(exclude.some(l => l.trim() === '.groundwork/' || l.trim() === '/.groundwork/')).toBe(true);
+    expect(exclude.some(l => l.trim() === '.house-rules/check-report.json')).toBe(true);
+    expect(exclude.some(l => l.trim() === '.house-rules/')).toBe(false);
     const porcelain = git(dir, 'status', '--porcelain', '--untracked-files=all').stdout;
-    expect(porcelain).not.toContain('.groundwork');
+    expect(porcelain).not.toContain('check-report.json');
   });
 
   it('sidecar findings deep-equal --format json findings in order', () => {

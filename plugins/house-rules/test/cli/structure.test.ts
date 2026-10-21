@@ -34,7 +34,7 @@ afterEach(() => {
 
 const RESEARCH = {
   tier: 'working',
-  generates: '.groundwork/work/{slug}/research/{name:kebab}.md',
+  generates: 'work/work/{slug}/research/{name:kebab}.md',
   description: 'Research notes with cited sources',
   instruction: 'Cite a source for every claim.',
   template: RESEARCH_TEMPLATE,
@@ -48,7 +48,7 @@ const DECISION = {
 };
 const BOGUS = {
   tier: 'ephemeral',
-  generates: '.groundwork/scratch/{name:kebab}.md',
+  generates: 'work/scratch/{name:kebab}.md',
   description: 'Scratch',
   template: '# {{bogus}}\n',
 };
@@ -81,7 +81,7 @@ describe('AC1: structure', () => {
     const r = runBIN(['structure'], repo);
     expect(r.status).toBe(0);
     expect(r.stdout.trimEnd().split('\n')).toEqual([
-      'research (working): .groundwork/work/{slug}/research/{name:kebab}.md — Research notes with cited sources',
+      'research (working): work/work/{slug}/research/{name:kebab}.md — Research notes with cited sources',
       'decision (product): doc/decisions/{name:kebab}.md — Architecture choice and rationale',
       'forbidden: NOTES.md → use research',
     ]);
@@ -139,7 +139,7 @@ describe('AC3: where', () => {
 });
 
 const NEW_ARGS = ['new', 'research', 'slug=foo', 'name=My Note', 'question=Q?', 'confidence=medium'];
-const REL = '.groundwork/work/foo/research/my-note.md';
+const REL = 'work/work/foo/research/my-note.md';
 
 describe('AC4: new', () => {
   it('AC4 new writes a filled scaffold at the rendered path', () => {
@@ -178,7 +178,7 @@ describe('AC6: new validates params', () => {
     const r = runBIN(['new', 'research', 'slug=foo', 'question=Q?', 'confidence=medium'], repo);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('name');
-    expect(fs.existsSync(path.join(repo, '.groundwork'))).toBe(false);
+    expect(fs.existsSync(path.join(repo, 'work'))).toBe(false);
   });
 
   it('AC6 missing body key exits 1 naming question', () => {

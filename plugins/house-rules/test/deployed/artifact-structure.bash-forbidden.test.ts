@@ -21,7 +21,7 @@ const CONFIG = {
     "artifact-structure": [
       "error",
       {
-        govern: [".groundwork/**/*.md"],
+        govern: ["work/**/*.md"],
         forbidden: [
           { pattern: "lessons/**", redirect: LESSONS_REDIRECT },
           { pattern: "**/adr/**", redirect: ADR_REDIRECT },
@@ -30,14 +30,14 @@ const CONFIG = {
           spec: {
             tier: "working",
             description: "Work unit spec",
-            generates: ".groundwork/work/{name:kebab}/spec.md",
+            generates: "work/work/{name:kebab}/spec.md",
             template: "---\nfolds_into: x\n---\n",
             frontmatter: { type: "object", required: ["folds_into"] },
           },
           motive: {
             tier: "working",
             description: "Work unit motive",
-            generates: ".groundwork/work/{name:kebab}/motive.md",
+            generates: "work/work/{name:kebab}/motive.md",
             template: '---\ncreated: "2026-09-29"\n---\n',
             frontmatter: { type: "object", required: ["created"] },
           },
@@ -69,7 +69,7 @@ function makeRepo(config: unknown = CONFIG): string {
   writeFileSync(path.join(dir, ".house-rules.json"), JSON.stringify(config));
   writeFileSync(path.join(dir, "README.txt"), "x\n");
   writeFileSync(path.join(dir, ".gitignore"), "dist/\n");
-  appendFileSync(path.join(dir, ".git/info/exclude"), ".groundwork/\n");
+  appendFileSync(path.join(dir, ".git/info/exclude"), "work/\n");
   git(dir, "add -A");
   // Backdated so the commit predates the transcript's first timestamp (session base).
   const past = new Date(Date.now() - 3600_000).toISOString();
@@ -180,14 +180,14 @@ describe("artifact-structure Bash-created forbidden paths (deployed)", () => {
 
   it("AC4: ignored governed path in a typed area is denied at edit time and blocked at Stop", async () => {
     const dir = makeRepo();
-    const g = await guardWrite(dir, ".groundwork/work/foo/notes.md", "# x\n");
+    const g = await guardWrite(dir, "work/work/foo/notes.md", "# x\n");
     expect(g.decision).toBe("deny");
-    expect(g.reason).toContain(".groundwork/work/notes/spec.md");
-    const cmd = `mkdir -p .groundwork/work/foo && echo x > .groundwork/work/foo/notes.md`;
+    expect(g.reason).toContain("work/work/notes/spec.md");
+    const cmd = `mkdir -p work/work/foo && echo x > work/work/foo/notes.md`;
     await spawnArgv(["sh", "-c", cmd], undefined, dir);
     const out = await stop(dir, cmd);
     expect(out.decision).toBe("block");
-    expect(out.full).toContain(".groundwork/work/foo/notes.md");
+    expect(out.full).toContain("work/work/foo/notes.md");
   });
 
   it("AC5 control: ignored governed dist/notes.md outside every typed area stays exempt", async () => {

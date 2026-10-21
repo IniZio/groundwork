@@ -83,10 +83,19 @@ describe("plugin manifest parity", () => {
     expect(houseRulesDep?.version).toMatch(/^~/);
   });
 
-  it("groundwork plugin.json depends on pstack from the cursor-plugins marketplace", () => {
+  // A dependency on another marketplace only installs if the user added that marketplace first.
+  it("groundwork's pstack dependency resolves from this marketplace", () => {
     const deps: Array<{ name: string; marketplace?: string }> =
       groundworkManifest.dependencies ?? [];
-    expect(deps).toContainEqual({ name: "pstack", marketplace: "cursor-plugins" });
+    expect(deps).toContainEqual({ name: "pstack" });
+
+    const marketplace = JSON.parse(readFileSync(join(ROOT, ".claude-plugin/marketplace.json"), "utf8"));
+    const entry = marketplace.plugins.find((p: { name: string }) => p.name === "pstack");
+    expect(entry?.source).toMatchObject({
+      source: "git-subdir",
+      url: "https://github.com/cursor/plugins.git",
+      path: "harness/pstack/claude-code",
+    });
   });
 
   it("marketplace.json groundwork entry keeps its name and root source", () => {

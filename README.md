@@ -19,12 +19,11 @@ flowchart LR
 ## Install
 
 ```
-claude plugin marketplace add cursor/plugins
 claude plugin marketplace add IniZio/groundwork
 claude plugin install groundwork@groundwork
 ```
 
-Add the `cursor/plugins` marketplace first. Claude Code does not add a dependency's marketplace for you, and the install then warns that `pstack@cursor-plugins` was not installed.
+The groundwork marketplace lists pstack straight from `cursor/plugins` main, so the install pulls it in. If you already have `pstack@cursor-plugins`, uninstall it so the `/pstack:` skills load once.
 
 house-rules needs Claude Code v2.1.193 or later.
 

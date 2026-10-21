@@ -8,10 +8,17 @@
     "description": "Groundwork — Newman's working conventions on top of pstack, plus the house-rules code-quality hooks",
     "version": "3.0.0"
   },
-  "allowCrossMarketplaceDependenciesOn": [
-    "cursor-plugins"
-  ],
   "plugins": [
+    {
+      "name": "pstack",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/cursor/plugins.git",
+        "path": "harness/pstack/claude-code",
+        "ref": "main"
+      },
+      "description": "pstack agent workflows from cursor/plugins, installed as groundwork's dependency"
+    },
     {
       "name": "groundwork",
       "source": "./",

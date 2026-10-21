@@ -8,6 +8,7 @@
 - Mark a slice blocked only when it consumes another's output or edits the same file. Same-file slices in one wave use separate worktrees rebased on main, and each reports its base sha.
 - Route by size. Three or more files, or two or more behaviours, goes to a sub-coordinator that splits it into at least two slices. Smaller work goes straight to one implementer.
 - Fan out a whole wave in one message.
+- A leaf is mechanical when the brief can name every file and the exact change: a rename, a given pattern, call-site updates, a specified test. Those go to `groundwork:junior`. Anything needing a design call stays with poteto-agent.
 
 ## Brief content
 

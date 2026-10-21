@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Groundwork — Newman's working conventions on top of pstack, plus the house-rules code-quality hooks",
-    "version": "3.0.0"
+    "version": "3.1.0"
   },
   "plugins": [
     {
@@ -23,7 +23,7 @@
       "name": "groundwork",
       "source": "./",
       "description": "newman-mode skill and two Bash guards, layered on pstack",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "author": {
         "name": "Newman"
       },

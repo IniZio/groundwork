@@ -17,6 +17,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
+| commit-message | the repo's commit preset (see Commit messages below) | DENY a Bash `git commit` whose message fails | none | `house-rules lint-commit-msg <file>` | none |
 | comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged. A `SAFETY:` comment that justifies a non-const type assertion in TypeScript is not counted; other comments are | every language in the Supported languages table below: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims every language in the Supported languages table | `house-rules check --base <ref>` | all supported languages: stable |
 | artifact-structure | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 | type-escape-hatches | warn. TypeScript only, except no-runtime-typeof, which also runs on JavaScript. no-runtime-typeof takes the option `allowInTypeGuards` (see Configuration). Checks: no-unknown-parameters, no-unknown-returns, no-unknown-type-aliases, no-unsafe-dictionary-type, no-object-parameters, no-chained-type-assertions, no-runtime-typeof, no-widen-then-assert, no-known-value-widening (all ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
@@ -77,6 +78,21 @@ Commit preset precedence: explicit config, then `.gitmessage`, then commitlint c
 A PreToolUse config guard denies edits to `.house-rules.json` that loosen a rule. Loosening is a human decision; tightening edits pass.
 
 The `house-rules:configure` skill walks an agent through a rejected commit message: read the active config, then rewrite the message or pin the matching preset.
+
+## Commit messages
+
+House-rules checks commit messages only in a repo that has `.house-rules.json`. The commit-message rule and its preset decide what passes. Two hooks enforce it.
+
+- **Guard.** A PreToolUse Bash hook denies a `git commit` whose message fails, and the deny reason lists each failing line. It reads the message from every `-m` (joined as git joins them), `-F <file>`, `-F -` fed by a heredoc, a here-string or a `<` redirect, and `--amend -m`. It follows `git -C <dir>`, `cd <dir> &&` and chained commands. It parses the command with tree-sitter-bash. A commit with no message source opens an editor and passes through, as does a message built from shell expansion, a piped `-F -`, and a `-F` file that does not exist yet. A command or config that cannot be parsed passes; a message that fails the lint is always denied.
+- **Git hook.** At SessionStart, house-rules writes `commit-msg` into the repo's hooks dir (`git rev-parse --git-path hooks`, so `core.hooksPath` and linked worktrees resolve to the right place). The hook runs `src/cli/lint-commit-msg.mjs` with bun, or with node when bun is missing. It honours `core.commentChar` and `commit.cleanup` as git would apply them. If neither runtime is on `PATH`, or the plugin path in the hook no longer exists, the hook prints one line and lets the commit through. Each session rewrites the plugin path, so a plugin upgrade keeps the hook working.
+
+In a repo without `.house-rules.json`, the installer writes nothing and prints nothing, and it deletes a `commit-msg` hook that carries either marker below. Otherwise it writes the hook only when the file is absent or carries house-rules' marker line (`# HOUSE-RULES-COMMIT-MSG`) or the older `# GROUNDWORK-COMMIT-MSG` marker. It never overwrites another hook. When another hook exists, or `core.hooksPath` points at husky, lefthook or pre-commit, it prints one line and installs nothing. To check commit messages from such a hook, call this line from it:
+
+```sh
+house-rules lint-commit-msg "$1"
+```
+
+`house-rules lint-commit-msg <file>` exits 1 with the failing lines when the message fails and exits 0 otherwise. To opt a repo out, leave out `.house-rules.json`. To keep house-rules from installing the git hook, put a `commit-msg` hook of your own in the hooks dir.
 
 ## Doc-type manifest (artifact-structure)
 

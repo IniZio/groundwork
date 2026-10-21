@@ -1,6 +1,6 @@
 {
   "name": "house-rules",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "description": "house-rules — code-quality rule engine: guard codebase health against vibe-coded bloat",
   "author": {
     "name": "Newman",
@@ -8,6 +8,16 @@
   },
   "repository": "https://github.com/IniZio/groundwork",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/install-commit-msg.ts"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -53,6 +63,15 @@
           {
             "type": "command",
             "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/config-guard.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-guard.ts"
           }
         ]
       }

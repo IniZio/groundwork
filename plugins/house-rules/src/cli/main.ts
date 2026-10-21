@@ -23,6 +23,7 @@ import {
 } from './report.js';
 
 import { writeSidecar } from './sidecar.js';
+import { runLintCommitMsg } from './lint-commit-msg.mjs';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -67,6 +68,7 @@ function printUsage(toStdout = false): void {
       '  house-rules structure [--repo <dir>]\n' +
       '  house-rules where <type|free text...> [--repo <dir>]\n' +
       '  house-rules new <type> key=value... [--repo <dir>]\n' +
+      '  house-rules lint-commit-msg <commit-message-file>\n' +
       '\n' +
       'Flags:\n' +
       '  --all               scan all tracked files (mutually exclusive with --base/--since)\n' +
@@ -387,6 +389,11 @@ try {
         params[a.slice(0, eq)] = a.slice(eq + 1);
       }
       process.exit(runNew({ repoRoot: getRepoRoot(parsed.repo), type, params }));
+    }
+    case 'lint-commit-msg': {
+      const [file] = parsed.pathspec ?? [];
+      if (!file) throw new UsageError('lint-commit-msg needs a commit message file');
+      process.exit(runLintCommitMsg(file, process.cwd()));
     }
     default:
       printUsage();

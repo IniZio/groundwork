@@ -23,11 +23,30 @@ function git(dir: string, ...args: string[]): string {
   return r.stdout;
 }
 
-function mkRepo(opts: { groundwork?: boolean } = {}): string {
+const ISSUE_CONFIG = JSON.stringify({
+  rules: {
+    'artifact-structure': [
+      'error',
+      {
+        types: {
+          issue: {
+            tier: 'working',
+            generates: 'work/{slug}/tickets/{nn}-{name:kebab}.md',
+            headingsWhen: [{ property: 'status', in: ['todo', 'in-progress'], headings: ['Acceptance criteria'] }],
+          },
+        },
+        forbidden: [{ pattern: 'lessons/**', redirect: 'Use work/{slug}/lessons.md' }],
+      },
+    ],
+  },
+});
+
+function mkRepo(opts: { groundwork?: boolean; config?: string } = {}): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hr-conf-'));
   tmpDirs.push(dir);
   git(dir, 'init');
   if (opts.groundwork) fs.mkdirSync(path.join(dir, '.groundwork'), { recursive: true });
+  if (opts.config) fs.writeFileSync(path.join(dir, '.house-rules.json'), opts.config);
   return dir;
 }
 
@@ -37,50 +56,42 @@ function write(dir: string, rel: string, body: string): void {
   fs.writeFileSync(abs, body);
 }
 
-const ISSUE = '.groundwork/work/demo/tickets/01-first-ticket.md';
+const ISSUE = 'work/demo/tickets/01-first-ticket.md';
 const issueDoc = (status: string, withHeading: boolean) =>
   `---\ntitle: Ticket\nstatus: ${status}\n---\n\n# Ticket\n\n${withHeading ? '## Acceptance criteria\n\n- works\n' : 'No criteria here.\n'}`;
 
-describe('checkDocConformance with the shipped registry', () => {
-  it('flags a todo issue that lacks the Acceptance criteria heading, as a warning', () => {
-    const dir = mkRepo({ groundwork: true });
+describe('checkDocConformance with a configured issue type', () => {
+  it('flags a todo issue that lacks the Acceptance criteria heading', () => {
+    const dir = mkRepo({ config: ISSUE_CONFIG });
     write(dir, ISSUE, issueDoc('todo', false));
     const findings = checkDocConformance(dir, ISSUE);
     expect(findings.length).toBe(1);
-    expect(findings[0].severity).toBe('warn');
     expect(findings[0].message).toContain('Acceptance criteria');
     expect(findings[0].message).toContain('issue');
   });
 
   it('reports nothing when the todo issue has the heading', () => {
-    const dir = mkRepo({ groundwork: true });
+    const dir = mkRepo({ config: ISSUE_CONFIG });
     write(dir, ISSUE, issueDoc('todo', true));
     expect(checkDocConformance(dir, ISSUE)).toEqual([]);
   });
 
-  it('reports nothing for a done issue without the heading, because its criteria are history', () => {
-    const dir = mkRepo({ groundwork: true });
+  it('reports nothing for a done issue without the heading', () => {
+    const dir = mkRepo({ config: ISSUE_CONFIG });
     write(dir, ISSUE, issueDoc('done', false));
     expect(checkDocConformance(dir, ISSUE)).toEqual([]);
   });
 
-  it('flags an in-progress issue that lacks the Acceptance criteria heading, as a warning', () => {
-    const dir = mkRepo({ groundwork: true });
+  it('flags an in-progress issue that lacks the Acceptance criteria heading', () => {
+    const dir = mkRepo({ config: ISSUE_CONFIG });
     write(dir, ISSUE, issueDoc('in-progress', false));
     const findings = checkDocConformance(dir, ISSUE);
     expect(findings.length).toBe(1);
-    expect(findings[0].severity).toBe('warn');
     expect(findings[0].message).toContain('Acceptance criteria');
   });
 
-  it('reports nothing for a triage issue without the heading', () => {
-    const dir = mkRepo({ groundwork: true });
-    write(dir, ISSUE, issueDoc('triage', false));
-    expect(checkDocConformance(dir, ISSUE)).toEqual([]);
-  });
-
   it('still checks a file that is already committed', () => {
-    const bad = mkRepo({ groundwork: true });
+    const bad = mkRepo({ config: ISSUE_CONFIG });
     write(bad, ISSUE, issueDoc('in-progress', false));
     git(bad, 'add', '-A');
     git(bad, 'commit', '-m', 'init');
@@ -89,7 +100,7 @@ describe('checkDocConformance with the shipped registry', () => {
     expect(findings.length).toBe(1);
     expect(findings[0].message).toContain('Acceptance criteria');
 
-    const good = mkRepo({ groundwork: true });
+    const good = mkRepo({ config: ISSUE_CONFIG });
     write(good, ISSUE, issueDoc('in-progress', true));
     git(good, 'add', '-A');
     git(good, 'commit', '-m', 'init');
@@ -97,29 +108,30 @@ describe('checkDocConformance with the shipped registry', () => {
   });
 
   it('writes nothing to the repo', () => {
-    const dir = mkRepo({ groundwork: true });
+    const dir = mkRepo({ config: ISSUE_CONFIG });
     write(dir, ISSUE, issueDoc('todo', false));
     write(dir, 'lessons/x.md', '# x\n');
     const before = git(dir, 'status', '--porcelain', '--ignored');
     const found = checkDocConformance(dir, ISSUE).length + checkDocConformance(dir, 'lessons/x.md').length;
-    expect(found).toBeGreaterThan(0);
+    expect(found).toBe(2);
     expect(git(dir, 'status', '--porcelain', '--ignored')).toBe(before);
   });
 });
 
-describe('checkDocConformance without a manifest', () => {
-  it('returns nothing for a forbidden path when there is no .groundwork and no config', () => {
+describe('checkDocConformance without config', () => {
+  it('returns nothing for lessons/x.md', () => {
     const dir = mkRepo();
     write(dir, 'lessons/x.md', '# x\n');
     expect(checkDocConformance(dir, 'lessons/x.md')).toEqual([]);
   });
 
-  it('flags the forbidden path as a warning when .groundwork exists', () => {
+  it('returns nothing in a repo with a .groundwork directory', () => {
     const dir = mkRepo({ groundwork: true });
+    const issue = '.groundwork/work/demo/tickets/01-first-ticket.md';
+    write(dir, issue, issueDoc('todo', false));
     write(dir, 'lessons/x.md', '# x\n');
-    const findings = checkDocConformance(dir, 'lessons/x.md');
-    expect(findings.length).toBeGreaterThan(0);
-    expect(findings.every((f) => f.severity === 'warn')).toBe(true);
+    expect(checkDocConformance(dir, issue)).toEqual([]);
+    expect(checkDocConformance(dir, 'lessons/x.md')).toEqual([]);
   });
 });
 

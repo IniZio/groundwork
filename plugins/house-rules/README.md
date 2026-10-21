@@ -18,7 +18,7 @@ Requires Claude Code v2.1.193 or later (plugin dependencies); older versions sil
 | Rule | What it enforces | Guard (PreToolUse) | Gate (Stop/SubagentStop) | CLI | Autofix |
 |---|---|---|---|---|---|
 | comment-density | 5 net-new comment lines per 100 added lines; reword pairing encouraged. A `SAFETY:` comment that justifies a non-const type assertion in TypeScript is not counted; other comments are | every language in the Supported languages table below: strips over-budget comments before Write/Edit/MultiEdit; other languages pass through | blocks when session-changed file is over budget; auto-trims every language in the Supported languages table | `house-rules check --base <ref>` | all supported languages: stable |
-| artifact-structure | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist; registry findings in a `.groundwork` repo warn only | `house-rules check --base <ref>` | none |
+| artifact-structure | coexisting synonym dir pairs (doc+docs, test+tests, scripts+script, util+utils, lib+libs) and root scratch files (test-*.{js,mjs,ts}, *.bak, tmp*, scratch*) | DENY Write into either synonym dir when its sibling exists | blocks if session-created strays exist | `house-rules check --base <ref>` | none |
 | type-escape-hatches | warn. TypeScript only, except no-runtime-typeof, which also runs on JavaScript. no-runtime-typeof takes the option `allowInTypeGuards` (see Configuration). Checks: no-unknown-parameters, no-unknown-returns, no-unknown-type-aliases, no-unsafe-dictionary-type, no-object-parameters, no-chained-type-assertions, no-runtime-typeof, no-widen-then-assert, no-known-value-widening (all ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
 | effect | off by default; turn it on with `"rules": {"effect": "warn"}`. When on, warn. TypeScript and JavaScript. Checks: prefer-effect-match, no-manual-effect-error-tag, no-service-constructor-imports (skips `.test` and `.spec` files), no-manual-tag-comparison, no-manual-tagged-construction (all ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
 | require-safety-comment-for-type-assertion | off by default; `["warn"]` opts in. TypeScript only. Flags non-const type assertions (`x as T`, `<T>x`) with no `SAFETY:` comment. The comment must come right before the assertion or its statement. `as const` is exempt. The marker is fixed to `SAFETY:`; the upstream `markers` option is not ported. A line that a type-escape-hatches check already reports gets no safety-comment finding, so one line never yields two reports (ported) | non-blocking: adds context, never denies | non-blocking: shows a message, never blocks | reports, exit 0 | none |
@@ -55,7 +55,7 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 |---|---|
 | commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
 | comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
-| artifact-structure | severity `error` only (registry findings in a `.groundwork` repo are always warnings); options `govern`, `types`, `forbidden` (see Doc-type manifest below) |
+| artifact-structure | severity `error` only; options `govern`, `types`, `forbidden` (see Doc-type manifest below) |
 | type-escape-hatches | severity `off` or `warn` (default `warn`); option `allowInTypeGuards` (boolean, default `false`) |
 | code-smells | severity `off` or `warn` (default `warn`); no options |
 | no-module-mocking | severity `off` or `warn` (default `warn`); no options |
@@ -97,7 +97,7 @@ Path placeholders in `generates`: `{name}` matches one path segment (no `/`); `{
 
 Frontmatter schema keywords: `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`, `null`, or an array of them), `required`, `properties`, `enum`, `const`, `pattern`, `format` (only `date`, meaning YYYY-MM-DD), `if` with `then`, and `oneOf`. The annotations `$schema`, `description` and `title` are ignored. Any other keyword is reported as unsupported.
 
-Config wins when the options set `types` or `forbidden`; findings then use the configured severity. With neither option, a repo that has a `.groundwork` directory is checked against the doc registry that ships with house-rules, at Stop and at edit time. Every registry finding is a warning and never blocks. A repo with neither option and no `.groundwork` directory gets only the built-in synonym-directory and root-scratch checks. The old id `stray-artifacts` is the same rule under its former name.
+Manifest checks run only when the options set `types` or `forbidden`; findings use the configured severity. With neither option, the rule runs only the built-in synonym-directory and root-scratch checks. The old id `stray-artifacts` is the same rule under its former name.
 
 Checks by moment. Manifest checks apply to new files only; a path already in HEAD is not checked. At edit time (PreToolUse on Write) a forbidden pattern or an unmatched governed path is denied; a file that matches a type passes, because a fresh write is a draft. Frontmatter and heading content is checked at Stop (and by `house-rules check`).
 
@@ -146,7 +146,7 @@ Complete example:
 
 Commands that read the manifest (all accept `--repo <dir>`):
 
-- `house-rules structure` lists every type as `id (tier): generates — description`, then each `forbidden: pattern → redirect`. With no `types` it prints `artifact-structure: legacy (no types)`. The command reads config only, so in a `.groundwork` repo it prints that line even though the rule checks the doc registry.
+- `house-rules structure` lists every type as `id (tier): generates — description`, then each `forbidden: pattern → redirect`. With no `types` it prints `artifact-structure: legacy (no types)`.
 - `house-rules where <type|text>` with a type id prints `id: generates` and the instruction. With free text (contains whitespace) it prints up to 3 best-matching types. A single word that is not a type id exits 1 and lists the types.
 - `house-rules new <type> key=value...` writes a new file from the type's `template` and prints its path, for example `house-rules new decision slug=use-bun title="Use Bun"`. `title` defaults to `name` when only `name` is given. It exits 1 when the target exists or the rendered path does not match the type.
 

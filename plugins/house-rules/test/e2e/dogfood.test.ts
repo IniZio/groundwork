@@ -8,9 +8,18 @@ const PLUGIN_ROOT = resolve(import.meta.dir, '../..');
 const BIN = join(PLUGIN_ROOT, 'bin/house-rules');
 const REPO = resolve(PLUGIN_ROOT, '../..');
 
-function cloneRepo(dest: string): void {
-  const r = spawnSync('git', ['clone', REPO, dest], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`git clone failed: ${r.stderr}`);
+function initRepo(dest: string, files: Record<string, string>): void {
+  const init = spawnSync('git', ['init', '-q', dest], { encoding: 'utf8' });
+  if (init.status !== 0) throw new Error(`git init failed: ${init.stderr}`);
+  spawnSync('git', ['-C', dest, 'config', 'user.email', 't@t.com'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', dest, 'config', 'user.name', 'T'], { encoding: 'utf8' });
+  for (const [rel, content] of Object.entries(files)) {
+    mkdirSync(join(dest, rel, '..'), { recursive: true });
+    writeFileSync(join(dest, rel), content);
+  }
+  spawnSync('git', ['-C', dest, 'add', '.'], { encoding: 'utf8' });
+  const commit = spawnSync('git', ['-C', dest, 'commit', '-qm', 'init'], { encoding: 'utf8' });
+  if (commit.status !== 0) throw new Error(`git commit failed: ${commit.stderr}`);
 }
 
 function gitAdd(repoRoot: string, ...files: string[]): void {
@@ -46,7 +55,7 @@ describe('dogfood e2e', () => {
   it('check exits 1 and names both artifact-structure and comment-density', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'hr-e2e-'));
     try {
-      cloneRepo(tmpDir);
+      initRepo(tmpDir, { 'doc/README.md': '# doc\n', 'src/index.ts': 'export {};\n' });
 
       // baseline against HEAD so only our additions are checked
       const bl = runCLI(['baseline', '--base', 'HEAD'], tmpDir);

@@ -8,10 +8,24 @@ import { matchPath } from '../../src/config/manifest.mjs';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '../..');
 const BIN = path.join(PLUGIN_ROOT, 'bin/house-rules');
-const REAL_TEMPLATE = fs.readFileSync(
-  path.resolve(PLUGIN_ROOT, '../../templates/doc-types/research.md'),
-  'utf8',
-);
+const RESEARCH_TEMPLATE = [
+  '---',
+  'question: {{question}}',
+  'confidence: {{confidence}}',
+  'created: {{created}}',
+  '---',
+  '',
+  '# {{title}}',
+  '',
+  '## Question',
+  '',
+  'State the question being investigated and why it matters.',
+  '',
+  '## Findings',
+  '',
+  'Record what the sources show, each claim tied to a cited source.',
+  '',
+].join('\n');
 
 const tempDirs: string[] = [];
 afterEach(() => {
@@ -23,8 +37,7 @@ const RESEARCH = {
   generates: '.groundwork/work/{slug}/research/{name:kebab}.md',
   description: 'Research notes with cited sources',
   instruction: 'Cite a source for every claim.',
-  // The real template has no created field; add one so the auto-filled date is observable.
-  template: REAL_TEMPLATE.replace('confidence: {{confidence}}\n', 'confidence: {{confidence}}\ncreated: {{created}}\n'),
+  template: RESEARCH_TEMPLATE,
 };
 const DECISION = {
   tier: 'product',

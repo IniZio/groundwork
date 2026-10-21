@@ -71,36 +71,30 @@ const valid: TrackedCase[] = [
   },
 ];
 
-const REGISTRY_VALID: TrackedCase[] = [
+const NO_CONFIG_VALID: TrackedCase[] = [
   {
-    why: 'registry source: an issue whose status is triage needs no Acceptance criteria heading',
-    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: triage\n---\n\n## Summary\n' },
+    why: 'no config: a repo with a .groundwork/ directory gets no doc-type checks, so a todo issue without an Acceptance criteria heading is not flagged',
+    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: todo\n---\n\n## Summary\n' },
   },
   {
-    why: 'registry source: without a .groundwork/ directory and without config, lessons/x.md is not flagged',
+    why: 'no config: a repo with a .groundwork/ directory has nothing forbidden, so lessons/x.md is not flagged',
+    tree: { '.groundwork/.keep': '', 'lessons/x.md': '' },
+  },
+  {
+    why: 'no config: lessons/x.md is not flagged',
     tree: { 'lessons/x.md': '' },
   },
   {
-    why: 'config source: headingsWhen does not demand its heading when the status does not match',
+    why: 'headingsWhen does not demand its heading when the status does not match',
     tree: { '.house-rules.json': WHEN_CFG, [RESEARCH]: '---\nstatus: open\n---\n\n## Notes\n' },
     sessionCreatedOverrides: { [RESEARCH]: true },
   },
 ];
-valid.push(...REGISTRY_VALID);
+valid.push(...NO_CONFIG_VALID);
 
 const invalid: InvalidTrackedCase[] = [
   {
-    why: 'registry source: with a .groundwork/ directory and no configured types, the shipped registry applies; a todo issue without an Acceptance criteria heading is flagged as a warning',
-    tree: { '.groundwork/.keep': '', [ISSUE]: '---\ntitle: Y\nstatus: todo\n---\n\n## Summary\n' },
-    findings: [{ ruleId: 'artifact-structure', path: ISSUE, severity: 'warn', message: `artifact-structure: ${ISSUE} is missing required heading "Acceptance criteria" (type "issue")` }],
-  },
-  {
-    why: 'registry source: with a .groundwork/ directory and no configured types, a file under the registry-forbidden lessons/ is flagged as a warning',
-    tree: { '.groundwork/.keep': '', 'lessons/x.md': '' },
-    findings: [{ ruleId: 'artifact-structure', path: 'lessons/x.md', severity: 'warn' }],
-  },
-  {
-    why: 'config source: headingsWhen on a configured type demands its heading; the finding carries no severity tag',
+    why: 'headingsWhen on a configured type demands its heading; the finding carries no severity tag',
     tree: { '.house-rules.json': WHEN_CFG, [RESEARCH]: '---\nstatus: done\n---\n\n## Notes\n' },
     findings: [{ ruleId: 'artifact-structure', path: RESEARCH, message: `artifact-structure: ${RESEARCH} is missing required heading "Risks" (type "research")` }],
   },

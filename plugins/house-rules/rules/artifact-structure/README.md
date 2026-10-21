@@ -75,24 +75,30 @@ none
 **Files:**
 - `tmp-notes.md`: 
 
-### registry source: an issue whose status is triage needs no Acceptance criteria heading
+### no config: a repo with a .groundwork/ directory gets no doc-type checks, so a todo issue without an Acceptance criteria heading is not flagged
 
 **Files:**
 - `.groundwork/.keep`: 
 - `.groundwork/work/x/tickets/01-y.md`: ---
 title: Y
-status: triage
+status: todo
 ---
 
 ## Summary
 
 
-### registry source: without a .groundwork/ directory and without config, lessons/x.md is not flagged
+### no config: a repo with a .groundwork/ directory has nothing forbidden, so lessons/x.md is not flagged
+
+**Files:**
+- `.groundwork/.keep`: 
+- `lessons/x.md`: 
+
+### no config: lessons/x.md is not flagged
 
 **Files:**
 - `lessons/x.md`: 
 
-### config source: headingsWhen does not demand its heading when the status does not match
+### headingsWhen does not demand its heading when the status does not match
 
 **Files:**
 - `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}
@@ -105,28 +111,7 @@ status: open
 
 ## Flagged
 
-### registry source: with a .groundwork/ directory and no configured types, the shipped registry applies; a todo issue without an Acceptance criteria heading is flagged as a warning
-
-**Files:**
-- `.groundwork/.keep`: 
-- `.groundwork/work/x/tickets/01-y.md`: ---
-title: Y
-status: todo
----
-
-## Summary
-
-
-**Expected findings:**
-- artifact-structure: .groundwork/work/x/tickets/01-y.md is missing required heading "Acceptance criteria" (type "issue")
-
-### registry source: with a .groundwork/ directory and no configured types, a file under the registry-forbidden lessons/ is flagged as a warning
-
-**Files:**
-- `.groundwork/.keep`: 
-- `lessons/x.md`: 
-
-### config source: headingsWhen on a configured type demands its heading; the finding carries no severity tag
+### headingsWhen on a configured type demands its heading; the finding carries no severity tag
 
 **Files:**
 - `.house-rules.json`: {"rules":{"artifact-structure":["error",{"govern":["notes/**"],"types":{"research":{"tier":"working","generates":".groundwork/work/{slug}/research/{name:kebab}.md","headingsWhen":[{"property":"status","in":["done"],"headings":["Risks"]}]}}}]}}

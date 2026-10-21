@@ -1,19 +1,11 @@
 {
   "name": "groundwork",
-  "version": "2.20.1",
-  "description": "groundwork — glue that adapts to per-repo conventions and enforces best-practice direction",
+  "version": "3.0.0",
+  "description": "groundwork — Newman's working conventions on top of pstack, plus house-rules",
   "type": "module",
-  "bin": {
-    "gw": "src/cli/main.ts"
-  },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "budget:update": "bun scripts/budget-update.ts",
-    "docs:conformance": "bun scripts/doc-conformance.ts",
-    "sync:doc-registry": "bun scripts/sync-doc-registry.ts",
-    "upstream:check": "bun scripts/upstream-check.ts",
-    "gw": "bun src/cli/main.ts",
     "house-rules": "bun plugins/house-rules/src/cli/main.ts"
   },
   "devDependencies": {

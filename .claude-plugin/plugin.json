@@ -1,56 +1,18 @@
 {
   "name": "groundwork",
-  "version": "2.20.1",
-  "description": "groundwork — convention adapter, enforcement hooks, SQLite work store",
+  "version": "3.0.0",
+  "description": "groundwork — Newman's working conventions as one mode skill, on top of pstack and house-rules",
   "dependencies": [
     {
-      "name": "mattpocock-skills",
-      "marketplace": "mattpocock"
+      "name": "pstack",
+      "marketplace": "cursor-plugins"
     },
     {
       "name": "house-rules",
-      "version": "~0.17.0"
+      "version": "~0.18.0"
     }
   ],
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-commit-msg-installer.ts"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/stop-gate.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/new-code-gate.ts"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -62,64 +24,6 @@
           {
             "type": "command",
             "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/slow-command-timeout-guard.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/commit-message-guard.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "Grep|Glob|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/search-nudge.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Bash|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-read-guard.ts"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/spawn-model-guard.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/store-write-guard.ts"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prose-quality-guard.ts"
-          },
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-size-guard.ts"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/prompt-reminder.ts"
           }
         ]
       }

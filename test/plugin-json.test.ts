@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
@@ -81,5 +81,20 @@ describe("plugin manifest parity", () => {
     expect(houseRulesDep).toBeDefined();
     // version is a semver range like ~0.1.0 that includes 0.1.0
     expect(houseRulesDep?.version).toMatch(/^~/);
+  });
+
+  it("groundwork plugin.json depends on pstack from the cursor-plugins marketplace", () => {
+    const deps: Array<{ name: string; marketplace?: string }> =
+      groundworkManifest.dependencies ?? [];
+    expect(deps).toContainEqual({ name: "pstack", marketplace: "cursor-plugins" });
+  });
+
+  it("every groundwork hook command points at a file in this repo", () => {
+    expect(gwCmds.length).toBeGreaterThan(0);
+    for (const cmd of gwCmds) {
+      const rel = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(\S+)/)?.[1];
+      expect(rel).toBeDefined();
+      expect(existsSync(join(ROOT, rel!))).toBe(true);
+    }
   });
 });

@@ -1,9 +1,4 @@
-/**
- * Family 5: Exit-code integrity.
- * Design level: port-only (D-11: v1 piped-exit-code-guard.ts is already minimal at 57 lines;
- * re-deriving would produce the same regex with no saving).
- * Detects a shell command whose exit status is masked by piping through a filter command.
- */
+/** Denies a Bash command that reads `$?` after piping through a filter, which hides the real exit code. */
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 

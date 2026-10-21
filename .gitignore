@@ -1,12 +1,2 @@
 node_modules/
 dist/
-test/deployed/_proof-harness-scratch/
-
-# SQLite work store — machine state, not review material (D-9)
-*.db
-*.db-shm
-*.db-wal
-.groundwork.db
-
-# Test databases
-*.test.db

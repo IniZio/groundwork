@@ -42,7 +42,7 @@ If the user named an area, use it. Otherwise use the branch diff since the merge
 
 ### 3. Scan
 
-Run `house-rules check --all --format json` (or scoped: `--base <ref>` or positional pathspecs matching step 2's scope) first; exit 1 means findings exist (not a crash), exit 2 means a usage or runtime error. Its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `groundwork:explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Inventory checks (the **Orphaned entry point** smell in the `slop` lens) always run repo-wide regardless of the hot-spot scope. Unchosen lenses appear in the report header as "not scanned (not selected)".
+Run `house-rules check --all --format json` (or scoped: `--base <ref>` or positional pathspecs matching step 2's scope) first; exit 1 means findings exist (not a crash), exit 2 means a usage or runtime error. Its findings go in as the `house-rules` lens with auto-fix marked. Then fan out `Explore` subagents in ONE message, one per chosen remaining lens. Each gets its reference file and the scope, returns Finding rows only, makes no edits. Skip a lens that has no surface (no dependency manifest → no `deps`; no docs → no `docs`) and record it in the report as "skipped: <reason>". Inventory checks (the **Orphaned entry point** smell in the `slop` lens) always run repo-wide regardless of the hot-spot scope. Unchosen lenses appear in the report header as "not scanned (not selected)".
 
 Reference files: `slop` → `reference/deslop.md`, `deps` → `reference/deps.md`, `lint-debt` → `reference/lint-debt.md`, `docs` → `reference/docs-staleness.md`, `conventions` → `reference/conventions.md`.
 
@@ -56,7 +56,7 @@ Write a self-contained HTML file to `<tmpdir>/housekeep-<timestamp>.html` (`$TMP
 
 ### 6. Fix
 
-Accepted findings only. Lock behaviour with the narrowest regression tests before editing. Preview with `house-rules housekeep --dry-run --diff` before applying. Send auto-fix findings to `house-rules housekeep --rules <ids> --paths <globs>`. Exit 1 means error findings remain unfixed; report those as deferred, not a crash. For the rest, write a cleanup plan ordered from safest deletion to riskiest consolidation, using each lens file's pass guidance. For large sets, fan out `groundwork:implementer` (≤2 files each). After each pass, run that lens's quality gate.
+Accepted findings only. Lock behaviour with the narrowest regression tests before editing. Preview with `house-rules housekeep --dry-run --diff` before applying. Send auto-fix findings to `house-rules housekeep --rules <ids> --paths <globs>`. Exit 1 means error findings remain unfixed; report those as deferred, not a crash. For the rest, write a cleanup plan ordered from safest deletion to riskiest consolidation, using each lens file's pass guidance. For large sets, fan out `pstack:poteto-agent` delegates (≤2 files each). After each pass, run that lens's quality gate.
 
 #### Automated fix flags
 
@@ -75,4 +75,4 @@ Untracked scratch files are listed under "Untracked strays (not blocking)" in te
 
 ### 7. Close
 
-Print a final terminal report: scope, fixed (file + change), deferred/skipped findings with reasons (never dropped silently), quality gates PASS/FAIL, remaining risks. Completion: `groundwork:advisor` returns APPROVE; REVISE/REJECT blocks completion.
+Print a final terminal report: scope, fixed (file + change), deferred/skipped findings with reasons (never dropped silently), quality gates PASS/FAIL, remaining risks. Completion: a fresh reviewer subagent that sees only the diff and the accepted findings returns APPROVE; REVISE/REJECT blocks completion.

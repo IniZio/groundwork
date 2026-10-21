@@ -86,16 +86,6 @@ describe("house-rules manifest", () => {
     expect(houseRules.version).toBe(expectedVersion);
   });
 
-  it("marketplace.json groundwork entry is byte-unchanged in name and source", () => {
-    const marketplace = JSON.parse(
-      readFileSync(join(repoRoot, ".claude-plugin/marketplace.json"), "utf8")
-    );
-    const groundwork = marketplace.plugins.find((p: { name: string }) => p.name === "groundwork");
-    expect(groundwork).toBeDefined();
-    expect(groundwork.name).toBe("groundwork");
-    expect(groundwork.source).toBe("./");
-  });
-
   it("README contains minimum version requirement v2.1.193", () => {
     const readme = readFileSync(join(pluginRoot, "README.md"), "utf8");
     expect(readme).toContain("v2.1.193");

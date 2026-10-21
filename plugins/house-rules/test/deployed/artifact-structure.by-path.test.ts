@@ -31,7 +31,7 @@ const CONFIG = {
             generates: "doc/spec/{area:kebab}.md",
           },
         },
-        forbidden: [{ pattern: "**/adr/**", redirect: "Record decisions with $GW event append --type DECISION" }],
+        forbidden: [{ pattern: "**/adr/**", redirect: "Record decisions in doc/decisions" }],
       },
     ],
   },
@@ -120,7 +120,7 @@ describe("artifact-structure deployed by-path", () => {
     const dir = makeRepo();
     const out = await writeNew(dir, "docs/adr/0001-x.md");
     expect(out.permissionDecision).toBe("deny");
-    expect(out.reason).toContain("Record decisions with $GW event append --type DECISION");
+    expect(out.reason).toContain("Record decisions in doc/decisions");
   });
 
   describe("AC3 controls (no deny)", () => {

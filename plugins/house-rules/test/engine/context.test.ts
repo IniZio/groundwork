@@ -8,7 +8,7 @@ import { buildContext } from '../../src/engine/context.js';
 const tmpRoots: string[] = [];
 
 function tmpDir(label: string): string {
-  const d = path.join(os.tmpdir(), `gw-ctx-${label}-${Date.now()}`);
+  const d = path.join(os.tmpdir(), `hr-ctx-${label}-${Date.now()}`);
   mkdirSync(d, { recursive: true });
   tmpRoots.push(d);
   return d;
@@ -315,7 +315,7 @@ function makeBashLine(command: string, cwd: string): string {
 function scratchSuite(label: string, base: string): void {
   describe(`buildContext — gate Bash scope, repo rooted under ${label}`, () => {
     it('Bash write inside the repo brings the file into scope', () => {
-      const repo = mkdtempSync(path.join(base, 'gw-bsh-in-'));
+      const repo = mkdtempSync(path.join(base, 'hr-bsh-in-'));
       tmpRoots.push(repo);
       initRepo(repo);
       writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');
@@ -328,8 +328,8 @@ function scratchSuite(label: string, base: string): void {
     });
 
     it(`Bash write to a ${label} scratch file outside the repo stays out of scope`, () => {
-      const repo = mkdtempSync(path.join(base, 'gw-bsh-repo-'));
-      const scratch = mkdtempSync(path.join(base, 'gw-bsh-out-'));
+      const repo = mkdtempSync(path.join(base, 'hr-bsh-repo-'));
+      const scratch = mkdtempSync(path.join(base, 'hr-bsh-out-'));
       tmpRoots.push(repo, scratch);
       initRepo(repo);
       writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');
@@ -343,8 +343,8 @@ function scratchSuite(label: string, base: string): void {
     });
 
     it(`Write to a ${label} file outside the repo stays out of scope (in-repo filter bites)`, () => {
-      const repo = mkdtempSync(path.join(base, 'gw-wr-repo-'));
-      const scratch = mkdtempSync(path.join(base, 'gw-wr-out-'));
+      const repo = mkdtempSync(path.join(base, 'hr-wr-repo-'));
+      const scratch = mkdtempSync(path.join(base, 'hr-wr-out-'));
       tmpRoots.push(repo, scratch);
       initRepo(repo);
       writeFileSync(path.join(repo, 'a.ts'), 'export {};\n');

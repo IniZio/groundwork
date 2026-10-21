@@ -26,7 +26,7 @@ describe("gate warn findings", () => {
   let n = 0;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(os.tmpdir(), "gw-warn-"));
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "hr-warn-"));
     git(tmpDir, "init");
     git(tmpDir, "config", "user.email", "t@t.com");
     git(tmpDir, "config", "user.name", "T");

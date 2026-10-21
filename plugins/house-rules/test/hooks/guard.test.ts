@@ -180,18 +180,6 @@ describe("comment-density-guard", () => {
     expect(r.exit).toBe(0);
   });
 
-  it("GROUNDWORK_COMMENT_DENSITY=0 does not skip — guard still corrects", async () => {
-    const orig = process.env.GROUNDWORK_COMMENT_DENSITY;
-    process.env.GROUNDWORK_COMMENT_DENSITY = "0";
-    try {
-      const r = await check(write("/tmp/cdg-kill-bite.ts", OVER_CAP_25));
-      expect(getHso(r)).toHaveProperty("updatedInput");
-    } finally {
-      if (orig === undefined) delete process.env.GROUNDWORK_COMMENT_DENSITY;
-      else process.env.GROUNDWORK_COMMENT_DENSITY = orig;
-    }
-  });
-
   it("NO FLOOR: small file with all comments → strips (no MIN_ADDED_LINES bypass)", async () => {
     const tiny = "// c1\n// c2\n// c3\n// c4\n// c5";
     const r = await check(write("/tmp/cdg-tiny.ts", tiny));

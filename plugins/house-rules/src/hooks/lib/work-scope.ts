@@ -303,7 +303,7 @@ function addedVsCommittedSource(
   if (showResult.status !== 0) return null;
 
   // Write original content to a temp file
-  const tmpFile = `/dev/shm/gw-work-scope-orig-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+  const tmpFile = `/dev/shm/hr-work-scope-orig-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
   try {
     writeFileSync(tmpFile, showResult.stdout, "utf8");
     const diffResult = spawnSync(
@@ -540,8 +540,8 @@ export function addedHunks(file: string, base: string, transcriptPath?: string):
 export function diffTextToHunks(baseText: string, postText: string): DiffHunk[] {
   const tmpDir = os.tmpdir();
   const id = randomUUID();
-  const baseTmpPath = path.join(tmpDir, `gw-diff-base-${id}`);
-  const postTmpPath = path.join(tmpDir, `gw-diff-post-${id}`);
+  const baseTmpPath = path.join(tmpDir, `hr-diff-base-${id}`);
+  const postTmpPath = path.join(tmpDir, `hr-diff-post-${id}`);
   try {
     writeFileSync(baseTmpPath, baseText, { encoding: "utf8", mode: 0o600 });
     writeFileSync(postTmpPath, postText, { encoding: "utf8", mode: 0o600 });

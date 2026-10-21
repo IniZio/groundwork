@@ -5,7 +5,7 @@ import path from "node:path";
 
 // PLUGIN_ROOT = plugins/house-rules/
 const PLUGIN_ROOT = path.resolve(import.meta.dir, "../..");
-// REPO_ROOT = groundwork repo root (for fixtures)
+// REPO_ROOT = repository root (for fixtures)
 const REPO_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 
 const pluginJson = JSON.parse(

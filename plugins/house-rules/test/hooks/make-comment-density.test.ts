@@ -1,8 +1,7 @@
 /**
  * Make comment-density autofix (stable).
  *
- * Over-budget plain `#` comments are stripped; never stripped: `# groundwork-rule:` lines
- * (read by the new-code gate), tab-prefixed recipe lines, `\#`, `define ... endef` bodies,
+ * Over-budget plain `#` comments are stripped; never stripped: tab-prefixed recipe lines, `\#`, `define ... endef` bodies,
  * and `#` inside variable values or continuation lines.
  */
 import { describe, it, expect } from "bun:test";
@@ -31,8 +30,8 @@ describe("fixEntryFor(make)", () => {
 
 describe("make autofix: over-budget plain comments", () => {
   const src = [
-    "# groundwork-rule: no-console-log",
-    "# groundwork-rule: no-ts-any",
+    "# rule: no-console-log",
+    "# rule: no-ts-any",
     "CC = gcc",
     ...PROSE,
     "all: main.o",
@@ -40,23 +39,14 @@ describe("make autofix: over-budget plain comments", () => {
     "",
   ].join("\n");
 
-  it("removes every prose line, keeps code and groundwork-rule lines byte-identical", async () => {
+  it("removes every plain comment line, including rule-style ones, and keeps code byte-identical", async () => {
     const out = await fix(src);
     for (const p of PROSE) expect(out).not.toContain(p);
-    expect(out.split("\n").filter((l) => l.startsWith("#"))).toEqual([
-      "# groundwork-rule: no-console-log",
-      "# groundwork-rule: no-ts-any",
-    ]);
+    expect(out.split("\n").filter((l) => l.startsWith("#"))).toEqual([]);
     expect(out).toContain("CC = gcc\n");
     expect(out).toContain("all: main.o\n\t$(CC) -o app main.o\n");
   });
 
-  it("strips the same prose when the groundwork-rule line sits after it (order varied)", async () => {
-    const reordered = ["CC = gcc", ...PROSE, "# groundwork-rule: no-ts-any", "all:", "\t@true", ""].join("\n");
-    const out = await fix(reordered);
-    for (const p of PROSE) expect(out).not.toContain(p);
-    expect(out).toContain("# groundwork-rule: no-ts-any");
-  });
 });
 
 describe("make autofix: hazards are never treated as strippable comments", () => {

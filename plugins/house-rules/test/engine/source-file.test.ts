@@ -49,7 +49,7 @@ function makeCountingFactory(base: ParserFactory = getParser): { factory: Parser
 const tmpRoots: string[] = [];
 
 function tmpDir(label: string): string {
-  const d = path.join(os.tmpdir(), `gw-sf-${label}-${Date.now()}`);
+  const d = path.join(os.tmpdir(), `hr-sf-${label}-${Date.now()}`);
   mkdirSync(d, { recursive: true });
   tmpRoots.push(d);
   return d;

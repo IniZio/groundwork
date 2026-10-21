@@ -1,12 +1,8 @@
 /**
  * commit-message rule — preset-based commit subject enforcement.
  *
- * This module is the canonical implementation. Both enforcement vehicles —
- * the groundwork PreToolUse guard and the git-level commit-msg hook — delegate
- * to lintCommitMessage() exported here. Groundwork keeps no separate logic.
- * Lint is pure: the preset is supplied by the caller from the config resolver.
- *
- * Vehicles: none (not a file-tree rule). Guard and hook import directly.
+ * lintCommitMessage() is pure: the caller supplies the preset from the config resolver.
+ * check() reports nothing because a commit message is not part of the file tree.
  */
 
 import type { Rule, RuleContext, Finding } from '../../src/engine/types.js'

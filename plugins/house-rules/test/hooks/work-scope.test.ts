@@ -59,7 +59,7 @@ const MAIN_EVALS_JSON_PATH = extractBashCwdPath(path.join(FIXTURES, "main-sessio
 
 const tmpRoots: string[] = [];
 function tmpDir(label: string): string {
-  const d = path.join(os.tmpdir(), `gw-ws-${label}-${Date.now()}`);
+  const d = path.join(os.tmpdir(), `hr-ws-${label}-${Date.now()}`);
   mkdirSync(d, { recursive: true });
   tmpRoots.push(d);
   return d;

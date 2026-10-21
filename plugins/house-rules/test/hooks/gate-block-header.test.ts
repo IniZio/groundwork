@@ -273,8 +273,7 @@ describe("gate-block-header: manifest finding guidance", () => {
     const block = gateBlock(fp);
     expect(block).toContain("frontmatter invalid for type spec");
     expect(block).not.toContain("Merge the coexisting");
-    expect(block).toContain("fix its frontmatter/headings");
-    expect(block).toContain("$GW event append --type DECISION");
+    expect(block).toContain("Move the file to the path named above or fix its frontmatter/headings. Then stop again.");
   });
 
   it("control: synonym-dir finding still gets merge guidance", () => {

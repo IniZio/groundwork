@@ -14,7 +14,7 @@ const GUARD_CMD = pluginJson.hooks.PreToolUse.find((g) => g.matcher === "Edit|Wr
 const STOP_CMD = pluginJson.hooks.Stop[0].hooks[0].command;
 
 const LESSONS_REDIRECT = "REDIRECT-LESSONS put lessons in doc/lessons";
-const ADR_REDIRECT = "REDIRECT-ADR record decisions with gw event append";
+const ADR_REDIRECT = "REDIRECT-ADR record decisions in doc/decisions";
 
 const CONFIG = {
   rules: {

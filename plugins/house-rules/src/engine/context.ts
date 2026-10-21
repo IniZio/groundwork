@@ -49,11 +49,10 @@ export function detectBashCreatedDocs(
 ): string[] {
   try {
     if (!transcriptPath) return [];
-    const manifest = resolveManifest(repoRoot);
-    if (!manifest) return [];
-    const opts = manifest.options;
+    const opts = resolveManifest(repoRoot);
+    if (!opts) return [];
     const govern = opts.govern ?? [];
-    if (manifest.source === 'config' && (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0)) return [];
+    if (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0) return [];
 
     let start = NaN;
     for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {

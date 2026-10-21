@@ -4,7 +4,6 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveConfig } from '../../src/config/resolve.mjs';
 import type { ManifestOptions } from '../../src/config/resolve.mjs';
-import { loadRegistrySnapshot } from '../../src/registry/doc-registry-snapshot.js';
 import { matchPath, nearestTypes, compileGenerates, renderPath, forbiddenRedirect, inTypedArea, words } from '../../src/config/manifest.mjs';
 import { parseFrontmatter, validateFrontmatter, missingHeadings, requiredHeadings } from '../../src/engine/frontmatter.js';
 
@@ -28,24 +27,13 @@ const ROOT_SCRATCH_PATTERNS = [
 
 const SLUG_SENTINEL = 'slugplaceholder';
 
-interface ResolvedManifest {
-  options: ManifestOptions;
-  source: 'config' | 'registry';
-}
-
-// Config wins when it sets types or forbidden. Otherwise a repo with a .groundwork/ directory
-// is checked against the shipped registry snapshot; any other repo is not checked.
-export function resolveManifest(repoRoot: string): ResolvedManifest | null {
+/** The configured manifest, or null when config sets neither types nor forbidden. */
+export function resolveManifest(repoRoot: string): ManifestOptions | null {
   try {
     const options = resolveConfig(repoRoot).rules['artifact-structure'].options;
     const hasTypes = options.types !== undefined && Object.keys(options.types).length > 0;
     const hasForbidden = options.forbidden !== undefined && options.forbidden.length > 0;
-    if (hasTypes || hasForbidden) return { options, source: 'config' };
-    if (fs.statSync(path.join(repoRoot, '.groundwork')).isDirectory()) {
-      const snapshot = loadRegistrySnapshot();
-      return { options: { types: snapshot.types, forbidden: snapshot.forbidden }, source: 'registry' };
-    }
-    return null;
+    return hasTypes || hasForbidden ? options : null;
   } catch {
     return null;
   }
@@ -89,19 +77,13 @@ function contentFindings(repoRoot: string, relPath: string, typeId: string, def:
   return messages;
 }
 
-// Findings from the shipped registry never block: they are always tagged warn.
-function tag(source: ResolvedManifest['source']): { severity?: 'warn' } {
-  return source === 'registry' ? { severity: 'warn' } : {};
-}
-
 function fileManifestFindings(
   repoRoot: string,
   relPath: string,
-  { options, source }: ResolvedManifest,
+  options: ManifestOptions,
   contentChecks: boolean,
   isIgnored: () => boolean,
 ): Finding[] {
-  const severity = tag(source);
   const redirect = forbiddenRedirect(relPath, { forbidden: options.forbidden ?? [] });
   if (redirect !== null) {
     return [{
@@ -109,7 +91,6 @@ function fileManifestFindings(
       path: relPath,
       message: `artifact-structure: ${relPath} is not allowed here. ${redirect}`,
       fingerprintBasis: relPath,
-      ...severity,
     }];
   }
   const matched = matchPath(relPath, options);
@@ -122,7 +103,6 @@ function fileManifestFindings(
       path: relPath,
       message,
       fingerprintBasis: `${relPath}:${message}`,
-      ...severity,
     }));
   }
   const globs = options.govern ?? [];
@@ -147,11 +127,10 @@ function fileManifestFindings(
     path: relPath,
     message: [`artifact-structure: ${relPath} is outside every doc type path. Nearest types:`, ...lines].join('\n'),
     fingerprintBasis: relPath,
-    ...severity,
   }];
 }
 
-function manifestFindings(repoRoot: string, scoped: ScopedFile[], manifest: ResolvedManifest, contentChecks: boolean): Finding[] {
+function manifestFindings(repoRoot: string, scoped: ScopedFile[], manifest: ManifestOptions, contentChecks: boolean): Finding[] {
   const findings: Finding[] = [];
   let ignored: Set<string> | null = null;
   for (const f of scoped) {

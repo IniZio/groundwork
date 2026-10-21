@@ -22,7 +22,7 @@ Issues and specs for this repo live as markdown files in `.groundwork/work/<slug
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.groundwork/work/<slug>/` (creating the directory if needed) from `templates/doc-types/issue.md`. Never write to `.scratch/`. `.scratch/**` is in `FORBIDDEN` in `src/hooks/doc-registry.ts` with the redirect "Use `.groundwork/work/{slug}/`". In a repo with `.groundwork/`, the house-rules artifact-structure rule flags a new file under `.scratch/` with that redirect by default, as a warning (shipped registry snapshot; at Stop and the edit-time guard). Explicit `forbidden` config in `.house-rules.json` artifact-structure options (`$GW recipe` prints that block) overrides the default and keeps its configured severity (error).
+Create a new file under `.groundwork/work/<slug>/` (creating the directory if needed) from `templates/doc-types/issue.md`. Never write to `.scratch/`. `.scratch/**` is in `FORBIDDEN` in `src/hooks/doc-registry.ts` with the redirect "Use `.groundwork/work/{slug}/`". The house-rules artifact-structure rule flags a new file under `.scratch/` with that redirect only when `.house-rules.json` configures it in the artifact-structure `forbidden` option (`$GW recipe` prints that block); findings use the configured severity (error).
 
 ## When a skill says "fetch the relevant ticket"
 

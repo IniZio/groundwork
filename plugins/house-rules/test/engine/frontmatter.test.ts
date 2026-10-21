@@ -4,8 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Ajv2020Mod from "ajv/dist/2020.js";
 import addFormatsMod from "ajv-formats";
-import { WORKING_TYPES } from "../../../../src/hooks/doc-registry.js";
 import { missingHeadings, parseFrontmatter, requiredHeadings, validateFrontmatter, type FmSchema } from "../../src/engine/frontmatter.js";
+
+const MOTIVE_SCHEMA: FmSchema = {
+  type: "object",
+  required: ["created", "status"],
+  properties: { created: { type: "string", format: "date" }, status: { enum: ["active", "complete", "abandoned"] } },
+};
+const SPEC_SCHEMA: FmSchema = {
+  type: "object",
+  required: ["folds_into"],
+  properties: { folds_into: { type: "string" }, reason: { type: "string" } },
+  if: { properties: { folds_into: { const: "none" } }, required: ["folds_into"] },
+  then: { required: ["reason"] },
+};
 
 // nodenext typing wraps CJS default exports; bun returns them directly.
 const unwrap = <T>(m: unknown): T => ((m as { default?: T }).default ?? m) as T;
@@ -47,7 +59,7 @@ describe("frontmatter", () => {
       return r.data;
     };
     const dateSchema = { type: "object", properties: { created: { type: "string", format: "date" } } };
-    const spec = WORKING_TYPES.spec.frontmatter as FmSchema;
+    const spec = SPEC_SCHEMA;
     const oneOfS = { oneOf: [{ type: "string" }, { enum: ["a", 1] }] };
     const cases: [string, FmSchema, unknown][] = [
       ["type string ok", { type: "string" }, "x"],
@@ -104,8 +116,8 @@ describe("frontmatter", () => {
       ["oneOf none", oneOfS, 5],
       ["oneOf two", { oneOf: [{ type: "string" }, { enum: ["a"] }] }, "a"],
       ["oneOf empty-branch pair", { oneOf: [{}, {}] }, 1],
-      ["motive ok", WORKING_TYPES.motive.frontmatter as FmSchema, fm("created: 2026-09-01\nstatus: active")],
-      ["motive bad enum", WORKING_TYPES.motive.frontmatter as FmSchema, fm("created: 2026-09-01\nstatus: nope")],
+      ["motive ok", MOTIVE_SCHEMA, fm("created: 2026-09-01\nstatus: active")],
+      ["motive bad enum", MOTIVE_SCHEMA, fm("created: 2026-09-01\nstatus: nope")],
     ];
     expect(cases.length).toBeGreaterThanOrEqual(30);
     for (const [name, schema, value] of cases) {
@@ -115,7 +127,7 @@ describe("frontmatter", () => {
     }
   });
 
-  const specSchema = WORKING_TYPES.spec.frontmatter as FmSchema;
+  const specSchema = SPEC_SCHEMA;
 
   test("AC2 seeded: missing required key names the key", () => {
     const errs = validateFrontmatter(specSchema, { reason: "x" });
@@ -123,7 +135,7 @@ describe("frontmatter", () => {
   });
 
   test("AC2 seeded: bad enum value names the key", () => {
-    const errs = validateFrontmatter(WORKING_TYPES.motive.frontmatter as FmSchema, {
+    const errs = validateFrontmatter(MOTIVE_SCHEMA, {
       created: "2026-09-01",
       status: "bogus",
     });

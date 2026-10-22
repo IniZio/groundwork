@@ -138,13 +138,41 @@ export async function run(
     const baseline = await readBaseline(baselinePath);
     const unbaselined = subtractBaseline(allFindings, baseline);
     const warnFindings = unbaselined.filter(f => f.severity === 'warn');
-    const WARN_CAP = 20;
+    const WARN_CAP = 10;
     const warnLines = warnFindings.length === 0 ? [] : [
       "house-rules warnings:",
       ...warnFindings.slice(0, WARN_CAP).map(f => `${f.path}:${f.line ?? 0} ${f.ruleId} ${f.message}`),
       ...(warnFindings.length > WARN_CAP ? [`… ${warnFindings.length - WARN_CAP} more`] : []),
     ];
     const warnings = [...grammar, ...warnLines];
+
+    const safeSessionId = /^[A-Za-z0-9_-]+$/.test(sessionId) ? sessionId : "unknown";
+    const warnedPath = path.join(opts?.testOnly_tmpDir ?? os.tmpdir(), "house-rules", safeSessionId, `warned-${agentKey}.json`);
+    const warnKey = (f: FindingWithSeverity) => `${f.path}:${f.line ?? 0}:${f.ruleId}`;
+    let warned: string[] = [];
+    try { warned = JSON.parse(readFileSync(warnedPath, "utf8")) as string[]; } catch { /* fail-open */ }
+    const newWarn = warnFindings.filter(f => !warned.includes(warnKey(f)));
+    let agentText = "";
+    if (newWarn.length > 0) {
+      agentText = [
+        "house-rules warnings (non-blocking; fix the ones in code you changed):",
+        ...newWarn.slice(0, WARN_CAP).map(f => `${f.path}:${f.line ?? 0} ${f.ruleId} ${f.message}`),
+        ...(newWarn.length > WARN_CAP ? [`… ${newWarn.length - WARN_CAP} more`] : []),
+      ].join("\n");
+      try {
+        mkdirSync(path.dirname(warnedPath), { recursive: true });
+        writeFileSync(warnedPath, JSON.stringify([...warned, ...newWarn.map(warnKey)]));
+      } catch { /* fail-open */ }
+    }
+    const warnOnly = () => ({
+      stdout: JSON.stringify({
+        continue: true,
+        systemMessage: warnings.join("\n"),
+        ...(agentText ? { hookSpecificOutput: { hookEventName: event, additionalContext: agentText } } : {}),
+      }) + "\n",
+      stderr: "",
+      exit: 0,
+    });
 
     const fixableFindings = unbaselined.filter(f =>
       f.severity === 'error' &&
@@ -155,7 +183,7 @@ export async function run(
 
     if (fixableFindings.length === 0 && strayErrors.length === 0) {
       if (warnings.length > 0) {
-        return { stdout: JSON.stringify({ continue: true, systemMessage: warnings.join("\n") }) + "\n", stderr: "", exit: 0 };
+        return warnOnly();
       }
       return allow();
     }
@@ -232,7 +260,7 @@ export async function run(
     if (unfixable.length === 0 && strayErrors.length === 0) {
       if (fixedFiles.length === 0) {
         if (warnings.length > 0) {
-          return { stdout: JSON.stringify({ continue: true, systemMessage: warnings.join("\n") }) + "\n", stderr: "", exit: 0 };
+          return warnOnly();
         }
         return allow();
       }
@@ -247,7 +275,7 @@ export async function run(
         `These files changed on disk after your last Read: Read them again before editing. If your work was already committed, review \`git diff\` and commit the cleanup.`,
       ];
       const ctx2 = ctx2Lines.join("\n");
-      const autofixOut: Record<string, unknown> = { hookSpecificOutput: { hookEventName: event, additionalContext: ctx2.slice(0, 8000) } };
+      const autofixOut: Record<string, unknown> = { hookSpecificOutput: { hookEventName: event, additionalContext: agentText ? ctx2.slice(0, 8000) + "\n" + agentText : ctx2.slice(0, 8000) } };
       if (warnings.length > 0) autofixOut.systemMessage = warnings.join("\n");
       return {
         stdout: JSON.stringify(autofixOut) + "\n",
@@ -360,7 +388,6 @@ export async function run(
       : warningsSuffix ? fullReport + warningsSuffix : fullReport;
 
     const tmpBase2 = opts?.testOnly_tmpDir ?? os.tmpdir();
-    const safeSessionId = /^[A-Za-z0-9_-]+$/.test(sessionId) ? sessionId : "unknown";
     const blockFilePath = path.join(tmpBase2, "house-rules", safeSessionId, "stop-block.txt");
     let writeOk = false;
     try {

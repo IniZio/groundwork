@@ -36,7 +36,7 @@ describe("gate warn findings", () => {
   });
   afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
-  function stop(files: Record<string, string>): { out: Record<string, unknown>; status: number | null; session: string } {
+  function stop(files: Record<string, string>, o: { session?: string; event?: string; agentId?: string } = {}): { out: Record<string, unknown>; status: number | null; session: string } {
     const writes: string[] = [];
     const ts = new Date(Date.now() - 5000).toISOString();
     for (const [rel, content] of Object.entries(files)) {
@@ -52,8 +52,11 @@ describe("gate warn findings", () => {
     }
     const tp = path.join(tmpDir, `transcript-${++n}.jsonl`);
     writeFileSync(tp, writes.join("\n") + "\n");
-    const session = `warn-${process.pid}-${Date.now()}-${n}`;
-    const r = runGate({ hook_event_name: "Stop", session_id: session, transcript_path: tp, cwd: tmpDir });
+    const session = o.session ?? `warn-${process.pid}-${Date.now()}-${n}`;
+    const r = runGate({
+      hook_event_name: o.event ?? "Stop", session_id: session, transcript_path: tp, cwd: tmpDir,
+      ...(o.agentId ? { agent_id: o.agentId } : {}),
+    });
     return { out: parse(r.stdout), status: r.status, session };
   }
 
@@ -84,12 +87,15 @@ describe("gate warn findings", () => {
     expect(out.decision).toBeUndefined();
   });
 
-  it("AC5: list capped at 20 lines plus a tail", () => {
+  it("AC5: list capped at 10 lines plus a tail", () => {
     const body = Array.from({ length: 25 }, (_, i) => `const v${i} = Reflect.get(o, k${i});`).join("\n\n") + "\n";
     const { out } = stop({ "a.ts": body });
     const lines = (out.systemMessage as string).split("\n");
-    expect(lines.filter(l => /^a\.ts:\d+ code-smells /.test(l)).length).toBe(20);
-    expect(lines[lines.length - 1]).toBe("… 5 more");
+    expect(lines.filter(l => /^a\.ts:\d+ code-smells /.test(l)).length).toBe(10);
+    expect(lines[lines.length - 1]).toBe("… 15 more");
+    const ctx = (out.hookSpecificOutput as { additionalContext: string }).additionalContext.split("\n");
+    expect(ctx.filter(l => /^a\.ts:\d+ code-smells /.test(l)).length).toBe(10);
+    expect(ctx[ctx.length - 1]).toBe("… 15 more");
   });
 
   it("AC6: baselined findings are not shown", () => {
@@ -104,5 +110,45 @@ describe("gate warn findings", () => {
     }));
     const { out } = stop({ "a.ts": `${VIOLATION}\n` });
     expect(out.systemMessage).toBeUndefined();
+    expect(out.hookSpecificOutput).toBeUndefined();
+  });
+
+  const addCtx = (out: Record<string, unknown>) =>
+    (out.hookSpecificOutput as { hookEventName: string; additionalContext: string } | undefined);
+
+  it("A: first warn-only stop gives the agent additionalContext", () => {
+    const { out } = stop({ "a.ts": `${VIOLATION}\n` });
+    const h = addCtx(out)!;
+    expect(h.hookEventName).toBe("Stop");
+    expect(h.additionalContext).toContain("house-rules warnings (non-blocking; fix the ones in code you changed):");
+    expect(h.additionalContext).toContain("a.ts:1 code-smells");
+    expect(out.systemMessage).toBeDefined();
+  });
+
+  it("B: same session and file, second stop sends nothing to the agent", () => {
+    const first = stop({ "a.ts": `${VIOLATION}\n` });
+    const { out } = stop({ "a.ts": `${VIOLATION}\n` }, { session: first.session });
+    expect(out.hookSpecificOutput).toBeUndefined();
+    expect(out.systemMessage).toBeDefined();
+  });
+
+  it("C: a new violation on another line is the only one resent", () => {
+    const first = stop({ "a.ts": `${VIOLATION}\n` });
+    const { out } = stop({ "a.ts": `${VIOLATION}\n\n${VIOLATION}\n` }, { session: first.session });
+    const c = addCtx(out)!.additionalContext;
+    expect(c).toContain("a.ts:3 code-smells");
+    expect(c).not.toContain("a.ts:1 code-smells");
+  });
+
+  it("D: each SubagentStop agent gets the warnings once", () => {
+    const f = { "a.ts": `${VIOLATION}\n` };
+    const session = `warn-d-${process.pid}-${Date.now()}`;
+    const x1 = stop(f, { session, event: "SubagentStop", agentId: "X" });
+    const y1 = stop(f, { session, event: "SubagentStop", agentId: "Y" });
+    const x2 = stop(f, { session, event: "SubagentStop", agentId: "X" });
+    expect(addCtx(x1.out)!.hookEventName).toBe("SubagentStop");
+    expect(addCtx(x1.out)!.additionalContext).toContain("a.ts:1 code-smells");
+    expect(addCtx(y1.out)!.additionalContext).toContain("a.ts:1 code-smells");
+    expect(x2.out.hookSpecificOutput).toBeUndefined();
   });
 });

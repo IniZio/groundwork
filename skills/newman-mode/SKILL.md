@@ -69,7 +69,8 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 ## Subagents and sessions
 
 - You are the coordinator. Delegate implementation to subagents, then review their diffs for coupling to one vendor or harness before you accept them. Use `/pstack:swarm` for parallel work. Brief them per `references/briefs.md`.
-- Route by model tier. Opus (poteto-agent) for judgment and nontrivial code. Sonnet for search and mechanical leaves. Haiku for clerk work whose every input is decided.
+- Route by model tier, per the role lines in `~/.claude/rules/pstack-models.md`. Opus for judgment, bug fixes and the hardest code. Sonnet poteto-agents for routine code, search and mechanical leaves. Haiku for clerk work whose every input is decided. Always pass `model` on a poteto-agent spawn: an omitted `model` inherits Opus.
+  - Sonnet folds early: copy the Fold rules from this plugin's `agents/junior.md` into every Sonnet poteto-agent brief (a check still failing after one fix, a command or test that won't go green, about 15 minutes or 30 tool calls without a green check). Give a folded task to a fresh Opus poteto-agent with the Sonnet agent's report.
   - Search: `Explore`, which a hook runs on sonnet. Fan out one Explore per independent question or partition (directory, failure class, symbol family), all in one message. One Explore for a broad sweep is a miss.
   - Mechanical leaves: brief each poteto-agent to fan its mechanical leaves out to `groundwork:junior`, one per file set, and to prove any "pre-existing" failure a junior hands back against base. Only poteto-agent may spawn a junior. A hook denies everyone else.
   - Clerk work: `groundwork:git` for commits, branches, pushes and PRs with paths and messages you give it. `groundwork:tracker` for Linear or GitHub issue operations whose fields you give it. Rebases, conflicts, partial staging and issue prose stay with you.

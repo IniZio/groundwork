@@ -1,4 +1,4 @@
-/** Routes Agent spawns: Explore runs on sonnet, and groundwork:junior takes work only from pstack:poteto-agent. */
+/** Routes Agent spawns: Explore runs on sonnet, pstack:poteto-agent needs an explicit model, and groundwork:junior takes work only from pstack:poteto-agent. */
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -18,6 +18,10 @@ const JUNIOR_DENY =
   `${JUNIOR} takes leaf work only from ${JUNIOR_CALLER}. ` +
   `Spawn a ${JUNIOR_CALLER} for the task and brief it to fan out the mechanical leaves to ${JUNIOR}.`;
 
+const POTETO_MODEL_DENY =
+  `${JUNIOR_CALLER} needs an explicit model. Pick it from the task's role line in ~/.claude/rules/pstack-models.md ` +
+  `(sonnet for routine code, opus for bug fixes, judgment and the hardest code) and pass it as model, with the role's effort.`;
+
 export function check(input: unknown): HookResult {
   try {
     const inp = (input ?? {}) as Record<string, unknown>;
@@ -27,6 +31,7 @@ export function check(input: unknown): HookResult {
     if (subType === JUNIOR && inp.agent_type !== JUNIOR_CALLER) return deny(JUNIOR_DENY);
     const hasModel = typeof ti.model === "string" && ti.model.trim() !== "";
     if (subType.toLowerCase() === "explore" && !hasModel) return setModel(ti, EXPLORE_MODEL);
+    if (subType === JUNIOR_CALLER && !hasModel) return deny(POTETO_MODEL_DENY);
   } catch { /* fail-open */ }
   return allow();
 }

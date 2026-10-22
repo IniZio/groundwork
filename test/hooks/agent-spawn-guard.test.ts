@@ -53,12 +53,29 @@ describe("agent-spawn-guard — Explore model", () => {
   });
 
   it("other agent types → left alone", () => {
-    expect(check(agent("pstack:poteto-agent")).stdout).toBe("");
+    expect(check(agent("pstack:poteto-agent", undefined, "sonnet")).stdout).toBe("");
     expect(check(agent("groundwork:git")).stdout).toBe("");
   });
 
   it("non-Agent tools → left alone", () => {
     expect(check({ tool_name: "Bash", tool_input: { command: "ls" } }).stdout).toBe("");
+  });
+});
+
+describe("agent-spawn-guard — poteto-agent model", () => {
+  it("poteto-agent with no model → deny, naming the role rule", () => {
+    const s = check(agent("pstack:poteto-agent")).stdout;
+    expect(out({ stdout: s }).decision).toBe("deny");
+    expect(s).toContain("pstack-models.md");
+  });
+
+  it("poteto-agent with a blank model → deny", () => {
+    expect(out(check(agent("pstack:poteto-agent", undefined, " "))).decision).toBe("deny");
+  });
+
+  it("poteto-agent with an explicit model → allow, input untouched", () => {
+    expect(check(agent("pstack:poteto-agent", undefined, "opus")).stdout).toBe("");
+    expect(check(agent("pstack:poteto-agent", "pstack:poteto-agent", "sonnet")).stdout).toBe("");
   });
 });
 
@@ -72,5 +89,8 @@ describe("agent-spawn-guard — as the harness runs it", () => {
     const e = run(agent("Explore"));
     expect(e.status).toBe(0);
     expect(out({ stdout: e.stdout }).model).toBe("sonnet");
+    const p = run(agent("pstack:poteto-agent"));
+    expect(p.status).toBe(0);
+    expect(out({ stdout: p.stdout }).decision).toBe("deny");
   });
 });

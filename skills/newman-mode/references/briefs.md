@@ -14,7 +14,8 @@
 
 - Brief the claim, not the line. Give the false claim, the true claim, and an order to sweep the whole repo. Ask for an audit table that includes rows already correct.
 - Name the hazard. Cite the prior incident and its mechanism, the action to take instead, and the escape ("stop and report").
-- Copy in the standing brief requirements: no `git stash`, `reset`, `checkout`, `restore` or `clean`; long runs in the foreground under `timeout`; stop after 3 failed tries on the same problem; never edit a test to make it pass.
+- Copy in the standing brief requirements: no `git stash`, `reset`, `checkout`, `restore` or `clean`; long runs in the foreground under `timeout`; stop after 3 failed tries on the same problem; never edit a test to make it pass; hand back by about 40 tool calls.
+- Size each brief to finish in about 40 tool calls. A worker that reaches 40 hands back what is done and what remains, and you dispatch the rest fresh. Every turn re-reads the whole context, and in moor the poteto-agents that ran past 55 calls at about 100k context cost 40% of all tokens.
 - Shared daemons (dev server, watcher, simulator) are yours. Start them in the background and give workers a log path and a status command. Workers never start or stop them.
 
 ## Hand-backs

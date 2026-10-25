@@ -1,5 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { check } from "../../src/hooks/agent-spawn-guard.js";
 
 const HOOK = new URL("../../src/hooks/agent-spawn-guard.ts", import.meta.url).pathname;
@@ -10,6 +13,10 @@ function agent(subagent_type: string, caller?: string, model?: string) {
     tool_input: { subagent_type, prompt: "p", ...(model ? { model } : {}) },
     ...(caller ? { agent_type: caller, agent_id: "abc123" } : {}),
   };
+}
+
+function updated(result: { stdout: string }) {
+  return (JSON.parse(result.stdout) as { hookSpecificOutput: { updatedInput?: unknown } }).hookSpecificOutput.updatedInput;
 }
 
 function out(result: { stdout: string }) {
@@ -30,13 +37,17 @@ describe("agent-spawn-guard — junior caller", () => {
     expect(out(check(agent("groundwork:junior", "general-purpose"))).decision).toBe("deny");
   });
 
-  it("pstack:poteto-agent spawning groundwork:junior → allow, input untouched", () => {
-    expect(check(agent("groundwork:junior", "pstack:poteto-agent")).stdout).toBe("");
+  it("groundwork:worker spawning groundwork:junior → allow, input untouched", () => {
+    expect(check(agent("groundwork:junior", "groundwork:worker")).stdout).toBe("");
+  });
+
+  it("pstack:poteto-agent spawning groundwork:junior → deny", () => {
+    expect(out(check(agent("groundwork:junior", "pstack:poteto-agent"))).decision).toBe("deny");
   });
 
   it("the deny names the allowed caller", () => {
     const s = check(agent("groundwork:junior")).stdout;
-    expect(s).toContain("pstack:poteto-agent");
+    expect(s).toContain("groundwork:worker");
   });
 });
 
@@ -53,7 +64,6 @@ describe("agent-spawn-guard — Explore model", () => {
   });
 
   it("other agent types → left alone", () => {
-    expect(check(agent("pstack:poteto-agent", undefined, "sonnet")).stdout).toBe("");
     expect(check(agent("groundwork:git")).stdout).toBe("");
   });
 
@@ -73,9 +83,36 @@ describe("agent-spawn-guard — poteto-agent model", () => {
     expect(out(check(agent("pstack:poteto-agent", undefined, " "))).decision).toBe("deny");
   });
 
-  it("poteto-agent with an explicit model → allow, input untouched", () => {
-    expect(check(agent("pstack:poteto-agent", undefined, "opus")).stdout).toBe("");
-    expect(check(agent("pstack:poteto-agent", "pstack:poteto-agent", "sonnet")).stdout).toBe("");
+  it("poteto-agent with an explicit model → allow, rerouted to groundwork:worker", () => {
+    const r = check(agent("pstack:poteto-agent", undefined, "opus"));
+    expect(out(r).decision).toBe("allow");
+    expect(updated(r)).toEqual({ subagent_type: "groundwork:worker", prompt: "p", model: "opus" });
+  });
+
+  it("groundwork:worker with no model → deny", () => {
+    expect(out(check(agent("groundwork:worker"))).decision).toBe("deny");
+  });
+
+  it("groundwork:worker with an explicit model → allow, input untouched", () => {
+    expect(check(agent("groundwork:worker", undefined, "sonnet")).stdout).toBe("");
+  });
+});
+
+describe("agents/worker.md — drift from pstack's poteto-agent", () => {
+  const base = join(homedir(), ".claude/plugins/cache/groundwork/pstack");
+  const versions = existsSync(base) ? readdirSync(base).filter((v) => /^\d+\.\d+\.\d+$/.test(v)) : [];
+  versions.sort((a, b) => {
+    const [x, y] = [a, b].map((v) => v.split(".").map(Number));
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  });
+  const newest = versions.at(-1);
+
+  it.skipIf(!newest)("contains the newest cached poteto-agent body verbatim", () => {
+    const upstream = readFileSync(join(base, newest!, "agents/poteto-agent.md"), "utf8");
+    const body = upstream.split(/^---\n/m).slice(2).join("---\n").trim();
+    const worker = readFileSync(new URL("../../agents/worker.md", import.meta.url).pathname, "utf8");
+    expect(body.length).toBeGreaterThan(0);
+    expect(worker).toContain(body);
   });
 });
 

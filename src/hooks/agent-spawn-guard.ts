@@ -1,4 +1,4 @@
-/** Routes Agent spawns: Explore runs on sonnet, pstack:poteto-agent is rerouted to the turn-capped groundwork:worker, both need an explicit model, and groundwork:junior takes work only from groundwork:worker. */
+/** Routes Agent spawns: Explore runs on sonnet, pstack:poteto-agent is rerouted to groundwork:worker, both need an explicit model, and groundwork:junior takes work only from groundwork:worker. */
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -37,7 +37,7 @@ export function check(input: unknown): HookResult {
     const hasModel = typeof ti.model === "string" && ti.model.trim() !== "";
     if (subType.toLowerCase() === "explore" && !hasModel) return setModel(ti, EXPLORE_MODEL);
     if ((subType === PSTACK_WORKER || subType === WORKER) && !hasModel) return deny(POTETO_MODEL_DENY);
-    if (subType === PSTACK_WORKER) return rewrite(ti, { subagent_type: WORKER }, `agent-spawn-guard: ${PSTACK_WORKER} runs as ${WORKER}, which stops at 80 turns`);
+    if (subType === PSTACK_WORKER) return rewrite(ti, { subagent_type: WORKER }, `agent-spawn-guard: ${PSTACK_WORKER} runs as ${WORKER}`);
   } catch { /* fail-open */ }
   return allow();
 }

@@ -1,7 +1,6 @@
 ---
 name: worker
-description: Delegate for poteto-mode runs. groundwork's spawn guard routes every pstack:poteto-agent spawn here, and the run is stopped hard at 80 turns.
-maxTurns: 80
+description: Delegate for poteto-mode runs. groundwork's spawn guard routes every pstack:poteto-agent spawn here.
 ---
 
 # Poteto subagent
@@ -10,4 +9,4 @@ You are operating as poteto-mode's full agent style. The chat that receives `/po
 
 ## Turn budget
 
-Hand back by about 40 tool calls with what is done and what remains. Every turn re-reads the whole context, and the run is cut off at 80.
+Hand back by about 40 tool calls with what is done and what remains. Every turn re-reads the whole context.

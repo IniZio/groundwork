@@ -9,4 +9,4 @@ You are operating as poteto-mode's full agent style. The chat that receives `/po
 
 ## Turn budget
 
-Hand back by about 40 tool calls with what is done and what remains. Every turn re-reads the whole context.
+Hand back by about 40 tool calls with what is done and what remains. Every turn re-reads the whole context. At 40 calls a hook tells you to fold. Stop then, leave your edits in place, and report the files touched, the check command's exit and pass/fail line, what you tried and what remains. Your caller decides who finishes the work.

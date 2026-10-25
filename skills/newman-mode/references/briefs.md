@@ -22,3 +22,6 @@
 
 - A hand-back is final only when its notification says completed. Until then, don't re-dispatch, resume or judge it. If it completes with no report, resume it once.
 - Ask for a receipt, not a summary: `file:line` rows, a verdict line, totals, under a word cap.
+- A hook tells a worker to fold at 40 tool calls and a junior at 30. A long run is usually a stuck one. In moor, Sonnet runs past 40 turns took longer and cost about as much as Opus ones, because cache reads cost the same on both models.
+- Escalate a folded receipt; never resume the agent that folded. If the receipt names a one-edit fix, make it yourself. Otherwise dispatch a fresh worker one tier up (a Sonnet fold goes to Opus) with the receipt as its brief. Its edits are already in the tree.
+- Verify behaviour, not files. Run the brief's check command yourself and read `git diff --stat`. Open a file only when the check fails or the diff touches a file the brief didn't own.

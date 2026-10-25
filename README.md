@@ -14,7 +14,7 @@ flowchart LR
 - **newman-mode** covers how to ask questions, when to act without asking, design defaults, verification, briefing subagents and the stacked-PR process. It overrides poteto-mode where they conflict.
 - **pstack** provides the playbooks: poteto-mode, swarm, pause, orchestrate and the principle skills.
 - **house-rules** blocks commits that break the commit-message preset and edits that add more than 5 comment lines per 100 new lines.
-- **Agents** put cheaper models on cheaper work. `worker` is a copy of pstack's poteto-agent that hands back by about 40 tool calls. `junior` (Sonnet) takes mechanical leaves from `worker` and hands back at the first failure that has no one-line fix. `git` and `tracker` (Haiku) run git and issue-tracker operations whose inputs are already decided.
+- **Agents** put cheaper models on cheaper work. `worker` is a copy of pstack's poteto-agent that hands back by about 40 tool calls. A hook tells `worker` to fold at 40 tool calls and `junior` at 30, and the caller escalates the receipt to a fresh, stronger agent. `junior` (Sonnet) takes mechanical leaves from `worker` and hands back at the first failure that has no one-line fix. `git` and `tracker` (Haiku) run git and issue-tracker operations whose inputs are already decided.
 - **Agent guard** runs `Explore` on Sonnet and reroutes every `pstack:poteto-agent` spawn to `groundwork:worker`, and denies a `junior` spawn from anyone but `worker`. A `pstack:poteto-agent` or `worker` spawn without an explicit model is denied.
 - **Bash guards** deny a piped command whose exit code would be hidden, and a slow or remote command (docker build, ssh, long runs) with no `timeout`.
 

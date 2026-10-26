@@ -1,6 +1,6 @@
 # groundwork
 
-groundwork is a Claude Code plugin that makes an agent work the way Newman works. It ships one skill, `/groundwork:newman-mode`, and installs [pstack](https://github.com/cursor/plugins/tree/main/pstack) and house-rules beside it.
+groundwork is a Claude Code plugin that makes an agent work the way Newman works. It ships `/groundwork:newman-mode` and `/groundwork:reflect-newman-mode`, and installs [pstack](https://github.com/cursor/plugins/tree/main/pstack) and house-rules beside it.
 
 ```mermaid
 flowchart LR
@@ -12,6 +12,7 @@ flowchart LR
 ```
 
 - **newman-mode** covers how to ask questions, when to act without asking, design defaults, verification, briefing subagents and the stacked-PR process. It overrides poteto-mode where they conflict.
+- **reflect-newman-mode** runs pstack's reflect over a session and turns the approved learnings into edits to newman-mode in the groundwork checkout.
 - **pstack** provides the playbooks: poteto-mode, swarm, pause, orchestrate and the principle skills.
 - **house-rules** blocks commits that break the commit-message preset and edits that add more than 5 comment lines per 100 new lines.
 - **Agents** put cheaper models on cheaper work. `worker` is a copy of pstack's poteto-agent that hands back by about 40 tool calls. A hook tells `worker` to fold at 40 tool calls and `junior` at 30, and the caller escalates the receipt to a fresh, stronger agent. `junior` (Sonnet) takes mechanical leaves from `worker` and hands back at the first failure that has no one-line fix. `git` and `tracker` (Haiku) run git and issue-tracker operations whose inputs are already decided.

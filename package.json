@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "groundwork — Newman's working conventions on top of pstack, plus house-rules",
   "type": "module",
   "scripts": {

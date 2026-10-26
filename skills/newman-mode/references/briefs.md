@@ -5,7 +5,7 @@
 - A slice is thin and end to end. It owns every layer for one outcome. Never split backend from frontend.
 - Shared types land first, in a tracer-bullet slice. Each file has one owner per wave.
 - A wave with one slice on nontrivial work means decompose harder.
-- Mark a slice blocked only when it consumes another's output or edits the same file. Same-file slices in one wave use separate worktrees rebased on main, and each reports its base sha.
+- Mark a slice blocked only when it consumes another's output or edits the same file. A single shared resource (one live controller, one Slack app, one device) serializes only the steps that use it. Code and tests fan out, while deploys and live checks take turns. Same-file slices in one wave use separate worktrees rebased on main, and each reports its base sha.
 - Route by size. Three or more files, or two or more behaviours, goes to a sub-coordinator that splits it into at least two slices. Smaller work goes straight to one implementer.
 - Fan out a whole wave in one message.
 - A leaf is mechanical when the brief can name every file and the exact change: a rename, a given pattern, call-site updates, a specified test. Those go to `groundwork:junior`. Anything needing a design call stays with poteto-agent.

@@ -13,6 +13,7 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 | Writing a PR body, `doc/` page, README or commit | `references/human-prose.md` |
 | Claiming a test, check or fix works, or reviewing a worker's claim | `references/proof.md` |
 | Briefing, slicing or dispatching subagents | `references/briefs.md` |
+| Creating a Rust or Go project, or setting up its lint, format or CI | `playbooks/<lang>-project.md` |
 
 ## Questions and replies
 

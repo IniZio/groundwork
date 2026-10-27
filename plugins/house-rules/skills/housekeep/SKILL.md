@@ -28,7 +28,7 @@ Use `AskUserQuestion` with `multiSelect: true` and question: "Which aspects shou
 Options:
 - "Code slop & dead code (Recommended)" — finds bloat, dead code, needless abstractions, boundary violations, weak tests
 - "Dependencies" — finds phantom deps, outdated packages, dev/prod boundary issues
-- "Lint & type suppressions" — finds @ts-ignore, eslint-disable, untyped any
+- "Lint & type suppressions" — finds lint and type suppressions in any language (`eslint-disable`, `@ts-ignore`, `# noqa`, `//nolint`, `#[allow]`, `@Suppress`, ...) and untyped TS `any`
 - "Stale docs" — finds dead API references, wrong paths, stale examples
 - "Repo conventions" — finds missing or empty convention files (`.gitmessage`, PR template, `.editorconfig`, etc.) and contradictions with enforced behaviour
 

@@ -14,14 +14,14 @@
 
 - Brief the claim, not the line. Give the false claim, the true claim, and an order to sweep the whole repo. Ask for an audit table that includes rows already correct.
 - Name the hazard. Cite the prior incident and its mechanism, the action to take instead, and the escape ("stop and report").
-- Copy in the standing brief requirements: no `git stash`, `reset`, `checkout`, `restore` or `clean`; long runs in the foreground under `timeout`; stop after 3 failed tries on the same problem; never edit a test to make it pass; hand back by about 40 tool calls.
-- Size each brief to finish in about 40 tool calls. A worker that reaches 40 hands back what is done and what remains, and you dispatch the rest fresh. Every turn re-reads the whole context. Never resume a worker to keep it going; resuming carries its whole context forward. In moor the poteto-agents that ran past 55 calls at about 100k context cost 40% of all tokens.
+- Copy in the standing brief requirements: no `git stash`, `reset`, `checkout`, `restore` or `clean`; long runs in the foreground under `timeout`; stop after 3 failed tries on the same problem; never edit a test to make it pass.
+- Size each brief to one outcome a worker finishes in one run. Cutting a run mid-task costs more than letting it finish: across v3.3+ workers the cost per tool call rose only from $0.031 at under 20 calls to $0.042 at 40 to 79, while every fresh worker pays about 32k tokens of start-up context plus a coordinator turn. What makes a run expensive is context growth, so brief workers to read line ranges and to keep test output to the failing lines. Never resume a worker to keep it going; resuming carries its whole context forward.
 - Shared daemons (dev server, watcher, simulator) are yours. Start them in the background and give workers a log path and a status command. Workers never start or stop them.
 
 ## Hand-backs
 
 - A hand-back is final only when its notification says completed. Until then, don't re-dispatch, resume or judge it. If it completes with no report, resume it once.
 - Ask for a receipt, not a summary: `file:line` rows, a verdict line, totals, under a word cap.
-- A hook tells a worker to fold at 40 tool calls and a junior at 30. A long run is usually a stuck one. In moor, Sonnet runs past 40 turns took longer and cost about as much as Opus ones, because cache reads cost the same on both models.
+- A long run is usually a stuck one, and the brief's stop rules catch it (three failed tries, 15 minutes without green), not a call count. The 40-call fold hook was retired on 2026-11-02: it turned 13% of dispatches into serial "finish X" hops and halved agents per hour against v2, for a saving inside rounding. `maxTurns` (150 on worker, 60 on junior) is a runaway cap only, and a partial hand-back from it means the brief was too big.
 - Escalate a folded receipt; never resume the agent that folded. If the receipt names a one-edit fix, make it yourself. Otherwise dispatch a fresh worker one tier up (a Sonnet fold goes to Opus) with the receipt as its brief. Its edits are already in the tree.
 - Verify behaviour, not files. Run the brief's check command yourself and read `git diff --stat`. Open a file only when the check fails or the diff touches a file the brief didn't own.

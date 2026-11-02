@@ -21,6 +21,9 @@ CONTINUATION = re.compile(
     r"^(finish|continue|complete|rerun|re-run|resume|retry|wire|land|part [a-z0-9]|.*\(part|follow[- ]?up)", re.I)
 WORKER_TYPES = {"pstack:poteto-agent", "groundwork:worker", "groundwork:implementer",
                 "groundwork:junior-orchestrator"}
+HARNESS_PREFIXES = ("<task-notification>", "Another Claude session sent a message",
+                    "<system-reminder>", "[SYSTEM NOTIFICATION")
+TEAMMATE_MIN_CALLS = 20
 BUCKETS = (("1-19", 0, 20), ("20-39", 20, 40), ("40-79", 40, 80), ("80+", 80, float("inf")))
 MAX_BASH_S = 6 * 3600
 
@@ -41,6 +44,15 @@ def cost_of(usage):
         if p:
             total += (u["in"] * p[0] + u["cc"] * p[1] + u["cr"] * p[2] + u["out"] * p[3]) / 1e6
     return total
+
+
+def user_text(content):
+    if isinstance(content, str):
+        return content
+    for b in content if isinstance(content, list) else []:
+        if isinstance(b, dict) and b.get("type") == "text":
+            return b.get("text") or ""
+    return ""
 
 
 def records(path):
@@ -80,7 +92,8 @@ def scan_thread(path):
             blocks = content if isinstance(content, list) else []
             has_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks)
             has_text = any(isinstance(b, dict) and b.get("type") == "text" for b in blocks)
-            if isinstance(content, str) or (blocks and has_text and not has_result):
+            if (isinstance(content, str) or (blocks and has_text and not has_result)) \
+                    and not user_text(content).lstrip().startswith(HARNESS_PREFIXES):
                 prompts += 1
             if tt is not None and (isinstance(content, str) or (isinstance(content, list) and not has_result)):
                 if win_start is not None:
@@ -151,6 +164,13 @@ def scan_sub(path):
         pass
     th = scan_thread(path)
     th["agent_type"] = meta.get("agentType")
+    real = meta.get("customAgentType") or meta.get("spawnedAgentType")
+    if real:
+        th["is_worker"] = real in WORKER_TYPES
+    elif meta.get("taskKind") == "in_process_teammate":
+        th["is_worker"] = th["tool_calls"] >= TEAMMATE_MIN_CALLS
+    else:
+        th["is_worker"] = th["agent_type"] in WORKER_TYPES
     th.pop("windows")
     return path, th
 
@@ -250,7 +270,7 @@ def era_metrics(ss):
     sub_cost = sum(cost_of(x["usage"]) for x in subs)
     total = main_cost + sub_cost
     live = [s for s in ss if s["idle_frac"] is not None]
-    workers = [x["startup_ctx"] / 1000 for x in subs if x["agent_type"] in WORKER_TYPES and x["startup_ctx"]]
+    workers = [x["startup_ctx"] / 1000 for x in subs if x["is_worker"] and x["startup_ctx"]]
     mins = [x["duration_s"] / 60 for x in subs if x["duration_s"] > 0]
     return {
         "sessions": len(ss),
@@ -281,7 +301,7 @@ def bucket_rows(ss):
     acc = {name: {"n": 0, "cost": 0.0, "calls": 0, "ctx": []} for name, _, _ in BUCKETS}
     for s in ss:
         for x in s["subagents"]:
-            if x["agent_type"] not in WORKER_TYPES:
+            if not x["is_worker"]:
                 continue
             name = next(n for n, lo, hi in BUCKETS if lo <= x["tool_calls"] < hi)
             u = x["usage"].values()

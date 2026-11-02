@@ -30,7 +30,16 @@ One table with an era per column:
 A second table gives, per era, the cost of worker subagents bucketed by tool
 calls (1-19, 20-39, 40-79, 80+): count, $/agent, $/tool call, median context per request.
 
-Active time runs from a user prompt to the last record before the next prompt.
+A user prompt is a user-role record that is not a tool result and whose text
+does not start with `<task-notification>`, `Another Claude session sent a
+message`, `<system-reminder>` or `[SYSTEM NOTIFICATION`. Those harness-delivered
+records still open active-time windows, so active hours do not depend on the
+filter. Active time runs from a user record to the last record before the next one.
+
+Worker types are the subagents whose type is in `WORKER_TYPES`. A teammate
+transcript's `.meta.json` `agentType` is the teammate's name, so the type comes
+from `customAgentType` or `spawnedAgentType`. A teammate with neither counts as
+a worker when it made 20 or more tool calls.
 Usage is counted once per message id. Prices are per million tokens in the
 `PRICE` table. `--json` writes the per-session raw stats.
 

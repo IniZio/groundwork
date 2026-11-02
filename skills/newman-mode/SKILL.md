@@ -14,6 +14,7 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 | Claiming a test, check or fix works, or reviewing a worker's claim | `references/proof.md` |
 | Briefing, slicing or dispatching subagents | `references/briefs.md` |
 | Creating a Rust or Go project, or setting up its lint, format or CI | `playbooks/<lang>-project.md` |
+| A stack merged, disk above 80%, or asked to clean up worktrees | `playbooks/worktree-cleanup.md` |
 
 ## Questions and replies
 
@@ -82,6 +83,6 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 ## Process
 
 - Ship as stacked PRs with `gh stack`, one purpose per PR, about 1000 reviewed lines or less. A self-contained unit may stay larger. Load the gh-stack skill before the first `gh stack` command; it covers recovery after a squash merge. Publish each approved branch at once. Don't wait for merges.
-- After any stack merge, check every PR's base branch and that main contains the top of the stack.
+- After any stack merge, check every PR's base branch and that main contains the top of the stack. Then run `playbooks/worktree-cleanup.md`.
 - Commit after every verified wave, before the next one starts. Stage explicit paths. Workers never run `git stash`, `reset`, `checkout`, `restore` or `clean`.
 - Worktrees go under the repo's `.worktrees/`, never as siblings in the parent folder. Before creating the first one, make sure `.git/info/exclude` lists `.worktrees/` so it is never committed. Use one build target per worktree and delete the target after merge.

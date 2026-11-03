@@ -79,38 +79,115 @@ export function gateBase(repoRoot: string): string {
   return head;
 }
 
-function extractFilesFromContent(
-  raw: string,
-  sessionCwd: string,
-  files: Set<string>,
-): void {
+/** A Bash call: the directories it ran in and the wall-clock span between its tool_use and tool_result entries. */
+interface BashWindow { dirs: string[]; start: number; end: number }
+
+interface AgentTouches {
+  /** Edit/Write/MultiEdit targets */
+  edited: Set<string>;
+  /** paths parsed out of Bash command text */
+  parsed: Set<string>;
+  windows: BashWindow[];
+}
+
+const WINDOW_SLACK_MS = 1000;
+
+function cdTargets(cmd: string, cwd: string): string[] {
+  const dirs = [cwd];
+  let cur = cwd;
+  for (const m of cmd.matchAll(/(?:^|[;&|(\s])cd\s+(?:--\s+)?("[^"]+"|'[^']+'|[^\s;&|)]+)/g)) {
+    let d = m[1].replace(/^["']|["']$/g, "");
+    if (d.includes("$") || d === "-") continue;
+    if (d === "~" || d.startsWith("~/")) d = path.join(os.homedir(), d.slice(1));
+    cur = path.resolve(cur, d);
+    dirs.push(cur);
+  }
+  return dirs;
+}
+
+function scanTranscript(raw: string): AgentTouches {
+  const touches: AgentTouches = { edited: new Set(), parsed: new Set(), windows: [] };
+  const pending = new Map<string, { dirs: string[]; start: number }>();
   for (const line of raw.split("\n")) {
     const t = line.trim();
     if (!t) continue;
-    try {
-      const obj = JSON.parse(t) as Record<string, unknown>;
-      if (obj.type !== "assistant") continue;
-      const msg = (obj.message ?? obj) as Record<string, unknown>;
-      const content = msg.content;
-      if (!Array.isArray(content)) continue;
-      const entryCwd = typeof obj.cwd === "string" ? obj.cwd : sessionCwd;
-      for (const blk of content as Record<string, unknown>[]) {
-        if ((blk as Record<string, unknown>).type !== "tool_use") continue;
-        const inp = (blk as Record<string, unknown>).input as
-          | Record<string, unknown>
-          | undefined;
-        const name = (blk as Record<string, unknown>).name;
-        if (name === "Edit" || name === "Write" || name === "MultiEdit") {
-          const fp =
-            inp && typeof inp.file_path === "string" ? inp.file_path : null;
-          if (fp) files.add(fp);
-        } else if (name === "Bash") {
-          const cmd =
-            inp && typeof inp.command === "string" ? inp.command : "";
-          extractBashTargets(cmd, entryCwd, files);
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
+    const msg = (obj.message ?? obj) as Record<string, unknown>;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    const ts = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : NaN;
+    const entryCwd = typeof obj.cwd === "string" ? obj.cwd : "";
+    for (const blk of content as Record<string, unknown>[]) {
+      if (obj.type === "user" && blk.type === "tool_result") {
+        const open = typeof blk.tool_use_id === "string" ? pending.get(blk.tool_use_id) : undefined;
+        if (open && !isNaN(ts)) touches.windows.push({ ...open, end: ts });
+        continue;
+      }
+      if (obj.type !== "assistant" || blk.type !== "tool_use") continue;
+      const inp = blk.input as Record<string, unknown> | undefined;
+      const name = blk.name;
+      if (name === "Edit" || name === "Write" || name === "MultiEdit") {
+        const fp = inp && typeof inp.file_path === "string" ? inp.file_path : null;
+        if (fp) touches.edited.add(fp);
+      } else if (name === "Bash") {
+        const cmd = inp && typeof inp.command === "string" ? inp.command : "";
+        extractBashTargets(cmd, entryCwd, touches.parsed);
+        if (typeof blk.id === "string" && entryCwd && !isNaN(ts)) {
+          pending.set(blk.id, { dirs: cdTargets(cmd, entryCwd), start: ts });
         }
       }
+    }
+  }
+  return touches;
+}
+
+interface Candidate { abs: string; untracked: boolean; changedMs: number; bornMs: number }
+
+/** Files differing from the gate base, or untracked and not ignored, in one repo. */
+function repoCandidates(repoRoot: string): Candidate[] {
+  const list = (args: string[]): string[] => {
+    const r = spawnSync("git", ["-C", repoRoot, ...args, "-z"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    return r.status === 0 ? r.stdout.split("\0").filter(Boolean) : [];
+  };
+  const untracked = new Set(list(["ls-files", "--others", "--exclude-standard"]));
+  const changed = list(["diff", "--name-only", "--no-renames", gateBase(repoRoot)]);
+  const out: Candidate[] = [];
+  for (const rel of new Set([...changed, ...untracked])) {
+    const abs = path.join(repoRoot, rel);
+    try {
+      const st = statSync(abs);
+      if (!st.isFile()) continue;
+      out.push({ abs, untracked: untracked.has(rel), changedMs: Math.max(st.mtimeMs, st.ctimeMs), bornMs: st.birthtimeMs });
     } catch { continue; }
+  }
+  return out;
+}
+
+class GitScope {
+  private roots = new Map<string, string | null>();
+  private candidates = new Map<string, Candidate[]>();
+
+  private root(dir: string): string | null {
+    if (!this.roots.has(dir)) this.roots.set(dir, git(dir, ["rev-parse", "--show-toplevel"]));
+    return this.roots.get(dir) ?? null;
+  }
+
+  /** Adds every candidate whose last change falls inside one of the windows; untracked ones born inside it go to `created`. */
+  attribute(windows: BashWindow[], files: Set<string>, created: Set<string>): void {
+    for (const w of windows) {
+      const lo = w.start - WINDOW_SLACK_MS;
+      const hi = w.end + WINDOW_SLACK_MS;
+      const repos = new Set(w.dirs.map((d) => this.root(d)).filter((r): r is string => r !== null));
+      for (const repo of repos) {
+        if (!this.candidates.has(repo)) this.candidates.set(repo, repoCandidates(repo));
+        for (const c of this.candidates.get(repo)!) {
+          if (c.changedMs < lo || c.changedMs > hi) continue;
+          files.add(c.abs);
+          if (c.untracked && (c.bornMs <= 0 || c.bornMs >= lo)) created.add(c.abs);
+        }
+      }
+    }
   }
 }
 
@@ -178,50 +255,79 @@ export function runningAgentIds(backgroundTasks: unknown): string[] {
 }
 
 export function touchedFiles(opts: TouchedFilesOpts): string[] {
-  const files = new Set<string>();
+  return [...workScope(opts).files];
+}
+
+export interface WorkScope {
+  files: Set<string>;
+  /** Untracked files a Bash call of this agent brought into existence: every line counts as added. */
+  created: Set<string>;
+}
+
+function readTouches(tp: string): AgentTouches | null {
+  try { return scanTranscript(readFileSync(tp, "utf8")); } catch { return null; }
+}
+
+function subagentTranscripts(dir: string): string[] {
+  try {
+    return readdirSync(dir).filter((e) => /^agent-.+\.jsonl$/.test(e)).map((e) => path.join(dir, e));
+  } catch { return []; }
+}
+
+/**
+ * Files this agent changed. Edit/Write targets and paths parsed from Bash commands come from
+ * the transcript; any other Bash write is found in git: a file differing from the gate base,
+ * or untracked, in a repo the call ran in, whose last change falls inside the call's window.
+ */
+export function workScope(opts: TouchedFilesOpts): WorkScope {
   const { event, transcriptPath, sessionId, agentTranscriptPath, runningAgentIds: runningIds } = opts;
+  const scope = new GitScope();
+  const files = new Set<string>();
+  const created = new Set<string>();
+  const collect = (t: AgentTouches, into: Set<string>, born: Set<string>) => {
+    for (const f of t.edited) into.add(f);
+    for (const f of t.parsed) into.add(f);
+    scope.attribute(t.windows, into, born);
+  };
 
   if (event === "SubagentStop") {
     const tp = agentTranscriptPath ?? transcriptPath;
-    try {
-      const raw = readFileSync(tp, "utf8");
-      extractFilesFromContent(raw, "", files);
-    } catch { /* fail-open */ }
-    return [...files];
+    const own = readTouches(tp);
+    if (!own) return { files, created };
+    const fromWindows = new Set<string>();
+    scope.attribute(own.windows, fromWindows, created);
+    const siblingEdits = new Set<string>();
+    for (const sib of subagentTranscripts(path.dirname(tp))) {
+      if (sib === tp) continue;
+      for (const f of readTouches(sib)?.edited ?? []) siblingEdits.add(f);
+    }
+    for (const f of fromWindows) {
+      if (siblingEdits.has(f) && !own.edited.has(f)) { created.delete(f); continue; }
+      files.add(f);
+    }
+    for (const f of own.edited) files.add(f);
+    for (const f of own.parsed) files.add(f);
+    return { files, created };
   }
 
-  try {
-    const raw = readFileSync(transcriptPath, "utf8");
-    extractFilesFromContent(raw, "", files);
-  } catch { /* fail-open */ }
+  const main = readTouches(transcriptPath);
+  if (main) collect(main, files, created);
 
   const runningSet = new Set(runningIds ?? []);
   const runningFiles = new Set<string>();
-
-  const subDir = path.join(path.dirname(transcriptPath), sessionId, "subagents");
-  try {
-    for (const entry of readdirSync(subDir)) {
-      if (!entry.endsWith(".jsonl")) continue;
-      // entry name: agent-<id>.jsonl → extract id
-      const idMatch = entry.match(/^agent-(.+)\.jsonl$/);
-      const agentId = idMatch ? idMatch[1] : null;
-      const isRunning = agentId !== null && runningSet.has(agentId);
-      try {
-        const raw = readFileSync(path.join(subDir, entry), "utf8");
-        if (isRunning) {
-          extractFilesFromContent(raw, "", runningFiles);
-        } else {
-          extractFilesFromContent(raw, "", files);
-        }
-      } catch { continue; }
-    }
-  } catch { /* no subagents dir */ }
+  for (const sub of subagentTranscripts(path.join(path.dirname(transcriptPath), sessionId, "subagents"))) {
+    const t = readTouches(sub);
+    if (!t) continue;
+    const agentId = path.basename(sub).replace(/^agent-|\.jsonl$/g, "");
+    if (runningSet.has(agentId)) collect(t, runningFiles, new Set());
+    else collect(t, files, created);
+  }
 
   for (const f of runningFiles) {
     files.delete(f);
+    created.delete(f);
   }
-
-  return [...files];
+  return { files, created };
 }
 
 type TouchKind =

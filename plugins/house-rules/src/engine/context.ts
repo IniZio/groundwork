@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { addedHunks, diffTextToHunks, gateBase, touchedFiles } from '../hooks/lib/work-scope.js';
+import { addedHunks, allLinesHunk, diffTextToHunks, gateBase, workScope } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { forbiddenRedirect, inTypedArea, matchPath } from '../config/manifest.mjs';
@@ -152,16 +152,17 @@ function realpathOrSelf(p: string): string {
   try { return realpathSync(p); } catch { return p; }
 }
 
-function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: Set<string> } {
+function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: Set<string>; interpreterCreated: Set<string> } {
   const bashCreated = new Set<string>();
+  const interpreterCreated = new Set<string>();
   const { repoRoot, mode } = opts;
 
   if (mode === 'guard') {
-    return { files: opts.files ?? [], bashCreated };
+    return { files: opts.files ?? [], bashCreated, interpreterCreated };
   }
 
   if (mode === 'gate') {
-    const absPaths = touchedFiles({
+    const scope = workScope({
       event: opts.event ?? 'Stop',
       transcriptPath: opts.transcriptPath ?? '',
       sessionId: opts.sessionId ?? '',
@@ -171,18 +172,16 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
 
     const result: string[] = [];
     const realRoot = realpathOrSelf(repoRoot);
-    for (const absPath of absPaths) {
+    for (const absPath of scope.files) {
       const realAbs = realpathOrSelf(absPath);
       if (realAbs !== realRoot && !realAbs.startsWith(realRoot + path.sep)) continue;
       if (!existsSync(absPath)) continue;
       const relPath = path.relative(repoRoot, absPath);
       const tracked = isTracked(repoRoot, relPath);
       if (!tracked) {
-        // Include only if session-created
-        const created = opts.transcriptPath
-          ? isSessionCreated(opts.transcriptPath, absPath)
-          : false;
-        if (!created) continue;
+        const written = opts.transcriptPath ? isSessionCreated(opts.transcriptPath, absPath) : false;
+        if (!written && !scope.created.has(absPath)) continue;
+        if (!written) interpreterCreated.add(relPath);
       }
       result.push(relPath);
     }
@@ -191,7 +190,7 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
       result.push(rel);
       bashCreated.add(rel);
     }
-    return { files: result, bashCreated };
+    return { files: result, bashCreated, interpreterCreated };
   }
 
   // cli mode
@@ -275,12 +274,12 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
       result.push(relPath);
     }
   }
-  return { files: result, bashCreated };
+  return { files: result, bashCreated, interpreterCreated };
 }
 
 export function buildContext(opts: BuildContextOpts): RuleContext {
   const { repoRoot, mode } = opts;
-  const { files: relPaths, bashCreated } = scopeWithBash(opts);
+  const { files: relPaths, bashCreated, interpreterCreated } = scopeWithBash(opts);
   const sources = createSourceFiles(opts.parserFactory);
 
   // Compute base once
@@ -326,7 +325,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       hunks = diffTextToHunks(baseText, opts.postText ?? '');
     } else {
       const h = addedHunks(absPath, base, opts.transcriptPath);
-      hunks = h ?? undefined;
+      hunks = h ?? (interpreterCreated.has(relPath) && text !== undefined ? allLinesHunk(text) : undefined);
     }
 
     const tracked = isTracked(repoRoot, relPath);
@@ -336,7 +335,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       sessionCreated = opts.transcriptPath
         ? isSessionCreated(opts.transcriptPath, absPath)
         : false;
-      if (bashCreated.has(relPath)) sessionCreated = true;
+      if (bashCreated.has(relPath) || interpreterCreated.has(relPath)) sessionCreated = true;
     }
 
     files.push({

@@ -47,6 +47,13 @@ describe('checkProse', () => {
     expect(reasons('Run `moor run <box>` and read `runs/<id>.log`.')).toEqual([])
   })
 
+  test('a backticked git ref is not a path, but a nested file or directory is', () => {
+    expect(reasons('It diffs against `origin/HEAD` and `refs/heads/main`.')).toEqual([])
+    expect(reasons('The base is `origin/develop` now.')).toEqual([])
+    expect(hasReason('Edit `.claude-plugin/plugin.json` too.', 'backticked path')).toBe(true)
+    expect(hasReason('Everything under `src/hooks/` moved.', 'backticked path')).toBe(true)
+  })
+
   test('a blob link needs a commit sha ref', () => {
     expect(hasReason('See [x](https://github.com/o/r/blob/main/a.rs).', 'not a commit sha')).toBe(true)
     expect(hasReason('See [x](https://github.com/o/r/blob/abc12/a.rs).', 'not a commit sha')).toBe(true)

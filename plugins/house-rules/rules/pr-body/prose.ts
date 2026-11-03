@@ -23,7 +23,7 @@ const LABEL = /\u0003[^\u0004]*\u0004/g;
 
 const SOURCE_EXT = "rs|ts|tsx|js|jsx|mjs|cjs|py|go|java|kt|swift|rb|c|h|cpp|cs|php|md|json|yaml|yml|toml|sh|sql|html|css|lock";
 const PATH_LINE = new RegExp(`(?<![\\w/.-])[\\w./-]*[\\w-]\\.(?:${SOURCE_EXT})(?:@[0-9a-f]{7,40})?:\\d+(?:-\\d+)?`, "i");
-const CODE_PATH = new RegExp(`^(?:[\\w.@~-]+(?:/[\\w.@~-]+)+/?|[\\w-]+\\.(?:${SOURCE_EXT}))$`, "i");
+const CODE_PATH = new RegExp(`^(?:[\\w.@~-]+(?:/[\\w.@~-]+)+/|(?:[\\w.@~-]+/)*[\\w-][\\w.-]*\\.(?:${SOURCE_EXT}))$`, "i");
 const GITHUB_BLOB = /https?:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/blob\/([^/\s?#)]+)/g;
 const SHA = /^[0-9a-f]{7,40}$/i;
 const BASELINE_COMMAND = /\b(?:make (?:lint|test|check|ci)|cargo (?:test|clippy|fmt|check|nextest)|bun test|bun run typecheck|tsc|(?:npm|pnpm|yarn) (?:run )?(?:test|lint)|go (?:test|vet)|pytest|ruff|eslint)\b/;

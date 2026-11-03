@@ -57,6 +57,11 @@ export interface ResolvedConfig {
       options: Record<string, never>
       sources: { severity: Source }
     }
+    'pr-body': {
+      severity: Severity
+      options: Record<string, never>
+      sources: { severity: Source }
+    }
   }
 }
 

@@ -76,6 +76,21 @@
           {
             "type": "command",
             "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/session-link-strip.ts"
+          },
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/pr-body-guard.ts"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/doc-prose-advisory.ts"
           }
         ]
       }

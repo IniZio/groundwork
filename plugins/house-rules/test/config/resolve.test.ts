@@ -103,6 +103,11 @@ const ALL_DEFAULTS = {
       options: {},
       sources: { severity: 'default' },
     },
+    'pr-body': {
+      severity: 'off',
+      options: {},
+      sources: { severity: 'default' },
+    },
   },
 } as const;
 
@@ -558,6 +563,7 @@ describe('AC2 legacy artifact-structure configs', () => {
         'require-safety-comment-for-type-assertion': ALL_DEFAULTS.rules['require-safety-comment-for-type-assertion'],
         'require-readable-spacing': ALL_DEFAULTS.rules['require-readable-spacing'],
         'silent-early-return-in-test': ALL_DEFAULTS.rules['silent-early-return-in-test'],
+        'pr-body': ALL_DEFAULTS.rules['pr-body'],
       },
     } as const;
     const { 'artifact-structure': moved, ...rest } = resolved.rules;

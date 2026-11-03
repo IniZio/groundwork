@@ -465,6 +465,7 @@ describe("exported constants", () => {
       "require-safety-comment-for-type-assertion",
       "require-readable-spacing",
       "silent-early-return-in-test",
+      "pr-body",
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
@@ -478,6 +479,7 @@ describe("exported constants", () => {
       "require-safety-comment-for-type-assertion": ["off", "warn"],
       "require-readable-spacing": ["off", "warn"],
       "silent-early-return-in-test": ["off", "warn"],
+      "pr-body": ["off", "error"],
     });
     expect(PRESETS).toEqual(["handbook", "conventional", "subject-only"]);
     expect(RULE_OPTION_KEYS).toEqual({
@@ -491,6 +493,7 @@ describe("exported constants", () => {
       "require-safety-comment-for-type-assertion": [],
       "require-readable-spacing": [],
       "silent-early-return-in-test": [],
+      "pr-body": [],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

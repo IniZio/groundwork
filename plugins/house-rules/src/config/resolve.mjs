@@ -59,6 +59,7 @@ export function resolveConfigText(repoRoot, text) {
   const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'off')
   const readableSpacing = severityOf('require-readable-spacing', 'off')
   const silentEarlyReturn = severityOf('silent-early-return-in-test', 'warn')
+  const prBody = severityOf('pr-body', 'off')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =
@@ -118,6 +119,11 @@ export function resolveConfigText(repoRoot, text) {
         severity: silentEarlyReturn.value,
         options: {},
         sources: { severity: silentEarlyReturn.source },
+      },
+      'pr-body': {
+        severity: prBody.value,
+        options: {},
+        sources: { severity: prBody.source },
       },
     },
   }

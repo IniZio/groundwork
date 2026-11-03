@@ -1,6 +1,6 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
-const message = '[no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.';
+const message = '[no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with a validator (add one if this project has none; ajv is a common choice) so it returns the target type; splitting the chain across bindings is the same defect.';
 const one = [{ message }];
 
 export const cases: RuleCases = {

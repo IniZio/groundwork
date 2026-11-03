@@ -4,6 +4,7 @@ import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
 import type { Finding, PendingEdit, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
 import { createSourceFiles, type SourceFileResult } from './source-file.js';
 import { resolveConfig } from '../config/resolve.mjs';
+import { projectFacts, type ProjectFacts } from './project-deps.js';
 
 type ResolvedConfig = ReturnType<typeof resolveConfig>;
 const configByRoot = new Map<string, ResolvedConfig | null>();
@@ -36,7 +37,9 @@ export interface Check {
   id: string;
   upstream?: string;
   tsOnly?: boolean;
-  check(root: Node, source: string, index?: NodeIndex, filePath?: string, options?: Readonly<Record<string, unknown>>): CheckHit[];
+  check(
+    root: Node, source: string, index?: NodeIndex, filePath?: string, options?: Readonly<Record<string, unknown>>, project?: ProjectFacts,
+  ): CheckHit[];
 }
 
 export interface NodeIndex {
@@ -130,6 +133,7 @@ function collect(
   ruleId: string,
   isAdded: (row: number) => boolean,
   options: Readonly<Record<string, unknown>>,
+  repoRoot: string | null,
 ): Finding[] {
   if (!result.ok) return [];
   const { tree, text, errorRows } = result.source;
@@ -137,9 +141,10 @@ function collect(
   const jsFile = isJsOnly(filePath);
   const findings: Finding[] = [];
   const index = sharedIndex(tree);
+  const project = projectFacts(repoRoot, filePath);
   for (const c of checks) {
     if (c.tsOnly && jsFile) continue;
-    for (const hit of c.check(tree.rootNode, text, index, filePath, options)) {
+    for (const hit of c.check(tree.rootNode, text, index, filePath, options, project)) {
       const row = hit.node ? hit.node.startPosition.row : hit.row;
       if (row === undefined || errorRows.has(row) || !isAdded(row)) continue;
       findings.push({
@@ -180,7 +185,7 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
             : await own!.get('typescript', file.text, file.path);
           if (!result) continue;
           options ??= configOptions(ctx.repoRoot, id);
-          findings.push(...collect(active, result, file.path, id, (r) => added.has(r), options));
+          findings.push(...collect(active, result, file.path, id, (r) => added.has(r), options, ctx.repoRoot));
         }
       } finally {
         own?.dispose();
@@ -194,7 +199,7 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
       if (!result) return { findings: [] };
       const active = await checks();
       const options = edit.repoRoot ? configOptions(edit.repoRoot, id) : {};
-      return { findings: collect(active, result, edit.path, id, (r) => edit.changedRows.has(r), options) };
+      return { findings: collect(active, result, edit.path, id, (r) => edit.changedRows.has(r), options, edit.repoRoot) };
     },
   };
 }

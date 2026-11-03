@@ -1,12 +1,15 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
 import { environment, hasVisibleTypeBinding, resolvedTypeMatches, type ResolvedTypeMatcher, type TypeAliasEnvironment } from '../../../src/analysis/type-alias-resolution.js';
+import { parseWith } from '../validators.js';
+import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 
 export const id = 'no-unknown-returns';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-returns.ts";
 export const tsOnly = true;
 
-const MESSAGE = 'This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.';
+const message = (using: string): string =>
+  `This function returns \`unknown\`, so every caller must check the value again. Parse it here with ${using} and return the named domain type; moving the \`typeof\` checks to callers is the same defect.`;
 const OWNERS = new Set([
   'function_declaration', 'generator_function_declaration', 'function_expression', 'generator_function',
   'arrow_function', 'method_definition', 'function_signature', 'abstract_method_signature',
@@ -40,7 +43,10 @@ function returnedType(owner: Node): Node | null {
   return field.type === 'type_annotation' ? (field.namedChildren[0] ?? null) : field;
 }
 
-export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+export function check(
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  project?: ProjectFacts,
+): CheckHit[] {
   const nodes = index ?? buildNodeIndex(root);
   const env = environment(root, nodes);
   const matcher = isUnknown(env);
@@ -48,7 +54,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[
   for (const node of nodes.all) {
     if (!OWNERS.has(node.type)) continue;
     const returned = returnedType(node);
-    if (returned && resolvedTypeMatches(returned, env, matcher)) hits.push({ node: returned, message: MESSAGE });
+    if (returned && resolvedTypeMatches(returned, env, matcher)) hits.push({ node: returned, message: message(parseWith(project)) });
   }
   return hits;
 }

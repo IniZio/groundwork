@@ -1,4 +1,6 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { parseWith } from '../validators.js';
+import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 import {
   containsUnknownType,
@@ -25,7 +27,7 @@ function predicateName(owner: Node): string | null {
   return null;
 }
 
-function visit(node: Node, hits: CheckHit[]): void {
+function visit(node: Node, using: string, hits: CheckHit[]): void {
   if (node.parent) {
     const guarded = predicateName(node.parent);
     for (const param of node.namedChildren) {
@@ -37,14 +39,18 @@ function visit(node: Node, hits: CheckHit[]): void {
       if (EXEMPT_NAMES.has(name) || name === guarded) continue;
       hits.push({
         node: annotation,
-        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; \`typeof\` checks in the body are not a parse.`,
+        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with ${using} before calling this function; \`typeof\` checks in the body are not a parse.`,
       });
     }
   }
 }
 
-export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+export function check(
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  project?: ProjectFacts,
+): CheckHit[] {
   const hits: CheckHit[] = [];
-  for (const node of (index ?? buildNodeIndex(root)).byType('formal_parameters')) visit(node, hits);
+  const using = parseWith(project);
+  for (const node of (index ?? buildNodeIndex(root)).byType('formal_parameters')) visit(node, using, hits);
   return hits;
 }

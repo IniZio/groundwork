@@ -1,4 +1,6 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { parseWith } from '../validators.js';
+import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 import { resolve, type Binding } from '../../../src/analysis/lexical-bindings.js';
 
@@ -261,7 +263,10 @@ function assertionIsNarrower(broadKind: BroadTypeKind, evidence: Evidence, asser
   return isDefinitelyNarrowerRecord(asserted);
 }
 
-export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+export function check(
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  project?: ProjectFacts,
+): CheckHit[] {
   const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
   const nodes = [...idx.byType('as_expression'), ...idx.byType('type_assertion')].sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex);
@@ -276,7 +281,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[
     if (!assertionIsNarrower(widened.broadKind, widened.evidence, type)) continue;
     hits.push({
       node,
-      message: `Binding "${expression.text}" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.`,
+      message: `Binding "${expression.text}" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with ${parseWith(project)} instead of asserting.`,
     });
   }
   return hits;

@@ -1,30 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { Ajv, type JSONSchemaType } from "ajv";
-
-interface Pr {
-  number: number;
-  title: string;
-  mergeable: string;
-  baseRefName: string;
-  url: string;
-}
-
-const prListSchema: JSONSchemaType<Pr[]> = {
-  type: "array",
-  items: {
-    type: "object",
-    properties: {
-      number: { type: "integer" },
-      title: { type: "string" },
-      mergeable: { type: "string" },
-      baseRefName: { type: "string" },
-      url: { type: "string" },
-    },
-    required: ["number", "title", "mergeable", "baseRefName", "url"],
-    additionalProperties: true,
-  },
-};
-const isPrList = new Ajv().compile(prListSchema);
+import type { Pr } from "./pr-schemas.js";
+import { isPrList } from "./generated/pr-validators.mjs";
 
 const PREFIX = "gw-prs:";
 const out = (line: string) => process.stdout.write(`${line}\n`);

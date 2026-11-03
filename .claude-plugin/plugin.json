@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "3.8.2",
+  "version": "3.9.0",
   "description": "groundwork — Newman's working conventions as one mode skill, on top of pstack and house-rules",
   "types": "./types/index.d.ts",
   "dependencies": [
@@ -42,10 +42,24 @@
       }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/question-ledger.ts" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/question-ledger.ts"
+          }
+        ]
+      }
     ],
     "SubagentStop": [
-      { "hooks": [ { "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/question-ledger.ts" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ${CLAUDE_PLUGIN_ROOT}/src/hooks/question-ledger.ts"
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,20 +1,7 @@
-import { Ajv, type JSONSchemaType } from "ajv";
+import type { BackgroundTask, EditItem, JsonObject, JsonValue } from "./hook-input-schemas.js";
+import { hasBackgroundTask, hasBoolean, hasEdits, hasJsonObject, hasString } from "./generated/hook-input-validators.mjs";
 
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
-
-export interface EditItem {
-  old_string: string;
-  new_string: string;
-  replace_all?: boolean;
-}
-
-/** One entry of the Stop payload's background_tasks list. */
-export interface BackgroundTask {
-  id?: string;
-  status?: string;
-  type?: string;
-}
+export type { BackgroundTask, EditItem };
 
 /**
  * The tool_input fields the hooks read. Other fields the tool carried are kept verbatim,
@@ -45,34 +32,6 @@ export interface HookInput {
   background_tasks?: BackgroundTask[];
 }
 
-const editItemSchema: JSONSchemaType<EditItem> = {
-  type: "object",
-  properties: {
-    old_string: { type: "string" },
-    new_string: { type: "string" },
-    replace_all: { type: "boolean", nullable: true },
-  },
-  required: ["old_string", "new_string"],
-};
-
-const backgroundTaskSchema: JSONSchemaType<BackgroundTask> = {
-  type: "object",
-  properties: {
-    id: { type: "string", nullable: true },
-    status: { type: "string", nullable: true },
-    type: { type: "string", nullable: true },
-  },
-};
-
-const editsSchema: JSONSchemaType<EditItem[]> = { type: "array", items: editItemSchema };
-
-const ajv = new Ajv();
-const isJsonObject = ajv.compile<JsonObject>({ type: "object" });
-const isString = ajv.compile<string>({ type: "string" });
-const isBoolean = ajv.compile<boolean>({ type: "boolean" });
-const isBackgroundTask = ajv.compile(backgroundTaskSchema);
-const isEdits = ajv.compile(editsSchema);
-
 const PAYLOAD_STRINGS = [
   "hook_event_name", "event", "tool_name", "transcript_path",
   "agent_transcript_path", "session_id", "agent_id", "cwd",
@@ -88,10 +47,10 @@ function readToolInput(raw: JsonObject): ToolInput {
   }
   for (const key of TOOL_STRINGS) {
     const value = raw[key];
-    if (isString(value)) out[key] = value;
+    if (hasString(value)) out[key] = value;
   }
-  if (isBoolean(raw.replace_all)) out.replace_all = raw.replace_all;
-  if (isEdits(raw.edits)) out.edits = raw.edits;
+  if (hasBoolean(raw.replace_all)) out.replace_all = raw.replace_all;
+  if (hasEdits(raw.edits)) out.edits = raw.edits;
   return out;
 }
 
@@ -99,12 +58,12 @@ function readPayload(raw: JsonObject): HookInput {
   const out: HookInput = {};
   for (const key of PAYLOAD_STRINGS) {
     const value = raw[key];
-    if (isString(value)) out[key] = value;
+    if (hasString(value)) out[key] = value;
   }
-  if (isJsonObject(raw.tool_input)) out.tool_input = readToolInput(raw.tool_input);
+  if (hasJsonObject(raw.tool_input)) out.tool_input = readToolInput(raw.tool_input);
   if (Array.isArray(raw.background_tasks)) {
     out.background_tasks = [];
-    for (const task of raw.background_tasks) if (isBackgroundTask(task)) out.background_tasks.push(task);
+    for (const task of raw.background_tasks) if (hasBackgroundTask(task)) out.background_tasks.push(task);
   }
   return out;
 }
@@ -113,5 +72,5 @@ function readPayload(raw: JsonObject): HookInput {
 export function readHookInput(text: string): HookInput {
   let raw: JsonValue;
   try { raw = JSON.parse(text); } catch { return {}; }
-  return isJsonObject(raw) ? readPayload(raw) : {};
+  return hasJsonObject(raw) ? readPayload(raw) : {};
 }

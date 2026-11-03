@@ -9,7 +9,7 @@ import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { findPrBodies, findPrComments, type BodyRef } from "./lib/gh-pr-body.js";
 import { prBodyEnabled } from "./lib/pr-body-enabled.js";
-import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE } from "../../rules/pr-body/prose.js";
+import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE, type MarkdownHost } from "../../rules/pr-body/prose.js";
 import type { HookResult } from "./commit-guard.js";
 
 const allow = (): HookResult => ({ stdout: "", stderr: "", exit: 0 });
@@ -39,10 +39,12 @@ function denyReason(findings: ReturnType<typeof checkProse>): string {
 const COMMENT_REASON =
   "house-rules: a top-level PR comment is denied because proof and updates belong in the PR body. Edit `## Verification` or `## Scope` with `gh pr edit <n> --body-file <file>`.";
 
-const reply = (hookSpecificOutput: object): HookResult => ({ stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 });
+interface PreToolUseOutput { hookEventName: string; permissionDecision?: "deny"; permissionDecisionReason?: string; additionalContext?: string }
+
+const reply = (hookSpecificOutput: PreToolUseOutput): HookResult => ({ stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 });
 
 /** `host` is a seam so a test can present a bun without Bun.markdown. */
-export async function check(inp: HookInput, host: object = globalThis): Promise<HookResult> {
+export async function check(inp: HookInput, host: MarkdownHost = globalThis): Promise<HookResult> {
   try {
     const command = inp.tool_input?.command;
     if (inp.tool_name !== "Bash" || command === undefined || !/\bgh\b/.test(command) || !/\b(?:pr|api)\b/.test(command)) return allow();

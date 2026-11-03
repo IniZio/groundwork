@@ -3,7 +3,9 @@ import { makeRepo, runPluginHook } from "./commit-sandbox.js";
 
 const LONG = Array.from({ length: 30 }, (_, i) => `word${i}`).join(" ") + ".";
 
-function advise(repo: string, tool_name: string, tool_input: Record<string, unknown>) {
+interface WriteInput { file_path: string; content?: string; old_string?: string; new_string?: string }
+
+function advise(repo: string, tool_name: string, tool_input: WriteInput) {
   const r = runPluginHook("PostToolUse", "doc-prose-advisory.ts", repo, { tool_name, tool_input });
   const out = r.stdout.trim() === "" ? null : JSON.parse(r.stdout).hookSpecificOutput;
   return { out, exit: r.exit };

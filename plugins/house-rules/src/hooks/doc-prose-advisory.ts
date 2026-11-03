@@ -13,8 +13,7 @@ const DOC_PATH = /(^|\/)(docs?\/.+\.md|README\.md)$/;
 function writtenText(inp: HookInput): string {
   const t = inp.tool_input;
   if (!t) return "";
-  const parts = [t.content, t.new_string, ...(t.edits ?? []).map((e) => e.new_string)];
-  return parts.filter((p): p is string => typeof p === "string").join("\n\n");
+  return [t.content, t.new_string, ...(t.edits ?? []).map((e) => e.new_string)].filter(Boolean).join("\n\n");
 }
 
 export function advise(inp: HookInput): string {

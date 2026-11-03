@@ -1,5 +1,5 @@
 // Plain .mjs with node: imports only, so the commit-msg git hook can run it under node as well as bun.
-import { readFileSync, realpathSync } from 'node:fs'
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { resolveConfig, pointer } from '../config/resolve.mjs'
@@ -11,6 +11,33 @@ function gitOut(cwd, args) {
   } catch {
     return ''
   }
+}
+
+const ATTRIBUTION = [
+  /^\s*claude-session\s*:/i,
+  /^\s*(?:[-*>]\s*)?(?:\**[\w ]+:\**\s*)?(?:\[[^\]]*\]\()?<?https?:\/\/(?:www\.)?claude\.ai\/code\/session\S*?>?\)?\s*$/i,
+]
+
+/** Removes Claude Code session trailers and session-link lines; text without them comes back unchanged. */
+export function stripSessionAttribution(text) {
+  const ending = text.endsWith('\n') ? '\n' : ''
+  const lines = (ending ? text.slice(0, -1) : text).split('\n')
+  const kept = []
+  let removed = false
+  let afterRemoval = false
+  for (const line of lines) {
+    if (ATTRIBUTION.some((re) => re.test(line))) {
+      removed = afterRemoval = true
+      continue
+    }
+    const blank = line.trim() === ''
+    if (afterRemoval && blank && (kept.length === 0 || kept.at(-1).trim() === '')) continue
+    if (!blank) afterRemoval = false
+    kept.push(line)
+  }
+  if (!removed) return text
+  if (afterRemoval) while (kept.length > 0 && kept.at(-1).trim() === '') kept.pop()
+  return kept.join('\n') + ending
 }
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -41,7 +68,7 @@ export function checkCommitMessage(cwd, raw, { editorUsed }) {
   }
   if (resolved.file === null) return null
 
-  const message = cleanMessage(raw, {
+  const message = cleanMessage(stripSessionAttribution(raw), {
     commentChar: gitOut(repoRoot, ['config', '--get', 'core.commentChar']),
     cleanup: gitOut(repoRoot, ['config', '--get', 'commit.cleanup']) || 'default',
     editorUsed,
@@ -60,6 +87,11 @@ export function runLintCommitMsg(file, cwd) {
   } catch (err) {
     process.stderr.write(`house-rules lint-commit-msg: cannot read ${file}: ${err.message}\n`)
     return 2
+  }
+  const stripped = stripSessionAttribution(raw)
+  if (stripped !== raw) {
+    writeFileSync(file, stripped)
+    raw = stripped
   }
   // git sets GIT_EDITOR=: for the commit-msg hook when no editor ran, which selects whitespace cleanup.
   const report = checkCommitMessage(cwd, raw, { editorUsed: process.env.GIT_EDITOR !== ':' })

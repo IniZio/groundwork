@@ -4,6 +4,7 @@ export interface CleanupOptions {
   editorUsed: boolean
 }
 
+export declare function stripSessionAttribution(text: string): string
 export declare function cleanMessage(raw: string, opts: CleanupOptions): string
 export declare function checkCommitMessage(cwd: string, raw: string, opts: { editorUsed: boolean }): string | null
 export declare function runLintCommitMsg(file: string, cwd: string): number

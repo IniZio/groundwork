@@ -4,6 +4,7 @@
  * message built from shell expansion.
  */
 
+import { hookInput, parseJson } from "./lib/hook-input.js";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -178,11 +179,11 @@ function messageOf(source: MessageSource): string | null {
 
 export async function check(input: unknown): Promise<HookResult> {
   try {
-    const inp = (input ?? {}) as Record<string, unknown>;
+    const inp = hookInput(input);
     if (inp.tool_name !== "Bash") return allow();
-    const command = (inp.tool_input as Record<string, unknown> | undefined)?.command;
-    if (typeof command !== "string" || !/\bgit\b/.test(command) || !command.includes("commit")) return allow();
-    const cwd = typeof inp.cwd === "string" ? inp.cwd : process.cwd();
+    const command = inp.tool_input?.command;
+    if (command === undefined || !/\bgit\b/.test(command) || !command.includes("commit")) return allow();
+    const cwd = inp.cwd ?? process.cwd();
 
     const parser = await getParser("bash");
     if (!parser.ok) return allow();
@@ -202,9 +203,7 @@ export async function check(input: unknown): Promise<HookResult> {
 }
 
 if (import.meta.main) {
-  let input: unknown = {};
-  try { input = JSON.parse(await Bun.stdin.text()); } catch { /* fail-open */ }
-  const r = await check(input);
+  const r = await check(parseJson(await Bun.stdin.text()));
   process.stdout.write(r.stdout);
   process.exit(r.exit);
 }

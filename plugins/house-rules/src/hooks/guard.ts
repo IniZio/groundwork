@@ -8,7 +8,8 @@
 import { readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
+import { reconstructPostEdit } from "./lib/pending-edit.js";
+import { hookInput, parseJson, type ToolInput } from "./lib/hook-input.js";
 import { languageForPath } from "./languages/registry.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
@@ -26,7 +27,7 @@ export interface HookResult { stdout: string; stderr: string; exit: number }
 
 function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
 
-function rewrite(updatedInput: Record<string, unknown>, ctx: string): HookResult {
+function rewrite(updatedInput: ToolInput, ctx: string): HookResult {
   return {
     stdout: JSON.stringify({
       hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput, additionalContext: ctx },
@@ -96,8 +97,8 @@ function isIgnoredByDefault(filePath: string, repoRoot: string | null): boolean 
 
 const WRITE_TOOLS = new Set(["edit", "write", "multiedit"]);
 
-function normalTool(raw: unknown): string {
-  if (typeof raw !== "string") return "";
+function normalTool(raw: string | undefined): string {
+  if (raw === undefined) return "";
   const lower = raw.toLowerCase();
   return lower.startsWith("fast_") ? lower.slice(5) : lower;
 }
@@ -125,13 +126,13 @@ function ccApplyEdit(text: string, e: EditEntry): string | null {
   return text.slice(0, first) + e.new_string + text.slice(first + old.length);
 }
 
-function ccApplyInput(tool: string, ti: Record<string, unknown>, pre: string): string | null {
-  if (tool === "write") return typeof ti.content === "string" ? ti.content : null;
+function ccApplyInput(tool: string, ti: ToolInput, pre: string): string | null {
+  if (tool === "write") return ti.content ?? null;
   const edits: EditEntry[] = tool === "multiedit"
-    ? (Array.isArray(ti.edits) ? ti.edits as EditEntry[] : [])
+    ? (ti.edits ?? [])
     : [{
-        old_string: typeof ti.old_string === "string" ? ti.old_string : "",
-        new_string: typeof ti.new_string === "string" ? ti.new_string : "",
+        old_string: ti.old_string ?? "",
+        new_string: ti.new_string ?? "",
         replace_all: !!ti.replace_all,
       }];
   let text = pre;
@@ -170,13 +171,13 @@ function widenEmptyNew(text: string, e: EditEntry): EditEntry {
 }
 
 function mapEditToInput(
-  ti: Record<string, unknown>,
+  ti: ToolInput,
   pre: string,
   post: string,
   stripped_post: string,
-): Record<string, unknown> | null {
-  const old_string = typeof ti.old_string === "string" ? ti.old_string : "";
-  const new_string = typeof ti.new_string === "string" ? ti.new_string : "";
+): ToolInput | null {
+  const old_string = ti.old_string ?? "";
+  const new_string = ti.new_string ?? "";
   const replace_all = !!ti.replace_all;
 
   if (!replace_all) {
@@ -243,12 +244,12 @@ function mapEditToInput(
 }
 
 function mapMultiEditToInput(
-  ti: Record<string, unknown>,
+  ti: ToolInput,
   pre: string,
   _post: string,
   stripped_post: string,
-): Record<string, unknown> | null {
-  const edits = Array.isArray(ti.edits) ? ti.edits as EditEntry[] : [];
+): ToolInput | null {
+  const edits = ti.edits ?? [];
   if (edits.length === 0) return null;
 
   let text = pre;
@@ -281,11 +282,11 @@ function mapMultiEditToInput(
 
 function mapToInput(
   tool: string,
-  ti: Record<string, unknown>,
+  ti: ToolInput,
   pre: string,
   post: string,
   stripped_post: string,
-): Record<string, unknown> | null {
+): ToolInput | null {
   if (tool === "write") return { ...ti, content: stripped_post };
   if (tool === "edit") {
     const m = mapEditToInput(ti, pre, post, stripped_post);
@@ -320,32 +321,29 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
   const factory = opts.getParser ?? getDefaultParserFactory();
   const sourceFiles = createSourceFiles(factory);
   try {
-    if (!input || typeof input !== "object" || Array.isArray(input)) return allow();
-    const inp = input as Record<string, unknown>;
+    const inp = hookInput(input);
 
     const tool = normalTool(inp.tool_name);
     if (!WRITE_TOOLS.has(tool)) return allow();
 
-    const ti = (inp.tool_input && typeof inp.tool_input === "object" && !Array.isArray(inp.tool_input))
-      ? inp.tool_input as Record<string, unknown>
-      : {};
+    const ti = inp.tool_input ?? {};
 
-    const filePath = typeof ti.file_path === "string" ? ti.file_path : "";
+    const filePath = ti.file_path ?? "";
     if (!filePath) return allow();
-    const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
-    const cwd = typeof inp.cwd === "string" ? inp.cwd : null;
+    const transcriptPath = inp.transcript_path ?? null;
+    const cwd = inp.cwd ?? null;
     const cwdRoot = lookupRoot(filePath, cwd);
     if (isIgnoredByDefault(filePath, cwdRoot)) return allow();
 
     const readFile = opts.readFile ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } });
     const pre = readFile(filePath);
 
-    const firstLine = tool === "write" && typeof ti.content === "string"
+    const firstLine = tool === "write" && ti.content !== undefined
       ? ti.content.split("\n")[0]
       : tool !== "write" ? pre?.split("\n")[0] : undefined;
     const lang = languageForPath(filePath, firstLine);
 
-    const recon = reconstructPostEdit(tool, ti as EditInput, pre);
+    const recon = reconstructPostEdit(tool, ti, pre);
     if (!recon) return allow();
     const { post: originalPost, changedRows } = recon;
 
@@ -552,7 +550,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
     if (text !== originalPost) {
       const updatedTi = mapToInput(tool, ti, pre ?? "", originalPost, text);
       if (updatedTi !== null) {
-        const verified = reconstructPostEdit(tool, updatedTi as EditInput, pre);
+        const verified = reconstructPostEdit(tool, updatedTi, pre);
         if (verified && verified.post === text && ccApplyInput(tool, updatedTi, pre ?? "") === text) {
           const ctxStr = contextItems.map(c => c.normal).filter(s => s.length > 0).join("\n");
           return rewrite(updatedTi, ctxStr);
@@ -581,9 +579,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
 if (import.meta.main) {
   const raw = await Bun.stdin.text();
-  let input: unknown = {};
-  try { input = JSON.parse(raw); } catch { /* fail-open */ }
-  const result = await check(input);
+  const result = await check(parseJson(raw));
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   process.exit(result.exit);

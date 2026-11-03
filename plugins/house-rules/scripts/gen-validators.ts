@@ -3,6 +3,9 @@ import path from "node:path";
 import process from "node:process";
 import { Ajv, type AnySchema } from "ajv";
 import standalone from "ajv/dist/standalone/index.js";
+import {
+  backgroundTaskSchema, booleanSchema, editsSchema, jsonObjectSchema, stringSchema,
+} from "../src/hooks/lib/hook-input-schemas.js";
 import { contentSchema, entrySchema } from "../src/hooks/lib/transcript-schemas.js";
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, "..");
@@ -30,6 +33,17 @@ const MODULES: ValidatorModule[] = [
     validators: [
       { name: "isEntry", schema: entrySchema, type: "RawEntry" },
       { name: "hasBlocks", schema: contentSchema, type: "RawContent" },
+    ],
+  },
+  {
+    out: "src/hooks/lib/generated/hook-input-validators",
+    typesFrom: "src/hooks/lib/hook-input-schemas.ts",
+    validators: [
+      { name: "hasJsonObject", schema: jsonObjectSchema, type: "JsonObject" },
+      { name: "hasString", schema: stringSchema, type: "JsonString" },
+      { name: "hasBoolean", schema: booleanSchema, type: "JsonBoolean" },
+      { name: "hasBackgroundTask", schema: backgroundTaskSchema, type: "BackgroundTask" },
+      { name: "hasEdits", schema: editsSchema, type: "Edits" },
     ],
   },
 ];

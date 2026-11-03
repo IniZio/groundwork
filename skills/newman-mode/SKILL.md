@@ -19,7 +19,8 @@ This file layers on pstack's poteto-mode, loaded in full under "Base: poteto-mod
 
 ## Questions and replies
 
-- Batch open questions as a numbered list. Give each one a recommended option, so the user can answer in a word ("1. yes 2. b 3. agree").
+- Record every question for the user as a task, because prose questions get buried under Monitor events and hand-backs. `TaskCreate` with subject `❓ <question> (rec: <answer>)` and metadata `{kind: "question", source: "<agent name or lead>"}`, then `TaskUpdate` owner `user` so no teammate claims it. Give work that waits on it `addBlockedBy`. In the reply, write each as `#N <question>? Recommend: <answer>`, so the user can answer "#12 y". On an answer, record it in the task and mark it completed. Relay a subagent's question the same way, with its name as `source`. The `question-ledger` Stop hook blocks a reply that asks without a task. Without task tools (Fable leads lack them unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`), use a numbered list with a recommendation each.
+- End a reply that leaves questions open with `Open: #12, #15`, and never re-ask one in prose.
 - Only ask what a word can answer. If the user replies "elaborate", the question was unclear. Restate it with the concrete tradeoff.
 - Give the exact command or value, not a pointer to where to find it.
 - Show plans and specs as flows and diagrams with few words. When alignment is in doubt, produce a concrete artifact (a spec, a throwaway prototype, a draft PR) rather than asking more questions.

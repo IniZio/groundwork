@@ -1,6 +1,6 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
-const one = (name: string) => [{ message: `[no-widen-then-assert] Binding "${name}" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.` }];
+const one = (name: string) => [{ message: `[no-widen-then-assert] Binding "${name}" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with a validator (add one if this project has none; ajv is a common choice) instead of asserting.` }];
 
 export const cases: RuleCases = {
   valid: [

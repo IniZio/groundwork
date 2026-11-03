@@ -1,7 +1,7 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
 const message = (name: string) =>
-  `[no-object-parameters] Parameter \`${name}\` uses the broad \`object\` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); \`Record<string, unknown>\` or \`{}\` is the same defect.`;
+  `[no-object-parameters] Parameter \`${name}\` uses the broad \`object\` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with a validator (add one if this project has none; ajv is a common choice); \`Record<string, unknown>\` or \`{}\` is the same defect.`;
 const one = (name: string) => [{ message: message(name) }];
 
 export const cases: RuleCases = {

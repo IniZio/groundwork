@@ -1,4 +1,6 @@
 import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
+import { parseWith } from '../validators.js';
+import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
 import {
   annotationOf,
@@ -51,24 +53,28 @@ function shouldReport(node: Node, env: Env): boolean {
   return true;
 }
 
-const message = (value: UnsafeDictionaryValue): string =>
-  `This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.`;
+const message = (value: UnsafeDictionaryValue, using: string): string =>
+  `This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with ${using}.`;
 
-function visit(node: Node, env: Env, hits: CheckHit[]): void {
+function visit(node: Node, env: Env, using: string, hits: CheckHit[]): void {
   if (node.type === 'generic_type' || node.type === 'object_type' || node.type === 'type_identifier') {
     const unsafe = shouldReport(node, env) ? classifyUnsafeDictionary(node, env) : null;
-    if (unsafe !== null) hits.push({ node, message: message(unsafe) });
+    if (unsafe !== null) hits.push({ node, message: message(unsafe, using) });
   } else if (node.type === 'index_signature' && node.parent?.type !== 'object_type') {
     const value = annotationOf(node);
     const unsafe = value ? classifyUnsafeDictionaryValue(value, env) : null;
-    if (unsafe !== null) hits.push({ node, message: message(unsafe) });
+    if (unsafe !== null) hits.push({ node, message: message(unsafe, using) });
   }
 }
 
-export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[] {
+export function check(
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  project?: ProjectFacts,
+): CheckHit[] {
   const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
   const env = createTypeEnvironment(root, idx);
-  for (const node of idx.all) visit(node, env, hits);
+  const using = parseWith(project);
+  for (const node of idx.all) visit(node, env, using, hits);
   return hits;
 }

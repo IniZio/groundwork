@@ -123,6 +123,10 @@ export function resolveConfigText(repoRoot, text) {
   }
 }
 
+export function optionsFor(resolved, ruleId) {
+  return Object.hasOwn(resolved.rules, ruleId) ? resolved.rules[ruleId].options : {}
+}
+
 export function pointer(resolved, ruleId, key) {
   const rule = resolved.rules[ruleId]
   if (key === 'severity') {

@@ -115,4 +115,12 @@ describe("plugin manifest parity", () => {
       expect(existsSync(join(ROOT, rel!))).toBe(true);
     }
   });
+
+  it("question-ledger is registered on Stop and SubagentStop", () => {
+    const manifest = JSON.parse(readFileSync(join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+    for (const ev of ["Stop", "SubagentStop"]) {
+      const cmds = (manifest.hooks[ev] ?? []).flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
+      expect(cmds.some((c: string) => c.includes("src/hooks/question-ledger.ts"))).toBe(true);
+    }
+  });
 });

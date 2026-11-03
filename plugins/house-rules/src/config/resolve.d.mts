@@ -1,5 +1,6 @@
 import type { Preset, RuleId, Severity } from './schema.mjs'
 import type { PresetSource } from './detect.mjs'
+import type { RuleOptions } from '../engine/types.js'
 
 export type Source = 'explicit' | PresetSource
 
@@ -80,4 +81,6 @@ export declare const DEFAULT_SEVERITY: 'error'
 
 export declare function resolveConfig(repoRoot: string): ResolvedConfig
 export declare function resolveConfigText(repoRoot: string, text: string | null): ResolvedConfig
+/** Options configured for `ruleId`; `{}` for an id the config does not know. */
+export declare function optionsFor(resolved: ResolvedConfig, ruleId: string): RuleOptions
 export declare function pointer(resolved: ResolvedConfig, ruleId: RuleId, key: string): string

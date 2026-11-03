@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
 import type { Finding, PendingEdit, RuleOptions, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
 import { createSourceFiles, type SourceFileResult } from './source-file.js';
-import { resolveConfig } from '../config/resolve.mjs';
+import { optionsFor, resolveConfig } from '../config/resolve.mjs';
 import { projectFacts, type ProjectFacts } from './project-deps.js';
 
 type ResolvedConfig = ReturnType<typeof resolveConfig>;
@@ -20,10 +20,7 @@ function configOptions(repoRoot: string, ruleId: string): RuleOptions {
     }
     configByRoot.set(repoRoot, cfg);
   }
-  if (!cfg) return {};
-
-  // SAFETY: config rules are keyed by rule id; options is an optional per-rule record.
-  return (cfg.rules as unknown as Record<string, { options?: RuleOptions } | undefined>)[ruleId]?.options ?? {};
+  return cfg ? optionsFor(cfg, ruleId) : {};
 }
 
 export interface CheckHit {

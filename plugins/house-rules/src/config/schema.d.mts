@@ -104,6 +104,15 @@ export class ConfigError extends Error {
   allowed: readonly string[];
 }
 
+/** A `.house-rules.json` rule value as written: a severity string, `[severity]`, or `[severity, options]`. */
+export type RawRuleValue = Severity | [Severity] | [Severity, RuleOptions];
+
+/** `.house-rules.json` as it passes `house-rules.schema.json`, before parseConfig normalises it. */
+export interface RawConfig {
+  $schema?: string;
+  rules?: { [id in RuleId | RuleAlias]?: RawRuleValue };
+}
+
 export interface ParsedRule {
   severity: Severity;
   options: RuleOptions;

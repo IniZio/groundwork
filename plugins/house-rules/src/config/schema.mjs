@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { isConfig } from "./generated/config-validators.mjs";
+
 export const RULE_IDS = Object.freeze([
   "commit-message",
   "comment-density",
@@ -49,13 +52,10 @@ export const TYPE_KEYS = Object.freeze([
   "headings",
   "headingsWhen",
 ]);
-const HEADINGS_WHEN_KEYS = Object.freeze(["property", "in", "headings"]);
 export const FORBIDDEN_KEYS = Object.freeze(["pattern", "redirect"]);
-const TYPE_REQUIRED_KEYS = Object.freeze(["tier", "generates"]);
-const TYPE_SHAPES = Object.freeze({ tier: TIERS.join("|"), generates: "string" });
 export const TOP_LEVEL_KEYS = Object.freeze(["$schema", "rules"]);
 
-const SHAPES = Object.freeze(["severity string", "[severity]", "[severity, options]"]);
+const RULE_VALUE_FORMS = Object.freeze(["severity string", "[severity]", "[severity, options]"]);
 
 export class ConfigError extends Error {
   constructor(path, problem, allowed) {
@@ -67,140 +67,111 @@ export class ConfigError extends Error {
   }
 }
 
-const canonical = (id) => RULE_ALIASES[id] ?? id;
-const isKnownRule = (id) => RULE_IDS.includes(canonical(id));
-
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isKnownRule = (id) => RULE_IDS.includes(RULE_ALIASES[id] ?? id);
 
-function oldShapeProblem(id, value) {
+let publishedSchema;
+
+const decodeSegment = (seg) => seg.replaceAll("~1", "/").replaceAll("~0", "~");
+
+/** The house-rules.schema.json node at an ajv schemaPath such as `#/properties/rules`. */
+function schemaNode(pointer) {
+  publishedSchema ??= JSON.parse(readFileSync(new URL("../../house-rules.schema.json", import.meta.url), "utf8"));
+  return pointer
+    .split("/")
+    .slice(1)
+    .map((seg) => decodeSegment(decodeURIComponent(seg)))
+    .reduce((node, key) => node?.[key], publishedSchema);
+}
+
+/** Renders a JSON pointer into `root` as the config path users read, e.g. `rules["x"][1].types.t`. */
+function configPath(root, instancePath) {
+  if (instancePath === "") return "";
+  let path = "";
+  let data = root;
+  instancePath
+    .slice(1)
+    .split("/")
+    .map(decodeSegment)
+    .forEach((seg, i, segs) => {
+      if (Array.isArray(data)) path += `[${seg}]`;
+      else if (i === 1 && segs[0] === "rules") path += `["${seg}"]`;
+      else path += path === "" ? seg : `.${seg}`;
+      data = data?.[seg];
+    });
+  return path;
+}
+
+const join = (path, key) => (path === "rules" ? `rules["${key}"]` : path === "" ? key : `${path}.${key}`);
+
+/** What a value matching `node` looks like: the phrase after "must be" and the allowed shapes. */
+function expected(node) {
+  if (Array.isArray(node.type)) return [`a ${node.type.join(" or ")}`, node.type];
+  if (node.type === "array" && node.items?.type === "string") {
+    return [`${node.minItems > 0 ? "a non-empty array" : "an array"} of strings`, ["string[]"]];
+  }
+  if (node.type === "string" && node.minLength > 0) return ["a non-empty string", ["string"]];
+  return [`${node.type === "object" || node.type === "array" ? "an" : "a"} ${node.type}`, [node.type]];
+}
+
+function legacyLayoutProblem(id, value) {
   const preset = isObject(value) && typeof value.preset === "string" ? value.preset : "<value>";
   const replacement =
     id === "commit-message"
       ? `{"rules":{"commit-message":["error",{"preset":"${preset}"}]}}`
-      : `{"rules":{"${id}":"${RULE_SEVERITIES[canonical(id)].includes("warn") ? "warn" : "error"}"}}`;
+      : `{"rules":{"${id}":"${RULE_SEVERITIES[RULE_ALIASES[id] ?? id].includes("warn") ? "warn" : "error"}"}}`;
   return `old config shape; move under "rules": ${replacement}`;
 }
 
-function checkSeverity(id, value, path) {
-  const allowed = RULE_SEVERITIES[canonical(id)];
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    throw new ConfigError(path, "invalid severity", allowed);
-  }
-  return value;
+/** The ajv error to report: a rule value fails both oneOf branches, and only the branch whose JSON type it has names the problem. */
+function pickError(root, errors) {
+  const oneOf = errors.find((e) => e.keyword === "oneOf");
+  if (!oneOf) return errors[0];
+  const branch = ["0", "1"].find((b) => !errors.some((e) => e.schemaPath === `${oneOf.schemaPath}/${b}/type`));
+  const inside = errors.find(
+    (e) =>
+      e.schemaPath.startsWith(`${oneOf.schemaPath}/${branch}/`) &&
+      (e.instancePath !== oneOf.instancePath || e.keyword === "enum"),
+  );
+  if (!inside) throw new ConfigError(configPath(root, oneOf.instancePath), "invalid rule value", RULE_VALUE_FORMS);
+  return inside;
 }
 
-const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
-
-function checkKeys(obj, known, path) {
-  for (const key of Object.keys(obj)) {
-    if (!known.includes(key)) throw new ConfigError(`${path}.${key}`, "unknown key", known);
+function toConfigError(root, errors) {
+  const error = pickError(root, errors);
+  let instancePath = error.instancePath;
+  let nodePath = error.schemaPath.slice(0, error.schemaPath.lastIndexOf("/"));
+  if (nodePath.endsWith("/items") && schemaNode(nodePath).type !== "object") {
+    instancePath = instancePath.slice(0, instancePath.lastIndexOf("/"));
+    nodePath = nodePath.slice(0, -"/items".length);
   }
-}
+  const node = schemaNode(nodePath);
+  const path = configPath(root, instancePath);
 
-function checkType(type, path) {
-  if (!isObject(type)) throw new ConfigError(path, "type must be an object", ["object"]);
-  checkKeys(type, TYPE_KEYS, path);
-  for (const key of TYPE_REQUIRED_KEYS) {
-    if (!Object.hasOwn(type, key)) throw new ConfigError(`${path}.${key}`, "required", [TYPE_SHAPES[key]]);
-  }
-  if (!TIERS.includes(type.tier)) throw new ConfigError(`${path}.tier`, "invalid tier", TIERS);
-  for (const key of ["generates", "description", "instruction"]) {
-    if (Object.hasOwn(type, key) && typeof type[key] !== "string") {
-      throw new ConfigError(`${path}.${key}`, "must be a string", ["string"]);
+  switch (error.keyword) {
+    case "additionalProperties": {
+      const key = error.params.additionalProperty;
+      if (path === "" && isKnownRule(key)) throw new ConfigError(key, legacyLayoutProblem(key, root[key]), TOP_LEVEL_KEYS);
+      if (path === "rules") throw new ConfigError(join(path, key), "unknown rule", RULE_IDS);
+      const problem = nodePath.endsWith("/prefixItems/1") ? "unknown option" : "unknown key";
+      throw new ConfigError(join(path, key), problem, Object.keys(node.properties));
+    }
+    case "required": {
+      const child = node.properties[error.params.missingProperty];
+      const form = child.enum ? child.enum.join("|") : expected(child)[1].join("|");
+      throw new ConfigError(join(path, error.params.missingProperty), "required", [form]);
+    }
+    case "enum": {
+      const key = /\/oneOf\/0$|\/prefixItems\/0$/.test(nodePath) ? "severity" : instancePath.slice(instancePath.lastIndexOf("/") + 1);
+      throw new ConfigError(path, `invalid ${key}`, node.enum);
+    }
+    default: {
+      const [phrase, allowed] = expected(node);
+      const subject =
+        path === "" ? "config " : nodePath.endsWith("/prefixItems/1") ? "options " : nodePath.endsWith("/additionalProperties") ? "type " : "";
+      throw new ConfigError(path, `${subject}must be ${phrase}`, allowed);
     }
   }
-  if (Object.hasOwn(type, "template") && type.template !== null && typeof type.template !== "string") {
-    throw new ConfigError(`${path}.template`, "must be a string or null", ["string", "null"]);
-  }
-  if (Object.hasOwn(type, "frontmatter") && !isObject(type.frontmatter)) {
-    throw new ConfigError(`${path}.frontmatter`, "must be an object", ["object"]);
-  }
-  if (Object.hasOwn(type, "headings") && !isStringArray(type.headings)) {
-    throw new ConfigError(`${path}.headings`, "must be an array of strings", ["string[]"]);
-  }
-  if (Object.hasOwn(type, "headingsWhen")) checkHeadingsWhen(type.headingsWhen, `${path}.headingsWhen`);
-  return structuredClone(type);
-}
-
-function checkHeadingsWhen(list, path) {
-  if (!Array.isArray(list)) throw new ConfigError(path, "must be an array", ["array"]);
-  list.forEach((entry, i) => {
-    const p = `${path}[${i}]`;
-    if (!isObject(entry)) throw new ConfigError(p, "must be an object", ["object"]);
-    checkKeys(entry, HEADINGS_WHEN_KEYS, p);
-    for (const key of HEADINGS_WHEN_KEYS) {
-      if (!Object.hasOwn(entry, key)) {
-        throw new ConfigError(`${p}.${key}`, "required", [key === "property" ? "string" : "string[]"]);
-      }
-    }
-    if (typeof entry.property !== "string" || entry.property === "") {
-      throw new ConfigError(`${p}.property`, "must be a non-empty string", ["string"]);
-    }
-    for (const key of ["in", "headings"]) {
-      if (!isStringArray(entry[key]) || entry[key].length === 0) {
-        throw new ConfigError(`${p}.${key}`, "must be a non-empty array of strings", ["string[]"]);
-      }
-    }
-  });
-}
-
-function checkManifestOptions(options, path) {
-  if (Object.hasOwn(options, "govern") && !isStringArray(options.govern)) {
-    throw new ConfigError(`${path}.govern`, "must be an array of strings", ["string[]"]);
-  }
-  if (Object.hasOwn(options, "types")) {
-    const types = options.types;
-    if (!isObject(types)) throw new ConfigError(`${path}.types`, "must be an object", ["object"]);
-    for (const typeId of Object.keys(types)) checkType(types[typeId], `${path}.types.${typeId}`);
-  }
-  if (Object.hasOwn(options, "forbidden")) {
-    const list = options.forbidden;
-    if (!Array.isArray(list)) throw new ConfigError(`${path}.forbidden`, "must be an array", ["array"]);
-    list.forEach((entry, i) => {
-      const p = `${path}.forbidden[${i}]`;
-      if (!isObject(entry)) throw new ConfigError(p, "must be an object", ["object"]);
-      checkKeys(entry, FORBIDDEN_KEYS, p);
-      for (const key of FORBIDDEN_KEYS) {
-        if (typeof entry[key] !== "string") throw new ConfigError(`${p}.${key}`, "must be a string", ["string"]);
-      }
-    });
-  }
-}
-
-function checkOptions(id, options, path) {
-  if (!isObject(options)) throw new ConfigError(path, "options must be an object", ["object"]);
-  const known = RULE_OPTION_KEYS[canonical(id)];
-  for (const key of Object.keys(options)) {
-    if (!known.includes(key)) throw new ConfigError(`${path}.${key}`, "unknown option", known);
-  }
-  if (Object.hasOwn(options, "preset") && !PRESETS.includes(options.preset)) {
-    throw new ConfigError(`${path}.preset`, "invalid preset", PRESETS);
-  }
-  if (
-    canonical(id) === "type-escape-hatches" &&
-    Object.hasOwn(options, "allowInTypeGuards") &&
-    typeof options.allowInTypeGuards !== "boolean"
-  ) {
-    throw new ConfigError(`${path}.allowInTypeGuards`, "must be a boolean", ["boolean"]);
-  }
-  if (canonical(id) === "artifact-structure") {
-    checkManifestOptions(options, path);
-    return structuredClone(options);
-  }
-  return { ...options };
-}
-
-function parseRule(id, value) {
-  const path = `rules["${id}"]`;
-  if (typeof value === "string") {
-    return { severity: checkSeverity(id, value, path), options: {} };
-  }
-  if (Array.isArray(value) && (value.length === 1 || value.length === 2)) {
-    const severity = checkSeverity(id, value[0], `${path}[0]`);
-    const options = value.length === 2 ? checkOptions(id, value[1], `${path}[1]`) : {};
-    return { severity, options };
-  }
-  throw new ConfigError(path, "invalid rule value", SHAPES);
 }
 
 export function parseConfig(text) {
@@ -210,27 +181,12 @@ export function parseConfig(text) {
   } catch (err) {
     throw new ConfigError("", `invalid JSON (${err.message})`, ["valid JSON"]);
   }
-  if (!isObject(root)) throw new ConfigError("", "config must be an object", ["object"]);
-
-  for (const key of Object.keys(root)) {
-    if (isKnownRule(key)) {
-      throw new ConfigError(key, oldShapeProblem(key, root[key]), TOP_LEVEL_KEYS);
-    }
-    if (!TOP_LEVEL_KEYS.includes(key)) throw new ConfigError(key, "unknown key", TOP_LEVEL_KEYS);
-  }
-  if (Object.hasOwn(root, "$schema") && typeof root.$schema !== "string") {
-    throw new ConfigError("$schema", "must be a string", ["string"]);
-  }
+  if (!isConfig(root)) toConfigError(root, isConfig.errors);
 
   const rules = {};
-  if (Object.hasOwn(root, "rules")) {
-    if (!isObject(root.rules)) throw new ConfigError("rules", "must be an object", ["object"]);
-    for (const id of Object.keys(root.rules)) {
-      if (!isKnownRule(id)) {
-        throw new ConfigError(`rules["${id}"]`, "unknown rule", RULE_IDS);
-      }
-      rules[id] = parseRule(id, root.rules[id]);
-    }
+  for (const [id, value] of Object.entries(root.rules ?? {})) {
+    const [severity, options = {}] = [value].flat();
+    rules[id] = { severity, options: structuredClone(options) };
   }
   return { rules };
 }

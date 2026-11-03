@@ -8,8 +8,8 @@ export interface Override {
 export const OVERRIDES: Override[] = [
   {
     from:
-      "With no path, before any other work, search `~/.cursor/plugins/` for a file whose path ends in `skills/poteto-mode/SKILL.md`. If more than one file matches, use the copy whose `.cursor-plugin/plugin.json` has the highest `version`.",
-    to: "Use the `poteto-mode SKILL.md:` path at the end of your brief. If it is missing, stop and tell your parent.",
+      "Use the absolute path your parent gave you. With no path, before any other work, search `~/.cursor/plugins/` for a file whose path ends in `skills/poteto-mode/SKILL.md`. If more than one file matches, use the copy whose `.cursor-plugin/plugin.json` has the highest `version`. Your skill catalog hides this skill, so a missing catalog entry does not mean pstack is absent. If no such file exists, stop and tell your parent.",
+    to: "Use the absolute path on the `poteto-mode SKILL.md:` line at the end of your brief. Your skill catalog hides this skill, so a missing catalog entry does not mean pstack is absent. If that line is missing, stop and tell your parent.",
     why: "pstack searches ~/.cursor, which does not exist under Claude Code; the spawn guard appends the path instead.",
   },
 ];

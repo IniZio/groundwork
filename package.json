@@ -6,6 +6,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "test:mod": "claude plugin validate . && d=$(mktemp -d) && mkdir -p \"$d/.claude-plugin\" \"$d/src\" && cp .claude-plugin/plugin.json \"$d/.claude-plugin/\" && cp -r hooks types \"$d/\" && cp -r src/mod \"$d/src/\" && claude plugin test \"$d\"; s=$?; rm -rf \"$d\"; exit $s",
     "gen:validators": "bun scripts/gen-validators.ts",
     "house-rules": "bun plugins/house-rules/src/cli/main.ts"
   },

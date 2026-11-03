@@ -1,7 +1,7 @@
 import type { AnySchema } from "ajv";
 
 export interface TextBlock { type: "text"; text: string }
-export interface ToolUseBlock { type: "tool_use"; id: string; name: string; input?: { metadata?: { kind?: string } } }
+export interface ToolUseBlock { type: "tool_use"; id: string; name: string }
 export interface ToolResultBlock { type: "tool_result"; tool_use_id: string; content?: string | { text?: string }[] }
 /** Any block type the hook does not read; kept so one unknown block does not drop the line. */
 export interface OtherBlock { type: string }
@@ -35,10 +35,6 @@ const blockSchema = {
     id: str,
     name: str,
     tool_use_id: str,
-    input: {
-      type: "object",
-      properties: { metadata: { type: "object", properties: { kind: str } } },
-    },
     content: {
       anyOf: [str, { type: "array", items: { type: "object", properties: { text: str } } }],
     },

@@ -116,6 +116,13 @@ describe("plugin manifest parity", () => {
     }
   });
 
+  it("hooks/hooks.json loads the question mod and plugin.json names its state contract", () => {
+    const modules: string[] = JSON.parse(readFileSync(join(ROOT, "hooks/hooks.json"), "utf8")).modules;
+    expect(modules).toEqual(["../src/mod/register.tsx"]);
+    expect(existsSync(join(ROOT, "hooks", modules[0]!))).toBe(true);
+    expect(existsSync(join(ROOT, groundworkManifest.types))).toBe(true);
+  });
+
   it("question-ledger is registered on Stop and SubagentStop", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
     for (const ev of ["Stop", "SubagentStop"]) {

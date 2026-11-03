@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { isHookInput, isTranscriptEntry } from "./lib/generated/transcript-validators.mjs";
-import type { Block, TextBlock, ToolResultBlock, ToolUseBlock, TranscriptEntry } from "./lib/transcript-schemas.js";
+import type { Block, HookInput, TextBlock, ToolResultBlock, ToolUseBlock, TranscriptEntry } from "./lib/transcript-schemas.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -134,10 +134,9 @@ function readCount(p: string): number {
   try { return Number.parseInt(readFileSync(p, "utf8"), 10) || 0; } catch { return 0; }
 }
 
-export function run(inp: unknown, env: Record<string, string | undefined>): HookResult {
+export function run(inp: HookInput, env: Record<string, string | undefined>): HookResult {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
-    if (!isHookInput(inp)) return silentAllow();
     const event = inp.hook_event_name ?? inp.event;
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
     const tp = event === "SubagentStop" ? (inp.agent_transcript_path ?? inp.transcript_path) : inp.transcript_path;
@@ -163,8 +162,11 @@ export function run(inp: unknown, env: Record<string, string | undefined>): Hook
 }
 
 if (import.meta.main) {
-  let inp: unknown = {};
-  try { inp = JSON.parse(await Bun.stdin.text()); } catch { /* fail open */ }
+  let inp: HookInput = {};
+  try {
+    const parsed = JSON.parse(await Bun.stdin.text());
+    if (isHookInput(parsed)) inp = parsed;
+  } catch { /* fail open */ }
   const r = run(inp, process.env);
   process.stdout.write(r.stdout);
   process.exit(r.exit);

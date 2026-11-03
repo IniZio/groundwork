@@ -1,7 +1,7 @@
 [
   {
     "name": "gw-prs",
-    "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/monitors/pr-conflict-watch.ts\"",
+    "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/monitors/pr-conflict-watch.ts\" \"${CLAUDE_PROJECT_DIR}\"",
     "description": "Open PRs by the owner that become conflicted"
   }
 ]

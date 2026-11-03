@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { Ajv, type JSONSchemaType } from "ajv";
 
 interface Pr {
   number: number;
@@ -7,6 +8,23 @@ interface Pr {
   baseRefName: string;
   url: string;
 }
+
+const prListSchema: JSONSchemaType<Pr[]> = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      number: { type: "integer" },
+      title: { type: "string" },
+      mergeable: { type: "string" },
+      baseRefName: { type: "string" },
+      url: { type: "string" },
+    },
+    required: ["number", "title", "mergeable", "baseRefName", "url"],
+    additionalProperties: true,
+  },
+};
+const isPrList = new Ajv().compile(prListSchema);
 
 const PREFIX = "gw-prs:";
 const out = (line: string) => process.stdout.write(`${line}\n`);
@@ -26,16 +44,16 @@ function listPrs() {
     "--json", "number,title,mergeable,baseRefName,headRefName,url",
   ]);
   if (!r.ok) return { error: r.stderr.split("\n")[0] || "gh pr list failed" };
-  try {
-    return { prs: JSON.parse(r.stdout) as Pr[] };
-  } catch {
-    return { error: "gh pr list returned invalid JSON" };
-  }
+  let json: unknown;
+  try { json = JSON.parse(r.stdout); } catch { return { error: "gh pr list returned invalid JSON" }; }
+  return isPrList(json) ? { prs: json } : { error: "gh pr list returned an unexpected shape" };
 }
 
 async function main() {
   const intervalMs = Number(process.env.GW_PRS_POLL_MS ?? 120_000);
   const maxPolls = Number(process.env.GW_PRS_MAX_POLLS ?? Infinity);
+  const projectDir = process.argv[2];
+  if (projectDir) process.chdir(projectDir);
 
   if (!run("git", ["rev-parse", "--is-inside-work-tree"]).ok) {
     out(`${PREFIX} not a git repository; PR conflict watch is off`);

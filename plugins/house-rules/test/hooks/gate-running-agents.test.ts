@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { run } from "../../src/hooks/gate.js";
+import { readHookInput } from "../../src/hooks/lib/hook-input.js";
 import type { FixRecord } from "../../src/hooks/lib/autofix-ledger.js";
 
 const AGENT_ID = "a7c6723ff77026843";
@@ -160,13 +161,13 @@ describe("gate: running agent file exclusion", () => {
     const ledgerDir = path.join(tmpDir, "autofix-ledger");
 
     const result = await run(
-      {
+      readHookInput(JSON.stringify({
         hook_event_name: "Stop",
         session_id: sessionId,
         transcript_path: transcriptPath,
         cwd: repoDir,
         background_tasks: [{ id: AGENT_ID, status: "running", description: "implement x" }],
-      },
+      })),
       process.env as Record<string, string | undefined>,
       { testOnly_tmpDir: tmpDir },
     );

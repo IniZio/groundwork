@@ -4,7 +4,7 @@
  * message built from shell expansion.
  */
 
-import { hookInput, parseJson } from "./lib/hook-input.js";
+import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -177,9 +177,8 @@ function messageOf(source: MessageSource): string | null {
   try { return readFileSync(source.path, "utf8"); } catch { return null; }
 }
 
-export async function check(input: unknown): Promise<HookResult> {
+export async function check(inp: HookInput): Promise<HookResult> {
   try {
-    const inp = hookInput(input);
     if (inp.tool_name !== "Bash") return allow();
     const command = inp.tool_input?.command;
     if (command === undefined || !/\bgit\b/.test(command) || !command.includes("commit")) return allow();
@@ -203,7 +202,7 @@ export async function check(input: unknown): Promise<HookResult> {
 }
 
 if (import.meta.main) {
-  const r = await check(parseJson(await Bun.stdin.text()));
+  const r = await check(readHookInput(await Bun.stdin.text()));
   process.stdout.write(r.stdout);
   process.exit(r.exit);
 }

@@ -9,7 +9,7 @@ import { readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { reconstructPostEdit } from "./lib/pending-edit.js";
-import { hookInput, parseJson, type ToolInput } from "./lib/hook-input.js";
+import { readHookInput, type HookInput, type ToolInput } from "./lib/hook-input.js";
 import { languageForPath } from "./languages/registry.js";
 import { sessionBase, addedRanges, diffTextToHunks } from "./lib/work-scope.js";
 import { loadRules } from "../engine/registry.js";
@@ -317,12 +317,10 @@ export interface CheckOpts {
   testOnly?: Record<string, unknown>;
 }
 
-export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookResult> {
+export async function check(inp: HookInput, opts: CheckOpts = {}): Promise<HookResult> {
   const factory = opts.getParser ?? getDefaultParserFactory();
   const sourceFiles = createSourceFiles(factory);
   try {
-    const inp = hookInput(input);
-
     const tool = normalTool(inp.tool_name);
     if (!WRITE_TOOLS.has(tool)) return allow();
 
@@ -579,7 +577,7 @@ export async function check(input: unknown, opts: CheckOpts = {}): Promise<HookR
 
 if (import.meta.main) {
   const raw = await Bun.stdin.text();
-  const result = await check(parseJson(raw));
+  const result = await check(readHookInput(raw));
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   process.exit(result.exit);

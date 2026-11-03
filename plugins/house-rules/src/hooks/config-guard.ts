@@ -7,7 +7,7 @@ import { readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { reconstructPostEdit } from "./lib/pending-edit.js";
-import { hookInput, parseJson, type ToolInput } from "./lib/hook-input.js";
+import { readHookInput, type HookInput, type ToolInput } from "./lib/hook-input.js";
 import { resolveConfigText } from "../config/resolve.mjs";
 import { RULE_IDS } from "../config/schema.mjs";
 import { detectPreset } from "../config/detect.mjs";
@@ -137,9 +137,8 @@ function checkBash(ti: ToolInput): HookResult {
   );
 }
 
-export function check(input: unknown): HookResult {
+export function check(inp: HookInput): HookResult {
   try {
-    const inp = hookInput(input);
     const tool = (inp.tool_name ?? "").toLowerCase().replace(/^fast_/, "");
     const ti = inp.tool_input ?? {};
     if (tool === "bash") return checkBash(ti);
@@ -152,7 +151,7 @@ export function check(input: unknown): HookResult {
 }
 
 if (import.meta.main) {
-  const r = check(parseJson(await Bun.stdin.text()));
+  const r = check(readHookInput(await Bun.stdin.text()));
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.exit);

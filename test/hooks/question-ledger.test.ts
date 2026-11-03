@@ -141,4 +141,42 @@ describe("question-ledger", () => {
     const badQuestion = { type: "assistant", message: { content: "Should I proceed?" } };
     expect(blocked(hook([user("hi"), anyCreate, badQuestion]))).toBe(false);
   });
+
+  const toolOnly = asst({ type: "tool_use", id: "toolu_x", name: "Bash", input: {} });
+  const withLast = (entries: object[], last: string) => hook(entries, { last_assistant_message: last });
+
+  it("final reply only in last_assistant_message is checked", () => {
+    const r = withLast([user("hi"), anyCreate, toolOnly], "Should I proceed?");
+    expect(blocked(r)).toBe(true);
+    expect(r.stdout).toContain("Should I proceed?");
+  });
+
+  it("last_assistant_message citing a recorded #N allows", () => {
+    const pre = [user("hi"), createQ("toolu_1"), created("toolu_1", 3), toolOnly];
+    expect(withLast(pre, "#3 Ship it? Recommend: yes").stdout).toBe("");
+  });
+
+  it("final text already in the transcript is reported once", () => {
+    const r = withLast([user("hi"), anyCreate, asst(text("Should I proceed?"))], "Should I proceed?");
+    expect(blocked(r)).toBe(true);
+    expect(r.stdout.split("Should I proceed?").length - 1).toBe(1);
+  });
+
+  it("a reply with no question allows", () => {
+    expect(withLast([user("hi"), anyCreate, toolOnly], "All done. The change is in place.").stdout).toBe("");
+  });
+
+  it("mid-line question blocks", () => {
+    const r = hook([user("hi"), anyCreate, asst(text("Do you want X instead? I can switch it."))]);
+    expect(blocked(r)).toBe(true);
+  });
+
+  it("self-answered, bold-answered and quoted question marks allow", () => {
+    for (const t of [
+      "**Is X needed?** Yes, because it is.",
+      "- **Q5 (A over ssh?):** Yes.",
+      'it asks "what can this do?", not "why?".',
+      "it asks \u201cwhat can this do?\u201d, not \u201cwhy?\u201d.",
+    ]) expect(hook([user("hi"), anyCreate, asst(text(t))]).stdout).toBe("");
+  });
 });

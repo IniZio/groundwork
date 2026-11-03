@@ -8,7 +8,7 @@ import type { ParserFactory } from '../hooks/languages/parse.js';
 import { forbiddenRedirect, inTypedArea, matchPath } from '../config/manifest.mjs';
 import { resolveManifest } from '../../rules/artifact-structure/index.js';
 import { createSourceFiles } from './source-file.js';
-import type { RuleContext, ScopedFile } from './types.js';
+import type { DiffHunk, RuleContext, ScopedFile } from './types.js';
 
 export interface BuildContextOpts {
   repoRoot: string;
@@ -285,7 +285,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
       baseText = '';
     }
 
-    let hunks: import('./types.js').DiffHunk[] | undefined;
+    let hunks: DiffHunk[] | undefined;
     if (mode === 'guard') {
       hunks = diffTextToHunks(baseText, opts.postText ?? '');
     } else {

@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
-import { hookInput, parseJson, type HookInput } from "./lib/hook-input.js";
+import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { stripSessionAttribution } from "../cli/lint-commit-msg.mjs";
 import { literal, LAUNCHERS, expandHome, type HookResult } from "./commit-guard.js";
 
@@ -122,7 +122,7 @@ export async function check(inp: HookInput): Promise<HookResult> {
 }
 
 if (import.meta.main) {
-  const r = await check(hookInput(parseJson(await Bun.stdin.text())));
+  const r = await check(readHookInput(await Bun.stdin.text()));
   process.stdout.write(r.stdout);
   process.exit(r.exit);
 }

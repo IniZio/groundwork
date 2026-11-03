@@ -1,0 +1,7 @@
+[
+  {
+    "name": "gw-prs",
+    "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/monitors/pr-conflict-watch.ts\"",
+    "description": "Open PRs by the owner that become conflicted"
+  }
+]

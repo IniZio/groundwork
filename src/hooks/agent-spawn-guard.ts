@@ -1,5 +1,7 @@
 /** Routes Agent spawns: Explore runs on sonnet, pstack:poteto-agent is rerouted to groundwork:worker, both need an explicit model, and groundwork:junior takes work only from groundwork:worker. */
 
+import { resolve } from "node:path";
+import { findPotetoMode } from "../../scripts/poteto-mode.js";
 import { resolveCallerAgentType } from "./caller-agent.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -29,6 +31,20 @@ const POTETO_MODEL_DENY =
   `${PSTACK_WORKER} and ${WORKER} need an explicit model. Pick it from the task's role line in ~/.claude/rules/pstack-models.md ` +
   `(sonnet for routine code, opus for bug fixes, judgment and the hardest code) and pass it as model, with the role's effort.`;
 
+const POTETO_PATH_LINE = "poteto-mode SKILL.md: ";
+
+interface PromptPatch { prompt?: string }
+
+function withPotetoPath(prompt: string): PromptPatch {
+  if (!potetoPath || prompt.includes(POTETO_PATH_LINE)) return {};
+  return { prompt: `${prompt}\n${POTETO_PATH_LINE}${potetoPath}` };
+}
+
+let potetoPath: string | undefined;
+
+/** Sets the poteto-mode SKILL.md path that check appends to worker prompts; the hook entry resolves it from the install root. */
+export function setPotetoPath(path?: string): void { potetoPath = path; }
+
 export function check(input: unknown, teamsDir?: string): HookResult {
   try {
     const inp = (input ?? {}) as Record<string, unknown>;
@@ -42,7 +58,9 @@ export function check(input: unknown, teamsDir?: string): HookResult {
     const hasModel = typeof ti.model === "string" && ti.model.trim() !== "";
     if (subType.toLowerCase() === "explore" && !hasModel) return setModel(ti, EXPLORE_MODEL);
     if ((subType === PSTACK_WORKER || subType === WORKER) && !hasModel) return deny(POTETO_MODEL_DENY);
-    if (subType === PSTACK_WORKER) return rewrite(ti, { subagent_type: WORKER }, `agent-spawn-guard: ${PSTACK_WORKER} runs as ${WORKER}`);
+    if (subType === PSTACK_WORKER) return rewrite(ti, { subagent_type: WORKER, ...withPotetoPath(String(ti.prompt ?? "")) }, `agent-spawn-guard: ${PSTACK_WORKER} runs as ${WORKER}`);
+    const { prompt } = subType === WORKER ? withPotetoPath(String(ti.prompt ?? "")) : {};
+    if (prompt) return rewrite(ti, { prompt }, `agent-spawn-guard: ${WORKER} gets the poteto-mode path`);
   } catch { /* fail-open */ }
   return allow();
 }
@@ -51,6 +69,7 @@ if (import.meta.main) {
   const raw = await Bun.stdin.text();
   let input: unknown = {};
   try { input = JSON.parse(raw); } catch { /* fail-open */ }
+  setPotetoPath(findPotetoMode(resolve(import.meta.dir, "..", "..")) ?? undefined);
   const result = check(input);
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);

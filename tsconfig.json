@@ -20,6 +20,7 @@
   },
   "include": [
     "src/**/*",
+    "scripts/**/*",
     "test/**/*",
     "plugins/*/src/**/*",
     "plugins/*/test/**/*",

@@ -2,6 +2,11 @@ import type { Language } from '../hooks/languages/registry.js';
 import type { SourceFileResult } from './source-file.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
+
+/** Per-rule options from `.house-rules.json`; values are ajv-validated JSON. */
+export type RuleOptions = Readonly<Record<string, JsonValue>>;
+
 export type Severity = 'off' | 'warn' | 'error';
 
 export interface Finding {
@@ -40,7 +45,7 @@ export interface RuleContext {
   mode: 'guard' | 'gate' | 'cli';
   files?: ScopedFile[];
   /** Rule options override; when absent, rules resolve options from config. */
-  options?: Record<string, unknown>;
+  options?: RuleOptions;
   /**
    * Resolves null when the file has no registered language or no text;
    * parses at most once per (language, text) per context.
@@ -168,7 +173,7 @@ export interface Case {
   /** Base text for a code case; when present, addedHunks = diffTextToHunks(base, code) */
   base?: string;
   /** Passed to the rule as ctx.options. */
-  options?: Record<string, unknown>;
+  options?: RuleOptions;
 }
 
 export interface RuleCases {

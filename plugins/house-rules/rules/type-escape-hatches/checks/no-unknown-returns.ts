@@ -3,6 +3,7 @@ import { environment, hasVisibleTypeBinding, resolvedTypeMatches, type ResolvedT
 import { parseWith } from '../validators.js';
 import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
+import type { RuleOptions } from '../../../src/engine/types.js';
 
 export const id = 'no-unknown-returns';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-returns.ts";
@@ -44,7 +45,7 @@ function returnedType(owner: Node): Node | null {
 }
 
 export function check(
-  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: RuleOptions,
   project?: ProjectFacts,
 ): CheckHit[] {
   const nodes = index ?? buildNodeIndex(root);

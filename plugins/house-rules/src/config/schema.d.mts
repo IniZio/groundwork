@@ -1,3 +1,4 @@
+import type { RuleOptions } from "../engine/types.js";
 export type RuleId =
   | "commit-message"
   | "comment-density"
@@ -105,7 +106,7 @@ export class ConfigError extends Error {
 
 export interface ParsedRule {
   severity: Severity;
-  options: Record<string, unknown>;
+  options: RuleOptions;
 }
 
 export interface ParsedConfig {

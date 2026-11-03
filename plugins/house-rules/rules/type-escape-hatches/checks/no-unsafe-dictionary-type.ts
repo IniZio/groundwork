@@ -2,6 +2,7 @@ import type { Node } from '../../../src/hooks/lib/tree-sitter.js';
 import { parseWith } from '../validators.js';
 import type { ProjectFacts } from '../../../src/engine/project-deps.js';
 import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engine/grouped-rule.js';
+import type { RuleOptions } from '../../../src/engine/types.js';
 import {
   annotationOf,
   classifyUnsafeDictionary,
@@ -68,7 +69,7 @@ function visit(node: Node, env: Env, using: string, hits: CheckHit[]): void {
 }
 
 export function check(
-  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: Readonly<Record<string, unknown>>,
+  root: Node, _source: string, index?: NodeIndex, _filePath?: string, _options?: RuleOptions,
   project?: ProjectFacts,
 ): CheckHit[] {
   const idx = index ?? buildNodeIndex(root);

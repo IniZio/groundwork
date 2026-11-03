@@ -1,6 +1,6 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
-const message = '[no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.';
+const message = '[no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.';
 const one = [{ message }];
 
 export const cases: RuleCases = {

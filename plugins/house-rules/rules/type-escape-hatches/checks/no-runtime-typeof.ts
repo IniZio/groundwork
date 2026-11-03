@@ -4,7 +4,7 @@ import { buildNodeIndex, type CheckHit, type NodeIndex } from '../../../src/engi
 export const id = 'no-runtime-typeof';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-runtime-typeof.ts";
 
-const MESSAGE = 'A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.';
+const MESSAGE = 'A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.';
 const COMPARISONS = new Set(['===', '!==', '==', '!=']);
 
 function isUndefinedLiteral(node: Node | null): boolean {

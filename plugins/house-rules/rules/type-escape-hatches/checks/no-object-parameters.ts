@@ -30,7 +30,7 @@ function visit(node: Node, env: TypeAliasEnvironment, hits: CheckHit[]): void {
     if (!pattern || !annotation || !type || !resolvedTypeMatches(type, env, isObject)) continue;
     hits.push({
       node: annotation,
-      message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type. Accept a named owner type; parse external input at its boundary before calling this function.`,
+      message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); \`Record<string, unknown>\` or \`{}\` is the same defect.`,
     });
   }
 }

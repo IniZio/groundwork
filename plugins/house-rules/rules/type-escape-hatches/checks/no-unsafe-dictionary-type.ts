@@ -52,7 +52,7 @@ function shouldReport(node: Node, env: Env): boolean {
 }
 
 const message = (value: UnsafeDictionaryValue): string =>
-  `This dictionary's ${value} value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.`;
+  `This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.`;
 
 function visit(node: Node, env: Env, hits: CheckHit[]): void {
   if (node.type === 'generic_type' || node.type === 'object_type' || node.type === 'type_identifier') {

@@ -1,7 +1,7 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
 const message = (name: string) =>
-  `[no-unknown-parameters] Parameter \`${name}\` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.`;
+  `[no-unknown-parameters] Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; \`typeof\` checks in the body are not a parse.`;
 const one = (name: string) => [{ message: message(name) }];
 
 export const cases: RuleCases = {

@@ -23,7 +23,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[
     if (!name || !value || !resolvedTypeMatches(value, env, isUnknown)) continue;
     hits.push({
       node: name,
-      message: `Type alias \`${name.text}\` hides \`unknown\`. Keep \`unknown\` explicit at the parsing boundary or on an allowed \`cause\` field; otherwise use the parsed owner type.`,
+      message: `Type alias \`${name.text}\` hides \`unknown\` behind a name that looks like a contract. Write \`unknown\` only where the parse happens or on a \`cause\` field, and elsewhere use the type the parser returns; a new name does not parse the value.`,
     });
   }
   return hits;

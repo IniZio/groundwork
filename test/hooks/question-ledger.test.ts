@@ -14,9 +14,11 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 const asst = (...content: object[]) => ({ type: "assistant", message: { content } });
 const text = (t: string) => ({ type: "text", text: t });
 const user = (c: unknown) => ({ type: "user", message: { content: c } });
-const createQ = (id: string) => asst({ type: "tool_use", id, name: "TaskCreate", input: { subject: "q", metadata: { kind: "question" } } });
-const created = (id: string, num: number) => user([{ type: "tool_result", tool_use_id: id, content: `Task #${num} created successfully: ❓ q` }]);
-const anyCreate = createQ("toolu_pad");
+const ASK = "mcp__groundwork__ask";
+const createQ = (id: string) => asst({ type: "tool_use", id, name: ASK, input: { question: "q?", recommend: "yes", source: "lead" } });
+const created = (id: string, num: number) =>
+  user([{ type: "tool_result", tool_use_id: id, content: [{ type: "text", text: `Question #${num} recorded. End your reply with: #${num} q? Recommend: yes` }] }]);
+const anyCreate = { type: "attachment", isSidechain: false, attachment: { type: "deferred_tools_delta", addedNames: ["LSP", ASK], removedNames: [] } };
 
 function hook(entries: object[], extra: Record<string, unknown> = {}, env: Record<string, string> = {}) {
   const tp = join(dir, `t${n++}.jsonl`);
@@ -30,14 +32,20 @@ function hook(entries: object[], extra: Record<string, unknown> = {}, env: Recor
 const blocked = (r: { stdout: string }) => r.stdout.includes('"decision":"block"');
 
 describe("question-ledger", () => {
-  it("prose question without a task blocks", () => {
+  it("prose question without a recorded question blocks and names the ask tool", () => {
     const r = hook([user("hi"), anyCreate, asst(text("Should I proceed?"))]);
     expect(r.status).toBe(0);
     expect(blocked(r)).toBe(true);
     expect(r.stdout).toContain("Should I proceed?");
+    expect(r.stdout).toContain(ASK);
+    expect(r.stdout).not.toContain("TaskUpdate");
   });
 
-  it("recorded question task cited as #N allows", () => {
+  it("an ask call with no recorded result does not cover its #N", () => {
+    expect(blocked(hook([user("hi"), createQ("toolu_1"), asst(text("#1 Ship it? Recommend: yes"))]))).toBe(true);
+  });
+
+  it("recorded question cited as #N allows", () => {
     const r = hook([user("hi"), createQ("toolu_1"), created("toolu_1", 3), asst(text("Per #3, ship it? Recommend: yes"))]);
     expect(r.stdout).toBe("");
   });
@@ -53,7 +61,7 @@ describe("question-ledger", () => {
     expect(blocked(hook([...pre, asst(text("#920 merge it?"))]))).toBe(true);
   });
 
-  it("no TaskCreate anywhere allows silently", () => {
+  it("no ask tool anywhere allows silently", () => {
     const r = hook([user("hi"), asst(text("Should I proceed?"))]);
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
@@ -105,7 +113,7 @@ describe("question-ledger", () => {
     expect(blocked(run())).toBe(true);
     const third = run();
     expect(blocked(third)).toBe(false);
-    expect(third.stdout).toContain("question-ledger: 1 question(s) not recorded as tasks");
+    expect(third.stdout).toContain("question-ledger: 1 question(s) not recorded");
     expect(blocked(run())).toBe(true);
   });
 

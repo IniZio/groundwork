@@ -1,6 +1,6 @@
 /**
  * Stop/SubagentStop hook. Blocks a turn whose reply asks the user something
- * without a matching question task, so the question stays on screen with a stable #N.
+ * without recording it through the ask tool, so the question stays on screen with a stable #N.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +16,7 @@ const SELF_ANSWERED_RE = /^[*_):]*\s+(?:Yes|No|Because)\b/;
 const MAX_LISTED = 5;
 const MAX_LINE = 120;
 const MAX_CONSECUTIVE_BLOCKS = 2;
+const ASK_TOOL = "mcp__groundwork__ask";
 
 export function questionLines(text: string): string[] {
   const out: string[] = [];
@@ -91,10 +92,10 @@ function recordedQuestionIds(entries: TranscriptEntry[]): Set<string> {
   const ids = new Set<string>();
   for (const e of entries) {
     for (const b of blocks(e)) {
-      if (e.type === "assistant" && isToolUse(b) && b.name === "TaskCreate" && b.input?.metadata?.kind === "question") {
+      if (e.type === "assistant" && isToolUse(b) && b.name === ASK_TOOL) {
         pending.add(b.id);
       } else if (e.type === "user" && isToolResult(b) && pending.has(b.tool_use_id)) {
-        const m = resultText(b).match(/Task #(\d+) created successfully/);
+        const m = resultText(b).match(/Question #(\d+) recorded/);
         if (m) ids.add(m[1]!);
       }
     }
@@ -123,9 +124,9 @@ function silentAllow(): HookResult { return { stdout: "", stderr: "", exit: 0 };
 export function reasonFor(uncovered: string[]): string {
   const lines = uncovered.slice(0, MAX_LISTED).map((l) => `- ${l.length > MAX_LINE ? l.slice(0, MAX_LINE) : l}`);
   return [
-    "These lines ask the user something but have no question task:",
+    "These lines ask the user something but were not recorded:",
     ...lines,
-    "For each: TaskCreate with subject `❓ <question> (rec: <answer>)` and metadata {kind: \"question\", source: \"<your agent name, or lead>\"}, then TaskUpdate owner \"user\". End your turn with one line per question: `#N <question>? Recommend: <answer>`. A line that is not a question for the user: say it as a statement.",
+    `For each: call \`${ASK_TOOL}\` (load it with ToolSearch if it is deferred) with the question, your recommended answer and your agent name as source. End your turn with one line per question: \`#N <question> Recommend: <answer>\`. A line that is not a question for the user: say it as a statement.`,
   ].join("\n");
 }
 
@@ -147,7 +148,7 @@ export function run(inp: HookInput, env: Record<string, string | undefined>): Ho
     const tp = event === "SubagentStop" ? (inp.agent_transcript_path ?? inp.transcript_path) : inp.transcript_path;
     if (tp === undefined || !existsSync(tp)) return silentAllow();
     const raw = readFileSync(tp, "utf8");
-    if (!raw.includes("TaskCreate")) return silentAllow();
+    if (!raw.includes(ASK_TOOL)) return silentAllow();
 
     const entries = parseTranscript(raw);
     const { uncovered } = evaluate(entries, inp.last_assistant_message);
@@ -157,7 +158,7 @@ export function run(inp: HookInput, env: Record<string, string | undefined>): Ho
     const blocked = readCount(cf);
     if (blocked >= MAX_CONSECUTIVE_BLOCKS) {
       writeFileSync(cf, "0");
-      return { stdout: JSON.stringify({ systemMessage: `question-ledger: ${uncovered.length} question(s) not recorded as tasks` }) + "\n", stderr: "", exit: 0 };
+      return { stdout: JSON.stringify({ systemMessage: `question-ledger: ${uncovered.length} question(s) not recorded` }) + "\n", stderr: "", exit: 0 };
     }
     writeFileSync(cf, String(blocked + 1));
     return { stdout: JSON.stringify({ decision: "block", reason: reasonFor(uncovered) }) + "\n", stderr: "", exit: 0 };

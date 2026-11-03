@@ -36,7 +36,7 @@ describe("doc prose advisory", () => {
   test("a file outside doc paths, or a repo without the rule, gets no advisory", () => {
     const repo = makeRepo({ rules: { "pr-body": "error" } });
     expect(advise(repo, "Write", { file_path: `${repo}/notes/x.md`, content: LONG }).out).toBeNull();
-    const off = makeRepo({ rules: {} });
+    const off = makeRepo({ rules: { "pr-body": "off" } });
     expect(advise(off, "Write", { file_path: `${off}/docs/x.md`, content: LONG }).out).toBeNull();
   });
 });

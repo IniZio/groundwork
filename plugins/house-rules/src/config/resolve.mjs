@@ -59,7 +59,7 @@ export function resolveConfigText(repoRoot, text) {
   const safetyComment = severityOf('require-safety-comment-for-type-assertion', 'off')
   const readableSpacing = severityOf('require-readable-spacing', 'off')
   const silentEarlyReturn = severityOf('silent-early-return-in-test', 'warn')
-  const prBody = severityOf('pr-body', 'off')
+  const prBody = severityOf('pr-body', 'error')
 
   const explicitPreset = rules['commit-message']?.options?.preset
   const preset =

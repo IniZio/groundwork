@@ -537,12 +537,12 @@
           ]
         },
         "pr-body": {
-          "description": "Opt-in prose limits for PR bodies and doc pages. Off by default. Severity can be \"error\" or \"off\"; the rule has no options. With \"error\", a `gh pr create` or `gh pr edit` whose body has a sentence over 25 words, a semicolon or mid-sentence colon, a bare path:line, a backticked path outside a link label, a github.com blob link that is not pinned to a commit sha, a sentence that reports a baseline command such as make lint or cargo test as passing, a missing Why or Scope heading, or a heading outside Why, What changed, Scope, Tradeoffs, Blast Radius, Verification and Review tier is denied. A top-level PR comment (`gh pr comment`, or a `gh api` POST to an issue's comments) is denied too, because proof and updates belong in the PR body. A write to doc/, docs/ or README.md gets an advisory for the same prose checks and is never denied.",
+          "description": "Prose limits for PR bodies and doc pages. On by default; set \"off\" to opt out. Severity can be \"error\" or \"off\"; the rule has no options. With \"error\", a `gh pr create` or `gh pr edit` whose body has a sentence over 25 words, a semicolon or mid-sentence colon, a bare path:line, a backticked path outside a link label, a github.com blob link that is not pinned to a commit sha, a sentence that reports a baseline command such as make lint or cargo test as passing, a missing Why or Scope heading, or a heading outside Why, What changed, Scope, Tradeoffs, Blast Radius, Verification and Review tier is denied. A top-level PR comment (`gh pr comment`, or a `gh api` POST to an issue's comments) is denied too, because proof and updates belong in the PR body. A write to doc/, docs/ or README.md gets an advisory for the same prose checks and is never denied.",
           "oneOf": [
             {
               "type": "string",
               "enum": ["off", "error"],
-              "description": "Severity. The default is \"off\": the rule is opt-in. \"error\" denies a PR body that breaks the prose checks. No other severity is accepted for this rule."
+              "description": "Severity. The default is \"error\", which denies a PR body that breaks the prose checks. \"off\" opts out. No other severity is accepted for this rule."
             },
             {
               "type": "array",
@@ -553,7 +553,7 @@
                 {
                   "type": "string",
                   "enum": ["off", "error"],
-                  "description": "Severity. The default is \"off\": the rule is opt-in. \"error\" denies a PR body that breaks the prose checks. No other severity is accepted for this rule."
+                  "description": "Severity. The default is \"error\", which denies a PR body that breaks the prose checks. \"off\" opts out. No other severity is accepted for this rule."
                 },
                 {
                   "type": "object",

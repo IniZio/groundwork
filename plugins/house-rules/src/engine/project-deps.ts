@@ -1,31 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Ajv, type JSONSchemaType } from 'ajv';
+import { isManifest } from './generated/project-deps-validators.mjs';
 
 export interface ProjectFacts {
   /** Names in `dependencies` and `devDependencies` of the nearest package.json at or above the file, up to the repo root. */
   dependencies: ReadonlySet<string>;
 }
-
-interface Manifest {
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
-
-const dependencyMap = {
-  type: 'object',
-  nullable: true,
-  required: [],
-  additionalProperties: { type: 'string' },
-} as const;
-
-const manifestSchema: JSONSchemaType<Manifest> = {
-  type: 'object',
-  properties: { dependencies: dependencyMap, devDependencies: dependencyMap },
-  additionalProperties: true,
-};
-
-const isManifest = new Ajv().compile(manifestSchema);
 
 const NO_DEPENDENCIES: ProjectFacts = Object.freeze({ dependencies: new Set<string>() });
 const factsByDir = new Map<string, ProjectFacts>();

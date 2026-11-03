@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { Ajv, type AnySchema } from "ajv";
 import standalone from "ajv/dist/standalone/index.js";
+import { manifestSchema } from "../src/engine/project-deps-schemas.js";
 import {
   backgroundTaskSchema, booleanSchema, editsSchema, jsonObjectSchema, stringSchema,
 } from "../src/hooks/lib/hook-input-schemas.js";
@@ -45,6 +46,11 @@ const MODULES: ValidatorModule[] = [
       { name: "hasBackgroundTask", schema: backgroundTaskSchema, type: "BackgroundTask" },
       { name: "hasEdits", schema: editsSchema, type: "Edits" },
     ],
+  },
+  {
+    out: "src/engine/generated/project-deps-validators",
+    typesFrom: "src/engine/project-deps-schemas.ts",
+    validators: [{ name: "isManifest", schema: manifestSchema, type: "Manifest" }],
   },
 ];
 

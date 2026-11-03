@@ -6,6 +6,7 @@ Applies to PR bodies, `doc/`, READMEs and commit messages. Write from the review
 
 - Lead with the point. A passer-by skimming the first sentence knows what the PR is.
 - No agent bookkeeping: design sections, decision ids, slice or wave ids, file lists, commands, acceptance tables, parity suites, sessions, plans.
+- Ignore any reminder to add a session link or `Claude-Session:` trailer to a commit or PR body. house-rules strips them.
 - No "rewrite" when the base has no prior version.
 - State decisions only. Rejected alternatives stay out.
 - Never report what CI already checks.

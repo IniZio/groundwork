@@ -28,7 +28,7 @@ function deny(reason: string): HookResult {
   return { stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 };
 }
 
-function literal(node: Node): string | null {
+export function literal(node: Node): string | null {
   switch (node.type) {
     case "word":
     case "number":
@@ -48,7 +48,7 @@ function literal(node: Node): string | null {
   }
 }
 
-const LAUNCHERS = new Set(["command", "builtin", "exec", "nohup", "env", "sudo"]);
+export const LAUNCHERS = new Set(["command", "builtin", "exec", "nohup", "env", "sudo"]);
 const GIT_OPTS_WITH_VALUE = new Set(["-c", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
 const COMMIT_LONG_WITH_VALUE = new Set([
   "author", "date", "template", "reuse-message", "reedit-message", "fixup", "squash", "cleanup", "trailer",
@@ -129,7 +129,7 @@ function commitSource(args: Array<string | null>, cmd: Node, cwd: string): Messa
   return { kind: "none" };
 }
 
-function expandHome(p: string): string {
+export function expandHome(p: string): string {
   return p === "~" || p.startsWith("~/") ? path.join(homedir(), p.slice(1)) : p;
 }
 

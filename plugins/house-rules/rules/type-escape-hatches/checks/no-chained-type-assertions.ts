@@ -8,8 +8,8 @@ export const id = 'no-chained-type-assertions';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-chained-type-assertions.ts";
 export const tsOnly = true;
 
-const message = (using: string): string =>
-  `This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with ${using} so it returns the target type; splitting the chain across bindings is the same defect.`;
+const message = (validator: string): string =>
+  `This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with ${validator} so it returns the target type; splitting the chain across bindings is the same defect.`;
 
 const isAssertion = (node: Node): boolean => node.type === 'as_expression' || node.type === 'type_assertion';
 
@@ -57,9 +57,9 @@ export function check(
 ): CheckHit[] {
   const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
-  const using = parseWith(project);
+  const validator = parseWith(project);
   for (const node of [...idx.byType('as_expression'), ...idx.byType('type_assertion')].sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex)) {
-    if (isOutermost(node) && isForbiddenChain(node)) hits.push({ node, message: message(using) });
+    if (isOutermost(node) && isForbiddenChain(node)) hits.push({ node, message: message(validator) });
   }
   return hits;
 }

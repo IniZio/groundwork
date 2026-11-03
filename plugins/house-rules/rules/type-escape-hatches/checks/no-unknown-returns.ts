@@ -9,8 +9,8 @@ export const id = 'no-unknown-returns';
 export const upstream = "https://github.com/dmmulroy/anti-slop/blob/c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b/src/rules/no-unknown-returns.ts";
 export const tsOnly = true;
 
-const message = (using: string): string =>
-  `This function returns \`unknown\`, so every caller must check the value again. Parse it here with ${using} and return the named domain type; moving the \`typeof\` checks to callers is the same defect.`;
+const message = (validator: string): string =>
+  `This function returns \`unknown\`, so every caller must check the value again. Parse it here with ${validator} and return the named domain type; moving the \`typeof\` checks to callers is the same defect.`;
 const OWNERS = new Set([
   'function_declaration', 'generator_function_declaration', 'function_expression', 'generator_function',
   'arrow_function', 'method_definition', 'function_signature', 'abstract_method_signature',

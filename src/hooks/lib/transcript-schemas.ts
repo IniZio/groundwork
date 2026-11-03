@@ -21,6 +21,7 @@ export interface HookInput {
   agent_transcript_path?: string;
   session_id?: string;
   agent_id?: string;
+  last_assistant_message?: string;
 }
 
 const str = { type: "string" };
@@ -66,5 +67,6 @@ export const hookInputSchema: AnySchema = {
     agent_transcript_path: str,
     session_id: str,
     agent_id: str,
+    last_assistant_message: str,
   },
 };

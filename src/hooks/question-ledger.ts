@@ -11,7 +11,8 @@ import type { Block, HookInput, TextBlock, ToolResultBlock, ToolUseBlock, Transc
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
-const QUESTION_RE = /\?[*_)\s]*($|\(?\s*[*_]*recommend)/i;
+const QUESTION_MARK_RE = /\?(?=[*_)'"\s]|$)/g;
+const SELF_ANSWERED_RE = /^[*_):]*\s+(?:Yes|No|Because)\b/;
 const MAX_LISTED = 5;
 const MAX_LINE = 120;
 const MAX_CONSECUTIVE_BLOCKS = 2;
@@ -24,8 +25,10 @@ export function questionLines(text: string): string[] {
     if (line.startsWith("```")) { fenced = !fenced; continue; }
     if (fenced) continue;
     if (/^#{1,6}\s/.test(line) || line.startsWith(">") || line.startsWith("|")) continue;
-    const probe = line.replace(/`[^`]*`/g, "CODE").replace(/https?:\/\/\S+/g, "URL");
-    if (QUESTION_RE.test(probe)) out.push(line);
+    const probe = line.replace(/`[^`]*`/g, "CODE").replace(/https?:\/\/\S+/g, "URL")
+      .replace(/"[^"]*"/g, "QUOTED").replace(/\u201c[^\u201d]*\u201d/g, "QUOTED");
+    const asks = [...probe.matchAll(QUESTION_MARK_RE)].some((m) => !SELF_ANSWERED_RE.test(probe.slice(m.index + 1)));
+    if (asks) out.push(line);
   }
   return out;
 }
@@ -101,10 +104,12 @@ function recordedQuestionIds(entries: TranscriptEntry[]): Set<string> {
 
 export interface Verdict { uncovered: string[] }
 
-export function evaluate(entries: TranscriptEntry[]): Verdict {
+export function evaluate(entries: TranscriptEntry[], lastMessage?: string): Verdict {
   const ids = recordedQuestionIds(entries);
   const uncovered: string[] = [];
-  for (const t of assistantTexts(turnSlices(entries).at(-1)!)) {
+  const texts = assistantTexts(turnSlices(entries).at(-1)!);
+  if (lastMessage !== undefined && texts.at(-1) !== lastMessage) texts.push(lastMessage);
+  for (const t of texts) {
     for (const line of questionLines(t)) {
       const covered = [...line.matchAll(/(?<![\w#])#(\d+)\b/g)].some((m) => ids.has(m[1]!));
       if (!covered) uncovered.push(line);
@@ -145,7 +150,7 @@ export function run(inp: HookInput, env: Record<string, string | undefined>): Ho
     if (!raw.includes("TaskCreate")) return silentAllow();
 
     const entries = parseTranscript(raw);
-    const { uncovered } = evaluate(entries);
+    const { uncovered } = evaluate(entries, inp.last_assistant_message);
     const cf = counterFile(inp.session_id ?? "unknown", event === "SubagentStop" && inp.agent_id ? inp.agent_id : "main");
     if (uncovered.length === 0) { writeFileSync(cf, "0"); return silentAllow(); }
 

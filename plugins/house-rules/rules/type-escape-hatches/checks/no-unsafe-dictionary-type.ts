@@ -54,17 +54,17 @@ function shouldReport(node: Node, env: Env): boolean {
   return true;
 }
 
-const message = (value: UnsafeDictionaryValue, using: string): string =>
-  `This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with ${using}.`;
+const message = (value: UnsafeDictionaryValue, validator: string): string =>
+  `This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with ${validator}.`;
 
-function visit(node: Node, env: Env, using: string, hits: CheckHit[]): void {
+function visit(node: Node, env: Env, validator: string, hits: CheckHit[]): void {
   if (node.type === 'generic_type' || node.type === 'object_type' || node.type === 'type_identifier') {
     const unsafe = shouldReport(node, env) ? classifyUnsafeDictionary(node, env) : null;
-    if (unsafe !== null) hits.push({ node, message: message(unsafe, using) });
+    if (unsafe !== null) hits.push({ node, message: message(unsafe, validator) });
   } else if (node.type === 'index_signature' && node.parent?.type !== 'object_type') {
     const value = annotationOf(node);
     const unsafe = value ? classifyUnsafeDictionaryValue(value, env) : null;
-    if (unsafe !== null) hits.push({ node, message: message(unsafe, using) });
+    if (unsafe !== null) hits.push({ node, message: message(unsafe, validator) });
   }
 }
 
@@ -75,7 +75,7 @@ export function check(
   const idx = index ?? buildNodeIndex(root);
   const hits: CheckHit[] = [];
   const env = createTypeEnvironment(root, idx);
-  const using = parseWith(project);
-  for (const node of idx.all) visit(node, env, using, hits);
+  const validator = parseWith(project);
+  for (const node of idx.all) visit(node, env, validator, hits);
   return hits;
 }

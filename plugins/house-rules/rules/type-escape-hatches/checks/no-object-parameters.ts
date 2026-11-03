@@ -24,7 +24,7 @@ function bindingName(pattern: Node): string {
   return inner.text.trim();
 }
 
-function visit(node: Node, env: TypeAliasEnvironment, using: string, hits: CheckHit[]): void {
+function visit(node: Node, env: TypeAliasEnvironment, validator: string, hits: CheckHit[]): void {
   for (const param of node.namedChildren) {
     if (!PARAMETER_TYPES.has(param.type)) continue;
     const pattern = param.childForFieldName('pattern');
@@ -33,7 +33,7 @@ function visit(node: Node, env: TypeAliasEnvironment, using: string, hits: Check
     if (!pattern || !annotation || !type || !resolvedTypeMatches(type, env, isObject)) continue;
     hits.push({
       node: annotation,
-      message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with ${using}; \`Record<string, unknown>\` or \`{}\` is the same defect.`,
+      message: `Parameter \`${bindingName(pattern)}\` uses the broad \`object\` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with ${validator}; \`Record<string, unknown>\` or \`{}\` is the same defect.`,
     });
   }
 }

@@ -28,7 +28,7 @@ function predicateName(owner: Node): string | null {
   return null;
 }
 
-function visit(node: Node, using: string, hits: CheckHit[]): void {
+function visit(node: Node, validator: string, hits: CheckHit[]): void {
   if (node.parent) {
     const guarded = predicateName(node.parent);
     for (const param of node.namedChildren) {
@@ -40,7 +40,7 @@ function visit(node: Node, using: string, hits: CheckHit[]): void {
       if (EXEMPT_NAMES.has(name) || name === guarded) continue;
       hits.push({
         node: annotation,
-        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with ${using} before calling this function; \`typeof\` checks in the body are not a parse.`,
+        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with ${validator} before calling this function; \`typeof\` checks in the body are not a parse.`,
       });
     }
   }
@@ -51,7 +51,7 @@ export function check(
   project?: ProjectFacts,
 ): CheckHit[] {
   const hits: CheckHit[] = [];
-  const using = parseWith(project);
-  for (const node of (index ?? buildNodeIndex(root)).byType('formal_parameters')) visit(node, using, hits);
+  const validator = parseWith(project);
+  for (const node of (index ?? buildNodeIndex(root)).byType('formal_parameters')) visit(node, validator, hits);
   return hits;
 }

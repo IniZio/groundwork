@@ -2,6 +2,14 @@ export interface Finding { quote: string; reason: string }
 export interface ProseOptions { pr: boolean }
 
 export const MAX_WORDS = 25;
+export const NO_MARKDOWN_NOTICE = "house-rules pr-body: check skipped, this bun has no Bun.markdown (needs bun >= 1.3.14)";
+
+type MarkdownHost = { Bun?: { markdown?: { render?: (s: string, cb: object) => string } } };
+
+/** `host` is a seam so a test can present a bun without Bun.markdown. */
+export function markdownAvailable(host: object = globalThis): boolean {
+  return typeof (host as MarkdownHost).Bun?.markdown?.render === "function";
+}
 export const PR_HEADINGS = ["Why", "What changed", "Scope", "Tradeoffs", "Blast Radius", "Verification", "Review tier"];
 const REQUIRED_HEADINGS = ["Why", "Scope"];
 
@@ -17,6 +25,8 @@ const PATH_LINE = new RegExp(`(?<![\\w/.-])[\\w./-]*[\\w-]\\.(?:${SOURCE_EXT})(?
 const CODE_PATH = new RegExp(`^(?:[\\w.@~-]+(?:/[\\w.@~-]+)+/?|[\\w-]+\\.(?:${SOURCE_EXT}))$`, "i");
 const GITHUB_BLOB = /https?:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/blob\/([^/\s?#)]+)/g;
 const SHA = /^[0-9a-f]{7,40}$/i;
+const BASELINE_COMMAND = /\b(?:make (?:lint|test|check|ci)|cargo (?:test|clippy|fmt|check|nextest)|bun test|bun run typecheck|tsc|(?:npm|pnpm|yarn) (?:run )?(?:test|lint)|go (?:test|vet)|pytest|ruff|eslint)\b/;
+const PASS_WORD = /\b(?:pass|passes|passed|green|clean|ok)\b|\u2705/i;
 
 interface Unit { kind: "prose" | "heading"; text: string; level: number }
 
@@ -69,7 +79,7 @@ function sentences(text: string): string[] {
   return [...segmenter.segment(visible)].map(({ index, segment }) => text.slice(index, index + segment.length));
 }
 
-function sentenceFindings(sentence: string): Finding[] {
+function sentenceFindings(sentence: string, pr: boolean): Finding[] {
   const out: Finding[] = [];
   const quote = restore(sentence).trim();
   const noCode = sentence.replace(CODE_SPAN, "x");
@@ -77,6 +87,13 @@ function sentenceFindings(sentence: string): Finding[] {
   if (words > MAX_WORDS) out.push({ quote, reason: `sentence has ${words} words; the limit is ${MAX_WORDS} (ASD-STE100)` });
   if (noCode.includes(";")) out.push({ quote, reason: "a semicolon joins clauses; split it into two sentences" });
   if (/:\s+\S/.test(noCode)) out.push({ quote, reason: "a colon joins clauses mid-sentence; split it into two sentences" });
+
+  if (pr) {
+    const plain = restore(sentence);
+    if (BASELINE_COMMAND.test(plain) && PASS_WORD.test(plain)) {
+      out.push({ quote, reason: "reports a baseline check as passing; CI already shows baseline checks, so Verification names only runs CI does not show" });
+    }
+  }
 
   const linkless = sentence.replace(LABEL, "");
   const visible = linkless.replace(/[\u0001\u0002]/g, "");
@@ -124,7 +141,7 @@ export function checkProse(markdown: string, opts: ProseOptions): Finding[] {
   const findings: Finding[] = [];
   for (const unit of parsed.units) {
     if (unit.kind !== "prose") continue;
-    for (const sentence of sentences(unit.text)) findings.push(...sentenceFindings(sentence));
+    for (const sentence of sentences(unit.text)) findings.push(...sentenceFindings(sentence, opts.pr));
   }
   findings.push(...blobFindings(parsed.units.filter((u) => u.kind === "prose").map((u) => restore(u.text)), parsed.hrefs));
   if (opts.pr) findings.push(...headingFindings(parsed.units));

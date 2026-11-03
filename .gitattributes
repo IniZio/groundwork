@@ -1,1 +1,2 @@
 plugins/house-rules/src/hooks/lib/tree-sitter.js linguist-vendored
+plugins/house-rules/src/hooks/lib/generated/** linguist-generated

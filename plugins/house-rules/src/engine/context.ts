@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { readTranscript } from '../hooks/lib/transcript.js';
 import { addedHunks, allLinesHunk, diffTextToHunks, gateBase, workScope } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
@@ -54,20 +55,7 @@ export function detectBashCreatedDocs(
     const govern = opts.govern ?? [];
     if (!opts.types || Object.keys(opts.types).length === 0 || govern.length === 0) return [];
 
-    let start = NaN;
-    for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {
-      const t = line.trim();
-      if (!t) continue;
-      try {
-        const ts = (JSON.parse(t) as Record<string, unknown>).timestamp;
-        if (typeof ts === 'string' && !Number.isNaN(Date.parse(ts))) {
-          start = Date.parse(ts);
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
+    const start = readTranscript(transcriptPath)?.find((e) => !Number.isNaN(e.timeMs))?.timeMs ?? NaN;
     if (Number.isNaN(start)) return [];
 
     const list = (extra: string[]): string[] => {
@@ -109,36 +97,13 @@ function isTracked(repoRoot: string, relPath: string): boolean {
 }
 
 function isSessionCreated(transcriptPath: string, absPath: string): boolean {
-  let raw: string;
-  try {
-    raw = readFileSync(transcriptPath, 'utf8');
-  } catch {
-    return false;
-  }
-  for (const line of raw.split('\n')) {
-    const t = line.trim();
-    if (!t) continue;
-    let obj: Record<string, unknown>;
-    try {
-      obj = JSON.parse(t) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    if (obj.type !== 'assistant') continue;
-    const msg = (obj.message ?? obj) as Record<string, unknown>;
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
-    for (const blk of content as Record<string, unknown>[]) {
-      if ((blk as Record<string, unknown>).type !== 'tool_use') continue;
-      const name = (blk as Record<string, unknown>).name;
-      const inp = (blk as Record<string, unknown>).input as Record<string, unknown> | undefined;
-      if (name === 'Write' && inp && typeof inp.file_path === 'string' && inp.file_path === absPath) {
-        return true;
-      }
+  for (const entry of readTranscript(transcriptPath) ?? []) {
+    if (entry.type !== 'assistant') continue;
+    for (const blk of entry.blocks) {
+      if (blk.kind !== 'tool_use' || blk.filePath !== absPath) continue;
+      if (blk.name === 'Write') return true;
       // If we see any other touch (Edit/MultiEdit) for this file first, it's not session-created
-      if ((name === 'Edit' || name === 'MultiEdit') && inp && typeof inp.file_path === 'string' && inp.file_path === absPath) {
-        return false;
-      }
+      if (blk.name === 'Edit' || blk.name === 'MultiEdit') return false;
     }
   }
   return false;

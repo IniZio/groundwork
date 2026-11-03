@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
+import { parseTranscript, readTranscript } from "./transcript.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -13,18 +14,7 @@ function parseTs(s: string | null): number {
 }
 
 function firstTimestamp(transcriptPath: string): string | null {
-  let raw: string;
-  try { raw = readFileSync(transcriptPath, "utf8"); } catch { return null; }
-  for (const line of raw.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    try {
-      const obj = JSON.parse(t) as Record<string, unknown>;
-      const ts = obj.timestamp;
-      if (typeof ts === "string" && ts) return ts;
-    } catch { continue; }
-  }
-  return null;
+  return readTranscript(transcriptPath)?.find((e) => e.timestamp)?.timestamp ?? null;
 }
 
 export function sessionBase(transcriptPath: string, repo: string): string {
@@ -108,33 +98,21 @@ function cdTargets(cmd: string, cwd: string): string[] {
 function scanTranscript(raw: string): AgentTouches {
   const touches: AgentTouches = { edited: new Set(), parsed: new Set(), windows: [] };
   const pending = new Map<string, { dirs: string[]; start: number }>();
-  for (const line of raw.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    let obj: Record<string, unknown>;
-    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
-    const msg = (obj.message ?? obj) as Record<string, unknown>;
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
-    const ts = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : NaN;
-    const entryCwd = typeof obj.cwd === "string" ? obj.cwd : "";
-    for (const blk of content as Record<string, unknown>[]) {
-      if (obj.type === "user" && blk.type === "tool_result") {
-        const open = typeof blk.tool_use_id === "string" ? pending.get(blk.tool_use_id) : undefined;
-        if (open && !isNaN(ts)) touches.windows.push({ ...open, end: ts });
+  for (const entry of parseTranscript(raw)) {
+    for (const blk of entry.blocks) {
+      if (entry.type === "user" && blk.kind === "tool_result") {
+        const open = blk.toolUseId ? pending.get(blk.toolUseId) : undefined;
+        if (open && !isNaN(entry.timeMs)) touches.windows.push({ ...open, end: entry.timeMs });
         continue;
       }
-      if (obj.type !== "assistant" || blk.type !== "tool_use") continue;
-      const inp = blk.input as Record<string, unknown> | undefined;
-      const name = blk.name;
-      if (name === "Edit" || name === "Write" || name === "MultiEdit") {
-        const fp = inp && typeof inp.file_path === "string" ? inp.file_path : null;
-        if (fp) touches.edited.add(fp);
-      } else if (name === "Bash") {
-        const cmd = inp && typeof inp.command === "string" ? inp.command : "";
-        extractBashTargets(cmd, entryCwd, touches.parsed);
-        if (typeof blk.id === "string" && entryCwd && !isNaN(ts)) {
-          pending.set(blk.id, { dirs: cdTargets(cmd, entryCwd), start: ts });
+      if (entry.type !== "assistant" || blk.kind !== "tool_use") continue;
+      if (blk.name === "Edit" || blk.name === "Write" || blk.name === "MultiEdit") {
+        if (blk.filePath) touches.edited.add(blk.filePath);
+      } else if (blk.name === "Bash") {
+        const cmd = blk.command ?? "";
+        extractBashTargets(cmd, entry.cwd, touches.parsed);
+        if (blk.id && entry.cwd && !isNaN(entry.timeMs)) {
+          pending.set(blk.id, { dirs: cdTargets(cmd, entry.cwd), start: entry.timeMs });
         }
       }
     }
@@ -336,30 +314,19 @@ type TouchKind =
   | { kind: "Bash"; from: string };
 
 function firstTouchInfo(transcriptPath: string, file: string): TouchKind | null {
-  let raw: string;
-  try { raw = readFileSync(transcriptPath, "utf8"); } catch { return null; }
+  const entries = readTranscript(transcriptPath);
+  if (!entries) return null;
 
-  for (const line of raw.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    let obj: Record<string, unknown>;
-    try { obj = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
-    if (obj.type !== "assistant") continue;
-    const msg = (obj.message ?? obj) as Record<string, unknown>;
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
-    for (const blk of content as Record<string, unknown>[]) {
-      if (blk.type !== "tool_use") continue;
-      const name = blk.name as string | undefined;
-      const inp = blk.input as Record<string, unknown> | undefined;
-      if (name === "Write" || name === "Edit" || name === "MultiEdit") {
-        const fp = inp && typeof inp.file_path === "string" ? inp.file_path : null;
-        if (fp && fp === file) {
-          return name === "Write" ? { kind: "Write" } : { kind: "Edit" };
+  for (const entry of entries) {
+    if (entry.type !== "assistant") continue;
+    for (const blk of entry.blocks) {
+      if (blk.kind !== "tool_use") continue;
+      if (blk.name === "Write" || blk.name === "Edit" || blk.name === "MultiEdit") {
+        if (blk.filePath && blk.filePath === file) {
+          return blk.name === "Write" ? { kind: "Write" } : { kind: "Edit" };
         }
-      } else if (name === "Bash") {
-        const cmd = inp && typeof inp.command === "string" ? inp.command : "";
-        for (const cmdLine of cmd.split("\n")) {
+      } else if (blk.name === "Bash") {
+        for (const cmdLine of (blk.command ?? "").split("\n")) {
           const m = cmdLine.match(
             /\b(?:mv|cp)\s+(?:-\S+\s+)*(['"]?[^\s'"<>&|$;]+['"]?)\s+(['"]?[^\s'"<>&|$;]+['"]?)\s*(?:$|[|&;])/,
           );

@@ -14,7 +14,7 @@ import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { policyForRoot, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
-import { hookInput, parseJson } from './lib/hook-input.js';
+import { readHookInput, type HookInput } from './lib/hook-input.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 import type { Rule, ScopedFile } from '../engine/types.js';
 
@@ -54,7 +54,7 @@ interface FixedFile { path: string; removed: number; kept: number; total: number
 interface UnfixableEntry { path: string; ruleId: string; message: string; reason?: string; notice?: string }
 
 export async function run(
-  input: unknown,
+  inp: HookInput,
   env: Record<string, string | undefined>,
   opts?: {
     testOnly_tmpDir?: string;
@@ -66,8 +66,6 @@ export async function run(
 ): Promise<HookResult> {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
-
-    const inp = hookInput(input);
 
     const event = inp.hook_event_name ?? inp.event ?? "";
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
@@ -442,7 +440,7 @@ export async function run(
 
 if (import.meta.main) {
   const raw = await Bun.stdin.text();
-  const result = await run(parseJson(raw), process.env as Record<string, string | undefined>);
+  const result = await run(readHookInput(raw), process.env as Record<string, string | undefined>);
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   process.exit(result.exit);

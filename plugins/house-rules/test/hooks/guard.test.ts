@@ -5,6 +5,7 @@ import path from "node:path";
 import path2 from "node:path";
 import os from "node:os";
 import { check } from "../../src/hooks/guard.js";
+import { readHookInput } from "../../src/hooks/lib/hook-input.js";
 import { buildCtx } from "../../rules/comment-density/edit-check.js";
 import { type GetParserFn } from "../../src/hooks/lib/comment-density.js";
 import { grammarFailureWarning } from "../../src/engine/run.js";
@@ -175,7 +176,7 @@ describe("comment-density-guard", () => {
   });
 
   it("CLEAN: malformed stdin → empty stdout, exit 0", async () => {
-    const r = await check("not-json");
+    const r = await check(readHookInput("not-json"));
     expect(r.stdout).toBe("");
     expect(r.exit).toBe(0);
   });

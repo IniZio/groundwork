@@ -2,6 +2,7 @@ import { describe, test, expect, beforeAll } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { check } from "../../src/hooks/commit-guard.js";
+import { readHookInput } from "../../src/hooks/lib/hook-input.js";
 import { makeRepo, tempDir, runPluginHook } from "./commit-sandbox.js";
 
 const BAD = "bad message";
@@ -120,7 +121,7 @@ describe("commit guard allows what it cannot or should not lint", () => {
 
   test("non-Bash tools and malformed payloads allow", async () => {
     expect((await check({ tool_name: "Write", tool_input: { file_path: "x" }, cwd: repo })).stdout).toBe("");
-    expect((await check(null)).stdout).toBe("");
+    expect((await check(readHookInput("null"))).stdout).toBe("");
     expect((await check({ tool_name: "Bash", tool_input: {}, cwd: repo })).stdout).toBe("");
   });
 

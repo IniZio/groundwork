@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { run } from "../../src/hooks/gate.js";
+import { readHookInput } from "../../src/hooks/lib/hook-input.js";
 import type { Rule, RuleContext, FixOptions, FixResult } from "../../src/engine/types.js";
 
 // ---------------------------------------------------------------------------
@@ -125,13 +126,13 @@ describe("gate-rule-fix AC3: rule.fix called and rewrites file", () => {
 
   it("file rewritten, additionalContext has removal line, fix args match contract, testOnly passthrough", async () => {
     const r = await run(
-      {
+      readHookInput(JSON.stringify({
         hook_event_name: "Stop",
         session_id: sessionId,
         transcript_path: tp,
         cwd: repoDir,
         stop_hook_active: false,
-      },
+      })),
       SESSION_ENV,
       {
         testOnly_tmpDir: gateTmpDir,
@@ -231,13 +232,13 @@ describe("gate-rule-fix AC4a: rule.fix declines — block output and stop-block.
     const contentBefore = readFileSync(stubFile, "utf8");
 
     const r = await run(
-      {
+      readHookInput(JSON.stringify({
         hook_event_name: "Stop",
         session_id: sessionId,
         transcript_path: tp,
         cwd: repoDir,
         stop_hook_active: false,
-      },
+      })),
       SESSION_ENV,
       {
         testOnly_tmpDir: gateTmpDir,
@@ -302,13 +303,13 @@ describe("gate-rule-fix AC4b: autofix:false policy — fix not called, gate bloc
 
   it("fix never called, stdout is continue, file unchanged, no stop-block written", async () => {
     const r = await run(
-      {
+      readHookInput(JSON.stringify({
         hook_event_name: "Stop",
         session_id: sessionId,
         transcript_path: tp,
         cwd: repoDir,
         stop_hook_active: false,
-      },
+      })),
       SESSION_ENV,
       {
         testOnly_tmpDir: gateTmpDir,

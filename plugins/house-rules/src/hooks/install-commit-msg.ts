@@ -4,7 +4,7 @@
  * A repo without .house-rules.json has nothing to lint, so it gets no hook and loses a stale owned one.
  */
 
-import { hookInput, parseJson } from "./lib/hook-input.js";
+import { readHookInput } from "./lib/hook-input.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -74,7 +74,7 @@ function install(cwd: string): string {
 
 if (import.meta.main) {
   try {
-    const cwd = hookInput(parseJson(await Bun.stdin.text())).cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+    const cwd = readHookInput(await Bun.stdin.text()).cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
     const line = install(cwd);
     if (line) process.stdout.write(line + "\n");
   } catch { /* never block a session */ }

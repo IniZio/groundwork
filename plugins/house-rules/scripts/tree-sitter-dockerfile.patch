@@ -1,0 +1,42 @@
+diff --git a/grammar.js b/grammar.js
+index 2b1109c..670539b 100644
+--- a/grammar.js
++++ b/grammar.js
+@@ -150,16 +150,20 @@ module.exports = grammar({
+     arg_instruction: ($) =>
+       seq(
+         alias(/[aA][rR][gG]/, "ARG"),
+-        field("name", alias(/[a-zA-Z0-9_]+/, $.unquoted_string)),
+-        optional(
++        repeat1(
+           seq(
+-            token.immediate("="),
+-            field("default",
+-                  choice(
+-                    $.double_quoted_string,
+-                    $.single_quoted_string,
+-                    $.unquoted_string
+-                  ))
++            field("name", alias(/[a-zA-Z0-9_]+/, $.unquoted_string)),
++            optional(
++              seq(
++                token.immediate("="),
++                optional(field("default",
++                      choice(
++                        $.double_quoted_string,
++                        $.single_quoted_string,
++                        $.unquoted_string
++                      )))
++              )
++            )
+           )
+         )
+       ),
+@@ -398,6 +402,7 @@ module.exports = grammar({
+         seq($.heredoc_marker, /[ \t]*/),
+         /[,=-]/,
+         /[^\\\[\n#\s,=-][^\\\n<]*/,
++        token.immediate(prec(1, /[#\[][^\\\n<]*/)),
+         /\\[^\n,=-]/,
+         /<[^<]/,
+       )

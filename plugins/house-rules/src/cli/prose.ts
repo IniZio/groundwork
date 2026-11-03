@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE } from '../../rules/pr-body/prose.js';
+import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE, type MarkdownHost } from '../../rules/pr-body/prose.js';
 
 export interface ProseIo { out: (s: string) => void; err: (s: string) => void }
 const stdio: ProseIo = { out: (s) => void process.stdout.write(s), err: (s) => void process.stderr.write(s) };
 
-export function runProse(file: string, pr: boolean, host: object = globalThis, io: ProseIo = stdio): number {
+export function runProse(file: string, pr: boolean, host: MarkdownHost = globalThis, io: ProseIo = stdio): number {
   if (!markdownAvailable(host)) {
     io.err(NO_MARKDOWN_NOTICE + '\n');
     return 2;

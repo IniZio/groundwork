@@ -4,11 +4,12 @@ export interface ProseOptions { pr: boolean }
 export const MAX_WORDS = 25;
 export const NO_MARKDOWN_NOTICE = "house-rules pr-body: check skipped, this bun has no Bun.markdown (needs bun >= 1.3.14)";
 
-type MarkdownHost = { Bun?: { markdown?: { render?: (s: string, cb: object) => string } } };
+type RenderCallbacks = Record<string, (content: string, meta?: { href?: string; level?: number }) => string>;
+export type MarkdownHost = { Bun?: { markdown?: { render?: (s: string, cb: RenderCallbacks) => string } } };
 
 /** `host` is a seam so a test can present a bun without Bun.markdown. */
-export function markdownAvailable(host: object = globalThis): boolean {
-  return typeof (host as MarkdownHost).Bun?.markdown?.render === "function";
+export function markdownAvailable(host: MarkdownHost = globalThis): boolean {
+  return host.Bun?.markdown?.render !== undefined;
 }
 export const PR_HEADINGS = ["Why", "What changed", "Scope", "Tradeoffs", "Blast Radius", "Verification", "Review tier"];
 const REQUIRED_HEADINGS = ["Why", "Scope"];
@@ -33,8 +34,8 @@ interface Unit { kind: "prose" | "heading"; text: string; level: number }
 const segmenter = new Intl.Segmenter("en", { granularity: "sentence" });
 
 function collect(markdown: string): { units: Unit[]; hrefs: string[] } | null {
-  const md = (globalThis as { Bun?: { markdown?: { render?: (s: string, cb: object) => string } } }).Bun?.markdown;
-  if (typeof md?.render !== "function") return null;
+  const render = (globalThis as MarkdownHost).Bun?.markdown?.render;
+  if (render === undefined) return null;
   const units: Unit[] = [];
   const hrefs: string[] = [];
   const push = (kind: Unit["kind"], text: string, level = 0) => {
@@ -43,7 +44,7 @@ function collect(markdown: string): { units: Unit[]; hrefs: string[] } | null {
   };
   const children = (c: string) => c;
   const drop = () => "";
-  md.render(markdown, {
+  render(markdown, {
     text: (c: string) => c.replace(/[\u0001-\u0004]/g, ""),
     codespan: (c: string) => CODE_OPEN + c + CODE_CLOSE,
     link: (c: string, meta?: { href?: string }) => {
@@ -116,7 +117,7 @@ function blobFindings(texts: string[], hrefs: string[]): Finding[] {
 }
 
 function headingFindings(units: Unit[]): Finding[] {
-  const titles = units.filter((u) => u.kind === "heading" && u.level === 2).map((u) => restore(u.text));
+  const titles = units.flatMap((u) => (u.kind === "heading" && u.level === 2 ? [restore(u.text)] : []));
   const allowed = new Set(PR_HEADINGS.map((h) => h.toLowerCase()));
   const present = new Set(titles.map((t) => t.toLowerCase()));
   const out: Finding[] = [];

@@ -52,21 +52,39 @@ function git(repo: string, args: string[]): string | null {
   return r.stdout.trim() || null;
 }
 
-/** Gate base: HEAD on the default branch or detached; merge-base with the default branch on a feature branch. */
+export function createdFrom(repoRoot: string, branch: string): string | null {
+  const log = git(repoRoot, ["reflog", "show", "--format=%gs", `refs/heads/${branch}`, "--"]);
+  const ref = log?.split("\n").at(-1)?.match(/^branch: Created from (.+)$/)?.[1];
+  if (!ref || ref === "HEAD" || ref === branch || ref === `origin/${branch}`) return null;
+  return git(repoRoot, ["rev-parse", "--verify", "-q", `${ref}^{commit}`]) ? ref : null;
+}
+
+const TRUNKS = ["main", "master", "develop", "trunk"];
+
+export interface ForkPoint { ref: string; mergeBase: string }
+
+/** The candidate whose merge-base is nearest HEAD, because a clone-time origin/HEAD and a reflog fork ref can each name a stale trunk. */
+export function forkPoint(repoRoot: string, branch: string): ForkPoint | null {
+  const own = new Set([branch, `origin/${branch}`]);
+  const candidates = [createdFrom(repoRoot, branch), "origin/HEAD", ...TRUNKS.flatMap((t) => [`origin/${t}`, t])];
+  let best: (ForkPoint & { ahead: number }) | null = null;
+  for (const ref of new Set(candidates)) {
+    if (!ref || own.has(ref) || !git(repoRoot, ["rev-parse", "--verify", "-q", `${ref}^{commit}`])) continue;
+    const mergeBase = git(repoRoot, ["merge-base", "HEAD", ref]);
+    const ahead = mergeBase ? Number(git(repoRoot, ["rev-list", "--count", `${mergeBase}..HEAD`])) : NaN;
+    if (mergeBase && Number.isFinite(ahead) && (best === null || ahead < best.ahead)) best = { ref, mergeBase, ahead };
+  }
+  return best && { ref: best.ref, mergeBase: best.mergeBase };
+}
+
+/** Gate base: HEAD on a trunk branch or detached; else the nearest fork point. */
 export function gateBase(repoRoot: string): string {
   const head = git(repoRoot, ["rev-parse", "--verify", "HEAD"]);
   if (!head) return EMPTY_TREE;
 
   const branch = git(repoRoot, ["symbolic-ref", "--short", "-q", "HEAD"]);
-  if (!branch || branch === "main" || branch === "master") return head;
-
-  for (const ref of ["origin/HEAD", "main", "master"]) {
-    const sha = git(repoRoot, ["rev-parse", "--verify", ref]);
-    if (!sha) continue;
-    if (sha === head || ref === branch || ref === `origin/${branch}`) return head;
-    return git(repoRoot, ["merge-base", "HEAD", ref]) ?? head;
-  }
-  return head;
+  if (!branch || TRUNKS.includes(branch)) return head;
+  return forkPoint(repoRoot, branch)?.mergeBase ?? head;
 }
 
 /** A Bash call: the directories it ran in and the wall-clock span between its tool_use and tool_result entries. */

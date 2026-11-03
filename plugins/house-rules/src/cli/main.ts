@@ -24,6 +24,7 @@ import {
 
 import { writeSidecar } from './sidecar.js';
 import { runLintCommitMsg } from './lint-commit-msg.mjs';
+import { runProse } from './prose.js';
 
 const rulesDir = path.resolve(import.meta.dir, '../../rules');
 
@@ -69,6 +70,7 @@ function printUsage(toStdout = false): void {
       '  house-rules where <type|free text...> [--repo <dir>]\n' +
       '  house-rules new <type> key=value... [--repo <dir>]\n' +
       '  house-rules lint-commit-msg <commit-message-file>\n' +
+      '  house-rules prose <file> [--pr]\n' +
       '\n' +
       'Flags:\n' +
       '  --all               scan all tracked files (mutually exclusive with --base/--since)\n' +
@@ -81,6 +83,7 @@ function printUsage(toStdout = false): void {
       '  --format <text|json>  output format (default: text)\n' +
       '  --max <n>           maximum fixes to apply\n' +
       '  --paths <glob,...>  filter by glob patterns\n' +
+      '  --pr                prose: also require the PR body headings\n' +
       '  --repo <dir>        git repository root\n' +
       '  --rules <a,b>       comma-separated rule IDs\n' +
       '  --rules-dir <dir>   path to rules directory\n' +
@@ -110,6 +113,7 @@ function parseArgs(argv: string[]): {
   all?: boolean;
   fix?: boolean;
   verbose?: boolean;
+  pr?: boolean;
   format: OutputFormat;
   pathspec?: string[];
 } {
@@ -139,6 +143,7 @@ function parseArgs(argv: string[]): {
       arg === '--diff' ||
       arg === '--all' ||
       arg === '--fix' ||
+      arg === '--pr' ||
       arg === '--verbose'
     ) {
       flags[arg.slice(2)] = true;
@@ -171,6 +176,7 @@ function parseArgs(argv: string[]): {
     all: flags['all'],
     fix: flags['fix'],
     verbose: flags['verbose'],
+    pr: flags['pr'],
     format,
     pathspec: positionals.length > 0 ? positionals : undefined,
   };
@@ -339,6 +345,10 @@ try {
     throw new UsageError('--fix is only valid for the check subcommand');
   }
 
+  if (parsed.pr && parsed.subcommand !== 'prose') {
+    throw new UsageError('--pr is only valid for the prose subcommand');
+  }
+
   if (parsed.verbose && parsed.subcommand !== 'check') {
     throw new UsageError('--verbose is only valid for the check subcommand');
   }
@@ -394,6 +404,11 @@ try {
       const [file] = parsed.pathspec ?? [];
       if (!file) throw new UsageError('lint-commit-msg needs a commit message file');
       process.exit(runLintCommitMsg(file, process.cwd()));
+    }
+    case 'prose': {
+      const [file] = parsed.pathspec ?? [];
+      if (!file) throw new UsageError('prose needs a markdown file');
+      process.exit(runProse(file, parsed.pr === true));
     }
     default:
       printUsage();

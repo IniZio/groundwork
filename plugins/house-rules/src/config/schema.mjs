@@ -12,10 +12,12 @@ export const RULE_IDS = Object.freeze([
   "require-safety-comment-for-type-assertion",
   "require-readable-spacing",
   "silent-early-return-in-test",
+  "pr-body",
 ]);
 export const RULE_ALIASES = Object.freeze({ "stray-artifacts": "artifact-structure" });
 export const SEVERITIES = Object.freeze(["error"]);
 export const WARN_SEVERITIES = Object.freeze(["off", "warn"]);
+export const OPT_IN_SEVERITIES = Object.freeze(["off", "error"]);
 export const RULE_SEVERITIES = Object.freeze({
   "commit-message": SEVERITIES,
   "comment-density": SEVERITIES,
@@ -27,6 +29,7 @@ export const RULE_SEVERITIES = Object.freeze({
   "require-safety-comment-for-type-assertion": WARN_SEVERITIES,
   "require-readable-spacing": WARN_SEVERITIES,
   "silent-early-return-in-test": WARN_SEVERITIES,
+  "pr-body": OPT_IN_SEVERITIES,
 });
 export const PRESETS = Object.freeze(["handbook", "conventional", "subject-only"]);
 export const RULE_OPTION_KEYS = Object.freeze({
@@ -40,6 +43,7 @@ export const RULE_OPTION_KEYS = Object.freeze({
   "require-safety-comment-for-type-assertion": Object.freeze([]),
   "require-readable-spacing": Object.freeze([]),
   "silent-early-return-in-test": Object.freeze([]),
+  "pr-body": Object.freeze([]),
 });
 export const TIERS = Object.freeze(["product", "working", "ephemeral"]);
 export const TYPE_KEYS = Object.freeze([

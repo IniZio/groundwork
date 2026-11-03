@@ -5,12 +5,12 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { stripSessionAttribution } from "../cli/lint-commit-msg.mjs";
-import { literal, LAUNCHERS, expandHome, type HookResult } from "./commit-guard.js";
+import type { HookResult } from "./commit-guard.js";
+import { findPrBodies } from "./lib/gh-pr-body.js";
 
 interface Splice { start: number; end: number; text: string }
 
@@ -36,16 +36,6 @@ function valueSplices(value: Node, start: number, text: string): Array<Splice | 
   return heredocs.map((b: Node) => splice(b.startIndex, b.text, stripSessionAttribution));
 }
 
-function stdinHeredoc(cmd: Node): Node | null {
-  const parent = cmd.parent;
-  const redirects = parent?.type === "redirected_statement" ? parent.childrenForFieldName("redirect") : [];
-  for (const r of [...cmd.childrenForFieldName("redirect"), ...redirects]) {
-    if (r?.type !== "heredoc_redirect") continue;
-    return r.namedChildren.find((c: Node | null) => c?.type === "heredoc_body") ?? null;
-  }
-  return null;
-}
-
 function stripFile(file: string): void {
   try {
     const text = readFileSync(file, "utf8");
@@ -54,51 +44,14 @@ function stripFile(file: string): void {
   } catch { /* gh reports a missing body file itself */ }
 }
 
-/** Collects the splices for one `gh pr create|edit` call and strips its --body-file on disk. */
-function bodySplices(cmd: Node, args: Node[], cwd: string): Splice[] {
+function findSplices(root: Node, cwd: string): Splice[] {
   const splices: Array<Splice | null> = [];
-  const bodyFile = (value: string | null | undefined) => {
-    if (value === undefined || value === "-") {
-      const body = stdinHeredoc(cmd);
-      if (body) splices.push(splice(body.startIndex, body.text, stripSessionAttribution));
-    } else if (value !== null) stripFile(path.resolve(cwd, expandHome(value)));
-  };
-  for (let i = 0; i < args.length; i++) {
-    const node = args[i] as Node;
-    const word = literal(node);
-    if (word === "--body" || word === "-b") {
-      const value = args[++i];
-      if (value) splices.push(...valueSplices(value, value.startIndex, value.text));
-    } else if (node.text.startsWith("--body=")) {
-      splices.push(...valueSplices(node, node.startIndex + 7, node.text.slice(7)));
-    } else if (word === "--body-file" || word === "-F") {
-      const value = args[++i];
-      bodyFile(value ? literal(value) : undefined);
-    } else if (word?.startsWith("--body-file=")) {
-      bodyFile(word.slice("--body-file=".length));
-    }
+  for (const ref of findPrBodies(root, cwd)) {
+    if (ref.kind === "inline") splices.push(...valueSplices(ref.value, ref.start, ref.text));
+    else if (ref.kind === "stdin") splices.push(splice(ref.heredoc.startIndex, ref.heredoc.text, stripSessionAttribution));
+    else stripFile(ref.path);
   }
   return splices.filter((s): s is Splice => s !== null);
-}
-
-function findSplices(root: Node, startCwd: string): Splice[] {
-  const splices: Splice[] = [];
-  let cwd = startCwd;
-  for (const cmd of root.descendantsOfType("command")) {
-    if (!cmd) continue;
-    let nodes = [cmd.childForFieldName("name"), ...cmd.childrenForFieldName("argument")].filter((n): n is Node => n !== null);
-    const word = (i: number) => (nodes[i] ? literal(nodes[i] as Node) : null);
-    while (nodes.length > 0 && LAUNCHERS.has(word(0) ?? "")) {
-      nodes = nodes.slice(1);
-      while (/^-|^\w+=/.test(word(0) ?? "")) nodes = nodes.slice(1);
-    }
-    const head = word(0);
-    if (head === "cd" && word(1)) cwd = path.resolve(cwd, expandHome(word(1) as string));
-    if (head === null || path.basename(head) !== "gh" || word(1) !== "pr") continue;
-    if (word(2) !== "create" && word(2) !== "edit") continue;
-    splices.push(...bodySplices(cmd, nodes.slice(3), cwd));
-  }
-  return splices;
 }
 
 export async function check(inp: HookInput): Promise<HookResult> {

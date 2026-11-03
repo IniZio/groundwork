@@ -14,6 +14,7 @@ import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { policyForRoot, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
+import { hookInput, parseJson } from './lib/hook-input.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 import type { Rule, ScopedFile } from '../engine/types.js';
 
@@ -66,25 +67,24 @@ export async function run(
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
 
-    const inp = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+    const inp = hookInput(input);
 
-    const event = typeof inp.hook_event_name === "string" ? inp.hook_event_name
-      : typeof inp.event === "string" ? inp.event : "";
+    const event = inp.hook_event_name ?? inp.event ?? "";
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
 
-    const transcriptPath = typeof inp.transcript_path === "string" ? inp.transcript_path : null;
+    const transcriptPath = inp.transcript_path ?? null;
     if (!transcriptPath) return silentAllow();
 
-    const sessionId = typeof inp.session_id === "string" ? inp.session_id : "unknown";
-    const agentId = typeof inp.agent_id === "string" ? inp.agent_id : null;
-    const agentTranscriptPath = typeof inp.agent_transcript_path === "string" ? inp.agent_transcript_path : undefined;
+    const sessionId = inp.session_id ?? "unknown";
+    const agentId = inp.agent_id ?? null;
+    const agentTranscriptPath = inp.agent_transcript_path;
 
     const agentKey = event === "SubagentStop" && agentId ? agentId : "main";
     const relevantTranscriptPath = event === "SubagentStop"
       ? (agentTranscriptPath ?? transcriptPath)
       : transcriptPath;
 
-    const cwdRaw = typeof inp.cwd === "string" ? inp.cwd : null;
+    const cwdRaw = inp.cwd ?? null;
     const running = event === "Stop" ? runningAgentIds(inp.background_tasks) : [];
     const tpDir = path.dirname(transcriptPath);
     let repoRoot: string | null =
@@ -442,9 +442,7 @@ export async function run(
 
 if (import.meta.main) {
   const raw = await Bun.stdin.text();
-  let input: unknown = {};
-  try { input = JSON.parse(raw); } catch { /* fail-open */ }
-  const result = await run(input, process.env as Record<string, string | undefined>);
+  const result = await run(parseJson(raw), process.env as Record<string, string | undefined>);
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   process.exit(result.exit);

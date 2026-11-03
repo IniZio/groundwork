@@ -6,7 +6,8 @@
 import { readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { reconstructPostEdit, type EditInput } from "./lib/pending-edit.js";
+import { reconstructPostEdit } from "./lib/pending-edit.js";
+import { hookInput, parseJson, type ToolInput } from "./lib/hook-input.js";
 import { resolveConfigText } from "../config/resolve.mjs";
 import { RULE_IDS } from "../config/schema.mjs";
 import { detectPreset } from "../config/detect.mjs";
@@ -73,15 +74,15 @@ function findLoosenings(repoRoot: string, oldText: string | null, newText: strin
   return out;
 }
 
-function checkEdit(tool: string, ti: Record<string, unknown>, cwd: string): HookResult {
-  const filePath = typeof ti.file_path === "string" ? ti.file_path : "";
+function checkEdit(tool: string, ti: ToolInput, cwd: string): HookResult {
+  const filePath = ti.file_path ?? "";
   if (!filePath || path.basename(filePath) !== CONFIG_NAME) return allow();
   const abs = path.resolve(cwd, filePath);
   const repoRoot = findRepoRoot(abs);
   if (!repoRoot || !isConfigTarget(abs, repoRoot)) return allow();
 
   const current = readText(abs);
-  const recon = reconstructPostEdit(tool, ti as EditInput, current);
+  const recon = reconstructPostEdit(tool, ti, current);
   if (!recon) return allow();
 
   try {
@@ -125,8 +126,8 @@ function segmentMutates(segment: string): boolean {
 }
 
 // Best-effort only: shell syntax cannot be parsed fully, so obfuscated writes may slip through.
-function checkBash(ti: Record<string, unknown>): HookResult {
-  const command = typeof ti.command === "string" ? ti.command : "";
+function checkBash(ti: ToolInput): HookResult {
+  const command = ti.command ?? "";
   if (!command.includes(CONFIG_NAME)) return allow();
   const redirects = />>?\s*['"]?\S*\.house-rules\.json/.test(command);
   if (!redirects && !command.split(/;|&&|\|\||\|/).some(segmentMutates)) return allow();
@@ -138,12 +139,12 @@ function checkBash(ti: Record<string, unknown>): HookResult {
 
 export function check(input: unknown): HookResult {
   try {
-    const inp = (input ?? {}) as Record<string, unknown>;
-    const tool = String(inp.tool_name ?? "").toLowerCase().replace(/^fast_/, "");
-    const ti = (inp.tool_input ?? {}) as Record<string, unknown>;
+    const inp = hookInput(input);
+    const tool = (inp.tool_name ?? "").toLowerCase().replace(/^fast_/, "");
+    const ti = inp.tool_input ?? {};
     if (tool === "bash") return checkBash(ti);
     if (tool !== "write" && tool !== "edit" && tool !== "multiedit") return allow();
-    const cwd = typeof inp.cwd === "string" ? inp.cwd : process.cwd();
+    const cwd = inp.cwd ?? process.cwd();
     return checkEdit(tool, ti, cwd);
   } catch {
     return allow();
@@ -151,9 +152,7 @@ export function check(input: unknown): HookResult {
 }
 
 if (import.meta.main) {
-  let input: unknown = {};
-  try { input = JSON.parse(await Bun.stdin.text()); } catch { /* fail-open */ }
-  const r = check(input);
+  const r = check(parseJson(await Bun.stdin.text()));
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.exit);

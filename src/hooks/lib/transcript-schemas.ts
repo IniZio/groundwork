@@ -24,6 +24,9 @@ export interface HookInput {
   last_assistant_message?: string;
 }
 
+/** The mod's per-session ledger file: every id assigned this session, and the ones still open. */
+export interface RecordedQuestions { recorded: number[]; open: number[] }
+
 const str = { type: "string" };
 
 const blockSchema = {
@@ -65,4 +68,12 @@ export const hookInputSchema: AnySchema = {
     agent_id: str,
     last_assistant_message: str,
   },
+};
+
+const ids = { type: "array", items: { type: "integer" } };
+
+export const recordedQuestionsSchema: AnySchema = {
+  type: "object",
+  required: ["recorded", "open"],
+  properties: { recorded: ids, open: ids },
 };

@@ -6,8 +6,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isHookInput, isTranscriptEntry } from "./lib/generated/transcript-validators.mjs";
-import type { Block, HookInput, TextBlock, ToolResultBlock, ToolUseBlock, TranscriptEntry } from "./lib/transcript-schemas.js";
+import { isHookInput, isRecordedQuestions, isTranscriptEntry } from "./lib/generated/transcript-validators.mjs";
+import type { Block, HookInput, RecordedQuestions, TextBlock, TranscriptEntry } from "./lib/transcript-schemas.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
@@ -35,8 +35,6 @@ export function questionLines(text: string): string[] {
 }
 
 const isText = (b: Block): b is TextBlock => b.type === "text" && "text" in b;
-const isToolUse = (b: Block): b is ToolUseBlock => b.type === "tool_use";
-const isToolResult = (b: Block): b is ToolResultBlock => b.type === "tool_result";
 
 function blocks(entry: TranscriptEntry): Block[] {
   const c = entry.message?.content;
@@ -62,12 +60,6 @@ export function isGenuineUser(entry: TranscriptEntry): boolean {
   return blocks(entry).some((b) => isText(b) && !b.text.trimStart().startsWith("<"));
 }
 
-function resultText(block: ToolResultBlock): string {
-  const c = block.content;
-  if (typeof c === "string") return c;
-  return (c ?? []).map((p) => p.text ?? "").join("\n");
-}
-
 /** Entries split at each genuine user message; the first slice precedes the first one, the last follows the final one. */
 function turnSlices(entries: TranscriptEntry[]): TranscriptEntry[][] {
   const slices: TranscriptEntry[][] = [[]];
@@ -87,32 +79,24 @@ export function turns(entries: TranscriptEntry[]): string[][] {
   return turnSlices(entries).map(assistantTexts).filter((t) => t.length > 0);
 }
 
-function recordedQuestionIds(entries: TranscriptEntry[]): Set<string> {
-  const pending = new Set<string>();
-  const ids = new Set<string>();
-  for (const e of entries) {
-    for (const b of blocks(e)) {
-      if (e.type === "assistant" && isToolUse(b) && b.name === ASK_TOOL) {
-        pending.add(b.id);
-      } else if (e.type === "user" && isToolResult(b) && pending.has(b.tool_use_id)) {
-        const m = resultText(b).match(/Question #(\d+) recorded/);
-        if (m) ids.add(m[1]!);
-      }
-    }
-  }
-  return ids;
+/** The mod's ledger file for this session; null when the ask tool is not live in it. */
+export function readLedger(home: string, sessionId: string | undefined): RecordedQuestions | null {
+  if (sessionId === undefined || !/^[\w-]+$/.test(sessionId)) return null;
+  let v: unknown;
+  try { v = JSON.parse(readFileSync(path.join(home, ".claude", "groundwork", "questions", `${sessionId}.json`), "utf8")); } catch { return null; }
+  return isRecordedQuestions(v) ? v : null;
 }
 
 export interface Verdict { uncovered: string[] }
 
-export function evaluate(entries: TranscriptEntry[], lastMessage?: string): Verdict {
-  const ids = recordedQuestionIds(entries);
+export function evaluate(entries: TranscriptEntry[], recorded: readonly number[], lastMessage?: string): Verdict {
+  const ids = new Set(recorded);
   const uncovered: string[] = [];
   const texts = assistantTexts(turnSlices(entries).at(-1)!);
   if (lastMessage !== undefined && texts.at(-1) !== lastMessage) texts.push(lastMessage);
   for (const t of texts) {
     for (const line of questionLines(t)) {
-      const covered = [...line.matchAll(/(?<![\w#])#(\d+)\b/g)].some((m) => ids.has(m[1]!));
+      const covered = [...line.matchAll(/(?<![\w#])#(\d+)\b/g)].some((m) => ids.has(Number(m[1])));
       if (!covered) uncovered.push(line);
     }
   }
@@ -145,13 +129,11 @@ export function run(inp: HookInput, env: Record<string, string | undefined>): Ho
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
     const event = inp.hook_event_name ?? inp.event;
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
+    const ledger = readLedger(env.HOME ?? os.homedir(), inp.session_id);
+    if (ledger === null) return silentAllow();
     const tp = event === "SubagentStop" ? (inp.agent_transcript_path ?? inp.transcript_path) : inp.transcript_path;
     if (tp === undefined || !existsSync(tp)) return silentAllow();
-    const raw = readFileSync(tp, "utf8");
-    if (!raw.includes(ASK_TOOL)) return silentAllow();
-
-    const entries = parseTranscript(raw);
-    const { uncovered } = evaluate(entries, inp.last_assistant_message);
+    const { uncovered } = evaluate(parseTranscript(readFileSync(tp, "utf8")), ledger.recorded, inp.last_assistant_message);
     const cf = counterFile(inp.session_id ?? "unknown", event === "SubagentStop" && inp.agent_id ? inp.agent_id : "main");
     if (uncovered.length === 0) { writeFileSync(cf, "0"); return silentAllow(); }
 

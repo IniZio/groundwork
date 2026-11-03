@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Node, Tree } from '../hooks/lib/tree-sitter.js';
-import type { Finding, PendingEdit, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
+import type { Finding, PendingEdit, RuleOptions, EditCheckEnv, EditCheckResult, Rule, RuleCases, RuleContext, ScopedFile } from './types.js';
 import { createSourceFiles, type SourceFileResult } from './source-file.js';
 import { resolveConfig } from '../config/resolve.mjs';
 import { projectFacts, type ProjectFacts } from './project-deps.js';
@@ -10,7 +10,7 @@ type ResolvedConfig = ReturnType<typeof resolveConfig>;
 const configByRoot = new Map<string, ResolvedConfig | null>();
 
 /** Options configured for rule `ruleId` at `repoRoot`; `{}` when unset or config fails to resolve. Cached per root, errors included. */
-function configOptions(repoRoot: string, ruleId: string): Readonly<Record<string, unknown>> {
+function configOptions(repoRoot: string, ruleId: string): RuleOptions {
   let cfg = configByRoot.get(repoRoot);
   if (cfg === undefined) {
     try {
@@ -23,7 +23,7 @@ function configOptions(repoRoot: string, ruleId: string): Readonly<Record<string
   if (!cfg) return {};
 
   // SAFETY: config rules are keyed by rule id; options is an optional per-rule record.
-  return (cfg.rules as unknown as Record<string, { options?: Record<string, unknown> } | undefined>)[ruleId]?.options ?? {};
+  return (cfg.rules as unknown as Record<string, { options?: RuleOptions } | undefined>)[ruleId]?.options ?? {};
 }
 
 export interface CheckHit {
@@ -38,7 +38,7 @@ export interface Check {
   upstream?: string;
   tsOnly?: boolean;
   check(
-    root: Node, source: string, index?: NodeIndex, filePath?: string, options?: Readonly<Record<string, unknown>>, project?: ProjectFacts,
+    root: Node, source: string, index?: NodeIndex, filePath?: string, options?: RuleOptions, project?: ProjectFacts,
   ): CheckHit[];
 }
 
@@ -132,7 +132,7 @@ function collect(
   filePath: string,
   ruleId: string,
   isAdded: (row: number) => boolean,
-  options: Readonly<Record<string, unknown>>,
+  options: RuleOptions,
   repoRoot: string | null,
 ): Finding[] {
   if (!result.ok) return [];
@@ -174,7 +174,7 @@ export function defineGroupedRule(id: string, description: string, checksDir: st
       const active = await checks();
       const own = ctx.sourceFile ? null : createSourceFiles();
       const findings: Finding[] = [];
-      let options: Readonly<Record<string, unknown>> | undefined = ctx.options;
+      let options: RuleOptions | undefined = ctx.options;
       try {
         for (const file of ctx.files ?? []) {
           if (!file.addedHunks || !file.text || !isScanned(file.path)) continue;

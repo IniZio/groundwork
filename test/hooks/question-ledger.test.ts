@@ -119,4 +119,26 @@ describe("question-ledger", () => {
     const r = hook([user("hi"), anyCreate, asst(text("Which one?"))], {}, { CLAUDE_CODE_ENTRYPOINT: "sdk-js" });
     expect(r.stdout).toBe("");
   });
+
+  it("blocks when spawned by path with NODE_PATH unset from a cwd outside the repo", () => {
+    const tp = join(dir, "t-outside.jsonl");
+    writeFileSync(tp, [user("hi"), anyCreate, asst(text("Should I proceed?"))].map((e) => JSON.stringify(e)).join("\n") + "\n");
+    const { NODE_PATH: _unset, ...env } = process.env;
+    const r = spawnSync("bun", [HOOK], {
+      cwd: dir, encoding: "utf8",
+      input: JSON.stringify({ session_id: `s-${dir}-outside`, hook_event_name: "Stop", transcript_path: tp }),
+      env: { ...env, TMPDIR: dir, CLAUDE_CODE_ENTRYPOINT: "" },
+    });
+    expect(r.status).toBe(0);
+    expect(blocked(r)).toBe(true);
+  });
+
+  it("skips a schema-invalid line instead of reading it", () => {
+    const bad = { type: "assistant", message: { content: [{ type: "text", text: 42 }] } };
+    const r = hook([user("hi"), anyCreate, bad, asst(text("Fine statement."))]);
+    expect(r.status).toBe(0);
+    expect(blocked(r)).toBe(false);
+    const badQuestion = { type: "assistant", message: { content: "Should I proceed?" } };
+    expect(blocked(hook([user("hi"), anyCreate, badQuestion]))).toBe(false);
+  });
 });

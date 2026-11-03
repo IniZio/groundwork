@@ -6,10 +6,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isHookInput, isTranscriptEntry } from "./lib/generated/transcript-validators.mjs";
+import type { Block, TextBlock, ToolResultBlock, ToolUseBlock, TranscriptEntry } from "./lib/transcript-schemas.js";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
-
-type Entry = Record<string, any>;
 
 const QUESTION_RE = /\?[*_)\s]*($|\(?\s*[*_]*recommend)/i;
 const MAX_LISTED = 5;
@@ -30,33 +30,67 @@ export function questionLines(text: string): string[] {
   return out;
 }
 
-function blocks(entry: Entry): Entry[] {
+const isText = (b: Block): b is TextBlock => b.type === "text" && "text" in b;
+const isToolUse = (b: Block): b is ToolUseBlock => b.type === "tool_use";
+const isToolResult = (b: Block): b is ToolResultBlock => b.type === "tool_result";
+
+function blocks(entry: TranscriptEntry): Block[] {
   const c = entry.message?.content;
-  return Array.isArray(c) ? c.filter((b) => b && typeof b === "object") : [];
+  return Array.isArray(c) ? c : [];
 }
 
-function isGenuineUser(entry: Entry): boolean {
+/** Parses a transcript once: torn, schema-invalid and sidechain lines are dropped. */
+export function parseTranscript(raw: string): TranscriptEntry[] {
+  const out: TranscriptEntry[] = [];
+  for (const l of raw.split("\n")) {
+    if (!l.trim()) continue;
+    let v: unknown;
+    try { v = JSON.parse(l); } catch { continue; }
+    if (isTranscriptEntry(v) && v.isSidechain !== true) out.push(v);
+  }
+  return out;
+}
+
+export function isGenuineUser(entry: TranscriptEntry): boolean {
   if (entry.type !== "user") return false;
   const c = entry.message?.content;
   if (typeof c === "string") return !c.trimStart().startsWith("<");
-  return blocks(entry).some((b) => b.type === "text" && typeof b.text === "string" && !b.text.trimStart().startsWith("<"));
+  return blocks(entry).some((b) => isText(b) && !b.text.trimStart().startsWith("<"));
 }
 
-function resultText(block: Entry): string {
+function resultText(block: ToolResultBlock): string {
   const c = block.content;
   if (typeof c === "string") return c;
-  if (Array.isArray(c)) return c.map((p) => (typeof p?.text === "string" ? p.text : "")).join("\n");
-  return "";
+  return (c ?? []).map((p) => p.text ?? "").join("\n");
 }
 
-function recordedQuestionIds(entries: Entry[]): Set<string> {
+/** Entries split at each genuine user message; the first slice precedes the first one, the last follows the final one. */
+function turnSlices(entries: TranscriptEntry[]): TranscriptEntry[][] {
+  const slices: TranscriptEntry[][] = [[]];
+  for (const e of entries) {
+    if (isGenuineUser(e)) slices.push([]);
+    else slices.at(-1)!.push(e);
+  }
+  return slices;
+}
+
+function assistantTexts(slice: TranscriptEntry[]): string[] {
+  return slice.filter((e) => e.type === "assistant").flatMap((e) => blocks(e).filter(isText).map((b) => b.text));
+}
+
+/** Assistant text per user-delimited turn, skipping turns with none. */
+export function turns(entries: TranscriptEntry[]): string[][] {
+  return turnSlices(entries).map(assistantTexts).filter((t) => t.length > 0);
+}
+
+function recordedQuestionIds(entries: TranscriptEntry[]): Set<string> {
   const pending = new Set<string>();
   const ids = new Set<string>();
   for (const e of entries) {
     for (const b of blocks(e)) {
-      if (e.type === "assistant" && b.type === "tool_use" && b.name === "TaskCreate" && b.input?.metadata?.kind === "question" && typeof b.id === "string") {
+      if (e.type === "assistant" && isToolUse(b) && b.name === "TaskCreate" && b.input?.metadata?.kind === "question") {
         pending.add(b.id);
-      } else if (e.type === "user" && b.type === "tool_result" && pending.has(b.tool_use_id)) {
+      } else if (e.type === "user" && isToolResult(b) && pending.has(b.tool_use_id)) {
         const m = resultText(b).match(/Task #(\d+) created successfully/);
         if (m) ids.add(m[1]!);
       }
@@ -65,20 +99,15 @@ function recordedQuestionIds(entries: Entry[]): Set<string> {
   return ids;
 }
 
-export function evaluate(transcriptLines: object[]): { uncovered: string[] } {
-  const entries = (transcriptLines as Entry[]).filter((e) => e && e.isSidechain !== true);
-  let start = 0;
-  entries.forEach((e, i) => { if (isGenuineUser(e)) start = i + 1; });
+export interface Verdict { uncovered: string[] }
+
+export function evaluate(entries: TranscriptEntry[]): Verdict {
   const ids = recordedQuestionIds(entries);
   const uncovered: string[] = [];
-  for (const e of entries.slice(start)) {
-    if (e.type !== "assistant") continue;
-    for (const b of blocks(e)) {
-      if (b.type !== "text" || typeof b.text !== "string") continue;
-      for (const line of questionLines(b.text)) {
-        const covered = [...line.matchAll(/(?<![\w#])#(\d+)\b/g)].some((m) => ids.has(m[1]!));
-        if (!covered) uncovered.push(line);
-      }
+  for (const t of assistantTexts(turnSlices(entries).at(-1)!)) {
+    for (const line of questionLines(t)) {
+      const covered = [...line.matchAll(/(?<![\w#])#(\d+)\b/g)].some((m) => ids.has(m[1]!));
+      if (!covered) uncovered.push(line);
     }
   }
   return { uncovered };
@@ -105,23 +134,20 @@ function readCount(p: string): number {
   try { return Number.parseInt(readFileSync(p, "utf8"), 10) || 0; } catch { return 0; }
 }
 
-export function run(inp: Record<string, any>, env: Record<string, string | undefined>): HookResult {
+export function run(inp: unknown, env: Record<string, string | undefined>): HookResult {
   try {
     if (env.CLAUDE_CODE_ENTRYPOINT === "sdk-py" || env.CLAUDE_CODE_ENTRYPOINT === "sdk-js") return silentAllow();
+    if (!isHookInput(inp)) return silentAllow();
     const event = inp.hook_event_name ?? inp.event;
     if (event !== "Stop" && event !== "SubagentStop") return silentAllow();
     const tp = event === "SubagentStop" ? (inp.agent_transcript_path ?? inp.transcript_path) : inp.transcript_path;
-    if (typeof tp !== "string" || !existsSync(tp)) return silentAllow();
+    if (tp === undefined || !existsSync(tp)) return silentAllow();
     const raw = readFileSync(tp, "utf8");
     if (!raw.includes("TaskCreate")) return silentAllow();
 
-    const entries: object[] = [];
-    for (const l of raw.split("\n")) {
-      if (!l.trim()) continue;
-      try { entries.push(JSON.parse(l)); } catch { /* skip torn line */ }
-    }
+    const entries = parseTranscript(raw);
     const { uncovered } = evaluate(entries);
-    const cf = counterFile(String(inp.session_id ?? "unknown"), event === "SubagentStop" && inp.agent_id ? String(inp.agent_id) : "main");
+    const cf = counterFile(inp.session_id ?? "unknown", event === "SubagentStop" && inp.agent_id ? inp.agent_id : "main");
     if (uncovered.length === 0) { writeFileSync(cf, "0"); return silentAllow(); }
 
     const blocked = readCount(cf);
@@ -137,9 +163,9 @@ export function run(inp: Record<string, any>, env: Record<string, string | undef
 }
 
 if (import.meta.main) {
-  let inp: Record<string, any> = {};
+  let inp: unknown = {};
   try { inp = JSON.parse(await Bun.stdin.text()); } catch { /* fail open */ }
-  const r = run(inp ?? {}, process.env);
+  const r = run(inp, process.env);
   process.stdout.write(r.stdout);
   process.exit(r.exit);
 }

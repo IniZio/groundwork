@@ -6,6 +6,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "gen:validators": "bun scripts/gen-validators.ts",
     "house-rules": "bun plugins/house-rules/src/cli/main.ts"
   },
   "devDependencies": {

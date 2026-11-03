@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { HookInput } from "../../src/hooks/lib/transcript-schemas.ts";
 
 const HOOK = new URL("../../src/hooks/question-ledger.ts", import.meta.url).pathname;
 
@@ -20,7 +21,7 @@ const created = (id: string, num: number) =>
   user([{ type: "tool_result", tool_use_id: id, content: [{ type: "text", text: `Question #${num} recorded. End your reply with: #${num} q? Recommend: yes` }] }]);
 const anyCreate = { type: "attachment", isSidechain: false, attachment: { type: "deferred_tools_delta", addedNames: ["LSP", ASK], removedNames: [] } };
 
-function hook(entries: object[], extra: Record<string, unknown> = {}, env: Record<string, string> = {}) {
+function hook(entries: object[], extra: HookInput = {}, env: Record<string, string> = {}) {
   const tp = join(dir, `t${n++}.jsonl`);
   writeFileSync(tp, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
   const input = { session_id: `s-${dir}-${n}`, hook_event_name: "Stop", transcript_path: tp, agent_transcript_path: tp, ...extra };

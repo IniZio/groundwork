@@ -537,7 +537,7 @@
           ]
         },
         "pr-body": {
-          "description": "Opt-in prose limits for PR bodies and doc pages. Off by default. Severity can be \"error\" or \"off\"; the rule has no options. With \"error\", a `gh pr create` or `gh pr edit` whose body has a sentence over 25 words, a semicolon or mid-sentence colon, a bare path:line, a backticked path outside a link label, a github.com blob link that is not pinned to a commit sha, a missing Why or Scope heading, or a heading outside Why, What changed, Scope, Tradeoffs, Blast Radius, Verification and Review tier is denied. A write to doc/, docs/ or README.md gets an advisory for the same prose checks and is never denied.",
+          "description": "Opt-in prose limits for PR bodies and doc pages. Off by default. Severity can be \"error\" or \"off\"; the rule has no options. With \"error\", a `gh pr create` or `gh pr edit` whose body has a sentence over 25 words, a semicolon or mid-sentence colon, a bare path:line, a backticked path outside a link label, a github.com blob link that is not pinned to a commit sha, a sentence that reports a baseline command such as make lint or cargo test as passing, a missing Why or Scope heading, or a heading outside Why, What changed, Scope, Tradeoffs, Blast Radius, Verification and Review tier is denied. A top-level PR comment (`gh pr comment`, or a `gh api` POST to an issue's comments) is denied too, because proof and updates belong in the PR body. A write to doc/, docs/ or README.md gets an advisory for the same prose checks and is never denied.",
           "oneOf": [
             {
               "type": "string",

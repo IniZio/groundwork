@@ -7,9 +7,9 @@ import { readFileSync } from "node:fs";
 import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
-import { findPrBodies, type BodyRef } from "./lib/gh-pr-body.js";
+import { findPrBodies, findPrComments, type BodyRef } from "./lib/gh-pr-body.js";
 import { prBodyEnabled } from "./lib/pr-body-enabled.js";
-import { checkProse, formatFindings } from "../../rules/pr-body/prose.js";
+import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE } from "../../rules/pr-body/prose.js";
 import type { HookResult } from "./commit-guard.js";
 
 const allow = (): HookResult => ({ stdout: "", stderr: "", exit: 0 });
@@ -36,25 +36,39 @@ function denyReason(findings: ReturnType<typeof checkProse>): string {
   ].join("\n");
 }
 
-export async function check(inp: HookInput): Promise<HookResult> {
+const COMMENT_REASON =
+  "house-rules: a top-level PR comment is denied because proof and updates belong in the PR body. Edit `## Verification` or `## Scope` with `gh pr edit <n> --body-file <file>`.";
+
+const reply = (hookSpecificOutput: object): HookResult => ({ stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 });
+
+/** `host` is a seam so a test can present a bun without Bun.markdown. */
+export async function check(inp: HookInput, host: object = globalThis): Promise<HookResult> {
   try {
     const command = inp.tool_input?.command;
-    if (inp.tool_name !== "Bash" || command === undefined || !/\bgh\b/.test(command) || !/\bpr\b/.test(command)) return allow();
+    if (inp.tool_name !== "Bash" || command === undefined || !/\bgh\b/.test(command) || !/\b(?:pr|api)\b/.test(command)) return allow();
     const parser = await getParser("bash");
     if (!parser.ok) return allow();
     const tree = parser.parser.parse(command);
     if (!tree) return allow();
 
-    for (const ref of findPrBodies(tree.rootNode, inp.cwd ?? process.cwd())) {
+    const cwd = inp.cwd ?? process.cwd();
+    let skipped = false;
+    for (const ref of findPrBodies(tree.rootNode, cwd)) {
       if (!prBodyEnabled(ref.cwd)) continue;
       const text = bodyText(ref);
       if (text === null) continue;
+      if (!markdownAvailable(host)) {
+        skipped = true;
+        continue;
+      }
       const findings = checkProse(text, { pr: true });
       if (findings.length === 0) continue;
-      const hookSpecificOutput = { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: denyReason(findings) };
-      return { stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 };
+      return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: denyReason(findings) });
     }
-    return allow();
+    if (findPrComments(tree.rootNode, cwd).some(prBodyEnabled)) {
+      return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: COMMENT_REASON });
+    }
+    return skipped ? reply({ hookEventName: "PreToolUse", additionalContext: NO_MARKDOWN_NOTICE }) : allow();
   } catch {
     return allow();
   }

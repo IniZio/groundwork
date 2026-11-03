@@ -1,9 +1,9 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, afterEach } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { check } from "../../src/hooks/agent-spawn-guard.js";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { check, setPotetoPath } from "../../src/hooks/agent-spawn-guard.js";
 
 const HOOK = new URL("../../src/hooks/agent-spawn-guard.ts", import.meta.url).pathname;
 
@@ -129,5 +129,50 @@ describe("agent-spawn-guard — as the harness runs it", () => {
     const p = run(agent("pstack:poteto-agent"));
     expect(p.status).toBe(0);
     expect(out({ stdout: p.stdout }).decision).toBe("deny");
+  });
+
+  it("spawned by path, appends the poteto-mode SKILL.md path to a rerouted poteto-agent prompt", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "spawn-guard-"));
+    try {
+      const install = join(tmp, "pstack", "0.15.36");
+      const skill = join(install, "skills", "poteto-mode", "SKILL.md");
+      mkdirSync(dirname(skill), { recursive: true });
+      writeFileSync(skill, "# Poteto mode\n");
+      const cfg = join(tmp, "home", ".claude");
+      mkdirSync(join(cfg, "plugins"), { recursive: true });
+      writeFileSync(
+        join(cfg, "plugins", "installed_plugins.json"),
+        JSON.stringify({ plugins: { "pstack@x": [{ installPath: install, version: "0.15.36" }] } }),
+      );
+      const r = spawnSync("bun", [HOOK], {
+        input: JSON.stringify(agent("pstack:poteto-agent", undefined, "opus")),
+        encoding: "utf8",
+        env: { ...process.env, HOME: join(tmp, "home"), CLAUDE_CONFIG_DIR: cfg },
+      });
+      expect(r.status).toBe(0);
+      const o = out({ stdout: r.stdout });
+      expect(o.decision).toBe("allow");
+      expect(o.prompt!.startsWith("p")).toBe(true);
+      expect(o.prompt!.endsWith(`\npoteto-mode SKILL.md: ${skill}`)).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("agent-spawn-guard — poteto-mode path", () => {
+  afterEach(() => setPotetoPath(undefined));
+
+  it("groundwork:worker spawned directly gets the path line appended", () => {
+    setPotetoPath("/c/pstack/1.0.0/skills/poteto-mode/SKILL.md");
+    const r = out(check(agent("groundwork:worker", undefined, "sonnet")));
+    expect(r.decision).toBe("allow");
+    expect(r.prompt).toBe("p\npoteto-mode SKILL.md: /c/pstack/1.0.0/skills/poteto-mode/SKILL.md");
+  });
+
+  it("a prompt that already names the path is left alone", () => {
+    const input = { tool_name: "Agent", tool_input: { subagent_type: "groundwork:worker", model: "sonnet", prompt: "x\npoteto-mode SKILL.md: /a" } };
+    setPotetoPath("/b");
+    expect(check(input).stdout).toBe("");
   });
 });

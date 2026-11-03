@@ -2,11 +2,12 @@
 name: newman-mode
 description: "Newman's working conventions: numbered decisions, act through to the milestone, reuse before building, reviewer-facing prose, proof that can fail, time-boxed agents, stacked PRs. Use for Newman, /newman-mode, or requests to work in Newman's style."
 disable-model-invocation: true
+allowed-tools: Bash(bun "${CLAUDE_PLUGIN_ROOT}/scripts/poteto-mode.ts" "${CLAUDE_PLUGIN_ROOT}")
 ---
 
 # Newman mode
 
-Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork installs as a dependency. Where the two conflict, this file wins. Read the reference files below when their trigger fires.
+This file layers on pstack's poteto-mode, loaded in full under "Base: poteto-mode" at the end. Where the two conflict, this file wins. Read the reference files below when their trigger fires.
 
 | Trigger | File |
 | --- | --- |
@@ -87,3 +88,7 @@ Layer this on `/pstack:poteto-mode` from the pstack plugin, which groundwork ins
 - After any stack merge, check every PR's base branch and that main contains the top of the stack. Then run `playbooks/worktree-cleanup.md`.
 - Commit after every verified wave, before the next one starts. Stage explicit paths. Workers never run `git stash`, `reset`, `checkout`, `restore` or `clean`.
 - Worktrees go under the repo's `.worktrees/`, never as siblings in the parent folder. Before creating the first one, make sure `.git/info/exclude` lists `.worktrees/` so it is never committed. Use one build target per worktree and delete the target after merge.
+
+## Base: poteto-mode
+
+!`bun "${CLAUDE_PLUGIN_ROOT}/scripts/poteto-mode.ts" "${CLAUDE_PLUGIN_ROOT}"`

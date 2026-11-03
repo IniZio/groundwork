@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { resolveConfig } from "../../config/resolve.mjs";
 
-/** True when the repo containing `dir` sets rules["pr-body"] to "error". A missing repo or config reads as off, and a directory not yet created is resolved from its nearest existing parent. */
+/** True unless the repo containing `dir` sets rules["pr-body"] to "off". A directory outside any git repo reads as off, and a directory not yet created is resolved from its nearest existing parent. */
 export function prBodyEnabled(dir: string): boolean {
   try {
     let at = dir;

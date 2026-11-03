@@ -28,7 +28,7 @@ const bash = (command: string) => ({ hook_event_name: "PreToolUse", tool_name: "
 
 describe("pr-body-guard deployed path", () => {
   const on = makeRepo({ rules: { "pr-body": "error" } });
-  const off = makeRepo({ rules: {} });
+  const off = makeRepo({ rules: { "pr-body": "off" } });
 
   it("denies a dense PR body and names the word count", async () => {
     const r = await spawnHook("pr-body-guard.ts", bash(`gh pr create --body-file ${dense}`), on);
@@ -48,10 +48,18 @@ describe("pr-body-guard deployed path", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("allows the dense body in a repo without the rule", async () => {
+  it("allows the dense body in a repo that sets pr-body to off", async () => {
     const r = await spawnHook("pr-body-guard.ts", bash(`gh pr create --body-file ${dense}`), off);
     expect(r.exit).toBe(0);
     expect(r.stdout).toBe("");
+  });
+});
+
+describe("pr-body-guard deployed path without a config", () => {
+  it("denies the dense body in a repo with no .house-rules.json", async () => {
+    const r = await spawnHook("pr-body-guard.ts", bash(`gh pr create --body-file ${dense}`), makeRepo(null));
+    expect(r.exit).toBe(0);
+    expect(r.output?.permissionDecision).toBe("deny");
   });
 });
 

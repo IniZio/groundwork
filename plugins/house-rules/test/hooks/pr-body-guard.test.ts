@@ -10,7 +10,7 @@ let enabled: string;
 let disabled: string;
 
 beforeAll(() => {
-  for (const repo of [(enabled = makeRepo(ENABLED)), (disabled = makeRepo({ rules: {} }))]) {
+  for (const repo of [(enabled = makeRepo(ENABLED)), (disabled = makeRepo({ rules: { "pr-body": "off" } }))]) {
     for (const f of ["moor-956-dense.md", "moor-421-reheaded.md"]) copyFileSync(join(FIXTURES, f), join(repo, f));
   }
 });
@@ -35,12 +35,14 @@ describe("pr-body guard", () => {
     expect(decide(enabled, "gh pr create --title t --body-file moor-421-reheaded.md").decision).toBe("allow");
   });
 
-  test("allows the dense body when the repo does not enable pr-body", () => {
+  test("allows the dense body when the repo sets pr-body to off", () => {
     expect(decide(disabled, "gh pr create --title t --body-file moor-956-dense.md").decision).toBe("allow");
   });
 
-  test("allows a repo with no .house-rules.json", () => {
-    expect(decide(makeRepo(null), "gh pr create --body-file moor-956-dense.md").decision).toBe("allow");
+  test("denies the dense body in a repo with no .house-rules.json", () => {
+    const bare = makeRepo(null);
+    copyFileSync(join(FIXTURES, "moor-956-dense.md"), join(bare, "moor-956-dense.md"));
+    expect(decide(bare, "gh pr create --body-file moor-956-dense.md").decision).toBe("deny");
   });
 
   const dense = "One fact; another fact.";

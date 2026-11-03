@@ -104,7 +104,7 @@ const ALL_DEFAULTS = {
       sources: { severity: 'default' },
     },
     'pr-body': {
-      severity: 'off',
+      severity: 'error',
       options: {},
       sources: { severity: 'default' },
     },

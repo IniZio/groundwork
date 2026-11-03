@@ -67,8 +67,8 @@ const DEFAULT_TEXT = (preset: string, why: string) =>
     '  change with: rules["require-readable-spacing"] (active: off, source: default)',
     'silent-early-return-in-test               severity=warn (default)',
     '  change with: rules["silent-early-return-in-test"] (active: warn, source: default)',
-    'pr-body                                   severity=off (default)',
-    '  change with: rules["pr-body"] (active: off, source: default)',
+    'pr-body                                   severity=error (default)',
+    '  change with: rules["pr-body"] (active: error, source: default)',
     '',
   ].join('\n');
 
@@ -102,8 +102,8 @@ function explicitText(file: string) {
     '  change with: rules["require-readable-spacing"] (active: off, source: default)',
     'silent-early-return-in-test               severity=warn (default)',
     '  change with: rules["silent-early-return-in-test"] (active: warn, source: default)',
-    'pr-body                                   severity=off (default)',
-    '  change with: rules["pr-body"] (active: off, source: default)',
+    'pr-body                                   severity=error (default)',
+    '  change with: rules["pr-body"] (active: error, source: default)',
     '',
   ].join('\n');
 }
@@ -207,7 +207,7 @@ describe('house-rules config', () => {
         'require-safety-comment-for-type-assertion': { severity: 'off', options: {}, sources: { severity: 'default' } },
         'require-readable-spacing': { severity: 'off', options: {}, sources: { severity: 'default' } },
         'silent-early-return-in-test': { severity: 'warn', options: {}, sources: { severity: 'default' } },
-        'pr-body': { severity: 'off', options: {}, sources: { severity: 'default' } },
+        'pr-body': { severity: 'error', options: {}, sources: { severity: 'default' } },
       },
     });
     expect(Object.keys(out)).toEqual(['schema', 'file', 'rules']);

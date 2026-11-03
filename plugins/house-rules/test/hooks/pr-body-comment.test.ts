@@ -6,7 +6,7 @@ let disabled: string;
 
 beforeAll(() => {
   enabled = makeRepo({ rules: { "pr-body": "error" } });
-  disabled = makeRepo({ rules: {} });
+  disabled = makeRepo({ rules: { "pr-body": "off" } });
 });
 
 function decide(repo: string, command: string) {
@@ -57,7 +57,7 @@ describe("pr-body guard: top-level PR comments", () => {
     expect(decide(enabled, 'gh issue comment 12 --body "triage note"').decision).toBe("allow");
   });
 
-  test("a repo that does not enable pr-body allows the commands denied above", () => {
+  test("a repo that sets pr-body to off allows the commands denied above", () => {
     expect(decide(enabled, 'gh pr comment 940 --body "proof"').decision).toBe("deny");
     expect(decide(disabled, 'gh pr comment 940 --body "proof"').decision).toBe("allow");
     expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -f body=proof`).decision).toBe("deny");
